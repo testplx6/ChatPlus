@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>La Classe Américaine — L'app des fans</title>
+<meta name="description" content="L'application non officielle des fans de La Classe américaine (Le Grand Détournement) : citations cultes, quiz, personnages et Classe-o-mètre.">
+<style>
+  :root {
+    --bg: #14100b;
+    --bg-soft: #1e1812;
+    --card: #241c13;
+    --gold: #d9a441;
+    --gold-bright: #f2c363;
+    --cream: #f1e6cf;
+    --muted: #a89778;
+    --red: #b3402e;
+    --border: #3a2e1e;
+    --radius: 14px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--cream);
+    font-family: Georgia, 'Times New Roman', serif;
+    line-height: 1.6;
+  }
+  ::selection { background: var(--gold); color: var(--bg); }
+
+  /* ---------- Nav ---------- */
+  nav {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(20, 16, 11, 0.92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.7rem 1.2rem; flex-wrap: wrap; gap: 0.5rem;
+  }
+  nav .brand {
+    font-weight: bold; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--gold-bright); font-size: 0.95rem; text-decoration: none;
+  }
+  nav .links { display: flex; gap: 1rem; flex-wrap: wrap; }
+  nav .links a {
+    color: var(--muted); text-decoration: none; font-size: 0.85rem;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    transition: color 0.2s;
+  }
+  nav .links a:hover { color: var(--gold-bright); }
+
+  main { max-width: 1000px; margin: 0 auto; padding: 0 1.2rem 4rem; }
+
+  /* ---------- Hero ---------- */
+  .hero {
+    text-align: center;
+    padding: 4.5rem 1rem 3.5rem;
+    background:
+      radial-gradient(ellipse at 50% -20%, rgba(217, 164, 65, 0.18), transparent 60%);
+  }
+  .hero .surtitre {
+    color: var(--red); text-transform: uppercase; letter-spacing: 0.35em;
+    font-size: 0.8rem; margin-bottom: 1rem;
+  }
+  .hero h1 {
+    font-size: clamp(2.2rem, 7vw, 4.2rem);
+    color: var(--gold-bright);
+    text-transform: uppercase; letter-spacing: 0.06em; line-height: 1.1;
+    text-shadow: 0 3px 0 rgba(0,0,0,0.5);
+  }
+  .hero .soustitre {
+    margin-top: 0.8rem; font-style: italic; color: var(--muted);
+    font-size: clamp(1rem, 2.5vw, 1.25rem);
+  }
+  .hero .filet {
+    width: 120px; height: 3px; background: var(--gold);
+    margin: 1.6rem auto; border-radius: 2px;
+  }
+  .hero .accroche { max-width: 620px; margin: 0 auto; color: var(--cream); }
+  .hero .cta {
+    display: inline-block; margin-top: 2rem;
+    background: var(--gold); color: var(--bg);
+    padding: 0.8rem 2rem; border-radius: 999px;
+    font-weight: bold; text-decoration: none; text-transform: uppercase;
+    letter-spacing: 0.1em; font-size: 0.85rem;
+    transition: transform 0.15s, background 0.2s;
+  }
+  .hero .cta:hover { background: var(--gold-bright); transform: translateY(-2px); }
+
+  /* ---------- Sections ---------- */
+  section { padding: 3.5rem 0 1rem; }
+  section h2 {
+    color: var(--gold-bright); text-transform: uppercase;
+    letter-spacing: 0.15em; font-size: 1.4rem;
+    border-bottom: 2px solid var(--border); padding-bottom: 0.6rem;
+    margin-bottom: 1.6rem;
+  }
+  section h2 span { color: var(--red); }
+  .intro { color: var(--muted); margin-bottom: 1.6rem; max-width: 700px; }
+
+  /* ---------- Générateur de citations ---------- */
+  .generateur {
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 2.5rem 1.5rem;
+    text-align: center;
+  }
+  .generateur blockquote {
+    font-size: clamp(1.3rem, 4vw, 2rem);
+    font-style: italic; color: var(--cream);
+    min-height: 3.2em;
+    display: flex; align-items: center; justify-content: center;
+    transition: opacity 0.25s;
+  }
+  .generateur blockquote.fade { opacity: 0; }
+  .generateur .auteur { color: var(--gold); margin-top: 0.8rem; font-size: 0.95rem; }
+  .generateur button {
+    margin-top: 1.8rem;
+    background: var(--red); color: var(--cream);
+    border: none; border-radius: 999px;
+    padding: 0.75rem 1.8rem; font-size: 0.9rem; font-family: inherit;
+    font-weight: bold; text-transform: uppercase; letter-spacing: 0.08em;
+    cursor: pointer; transition: transform 0.15s, filter 0.2s;
+  }
+  .generateur button:hover { filter: brightness(1.15); transform: translateY(-2px); }
+
+  /* ---------- Mur de citations ---------- */
+  .mur { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+  .citation-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 1.3rem;
+    display: flex; flex-direction: column; justify-content: space-between;
+    transition: transform 0.15s, border-color 0.2s;
+  }
+  .citation-card:hover { transform: translateY(-3px); border-color: var(--gold); }
+  .citation-card p { font-style: italic; }
+  .citation-card .qui { color: var(--gold); font-size: 0.85rem; margin-top: 0.9rem; }
+
+  /* ---------- Quiz ---------- */
+  .quiz-box {
+    background: var(--bg-soft); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 2rem 1.5rem;
+  }
+  .quiz-progress { color: var(--muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 1rem; }
+  .quiz-question { font-size: 1.25rem; margin-bottom: 1.4rem; color: var(--cream); }
+  .quiz-reponses { display: grid; gap: 0.7rem; }
+  .quiz-reponses button {
+    text-align: left; background: var(--card); color: var(--cream);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 0.8rem 1.1rem; font-family: inherit; font-size: 1rem;
+    cursor: pointer; transition: border-color 0.15s, background 0.15s;
+  }
+  .quiz-reponses button:hover:not(:disabled) { border-color: var(--gold); background: #2b2115; }
+  .quiz-reponses button.bonne { border-color: #4d8a4d; background: #1d2e1a; }
+  .quiz-reponses button.mauvaise { border-color: var(--red); background: #331711; }
+  .quiz-reponses button:disabled { cursor: default; }
+  .quiz-suite { margin-top: 1.4rem; text-align: right; }
+  .quiz-suite button, .quiz-resultat button {
+    background: var(--gold); color: var(--bg); border: none; border-radius: 999px;
+    padding: 0.65rem 1.6rem; font-family: inherit; font-weight: bold;
+    text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.85rem; cursor: pointer;
+  }
+  .quiz-suite button:hover, .quiz-resultat button:hover { background: var(--gold-bright); }
+  .quiz-resultat { text-align: center; padding: 1rem 0; }
+  .quiz-resultat .score { font-size: 3rem; color: var(--gold-bright); font-weight: bold; }
+  .quiz-resultat .verdict { font-size: 1.3rem; font-style: italic; margin: 0.8rem 0 1.6rem; }
+  .quiz-explication { margin-top: 1.2rem; color: var(--muted); font-size: 0.95rem; border-left: 3px solid var(--gold); padding-left: 0.9rem; display: none; }
+  .quiz-explication.visible { display: block; }
+
+  /* ---------- Classe-o-mètre ---------- */
+  .classeometre {
+    background: var(--bg-soft); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 2rem 1.5rem; text-align: center;
+  }
+  .classeometre form { display: flex; gap: 0.6rem; justify-content: center; flex-wrap: wrap; margin-top: 1rem; }
+  .classeometre input {
+    background: var(--card); border: 1px solid var(--border); color: var(--cream);
+    border-radius: 999px; padding: 0.7rem 1.3rem; font-family: inherit; font-size: 1rem;
+    min-width: 220px; outline: none;
+  }
+  .classeometre input:focus { border-color: var(--gold); }
+  .classeometre form button {
+    background: var(--gold); color: var(--bg); border: none; border-radius: 999px;
+    padding: 0.7rem 1.5rem; font-family: inherit; font-weight: bold;
+    text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.85rem; cursor: pointer;
+  }
+  .classeometre form button:hover { background: var(--gold-bright); }
+  .jauge { max-width: 420px; margin: 1.8rem auto 0; display: none; }
+  .jauge.visible { display: block; }
+  .jauge .barre {
+    height: 18px; background: var(--card); border: 1px solid var(--border);
+    border-radius: 999px; overflow: hidden;
+  }
+  .jauge .remplissage {
+    height: 100%; width: 0;
+    background: linear-gradient(90deg, var(--red), var(--gold), var(--gold-bright));
+    border-radius: 999px; transition: width 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .jauge .pourcent { font-size: 2.2rem; color: var(--gold-bright); font-weight: bold; margin-top: 0.8rem; }
+  .jauge .verdict-classe { font-style: italic; color: var(--cream); margin-top: 0.3rem; }
+
+  /* ---------- Personnages ---------- */
+  .personnages { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 1rem; }
+  .perso-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 1.4rem; text-align: center;
+    transition: transform 0.15s, border-color 0.2s;
+  }
+  .perso-card:hover { transform: translateY(-3px); border-color: var(--gold); }
+  .perso-card .avatar {
+    width: 64px; height: 64px; margin: 0 auto 0.9rem;
+    border-radius: 50%; background: var(--bg-soft);
+    border: 2px solid var(--gold);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.8rem;
+  }
+  .perso-card h3 { color: var(--gold-bright); letter-spacing: 0.05em; }
+  .perso-card .role { color: var(--red); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.1em; margin: 0.2rem 0 0.7rem; }
+  .perso-card p { font-size: 0.92rem; color: var(--muted); }
+
+  /* ---------- À propos ---------- */
+  .apropos { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+  .fait {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 1.3rem;
+  }
+  .fait h3 { color: var(--gold); font-size: 1rem; margin-bottom: 0.4rem; }
+  .fait p { font-size: 0.92rem; color: var(--muted); }
+
+  /* ---------- Footer ---------- */
+  footer {
+    border-top: 1px solid var(--border);
+    text-align: center; padding: 2.5rem 1rem;
+    color: var(--muted); font-size: 0.85rem;
+  }
+  footer .devise { font-style: italic; color: var(--gold); font-size: 1.1rem; margin-bottom: 0.6rem; }
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="brand" href="#">★ La Classe Américaine</a>
+  <div class="links">
+    <a href="#citations">Citations</a>
+    <a href="#quiz">Quiz</a>
+    <a href="#classeometre">Classe-o-mètre</a>
+    <a href="#personnages">Personnages</a>
+    <a href="#apropos">Le film</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <p class="surtitre">Le Grand Détournement présente</p>
+  <h1>La Classe<br>Américaine</h1>
+  <p class="soustitre">L'application non officielle des fans de l'homme le plus classe du monde</p>
+  <div class="filet"></div>
+  <p class="accroche">George Abitbol est mort en prononçant ses derniers mots : « Monde de merde ».
+  Ici, on cultive sa mémoire à coups de citations cultes, de quiz et de whisky. Juste un doigt.</p>
+  <a class="cta" href="#citations">Cheers ! →</a>
+</header>
+
+<main>
+
+  <!-- ===================== CITATIONS ===================== -->
+  <section id="citations">
+    <h2>■ Générateur de <span>citations</span></h2>
+    <p class="intro">Besoin d'une réplique classe pour briller en société ? Appuyez sur le bouton, le destin fait le reste.</p>
+    <div class="generateur">
+      <blockquote id="citation-texte">« Monde de merde. »</blockquote>
+      <p class="auteur" id="citation-auteur">— George Abitbol, ses derniers mots</p>
+      <button id="citation-btn">Une autre !</button>
+    </div>
+
+    <h2 style="margin-top: 3rem;">■ Le mur des <span>répliques cultes</span></h2>
+    <div class="mur" id="mur-citations"></div>
+  </section>
+
+  <!-- ===================== QUIZ ===================== -->
+  <section id="quiz">
+    <h2>■ Le <span>quiz</span> des vrais fans</h2>
+    <p class="intro">Êtes-vous l'homme (ou la femme) le plus classe du monde, ou juste un tocard ? Huit questions pour le savoir.</p>
+    <div class="quiz-box" id="quiz-box"></div>
+  </section>
+
+  <!-- ===================== CLASSE-O-MÈTRE ===================== -->
+  <section id="classeometre">
+    <h2>■ Le <span>Classe-o-mètre</span></h2>
+    <p class="intro">Un algorithme scientifiquement irréprochable mesure votre taux de classe. Résultat garanti constant : la classe, ça ne change pas d'un jour à l'autre.</p>
+    <div class="classeometre">
+      <p>Entrez votre nom pour connaître votre taux de classe officiel :</p>
+      <form id="classe-form">
+        <input type="text" id="classe-nom" placeholder="Ex : George Abitbol" maxlength="40" required>
+        <button type="submit">Mesurer</button>
+      </form>
+      <div class="jauge" id="jauge">
+        <div class="barre"><div class="remplissage" id="remplissage"></div></div>
+        <div class="pourcent" id="pourcent">0%</div>
+        <div class="verdict-classe" id="verdict-classe"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== PERSONNAGES ===================== -->
+  <section id="personnages">
+    <h2>■ Les <span>personnages</span></h2>
+    <p class="intro">Un casting hollywoodien de légende, redoublé avec la classe qu'on lui connaît.</p>
+    <div class="personnages">
+      <div class="perso-card">
+        <div class="avatar">🤠</div>
+        <h3>George Abitbol</h3>
+        <p class="role">L'homme le plus classe du monde</p>
+        <p>Incarné par John Wayne. Sa mort tragique et ses derniers mots — « Monde de merde » — déclenchent toute l'enquête.</p>
+      </div>
+      <div class="perso-card">
+        <div class="avatar">📰</div>
+        <h3>Dave</h3>
+        <p class="role">Journaliste</p>
+        <p>Incarné par Dustin Hoffman. Il enquête sur le mystère des derniers mots de George avec ses deux collègues.</p>
+      </div>
+      <div class="perso-card">
+        <div class="avatar">🖋️</div>
+        <h3>Peter</h3>
+        <p class="role">Journaliste</p>
+        <p>Incarné par Paul Newman. Membre du trio de reporters lancé sur les traces du passé de George Abitbol.</p>
+      </div>
+      <div class="perso-card">
+        <div class="avatar">🎙️</div>
+        <h3>Steven</h3>
+        <p class="role">Journaliste</p>
+        <p>Incarné par Robert Redford. Il complète le trio d'enquêteurs bien décidés à percer le secret de George.</p>
+      </div>
+      <div class="perso-card">
+        <div class="avatar">🥃</div>
+        <h3>José</h3>
+        <p class="role">Fouteur de merde notoire</p>
+        <p>On peut dire que c'est un fouteur de merde, José. Les témoins de la vie de George en gardent un souvenir ému.</p>
+      </div>
+      <div class="perso-card">
+        <div class="avatar">🌍</div>
+        <h3>Le monde de merde</h3>
+        <p class="role">Antagoniste principal</p>
+        <p>Omniprésent du début à la fin. C'est contre lui que George aura lutté toute sa vie, avec classe.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== À PROPOS ===================== -->
+  <section id="apropos">
+    <h2>■ Le <span>film</span></h2>
+    <p class="intro">Trois choses à savoir pour ne pas passer pour un tocard en soirée.</p>
+    <div class="apropos">
+      <div class="fait">
+        <h3>🎬 Un détournement de légende</h3>
+        <p><em>La Classe américaine</em> (aussi connu sous le titre <em>Le Grand Détournement</em>) est un téléfilm de 1993 réalisé par Michel Hazanavicius et Dominique Mézerette, diffusé sur Canal+.</p>
+      </div>
+      <div class="fait">
+        <h3>🎞️ 100% recyclé</h3>
+        <p>Le film est entièrement monté à partir d'extraits de films du catalogue Warner Bros., redoublés en français pour raconter une histoire totalement nouvelle.</p>
+      </div>
+      <div class="fait">
+        <h3>🗣️ Des voix cultes</h3>
+        <p>Le redoublage réunit des grandes voix du doublage français, dont Richard Darbois. Résultat : des répliques entrées à jamais dans la culture populaire.</p>
+      </div>
+      <div class="fait">
+        <h3>📼 Un statut culte</h3>
+        <p>Jamais exploité commercialement à cause des droits, le film s'est transmis de fan en fan pendant des décennies — la définition même d'une œuvre culte.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <p class="devise">« Monde de merde. »</p>
+  <p>Application non officielle faite par des fans, pour des fans.<br>
+  <em>La Classe américaine</em> © ses ayants droit — aucun extrait du film n'est utilisé ici, juste beaucoup d'amour.</p>
+</footer>
+
+<script>
+/* ============================================================
+   Données
+   ============================================================ */
+const CITATIONS = [
+  { texte: "Monde de merde.", auteur: "George Abitbol, ses derniers mots" },
+  { texte: "George Abitbol, l'homme le plus classe du monde.", auteur: "La postérité" },
+  { texte: "Tu veux un whisky ? — Juste un doigt. — Tu veux pas un whisky d'abord ?", auteur: "Un échange resté célèbre" },
+  { texte: "On peut dire que t'es un sacré fouteur de merde, José.", auteur: "Un témoin de l'époque" },
+  { texte: "Vous êtes vraiment des tocards. Je vous jure. Grave.", auteur: "George Abitbol" },
+  { texte: "J'aime pas les vieux, ça pue et c'est incontinent.", auteur: "Un personnage peu recommandable" },
+  { texte: "Excusez-moi, mais j'ai comme l'impression que vous me traitez de merde.", auteur: "Un homme susceptible" },
+  { texte: "Cheers !", auteur: "Tout le monde, verre à la main" },
+  { texte: "Grave.", auteur: "La réponse qui va avec tout" },
+  { texte: "Il me faut cette info !", auteur: "Un journaliste sous pression" },
+  { texte: "T'aurais pas dû faire le con, Jacques.", auteur: "Un conseil avisé" },
+  { texte: "La classe, c'est pas quelque chose qui s'apprend. On l'a ou on l'a pas.", auteur: "Sagesse populaire abitbolienne" }
+];
+
+const QUIZ = [
+  {
+    q: "Quels sont les derniers mots de George Abitbol ?",
+    reponses: ["« Monde de merde »", "« Cheers ! »", "« Juste un doigt »", "« Rosebud »"],
+    bonne: 0,
+    explication: "C'est LE point de départ du film : les journalistes enquêtent pour comprendre pourquoi l'homme le plus classe du monde est mort en disant « Monde de merde »."
+  },
+  {
+    q: "Quel est le titre alternatif du film ?",
+    reponses: ["Le Grand Blond", "Le Grand Détournement", "Le Grand Bain", "La Grande Classe"],
+    bonne: 1,
+    explication: "Le film est connu sous deux titres : « La Classe américaine » et « Le Grand Détournement »."
+  },
+  {
+    q: "En quelle année le film a-t-il été diffusé ?",
+    reponses: ["1988", "1993", "1997", "2001"],
+    bonne: 1,
+    explication: "Le téléfilm a été diffusé en 1993 sur Canal+."
+  },
+  {
+    q: "Qui a réalisé le film ?",
+    reponses: [
+      "Michel Hazanavicius et Dominique Mézerette",
+      "Alain Chabat et Gérard Darmon",
+      "Les Nuls",
+      "Jean-Pierre Jeunet et Marc Caro"
+    ],
+    bonne: 0,
+    explication: "Michel Hazanavicius (futur réalisateur oscarisé de « The Artist ») et Dominique Mézerette. La classe, déjà."
+  },
+  {
+    q: "Le film est entièrement monté à partir d'extraits de films de quel studio ?",
+    reponses: ["Universal", "Paramount", "Warner Bros.", "MGM"],
+    bonne: 2,
+    explication: "Tout le film est fabriqué à partir du catalogue Warner Bros., redoublé en français."
+  },
+  {
+    q: "Quel acteur « incarne » George Abitbol à l'image ?",
+    reponses: ["Clint Eastwood", "John Wayne", "Burt Lancaster", "Steve McQueen"],
+    bonne: 1,
+    explication: "George Abitbol, l'homme le plus classe du monde, a le visage de John Wayne."
+  },
+  {
+    q: "Comment s'appellent les trois journalistes qui enquêtent ?",
+    reponses: ["Tom, Dick et Harry", "Dave, Peter et Steven", "Jack, Bill et Joe", "Riri, Fifi et Loulou"],
+    bonne: 1,
+    explication: "Dave, Peter et Steven — sous les traits de Dustin Hoffman, Paul Newman et Robert Redford."
+  },
+  {
+    q: "Que répond-on classiquement à « Tu veux un whisky ? »",
+    reponses: ["« Avec des glaçons »", "« Juste un doigt »", "« Non merci, je conduis »", "« Sers-moi un double »"],
+    bonne: 1,
+    explication: "« Juste un doigt. » — « Tu veux pas un whisky d'abord ? » Une des répliques les plus cultes du film."
+  }
+];
+
+const VERDICTS_QUIZ = [
+  { min: 8, texte: "Vous ÊTES l'homme le plus classe du monde. George serait fier." },
+  { min: 6, texte: "Très classe. On vous sert un whisky ? Juste un doigt, évidemment." },
+  { min: 4, texte: "Pas mal, mais il va falloir réviser pour ne pas finir dans un monde de merde." },
+  { min: 2, texte: "Aïe. On peut dire que t'es un sacré fouteur de merde, José." },
+  { min: 0, texte: "Vous êtes vraiment des tocards. Je vous jure. Grave." }
+];
+
+const VERDICTS_CLASSE = [
+  { min: 95, texte: "Niveau George Abitbol. L'homme le plus classe du monde, c'est vous." },
+  { min: 80, texte: "Une classe folle. Les journalistes vont bientôt enquêter sur vous." },
+  { min: 60, texte: "Classe certaine. Vous buvez votre whisky avec distinction. Juste un doigt." },
+  { min: 40, texte: "Classe intermittente. Ça passe, mais surveillez-vous en soirée." },
+  { min: 20, texte: "Léger déficit de classe. Évitez de traiter les gens de merde." },
+  { min: 0, texte: "Monde de merde. Mais bonne nouvelle : la classe, ça se travaille." }
+];
+
+/* ============================================================
+   Générateur de citations
+   ============================================================ */
+const citTexte = document.getElementById('citation-texte');
+const citAuteur = document.getElementById('citation-auteur');
+let derniereCitation = 0;
+
+document.getElementById('citation-btn').addEventListener('click', () => {
+  let i;
+  do { i = Math.floor(Math.random() * CITATIONS.length); } while (i === derniereCitation);
+  derniereCitation = i;
+  citTexte.classList.add('fade');
+  setTimeout(() => {
+    citTexte.textContent = '« ' + CITATIONS[i].texte + ' »';
+    citAuteur.textContent = '— ' + CITATIONS[i].auteur;
+    citTexte.classList.remove('fade');
+  }, 250);
+});
+
+/* Mur de citations */
+const mur = document.getElementById('mur-citations');
+CITATIONS.forEach(c => {
+  const card = document.createElement('div');
+  card.className = 'citation-card';
+  card.innerHTML = '<p>« ' + c.texte + ' »</p><p class="qui">— ' + c.auteur + '</p>';
+  mur.appendChild(card);
+});
+
+/* ============================================================
+   Quiz
+   ============================================================ */
+const quizBox = document.getElementById('quiz-box');
+let quizIndex = 0, quizScore = 0, repondu = false;
+
+function afficherQuestion() {
+  repondu = false;
+  const q = QUIZ[quizIndex];
+  quizBox.innerHTML =
+    '<p class="quiz-progress">Question ' + (quizIndex + 1) + ' / ' + QUIZ.length +
+    ' — Score : ' + quizScore + '</p>' +
+    '<p class="quiz-question">' + q.q + '</p>' +
+    '<div class="quiz-reponses">' +
+    q.reponses.map((r, i) => '<button data-i="' + i + '">' + r + '</button>').join('') +
+    '</div>' +
+    '<p class="quiz-explication" id="quiz-explication">' + q.explication + '</p>' +
+    '<div class="quiz-suite" id="quiz-suite" style="display:none">' +
+    '<button id="btn-suite">' + (quizIndex + 1 < QUIZ.length ? 'Question suivante →' : 'Voir mon verdict →') + '</button></div>';
+
+  quizBox.querySelectorAll('.quiz-reponses button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (repondu) return;
+      repondu = true;
+      const choix = Number(btn.dataset.i);
+      const boutons = quizBox.querySelectorAll('.quiz-reponses button');
+      boutons.forEach(b => b.disabled = true);
+      boutons[QUIZ[quizIndex].bonne].classList.add('bonne');
+      if (choix === QUIZ[quizIndex].bonne) {
+        quizScore++;
+      } else {
+        btn.classList.add('mauvaise');
+      }
+      document.getElementById('quiz-explication').classList.add('visible');
+      document.getElementById('quiz-suite').style.display = 'block';
+    });
+  });
+
+  const suite = document.getElementById('btn-suite');
+  suite.addEventListener('click', () => {
+    quizIndex++;
+    if (quizIndex < QUIZ.length) afficherQuestion();
+    else afficherResultat();
+  });
+}
+
+function afficherResultat() {
+  const verdict = VERDICTS_QUIZ.find(v => quizScore >= v.min).texte;
+  quizBox.innerHTML =
+    '<div class="quiz-resultat">' +
+    '<p class="quiz-progress">Verdict officiel</p>' +
+    '<p class="score">' + quizScore + ' / ' + QUIZ.length + '</p>' +
+    '<p class="verdict">« ' + verdict + ' »</p>' +
+    '<button id="btn-rejouer">Rejouer</button>' +
+    '</div>';
+  document.getElementById('btn-rejouer').addEventListener('click', () => {
+    quizIndex = 0; quizScore = 0;
+    afficherQuestion();
+  });
+}
+
+afficherQuestion();
+
+/* ============================================================
+   Classe-o-mètre — hash déterministe : même nom, même classe.
+   ============================================================ */
+function tauxDeClasse(nom) {
+  const n = nom.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (n === 'george abitbol' || n === 'georges abitbol') return 100;
+  let h = 0;
+  for (let i = 0; i < n.length; i++) {
+    h = (h * 31 + n.charCodeAt(i)) >>> 0;
+  }
+  return h % 100;
+}
+
+document.getElementById('classe-form').addEventListener('submit', e => {
+  e.preventDefault();
+  const nom = document.getElementById('classe-nom').value;
+  if (!nom.trim()) return;
+  const taux = tauxDeClasse(nom);
+  const verdict = VERDICTS_CLASSE.find(v => taux >= v.min).texte;
+  const jauge = document.getElementById('jauge');
+  const remplissage = document.getElementById('remplissage');
+  jauge.classList.add('visible');
+  remplissage.style.width = '0%';
+  document.getElementById('pourcent').textContent = taux + '% de classe';
+  document.getElementById('verdict-classe').textContent = nom.trim() + ' : « ' + verdict + ' »';
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    remplissage.style.width = taux + '%';
+  }));
+});
+</script>
+
+</body>
+</html>
