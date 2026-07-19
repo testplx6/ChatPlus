@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Takuzu Sprint — puzzles éclair &amp; records</title>
+  <meta name="description" content="Un jeu de logique façon sudoku, mais binaire : des parties éclair et des records suivis sur plusieurs parties." />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+
+    <header class="topbar">
+      <h1 class="brand">⚡ Takuzu <span>Sprint</span></h1>
+      <div class="controls">
+        <div class="size-picker" role="group" aria-label="Taille de la grille">
+          <button class="size-btn" data-size="4">4×4</button>
+          <button class="size-btn active" data-size="6">6×6</button>
+          <button class="size-btn" data-size="8">8×8</button>
+        </div>
+        <button id="new-game" class="btn primary">Nouvelle partie</button>
+        <button id="show-rules" class="btn ghost" aria-haspopup="dialog">Règles</button>
+      </div>
+    </header>
+
+    <main class="layout">
+
+      <section class="board-panel">
+        <div class="timer-row">
+          <div id="timer" class="timer" aria-live="off">0:00.0</div>
+          <div id="live-streak" class="live-streak" title="Série de victoires en cours">🔥 0</div>
+        </div>
+        <div id="board" class="board" role="grid" aria-label="Grille de jeu"></div>
+        <p class="hint-line">Clic&nbsp;: ☀️ → 🌙 → vide &nbsp;·&nbsp; clic droit&nbsp;: sens inverse</p>
+      </section>
+
+      <aside class="stats-panel">
+        <h2>Records <span id="stats-size-label" class="muted">6×6</span></h2>
+        <div class="stat-cards">
+          <div class="stat-card">
+            <div class="stat-label">Meilleur temps</div>
+            <div class="stat-value" id="stat-best">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Moy. 5 dernières</div>
+            <div class="stat-value" id="stat-ao5">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Meilleure moy. 5</div>
+            <div class="stat-value" id="stat-best-ao5">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Série (act. / max)</div>
+            <div class="stat-value" id="stat-streak">0 / 0</div>
+          </div>
+          <div class="stat-card wide">
+            <div class="stat-label">Victoires</div>
+            <div class="stat-value" id="stat-wins">0 / 0 parties</div>
+          </div>
+        </div>
+
+        <h3>Dernières parties</h3>
+        <ol id="history" class="history"></ol>
+
+        <button id="reset-stats" class="btn danger ghost small">Réinitialiser les records</button>
+      </aside>
+
+    </main>
+
+    <div id="win-overlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="win-title">
+      <div class="overlay-card">
+        <div class="overlay-emoji">🎉</div>
+        <h2 id="win-title">Résolu&nbsp;!</h2>
+        <div class="win-time" id="win-time">0:00.0</div>
+        <div class="win-badges" id="win-badges"></div>
+        <button id="play-again" class="btn primary big">Rejouer</button>
+      </div>
+    </div>
+
+    <div id="rules-overlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="rules-title">
+      <div class="overlay-card rules-card">
+        <h2 id="rules-title">Règles du Takuzu</h2>
+        <p>Comme un sudoku, chaque grille a une solution unique et se résout par pure logique. Mais ici, seulement deux symboles&nbsp;: ☀️ et 🌙.</p>
+        <ul>
+          <li>Remplis toutes les cases avec ☀️ ou 🌙.</li>
+          <li><strong>Jamais 3 symboles identiques</strong> côte à côte (ligne ou colonne).</li>
+          <li>Chaque ligne et chaque colonne contient <strong>autant de ☀️ que de 🌙</strong>.</li>
+          <li>Deux lignes identiques (ou deux colonnes identiques) sont <strong>interdites</strong>.</li>
+        </ul>
+        <p class="muted">Les cases en conflit sont surlignées en rouge. Le chrono s'arrête dès que la grille est correcte — bats tes records sur plusieurs parties&nbsp;!</p>
+        <button id="close-rules" class="btn primary">Compris</button>
+      </div>
+    </div>
+
+  </div>
+  <script src="game.js"></script>
+</body>
+</html>
