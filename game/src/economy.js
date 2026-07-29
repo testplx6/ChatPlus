@@ -134,15 +134,22 @@ export function emploi(col, key) {
  * faim met des bras aux cultures ; une ville en guerre arme les siens. C'est
  * lent à dessein — on ne reconvertit pas un mineur en paysan en une nuit.
  */
-export const PERIODE_EMPLOIS = 8;
+/** Période de reconversion, en heures de jeu. */
+export const PERIODE_EMPLOIS = 24;
 
 export function ajusterEmplois(world, col, rng, dt = 1) {
   if (!col.emplois) { col.emplois = emploisInitiaux(world, col, rng); col.majEmplois = 0; }
   // Une reconversion se compte en semaines : la recalculer à chaque tranche de
   // colonie coûterait huit fois plus cher pour un résultat identique.
-  col.majEmplois = (col.majEmplois || 0) + 1;
-  if (col.majEmplois % PERIODE_EMPLOIS !== 0) return;
-  const pas = dt * PERIODE_EMPLOIS;
+  //
+  // On compte des heures, pas des appels. Depuis que les villes lointaines
+  // avancent par demi-journées (voir PAS_LOIN), compter les appels revenait à
+  // reconvertir quatre fois plus lentement là-bas qu'ici — le niveau de détail
+  // n'a pas à changer le comportement social d'une ville.
+  col.majEmplois = (col.majEmplois || 0) + dt;
+  if (col.majEmplois < PERIODE_EMPLOIS) return;
+  const pas = col.majEmplois;
+  col.majEmplois = 0;
   const cible = actifs(col);
   let total = 0;
   for (const k of METIER_VILLE_KEYS) total += emploi(col, k);
@@ -324,7 +331,13 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
 
   // Reconstruction de la défense
   if (col.defense < col.defenseMax) {
-    col.defense = Math.min(col.defenseMax, col.defense + col.defenseMax * 0.004 * (1 - col.unrest) * dt);
+    // Une ville agitée (unrest > 1) voit sa garnison fondre : le terme devient
+    // négatif, et il faut donc borner des deux côtés. Sans le plancher, une
+    // tranche de douze heures pouvait faire passer la défense sous zéro — ce
+    // qui ne s'était jamais vu tant que les tranches faisaient trois heures.
+    col.defense = Math.max(0, Math.min(
+      col.defenseMax, col.defense + col.defenseMax * 0.004 * (1 - col.unrest) * dt
+    ));
   }
   col.defenseMax = Math.round(col.pop * 0.09 + col.murs * 12);
 

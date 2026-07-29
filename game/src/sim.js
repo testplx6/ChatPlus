@@ -4,7 +4,7 @@
 
 import { Rng } from './rng.js';
 import { FACTIONS, DIPLO_FACTIONS } from './data.js';
-import { genererMonde, decouvrir, colonieParId, nomRegion } from './world.js';
+import { genererMonde, decouvrir, colonieParId, nomRegion, distance } from './world.js';
 import { makeCharacter, idDepuisRng } from './characters.js';
 import { creerBase, tickBase } from './base.js';
 import {
@@ -41,8 +41,32 @@ export const VITESSES = [1, 4, 16, 60];
  * fluctuent par paliers assez gros pour que le joueur ne trouve plus toujours de
  * quoi se ravitailler, et la survie tombe de 42 à 31 sur soixante parties. Le
  * gain de performance ne valait pas ça.
+ *
+ * Ça, c'est près du joueur. Loin, c'est autre chose — voir PAS_LOIN.
  */
 export const PAS_COLONIE = 3;
+
+/**
+ * Niveau de détail. La carte compte cinquante-quatre villes ; les traiter toutes
+ * au pas fin coûterait trois fois le budget d'un tick entier, pour simuler avec
+ * une précision horaire des greniers que le joueur ne verra pas de la partie.
+ *
+ * Une ville proche garde donc le pas fin — c'est là que le joueur achète, vend
+ * et regarde les stocks. Au-delà, elle avance par journées. Rien n'est perdu :
+ * chaque ville retient l'heure de son dernier passage et rattrape exactement ce
+ * qui lui est dû, de sorte que changer de niveau de détail en cours de route
+ * (le joueur s'approche, le joueur s'éloigne) ne fabrique ni ne détruit une
+ * seule heure de production. Les probabilités, elles, passent par `surDt` :
+ * une sécession reste aussi probable sur vingt-quatre heures d'un bloc que sur
+ * vingt-quatre heures découpées.
+ *
+ * Vingt-quatre et non douze : la valeur est calée pour que le nombre de villes
+ * traitées par heure reste celui d'avant l'agrandissement — environ cinq —,
+ * quelle que soit la taille de la carte.
+ */
+export const PAS_LOIN = 24;
+/** En deçà de cette distance d'un groupe ou de l'avant-poste, on regarde de près. */
+export const RAYON_DETAIL = 4;
 /** On démarre déjà accéléré : à ×1 il ne se passe visiblement rien. */
 export const VITESSE_DEFAUT = 4;
 
@@ -163,6 +187,29 @@ export function nouvellePartie(seed, opts = {}) {
 // Tick
 // ---------------------------------------------------------------------------
 
+/** Les régions depuis lesquelles le joueur regarde : ses groupes et sa base. */
+function regardsDuJoueur(state) {
+  const out = [];
+  for (const g of state.player.groupes) {
+    if (g.membres.length) out.push(g.regionId);
+  }
+  if (state.base && state.base.fonde) out.push(state.base.regionId);
+  return out;
+}
+
+/**
+ * La maille de simulation d'une ville : fine près du joueur, large ailleurs.
+ * Le décalage par indice évite que toutes les villes lointaines tombent sur la
+ * même heure — sinon le tick ferait un pic toutes les douze heures au lieu d'un
+ * coût plat.
+ */
+function pasColonie(yeux, col, i) {
+  for (const rid of yeux) {
+    if (distance(rid, col.regionId) <= RAYON_DETAIL) return PAS_COLONIE;
+  }
+  return PAS_LOIN + (i % 5); // 24 à 28 : de quoi étaler la charge sur l'heure
+}
+
 /** Fait passer une heure de jeu. */
 export function tick(state) {
   const rng = new Rng(state.rngState);
@@ -188,17 +235,31 @@ export function tick(state) {
     });
   }
 
-  // Le monde ensuite. Les colonies sont traitées par tourniquet : chacune
-  // avance de PAS_COLONIE heures d'un coup, un tiers d'entre elles par heure.
-  // C'est 62 % du coût du tick, et rien ne se voit en jeu.
-  for (let i = state.temps % PAS_COLONIE; i < state.world.colonies.length; i += PAS_COLONIE) {
+  // Le monde ensuite. Chaque ville rattrape ce qui lui est dû depuis son dernier
+  // passage, à la maille que sa distance justifie. C'est 62 % du coût du tick,
+  // et rien ne s'en voit en jeu.
+  const yeux = regardsDuJoueur(state);
+  for (let i = 0; i < state.world.colonies.length; i++) {
     const col = state.world.colonies[i];
+    const du = state.temps - (col.vuA || 0);
+    // Aucune maille n'est plus fine que PAS_COLONIE : sous ce seuil, inutile
+    // d'aller calculer la distance au joueur. C'est ce test-là qui rend la
+    // boucle sur cinquante-quatre villes gratuite les trois quarts du temps.
+    if (du < PAS_COLONIE) continue;
+    // Décalage par indice : sans ça les villes lointaines tomberaient toutes
+    // sur la même heure et le tick ferait des pics toutes les douze heures.
+    const pas = pasColonie(yeux, col, i);
+    if (du < pas) continue;
+    col.vuA = state.temps;
     // La réputation locale infléchit ce que les gens d'ici pensent de vous.
     const rep = (col.faction && state.player.reputation[col.faction]) || 0;
     // Être là change ce qu'on entend : une demande qu'on n'a pas entendue ne
     // peut pas se retourner contre nous. Voir tickServices.
-    const present = state.player.groupes.some((g) => g.regionId === col.regionId);
-    const ev = tickColonie(state.world, col, rng, climat, PAS_COLONIE, rep, log, state.temps, present);
+    // `yeux` contient aussi la région de l'avant-poste, mais on ne fonde jamais
+    // un avant-poste sur une ville : pour une colonie, c'est bien « un groupe
+    // est ici ».
+    const present = yeux.includes(col.regionId);
+    const ev = tickColonie(state.world, col, rng, climat, du, rep, log, state.temps, present);
     if (!ev) continue;
     if (ev.evenement === 'croissance') {
       log({

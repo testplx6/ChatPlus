@@ -192,8 +192,14 @@ export function tickNotables(col, rng, dt, reputation, log, t = 0) {
     p.humeur += (Math.max(0, Math.min(100, cible)) - p.humeur) * 0.01 * dt;
     // On s'améliore dans son métier, lentement, jusqu'à un plafond honnête.
     if (p.comp < 90) p.comp += 0.0016 * dt;
-    // L'opinion tend vers votre réputation locale, sans jamais l'atteindre.
-    p.opinion = (p.opinion || 0) + (vers - (p.opinion || 0)) * 0.004 * dt;
+    // L'opinion tend vers votre réputation locale, sans jamais l'atteindre —
+    // mais pas à la même vitesse dans les deux sens. Ce qu'on gagne en personne
+    // ne s'efface pas au rythme d'une rumeur : à vitesse symétrique, un service
+    // rendu était intégralement effacé en une semaine de jeu et tout le système
+    // devenait décoratif. Le banc l'a chiffré : zéro personne acquise en fin de
+    // partie sur trente parties.
+    const ecart = vers - (p.opinion || 0);
+    p.opinion = (p.opinion || 0) + ecart * (ecart > 0 ? 0.004 : 0.0008) * dt;
 
     // On finit par se retirer, ou pire.
     const vieux = Math.max(0, p.age - 58) / 30;

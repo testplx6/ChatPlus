@@ -5,8 +5,13 @@
 // Deux interrupteurs servent à isoler un système à la fois, ce qui est la seule
 // façon d'attribuer un déséquilibre à sa cause plutôt qu'à une intuition :
 //
-//   SANS=detach,contrats,livraison   coupe ces comportements du bot
+//   SANS=detach,contrats,livraison,services,intel   coupe ces comportements
 //   VAGABOND=1                       le bot voyage autant, mais sans contrat
+//
+// `intel` est le témoin de la connaissance imparfaite : sans lui le bot choisit
+// ses villes en lisant l'état du monde, comme s'il voyait tout. Avec lui, il ne
+// se fie qu'à ses propres relevés — et une ville tombée depuis sa dernière
+// visite lui coûte le voyage.
 //
 // Le mode vagabond est le témoin : il sépare ce que coûte la route de ce que
 // coûtent les contrats. C'est lui qui a montré que la route prélevait 55 % du
@@ -29,9 +34,17 @@ import {
 } from '../src/allegeance.js';
 import { ITEMS } from '../src/data.js';
 import { saison } from '../src/climat.js';
-import { COMMODITY_KEYS, BIOMES } from '../src/data.js';
+import { COMMODITY_KEYS, COMMODITIES, BIOMES } from '../src/data.js';
+import { vueColonie, PEREMPTION } from '../src/connaissance.js';
+import { demandesIci, honorer } from '../src/services.js';
 
-const TRACE = { voyage: 0, repos: 0, travail: 0, defaites: 0, crPilles: 0 };
+const TRACE = {
+  voyage: 0, repos: 0, travail: 0, defaites: 0, crPilles: 0,
+  // Ce que coûte l'information périmée : des voyages vers des villes mortes.
+  voyagesPerdus: 0,
+  // Combien de demandes le bot croise, et combien il en honore.
+  demandesVues: 0,
+};
 const HEURES = Number(process.argv[2]) || 4000;
 // Trente parties par défaut, pas huit. À huit, l'écart-type sur un taux de
 // survie de 85 % vaut douze points : on lit du bruit et on croit lire un
@@ -51,13 +64,54 @@ function scoreNourriture(state, i) {
   return (y.biomasse || 0.18) * r.richesse * (1 - r.fouille);
 }
 
+/**
+ * Où aller vendre et se ravitailler. Le bot ne lit plus l'état du monde : il lit
+ * ses propres relevés, avec leur date. Une ville qu'il n'a jamais vue n'est pas
+ * une option — on ne marche pas six régions sur la foi d'un point sur la carte —
+ * et une ville dont le relevé date peut très bien être tombée depuis.
+ *
+ * C'est ce qui donne enfin une valeur mesurable à l'éclaireur : ses relevés
+ * élargissent le choix et le rafraîchissent.
+ */
 function colonieLaPlusProche(state, g) {
+  if (SANS.has('intel')) {
+    let best = null;
+    let bestD = Infinity;
+    for (const c of state.world.colonies) {
+      if (c.ruine) continue; // témoin omniscient : une ville morte ne vend rien
+      const d = distance(g.regionId, c.regionId);
+      if (d < bestD) { bestD = d; best = c; }
+    }
+    return best;
+  }
+
   let best = null;
-  let bestD = Infinity;
+  let bestSc = -Infinity;
   for (const c of state.world.colonies) {
-    if (c.ruine) continue; // une ville morte ne vend rien
+    const vue = vueColonie(state, c);
+    if (vue.inconnu || vue.ruine) continue; // d'après ce qu'on en sait
     const d = distance(g.regionId, c.regionId);
-    if (d < bestD) { bestD = d; best = c; }
+    // Un relevé vieux vaut moins qu'un relevé frais : le risque de marcher vers
+    // une ville qui n'existe plus se paie en jours perdus.
+    const age = vue.frais ? 0 : Math.min(1, (vue.depuis || 0) / PEREMPTION);
+    // On vend mieux là où manque ce qu'on porte.
+    let attrait = 0;
+    for (const k of COMMODITY_KEYS) {
+      const q = g.inventaire[k] || 0;
+      if (!q || k === 'rations' || k === 'medkit') continue;
+      const stock = vue.stock ? (vue.stock[k] || 0) : 0;
+      attrait += q * COMMODITIES[k].prix * (stock < (vue.pop || 50) * 0.4 ? 1 : 0.7);
+    }
+    const sc = attrait / (1 + d * 1.4) - d * 14 - age * 90;
+    if (sc > bestSc) { bestSc = sc; best = c; }
+  }
+  // Rien de connu debout : on retombe sur la plus proche, quitte à se tromper.
+  if (!best) {
+    let bestD = Infinity;
+    for (const c of state.world.colonies) {
+      const d = distance(g.regionId, c.regionId);
+      if (d < bestD) { bestD = d; best = c; }
+    }
   }
   return best;
 }
@@ -85,6 +139,70 @@ function destinationContrat(state, g) {
 }
 
 /**
+ * Rendre service, et se donner les moyens de le faire.
+ *
+ * Le piège de ce système, c'est qu'une ville demande précisément ce qui lui
+ * manque : on ne peut donc jamais acheter sur place de quoi l'honorer. Il faut
+ * porter la marchandise depuis ailleurs. Le bot tient donc une promesse à la
+ * fois — celle qu'il a choisie —, refuse de vendre ce qu'il a promis, complète
+ * son lot dans les villes qui en ont, et repasse la livrer.
+ *
+ * Sans ça il ne rendait qu'un service pour cent demandes croisées, et tout le
+ * système restait une décoration.
+ */
+function servir(state, g, colIci, memo) {
+  const p = state.player;
+  // Ce qu'on a déjà sous la main, on le remet tout de suite.
+  for (const d of demandesIci(state, colIci)) {
+    TRACE.demandesVues++;
+    if (!d.pret) continue;
+    if (honorer(state, colIci.id, d.notable.id, () => {}).ok) {
+      memo.services++;
+      if (memo.promesse && memo.promesse.notableId === d.notable.id) memo.promesse = null;
+    }
+  }
+
+  // Compléter la promesse en cours, si cette ville-ci vend ce qu'il faut.
+  if (memo.promesse) {
+    const pr = memo.promesse;
+    const col = colonieParId(state.world, pr.colId);
+    const pers = col && (col.notables || []).find((x) => x.id === pr.notableId);
+    // La demande a expiré, la personne est partie, ou la ville est tombée :
+    // on ne poursuit pas un fantôme.
+    if (!col || col.ruine || !pers || !pers.demande || pers.demande.res !== pr.res) {
+      memo.promesse = null;
+    } else {
+      const manque = pr.quantite - Math.floor(g.inventaire[pr.res] || 0);
+      if (manque > 0 && (colIci.stock[pr.res] || 0) >= manque) {
+        const negoc = g.membres.filter(estVivant)
+          .reduce((a, b) => (!a || comp(b, 'commerce') > comp(a, 'commerce') ? b : a), null);
+        const unit = prixJoueur(colIci, pr.res, negoc ? comp(negoc, 'commerce') : 0,
+          p.reputation[colIci.faction] || 0).achat;
+        const cout = unit * manque;
+        // On accepte de perdre un peu : l'estime vaut plus que la prime, pas au
+        // point de se ruiner pour un inconnu.
+        if (cout <= pr.prime * 1.6 && p.credits > cout * 1.5) {
+          acheter(state, colIci, pr.res, manque, g);
+        }
+      }
+    }
+  }
+
+  // Rien en cours : on adopte une demande d'ici, si elle est à notre portée.
+  if (memo.promesse) return;
+  const candidates = demandesIci(state, colIci)
+    .filter((d) => COMMODITIES[d.demande.res].poids * d.demande.quantite < capacitePortage(state, g) * 0.5)
+    .sort((a, b) => a.demande.quantite * COMMODITIES[a.demande.res].prix
+      - b.demande.quantite * COMMODITIES[b.demande.res].prix);
+  if (!candidates.length) return;
+  const d = candidates[0];
+  memo.promesse = {
+    colId: colIci.id, notableId: d.notable.id, res: d.demande.res,
+    quantite: d.demande.quantite, prime: d.demande.prime,
+  };
+}
+
+/**
  * Le groupe principal : celui qui commerce, s'équipe et prend le travail.
  * C'est lui qui porte la partie.
  */
@@ -98,9 +216,18 @@ function jouerPrincipal(state, g, memo) {
   // En ville : on vend le surplus, on refait les vivres, on s'équipe, on prend
   // du travail. C'est ce que ferait un joueur qui regarde ses écrans.
   if (colIci) {
+    // --- Rendre service aux gens d'ici, avant tout le reste : ce qu'on porte et
+    // qu'ils attendent vaut plus entre leurs mains que sur l'étal. Un joueur qui
+    // a compris le jeu ne le fait pas pour la prime — elle rembourse à peine —
+    // mais pour ce que l'estime ouvre : marge de l'armurier, soins du médecin,
+    // panneau du chef, registres du contremaître.
+    if (!SANS.has('services')) servir(state, g, colIci, memo);
+
     // Ne jamais vendre ce qu'un contrat en cours réclame : c'est exactement
     // l'erreur que ferait un joueur distrait, et elle doit se voir au banc.
     const reserves = new Set(p.contrats.filter((c) => c.ressource).map((c) => c.ressource));
+    // Ni ce qu'on a promis à quelqu'un.
+    if (memo.promesse) reserves.add(memo.promesse.res);
     const ordreEnCours = p.allegeance && p.allegeance.ordre;
     if (ordreEnCours && ordreEnCours.ressource) reserves.add(ordreEnCours.ressource);
     for (const k of COMMODITY_KEYS) {
@@ -189,7 +316,12 @@ function jouerPrincipal(state, g, memo) {
   const besoinVille = charge > 0.85 || (rations < 45 && p.credits > 300);
   if (besoinVille && !colIci) {
     const col = colonieLaPlusProche(state, g);
-    if (col && g.ordre.type !== 'voyage') donnerOrdre(state, { type: 'voyage', dest: col.regionId }, g);
+    if (col && g.ordre.type !== 'voyage') {
+      // Instrumentation : on compte les voyages entrepris vers une ville qui
+      // n'existe déjà plus. C'est le prix exact d'un renseignement périmé.
+      if (col.ruine) TRACE.voyagesPerdus++;
+      donnerOrdre(state, { type: 'voyage', dest: col.regionId }, g);
+    }
     return;
   }
   if (g.ordre.type === 'voyage') return;
@@ -208,6 +340,17 @@ function jouerPrincipal(state, g, memo) {
   if (rations > 60) {
     const dest = destinationContrat(state, g);
     if (dest != null) { donnerOrdre(state, { type: 'voyage', dest }, g); return; }
+  }
+
+  // Une promesse tenue en main se livre : on ne garde pas dans son sac ce que
+  // quelqu'un attend.
+  if (memo.promesse && rations > 60
+      && (g.inventaire[memo.promesse.res] || 0) >= memo.promesse.quantite) {
+    const col = colonieParId(state.world, memo.promesse.colId);
+    if (col && !col.ruine && col.regionId !== g.regionId) {
+      donnerOrdre(state, { type: 'voyage', dest: col.regionId }, g);
+      return;
+    }
   }
 
   // On ne laisse pas les réserves tomber au plus bas avant de réagir : à 30
@@ -312,7 +455,7 @@ for (let n = 0; n < PARTIES; n++) {
   const state = nouvellePartie(1000 + n * 7919, { maintenant: 0 });
   state.player.posture = 'neutre';
   // Mémoire du bot : hors de l'état de jeu, donc rien à sérialiser.
-  const memo = { eclaireur: null, detachements: 0, courtisee: null };
+  const memo = { eclaireur: null, detachements: 0, courtisee: null, services: 0, promesse: null };
   let groupesMax = 1;
   for (let i = 0; i < HEURES; i++) {
     if (state.fin) break;
@@ -356,10 +499,14 @@ for (let n = 0; n < PARTIES; n++) {
     ordres: state.stats.ordresRemplis || 0,
     guerres: state.world.guerres.length,
     captures: state.world.colonies.reduce((t, c) => t + (c.prises || 0), 0),
+    services: memo.services,
+    // Ce que l'estime a effectivement ouvert, à la fin de la partie.
+    amis: state.world.colonies.reduce(
+      (t, c) => t + (c.notables || []).filter((x) => (x.opinion || 0) >= 35).length, 0),
   });
 }
 
-const largeur = { seed: 8, t: 6, fin: 11, viv: 5, cr: 7, wl: 7, comp: 5, contrats: 9, detach: 7, grade: 10, ordres: 7, guerres: 8, captures: 9 };
+const largeur = { seed: 8, t: 6, fin: 11, viv: 5, cr: 7, wl: 7, comp: 5, contrats: 9, detach: 7, grade: 10, ordres: 7, guerres: 8, captures: 9, services: 9, amis: 5 };
 const entetes = Object.keys(largeur);
 console.log(entetes.map((k) => k.padStart(largeur[k])).join(' '));
 for (const l of lignes) {
@@ -374,6 +521,11 @@ console.log(`Récolte moyenne : ${moy('recolte')} unités — contrats remplis :
 const gradés = lignes.filter((l) => l.grade !== '—').length;
 console.log(`Détachements : ${moy('detach')} par partie — parties avec allégeance : ${gradés}/${PARTIES}`);
 console.log(`Colonies prises et reprises dans le monde : ${moy('captures')} en moyenne`);
+console.log(`Services rendus : ${moy('services')} par partie — `
+  + `gens acquis (estime ≥ 35) : ${moy('amis')} en fin de partie`);
+console.log(`Demandes croisées : ${TRACE.demandesVues} — honorées : `
+  + `${lignes.reduce((t, l) => t + l.services, 0)}`);
+console.log(`Voyages entrepris vers une ville déjà morte : ${TRACE.voyagesPerdus}`);
 const totH = TRACE.voyage + TRACE.repos + TRACE.travail;
 console.log(`Temps : ${Math.round(100 * TRACE.voyage / totH)} % en marche · `
   + `${Math.round(100 * TRACE.repos / totH)} % au repos · ${Math.round(100 * TRACE.travail / totH)} % au travail`);

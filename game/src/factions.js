@@ -477,7 +477,12 @@ function conseil(world, key, t, log, ctx) {
   // 4) Fonder : une faction riche et en paix pousse un nouveau poste sur une
   //    case vide de son voisinage. La carte bouge autrement que par conquête.
   const enPaix = !guerresDe(world, key).length;
-  if (mesColonies.length < 7 && rng.chance(Math.min(0.9, 0.4 * penchant(world, key, 'expansion')))
+  // Le plafond suit la taille de la carte. Écrit en dur à sept, il valait
+  // « jamais » dès que le monde a compté cinquante-quatre villes pour six
+  // factions : aucune n'était plus jamais sous son plafond, et plus une seule
+  // ville n'a été fondée de toute une partie.
+  const plafond = Math.max(7, Math.round(world.regions.length / 36));
+  if (mesColonies.length < plafond && rng.chance(Math.min(0.9, 0.4 * penchant(world, key, 'expansion')))
       && f.tresor > (enPaix ? 1700 : 4200)) {
     // Une case libre, à portée de nos terres mais assez loin des villes
     // existantes pour ne pas se marcher dessus. Chercher parmi les seules

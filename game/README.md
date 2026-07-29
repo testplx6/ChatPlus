@@ -89,7 +89,8 @@ régression, soit capricieux d'une machine à l'autre. Le plafond monte quand la
 simulation gagne du travail — jamais quand elle se dégrade —, et le fichier de
 test dit à chaque fois ce que la hausse a payé : 60 µs au départ, 65 avec les
 groupes et la connaissance imparfaite, 88 avec les métiers des villes et leurs
-notables, 94 avec les demandes personnelles de ces notables. Sans cette trace, relever le budget deviendrait un moyen commode de ne
+notables, 94 avec les demandes personnelles de ces notables, 114 avec la carte
+de 24×18 et ses 86 villes. Sans cette trace, relever le budget deviendrait un moyen commode de ne
 jamais voir une régression.
 
 Le banc d'équilibrage est le plus utile des trois : c'est lui qui a montré que
@@ -121,8 +122,24 @@ météo qui change toutes les quelques heures. Elles pèsent sur les rendements
 des rencontres, la portée du regard. Un hiver de cendre se prépare : on stocke
 en saison des pluies, ou on ne passe pas.
 
-**Le monde.** Carte de 10×8 régions, neuf biomes aux rendements et aux aléas
-propres, seize colonies au départ. Chaque colonie produit, consomme, se rationne
+**Le monde.** Carte de 24×18 régions — 432 secteurs, cinq fois l'ancienne —,
+neuf biomes aux rendements et aux aléas propres, trois Relais Orbitaux en marge,
+et 86 colonies au départ. Elle ne tient pas dans un écran de téléphone : la carte
+défile et se recentre sur le groupe affiché, ce qui est le propos — un monde
+qu'on embrasse d'un coup d'œil n'est pas un monde à explorer.
+
+La densité, elle, n'a pas bougé : une ville pour cinq secteurs, comme avant. Le
+banc a tranché ce point en une mesure. À 54 villes — une pour huit secteurs — le
+monde était plus grand *et plus vide* : chaque ravitaillement devenait une
+expédition, la part du temps passée en marche montait de 26 à 42 %, et la survie
+tombait de 22 à 13 sur trente parties. Agrandir la carte ne doit pas vouloir dire
+écarter ce qu'il y a dessus.
+
+Le coût est tenu par un niveau de détail : une ville proche du joueur avance par
+tranches de trois heures, une ville lointaine par journées. Rien n'est perdu au
+change — chaque ville retient l'heure de son dernier passage et rattrape
+exactement ce qui lui est dû, et les probabilités passent par `surDt`, de sorte
+que s'approcher ou s'éloigner ne fabrique ni ne détruit une heure de production. Chaque colonie produit, consomme, se rationne
 avant de mourir, et fixe ses prix sur sa propre tension offre/demande — une ville
 affamée paie les rations au prix fort. Une ville prospère change de rang ; une
 ville saignée par les guerres finit abandonnée et devient un site à fouiller ;

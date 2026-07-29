@@ -255,19 +255,23 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
 
 /* ------------------------------------------------------------------ Carte */
 
+/* La carte ne tient plus dans un écran de téléphone, et c'est voulu : un monde
+   de vingt-quatre sur dix-huit qu'on verrait d'un coup d'œil ne serait pas un
+   monde à explorer. On garde donc les pixels gros et on fait défiler, en
+   recentrant sur le groupe affiché à chaque rendu. */
 #carte-boite {
   border: 1px solid var(--bord);
   background: #05070a;
   line-height: 0;
-  overflow: hidden;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  max-height: 62vh;
 }
 #carte {
-  width: 100%;
-  height: auto;
   display: block;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
-  touch-action: manipulation;
+  touch-action: pan-x pan-y;
 }
 
 .legende { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 7px; }

@@ -7,15 +7,35 @@ import {
   POI, POI_KEYS,
 } from './data.js';
 
-export const LARGEUR = 10;
-export const HAUTEUR = 8;
+// Une carte de 10×8 se traversait de bout en bout en deux jours de jeu : au
+// bout d'une saison le joueur avait tout vu, et « explorer » n'était plus qu'un
+// mot. 24×18, c'est 432 régions et cinq fois plus de monde — assez pour qu'un
+// convoi passe une partie entière sans atteindre le bord opposé.
+//
+// Ce que ça coûte est réel et traité ailleurs : le tick des colonies passe en
+// niveau de détail (voir `pasColonie` dans sim.js), sans quoi cinquante-quatre
+// villes tiendraient trois fois le budget d'un tick à elles seules.
+export const LARGEUR = 24;
+export const HAUTEUR = 18;
+
+/**
+ * Combien de villes pour cette surface. La densité ne change pas : une ville
+ * pour cinq régions, comme sur l'ancienne carte.
+ *
+ * Le banc a tranché ce point. À cinquante-quatre villes — une pour huit
+ * régions — le monde était non seulement plus grand mais plus vide : chaque
+ * ravitaillement devenait une expédition, la part du temps passée en marche
+ * montait de 26 à 42 %, et la survie tombait de 22 à 13 sur trente parties.
+ * Agrandir la carte ne doit pas vouloir dire écarter ce qu'il y a dessus.
+ */
+export const NB_COLONIES = 86;
 
 export function idx(x, y) {
   return y * LARGEUR + x;
 }
 
 export function coord(i) {
-  return { x: i % LARGEUR, y: Math.floor(i / LARGEUR) };
+  return { x: i % LARGEUR, y: (i / LARGEUR) | 0 };
 }
 
 export function voisins(i) {
@@ -28,10 +48,18 @@ export function voisins(i) {
   return out;
 }
 
+/**
+ * Distance de Manhattan. Écrite sans passer par `coord` : cette fonction est
+ * appelée des centaines de fois par tick (niveau de détail des colonies, choix
+ * de destinations, portée des armées), et deux objets alloués à chaque appel
+ * faisaient à eux seuls travailler le ramasse-miettes.
+ */
 export function distance(a, b) {
-  const ca = coord(a);
-  const cb = coord(b);
-  return Math.abs(ca.x - cb.x) + Math.abs(ca.y - cb.y);
+  const ax = a % LARGEUR;
+  const ay = (a / LARGEUR) | 0;
+  const bx = b % LARGEUR;
+  const by = (b / LARGEUR) | 0;
+  return Math.abs(ax - bx) + Math.abs(ay - by);
 }
 
 // ---------------------------------------------------------------------------
@@ -42,8 +70,11 @@ function genererBiomes(rng) {
   // Voronoï bruité : quelques noyaux par biome, chaque case prend le plus proche.
   const noyaux = [];
   const pool = BIOME_KEYS.filter((b) => b !== 'relais');
+  // Le nombre de noyaux suit la surface : sinon un biome couvrirait un quart de
+  // la carte d'un bloc, et traverser cent régions de steppe n'apprend rien.
+  const echelle = (LARGEUR * HAUTEUR) / 80;
   for (const b of pool) {
-    const n = b === 'steppe' ? 3 : rng.irange(1, 2);
+    const n = Math.round((b === 'steppe' ? 3 : rng.irange(1, 2)) * echelle);
     for (let k = 0; k < n; k++) {
       noyaux.push({ b, x: rng.range(0, LARGEUR), y: rng.range(0, HAUTEUR) });
     }
@@ -71,12 +102,18 @@ function genererBiomes(rng) {
       });
     }
   }
-  // Un unique Relais Orbital, loin du centre : le point chaud du monde.
-  const candidats = regions.filter((r) => r.x <= 1 || r.x >= LARGEUR - 2 || r.y === 0 || r.y === HAUTEUR - 1);
-  const relais = rng.pick(candidats);
-  relais.biome = 'relais';
-  relais.richesse = 1.6;
-  relais.danger = BIOMES.relais.danger;
+  // Les Relais Orbitaux : les points chauds du monde, en marge. Un seul sur une
+  // carte de cette taille serait un lieu que la plupart des parties ne
+  // verraient jamais.
+  const candidats = rng.shuffle(regions.filter(
+    (r) => r.x <= 2 || r.x >= LARGEUR - 3 || r.y <= 1 || r.y >= HAUTEUR - 2
+  ));
+  for (let k = 0; k < 3 && k < candidats.length; k++) {
+    const relais = candidats[k];
+    relais.biome = 'relais';
+    relais.richesse = 1.6;
+    relais.danger = BIOMES.relais.danger;
+  }
   return regions;
 }
 
@@ -110,7 +147,7 @@ function genererColonies(rng, regions) {
   const occupees = new Set();
   const cases = rng.shuffle(regions.map((r) => r.i));
 
-  const cible = 16;
+  const cible = NB_COLONIES;
   for (const i of cases) {
     if (colonies.length >= cible) break;
     // Espacement minimal pour que la carte respire
@@ -238,7 +275,9 @@ function attribuerFactions(rng, regions, colonies) {
  */
 function semerSites(rng, regions) {
   const vides = rng.shuffle(regions.filter((r) => !r.colonie));
-  const combien = Math.min(vides.length, 22);
+  // Un site tous les trois ou quatre secteurs vides : assez pour qu'un détour
+  // se justifie, pas assez pour qu'on trébuche dessus.
+  const combien = Math.min(vides.length, Math.round(vides.length * 0.28));
   for (let i = 0; i < combien; i++) {
     const r = vides[i];
     // Les biomes riches attirent les sites intéressants.
@@ -279,14 +318,33 @@ export function region(world, i) {
   return world.regions[i];
 }
 
+// Index id → colonie. Il ne vit pas dans l'état (qui doit rester du JSON pur) :
+// il se reconstruit tout seul dès que le tableau des colonies change d'identité
+// ou de longueur, c'est-à-dire au chargement d'une partie et à chaque fondation.
+// Avec cinquante-quatre villes, la recherche linéaire coûtait à elle seule un
+// dixième du tick.
+let indexSource = null;
+let indexTaille = -1;
+let indexParId = null;
+
+function index(world) {
+  if (indexSource !== world.colonies || indexTaille !== world.colonies.length) {
+    indexSource = world.colonies;
+    indexTaille = world.colonies.length;
+    indexParId = new Map();
+    for (const c of world.colonies) indexParId.set(c.id, c);
+  }
+  return indexParId;
+}
+
 export function colonieDe(world, regionId) {
   const r = world.regions[regionId];
   if (!r || !r.colonie) return null;
-  return world.colonies.find((c) => c.id === r.colonie) || null;
+  return index(world).get(r.colonie) || null;
 }
 
 export function colonieParId(world, id) {
-  return world.colonies.find((c) => c.id === id) || null;
+  return index(world).get(id) || null;
 }
 
 export function coutTraversee(world, i, mods = {}) {
@@ -295,7 +353,15 @@ export function coutTraversee(world, i, mods = {}) {
   return Math.max(1, base * (1 - (mods.reductionVoyage || 0)));
 }
 
-/** Dijkstra sur la grille. Retourne la liste des régions de `from` (exclu) à `to`. */
+/**
+ * Dijkstra sur la grille, avec un tas binaire. Retourne la liste des régions de
+ * `from` (exclu) à `to`.
+ *
+ * La version à balayage linéaire coûtait n² : acceptable sur quatre-vingts
+ * régions, plus du tout sur quatre cent trente-deux, où elle était devenue le
+ * deuxième poste du profil derrière le tick des colonies — pour un calcul qui
+ * n'a lieu qu'au moment de donner un ordre de route.
+ */
 export function chemin(world, from, to, mods = {}) {
   if (from === to) return [];
   const n = world.regions.length;
@@ -303,19 +369,53 @@ export function chemin(world, from, to, mods = {}) {
   const prev = new Array(n).fill(-1);
   const vus = new Array(n).fill(false);
   dist[from] = 0;
-  for (let iter = 0; iter < n; iter++) {
-    let u = -1;
-    let best = Infinity;
-    for (let i = 0; i < n; i++) {
-      if (!vus[i] && dist[i] < best) { best = dist[i]; u = i; }
+
+  // Tas binaire minimal : deux tableaux plats, pas d'objets alloués par nœud.
+  const tasN = new Int32Array(n + 1);
+  const tasD = new Float64Array(n + 1);
+  let taille = 0;
+  const pousser = (node, d) => {
+    let i = ++taille;
+    tasN[i] = node; tasD[i] = d;
+    while (i > 1) {
+      const p = i >> 1;
+      if (tasD[p] <= tasD[i]) break;
+      const tn = tasN[p]; const td = tasD[p];
+      tasN[p] = tasN[i]; tasD[p] = tasD[i];
+      tasN[i] = tn; tasD[i] = td;
+      i = p;
     }
-    if (u === -1) break;
+  };
+  const tirer = () => {
+    const top = tasN[1];
+    tasN[1] = tasN[taille]; tasD[1] = tasD[taille];
+    taille--;
+    let i = 1;
+    for (;;) {
+      const g = i * 2;
+      const d = g + 1;
+      let m = i;
+      if (g <= taille && tasD[g] < tasD[m]) m = g;
+      if (d <= taille && tasD[d] < tasD[m]) m = d;
+      if (m === i) break;
+      const tn = tasN[m]; const td = tasD[m];
+      tasN[m] = tasN[i]; tasD[m] = tasD[i];
+      tasN[i] = tn; tasD[i] = td;
+      i = m;
+    }
+    return top;
+  };
+
+  pousser(from, 0);
+  while (taille > 0) {
+    const u = tirer();
+    if (vus[u]) continue; // doublon laissé par une amélioration ultérieure
     if (u === to) break;
     vus[u] = true;
     for (const v of voisins(u)) {
       if (vus[v]) continue;
       const nd = dist[u] + coutTraversee(world, v, mods);
-      if (nd < dist[v]) { dist[v] = nd; prev[v] = u; }
+      if (nd < dist[v]) { dist[v] = nd; prev[v] = u; pousser(v, nd); }
     }
   }
   if (dist[to] === Infinity) return null;

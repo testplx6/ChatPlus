@@ -199,6 +199,7 @@ export function rafraichir(force) {
       cv.dataset.lie = '1';
       cv.addEventListener('click', surClicCarte);
     }
+    centrerCarte(cv);
   }
   if (modale) rendreModale();
 }
@@ -260,7 +261,10 @@ function rendreNav() {
 // Carte pixel
 // ---------------------------------------------------------------------------
 
-const CELL = 16;
+// Vingt et un pixels par région : assez gros pour rester lisible au pouce sur
+// un téléphone, et la carte entière fait alors 504×378, ce qui ne tient dans
+// aucun écran — d'où le défilement, et le recentrage sur le groupe.
+const CELL = 21;
 
 /** Bruit déterministe : la même case a toujours la même texture. */
 function bruit(i, j) {
@@ -268,6 +272,29 @@ function bruit(i, j) {
   h = (h ^ (h >>> 13)) >>> 0;
   h = Math.imul(h, 1274126177) >>> 0;
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/**
+ * Amène le groupe affiché au centre de la fenêtre de carte. Sans ça, sur une
+ * carte de vingt-quatre sur dix-huit, on ouvre l'onglet et on regarde un coin
+ * de désert sans savoir où l'on est.
+ *
+ * On ne recentre pas si le joueur vient de faire défiler lui-même : reprendre
+ * la main sur son doigt est la façon la plus sûre de rendre une carte
+ * détestable.
+ */
+let derniereRegionCentree = null;
+function centrerCarte(cv) {
+  const boite = cv.parentElement;
+  if (!boite) return;
+  const g = G();
+  if (!g) return;
+  if (derniereRegionCentree === g.regionId) return;
+  derniereRegionCentree = g.regionId;
+  const r = S.world.regions[g.regionId];
+  if (!r) return;
+  boite.scrollLeft = Math.max(0, r.x * CELL + CELL / 2 - boite.clientWidth / 2);
+  boite.scrollTop = Math.max(0, r.y * CELL + CELL / 2 - boite.clientHeight / 2);
 }
 
 function dessinerCarte(cv) {

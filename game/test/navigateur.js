@@ -369,12 +369,13 @@ const marqueurs = await page.evaluate(() => {
   const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
   const c = document.querySelector('#carte');
   const ctx = c.getContext('2d');
-  const CELL = Math.round(c.width / 10);
+  const L = s.world.largeur;
+  const CELL = Math.round(c.width / L);
   // Un marqueur laisse du blanc franc dans sa case ; on le cherche là où le
   // moteur dit qu'un groupe se trouve.
   return s.player.groupes.map((g) => {
-    const x = (g.regionId % 10) * CELL;
-    const y = Math.floor(g.regionId / 10) * CELL;
+    const x = (g.regionId % L) * CELL;
+    const y = Math.floor(g.regionId / L) * CELL;
     const d = ctx.getImageData(x + 4, y + 4, 8, 8).data;
     let blancs = 0;
     for (let i = 0; i < d.length; i += 4) if (d[i] > 220 && d[i + 1] > 220) blancs++;
@@ -550,7 +551,15 @@ const gTr = groupeActif(transmet);
 transmet.base.batiments.antenne = Math.max(1, transmet.base.batiments.antenne || 0);
 transmet.base.stock.rations = 600;
 gTr.regionId = transmet.base.regionId;
-gTr.membres[0].skills.medecine = 45;   // le vétéran qui peut enseigner
+// On remet les deux intéressés sur pied. Un homme K.O. et affamé n'enseigne pas,
+// et c'est très bien ainsi — mais ce n'est pas ce que ce test vérifie : la
+// compétence effective est rabotée de moitié par l'état du corps, et le fixture
+// sortait d'une saison de fouille.
+for (const c of [gTr.membres[0], gTr.membres[1]]) {
+  c.etat = 'ok'; c.koHeures = 0; c.faim = 0; c.fatigue = 0; c.moral = 80; c.sang = 0;
+  for (const p2 of Object.keys(c.corps)) c.corps[p2].pv = c.corps[p2].max;
+}
+gTr.membres[0].skills.medecine = 75;   // le vétéran qui peut enseigner
 gTr.membres[1].skills.medecine = 6;
 transmet.dernierReel = Date.now();
 await page.reload({ waitUntil: 'networkidle' });
@@ -669,14 +678,20 @@ ok(jamaisVue != null, 'il reste des villes jamais relevées', String(jamaisVue))
 if (jamaisVue != null) {
   await page.evaluate((rid) => {
     const cv = document.querySelector('#carte');
-    const CELL = Math.round(cv.width / 10);
+    const boite = cv.parentElement;
+    const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const L = s2.world.largeur;
+    const CELL = Math.round(cv.width / L);
+    // La carte défile maintenant : il faut amener la case dans la fenêtre avant
+    // de cliquer, sinon on tape à côté du canvas.
+    boite.scrollLeft = Math.max(0, (rid % L) * CELL + CELL / 2 - boite.clientWidth / 2);
+    boite.scrollTop = Math.max(0, Math.floor(rid / L) * CELL + CELL / 2 - boite.clientHeight / 2);
     const r = cv.getBoundingClientRect();
     const ech = r.width / cv.width;
-    const x = ((rid % 10) * CELL + CELL / 2) * ech + r.left;
-    const y = (Math.floor(rid / 10) * CELL + CELL / 2) * ech + r.top;
-    document.elementFromPoint(x, y).dispatchEvent(new MouseEvent('click', {
-      bubbles: true, clientX: x, clientY: y,
-    }));
+    const x = ((rid % L) * CELL + CELL / 2) * ech + r.left;
+    const y = (Math.floor(rid / L) * CELL + CELL / 2) * ech + r.top;
+    const cible = document.elementFromPoint(x, y) || cv;
+    cible.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: x, clientY: y }));
   }, jamaisVue);
   await page.waitForTimeout(400);
   const txt = await page.evaluate(() => document.querySelector('#ecran').textContent);
