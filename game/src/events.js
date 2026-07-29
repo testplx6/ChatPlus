@@ -92,6 +92,7 @@ export function inscrireAuMemorial(state, c, cause, lieu) {
     cause,
     lieu,
     kills: c.kills,
+    horsCombat: c.horsCombat || 0,
     traits: (c.traits || []).slice(0, 3),
     meilleure: `${SKILLS[meilleure]} ${c.skills[meilleure]}`,
   });
@@ -210,7 +211,11 @@ export function combatContre(state, bande, log, ctx, groupe) {
   for (const c of g.membres) {
     if (c.etat === 'mort' || c.surnomGagne) continue;
     const membrePerdu = Object.keys(c.corps).some((k) => c.corps[k].perdu);
-    if (c.kills >= 18 || membrePerdu) {
+    // On compte les mises hors de combat, pas seulement les morts : les ennemis
+    // tombent K.O. bien plus souvent qu'ils ne meurent, et achever est
+    // désactivé par défaut. À dix-huit *morts*, le seuil n'était jamais atteint
+    // par personne — on ne se faisait un nom qu'en perdant un membre.
+    if ((c.horsCombat || 0) >= 14 || membrePerdu) {
       c.surnomGagne = true;
       const avant = c.nom;
       c.nom = `${c.nom.split(' ')[0]} ${rng.pick(SURNOMS)}`;

@@ -2445,6 +2445,7 @@ function makeCharacter(rng, opts = {}) {
     koHeures: 0,
     equip: { arme: opts.arme || def.arme, armure: opts.armure || null, greffes: {} },
     kills: 0,
+    horsCombat: 0,
     joursSurvecus: 0,
     traits: tirerTraits(rng, opts.traits),
     // Ce que celui-ci pense des autres. Se remplit en vivant ensemble.
@@ -2579,6 +2580,24 @@ function bonusEquip(c, skill) {
  * Valeur effective d'une compétence : base + équipement, dégradée par les
  * blessures pertinentes, la fatigue et la faim.
  */
+/**
+ * Ce qu'un corps aguerri retire à la chance d'un coup fatal.
+ *
+ * Jusqu'ici la létalité était un dé fixe : vingt pour cent par coup encaissé,
+ * qu'on soit un bleu ou le meilleur de l'escouade. Une compétence élevée faisait
+ * toucher plus souvent et esquiver mieux, mais ne changeait rien à ce dé-là — et
+ * le banc l'a chiffré : on meurt vers 28 de compétence, les survivants finissent
+ * à 9, c'est-à-dire sous leur niveau de départ. Il n'existait aucun palier où
+ * l'on devienne dur à tuer, donc les vétérans ne s'endurcissaient pas, ils se
+ * faisaient remplacer.
+ *
+ * L'endurance, et elle seule : encaisser n'est pas savoir se battre. Un
+ * bagarreur qui n'a pas de coffre meurt comme les autres.
+ */
+function resistanceLetale(c) {
+  return 1 - Math.min(0.45, comp(c, 'endurance') / 160);
+}
+
 function comp(c, skill) {
   const base = (c.skills[skill] || 0) + bonusEquip(c, skill);
   const tete = 0.5 + 0.5 * ratio(c, 'tete');
@@ -2775,14 +2794,27 @@ function tickPerso(c, effort, rng, ctx = {}) {
   }
 
   // Saignement : une plaie légère se referme seule ; une hémorragie tue.
+  //
+  // C'est de ça qu'on mourait le plus souvent — vingt-quatre morts « en route »
+  // contre dix-neuf au combat, mesuré au banc. Le combat casse, la route achève.
+  // Une hémorragie franche gardait trois chances sur dix par heure d'emporter
+  // son homme, quoi qu'on fasse pour lui : un blessé grave était condamné, pas
+  // soigné. La qualité des soins entre maintenant dans les deux termes — ce
+  // qu'on risque, et à quelle vitesse ça se referme.
   if (c.sang > 0) {
+    const soin = Math.max(0.25, ctx.soin || 0.25);
     if (c.sang > 12) {
       const perte = (c.sang - 12) / 26;
-      const r = blesser(c, perte, 'torse', rng, { letal: c.sang > 40 ? rng.chance(0.3) : false });
+      const risque = c.sang > 40 ? Math.max(0.06, 0.3 / (1 + soin)) : 0;
+      const r = blesser(c, perte, 'torse', rng, {
+        letal: risque > 0 && rng.chance(risque * resistanceLetale(c)),
+      });
       if (r.mort) msgs.push({ type: 'mort', texte: `${c.nom} s’est vidé de son sang.` });
     }
-    // Coagulation, accélérée si quelqu'un est encore debout pour comprimer
-    c.sang = Math.max(0, c.sang - 2.2 - (ctx.premiersSecours ? 2.5 : 0));
+    // Coagulation, accélérée par ceux qui restent debout pour comprimer — et
+    // par ce qu'ils valent en médecine.
+    const compression = ctx.premiersSecours ? 2.5 * (1 + soin) : 0;
+    c.sang = Math.max(0, c.sang - 2.2 - compression);
   }
 
   // Famine
@@ -5018,7 +5050,11 @@ function resoudreCombat(campA, campB, ctx) {
         const absorbe = arm * (1 - arme.pen) * 0.6;
         const net = Math.max(1.5, brut - absorbe * rng.range(0.5, 1.0));
 
-        const letal = acteur.camp === 'A' ? (ctx.letalA || 0.08) : (ctx.letalB || 0.2);
+        // La létalité tient à qui frappe *et* à qui encaisse. Un corps aguerri
+        // encaisse un coup qui aurait tué un bleu — c'est le seul endroit du
+        // jeu où survivre longtemps finit par payer.
+        const base = acteur.camp === 'A' ? (ctx.letalA || 0.08) : (ctx.letalB || 0.2);
+        const letal = base * resistanceLetale(cible);
         const res = blesser(cible, net, membre, rng, { letal: rng.chance(letal) });
 
         // Se battre forme vite : c'est cher payé, mais ça forme.
@@ -5027,10 +5063,16 @@ function resoudreCombat(campA, campB, ctx) {
 
         if (res.mort) {
           c.kills++;
+          c.horsCombat = (c.horsCombat || 0) + 1;
           journal.push({ t: 'mort', txt: `${c.nom} abat ${cible.nom}.` });
         } else if (res.membrePerdu) {
           journal.push({ t: 'membre', txt: `${cible.nom} perd un membre (${membre}).` });
         } else if (res.ko) {
+          // Une mise hors de combat est une victoire. Ne compter que les morts
+          // laissait tout le monde à zéro — les ennemis tombent K.O. bien plus
+          // souvent qu'ils ne meurent — et rendait inatteignable le seuil qui
+          // donne un surnom.
+          c.horsCombat = (c.horsCombat || 0) + 1;
           journal.push({ t: 'ko', txt: `${cible.nom} s’écroule sous les coups de ${c.nom}.` });
         } else if (journal.length < 40) {
           journal.push({ t: 'coup', txt: `${c.nom} touche ${cible.nom} (${Math.round(net)}).` });
@@ -7619,6 +7661,7 @@ function inscrireAuMemorial(state, c, cause, lieu) {
     cause,
     lieu,
     kills: c.kills,
+    horsCombat: c.horsCombat || 0,
     traits: (c.traits || []).slice(0, 3),
     meilleure: `${SKILLS[meilleure]} ${c.skills[meilleure]}`,
   });
@@ -7737,7 +7780,11 @@ function combatContre(state, bande, log, ctx, groupe) {
   for (const c of g.membres) {
     if (c.etat === 'mort' || c.surnomGagne) continue;
     const membrePerdu = Object.keys(c.corps).some((k) => c.corps[k].perdu);
-    if (c.kills >= 18 || membrePerdu) {
+    // On compte les mises hors de combat, pas seulement les morts : les ennemis
+    // tombent K.O. bien plus souvent qu'ils ne meurent, et achever est
+    // désactivé par défaut. À dix-huit *morts*, le seuil n'était jamais atteint
+    // par personne — on ne se faisait un nom qu'en perdant un membre.
+    if ((c.horsCombat || 0) >= 14 || membrePerdu) {
       c.surnomGagne = true;
       const avant = c.nom;
       c.nom = `${c.nom.split(' ')[0]} ${rng.pick(SURNOMS)}`;
@@ -8306,7 +8353,11 @@ function donnerOrdre(state, ordre, groupe) {
     const m = { reductionVoyage: (state.base.recherche.logistique || 0) * 0.06 };
     const route = chemin(state.world, g.regionId, ordre.dest, m);
     if (!route || !route.length) return { ok: false, motif: 'Aucune route.' };
-    g.ordre = { type: 'voyage', dest: ordre.dest, route, etape: 0, progres: 0 };
+    g.ordre = {
+      type: 'voyage', dest: ordre.dest, route, etape: 0, progres: 0,
+      // « normale » : on campe la nuit. « forcee » : on marche, et on le paie.
+      allure: ordre.allure === 'forcee' ? 'forcee' : 'normale',
+    };
     return { ok: true };
   }
   if (!ORDRES[ordre.type]) return { ok: false, motif: 'Ordre inconnu.' };
@@ -8658,11 +8709,11 @@ function partitionner(g, debout) {
   return par;
 }
 
-/** Effort demandé par une tâche, corrigé par la nuit. */
-function effortDe(type, nuit) {
+/** Effort demandé par une tâche, corrigé par la nuit et l'allure. */
+function effortDe(type, nuit, forcee) {
   const def = ORDRES[type] || ORDRES.repos;
   if (!nuit) return def.effort;
-  if (type === 'voyage') return 1.35; // marche de nuit : épuisant
+  if (type === 'voyage' && forcee) return 1.35; // marche de nuit : épuisant
   return 0;
 }
 
@@ -8674,11 +8725,23 @@ function tickGroupe(state, g, log, ctx) {
   const ordre = g.ordre || (g.ordre = { type: 'repos' });
   g.recolteHeure = null;
 
-  // Cycle jour/nuit : on campe la nuit, sauf en marche forcée. C'est ce qui
-  // permet à la fatigue de redescendre — sans ça, elle se colle au plafond.
+  // Cycle jour/nuit : on campe la nuit, sauf en marche forcée.
+  //
+  // Le commentaire disait ça depuis toujours et le code faisait le contraire :
+  // *toute* route était une marche forcée, personne n'a jamais dormi une nuit
+  // en voyage. Le banc a fini par le montrer par la bande — un ancien du
+  // premier jour finit la partie à 60 de fatigue sur 120, ce qui lui retire
+  // trente pour cent de toutes ses compétences en permanence. Sa compétence
+  // brute monte bien (14 → 18 en quatre mille heures), mais sa compétence utile
+  // tombe de 14 à 10. Les vétérans ne se faisaient pas remplacer parce qu'ils
+  // mouraient : ils étaient devenus plus faibles que les recrues.
+  //
+  // On campe donc, et forcer la marche devient un choix qu'on prend en
+  // connaissance de cause.
   const heure = state.temps % 24;
   const nuit = heure >= 22 || heure < 6;
-  const travaille = !nuit || ordre.type === 'voyage';
+  const forcee = ordre.type === 'voyage' && ordre.allure === 'forcee';
+  const travaille = !nuit || forcee;
   g.nuit = nuit;
 
   const debout = deboutDe(g);
@@ -8830,12 +8893,12 @@ function tickGroupe(state, g, log, ctx) {
 
   // --- Soins et besoins, avec l'effort réellement fourni par chacun
   const effortMoyen = debout.length
-    ? debout.reduce((s, c) => s + effortDe(tacheDe(g, c).type, nuit), 0) / debout.length
+    ? debout.reduce((s, c) => s + effortDe(tacheDe(g, c).type, nuit, forcee), 0) / debout.length
     : 0;
   const q = qualiteSoin(state, g, effortMoyen <= 0.05);
   utiliserMedkit(state, g, log, ctx);
   for (const c of g.membres) {
-    const eff = estDebout(c) ? effortDe(tacheDe(g, c).type, nuit) : 0;
+    const eff = estDebout(c) ? effortDe(tacheDe(g, c).type, nuit, forcee) : 0;
     const msgs = tickPerso(c, eff, rng,
       { soin: q, premiersSecours: debout.length > 0, abri: abriDe(state, g.regionId) });
     for (const m of msgs) {
@@ -8986,6 +9049,9 @@ function normaliser(state) {
     if (!g.bilan) g.bilan = { res: {}, depuis: state.temps };
     if (g.cohesion === undefined) g.cohesion = 55;
     if (!g.ordre) g.ordre = { type: 'repos' };
+    // Avant l'allure, toute route était une marche forcée — et personne ne
+    // dormait jamais en voyage. On rend leurs nuits aux parties en cours.
+    if (g.ordre.type === 'voyage' && !g.ordre.allure) g.ordre.allure = 'normale';
     if (!g.membres) g.membres = [];
   }
   if (!p.groupeActif || !p.groupes.some((g) => g.id === p.groupeActif)) {
@@ -9036,6 +9102,7 @@ function normaliser(state) {
       if (!c.traits) c.traits = [];
       if (!c.liens) c.liens = {};
       if (!c.diplomes) c.diplomes = [];
+      if (c.horsCombat === undefined) c.horsCombat = c.kills || 0;
       if (c.formation === undefined) c.formation = null;
       if (c.enseigne === undefined) delete c.enseigne;
     }
@@ -10246,6 +10313,23 @@ function blocRepartition() {
     .map((k) => `${rep[k]} × ${ORDRES[k] ? ORDRES[k].nom.toLowerCase() : k}`).join(' · ')}</div>`;
 }
 
+/**
+ * Partir, et à quelle allure. Une escouade campe la nuit ; la marche forcée
+ * gagne un tiers de temps et se paie en fatigue — laquelle ronge toutes les
+ * compétences, jusqu'à trente pour cent quand elle s'installe.
+ */
+function boutonsDepart(dest, eta) {
+  const nuits = Math.max(0, Math.floor(eta.heures / 24));
+  return `<button class="act primaire" data-a="voyage" data-r="${dest}">
+      Y aller — ${dureeTexte(eta.heures)} (${eta.cases} régions)</button>
+    <div style="height:6px"></div>
+    <button class="act" data-a="voyage" data-r="${dest}" data-f="1">
+      Marche forcée — ${dureeTexte(Math.round(eta.heures * 0.68))}, sans dormir</button>
+    <div class="aide">${nuits > 0
+      ? `${nuits} nuit${nuits > 1 ? 's' : ''} de camp sur la route, ou aucune.`
+      : 'Moins d’une nuit de route.'} La fatigue ronge toutes les compétences.</div>`;
+}
+
 function blocRegionCourante() {
   const rid = G().regionId;
   const r = S.world.regions[rid];
@@ -10280,9 +10364,10 @@ function blocRegionCourante() {
   if (o.type === 'voyage') {
     const restant = o.route.length - o.etape;
     const eta = etaVoyage(o.dest);
-    enTete = `En route — ${restant} région${restant > 1 ? 's' : ''}`;
+    enTete = `${o.allure === 'forcee' ? 'Marche forcée' : 'En route'} — ${restant} région${restant > 1 ? 's' : ''}`;
     progression = `${jauge(o.route.length ? o.etape / o.route.length : 0, 'cyan')}
-      <div class="aide">Vers ${e(nomRegion(S.world, o.dest))}${eta ? ` · encore ${dureeTexte(eta.heures)}` : ''}</div>`;
+      <div class="aide">Vers ${e(nomRegion(S.world, o.dest))}${eta ? ` · encore ${dureeTexte(eta.heures)}` : ''}
+        · ${o.allure === 'forcee' ? 'on ne dort pas' : 'camp la nuit'}</div>`;
   }
 
   return `
@@ -10388,8 +10473,7 @@ function blocSelection() {
     return `<section class="panneau">
       <h2 class="titre">Secteur ${nomCase} <span class="droite">inexploré</span></h2>
       <div class="aide">Rien de connu sur ce secteur. Il faudra aller voir.</div>
-      ${eta ? `<div class="sep"></div><button class="act primaire" data-a="voyage" data-r="${selection}">
-        Y aller — ${dureeTexte(eta.heures)}</button>` : ''}
+      ${eta ? `<div class="sep"></div>${boutonsDepart(selection, eta)}` : ''}
     </section>`;
   }
 
@@ -10410,9 +10494,7 @@ function blocSelection() {
     <div class="ligne"><span class="k">Rencontres</span><span class="v">${(r.danger * 100).toFixed(1)} %/h</span></div>
     ${armeesIci(selection)}
     <div class="sep"></div>
-    ${eta ? `<button class="act primaire" data-a="voyage" data-r="${selection}">
-      Y aller — ${dureeTexte(eta.heures)} (${eta.cases} régions)</button>`
-    : '<div class="aide">Aucune route connue.</div>'}
+    ${eta ? boutonsDepart(selection, eta) : '<div class="aide">Aucune route connue.</div>'}
   </section>`;
 }
 
@@ -10521,7 +10603,8 @@ function ficheMembre(c) {
       <div class="ligne"><span class="k">Arme</span><span class="v">${e(arme)}</span></div>
       <div class="ligne"><span class="k">Armure</span><span class="v">${e(armure)}</span></div>
       <div class="ligne"><span class="k">Greffes</span><span class="v">${e(greffes)}</span></div>
-      <div class="ligne"><span class="k">Éliminations</span><span class="v">${c.kills}</span></div>
+      <div class="ligne"><span class="k">Mis hors de combat</span>
+        <span class="v">${c.horsCombat || 0}${c.kills ? ` · ${c.kills} tués` : ''}</span></div>
       <div class="sep"></div>
       <button class="act mini" data-a="modale" data-m="equipement" data-c="${e(c.id)}">Équiper</button>
       ${blocTacheMembre(c)}
@@ -10652,7 +10735,7 @@ function blocMemorial() {
       <div class="ligne"><span class="k">${e(x.nom)}</span>
         <span class="v">${horloge(x.t).texte}</span></div>
       <div class="aide">${e(x.archetype)} · ${e(x.cause)}${x.lieu ? ` · ${e(x.lieu)}` : ''}
-        ${x.kills ? ` · ${x.kills} éliminations` : ''} · ${e(x.meilleure)}</div>
+        ${x.horsCombat ? ` · ${x.horsCombat} mis hors de combat` : ''} · ${e(x.meilleure)}</div>
     </div>`).join('')}
   </section>`;
 }
@@ -11738,9 +11821,12 @@ function surClic(ev) {
     }
 
     case 'voyage': {
-      const r = donnerOrdre(S, { type: 'voyage', dest: Number(el.dataset.r) });
+      const forcee = el.dataset.f === '1';
+      const r = donnerOrdre(S, {
+        type: 'voyage', dest: Number(el.dataset.r), allure: forcee ? 'forcee' : 'normale',
+      });
       if (!r.ok) toast(r.motif, true);
-      else { onglet = 'carte'; toast('En route.'); }
+      else { onglet = 'carte'; toast(forcee ? 'En route, sans s’arrêter.' : 'En route.'); }
       rafraichir(true);
       break;
     }

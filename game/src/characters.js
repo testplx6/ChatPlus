@@ -49,6 +49,7 @@ export function makeCharacter(rng, opts = {}) {
     koHeures: 0,
     equip: { arme: opts.arme || def.arme, armure: opts.armure || null, greffes: {} },
     kills: 0,
+    horsCombat: 0,
     joursSurvecus: 0,
     traits: tirerTraits(rng, opts.traits),
     // Ce que celui-ci pense des autres. Se remplit en vivant ensemble.
@@ -183,6 +184,24 @@ function bonusEquip(c, skill) {
  * Valeur effective d'une compétence : base + équipement, dégradée par les
  * blessures pertinentes, la fatigue et la faim.
  */
+/**
+ * Ce qu'un corps aguerri retire à la chance d'un coup fatal.
+ *
+ * Jusqu'ici la létalité était un dé fixe : vingt pour cent par coup encaissé,
+ * qu'on soit un bleu ou le meilleur de l'escouade. Une compétence élevée faisait
+ * toucher plus souvent et esquiver mieux, mais ne changeait rien à ce dé-là — et
+ * le banc l'a chiffré : on meurt vers 28 de compétence, les survivants finissent
+ * à 9, c'est-à-dire sous leur niveau de départ. Il n'existait aucun palier où
+ * l'on devienne dur à tuer, donc les vétérans ne s'endurcissaient pas, ils se
+ * faisaient remplacer.
+ *
+ * L'endurance, et elle seule : encaisser n'est pas savoir se battre. Un
+ * bagarreur qui n'a pas de coffre meurt comme les autres.
+ */
+export function resistanceLetale(c) {
+  return 1 - Math.min(0.45, comp(c, 'endurance') / 160);
+}
+
 export function comp(c, skill) {
   const base = (c.skills[skill] || 0) + bonusEquip(c, skill);
   const tete = 0.5 + 0.5 * ratio(c, 'tete');
@@ -379,14 +398,27 @@ export function tickPerso(c, effort, rng, ctx = {}) {
   }
 
   // Saignement : une plaie légère se referme seule ; une hémorragie tue.
+  //
+  // C'est de ça qu'on mourait le plus souvent — vingt-quatre morts « en route »
+  // contre dix-neuf au combat, mesuré au banc. Le combat casse, la route achève.
+  // Une hémorragie franche gardait trois chances sur dix par heure d'emporter
+  // son homme, quoi qu'on fasse pour lui : un blessé grave était condamné, pas
+  // soigné. La qualité des soins entre maintenant dans les deux termes — ce
+  // qu'on risque, et à quelle vitesse ça se referme.
   if (c.sang > 0) {
+    const soin = Math.max(0.25, ctx.soin || 0.25);
     if (c.sang > 12) {
       const perte = (c.sang - 12) / 26;
-      const r = blesser(c, perte, 'torse', rng, { letal: c.sang > 40 ? rng.chance(0.3) : false });
+      const risque = c.sang > 40 ? Math.max(0.06, 0.3 / (1 + soin)) : 0;
+      const r = blesser(c, perte, 'torse', rng, {
+        letal: risque > 0 && rng.chance(risque * resistanceLetale(c)),
+      });
       if (r.mort) msgs.push({ type: 'mort', texte: `${c.nom} s’est vidé de son sang.` });
     }
-    // Coagulation, accélérée si quelqu'un est encore debout pour comprimer
-    c.sang = Math.max(0, c.sang - 2.2 - (ctx.premiersSecours ? 2.5 : 0));
+    // Coagulation, accélérée par ceux qui restent debout pour comprimer — et
+    // par ce qu'ils valent en médecine.
+    const compression = ctx.premiersSecours ? 2.5 * (1 + soin) : 0;
+    c.sang = Math.max(0, c.sang - 2.2 - compression);
   }
 
   // Famine

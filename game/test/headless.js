@@ -17,7 +17,8 @@ import {
 } from '../src/base.js';
 import { METIER_KEYS, BIOMES, BUILDINGS } from '../src/data.js';
 import {
-  estVivant, makeCharacter, accorderDiplome, apprentissage, tickPerso,
+  estVivant, makeCharacter, accorderDiplome, apprentissage, tickPerso, resistanceLetale,
+  comp as compPerso,
 } from '../src/characters.js';
 import { DIPLOMES } from '../src/data.js';
 import {
@@ -1092,6 +1093,62 @@ for (const k of METIER_KEYS) totalPostes += affectes(s9t.base, k);
 ok(totalPostes <= s9t.base.pop, 'les postes se dégarnissent si la population tombe',
   `${totalPostes} pour ${s9t.base.pop} habitants`);
 verifierCoherence(s9t, 'après affectation des métiers');
+
+section('9 nonies bis bis. On campe la nuit, sauf ordre contraire');
+const nuitS = nouvellePartie(7777, { maintenant: 0 });
+const gNuit = groupeActif(nuitS);
+gNuit.inventaire.rations = 4000;
+const loin = nuitS.world.regions.find((r) => distance(r.i, gNuit.regionId) >= 6);
+ok(donnerOrdre(nuitS, { type: 'voyage', dest: loin.i }, gNuit).ok, 'on peut partir');
+ok(gNuit.ordre.allure === 'normale', 'l’allure par défaut est de camper la nuit');
+
+// Nuit : la position ne bouge pas et la fatigue redescend.
+while (nuitS.temps % 24 !== 23) tick(nuitS);
+for (const c of gNuit.membres) c.fatigue = 80;
+const ouAvant = gNuit.regionId;
+const etapeAvant = gNuit.ordre.etape;
+const progresAvant = gNuit.ordre.progres;
+avancer(nuitS, 6); // 23 h → 5 h, en pleine nuit
+ok(gNuit.regionId === ouAvant && gNuit.ordre.etape === etapeAvant
+  && gNuit.ordre.progres === progresAvant,
+  'de nuit, le convoi ne progresse pas d’un pouce');
+ok(gNuit.membres.every((c) => c.fatigue < 60), 'et la fatigue redescend',
+  gNuit.membres.map((c) => Math.round(c.fatigue)).join('/'));
+
+// Marche forcée : on avance, et on le paie.
+const forceS = nouvellePartie(7777, { maintenant: 0 });
+const gForce = groupeActif(forceS);
+gForce.inventaire.rations = 4000;
+donnerOrdre(forceS, { type: 'voyage', dest: loin.i, allure: 'forcee' }, gForce);
+ok(gForce.ordre.allure === 'forcee', 'on peut ordonner la marche forcée');
+while (forceS.temps % 24 !== 23) tick(forceS);
+for (const c of gForce.membres) c.fatigue = 30;
+const avanceAvant = gForce.ordre.etape * 1000 + gForce.ordre.progres;
+avancer(forceS, 6);
+ok(gForce.ordre.etape * 1000 + gForce.ordre.progres > avanceAvant,
+  'de nuit, la marche forcée avance quand même');
+ok(gForce.membres.some((c) => c.fatigue > 30), 'et elle épuise', 
+  gForce.membres.map((c) => Math.round(c.fatigue)).join('/'));
+
+// La fatigue chronique était ce qui empêchait tout progrès : on vérifie le
+// mécanisme, pas l'équilibrage.
+const use = makeCharacter(new Rng(11), { archetype: 'ferrailleur' });
+use.skills.melee = 30;
+const frais = compPerso(use, 'melee');
+use.fatigue = 100;
+ok(compPerso(use, 'melee') < frais * 0.75, 'la fatigue ronge la compétence utile',
+  `${frais.toFixed(1)} → ${compPerso(use, 'melee').toFixed(1)}`);
+
+// Un corps aguerri encaisse mieux un coup fatal.
+const bleu = makeCharacter(new Rng(12), { archetype: 'ferrailleur' });
+const dur = makeCharacter(new Rng(12), { archetype: 'ferrailleur' });
+bleu.skills.endurance = 5;
+dur.skills.endurance = 90;
+ok(resistanceLetale(dur) < resistanceLetale(bleu) * 0.75,
+  'l’endurance retire à la chance d’un coup fatal',
+  `×${resistanceLetale(bleu).toFixed(2)} contre ×${resistanceLetale(dur).toFixed(2)}`);
+ok(resistanceLetale(dur) >= 0.55, 'sans jamais rendre personne invulnérable',
+  `×${resistanceLetale(dur).toFixed(2)}`);
 
 section('9 nonies ter. Le campement paie dès le premier piquet');
 const camp1 = nouvellePartie(9191, { maintenant: 0 });

@@ -766,6 +766,23 @@ function blocRepartition() {
     .map((k) => `${rep[k]} × ${ORDRES[k] ? ORDRES[k].nom.toLowerCase() : k}`).join(' · ')}</div>`;
 }
 
+/**
+ * Partir, et à quelle allure. Une escouade campe la nuit ; la marche forcée
+ * gagne un tiers de temps et se paie en fatigue — laquelle ronge toutes les
+ * compétences, jusqu'à trente pour cent quand elle s'installe.
+ */
+function boutonsDepart(dest, eta) {
+  const nuits = Math.max(0, Math.floor(eta.heures / 24));
+  return `<button class="act primaire" data-a="voyage" data-r="${dest}">
+      Y aller — ${dureeTexte(eta.heures)} (${eta.cases} régions)</button>
+    <div style="height:6px"></div>
+    <button class="act" data-a="voyage" data-r="${dest}" data-f="1">
+      Marche forcée — ${dureeTexte(Math.round(eta.heures * 0.68))}, sans dormir</button>
+    <div class="aide">${nuits > 0
+      ? `${nuits} nuit${nuits > 1 ? 's' : ''} de camp sur la route, ou aucune.`
+      : 'Moins d’une nuit de route.'} La fatigue ronge toutes les compétences.</div>`;
+}
+
 function blocRegionCourante() {
   const rid = G().regionId;
   const r = S.world.regions[rid];
@@ -800,9 +817,10 @@ function blocRegionCourante() {
   if (o.type === 'voyage') {
     const restant = o.route.length - o.etape;
     const eta = etaVoyage(o.dest);
-    enTete = `En route — ${restant} région${restant > 1 ? 's' : ''}`;
+    enTete = `${o.allure === 'forcee' ? 'Marche forcée' : 'En route'} — ${restant} région${restant > 1 ? 's' : ''}`;
     progression = `${jauge(o.route.length ? o.etape / o.route.length : 0, 'cyan')}
-      <div class="aide">Vers ${e(nomRegion(S.world, o.dest))}${eta ? ` · encore ${dureeTexte(eta.heures)}` : ''}</div>`;
+      <div class="aide">Vers ${e(nomRegion(S.world, o.dest))}${eta ? ` · encore ${dureeTexte(eta.heures)}` : ''}
+        · ${o.allure === 'forcee' ? 'on ne dort pas' : 'camp la nuit'}</div>`;
   }
 
   return `
@@ -908,8 +926,7 @@ function blocSelection() {
     return `<section class="panneau">
       <h2 class="titre">Secteur ${nomCase} <span class="droite">inexploré</span></h2>
       <div class="aide">Rien de connu sur ce secteur. Il faudra aller voir.</div>
-      ${eta ? `<div class="sep"></div><button class="act primaire" data-a="voyage" data-r="${selection}">
-        Y aller — ${dureeTexte(eta.heures)}</button>` : ''}
+      ${eta ? `<div class="sep"></div>${boutonsDepart(selection, eta)}` : ''}
     </section>`;
   }
 
@@ -930,9 +947,7 @@ function blocSelection() {
     <div class="ligne"><span class="k">Rencontres</span><span class="v">${(r.danger * 100).toFixed(1)} %/h</span></div>
     ${armeesIci(selection)}
     <div class="sep"></div>
-    ${eta ? `<button class="act primaire" data-a="voyage" data-r="${selection}">
-      Y aller — ${dureeTexte(eta.heures)} (${eta.cases} régions)</button>`
-    : '<div class="aide">Aucune route connue.</div>'}
+    ${eta ? boutonsDepart(selection, eta) : '<div class="aide">Aucune route connue.</div>'}
   </section>`;
 }
 
@@ -1041,7 +1056,8 @@ function ficheMembre(c) {
       <div class="ligne"><span class="k">Arme</span><span class="v">${e(arme)}</span></div>
       <div class="ligne"><span class="k">Armure</span><span class="v">${e(armure)}</span></div>
       <div class="ligne"><span class="k">Greffes</span><span class="v">${e(greffes)}</span></div>
-      <div class="ligne"><span class="k">Éliminations</span><span class="v">${c.kills}</span></div>
+      <div class="ligne"><span class="k">Mis hors de combat</span>
+        <span class="v">${c.horsCombat || 0}${c.kills ? ` · ${c.kills} tués` : ''}</span></div>
       <div class="sep"></div>
       <button class="act mini" data-a="modale" data-m="equipement" data-c="${e(c.id)}">Équiper</button>
       ${blocTacheMembre(c)}
@@ -1172,7 +1188,7 @@ function blocMemorial() {
       <div class="ligne"><span class="k">${e(x.nom)}</span>
         <span class="v">${horloge(x.t).texte}</span></div>
       <div class="aide">${e(x.archetype)} · ${e(x.cause)}${x.lieu ? ` · ${e(x.lieu)}` : ''}
-        ${x.kills ? ` · ${x.kills} éliminations` : ''} · ${e(x.meilleure)}</div>
+        ${x.horsCombat ? ` · ${x.horsCombat} mis hors de combat` : ''} · ${e(x.meilleure)}</div>
     </div>`).join('')}
   </section>`;
 }
@@ -2258,9 +2274,12 @@ function surClic(ev) {
     }
 
     case 'voyage': {
-      const r = donnerOrdre(S, { type: 'voyage', dest: Number(el.dataset.r) });
+      const forcee = el.dataset.f === '1';
+      const r = donnerOrdre(S, {
+        type: 'voyage', dest: Number(el.dataset.r), allure: forcee ? 'forcee' : 'normale',
+      });
       if (!r.ok) toast(r.motif, true);
-      else { onglet = 'carte'; toast('En route.'); }
+      else { onglet = 'carte'; toast(forcee ? 'En route, sans s’arrêter.' : 'En route.'); }
       rafraichir(true);
       break;
     }

@@ -834,7 +834,7 @@ function jouer(state, memo) {
   envisagerDetachement(state, memo);
 }
 
-const NECRO = { causes: {}, skills: [], kills: [], vivants: [] };
+const NECRO = { causes: {}, skills: [], kills: [], vivants: [], endurance: [], anciens: [] };
 
 console.log(`Banc d'équilibrage — ${PARTIES} parties × ${HEURES} h\n${'='.repeat(52)}`);
 
@@ -860,8 +860,16 @@ for (let n = 0; n < PARTIES; n++) {
     g0.regionId = dep;
   }
   // Mémoire du bot : hors de l'état de jeu, donc rien à sérialiser.
-  const memo = { eclaireur: null, detachements: 0, courtisee: null, services: 0,
+  const memo = { origine: new Map(), eclaireur: null, detachements: 0, courtisee: null, services: 0,
     promesse: null, viseFondation: false, fonde: null, routeFondation: null };
+  for (const g of groupes(state)) {
+    for (const c of g.membres) {
+      memo.origine.set(c.id, {
+        eff: Math.max(comp(c, 'melee'), comp(c, 'tir')),
+        brut: Math.max(c.skills.melee, c.skills.tir),
+      });
+    }
+  }
   let groupesMax = 1;
   for (let i = 0; i < HEURES; i++) {
     if (state.fin) break;
@@ -886,14 +894,31 @@ for (let n = 0; n < PARTIES; n++) {
     }
   }
   if (process.env.NECRO) {
+    // Les anciens : ceux qui étaient là au premier jour et qui y sont encore.
+    // C'est la seule façon de savoir si un personnage progresse, la moyenne de
+    // l'escouade étant dominée par les recrues fraîches.
+    for (const c of tousLesMembres(state).filter(estVivant)) {
+      if (!memo.origine || !memo.origine.has(c.id)) continue;
+      NECRO.anciens.push({
+        combat: Math.max(comp(c, 'melee'), comp(c, 'tir')),
+        brut: Math.max(c.skills.melee, c.skills.tir),
+        depart: memo.origine.get(c.id).eff,
+        departBrut: memo.origine.get(c.id).brut,
+        corps: pvTotal(c).pct,
+        faim: c.faim,
+        moral: c.moral,
+        fatigue: c.fatigue,
+      });
+    }
     for (const m of state.memorial || []) {
       const c = String(m.cause).replace(/face à .*/, 'face à une bande');
       NECRO.causes[c] = (NECRO.causes[c] || 0) + 1;
       NECRO.skills.push(Number(String(m.meilleure).split(' ').pop()) || 0);
-      NECRO.kills.push(m.kills || 0);
+      NECRO.kills.push(m.horsCombat || 0);
     }
     for (const c of tousLesMembres(state).filter(estVivant)) {
       NECRO.vivants.push(Math.max(comp(c, 'melee'), comp(c, 'tir')));
+      NECRO.endurance.push(comp(c, 'endurance'));
     }
   }
   const viv = tousLesMembres(state).filter(estVivant);
@@ -967,9 +992,21 @@ if (process.env.NECRO) {
     .map(([k, v]) => `${v} ${k}`).join(' · '));
   console.log(`Meilleure compétence au moment de mourir : ${moy(NECRO.skills)}`
     + ` (max ${NECRO.skills.length ? Math.max(...NECRO.skills) : 0})`);
-  console.log(`Ennemis abattus avant de tomber : ${moy(NECRO.kills)}`);
+  console.log(`Mis hors de combat avant de tomber : ${moy(NECRO.kills)}`
+    + ` (max ${NECRO.kills.length ? Math.max(...NECRO.kills) : 0})`);
   console.log(`Compétence de combat des survivants : ${moy(NECRO.vivants)}`
     + ` (max ${NECRO.vivants.length ? Math.max(...NECRO.vivants).toFixed(0) : 0})`);
+  const anc = NECRO.anciens;
+  console.log(`Anciens du premier jour encore vivants : ${anc.length} sur ${PARTIES * 3}`
+    + (anc.length
+      ? `\n   compétence brute  ${moy(anc.map((a) => a.departBrut))} → ${moy(anc.map((a) => a.brut))}`
+        + `\n   compétence utile  ${moy(anc.map((a) => a.depart))} → ${moy(anc.map((a) => a.combat))}`
+        + `\n   corps ${(100 * anc.reduce((x, a) => x + a.corps, 0) / anc.length).toFixed(0)} %`
+        + ` · faim ${moy(anc.map((a) => a.faim))} · fatigue ${moy(anc.map((a) => a.fatigue))}`
+        + ` · moral ${moy(anc.map((a) => a.moral))}`
+      : ''));
+  console.log(`Endurance des survivants : ${moy(NECRO.endurance)}`
+    + ` (max ${NECRO.endurance.length ? Math.max(...NECRO.endurance).toFixed(0) : 0})`);
 }
 
 if (survivants === 0) {

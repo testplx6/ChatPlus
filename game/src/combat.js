@@ -5,7 +5,7 @@
 import { ITEMS, BIOMES } from './data.js';
 import {
   comp, blesser, tirerMembre, armureTotale, estDebout, estVivant, pvTotal,
-  gagnerXp, makeCharacter, XP_PRATIQUE,
+  gagnerXp, makeCharacter, XP_PRATIQUE, resistanceLetale,
 } from './characters.js';
 
 // ---------------------------------------------------------------------------
@@ -167,7 +167,11 @@ export function resoudreCombat(campA, campB, ctx) {
         const absorbe = arm * (1 - arme.pen) * 0.6;
         const net = Math.max(1.5, brut - absorbe * rng.range(0.5, 1.0));
 
-        const letal = acteur.camp === 'A' ? (ctx.letalA || 0.08) : (ctx.letalB || 0.2);
+        // La létalité tient à qui frappe *et* à qui encaisse. Un corps aguerri
+        // encaisse un coup qui aurait tué un bleu — c'est le seul endroit du
+        // jeu où survivre longtemps finit par payer.
+        const base = acteur.camp === 'A' ? (ctx.letalA || 0.08) : (ctx.letalB || 0.2);
+        const letal = base * resistanceLetale(cible);
         const res = blesser(cible, net, membre, rng, { letal: rng.chance(letal) });
 
         // Se battre forme vite : c'est cher payé, mais ça forme.
@@ -176,10 +180,16 @@ export function resoudreCombat(campA, campB, ctx) {
 
         if (res.mort) {
           c.kills++;
+          c.horsCombat = (c.horsCombat || 0) + 1;
           journal.push({ t: 'mort', txt: `${c.nom} abat ${cible.nom}.` });
         } else if (res.membrePerdu) {
           journal.push({ t: 'membre', txt: `${cible.nom} perd un membre (${membre}).` });
         } else if (res.ko) {
+          // Une mise hors de combat est une victoire. Ne compter que les morts
+          // laissait tout le monde à zéro — les ennemis tombent K.O. bien plus
+          // souvent qu'ils ne meurent — et rendait inatteignable le seuil qui
+          // donne un surnom.
+          c.horsCombat = (c.horsCombat || 0) + 1;
           journal.push({ t: 'ko', txt: `${cible.nom} s’écroule sous les coups de ${c.nom}.` });
         } else if (journal.length < 40) {
           journal.push({ t: 'coup', txt: `${c.nom} touche ${cible.nom} (${Math.round(net)}).` });

@@ -54,6 +54,9 @@ export function normaliser(state) {
     if (!g.bilan) g.bilan = { res: {}, depuis: state.temps };
     if (g.cohesion === undefined) g.cohesion = 55;
     if (!g.ordre) g.ordre = { type: 'repos' };
+    // Avant l'allure, toute route était une marche forcée — et personne ne
+    // dormait jamais en voyage. On rend leurs nuits aux parties en cours.
+    if (g.ordre.type === 'voyage' && !g.ordre.allure) g.ordre.allure = 'normale';
     if (!g.membres) g.membres = [];
   }
   if (!p.groupeActif || !p.groupes.some((g) => g.id === p.groupeActif)) {
@@ -104,6 +107,7 @@ export function normaliser(state) {
       if (!c.traits) c.traits = [];
       if (!c.liens) c.liens = {};
       if (!c.diplomes) c.diplomes = [];
+      if (c.horsCombat === undefined) c.horsCombat = c.kills || 0;
       if (c.formation === undefined) c.formation = null;
       if (c.enseigne === undefined) delete c.enseigne;
     }

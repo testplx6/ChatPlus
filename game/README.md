@@ -262,6 +262,61 @@ Ce qui reste n'est pas un réglage mais une décision de conception, traitée
 juste au-dessus : le nomadisme est une voie viable, l'avant-poste n'en est pas
 encore une.
 
+### Le bug le plus cher du projet tenait dans un commentaire
+
+Le tick d'une escouade portait cette ligne depuis toujours :
+
+    // Cycle jour/nuit : on campe la nuit, sauf en marche forcée.
+
+Le code, lui, faisait `travaille = !nuit || ordre.type === 'voyage'` : *toute*
+route était une marche forcée. Personne n'a jamais dormi une seule nuit en
+voyage de toute l'histoire du projet. Sur une carte où l'on passe la moitié de
+son temps sur les pistes, ça voulait dire une escouade qui ne dort jamais.
+
+Le banc l'a trouvé par la bande, en cherchant pourquoi les vétérans mouraient.
+Il a fallu séparer la compétence *brute* de la compétence *utile* — celle que
+`comp()` renvoie une fois le corps, la faim, la fatigue et le moral appliqués :
+
+    compétence brute  14,1 → 18,1     l'expérience s'accumulait bien
+    compétence utile  14,2 →  9,8     et ne servait à rien
+    fatigue 60,8 / 120 · corps 77 % · moral 65,5
+
+Soixante de fatigue, c'est trente pour cent retirés de **toutes** les
+compétences, en permanence. Les vétérans ne se faisaient pas remplacer parce
+qu'ils mouraient : ils étaient devenus plus faibles que les recrues.
+
+Une escouade campe donc la nuit, et la marche forcée devient un ordre qu'on
+donne en connaissance de cause — un tiers de temps gagné, payé en fatigue.
+Sur quarante-huit parties, avant et après :
+
+    fatigue des anciens        60,8      17,6
+    intégrité du corps          77 %      93 %
+    moral                       65,5      95,1
+    compétence utile        14,3→9,8   14,3→16,2
+    anciens encore vivants    39/72     92/144
+    survivants                18/24      39/48
+    crédits en fin de partie   1 682     3 565
+
+Les vétérans progressent enfin, au lieu de s'user.
+
+Deux corrections sont parties avec, trouvées par la même nécrologie :
+
+- **L'endurance retire à la chance d'un coup fatal** (jusqu'à 45 %). La
+  létalité était un dé fixe : vingt pour cent par coup encaissé, qu'on soit un
+  bleu ou le meilleur de l'escouade. Une compétence élevée faisait toucher plus
+  souvent et esquiver mieux, mais ne changeait rien à ce dé-là. Encaisser n'est
+  pas savoir se battre : c'est l'endurance, et elle seule.
+- **Une hémorragie ne condamne plus.** Un blessé à plus de 40 de saignement
+  avait trois chances sur dix par heure d'y passer, quoi qu'on fasse pour lui.
+  La qualité des soins entre maintenant dans le risque et dans la vitesse de
+  coagulation. C'est de ça qu'on mourait le plus : vingt-quatre morts « en
+  route » contre dix-neuf au combat.
+- **Les mises hors de combat comptent.** Les ennemis tombent K.O. bien plus
+  souvent qu'ils ne meurent et achever est désactivé par défaut, donc `kills`
+  restait à zéro pour tout le monde : la ligne la plus caractérisante du
+  mémorial était toujours vide et le seuil qui donne un surnom était
+  inatteignable. On ne se faisait un nom qu'en perdant un membre.
+
 ### Calibrer l'instrument avant de mesurer avec
 
 Un banc ne vaut que ce que vaut son joueur. Et le nôtre, pendant toute

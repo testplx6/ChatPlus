@@ -74,7 +74,11 @@ export function donnerOrdre(state, ordre, groupe) {
     const m = { reductionVoyage: (state.base.recherche.logistique || 0) * 0.06 };
     const route = chemin(state.world, g.regionId, ordre.dest, m);
     if (!route || !route.length) return { ok: false, motif: 'Aucune route.' };
-    g.ordre = { type: 'voyage', dest: ordre.dest, route, etape: 0, progres: 0 };
+    g.ordre = {
+      type: 'voyage', dest: ordre.dest, route, etape: 0, progres: 0,
+      // « normale » : on campe la nuit. « forcee » : on marche, et on le paie.
+      allure: ordre.allure === 'forcee' ? 'forcee' : 'normale',
+    };
     return { ok: true };
   }
   if (!ORDRES[ordre.type]) return { ok: false, motif: 'Ordre inconnu.' };
@@ -426,11 +430,11 @@ function partitionner(g, debout) {
   return par;
 }
 
-/** Effort demandé par une tâche, corrigé par la nuit. */
-function effortDe(type, nuit) {
+/** Effort demandé par une tâche, corrigé par la nuit et l'allure. */
+function effortDe(type, nuit, forcee) {
   const def = ORDRES[type] || ORDRES.repos;
   if (!nuit) return def.effort;
-  if (type === 'voyage') return 1.35; // marche de nuit : épuisant
+  if (type === 'voyage' && forcee) return 1.35; // marche de nuit : épuisant
   return 0;
 }
 
@@ -442,11 +446,23 @@ function tickGroupe(state, g, log, ctx) {
   const ordre = g.ordre || (g.ordre = { type: 'repos' });
   g.recolteHeure = null;
 
-  // Cycle jour/nuit : on campe la nuit, sauf en marche forcée. C'est ce qui
-  // permet à la fatigue de redescendre — sans ça, elle se colle au plafond.
+  // Cycle jour/nuit : on campe la nuit, sauf en marche forcée.
+  //
+  // Le commentaire disait ça depuis toujours et le code faisait le contraire :
+  // *toute* route était une marche forcée, personne n'a jamais dormi une nuit
+  // en voyage. Le banc a fini par le montrer par la bande — un ancien du
+  // premier jour finit la partie à 60 de fatigue sur 120, ce qui lui retire
+  // trente pour cent de toutes ses compétences en permanence. Sa compétence
+  // brute monte bien (14 → 18 en quatre mille heures), mais sa compétence utile
+  // tombe de 14 à 10. Les vétérans ne se faisaient pas remplacer parce qu'ils
+  // mouraient : ils étaient devenus plus faibles que les recrues.
+  //
+  // On campe donc, et forcer la marche devient un choix qu'on prend en
+  // connaissance de cause.
   const heure = state.temps % 24;
   const nuit = heure >= 22 || heure < 6;
-  const travaille = !nuit || ordre.type === 'voyage';
+  const forcee = ordre.type === 'voyage' && ordre.allure === 'forcee';
+  const travaille = !nuit || forcee;
   g.nuit = nuit;
 
   const debout = deboutDe(g);
@@ -598,12 +614,12 @@ function tickGroupe(state, g, log, ctx) {
 
   // --- Soins et besoins, avec l'effort réellement fourni par chacun
   const effortMoyen = debout.length
-    ? debout.reduce((s, c) => s + effortDe(tacheDe(g, c).type, nuit), 0) / debout.length
+    ? debout.reduce((s, c) => s + effortDe(tacheDe(g, c).type, nuit, forcee), 0) / debout.length
     : 0;
   const q = qualiteSoin(state, g, effortMoyen <= 0.05);
   utiliserMedkit(state, g, log, ctx);
   for (const c of g.membres) {
-    const eff = estDebout(c) ? effortDe(tacheDe(g, c).type, nuit) : 0;
+    const eff = estDebout(c) ? effortDe(tacheDe(g, c).type, nuit, forcee) : 0;
     const msgs = tickPerso(c, eff, rng,
       { soin: q, premiersSecours: debout.length > 0, abri: abriDe(state, g.regionId) });
     for (const m of msgs) {
