@@ -403,6 +403,61 @@ const refusion = await page.evaluate(() => {
 ok(refusion.n === avantGroupes, 'les groupes sont réunis', `${refusion.n}`);
 ok(refusion.membres === 3, 'tout le monde est rassemblé', `${refusion.membres}`);
 
+console.log('\n8 sexies. Information imparfaite');
+// On fabrique une partie où l'escouade a vu une ville, puis s'en est allée.
+const espion = nouvellePartie(31337, { maintenant: Date.now() });
+const gEsp = groupeActif(espion);
+const villeVue = espion.world.colonies.find((c) => c.regionId === gEsp.regionId);
+const villeLoin = espion.world.colonies.find((c) => c.id !== villeVue.id);
+avancer(espion, 5);
+gEsp.regionId = villeLoin.regionId;   // on y passe
+avancer(espion, 2);
+gEsp.regionId = villeVue.regionId;    // puis on repart
+avancer(espion, 300);
+espion.world.regions.forEach((r) => { r.decouvert = true; });
+espion.dernierReel = Date.now();
+
+await page.reload({ waitUntil: 'networkidle' });
+await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(espion));
+await page.click('[data-a="continuer"]');
+await page.waitForSelector('#carte');
+await page.waitForTimeout(500);
+
+// Le registre du monde doit dater ses relevés.
+await page.click('[data-a="onglet"][data-k="monde"]');
+await page.waitForTimeout(400);
+const texteRegistre = await page.evaluate(() => document.querySelector('#ecran').textContent);
+ok(/il y a \d+ [hj]/.test(texteRegistre), 'les relevés de villes portent leur date');
+ok(/trésor inconnu/.test(texteRegistre), 'le trésor des factions n’est pas su sans cryptographie');
+await page.screenshot({ path: join(CAPTURES, '17-connaissance.png'), fullPage: true });
+
+// Une ville jamais visitée ne livre rien, même repérée sur la carte.
+await page.click('[data-a="onglet"][data-k="carte"]');
+await page.waitForTimeout(300);
+const jamaisVue = await page.evaluate(() => {
+  const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const connues = new Set(Object.keys(s.connaissance.colonies));
+  const c = s.world.colonies.find((x) => !connues.has(x.id));
+  return c ? c.regionId : null;
+});
+ok(jamaisVue != null, 'il reste des villes jamais relevées', String(jamaisVue));
+if (jamaisVue != null) {
+  await page.evaluate((rid) => {
+    const cv = document.querySelector('#carte');
+    const CELL = Math.round(cv.width / 10);
+    const r = cv.getBoundingClientRect();
+    const ech = r.width / cv.width;
+    const x = ((rid % 10) * CELL + CELL / 2) * ech + r.left;
+    const y = (Math.floor(rid / 10) * CELL + CELL / 2) * ech + r.top;
+    document.elementFromPoint(x, y).dispatchEvent(new MouseEvent('click', {
+      bubbles: true, clientX: x, clientY: y,
+    }));
+  }, jamaisVue);
+  await page.waitForTimeout(400);
+  const txt = await page.evaluate(() => document.querySelector('#ecran').textContent);
+  ok(/jamais mis les pieds/.test(txt), 'une ville jamais visitée ne livre ni drapeau ni population');
+}
+
 console.log('\n8 quater. Retour après une longue absence');
 // Le pire cas réel : le plafond de rattrapage, dix-sept mille heures à rejouer
 // au chargement. Ça doit se voir à l'écran et rendre la main, pas figer l'onglet.

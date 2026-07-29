@@ -4,7 +4,7 @@
 // Le tick partitionne donc les gens debout par tâche effective et résout chaque
 // paquet séparément — deux qui fouillent et un qui chasse, c'est deux récoltes.
 
-import { BIOMES, POSTURES, COMMODITIES, POI } from './data.js';
+import { BIOMES, POSTURES, COMMODITIES, POI, SKILLS } from './data.js';
 import { chemin, coutTraversee, decouvrir, nomRegion, colonieDe, distance } from './world.js';
 import {
   comp, gagnerXp, estDebout, estVivant, tickPerso, nourrir, pvTotal,
@@ -91,6 +91,20 @@ const FILTRES = {
 };
 
 const SKILL_ORDRE = { fouille: 'ingenierie', mine: 'force', chasse: 'tir' };
+
+/**
+ * Ce que rapporte une heure d'entraînement dédié. Chiffré, pas deviné : à 5,5,
+ * atteindre 30 en mêlée demandait cent cinquante-neuf jours de jeu à ne faire
+ * que ça, et cent heures d'entraînement rendaient un seul point. Le joueur ne
+ * voyait rien bouger et l'ordre ne servait à rien qu'à manger des rations.
+ */
+export const XP_ENTRAINEMENT = 24;
+/**
+ * Un vétéran qui corrige les gestes vaut mieux qu'un mannequin de paille. Le
+ * meilleur du groupe dans la compétence travaillée accélère les autres —
+ * et c'est ce qui donne un rôle à celui qu'on a fait monter.
+ */
+export const BONUS_INSTRUCTEUR = 0.9;
 
 /**
  * Ce qu'on ramasse en marchant, rapporté à ce qu'on ramasserait en fouillant
@@ -476,11 +490,21 @@ function tickGroupe(state, g, log, ctx) {
           const cout = Math.ceil(paquet.gens.length / 2);
           if ((g.inventaire.rations || 0) >= cout) {
             g.inventaire.rations -= cout;
+            // Le meilleur du groupe donne le ton, y compris s'il ne s'entraîne
+            // pas lui-même : on regarde tout le monde debout, pas le paquet.
+            let maitre = 0;
+            for (const c of debout) maitre = Math.max(maitre, comp(c, skill));
             for (const c of paquet.gens) {
               const av = c.skills[skill];
-              gagnerXp(c, skill, 5.5);
+              const ecart = Math.max(0, maitre - comp(c, skill));
+              const bonus = 1 + Math.min(BONUS_INSTRUCTEUR, ecart / 40);
+              gagnerXp(c, skill, XP_ENTRAINEMENT * bonus);
               if (c.skills[skill] > av) {
-                log({ type: 'progres', texte: `${c.nom} : ${skill} ${c.skills[skill]}.`, discret: true });
+                log({
+                  type: 'progres',
+                  texte: `${c.nom} progresse à l’entraînement : ${SKILLS[skill]} ${c.skills[skill]}.`,
+                  discret: true,
+                });
               }
             }
           } else {

@@ -3,6 +3,7 @@
 // fois la persistance navigateur et, plus tard, un envoi au serveur.
 
 import { groupeVide } from './groupes.js';
+import { creerConnaissance } from './connaissance.js';
 
 export const CLE = 'cendres.save.v1';
 export const VERSION = 1;
@@ -48,6 +49,11 @@ export function normaliser(state) {
   if (!p.groupeActif || !p.groupes.some((g) => g.id === p.groupeActif)) {
     p.groupeActif = p.groupes.length ? p.groupes[0].id : null;
   }
+
+  // Avant la connaissance imparfaite, tout était su en permanence. On repart
+  // d'une ardoise vide : le premier tick relève ce qu'on a sous les yeux, et le
+  // reste de la carte redevient un souvenir à rafraîchir.
+  if (!state.connaissance) state.connaissance = creerConnaissance(state.temps);
 
   if (!p.contrats) p.contrats = [];
   if (!p.primes) p.primes = {};

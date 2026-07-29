@@ -66,14 +66,14 @@ de cache périmé.
 ## Tests
 
 ```bash
-npm test                     # 94 assertions sur le moteur, sans navigateur
+npm test                     # 125 assertions sur le moteur, sans navigateur
 node test/equilibre.js       # banc d'équilibrage : un bot joue 30 parties
 node test/equilibre.js 4000 60   # échantillon large, une vingtaine de secondes
 SANS=detach,contrats node test/equilibre.js   # coupe un système pour l'isoler
 VAGABOND=1 node test/equilibre.js             # témoin : voyager sans contrats
 
 npm install --no-save playwright-core
-node test/navigateur.js      # 54 vérifications dans un Chromium réel
+node test/navigateur.js      # 58 vérifications dans un Chromium réel
 ```
 
 Le harnais couvre la génération du monde, le déterminisme, la sauvegarde, la
@@ -149,6 +149,31 @@ partie. Coordonner plus de deux groupes suppose une antenne à l'avant-poste.
 sur l'ordre collectif : deux ferraillent, le troisième chasse, et les trois
 récoltes se résolvent séparément. En marche, tout le monde marche — on ne
 s'entraîne pas en colonne — et les tâches personnelles reprennent à l'arrivée.
+
+**Ce que vous savez.** La carte est un carnet de relevés, pas un satellite. Là
+où vous avez quelqu'un, vous voyez en temps réel ; partout ailleurs vous lisez
+le dernier relevé, avec sa date. Une ville quittée il y a trois mois affiche la
+population, les stocks et le drapeau d'il y a trois mois — et elle a peut-être
+changé de mains depuis. Une ville aperçue de loin mais jamais visitée ne livre
+rien du tout. Poster quelqu'un quelque part rétablit le renseignement : c'est ce
+qui donne son prix à un détachement, et l'optique porte le regard d'une case par
+niveau. Servir une faction, c'est recevoir ses rapports : à partir d'Agent, ses
+villes ne sont plus jamais une surprise.
+
+**Les nouvelles voyagent.** La chronique du monde n'est pas un fil d'actualité :
+c'est ce qui vous est parvenu. Une guerre se proclame et se sait en une
+demi-journée ; une ville qui tombe met deux jours, une ville qui grossit cinq.
+Ce dont vous avez été témoin est immédiat et sûr ; le reste est donné pour ce
+qu'il est, un rapport. Le trésor d'une faction et les colonnes en campagne
+restent invisibles tant qu'on n'a pas cherché la Cryptographie.
+
+**L'entraînement.** Le moyen le plus rapide de progresser, et le seul qui se
+voie à l'échelle d'une session : cent heures rendent trois à quatre points, là
+où le travail de terrain en rend un dixième. Ça coûte des rations et ça ne
+rapporte rien d'autre. Le meilleur du groupe fait l'instructeur — plus l'écart
+est grand, plus l'élève monte vite —, ce qui donne un rôle au vétéran qu'on a
+mis deux cents heures à former. Un membre peut s'y mettre seul pendant que les
+autres travaillent.
 
 **La route.** Marcher n'est pas du temps mort : on glane le long du chemin, à
 un peu plus de la moitié de ce que rapporterait une vraie fouille. Sans ça, un
@@ -248,6 +273,7 @@ game/
     climat.js         saisons, météo, effets combinés
     caravanes.js      routes marchandes, embuscades
     groupes.js        groupes, tâches individuelles, scission et fusion
+    connaissance.js   ce que le joueur sait, relevés datés, délai des nouvelles
     sim.js            orchestration, rattrapage hors ligne
     save.js           sérialisation
     ui.js             rendu DOM + carte pixel sur canvas

@@ -15,7 +15,11 @@ import { estVivant } from '../src/characters.js';
 import { colonieDe } from '../src/world.js';
 import { groupeActif, groupes, tousLesMembres, scinder, fusionner, assignerTache, tacheDe, maxGroupes } from '../src/groupes.js';
 import { acheter, vendre, prixJoueur } from '../src/economy.js';
-import { sEngager, rangDe } from '../src/allegeance.js';
+import { sEngager, rangDe, RANGS } from '../src/allegeance.js';
+import {
+  vueColonie, estSurveillee, ageTexte, nouvellesConnues, DELAI_NOUVELLE,
+} from '../src/connaissance.js';
+import { distance } from '../src/world.js';
 
 let echecs = 0;
 let total = 0;
@@ -473,6 +477,176 @@ ok(maxGroupes(s9e) === 2, 'deux groupes sans avant-poste', `${maxGroupes(s9e)}`)
 s9e.base.fonde = true;
 s9e.base.batiments = { antenne: 4 };
 ok(maxGroupes(s9e) === 4, 'l’antenne autorise davantage de groupes', `${maxGroupes(s9e)}`);
+
+section('9 quinquies. Information imparfaite');
+const s9g = nouvellePartie(60606, { maintenant: 0 });
+avancer(s9g, 40);
+const gVue = groupeActif(s9g);
+const colIci = s9g.world.colonies.find((c) => c.regionId === gVue.regionId);
+const colLoin = s9g.world.colonies.find((c) => c.regionId !== gVue.regionId);
+
+ok(!!colIci, 'on démarre dans une ville');
+const vueIci = vueColonie(s9g, colIci);
+ok(vueIci.frais && vueIci.depuis === 0, 'la ville où l’on se trouve est vue en temps réel');
+ok(vueIci.pop === Math.round(colIci.pop), 'et ses chiffres sont les vrais', `${vueIci.pop} vs ${Math.round(colIci.pop)}`);
+
+const vueLoin = vueColonie(s9g, colLoin);
+ok(vueLoin.inconnu, 'une ville où l’on n’est jamais allé n’a pas de relevé');
+ok(vueLoin.faction === null, 'on n’en connaît même pas le drapeau');
+
+// On passe voir, puis on s'en va : le relevé doit vieillir, pas se corriger.
+const memePlace = colLoin.regionId;
+gVue.regionId = memePlace;
+avancer(s9g, 1);
+const releve = vueColonie(s9g, colLoin);
+ok(releve.frais, 'sur place, l’information redevient fraîche');
+const popRelevee = releve.pop;
+const factionRelevee = releve.faction;
+
+gVue.regionId = colIci.regionId;
+avancer(s9g, 200);
+
+// La ville change de mains pendant qu'on est ailleurs. On le fait après les
+// 200 h et on n'avance plus que d'une heure : le monde vit sa vie, et forcer
+// un état puis simuler deux cents heures reviendrait à parier qu'il n'y touche
+// pas. On passe par les listes des factions, sinon c'est le test qui casse
+// l'invariant qu'il vérifie ensuite.
+const autreFaction = DIPLO_FACTIONS.find((f) => f !== colLoin.faction && f !== 'essaim');
+const ancienne9g = s9g.world.factions[colLoin.faction];
+ancienne9g.colonies = ancienne9g.colonies.filter((id) => id !== colLoin.id);
+colLoin.faction = autreFaction;
+s9g.world.factions[autreFaction].colonies.push(colLoin.id);
+colLoin.pop += 500;
+avancer(s9g, 1);
+
+const perime = vueColonie(s9g, colLoin);
+ok(!perime.frais, 'de loin, l’information n’est plus fraîche');
+ok(perime.pop === popRelevee, 'le relevé garde la population d’alors', `${perime.pop} vs ${popRelevee}`);
+ok(perime.faction === factionRelevee, 'et l’ancien drapeau — la prise n’est pas connue');
+ok(perime.depuis >= 200, 'le relevé porte son âge', `${perime.depuis} h`);
+ok(colLoin.faction === autreFaction, 'alors que le monde, lui, a bien changé');
+
+// Poster quelqu'un sur place suffit à rétablir le renseignement : c'est là tout
+// l'intérêt de détacher un groupe.
+const rngPoste = new Rng(s9g.rngState);
+const poste = scinder(s9g, gVue, [gVue.membres[0].id], rngPoste);
+s9g.rngState = rngPoste.save();
+ok(poste.ok, 'on détache un guetteur', poste.motif);
+poste.groupe.regionId = colLoin.regionId;
+avancer(s9g, 2);
+const parGuetteur = vueColonie(s9g, colLoin);
+ok(parGuetteur.frais, 'un membre posté sur place rétablit le temps réel');
+ok(parGuetteur.faction === autreFaction, 'et l’on apprend enfin qui tient la ville');
+
+// L'optique porte le regard un cran plus loin.
+const s9h = nouvellePartie(70707, { maintenant: 0 });
+const gOpt = groupeActif(s9h);
+const voisine = s9h.world.regions.find((r) => distance(r.i, gOpt.regionId) === 1);
+ok(!estSurveillee(s9h, voisine.i), 'sans optique, on ne voit que sous ses pieds');
+s9h.base.recherche.optique = 1;
+ok(estSurveillee(s9h, voisine.i), 'l’optique porte le regard d’une case');
+
+// Servir une faction, c'est recevoir ses rapports.
+const s9i = nouvellePartie(80808, { maintenant: 0 });
+const colService = s9i.world.colonies.find((c) => c.regionId === groupeActif(s9i).regionId);
+s9i.player.reputation[colService.faction] = 60;
+sEngager(s9i, colService.faction, () => {});
+s9i.player.allegeance.points = RANGS[1].points; // grade d'Agent
+const sienne = s9i.world.colonies.find(
+  (c) => c.faction === colService.faction && c.regionId !== colService.regionId
+);
+if (sienne) {
+  ok(estSurveillee(s9i, sienne.regionId), 'au service d’une faction, ses villes ne sont plus une surprise');
+} else {
+  ok(true, 'la faction servie n’a qu’une ville — rien à vérifier');
+}
+
+// Les nouvelles voyagent : ce qui vient d'arriver à l'autre bout de la carte
+// n'est pas encore parvenu, ce dont on a été témoin l'est immédiatement.
+const s9j = nouvellePartie(90909, { maintenant: 0 });
+avancer(s9j, 10);
+const loinDeTout = s9j.world.regions.find((r) => !estSurveillee(s9j, r.i));
+const journal9j = [
+  { type: 'capture', t: s9j.temps, regionId: loinDeTout.i, vu: false, texte: 'ville prise' },
+  { type: 'guerre', t: s9j.temps, regionId: loinDeTout.i, vu: false, texte: 'guerre déclarée' },
+  { type: 'capture', t: s9j.temps, regionId: groupeActif(s9j).regionId, vu: true, texte: 'sous nos yeux' },
+];
+const toutDeSuite = nouvellesConnues(s9j, journal9j);
+ok(toutDeSuite.length === 1 && toutDeSuite[0].texte === 'sous nos yeux',
+  'seul ce dont on est témoin est su sur-le-champ', `${toutDeSuite.length} nouvelles`);
+ok(toutDeSuite[0].rapporte === false, 'et ce n’est pas donné pour un on-dit');
+
+avancer(s9j, DELAI_NOUVELLE.guerre + 1);
+const apresGuerre = nouvellesConnues(s9j, journal9j);
+ok(apresGuerre.some((x) => x.type === 'guerre'), 'une déclaration de guerre finit par se savoir');
+ok(!apresGuerre.some((x) => x.type === 'capture' && x.texte === 'ville prise'),
+  'une ville prise se sait plus lentement qu’une guerre');
+avancer(s9j, DELAI_NOUVELLE.capture);
+const apresCapture = nouvellesConnues(s9j, journal9j);
+const prise = apresCapture.find((x) => x.texte === 'ville prise');
+ok(!!prise, 'mais elle finit par se savoir aussi');
+ok(prise && prise.rapporte === true, 'donnée pour ce qu’elle est : un rapport');
+
+verifierCoherence(s9g, 'après manipulation de la connaissance');
+
+section('9 sexies. Entraînement');
+const s9k = nouvellePartie(555, { maintenant: 0 });
+const g9k = groupeActif(s9k);
+g9k.inventaire.rations = 20000;
+const avantMelee = g9k.membres.map((c) => c.skills.melee);
+donnerOrdre(s9k, { type: 'entrainement', skill: 'melee' }, g9k);
+const rationsEntrainement = g9k.inventaire.rations;
+avancer(s9k, 100);
+const gains = g9k.membres.map((c, i) => c.skills.melee - avantMelee[i]);
+ok(gains.every((x) => x >= 2), 'cent heures d’entraînement se voient', gains.join(', '));
+ok(rationsEntrainement - g9k.inventaire.rations > 50, 'et coûtent des vivres',
+  `${Math.round(rationsEntrainement - g9k.inventaire.rations)} rations`);
+ok(g9k.ordre.type === 'entrainement', 'l’ordre tient tant qu’il y a de quoi manger');
+
+// Sans vivres, l'entraînement s'interrompt de lui-même plutôt que d'affamer.
+const s9l = nouvellePartie(556, { maintenant: 0 });
+const g9l = groupeActif(s9l);
+g9l.inventaire.rations = 2;
+donnerOrdre(s9l, { type: 'entrainement', skill: 'tir' }, g9l);
+avancer(s9l, 30);
+ok(g9l.ordre.type !== 'entrainement', 'sans rations, l’entraînement s’arrête');
+
+// L'instructeur : un écart de niveau accélère l'élève.
+const s9m = nouvellePartie(557, { maintenant: 0 });
+const g9m = groupeActif(s9m);
+g9m.inventaire.rations = 20000;
+g9m.membres[0].skills.melee = 70;   // le vétéran
+g9m.membres[1].skills.melee = 5;    // l'élève encadré
+const s9n = nouvellePartie(557, { maintenant: 0 });
+const g9n = groupeActif(s9n);
+g9n.inventaire.rations = 20000;
+g9n.membres[0].skills.melee = 5;    // personne pour encadrer
+g9n.membres[1].skills.melee = 5;
+g9n.membres[2].skills.melee = 5;
+donnerOrdre(s9m, { type: 'entrainement', skill: 'melee' }, g9m);
+donnerOrdre(s9n, { type: 'entrainement', skill: 'melee' }, g9n);
+avancer(s9m, 200);
+avancer(s9n, 200);
+ok(g9m.membres[1].skills.melee > g9n.membres[1].skills.melee,
+  'un vétéran dans le groupe fait progresser les autres plus vite',
+  `${g9m.membres[1].skills.melee} contre ${g9n.membres[1].skills.melee}`);
+
+// Une tâche personnelle d'entraînement porte bien sa compétence.
+const s9o = nouvellePartie(558, { maintenant: 0 });
+const g9o = groupeActif(s9o);
+g9o.inventaire.rations = 20000;
+donnerOrdre(s9o, { type: 'fouille' }, g9o);
+assignerTache(s9o, g9o.membres[0], { type: 'entrainement', skill: 'medecine' });
+const medAvant = g9o.membres[0].skills.medecine;
+avancer(s9o, 150);
+ok(g9o.membres[0].skills.medecine > medAvant, 'le membre détaché à l’entraînement travaille sa compétence',
+  `${medAvant} → ${g9o.membres[0].skills.medecine}`);
+// On vérifie la répartition, pas la récolte : c'est elle le sujet, et la
+// mesurer en unités ramassées dépendrait de la place restante dans le sac.
+ok(tacheDe(g9o, g9o.membres[0]).type === 'entrainement'
+  && tacheDe(g9o, g9o.membres[1]).type === 'fouille',
+'pendant que les autres continuent de fouiller',
+`${tacheDe(g9o, g9o.membres[0]).type} / ${tacheDe(g9o, g9o.membres[1]).type}`);
 
 section('10. Rattrapage hors ligne');
 const s10 = nouvellePartie(1010, { maintenant: 1000000 });

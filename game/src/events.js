@@ -19,12 +19,16 @@ import {
 import { poidsInventaire, capacitePortage } from './economy.js';
 import { tailleEscouadeMax } from './base.js';
 import { groupeActif, groupes, tousLesMembres, debout as deboutDe } from './groupes.js';
+import { estSurveillee } from './connaissance.js';
 
 export const LOG_MAX = 400;
 
 export function creerLogger(state) {
   return (entree) => {
     const e = Object.assign({ t: state.temps }, entree);
+    // Témoin ou pas : ce qui arrive sous les yeux de l'escouade est su tout de
+    // suite, le reste met le temps de la route (voir `nouvellesConnues`).
+    if (e.regionId != null && e.vu === undefined) e.vu = estSurveillee(state, e.regionId);
     state.journal.push(e);
     if (state.journal.length > LOG_MAX) state.journal.splice(0, state.journal.length - LOG_MAX);
     if (e.important) state.nonLus = (state.nonLus || 0) + 1;

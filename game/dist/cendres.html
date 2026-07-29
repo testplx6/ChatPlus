@@ -2936,6 +2936,235 @@ function renfortsDisponibles(state, groupe) {
   return rang.index - 2;
 }
 
+// ===== src/connaissance.js ===========================================
+// Ce que le joueur sait, par opposition à ce qui est.
+//
+// Règle unique, et volontairement simple : là où on a quelqu'un, on voit en
+// temps réel ; partout ailleurs on lit le dernier relevé, avec sa date. Une
+// ville qu'on a quittée il y a trois mois affiche la population, les stocks et
+// le drapeau d'il y a trois mois — et le drapeau a peut-être changé.
+//
+// C'est ce qui donne une valeur à envoyer quelqu'un quelque part : une paire
+// d'yeux postée dans une ville rapporte du renseignement frais, et le
+// renseignement frais est ce qui permet de décider. Sans ce module, explorer ne
+// rapportait rien qui se monnaye et détacher un éclaireur était une perte
+// sèche — le banc d'équilibrage l'a chiffré.
+
+
+/** Au-delà, l'information est trop vieille pour valoir mieux que rien. */
+const PEREMPTION = 24 * 120; // quatre saisons
+
+function creerConnaissance(t = 0) {
+  return { colonies: {}, regions: {}, maj: t };
+}
+
+// ---------------------------------------------------------------------------
+// Ce qu'on voit
+// ---------------------------------------------------------------------------
+
+/**
+ * Les régions sous surveillance à cet instant : celles où l'on a quelqu'un de
+ * vivant, l'avant-poste, et ce que la portée optique ajoute autour.
+ */
+function regionsVues(state) {
+  const vues = new Set();
+  const portee = state.base.recherche.optique || 0;
+  const ajouter = (rid) => {
+    vues.add(rid);
+    if (!portee) return;
+    for (const r of state.world.regions) {
+      if (distance(r.i, rid) <= portee) vues.add(r.i);
+    }
+  };
+  for (const g of groupes(state)) {
+    if (g.membres.some(estVivant)) ajouter(g.regionId);
+  }
+  if (state.base.fonde) ajouter(state.base.regionId);
+
+  // Servir une faction, c'est recevoir ses rapports. À partir d'Agent, ses
+  // villes ne sont plus jamais une surprise : c'est la contrepartie concrète
+  // d'un grade, et ça vaut mieux qu'une remise de deux pour cent.
+  const all = state.player.allegeance;
+  if (all && rangDe(all).index >= 1) {
+    for (const col of state.world.colonies) {
+      if (!col.ruine && col.faction === all.faction) vues.add(col.regionId);
+    }
+  }
+  return vues;
+}
+
+// ---------------------------------------------------------------------------
+// Relevés
+// ---------------------------------------------------------------------------
+
+function releverColonie(col, t) {
+  const stock = {};
+  for (const k of COMMODITY_KEYS) stock[k] = Math.round(col.stock[k] || 0);
+  return {
+    t,
+    nom: col.nom,
+    regionId: col.regionId,
+    faction: col.faction,
+    taille: col.taille,
+    pop: Math.round(col.pop),
+    defense: Math.round(col.defense),
+    defenseMax: Math.round(col.defenseMax),
+    unrest: Number((col.unrest || 0).toFixed(2)),
+    ruine: !!col.ruine,
+    stock,
+  };
+}
+
+function releverRegion(r, t) {
+  return { t, controle: r.controle, colonie: r.colonie };
+}
+
+/**
+ * Met à jour les relevés des lieux sous surveillance. Appelé à chaque heure de
+ * jeu : c'est deux ou trois régions en pratique, pas la carte entière.
+ */
+function observer(state) {
+  const c = state.connaissance || (state.connaissance = creerConnaissance(state.temps));
+  const t = state.temps;
+  for (const rid of regionsVues(state)) {
+    const r = state.world.regions[rid];
+    if (!r) continue;
+    c.regions[rid] = releverRegion(r, t);
+    const col = state.world.colonies.find((x) => x.regionId === rid);
+    if (col) c.colonies[col.id] = releverColonie(col, t);
+  }
+  c.maj = t;
+}
+
+// ---------------------------------------------------------------------------
+// Lecture
+// ---------------------------------------------------------------------------
+
+/**
+ * Ce que le joueur sait d'une colonie. Retourne toujours un objet lisible :
+ * `frais` dit si c'est de première main, `depuis` l'âge du relevé en heures,
+ * `inconnu` si on n'y a jamais mis les pieds.
+ *
+ * L'interface ne doit jamais lire `col` directement pour un lieu où l'escouade
+ * n'est pas — c'est tout l'intérêt de passer par ici.
+ */
+function vueColonie(state, col) {
+  if (!col) return null;
+  const c = state.connaissance;
+  const surPlace = c && estSurveillee(state, col.regionId);
+  if (surPlace) {
+    return Object.assign(releverColonie(col, state.temps), { frais: true, depuis: 0, inconnu: false });
+  }
+  const releve = c && c.colonies[col.id];
+  if (!releve) {
+    return {
+      t: null, nom: col.nom, regionId: col.regionId, faction: null, taille: null,
+      pop: null, defense: null, defenseMax: null, unrest: null, ruine: false,
+      stock: {}, frais: false, depuis: null, inconnu: true,
+    };
+  }
+  return Object.assign({}, releve, {
+    frais: false,
+    depuis: state.temps - releve.t,
+    inconnu: false,
+    perime: state.temps - releve.t > PEREMPTION,
+  });
+}
+
+/** Idem pour une région : qui la tenait la dernière fois qu'on a regardé. */
+function vueRegion(state, regionId) {
+  const r = state.world.regions[regionId];
+  if (!r) return null;
+  if (estSurveillee(state, regionId)) {
+    return { controle: r.controle, colonie: r.colonie, frais: true, depuis: 0, inconnu: false };
+  }
+  const releve = state.connaissance && state.connaissance.regions[regionId];
+  if (!releve) return { controle: null, colonie: r.colonie, frais: false, depuis: null, inconnu: true };
+  return {
+    controle: releve.controle,
+    colonie: releve.colonie,
+    frais: false,
+    depuis: state.temps - releve.t,
+    inconnu: false,
+  };
+}
+
+/**
+ * Y a-t-il un œil ici, maintenant ? Recalculé à chaque appel plutôt que mis en
+ * cache : un cache de module survivrait au groupe qui bouge en cours de tick et
+ * mentirait d'une heure, pour économiser quelques dizaines d'itérations.
+ */
+function estSurveillee(state, regionId) {
+  const portee = state.base.recherche.optique || 0;
+  for (const g of groupes(state)) {
+    if (!g.membres.some(estVivant)) continue;
+    if (g.regionId === regionId) return true;
+    if (portee && distance(g.regionId, regionId) <= portee) return true;
+  }
+  if (state.base.fonde) {
+    if (state.base.regionId === regionId) return true;
+    if (portee && distance(state.base.regionId, regionId) <= portee) return true;
+  }
+  const all = state.player.allegeance;
+  if (all && rangDe(all).index >= 1) {
+    const col = state.world.colonies.find((c) => c.regionId === regionId);
+    if (col && !col.ruine && col.faction === all.faction) return true;
+  }
+  return false;
+}
+
+/** « il y a 3 j » — la date compte autant que le chiffre qu'elle accompagne. */
+function ageTexte(depuis) {
+  if (depuis == null) return 'jamais vu';
+  if (depuis <= 0) return 'à l’instant';
+  if (depuis < 24) return `il y a ${Math.round(depuis)} h`;
+  const j = Math.round(depuis / 24);
+  return `il y a ${j} j`;
+}
+
+// ---------------------------------------------------------------------------
+// Les nouvelles voyagent
+// ---------------------------------------------------------------------------
+
+/**
+ * Heures qu'une nouvelle met à parvenir, selon son type. Une guerre se
+ * proclame — hérauts, émissaires, tout le monde le sait vite. Une ville qui
+ * tombe se sait plus lentement, et une ville qui grossit n'intéresse personne
+ * avant longtemps.
+ *
+ * Sans ce délai, la chronique du monde annonçait en direct des villes prises
+ * que personne n'avait vues tomber, ce qui vidait de son sens tout le reste du
+ * module : la carte devenait un souvenir pendant que le journal restait
+ * omniscient.
+ */
+const DELAI_NOUVELLE = {
+  guerre: 12,
+  paix: 18,
+  capture: 48,
+  effondrement: 72,
+  secession: 60,
+  fondation: 96,
+  croissance: 120,
+  saison: 0,     // on regarde le ciel soi-même
+};
+
+/**
+ * Ce que le joueur a pu apprendre du monde, avec la mention de la source.
+ * Un événement dont il a été témoin est immédiat et sûr ; les autres arrivent
+ * avec leur délai et sont donnés pour ce qu'ils sont : des rapports.
+ */
+function nouvellesConnues(state, entrees) {
+  const out = [];
+  for (const x of entrees) {
+    const temoin = x.regionId != null && x.vu === true;
+    if (temoin) { out.push(Object.assign({}, x, { rapporte: false })); continue; }
+    const delai = DELAI_NOUVELLE[x.type] ?? 36;
+    if (state.temps - x.t < delai) continue;
+    out.push(Object.assign({}, x, { rapporte: delai > 0 }));
+  }
+  return out;
+}
+
 // ===== src/combat.js =================================================
 // Résolution de combat au tour par tour, déterministe.
 // Personne ne meurt d'un coup : on tombe K.O., puis on peut être achevé,
@@ -5210,6 +5439,9 @@ const LOG_MAX = 400;
 function creerLogger(state) {
   return (entree) => {
     const e = Object.assign({ t: state.temps }, entree);
+    // Témoin ou pas : ce qui arrive sous les yeux de l'escouade est su tout de
+    // suite, le reste met le temps de la route (voir `nouvellesConnues`).
+    if (e.regionId != null && e.vu === undefined) e.vu = estSurveillee(state, e.regionId);
     state.journal.push(e);
     if (state.journal.length > LOG_MAX) state.journal.splice(0, state.journal.length - LOG_MAX);
     if (e.important) state.nonLus = (state.nonLus || 0) + 1;
@@ -5979,6 +6211,20 @@ const FILTRES = {
 const SKILL_ORDRE = { fouille: 'ingenierie', mine: 'force', chasse: 'tir' };
 
 /**
+ * Ce que rapporte une heure d'entraînement dédié. Chiffré, pas deviné : à 5,5,
+ * atteindre 30 en mêlée demandait cent cinquante-neuf jours de jeu à ne faire
+ * que ça, et cent heures d'entraînement rendaient un seul point. Le joueur ne
+ * voyait rien bouger et l'ordre ne servait à rien qu'à manger des rations.
+ */
+const XP_ENTRAINEMENT = 24;
+/**
+ * Un vétéran qui corrige les gestes vaut mieux qu'un mannequin de paille. Le
+ * meilleur du groupe dans la compétence travaillée accélère les autres —
+ * et c'est ce qui donne un rôle à celui qu'on a fait monter.
+ */
+const BONUS_INSTRUCTEUR = 0.9;
+
+/**
  * Ce qu'on ramasse en marchant, rapporté à ce qu'on ramasserait en fouillant
  * vraiment. On ne traverse pas cinquante kilomètres de ferraille sans rien
  * mettre dans son sac — et sans ça, un quart du temps de jeu ne produit rien.
@@ -6362,11 +6608,21 @@ function tickGroupe(state, g, log, ctx) {
           const cout = Math.ceil(paquet.gens.length / 2);
           if ((g.inventaire.rations || 0) >= cout) {
             g.inventaire.rations -= cout;
+            // Le meilleur du groupe donne le ton, y compris s'il ne s'entraîne
+            // pas lui-même : on regarde tout le monde debout, pas le paquet.
+            let maitre = 0;
+            for (const c of debout) maitre = Math.max(maitre, comp(c, skill));
             for (const c of paquet.gens) {
               const av = c.skills[skill];
-              gagnerXp(c, skill, 5.5);
+              const ecart = Math.max(0, maitre - comp(c, skill));
+              const bonus = 1 + Math.min(BONUS_INSTRUCTEUR, ecart / 40);
+              gagnerXp(c, skill, XP_ENTRAINEMENT * bonus);
               if (c.skills[skill] > av) {
-                log({ type: 'progres', texte: `${c.nom} : ${skill} ${c.skills[skill]}.`, discret: true });
+                log({
+                  type: 'progres',
+                  texte: `${c.nom} progresse à l’entraînement : ${SKILLS[skill]} ${c.skills[skill]}.`,
+                  discret: true,
+                });
               }
             }
           } else {
@@ -6607,11 +6863,14 @@ function nouvellePartie(seed, opts = {}) {
       ordresRemplis: 0,
     },
     memorial: [],
+    // Ce que le joueur sait du monde, par opposition à ce qui est.
+    connaissance: creerConnaissance(0),
     fin: null,
   };
   world.caravanes = [];
 
   decouvrir(world, depart.regionId, 2);
+  observer(state);
   tickClimat(world, 0, rng);
   rafraichirPanneaux(state, rng, 0);
   for (const col of world.colonies) etalDe(world, col, rng, 0);
@@ -6705,6 +6964,9 @@ function tick(state) {
   if (!state.fin) tickSquad(state, log, ctx);
   if (!state.fin) tickContrats(state, log, ctx);
   if (!state.fin) tickAllegeance(state, log, ctx);
+
+  // En dernier : on relève ce qu'on a sous les yeux, après que tout a bougé.
+  observer(state);
 
   state.rngState = rng.save();
   return state;
@@ -6874,6 +7136,11 @@ function normaliser(state) {
   if (!p.groupeActif || !p.groupes.some((g) => g.id === p.groupeActif)) {
     p.groupeActif = p.groupes.length ? p.groupes[0].id : null;
   }
+
+  // Avant la connaissance imparfaite, tout était su en permanence. On repart
+  // d'une ardoise vide : le premier tick relève ce qu'on a sous les yeux, et le
+  // reste de la carte redevient un souvenir à rafraîchir.
+  if (!state.connaissance) state.connaissance = creerConnaissance(state.temps);
 
   if (!p.contrats) p.contrats = [];
   if (!p.primes) p.primes = {};
@@ -7225,34 +7492,45 @@ function dessinerCarte(cv) {
     }
   }
 
-  // Colonies — les ruines gardent une trace, en gris et brisée
+  // Colonies — les ruines gardent une trace, en gris et brisée. La carte
+  // affiche le dernier drapeau *vu*, pas le drapeau réel : une ville prise en
+  // votre absence garde ses anciennes couleurs jusqu'à ce que quelqu'un y
+  // retourne. C'est le fond du système : la carte est un carnet, pas un satellite.
   for (const col of w.colonies) {
     const r = w.regions[col.regionId];
     if (!r.decouvert) continue;
+    const su = vueColonie(S, col);
+    if (su.inconnu) continue; // repérée de loin, jamais relevée : pas de drapeau
     const x = r.x * CELL;
     const y = r.y * CELL;
-    const t = 3 + col.taille;
+    const t = 3 + (su.taille || col.taille);
     const ox = x + Math.floor((CELL - t) / 2);
     const oy = y + Math.floor((CELL - t) / 2);
     g.fillStyle = '#05070a';
     g.fillRect(ox - 1, oy - 1, t + 2, t + 2);
-    if (col.ruine) {
+    if (su.ruine) {
       g.fillStyle = '#4a4f5a';
       g.fillRect(ox, oy, t, 1);
       g.fillRect(ox, oy, 1, t);
       g.fillRect(ox + t - 1, oy + t - 2, 1, 2);
       continue;
     }
-    g.fillStyle = couleurFaction(col.faction);
+    g.fillStyle = couleurFaction(su.faction);
     g.fillRect(ox, oy, t, t);
     g.fillStyle = '#05070a';
     g.fillRect(ox + 1, oy + 1, t - 2, t - 2);
+    // Un liseré terne sur ce dont le relevé date d'une saison ou plus.
+    if (!su.frais && su.depuis > 24 * 30) {
+      g.fillStyle = 'rgba(84,94,112,.85)';
+      g.fillRect(ox + 1, oy + t - 2, t - 2, 1);
+    }
   }
 
-  // Caravanes : de petits convois qui traversent réellement la carte
+  // Caravanes : de petits convois qui traversent réellement la carte. On ne
+  // les voit que là où l'on a quelqu'un — ailleurs, les routes sont muettes.
   for (const car of w.caravanes || []) {
     const r = w.regions[car.regionId];
-    if (!r || !r.decouvert) continue;
+    if (!r || !r.decouvert || !estSurveillee(S, car.regionId)) continue;
     g.fillStyle = '#05070a';
     g.fillRect(r.x * CELL + 1, r.y * CELL + 11, 5, 3);
     g.fillStyle = couleurFaction(car.faction);
@@ -7271,10 +7549,13 @@ function dessinerCarte(cv) {
     }
   }
 
-  // Armées
+  // Armées : idem. Une colonne en marche à l'autre bout de la carte ne se
+  // devine pas — sauf à avoir cassé leurs transmissions.
+  const crypto = (S.base.recherche.cryptographie || 0) > 0;
   for (const a of w.armees) {
     const r = w.regions[a.regionId];
     if (!r || !r.decouvert) continue;
+    if (!crypto && !estSurveillee(S, a.regionId)) continue;
     const x = r.x * CELL;
     const y = r.y * CELL;
     g.fillStyle = couleurFaction(a.faction);
@@ -7527,6 +7808,7 @@ function blocRegionCourante() {
     </section>` : ''}`;
 }
 
+/** Le panneau de la ville où l'on se trouve : forcément de première main. */
 function blocColonie(col) {
   const repu = S.player.reputation[col.faction] || 0;
   const cls = repu > 20 ? 'ok' : repu < -20 ? 'mal' : 'att';
@@ -7585,13 +7867,19 @@ function blocSelection() {
     </section>`;
   }
 
+  // Ce qu'on sait, pas ce qui est : la carte est un souvenir sauf là où l'on a
+  // quelqu'un. Le relevé porte sa date, à charge au joueur d'en tenir compte.
+  const su = col ? vueColonie(S, col) : null;
   return `<section class="panneau">
-    <h2 class="titre">${e(col ? col.nom : `Secteur ${nomCase}`)}
+    <h2 class="titre">${e(col ? (su.nom || col.nom) : `Secteur ${nomCase}`)}
       <span class="droite">${e(BIOMES[r.biome].nom)}</span></h2>
-    ${col ? `<div class="ligne"><span class="k">Tenue par</span>
-      <span class="v" style="color:${couleurFaction(col.faction)}">${e(FACTIONS[col.faction].nom)}</span></div>
-      <div class="ligne"><span class="k">Population</span><span class="v">${n(col.pop)}</span></div>
-      <div class="ligne"><span class="k">Défense</span><span class="v">${n(col.defense)}</span></div>` : ''}
+    ${col ? (su.inconnu
+    ? '<div class="aide">Une ville, d’après la carte. On n’y a jamais mis les pieds.</div>'
+    : `${su.frais ? '' : `<div class="aide">Relevé ${e(ageTexte(su.depuis))}${su.perime ? ' — probablement caduc' : ''}.</div>`}
+      <div class="ligne"><span class="k">Tenue par</span>
+      <span class="v" style="color:${couleurFaction(su.faction)}">${e(su.faction ? FACTIONS[su.faction].nom : 'sans maître')}</span></div>
+      <div class="ligne"><span class="k">Population</span><span class="v">${n(su.pop)}</span></div>
+      <div class="ligne"><span class="k">Défense</span><span class="v">${n(su.defense)}</span></div>`) : ''}
     <div class="ligne"><span class="k">Distance</span><span class="v">${distance(G().regionId, selection)} cases</span></div>
     <div class="ligne"><span class="k">Rencontres</span><span class="v">${(r.danger * 100).toFixed(1)} %/h</span></div>
     ${armeesIci(selection)}
@@ -7603,6 +7891,8 @@ function blocSelection() {
 }
 
 function armeesIci(rid) {
+  // Une colonne en marche ne se devine pas depuis l'autre bout de la carte.
+  if (!estSurveillee(S, rid)) return '';
   const as = S.world.armees.filter((a) => a.regionId === rid);
   if (!as.length) return '';
   return as.map((a) => `<div class="ligne"><span class="k">Colonne</span>
@@ -7723,8 +8013,12 @@ function blocTacheMembre(c) {
     <div class="taches">
       <button class="act mini" data-a="tache" data-c="${e(c.id)}" data-k=""
         aria-pressed="${!perso}">Suivre le groupe</button>
-      ${TACHES_INDIVIDUELLES.map((k) => `<button class="act mini" data-a="tache"
-        data-c="${e(c.id)}" data-k="${k}" aria-pressed="${perso === k}">${e(ORDRES[k].nom)}</button>`).join('')}
+      ${TACHES_INDIVIDUELLES.map((k) => (k === 'entrainement'
+    ? `<button class="act mini" data-a="modale" data-m="entrainement" data-c="${e(c.id)}"
+        aria-pressed="${perso === k}">${e(ORDRES[k].nom)}${perso === k && c.tache.skill
+      ? ` · ${e(SKILLS[c.tache.skill])}` : ''}</button>`
+    : `<button class="act mini" data-a="tache"
+        data-c="${e(c.id)}" data-k="${k}" aria-pressed="${perso === k}">${e(ORDRES[k].nom)}</button>`)).join('')}
     </div>`;
 }
 
@@ -8119,6 +8413,7 @@ function ecranContrats() {
 // ---------------------------------------------------------------------------
 
 function ecranMonde() {
+  const crypto = (S.base.recherche.cryptographie || 0) > 0;
   const cl = classement(S.world);
   const max = Math.max(1, cl[0] ? cl[0].puissance : 1);
 
@@ -8131,7 +8426,9 @@ function ecranMonde() {
         <span class="v"><span class="puce ${cls}">rép ${repu > 0 ? '+' : ''}${n(repu)}</span></span>
       </div>
       ${jauge(f.puissance / max, '', f.couleur)}
-      <div class="aide">${f.colonies} colonie(s) · trésor ${n(f.tresor)} cr · ${e(FACTIONS[f.key].devise)}</div>
+      <div class="aide">${f.colonies} colonie(s) · ${crypto
+    ? `trésor ${n(f.tresor)} cr`
+    : 'trésor inconnu'} · ${e(FACTIONS[f.key].devise)}</div>
     </div>`;
   }).join('');
 
@@ -8142,21 +8439,31 @@ function ecranMonde() {
         <span class="v">${dureeTexte(S.temps - g.depuis)} · ${g.batailles} bataille(s)</span></div>`).join('')
     : '<div class="aide">Paix générale. Ça ne dure jamais.</div>';
 
-  const armees = S.world.armees.length
-    ? S.world.armees.map((a) => `<div class="ligne">
+  // Une colonne en marche se voit si on a quelqu'un dans le secteur — ou si on
+  // a cassé leurs transmissions. C'est à ça que sert la Cryptographie.
+  const vues = crypto ? S.world.armees : S.world.armees.filter((a) => estSurveillee(S, a.regionId));
+  const armees = vues.length
+    ? vues.map((a) => `<div class="ligne">
         <span class="k" style="color:${couleurFaction(a.faction)}">${e(FACTIONS[a.faction].court)} · ${n(a.force)}</span>
         <span class="v">${e(a.etat)} → ${e((colonieParId(S.world, a.cible) || {}).nom || '—')}</span></div>`).join('')
-    : '<div class="aide">Aucune colonne en campagne.</div>';
+    : `<div class="aide">${S.world.armees.length
+      ? 'Rien en vue. Ce qui ne veut pas dire qu’il ne se passe rien.'
+      : 'Aucune colonne en campagne.'}</div>`;
 
-  const connues = S.world.colonies.filter((c) => S.world.regions[c.regionId].decouvert);
+  // Le registre des villes est un carnet de relevés, pas un tableau de bord :
+  // chaque ligne porte la date à laquelle on l'a écrite.
+  const connues = S.world.colonies
+    .filter((c) => S.world.regions[c.regionId].decouvert)
+    .map((c) => vueColonie(S, c))
+    .filter((v) => !v.inconnu);
   const villes = connues.length
-    ? connues.map((c) => `<div class="ligne">
-        <span class="k">${e(c.nom)}</span>
-        ${c.ruine
+    ? connues.sort((a, b) => (a.depuis ?? 0) - (b.depuis ?? 0)).map((v) => `<div class="ligne">
+        <span class="k">${e(v.nom)}${v.frais ? '' : ` <span class="aide">${e(ageTexte(v.depuis))}</span>`}</span>
+        ${v.ruine
     ? '<span class="v" style="color:var(--texte-3)">en ruines</span>'
-    : `<span class="v" style="color:${couleurFaction(c.faction)}">${e(FACTIONS[c.faction].court)} · rang ${c.taille} · ${n(c.pop)} hab.</span>`}
+    : `<span class="v" style="color:${couleurFaction(v.faction)}">${e(v.faction ? FACTIONS[v.faction].court : '—')} · rang ${v.taille} · ${n(v.pop)} hab.</span>`}
       </div>`).join('')
-    : '<div class="aide">Aucune ville repérée.</div>';
+    : '<div class="aide">Aucune ville relevée. Il faut aller voir de ses yeux.</div>';
 
   const meteoNow = conditions(S.world, S.temps);
   const car = S.world.caravanes || [];
@@ -8179,9 +8486,13 @@ function ecranMonde() {
   ];
 
 
-  const chronique = S.journal
-    .filter((x) => ['capture', 'guerre', 'paix', 'fondation', 'effondrement', 'croissance', 'saison'].includes(x.type))
-    .slice(-14).reverse();
+  // La chronique n'est pas un flux d'informations en direct : c'est ce qui est
+  // parvenu jusqu'à vous. Les nouvelles mettent du temps à faire la route, et
+  // celles qu'on n'a pas vues de ses yeux sont données comme des rapports.
+  const chronique = nouvellesConnues(
+    S,
+    S.journal.filter((x) => ['capture', 'guerre', 'paix', 'fondation', 'effondrement', 'secession', 'croissance', 'saison'].includes(x.type))
+  ).slice(-14).reverse();
 
   return `
   <section class="panneau">
@@ -8206,8 +8517,9 @@ function ecranMonde() {
   <section class="panneau">
     <h2 class="titre">Chronique du monde</h2>
     ${chronique.length ? `<div class="fil">${chronique.map((x) => `<div class="fil-l ${couleurLog(x.type)}">
-      <span class="fil-t">${horloge(x.t).texte}</span><span class="fil-x">${e(x.texte)}</span></div>`).join('')}</div>`
-    : '<div class="aide">Rien de notable pour l’instant.</div>'}
+      <span class="fil-t">${horloge(x.t).texte}</span><span class="fil-x">${e(x.texte)}${x.rapporte
+    ? ' <span class="aide">· rapporté</span>' : ''}</span></div>`).join('')}</div>`
+    : '<div class="aide">Rien ne vous est parvenu. Ce qui ne veut pas dire qu’il ne se passe rien.</div>'}
   </section>
 
   <section class="panneau">
@@ -8439,13 +8751,35 @@ function modaleEquipement() {
     ${niveauRech(S.base, 'cybernetique') < 1 ? '<div class="aide" style="color:var(--ambre)">Les greffes exigent la recherche Cybernétique.</div>' : ''}`;
 }
 
+/**
+ * Choix de la compétence travaillée. Ouvert depuis l'ordre du groupe (tout le
+ * monde s'y met) ou depuis la fiche d'un membre (lui seul), selon qu'on a passé
+ * un identifiant.
+ */
 function modaleEntrainement() {
-  return `<h2 class="titre">Entraînement</h2>
-  <div class="aide">Toute l’escouade travaille la même compétence. Consomme des rations,
-  progresse bien plus vite que sur le terrain — mais ne rapporte rien.</div>
+  const g = G();
+  const c = modale.c ? g.membres.find((x) => x.id === modale.c) : null;
+  const meilleurs = {};
+  for (const k of SKILL_KEYS) {
+    meilleurs[k] = g.membres.filter(estVivant)
+      .reduce((m, x) => Math.max(m, comp(x, k)), 0);
+  }
+  return `<h2 class="titre">Entraînement${c ? ` — ${e(c.nom)}` : ''}</h2>
+  <div class="aide">${c
+    ? 'Cette personne seule travaille la compétence choisie ; le reste du groupe suit son ordre.'
+    : 'Tout le groupe travaille la même compétence.'}
+  Consomme des rations et ne rapporte rien — mais c’est de loin le moyen le plus rapide de
+  progresser. Le meilleur du groupe fait l’instructeur : plus l’écart est grand, plus l’élève monte vite.</div>
   <div class="sep"></div>
-  <div class="pile">${SKILL_KEYS.map((k) => `<button class="act mini" style="text-align:left"
-    data-a="entrainer" data-k="${k}">${e(SKILLS[k])}</button>`).join('')}</div>`;
+  <div class="pile">${SKILL_KEYS.map((k) => {
+    const niv = c ? comp(c, k) : null;
+    const ecart = c ? Math.max(0, meilleurs[k] - niv) : 0;
+    return `<button class="act mini" style="text-align:left"
+      data-a="entrainer" data-k="${k}" ${c ? `data-c="${e(c.id)}"` : ''}>
+      ${e(SKILLS[k])}${c ? ` <span class="aide">— ${Math.round(niv)}${ecart > 2
+      ? `, instructeur à ${Math.round(meilleurs[k])}` : ', personne pour l’encadrer'}</span>` : ''}
+    </button>`;
+  }).join('')}</div>`;
 }
 
 function modaleRecrutement() {
@@ -8763,10 +9097,18 @@ function surClic(ev) {
     }
 
     case 'entrainer': {
-      donnerOrdre(S, { type: 'entrainement', skill: el.dataset.k });
+      const skill = el.dataset.k;
+      if (el.dataset.c) {
+        // Entraînement personnel : le reste du groupe garde son ordre.
+        const r = ACTIONS.assignerTache(el.dataset.c, { type: 'entrainement', skill });
+        if (!r.ok) toast(r.motif, true);
+        else toast(`Entraînement personnel : ${SKILLS[skill]}.`);
+      } else {
+        donnerOrdre(S, { type: 'entrainement', skill });
+        toast(`Entraînement du groupe : ${SKILLS[skill]}.`);
+      }
       modale = null;
       rendreModale();
-      toast(`Entraînement : ${SKILLS[el.dataset.k]}.`);
       rafraichir(true);
       break;
     }

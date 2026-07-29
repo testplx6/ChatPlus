@@ -14,6 +14,7 @@ import { tickFactions } from './factions.js';
 import { tickSquad } from './squad.js';
 import { creerLogger } from './events.js';
 import { groupeVide } from './groupes.js';
+import { creerConnaissance, observer } from './connaissance.js';
 import { rafraichirPanneaux, tickContrats } from './contrats.js';
 import { tickAllegeance, palierBonus } from './allegeance.js';
 
@@ -109,11 +110,14 @@ export function nouvellePartie(seed, opts = {}) {
       ordresRemplis: 0,
     },
     memorial: [],
+    // Ce que le joueur sait du monde, par opposition à ce qui est.
+    connaissance: creerConnaissance(0),
     fin: null,
   };
   world.caravanes = [];
 
   decouvrir(world, depart.regionId, 2);
+  observer(state);
   tickClimat(world, 0, rng);
   rafraichirPanneaux(state, rng, 0);
   for (const col of world.colonies) etalDe(world, col, rng, 0);
@@ -207,6 +211,9 @@ export function tick(state) {
   if (!state.fin) tickSquad(state, log, ctx);
   if (!state.fin) tickContrats(state, log, ctx);
   if (!state.fin) tickAllegeance(state, log, ctx);
+
+  // En dernier : on relève ce qu'on a sous les yeux, après que tout a bougé.
+  observer(state);
 
   state.rngState = rng.save();
   return state;

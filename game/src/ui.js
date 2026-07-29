@@ -36,6 +36,7 @@ import {
 } from './allegeance.js';
 import { caravanesIci, valeurCargaison } from './caravanes.js';
 import { couleurLog, creerLogger } from './events.js';
+import { vueColonie, vueRegion, estSurveillee, ageTexte, nouvellesConnues } from './connaissance.js';
 import {
   groupeActif, groupes, groupeParId, choisirGroupe, tousLesMembres, tacheDe,
   assignerTache, scinder, fusionner, fusionnablesAvec, maxGroupes, repartition,
@@ -307,34 +308,45 @@ function dessinerCarte(cv) {
     }
   }
 
-  // Colonies — les ruines gardent une trace, en gris et brisée
+  // Colonies — les ruines gardent une trace, en gris et brisée. La carte
+  // affiche le dernier drapeau *vu*, pas le drapeau réel : une ville prise en
+  // votre absence garde ses anciennes couleurs jusqu'à ce que quelqu'un y
+  // retourne. C'est le fond du système : la carte est un carnet, pas un satellite.
   for (const col of w.colonies) {
     const r = w.regions[col.regionId];
     if (!r.decouvert) continue;
+    const su = vueColonie(S, col);
+    if (su.inconnu) continue; // repérée de loin, jamais relevée : pas de drapeau
     const x = r.x * CELL;
     const y = r.y * CELL;
-    const t = 3 + col.taille;
+    const t = 3 + (su.taille || col.taille);
     const ox = x + Math.floor((CELL - t) / 2);
     const oy = y + Math.floor((CELL - t) / 2);
     g.fillStyle = '#05070a';
     g.fillRect(ox - 1, oy - 1, t + 2, t + 2);
-    if (col.ruine) {
+    if (su.ruine) {
       g.fillStyle = '#4a4f5a';
       g.fillRect(ox, oy, t, 1);
       g.fillRect(ox, oy, 1, t);
       g.fillRect(ox + t - 1, oy + t - 2, 1, 2);
       continue;
     }
-    g.fillStyle = couleurFaction(col.faction);
+    g.fillStyle = couleurFaction(su.faction);
     g.fillRect(ox, oy, t, t);
     g.fillStyle = '#05070a';
     g.fillRect(ox + 1, oy + 1, t - 2, t - 2);
+    // Un liseré terne sur ce dont le relevé date d'une saison ou plus.
+    if (!su.frais && su.depuis > 24 * 30) {
+      g.fillStyle = 'rgba(84,94,112,.85)';
+      g.fillRect(ox + 1, oy + t - 2, t - 2, 1);
+    }
   }
 
-  // Caravanes : de petits convois qui traversent réellement la carte
+  // Caravanes : de petits convois qui traversent réellement la carte. On ne
+  // les voit que là où l'on a quelqu'un — ailleurs, les routes sont muettes.
   for (const car of w.caravanes || []) {
     const r = w.regions[car.regionId];
-    if (!r || !r.decouvert) continue;
+    if (!r || !r.decouvert || !estSurveillee(S, car.regionId)) continue;
     g.fillStyle = '#05070a';
     g.fillRect(r.x * CELL + 1, r.y * CELL + 11, 5, 3);
     g.fillStyle = couleurFaction(car.faction);
@@ -353,10 +365,13 @@ function dessinerCarte(cv) {
     }
   }
 
-  // Armées
+  // Armées : idem. Une colonne en marche à l'autre bout de la carte ne se
+  // devine pas — sauf à avoir cassé leurs transmissions.
+  const crypto = (S.base.recherche.cryptographie || 0) > 0;
   for (const a of w.armees) {
     const r = w.regions[a.regionId];
     if (!r || !r.decouvert) continue;
+    if (!crypto && !estSurveillee(S, a.regionId)) continue;
     const x = r.x * CELL;
     const y = r.y * CELL;
     g.fillStyle = couleurFaction(a.faction);
@@ -609,6 +624,7 @@ function blocRegionCourante() {
     </section>` : ''}`;
 }
 
+/** Le panneau de la ville où l'on se trouve : forcément de première main. */
 function blocColonie(col) {
   const repu = S.player.reputation[col.faction] || 0;
   const cls = repu > 20 ? 'ok' : repu < -20 ? 'mal' : 'att';
@@ -667,13 +683,19 @@ function blocSelection() {
     </section>`;
   }
 
+  // Ce qu'on sait, pas ce qui est : la carte est un souvenir sauf là où l'on a
+  // quelqu'un. Le relevé porte sa date, à charge au joueur d'en tenir compte.
+  const su = col ? vueColonie(S, col) : null;
   return `<section class="panneau">
-    <h2 class="titre">${e(col ? col.nom : `Secteur ${nomCase}`)}
+    <h2 class="titre">${e(col ? (su.nom || col.nom) : `Secteur ${nomCase}`)}
       <span class="droite">${e(BIOMES[r.biome].nom)}</span></h2>
-    ${col ? `<div class="ligne"><span class="k">Tenue par</span>
-      <span class="v" style="color:${couleurFaction(col.faction)}">${e(FACTIONS[col.faction].nom)}</span></div>
-      <div class="ligne"><span class="k">Population</span><span class="v">${n(col.pop)}</span></div>
-      <div class="ligne"><span class="k">Défense</span><span class="v">${n(col.defense)}</span></div>` : ''}
+    ${col ? (su.inconnu
+    ? '<div class="aide">Une ville, d’après la carte. On n’y a jamais mis les pieds.</div>'
+    : `${su.frais ? '' : `<div class="aide">Relevé ${e(ageTexte(su.depuis))}${su.perime ? ' — probablement caduc' : ''}.</div>`}
+      <div class="ligne"><span class="k">Tenue par</span>
+      <span class="v" style="color:${couleurFaction(su.faction)}">${e(su.faction ? FACTIONS[su.faction].nom : 'sans maître')}</span></div>
+      <div class="ligne"><span class="k">Population</span><span class="v">${n(su.pop)}</span></div>
+      <div class="ligne"><span class="k">Défense</span><span class="v">${n(su.defense)}</span></div>`) : ''}
     <div class="ligne"><span class="k">Distance</span><span class="v">${distance(G().regionId, selection)} cases</span></div>
     <div class="ligne"><span class="k">Rencontres</span><span class="v">${(r.danger * 100).toFixed(1)} %/h</span></div>
     ${armeesIci(selection)}
@@ -685,6 +707,8 @@ function blocSelection() {
 }
 
 function armeesIci(rid) {
+  // Une colonne en marche ne se devine pas depuis l'autre bout de la carte.
+  if (!estSurveillee(S, rid)) return '';
   const as = S.world.armees.filter((a) => a.regionId === rid);
   if (!as.length) return '';
   return as.map((a) => `<div class="ligne"><span class="k">Colonne</span>
@@ -805,8 +829,12 @@ function blocTacheMembre(c) {
     <div class="taches">
       <button class="act mini" data-a="tache" data-c="${e(c.id)}" data-k=""
         aria-pressed="${!perso}">Suivre le groupe</button>
-      ${TACHES_INDIVIDUELLES.map((k) => `<button class="act mini" data-a="tache"
-        data-c="${e(c.id)}" data-k="${k}" aria-pressed="${perso === k}">${e(ORDRES[k].nom)}</button>`).join('')}
+      ${TACHES_INDIVIDUELLES.map((k) => (k === 'entrainement'
+    ? `<button class="act mini" data-a="modale" data-m="entrainement" data-c="${e(c.id)}"
+        aria-pressed="${perso === k}">${e(ORDRES[k].nom)}${perso === k && c.tache.skill
+      ? ` · ${e(SKILLS[c.tache.skill])}` : ''}</button>`
+    : `<button class="act mini" data-a="tache"
+        data-c="${e(c.id)}" data-k="${k}" aria-pressed="${perso === k}">${e(ORDRES[k].nom)}</button>`)).join('')}
     </div>`;
 }
 
@@ -1201,6 +1229,7 @@ function ecranContrats() {
 // ---------------------------------------------------------------------------
 
 function ecranMonde() {
+  const crypto = (S.base.recherche.cryptographie || 0) > 0;
   const cl = classement(S.world);
   const max = Math.max(1, cl[0] ? cl[0].puissance : 1);
 
@@ -1213,7 +1242,9 @@ function ecranMonde() {
         <span class="v"><span class="puce ${cls}">rép ${repu > 0 ? '+' : ''}${n(repu)}</span></span>
       </div>
       ${jauge(f.puissance / max, '', f.couleur)}
-      <div class="aide">${f.colonies} colonie(s) · trésor ${n(f.tresor)} cr · ${e(FACTIONS[f.key].devise)}</div>
+      <div class="aide">${f.colonies} colonie(s) · ${crypto
+    ? `trésor ${n(f.tresor)} cr`
+    : 'trésor inconnu'} · ${e(FACTIONS[f.key].devise)}</div>
     </div>`;
   }).join('');
 
@@ -1224,21 +1255,31 @@ function ecranMonde() {
         <span class="v">${dureeTexte(S.temps - g.depuis)} · ${g.batailles} bataille(s)</span></div>`).join('')
     : '<div class="aide">Paix générale. Ça ne dure jamais.</div>';
 
-  const armees = S.world.armees.length
-    ? S.world.armees.map((a) => `<div class="ligne">
+  // Une colonne en marche se voit si on a quelqu'un dans le secteur — ou si on
+  // a cassé leurs transmissions. C'est à ça que sert la Cryptographie.
+  const vues = crypto ? S.world.armees : S.world.armees.filter((a) => estSurveillee(S, a.regionId));
+  const armees = vues.length
+    ? vues.map((a) => `<div class="ligne">
         <span class="k" style="color:${couleurFaction(a.faction)}">${e(FACTIONS[a.faction].court)} · ${n(a.force)}</span>
         <span class="v">${e(a.etat)} → ${e((colonieParId(S.world, a.cible) || {}).nom || '—')}</span></div>`).join('')
-    : '<div class="aide">Aucune colonne en campagne.</div>';
+    : `<div class="aide">${S.world.armees.length
+      ? 'Rien en vue. Ce qui ne veut pas dire qu’il ne se passe rien.'
+      : 'Aucune colonne en campagne.'}</div>`;
 
-  const connues = S.world.colonies.filter((c) => S.world.regions[c.regionId].decouvert);
+  // Le registre des villes est un carnet de relevés, pas un tableau de bord :
+  // chaque ligne porte la date à laquelle on l'a écrite.
+  const connues = S.world.colonies
+    .filter((c) => S.world.regions[c.regionId].decouvert)
+    .map((c) => vueColonie(S, c))
+    .filter((v) => !v.inconnu);
   const villes = connues.length
-    ? connues.map((c) => `<div class="ligne">
-        <span class="k">${e(c.nom)}</span>
-        ${c.ruine
+    ? connues.sort((a, b) => (a.depuis ?? 0) - (b.depuis ?? 0)).map((v) => `<div class="ligne">
+        <span class="k">${e(v.nom)}${v.frais ? '' : ` <span class="aide">${e(ageTexte(v.depuis))}</span>`}</span>
+        ${v.ruine
     ? '<span class="v" style="color:var(--texte-3)">en ruines</span>'
-    : `<span class="v" style="color:${couleurFaction(c.faction)}">${e(FACTIONS[c.faction].court)} · rang ${c.taille} · ${n(c.pop)} hab.</span>`}
+    : `<span class="v" style="color:${couleurFaction(v.faction)}">${e(v.faction ? FACTIONS[v.faction].court : '—')} · rang ${v.taille} · ${n(v.pop)} hab.</span>`}
       </div>`).join('')
-    : '<div class="aide">Aucune ville repérée.</div>';
+    : '<div class="aide">Aucune ville relevée. Il faut aller voir de ses yeux.</div>';
 
   const meteoNow = conditions(S.world, S.temps);
   const car = S.world.caravanes || [];
@@ -1261,9 +1302,13 @@ function ecranMonde() {
   ];
 
 
-  const chronique = S.journal
-    .filter((x) => ['capture', 'guerre', 'paix', 'fondation', 'effondrement', 'croissance', 'saison'].includes(x.type))
-    .slice(-14).reverse();
+  // La chronique n'est pas un flux d'informations en direct : c'est ce qui est
+  // parvenu jusqu'à vous. Les nouvelles mettent du temps à faire la route, et
+  // celles qu'on n'a pas vues de ses yeux sont données comme des rapports.
+  const chronique = nouvellesConnues(
+    S,
+    S.journal.filter((x) => ['capture', 'guerre', 'paix', 'fondation', 'effondrement', 'secession', 'croissance', 'saison'].includes(x.type))
+  ).slice(-14).reverse();
 
   return `
   <section class="panneau">
@@ -1288,8 +1333,9 @@ function ecranMonde() {
   <section class="panneau">
     <h2 class="titre">Chronique du monde</h2>
     ${chronique.length ? `<div class="fil">${chronique.map((x) => `<div class="fil-l ${couleurLog(x.type)}">
-      <span class="fil-t">${horloge(x.t).texte}</span><span class="fil-x">${e(x.texte)}</span></div>`).join('')}</div>`
-    : '<div class="aide">Rien de notable pour l’instant.</div>'}
+      <span class="fil-t">${horloge(x.t).texte}</span><span class="fil-x">${e(x.texte)}${x.rapporte
+    ? ' <span class="aide">· rapporté</span>' : ''}</span></div>`).join('')}</div>`
+    : '<div class="aide">Rien ne vous est parvenu. Ce qui ne veut pas dire qu’il ne se passe rien.</div>'}
   </section>
 
   <section class="panneau">
@@ -1521,13 +1567,35 @@ function modaleEquipement() {
     ${niveauRech(S.base, 'cybernetique') < 1 ? '<div class="aide" style="color:var(--ambre)">Les greffes exigent la recherche Cybernétique.</div>' : ''}`;
 }
 
+/**
+ * Choix de la compétence travaillée. Ouvert depuis l'ordre du groupe (tout le
+ * monde s'y met) ou depuis la fiche d'un membre (lui seul), selon qu'on a passé
+ * un identifiant.
+ */
 function modaleEntrainement() {
-  return `<h2 class="titre">Entraînement</h2>
-  <div class="aide">Toute l’escouade travaille la même compétence. Consomme des rations,
-  progresse bien plus vite que sur le terrain — mais ne rapporte rien.</div>
+  const g = G();
+  const c = modale.c ? g.membres.find((x) => x.id === modale.c) : null;
+  const meilleurs = {};
+  for (const k of SKILL_KEYS) {
+    meilleurs[k] = g.membres.filter(estVivant)
+      .reduce((m, x) => Math.max(m, comp(x, k)), 0);
+  }
+  return `<h2 class="titre">Entraînement${c ? ` — ${e(c.nom)}` : ''}</h2>
+  <div class="aide">${c
+    ? 'Cette personne seule travaille la compétence choisie ; le reste du groupe suit son ordre.'
+    : 'Tout le groupe travaille la même compétence.'}
+  Consomme des rations et ne rapporte rien — mais c’est de loin le moyen le plus rapide de
+  progresser. Le meilleur du groupe fait l’instructeur : plus l’écart est grand, plus l’élève monte vite.</div>
   <div class="sep"></div>
-  <div class="pile">${SKILL_KEYS.map((k) => `<button class="act mini" style="text-align:left"
-    data-a="entrainer" data-k="${k}">${e(SKILLS[k])}</button>`).join('')}</div>`;
+  <div class="pile">${SKILL_KEYS.map((k) => {
+    const niv = c ? comp(c, k) : null;
+    const ecart = c ? Math.max(0, meilleurs[k] - niv) : 0;
+    return `<button class="act mini" style="text-align:left"
+      data-a="entrainer" data-k="${k}" ${c ? `data-c="${e(c.id)}"` : ''}>
+      ${e(SKILLS[k])}${c ? ` <span class="aide">— ${Math.round(niv)}${ecart > 2
+      ? `, instructeur à ${Math.round(meilleurs[k])}` : ', personne pour l’encadrer'}</span>` : ''}
+    </button>`;
+  }).join('')}</div>`;
 }
 
 function modaleRecrutement() {
@@ -1845,10 +1913,18 @@ function surClic(ev) {
     }
 
     case 'entrainer': {
-      donnerOrdre(S, { type: 'entrainement', skill: el.dataset.k });
+      const skill = el.dataset.k;
+      if (el.dataset.c) {
+        // Entraînement personnel : le reste du groupe garde son ordre.
+        const r = ACTIONS.assignerTache(el.dataset.c, { type: 'entrainement', skill });
+        if (!r.ok) toast(r.motif, true);
+        else toast(`Entraînement personnel : ${SKILLS[skill]}.`);
+      } else {
+        donnerOrdre(S, { type: 'entrainement', skill });
+        toast(`Entraînement du groupe : ${SKILLS[skill]}.`);
+      }
       modale = null;
       rendreModale();
-      toast(`Entraînement : ${SKILLS[el.dataset.k]}.`);
       rafraichir(true);
       break;
     }
