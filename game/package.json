@@ -1,0 +1,11 @@
+{
+  "name": "cendres-protocole",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cendres & Protocole — simulation textuelle post-cyberpunk, mobile first",
+  "scripts": {
+    "test": "node test/headless.js",
+    "start": "node test/serve.js"
+  }
+}
