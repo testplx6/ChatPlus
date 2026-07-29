@@ -135,6 +135,8 @@ function genererColonies(rng, regions) {
       murs: taille * rng.irange(2, 5),
       stock: stockInitial(rng, taille),
       unrest: Number(rng.range(0, 0.2).toFixed(2)),
+      // Qui travaille à quoi. Rempli une fois la faction attribuée.
+      emplois: null,
       marche: 1 + taille * 0.35,
       prises: 0,
     };

@@ -69,6 +69,10 @@ export function normaliser(state) {
   for (const c of w.colonies) {
     if (c.declin === undefined) c.declin = 0;
     if (c.prises === undefined) c.prises = 0;
+    // Les métiers d'une ville d'avant : le premier tick les répartira.
+    if (c.emplois === undefined) c.emplois = null;
+    // Les gens qui comptent : le premier tick pourvoit les charges.
+    if (!c.notables) c.notables = [];
   }
   for (const g of p.groupes) {
     for (const c of g.membres) {

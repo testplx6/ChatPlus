@@ -66,14 +66,14 @@ de cache périmé.
 ## Tests
 
 ```bash
-npm test                     # 185 assertions sur le moteur, sans navigateur
+npm test                     # 196 assertions sur le moteur, sans navigateur
 node test/equilibre.js       # banc d'équilibrage : un bot joue 30 parties
 node test/equilibre.js 4000 60   # échantillon large, une vingtaine de secondes
 SANS=detach,contrats node test/equilibre.js   # coupe un système pour l'isoler
 VAGABOND=1 node test/equilibre.js             # témoin : voyager sans contrats
 
 npm install --no-save playwright-core
-node test/navigateur.js      # 72 vérifications dans un Chromium réel
+node test/navigateur.js      # 77 vérifications dans un Chromium réel
 ```
 
 Le harnais couvre la génération du monde, le déterminisme, la sauvegarde, la
@@ -85,8 +85,12 @@ les cas limites (escouade décimée, famine, sac plein).
 Il tient aussi un **budget de performance** : le coût d'un tick est mesuré, puis
 rapporté à la vitesse de la machine par un étalon (le même travail fixe partout).
 Un plafond en microsecondes sèches serait soit trop lâche pour attraper une
-régression, soit capricieux d'une machine à l'autre ; normalisé, il tient à 60 µs
-près et le test tombe si le tick se remet à coûter le double.
+régression, soit capricieux d'une machine à l'autre. Le plafond monte quand la
+simulation gagne du travail — jamais quand elle se dégrade —, et le fichier de
+test dit à chaque fois ce que la hausse a payé : 60 µs au départ, 65 avec les
+groupes et la connaissance imparfaite, 88 avec les métiers des villes et leurs
+notables. Sans cette trace, relever le budget deviendrait un moyen commode de ne
+jamais voir une régression.
 
 Le banc d'équilibrage est le plus utile des trois : c'est lui qui a montré que
 l'économie alimentaire des colonies n'avait jamais été à l'équilibre, que les
@@ -124,6 +128,28 @@ affamée paie les rations au prix fort. Une ville prospère change de rang ; une
 ville saignée par les guerres finit abandonnée et devient un site à fouiller ;
 une faction riche en fonde de nouvelles. Sur une année de jeu, la carte perd et
 gagne des villes.
+
+**Les métiers des villes.** Une ville n'est pas une population indifférenciée
+qui produit un peu de tout en proportion de sa taille. C'est des paysans, des
+mineurs, des ferrailleurs, des artisans, des médecins, des miliciens, des
+marchands — et cette répartition explique ce qu'elle produit, ce qu'elle vend et
+ce qu'elle devient. Un bourg des marais nourrit la région ; une ville des canyons
+crève de faim mais tient l'alliage. La vocation vient du biome et du tempérament
+de la faction qui la tient, puis la main-d'œuvre se redéploie lentement vers ce
+qui presse : une ville qui a faim met des bras aux cultures, une ville menacée
+arme les siens. Et 45 % de la population ne travaille pas — enfants, vieux,
+éclopés —, ce qui est précisément ce qui rend une ville fragile.
+
+**Les gens qui comptent.** Cinq mille cinq cents habitants nommés pèseraient
+quatre mégaoctets de sauvegarde et six cents fois le budget d'un tick : la
+population reste donc un effectif. Mais un effectif ne se rencontre pas. Chaque
+ville a son chef, son armurier, son contremaître, son médecin — avec un nom, un
+âge, un caractère, une humeur, une compétence, et une opinion sur vous. Ils
+vieillissent, se lassent, meurent et sont remplacés. Un armurier avare vend un
+tiers plus cher qu'un honnête homme qui vous apprécie ; un chef dur tient sa
+ville mais l'aigrit ; un contremaître compétent fait la différence entre une
+production qui tourne et une qui traîne. La granularité est là où on peut la
+voir.
 
 **Les caravanes.** Ce qu'une ville a en trop part chez celle qui en manque, sur
 des routes réelles et dangereuses. Elles se font piller par les pillards et par
@@ -321,6 +347,7 @@ game/
     groupes.js        groupes, tâches individuelles, scission et fusion
     connaissance.js   ce que le joueur sait, relevés datés, délai des nouvelles
     formation.js      écoles des villes, transmission maison, diplômes
+    notables.js       les gens qui comptent dans une ville, leur état, leurs effets
     sim.js            orchestration, rattrapage hors ligne
     save.js           sérialisation
     ui.js             rendu DOM + carte pixel sur canvas

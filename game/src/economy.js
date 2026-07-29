@@ -10,6 +10,12 @@ import { comp, gagnerXp, portage, XP_PRATIQUE } from './characters.js';
 import { remiseDe, palierBonus } from './allegeance.js';
 import { distance as distanceCases } from './world.js';
 import { groupeActif } from './groupes.js';
+import {
+  METIERS_VILLE, METIER_VILLE_KEYS, PART_ACTIVE, VOCATION_BIOME, VOCATION_STYLE,
+} from './data.js';
+import {
+  pourvoirCharges, tickNotables, rendementNotables, margeMarchand, ordreDe,
+} from './notables.js';
 
 /** Stock « confortable » visé par une colonie pour une marchandise. */
 export function cibleStock(col, key) {
@@ -47,7 +53,10 @@ export function prixUnitaire(col, key) {
  */
 export function prixJoueur(col, key, habilete = 0, repu = 0, remise = 0) {
   const p = prixUnitaire(col, key);
-  const marge = Math.max(0.02, 0.18 - habilete / 900 - Math.max(0, repu) / 1400 - remise);
+  // La marge n'est pas une constante du monde : c'est celle d'un homme, avec
+  // son caractère, son métier et ce qu'il pense de vous.
+  const marge = Math.max(0.02,
+    0.18 + margeMarchand(col) - habilete / 900 - Math.max(0, repu) / 1400 - remise);
   const majorationHostile = repu < -20 ? 0.15 + Math.min(0.4, -repu / 220) : 0;
   // Non arrondi volontairement : arrondir à l'unité écraserait la marge sur les
   // marchandises bon marché et rendrait l'aller-retour achat/revente gratuit.
@@ -67,27 +76,157 @@ export const FERTILITE = {
   plastique: 0.75, friche: 0.7, desert: 0.65, brulees: 0.6, relais: 0.5,
 };
 
-/** Production horaire d'une colonie, dérivée de son biome et de sa taille. */
+// ---------------------------------------------------------------------------
+// Métiers d'une ville
+// ---------------------------------------------------------------------------
+
+/** Combien de gens travaillent ici. Le reste mange sans produire. */
+export function actifs(col) {
+  return Math.max(1, Math.round(col.pop * PART_ACTIVE));
+}
+
+/**
+ * Répartition initiale : la vocation du biome, corrigée par le tempérament de
+ * la faction. Une ville des canyons fait des mineurs, une commune des marais
+ * des paysans, une garnison des miliciens.
+ */
+export function emploisInitiaux(world, col, rng) {
+  const biome = world.regions[col.regionId].biome;
+  const style = col.faction && FACTIONS[col.faction] ? FACTIONS[col.faction].style : null;
+  const poids = {};
+  for (const k of METIER_VILLE_KEYS) poids[k] = 0.35; // tout le monde a un peu de tout
+  const voc = VOCATION_BIOME[biome] || {};
+  for (const k of Object.keys(voc)) poids[k] += voc[k];
+  const st = (style && VOCATION_STYLE[style]) || {};
+  for (const k of Object.keys(st)) poids[k] += st[k];
+  // Un peu de bruit : deux villes du même biome ne se ressemblent pas trait
+  // pour trait.
+  if (rng) for (const k of METIER_VILLE_KEYS) poids[k] *= rng.range(0.8, 1.2);
+  return repartir(poids, actifs(col));
+}
+
+/** Convertit des poids en effectifs entiers dont la somme vaut `total`. */
+function repartir(poids, total) {
+  let somme = 0;
+  for (const k of METIER_VILLE_KEYS) somme += poids[k];
+  const out = {};
+  let place = 0;
+  for (const k of METIER_VILLE_KEYS) {
+    out[k] = Math.floor((poids[k] / somme) * total);
+    place += out[k];
+  }
+  // Le reste va au métier le plus lourd : arrondir vers le bas partout perdrait
+  // jusqu'à six personnes par ville.
+  let meilleur = METIER_VILLE_KEYS[0];
+  for (const k of METIER_VILLE_KEYS) if (poids[k] > poids[meilleur]) meilleur = k;
+  out[meilleur] += total - place;
+  return out;
+}
+
+/** Effectif d'un métier, borné : une ville qui a fondu réaffecte ses gens. */
+export function emploi(col, key) {
+  return Math.max(0, Math.round((col.emplois && col.emplois[key]) || 0));
+}
+
+/**
+ * La main-d'œuvre se redéploie lentement vers ce qui manque. Une ville qui a
+ * faim met des bras aux cultures ; une ville en guerre arme les siens. C'est
+ * lent à dessein — on ne reconvertit pas un mineur en paysan en une nuit.
+ */
+export const PERIODE_EMPLOIS = 8;
+
+export function ajusterEmplois(world, col, rng, dt = 1) {
+  if (!col.emplois) { col.emplois = emploisInitiaux(world, col, rng); col.majEmplois = 0; }
+  // Une reconversion se compte en semaines : la recalculer à chaque tranche de
+  // colonie coûterait huit fois plus cher pour un résultat identique.
+  col.majEmplois = (col.majEmplois || 0) + 1;
+  if (col.majEmplois % PERIODE_EMPLOIS !== 0) return;
+  const pas = dt * PERIODE_EMPLOIS;
+  const cible = actifs(col);
+  let total = 0;
+  for (const k of METIER_VILLE_KEYS) total += emploi(col, k);
+  if (total <= 0) { col.emplois = emploisInitiaux(world, col, rng); return; }
+
+  // La population a bougé : on met à l'échelle avant toute chose.
+  if (Math.abs(total - cible) > Math.max(2, cible * 0.04)) {
+    const f = cible / total;
+    for (const k of METIER_VILLE_KEYS) col.emplois[k] = Math.round(emploi(col, k) * f);
+    total = cible;
+  }
+
+  // Puis on déplace quelques bras vers ce qui presse.
+  const vivres = col.stock.rations || 0;
+  const faim = vivres < col.pop * 0.6;
+  const menace = (col.assiege || col.declin > 0.3) ? true : false;
+  const versQuoi = faim ? 'paysan' : menace ? 'milicien' : null;
+  if (!versQuoi) return;
+  const bougent = Math.max(1, Math.round(cible * 0.004 * pas));
+  // On prend chez le plus gros métier qui n'est pas la cible.
+  let source = null;
+  for (const k of METIER_VILLE_KEYS) {
+    if (k === versQuoi) continue;
+    if (!source || emploi(col, k) > emploi(col, source)) source = k;
+  }
+  if (!source || emploi(col, source) <= bougent) return;
+  col.emplois[source] = emploi(col, source) - bougent;
+  col.emplois[versQuoi] = emploi(col, versQuoi) + bougent;
+}
+
+/**
+ * Production horaire d'une colonie, dérivée de qui y travaille. Deux villes de
+ * même taille dans le même biome ne rendent plus la même chose si l'une a mis
+ * ses bras aux cultures et l'autre à la mine.
+ */
 export function productionColonie(world, col) {
   const biomeKey = world.regions[col.regionId].biome;
   const biome = BIOMES[biomeKey];
-  const ech = col.pop * 0.012 * world.regions[col.regionId].richesse;
+  const richesse = world.regions[col.regionId].richesse;
   const prod = {};
+  if (!col.emplois) col.emplois = emploisInitiaux(world, col, null);
+
+  // Chaque ressource du biome revient au métier qui la tire : le minerai aux
+  // mineurs, le vivant aux paysans, tout le reste — ferraille, polymère,
+  // carburant, isotope — à ceux qui démontent.
+  //
+  // Le coefficient par tête est calibré, pas deviné : à l'ancienne formule la
+  // production tenait à `pop × 0.012`, et un actif représente un peu moins d'un
+  // dixième d'une population. Le sous-estimer d'un facteur vingt — ce qui était
+  // le cas au premier jet — assèche les trésors des factions, qui ne lèvent plus
+  // d'armées, et fige la carte politique.
+  const PAR_TETE = 0.115 * richesse;
   for (const k of Object.keys(biome.yields)) {
-    prod[k] = biome.yields[k] * ech;
+    const gens = k === 'minerai' ? emploi(col, 'mineur')
+      : k === 'biomasse' ? emploi(col, 'paysan')
+        : emploi(col, 'ferrailleur');
+    prod[k] = (prod[k] || 0) + biome.yields[k] * gens * PAR_TETE;
   }
-  // Cultures : la part de nourriture qui ne dépend pas de la cueillette.
-  prod.biomasse = (prod.biomasse || 0) + col.pop * 0.013 * (FERTILITE[biomeKey] ?? 1);
-  // Transformation locale : biomasse → rations, minerai → alliage
-  prod.rations = (prod.rations || 0) + Math.min(prod.biomasse, col.pop * 0.022) * 0.85;
-  prod.biomasse = Math.max(0, prod.biomasse - Math.min(prod.biomasse, col.pop * 0.022));
-  if (col.taille >= 2) {
-    prod.alliage = (prod.alliage || 0) + (prod.minerai || 0) * 0.12;
-    prod.composant = (prod.composant || 0) + col.pop * 0.00035 * col.taille;
+
+  // Les paysans cultivent en plus de ce qu'ils cueillent : c'est la fertilité du
+  // sol qui décide combien, et c'est ce qui met une ville à l'équilibre.
+  //
+  // Les deux coefficients sortent d'un balayage, pas d'une intuition : ils
+  // fixent à la fois le ratio vivres du monde (~1,3, le point où les villes
+  // tiennent sans proliférer) et, indirectement, les trésors des factions —
+  // trop peu, elles ne lèvent plus d'armées et la carte politique se fige.
+  const paysans = emploi(col, 'paysan');
+  prod.biomasse = (prod.biomasse || 0) + paysans * 0.02 * (FERTILITE[biomeKey] ?? 1);
+  const enRations = Math.min(prod.biomasse, paysans * 0.075);
+  prod.rations = (prod.rations || 0) + enRations * 0.85;
+  prod.biomasse = Math.max(0, prod.biomasse - enRations);
+
+  // Les artisans transforment. Sans eux, une ville reste un tas de minerai.
+  const art = emploi(col, 'artisan');
+  if (art > 0) {
+    prod.alliage = (prod.alliage || 0) + Math.min(prod.minerai || 0, art * 0.06) * 0.5;
+    prod.composant = (prod.composant || 0) + art * 0.0114;
   }
-  if (col.taille >= 3) {
-    prod.medkit = (prod.medkit || 0) + col.pop * 0.00012;
-  }
+  const med = emploi(col, 'medecin');
+  if (med > 0) prod.medkit = (prod.medkit || 0) + med * 0.0015;
+
+  // Le contremaître de la ville, s'il y en a un, fait la différence entre une
+  // production qui tourne et une qui traîne.
+  const boost = rendementNotables(col);
+  if (boost !== 1) for (const k of Object.keys(prod)) prod[k] *= boost;
   return prod;
 }
 
@@ -119,8 +258,11 @@ export function estVivante(col) {
  * `climat` module les rendements : une saison sèche ne nourrit pas une ville
  * comme une saison de pluies.
  */
-export function tickColonie(world, col, rng, climat, dt = 1) {
+export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null) {
   if (col.ruine) return null;
+  ajusterEmplois(world, col, rng, dt);
+  pourvoirCharges(col, rng, 0);
+  tickNotables(col, rng, dt, reputation, log);
   const prod = productionColonie(world, col);
   const cons = consommationColonie(col);
   // `dt` : nombre d'heures couvertes par cet appel. Une économie de colonie n'a
@@ -169,7 +311,9 @@ export function tickColonie(world, col, rng, climat, dt = 1) {
       col.pop = Math.max(25, col.pop - rng.irange(1, 3));
     }
   } else {
-    col.unrest = Math.max(0, col.unrest - 0.0035 * dt);
+    // Le chef de la ville pèse sur ce que l'agitation retombe ou non : un dur
+    // tient sa place, un bonhomme la laisse filer.
+    col.unrest = Math.max(0, col.unrest - (0.0035 + ordreDe(col) * 0.006) * dt);
     // La croissance suit l'abondance, pas le hasard seul.
     const abondance = Math.min(1, (col.stock.rations || 0) / Math.max(1, col.pop * 0.6));
     if (rng.chance(surDt(0.03 + abondance * 0.05))) col.pop += rng.irange(0, 2);

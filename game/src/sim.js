@@ -7,7 +7,9 @@ import { FACTIONS, DIPLO_FACTIONS } from './data.js';
 import { genererMonde, decouvrir, colonieParId, nomRegion } from './world.js';
 import { makeCharacter, idDepuisRng } from './characters.js';
 import { creerBase, tickBase } from './base.js';
-import { tickColonie, etalDe, effondrer, faireSecession } from './economy.js';
+import {
+  tickColonie, etalDe, effondrer, faireSecession, emploisInitiaux,
+} from './economy.js';
 import { tickClimat, conditions, saison } from './climat.js';
 import { tickCaravanes } from './caravanes.js';
 import { tickFactions } from './factions.js';
@@ -15,6 +17,7 @@ import { tickSquad } from './squad.js';
 import { creerLogger } from './events.js';
 import { groupeVide } from './groupes.js';
 import { creerConnaissance, observer } from './connaissance.js';
+import { pourvoirCharges } from './notables.js';
 import { tickFormation } from './formation.js';
 import { rafraichirPanneaux, tickContrats } from './contrats.js';
 import { tickAllegeance, palierBonus } from './allegeance.js';
@@ -30,7 +33,13 @@ export const VITESSES = [1, 4, 16, 60];
  * Tranche d'heures traitée d'un coup pour une colonie. Les colonies avancent
  * par tourniquet plutôt que toutes ensemble à chaque heure : le coût du tick
  * chute d'autant, et l'économie d'une ville n'a pas besoin d'être résolue à
- * l'heure près.
+ * l'heure près. Les probabilités sont converties en conséquence — voir `surDt`
+ * dans economy.js.
+ *
+ * Trois, pas quatre : le banc a montré qu'à quatre les stocks des villes
+ * fluctuent par paliers assez gros pour que le joueur ne trouve plus toujours de
+ * quoi se ravitailler, et la survie tombe de 42 à 31 sur soixante parties. Le
+ * gain de performance ne valait pas ça.
  */
 export const PAS_COLONIE = 3;
 /** On démarre déjà accéléré : à ×1 il ne se passe visiblement rien. */
@@ -117,6 +126,15 @@ export function nouvellePartie(seed, opts = {}) {
   };
   world.caravanes = [];
 
+  // Les métiers des villes se posent une fois les factions attribuées : la
+  // vocation d'un bourg tient à son biome autant qu'à qui le tient. Les charges
+  // se pourvoient dans la foulée — une ville a un chef et un armurier dès le
+  // premier jour, pas au bout de trois heures de jeu.
+  for (const col of world.colonies) {
+    col.emplois = emploisInitiaux(world, col, rng);
+    pourvoirCharges(col, rng, 0);
+  }
+
   decouvrir(world, depart.regionId, 2);
   observer(state);
   tickClimat(world, 0, rng);
@@ -167,7 +185,9 @@ export function tick(state) {
   // C'est 62 % du coût du tick, et rien ne se voit en jeu.
   for (let i = state.temps % PAS_COLONIE; i < state.world.colonies.length; i += PAS_COLONIE) {
     const col = state.world.colonies[i];
-    const ev = tickColonie(state.world, col, rng, climat, PAS_COLONIE);
+    // La réputation locale infléchit ce que les gens d'ici pensent de vous.
+    const rep = (col.faction && state.player.reputation[col.faction]) || 0;
+    const ev = tickColonie(state.world, col, rng, climat, PAS_COLONIE, rep, log);
     if (!ev) continue;
     if (ev.evenement === 'croissance') {
       log({

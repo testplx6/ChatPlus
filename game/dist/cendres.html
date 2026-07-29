@@ -1549,6 +1549,83 @@ const METIERS = {
 
 const METIER_KEYS = Object.keys(METIERS);
 
+// ---------------------------------------------------------------------------
+// Métiers des villes
+// ---------------------------------------------------------------------------
+// Une ville n'est pas une population indifférenciée qui produit un peu de tout
+// en proportion de sa taille. C'est des paysans, des mineurs, des artisans, et
+// leur répartition explique ce qu'elle produit, ce qu'elle vend et ce qu'elle
+// devient. Un bourg des marais nourrit la région ; une ville des canyons crève
+// de faim mais tient l'alliage.
+//
+// On raisonne en effectifs, pas en individus : cinq mille cinq cents personnes
+// nommées pèseraient quatre mégaoctets de sauvegarde et six cents fois le budget
+// du tick. Les gens que le joueur peut toucher, eux, ont un nom et un état
+// propre — voir `notables` dans world.js.
+
+const METIERS_VILLE = {
+  paysan: {
+    nom: 'Paysans', produit: 'vivres', skill: 'ingenierie',
+    desc: 'Bacs, serres, ce qui pousse dans la cendre.',
+  },
+  mineur: {
+    nom: 'Mineurs', produit: 'minerai', skill: 'force',
+    desc: 'Ce qu’on tire du sol et qu’on ne remplace pas.',
+  },
+  ferrailleur: {
+    nom: 'Ferrailleurs', produit: 'récupération', skill: 'ingenierie',
+    desc: 'Démonter l’ancien monde, morceau par morceau.',
+  },
+  artisan: {
+    nom: 'Artisans', produit: 'alliage et composants', skill: 'ingenierie',
+    desc: 'Ceux qui font ce qui ne se ramasse plus.',
+  },
+  medecin: {
+    nom: 'Médecins', produit: 'medkits', skill: 'medecine',
+    desc: 'Rares, courtisés, et jamais assez nombreux.',
+  },
+  milicien: {
+    nom: 'Miliciens', produit: 'défense', skill: 'melee',
+    desc: 'Payés à attendre que quelque chose arrive.',
+  },
+  marchand: {
+    nom: 'Marchands', produit: 'commerce', skill: 'commerce',
+    desc: 'Ils fixent les prix et savent qui a quoi.',
+  },
+};
+
+const METIER_VILLE_KEYS = Object.keys(METIERS_VILLE);
+
+/**
+ * Part de la population qui travaille. Le reste — enfants, vieux, infirmes —
+ * mange sans produire, ce qui est précisément ce qui rend une ville fragile.
+ */
+const PART_ACTIVE = 0.55;
+
+/** Vocation d'un biome : ce vers quoi la main-d'œuvre d'une ville se porte. */
+const VOCATION_BIOME = {
+  marais: { paysan: 4, ferrailleur: 1, mineur: 0.4 },
+  steppe: { paysan: 3, ferrailleur: 1.6, mineur: 0.8 },
+  dalles: { ferrailleur: 4, artisan: 1.6, paysan: 0.9 },
+  canyons: { mineur: 4.5, artisan: 1.2, paysan: 0.5 },
+  desert: { mineur: 3, paysan: 0.9, ferrailleur: 1 },
+  friche: { ferrailleur: 2.4, mineur: 1.8, paysan: 0.6 },
+  plastique: { ferrailleur: 3.6, artisan: 1.4, paysan: 0.6 },
+  brulees: { mineur: 2.4, ferrailleur: 1.4, paysan: 0.5 },
+  relais: { artisan: 3.2, ferrailleur: 1.6, mineur: 1 },
+};
+
+/** Ce que le tempérament d'une faction ajoute à la répartition. */
+const VOCATION_STYLE = {
+  corpo: { artisan: 1.4, marchand: 1.2, milicien: 0.5 },
+  nomade: { ferrailleur: 1, mineur: 0.6, milicien: 0.4 },
+  fanatique: { milicien: 1.2, artisan: 0.4 },
+  criminel: { marchand: 1.6, milicien: 0.8 },
+  militaire: { milicien: 2.2, artisan: 0.5 },
+  commune: { paysan: 1.8, medecin: 0.5 },
+  essaim: { milicien: 1.5 },
+};
+
 // ===== src/climat.js =================================================
 // Saisons et météo. Le monde n'a pas la même tête en pleine saison sèche
 // qu'au milieu d'un hiver de cendre : les rendements, la marche, les aléas et
@@ -1890,6 +1967,8 @@ function genererColonies(rng, regions) {
       murs: taille * rng.irange(2, 5),
       stock: stockInitial(rng, taille),
       unrest: Number(rng.range(0, 0.2).toFixed(2)),
+      // Qui travaille à quoi. Rempli une fois la faction attribuée.
+      emplois: null,
       marche: 1 + taille * 0.35,
       prises: 0,
     };
@@ -2592,6 +2671,226 @@ function etatCourt(c) {
   if (c.faim > 85) return 'AFFAMÉ';
   if (c.fatigue > 90) return 'ÉPUISÉ';
   return 'OK';
+}
+
+// ===== src/notables.js ===============================================
+// Les gens qui comptent dans une ville.
+//
+// Cinq mille cinq cents habitants nommés, c'est quatre mégaoctets de sauvegarde
+// et six cents fois le budget du tick : la population reste donc un effectif,
+// réparti par métiers. Mais un effectif ne se rencontre pas. Ceux que le joueur
+// peut toucher — celui qui commande, celui qui vend, celui qui recoud, celui qui
+// fait tourner l'atelier — ont un nom, un âge, une humeur, une compétence, et
+// une opinion sur vous.
+//
+// Ils vieillissent, se lassent, meurent, sont remplacés. Un armurier retors vend
+// cher ; un chef dur tient sa ville mais l'aigrit ; un contremaître qui vous
+// aime bien vous laisse voir les stocks. C'est là que la granularité se paie
+// vraiment, parce qu'on la voit.
+
+
+/** Les charges qu'une ville pourvoit, selon ce qu'elle est. */
+const CHARGES = {
+  chef: {
+    nom: 'Chef de ville', skill: 'commerce',
+    desc: 'Décide, arbitre, et porte ce qui va mal.',
+  },
+  armurier: {
+    nom: 'Armurier', skill: 'commerce',
+    desc: 'Tient l’étal. Ses prix sont les siens.',
+  },
+  medecin: {
+    nom: 'Médecin', skill: 'medecine', requiert: 'medecin',
+    desc: 'Le seul dont l’absence se remarque tout de suite.',
+  },
+  contremaitre: {
+    nom: 'Contremaître', skill: 'ingenierie',
+    desc: 'Fait tenir la production, et sait où sont les pièces.',
+  },
+};
+
+const CHARGE_KEYS = Object.keys(CHARGES);
+
+/** Ce qui distingue une personne d'une fonction. */
+const CARACTERES = {
+  droit: { nom: 'Droit', marge: -0.06, ordre: 0.04, humeur: 6 },
+  retors: { nom: 'Retors', marge: 0.1, ordre: -0.02, humeur: -4 },
+  dur: { nom: 'Dur', marge: 0.03, ordre: 0.08, humeur: -10 },
+  bonhomme: { nom: 'Bonhomme', marge: -0.03, ordre: -0.03, humeur: 12 },
+  avare: { nom: 'Avare', marge: 0.13, ordre: 0.01, humeur: -6 },
+  meticuleux: { nom: 'Méticuleux', marge: 0, ordre: 0.05, humeur: 2, rendement: 0.1 },
+  fatigue: { nom: 'Fatigué', marge: 0.02, ordre: -0.05, humeur: -8, rendement: -0.08 },
+  ambitieux: { nom: 'Ambitieux', marge: 0.05, ordre: 0.03, humeur: 0, rendement: 0.06 },
+};
+
+const CARACTERE_KEYS = Object.keys(CARACTERES);
+
+// ---------------------------------------------------------------------------
+// Naissance et mort d'une charge
+// ---------------------------------------------------------------------------
+
+function nommer(rng) {
+  const base = rng.pick(NOMS_PERSO);
+  return rng.chance(0.35) ? `${base} ${rng.pick(SURNOMS)}` : base;
+}
+
+function creerNotable(rng, charge, col, t) {
+  const def = CHARGES[charge];
+  return {
+    id: idDepuisRng(rng, 'n'),
+    charge,
+    nom: nommer(rng),
+    age: rng.irange(26, 62),
+    // Compétence dans sa partie : c'est elle qui décide de son effet.
+    comp: rng.irange(18, 55) + (col.taille - 1) * rng.irange(2, 8),
+    caractere: rng.pick(CARACTERE_KEYS),
+    humeur: rng.irange(40, 70),
+    // Ce qu'il pense de vous. On part de rien : il ne vous connaît pas.
+    opinion: 0,
+    depuis: t,
+    skill: def.skill,
+  };
+}
+
+/** Les charges qu'une ville doit pourvoir, d'après ce qu'elle est. */
+function chargesDe(col) {
+  const out = ['chef', 'armurier'];
+  if (col.taille >= 2) out.push('contremaitre');
+  if ((col.emplois && col.emplois.medecin) > 0) out.push('medecin');
+  return out;
+}
+
+/**
+ * Pourvoit ce qui manque, retire ce qui n'a plus lieu d'être. Chemin rapide en
+ * tête : les charges d'une ville ne changent qu'à un changement de rang ou à la
+ * disparition de ses médecins, c'est-à-dire presque jamais — et cette fonction
+ * est appelée à chaque tranche de colonie.
+ */
+function pourvoirCharges(col, rng, t) {
+  if (!col.notables) col.notables = [];
+  const attendues = 2 + (col.taille >= 2 ? 1 : 0)
+    + ((col.emplois && col.emplois.medecin) > 0 ? 1 : 0);
+  if (col.notables.length === attendues) return;
+
+  const voulues = chargesDe(col);
+  col.notables = col.notables.filter((p) => voulues.includes(p.charge));
+  for (const charge of voulues) {
+    if (col.notables.some((p) => p.charge === charge)) continue;
+    col.notables.push(creerNotable(rng, charge, col, t));
+  }
+}
+
+function notable(col, charge) {
+  if (!col || !col.notables) return null;
+  return col.notables.find((p) => p.charge === charge) || null;
+}
+
+// ---------------------------------------------------------------------------
+// Effets
+// ---------------------------------------------------------------------------
+
+function trait(p) {
+  return CARACTERES[p && p.caractere] || CARACTERES.droit;
+}
+
+/**
+ * Ce que l'armurier ajoute à sa marge, ou en retire. Un bon commerçant se
+ * défend mieux ; un retors prend davantage ; et il vous fait un prix s'il vous
+ * apprécie. Entre le pire et le meilleur cas, ça fait un tiers de différence.
+ */
+function margeMarchand(col) {
+  const p = notable(col, 'armurier');
+  if (!p) return 0;
+  const t = trait(p);
+  return t.marge + Math.min(0.12, p.comp / 700) - (p.opinion / 100) * 0.12;
+}
+
+/** Ce que le contremaître ajoute à la production de la ville. */
+function rendementNotables(col) {
+  const p = notable(col, 'contremaitre');
+  if (!p) return 1;
+  const t = trait(p);
+  return 1 + Math.min(0.25, p.comp / 320) + (t.rendement || 0);
+}
+
+/** Ce que le chef retire à l'agitation — ou lui ajoute. */
+function ordreDe(col) {
+  const p = notable(col, 'chef');
+  if (!p) return 0;
+  const t = trait(p);
+  return t.ordre + Math.min(0.06, p.comp / 900) + (p.humeur - 50) / 2000;
+}
+
+/** Comment ces gens vous voient, en moyenne. Sert à l'affichage. */
+function opinionMoyenne(col) {
+  if (!col.notables || !col.notables.length) return 0;
+  let s = 0;
+  for (const p of col.notables) s += p.opinion || 0;
+  return s / col.notables.length;
+}
+
+/** Un geste marquant se sait : on ajuste ce que les gens d'ici pensent de vous. */
+function ajusterOpinion(col, delta) {
+  if (!col.notables) return;
+  for (const p of col.notables) {
+    p.opinion = Math.max(-100, Math.min(100, (p.opinion || 0) + delta));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tick
+// ---------------------------------------------------------------------------
+
+/**
+ * Une tranche de vie pour les gens d'une ville. Appelé au rythme des colonies,
+ * donc quelques dizaines de fois par jour de jeu au total : ils vieillissent
+ * lentement, leur humeur suit l'état de la ville, et leur opinion se cale sur
+ * votre réputation auprès de leur faction — plus lentement qu'elle, parce qu'on
+ * juge quelqu'un sur ce qu'il fait ici, pas sur ce qu'on dit de lui ailleurs.
+ */
+function tickNotables(col, rng, dt, reputation, log) {
+  if (!col.notables || !col.notables.length) return;
+  const aise = Math.max(0, Math.min(1, (col.stock.rations || 0) / Math.max(1, col.pop * 0.8)));
+  const vers = (reputation || 0) * 0.7;
+  const socle = 30 + aise * 45 - (col.unrest || 0) * 40;
+
+  for (const p of col.notables) {
+    p.age += dt / (24 * 360);
+    // L'humeur suit ce que vaut la vie ici, amortie par le caractère.
+    const t = trait(p);
+    const cible = socle + t.humeur;
+    p.humeur += (Math.max(0, Math.min(100, cible)) - p.humeur) * 0.01 * dt;
+    // On s'améliore dans son métier, lentement, jusqu'à un plafond honnête.
+    if (p.comp < 90) p.comp += 0.0016 * dt;
+    // L'opinion tend vers votre réputation locale, sans jamais l'atteindre.
+    p.opinion = (p.opinion || 0) + (vers - (p.opinion || 0)) * 0.004 * dt;
+
+    // On finit par se retirer, ou pire.
+    const vieux = Math.max(0, p.age - 58) / 30;
+    const q = 0.00002 + vieux * 0.0004;
+    if (rng.chance(dt === 1 ? q : 1 - Math.pow(1 - q, dt))) {
+      const partant = p.nom;
+      const neuf = creerNotable(rng, p.charge, col, 0);
+      Object.assign(p, neuf, { depuis: 0 });
+      if (log) {
+        log({
+          type: 'notable',
+          texte: `${CHARGES[p.charge].nom} de ${col.nom} : ${partant} laisse la place à ${p.nom}.`,
+          regionId: col.regionId,
+        });
+      }
+    }
+  }
+}
+
+/** Le métier dominant d'une ville, pour la décrire d'un mot. */
+function vocation(col) {
+  if (!col.emplois) return null;
+  let best = null;
+  for (const k of METIER_VILLE_KEYS) {
+    if (!best || (col.emplois[k] || 0) > (col.emplois[best] || 0)) best = k;
+  }
+  return best ? { key: best, def: METIERS_VILLE[best], n: col.emplois[best] || 0 } : null;
 }
 
 // ===== src/groupes.js ================================================
@@ -3944,7 +4243,10 @@ function prixUnitaire(col, key) {
  */
 function prixJoueur(col, key, habilete = 0, repu = 0, remise = 0) {
   const p = prixUnitaire(col, key);
-  const marge = Math.max(0.02, 0.18 - habilete / 900 - Math.max(0, repu) / 1400 - remise);
+  // La marge n'est pas une constante du monde : c'est celle d'un homme, avec
+  // son caractère, son métier et ce qu'il pense de vous.
+  const marge = Math.max(0.02,
+    0.18 + margeMarchand(col) - habilete / 900 - Math.max(0, repu) / 1400 - remise);
   const majorationHostile = repu < -20 ? 0.15 + Math.min(0.4, -repu / 220) : 0;
   // Non arrondi volontairement : arrondir à l'unité écraserait la marge sur les
   // marchandises bon marché et rendrait l'aller-retour achat/revente gratuit.
@@ -3964,27 +4266,157 @@ const FERTILITE = {
   plastique: 0.75, friche: 0.7, desert: 0.65, brulees: 0.6, relais: 0.5,
 };
 
-/** Production horaire d'une colonie, dérivée de son biome et de sa taille. */
+// ---------------------------------------------------------------------------
+// Métiers d'une ville
+// ---------------------------------------------------------------------------
+
+/** Combien de gens travaillent ici. Le reste mange sans produire. */
+function actifs(col) {
+  return Math.max(1, Math.round(col.pop * PART_ACTIVE));
+}
+
+/**
+ * Répartition initiale : la vocation du biome, corrigée par le tempérament de
+ * la faction. Une ville des canyons fait des mineurs, une commune des marais
+ * des paysans, une garnison des miliciens.
+ */
+function emploisInitiaux(world, col, rng) {
+  const biome = world.regions[col.regionId].biome;
+  const style = col.faction && FACTIONS[col.faction] ? FACTIONS[col.faction].style : null;
+  const poids = {};
+  for (const k of METIER_VILLE_KEYS) poids[k] = 0.35; // tout le monde a un peu de tout
+  const voc = VOCATION_BIOME[biome] || {};
+  for (const k of Object.keys(voc)) poids[k] += voc[k];
+  const st = (style && VOCATION_STYLE[style]) || {};
+  for (const k of Object.keys(st)) poids[k] += st[k];
+  // Un peu de bruit : deux villes du même biome ne se ressemblent pas trait
+  // pour trait.
+  if (rng) for (const k of METIER_VILLE_KEYS) poids[k] *= rng.range(0.8, 1.2);
+  return repartir(poids, actifs(col));
+}
+
+/** Convertit des poids en effectifs entiers dont la somme vaut `total`. */
+function repartir(poids, total) {
+  let somme = 0;
+  for (const k of METIER_VILLE_KEYS) somme += poids[k];
+  const out = {};
+  let place = 0;
+  for (const k of METIER_VILLE_KEYS) {
+    out[k] = Math.floor((poids[k] / somme) * total);
+    place += out[k];
+  }
+  // Le reste va au métier le plus lourd : arrondir vers le bas partout perdrait
+  // jusqu'à six personnes par ville.
+  let meilleur = METIER_VILLE_KEYS[0];
+  for (const k of METIER_VILLE_KEYS) if (poids[k] > poids[meilleur]) meilleur = k;
+  out[meilleur] += total - place;
+  return out;
+}
+
+/** Effectif d'un métier, borné : une ville qui a fondu réaffecte ses gens. */
+function emploi(col, key) {
+  return Math.max(0, Math.round((col.emplois && col.emplois[key]) || 0));
+}
+
+/**
+ * La main-d'œuvre se redéploie lentement vers ce qui manque. Une ville qui a
+ * faim met des bras aux cultures ; une ville en guerre arme les siens. C'est
+ * lent à dessein — on ne reconvertit pas un mineur en paysan en une nuit.
+ */
+const PERIODE_EMPLOIS = 8;
+
+function ajusterEmplois(world, col, rng, dt = 1) {
+  if (!col.emplois) { col.emplois = emploisInitiaux(world, col, rng); col.majEmplois = 0; }
+  // Une reconversion se compte en semaines : la recalculer à chaque tranche de
+  // colonie coûterait huit fois plus cher pour un résultat identique.
+  col.majEmplois = (col.majEmplois || 0) + 1;
+  if (col.majEmplois % PERIODE_EMPLOIS !== 0) return;
+  const pas = dt * PERIODE_EMPLOIS;
+  const cible = actifs(col);
+  let total = 0;
+  for (const k of METIER_VILLE_KEYS) total += emploi(col, k);
+  if (total <= 0) { col.emplois = emploisInitiaux(world, col, rng); return; }
+
+  // La population a bougé : on met à l'échelle avant toute chose.
+  if (Math.abs(total - cible) > Math.max(2, cible * 0.04)) {
+    const f = cible / total;
+    for (const k of METIER_VILLE_KEYS) col.emplois[k] = Math.round(emploi(col, k) * f);
+    total = cible;
+  }
+
+  // Puis on déplace quelques bras vers ce qui presse.
+  const vivres = col.stock.rations || 0;
+  const faim = vivres < col.pop * 0.6;
+  const menace = (col.assiege || col.declin > 0.3) ? true : false;
+  const versQuoi = faim ? 'paysan' : menace ? 'milicien' : null;
+  if (!versQuoi) return;
+  const bougent = Math.max(1, Math.round(cible * 0.004 * pas));
+  // On prend chez le plus gros métier qui n'est pas la cible.
+  let source = null;
+  for (const k of METIER_VILLE_KEYS) {
+    if (k === versQuoi) continue;
+    if (!source || emploi(col, k) > emploi(col, source)) source = k;
+  }
+  if (!source || emploi(col, source) <= bougent) return;
+  col.emplois[source] = emploi(col, source) - bougent;
+  col.emplois[versQuoi] = emploi(col, versQuoi) + bougent;
+}
+
+/**
+ * Production horaire d'une colonie, dérivée de qui y travaille. Deux villes de
+ * même taille dans le même biome ne rendent plus la même chose si l'une a mis
+ * ses bras aux cultures et l'autre à la mine.
+ */
 function productionColonie(world, col) {
   const biomeKey = world.regions[col.regionId].biome;
   const biome = BIOMES[biomeKey];
-  const ech = col.pop * 0.012 * world.regions[col.regionId].richesse;
+  const richesse = world.regions[col.regionId].richesse;
   const prod = {};
+  if (!col.emplois) col.emplois = emploisInitiaux(world, col, null);
+
+  // Chaque ressource du biome revient au métier qui la tire : le minerai aux
+  // mineurs, le vivant aux paysans, tout le reste — ferraille, polymère,
+  // carburant, isotope — à ceux qui démontent.
+  //
+  // Le coefficient par tête est calibré, pas deviné : à l'ancienne formule la
+  // production tenait à `pop × 0.012`, et un actif représente un peu moins d'un
+  // dixième d'une population. Le sous-estimer d'un facteur vingt — ce qui était
+  // le cas au premier jet — assèche les trésors des factions, qui ne lèvent plus
+  // d'armées, et fige la carte politique.
+  const PAR_TETE = 0.115 * richesse;
   for (const k of Object.keys(biome.yields)) {
-    prod[k] = biome.yields[k] * ech;
+    const gens = k === 'minerai' ? emploi(col, 'mineur')
+      : k === 'biomasse' ? emploi(col, 'paysan')
+        : emploi(col, 'ferrailleur');
+    prod[k] = (prod[k] || 0) + biome.yields[k] * gens * PAR_TETE;
   }
-  // Cultures : la part de nourriture qui ne dépend pas de la cueillette.
-  prod.biomasse = (prod.biomasse || 0) + col.pop * 0.013 * (FERTILITE[biomeKey] ?? 1);
-  // Transformation locale : biomasse → rations, minerai → alliage
-  prod.rations = (prod.rations || 0) + Math.min(prod.biomasse, col.pop * 0.022) * 0.85;
-  prod.biomasse = Math.max(0, prod.biomasse - Math.min(prod.biomasse, col.pop * 0.022));
-  if (col.taille >= 2) {
-    prod.alliage = (prod.alliage || 0) + (prod.minerai || 0) * 0.12;
-    prod.composant = (prod.composant || 0) + col.pop * 0.00035 * col.taille;
+
+  // Les paysans cultivent en plus de ce qu'ils cueillent : c'est la fertilité du
+  // sol qui décide combien, et c'est ce qui met une ville à l'équilibre.
+  //
+  // Les deux coefficients sortent d'un balayage, pas d'une intuition : ils
+  // fixent à la fois le ratio vivres du monde (~1,3, le point où les villes
+  // tiennent sans proliférer) et, indirectement, les trésors des factions —
+  // trop peu, elles ne lèvent plus d'armées et la carte politique se fige.
+  const paysans = emploi(col, 'paysan');
+  prod.biomasse = (prod.biomasse || 0) + paysans * 0.02 * (FERTILITE[biomeKey] ?? 1);
+  const enRations = Math.min(prod.biomasse, paysans * 0.075);
+  prod.rations = (prod.rations || 0) + enRations * 0.85;
+  prod.biomasse = Math.max(0, prod.biomasse - enRations);
+
+  // Les artisans transforment. Sans eux, une ville reste un tas de minerai.
+  const art = emploi(col, 'artisan');
+  if (art > 0) {
+    prod.alliage = (prod.alliage || 0) + Math.min(prod.minerai || 0, art * 0.06) * 0.5;
+    prod.composant = (prod.composant || 0) + art * 0.0114;
   }
-  if (col.taille >= 3) {
-    prod.medkit = (prod.medkit || 0) + col.pop * 0.00012;
-  }
+  const med = emploi(col, 'medecin');
+  if (med > 0) prod.medkit = (prod.medkit || 0) + med * 0.0015;
+
+  // Le contremaître de la ville, s'il y en a un, fait la différence entre une
+  // production qui tourne et une qui traîne.
+  const boost = rendementNotables(col);
+  if (boost !== 1) for (const k of Object.keys(prod)) prod[k] *= boost;
   return prod;
 }
 
@@ -4016,8 +4448,11 @@ function estVivante(col) {
  * `climat` module les rendements : une saison sèche ne nourrit pas une ville
  * comme une saison de pluies.
  */
-function tickColonie(world, col, rng, climat, dt = 1) {
+function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null) {
   if (col.ruine) return null;
+  ajusterEmplois(world, col, rng, dt);
+  pourvoirCharges(col, rng, 0);
+  tickNotables(col, rng, dt, reputation, log);
   const prod = productionColonie(world, col);
   const cons = consommationColonie(col);
   // `dt` : nombre d'heures couvertes par cet appel. Une économie de colonie n'a
@@ -4066,7 +4501,9 @@ function tickColonie(world, col, rng, climat, dt = 1) {
       col.pop = Math.max(25, col.pop - rng.irange(1, 3));
     }
   } else {
-    col.unrest = Math.max(0, col.unrest - 0.0035 * dt);
+    // Le chef de la ville pèse sur ce que l'agitation retombe ou non : un dur
+    // tient sa place, un bonhomme la laisse filer.
+    col.unrest = Math.max(0, col.unrest - (0.0035 + ordreDe(col) * 0.006) * dt);
     // La croissance suit l'abondance, pas le hasard seul.
     const abondance = Math.min(1, (col.stock.rations || 0) / Math.max(1, col.pop * 0.6));
     if (rng.chance(surDt(0.03 + abondance * 0.05))) col.pop += rng.irange(0, 2);
@@ -7443,7 +7880,13 @@ const VITESSES = [1, 4, 16, 60];
  * Tranche d'heures traitée d'un coup pour une colonie. Les colonies avancent
  * par tourniquet plutôt que toutes ensemble à chaque heure : le coût du tick
  * chute d'autant, et l'économie d'une ville n'a pas besoin d'être résolue à
- * l'heure près.
+ * l'heure près. Les probabilités sont converties en conséquence — voir `surDt`
+ * dans economy.js.
+ *
+ * Trois, pas quatre : le banc a montré qu'à quatre les stocks des villes
+ * fluctuent par paliers assez gros pour que le joueur ne trouve plus toujours de
+ * quoi se ravitailler, et la survie tombe de 42 à 31 sur soixante parties. Le
+ * gain de performance ne valait pas ça.
  */
 const PAS_COLONIE = 3;
 /** On démarre déjà accéléré : à ×1 il ne se passe visiblement rien. */
@@ -7530,6 +7973,15 @@ function nouvellePartie(seed, opts = {}) {
   };
   world.caravanes = [];
 
+  // Les métiers des villes se posent une fois les factions attribuées : la
+  // vocation d'un bourg tient à son biome autant qu'à qui le tient. Les charges
+  // se pourvoient dans la foulée — une ville a un chef et un armurier dès le
+  // premier jour, pas au bout de trois heures de jeu.
+  for (const col of world.colonies) {
+    col.emplois = emploisInitiaux(world, col, rng);
+    pourvoirCharges(col, rng, 0);
+  }
+
   decouvrir(world, depart.regionId, 2);
   observer(state);
   tickClimat(world, 0, rng);
@@ -7580,7 +8032,9 @@ function tick(state) {
   // C'est 62 % du coût du tick, et rien ne se voit en jeu.
   for (let i = state.temps % PAS_COLONIE; i < state.world.colonies.length; i += PAS_COLONIE) {
     const col = state.world.colonies[i];
-    const ev = tickColonie(state.world, col, rng, climat, PAS_COLONIE);
+    // La réputation locale infléchit ce que les gens d'ici pensent de vous.
+    const rep = (col.faction && state.player.reputation[col.faction]) || 0;
+    const ev = tickColonie(state.world, col, rng, climat, PAS_COLONIE, rep, log);
     if (!ev) continue;
     if (ev.evenement === 'croissance') {
       log({
@@ -7818,6 +8272,10 @@ function normaliser(state) {
   for (const c of w.colonies) {
     if (c.declin === undefined) c.declin = 0;
     if (c.prises === undefined) c.prises = 0;
+    // Les métiers d'une ville d'avant : le premier tick les répartira.
+    if (c.emplois === undefined) c.emplois = null;
+    // Les gens qui comptent : le premier tick pourvoit les charges.
+    if (!c.notables) c.notables = [];
   }
   for (const g of p.groupes) {
     for (const c of g.membres) {
@@ -8499,6 +8957,8 @@ function blocColonie(col) {
       ${ecolesDe(S.world, col).length
     ? `<button class="act mini" style="grid-column:1/-1" data-a="modale" data-m="ecole">
         Écoles (${ecolesDe(S.world, col).length})</button>` : ''}
+      <button class="act mini" style="grid-column:1/-1" data-a="modale" data-m="ville">
+        Qui vit ici</button>
     </div>
     ${blocEngagement(col)}
   </section>`;
@@ -9401,6 +9861,7 @@ function contenuModale() {
     case 'panneau': return modalePanneau() + fermer;
     case 'transfert': return modaleTransfert() + fermer;
     case 'ecole': return modaleEcole() + fermer;
+    case 'ville': return modaleVille() + fermer;
     case 'equipement': return modaleEquipement() + fermer;
     case 'entrainement': return modaleEntrainement() + fermer;
     case 'recrutement': return modaleRecrutement() + fermer;
@@ -9654,6 +10115,65 @@ function modaleEcole() {
   ${enCours ? `<div class="sep"></div><div class="titre">En cours</div>${enCours}` : ''}
   <div class="sep"></div>
   ${lignes}`;
+}
+
+/**
+ * Qui travaille ici, et qui compte. Les habitants restent des effectifs — on ne
+ * nomme pas cinq mille personnes —, mais ceux que le joueur peut toucher ont un
+ * nom, un âge, une humeur et une opinion sur lui.
+ */
+function modaleVille() {
+  const col = colonieDe(S.world, G().regionId);
+  if (!col) return '<div class="aide">Aucune ville ici.</div>';
+  const act = actifs(col);
+  const voc = vocation(col);
+
+  const emploisHtml = METIER_VILLE_KEYS
+    .map((k) => ({ k, n: emploi(col, k) }))
+    .filter((x) => x.n > 0)
+    .sort((a, b) => b.n - a.n)
+    .map(({ k, n: nb }) => {
+      const m = METIERS_VILLE[k];
+      return `<div style="border-bottom:1px solid #1b2029;padding:5px 0">
+        <div class="ligne"><span class="k">${e(m.nom)}</span>
+          <span class="v">${n(nb)} <span class="aide">${((nb / act) * 100).toFixed(0)} %</span></span></div>
+        ${jauge(nb / act, '', k === (voc && voc.key) ? '#4fd0e3' : undefined)}
+        <div class="aide">${e(m.desc)}</div>
+      </div>`;
+    }).join('');
+
+  const gensHtml = (col.notables || []).map((p) => {
+    const c = CARACTERES[p.caractere] || {};
+    const av = p.opinion > 25 ? 'ok' : p.opinion < -25 ? 'mal' : 'att';
+    const humeur = p.humeur > 65 ? 'de bonne humeur' : p.humeur < 35 ? 'de mauvaise humeur' : 'égal à lui-même';
+    return `<div class="contrat">
+      <div class="contrat-t">${e(p.nom)}
+        <span class="aide">— ${e(CHARGES[p.charge].nom.toLowerCase())}</span></div>
+      <div class="ligne"><span class="k">Caractère</span>
+        <span class="v">${e(c.nom || '—')}, ${e(humeur)}</span></div>
+      <div class="ligne"><span class="k">${e(SKILLS[p.skill])}</span>
+        <span class="v">${Math.round(p.comp)}</span></div>
+      <div class="ligne"><span class="k">Âge</span><span class="v">${Math.round(p.age)} ans</span></div>
+      <div class="ligne"><span class="k">Vous concernant</span>
+        <span class="v"><span class="puce ${av}">${p.opinion > 0 ? '+' : ''}${Math.round(p.opinion)}</span></span></div>
+      <div class="aide">${e(CHARGES[p.charge].desc)}</div>
+    </div>`;
+  }).join('') || '<div class="aide">Personne qui compte, ici. Ça arrive.</div>';
+
+  const marge = margeMarchand(col);
+  return `<h2 class="titre">${e(col.nom)}
+    <span class="droite">${n(col.pop)} habitants</span></h2>
+  <div class="aide">${act} actifs${voc ? ` · ville de ${e(voc.def.nom.toLowerCase())}` : ''}.
+    Le reste — enfants, vieux, éclopés — mange sans produire, et c’est ce qui rend
+    une ville fragile.</div>
+  <div class="sep"></div>
+  <div class="titre">Métiers</div>
+  ${emploisHtml}
+  <div class="sep"></div>
+  <div class="titre">Qui compte</div>
+  ${marge !== 0 ? `<div class="aide">L’armurier ${marge > 0 ? 'prend' : 'lâche'}
+    ${Math.abs(marge * 100).toFixed(0)} % ${marge > 0 ? 'de plus' : 'de moins'} que l’ordinaire.</div>` : ''}
+  ${gensHtml}`;
 }
 
 function modaleRecrutement() {

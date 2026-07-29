@@ -5,6 +5,7 @@ import {
   BIOMES, FACTIONS, COMMODITIES, COMMODITY_KEYS, BUILDINGS, BUILDING_KEYS,
   RESEARCH, RESEARCH_KEYS, ITEMS, SKILLS, SKILL_KEYS, BODY_PARTS, BODY_KEYS,
   POSTURES, POSTURE_KEYS, TRAITS, POI, CONTRATS, DIPLOMES, METIERS, METIER_KEYS,
+  METIERS_VILLE, METIER_VILLE_KEYS,
 } from './data.js';
 import {
   nomRegion, colonieDe, colonieParId, coord, chemin, coutTraversee, distance,
@@ -15,7 +16,7 @@ import {
 } from './characters.js';
 import {
   prixJoueur, acheter, vendre, poidsInventaire, capacitePortage, meilleurCommercant,
-  prixItem, acheterItem, vendreItem,
+  prixItem, acheterItem, vendreItem, actifs, emploi,
 } from './economy.js';
 import {
   populationMax, mainDoeuvre, placesMetier, affectes, manoeuvres, affecter,
@@ -43,6 +44,7 @@ import {
   ecolesDe, prixFormation, peutSInscrire, inscrire, abandonnerFormation,
   ecolesAvantPoste, peutApprendreChezSoi, enseignerChezSoi, LENTEUR_MAISON,
 } from './formation.js';
+import { CHARGES, CARACTERES, margeMarchand, vocation } from './notables.js';
 import { vueColonie, vueRegion, estSurveillee, ageTexte, nouvellesConnues } from './connaissance.js';
 import {
   groupeActif, groupes, groupeParId, choisirGroupe, tousLesMembres, tacheDe,
@@ -654,6 +656,8 @@ function blocColonie(col) {
       ${ecolesDe(S.world, col).length
     ? `<button class="act mini" style="grid-column:1/-1" data-a="modale" data-m="ecole">
         Écoles (${ecolesDe(S.world, col).length})</button>` : ''}
+      <button class="act mini" style="grid-column:1/-1" data-a="modale" data-m="ville">
+        Qui vit ici</button>
     </div>
     ${blocEngagement(col)}
   </section>`;
@@ -1556,6 +1560,7 @@ function contenuModale() {
     case 'panneau': return modalePanneau() + fermer;
     case 'transfert': return modaleTransfert() + fermer;
     case 'ecole': return modaleEcole() + fermer;
+    case 'ville': return modaleVille() + fermer;
     case 'equipement': return modaleEquipement() + fermer;
     case 'entrainement': return modaleEntrainement() + fermer;
     case 'recrutement': return modaleRecrutement() + fermer;
@@ -1809,6 +1814,65 @@ function modaleEcole() {
   ${enCours ? `<div class="sep"></div><div class="titre">En cours</div>${enCours}` : ''}
   <div class="sep"></div>
   ${lignes}`;
+}
+
+/**
+ * Qui travaille ici, et qui compte. Les habitants restent des effectifs — on ne
+ * nomme pas cinq mille personnes —, mais ceux que le joueur peut toucher ont un
+ * nom, un âge, une humeur et une opinion sur lui.
+ */
+function modaleVille() {
+  const col = colonieDe(S.world, G().regionId);
+  if (!col) return '<div class="aide">Aucune ville ici.</div>';
+  const act = actifs(col);
+  const voc = vocation(col);
+
+  const emploisHtml = METIER_VILLE_KEYS
+    .map((k) => ({ k, n: emploi(col, k) }))
+    .filter((x) => x.n > 0)
+    .sort((a, b) => b.n - a.n)
+    .map(({ k, n: nb }) => {
+      const m = METIERS_VILLE[k];
+      return `<div style="border-bottom:1px solid #1b2029;padding:5px 0">
+        <div class="ligne"><span class="k">${e(m.nom)}</span>
+          <span class="v">${n(nb)} <span class="aide">${((nb / act) * 100).toFixed(0)} %</span></span></div>
+        ${jauge(nb / act, '', k === (voc && voc.key) ? '#4fd0e3' : undefined)}
+        <div class="aide">${e(m.desc)}</div>
+      </div>`;
+    }).join('');
+
+  const gensHtml = (col.notables || []).map((p) => {
+    const c = CARACTERES[p.caractere] || {};
+    const av = p.opinion > 25 ? 'ok' : p.opinion < -25 ? 'mal' : 'att';
+    const humeur = p.humeur > 65 ? 'de bonne humeur' : p.humeur < 35 ? 'de mauvaise humeur' : 'égal à lui-même';
+    return `<div class="contrat">
+      <div class="contrat-t">${e(p.nom)}
+        <span class="aide">— ${e(CHARGES[p.charge].nom.toLowerCase())}</span></div>
+      <div class="ligne"><span class="k">Caractère</span>
+        <span class="v">${e(c.nom || '—')}, ${e(humeur)}</span></div>
+      <div class="ligne"><span class="k">${e(SKILLS[p.skill])}</span>
+        <span class="v">${Math.round(p.comp)}</span></div>
+      <div class="ligne"><span class="k">Âge</span><span class="v">${Math.round(p.age)} ans</span></div>
+      <div class="ligne"><span class="k">Vous concernant</span>
+        <span class="v"><span class="puce ${av}">${p.opinion > 0 ? '+' : ''}${Math.round(p.opinion)}</span></span></div>
+      <div class="aide">${e(CHARGES[p.charge].desc)}</div>
+    </div>`;
+  }).join('') || '<div class="aide">Personne qui compte, ici. Ça arrive.</div>';
+
+  const marge = margeMarchand(col);
+  return `<h2 class="titre">${e(col.nom)}
+    <span class="droite">${n(col.pop)} habitants</span></h2>
+  <div class="aide">${act} actifs${voc ? ` · ville de ${e(voc.def.nom.toLowerCase())}` : ''}.
+    Le reste — enfants, vieux, éclopés — mange sans produire, et c’est ce qui rend
+    une ville fragile.</div>
+  <div class="sep"></div>
+  <div class="titre">Métiers</div>
+  ${emploisHtml}
+  <div class="sep"></div>
+  <div class="titre">Qui compte</div>
+  ${marge !== 0 ? `<div class="aide">L’armurier ${marge > 0 ? 'prend' : 'lâche'}
+    ${Math.abs(marge * 100).toFixed(0)} % ${marge > 0 ? 'de plus' : 'de moins'} que l’ordinaire.</div>` : ''}
+  ${gensHtml}`;
 }
 
 function modaleRecrutement() {

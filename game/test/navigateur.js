@@ -404,6 +404,34 @@ const refusion = await page.evaluate(() => {
 ok(refusion.n === avantGroupes, 'les groupes sont réunis', `${refusion.n}`);
 ok(refusion.membres === 3, 'tout le monde est rassemblé', `${refusion.membres}`);
 
+console.log('\n8 undecies. Métiers et gens d’une ville');
+await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
+await page.reload({ waitUntil: 'networkidle' });
+await page.click('[data-a="nouvelle"]');
+await page.waitForSelector('#carte');
+await page.waitForTimeout(600);
+ok(await page.locator('[data-a="modale"][data-m="ville"]').count() > 0,
+  'la ville propose de voir qui y vit');
+await page.click('[data-a="modale"][data-m="ville"]');
+await page.waitForTimeout(400);
+const texteVille = await page.evaluate(() => document.querySelector('#modale').textContent);
+ok(/MÉTIERS/i.test(texteVille) && /actifs/.test(texteVille),
+  'elle détaille ses métiers et le nombre d’actifs');
+ok(/QUI COMPTE/i.test(texteVille) && /armurier/i.test(texteVille),
+  'et nomme ceux qui comptent, dont l’armurier');
+ok(/Caractère/.test(texteVille) && /Vous concernant/.test(texteVille),
+  'chacun a un caractère et une opinion sur vous');
+await page.screenshot({ path: join(CAPTURES, '21-ville.png'), fullPage: true });
+const notables = await page.evaluate(() => {
+  const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const c = s.world.colonies.find((x) => x.notables && x.notables.length);
+  return c ? { n: c.notables.length, ok: c.notables.every((p) => p.nom && p.age > 0) } : null;
+});
+ok(notables && notables.n >= 2 && notables.ok,
+  'les notables sont bien dans la sauvegarde, avec leur état', JSON.stringify(notables));
+await page.click('[data-a="fermer"]');
+await page.waitForTimeout(300);
+
 console.log('\n8 decies. Métiers de l’avant-poste');
 const bourg = partieAvancee();
 Object.assign(bourg.base.batiments, { hydroponie: 2, entrepot: 3, mur: 2, baraquement: 1 });

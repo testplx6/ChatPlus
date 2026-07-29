@@ -888,3 +888,80 @@ export const METIERS = {
 };
 
 export const METIER_KEYS = Object.keys(METIERS);
+
+// ---------------------------------------------------------------------------
+// Métiers des villes
+// ---------------------------------------------------------------------------
+// Une ville n'est pas une population indifférenciée qui produit un peu de tout
+// en proportion de sa taille. C'est des paysans, des mineurs, des artisans, et
+// leur répartition explique ce qu'elle produit, ce qu'elle vend et ce qu'elle
+// devient. Un bourg des marais nourrit la région ; une ville des canyons crève
+// de faim mais tient l'alliage.
+//
+// On raisonne en effectifs, pas en individus : cinq mille cinq cents personnes
+// nommées pèseraient quatre mégaoctets de sauvegarde et six cents fois le budget
+// du tick. Les gens que le joueur peut toucher, eux, ont un nom et un état
+// propre — voir `notables` dans world.js.
+
+export const METIERS_VILLE = {
+  paysan: {
+    nom: 'Paysans', produit: 'vivres', skill: 'ingenierie',
+    desc: 'Bacs, serres, ce qui pousse dans la cendre.',
+  },
+  mineur: {
+    nom: 'Mineurs', produit: 'minerai', skill: 'force',
+    desc: 'Ce qu’on tire du sol et qu’on ne remplace pas.',
+  },
+  ferrailleur: {
+    nom: 'Ferrailleurs', produit: 'récupération', skill: 'ingenierie',
+    desc: 'Démonter l’ancien monde, morceau par morceau.',
+  },
+  artisan: {
+    nom: 'Artisans', produit: 'alliage et composants', skill: 'ingenierie',
+    desc: 'Ceux qui font ce qui ne se ramasse plus.',
+  },
+  medecin: {
+    nom: 'Médecins', produit: 'medkits', skill: 'medecine',
+    desc: 'Rares, courtisés, et jamais assez nombreux.',
+  },
+  milicien: {
+    nom: 'Miliciens', produit: 'défense', skill: 'melee',
+    desc: 'Payés à attendre que quelque chose arrive.',
+  },
+  marchand: {
+    nom: 'Marchands', produit: 'commerce', skill: 'commerce',
+    desc: 'Ils fixent les prix et savent qui a quoi.',
+  },
+};
+
+export const METIER_VILLE_KEYS = Object.keys(METIERS_VILLE);
+
+/**
+ * Part de la population qui travaille. Le reste — enfants, vieux, infirmes —
+ * mange sans produire, ce qui est précisément ce qui rend une ville fragile.
+ */
+export const PART_ACTIVE = 0.55;
+
+/** Vocation d'un biome : ce vers quoi la main-d'œuvre d'une ville se porte. */
+export const VOCATION_BIOME = {
+  marais: { paysan: 4, ferrailleur: 1, mineur: 0.4 },
+  steppe: { paysan: 3, ferrailleur: 1.6, mineur: 0.8 },
+  dalles: { ferrailleur: 4, artisan: 1.6, paysan: 0.9 },
+  canyons: { mineur: 4.5, artisan: 1.2, paysan: 0.5 },
+  desert: { mineur: 3, paysan: 0.9, ferrailleur: 1 },
+  friche: { ferrailleur: 2.4, mineur: 1.8, paysan: 0.6 },
+  plastique: { ferrailleur: 3.6, artisan: 1.4, paysan: 0.6 },
+  brulees: { mineur: 2.4, ferrailleur: 1.4, paysan: 0.5 },
+  relais: { artisan: 3.2, ferrailleur: 1.6, mineur: 1 },
+};
+
+/** Ce que le tempérament d'une faction ajoute à la répartition. */
+export const VOCATION_STYLE = {
+  corpo: { artisan: 1.4, marchand: 1.2, milicien: 0.5 },
+  nomade: { ferrailleur: 1, mineur: 0.6, milicien: 0.4 },
+  fanatique: { milicien: 1.2, artisan: 0.4 },
+  criminel: { marchand: 1.6, milicien: 0.8 },
+  militaire: { milicien: 2.2, artisan: 0.5 },
+  commune: { paysan: 1.8, medecin: 0.5 },
+  essaim: { milicien: 1.5 },
+};
