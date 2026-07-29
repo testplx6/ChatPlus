@@ -242,12 +242,27 @@ export function productionColonie(world, col) {
  * Une ville qui manque se rationne avant de mourir. Sans cette élasticité,
  * une mauvaise saison suffit à vider la carte de ses habitants.
  */
+/**
+ * Ce que les cantiniers font gagner. Servir cinq cents repas à heure fixe, c'est
+ * moins de gâchis qu'autant de foyers qui cuisinent chacun pour soi : jusqu'à
+ * un cinquième de vivres en moins pour le même nombre de bouches.
+ */
+export function economieCantine(col) {
+  const n = emploi(col, 'cantinier');
+  if (n <= 0) return 1;
+  return 1 - Math.min(0.2, (n / Math.max(1, actifs(col))) * 1.6);
+}
+
 export function consommationColonie(col) {
   const vivres = col.stock.rations || 0;
   const confort = Math.max(1, col.pop * 0.9);
   const serrage = Math.max(0.45, Math.min(1, 0.45 + (vivres / confort) * 0.9));
+  const cantine = economieCantine(col);
   return {
-    rations: col.pop * 0.014 * serrage,
+    rations: col.pop * 0.014 * serrage * cantine,
+    // On garde le coefficient sous la main : tickColonie en a besoin lui aussi
+    // et le recalculer coûterait un deuxième passage sur les métiers.
+    cantine,
     biomasse: col.pop * 0.006 * serrage,
     carburant: col.pop * 0.0022 * col.taille * serrage,
     ferraille: col.pop * 0.004,
@@ -295,7 +310,7 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
   // --- Vivres. On sert ce qu'on peut ; la satiété commande tout le reste.
   const amortiVivant = climat ? 1 + (climat.rendement('rations') - 1) * 0.45 : 1;
   const arrivage = (prod.rations || 0) * amortiVivant * dt;
-  const besoin = col.pop * 0.014 * dt;
+  const besoin = col.pop * 0.014 * (cons.cantine || 1) * dt;
   const disponible = (col.stock.rations || 0) + arrivage;
   const servi = Math.min(besoin, disponible);
   col.stock.rations = Math.max(0, disponible - servi);
@@ -330,13 +345,22 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
   col.pop = Math.min(col.taille * 900, col.pop);
 
   // Reconstruction de la défense
+  // Les ouvriers montent et remontent les murs. Sans eux une ville qui a pris
+  // un assaut reste éventrée : la défense repoussait, jamais la muraille.
+  const ouvriers = emploi(col, 'ouvrier');
+  if (ouvriers > 0 && col.murs < col.taille * 6) {
+    col.murs += Math.min(0.02, (ouvriers / Math.max(1, actifs(col))) * 0.09) * dt;
+  }
+
   if (col.defense < col.defenseMax) {
     // Une ville agitée (unrest > 1) voit sa garnison fondre : le terme devient
     // négatif, et il faut donc borner des deux côtés. Sans le plancher, une
     // tranche de douze heures pouvait faire passer la défense sous zéro — ce
     // qui ne s'était jamais vu tant que les tranches faisaient trois heures.
     col.defense = Math.max(0, Math.min(
-      col.defenseMax, col.defense + col.defenseMax * 0.004 * (1 - col.unrest) * dt
+      col.defenseMax,
+      col.defense + col.defenseMax * 0.004 * (1 + ouvriers / Math.max(1, actifs(col)) * 1.2)
+        * (1 - col.unrest) * dt
     ));
   }
   col.defenseMax = Math.round(col.pop * 0.09 + col.murs * 12);

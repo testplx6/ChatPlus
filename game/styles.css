@@ -255,34 +255,17 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
 
 /* ------------------------------------------------------------------ Carte */
 
-/* Commandes de carte : croix directionnelle et zoom, au pouce. */
-.carte-cmd {
+/* Repère sous la carte : où l'on est, et comment on la manœuvre. */
+.carte-pied {
   display: flex;
-  gap: 10px;
-  align-items: center;
   justify-content: space-between;
-  margin-top: 6px;
+  gap: 10px;
+  margin-top: 5px;
+  font-size: 10px;
+  color: var(--texte-3);
 }
-.dpad {
-  display: grid;
-  grid-template-columns: repeat(3, 34px);
-  grid-auto-rows: 30px;
-  gap: 2px;
-}
-.zoom {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 44px;
-}
-.zoom .act.mini { height: 30px; }
-.act.mini {
-  padding: 0;
-  min-height: 0;
-  font-size: 15px;
-  line-height: 1;
-  width: auto;
-}
+#carte-pos { color: var(--texte-2); white-space: nowrap; }
+.carte-pied .aide { text-align: right; }
 
 /* La carte ne tient plus dans un écran de téléphone, et c'est voulu : un monde
    de vingt-quatre sur dix-huit qu'on verrait d'un coup d'œil ne serait pas un
@@ -292,15 +275,21 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
   border: 1px solid var(--bord);
   background: #05070a;
   line-height: 0;
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
-  max-height: 50vh;
+  overflow: hidden;          /* on gère nous-mêmes le défilement */
+  max-height: 52vh;
+  height: 52vh;
+  /* Sans ça, un glissement vertical sur la carte fait défiler la page et on
+     n'atteint jamais le sud du monde. */
+  touch-action: none;
+  cursor: grab;
+  overscroll-behavior: contain;
 }
+#carte-boite:active { cursor: grabbing; }
 #carte {
   display: block;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
-  touch-action: pan-x pan-y;
+  pointer-events: none;      /* les gestes sont écoutés sur la boîte */
 }
 
 .legende { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 7px; }

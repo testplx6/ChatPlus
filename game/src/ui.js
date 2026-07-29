@@ -195,10 +195,7 @@ export function rafraichir(force) {
   const cv = $('#carte');
   if (cv) {
     dessinerCarte(cv);
-    if (!cv.dataset.lie) {
-      cv.dataset.lie = '1';
-      cv.addEventListener('click', surClicCarte);
-    }
+    if (cv.parentElement) lierGestesCarte(cv.parentElement);
     centrerCarte(cv);
   }
   if (modale) rendreModale();
@@ -262,14 +259,14 @@ function rendreNav() {
 // ---------------------------------------------------------------------------
 
 /**
- * Taille d'une région à l'écran, par niveau de zoom. Le monde fait 24×18 : au
- * plus large on ne voit qu'un cinquième de la carte à la fois — c'est le
- * propos —, au plus serré la carte entière tient dans un téléphone, ce qui
- * sert à décider où aller plutôt qu'à jouer.
+ * Taille d'une région à l'écran, en pixels. Continue, pas par crans : on la
+ * pousse à la molette ou à deux doigts, et des paliers se sentent tout de suite
+ * sous le doigt. Au plus serré la carte entière tient dans un téléphone, au
+ * plus large on n'en voit qu'un dixième.
  */
-const NIVEAUX_ZOOM = [11, 16, 24, 34];
-let niveauZoom = 2;
-let CELL = NIVEAUX_ZOOM[niveauZoom];
+const CELL_MIN = 9;
+const CELL_MAX = 46;
+let CELL = 24;
 
 /** Un carré centré dans la case, en proportion de la case. */
 function pave(g, x, y, part) {
@@ -295,69 +292,194 @@ function bruit(i, j) {
  * la main sur son doigt est la façon la plus sûre de rendre une carte
  * détestable.
  */
-let derniereVue = null;
-let recentrerAuProchainRendu = false;
+let derniereRegionVue = null;
+/** Vrai dès que le joueur a bougé la carte lui-même : on ne lui reprend plus. */
+let vueTenueParLeJoueur = false;
 function centrerCarte(cv, force) {
   const boite = cv.parentElement;
   if (!boite) return;
   const g = G();
   if (!g) return;
-  const cle = `${g.regionId}:${niveauZoom}`;
-  if (!force && !recentrerAuProchainRendu && derniereVue === cle) return;
-  derniereVue = cle;
-  recentrerAuProchainRendu = false;
+  // On suit le groupe tant que le joueur n'a pas pris la main ; une fois qu'il
+  // l'a prise, seul un double clic la lui redemande.
+  if (!force) {
+    if (vueTenueParLeJoueur) {
+      // L'écran vient d'être reconstruit : on remet la vue là où elle était.
+      if (vueScroll) { boite.scrollLeft = vueScroll.x; boite.scrollTop = vueScroll.y; }
+      majPositionCarte();
+      return;
+    }
+    if (derniereRegionVue === g.regionId) {
+      if (vueScroll) { boite.scrollLeft = vueScroll.x; boite.scrollTop = vueScroll.y; }
+      majPositionCarte();
+      return;
+    }
+  }
+  derniereRegionVue = g.regionId;
   const r = S.world.regions[g.regionId];
   if (!r) return;
   boite.scrollLeft = Math.max(0, r.x * CELL + CELL / 2 - boite.clientWidth / 2);
   boite.scrollTop = Math.max(0, r.y * CELL + CELL / 2 - boite.clientHeight / 2);
+  noterVue(boite);
+  majPositionCarte();
 }
 
 /**
- * Déplacer et zoomer au pouce. Une carte qui ne se manœuvre qu'en la faisant
- * glisser est injouable dès qu'on la met dans une page qui défile elle aussi :
- * un geste vertical sur la carte fait partir la page, et on n'atteint jamais le
- * sud du monde. D'où des boutons francs.
+ * Manœuvrer la carte : au doigt, à la souris, à la molette, à deux doigts.
+ *
+ * Tout passe par les événements pointeur, donc le même code sert le tactile et
+ * la souris. La boîte porte `touch-action: none` : sans ça, un glissement
+ * vertical sur la carte fait défiler la page et on n'atteint jamais le sud du
+ * monde. En contrepartie c'est à nous de bouger la vue, ce que fait `scrollLeft`
+ * et `scrollTop` — la carte reste un canvas de taille réelle dans une fenêtre,
+ * pas une transformation CSS, et le dessin reste net au pixel près.
+ *
+ * Un appui qui n'a pas bougé de plus de six pixels est un clic, pas un
+ * glissement : sans ce seuil, chaque déplacement finirait par sélectionner une
+ * région au hasard.
  */
-function commandesCarte() {
-  const g = G();
-  const r = g ? S.world.regions[g.regionId] : null;
-  const pos = r ? `${String.fromCharCode(65 + r.x)}${r.y + 1}` : '—';
-  return `<div class="carte-cmd">
-    <div class="dpad">
-      <button class="act mini" data-a="pan" data-d="hg" aria-label="Haut gauche">↖</button>
-      <button class="act mini" data-a="pan" data-d="h" aria-label="Haut">↑</button>
-      <button class="act mini" data-a="pan" data-d="hd" aria-label="Haut droite">↗</button>
-      <button class="act mini" data-a="pan" data-d="g" aria-label="Gauche">←</button>
-      <button class="act mini" data-a="recentrer" aria-label="Recentrer sur le groupe">◎</button>
-      <button class="act mini" data-a="pan" data-d="d" aria-label="Droite">→</button>
-      <button class="act mini" data-a="pan" data-d="bg" aria-label="Bas gauche">↙</button>
-      <button class="act mini" data-a="pan" data-d="b" aria-label="Bas">↓</button>
-      <button class="act mini" data-a="pan" data-d="bd" aria-label="Bas droite">↘</button>
-    </div>
-    <div class="zoom">
-      <button class="act mini" data-a="zoom" data-z="1" aria-label="Zoom avant"
-        ${niveauZoom >= NIVEAUX_ZOOM.length - 1 ? 'disabled' : ''}>+</button>
-      <div class="aide" style="text-align:center">${niveauZoom + 1}/${NIVEAUX_ZOOM.length}</div>
-      <button class="act mini" data-a="zoom" data-z="-1" aria-label="Zoom arrière"
-        ${niveauZoom <= 0 ? 'disabled' : ''}>−</button>
-      <div class="aide" style="text-align:center">${e(pos)}</div>
-    </div>
-  </div>`;
+const SEUIL_CLIC = 6;
+const pointeurs = new Map();
+let glisse = null;
+let ecartPincee = 0;
+/**
+ * Où le joueur regarde. Indispensable : chaque rafraîchissement reconstruit
+ * l'écran, donc la boîte de carte est un élément neuf dont le défilement repart
+ * de zéro. Sans cette mémoire, le moindre clic renvoyait la vue dans le coin
+ * nord-ouest du monde.
+ */
+let vueScroll = null;
+/** Dernier appui bref : sert à reconnaître la double tape nous-mêmes. */
+let dernierClic = null;
+
+function noterVue(boite) {
+  vueScroll = { x: boite.scrollLeft, y: boite.scrollTop };
 }
 
-/** Fait défiler la fenêtre de carte d'un demi-écran dans une direction. */
-function deplacerCarte(dir) {
-  const boite = $('#carte-boite');
-  if (!boite) return;
-  const dx = dir.includes('g') && dir !== 'h' ? -1 : dir.includes('d') ? 1 : 0;
-  const dy = dir[0] === 'h' ? -1 : dir[0] === 'b' ? 1 : 0;
-  const px = Math.max(CELL * 2, boite.clientWidth * 0.55);
-  const py = Math.max(CELL * 2, boite.clientHeight * 0.55);
-  boite.scrollLeft += dx * px;
-  boite.scrollTop += dy * py;
-  // On vient de regarder ailleurs volontairement : le rendu suivant ne doit pas
-  // ramener la vue sur le groupe.
-  derniereVue = `${G() ? G().regionId : 0}:${niveauZoom}`;
+/** Le point du monde (en cases, décimal) sous une position écran. */
+function souscarte(boite, cx, cy) {
+  const r = boite.getBoundingClientRect();
+  return {
+    wx: (boite.scrollLeft + (cx - r.left)) / CELL,
+    wy: (boite.scrollTop + (cy - r.top)) / CELL,
+    ex: cx - r.left,
+    ey: cy - r.top,
+  };
+}
+
+/** Change le zoom en gardant fixe le point visé. */
+function zoomer(boite, facteur, cx, cy) {
+  const avant = souscarte(boite, cx, cy);
+  const neuf = Math.max(CELL_MIN, Math.min(CELL_MAX, CELL * facteur));
+  if (Math.abs(neuf - CELL) < 0.01) return;
+  CELL = neuf;
+  const cv = boite.querySelector('canvas');
+  if (cv) dessinerCarte(cv);
+  boite.scrollLeft = avant.wx * CELL - avant.ex;
+  boite.scrollTop = avant.wy * CELL - avant.ey;
+  vueTenueParLeJoueur = true;
+  noterVue(boite);
+  majPositionCarte();
+}
+
+function lierGestesCarte(boite) {
+  if (boite.dataset.gestes) return;
+  boite.dataset.gestes = '1';
+
+  boite.addEventListener('wheel', (ev) => {
+    ev.preventDefault();
+    // Le pas dépend de l'amplitude, pas de son signe : une molette crantée et
+    // un pavé tactile n'envoient pas du tout les mêmes valeurs.
+    zoomer(boite, Math.exp(-ev.deltaY * 0.0016), ev.clientX, ev.clientY);
+  }, { passive: false });
+
+  boite.addEventListener('pointerdown', (ev) => {
+    // La capture garde le glissement vivant même quand le doigt sort de la
+    // boîte. Elle échoue sur un événement fabriqué (tests) : ce n'est pas une
+    // raison pour perdre le geste.
+    try { boite.setPointerCapture(ev.pointerId); } catch (e) { /* pas capturable */ }
+    pointeurs.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (pointeurs.size === 1) {
+      glisse = { x: ev.clientX, y: ev.clientY, dep: 0, id: ev.pointerId };
+    } else if (pointeurs.size === 2) {
+      const [a, b] = [...pointeurs.values()];
+      ecartPincee = Math.hypot(a.x - b.x, a.y - b.y);
+      glisse = null; // deux doigts : on pince, on ne fait plus glisser
+    }
+  });
+
+  boite.addEventListener('pointermove', (ev) => {
+    const p = pointeurs.get(ev.pointerId);
+    if (!p) return;
+    const dx = ev.clientX - p.x;
+    const dy = ev.clientY - p.y;
+    p.x = ev.clientX; p.y = ev.clientY;
+
+    if (pointeurs.size >= 2) {
+      const [a, b] = [...pointeurs.values()];
+      const ecart = Math.hypot(a.x - b.x, a.y - b.y);
+      if (ecartPincee > 0 && ecart > 0) {
+        zoomer(boite, ecart / ecartPincee, (a.x + b.x) / 2, (a.y + b.y) / 2);
+      }
+      ecartPincee = ecart;
+      return;
+    }
+    if (!glisse || glisse.id !== ev.pointerId) return;
+    glisse.dep += Math.abs(dx) + Math.abs(dy);
+    boite.scrollLeft -= dx;
+    boite.scrollTop -= dy;
+    if (glisse.dep > SEUIL_CLIC) vueTenueParLeJoueur = true;
+    noterVue(boite);
+  });
+
+  const relacher = (ev) => {
+    const etaitGlisse = glisse && glisse.id === ev.pointerId ? glisse : null;
+    pointeurs.delete(ev.pointerId);
+    if (pointeurs.size < 2) ecartPincee = 0;
+    if (pointeurs.size === 0) glisse = null;
+    if (!etaitGlisse || etaitGlisse.dep > SEUIL_CLIC || ev.type !== 'pointerup') return;
+    // On reconnaît la double tape ici plutôt qu'avec l'événement `dblclick` :
+    // le premier appui reconstruit l'écran, et le `dblclick` arriverait sur une
+    // boîte détachée du document, donc dans le vide.
+    const now = ev.timeStamp || 0;
+    const doubleTape = dernierClic
+      && now - dernierClic.t < 340
+      && Math.abs(ev.clientX - dernierClic.x) < 14
+      && Math.abs(ev.clientY - dernierClic.y) < 14;
+    dernierClic = { t: now, x: ev.clientX, y: ev.clientY };
+    if (doubleTape) {
+      dernierClic = null;
+      vueTenueParLeJoueur = false;
+      vueScroll = null;
+      const cvv = boite.querySelector('canvas');
+      if (cvv) centrerCarte(cvv, true);
+      return;
+    }
+    choisirCase(boite, ev.clientX, ev.clientY);
+  };
+  boite.addEventListener('pointerup', relacher);
+  boite.addEventListener('pointercancel', relacher);
+
+}
+
+function choisirCase(boite, cx, cy) {
+  const { wx, wy } = souscarte(boite, cx, cy);
+  const x = Math.floor(wx);
+  const y = Math.floor(wy);
+  if (x < 0 || y < 0 || x >= S.world.largeur || y >= S.world.hauteur) return;
+  selection = y * S.world.largeur + x;
+  rafraichir(true);
+}
+
+/** Le repère du groupe, sous la carte. Mis à jour sans reconstruire l'écran. */
+function majPositionCarte() {
+  const el = document.getElementById('carte-pos');
+  if (!el) return;
+  const g = G();
+  const r = g ? S.world.regions[g.regionId] : null;
+  el.textContent = r
+    ? `${String.fromCharCode(65 + r.x)}${r.y + 1} · ${Math.round(CELL)} px/secteur`
+    : '';
 }
 
 function dessinerCarte(cv) {
@@ -531,18 +653,6 @@ function dessinerCarte(cv) {
   }
 }
 
-function surClicCarte(ev) {
-  const cv = ev.currentTarget;
-  const rect = cv.getBoundingClientRect();
-  const echelle = cv.width / rect.width;
-  const px = (ev.clientX - rect.left) * echelle;
-  const py = (ev.clientY - rect.top) * echelle;
-  const x = Math.floor(px / CELL);
-  const y = Math.floor(py / CELL);
-  if (x < 0 || y < 0 || x >= S.world.largeur || y >= S.world.hauteur) return;
-  selection = y * S.world.largeur + x;
-  rafraichir(true);
-}
 
 // ---------------------------------------------------------------------------
 // Écran CARTE
@@ -828,7 +938,9 @@ function armeesIci(rid) {
 function ecranCarte() {
   return `
   <div id="carte-boite"><canvas id="carte" aria-label="Carte du monde"></canvas></div>
-  ${commandesCarte()}
+  <div class="carte-pied"><span id="carte-pos"></span>
+    <span class="aide">glisser pour déplacer · molette ou deux doigts pour zoomer ·
+      double clic pour revenir sur le groupe</span></div>
   <div class="legende">
     <span><i style="background:#f2f6fb"></i>${groupes(S).length > 1 ? 'groupe affiché' : 'escouade'}</span>
     ${groupes(S).length > 1 ? '<span><i style="border:1px solid #f2f6fb"></i>autre groupe</span>' : ''}
@@ -2403,27 +2515,6 @@ function surClic(ev) {
       rafraichir(true);
       break;
     }
-
-    case 'pan':
-      deplacerCarte(el.dataset.d);
-      break;
-
-    case 'zoom': {
-      const n = Math.max(0, Math.min(NIVEAUX_ZOOM.length - 1,
-        niveauZoom + Number(el.dataset.z)));
-      if (n !== niveauZoom) {
-        niveauZoom = n;
-        CELL = NIVEAUX_ZOOM[n];
-        recentrerAuProchainRendu = true;
-        rafraichir(true);
-      }
-      break;
-    }
-
-    case 'recentrer':
-      recentrerAuProchainRendu = true;
-      rafraichir(true);
-      break;
 
     case 'honorer': {
       const r = ACTIONS.honorer(el.dataset.c, el.dataset.n);

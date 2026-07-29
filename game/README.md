@@ -90,7 +90,10 @@ simulation gagne du travail — jamais quand elle se dégrade —, et le fichier
 test dit à chaque fois ce que la hausse a payé : 60 µs au départ, 65 avec les
 groupes et la connaissance imparfaite, 88 avec les métiers des villes et leurs
 notables, 94 avec les demandes personnelles de ces notables, 114 avec la carte
-de 24×18 et ses 86 villes. Sans cette trace, relever le budget deviendrait un moyen commode de ne
+de 24×18 et ses 86 villes, 116 avec les cantiniers et les ouvriers. Le plafond
+lui-même est passé de 130 à 145 pour une raison qui n'a rien à voir avec le
+code : à 130 le test échouait une fois sur trois sur une machine chargée, et un
+garde-fou qui crie sans motif est pire qu'un garde-fou absent. Sans cette trace, relever le budget deviendrait un moyen commode de ne
 jamais voir une régression.
 
 Le banc d'équilibrage est le plus utile des trois : c'est lui qui a montré que
@@ -125,8 +128,16 @@ en saison des pluies, ou on ne passe pas.
 **Le monde.** Carte de 24×18 régions — 432 secteurs, cinq fois l'ancienne —,
 neuf biomes aux rendements et aux aléas propres, trois Relais Orbitaux en marge,
 et 86 colonies au départ. Elle ne tient pas dans un écran de téléphone : la carte
-défile et se recentre sur le groupe affiché, ce qui est le propos — un monde
-qu'on embrasse d'un coup d'œil n'est pas un monde à explorer.
+se manœuvre au doigt : glisser pour se déplacer, molette ou deux doigts pour
+zoomer (de neuf à quarante-six pixels par secteur, en continu, pas par crans),
+double tape pour revenir sur le groupe. C'est le propos — un monde qu'on embrasse
+d'un coup d'œil n'est pas un monde à explorer.
+
+Deux détails qui décident de tout ici : la boîte de carte porte
+`touch-action: none`, sans quoi un glissement vertical fait défiler la page et
+on n'atteint jamais le sud du monde ; et la position de la vue est mémorisée
+hors du DOM, parce que chaque rafraîchissement reconstruit l'écran et
+renverrait sinon le joueur dans le coin nord-ouest à chaque clic.
 
 La densité, elle, n'a pas bougé : une ville pour cinq secteurs, comme avant. Le
 banc a tranché ce point en une mesure. À 54 villes — une pour huit secteurs — le
@@ -189,6 +200,31 @@ Une demande qu'on laisse s'éteindre se paie — mais seulement si on était pas
 l'entendre. Sur quatre parties d'un an, 348 demandes naissent d'elles-mêmes et
 seules 4 sont reprochées à un joueur qui ne s'en occupe jamais : on ne tient
 rigueur à personne d'un besoin qu'il ignorait.
+
+**Les métiers, et les bâtiments qui les abritent.** Chaque bâtiment de
+l'avant-poste ouvre un métier, et chaque métier n'agit que sur son bâtiment :
+le cultivateur sur l'hydroponie, le fondeur sur la fonderie, le magasinier sur
+l'entrepôt, l'opérateur sur l'antenne. Treize bâtiments, treize métiers, treize
+effets distincts — on ne confie pas des bras à un tas, on les met à un poste.
+
+Trois d'entre eux ne produisent rien et comptent quand même :
+
+- **la cantine** et ses *cuisiniers* : manger assis, à heure fixe, avec
+  quelqu'un qui compte les portions. Jusqu'à un tiers de vivres en moins pour
+  les mêmes bouches, et c'est le seul bâtiment dont l'effet se voit sur le moral
+  autant que sur le stock ;
+- **la halle de récolte** et ses *récoltants* : jusqu'ici l'avant-poste ne
+  savait que transformer ce qu'on lui apportait. Il ramasse maintenant sa propre
+  région, au rendement du biome — et sans l'épuiser, parce que c'est une
+  exploitation et non une fouille ;
+- **le poste de garde** et ses *gardes* : il ne fait pas gagner les combats,
+  c'est l'affaire du mur et des miliciens. Il fait voir venir. Moins de raids
+  aboutissent par surprise, et ceux qui passent trouvent les stocks rentrés.
+
+Les villes ont leur équivalent : neuf corps de métier dont les *cantiniers*,
+qui nourrissent cinq cents personnes pour moins cher que cinq cents foyers, et
+les *ouvriers*, sans qui une ville qui a pris un assaut reste éventrée — la
+défense repoussait toute seule, la muraille jamais.
 
 **Les caravanes.** Ce qu'une ville a en trop part chez celle qui en manque, sur
 des routes réelles et dangereuses. Elles se font piller par les pillards et par

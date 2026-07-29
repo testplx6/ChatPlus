@@ -14,7 +14,7 @@ import {
   fonderBase, lancerConstruction, lancerRecherche, placesMetier, affectes,
   manoeuvres, affecter, rendementMetier, mainDoeuvre,
 } from '../src/base.js';
-import { METIER_KEYS } from '../src/data.js';
+import { METIER_KEYS, BIOMES } from '../src/data.js';
 import {
   estVivant, makeCharacter, accorderDiplome, apprentissage,
 } from '../src/characters.js';
@@ -29,7 +29,7 @@ import {
   tacheDe, maxGroupes, debout,
 } from '../src/groupes.js';
 import {
-  acheter, vendre, prixJoueur, actifs, emploi, productionColonie,
+  acheter, vendre, prixJoueur, actifs, emploi, productionColonie, consommationColonie,
 } from '../src/economy.js';
 import { vocation, notable } from '../src/notables.js';
 import {
@@ -93,11 +93,14 @@ const ETALON_MS = 25;
  *          villes, pour vingt pour cent de tick en plus seulement. Le reste est
  *          absorbé par le niveau de détail (PAS_LOIN), le tas binaire du
  *          Dijkstra, l'index des colonies et une distance sans allocation.
+ *  116 µs  cantiniers et ouvriers dans les villes
  *
- * 130 laisse 12 % de marge sur les 114 mesurés. C'est peu ; la prochaine hausse
- * de plafond devra donc être précédée d'un profil, pas d'une intuition.
+ * 145 laisse 25 % de marge sur les 116 mesurés. La mesure est un minimum sur
+ * deux passes, mais une machine chargée fait encore varier le résultat de
+ * quinze pour cent : à 130 le test échouait une fois sur trois sans qu'aucun
+ * code n'ait changé, ce qui est la pire chose qu'un garde-fou puisse faire.
  */
-const BUDGET_US = 130;
+const BUDGET_US = 145;
 
 /** Mesure la vitesse de la machine. Le minimum de trois passes : le bruit du
  *  ramasse-miettes et de la compilation ne fait que ralentir, jamais accélérer. */
@@ -994,6 +997,91 @@ ok(totalPostes <= s9t.base.pop, 'les postes se dégarnissent si la population to
   `${totalPostes} pour ${s9t.base.pop} habitants`);
 verifierCoherence(s9t, 'après affectation des métiers');
 
+section('9 nonies bis. Cantine, halle et poste de garde');
+const s9n2 = nouvellePartie(8484, { maintenant: 0 });
+const g9n2 = groupeActif(s9n2);
+const vide9n = s9n2.world.regions.find((r) => !r.colonie);
+g9n2.regionId = vide9n.i;
+Object.assign(g9n2.inventaire, { ferraille: 400, polymere: 200, composant: 30 });
+fonderBase(s9n2, () => {});
+const b9n = s9n2.base;
+Object.assign(b9n.batiments, { generateur: 4, baraquement: 3, hydroponie: 2, entrepot: 4 });
+b9n.pop = 12;
+b9n.stock.rations = 500;
+b9n.stock.carburant = 400;
+
+// La cantine nourrit mieux avec moins.
+const sansCantine = { ...b9n.stock };
+avancer(s9n2, 200);
+const consSans = sansCantine.rations - b9n.stock.rations;
+b9n.stock.rations = 500;
+b9n.batiments.cantine = 4;
+b9n.postes.cuisinier = 8;
+avancer(s9n2, 200);
+const consAvec = 500 - b9n.stock.rations;
+ok(consAvec < consSans * 0.85, 'la cantine fait manger la même population pour moins',
+  `${consSans.toFixed(1)} → ${consAvec.toFixed(1)} rations sur 200 h`);
+ok(placesMetier(b9n, 'cuisinier') === 8, 'quatre cantines ouvrent huit postes de cuisinier',
+  `${placesMetier(b9n, 'cuisinier')}`);
+
+// La halle récolte la région, sans l'épuiser.
+const s9n3 = nouvellePartie(8585, { maintenant: 0 });
+const g9n3 = groupeActif(s9n3);
+const vide9n3 = s9n3.world.regions.find((r) => !r.colonie && BIOMES[r.biome].yields
+  && Object.keys(BIOMES[r.biome].yields).length);
+g9n3.regionId = vide9n3.i;
+Object.assign(g9n3.inventaire, { ferraille: 400, polymere: 200, composant: 30 });
+fonderBase(s9n3, () => {});
+Object.assign(s9n3.base.batiments, { generateur: 4, baraquement: 2, entrepot: 5 });
+s9n3.base.pop = 8;
+// Un générateur sans carburant ne produit rien, et sans énergie rien ne tourne.
+s9n3.base.stock.carburant = 400;
+const avantHalle = COMMODITY_KEYS.reduce(
+  (a, k) => a + (k === 'carburant' ? 0 : s9n3.base.stock[k] || 0), 0);
+const fouilleAvant = s9n3.world.regions[vide9n3.i].fouille;
+s9n3.base.batiments.halle = 3;
+s9n3.base.postes.recoltant = 9;
+avancer(s9n3, 300);
+const apresHalle = COMMODITY_KEYS.reduce(
+  (a, k) => a + (k === 'carburant' ? 0 : s9n3.base.stock[k] || 0), 0);
+ok(apresHalle > avantHalle + 20, 'la halle ramasse la région toute seule',
+  `${Math.round(avantHalle)} → ${Math.round(apresHalle)}`);
+ok(s9n3.world.regions[vide9n3.i].fouille === fouilleAvant,
+  'et c’est une exploitation, pas une fouille : la case ne s’épuise pas');
+
+// Le poste de garde protège les stocks quand le raid passe quand même.
+const s9n4 = nouvellePartie(8686, { maintenant: 0 });
+const g9n4 = groupeActif(s9n4);
+g9n4.regionId = s9n4.world.regions.find((r) => !r.colonie).i;
+Object.assign(g9n4.inventaire, { ferraille: 400, polymere: 200, composant: 30 });
+fonderBase(s9n4, () => {});
+ok(placesMetier(s9n4.base, 'garde') === 0, 'sans poste de garde, aucun garde à poster');
+s9n4.base.batiments.poste = 4;
+ok(placesMetier(s9n4.base, 'garde') === 8, 'quatre postes ouvrent huit places de garde',
+  `${placesMetier(s9n4.base, 'garde')}`);
+
+// Les métiers de ville nouveaux existent et servent à quelque chose.
+const s9n5 = nouvellePartie(8787, { maintenant: 0 });
+const colCant = s9n5.world.colonies[0];
+colCant.emplois.cantinier = 0;
+const consSansCantinier = consommationColonie(colCant).rations;
+colCant.emplois.cantinier = Math.round(actifs(colCant) * 0.15);
+const consAvecCantinier = consommationColonie(colCant).rations;
+ok(consAvecCantinier < consSansCantinier * 0.96,
+  'des cantiniers font manger une ville pour moins cher',
+  `${consSansCantinier.toFixed(2)} → ${consAvecCantinier.toFixed(2)} par heure`);
+
+const colOuv = s9n5.world.colonies[1];
+colOuv.murs = 1;
+colOuv.emplois.ouvrier = 0;
+avancer(s9n5, 400);
+const mursSansOuvriers = colOuv.murs;
+colOuv.murs = 1;
+colOuv.emplois.ouvrier = Math.round(actifs(colOuv) * 0.2);
+avancer(s9n5, 400);
+ok(colOuv.murs > mursSansOuvriers, 'des ouvriers remontent les murs d’une ville éventrée',
+  `${mursSansOuvriers.toFixed(2)} → ${colOuv.murs.toFixed(2)}`);
+
 section('9 decies. Métiers et gens des villes');
 const s9u = nouvellePartie(5151, { maintenant: 0 });
 avancer(s9u, 60);
@@ -1267,9 +1355,12 @@ avancer(s9bb, 6000);
 const demandes9 = s9bb.world.colonies.reduce(
   (n, c) => n + (c.notables || []).filter((p) => p.demande).length, 0);
 ok(demandes9 > 0, 'des gens attendent quelque chose de vous quelque part', `${demandes9}`);
+// Une ville lointaine n'avance que par journées (voir PAS_LOIN) : sa demande
+// périmée est balayée au passage suivant, donc jusqu'à une journée plus tard.
+// Ce qu'on vérifie, c'est qu'aucune ne s'installe.
 ok(s9bb.world.colonies.every((c) => (c.notables || []).every(
-  (p) => !p.demande || p.demande.echeance > s9bb.temps)),
-  'aucune demande périmée ne traîne');
+  (p) => !p.demande || p.demande.echeance > s9bb.temps - 30)),
+  'aucune demande périmée ne s’installe');
 verifierCoherence(s9bb, 'après une année de vie sociale');
 
 section('10. Rattrapage hors ligne');

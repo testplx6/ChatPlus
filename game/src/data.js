@@ -287,6 +287,36 @@ export const BUILDINGS = {
     energie: -6,
     max: 8,
   },
+  cantine: {
+    nom: 'Cantine',
+    desc: 'On y mange assis, à heure fixe. La même ration nourrit mieux.',
+    cout: { ferraille: 40, polymere: 30 },
+    coutMul: 1.5,
+    heures: 5,
+    tempsMul: 1.4,
+    energie: -2,
+    max: 5,
+  },
+  halle: {
+    nom: 'Halle de récolte',
+    desc: 'Bacs, treuils, brouettes : l’avant-poste ramasse enfin sa propre région.',
+    cout: { ferraille: 65, polymere: 20, composant: 4 },
+    coutMul: 1.6,
+    heures: 7,
+    tempsMul: 1.45,
+    energie: -3,
+    max: 6,
+  },
+  poste: {
+    nom: 'Poste de garde',
+    desc: 'Des yeux sur les pistes. On ne se bat pas mieux, on est prévenu à temps.',
+    cout: { ferraille: 60, polymere: 15, composant: 3 },
+    coutMul: 1.55,
+    heures: 6,
+    tempsMul: 1.4,
+    energie: -2,
+    max: 5,
+  },
   infirmerie: {
     nom: 'Infirmerie',
     desc: 'Soigne l’escouade au repos, produit des medkits.',
@@ -885,6 +915,21 @@ export const METIERS = {
     skill: 'ingenierie', effet: 'Vitesse des chantiers',
     texte: 'Ce sont eux qui montent le reste, et on les oublie toujours.',
   },
+  cuisinier: {
+    nom: 'Cuisinier', batiment: 'cantine', parNiveau: 2, apport: 0.18,
+    skill: 'commerce', effet: 'Rations économisées, et le moral avec',
+    texte: 'Nourrir trente personnes avec ce qu’il y a n’est pas cuisiner. C’est compter.',
+  },
+  recoltant: {
+    nom: 'Récoltant', batiment: 'halle', parNiveau: 3, apport: 0.16,
+    skill: 'force', effet: 'Ce que la halle ramasse dans la région',
+    texte: 'Sortir, ramasser, rentrer. Trois cents fois. C’est comme ça que le stock monte.',
+  },
+  garde: {
+    nom: 'Garde', batiment: 'poste', parNiveau: 2, apport: 0.15,
+    skill: 'tir', effet: 'Raids repérés à temps, et moins de pillage quand ça tourne mal',
+    texte: 'Le travail consiste à voir venir. Le reste est l’affaire des autres.',
+  },
 };
 
 export const METIER_KEYS = Object.keys(METIERS);
@@ -931,6 +976,14 @@ export const METIERS_VILLE = {
   marchand: {
     nom: 'Marchands', produit: 'commerce', skill: 'commerce',
     desc: 'Ils fixent les prix et savent qui a quoi.',
+  },
+  cantinier: {
+    nom: 'Cantiniers', produit: 'repas', skill: 'commerce',
+    desc: 'Nourrir cinq cents personnes n’est pas cuisiner, c’est compter.',
+  },
+  ouvrier: {
+    nom: 'Ouvriers', produit: 'murs et bâti', skill: 'force',
+    desc: 'Ils montent les murs, ils les réparent, ils recommencent.',
   },
 };
 

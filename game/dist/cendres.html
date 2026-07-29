@@ -270,34 +270,17 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
 
 /* ------------------------------------------------------------------ Carte */
 
-/* Commandes de carte : croix directionnelle et zoom, au pouce. */
-.carte-cmd {
+/* Repère sous la carte : où l'on est, et comment on la manœuvre. */
+.carte-pied {
   display: flex;
-  gap: 10px;
-  align-items: center;
   justify-content: space-between;
-  margin-top: 6px;
+  gap: 10px;
+  margin-top: 5px;
+  font-size: 10px;
+  color: var(--texte-3);
 }
-.dpad {
-  display: grid;
-  grid-template-columns: repeat(3, 34px);
-  grid-auto-rows: 30px;
-  gap: 2px;
-}
-.zoom {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 44px;
-}
-.zoom .act.mini { height: 30px; }
-.act.mini {
-  padding: 0;
-  min-height: 0;
-  font-size: 15px;
-  line-height: 1;
-  width: auto;
-}
+#carte-pos { color: var(--texte-2); white-space: nowrap; }
+.carte-pied .aide { text-align: right; }
 
 /* La carte ne tient plus dans un écran de téléphone, et c'est voulu : un monde
    de vingt-quatre sur dix-huit qu'on verrait d'un coup d'œil ne serait pas un
@@ -307,15 +290,21 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
   border: 1px solid var(--bord);
   background: #05070a;
   line-height: 0;
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
-  max-height: 50vh;
+  overflow: hidden;          /* on gère nous-mêmes le défilement */
+  max-height: 52vh;
+  height: 52vh;
+  /* Sans ça, un glissement vertical sur la carte fait défiler la page et on
+     n'atteint jamais le sud du monde. */
+  touch-action: none;
+  cursor: grab;
+  overscroll-behavior: contain;
 }
+#carte-boite:active { cursor: grabbing; }
 #carte {
   display: block;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
-  touch-action: pan-x pan-y;
+  pointer-events: none;      /* les gestes sont écoutés sur la boîte */
 }
 
 .legende { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 7px; }
@@ -981,6 +970,36 @@ const BUILDINGS = {
     energie: -6,
     max: 8,
   },
+  cantine: {
+    nom: 'Cantine',
+    desc: 'On y mange assis, à heure fixe. La même ration nourrit mieux.',
+    cout: { ferraille: 40, polymere: 30 },
+    coutMul: 1.5,
+    heures: 5,
+    tempsMul: 1.4,
+    energie: -2,
+    max: 5,
+  },
+  halle: {
+    nom: 'Halle de récolte',
+    desc: 'Bacs, treuils, brouettes : l’avant-poste ramasse enfin sa propre région.',
+    cout: { ferraille: 65, polymere: 20, composant: 4 },
+    coutMul: 1.6,
+    heures: 7,
+    tempsMul: 1.45,
+    energie: -3,
+    max: 6,
+  },
+  poste: {
+    nom: 'Poste de garde',
+    desc: 'Des yeux sur les pistes. On ne se bat pas mieux, on est prévenu à temps.',
+    cout: { ferraille: 60, polymere: 15, composant: 3 },
+    coutMul: 1.55,
+    heures: 6,
+    tempsMul: 1.4,
+    energie: -2,
+    max: 5,
+  },
   infirmerie: {
     nom: 'Infirmerie',
     desc: 'Soigne l’escouade au repos, produit des medkits.',
@@ -1579,6 +1598,21 @@ const METIERS = {
     skill: 'ingenierie', effet: 'Vitesse des chantiers',
     texte: 'Ce sont eux qui montent le reste, et on les oublie toujours.',
   },
+  cuisinier: {
+    nom: 'Cuisinier', batiment: 'cantine', parNiveau: 2, apport: 0.18,
+    skill: 'commerce', effet: 'Rations économisées, et le moral avec',
+    texte: 'Nourrir trente personnes avec ce qu’il y a n’est pas cuisiner. C’est compter.',
+  },
+  recoltant: {
+    nom: 'Récoltant', batiment: 'halle', parNiveau: 3, apport: 0.16,
+    skill: 'force', effet: 'Ce que la halle ramasse dans la région',
+    texte: 'Sortir, ramasser, rentrer. Trois cents fois. C’est comme ça que le stock monte.',
+  },
+  garde: {
+    nom: 'Garde', batiment: 'poste', parNiveau: 2, apport: 0.15,
+    skill: 'tir', effet: 'Raids repérés à temps, et moins de pillage quand ça tourne mal',
+    texte: 'Le travail consiste à voir venir. Le reste est l’affaire des autres.',
+  },
 };
 
 const METIER_KEYS = Object.keys(METIERS);
@@ -1625,6 +1659,14 @@ const METIERS_VILLE = {
   marchand: {
     nom: 'Marchands', produit: 'commerce', skill: 'commerce',
     desc: 'Ils fixent les prix et savent qui a quoi.',
+  },
+  cantinier: {
+    nom: 'Cantiniers', produit: 'repas', skill: 'commerce',
+    desc: 'Nourrir cinq cents personnes n’est pas cuisiner, c’est compter.',
+  },
+  ouvrier: {
+    nom: 'Ouvriers', produit: 'murs et bâti', skill: 'force',
+    desc: 'Ils montent les murs, ils les réparent, ils recommencent.',
   },
 };
 
@@ -5075,12 +5117,27 @@ function productionColonie(world, col) {
  * Une ville qui manque se rationne avant de mourir. Sans cette élasticité,
  * une mauvaise saison suffit à vider la carte de ses habitants.
  */
+/**
+ * Ce que les cantiniers font gagner. Servir cinq cents repas à heure fixe, c'est
+ * moins de gâchis qu'autant de foyers qui cuisinent chacun pour soi : jusqu'à
+ * un cinquième de vivres en moins pour le même nombre de bouches.
+ */
+function economieCantine(col) {
+  const n = emploi(col, 'cantinier');
+  if (n <= 0) return 1;
+  return 1 - Math.min(0.2, (n / Math.max(1, actifs(col))) * 1.6);
+}
+
 function consommationColonie(col) {
   const vivres = col.stock.rations || 0;
   const confort = Math.max(1, col.pop * 0.9);
   const serrage = Math.max(0.45, Math.min(1, 0.45 + (vivres / confort) * 0.9));
+  const cantine = economieCantine(col);
   return {
-    rations: col.pop * 0.014 * serrage,
+    rations: col.pop * 0.014 * serrage * cantine,
+    // On garde le coefficient sous la main : tickColonie en a besoin lui aussi
+    // et le recalculer coûterait un deuxième passage sur les métiers.
+    cantine,
     biomasse: col.pop * 0.006 * serrage,
     carburant: col.pop * 0.0022 * col.taille * serrage,
     ferraille: col.pop * 0.004,
@@ -5128,7 +5185,7 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
   // --- Vivres. On sert ce qu'on peut ; la satiété commande tout le reste.
   const amortiVivant = climat ? 1 + (climat.rendement('rations') - 1) * 0.45 : 1;
   const arrivage = (prod.rations || 0) * amortiVivant * dt;
-  const besoin = col.pop * 0.014 * dt;
+  const besoin = col.pop * 0.014 * (cons.cantine || 1) * dt;
   const disponible = (col.stock.rations || 0) + arrivage;
   const servi = Math.min(besoin, disponible);
   col.stock.rations = Math.max(0, disponible - servi);
@@ -5163,13 +5220,22 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
   col.pop = Math.min(col.taille * 900, col.pop);
 
   // Reconstruction de la défense
+  // Les ouvriers montent et remontent les murs. Sans eux une ville qui a pris
+  // un assaut reste éventrée : la défense repoussait, jamais la muraille.
+  const ouvriers = emploi(col, 'ouvrier');
+  if (ouvriers > 0 && col.murs < col.taille * 6) {
+    col.murs += Math.min(0.02, (ouvriers / Math.max(1, actifs(col))) * 0.09) * dt;
+  }
+
   if (col.defense < col.defenseMax) {
     // Une ville agitée (unrest > 1) voit sa garnison fondre : le terme devient
     // négatif, et il faut donc borner des deux côtés. Sans le plancher, une
     // tranche de douze heures pouvait faire passer la défense sous zéro — ce
     // qui ne s'était jamais vu tant que les tranches faisaient trois heures.
     col.defense = Math.max(0, Math.min(
-      col.defenseMax, col.defense + col.defenseMax * 0.004 * (1 - col.unrest) * dt
+      col.defenseMax,
+      col.defense + col.defenseMax * 0.004 * (1 + ouvriers / Math.max(1, actifs(col)) * 1.2)
+        * (1 - col.unrest) * dt
     ));
   }
   col.defenseMax = Math.round(col.pop * 0.09 + col.murs * 12);
@@ -6655,7 +6721,15 @@ function tickBase(state, log, ctx) {
   // s'en va si l'un des deux manque. Sa main-d'œuvre fait tourner les ateliers.
   const maxPop = populationMax(base);
   const rationsDispo = base.stock.rations || 0;
-  const besoinPop = (base.pop || 0) * 0.014;
+  // La cantine : manger assis, à heure fixe, avec quelqu'un qui compte les
+  // portions. Jusqu'à un tiers de vivres en moins pour les mêmes bouches — et
+  // c'est le seul bâtiment dont l'effet se voit sur le moral autant que sur le
+  // stock.
+  const cant = niveau(base, 'cantine');
+  const economie = cant > 0
+    ? 1 - Math.min(0.33, cant * 0.055 * M.cuisinier)
+    : 1;
+  const besoinPop = (base.pop || 0) * 0.014 * economie;
   if (base.pop > 0) {
     const servi = Math.min(besoinPop, rationsDispo);
     base.stock.rations = Math.max(0, rationsDispo - servi);
@@ -6664,7 +6738,7 @@ function tickBase(state, log, ctx) {
       base.moral = Math.max(0, base.moral - 0.15);
       if (rng.chance(0.03)) base.pop = Math.max(0, base.pop - 1);
     } else {
-      base.moral = Math.min(100, base.moral + 0.05);
+      base.moral = Math.min(100, base.moral + 0.05 + (cant > 0 ? 0.03 * M.cuisinier : 0));
     }
   }
   if (base.pop < maxPop && rationsDispo > (base.pop + 1) * 3 && rng.chance(0.012)) {
@@ -6702,6 +6776,18 @@ function tickBase(state, log, ctx) {
     const pol = consommer(base, 'polymere', 0.5 * atl * r * mo * M.machiniste);
     ajouter(base, 'composant', Math.min(all / 0.35, pol / 0.5) * 0.14 * atl * r);
   }
+  // La halle : jusqu'ici l'avant-poste ne savait que transformer ce qu'on lui
+  // apportait. Il ramasse maintenant sa propre région, au rendement du biome et
+  // sans épuiser la case — c'est une exploitation, pas une fouille.
+  const halle = niveau(base, 'halle');
+  if (halle > 0) {
+    const regHalle = state.world.regions[base.regionId];
+    const y = BIOMES[regHalle.biome].yields || {};
+    const taux = 0.5 * halle * r * mo * M.recoltant * regHalle.richesse
+      * (ctx.climat ? 1 + (ctx.climat.rendement('ferraille') - 1) * 0.6 : 1);
+    for (const k of Object.keys(y)) ajouter(base, k, y[k] * taux);
+  }
+
   const inf = niveau(base, 'infirmerie');
   if (inf > 0) {
     const bio = consommer(base, 'biomasse', 0.4 * inf * r * M.infirmier);
@@ -6760,7 +6846,12 @@ function tickBase(state, log, ctx) {
   // --- Raid sur l'avant-poste
   const reg = state.world.regions[base.regionId];
   const t = state.temps;
-  if (t - base.derniereAttaque > 72 && rng.chance(0.0016 * (1 + reg.danger * 4))) {
+  // Le poste de garde ne fait pas gagner les combats — c'est le mur et les
+  // miliciens qui s'en chargent. Il fait voir venir : moins de raids aboutissent
+  // par surprise, et ceux qui passent trouvent les stocks déjà rentrés.
+  const guet = niveau(base, 'poste') * M.garde;
+  const vigilance = 1 / (1 + guet * 0.22);
+  if (t - base.derniereAttaque > 72 && rng.chance(0.0016 * (1 + reg.danger * 4) * vigilance)) {
     base.derniereAttaque = t;
     const force = rng.irange(20, 45) + Math.floor(t / 600) + Math.round((base.pop || 0) * 1.5);
     // `forceEscouade` ne compte déjà que les gens présents : laisser
@@ -6776,8 +6867,9 @@ function tickBase(state, log, ctx) {
       });
     } else {
       let vole = 0;
+      const sauve = Math.min(0.7, guet * 0.13);
       for (const k of COMMODITY_KEYS) {
-        const pris = Math.round((base.stock[k] || 0) * rng.range(0.15, 0.4));
+        const pris = Math.round((base.stock[k] || 0) * rng.range(0.15, 0.4) * (1 - sauve));
         base.stock[k] -= pris;
         vole += pris;
       }
@@ -9320,10 +9412,7 @@ function rafraichir(force) {
   const cv = $('#carte');
   if (cv) {
     dessinerCarte(cv);
-    if (!cv.dataset.lie) {
-      cv.dataset.lie = '1';
-      cv.addEventListener('click', surClicCarte);
-    }
+    if (cv.parentElement) lierGestesCarte(cv.parentElement);
     centrerCarte(cv);
   }
   if (modale) rendreModale();
@@ -9387,14 +9476,14 @@ function rendreNav() {
 // ---------------------------------------------------------------------------
 
 /**
- * Taille d'une région à l'écran, par niveau de zoom. Le monde fait 24×18 : au
- * plus large on ne voit qu'un cinquième de la carte à la fois — c'est le
- * propos —, au plus serré la carte entière tient dans un téléphone, ce qui
- * sert à décider où aller plutôt qu'à jouer.
+ * Taille d'une région à l'écran, en pixels. Continue, pas par crans : on la
+ * pousse à la molette ou à deux doigts, et des paliers se sentent tout de suite
+ * sous le doigt. Au plus serré la carte entière tient dans un téléphone, au
+ * plus large on n'en voit qu'un dixième.
  */
-const NIVEAUX_ZOOM = [11, 16, 24, 34];
-let niveauZoom = 2;
-let CELL = NIVEAUX_ZOOM[niveauZoom];
+const CELL_MIN = 9;
+const CELL_MAX = 46;
+let CELL = 24;
 
 /** Un carré centré dans la case, en proportion de la case. */
 function pave(g, x, y, part) {
@@ -9420,69 +9509,194 @@ function bruit(i, j) {
  * la main sur son doigt est la façon la plus sûre de rendre une carte
  * détestable.
  */
-let derniereVue = null;
-let recentrerAuProchainRendu = false;
+let derniereRegionVue = null;
+/** Vrai dès que le joueur a bougé la carte lui-même : on ne lui reprend plus. */
+let vueTenueParLeJoueur = false;
 function centrerCarte(cv, force) {
   const boite = cv.parentElement;
   if (!boite) return;
   const g = G();
   if (!g) return;
-  const cle = `${g.regionId}:${niveauZoom}`;
-  if (!force && !recentrerAuProchainRendu && derniereVue === cle) return;
-  derniereVue = cle;
-  recentrerAuProchainRendu = false;
+  // On suit le groupe tant que le joueur n'a pas pris la main ; une fois qu'il
+  // l'a prise, seul un double clic la lui redemande.
+  if (!force) {
+    if (vueTenueParLeJoueur) {
+      // L'écran vient d'être reconstruit : on remet la vue là où elle était.
+      if (vueScroll) { boite.scrollLeft = vueScroll.x; boite.scrollTop = vueScroll.y; }
+      majPositionCarte();
+      return;
+    }
+    if (derniereRegionVue === g.regionId) {
+      if (vueScroll) { boite.scrollLeft = vueScroll.x; boite.scrollTop = vueScroll.y; }
+      majPositionCarte();
+      return;
+    }
+  }
+  derniereRegionVue = g.regionId;
   const r = S.world.regions[g.regionId];
   if (!r) return;
   boite.scrollLeft = Math.max(0, r.x * CELL + CELL / 2 - boite.clientWidth / 2);
   boite.scrollTop = Math.max(0, r.y * CELL + CELL / 2 - boite.clientHeight / 2);
+  noterVue(boite);
+  majPositionCarte();
 }
 
 /**
- * Déplacer et zoomer au pouce. Une carte qui ne se manœuvre qu'en la faisant
- * glisser est injouable dès qu'on la met dans une page qui défile elle aussi :
- * un geste vertical sur la carte fait partir la page, et on n'atteint jamais le
- * sud du monde. D'où des boutons francs.
+ * Manœuvrer la carte : au doigt, à la souris, à la molette, à deux doigts.
+ *
+ * Tout passe par les événements pointeur, donc le même code sert le tactile et
+ * la souris. La boîte porte `touch-action: none` : sans ça, un glissement
+ * vertical sur la carte fait défiler la page et on n'atteint jamais le sud du
+ * monde. En contrepartie c'est à nous de bouger la vue, ce que fait `scrollLeft`
+ * et `scrollTop` — la carte reste un canvas de taille réelle dans une fenêtre,
+ * pas une transformation CSS, et le dessin reste net au pixel près.
+ *
+ * Un appui qui n'a pas bougé de plus de six pixels est un clic, pas un
+ * glissement : sans ce seuil, chaque déplacement finirait par sélectionner une
+ * région au hasard.
  */
-function commandesCarte() {
-  const g = G();
-  const r = g ? S.world.regions[g.regionId] : null;
-  const pos = r ? `${String.fromCharCode(65 + r.x)}${r.y + 1}` : '—';
-  return `<div class="carte-cmd">
-    <div class="dpad">
-      <button class="act mini" data-a="pan" data-d="hg" aria-label="Haut gauche">↖</button>
-      <button class="act mini" data-a="pan" data-d="h" aria-label="Haut">↑</button>
-      <button class="act mini" data-a="pan" data-d="hd" aria-label="Haut droite">↗</button>
-      <button class="act mini" data-a="pan" data-d="g" aria-label="Gauche">←</button>
-      <button class="act mini" data-a="recentrer" aria-label="Recentrer sur le groupe">◎</button>
-      <button class="act mini" data-a="pan" data-d="d" aria-label="Droite">→</button>
-      <button class="act mini" data-a="pan" data-d="bg" aria-label="Bas gauche">↙</button>
-      <button class="act mini" data-a="pan" data-d="b" aria-label="Bas">↓</button>
-      <button class="act mini" data-a="pan" data-d="bd" aria-label="Bas droite">↘</button>
-    </div>
-    <div class="zoom">
-      <button class="act mini" data-a="zoom" data-z="1" aria-label="Zoom avant"
-        ${niveauZoom >= NIVEAUX_ZOOM.length - 1 ? 'disabled' : ''}>+</button>
-      <div class="aide" style="text-align:center">${niveauZoom + 1}/${NIVEAUX_ZOOM.length}</div>
-      <button class="act mini" data-a="zoom" data-z="-1" aria-label="Zoom arrière"
-        ${niveauZoom <= 0 ? 'disabled' : ''}>−</button>
-      <div class="aide" style="text-align:center">${e(pos)}</div>
-    </div>
-  </div>`;
+const SEUIL_CLIC = 6;
+const pointeurs = new Map();
+let glisse = null;
+let ecartPincee = 0;
+/**
+ * Où le joueur regarde. Indispensable : chaque rafraîchissement reconstruit
+ * l'écran, donc la boîte de carte est un élément neuf dont le défilement repart
+ * de zéro. Sans cette mémoire, le moindre clic renvoyait la vue dans le coin
+ * nord-ouest du monde.
+ */
+let vueScroll = null;
+/** Dernier appui bref : sert à reconnaître la double tape nous-mêmes. */
+let dernierClic = null;
+
+function noterVue(boite) {
+  vueScroll = { x: boite.scrollLeft, y: boite.scrollTop };
 }
 
-/** Fait défiler la fenêtre de carte d'un demi-écran dans une direction. */
-function deplacerCarte(dir) {
-  const boite = $('#carte-boite');
-  if (!boite) return;
-  const dx = dir.includes('g') && dir !== 'h' ? -1 : dir.includes('d') ? 1 : 0;
-  const dy = dir[0] === 'h' ? -1 : dir[0] === 'b' ? 1 : 0;
-  const px = Math.max(CELL * 2, boite.clientWidth * 0.55);
-  const py = Math.max(CELL * 2, boite.clientHeight * 0.55);
-  boite.scrollLeft += dx * px;
-  boite.scrollTop += dy * py;
-  // On vient de regarder ailleurs volontairement : le rendu suivant ne doit pas
-  // ramener la vue sur le groupe.
-  derniereVue = `${G() ? G().regionId : 0}:${niveauZoom}`;
+/** Le point du monde (en cases, décimal) sous une position écran. */
+function souscarte(boite, cx, cy) {
+  const r = boite.getBoundingClientRect();
+  return {
+    wx: (boite.scrollLeft + (cx - r.left)) / CELL,
+    wy: (boite.scrollTop + (cy - r.top)) / CELL,
+    ex: cx - r.left,
+    ey: cy - r.top,
+  };
+}
+
+/** Change le zoom en gardant fixe le point visé. */
+function zoomer(boite, facteur, cx, cy) {
+  const avant = souscarte(boite, cx, cy);
+  const neuf = Math.max(CELL_MIN, Math.min(CELL_MAX, CELL * facteur));
+  if (Math.abs(neuf - CELL) < 0.01) return;
+  CELL = neuf;
+  const cv = boite.querySelector('canvas');
+  if (cv) dessinerCarte(cv);
+  boite.scrollLeft = avant.wx * CELL - avant.ex;
+  boite.scrollTop = avant.wy * CELL - avant.ey;
+  vueTenueParLeJoueur = true;
+  noterVue(boite);
+  majPositionCarte();
+}
+
+function lierGestesCarte(boite) {
+  if (boite.dataset.gestes) return;
+  boite.dataset.gestes = '1';
+
+  boite.addEventListener('wheel', (ev) => {
+    ev.preventDefault();
+    // Le pas dépend de l'amplitude, pas de son signe : une molette crantée et
+    // un pavé tactile n'envoient pas du tout les mêmes valeurs.
+    zoomer(boite, Math.exp(-ev.deltaY * 0.0016), ev.clientX, ev.clientY);
+  }, { passive: false });
+
+  boite.addEventListener('pointerdown', (ev) => {
+    // La capture garde le glissement vivant même quand le doigt sort de la
+    // boîte. Elle échoue sur un événement fabriqué (tests) : ce n'est pas une
+    // raison pour perdre le geste.
+    try { boite.setPointerCapture(ev.pointerId); } catch (e) { /* pas capturable */ }
+    pointeurs.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (pointeurs.size === 1) {
+      glisse = { x: ev.clientX, y: ev.clientY, dep: 0, id: ev.pointerId };
+    } else if (pointeurs.size === 2) {
+      const [a, b] = [...pointeurs.values()];
+      ecartPincee = Math.hypot(a.x - b.x, a.y - b.y);
+      glisse = null; // deux doigts : on pince, on ne fait plus glisser
+    }
+  });
+
+  boite.addEventListener('pointermove', (ev) => {
+    const p = pointeurs.get(ev.pointerId);
+    if (!p) return;
+    const dx = ev.clientX - p.x;
+    const dy = ev.clientY - p.y;
+    p.x = ev.clientX; p.y = ev.clientY;
+
+    if (pointeurs.size >= 2) {
+      const [a, b] = [...pointeurs.values()];
+      const ecart = Math.hypot(a.x - b.x, a.y - b.y);
+      if (ecartPincee > 0 && ecart > 0) {
+        zoomer(boite, ecart / ecartPincee, (a.x + b.x) / 2, (a.y + b.y) / 2);
+      }
+      ecartPincee = ecart;
+      return;
+    }
+    if (!glisse || glisse.id !== ev.pointerId) return;
+    glisse.dep += Math.abs(dx) + Math.abs(dy);
+    boite.scrollLeft -= dx;
+    boite.scrollTop -= dy;
+    if (glisse.dep > SEUIL_CLIC) vueTenueParLeJoueur = true;
+    noterVue(boite);
+  });
+
+  const relacher = (ev) => {
+    const etaitGlisse = glisse && glisse.id === ev.pointerId ? glisse : null;
+    pointeurs.delete(ev.pointerId);
+    if (pointeurs.size < 2) ecartPincee = 0;
+    if (pointeurs.size === 0) glisse = null;
+    if (!etaitGlisse || etaitGlisse.dep > SEUIL_CLIC || ev.type !== 'pointerup') return;
+    // On reconnaît la double tape ici plutôt qu'avec l'événement `dblclick` :
+    // le premier appui reconstruit l'écran, et le `dblclick` arriverait sur une
+    // boîte détachée du document, donc dans le vide.
+    const now = ev.timeStamp || 0;
+    const doubleTape = dernierClic
+      && now - dernierClic.t < 340
+      && Math.abs(ev.clientX - dernierClic.x) < 14
+      && Math.abs(ev.clientY - dernierClic.y) < 14;
+    dernierClic = { t: now, x: ev.clientX, y: ev.clientY };
+    if (doubleTape) {
+      dernierClic = null;
+      vueTenueParLeJoueur = false;
+      vueScroll = null;
+      const cvv = boite.querySelector('canvas');
+      if (cvv) centrerCarte(cvv, true);
+      return;
+    }
+    choisirCase(boite, ev.clientX, ev.clientY);
+  };
+  boite.addEventListener('pointerup', relacher);
+  boite.addEventListener('pointercancel', relacher);
+
+}
+
+function choisirCase(boite, cx, cy) {
+  const { wx, wy } = souscarte(boite, cx, cy);
+  const x = Math.floor(wx);
+  const y = Math.floor(wy);
+  if (x < 0 || y < 0 || x >= S.world.largeur || y >= S.world.hauteur) return;
+  selection = y * S.world.largeur + x;
+  rafraichir(true);
+}
+
+/** Le repère du groupe, sous la carte. Mis à jour sans reconstruire l'écran. */
+function majPositionCarte() {
+  const el = document.getElementById('carte-pos');
+  if (!el) return;
+  const g = G();
+  const r = g ? S.world.regions[g.regionId] : null;
+  el.textContent = r
+    ? `${String.fromCharCode(65 + r.x)}${r.y + 1} · ${Math.round(CELL)} px/secteur`
+    : '';
 }
 
 function dessinerCarte(cv) {
@@ -9656,18 +9870,6 @@ function dessinerCarte(cv) {
   }
 }
 
-function surClicCarte(ev) {
-  const cv = ev.currentTarget;
-  const rect = cv.getBoundingClientRect();
-  const echelle = cv.width / rect.width;
-  const px = (ev.clientX - rect.left) * echelle;
-  const py = (ev.clientY - rect.top) * echelle;
-  const x = Math.floor(px / CELL);
-  const y = Math.floor(py / CELL);
-  if (x < 0 || y < 0 || x >= S.world.largeur || y >= S.world.hauteur) return;
-  selection = y * S.world.largeur + x;
-  rafraichir(true);
-}
 
 // ---------------------------------------------------------------------------
 // Écran CARTE
@@ -9953,7 +10155,9 @@ function armeesIci(rid) {
 function ecranCarte() {
   return `
   <div id="carte-boite"><canvas id="carte" aria-label="Carte du monde"></canvas></div>
-  ${commandesCarte()}
+  <div class="carte-pied"><span id="carte-pos"></span>
+    <span class="aide">glisser pour déplacer · molette ou deux doigts pour zoomer ·
+      double clic pour revenir sur le groupe</span></div>
   <div class="legende">
     <span><i style="background:#f2f6fb"></i>${groupes(S).length > 1 ? 'groupe affiché' : 'escouade'}</span>
     ${groupes(S).length > 1 ? '<span><i style="border:1px solid #f2f6fb"></i>autre groupe</span>' : ''}
@@ -11528,27 +11732,6 @@ function surClic(ev) {
       rafraichir(true);
       break;
     }
-
-    case 'pan':
-      deplacerCarte(el.dataset.d);
-      break;
-
-    case 'zoom': {
-      const n = Math.max(0, Math.min(NIVEAUX_ZOOM.length - 1,
-        niveauZoom + Number(el.dataset.z)));
-      if (n !== niveauZoom) {
-        niveauZoom = n;
-        CELL = NIVEAUX_ZOOM[n];
-        recentrerAuProchainRendu = true;
-        rafraichir(true);
-      }
-      break;
-    }
-
-    case 'recentrer':
-      recentrerAuProchainRendu = true;
-      rafraichir(true);
-      break;
 
     case 'honorer': {
       const r = ACTIONS.honorer(el.dataset.c, el.dataset.n);

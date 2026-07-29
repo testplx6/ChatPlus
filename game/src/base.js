@@ -1,7 +1,7 @@
 // L'avant-poste : files de construction et de recherche à la OGame, chaîne de
 // production contrainte par l'énergie, stockage plafonné, raids à encaisser.
 
-import { BUILDINGS, RESEARCH, COMMODITY_KEYS, METIERS, METIER_KEYS } from './data.js';
+import { BUILDINGS, RESEARCH, COMMODITY_KEYS, METIERS, METIER_KEYS, BIOMES } from './data.js';
 import { comp, gagnerXp, estDebout, XP_PRATIQUE } from './characters.js';
 import { groupes, groupeActif } from './groupes.js';
 
@@ -333,7 +333,15 @@ export function tickBase(state, log, ctx) {
   // s'en va si l'un des deux manque. Sa main-d'œuvre fait tourner les ateliers.
   const maxPop = populationMax(base);
   const rationsDispo = base.stock.rations || 0;
-  const besoinPop = (base.pop || 0) * 0.014;
+  // La cantine : manger assis, à heure fixe, avec quelqu'un qui compte les
+  // portions. Jusqu'à un tiers de vivres en moins pour les mêmes bouches — et
+  // c'est le seul bâtiment dont l'effet se voit sur le moral autant que sur le
+  // stock.
+  const cant = niveau(base, 'cantine');
+  const economie = cant > 0
+    ? 1 - Math.min(0.33, cant * 0.055 * M.cuisinier)
+    : 1;
+  const besoinPop = (base.pop || 0) * 0.014 * economie;
   if (base.pop > 0) {
     const servi = Math.min(besoinPop, rationsDispo);
     base.stock.rations = Math.max(0, rationsDispo - servi);
@@ -342,7 +350,7 @@ export function tickBase(state, log, ctx) {
       base.moral = Math.max(0, base.moral - 0.15);
       if (rng.chance(0.03)) base.pop = Math.max(0, base.pop - 1);
     } else {
-      base.moral = Math.min(100, base.moral + 0.05);
+      base.moral = Math.min(100, base.moral + 0.05 + (cant > 0 ? 0.03 * M.cuisinier : 0));
     }
   }
   if (base.pop < maxPop && rationsDispo > (base.pop + 1) * 3 && rng.chance(0.012)) {
@@ -380,6 +388,18 @@ export function tickBase(state, log, ctx) {
     const pol = consommer(base, 'polymere', 0.5 * atl * r * mo * M.machiniste);
     ajouter(base, 'composant', Math.min(all / 0.35, pol / 0.5) * 0.14 * atl * r);
   }
+  // La halle : jusqu'ici l'avant-poste ne savait que transformer ce qu'on lui
+  // apportait. Il ramasse maintenant sa propre région, au rendement du biome et
+  // sans épuiser la case — c'est une exploitation, pas une fouille.
+  const halle = niveau(base, 'halle');
+  if (halle > 0) {
+    const regHalle = state.world.regions[base.regionId];
+    const y = BIOMES[regHalle.biome].yields || {};
+    const taux = 0.5 * halle * r * mo * M.recoltant * regHalle.richesse
+      * (ctx.climat ? 1 + (ctx.climat.rendement('ferraille') - 1) * 0.6 : 1);
+    for (const k of Object.keys(y)) ajouter(base, k, y[k] * taux);
+  }
+
   const inf = niveau(base, 'infirmerie');
   if (inf > 0) {
     const bio = consommer(base, 'biomasse', 0.4 * inf * r * M.infirmier);
@@ -438,7 +458,12 @@ export function tickBase(state, log, ctx) {
   // --- Raid sur l'avant-poste
   const reg = state.world.regions[base.regionId];
   const t = state.temps;
-  if (t - base.derniereAttaque > 72 && rng.chance(0.0016 * (1 + reg.danger * 4))) {
+  // Le poste de garde ne fait pas gagner les combats — c'est le mur et les
+  // miliciens qui s'en chargent. Il fait voir venir : moins de raids aboutissent
+  // par surprise, et ceux qui passent trouvent les stocks déjà rentrés.
+  const guet = niveau(base, 'poste') * M.garde;
+  const vigilance = 1 / (1 + guet * 0.22);
+  if (t - base.derniereAttaque > 72 && rng.chance(0.0016 * (1 + reg.danger * 4) * vigilance)) {
     base.derniereAttaque = t;
     const force = rng.irange(20, 45) + Math.floor(t / 600) + Math.round((base.pop || 0) * 1.5);
     // `forceEscouade` ne compte déjà que les gens présents : laisser
@@ -454,8 +479,9 @@ export function tickBase(state, log, ctx) {
       });
     } else {
       let vole = 0;
+      const sauve = Math.min(0.7, guet * 0.13);
       for (const k of COMMODITY_KEYS) {
-        const pris = Math.round((base.stock[k] || 0) * rng.range(0.15, 0.4));
+        const pris = Math.round((base.stock[k] || 0) * rng.range(0.15, 0.4) * (1 - sauve));
         base.stock[k] -= pris;
         vole += pris;
       }

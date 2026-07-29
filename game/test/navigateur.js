@@ -477,27 +477,63 @@ const dims = await page.evaluate(() => {
 });
 ok(dims.l === 24 && dims.h === 18, 'le monde fait 24 sur 18', `${dims.l}×${dims.h}`);
 ok(dims.w > 380, 'et la carte est plus large qu’un écran de téléphone', `${dims.w} px`);
-ok(await page.locator('[data-a="pan"]').count() === 8, 'huit flèches pour se déplacer');
-ok(await page.locator('[data-a="zoom"]').count() === 2, 'deux boutons pour zoomer');
 
-// Zoom arrière : la carte doit rétrécir pour de vrai.
-const avantZoom = dims.w;
-await page.click('[data-a="zoom"][data-z="-1"]');
-await page.waitForTimeout(300);
-const apresZoom = await page.evaluate(() => document.querySelector('#carte').width);
-ok(apresZoom < avantZoom, 'le zoom arrière réduit la carte', `${avantZoom} → ${apresZoom}`);
-await page.click('[data-a="zoom"][data-z="1"]');
-await page.waitForTimeout(300);
-ok(await page.evaluate(() => document.querySelector('#carte').width) === avantZoom,
-  'et le zoom avant la rend');
+// Molette : zoom continu, ancré sous le curseur.
+const boite = page.locator('#carte-boite');
+const bb = await boite.boundingBox();
+await page.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2);
+await page.mouse.wheel(0, 400);
+await page.waitForTimeout(200);
+const dezoome = await page.evaluate(() => document.querySelector('#carte').width);
+ok(dezoome < dims.w, 'la molette vers le bas dézoome', `${dims.w} → ${dezoome}`);
+await page.mouse.wheel(0, -800);
+await page.waitForTimeout(200);
+const rezoome = await page.evaluate(() => document.querySelector('#carte').width);
+ok(rezoome > dezoome, 'et vers le haut, zoome', `${dezoome} → ${rezoome}`);
 
-// Les flèches font défiler, et le rendu suivant ne reprend pas la main.
-await page.click('[data-a="pan"][data-d="d"]');
+// Le zoom est continu, pas par crans : deux crans de molette différents ne
+// doivent pas tomber sur la même valeur.
+await page.mouse.wheel(0, 40);
+await page.waitForTimeout(150);
+const fin = await page.evaluate(() => document.querySelector('#carte').width);
+ok(fin !== rezoome, 'le zoom est continu, pas par paliers', `${rezoome} → ${fin}`);
+
+// Glisser déplace la vue, et ne sélectionne rien au passage.
+await page.evaluate(() => { document.querySelector('#carte-boite').scrollLeft = 200; });
+const avantGlisse = await page.evaluate(() => document.querySelector('#carte-boite').scrollLeft);
+await page.mouse.move(bb.x + bb.width * 0.7, bb.y + bb.height * 0.5);
+await page.mouse.down();
+await page.mouse.move(bb.x + bb.width * 0.3, bb.y + bb.height * 0.5, { steps: 8 });
+await page.mouse.up();
+await page.waitForTimeout(250);
+const apresGlisse = await page.evaluate(() => document.querySelector('#carte-boite').scrollLeft);
+ok(apresGlisse > avantGlisse, 'glisser vers la gauche fait avancer la vue vers l’est',
+  `${Math.round(avantGlisse)} → ${Math.round(apresGlisse)}`);
+
+// Un clic franc, lui, sélectionne bien une région.
+await page.mouse.click(bb.x + bb.width * 0.5, bb.y + bb.height * 0.5);
 await page.waitForTimeout(300);
-const decale = await page.evaluate(() => document.querySelector('#carte-boite').scrollLeft);
-ok(decale > 0, 'la flèche droite fait défiler la carte', `scrollLeft ${Math.round(decale)}`);
-await page.click('[data-a="recentrer"]');
+const texteSel = await page.evaluate(() => document.querySelector('#ecran').textContent);
+ok(/SECTEUR|Secteur|POSITION/i.test(texteSel), 'un clic sans glissement sélectionne une région');
+
+// Double clic : on revient sur le groupe.
+await page.evaluate(() => { document.querySelector('#carte-boite').scrollLeft = 0; });
+// Deux appuis brefs et rapprochés : c'est ainsi que le jeu reconnaît la
+// double tape, pour que ça marche au doigt comme à la souris.
+await page.mouse.click(bb.x + bb.width * 0.5, bb.y + bb.height * 0.5);
+await page.mouse.click(bb.x + bb.width * 0.5, bb.y + bb.height * 0.5, { delay: 20 });
 await page.waitForTimeout(300);
+const recentre = await page.evaluate(() => {
+  const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const g2 = s2.player.groupes[0];
+  const bt = document.querySelector('#carte-boite');
+  const cv = document.querySelector('#carte');
+  const CELL = cv.width / s2.world.largeur;
+  const cible = (g2.regionId % s2.world.largeur) * CELL;
+  return { vu: bt.scrollLeft, cible, larg: bt.clientWidth };
+});
+ok(Math.abs(recentre.vu + recentre.larg / 2 - recentre.cible) < recentre.larg,
+  'le double clic ramène la vue sur le groupe', JSON.stringify(recentre));
 await page.screenshot({ path: join(CAPTURES, '24-carte-vaste.png'), fullPage: true });
 
 console.log('\n8 terdecies. Quelqu’un vous demande quelque chose');
@@ -722,12 +758,14 @@ if (jamaisVue != null) {
     // de cliquer, sinon on tape à côté du canvas.
     boite.scrollLeft = Math.max(0, (rid % L) * CELL + CELL / 2 - boite.clientWidth / 2);
     boite.scrollTop = Math.max(0, Math.floor(rid / L) * CELL + CELL / 2 - boite.clientHeight / 2);
-    const r = cv.getBoundingClientRect();
-    const ech = r.width / cv.width;
-    const x = ((rid % L) * CELL + CELL / 2) * ech + r.left;
-    const y = (Math.floor(rid / L) * CELL + CELL / 2) * ech + r.top;
-    const cible = document.elementFromPoint(x, y) || cv;
-    cible.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: x, clientY: y }));
+    const r = boite.getBoundingClientRect();
+    const x = (rid % L) * CELL + CELL / 2 - boite.scrollLeft + r.left;
+    const y = Math.floor(rid / L) * CELL + CELL / 2 - boite.scrollTop + r.top;
+    // La carte s'écoute au pointeur, sur la boîte : un MouseEvent « click » sur
+    // le canvas ne déclenche plus rien (il est en pointer-events: none).
+    const opts = { bubbles: true, clientX: x, clientY: y, pointerId: 1, isPrimary: true };
+    boite.dispatchEvent(new PointerEvent('pointerdown', opts));
+    boite.dispatchEvent(new PointerEvent('pointerup', opts));
   }, jamaisVue);
   await page.waitForTimeout(400);
   const txt = await page.evaluate(() => document.querySelector('#ecran').textContent);
