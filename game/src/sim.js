@@ -118,6 +118,7 @@ export function nouvellePartie(seed, opts = {}) {
       sitesFouilles: 0,
       distanceParcourue: 0,
       caravanesPillees: 0,
+      servicesRendus: 0,
       ordresRemplis: 0,
     },
     memorial: [],
@@ -194,7 +195,10 @@ export function tick(state) {
     const col = state.world.colonies[i];
     // La réputation locale infléchit ce que les gens d'ici pensent de vous.
     const rep = (col.faction && state.player.reputation[col.faction]) || 0;
-    const ev = tickColonie(state.world, col, rng, climat, PAS_COLONIE, rep, log);
+    // Être là change ce qu'on entend : une demande qu'on n'a pas entendue ne
+    // peut pas se retourner contre nous. Voir tickServices.
+    const present = state.player.groupes.some((g) => g.regionId === col.regionId);
+    const ev = tickColonie(state.world, col, rng, climat, PAS_COLONIE, rep, log, state.temps, present);
     if (!ev) continue;
     if (ev.evenement === 'croissance') {
       log({

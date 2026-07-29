@@ -31,7 +31,11 @@ import {
 import {
   acheter, vendre, prixJoueur, actifs, emploi, productionColonie,
 } from '../src/economy.js';
-import { vocation } from '../src/notables.js';
+import { vocation, notable } from '../src/notables.js';
+import {
+  tickServices, honorer, demandesIci, souvenirs, faveurChef, renfortSoin,
+  villesOuvertes, estime, SOINS_SEUIL, REGISTRES_SEUIL, PANNEAU_FERME,
+} from '../src/services.js';
 import {
   dirigeant, penchant, etatDuBut, crediterDirigeant, TEMPERAMENTS,
 } from '../src/dirigeants.js';
@@ -43,7 +47,7 @@ function coloniesVivantes(state, key) {
 import { METIER_VILLE_KEYS } from '../src/data.js';
 import { sEngager, rangDe, RANGS } from '../src/allegeance.js';
 import {
-  vueColonie, estSurveillee, ageTexte, nouvellesConnues, DELAI_NOUVELLE,
+  vueColonie, estSurveillee, ageTexte, nouvellesConnues, DELAI_NOUVELLE, observer,
 } from '../src/connaissance.js';
 import { distance } from '../src/world.js';
 
@@ -84,8 +88,9 @@ const ETALON_MS = 25;
  *   65 µs  groupes, tâches individuelles, connaissance imparfaite
  *   88 µs  métiers des villes (répartition, production par corps de métier)
  *          et notables (chef, armurier, contremaître, médecin) par colonie
+ *   94 µs  demandes personnelles des notables et registres tenus ouverts
  *
- * 130 laisse 45 % de marge sur les 88 mesurés : assez pour absorber les ±15 %
+ * 130 laisse 38 % de marge sur les 94 mesurés : assez pour absorber les ±15 %
  * de bruit d'une machine chargée, trop peu pour cacher un doublement.
  */
 const BUDGET_US = 130;
@@ -1116,6 +1121,123 @@ ok(s9y.world.guerres.every((g) => g.but), 'toute guerre en cours a un objet déc
 ok(DIPLO_FACTIONS.every((k) => !coloniesVivantes(s9y, k).length || dirigeant(s9y.world, k)),
   'une faction encore debout a toujours quelqu’un à sa tête');
 verifierCoherence(s9y, 'après une année de politique incarnée');
+
+section('9 duodecies. Ce que les gens attendent de vous');
+const s9z = nouvellePartie(7171, { maintenant: 0 });
+const colZ = s9z.world.colonies.find((c) => c.notables && c.notables.length >= 2);
+ok(!!colZ, 'une ville a des gens qui comptent');
+ok(colZ.notables.every((p) => p.demande === null && Array.isArray(p.memoire)),
+  'personne ne demande rien avant d’avoir manqué de quelque chose');
+
+// Une demande naît d'un vrai manque, pas d'un prétexte.
+const chefZ = notable(colZ, 'chef');
+colZ.stock.rations = 0;
+const rngZ = new Rng(12345);
+let essais = 0;
+while (!chefZ.demande && essais < 4000) { tickServices(colZ, rngZ, 3, essais * 3); essais++; }
+ok(!!chefZ.demande, 'une ville affamée finit par demander des vivres',
+  chefZ.demande ? chefZ.demande.texte : 'jamais');
+ok(chefZ.demande.res === 'rations' && chefZ.demande.quantite >= 4,
+  'et elle demande ce qui lui manque, en quantité utile',
+  `${chefZ.demande.quantite} ${chefZ.demande.res}`);
+
+// Une ville pleine ne demande rien.
+const colPleine = s9z.world.colonies.find((c) => c !== colZ && notable(c, 'chef'));
+for (const k of COMMODITY_KEYS) colPleine.stock[k] = colPleine.pop * 50;
+const rngP = new Rng(999);
+for (let i = 0; i < 3000; i++) tickServices(colPleine, rngP, 3, i * 3);
+ok(colPleine.notables.every((p) => !p.demande),
+  'une ville qui ne manque de rien ne demande rien');
+
+// On ne peut honorer que sur place, et avec la marchandise.
+const gZ = s9z.player.groupes[0];
+const logZ = [];
+const noteZ = (e) => logZ.push(e);
+const loinZ = honorer(s9z, colZ.id, chefZ.id, noteZ);
+gZ.regionId = colZ.regionId;
+gZ.inventaire.rations = chefZ.demande.quantite - 1;
+const courtZ = honorer(s9z, colZ.id, chefZ.id, noteZ);
+ok(!loinZ.ok && !courtZ.ok, 'on ne rend pas un service de loin, ni les mains vides');
+ok(demandesIci(s9z, colZ).some((d) => d.notable.id === chefZ.id && !d.pret),
+  'l’interface le voit avant le clic');
+
+const quantiteZ = chefZ.demande.quantite;
+const primeZ = chefZ.demande.prime;
+const opinionAvantZ = chefZ.opinion;
+const creditsAvantZ = s9z.player.credits;
+gZ.inventaire.rations = quantiteZ + 5;
+const okZ = honorer(s9z, colZ.id, chefZ.id, noteZ);
+ok(okZ.ok, 'sur place avec la marchandise, ça passe');
+ok(Math.round(gZ.inventaire.rations) === 5, 'la marchandise quitte le sac',
+  `reste ${gZ.inventaire.rations}`);
+ok(s9z.player.credits === creditsAvantZ + primeZ, 'la prime est versée', `+${primeZ} cr`);
+ok(chefZ.opinion > opinionAvantZ + 15, 'il vous en sait gré',
+  `${opinionAvantZ} → ${Math.round(chefZ.opinion)}`);
+ok(souvenirs(chefZ).length === 1 && /apporté/.test(souvenirs(chefZ)[0]),
+  'et il s’en souvient nommément', souvenirs(chefZ)[0]);
+ok(colZ.notables.filter((p) => p !== chefZ).every((p) => p.opinion > 0),
+  'ça se sait dans la ville, sans en faire une affaire personnelle');
+ok(!chefZ.demande, 'la demande est close');
+
+// Une demande oubliée coûte, sans qu'on ait rien fait.
+const medZ = colZ.notables[1];
+medZ.demande = { res: 'medkit', quantite: 5, echeance: 100, texte: 'x', prime: 10, vu: true };
+const opZ = medZ.opinion;
+tickServices(colZ, new Rng(7), 3, 120);
+ok(!medZ.demande && medZ.opinion < opZ, 'laisser une demande s’éteindre se paie',
+  `${Math.round(opZ)} → ${Math.round(medZ.opinion)}`);
+ok(/laissé passer les medkits/.test(souvenirs(medZ).join(' ')), 'et ça aussi, il le retient',
+  souvenirs(medZ).join(' '));
+
+// Mais seulement si on est passé l'entendre.
+const armZ = notable(colZ, 'armurier');
+armZ.demande = { res: 'alliage', quantite: 5, echeance: 200, texte: 'x', prime: 10, vu: false };
+const opArm = armZ.opinion;
+tickServices(colZ, new Rng(8), 3, 220);
+ok(!armZ.demande && armZ.opinion === opArm,
+  'une demande qu’on n’a jamais entendue ne se retourne pas contre nous');
+
+// L'estime a des effets qu'on ne peut pas acheter autrement.
+const s9aa = nouvellePartie(7272, { maintenant: 0 });
+const colA = s9aa.world.colonies.find((c) => notable(c, 'chef'));
+notable(colA, 'chef').opinion = PANNEAU_FERME - 5;
+ok(!faveurChef(colA).ouvert, 'un chef qui vous déteste ferme son panneau');
+notable(colA, 'chef').opinion = 60;
+ok(faveurChef(colA).ouvert && faveurChef(colA).prime > 1,
+  'un chef qui vous doit quelque chose garde les contrats qui paient',
+  `×${faveurChef(colA).prime}`);
+ok(estime(colA, 'chef') === 60, 'l’estime se lit charge par charge');
+
+const colMed = s9aa.world.colonies.find((c) => notable(c, 'medecin'));
+if (colMed) {
+  notable(colMed, 'medecin').opinion = 0;
+  const sec = renfortSoin(s9aa, colMed.regionId);
+  notable(colMed, 'medecin').opinion = SOINS_SEUIL + 10;
+  const aide = renfortSoin(s9aa, colMed.regionId);
+  ok(sec === 1 && aide > 1.3, 'un médecin acquis soigne aussi les vôtres',
+    `×${sec} → ×${aide.toFixed(2)}`);
+}
+const colCm = s9aa.world.colonies.find((c) => notable(c, 'contremaitre'));
+if (colCm) {
+  notable(colCm, 'contremaitre').opinion = REGISTRES_SEUIL + 5;
+  ok(villesOuvertes(s9aa).some((c) => c.id === colCm.id),
+    'un contremaître acquis laisse ses registres ouverts');
+  colCm.pop = 4242;
+  observer(s9aa);
+  ok(vueColonie(s9aa, colCm).pop === 4242,
+    'et ses chiffres restent frais sans qu’on y soit', 'relevé à distance');
+}
+
+// Sur une année de jeu, des demandes naissent d'elles-mêmes et personne ne casse.
+const s9bb = nouvellePartie(7373, { maintenant: 0 });
+avancer(s9bb, 6000);
+const demandes9 = s9bb.world.colonies.reduce(
+  (n, c) => n + (c.notables || []).filter((p) => p.demande).length, 0);
+ok(demandes9 > 0, 'des gens attendent quelque chose de vous quelque part', `${demandes9}`);
+ok(s9bb.world.colonies.every((c) => (c.notables || []).every(
+  (p) => !p.demande || p.demande.echeance > s9bb.temps)),
+  'aucune demande périmée ne traîne');
+verifierCoherence(s9bb, 'après une année de vie sociale');
 
 section('10. Rattrapage hors ligne');
 const s10 = nouvellePartie(1010, { maintenant: 1000000 });

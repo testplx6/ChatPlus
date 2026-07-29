@@ -463,6 +463,57 @@ ok(notables && notables.n >= 2 && notables.ok,
 await page.click('[data-a="fermer"]');
 await page.waitForTimeout(300);
 
+console.log('\n8 terdecies. Quelqu’un vous demande quelque chose');
+// On pose une demande à la main : le hasard finit par en produire, mais un test
+// d'interface ne doit pas attendre le hasard.
+const service = partieAvancee();
+const colS = service.world.colonies.find((c) => c.notables && c.notables.length);
+const gS = groupeActif(service);
+gS.regionId = colS.regionId;
+gS.inventaire.medkit = 60;
+gS.inventaire.rations = 400;
+colS.notables[0].demande = {
+  res: 'medkit', quantite: 6, echeance: service.temps + 400,
+  texte: 'Il me faut 6 medkits. Je recouds avec ce que je trouve, et je trouve mal.',
+  prime: 240,
+};
+colS.notables[0].memoire = [{ quoi: 'pillage', detail: null, t: 0 }];
+service.dernierReel = Date.now();
+await page.reload({ waitUntil: 'networkidle' });
+await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(service));
+await page.click('[data-a="continuer"]');
+await page.waitForSelector('#carte');
+await page.click('[data-a="modale"][data-m="ville"]');
+await page.waitForTimeout(400);
+const texteServ = await page.evaluate(() => document.querySelector('#modale').textContent);
+ok(/Il me faut 6 medkits/.test(texteServ), 'la demande est dite à la première personne');
+ok(/pillé une caravane/.test(texteServ), 'et il se souvient de ce qu’on lui a fait');
+// On fait défiler jusqu'à la demande : la capture doit montrer ce qu'on teste.
+await page.evaluate(() => {
+  const b = document.querySelector('[data-a="honorer"]');
+  if (b) b.scrollIntoView({ block: 'center' });
+});
+await page.waitForTimeout(200);
+await page.screenshot({ path: join(CAPTURES, '23-service.png'), fullPage: true });
+ok(await page.locator('[data-a="honorer"]:not([disabled])').count() > 0,
+  'on peut lui remettre la marchandise puisqu’on l’a');
+const creditsAv = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).player.credits);
+await page.click('[data-a="honorer"]');
+await page.waitForTimeout(500);
+const apresServ = await page.evaluate(() => {
+  const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const c = s.world.colonies.find((x) => x.notables && x.notables.some((p) => p.memoire && p.memoire.length));
+  const p = c.notables.find((x) => x.memoire && x.memoire.length);
+  return { credits: s.player.credits, opinion: p.opinion, demande: !!p.demande, memoire: p.memoire.length };
+});
+ok(apresServ.credits > creditsAv && !apresServ.demande && apresServ.opinion > 0,
+  'le service rendu paie, close la demande et change ce qu’il pense de vous',
+  JSON.stringify(apresServ));
+const texteApres = await page.evaluate(() => document.querySelector('#modale').textContent);
+ok(/apporté des medkits/.test(texteApres), 'et il s’en souvient à l’écran');
+await page.click('[data-a="fermer"]');
+await page.waitForTimeout(300);
+
 console.log('\n8 decies. Métiers de l’avant-poste');
 const bourg = partieAvancee();
 Object.assign(bourg.base.batiments, { hydroponie: 2, entrepot: 3, mur: 2, baraquement: 1 });

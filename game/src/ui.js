@@ -45,6 +45,7 @@ import {
   ecolesAvantPoste, peutApprendreChezSoi, enseignerChezSoi, LENTEUR_MAISON,
 } from './formation.js';
 import { CHARGES, CARACTERES, margeMarchand, vocation } from './notables.js';
+import { demandesIci, souvenirs, faveurChef, SOINS_SEUIL, REGISTRES_SEUIL } from './services.js';
 import { dirigeant, TEMPERAMENTS, LEGITIMITE_CRITIQUE } from './dirigeants.js';
 import { vueColonie, vueRegion, estSurveillee, ageTexte, nouvellesConnues } from './connaissance.js';
 import {
@@ -1836,6 +1837,24 @@ function modaleEcole() {
  * nomme pas cinq mille personnes —, mais ceux que le joueur peut toucher ont un
  * nom, un âge, une humeur et une opinion sur lui.
  */
+/**
+ * Ce que l'estime de ces gens vous a déjà ouvert. Sans ça, rendre un service
+ * ressemble à de la charité : le joueur doit voir ce que la relation paie.
+ */
+function acquisHtml(col) {
+  const lignes = [];
+  const chef = faveurChef(col);
+  if (!chef.ouvert) lignes.push('Le chef vous a fermé son panneau d’affichage.');
+  else if (chef.prime !== 1) lignes.push('Le chef vous garde les contrats qui paient (+20 %).');
+  const med = (col.notables || []).find((p) => p.charge === 'medecin');
+  if (med && (med.opinion || 0) >= SOINS_SEUIL) lignes.push('Le médecin passe voir vos blessés quand vous campez ici.');
+  const cm = (col.notables || []).find((p) => p.charge === 'contremaitre');
+  if (cm && (cm.opinion || 0) >= REGISTRES_SEUIL) lignes.push('Le contremaître vous laisse ses registres : les chiffres d’ici restent frais où que vous soyez.');
+  if (!lignes.length) return '';
+  return `<div class="aide" style="border-left:2px solid #4fd0e3;padding-left:8px">
+    ${lignes.map(e).join('<br>')}</div>`;
+}
+
 function modaleVille() {
   const col = colonieDe(S.world, G().regionId);
   if (!col) return '<div class="aide">Aucune ville ici.</div>';
@@ -1856,10 +1875,25 @@ function modaleVille() {
       </div>`;
     }).join('');
 
+  const attentes = new Map(demandesIci(S, col).map((d) => [d.notable.id, d]));
+
   const gensHtml = (col.notables || []).map((p) => {
     const c = CARACTERES[p.caractere] || {};
     const av = p.opinion > 25 ? 'ok' : p.opinion < -25 ? 'mal' : 'att';
     const humeur = p.humeur > 65 ? 'de bonne humeur' : p.humeur < 35 ? 'de mauvaise humeur' : 'égal à lui-même';
+    const att = attentes.get(p.id);
+    const reste = att ? Math.max(0, att.demande.echeance - S.temps) : 0;
+    const demandeHtml = att ? `<div class="sep"></div>
+      <div class="aide">« ${e(att.demande.texte)} »</div>
+      <div class="ligne"><span class="k">Il vous reste</span>
+        <span class="v">${Math.round(reste / 24)} j · ${n(att.demande.prime)} cr</span></div>
+      <button class="act${att.pret ? ' primaire' : ''}" data-a="honorer"
+        data-c="${e(col.id)}" data-n="${e(p.id)}" ${att.pret ? '' : 'disabled'}>
+        ${att.pret ? 'Lui remettre' : `Il faut ${att.demande.quantite} ${e(COMMODITIES[att.demande.res].nom.toLowerCase())}`}
+      </button>` : '';
+    const mem = souvenirs(p);
+    const memHtml = mem.length
+      ? `<div class="aide" style="margin-top:4px;font-style:italic">${mem.map(e).join('<br>')}</div>` : '';
     return `<div class="contrat">
       <div class="contrat-t">${e(p.nom)}
         <span class="aide">— ${e(CHARGES[p.charge].nom.toLowerCase())}</span></div>
@@ -1871,6 +1905,7 @@ function modaleVille() {
       <div class="ligne"><span class="k">Vous concernant</span>
         <span class="v"><span class="puce ${av}">${p.opinion > 0 ? '+' : ''}${Math.round(p.opinion)}</span></span></div>
       <div class="aide">${e(CHARGES[p.charge].desc)}</div>
+      ${memHtml}${demandeHtml}
     </div>`;
   }).join('') || '<div class="aide">Personne qui compte, ici. Ça arrive.</div>';
 
@@ -1887,6 +1922,7 @@ function modaleVille() {
   <div class="titre">Qui compte</div>
   ${marge !== 0 ? `<div class="aide">L’armurier ${marge > 0 ? 'prend' : 'lâche'}
     ${Math.abs(marge * 100).toFixed(0)} % ${marge > 0 ? 'de plus' : 'de moins'} que l’ordinaire.</div>` : ''}
+  ${acquisHtml(col)}
   ${gensHtml}`;
 }
 
@@ -2262,6 +2298,13 @@ function surClic(ev) {
       modale = null;
       rendreModale();
       rafraichir(true);
+      break;
+    }
+
+    case 'honorer': {
+      const r = ACTIONS.honorer(el.dataset.c, el.dataset.n);
+      toast(r.ok ? 'Il vous doit quelque chose, maintenant.' : r.motif, !r.ok);
+      rendreModale();
       break;
     }
 

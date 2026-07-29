@@ -10,6 +10,7 @@ import { colonieParId, distance, nomRegion } from './world.js';
 import { idDepuisRng } from './characters.js';
 import { crediter, estAuService } from './allegeance.js';
 import { groupes, groupeActif } from './groupes.js';
+import { faveurChef } from './services.js';
 
 /** Durée de vie d'un panneau d'affichage avant renouvellement. */
 const DUREE_PANNEAU = 220;
@@ -166,6 +167,15 @@ export function accepter(state, col, id, log, groupe) {
     return { ok: false, motif: `Déjà ${MAX_CONTRATS} contrats en cours.` };
   }
   const c = col.contrats[i];
+
+  // Le panneau appartient à quelqu'un. Un chef qui vous a en horreur ne vous
+  // confie pas les affaires de sa ville ; un chef qui vous doit quelque chose
+  // vous garde ce qui paie.
+  const faveur = faveurChef(col);
+  if (!faveur.ouvert) {
+    return { ok: false, motif: `Le chef de ${col.nom} ne veut pas de vos services.` };
+  }
+  if (faveur.prime !== 1) c.recompense = Math.round(c.recompense * faveur.prime);
 
   // Une livraison, ça se charge : il faut la place dans le sac.
   if (c.type === 'livraison') {

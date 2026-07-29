@@ -89,7 +89,7 @@ régression, soit capricieux d'une machine à l'autre. Le plafond monte quand la
 simulation gagne du travail — jamais quand elle se dégrade —, et le fichier de
 test dit à chaque fois ce que la hausse a payé : 60 µs au départ, 65 avec les
 groupes et la connaissance imparfaite, 88 avec les métiers des villes et leurs
-notables. Sans cette trace, relever le budget deviendrait un moyen commode de ne
+notables, 94 avec les demandes personnelles de ces notables. Sans cette trace, relever le budget deviendrait un moyen commode de ne
 jamais voir une régression.
 
 Le banc d'équilibrage est le plus utile des trois : c'est lui qui a montré que
@@ -150,6 +150,28 @@ tiers plus cher qu'un honnête homme qui vous apprécie ; un chef dur tient sa
 ville mais l'aigrit ; un contremaître compétent fait la différence entre une
 production qui tourne et une qui traîne. La granularité est là où on peut la
 voir.
+
+**Ce qu'ils vous demandent.** Un panneau d'affichage est anonyme : il paie en
+crédits, il bouge la réputation d'une faction, et personne ne se souvient de
+vous. Ces gens-là, c'est autre chose. Quand leur ville manque vraiment de ce
+dont ils ont la charge — le médecin de medkits, le contremaître de composants,
+le chef de vivres, l'armurier d'alliage —, ils vous le disent en face, et ils
+retiennent ce que vous en avez fait. Quatre actes en mémoire, écrits en clair
+sous leur portrait.
+
+La prime est volontairement médiocre : elle rembourse la marchandise, sans plus.
+Ce qu'on achète en rendant un service, c'est l'estime d'une personne précise, et
+cette estime ouvre des choses qu'aucune somme n'achète — un armurier qui fait
+ses prix, un médecin qui passe voir vos blessés quand vous campez sous ses murs,
+un chef qui vous garde les contrats qui paient (et qui vous ferme son panneau si
+vous lui déplaisez assez), un contremaître qui laisse ses registres ouverts,
+c'est-à-dire dont les chiffres restent frais même quand vous êtes à l'autre bout
+de la carte. C'est le seul moyen de savoir sans être là.
+
+Une demande qu'on laisse s'éteindre se paie — mais seulement si on était passé
+l'entendre. Sur quatre parties d'un an, 348 demandes naissent d'elles-mêmes et
+seules 4 sont reprochées à un joueur qui ne s'en occupe jamais : on ne tient
+rigueur à personne d'un besoin qu'il ignorait.
 
 **Les caravanes.** Ce qu'une ville a en trop part chez celle qui en manque, sur
 des routes réelles et dangereuses. Elles se font piller par les pillards et par
@@ -366,6 +388,7 @@ game/
     formation.js      écoles des villes, transmission maison, diplômes
     notables.js       les gens qui comptent dans une ville, leur état, leurs effets
     dirigeants.js     chefs de faction, tempéraments, légitimité, buts de guerre
+    services.js       ce que les notables vous demandent, ce qu'ils retiennent
     sim.js            orchestration, rattrapage hors ligne
     save.js           sérialisation
     ui.js             rendu DOM + carte pixel sur canvas

@@ -8,6 +8,7 @@ import { chemin, colonieParId, colonieDe, nomRegion, distance } from './world.js
 import { groupeActif } from './groupes.js';
 import { cibleStock, prixUnitaire } from './economy.js';
 import { idDepuisRng } from './characters.js';
+import { retenirEnVille } from './services.js';
 
 /** Au-delà, la carte devient un embouteillage illisible. */
 export const MAX_CARAVANES = 7;
@@ -230,6 +231,12 @@ export function attaquerCaravane(state, car, rng, log, combatContre, genererBand
   const rep = state.player.reputation;
   if (car.faction && car.faction !== 'essaim') {
     rep[car.faction] = Math.max(-100, (rep[car.faction] || 0) - 22);
+    // Une caravane qui n'arrive pas, ce sont des gens qui l'attendaient. Ceux
+    // des deux bouts s'en souviennent nommément, pas seulement la faction.
+    for (const id of [car.deId, car.versId]) {
+      const col = id && state.world.colonies.find((c) => c.id === id);
+      if (col) retenirEnVille(col, 'pillage', state.temps, -18);
+    }
   }
   state.stats.caravanesPillees = (state.stats.caravanesPillees || 0) + 1;
   return { ok: true, gagne: true, pris };

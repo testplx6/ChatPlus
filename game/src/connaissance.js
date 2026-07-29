@@ -16,6 +16,8 @@ import { distance } from './world.js';
 import { groupes } from './groupes.js';
 import { estVivant } from './characters.js';
 import { rangDe } from './allegeance.js';
+import { REGISTRES_SEUIL } from './services.js';
+import { notable } from './notables.js';
 
 /** Au-delà, l'information est trop vieille pour valoir mieux que rien. */
 export const PEREMPTION = 24 * 120; // quatre saisons
@@ -98,6 +100,22 @@ export function observer(state) {
     c.regions[rid] = releverRegion(r, t);
     const col = state.world.colonies.find((x) => x.regionId === rid);
     if (col) c.colonies[col.id] = releverColonie(col, t);
+  }
+  // Un contremaître qui vous apprécie assez laisse ses registres ouverts : ses
+  // chiffres restent frais même à l'autre bout de la carte. C'est le seul moyen
+  // de savoir sans être là, et il s'achète en rendant des services, pas en
+  // payant.
+  //
+  // Toutes les trois heures et pas toutes les heures : une ville n'avance elle
+  // -même que par tranches de trois (voir PAS_COLONIE), donc relever plus
+  // souvent ne relève rien de neuf — et balayer la carte à chaque tick coûtait
+  // un cinquième du budget pour ça.
+  if (t % 3 === 0) {
+    for (const col of state.world.colonies) {
+      if (col.ruine) continue;
+      const cm = notable(col, 'contremaitre');
+      if (cm && (cm.opinion || 0) >= REGISTRES_SEUIL) c.colonies[col.id] = releverColonie(col, t);
+    }
   }
   c.maj = t;
 }

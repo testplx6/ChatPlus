@@ -13,6 +13,7 @@ import { genererBande } from './combat.js';
 import { groupeActif, tousLesMembres, scinder, fusionner, choisirGroupe, assignerTache } from './groupes.js';
 import { tailleEscouadeMax } from './base.js';
 import { verifierExercice } from './squad.js';
+import { honorer as honorerService } from './services.js';
 
 let state = null;
 let boucle = null;
@@ -138,6 +139,13 @@ const API = {
     });
     sauver();
     return { ok: true, nom: c.nom };
+  },
+
+  /** Rendre à quelqu'un le service qu'il a demandé, en main propre. */
+  honorer(colId, notableId) {
+    const r = honorerService(state, colId, notableId, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
   },
 
   // --- Groupes -------------------------------------------------------------

@@ -16,6 +16,7 @@ import {
 import {
   pourvoirCharges, tickNotables, rendementNotables, margeMarchand, ordreDe,
 } from './notables.js';
+import { tickServices } from './services.js';
 
 /** Stock « confortable » visé par une colonie pour une marchandise. */
 export function cibleStock(col, key) {
@@ -258,11 +259,12 @@ export function estVivante(col) {
  * `climat` module les rendements : une saison sèche ne nourrit pas une ville
  * comme une saison de pluies.
  */
-export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null) {
+export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null, t = 0, present = false) {
   if (col.ruine) return null;
   ajusterEmplois(world, col, rng, dt);
-  pourvoirCharges(col, rng, 0);
-  tickNotables(col, rng, dt, reputation, log);
+  pourvoirCharges(col, rng, t);
+  tickNotables(col, rng, dt, reputation, log, t);
+  tickServices(col, rng, dt, t, present);
   const prod = productionColonie(world, col);
   const cons = consommationColonie(col);
   // `dt` : nombre d'heures couvertes par cet appel. Une économie de colonie n'a

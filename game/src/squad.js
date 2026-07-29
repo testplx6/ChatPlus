@@ -20,6 +20,7 @@ import { conditions } from './climat.js';
 import {
   groupeActif, tacheDe, debout as deboutDe, vivants as vivantsDe, retirerGroupe,
 } from './groupes.js';
+import { renfortSoin } from './services.js';
 
 export const ORDRES = {
   repos: { nom: 'Repos', desc: 'Récupération, soins, rien d’autre.', effort: 0 },
@@ -314,6 +315,9 @@ function qualiteSoin(state, g, auRepos) {
   if (state.base.fonde && g.regionId === state.base.regionId) {
     q *= 1 + nivBat(state.base, 'infirmerie') * 0.35;
   }
+  // Camper sous les murs d'une ville dont le médecin vous apprécie, ce n'est
+  // pas camper dans le sable : il passe voir vos gens.
+  q *= renfortSoin(state, g.regionId);
   if (!auRepos) q *= 0.35;
   return q;
 }

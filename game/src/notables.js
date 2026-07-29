@@ -74,6 +74,9 @@ export function creerNotable(rng, charge, col, t) {
     humeur: rng.irange(40, 70),
     // Ce qu'il pense de vous. On part de rien : il ne vous connaît pas.
     opinion: 0,
+    // Ce qu'il attend de vous, et ce qu'il retient de vous. Voir services.js.
+    demande: null,
+    memoire: [],
     depuis: t,
     skill: def.skill,
   };
@@ -175,7 +178,7 @@ export function ajusterOpinion(col, delta) {
  * votre réputation auprès de leur faction — plus lentement qu'elle, parce qu'on
  * juge quelqu'un sur ce qu'il fait ici, pas sur ce qu'on dit de lui ailleurs.
  */
-export function tickNotables(col, rng, dt, reputation, log) {
+export function tickNotables(col, rng, dt, reputation, log, t = 0) {
   if (!col.notables || !col.notables.length) return;
   const aise = Math.max(0, Math.min(1, (col.stock.rations || 0) / Math.max(1, col.pop * 0.8)));
   const vers = (reputation || 0) * 0.7;

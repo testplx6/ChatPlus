@@ -60,7 +60,7 @@ export function normaliser(state) {
   if (p.allegeance === undefined) p.allegeance = null;
   if (!state.memorial) state.memorial = [];
   if (!state.stats) state.stats = {};
-  for (const k of ['contratsRemplis', 'sitesFouilles', 'caravanesPillees', 'distanceParcourue']) {
+  for (const k of ['contratsRemplis', 'sitesFouilles', 'caravanesPillees', 'distanceParcourue', 'servicesRendus']) {
     if (state.stats[k] === undefined) state.stats[k] = 0;
   }
   const w = state.world;
@@ -78,6 +78,11 @@ export function normaliser(state) {
     if (c.emplois === undefined) c.emplois = null;
     // Les gens qui comptent : le premier tick pourvoit les charges.
     if (!c.notables) c.notables = [];
+    // Avant les services, ces gens n'attendaient rien et ne retenaient rien.
+    for (const p2 of c.notables) {
+      if (p2.demande === undefined) p2.demande = null;
+      if (!p2.memoire) p2.memoire = [];
+    }
   }
   for (const g of p.groupes) {
     for (const c of g.membres) {
