@@ -5,7 +5,9 @@
 // Deux interrupteurs servent à isoler un système à la fois, ce qui est la seule
 // façon d'attribuer un déséquilibre à sa cause plutôt qu'à une intuition :
 //
-//   SANS=detach,contrats,livraison,services,intel,base   coupe ces comportements
+//   SANS=detach,contrats,livraison,services,intel,base,service   coupe ces
+//        comportements. `service` interdit de s'engager : c'est le témoin du
+//        nomade pur, à comparer à `CAMP=1` pour le colon.
 //   CAMP=1                           la partie démarre avec un campement fondé
 //
 // `CAMP=1` répond à une question que le reste ne sait pas poser : un
@@ -550,7 +552,7 @@ function jouerPrincipal(state, g, memo) {
 
     // S'engager dès qu'une faction accepte : la solde, la remise et
     // l'intendance valent largement le prix de quelques ordres à honorer.
-    if (!p.allegeance && peutSEngager(state, colIci.faction).ok) {
+    if (!SANS.has('service') && !p.allegeance && peutSEngager(state, colIci.faction).ok) {
       sEngager(state, colIci.faction, () => {});
     }
     // Passer à l'intendance : c'est gratuit, c'est de la nourriture, et c'est

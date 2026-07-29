@@ -96,25 +96,32 @@ code : à 130 le test échouait une fois sur trois sur une machine chargée, et 
 garde-fou qui crie sans motif est pire qu'un garde-fou absent. Sans cette trace, relever le budget deviendrait un moyen commode de ne
 jamais voir une régression.
 
-### Deux voies, deux façons de tenir
+### Trois voies, trois façons de tenir
 
-Mesure à quarante-huit parties, même code, seule change la façon de jouer :
+Mesure à quarante-huit parties par bras, même code, même bot calibré, seule
+change la façon de jouer :
 
-    nomade pur                 28/48 survivants
-    installé (camp donné)      28/48 survivants
+                        nomade      colon    carriériste
+    survivants           43/48      39/48        33/48
+    crédits en fin        692        173        3 308
+    ventes             +6 249     +2 201       +4 033
+    nourriture         −4 232     −1 894       −4 155
+    pillé en défaite     −825       −402       −2 049
 
-À égalité — et c'était le but. Ce qui compte est *comment* ils tiennent, et là
-tout diffère :
+Trois métiers, pas trois difficultés. Le **nomade** brasse : il vend deux fois
+plus que les autres, s'équipe bien, évite ce qu'il peut, et survit le mieux pour
+un patrimoine modeste. Le **colon** touche le marché trois fois moins, mange ce
+qu'il ramasse, ne se fait presque pas dépouiller — il finit pauvre parce qu'il
+n'a besoin de rien. Le **carriériste** finit cinq fois plus riche que le nomade
+et paie ça en sang : ses ordres l'envoient chercher l'ennemi, et il perd deux
+fois et demie plus au combat.
 
-                        nomade      installé
-    ventes              5 382 cr    1 445 cr
-    nourriture         −3 468 cr   −1 405 cr
-    pillé en défaite   −2 850 cr     −545 cr
+Dix points de survie séparent le meilleur du pire. C'est un écart réel, pas une
+domination : on choisit entre vivre vieux et vivre gros.
 
-Le colon touche le marché quatre fois moins, mange presque gratuitement ce
-qu'il ramasse, et se fait beaucoup moins dépouiller parce qu'il tourne autour de
-chez lui. Le nomade brasse, vend, achète et prend des coups sur les routes. Ce
-sont deux jeux, et aucun ne remplace l'autre.
+**Ces chiffres remplacent tous ceux qui les précédaient.** Les mesures faites
+avant le calibrage du bot (voir plus bas) donnaient 28/48 partout et concluaient
+à l'égalité — elles portaient sur une escouade qui ne s'armait pas.
 
 Trois verrous ont dû sauter pour en arriver là, et ils se ressemblaient tous :
 
@@ -190,15 +197,25 @@ entretient* :
   deuxième au lieu de les opposer — le colon se bâtit une maison, l'engagé se
   la fait prêter.
 
-Les grades montent enfin. Sur quarante-huit parties :
+Restait un quatrième verrou, et c'était le plus gros : **les ordres de mission
+étaient écrits pour la carte de 10×8.** Une reconnaissance tirait un secteur au
+hasard parmi quatre cent trente-deux et laissait deux cents heures pour y être ;
+un ravitaillement visait la ville la plus en peine de la faction, où qu'elle
+fût. Le délai, lui, ne dépendait pas de la distance. Un ordre et demi honoré par
+partie sur une vingtaine reçus — et comme les points de service ne viennent que
+de là, personne ne dépassait le premier grade.
 
-    avant   44 Affilié ·  2 Agent ·  0 Lieutenant ·  0 Capitaine
-    après   31 Affilié · 11 Agent ·  6 Lieutenant
+Les ordres se donnent maintenant à portée — un secteur à moins de huit, une
+ville pondérée par sa distance — et leur délai suit le trajet.
 
-Reste que la voie n'est pas encore à parité : 25 survivants sur 48 contre 28
-pour le nomade, et l'intendance ne rapporte que vingt-six rations par partie
-là où une escouade en consomme deux cents. Le bot ne repasse pas assez souvent
-chez les siens — et c'est autant sa limite que celle du jeu.
+Les grades, sur quarante-huit parties :
+
+    à l'origine          44 Affilié ·  2 Agent ·  0 Lieutenant ·  0 Capitaine
+    après l'intendance   32 Affilié · 11 Agent ·  3 Lieutenant ·  2 Capitaine
+    après la portée       9 Affilié · 18 Agent · 15 Lieutenant ·  6 Capitaine
+
+Ordres honorés : 72 puis 161 sur quarante-huit parties. Trente-neuf escouades
+sur quarante-huit dépassent désormais le premier grade, contre deux.
 
 ### Ce qui reste : le bot ne sait pas encore s'installer tout seul
 

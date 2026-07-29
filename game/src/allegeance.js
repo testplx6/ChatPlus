@@ -269,11 +269,31 @@ function villesDe(state, faction) {
   return state.world.colonies.filter((c) => !c.ruine && c.faction === faction);
 }
 
+/** Où se trouve celui à qui on donne l'ordre. */
+function positionJoueur(state) {
+  const g = state.player.groupes.find((x) => x.membres.length);
+  return g ? g.regionId : 0;
+}
+
+/**
+ * Le délai d'un ordre doit suivre la distance, pas une fourchette fixe.
+ *
+ * Sur la carte de 10×8, deux cent quarante heures suffisaient pour aller
+ * n'importe où et revenir. Sur 24×18 elles ne suffisent parfois même pas à
+ * l'aller, et le banc l'a chiffré : un ordre et demi honoré par partie sur une
+ * vingtaine reçus. Comme les points de service ne viennent que de là, personne
+ * ne dépassait jamais le premier grade.
+ */
+function delai(d, rng, base = 200) {
+  return Math.round((base + d * 26) * rng.range(0.95, 1.35));
+}
+
 function fabriquerOrdre(state, rng) {
   const all = state.player.allegeance;
   const miennes = villesDe(state, all.faction);
   if (!miennes.length) return null;
   const rang = rangDe(all);
+  const ici = positionJoueur(state);
 
   // On vise ce qui sert vraiment la faction : ravitailler une ville en manque,
   // frapper un ennemi déclaré, ou reconnaître un secteur convoité.
@@ -298,33 +318,55 @@ function fabriquerOrdre(state, rng) {
       titre: `${victoires} victoire${victoires > 1 ? 's' : ''} contre ${FACTIONS[cible].nom}`,
       recompense: Math.round(victoires * rng.irange(300, 560) * (1 + rang.index * 0.25)),
       service: Math.round(victoires * 45 * (1 + rang.index * 0.2)),
-      duree: rng.irange(260, 460),
+      // Une frappe ne demande pas d'aller quelque part de précis, mais de
+      // croiser l'ennemi : on laisse le temps que ça prend.
+      duree: rng.irange(420, 700),
     };
   }
 
   if (type === 'reconnaissance') {
-    const inconnues = state.world.regions.filter((r) => !r.decouvert);
-    if (!inconnues.length) return null;
+    // Un secteur à portée, pas un point tiré au hasard sur quatre cent
+    // trente-deux : on n'envoie pas quelqu'un à trente régions de là avec deux
+    // cents heures pour y être.
+    let inconnues = state.world.regions.filter(
+      (r) => !r.decouvert && distance(r.i, ici) <= 8
+    );
+    if (!inconnues.length) {
+      const toutes = state.world.regions.filter((r) => !r.decouvert);
+      if (!toutes.length) return null;
+      // Rien de proche : on prend le plus proche de ce qui reste.
+      inconnues = [toutes.reduce(
+        (a, b) => (distance(b.i, ici) < distance(a.i, ici) ? b : a)
+      )];
+    }
     const r = rng.pick(inconnues);
+    const d = distance(r.i, ici);
     return {
       id: idDepuisRng(rng, 'o'),
       type: 'reconnaissance',
       regionId: r.i,
       titre: `Reconnaître le secteur ${String.fromCharCode(65 + r.x)}${r.y + 1}`,
-      recompense: Math.round(rng.irange(180, 340) * (1 + rang.index * 0.2)),
-      service: Math.round(40 * (1 + rang.index * 0.2)),
-      duree: rng.irange(200, 380),
+      recompense: Math.round((160 + d * 40) * rng.range(0.9, 1.3) * (1 + rang.index * 0.2)),
+      service: Math.round((30 + d * 6) * (1 + rang.index * 0.2)),
+      duree: delai(d, rng, 150),
     };
   }
 
-  // Ravitaillement : la ville la plus en peine de la faction.
+  // Ravitaillement : la ville la plus en peine — pondérée par la distance.
+  // Viser la plus en peine où qu'elle soit revenait à envoyer le convoi à
+  // l'autre bout du monde à chaque fois.
   let pire = null;
+  let pireScore = 0;
   let pireManque = 0;
   let ressource = 'rations';
   for (const col of miennes) {
+    const d = distance(col.regionId, ici);
     for (const k of ['rations', 'composant', 'alliage', 'medkit', 'carburant']) {
       const manque = Math.max(0, col.pop * 0.25 - (col.stock[k] || 0));
-      if (manque > pireManque) { pireManque = manque; pire = col; ressource = k; }
+      const score = manque / (1 + d * 0.55);
+      if (score > pireScore) {
+        pireScore = score; pireManque = manque; pire = col; ressource = k;
+      }
     }
   }
   if (!pire) pire = rng.pick(miennes);
@@ -338,7 +380,7 @@ function fabriquerOrdre(state, rng) {
     titre: `Ravitailler ${pire.nom} : ${quantite} ${COMMODITIES[ressource].nom.toLowerCase()}`,
     recompense: Math.round(COMMODITIES[ressource].prix * quantite * rng.range(1.8, 2.6)),
     service: Math.round(quantite * 1.5 + 30),
-    duree: rng.irange(240, 420),
+    duree: delai(distance(pire.regionId, ici), rng, 220),
   };
 }
 
