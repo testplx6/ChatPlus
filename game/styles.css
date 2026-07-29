@@ -224,7 +224,11 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
 
 .pile { display: flex; flex-direction: column; gap: 5px; }
 .rangee { display: flex; gap: 5px; flex-wrap: wrap; }
-.rangee > * { flex: 1 1 auto; width: auto; }
+/* `button.act` est plus spécifique que `.rangee > *` : sans reprendre le
+   sélecteur complet, sa largeur de 100 % l'emporte et les boutons s'empilent
+   au lieu de se ranger sur une ligne. */
+.rangee > *, .rangee > button.act { flex: 1 1 auto; width: auto; display: inline-flex;
+  align-items: center; justify-content: center; }
 
 .puce {
   display: inline-block;
@@ -420,11 +424,12 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
   gap: 5px;
   margin: 6px 0;
 }
-.taches .act.mini {
+.taches .act.mini, .taches button.act.mini {
   flex: 0 1 auto;
   width: auto;              /* .act est en pleine largeur : ici on veut une ligne */
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   min-height: 32px;
 }
 

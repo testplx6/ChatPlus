@@ -83,6 +83,9 @@ export function normaliser(state) {
   if (b) {
     if (b.pop === undefined) b.pop = 0;
     if (b.moral === undefined) b.moral = 60;
+    // Avant les métiers, les habitants étaient un multiplicateur anonyme : on
+    // les laisse manœuvres, le joueur les affectera s'il le veut.
+    if (!b.postes) b.postes = {};
   }
   if (state.stats.ordresRemplis === undefined) state.stats.ordresRemplis = 0;
   return state;

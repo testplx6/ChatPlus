@@ -10,7 +10,11 @@ import { serialiser, deserialiser } from '../src/save.js';
 import { COMMODITY_KEYS, DIPLO_FACTIONS } from '../src/data.js';
 import { classement, puissance } from '../src/factions.js';
 import { donnerOrdre, verifierExercice, COMPETENCES_EXERCICE } from '../src/squad.js';
-import { fonderBase, lancerConstruction, lancerRecherche } from '../src/base.js';
+import {
+  fonderBase, lancerConstruction, lancerRecherche, placesMetier, affectes,
+  manoeuvres, affecter, rendementMetier, mainDoeuvre,
+} from '../src/base.js';
+import { METIER_KEYS } from '../src/data.js';
 import {
   estVivant, makeCharacter, accorderDiplome, apprentissage,
 } from '../src/characters.js';
@@ -841,6 +845,77 @@ ok(deplacements > 0, 'un groupe amputé de deux bras se fait effectivement bousc
 ok((eleveS.diplomes || []).includes('medecine'), 'l’élève finit par être formé');
 ok(!occupeParEcole(maitre), 'et le maître est rendu à ses occupations');
 verifierCoherence(s9s, 'après transmission à l’avant-poste');
+
+section('9 nonies. Métiers de l’avant-poste');
+const s9t = nouvellePartie(3131, { maintenant: 0 });
+const g9t = groupeActif(s9t);
+const videT = s9t.world.regions.find((r) => !r.colonie);
+g9t.regionId = videT.i;
+Object.assign(g9t.inventaire, { ferraille: 200, polymere: 60, composant: 10 });
+fonderBase(s9t, () => {});
+Object.assign(s9t.base.batiments, { hydroponie: 2, fonderie: 2, entrepot: 2, mur: 2, antenne: 1 });
+s9t.base.pop = 10;
+Object.assign(s9t.base.stock, { biomasse: 4000, minerai: 4000, rations: 400, carburant: 200 });
+
+ok(placesMetier(s9t.base, 'cultivateur') === 6, 'un bâtiment ouvre des places', `${placesMetier(s9t.base, 'cultivateur')}`);
+ok(placesMetier(s9t.base, 'machiniste') === 0, 'sans atelier, pas de machiniste');
+ok(manoeuvres(s9t.base) === 10, 'au départ tout le monde est manœuvre');
+
+const aff = affecter(s9t, 'cultivateur', 6);
+ok(aff.ok && aff.affectes === 6, 'on affecte des habitants à un poste', JSON.stringify(aff));
+ok(manoeuvres(s9t.base) === 4, 'les manœuvres diminuent d’autant', `${manoeuvres(s9t.base)}`);
+ok(affecter(s9t, 'fondeur', 6).affectes === 4, 'on ne peut pas affecter plus de monde qu’on en a',
+  `${affectes(s9t.base, 'fondeur')}`);
+ok(affecter(s9t, 'machiniste', 3).ok === false, 'ni ouvrir un poste sans son bâtiment');
+
+// Le rendement du poste dépasse celui de la main-d'œuvre anonyme.
+ok(rendementMetier(s9t, 'cultivateur').mult > mainDoeuvre(s9t.base),
+  'une place tenue rend plus que la main-d’œuvre générique',
+  `${rendementMetier(s9t, 'cultivateur').mult.toFixed(2)} contre ${mainDoeuvre(s9t.base).toFixed(2)}`);
+
+// À bâtiments et habitants égaux, spécialiser produit davantage.
+function rationsApres(specialise, heures) {
+  const st = nouvellePartie(3131, { maintenant: 0 });
+  const gt = groupeActif(st);
+  gt.regionId = st.world.regions.find((r) => !r.colonie).i;
+  Object.assign(gt.inventaire, { ferraille: 200, polymere: 60, composant: 10 });
+  fonderBase(st, () => {});
+  // Entrepôt largement dimensionné : sans ça le stock plafonne et la comparaison
+  // ne mesure plus rien du tout.
+  Object.assign(st.base.batiments, { hydroponie: 3, generateur: 2, entrepot: 6 });
+  st.base.pop = 9;
+  Object.assign(st.base.stock, { biomasse: 3000, rations: 300, carburant: 400 });
+  if (specialise) affecter(st, 'cultivateur', 9);
+  const avant = st.base.stock.rations;
+  avancer(st, heures);
+  return st.base.stock.rations - avant;
+}
+const specialise = rationsApres(true, 400);
+const anonyme = rationsApres(false, 400);
+ok(specialise > anonyme, 'spécialiser produit davantage que laisser tout le monde manœuvrer',
+  `${Math.round(specialise)} contre ${Math.round(anonyme)} rations`);
+
+// Un contremaître compétent sur place vaut plusieurs bras.
+const chefTest = groupeActif(s9t).membres[0];
+chefTest.skills.ingenierie = 80;
+const avecChef = rendementMetier(s9t, 'cultivateur');
+ok(avecChef.contremaitre && avecChef.contremaitre.id === chefTest.id,
+  'le meilleur des vôtres encadre le poste');
+g9t.regionId = (videT.i + 1) % 80;
+const sansChef = rendementMetier(s9t, 'cultivateur');
+ok(!sansChef.contremaitre, 'parti, il n’encadre plus');
+ok(avecChef.mult > sansChef.mult, 'et son absence se voit sur le rendement',
+  `${avecChef.mult.toFixed(2)} → ${sansChef.mult.toFixed(2)}`);
+g9t.regionId = videT.i;
+
+// Les postes se réajustent quand la population tombe ou qu'un mur est rasé.
+s9t.base.pop = 3;
+avancer(s9t, 2);
+let totalPostes = 0;
+for (const k of METIER_KEYS) totalPostes += affectes(s9t.base, k);
+ok(totalPostes <= s9t.base.pop, 'les postes se dégarnissent si la population tombe',
+  `${totalPostes} pour ${s9t.base.pop} habitants`);
+verifierCoherence(s9t, 'après affectation des métiers');
 
 section('10. Rattrapage hors ligne');
 const s10 = nouvellePartie(1010, { maintenant: 1000000 });

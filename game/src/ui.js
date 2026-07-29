@@ -4,7 +4,7 @@
 import {
   BIOMES, FACTIONS, COMMODITIES, COMMODITY_KEYS, BUILDINGS, BUILDING_KEYS,
   RESEARCH, RESEARCH_KEYS, ITEMS, SKILLS, SKILL_KEYS, BODY_PARTS, BODY_KEYS,
-  POSTURES, POSTURE_KEYS, TRAITS, POI, CONTRATS, DIPLOMES,
+  POSTURES, POSTURE_KEYS, TRAITS, POI, CONTRATS, DIPLOMES, METIERS, METIER_KEYS,
 } from './data.js';
 import {
   nomRegion, colonieDe, colonieParId, coord, chemin, coutTraversee, distance,
@@ -18,7 +18,8 @@ import {
   prixItem, acheterItem, vendreItem,
 } from './economy.js';
 import {
-  populationMax, mainDoeuvre,
+  populationMax, mainDoeuvre, placesMetier, affectes, manoeuvres, affecter,
+  rendementMetier,
   niveau as nivBat, niveauRech, coutBatiment, tempsBatiment, coutRecherche,
   tempsRecherche, capaciteStock, totalStock, energie, lancerConstruction,
   lancerRecherche, annulerConstruction, fonderBase, deposer, retirer,
@@ -1011,6 +1012,68 @@ function ecranEscouade() {
  * pas un crédit, ça immobilise deux personnes au lieu d'une, et ça donne une
  * raison de rentrer.
  */
+/**
+ * Qui fait quoi à l'avant-poste. Les habitants sans poste restent des manœuvres :
+ * ils aident partout un peu. Affectés, ils rendent beaucoup plus — mais sur une
+ * seule chaîne. C'est le choix de spécialisation qui fait l'avant-poste.
+ */
+function blocMetiers() {
+  const b = S.base;
+  const libres = manoeuvres(b);
+  const ouverts = METIER_KEYS.filter((k) => placesMetier(b, k) > 0);
+
+  if (!b.pop) {
+    return `<section class="panneau">
+      <h2 class="titre">Métiers</h2>
+      <div class="aide">Personne à employer. Il faut d’abord que des gens s’installent :
+        un baraquement pour les loger, des rations pour les garder.</div>
+    </section>`;
+  }
+  if (!ouverts.length) {
+    return `<section class="panneau">
+      <h2 class="titre">Métiers <span class="droite">${n(libres)} manœuvre(s)</span></h2>
+      <div class="aide">Aucun poste ouvert : ce sont les bâtiments qui créent les places.
+        En attendant, tout le monde donne un coup de main partout — ×${mainDoeuvre(b).toFixed(2)}
+        sur l’ensemble.</div>
+    </section>`;
+  }
+
+  const lignes = ouverts.map((k) => {
+    const m = METIERS[k];
+    const places = placesMetier(b, k);
+    const n0 = affectes(b, k);
+    const rd = rendementMetier(S, k);
+    return `<div style="border-bottom:1px solid #1b2029;padding:7px 0">
+      <div class="ligne">
+        <span class="k">${e(m.nom)} <span class="puce">${n0}/${places}</span></span>
+        <span class="v ${n0 ? 'ambre' : ''}">${n0 ? `×${rd.mult.toFixed(2)}` : '—'}</span>
+      </div>
+      <div class="aide">${e(m.effet)}. ${e(m.texte)}</div>
+      <div class="aide" ${rd.contremaitre ? 'style="color:var(--cyan)"' : ''}>${rd.contremaitre
+    ? `Contremaître ${e(rd.contremaitre.nom)} — ${e(SKILLS[m.skill].toLowerCase())} ${Math.round(comp(rd.contremaitre, m.skill))}`
+    : `Sans contremaître (${e(SKILLS[m.skill].toLowerCase())})`}</div>
+      <div class="taches" style="margin-top:5px">
+        <button class="act mini" data-a="poste" data-k="${k}" data-n="-1" ${n0 <= 0 ? 'disabled' : ''}>−</button>
+        <button class="act mini" data-a="poste" data-k="${k}" data-n="1"
+          ${n0 >= places || libres <= 0 ? 'disabled' : ''}>+</button>
+        <button class="act mini" data-a="poste" data-k="${k}" data-n="max"
+          ${n0 >= places || libres <= 0 ? 'disabled' : ''}>Au complet</button>
+        <button class="act mini" data-a="poste" data-k="${k}" data-n="0" ${n0 <= 0 ? 'disabled' : ''}>Vider</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<section class="panneau">
+    <h2 class="titre">Métiers
+      <span class="droite">${n(libres)} manœuvre(s) sur ${n(b.pop)}</span></h2>
+    <div class="aide">Un habitant sans poste aide partout un peu (×${mainDoeuvre(b).toFixed(2)}
+      sur l’ensemble). Affecté, il rend bien davantage — mais sur sa chaîne seulement.
+      Un des vôtres présent à l’avant-poste encadre l’équipe et vaut plusieurs bras.</div>
+    <div class="sep"></div>
+    ${lignes}
+  </section>`;
+}
+
 function blocEcoleBase() {
   const b = S.base;
   const surPlace = G().regionId === b.regionId;
@@ -1164,9 +1227,10 @@ function ecranBase() {
     ${jauge(populationMax(b) ? (b.pop || 0) / populationMax(b) : 0, '', '#6be08a')}
     <div class="aide">${(b.pop || 0) === 0
     ? 'Personne ne vit ici. Un baraquement et des vivres y changeraient quelque chose.'
-    : `Main-d’œuvre ×${mainDoeuvre(b).toFixed(2)} sur les chaînes · +${n(Math.round((b.pop || 0) * 2.5))} de défense · ${n(((b.pop || 0) * 0.014 * 24).toFixed(1))} rations/jour consommées`}</div>
+    : `Main-d’œuvre ×${mainDoeuvre(b).toFixed(2)} sur les chaînes · +${n(Math.round((b.pop || 0) * 2.5))} de défense · ${n((b.pop || 0) * 0.014 * 24, 1)} rations/jour consommées`}</div>
   </section>
 
+  ${blocMetiers()}
   ${blocEcoleBase()}
 
   <section class="panneau">
@@ -2069,6 +2133,19 @@ function surClic(ev) {
       else toast(`${c.nom} entre à l’école.`);
       ACTIONS.sauver();
       rendreModale();
+      rafraichir(true);
+      break;
+    }
+
+    case 'poste': {
+      const k = el.dataset.k;
+      const actuel = affectes(S.base, k);
+      const cible = el.dataset.n === 'max'
+        ? placesMetier(S.base, k)
+        : el.dataset.n === '0' ? 0 : actuel + Number(el.dataset.n);
+      const r = affecter(S, k, cible);
+      if (!r.ok) toast(r.motif, true);
+      ACTIONS.sauver();
       rafraichir(true);
       break;
     }

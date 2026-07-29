@@ -404,6 +404,36 @@ const refusion = await page.evaluate(() => {
 ok(refusion.n === avantGroupes, 'les groupes sont réunis', `${refusion.n}`);
 ok(refusion.membres === 3, 'tout le monde est rassemblé', `${refusion.membres}`);
 
+console.log('\n8 decies. Métiers de l’avant-poste');
+const bourg = partieAvancee();
+Object.assign(bourg.base.batiments, { hydroponie: 2, entrepot: 3, mur: 2, baraquement: 1 });
+bourg.base.pop = 8;
+Object.assign(bourg.base.stock, { biomasse: 900, rations: 400, carburant: 200 });
+groupeActif(bourg).regionId = bourg.base.regionId;
+bourg.dernierReel = Date.now();
+await page.reload({ waitUntil: 'networkidle' });
+await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(bourg));
+await page.click('[data-a="continuer"]');
+await page.waitForSelector('#carte');
+await page.click('[data-a="onglet"][data-k="base"]');
+await page.waitForTimeout(500);
+const texteMetiers = await page.evaluate(() => document.querySelector('#ecran').textContent);
+ok(/MÉTIERS/i.test(texteMetiers), 'l’avant-poste affiche ses métiers');
+ok(/manœuvre/i.test(texteMetiers), 'et compte les habitants sans poste');
+await page.screenshot({ path: join(CAPTURES, '20-metiers.png'), fullPage: true });
+
+const plus = page.locator('[data-a="poste"][data-n="max"]:not([disabled])');
+ok(await plus.count() > 0, 'des postes sont ouverts et pourvoyables', `${await plus.count()}`);
+await plus.first().click();
+await page.waitForTimeout(500);
+const apresPostes = await page.evaluate(() => {
+  const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const p = s.base.postes || {};
+  return { total: Object.values(p).reduce((a, b) => a + b, 0), pop: s.base.pop };
+});
+ok(apresPostes.total > 0, 'l’affectation est enregistrée', JSON.stringify(apresPostes));
+ok(apresPostes.total <= apresPostes.pop, 'et ne dépasse jamais la population');
+
 console.log('\n8 nonies. Transmission à l’avant-poste');
 const transmet = partieAvancee();
 const gTr = groupeActif(transmet);

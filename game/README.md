@@ -66,14 +66,14 @@ de cache périmé.
 ## Tests
 
 ```bash
-npm test                     # 171 assertions sur le moteur, sans navigateur
+npm test                     # 185 assertions sur le moteur, sans navigateur
 node test/equilibre.js       # banc d'équilibrage : un bot joue 30 parties
 node test/equilibre.js 4000 60   # échantillon large, une vingtaine de secondes
 SANS=detach,contrats node test/equilibre.js   # coupe un système pour l'isoler
 VAGABOND=1 node test/equilibre.js             # témoin : voyager sans contrats
 
 npm install --no-save playwright-core
-node test/navigateur.js      # 67 vérifications dans un Chromium réel
+node test/navigateur.js      # 72 vérifications dans un Chromium réel
 ```
 
 Le harnais couvre la génération du monde, le déterminisme, la sauvegarde, la
@@ -238,6 +238,22 @@ chaque ville selon le style de sa faction et sa taille. Le stock se renouvelle.
 **Les sites.** Vingt-deux points d'intérêt semés sur la carte — ruines, convois
 éventrés, bunkers scellés, charniers. On les repère en explorant, on les fouille
 une fois, et certains sont gardés.
+
+**Les métiers.** Les habitants ne sont plus un multiplicateur anonyme posé sur
+toutes les chaînes à la fois : ils ont un poste. Dix métiers — cultivateur,
+fondeur, machiniste, raffineur, mécanicien, magasinier, infirmier, opérateur,
+milicien, bâtisseur — dont chaque bâtiment ouvre les places. Un habitant sans
+poste reste manœuvre et aide partout un peu ; affecté, il rend bien davantage,
+mais sur sa chaîne seulement. L'avant-poste devient donc un choix de
+spécialisation plutôt qu'une addition de bras, et le harnais vérifie qu'à
+bâtiments et population égaux, spécialiser produit plus que ne rien décider.
+
+Et c'est là que tout se rejoint : **un des vôtres présent à l'avant-poste
+encadre l'équipe**. Le meilleur dans la compétence du métier fait contremaître et
+vaut plusieurs ouvriers — un ingénieur diplômé sur la chaîne des composants, un
+médecin à l'infirmerie. Le vétéran qu'on a formé, les diplômes qu'on a payés et
+les gens qu'on a logés cessent d'être trois systèmes séparés. Qu'il parte, et le
+rendement retombe.
 
 **L'avant-poste.** À bâtir où vous voulez hors des villes. Dix bâtiments à
 niveaux, contrainte d'énergie, chaînes de transformation (biomasse → rations,

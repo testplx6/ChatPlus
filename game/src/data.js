@@ -820,3 +820,71 @@ export const DIPLOME_ARCHETYPE = {
   chasseur: 'tir',
   brute: 'melee',
 };
+
+// ---------------------------------------------------------------------------
+// Métiers de l'avant-poste
+// ---------------------------------------------------------------------------
+// Les habitants n'étaient qu'un nombre : un multiplicateur anonyme posé sur
+// toutes les chaînes à la fois. On leur donne un poste. Chaque bâtiment ouvre
+// des places, chaque place tenue rend davantage que la main-d'œuvre générique —
+// mais seulement là où elle est affectée. Un avant-poste devient donc un choix
+// de spécialisation, pas une addition de bras.
+//
+// `batiment`  : ce qui ouvre les places       · `parNiveau` : places par niveau
+// `apport`    : ce qu'un ouvrier ajoute       · `skill` : ce qu'un contremaître
+//               (fraction, cumulatif)                    apporte s'il est sur place
+
+export const METIERS = {
+  cultivateur: {
+    nom: 'Cultivateur', batiment: 'hydroponie', parNiveau: 3, apport: 0.14,
+    skill: 'ingenierie', effet: 'Rations produites par l’hydroponie',
+    texte: 'Repiquer, tailler, écarter ce qui pourrit avant que ça contamine le bac.',
+  },
+  fondeur: {
+    nom: 'Fondeur', batiment: 'fonderie', parNiveau: 3, apport: 0.14,
+    skill: 'force', effet: 'Alliage tiré du minerai',
+    texte: 'Devant le four, on ne parle pas beaucoup.',
+  },
+  machiniste: {
+    nom: 'Machiniste', batiment: 'atelier', parNiveau: 2, apport: 0.16,
+    skill: 'ingenierie', effet: 'Composants assemblés',
+    texte: 'Les composants ne se ramassent plus nulle part. Il faut les faire.',
+  },
+  raffineur: {
+    nom: 'Raffineur', batiment: 'raffinerie', parNiveau: 2, apport: 0.15,
+    skill: 'ingenierie', effet: 'Carburant tiré du polymère',
+    texte: 'Un métier qui sent mauvais et qui fait tourner le reste.',
+  },
+  mecanicien: {
+    nom: 'Mécanicien', batiment: 'generateur', parNiveau: 2, apport: 0.08,
+    skill: 'ingenierie', effet: 'Carburant économisé par les générateurs',
+    texte: 'Un générateur bien réglé brûle moins. Personne ne le remarque, sauf le stock.',
+  },
+  magasinier: {
+    nom: 'Magasinier', batiment: 'entrepot', parNiveau: 2, apport: 0.12,
+    skill: 'commerce', effet: 'Capacité de l’entrepôt',
+    texte: 'Ranger, c’est gagner de la place. Beaucoup de place.',
+  },
+  infirmier: {
+    nom: 'Infirmier', batiment: 'infirmerie', parNiveau: 2, apport: 0.2,
+    skill: 'medecine', effet: 'Medkits produits, et soins de ceux qui rentrent',
+    texte: 'On y entre en morceaux, on en sort en marchant. Parfois.',
+  },
+  operateur: {
+    nom: 'Opérateur', batiment: 'antenne', parNiveau: 2, apport: 0.13,
+    skill: 'ingenierie', effet: 'Vitesse de recherche',
+    texte: 'Écouter la statique huit heures par jour et noter ce qui se répète.',
+  },
+  milicien: {
+    nom: 'Milicien', batiment: 'mur', parNiveau: 3, apport: 0.1,
+    skill: 'melee', effet: 'Défense de l’avant-poste',
+    texte: 'Ils ne sont pas soldats. Ils sont sur le mur, ce qui suffit souvent.',
+  },
+  batisseur: {
+    nom: 'Bâtisseur', batiment: 'baraquement', parNiveau: 4, apport: 0.12,
+    skill: 'ingenierie', effet: 'Vitesse des chantiers',
+    texte: 'Ce sont eux qui montent le reste, et on les oublie toujours.',
+  },
+};
+
+export const METIER_KEYS = Object.keys(METIERS);
