@@ -36,6 +36,11 @@ import {
 } from './allegeance.js';
 import { caravanesIci, valeurCargaison } from './caravanes.js';
 import { couleurLog, creerLogger } from './events.js';
+import {
+  groupeActif, groupes, groupeParId, choisirGroupe, tousLesMembres, tacheDe,
+  assignerTache, scinder, fusionner, fusionnablesAvec, maxGroupes, repartition,
+  TACHES_INDIVIDUELLES,
+} from './groupes.js';
 
 // ---------------------------------------------------------------------------
 // État local de l'interface
@@ -52,6 +57,8 @@ let dernierRendu = -1;
 let dernierRenduMs = 0;
 let derniereInteraction = 0;
 let toastTimer = null;
+/** Cases cochées dans le panneau « Détacher » — purement d'interface. */
+let detaches = new Set();
 
 /** Cadence minimale entre deux reconstructions complètes de l'écran (ms). */
 const RENDU_MIN_MS = 600;
@@ -60,9 +67,16 @@ const REPIT_APRES_CLIC_MS = 400;
 
 const $ = (sel) => document.querySelector(sel);
 
+/**
+ * Le groupe que l'écran montre. Presque tout l'affichage est relatif à lui :
+ * la carte, le sac, l'étal, l'avant-poste. Changer de groupe change de point
+ * de vue, pas de partie.
+ */
+const G = () => groupeActif(S);
+
 export function attacherEtat(state) {
   S = state;
-  selection = state ? state.player.regionId : null;
+  selection = state ? groupeActif(state).regionId : null;
 }
 
 export function monterUI(api) {
@@ -180,25 +194,33 @@ export function rafraichir(force) {
 function rendreBarreHaut() {
   const h = horloge(S.temps);
   const p = S.player;
-  const cap = capacitePortage(S);
-  const poids = poidsInventaire(p.inventaire);
+  const cap = capacitePortage(S, G());
+  const g = G();
+  const poids = poidsInventaire(g.inventaire);
   const charge = cap > 0 ? poids / cap : 1;
-  const vivants = p.squad.filter(estVivant).length;
-  const debout = p.squad.filter(estDebout).length;
+  const vivants = g.membres.filter(estVivant).length;
+  const debout = g.membres.filter(estDebout).length;
 
   const cl = conditions(S.world, S.temps);
+  // Les indicateurs vivent dans leur propre boîte, qui rogne par la droite si
+  // l'écran est trop étroit. Sans ça, les blocs se compriment les uns dans les
+  // autres et les libellés se chevauchent — et c'est le sélecteur de vitesse,
+  // le seul vrai bouton de la barre, qui finissait par sortir de l'écran.
   $('#barre-haut').innerHTML = `
-    <div class="hd-bloc"><span class="hd-eti">${p.nuit ? 'nuit' : 'jour'}</span>
-      <span class="hd-val cyan">${h.texte}</span></div>
-    <div class="hd-bloc"><span class="hd-eti">saison</span>
-      <span class="hd-val" style="color:${cl.saison.def.couleur}"
-        title="${e(cl.saison.def.nom)} — ${e(cl.meteo.nom)}">${e(cl.saison.def.court)}</span></div>
-    <div class="hd-bloc"><span class="hd-eti">cr</span>
-      <span class="hd-val ambre">${n(p.credits)}</span></div>
-    <div class="hd-bloc"><span class="hd-eti">sac</span>
-      <span class="hd-val ${charge > 0.95 ? 'rouge' : ''}">${n(poids)}/${n(cap)}</span></div>
-    <div class="hd-bloc"><span class="hd-eti">esc</span>
-      <span class="hd-val ${debout < vivants ? 'rouge' : ''}">${debout}/${vivants}</span></div>
+    <div class="hd-metriques">
+      <div class="hd-bloc" title="${g.nuit ? 'Nuit — on campe' : 'Jour'}">
+        <span class="hd-val hd-cycle">${g.nuit ? '☾' : '☀'}</span>
+        <span class="hd-val cyan">${h.texte}</span></div>
+      <div class="hd-bloc" title="${e(cl.saison.def.nom)} — ${e(cl.meteo.nom)}">
+        <span class="hd-val hd-saison" style="color:${cl.saison.def.couleur}"
+          aria-label="${e(cl.saison.def.nom)}">◆</span></div>
+      <div class="hd-bloc"><span class="hd-eti">cr</span>
+        <span class="hd-val ambre">${n(p.credits)}</span></div>
+      <div class="hd-bloc"><span class="hd-eti">sac</span>
+        <span class="hd-val ${charge > 0.95 ? 'rouge' : ''}">${n(poids)}/${n(cap)}</span></div>
+      <div class="hd-bloc" title="${e(g.nom)}"><span class="hd-eti">${e(groupes(S).length > 1 ? g.nom.slice(0, 3) : 'esc')}</span>
+        <span class="hd-val ${debout < vivants ? 'rouge' : ''}">${debout}/${vivants}</span></div>
+    </div>
     <div class="hd-pousse vitesse" role="group" aria-label="Vitesse">
       ${VITESSES.map((v) => `<button data-a="vitesse" data-v="${v}"
         aria-pressed="${S.vitesse === v}">×${v}</button>`).join('')}
@@ -343,23 +365,37 @@ function dessinerCarte(cv) {
     g.fillRect(x + 12, y + 3, 1, 1);
   }
 
-  // Escouade du joueur
-  const rp = w.regions[S.player.regionId];
-  if (rp) {
+  // Les groupes. Tous sont dessinés — savoir où sont les siens est la moitié de
+  // l'intérêt de les séparer. Celui qu'on regarde est plein et cerclé ; les
+  // autres sont creux, pour qu'un coup d'œil suffise à les distinguer.
+  const actif = G();
+  for (const gr of groupes(S)) {
+    const rp = w.regions[gr.regionId];
+    if (!rp) continue;
     const x = rp.x * CELL;
     const y = rp.y * CELL;
+    const moi = gr.id === actif.id;
     g.fillStyle = '#05070a';
     g.fillRect(x + 5, y + 5, 6, 6);
     g.fillStyle = '#f2f6fb';
-    g.fillRect(x + 6, y + 6, 4, 4);
-    g.fillStyle = '#05070a';
-    g.fillRect(x + 7, y + 7, 2, 2);
+    if (moi) {
+      g.fillRect(x + 6, y + 6, 4, 4);
+      g.fillStyle = '#05070a';
+      g.fillRect(x + 7, y + 7, 2, 2);
+    } else {
+      // Contour seul : un carré creux de 4 px, sans anticrénelage.
+      g.fillRect(x + 6, y + 6, 4, 1);
+      g.fillRect(x + 6, y + 9, 4, 1);
+      g.fillRect(x + 6, y + 7, 1, 2);
+      g.fillRect(x + 9, y + 7, 1, 2);
+    }
   }
 
-  // Itinéraire en cours
-  const o = S.player.ordre;
-  if (o && o.type === 'voyage' && o.route) {
-    g.fillStyle = 'rgba(242,246,251,.55)';
+  // Itinéraires en cours, celui du groupe affiché en clair, les autres estompés
+  for (const gr of groupes(S)) {
+    const o = gr.ordre;
+    if (!o || o.type !== 'voyage' || !o.route) continue;
+    g.fillStyle = gr.id === actif.id ? 'rgba(242,246,251,.55)' : 'rgba(242,246,251,.22)';
     for (let k = o.etape; k < o.route.length; k++) {
       const r = w.regions[o.route[k]];
       g.fillRect(r.x * CELL + 7, r.y * CELL + 7, 2, 2);
@@ -394,11 +430,11 @@ function surClicCarte(ev) {
 
 function etaVoyage(dest) {
   const mods = { reductionVoyage: (S.base.recherche.logistique || 0) * 0.06 };
-  const route = chemin(S.world, S.player.regionId, dest, mods);
+  const route = chemin(S.world, G().regionId, dest, mods);
   if (!route) return null;
   let h = 0;
   for (const i of route) h += coutTraversee(S.world, i, mods);
-  const debout = S.player.squad.filter(estDebout);
+  const debout = G().membres.filter(estDebout);
   let v = 1;
   if (debout.length) v = Math.min(...debout.map((c) => 0.5 + comp(c, 'endurance') / 90));
   return { heures: Math.ceil(h / Math.max(0.2, v)), cases: route.length };
@@ -421,7 +457,7 @@ function blocFil() {
 }
 
 function blocSite() {
-  const r = S.world.regions[S.player.regionId];
+  const r = S.world.regions[G().regionId];
   if (!r.site || !r.site.connu) return '';
   const def = POI[r.site.type];
   if (r.site.fouille) {
@@ -430,7 +466,7 @@ function blocSite() {
       <div class="aide">Il n\u2019y a plus rien à en tirer.</div>
     </section>`;
   }
-  const debout = S.player.squad.filter(estDebout);
+  const debout = G().membres.filter(estDebout);
   const ing = debout.length ? Math.max(...debout.map((c) => comp(c, 'ingenierie'))) : 0;
   const bloque = def.reqIngenierie && ing < def.reqIngenierie;
   return `<section class="panneau site">
@@ -486,12 +522,25 @@ function blocContratsActifs() {
   </section>`;
 }
 
+/**
+ * Qui fait quoi dans le groupe, quand tout le monde ne fait pas la même chose.
+ * Muet tant qu'il n'y a rien à signaler : l'ordre du groupe suffit alors.
+ */
+function blocRepartition() {
+  const g = G();
+  const rep = repartition(g);
+  const clefs = Object.keys(rep);
+  if (clefs.length <= 1) return '';
+  return `<div class="aide" style="color:var(--cyan)">Réparti : ${clefs
+    .map((k) => `${rep[k]} × ${ORDRES[k] ? ORDRES[k].nom.toLowerCase() : k}`).join(' · ')}</div>`;
+}
+
 function blocRegionCourante() {
-  const rid = S.player.regionId;
+  const rid = G().regionId;
   const r = S.world.regions[rid];
   const b = BIOMES[r.biome];
   const col = colonieDe(S.world, rid);
-  const o = S.player.ordre;
+  const o = G().ordre;
   const ici = S.base.fonde && S.base.regionId === rid;
 
   const ordresDispo = ['repos', 'fouille', 'mine', 'chasse', 'exploration', 'patrouille'];
@@ -527,7 +576,7 @@ function blocRegionCourante() {
 
   return `
   <section class="panneau">
-    <h2 class="titre">Ordre en cours <span class="droite">${e(enTete)}</span></h2>
+    <h2 class="titre">Ordre de ${e(G().nom)} <span class="droite">${e(enTete)}</span></h2>
     ${progression}
     <div class="grille-ordres">${boutons}
       <button class="act ordre" data-a="modale" data-m="entrainement">
@@ -535,7 +584,8 @@ function blocRegionCourante() {
     </div>
     <div class="aide" style="margin-top:6px">${e(ORDRES[o.type] ? ORDRES[o.type].desc : '')}</div>
     ${detailRendement ? `<div class="aide" style="color:var(--texte-2)">Ici : ${e(detailRendement)} par heure de travail.</div>` : ''}
-    ${S.player.recolteHeure ? `<div class="aide" style="color:var(--vert)">Dernière heure : ${e(S.player.recolteHeure)}</div>` : ''}
+    ${G().recolteHeure ? `<div class="aide" style="color:var(--vert)">Dernière heure : ${e(G().recolteHeure)}</div>` : ''}
+    ${blocRepartition()}
   </section>
 
   <section class="panneau">
@@ -601,7 +651,7 @@ function blocEngagement(col) {
 }
 
 function blocSelection() {
-  if (selection == null || selection === S.player.regionId) return '';
+  if (selection == null || selection === G().regionId) return '';
   const r = S.world.regions[selection];
   const col = colonieDe(S.world, selection);
   const eta = etaVoyage(selection);
@@ -624,7 +674,7 @@ function blocSelection() {
       <span class="v" style="color:${couleurFaction(col.faction)}">${e(FACTIONS[col.faction].nom)}</span></div>
       <div class="ligne"><span class="k">Population</span><span class="v">${n(col.pop)}</span></div>
       <div class="ligne"><span class="k">Défense</span><span class="v">${n(col.defense)}</span></div>` : ''}
-    <div class="ligne"><span class="k">Distance</span><span class="v">${distance(S.player.regionId, selection)} cases</span></div>
+    <div class="ligne"><span class="k">Distance</span><span class="v">${distance(G().regionId, selection)} cases</span></div>
     <div class="ligne"><span class="k">Rencontres</span><span class="v">${(r.danger * 100).toFixed(1)} %/h</span></div>
     ${armeesIci(selection)}
     <div class="sep"></div>
@@ -645,11 +695,13 @@ function ecranCarte() {
   return `
   <div id="carte-boite"><canvas id="carte" aria-label="Carte du monde"></canvas></div>
   <div class="legende">
-    <span><i style="background:#f2f6fb"></i>escouade</span>
+    <span><i style="background:#f2f6fb"></i>${groupes(S).length > 1 ? 'groupe affiché' : 'escouade'}</span>
+    ${groupes(S).length > 1 ? '<span><i style="border:1px solid #f2f6fb"></i>autre groupe</span>' : ''}
     <span><i style="border:1px solid #4fd0e3"></i>avant-poste</span>
     ${classement(S.world).slice(0, 6).map((f) =>
     `<span><i style="background:${f.couleur}"></i>${e(FACTIONS[f.key].court)}</span>`).join('')}
   </div>
+  ${groupes(S).length > 1 ? barreGroupes() : ''}
   ${blocSelection()}
   ${blocRegionCourante()}
   ${blocCaravanes()}
@@ -703,7 +755,7 @@ function ficheMembre(c) {
         <div><span class="aide">Saignement</span>${jauge(c.sang / 100, c.sang > 5 ? 'rouge' : '')}</div>
       </div>
       ${(() => {
-    const rel = relationsNotables(c, S.player.squad);
+    const rel = relationsNotables(c, tousLesMembres(S));
     if (!rel.ami && !rel.rival) return '';
     return `<div class="titre">Relations</div><div class="aide">${[
       rel.ami ? `S’entend avec ${e(rel.ami.nom)} (${Math.round(lien(c, rel.ami))})` : null,
@@ -727,20 +779,101 @@ function ficheMembre(c) {
       <div class="ligne"><span class="k">Éliminations</span><span class="v">${c.kills}</span></div>
       <div class="sep"></div>
       <button class="act mini" data-a="modale" data-m="equipement" data-c="${e(c.id)}">Équiper</button>
+      ${blocTacheMembre(c)}
     </div>
   </details>`;
 }
 
+/**
+ * Ce que fait cette personne, et comment le changer. Sans tâche propre, elle
+ * suit l'ordre du groupe — c'est le cas courant, et il ne doit pas coûter un
+ * clic de plus.
+ */
+function blocTacheMembre(c) {
+  if (!estVivant(c)) return '';
+  const g = G();
+  const enMarche = g.ordre.type === 'voyage';
+  const perso = c.tache && TACHES_INDIVIDUELLES.includes(c.tache.type) ? c.tache.type : null;
+  const effective = tacheDe(g, c).type;
+
+  return `<div class="sep"></div>
+    <div class="titre">Tâche
+      <span class="droite ${perso ? 'cyan' : ''}">${e(ORDRES[effective].nom)}${perso ? '' : ' (ordre du groupe)'}</span></div>
+    ${enMarche
+    ? '<div class="aide">En marche, tout le monde marche. La tâche personnelle reprendra à l’arrivée.</div>'
+    : ''}
+    <div class="taches">
+      <button class="act mini" data-a="tache" data-c="${e(c.id)}" data-k=""
+        aria-pressed="${!perso}">Suivre le groupe</button>
+      ${TACHES_INDIVIDUELLES.map((k) => `<button class="act mini" data-a="tache"
+        data-c="${e(c.id)}" data-k="${k}" aria-pressed="${perso === k}">${e(ORDRES[k].nom)}</button>`).join('')}
+    </div>`;
+}
+
+/**
+ * La barre de groupes : où est chacun, ce qu'il fait, combien il en reste
+ * debout. C'est le seul endroit d'où l'on voit toute l'escouade d'un coup.
+ */
+function barreGroupes() {
+  const gs = groupes(S);
+  const actif = G();
+  const onglets = gs.map((g) => {
+    const viv = g.membres.filter(estVivant).length;
+    const deb = g.membres.filter(estDebout).length;
+    const ici = g.ordre.type === 'voyage'
+      ? `→ ${e(nomRegion(S.world, g.ordre.dest))}`
+      : e(nomRegion(S.world, g.regionId));
+    return `<button class="grp ${g.id === actif.id ? 'on' : ''}" data-a="groupe" data-k="${e(g.id)}">
+      <span class="grp-n">${e(g.nom)}</span>
+      <span class="grp-d">${deb < viv ? `<b class="rouge">${deb}</b>` : deb}/${viv} · ${ici}</span>
+      <span class="grp-o">${e(ORDRES[g.ordre.type].nom)}</span>
+    </button>`;
+  }).join('');
+  return `<section class="panneau">
+    <h2 class="titre">Groupes <span class="droite">${gs.length} / ${maxGroupes(S)}</span></h2>
+    <div class="groupes">${onglets}</div>
+  </section>`;
+}
+
+/** Détacher et regrouper : la seule façon d'être à deux endroits à la fois. */
+function blocDetachement() {
+  const g = G();
+  const dispo = g.membres.filter(estDebout);
+  const voisins = fusionnablesAvec(S, g);
+  const place = groupes(S).length < maxGroupes(S);
+
+  const cases = dispo.map((c) => `<button class="act mini" data-a="detacher-sel" data-c="${e(c.id)}"
+    aria-pressed="${detaches.has(c.id)}">${detaches.has(c.id) ? '×' : ' '} ${e(c.nom)}</button>`).join('');
+
+  const choisis = dispo.filter((c) => detaches.has(c.id)).length;
+  const possible = place && choisis > 0 && choisis < dispo.length;
+
+  return `<section class="panneau">
+    <h2 class="titre">Détacher</h2>
+    ${dispo.length < 2
+    ? '<div class="aide">Il faut au moins deux personnes debout pour se séparer.</div>'
+    : `<div class="aide">Les vivres et le matériel suivent au prorata. Choisissez qui part.</div>
+       <div class="taches">${cases}</div>
+       <button class="act" data-a="detacher" ${possible ? '' : 'disabled'}>
+         Détacher ${choisis || ''} ${choisis > 1 ? 'membres' : 'membre'}</button>
+       ${place ? '' : '<div class="aide">Plus de quoi coordonner un groupe de plus — montez l’antenne de l’avant-poste.</div>'}`}
+    ${voisins.length ? `<div class="sep"></div>
+      <div class="titre">Regrouper</div>
+      <div class="taches">${voisins.map((o) => `<button class="act mini" data-a="fusionner" data-k="${e(o.id)}">
+        Absorber ${e(o.nom)} (${o.membres.filter(estVivant).length})</button>`).join('')}</div>` : ''}
+  </section>`;
+}
+
 function blocInventaire() {
-  const inv = S.player.inventaire;
-  const cap = capacitePortage(S);
+  const inv = G().inventaire;
+  const cap = capacitePortage(S, G());
   const poids = poidsInventaire(inv);
   const lignes = COMMODITY_KEYS.filter((k) => (inv[k] || 0) > 0)
     .map((k) => `<div class="ligne"><span class="k">${e(COMMODITIES[k].nom)}</span>
       <span class="v">${n(inv[k])}</span></div>`).join('') || '<div class="aide">Sac vide.</div>';
 
-  const objets = S.player.objets.length
-    ? S.player.objets.map((o) => `<span class="puce">${e(ITEMS[o].nom)}</span>`).join(' ')
+  const objets = G().objets.length
+    ? G().objets.map((o) => `<span class="puce">${e(ITEMS[o].nom)}</span>`).join(' ')
     : '<span class="aide">Aucun équipement en réserve.</span>';
 
   return `<section class="panneau">
@@ -779,8 +912,10 @@ function ecranEscouade() {
   const p = S.player;
   const pol = p.politique;
   const max = tailleEscouadeMax(S.base);
+  const g = G();
 
   return `
+  ${barreGroupes()}
   <section class="panneau">
     <h2 class="titre">Posture</h2>
     <div class="grille3">
@@ -805,16 +940,18 @@ function ecranEscouade() {
   </section>
 
   <section class="panneau">
-    <h2 class="titre">Cohésion <span class="droite">${Math.round(p.cohesion ?? 55)} / 100</span></h2>
-    ${jauge((p.cohesion ?? 55) / 100, (p.cohesion ?? 55) < 30 ? 'rouge' : (p.cohesion ?? 55) < 60 ? 'ambre' : 'vert')}
-    <div class="aide" style="margin-top:5px">${e(texteCohesion(p.cohesion ?? 55))}</div>
+    <h2 class="titre">Cohésion de ${e(g.nom)} <span class="droite">${Math.round(g.cohesion ?? 55)} / 100</span></h2>
+    ${jauge((g.cohesion ?? 55) / 100, (g.cohesion ?? 55) < 30 ? 'rouge' : (g.cohesion ?? 55) < 60 ? 'ambre' : 'vert')}
+    <div class="aide" style="margin-top:5px">${e(texteCohesion(g.cohesion ?? 55))}</div>
   </section>
 
   <section class="panneau">
-    <h2 class="titre">Escouade <span class="droite">${p.squad.filter(estVivant).length} / ${max}</span></h2>
-    ${p.squad.map(ficheMembre).join('')}
+    <h2 class="titre">${e(g.nom)}
+      <span class="droite">${tousLesMembres(S).filter(estVivant).length} / ${max} au total</span></h2>
+    ${g.membres.map(ficheMembre).join('')}
   </section>
 
+  ${blocDetachement()}
   ${blocInventaire()}
   ${blocMemorial()}`;
 }
@@ -826,8 +963,8 @@ function ecranEscouade() {
 function ecranBase() {
   const b = S.base;
   if (!b.fonde) {
-    const r = S.world.regions[S.player.regionId];
-    const inv = S.player.inventaire;
+    const r = S.world.regions[G().regionId];
+    const inv = G().inventaire;
     const manque = Object.keys(COUT_FONDATION)
       .filter((k) => (inv[k] || 0) < COUT_FONDATION[k])
       .map((k) => `${COMMODITIES[k].nom.toLowerCase()} ${n(inv[k] || 0)}/${COUT_FONDATION[k]}`);
@@ -838,7 +975,7 @@ function ecranBase() {
       et la recherche. Il faut le bâtir hors d’une ville existante, et il pourra être attaqué.</div>
       <div class="sep"></div>
       <div class="ligne"><span class="k">Coût</span><span class="v">${e(coutTexte(COUT_FONDATION))}</span></div>
-      <div class="ligne"><span class="k">Emplacement</span><span class="v">${e(nomRegion(S.world, S.player.regionId))}</span></div>
+      <div class="ligne"><span class="k">Emplacement</span><span class="v">${e(nomRegion(S.world, G().regionId))}</span></div>
       ${manque.length ? `<div class="aide" style="color:var(--rouge)">Manque : ${e(manque.join(', '))}</div>` : ''}
       ${enVille ? '<div class="aide" style="color:var(--rouge)">Impossible ici : une ville occupe déjà la région.</div>' : ''}
       <div class="sep"></div>
@@ -1023,7 +1160,7 @@ function blocAllegeance() {
 
 function ecranContrats() {
   const enCours = S.player.contrats;
-  const col = colonieDe(S.world, S.player.regionId);
+  const col = colonieDe(S.world, G().regionId);
   const dispo = col && col.contrats ? col.contrats : [];
 
   return `
@@ -1232,16 +1369,16 @@ function contenuModale() {
 }
 
 function modaleMarche() {
-  const col = colonieDe(S.world, S.player.regionId);
+  const col = colonieDe(S.world, G().regionId);
   if (!col) return '<div class="aide">Il n’y a pas de marché ici.</div>';
-  const negoc = meilleurCommercant(S.player.squad);
+  const negoc = meilleurCommercant(G().membres);
   const hab = negoc ? comp(negoc, 'commerce') : 0;
   const repu = S.player.reputation[col.faction] || 0;
 
   const lignes = COMMODITY_KEYS.map((k) => {
     const p = prixJoueur(col, k, hab, repu);
     const stock = Math.floor(col.stock[k] || 0);
-    const aMoi = S.player.inventaire[k] || 0;
+    const aMoi = G().inventaire[k] || 0;
     return `<div class="marche-l">
       <span class="nm">${e(COMMODITIES[k].nom)}<br>
         <span class="aide">ville ${n(stock)} · sac ${n(aMoi)}</span></span>
@@ -1259,12 +1396,12 @@ function modaleMarche() {
 }
 
 function modaleEtal() {
-  const col = colonieDe(S.world, S.player.regionId);
+  const col = colonieDe(S.world, G().regionId);
   if (!col) return '<div class="aide">Pas d’armurier ici.</div>';
   const etal = col.etal;
   if (!etal || !etal.items.length) return '<div class="aide">L’étal est vide aujourd’hui.</div>';
 
-  const negoc = meilleurCommercant(S.player.squad);
+  const negoc = meilleurCommercant(G().membres);
   const hab = negoc ? comp(negoc, 'commerce') : 0;
   const repu = S.player.reputation[col.faction] || 0;
 
@@ -1294,7 +1431,7 @@ function modaleEtal() {
     </div>`;
   }).join('');
 
-  const reserve = S.player.objets.map((key, i) => {
+  const reserve = G().objets.map((key, i) => {
     const it = ITEMS[key];
     const p = prixItem(col, key, 1, hab, repu);
     return `<div class="marche-l">
@@ -1316,7 +1453,7 @@ function modaleEtal() {
 }
 
 function modalePanneau() {
-  const col = colonieDe(S.world, S.player.regionId);
+  const col = colonieDe(S.world, G().regionId);
   if (!col) return '<div class="aide">Aucun panneau ici.</div>';
   const liste = col.contrats || [];
   return `<h2 class="titre">Panneau de ${e(col.nom)}
@@ -1328,11 +1465,11 @@ function modalePanneau() {
 
 function modaleTransfert() {
   const b = S.base;
-  if (!b.fonde || S.player.regionId !== b.regionId) {
+  if (!b.fonde || G().regionId !== b.regionId) {
     return '<div class="aide">Il faut être à l’avant-poste.</div>';
   }
   const lignes = COMMODITY_KEYS.map((k) => {
-    const sac = S.player.inventaire[k] || 0;
+    const sac = G().inventaire[k] || 0;
     const ent = b.stock[k] || 0;
     return `<div class="marche-l">
       <span class="nm">${e(COMMODITIES[k].nom)}<br>
@@ -1349,9 +1486,9 @@ function modaleTransfert() {
 }
 
 function modaleEquipement() {
-  const c = S.player.squad.find((x) => x.id === modale.c);
+  const c = G().membres.find((x) => x.id === modale.c);
   if (!c) return '<div class="aide">Ce membre n’est plus là.</div>';
-  const dispo = S.player.objets;
+  const dispo = G().objets;
   const groupes = { arme: [], armure: [], greffe: [] };
   dispo.forEach((k, i) => {
     const it = ITEMS[k];
@@ -1394,10 +1531,10 @@ function modaleEntrainement() {
 }
 
 function modaleRecrutement() {
-  const col = colonieDe(S.world, S.player.regionId);
+  const col = colonieDe(S.world, G().regionId);
   if (!col) return '<div class="aide">Personne à recruter ici.</div>';
   const max = tailleEscouadeMax(S.base);
-  const vivants = S.player.squad.filter(estVivant).length;
+  const vivants = tousLesMembres(S).filter(estVivant).length;
   const prix = Math.round(180 + col.pop * 0.35 + vivants * 90);
   return `<h2 class="titre">Recrutement à ${e(col.nom)}</h2>
     <div class="ligne"><span class="k">Escouade</span><span class="v">${vivants} / ${max}</span></div>
@@ -1486,6 +1623,47 @@ function surClic(ev) {
       rafraichir(true);
       break;
 
+    // --- Groupes ----------------------------------------------------------
+
+    case 'groupe':
+      ACTIONS.choisirGroupe(el.dataset.k);
+      selection = G().regionId;
+      detaches = new Set();
+      break;
+
+    case 'tache': {
+      const k = el.dataset.k;
+      const r = ACTIONS.assignerTache(el.dataset.c, k ? { type: k } : null);
+      if (!r.ok) toast(r.motif, true);
+      rafraichir(true);
+      break;
+    }
+
+    case 'detacher-sel': {
+      const id = el.dataset.c;
+      if (detaches.has(id)) detaches.delete(id);
+      else detaches.add(id);
+      rafraichir(true);
+      break;
+    }
+
+    case 'detacher': {
+      const r = ACTIONS.scinder([...detaches]);
+      detaches = new Set();
+      if (!r.ok) toast(r.motif, true);
+      else toast(`${r.groupe.nom} part de son côté.`);
+      rafraichir(true);
+      break;
+    }
+
+    case 'fusionner': {
+      const r = ACTIONS.fusionner(el.dataset.k);
+      if (!r.ok) toast(r.motif, true);
+      else toast('Groupes réunis.');
+      rafraichir(true);
+      break;
+    }
+
     case 'politique':
       S.player.politique[el.dataset.k] = !S.player.politique[el.dataset.k];
       rafraichir(true);
@@ -1540,7 +1718,7 @@ function surClic(ev) {
     }
 
     case 'accepter': {
-      const col = colonieDe(S.world, S.player.regionId);
+      const col = colonieDe(S.world, G().regionId);
       const r = accepter(S, col, el.dataset.k, logger());
       toast(r.ok ? 'Contrat accepté.' : r.motif, !r.ok);
       if (r.ok && modale) { modale = null; rendreModale(); }
@@ -1556,7 +1734,7 @@ function surClic(ev) {
     }
 
     case 'acheter-item': {
-      const col = colonieDe(S.world, S.player.regionId);
+      const col = colonieDe(S.world, G().regionId);
       const r = acheterItem(S, col, Number(el.dataset.i));
       toast(r.ok ? `${r.nom} acheté pour ${r.prix} cr.` : r.motif, !r.ok);
       rendreModale();
@@ -1565,7 +1743,7 @@ function surClic(ev) {
     }
 
     case 'vendre-item': {
-      const col = colonieDe(S.world, S.player.regionId);
+      const col = colonieDe(S.world, G().regionId);
       const r = vendreItem(S, col, Number(el.dataset.i));
       toast(r.ok ? `${r.nom} vendu ${r.prix} cr.` : r.motif, !r.ok);
       rendreModale();
@@ -1602,7 +1780,7 @@ function surClic(ev) {
     }
 
     case 'acheter': {
-      const col = colonieDe(S.world, S.player.regionId);
+      const col = colonieDe(S.world, G().regionId);
       const r = acheter(S, col, el.dataset.k, Number(el.dataset.q));
       toast(r.ok ? `${r.qte} acheté(s) pour ${r.cout} cr.` : r.motif, !r.ok);
       rendreModale();
@@ -1611,7 +1789,7 @@ function surClic(ev) {
     }
 
     case 'vendre': {
-      const col = colonieDe(S.world, S.player.regionId);
+      const col = colonieDe(S.world, G().regionId);
       const r = vendre(S, col, el.dataset.k, Number(el.dataset.q));
       toast(r.ok ? `${r.qte} vendu(s) pour ${r.gain} cr.` : r.motif, !r.ok);
       rendreModale();
@@ -1621,7 +1799,7 @@ function surClic(ev) {
 
     case 'deposer': {
       const k = el.dataset.k;
-      const r = deposer(S, k, S.player.inventaire[k] || 0);
+      const r = deposer(S, k, G().inventaire[k] || 0);
       if (!r.ok) toast(r.motif, true);
       rendreModale();
       rafraichir(true);
@@ -1630,7 +1808,7 @@ function surClic(ev) {
 
     case 'retirer': {
       const k = el.dataset.k;
-      const libre = capacitePortage(S) - poidsInventaire(S.player.inventaire);
+      const libre = capacitePortage(S, G()) - poidsInventaire(G().inventaire);
       const qte = Math.floor(libre / Math.max(0.01, COMMODITIES[k].poids));
       const r = retirer(S, k, qte, qte);
       if (!r.ok) toast(r.motif, true);
@@ -1640,24 +1818,24 @@ function surClic(ev) {
     }
 
     case 'equiper': {
-      const c = S.player.squad.find((x) => x.id === el.dataset.c);
+      const c = G().membres.find((x) => x.id === el.dataset.c);
       const i = Number(el.dataset.i);
-      const key = S.player.objets[i];
+      const key = G().objets[i];
       if (!c || !key) break;
       const it = ITEMS[key];
       if (it.type === 'greffe' && niveauRech(S.base, 'cybernetique') < 1) {
         toast('Cybernétique non recherchée.', true);
         break;
       }
-      S.player.objets.splice(i, 1);
+      G().objets.splice(i, 1);
       if (it.type === 'greffe') {
         const ancien = c.equip.greffes[it.membre];
-        if (ancien) S.player.objets.push(ancien);
+        if (ancien) G().objets.push(ancien);
         c.equip.greffes[it.membre] = key;
       } else {
         const slot = it.type === 'arme' ? 'arme' : 'armure';
         const ancien = c.equip[slot];
-        if (ancien) S.player.objets.push(ancien);
+        if (ancien) G().objets.push(ancien);
         c.equip[slot] = key;
       }
       toast(`${it.nom} équipé.`);

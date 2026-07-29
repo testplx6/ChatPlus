@@ -2,6 +2,8 @@
 // références circulaires, pas de fonctions. C'est ce qui rend possible à la
 // fois la persistance navigateur et, plus tard, un envoi au serveur.
 
+import { groupeVide } from './groupes.js';
+
 export const CLE = 'cendres.save.v1';
 export const VERSION = 1;
 
@@ -16,11 +18,39 @@ export function serialiser(state) {
  */
 export function normaliser(state) {
   const p = state.player;
+
+  // Avant les groupes, l'escouade était un bloc unique posé sur `player`.
+  // On la reconstitue en un premier groupe : une partie en cours ne se jette
+  // pas parce que le moteur a appris à en tenir plusieurs.
+  if (!p.groupes) {
+    const g = groupeVide('g0', 'Convoi', p.regionId || 0, state.temps);
+    g.membres = p.squad || [];
+    g.ordre = p.ordre || { type: 'repos' };
+    g.inventaire = Object.assign(g.inventaire, p.inventaire || {});
+    g.objets = p.objets || [];
+    g.reste = p.reste || {};
+    g.bilan = p.bilan || { res: {}, depuis: state.temps };
+    g.cohesion = p.cohesion === undefined ? 55 : p.cohesion;
+    p.groupes = [g];
+    p.groupeActif = g.id;
+    delete p.squad; delete p.ordre; delete p.inventaire; delete p.objets;
+    delete p.regionId; delete p.reste; delete p.bilan; delete p.cohesion;
+    delete p.recolteHeure; delete p.nuit;
+  }
+  for (const g of p.groupes) {
+    if (!g.reste) g.reste = {};
+    if (!g.objets) g.objets = [];
+    if (!g.bilan) g.bilan = { res: {}, depuis: state.temps };
+    if (g.cohesion === undefined) g.cohesion = 55;
+    if (!g.ordre) g.ordre = { type: 'repos' };
+    if (!g.membres) g.membres = [];
+  }
+  if (!p.groupeActif || !p.groupes.some((g) => g.id === p.groupeActif)) {
+    p.groupeActif = p.groupes.length ? p.groupes[0].id : null;
+  }
+
   if (!p.contrats) p.contrats = [];
-  if (!p.bilan) p.bilan = { res: {}, depuis: state.temps };
-  if (!p.reste) p.reste = {};
   if (!p.primes) p.primes = {};
-  if (p.cohesion === undefined) p.cohesion = 55;
   if (p.allegeance === undefined) p.allegeance = null;
   if (!state.memorial) state.memorial = [];
   if (!state.stats) state.stats = {};
@@ -34,9 +64,11 @@ export function normaliser(state) {
     if (c.declin === undefined) c.declin = 0;
     if (c.prises === undefined) c.prises = 0;
   }
-  for (const c of p.squad) {
-    if (!c.traits) c.traits = [];
-    if (!c.liens) c.liens = {};
+  for (const g of p.groupes) {
+    for (const c of g.membres) {
+      if (!c.traits) c.traits = [];
+      if (!c.liens) c.liens = {};
+    }
   }
   const b = state.base;
   if (b) {

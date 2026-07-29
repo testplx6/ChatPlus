@@ -10,6 +10,7 @@ import { creerLogger, fouillerSite, combatContre } from './events.js';
 import { attaquerCaravane } from './caravanes.js';
 import { sEngager, quitter } from './allegeance.js';
 import { genererBande } from './combat.js';
+import { groupeActif, tousLesMembres, scinder, fusionner, choisirGroupe, assignerTache } from './groupes.js';
 import { tailleEscouadeMax } from './base.js';
 
 let state = null;
@@ -111,11 +112,12 @@ const API = {
     return res;
   },
 
-  /** Engagement d'un mercenaire dans une ville. */
+  /** Engagement d'un mercenaire dans une ville : il rejoint le groupe affiché. */
   recruter(prix) {
-    const col = state.world.regions[state.player.regionId].colonie;
+    const g = groupeActif(state);
+    const col = state.world.regions[g.regionId].colonie;
     if (!col) return { ok: false, motif: 'Personne à recruter ici.' };
-    const vivants = state.player.squad.filter(estVivant).length;
+    const vivants = tousLesMembres(state).filter(estVivant).length;
     if (vivants >= tailleEscouadeMax(state.base)) return { ok: false, motif: 'Escouade au complet.' };
     if (state.player.credits < prix) return { ok: false, motif: 'Crédits insuffisants.' };
 
@@ -125,15 +127,69 @@ const API = {
     state.rngState = rng.save();
 
     state.player.credits -= prix;
-    state.player.squad.push(c);
+    g.membres.push(c);
     creerLogger(state)({
       type: 'recrue',
-      texte: `${c.nom} (${c.archetypeNom}) s’engage pour ${prix} cr.`,
+      texte: `${c.nom} (${c.archetypeNom}) s’engage dans ${g.nom} pour ${prix} cr.`,
       important: true,
-      regionId: state.player.regionId,
+      regionId: g.regionId,
+      groupe: g.id,
     });
     sauver();
     return { ok: true, nom: c.nom };
+  },
+
+  // --- Groupes -------------------------------------------------------------
+
+  choisirGroupe(id) {
+    choisirGroupe(state, id);
+    rafraichir(true);
+  },
+
+  /** Détache des membres dans un nouveau groupe. Tirage : RNG de la partie. */
+  scinder(ids) {
+    const rng = new Rng(state.rngState);
+    const r = scinder(state, groupeActif(state), ids, rng);
+    state.rngState = rng.save();
+    if (r.ok) {
+      creerLogger(state)({
+        type: 'groupe',
+        texte: `${r.groupe.nom} se détache : ${r.groupe.membres.map((c) => c.nom).join(', ')}.`,
+        important: true,
+        regionId: r.groupe.regionId,
+        groupe: r.groupe.id,
+      });
+      sauver();
+    }
+    return r;
+  },
+
+  fusionner(idAutre) {
+    const a = groupeActif(state);
+    const b = (state.player.groupes || []).find((x) => x.id === idAutre);
+    if (!b) return { ok: false, motif: 'Groupe introuvable.' };
+    const nomB = b.nom;
+    const r = fusionner(state, a, b);
+    if (r.ok) {
+      creerLogger(state)({
+        type: 'groupe',
+        texte: `${nomB} rejoint ${a.nom}.`,
+        important: true,
+        regionId: a.regionId,
+        groupe: a.id,
+      });
+      sauver();
+    }
+    return r;
+  },
+
+  /** Tâche personnelle d'un membre. `null` le remet sous l'ordre du groupe. */
+  assignerTache(idPerso, tache) {
+    const c = tousLesMembres(state).find((x) => x.id === idPerso);
+    if (!c) return { ok: false, motif: 'Introuvable.' };
+    const r = assignerTache(state, c, tache);
+    if (r.ok) sauver();
+    return r;
   },
 };
 

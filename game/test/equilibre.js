@@ -3,6 +3,7 @@
 // Ce n'est pas un test de régression stricte — c'est un thermomètre.
 
 import { nouvellePartie, tick } from '../src/sim.js';
+import { groupeActif } from '../src/groupes.js';
 import { donnerOrdre } from '../src/squad.js';
 import { estVivant, estDebout, comp, pvTotal } from '../src/characters.js';
 import { colonieDe, colonieParId, distance } from '../src/world.js';
@@ -32,7 +33,7 @@ function colonieLaPlusProche(state) {
   let bestD = Infinity;
   for (const c of state.world.colonies) {
     if (c.ruine) continue; // une ville morte ne vend rien
-    const d = distance(state.player.regionId, c.regionId);
+    const d = distance(groupeActif(state).regionId, c.regionId);
     if (d < bestD) { bestD = d; best = c; }
   }
   return best;
@@ -40,10 +41,11 @@ function colonieLaPlusProche(state) {
 
 function jouer(state) {
   const p = state.player;
-  const cap = capacitePortage(state);
-  const charge = poidsInventaire(p.inventaire) / Math.max(1, cap);
-  const rations = p.inventaire.rations || 0;
-  const colIci = colonieDe(state.world, p.regionId);
+  const g = groupeActif(state);
+  const cap = capacitePortage(state, g);
+  const charge = poidsInventaire(g.inventaire) / Math.max(1, cap);
+  const rations = g.inventaire.rations || 0;
+  const colIci = colonieDe(state.world, g.regionId);
 
   // En ville : on vend le surplus, on refait les vivres, on s'équipe, on prend
   // du travail. C'est ce que ferait un joueur qui regarde ses écrans.
@@ -55,20 +57,20 @@ function jouer(state) {
     if (ordreEnCours && ordreEnCours.ressource) reserves.add(ordreEnCours.ressource);
     for (const k of COMMODITY_KEYS) {
       if (k === 'rations' || k === 'medkit' || reserves.has(k)) continue;
-      const q = p.inventaire[k] || 0;
+      const q = g.inventaire[k] || 0;
       if (q > 0) vendre(state, colIci, k, q);
     }
     // On voit venir la saison : on ne part pas en hiver avec trois boîtes.
     const cible = saison(state.temps).key === 'pluies' || saison(state.temps).key === 'accalmie' ? 190 : 120;
     if (rations < cible && p.credits > 200) acheter(state, colIci, 'rations', cible - rations);
-    if ((p.inventaire.medkit || 0) < 3 && p.credits > 400) acheter(state, colIci, 'medkit', 2);
+    if ((g.inventaire.medkit || 0) < 3 && p.credits > 400) acheter(state, colIci, 'medkit', 2);
 
     // Achat d'équipement : on remplace ce qui est moins bon que l'étal.
     if (colIci.etal && p.credits > 900) {
       colIci.etal.items.forEach((ligne, i) => {
         if (ligne.qte < 1 || p.credits < 900) return;
         const it = ITEMS[ligne.key];
-        const pire = p.squad.find((c) => {
+        const pire = g.membres.find((c) => {
           if (!estVivant(c)) return false;
           if (it.type === 'arme') {
             const a = c.equip.arme && ITEMS[c.equip.arme];
@@ -82,11 +84,11 @@ function jouer(state) {
         });
         if (!pire) return;
         if (acheterItem(state, colIci, i).ok) {
-          const key = p.objets.pop();
+          const key = g.objets.pop();
           const slot = ITEMS[key].type === 'arme' ? 'arme' : 'armure';
           const ancien = pire.equip[slot];
           pire.equip[slot] = key;
-          if (ancien) p.objets.push(ancien);
+          if (ancien) g.objets.push(ancien);
         }
       });
     }
@@ -107,20 +109,20 @@ function jouer(state) {
   // Blessés ou épuisés : on se pose — mais pas au point de mourir de faim en
   // convalescence. Se reposer sans vivres est le meilleur moyen de ne jamais
   // se relever.
-  const vivants = p.squad.filter(estVivant);
+  const vivants = g.membres.filter(estVivant);
   const mal = vivants.filter((c) => !estDebout(c) || pvTotal(c).pct < 0.6).length;
   if (mal > 0 && rations > 50) {
-    if (p.ordre.type !== 'repos') donnerOrdre(state, { type: 'repos' });
+    if (g.ordre.type !== 'repos') donnerOrdre(state, { type: 'repos' });
     return;
   }
 
   // Honorer l'ordre de mission : c'est le chemin le plus rentable du jeu.
   const o = p.allegeance && p.allegeance.ordre;
-  if (o && p.ordre.type !== 'voyage' && rations > 40) {
+  if (o && g.ordre.type !== 'voyage' && rations > 40) {
     const av = avancementOrdre(state, o);
     if (o.type === 'ravitaillement' && av && av.fait >= o.quantite) {
       const col = colonieParId(state.world, o.colonieId);
-      if (col && !col.ruine && col.regionId !== p.regionId) {
+      if (col && !col.ruine && col.regionId !== g.regionId) {
         donnerOrdre(state, { type: 'voyage', dest: col.regionId });
         return;
       }
@@ -135,28 +137,28 @@ function jouer(state) {
   const besoinVille = charge > 0.85 || (rations < 45 && p.credits > 300);
   if (besoinVille && !colIci) {
     const col = colonieLaPlusProche(state);
-    if (col && p.ordre.type !== 'voyage') donnerOrdre(state, { type: 'voyage', dest: col.regionId });
+    if (col && g.ordre.type !== 'voyage') donnerOrdre(state, { type: 'voyage', dest: col.regionId });
     return;
   }
-  if (p.ordre.type === 'voyage') return;
+  if (g.ordre.type === 'voyage') return;
 
   // On ne laisse pas les réserves tomber au plus bas avant de réagir : à 30
   // rations il est déjà trop tard si le biome ne nourrit personne.
   if (rations < 90) {
-    const ici = scoreNourriture(state, p.regionId);
+    const ici = scoreNourriture(state, g.regionId);
     let mieux = null;
     for (const r of state.world.regions) {
-      if (distance(r.i, p.regionId) > 2 || !r.decouvert) continue;
+      if (distance(r.i, g.regionId) > 2 || !r.decouvert) continue;
       const s = scoreNourriture(state, r.i);
       if (s > ici * 1.6 && (!mieux || s > scoreNourriture(state, mieux.i))) mieux = r;
     }
     if (mieux) { donnerOrdre(state, { type: 'voyage', dest: mieux.i }); return; }
-    if (p.ordre.type !== 'chasse') donnerOrdre(state, { type: 'chasse' });
+    if (g.ordre.type !== 'chasse') donnerOrdre(state, { type: 'chasse' });
     return;
   }
 
   // Sinon on ramasse ce qui se vend.
-  if (p.ordre.type !== 'fouille') donnerOrdre(state, { type: 'fouille' });
+  if (g.ordre.type !== 'fouille') donnerOrdre(state, { type: 'fouille' });
 }
 
 console.log(`Banc d'équilibrage — ${PARTIES} parties × ${HEURES} h\n${'='.repeat(52)}`);
@@ -171,7 +173,7 @@ for (let n = 0; n < PARTIES; n++) {
     if (i % 4 === 0) jouer(state);
     tick(state);
   }
-  const viv = state.player.squad.filter(estVivant);
+  const viv = groupeActif(state).membres.filter(estVivant);
   if (!state.fin) survivants++;
   const skills = viv.length
     ? Math.round(viv.reduce((s, c) => s + Math.max(comp(c, 'melee'), comp(c, 'tir')), 0) / viv.length)
@@ -180,7 +182,7 @@ for (let n = 0; n < PARTIES; n++) {
     seed: 1000 + n * 7919,
     t: state.temps,
     fin: state.fin || '—',
-    viv: `${viv.length}/${state.player.squad.length}`,
+    viv: `${viv.length}/${groupeActif(state).membres.length}`,
     cr: state.player.credits,
     wl: `${state.stats.combatsGagnes}/${state.stats.defaites}`,
     recolte: state.stats.recolte,

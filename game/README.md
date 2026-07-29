@@ -66,12 +66,12 @@ de cache périmé.
 ## Tests
 
 ```bash
-npm test                     # 70 assertions sur le moteur, sans navigateur
+npm test                     # 94 assertions sur le moteur, sans navigateur
 node test/equilibre.js       # banc d'équilibrage : un bot joue 8 parties
 node test/equilibre.js 8000 12   # plus long, plus de parties
 
 npm install --no-save playwright-core
-node test/navigateur.js      # 40 vérifications dans un Chromium réel
+node test/navigateur.js      # 54 vérifications dans un Chromium réel
 ```
 
 Le harnais couvre la génération du monde, le déterminisme, la sauvegarde, la
@@ -125,6 +125,19 @@ rapport de force et de rancune, lèvent des colonnes, les font marcher, mettent
 le siège, prennent des villes, se ravitaillent mal et se dispersent, signent des
 trêves quand la guerre coûte trop cher. La carte politique de la fin de partie
 n'est pas celle du début.
+
+**Les groupes.** L'escouade n'est pas un bloc. On la scinde en groupes qui ont
+chacun leur position, leur ordre et ce qu'ils portent — vivres compris, partagés
+au prorata au moment de la séparation. Deux qui montent l'avant-poste pendant que
+deux autres lèvent la carte à l'autre bout, c'est deux tranches de temps de jeu au
+lieu d'une. Le prix est réel : un groupe détaché mange sur ses propres réserves,
+se bat avec ses propres bras, et peut être anéanti sans que ce soit la fin de la
+partie. Coordonner plus de deux groupes suppose une antenne à l'avant-poste.
+
+**Les tâches.** Dans un groupe, chacun peut recevoir sa propre tâche, qui prime
+sur l'ordre collectif : deux ferraillent, le troisième chasse, et les trois
+récoltes se résolvent séparément. En marche, tout le monde marche — on ne
+s'entraîne pas en colonne — et les tâches personnelles reprennent à l'arrivée.
 
 **L'escouade.** Chaque membre a huit compétences qui montent en s'exerçant, six
 zones de corps blessables séparément, un à quatre traits de caractère qui le
@@ -211,6 +224,7 @@ game/
     allegeance.js     service d'une faction, grades, ordres de mission
     climat.js         saisons, météo, effets combinés
     caravanes.js      routes marchandes, embuscades
+    groupes.js        groupes, tâches individuelles, scission et fusion
     sim.js            orchestration, rattrapage hors ligne
     save.js           sérialisation
     ui.js             rendu DOM + carte pixel sur canvas
@@ -229,6 +243,12 @@ game/
 ```
 
 Deux règles tiennent l'ensemble :
+
+Un troisième invariant s'est ajouté avec les groupes : **un personnage appartient
+à exactement un groupe**, et n'existe nulle part ailleurs. Il n'y a donc aucune
+liste à tenir synchronisée, aucun identifiant à résoudre dans la boucle de
+simulation, et l'état reste sérialisable tel quel. Le harnais le vérifie à
+chaque contrôle de cohérence.
 
 1. **Le moteur ne touche jamais au DOM.** Seuls `ui.js` et `main.js` connaissent
    le navigateur. Tout le reste tourne sous Node — c'est ce qui permet de tester

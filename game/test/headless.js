@@ -13,6 +13,7 @@ import { donnerOrdre } from '../src/squad.js';
 import { fonderBase, lancerConstruction, lancerRecherche } from '../src/base.js';
 import { estVivant } from '../src/characters.js';
 import { colonieDe } from '../src/world.js';
+import { groupeActif, groupes, tousLesMembres, scinder, fusionner, assignerTache, tacheDe, maxGroupes } from '../src/groupes.js';
 import { acheter, vendre, prixJoueur } from '../src/economy.js';
 import { sEngager, rangDe } from '../src/allegeance.js';
 
@@ -142,11 +143,22 @@ function verifierCoherence(state, label) {
   // Joueur
   const p = state.player;
   if (p.credits < 0) pb = pb || `crédits négatifs (${p.credits})`;
-  for (const k of COMMODITY_KEYS) {
-    if ((p.inventaire[k] || 0) < -0.001) pb = pb || `inventaire négatif ${k}`;
+  const vusIds = new Set();
+  for (const g of groupes(state)) {
+    for (const k of COMMODITY_KEYS) {
+      if ((g.inventaire[k] || 0) < -0.001) pb = pb || `inventaire négatif ${g.nom}.${k}`;
+    }
+    if (!w.regions[g.regionId]) pb = pb || `${g.nom} hors carte`;
+    if (!g.ordre || !g.ordre.type) pb = pb || `${g.nom} sans ordre`;
+    // Un personnage appartient à exactement un groupe : c'est l'invariant qui
+    // rend inutile toute synchronisation entre deux listes.
+    for (const c of g.membres) {
+      if (vusIds.has(c.id)) pb = pb || `${c.nom} dans deux groupes`;
+      vusIds.add(c.id);
+    }
   }
-  if (!w.regions[p.regionId]) pb = pb || 'joueur hors carte';
-  for (const c of p.squad) {
+  if (groupes(state).length > maxGroupes(state)) pb = pb || 'plus de groupes que permis';
+  for (const c of tousLesMembres(state)) {
     for (const part of Object.keys(c.corps)) {
       const b = c.corps[part];
       if (b.pv < -0.001 || b.pv > b.max + 0.001) pb = pb || `${c.nom}.${part} pv=${b.pv}/${b.max}`;
@@ -171,7 +183,7 @@ const s1 = nouvellePartie(123456, { maintenant: 0 });
 ok(s1.world.regions.length === 80, 'carte 10×8 = 80 régions', `reçu ${s1.world.regions.length}`);
 ok(s1.world.colonies.length >= 12, 'au moins 12 colonies', `reçu ${s1.world.colonies.length}`);
 ok(s1.world.colonies.every((c) => c.faction), 'toute colonie a un propriétaire');
-ok(s1.player.squad.length === 3, 'escouade de départ à 3');
+ok(groupeActif(s1).membres.length === 3, 'escouade de départ à 3');
 ok(s1.world.regions.some((r) => r.biome === 'relais'), 'un Relais Orbital existe');
 ok(Object.keys(s1.world.factions).length === 7, '7 factions');
 verifierCoherence(s1, 'à la génération');
@@ -268,34 +280,34 @@ avancer(s7, 40);
 ok(s7.stats.recolte > 0, 'fouiller rapporte des ressources', `${s7.stats.recolte} unités`);
 
 const s7b = nouvellePartie(5151, { maintenant: 0 });
-const depart = s7b.player.regionId;
+const depart = groupeActif(s7b).regionId;
 const cible = s7b.world.colonies.find((c) => c.regionId !== depart);
 const r = donnerOrdre(s7b, { type: 'voyage', dest: cible.regionId });
 ok(r.ok, 'un itinéraire est calculable');
 let bornes = 0;
-while (s7b.player.regionId !== cible.regionId && bornes < 600) { tick(s7b); bornes++; }
-ok(s7b.player.regionId === cible.regionId, 'le voyage aboutit', `${bornes} h`);
+while (groupeActif(s7b).regionId !== cible.regionId && bornes < 600) { tick(s7b); bornes++; }
+ok(groupeActif(s7b).regionId === cible.regionId, 'le voyage aboutit', `${bornes} h`);
 ok(s7b.world.regions[cible.regionId].decouvert, 'la région d’arrivée est découverte');
 
 const s7c = nouvellePartie(5152, { maintenant: 0 });
-const skillAvant = s7c.player.squad[0].skills.melee;
-s7c.player.inventaire.rations = 500;
+const skillAvant = groupeActif(s7c).membres[0].skills.melee;
+groupeActif(s7c).inventaire.rations = 500;
 donnerOrdre(s7c, { type: 'entrainement', skill: 'melee' });
 avancer(s7c, 200);
-ok(s7c.player.squad[0].skills.melee > skillAvant, 'les compétences montent à l’usage',
-  `${skillAvant} → ${s7c.player.squad[0].skills.melee}`);
+ok(groupeActif(s7c).membres[0].skills.melee > skillAvant, 'les compétences montent à l’usage',
+  `${skillAvant} → ${groupeActif(s7c).membres[0].skills.melee}`);
 
 section('8. Avant-poste : construction et recherche');
 const s8 = nouvellePartie(60606, { maintenant: 0 });
 // On se place sur une région vide adjacente
 const vide = s8.world.regions.find((rg) => !rg.colonie);
-s8.player.regionId = vide.i;
-s8.player.inventaire.ferraille = 2000;
-s8.player.inventaire.polymere = 500;
-s8.player.inventaire.composant = 200;
-s8.player.inventaire.minerai = 500;
-s8.player.inventaire.carburant = 300;
-s8.player.inventaire.biomasse = 500;
+groupeActif(s8).regionId = vide.i;
+groupeActif(s8).inventaire.ferraille = 2000;
+groupeActif(s8).inventaire.polymere = 500;
+groupeActif(s8).inventaire.composant = 200;
+groupeActif(s8).inventaire.minerai = 500;
+groupeActif(s8).inventaire.carburant = 300;
+groupeActif(s8).inventaire.biomasse = 500;
 const fond = fonderBase(s8, () => {});
 ok(fond.ok, 'fondation de l’avant-poste');
 // On approvisionne l'entrepôt sans dépasser sa capacité, et on garde des
@@ -304,7 +316,7 @@ Object.assign(s8.base.stock, {
   ferraille: 300, polymere: 120, composant: 40, minerai: 120,
   carburant: 100, biomasse: 150, alliage: 30,
 });
-s8.player.inventaire.rations = 400;
+groupeActif(s8).inventaire.rations = 400;
 const c1 = lancerConstruction(s8, 'generateur');
 ok(c1.ok, 'mise en file du générateur', c1.motif);
 ok(s8.base.file.length === 1, 'la file contient un chantier');
@@ -332,12 +344,12 @@ s9.player.posture = 'agressif';
 donnerOrdre(s9, { type: 'patrouille' });
 // On va chercher la bagarre dans une région dangereuse
 const dangereuse = s9.world.regions.reduce((x, y) => (y.danger > x.danger ? y : x));
-s9.player.regionId = dangereuse.i;
+groupeActif(s9).regionId = dangereuse.i;
 avancer(s9, 400);
 ok(s9.stats.combats > 0, 'des combats ont eu lieu', `${s9.stats.combats}`);
-const blesse = s9.player.squad.some((ch) => Object.values(ch.corps).some((p) => p.pv < p.max));
+const blesse = groupeActif(s9).membres.some((ch) => Object.values(ch.corps).some((p) => p.pv < p.max));
 ok(blesse || s9.stats.combats === 0, 'les blessures sont localisées et persistent');
-ok(s9.player.squad.every((ch) => ['ok', 'ko', 'mort'].includes(ch.etat)), 'états de personnage valides');
+ok(groupeActif(s9).membres.every((ch) => ['ok', 'ko', 'mort'].includes(ch.etat)), 'états de personnage valides');
 verifierCoherence(s9, 'après 400 h de patrouille agressive');
 
 section('9 bis. Monde vivant sur la durée');
@@ -369,10 +381,98 @@ const debout9c = DIPLO_FACTIONS.filter((k) => s9c.world.factions[k].colonies.len
 ok(debout9c.length === 6, 'aucune faction n’est rayée de la carte', `${debout9c.length}/6`);
 ok(s9c.world.colonies.filter((c) => !c.ruine).length >= 10, 'le monde garde ses villes',
   `${s9c.world.colonies.filter((c) => !c.ruine).length}`);
-const liens9c = s9c.player.squad.flatMap((c) => Object.values(c.liens || {}));
+const liens9c = groupeActif(s9c).membres.flatMap((c) => Object.values(c.liens || {}));
 ok(liens9c.length === 0 || Math.max(...liens9c) < 100,
   'les liens d’escouade ne saturent pas', liens9c.join(','));
 verifierCoherence(s9c, 'après 8 000 h au service d’une faction');
+
+section('9 quater. Groupes, tâches individuelles, détachement');
+const s9d = nouvellePartie(31415, { maintenant: 0 });
+avancer(s9d, 60);
+const g9 = groupeActif(s9d);
+ok(groupes(s9d).length === 1, 'une partie démarre avec un seul groupe');
+ok(tousLesMembres(s9d).length === 3, 'tous les membres sont dans un groupe', `${tousLesMembres(s9d).length}`);
+
+// Tâche individuelle : un membre s'écarte de l'ordre du groupe.
+donnerOrdre(s9d, { type: 'fouille' }, g9);
+assignerTache(s9d, g9.membres[0], { type: 'chasse' });
+ok(tacheDe(g9, g9.membres[0]).type === 'chasse', 'une tâche personnelle prime sur l’ordre du groupe');
+ok(tacheDe(g9, g9.membres[1]).type === 'fouille', 'les autres suivent l’ordre du groupe');
+donnerOrdre(s9d, { type: 'voyage', dest: (g9.regionId + 1) % 80 }, g9);
+ok(tacheDe(g9, g9.membres[0]).type === 'voyage', 'en marche, tout le monde marche');
+donnerOrdre(s9d, { type: 'fouille' }, g9);
+
+// Détachement : les vivres partent au prorata, personne n'est cloné.
+const rngScission = new Rng(s9d.rngState);
+const avantRations = groupeActif(s9d).inventaire.rations;
+const partant = g9.membres[0].id;
+const scission = scinder(s9d, g9, [partant], rngScission);
+s9d.rngState = rngScission.save();
+ok(scission.ok, 'on peut détacher un membre', scission.motif);
+ok(groupes(s9d).length === 2, 'deux groupes après détachement');
+ok(tousLesMembres(s9d).length === 3, 'personne n’est perdu ni dupliqué');
+ok(!g9.membres.some((c) => c.id === partant), 'le partant a quitté son groupe d’origine');
+const detache = scission.groupe;
+ok(detache.inventaire.rations > 0 && detache.inventaire.rations < avantRations,
+  'les vivres se partagent au prorata', `${avantRations} → ${g9.inventaire.rations} + ${detache.inventaire.rations}`);
+ok(scinder(s9d, detache, [detache.membres[0].id], rngScission).ok === false,
+  'on ne détache pas le dernier membre d’un groupe');
+
+// Deux groupes, deux endroits, deux ordres : la simulation les tient séparés.
+donnerOrdre(s9d, { type: 'exploration' }, detache);
+const destination = (detache.regionId + 3) % 80;
+donnerOrdre(s9d, { type: 'voyage', dest: destination }, detache);
+avancer(s9d, 300);
+ok(groupes(s9d).length >= 1, 'la partie survit à 300 h avec deux groupes');
+const encoreDeux = groupes(s9d).length === 2;
+if (encoreDeux) {
+  ok(groupes(s9d)[0].regionId !== groupes(s9d)[1].regionId
+    || groupes(s9d)[0].ordre.type !== groupes(s9d)[1].ordre.type,
+  'les deux groupes mènent leur vie séparément');
+} else {
+  ok(true, 'un groupe a été anéanti en route — la partie continue');
+}
+verifierCoherence(s9d, 'après 300 h à deux groupes');
+
+// Regroupement : tout se remet en commun.
+if (encoreDeux) {
+  const [ga, gb] = groupes(s9d);
+  gb.regionId = ga.regionId;
+  const totalRations = ga.inventaire.rations + gb.inventaire.rations;
+  const nb = ga.membres.length + gb.membres.length;
+  const fus = fusionner(s9d, ga, gb);
+  ok(fus.ok, 'deux groupes au même endroit se réunissent', fus.motif);
+  ok(groupes(s9d).length === 1, 'il ne reste qu’un groupe');
+  ok(ga.membres.length === nb, 'tout le monde est rassemblé', `${ga.membres.length}/${nb}`);
+  ok(ga.inventaire.rations === totalRations, 'les vivres sont remis en commun');
+}
+
+// Une partie d'avant les groupes doit se rouvrir sans rien perdre.
+const s9f = nouvellePartie(999, { maintenant: 0 });
+avancer(s9f, 80);
+const gAvant = groupeActif(s9f);
+const ancienne = JSON.parse(serialiser(s9f));
+ancienne.player.squad = gAvant.membres;
+ancienne.player.regionId = gAvant.regionId;
+ancienne.player.ordre = gAvant.ordre;
+ancienne.player.inventaire = gAvant.inventaire;
+ancienne.player.objets = gAvant.objets;
+ancienne.player.cohesion = gAvant.cohesion;
+delete ancienne.player.groupes;
+delete ancienne.player.groupeActif;
+const migree = deserialiser(JSON.stringify(ancienne));
+ok(groupes(migree).length === 1, 'une sauvegarde d’avant les groupes se recompose en un groupe');
+ok(tousLesMembres(migree).length === 3, 'l’escouade y est au complet');
+ok(groupeActif(migree).inventaire.rations === gAvant.inventaire.rations, 'le sac est intact');
+avancer(migree, 200);
+ok(migree.temps === 280, 'et la partie repart', `t=${migree.temps}`);
+
+// Le plafond de groupes tient à l'antenne.
+const s9e = nouvellePartie(2718, { maintenant: 0 });
+ok(maxGroupes(s9e) === 2, 'deux groupes sans avant-poste', `${maxGroupes(s9e)}`);
+s9e.base.fonde = true;
+s9e.base.batiments = { antenne: 4 };
+ok(maxGroupes(s9e) === 4, 'l’antenne autorise davantage de groupes', `${maxGroupes(s9e)}`);
 
 section('10. Rattrapage hors ligne');
 const s10 = nouvellePartie(1010, { maintenant: 1000000 });
@@ -411,18 +511,18 @@ ok(reste.ticks === 600 - 74, 'le reste dû est exactement ce qui manquait', `re�
 
 section('11. Robustesse : escouade décimée');
 const s11 = nouvellePartie(1111, { maintenant: 0 });
-for (const ch of s11.player.squad) ch.etat = 'mort';
+for (const ch of groupeActif(s11).membres) ch.etat = 'mort';
 avancer(s11, 50);
 ok(s11.fin === 'extinction', 'fin de partie détectée');
 ok(s11.temps <= 51, 'la sim s’arrête après la fin', `t=${s11.temps}`);
 
 section('12. Robustesse : sac plein et famine');
 const s12 = nouvellePartie(1212, { maintenant: 0 });
-s12.player.inventaire.rations = 0;
+groupeActif(s12).inventaire.rations = 0;
 donnerOrdre(s12, { type: 'fouille' });
 avancer(s12, 300);
-ok(s12.player.squad.every((ch) => ch.faim <= 120), 'la faim reste bornée');
-ok(s12.player.squad.some((ch) => ch.faim > 60) || s12.fin, 'la famine s’installe sans rations');
+ok(groupeActif(s12).membres.every((ch) => ch.faim <= 120), 'la faim reste bornée');
+ok(groupeActif(s12).membres.some((ch) => ch.faim > 60) || s12.fin, 'la famine s’installe sans rations');
 verifierCoherence(s12, 'sous famine');
 
 // ===========================================================================

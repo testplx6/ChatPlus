@@ -66,14 +66,31 @@ body {
   border-bottom: 1px solid var(--bord);
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   /* Une seule ligne, toujours : l'en-tête ne doit jamais voler de la hauteur
      à la carte sur un petit écran. */
   flex-wrap: nowrap;
   overflow: hidden;
 }
 
-.hd-bloc { display: flex; align-items: baseline; gap: 4px; min-width: 0; }
+/* Les indicateurs rognent par la droite plutôt que de se comprimer : un bloc
+   comprimé laisse son libellé déborder sur le voisin, ce qui rend l'en-tête
+   illisible dès qu'on y ajoute une information. */
+.hd-metriques {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  overflow: hidden;
+}
+.hd-bloc { display: flex; align-items: baseline; gap: 4px; flex: 0 0 auto; }
+.hd-eti, .hd-val { flex: 0 0 auto; }
+/* La saison tient en un losange coloré : écrire « GRANDES PLUIES » dans une
+   barre de 390 px coûte deux autres indicateurs. Le nom complet est dans
+   l'infobulle, et l'écran Monde le donne en toutes lettres. */
+.hd-saison { font-size: 13px; line-height: 1; }
+.hd-cycle { font-size: 11px; color: var(--texte-3); }
 .hd-eti { font-size: 8px; letter-spacing: .1em; color: var(--texte-3); text-transform: uppercase; }
 .hd-val { font-size: 12px; color: var(--texte); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .hd-val.cyan { color: var(--cyan); }
@@ -90,7 +107,7 @@ body {
   color: var(--texte-2);
   font: inherit;
   font-size: 10px;
-  padding: 3px 7px;
+  padding: 3px 6px;
   min-height: 30px; /* cible tactile : jamais moins */
   cursor: pointer;
 }
@@ -361,6 +378,55 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
   text-align: center;
 }
 .toast.err { border-color: var(--rouge); color: var(--rouge); }
+
+/* ------------------------------------------------------------------ Groupes */
+/* Une ligne de vignettes : où est chacun, ce qu'il fait. Ça défile
+   horizontalement plutôt que de se comprimer — à quatre groupes sur 360 px,
+   trois mots par vignette ne tiennent pas. */
+
+.groupes {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 3px;
+  scrollbar-width: thin;
+}
+.grp {
+  flex: 0 0 auto;
+  min-width: 118px;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 9px;
+  text-align: left;
+  background: var(--panneau-2);
+  border: 1px solid var(--bord);
+  color: var(--texte-2);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.grp.on { border-color: var(--cyan); color: var(--texte); }
+.grp-n { font-size: 12px; color: var(--texte); }
+.grp.on .grp-n { color: var(--cyan); }
+.grp-d { color: var(--texte-3); }
+.grp-o { color: var(--texte-2); }
+
+/* Grille de petits boutons : tâches d'un membre, cases de détachement. */
+.taches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 6px 0;
+}
+.taches .act.mini {
+  flex: 0 1 auto;
+  width: auto;              /* .act est en pleine largeur : ici on veut une ligne */
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+}
 
 /* ------------------------------------------------------------------ Rattrapage */
 /* Deux ans hors ligne, ça se rejoue : autant le montrer plutôt que de laisser

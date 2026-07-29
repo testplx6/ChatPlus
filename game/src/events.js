@@ -18,6 +18,7 @@ import {
 } from './characters.js';
 import { poidsInventaire, capacitePortage } from './economy.js';
 import { tailleEscouadeMax } from './base.js';
+import { groupeActif, groupes, tousLesMembres, debout as deboutDe } from './groupes.js';
 
 export const LOG_MAX = 400;
 
@@ -35,14 +36,16 @@ export function creerLogger(state) {
 // Utilitaires d'inventaire
 // ---------------------------------------------------------------------------
 
-export function ajouterAuSac(state, key, qte) {
-  if (qte <= 0) return 0;
-  const cap = capacitePortage(state);
-  const libre = cap - poidsInventaire(state.player.inventaire);
+/** Ce qu'un groupe peut encore porter. Chacun porte le sien. */
+export function ajouterAuSac(state, key, qte, groupe) {
+  const g = groupe || groupeActif(state);
+  if (!g || qte <= 0) return 0;
+  const cap = capacitePortage(state, g);
+  const libre = cap - poidsInventaire(g.inventaire);
   const poidsU = COMMODITIES[key] ? COMMODITIES[key].poids : 1;
   const max = poidsU > 0 ? Math.floor(libre / poidsU) : qte;
   const reel = Math.max(0, Math.min(Math.floor(qte), max));
-  if (reel > 0) state.player.inventaire[key] = (state.player.inventaire[key] || 0) + reel;
+  if (reel > 0) g.inventaire[key] = (g.inventaire[key] || 0) + reel;
   return reel;
 }
 
@@ -101,8 +104,8 @@ function instantaneComps(squad) {
   return m;
 }
 
-function annoncerProgres(state, avant, log) {
-  for (const c of state.player.squad) {
+function annoncerProgres(state, avant, log, membres) {
+  for (const c of membres) {
     const a = avant[c.id];
     if (!a) continue;
     const montees = SKILL_KEYS.filter((k) => c.skills[k] > (a[k] ?? 0));
@@ -114,16 +117,17 @@ function annoncerProgres(state, avant, log) {
   }
 }
 
-export function combatContre(state, bande, log, ctx) {
+export function combatContre(state, bande, log, ctx, groupe) {
   const rng = ctx.rng;
-  const compsAvant = instantaneComps(state.player.squad);
+  const g = groupe || groupeActif(state);
+  const compsAvant = instantaneComps(g.membres);
   const posture = POSTURES[state.player.posture] || POSTURES.neutre;
-  const squad = state.player.squad.filter(estVivant);
+  const squad = g.membres.filter(estVivant);
   const combattants = squad.filter((c) => c.etat !== 'mort');
 
   // À partir de Capitaine, les siens viennent prêter main-forte chez eux.
   const renforts = [];
-  const nbRenforts = renfortsDisponibles(state);
+  const nbRenforts = renfortsDisponibles(state, g);
   for (let i = 0; i < nbRenforts; i++) {
     const allie = makeCharacter(rng, { niveau: 2 });
     allie.equip.armure = allie.equip.armure || 'plaque';
@@ -134,13 +138,13 @@ export function combatContre(state, bande, log, ctx) {
     log({
       type: 'renfort',
       texte: `${renforts.length} homme${renforts.length > 1 ? 's' : ''} ${FACTIONS[state.player.allegeance.faction].genitif} accourent.`,
-      regionId: state.player.regionId,
+      regionId: g.regionId,
     });
   }
 
   const res = resoudreCombat(combattants.concat(renforts), bande.membres, {
     rng,
-    biome: state.world.regions[state.player.regionId].biome,
+    biome: state.world.regions[g.regionId].biome,
     posture,
     bonusDegats: (state.base.recherche.balistique || 0) * 0.1,
     bonusArmure: (state.base.recherche.blindage || 0) * 0.1,
@@ -148,24 +152,24 @@ export function combatContre(state, bande, log, ctx) {
     letalB: bande.letal,
   });
 
-  const lieu = nomRegion(state.world, state.player.regionId);
+  const lieu = nomRegion(state.world, g.regionId);
   let texte;
   if (res.vainqueur === 'A') {
     const b = butin(bande, rng);
     let ramasse = 0;
-    for (const k of Object.keys(b.loot)) ramasse += ajouterAuSac(state, k, b.loot[k]);
+    for (const k of Object.keys(b.loot)) ramasse += ajouterAuSac(state, k, b.loot[k], g);
     state.player.credits += b.credits;
     for (const o of b.objets) {
-      if (state.player.objets.length < 30) state.player.objets.push(o);
+      if (g.objets.length < 30) g.objets.push(o);
     }
     reputation(state, bande.faction, -6);
     // Les ennemis d'un ennemi apprécient
     for (const k of Object.keys(state.world.factions)) {
       if (k === bande.faction || k === 'essaim') continue;
-      const g = state.world.guerres.some(
+      const enGuerre = state.world.guerres.some(
         (w) => (w.a === k && w.b === bande.faction) || (w.b === k && w.a === bande.faction)
       );
-      if (g) reputation(state, k, 2);
+      if (enGuerre) reputation(state, k, 2);
     }
     state.stats.combatsGagnes++;
     compterVictoire(state, bande.faction);
@@ -180,24 +184,24 @@ export function combatContre(state, bande, log, ctx) {
     }
     texte = `${bande.nom} mis en déroute à ${lieu} — ${ramasse} unités et ${b.credits} cr récupérés.`;
   } else if (res.vainqueur === 'B') {
-    texte = perdreCombat(state, bande, log, ctx, lieu);
+    texte = perdreCombat(state, bande, log, ctx, lieu, g);
   } else {
     texte = `Accrochage indécis avec ${bande.nom} à ${lieu}. Chacun décroche.`;
   }
 
   state.stats.combats++;
-  const morts = state.player.squad.filter((c) => c.etat === 'mort' && !c._compte);
+  const morts = g.membres.filter((c) => c.etat === 'mort' && !c._compte);
   for (const m of morts) {
     m._compte = true;
     inscrireAuMemorial(state, m, `tombé face à ${bande.nom}`, lieu);
     log({ type: 'mort', texte: `${m.nom} est mort à ${lieu}.`, important: true });
   }
-  // Une escouade qui perd des siens se délite ; une victoire ressoude.
-  state.player.cohesion = Math.max(0, Math.min(100,
-    (state.player.cohesion ?? 55) + (res.vainqueur === 'A' ? 2.5 : -4) - morts.length * 9));
+  // Un groupe qui perd des siens se délite ; une victoire ressoude.
+  g.cohesion = Math.max(0, Math.min(100,
+    (g.cohesion ?? 55) + (res.vainqueur === 'A' ? 2.5 : -4) - morts.length * 9));
 
   // Ceux qui survivent finissent par se faire un nom.
-  for (const c of state.player.squad) {
+  for (const c of g.membres) {
     if (c.etat === 'mort' || c.surnomGagne) continue;
     const membrePerdu = Object.keys(c.corps).some((k) => c.corps[k].perdu);
     if (c.kills >= 18 || membrePerdu) {
@@ -212,23 +216,24 @@ export function combatContre(state, bande, log, ctx) {
 
   // Sortir vivants du même combat rapproche ; y laisser quelqu'un aussi, mais
   // dans l'autre sens pour ceux qui n'ont pas tenu leur poste.
-  const debouts = state.player.squad.filter(estDebout);
+  const debouts = g.membres.filter(estDebout);
   for (let i = 0; i < debouts.length; i++) {
     for (let j = i + 1; j < debouts.length; j++) {
       ajusterLien(debouts[i], debouts[j], res.vainqueur === 'A' ? 7 : 3);
     }
   }
-  for (const tombe of state.player.squad.filter((c) => c.etat === 'ko')) {
+  for (const tombe of g.membres.filter((c) => c.etat === 'ko')) {
     for (const d of debouts) ajusterLien(tombe, d, -2);
   }
 
-  annoncerProgres(state, compsAvant, log);
+  annoncerProgres(state, compsAvant, log, g.membres);
 
   log({
     type: 'combat',
     texte,
     important: true,
-    regionId: state.player.regionId,
+    regionId: g.regionId,
+    groupe: g.id,
     // On garde le début de l'échange et son épilogue : le détail complet
     // noie l'écran sur mobile.
     detail: res.journal.length > 12
@@ -240,13 +245,13 @@ export function combatContre(state, bande, log, ctx) {
   return res;
 }
 
-function perdreCombat(state, bande, log, ctx, lieu) {
+function perdreCombat(state, bande, log, ctx, lieu, g) {
   const rng = ctx.rng;
   state.stats.defaites++;
 
   if (bande.faction === 'essaim') {
     // L'Essaim ne fait pas de prisonniers
-    for (const c of state.player.squad) {
+    for (const c of g.membres) {
       if (c.etat === 'ko' && rng.chance(0.3)) {
         blesser(c, 40, 'torse', rng, { letal: true });
       }
@@ -257,40 +262,41 @@ function perdreCombat(state, bande, log, ctx, lieu) {
   // Dépouillés et abandonnés plus loin : on survit, on repart de rien.
   let perdu = 0;
   for (const k of COMMODITY_KEYS) {
-    const q = state.player.inventaire[k] || 0;
+    const q = g.inventaire[k] || 0;
     const pris = Math.round(q * rng.range(0.4, 0.75));
-    state.player.inventaire[k] = q - pris;
+    g.inventaire[k] = q - pris;
     perdu += pris;
   }
   // On garde de quoi repartir : tout rafler à chaque défaite interdit
   // définitivement de s'équiper, donc de cesser de perdre.
   const cr = Math.round(state.player.credits * rng.range(0.25, 0.55));
   state.player.credits -= cr;
-  if (state.player.objets.length && rng.chance(0.6)) {
-    state.player.objets.splice(rng.int(state.player.objets.length), 1);
+  if (g.objets.length && rng.chance(0.6)) {
+    g.objets.splice(rng.int(g.objets.length), 1);
   }
   reputation(state, bande.faction, -3);
 
   // On se réveille ailleurs, quelques heures plus tard. Dépouillés, pas égorgés :
   // ces gens voulaient le sac, pas les cadavres.
-  const options = voisins(state.player.regionId);
-  if (options.length) state.player.regionId = rng.pick(options);
-  state.player.ordre = { type: 'repos' };
-  for (const c of state.player.squad) {
+  const options = voisins(g.regionId);
+  if (options.length) g.regionId = rng.pick(options);
+  g.ordre = { type: 'repos' };
+  for (const c of g.membres) {
     if (c.etat === 'mort') continue;
     c.sang = Math.min(c.sang, 6);
     if (c.etat === 'ko') c.koHeures = Math.max(c.koHeures, rng.irange(4, 12));
   }
-  return `Escouade battue à ${lieu} : ${perdu} unités et ${cr} cr perdus, réveil à ${nomRegion(state.world, state.player.regionId)}.`;
+  return `${g.nom} battu à ${lieu} : ${perdu} unités et ${cr} cr perdus, réveil à ${nomRegion(state.world, g.regionId)}.`;
 }
 
 // ---------------------------------------------------------------------------
 // Table de rencontres
 // ---------------------------------------------------------------------------
 
-function bandeLocale(state, ctx) {
+function bandeLocale(state, ctx, groupe) {
   const rng = ctx.rng;
-  const regionId = state.player.regionId;
+  const g = groupe || groupeActif(state);
+  const regionId = g.regionId;
   const dominante = factionDominante(state, regionId);
   const repu = dominante ? (state.player.reputation[dominante] || 0) : 0;
 
@@ -318,7 +324,7 @@ function bandeLocale(state, ctx) {
   // Le monde durcit lentement, mais les bandes restent le plus souvent
   // inférieures en nombre : c'est au joueur de choisir quand ça vaut le coup.
   const niveauMonde = Math.min(2, Math.floor(state.temps / 2500));
-  const debout = state.player.squad.filter(estDebout).length || 1;
+  const debout = deboutDe(g).length || 1;
   const taille = Math.max(1, Math.round(rng.weighted([
     [1, 3], [2, 3], [3, 2], [debout, 1.5], [debout + 1, 0.6],
   ])));
@@ -328,6 +334,11 @@ function bandeLocale(state, ctx) {
 /**
  * Quand une faction vous déteste assez, elle cesse d'attendre que vous passiez :
  * elle paie des gens pour vous trouver. La réputation devient une menace.
+ */
+/**
+ * Les chasseurs de prime cherchent *vous*, pas un groupe en particulier : le
+ * tirage est global, et c'est le groupe qu'ils trouvent qui doit s'expliquer.
+ * Un tirage par groupe multiplierait leur fréquence par le nombre de groupes.
  */
 export function tenterChasseurs(state, log, ctx) {
   const rng = ctx.rng;
@@ -375,6 +386,11 @@ export function tenterChasseurs(state, log, ctx) {
   // Une visite tous les deux à trois mois de jeu : une menace, pas un métronome.
   if (!rng.chance(0.0012 * intensite)) return false;
 
+  // Ils tombent sur l'un des groupes — pas forcément celui qu'on regarde.
+  const cibles = groupes(state).filter((gr) => gr.membres.some(estVivant));
+  if (!cibles.length) return false;
+  const cible = rng.pick(cibles);
+
   const k = rng.pick(traques);
   const taille = 2 + rng.irange(0, primes[k]);
   const bande = genererBande(rng, k, taille, primes[k]);
@@ -382,11 +398,12 @@ export function tenterChasseurs(state, log, ctx) {
   bande.letal = 0.3;
   log({
     type: 'chasseurs',
-    texte: `Des chasseurs de prime ${FACTIONS[k].genitif} vous ont retrouvés.`,
+    texte: `Des chasseurs de prime ${FACTIONS[k].genitif} ont retrouvé ${cible.nom}.`,
     important: true,
-    regionId: state.player.regionId,
+    regionId: cible.regionId,
+    groupe: cible.id,
   });
-  const res = combatContre(state, bande, log, ctx);
+  const res = combatContre(state, bande, log, ctx, cible);
 
   // Perdre solde l'affaire : ils ont eu ce qu'ils voulaient. Sinon la prime
   // s'auto-entretient et il n'existe aucune sortie.
@@ -403,9 +420,10 @@ export function tenterChasseurs(state, log, ctx) {
 }
 
 /** Tente une rencontre sur l'heure écoulée. Retourne true si quelque chose est arrivé. */
-export function tenterRencontre(state, log, ctx, multiplicateur = 1) {
+export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
   const rng = ctx.rng;
-  const regionId = state.player.regionId;
+  const g = groupe || groupeActif(state);
+  const regionId = g.regionId;
   const r = state.world.regions[regionId];
   const posture = POSTURES[state.player.posture] || POSTURES.neutre;
   const col = colonieDe(state.world, regionId);
@@ -415,7 +433,7 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1) {
   let p = r.danger * multiplicateur * (col ? 0.25 : 1) * (climat ? climat.rencontres : 1);
   // Furtivité du plus discret de l'escouade
   let furtif = 0;
-  const debout = state.player.squad.filter(estDebout);
+  const debout = deboutDe(g);
   if (debout.length) {
     furtif = Math.max(...debout.map((c) => comp(c, 'furtivite')));
   }
@@ -437,13 +455,13 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1) {
 
   switch (type) {
     case 'hostile': {
-      const bande = bandeLocale(state, ctx);
+      const bande = bandeLocale(state, ctx, g);
       if (posture.evitement > 0 && rng.chance(posture.evitement * 0.8)) {
-        log({ type: 'esquive', texte: `${bande.nom} repéré à temps. Contournement.`, regionId });
+        log({ type: 'esquive', texte: `${g.nom} : ${bande.nom} repéré à temps. Contournement.`, regionId, groupe: g.id });
         for (const c of debout) gagnerXp(c, 'furtivite', 1.2);
         return true;
       }
-      combatContre(state, bande, log, ctx);
+      combatContre(state, bande, log, ctx, g);
       return true;
     }
     case 'epave': {
@@ -451,7 +469,7 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1) {
       const table = { dalles: 'composant', friche: 'isotope', plastique: 'polymere', relais: 'composant' };
       const k = table[biome] || rng.pick(['ferraille', 'minerai', 'alliage']);
       const q = rng.irange(3, 14);
-      const pris = ajouterAuSac(state, k, q);
+      const pris = ajouterAuSac(state, k, q, g);
       const cr = rng.irange(0, 60);
       state.player.credits += cr;
       for (const c of debout) gagnerXp(c, 'ingenierie', 1.5);
@@ -464,7 +482,7 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1) {
     }
     case 'errant': {
       const max = tailleEscouadeMax(state.base);
-      const vivants = state.player.squad.filter(estVivant).length;
+      const vivants = tousLesMembres(state).filter(estVivant).length;
       const prix = rng.irange(120, 420);
       if (!state.player.politique.recruter || vivants >= max || state.player.credits < prix) {
         log({
@@ -477,12 +495,13 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1) {
       }
       const c = makeCharacter(rng, { niveau: rng.irange(0, 1) });
       state.player.credits -= prix;
-      state.player.squad.push(c);
+      g.membres.push(c);
       log({
         type: 'recrue',
-        texte: `${c.nom} (${c.archetypeNom}) rejoint l’escouade pour ${prix} cr.`,
+        texte: `${c.nom} (${c.archetypeNom}) rejoint ${g.nom} pour ${prix} cr.`,
         regionId,
         important: true,
+        groupe: g.id,
       });
       return true;
     }
@@ -491,19 +510,19 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1) {
         log({ type: 'rencontre', texte: 'Une caravane passe. On la laisse filer.', regionId, discret: true });
         return true;
       }
-      const stock = COMMODITY_KEYS.filter((k) => (state.player.inventaire[k] || 0) > 0);
+      const stock = COMMODITY_KEYS.filter((k) => (g.inventaire[k] || 0) > 0);
       if (!stock.length) {
         log({ type: 'rencontre', texte: 'Une caravane passe. Rien à lui vendre.', regionId, discret: true });
         return true;
       }
       const k = rng.pick(stock);
-      const q = Math.min(state.player.inventaire[k], rng.irange(3, 25));
+      const q = Math.min(g.inventaire[k], rng.irange(3, 25));
       const negoc = debout.length
         ? debout.reduce((a, b) => (comp(a, 'commerce') >= comp(b, 'commerce') ? a : b))
         : null;
       const bonus = negoc ? comp(negoc, 'commerce') / 260 : 0;
       const prix = Math.round(COMMODITIES[k].prix * (1.15 + bonus) * q);
-      state.player.inventaire[k] -= q;
+      g.inventaire[k] -= q;
       state.player.credits += prix;
       if (negoc) gagnerXp(negoc, 'commerce', 1.4);
       log({
@@ -537,9 +556,9 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1) {
         });
       } else {
         const bande = genererBande(rng, FACTIONS[f] ? f : 'bandits', rng.irange(2, 4), Math.min(2, Math.floor(state.temps / 900)));
-        log({ type: 'peage', texte: `Péage refusé. Ça tourne mal.`, regionId });
+        log({ type: 'peage', texte: `${g.nom} : péage refusé. Ça tourne mal.`, regionId, groupe: g.id });
         reputation(state, f, -8);
-        combatContre(state, bande, log, ctx);
+        combatContre(state, bande, log, ctx, g);
       }
       return true;
     }
@@ -552,9 +571,10 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1) {
  * Aléa environnemental du biome (radiations, pluie acide, éboulement…).
  * `exposition` : 1 en plein travail dehors, ~0.3 au repos ou à l'abri.
  */
-export function tenterAlea(state, log, ctx, exposition = 1) {
+export function tenterAlea(state, log, ctx, exposition = 1, groupe) {
   const rng = ctx.rng;
-  const regionId = state.player.regionId;
+  const g = groupe || groupeActif(state);
+  const regionId = g.regionId;
   const r = state.world.regions[regionId];
   const h = BIOMES[r.biome].hazard;
   if (!h) return false;
@@ -565,7 +585,7 @@ export function tenterAlea(state, log, ctx, exposition = 1) {
   if (!rng.chance(h.p * exposition * abri * protege * climat)) return false;
 
   const touches = [];
-  for (const c of state.player.squad) {
+  for (const c of g.membres) {
     if (!estVivant(c)) continue;
     if (!rng.chance(0.7)) continue;
     const armure = c.equip.armure ? (ITEMS[c.equip.armure].armure || 0) : 0;
@@ -581,8 +601,9 @@ export function tenterAlea(state, log, ctx, exposition = 1) {
   if (!touches.length) return false;
   log({
     type: 'alea',
-    texte: `${h.nom} sur ${nomRegion(state.world, regionId)}. ${touches.length} membre(s) touché(s).`,
+    texte: `${h.nom} sur ${nomRegion(state.world, regionId)}. ${touches.length} de ${g.nom} touché(s).`,
     regionId,
+    groupe: g.id,
   });
   return true;
 }
@@ -606,11 +627,12 @@ export function couleurLog(type) {
  * Fouille le site de la région courante. Action ponctuelle : un site ne se
  * fouille qu'une fois, et il peut être gardé.
  */
-export function fouillerSite(state, rng, log) {
-  const r = state.world.regions[state.player.regionId];
+export function fouillerSite(state, rng, log, groupe) {
+  const g = groupe || groupeActif(state);
+  const r = state.world.regions[g.regionId];
   if (!r.site || !r.site.connu) return { ok: false, motif: 'Aucun site repéré ici.' };
   if (r.site.fouille) return { ok: false, motif: 'Ce site a déjà été vidé.' };
-  const debout = state.player.squad.filter(estDebout);
+  const debout = deboutDe(g);
   if (!debout.length) return { ok: false, motif: 'Personne n’est en état.' };
 
   const def = POI[r.site.type];
@@ -625,9 +647,9 @@ export function fouillerSite(state, rng, log) {
 
   // Le site est gardé ? On le saura en entrant.
   if (rng.chance(def.danger)) {
-    const bande = bandeLocale(state, { rng });
+    const bande = bandeLocale(state, { rng }, g);
     log({ type: 'site', texte: `${def.nom} : on n’est pas seuls.`, important: true, regionId: r.i });
-    const res = combatContre(state, bande, log, { rng });
+    const res = combatContre(state, bande, log, { rng }, g);
     if (res.vainqueur !== 'A') {
       return { ok: true, combat: true, gagne: false, motif: 'Le site reste aux autres.' };
     }
@@ -639,7 +661,7 @@ export function fouillerSite(state, rng, log) {
     const [min, max] = def.loot[k];
     const q = rng.irange(min, max);
     if (q <= 0) continue;
-    const reel = ajouterAuSac(state, k, q);
+    const reel = ajouterAuSac(state, k, q, g);
     if (reel > 0) pris.push(`${reel} ${COMMODITIES[k].nom.toLowerCase()}`);
   }
   const cr = rng.irange(def.credits[0], def.credits[1]);
@@ -652,8 +674,8 @@ export function fouillerSite(state, rng, log) {
     const choix = Object.keys(PALIERS_ITEM).filter((k) => PALIERS_ITEM[k] === palier);
     if (!choix.length) continue;
     const key = rng.pick(choix);
-    if (state.player.objets.length < 40) {
-      state.player.objets.push(key);
+    if (g.objets.length < 40) {
+      g.objets.push(key);
       objets.push(ITEMS[key].nom);
     }
   }

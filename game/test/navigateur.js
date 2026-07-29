@@ -14,6 +14,7 @@ import { nouvellePartie, avancer } from '../src/sim.js';
 import { fonderBase, lancerConstruction, lancerRecherche } from '../src/base.js';
 import { donnerOrdre } from '../src/squad.js';
 import { serialiser } from '../src/save.js';
+import { groupeActif } from '../src/groupes.js';
 
 const RACINE = resolve(new URL('..', import.meta.url).pathname);
 const CAPTURES = join(RACINE, 'captures');
@@ -73,8 +74,8 @@ function partieAvancee() {
   const s = nouvellePartie(20260729, { maintenant: Date.now() });
   const vide = s.world.regions.find((r) => !r.colonie && r.decouvert)
     || s.world.regions.find((r) => !r.colonie);
-  s.player.regionId = vide.i;
-  Object.assign(s.player.inventaire, { ferraille: 200, polymere: 60, composant: 10, rations: 300 });
+  groupeActif(s).regionId = vide.i;
+  Object.assign(groupeActif(s).inventaire, { ferraille: 200, polymere: 60, composant: 10, rations: 300 });
   fonderBase(s, () => {});
   Object.assign(s.base.stock, {
     ferraille: 320, polymere: 140, composant: 45, minerai: 130,
@@ -168,6 +169,20 @@ ok(!deborde, 'aucun débordement horizontal');
 const boutonsPetits = await page.evaluate(() => [...document.querySelectorAll('button')]
   .filter((b) => b.getBoundingClientRect().height < 28).length);
 ok(boutonsPetits === 0, 'toutes les cibles tactiles font au moins 28 px', `${boutonsPetits} trop petites`);
+// L'en-tête a une largeur fixe et gagne des indicateurs : il faut vérifier que
+// les blocs ne se marchent pas dessus, et que la vitesse reste atteignable.
+const enTete = await page.evaluate(() => {
+  const blocs = [...document.querySelectorAll('#barre-haut .hd-bloc')].map((b) => b.getBoundingClientRect());
+  let chevauche = 0;
+  for (let i = 1; i < blocs.length; i++) if (blocs[i].left < blocs[i - 1].right - 0.5) chevauche++;
+  const v = document.querySelector('#barre-haut .vitesse').getBoundingClientRect();
+  const boite = document.querySelector('#barre-haut .hd-metriques').getBoundingClientRect();
+  const rognes = blocs.filter((b) => b.right > boite.right + 0.5).length;
+  return { chevauche, rognes, vitesseVisible: v.right <= window.innerWidth + 1 && v.width > 0 };
+});
+ok(enTete.chevauche === 0, 'les indicateurs de l’en-tête ne se chevauchent pas', `${enTete.chevauche} paires`);
+ok(enTete.vitesseVisible, 'le sélecteur de vitesse reste dans l’écran');
+ok(enTete.rognes === 0, 'aucun indicateur n’est rogné à 390 px', `${enTete.rognes} rognés`);
 
 console.log('\n5 bis. Installation sur l’écran d’accueil');
 const ressources = await page.evaluate(async () => {
@@ -245,13 +260,13 @@ await page.waitForTimeout(400);
 const articles = await page.locator('[data-a="acheter-item"]').count();
 ok(articles > 0, 'l’armurier propose de l’équipement', `${articles} articles`);
 await page.screenshot({ path: join(CAPTURES, '09-etal.png') });
-const objetsAvant = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).player.objets.length);
+const objetsAvant = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).player.groupes[0].objets.length);
 const abordable = await page.locator('[data-a="acheter-item"]:not([disabled])').count();
 if (abordable) {
   await page.click('[data-a="acheter-item"]:not([disabled])');
   await page.waitForTimeout(500);
 }
-const objetsApres = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).player.objets.length);
+const objetsApres = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).player.groupes[0].objets.length);
 ok(!abordable || objetsApres > objetsAvant, 'un achat d’équipement arrive dans la réserve',
   `${objetsAvant} → ${objetsApres}`);
 await page.click('[data-a="fermer"]');
@@ -293,7 +308,8 @@ const monde = await page.evaluate(() => {
   return {
     meteo: s.world.meteo && s.world.meteo.type,
     caravanes: (s.world.caravanes || []).length,
-    cohesion: s.player.cohesion,
+    cohesion: s.player.groupes[0].cohesion,
+    groupes: s.player.groupes.length,
     sites: s.world.regions.filter((r) => r.site).length,
   };
 });
@@ -308,14 +324,93 @@ ok(/Chronique du monde/.test(texteMonde), 'l’écran Monde tient une chronique'
 ok(/Routes marchandes/.test(texteMonde), 'l’écran Monde suit les routes marchandes');
 await page.screenshot({ path: join(CAPTURES, '13-monde.png'), fullPage: true });
 
+console.log('\n8 quinquies. Groupes : détacher, assigner, regrouper');
+await page.click('[data-a="onglet"][data-k="escouade"]');
+await page.waitForTimeout(300);
+ok(await page.locator('.grp').count() >= 1, 'la barre de groupes est affichée');
+
+// Tâche individuelle : on ouvre une fiche et on donne un ordre à une personne.
+await page.locator('details.perso summary').first().click();
+await page.waitForTimeout(250);
+await page.locator('[data-a="tache"][data-k="chasse"]').first().click();
+await page.waitForTimeout(400);
+const tacheOk = await page.evaluate(() => {
+  const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  return s.player.groupes.some((g) => g.membres.some((c) => c.tache && c.tache.type === 'chasse'));
+});
+ok(tacheOk, 'une tâche personnelle est enregistrée sur le membre');
+
+// Détachement : on coche quelqu'un, on le détache, on vérifie l'état.
+const avantGroupes = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).player.groupes.length);
+await page.locator('[data-a="detacher-sel"]').first().click();
+await page.waitForTimeout(300);
+const boutonDetacher = page.locator('[data-a="detacher"]:not([disabled])');
+ok(await boutonDetacher.count() > 0, 'le bouton de détachement s’active une fois quelqu’un choisi');
+await boutonDetacher.first().click();
+await page.waitForTimeout(500);
+const apres = await page.evaluate(() => {
+  const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  return {
+    n: s.player.groupes.length,
+    membres: s.player.groupes.reduce((t, g) => t + g.membres.length, 0),
+    rations: s.player.groupes.map((g) => g.inventaire.rations),
+  };
+});
+ok(apres.n === avantGroupes + 1, 'un nouveau groupe existe', `${avantGroupes} → ${apres.n}`);
+ok(apres.membres === 3, 'personne n’a été perdu ni dupliqué', `${apres.membres}`);
+ok(apres.rations.every((r) => r > 0), 'les deux groupes ont des vivres', apres.rations.join(' / '));
+await page.screenshot({ path: join(CAPTURES, '15-groupes.png'), fullPage: true });
+
+// La carte doit montrer les deux groupes, pas seulement celui qu'on regarde.
+await page.click('[data-a="onglet"][data-k="carte"]');
+await page.waitForTimeout(400);
+const marqueurs = await page.evaluate(() => {
+  const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const c = document.querySelector('#carte');
+  const ctx = c.getContext('2d');
+  const CELL = Math.round(c.width / 10);
+  // Un marqueur laisse du blanc franc dans sa case ; on le cherche là où le
+  // moteur dit qu'un groupe se trouve.
+  return s.player.groupes.map((g) => {
+    const x = (g.regionId % 10) * CELL;
+    const y = Math.floor(g.regionId / 10) * CELL;
+    const d = ctx.getImageData(x + 4, y + 4, 8, 8).data;
+    let blancs = 0;
+    for (let i = 0; i < d.length; i += 4) if (d[i] > 220 && d[i + 1] > 220) blancs++;
+    return blancs;
+  });
+});
+ok(marqueurs.every((m) => m > 0), 'chaque groupe est marqué sur la carte', marqueurs.join(' / '));
+await page.screenshot({ path: join(CAPTURES, '16-carte-groupes.png') });
+await page.click('[data-a="onglet"][data-k="escouade"]');
+await page.waitForTimeout(300);
+
+// On bascule d'un groupe à l'autre : le point de vue suit.
+await page.locator('.grp').nth(1).click();
+await page.waitForTimeout(400);
+const bascule = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).player.groupeActif);
+ok(!!bascule, 'on peut changer de groupe affiché');
+
+// Regrouper : les deux sont au même endroit, donc l'absorption est proposée.
+const fusion = page.locator('[data-a="fusionner"]');
+ok(await fusion.count() > 0, 'le regroupement est proposé quand les groupes se croisent');
+await fusion.first().click();
+await page.waitForTimeout(500);
+const refusion = await page.evaluate(() => {
+  const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  return { n: s.player.groupes.length, membres: s.player.groupes.reduce((t, g) => t + g.membres.length, 0) };
+});
+ok(refusion.n === avantGroupes, 'les groupes sont réunis', `${refusion.n}`);
+ok(refusion.membres === 3, 'tout le monde est rassemblé', `${refusion.membres}`);
+
 console.log('\n8 quater. Retour après une longue absence');
 // Le pire cas réel : le plafond de rattrapage, dix-sept mille heures à rejouer
 // au chargement. Ça doit se voir à l'écran et rendre la main, pas figer l'onglet.
 // Une escouade bien approvisionnée, pour que le rattrapage aille loin plutôt
 // que de s'arrêter sur une fin de partie au bout de quelques centaines d'heures.
 const veille = nouvellePartie(20260729, { maintenant: Date.now() });
-veille.player.inventaire.rations = 200000;
-veille.player.inventaire.medkit = 500;
+groupeActif(veille).inventaire.rations = 200000;
+groupeActif(veille).inventaire.medkit = 500;
 const veilleTxt = serialiser(veille);
 await page.reload({ waitUntil: 'networkidle' });
 await page.evaluate((txt) => {

@@ -5,6 +5,7 @@
 
 import { COMMODITIES, COMMODITY_KEYS, FACTIONS } from './data.js';
 import { chemin, colonieParId, colonieDe, nomRegion, distance } from './world.js';
+import { groupeActif } from './groupes.js';
 import { cibleStock, prixUnitaire } from './economy.js';
 import { idDepuisRng } from './characters.js';
 
@@ -193,7 +194,8 @@ export function tickCaravanes(state, log, ctx) {
 
 /** Caravanes présentes dans la région du joueur. */
 export function caravanesIci(state) {
-  return (state.world.caravanes || []).filter((c) => c.regionId === state.player.regionId);
+  const g = groupeActif(state);
+  return (state.world.caravanes || []).filter((c) => g && c.regionId === g.regionId);
 }
 
 /**

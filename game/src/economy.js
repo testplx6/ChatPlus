@@ -9,6 +9,7 @@ import {
 import { comp, gagnerXp, portage } from './characters.js';
 import { remiseDe, palierBonus } from './allegeance.js';
 import { distance as distanceCases } from './world.js';
+import { groupeActif } from './groupes.js';
 
 /** Stock « confortable » visé par une colonie pour une marchandise. */
 export function cibleStock(col, key) {
@@ -293,16 +294,17 @@ export function poidsInventaire(inv) {
  * Le prix bouge au fur et à mesure de la transaction : acheter tout le stock
  * d'une petite ville coûte cher.
  */
-export function acheter(state, col, key, qte) {
-  const negoc = meilleurCommercant(state.player.squad);
+export function acheter(state, col, key, qte, groupe) {
+  const g = groupe || groupeActif(state);
+  const negoc = meilleurCommercant(g.membres);
   const hab = negoc ? comp(negoc, 'commerce') : 0;
   const repu = state.player.reputation[col.faction] || 0;
   let restant = Math.floor(qte);
   let cout = 0;
   let achetes = 0;
 
-  const capacite = capacitePortage(state);
-  const libre = capacite - poidsInventaire(state.player.inventaire);
+  const capacite = capacitePortage(state, g);
+  const libre = capacite - poidsInventaire(g.inventaire);
   const poidsU = COMMODITIES[key].poids;
   const maxPoids = poidsU > 0 ? Math.floor(libre / poidsU) : restant;
   if (maxPoids <= 0) return { ok: false, motif: 'Sac plein.', qte: 0, cout: 0 };
@@ -320,16 +322,17 @@ export function acheter(state, col, key, qte) {
   if (achetes === 0) return { ok: false, motif: 'Rien à acheter à ce prix.', qte: 0, cout: 0 };
   cout = Math.round(cout);
   state.player.credits -= cout;
-  state.player.inventaire[key] = (state.player.inventaire[key] || 0) + achetes;
+  g.inventaire[key] = (g.inventaire[key] || 0) + achetes;
   if (negoc) gagnerXp(negoc, 'commerce', 0.6 + achetes * 0.06);
   return { ok: true, qte: achetes, cout };
 }
 
-export function vendre(state, col, key, qte) {
-  const negoc = meilleurCommercant(state.player.squad);
+export function vendre(state, col, key, qte, groupe) {
+  const g = groupe || groupeActif(state);
+  const negoc = meilleurCommercant(g.membres);
   const hab = negoc ? comp(negoc, 'commerce') : 0;
   const repu = state.player.reputation[col.faction] || 0;
-  let restant = Math.min(Math.floor(qte), state.player.inventaire[key] || 0);
+  let restant = Math.min(Math.floor(qte), g.inventaire[key] || 0);
   let gain = 0;
   let vendus = 0;
   while (restant > 0) {
@@ -341,17 +344,18 @@ export function vendre(state, col, key, qte) {
   }
   if (vendus === 0) return { ok: false, motif: 'Rien à vendre.', qte: 0, gain: 0 };
   gain = Math.round(gain);
-  state.player.inventaire[key] -= vendus;
+  g.inventaire[key] -= vendus;
   state.player.credits += gain;
   if (negoc) gagnerXp(negoc, 'commerce', 0.6 + vendus * 0.06);
   return { ok: true, qte: vendus, gain };
 }
 
-/** Capacité de portage totale de l'escouade. */
-export function capacitePortage(state) {
+/** Capacité de portage d'un groupe. Ce qu'il porte, il le porte lui-même. */
+export function capacitePortage(state, groupe) {
+  const g = groupe || groupeActif(state);
   let cap = 0;
   const bonus = (state.base.recherche.logistique || 0) * 0.15;
-  for (const c of state.player.squad) {
+  for (const c of (g ? g.membres : [])) {
     // Un mort ne porte plus rien, et un K.O. est lui-même porté par les autres.
     if (c.etat === 'mort' || c.etat === 'ko') continue;
     cap += portage(c, bonus);
@@ -412,14 +416,15 @@ export function prixItem(col, key, coef = 1, habilete = 0, repu = 0, remise = 0)
   };
 }
 
-export function acheterItem(state, col, index) {
+export function acheterItem(state, col, index, groupe) {
+  const g = groupe || groupeActif(state);
   const etal = col.etal;
   if (!etal || !etal.items[index]) return { ok: false, motif: 'Article déjà parti.' };
   const ligne = etal.items[index];
   if (ligne.qte <= 0) return { ok: false, motif: 'Rupture de stock.' };
-  if (state.player.objets.length >= 40) return { ok: false, motif: 'Réserve d’équipement pleine.' };
+  if (g.objets.length >= 40) return { ok: false, motif: 'Réserve d’équipement pleine.' };
 
-  const negoc = meilleurCommercant(state.player.squad);
+  const negoc = meilleurCommercant(g.membres);
   const hab = negoc ? comp(negoc, 'commerce') : 0;
   const repu = state.player.reputation[col.faction] || 0;
   const p = prixItem(col, ligne.key, ligne.coef, hab, repu, remiseDe(state, col.faction)).achat;
@@ -427,19 +432,20 @@ export function acheterItem(state, col, index) {
 
   state.player.credits -= p;
   ligne.qte -= 1;
-  state.player.objets.push(ligne.key);
+  g.objets.push(ligne.key);
   if (negoc) gagnerXp(negoc, 'commerce', 2.5);
   return { ok: true, prix: p, nom: ITEMS[ligne.key].nom };
 }
 
-export function vendreItem(state, col, indexObjet) {
-  const key = state.player.objets[indexObjet];
+export function vendreItem(state, col, indexObjet, groupe) {
+  const g = groupe || groupeActif(state);
+  const key = g.objets[indexObjet];
   if (!key) return { ok: false, motif: 'Objet introuvable.' };
-  const negoc = meilleurCommercant(state.player.squad);
+  const negoc = meilleurCommercant(g.membres);
   const hab = negoc ? comp(negoc, 'commerce') : 0;
   const repu = state.player.reputation[col.faction] || 0;
   const p = prixItem(col, key, 1, hab, repu, remiseDe(state, col.faction)).vente;
-  state.player.objets.splice(indexObjet, 1);
+  g.objets.splice(indexObjet, 1);
   state.player.credits += p;
   if (negoc) gagnerXp(negoc, 'commerce', 1.8);
   return { ok: true, prix: p, nom: ITEMS[key].nom };

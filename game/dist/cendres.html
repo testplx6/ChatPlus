@@ -81,14 +81,31 @@ body {
   border-bottom: 1px solid var(--bord);
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   /* Une seule ligne, toujours : l'en-tête ne doit jamais voler de la hauteur
      à la carte sur un petit écran. */
   flex-wrap: nowrap;
   overflow: hidden;
 }
 
-.hd-bloc { display: flex; align-items: baseline; gap: 4px; min-width: 0; }
+/* Les indicateurs rognent par la droite plutôt que de se comprimer : un bloc
+   comprimé laisse son libellé déborder sur le voisin, ce qui rend l'en-tête
+   illisible dès qu'on y ajoute une information. */
+.hd-metriques {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  overflow: hidden;
+}
+.hd-bloc { display: flex; align-items: baseline; gap: 4px; flex: 0 0 auto; }
+.hd-eti, .hd-val { flex: 0 0 auto; }
+/* La saison tient en un losange coloré : écrire « GRANDES PLUIES » dans une
+   barre de 390 px coûte deux autres indicateurs. Le nom complet est dans
+   l'infobulle, et l'écran Monde le donne en toutes lettres. */
+.hd-saison { font-size: 13px; line-height: 1; }
+.hd-cycle { font-size: 11px; color: var(--texte-3); }
 .hd-eti { font-size: 8px; letter-spacing: .1em; color: var(--texte-3); text-transform: uppercase; }
 .hd-val { font-size: 12px; color: var(--texte); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .hd-val.cyan { color: var(--cyan); }
@@ -105,7 +122,7 @@ body {
   color: var(--texte-2);
   font: inherit;
   font-size: 10px;
-  padding: 3px 7px;
+  padding: 3px 6px;
   min-height: 30px; /* cible tactile : jamais moins */
   cursor: pointer;
 }
@@ -377,6 +394,55 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
 }
 .toast.err { border-color: var(--rouge); color: var(--rouge); }
 
+/* ------------------------------------------------------------------ Groupes */
+/* Une ligne de vignettes : où est chacun, ce qu'il fait. Ça défile
+   horizontalement plutôt que de se comprimer — à quatre groupes sur 360 px,
+   trois mots par vignette ne tiennent pas. */
+
+.groupes {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 3px;
+  scrollbar-width: thin;
+}
+.grp {
+  flex: 0 0 auto;
+  min-width: 118px;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 9px;
+  text-align: left;
+  background: var(--panneau-2);
+  border: 1px solid var(--bord);
+  color: var(--texte-2);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.grp.on { border-color: var(--cyan); color: var(--texte); }
+.grp-n { font-size: 12px; color: var(--texte); }
+.grp.on .grp-n { color: var(--cyan); }
+.grp-d { color: var(--texte-3); }
+.grp-o { color: var(--texte-2); }
+
+/* Grille de petits boutons : tâches d'un membre, cases de détachement. */
+.taches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 6px 0;
+}
+.taches .act.mini {
+  flex: 0 1 auto;
+  width: auto;              /* .act est en pleine largeur : ici on veut une ligne */
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+}
+
 /* ------------------------------------------------------------------ Rattrapage */
 /* Deux ans hors ligne, ça se rejoue : autant le montrer plutôt que de laisser
    croire que la page a planté. */
@@ -581,7 +647,9 @@ function seedFromString(str) {
 
 // Alias d'import
 const distanceCases = distance;
+const deboutDe = debout;
 const nivBat = niveau;
+const vivantsDe = vivants;
 const progresContrat = progres;
 
 // ===== src/data.js ===================================================
@@ -2276,6 +2344,225 @@ function etatCourt(c) {
   return 'OK';
 }
 
+// ===== src/groupes.js ================================================
+// Les groupes : l'escouade n'est plus un bloc unique.
+//
+// Un groupe a une position, un ordre, des gens et ce qu'ils portent. Chaque
+// membre peut recevoir une tâche personnelle qui prime sur l'ordre du groupe :
+// pendant que deux ferraillent, le troisième chasse. En marche, tout le monde
+// marche — on ne s'entraîne pas en colonne.
+//
+// Les personnages vivent dans `groupe.membres`, et nulle part ailleurs : un
+// personnage appartient à exactement un groupe, ce qui évite d'avoir à
+// synchroniser deux listes et garde l'état sérialisable tel quel.
+
+
+/** Tâches qu'un membre peut prendre seul, en marge de l'ordre du groupe. */
+const TACHES_INDIVIDUELLES = ['repos', 'fouille', 'mine', 'chasse', 'exploration', 'entrainement'];
+
+/** Noms proposés aux groupes détachés, dans l'ordre. */
+const NOMS = ['Convoi', 'Pointe', 'Arrière-garde', 'Éclaireurs', 'Escorte'];
+
+/** Deux groupes sans rien ; l'antenne en autorise davantage. */
+const GROUPES_BASE = 2;
+const GROUPES_MAX = 4;
+
+/**
+ * Combien de groupes on peut tenir à la fois. Coordonner des gens qu'on ne voit
+ * pas suppose de quoi leur parler : l'antenne de l'avant-poste sert à ça.
+ */
+function maxGroupes(state) {
+  // Lecture directe du bâtiment plutôt que `niveau()` de base.js : ce module est
+  // en amont de l'avant-poste dans l'ordre des dépendances, et un cycle
+  // d'imports casserait l'assemblage en fichier unique.
+  const b = state.base;
+  const ant = b && b.fonde && b.batiments ? (b.batiments.antenne || 0) : 0;
+  return Math.min(GROUPES_MAX, GROUPES_BASE + Math.floor(ant / 2));
+}
+
+// ---------------------------------------------------------------------------
+// Construction et accès
+// ---------------------------------------------------------------------------
+
+function groupeVide(id, nom, regionId, t = 0) {
+  const inventaire = {};
+  for (const k of COMMODITY_KEYS) inventaire[k] = 0;
+  return {
+    id,
+    nom,
+    regionId,
+    ordre: { type: 'repos' },
+    membres: [],
+    inventaire,
+    objets: [],
+    reste: {},
+    bilan: { res: {}, depuis: t },
+    recolteHeure: null,
+    cohesion: 55,
+    nuit: false,
+  };
+}
+
+function groupes(state) {
+  return (state.player && state.player.groupes) || [];
+}
+
+function groupeParId(state, id) {
+  return groupes(state).find((g) => g.id === id) || null;
+}
+
+/** Le groupe que l'interface montre. Toujours un groupe réel, jamais null. */
+function groupeActif(state) {
+  const gs = groupes(state);
+  if (!gs.length) return null;
+  return gs.find((g) => g.id === state.player.groupeActif) || gs[0];
+}
+
+function choisirGroupe(state, id) {
+  if (groupeParId(state, id)) state.player.groupeActif = id;
+}
+
+/** Tous les personnages, groupes confondus. L'ordre est stable. */
+function tousLesMembres(state) {
+  const out = [];
+  for (const g of groupes(state)) for (const c of g.membres) out.push(c);
+  return out;
+}
+
+function groupeDe(state, perso) {
+  return groupes(state).find((g) => g.membres.some((c) => c.id === perso.id)) || null;
+}
+
+function vivants(g) {
+  return g.membres.filter(estVivant);
+}
+
+function debout(g) {
+  return g.membres.filter(estDebout);
+}
+
+/** Un groupe qui n'a plus personne debout ne fait plus rien de son ordre. */
+function groupeActifEnJeu(g) {
+  return g.membres.some(estVivant);
+}
+
+// ---------------------------------------------------------------------------
+// Tâches
+// ---------------------------------------------------------------------------
+
+/**
+ * La tâche que ce membre exécute réellement. En marche, l'ordre du groupe
+ * l'emporte sur tout : on ne mine pas en avançant.
+ */
+function tacheDe(g, c) {
+  const ordre = g.ordre || { type: 'repos' };
+  if (ordre.type === 'voyage') return ordre;
+  if (!c.tache) return ordre;
+  if (!TACHES_INDIVIDUELLES.includes(c.tache.type)) return ordre;
+  return c.tache;
+}
+
+/** `null` remet le membre sous l'ordre du groupe. */
+function assignerTache(state, perso, tache) {
+  if (!tache) { delete perso.tache; return { ok: true }; }
+  if (!TACHES_INDIVIDUELLES.includes(tache.type)) {
+    return { ok: false, motif: 'Cette tâche ne se prend pas seul.' };
+  }
+  perso.tache = Object.assign({}, tache);
+  return { ok: true };
+}
+
+/** Combien de membres exécutent chaque tâche, pour l'affichage. */
+function repartition(g) {
+  const out = {};
+  for (const c of g.membres) {
+    if (!estVivant(c)) continue;
+    const t = tacheDe(g, c).type;
+    out[t] = (out[t] || 0) + 1;
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Scinder et fusionner
+// ---------------------------------------------------------------------------
+
+function nomLibre(state) {
+  const pris = new Set(groupes(state).map((g) => g.nom));
+  for (const n of NOMS) if (!pris.has(n)) return n;
+  let i = 2;
+  while (pris.has(`Groupe ${i}`)) i++;
+  return `Groupe ${i}`;
+}
+
+/**
+ * Détache des membres dans un nouveau groupe, sur place. Les vivres et le
+ * matériel suivent au prorata : c'est ça qui donne son prix à la séparation.
+ * Partir à deux avec un tiers des rations, c'est un choix, pas une formalité.
+ */
+function scinder(state, g, ids, rng, nom) {
+  if (groupes(state).length >= maxGroupes(state)) {
+    return { ok: false, motif: 'Pas de quoi coordonner un groupe de plus. Montez l’antenne.' };
+  }
+  const partants = g.membres.filter((c) => ids.includes(c.id) && estVivant(c));
+  if (!partants.length) return { ok: false, motif: 'Personne à détacher.' };
+  const restants = g.membres.filter((c) => !ids.includes(c.id) && estVivant(c));
+  if (!restants.length) return { ok: false, motif: 'Il faut laisser quelqu’un derrière.' };
+  if (partants.some((c) => !estDebout(c))) {
+    return { ok: false, motif: 'On ne détache pas quelqu’un qui est à terre.' };
+  }
+
+  const neuf = groupeVide(idDepuisRng(rng, 'g'), nom || nomLibre(state), g.regionId, state.temps);
+  // Les K.O. restent avec le groupe d'origine : ils sont portés, pas envoyés.
+  for (const c of partants) {
+    g.membres.splice(g.membres.indexOf(c), 1);
+    neuf.membres.push(c);
+  }
+
+  const part = partants.length / (partants.length + restants.length);
+  for (const k of Object.keys(g.inventaire)) {
+    const q = Math.floor((g.inventaire[k] || 0) * part);
+    if (q <= 0) continue;
+    g.inventaire[k] -= q;
+    neuf.inventaire[k] = (neuf.inventaire[k] || 0) + q;
+  }
+
+  state.player.groupes.push(neuf);
+  state.player.groupeActif = neuf.id;
+  return { ok: true, groupe: neuf };
+}
+
+/** Fusionne `b` dans `a`. Les deux doivent être au même endroit. */
+function fusionner(state, a, b) {
+  if (a.id === b.id) return { ok: false, motif: 'Même groupe.' };
+  if (a.regionId !== b.regionId) return { ok: false, motif: 'Les deux groupes ne sont pas au même endroit.' };
+  for (const c of b.membres) a.membres.push(c);
+  for (const k of Object.keys(b.inventaire)) {
+    if (!b.inventaire[k]) continue;
+    a.inventaire[k] = (a.inventaire[k] || 0) + b.inventaire[k];
+  }
+  for (const o of b.objets || []) a.objets.push(o);
+  // La cohésion d'un groupe recomposé n'est pas la somme des deux : on se
+  // réhabitue.
+  a.cohesion = Math.round((a.cohesion + b.cohesion) / 2);
+  retirerGroupe(state, b);
+  if (state.player.groupeActif === b.id) state.player.groupeActif = a.id;
+  return { ok: true };
+}
+
+function retirerGroupe(state, g) {
+  const i = state.player.groupes.indexOf(g);
+  if (i >= 0) state.player.groupes.splice(i, 1);
+  if (state.player.groupeActif === g.id && state.player.groupes.length) {
+    state.player.groupeActif = state.player.groupes[0].id;
+  }
+}
+
+/** Un groupe rejoint par un autre au même endroit peut être absorbé. */
+function fusionnablesAvec(state, g) {
+  return groupes(state).filter((o) => o.id !== g.id && o.regionId === g.regionId);
+}
+
 // ===== src/allegeance.js =============================================
 // Allégeance. Jusqu'ici les factions étaient un décor avec lequel on
 // commerçait ; on peut désormais entrer à leur service, monter en grade, en
@@ -2310,6 +2597,13 @@ const RANGS = [
 
 /** Réputation minimale pour être seulement reçu. */
 const REPUTATION_MINIMALE = 20;
+
+/** Le premier groupe en `regionId` qui porte assez de `key`. */
+function porteurA(state, regionId, key, quantite) {
+  return groupes(state).find(
+    (g) => g.regionId === regionId && (g.inventaire[key] || 0) >= quantite
+  ) || null;
+}
 
 function rangDe(all) {
   if (!all) return null;
@@ -2509,9 +2803,15 @@ function avancementOrdre(state, o) {
       return { fait: vu ? 1 : 0, total: 1, pret: vu, texte: vu ? 'secteur vu' : 'non exploré' };
     }
     case 'ravitaillement': {
-      const q = Math.floor(state.player.inventaire[o.ressource] || 0);
+      // Le groupe qui livre n'a pas d'importance : ce qui compte, c'est qu'un
+      // groupe soit sur place avec la marchandise.
       const col = colonieParId(state.world, o.colonieId);
-      const surPlace = col && state.player.regionId === col.regionId;
+      const porteur = col ? porteurA(state, col.regionId, o.ressource, o.quantite) : null;
+      const q = Math.max(
+        porteur ? Math.floor(porteur.inventaire[o.ressource] || 0) : 0,
+        Math.max(0, ...groupes(state).map((g) => Math.floor(g.inventaire[o.ressource] || 0)))
+      );
+      const surPlace = !!porteur;
       return {
         fait: Math.min(q, o.quantite),
         total: o.quantite,
@@ -2574,7 +2874,8 @@ function tickAllegeance(state, log, ctx) {
       const o = all.ordre;
       if (o.type === 'ravitaillement') {
         const col = colonieParId(state.world, o.colonieId);
-        state.player.inventaire[o.ressource] -= o.quantite;
+        const porteur = col ? porteurA(state, col.regionId, o.ressource, o.quantite) : null;
+        if (porteur) porteur.inventaire[o.ressource] -= o.quantite;
         if (col) col.stock[o.ressource] = (col.stock[o.ressource] || 0) + o.quantite;
       }
       state.player.credits += o.recompense;
@@ -2623,12 +2924,14 @@ function tickAllegeance(state, log, ctx) {
  * Renfort : à partir de Capitaine, une escouade amie peut arriver au milieu
  * d'un combat livré en territoire ami. Retourne le nombre de renforts.
  */
-function renfortsDisponibles(state) {
+function renfortsDisponibles(state, groupe) {
   const all = state.player.allegeance;
   if (!all) return 0;
   const rang = rangDe(all);
   if (rang.index < 3) return 0;
-  const r = state.world.regions[state.player.regionId];
+  const g = groupe || groupeActif(state);
+  if (!g) return 0;
+  const r = state.world.regions[g.regionId];
   if (r.controle !== all.faction) return 0;
   return rang.index - 2;
 }
@@ -3147,16 +3450,17 @@ function poidsInventaire(inv) {
  * Le prix bouge au fur et à mesure de la transaction : acheter tout le stock
  * d'une petite ville coûte cher.
  */
-function acheter(state, col, key, qte) {
-  const negoc = meilleurCommercant(state.player.squad);
+function acheter(state, col, key, qte, groupe) {
+  const g = groupe || groupeActif(state);
+  const negoc = meilleurCommercant(g.membres);
   const hab = negoc ? comp(negoc, 'commerce') : 0;
   const repu = state.player.reputation[col.faction] || 0;
   let restant = Math.floor(qte);
   let cout = 0;
   let achetes = 0;
 
-  const capacite = capacitePortage(state);
-  const libre = capacite - poidsInventaire(state.player.inventaire);
+  const capacite = capacitePortage(state, g);
+  const libre = capacite - poidsInventaire(g.inventaire);
   const poidsU = COMMODITIES[key].poids;
   const maxPoids = poidsU > 0 ? Math.floor(libre / poidsU) : restant;
   if (maxPoids <= 0) return { ok: false, motif: 'Sac plein.', qte: 0, cout: 0 };
@@ -3174,16 +3478,17 @@ function acheter(state, col, key, qte) {
   if (achetes === 0) return { ok: false, motif: 'Rien à acheter à ce prix.', qte: 0, cout: 0 };
   cout = Math.round(cout);
   state.player.credits -= cout;
-  state.player.inventaire[key] = (state.player.inventaire[key] || 0) + achetes;
+  g.inventaire[key] = (g.inventaire[key] || 0) + achetes;
   if (negoc) gagnerXp(negoc, 'commerce', 0.6 + achetes * 0.06);
   return { ok: true, qte: achetes, cout };
 }
 
-function vendre(state, col, key, qte) {
-  const negoc = meilleurCommercant(state.player.squad);
+function vendre(state, col, key, qte, groupe) {
+  const g = groupe || groupeActif(state);
+  const negoc = meilleurCommercant(g.membres);
   const hab = negoc ? comp(negoc, 'commerce') : 0;
   const repu = state.player.reputation[col.faction] || 0;
-  let restant = Math.min(Math.floor(qte), state.player.inventaire[key] || 0);
+  let restant = Math.min(Math.floor(qte), g.inventaire[key] || 0);
   let gain = 0;
   let vendus = 0;
   while (restant > 0) {
@@ -3195,17 +3500,18 @@ function vendre(state, col, key, qte) {
   }
   if (vendus === 0) return { ok: false, motif: 'Rien à vendre.', qte: 0, gain: 0 };
   gain = Math.round(gain);
-  state.player.inventaire[key] -= vendus;
+  g.inventaire[key] -= vendus;
   state.player.credits += gain;
   if (negoc) gagnerXp(negoc, 'commerce', 0.6 + vendus * 0.06);
   return { ok: true, qte: vendus, gain };
 }
 
-/** Capacité de portage totale de l'escouade. */
-function capacitePortage(state) {
+/** Capacité de portage d'un groupe. Ce qu'il porte, il le porte lui-même. */
+function capacitePortage(state, groupe) {
+  const g = groupe || groupeActif(state);
   let cap = 0;
   const bonus = (state.base.recherche.logistique || 0) * 0.15;
-  for (const c of state.player.squad) {
+  for (const c of (g ? g.membres : [])) {
     // Un mort ne porte plus rien, et un K.O. est lui-même porté par les autres.
     if (c.etat === 'mort' || c.etat === 'ko') continue;
     cap += portage(c, bonus);
@@ -3266,14 +3572,15 @@ function prixItem(col, key, coef = 1, habilete = 0, repu = 0, remise = 0) {
   };
 }
 
-function acheterItem(state, col, index) {
+function acheterItem(state, col, index, groupe) {
+  const g = groupe || groupeActif(state);
   const etal = col.etal;
   if (!etal || !etal.items[index]) return { ok: false, motif: 'Article déjà parti.' };
   const ligne = etal.items[index];
   if (ligne.qte <= 0) return { ok: false, motif: 'Rupture de stock.' };
-  if (state.player.objets.length >= 40) return { ok: false, motif: 'Réserve d’équipement pleine.' };
+  if (g.objets.length >= 40) return { ok: false, motif: 'Réserve d’équipement pleine.' };
 
-  const negoc = meilleurCommercant(state.player.squad);
+  const negoc = meilleurCommercant(g.membres);
   const hab = negoc ? comp(negoc, 'commerce') : 0;
   const repu = state.player.reputation[col.faction] || 0;
   const p = prixItem(col, ligne.key, ligne.coef, hab, repu, remiseDe(state, col.faction)).achat;
@@ -3281,19 +3588,20 @@ function acheterItem(state, col, index) {
 
   state.player.credits -= p;
   ligne.qte -= 1;
-  state.player.objets.push(ligne.key);
+  g.objets.push(ligne.key);
   if (negoc) gagnerXp(negoc, 'commerce', 2.5);
   return { ok: true, prix: p, nom: ITEMS[ligne.key].nom };
 }
 
-function vendreItem(state, col, indexObjet) {
-  const key = state.player.objets[indexObjet];
+function vendreItem(state, col, indexObjet, groupe) {
+  const g = groupe || groupeActif(state);
+  const key = g.objets[indexObjet];
   if (!key) return { ok: false, motif: 'Objet introuvable.' };
-  const negoc = meilleurCommercant(state.player.squad);
+  const negoc = meilleurCommercant(g.membres);
   const hab = negoc ? comp(negoc, 'commerce') : 0;
   const repu = state.player.reputation[col.faction] || 0;
   const p = prixItem(col, key, 1, hab, repu, remiseDe(state, col.faction)).vente;
-  state.player.objets.splice(indexObjet, 1);
+  g.objets.splice(indexObjet, 1);
   state.player.credits += p;
   if (negoc) gagnerXp(negoc, 'commerce', 1.8);
   return { ok: true, prix: p, nom: ITEMS[key].nom };
@@ -3491,7 +3799,8 @@ function tickCaravanes(state, log, ctx) {
 
 /** Caravanes présentes dans la région du joueur. */
 function caravanesIci(state) {
-  return (state.world.caravanes || []).filter((c) => c.regionId === state.player.regionId);
+  const g = groupeActif(state);
+  return (state.world.caravanes || []).filter((c) => g && c.regionId === g.regionId);
 }
 
 /**
@@ -4302,18 +4611,19 @@ function lancerRecherche(state, key) {
   return { ok: true };
 }
 
-function fonderBase(state, log) {
+function fonderBase(state, log, groupe) {
+  const g = groupe || groupeActif(state);
   const base = state.base;
   if (base.fonde) return { ok: false, motif: 'Avant-poste déjà fondé.' };
-  const inv = state.player.inventaire;
+  const inv = g.inventaire;
   if (!peutPayer(inv, COUT_FONDATION)) {
     return { ok: false, motif: 'Il faut 120 ferraille, 40 polymère, 5 composants dans le sac.' };
   }
-  const r = state.world.regions[state.player.regionId];
+  const r = state.world.regions[g.regionId];
   if (r.colonie) return { ok: false, motif: 'Impossible de bâtir dans une ville existante.' };
   payer(inv, COUT_FONDATION);
   base.fonde = true;
-  base.regionId = state.player.regionId;
+  base.regionId = g.regionId;
   base.batiments = {};
   base.defense = 10;
   log({ type: 'base', texte: `Avant-poste fondé. Ici, au moins, c’est chez nous.`, regionId: base.regionId });
@@ -4345,7 +4655,10 @@ function tickBase(state, log, ctx) {
   if (!base.fonde) return null;
   const rng = ctx.rng;
   const rech = base.recherche;
-  const surPlace = state.player.regionId === base.regionId;
+  // N'importe quel groupe présent fait avancer les chantiers. Test direct
+  // plutôt que `filter` : c'est du travail par heure de jeu, pas par clic.
+  let surPlace = false;
+  for (const g of state.player.groupes) if (g.regionId === base.regionId) { surPlace = true; break; }
 
   // --- Énergie
   const gen = niveau(base, 'generateur');
@@ -4416,12 +4729,15 @@ function tickBase(state, log, ctx) {
     const item = base.file[0];
     let vitesse = 1 + Math.min(1, (base.pop || 0) / 30);
     if (surPlace) {
-      // L'escouade met la main à la pâte
+      // Ceux qui sont là mettent la main à la pâte
       let ing = 0;
-      for (const c of state.player.squad) {
-        if (!estDebout(c)) continue;
-        ing += comp(c, 'ingenierie');
-        gagnerXp(c, 'ingenierie', 0.25);
+      for (const g of state.player.groupes) {
+        if (g.regionId !== base.regionId) continue;
+        for (const c of g.membres) {
+          if (!estDebout(c)) continue;
+          ing += comp(c, 'ingenierie');
+          gagnerXp(c, 'ingenierie', 0.25);
+        }
       }
       vitesse += Math.min(1.2, ing / 160);
     }
@@ -4457,7 +4773,9 @@ function tickBase(state, log, ctx) {
   if (t - base.derniereAttaque > 72 && rng.chance(0.0016 * (1 + reg.danger * 4))) {
     base.derniereAttaque = t;
     const force = rng.irange(20, 45) + Math.floor(t / 600) + Math.round((base.pop || 0) * 1.5);
-    const defense = base.defense + (surPlace ? forceEscouade(state) : 0);
+    // `forceEscouade` ne compte déjà que les gens présents : laisser
+    // l'avant-poste sans personne, c'est le laisser à sa garnison.
+    const defense = base.defense + forceEscouade(state);
     if (defense > force) {
       base.defense = Math.max(0, base.defense - force * 0.3);
       log({
@@ -4489,9 +4807,14 @@ function tickBase(state, log, ctx) {
   return { energie: e };
 }
 
+/** Ce que valent, l'arme à la main, les gens présents à l'avant-poste. */
 function forceEscouade(state) {
+  const base = state.base;
   let f = 0;
-  for (const c of state.player.squad) {
+  const presents = base.fonde
+    ? groupes(state).filter((g) => g.regionId === base.regionId).flatMap((g) => g.membres)
+    : [];
+  for (const c of presents) {
     if (!estDebout(c)) continue;
     f += comp(c, 'melee') * 0.4 + comp(c, 'tir') * 0.4 + comp(c, 'endurance') * 0.2;
   }
@@ -4502,30 +4825,32 @@ function forceEscouade(state) {
 // Transferts sac ↔ avant-poste
 // ---------------------------------------------------------------------------
 
-function deposer(state, key, qte) {
+function deposer(state, key, qte, groupe) {
+  const g = groupe || groupeActif(state);
   const base = state.base;
-  if (!base.fonde || state.player.regionId !== base.regionId) {
+  if (!base.fonde || !g || g.regionId !== base.regionId) {
     return { ok: false, motif: 'Il faut être à l’avant-poste.' };
   }
-  const dispo = state.player.inventaire[key] || 0;
+  const dispo = g.inventaire[key] || 0;
   const libre = capaciteStock(base) - totalStock(base);
   const n = Math.max(0, Math.min(Math.floor(qte), dispo, Math.floor(libre)));
   if (n <= 0) return { ok: false, motif: 'Rien à déposer, ou entrepôt plein.' };
-  state.player.inventaire[key] -= n;
+  g.inventaire[key] -= n;
   base.stock[key] = (base.stock[key] || 0) + n;
   return { ok: true, qte: n };
 }
 
-function retirer(state, key, qte, capaciteLibre) {
+function retirer(state, key, qte, capaciteLibre, groupe) {
+  const g = groupe || groupeActif(state);
   const base = state.base;
-  if (!base.fonde || state.player.regionId !== base.regionId) {
+  if (!base.fonde || !g || g.regionId !== base.regionId) {
     return { ok: false, motif: 'Il faut être à l’avant-poste.' };
   }
   const dispo = base.stock[key] || 0;
   const n = Math.max(0, Math.min(Math.floor(qte), dispo, Math.floor(capaciteLibre)));
   if (n <= 0) return { ok: false, motif: 'Rien à prendre, ou sac plein.' };
   base.stock[key] -= n;
-  state.player.inventaire[key] = (state.player.inventaire[key] || 0) + n;
+  g.inventaire[key] = (g.inventaire[key] || 0) + n;
   return { ok: true, qte: n };
 }
 
@@ -4679,7 +5004,8 @@ function rafraichirPanneaux(state, rng, t) {
 
 const MAX_CONTRATS = 4;
 
-function accepter(state, col, id, log) {
+function accepter(state, col, id, log, groupe) {
+  const g = groupe || groupeActif(state);
   if (!col.contrats) return { ok: false, motif: 'Aucun panneau ici.' };
   const i = col.contrats.findIndex((c) => c.id === id);
   if (i < 0) return { ok: false, motif: 'Ce contrat n’est plus affiché.' };
@@ -4690,8 +5016,9 @@ function accepter(state, col, id, log) {
 
   // Une livraison, ça se charge : il faut la place dans le sac.
   if (c.type === 'livraison') {
-    state.player.inventaire[c.ressource] = (state.player.inventaire[c.ressource] || 0) + c.quantite;
+    g.inventaire[c.ressource] = (g.inventaire[c.ressource] || 0) + c.quantite;
     c.charge = true;
+    c.porteur = g.id;
   }
 
   col.contrats.splice(i, 1);
@@ -4730,13 +5057,16 @@ function abandonner(state, id, log) {
 function progres(state, c) {
   switch (c.type) {
     case 'collecte': {
-      const q = Math.floor(state.player.inventaire[c.ressource] || 0);
+      // Un contrat est celui du joueur, pas d'un groupe : on additionne ce que
+      // tout le monde porte. Reste à ce qu'un groupe l'apporte au commanditaire.
+      let q = 0;
+      for (const g of groupes(state)) q += Math.floor(g.inventaire[c.ressource] || 0);
       return { fait: Math.min(q, c.quantite), total: c.quantite, pret: q >= c.quantite,
         texte: `${Math.min(q, c.quantite)} / ${c.quantite}` };
     }
     case 'livraison': {
       const dest = colonieParId(state.world, c.destId);
-      const surPlace = dest && state.player.regionId === dest.regionId;
+      const surPlace = dest && groupes(state).some((g) => g.regionId === dest.regionId);
       return { fait: surPlace ? 1 : 0, total: 1, pret: surPlace,
         texte: dest ? `→ ${dest.nom}` : '→ ville disparue' };
     }
@@ -4777,31 +5107,40 @@ function recompenser(state, c, log) {
 }
 
 /** Une heure de suivi : validation, échéances. */
+/** Le premier groupe présent en `regionId` qui porte assez de `key`. */
+function auLieu(state, regionId, key, quantite) {
+  return groupes(state).find(
+    (g) => g.regionId === regionId && (g.inventaire[key] || 0) >= quantite
+  ) || null;
+}
+
 function tickContrats(state, log, ctx) {
   const restants = [];
   for (const c of state.player.contrats) {
     const p = progres(state, c);
     const donneur = colonieParId(state.world, c.colonieId);
 
-    // Validation : il faut être au bon endroit pour être payé.
+    // Validation : il faut qu'un groupe soit au bon endroit, avec la
+    // marchandise. Lequel, peu importe — c'est le joueur qui a signé.
     if (p.pret) {
       if (c.type === 'collecte') {
-        if (donneur && state.player.regionId === donneur.regionId) {
-          state.player.inventaire[c.ressource] -= c.quantite;
+        const porteur = donneur && auLieu(state, donneur.regionId, c.ressource, c.quantite);
+        if (porteur) {
+          porteur.inventaire[c.ressource] -= c.quantite;
           donneur.stock[c.ressource] = (donneur.stock[c.ressource] || 0) + c.quantite;
           recompenser(state, c, log);
           continue;
         }
       } else if (c.type === 'livraison') {
         const dest = colonieParId(state.world, c.destId);
-        const dispo = state.player.inventaire[c.ressource] || 0;
-        if (dest && dispo >= c.quantite) {
-          state.player.inventaire[c.ressource] -= c.quantite;
+        const porteur = dest && auLieu(state, dest.regionId, c.ressource, c.quantite);
+        if (porteur) {
+          porteur.inventaire[c.ressource] -= c.quantite;
           dest.stock[c.ressource] = (dest.stock[c.ressource] || 0) + c.quantite;
           recompenser(state, c, log);
           continue;
         }
-      } else if (donneur && state.player.regionId === donneur.regionId) {
+      } else if (donneur && groupes(state).some((g) => g.regionId === donneur.regionId)) {
         recompenser(state, c, log);
         continue;
       }
@@ -4865,14 +5204,16 @@ function creerLogger(state) {
 // Utilitaires d'inventaire
 // ---------------------------------------------------------------------------
 
-function ajouterAuSac(state, key, qte) {
-  if (qte <= 0) return 0;
-  const cap = capacitePortage(state);
-  const libre = cap - poidsInventaire(state.player.inventaire);
+/** Ce qu'un groupe peut encore porter. Chacun porte le sien. */
+function ajouterAuSac(state, key, qte, groupe) {
+  const g = groupe || groupeActif(state);
+  if (!g || qte <= 0) return 0;
+  const cap = capacitePortage(state, g);
+  const libre = cap - poidsInventaire(g.inventaire);
   const poidsU = COMMODITIES[key] ? COMMODITIES[key].poids : 1;
   const max = poidsU > 0 ? Math.floor(libre / poidsU) : qte;
   const reel = Math.max(0, Math.min(Math.floor(qte), max));
-  if (reel > 0) state.player.inventaire[key] = (state.player.inventaire[key] || 0) + reel;
+  if (reel > 0) g.inventaire[key] = (g.inventaire[key] || 0) + reel;
   return reel;
 }
 
@@ -4931,8 +5272,8 @@ function instantaneComps(squad) {
   return m;
 }
 
-function annoncerProgres(state, avant, log) {
-  for (const c of state.player.squad) {
+function annoncerProgres(state, avant, log, membres) {
+  for (const c of membres) {
     const a = avant[c.id];
     if (!a) continue;
     const montees = SKILL_KEYS.filter((k) => c.skills[k] > (a[k] ?? 0));
@@ -4944,16 +5285,17 @@ function annoncerProgres(state, avant, log) {
   }
 }
 
-function combatContre(state, bande, log, ctx) {
+function combatContre(state, bande, log, ctx, groupe) {
   const rng = ctx.rng;
-  const compsAvant = instantaneComps(state.player.squad);
+  const g = groupe || groupeActif(state);
+  const compsAvant = instantaneComps(g.membres);
   const posture = POSTURES[state.player.posture] || POSTURES.neutre;
-  const squad = state.player.squad.filter(estVivant);
+  const squad = g.membres.filter(estVivant);
   const combattants = squad.filter((c) => c.etat !== 'mort');
 
   // À partir de Capitaine, les siens viennent prêter main-forte chez eux.
   const renforts = [];
-  const nbRenforts = renfortsDisponibles(state);
+  const nbRenforts = renfortsDisponibles(state, g);
   for (let i = 0; i < nbRenforts; i++) {
     const allie = makeCharacter(rng, { niveau: 2 });
     allie.equip.armure = allie.equip.armure || 'plaque';
@@ -4964,13 +5306,13 @@ function combatContre(state, bande, log, ctx) {
     log({
       type: 'renfort',
       texte: `${renforts.length} homme${renforts.length > 1 ? 's' : ''} ${FACTIONS[state.player.allegeance.faction].genitif} accourent.`,
-      regionId: state.player.regionId,
+      regionId: g.regionId,
     });
   }
 
   const res = resoudreCombat(combattants.concat(renforts), bande.membres, {
     rng,
-    biome: state.world.regions[state.player.regionId].biome,
+    biome: state.world.regions[g.regionId].biome,
     posture,
     bonusDegats: (state.base.recherche.balistique || 0) * 0.1,
     bonusArmure: (state.base.recherche.blindage || 0) * 0.1,
@@ -4978,24 +5320,24 @@ function combatContre(state, bande, log, ctx) {
     letalB: bande.letal,
   });
 
-  const lieu = nomRegion(state.world, state.player.regionId);
+  const lieu = nomRegion(state.world, g.regionId);
   let texte;
   if (res.vainqueur === 'A') {
     const b = butin(bande, rng);
     let ramasse = 0;
-    for (const k of Object.keys(b.loot)) ramasse += ajouterAuSac(state, k, b.loot[k]);
+    for (const k of Object.keys(b.loot)) ramasse += ajouterAuSac(state, k, b.loot[k], g);
     state.player.credits += b.credits;
     for (const o of b.objets) {
-      if (state.player.objets.length < 30) state.player.objets.push(o);
+      if (g.objets.length < 30) g.objets.push(o);
     }
     reputation(state, bande.faction, -6);
     // Les ennemis d'un ennemi apprécient
     for (const k of Object.keys(state.world.factions)) {
       if (k === bande.faction || k === 'essaim') continue;
-      const g = state.world.guerres.some(
+      const enGuerre = state.world.guerres.some(
         (w) => (w.a === k && w.b === bande.faction) || (w.b === k && w.a === bande.faction)
       );
-      if (g) reputation(state, k, 2);
+      if (enGuerre) reputation(state, k, 2);
     }
     state.stats.combatsGagnes++;
     compterVictoire(state, bande.faction);
@@ -5010,24 +5352,24 @@ function combatContre(state, bande, log, ctx) {
     }
     texte = `${bande.nom} mis en déroute à ${lieu} — ${ramasse} unités et ${b.credits} cr récupérés.`;
   } else if (res.vainqueur === 'B') {
-    texte = perdreCombat(state, bande, log, ctx, lieu);
+    texte = perdreCombat(state, bande, log, ctx, lieu, g);
   } else {
     texte = `Accrochage indécis avec ${bande.nom} à ${lieu}. Chacun décroche.`;
   }
 
   state.stats.combats++;
-  const morts = state.player.squad.filter((c) => c.etat === 'mort' && !c._compte);
+  const morts = g.membres.filter((c) => c.etat === 'mort' && !c._compte);
   for (const m of morts) {
     m._compte = true;
     inscrireAuMemorial(state, m, `tombé face à ${bande.nom}`, lieu);
     log({ type: 'mort', texte: `${m.nom} est mort à ${lieu}.`, important: true });
   }
-  // Une escouade qui perd des siens se délite ; une victoire ressoude.
-  state.player.cohesion = Math.max(0, Math.min(100,
-    (state.player.cohesion ?? 55) + (res.vainqueur === 'A' ? 2.5 : -4) - morts.length * 9));
+  // Un groupe qui perd des siens se délite ; une victoire ressoude.
+  g.cohesion = Math.max(0, Math.min(100,
+    (g.cohesion ?? 55) + (res.vainqueur === 'A' ? 2.5 : -4) - morts.length * 9));
 
   // Ceux qui survivent finissent par se faire un nom.
-  for (const c of state.player.squad) {
+  for (const c of g.membres) {
     if (c.etat === 'mort' || c.surnomGagne) continue;
     const membrePerdu = Object.keys(c.corps).some((k) => c.corps[k].perdu);
     if (c.kills >= 18 || membrePerdu) {
@@ -5042,23 +5384,24 @@ function combatContre(state, bande, log, ctx) {
 
   // Sortir vivants du même combat rapproche ; y laisser quelqu'un aussi, mais
   // dans l'autre sens pour ceux qui n'ont pas tenu leur poste.
-  const debouts = state.player.squad.filter(estDebout);
+  const debouts = g.membres.filter(estDebout);
   for (let i = 0; i < debouts.length; i++) {
     for (let j = i + 1; j < debouts.length; j++) {
       ajusterLien(debouts[i], debouts[j], res.vainqueur === 'A' ? 7 : 3);
     }
   }
-  for (const tombe of state.player.squad.filter((c) => c.etat === 'ko')) {
+  for (const tombe of g.membres.filter((c) => c.etat === 'ko')) {
     for (const d of debouts) ajusterLien(tombe, d, -2);
   }
 
-  annoncerProgres(state, compsAvant, log);
+  annoncerProgres(state, compsAvant, log, g.membres);
 
   log({
     type: 'combat',
     texte,
     important: true,
-    regionId: state.player.regionId,
+    regionId: g.regionId,
+    groupe: g.id,
     // On garde le début de l'échange et son épilogue : le détail complet
     // noie l'écran sur mobile.
     detail: res.journal.length > 12
@@ -5070,13 +5413,13 @@ function combatContre(state, bande, log, ctx) {
   return res;
 }
 
-function perdreCombat(state, bande, log, ctx, lieu) {
+function perdreCombat(state, bande, log, ctx, lieu, g) {
   const rng = ctx.rng;
   state.stats.defaites++;
 
   if (bande.faction === 'essaim') {
     // L'Essaim ne fait pas de prisonniers
-    for (const c of state.player.squad) {
+    for (const c of g.membres) {
       if (c.etat === 'ko' && rng.chance(0.3)) {
         blesser(c, 40, 'torse', rng, { letal: true });
       }
@@ -5087,40 +5430,41 @@ function perdreCombat(state, bande, log, ctx, lieu) {
   // Dépouillés et abandonnés plus loin : on survit, on repart de rien.
   let perdu = 0;
   for (const k of COMMODITY_KEYS) {
-    const q = state.player.inventaire[k] || 0;
+    const q = g.inventaire[k] || 0;
     const pris = Math.round(q * rng.range(0.4, 0.75));
-    state.player.inventaire[k] = q - pris;
+    g.inventaire[k] = q - pris;
     perdu += pris;
   }
   // On garde de quoi repartir : tout rafler à chaque défaite interdit
   // définitivement de s'équiper, donc de cesser de perdre.
   const cr = Math.round(state.player.credits * rng.range(0.25, 0.55));
   state.player.credits -= cr;
-  if (state.player.objets.length && rng.chance(0.6)) {
-    state.player.objets.splice(rng.int(state.player.objets.length), 1);
+  if (g.objets.length && rng.chance(0.6)) {
+    g.objets.splice(rng.int(g.objets.length), 1);
   }
   reputation(state, bande.faction, -3);
 
   // On se réveille ailleurs, quelques heures plus tard. Dépouillés, pas égorgés :
   // ces gens voulaient le sac, pas les cadavres.
-  const options = voisins(state.player.regionId);
-  if (options.length) state.player.regionId = rng.pick(options);
-  state.player.ordre = { type: 'repos' };
-  for (const c of state.player.squad) {
+  const options = voisins(g.regionId);
+  if (options.length) g.regionId = rng.pick(options);
+  g.ordre = { type: 'repos' };
+  for (const c of g.membres) {
     if (c.etat === 'mort') continue;
     c.sang = Math.min(c.sang, 6);
     if (c.etat === 'ko') c.koHeures = Math.max(c.koHeures, rng.irange(4, 12));
   }
-  return `Escouade battue à ${lieu} : ${perdu} unités et ${cr} cr perdus, réveil à ${nomRegion(state.world, state.player.regionId)}.`;
+  return `${g.nom} battu à ${lieu} : ${perdu} unités et ${cr} cr perdus, réveil à ${nomRegion(state.world, g.regionId)}.`;
 }
 
 // ---------------------------------------------------------------------------
 // Table de rencontres
 // ---------------------------------------------------------------------------
 
-function bandeLocale(state, ctx) {
+function bandeLocale(state, ctx, groupe) {
   const rng = ctx.rng;
-  const regionId = state.player.regionId;
+  const g = groupe || groupeActif(state);
+  const regionId = g.regionId;
   const dominante = factionDominante(state, regionId);
   const repu = dominante ? (state.player.reputation[dominante] || 0) : 0;
 
@@ -5148,7 +5492,7 @@ function bandeLocale(state, ctx) {
   // Le monde durcit lentement, mais les bandes restent le plus souvent
   // inférieures en nombre : c'est au joueur de choisir quand ça vaut le coup.
   const niveauMonde = Math.min(2, Math.floor(state.temps / 2500));
-  const debout = state.player.squad.filter(estDebout).length || 1;
+  const debout = deboutDe(g).length || 1;
   const taille = Math.max(1, Math.round(rng.weighted([
     [1, 3], [2, 3], [3, 2], [debout, 1.5], [debout + 1, 0.6],
   ])));
@@ -5158,6 +5502,11 @@ function bandeLocale(state, ctx) {
 /**
  * Quand une faction vous déteste assez, elle cesse d'attendre que vous passiez :
  * elle paie des gens pour vous trouver. La réputation devient une menace.
+ */
+/**
+ * Les chasseurs de prime cherchent *vous*, pas un groupe en particulier : le
+ * tirage est global, et c'est le groupe qu'ils trouvent qui doit s'expliquer.
+ * Un tirage par groupe multiplierait leur fréquence par le nombre de groupes.
  */
 function tenterChasseurs(state, log, ctx) {
   const rng = ctx.rng;
@@ -5205,6 +5554,11 @@ function tenterChasseurs(state, log, ctx) {
   // Une visite tous les deux à trois mois de jeu : une menace, pas un métronome.
   if (!rng.chance(0.0012 * intensite)) return false;
 
+  // Ils tombent sur l'un des groupes — pas forcément celui qu'on regarde.
+  const cibles = groupes(state).filter((gr) => gr.membres.some(estVivant));
+  if (!cibles.length) return false;
+  const cible = rng.pick(cibles);
+
   const k = rng.pick(traques);
   const taille = 2 + rng.irange(0, primes[k]);
   const bande = genererBande(rng, k, taille, primes[k]);
@@ -5212,11 +5566,12 @@ function tenterChasseurs(state, log, ctx) {
   bande.letal = 0.3;
   log({
     type: 'chasseurs',
-    texte: `Des chasseurs de prime ${FACTIONS[k].genitif} vous ont retrouvés.`,
+    texte: `Des chasseurs de prime ${FACTIONS[k].genitif} ont retrouvé ${cible.nom}.`,
     important: true,
-    regionId: state.player.regionId,
+    regionId: cible.regionId,
+    groupe: cible.id,
   });
-  const res = combatContre(state, bande, log, ctx);
+  const res = combatContre(state, bande, log, ctx, cible);
 
   // Perdre solde l'affaire : ils ont eu ce qu'ils voulaient. Sinon la prime
   // s'auto-entretient et il n'existe aucune sortie.
@@ -5233,9 +5588,10 @@ function tenterChasseurs(state, log, ctx) {
 }
 
 /** Tente une rencontre sur l'heure écoulée. Retourne true si quelque chose est arrivé. */
-function tenterRencontre(state, log, ctx, multiplicateur = 1) {
+function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
   const rng = ctx.rng;
-  const regionId = state.player.regionId;
+  const g = groupe || groupeActif(state);
+  const regionId = g.regionId;
   const r = state.world.regions[regionId];
   const posture = POSTURES[state.player.posture] || POSTURES.neutre;
   const col = colonieDe(state.world, regionId);
@@ -5245,7 +5601,7 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1) {
   let p = r.danger * multiplicateur * (col ? 0.25 : 1) * (climat ? climat.rencontres : 1);
   // Furtivité du plus discret de l'escouade
   let furtif = 0;
-  const debout = state.player.squad.filter(estDebout);
+  const debout = deboutDe(g);
   if (debout.length) {
     furtif = Math.max(...debout.map((c) => comp(c, 'furtivite')));
   }
@@ -5267,13 +5623,13 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1) {
 
   switch (type) {
     case 'hostile': {
-      const bande = bandeLocale(state, ctx);
+      const bande = bandeLocale(state, ctx, g);
       if (posture.evitement > 0 && rng.chance(posture.evitement * 0.8)) {
-        log({ type: 'esquive', texte: `${bande.nom} repéré à temps. Contournement.`, regionId });
+        log({ type: 'esquive', texte: `${g.nom} : ${bande.nom} repéré à temps. Contournement.`, regionId, groupe: g.id });
         for (const c of debout) gagnerXp(c, 'furtivite', 1.2);
         return true;
       }
-      combatContre(state, bande, log, ctx);
+      combatContre(state, bande, log, ctx, g);
       return true;
     }
     case 'epave': {
@@ -5281,7 +5637,7 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1) {
       const table = { dalles: 'composant', friche: 'isotope', plastique: 'polymere', relais: 'composant' };
       const k = table[biome] || rng.pick(['ferraille', 'minerai', 'alliage']);
       const q = rng.irange(3, 14);
-      const pris = ajouterAuSac(state, k, q);
+      const pris = ajouterAuSac(state, k, q, g);
       const cr = rng.irange(0, 60);
       state.player.credits += cr;
       for (const c of debout) gagnerXp(c, 'ingenierie', 1.5);
@@ -5294,7 +5650,7 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1) {
     }
     case 'errant': {
       const max = tailleEscouadeMax(state.base);
-      const vivants = state.player.squad.filter(estVivant).length;
+      const vivants = tousLesMembres(state).filter(estVivant).length;
       const prix = rng.irange(120, 420);
       if (!state.player.politique.recruter || vivants >= max || state.player.credits < prix) {
         log({
@@ -5307,12 +5663,13 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1) {
       }
       const c = makeCharacter(rng, { niveau: rng.irange(0, 1) });
       state.player.credits -= prix;
-      state.player.squad.push(c);
+      g.membres.push(c);
       log({
         type: 'recrue',
-        texte: `${c.nom} (${c.archetypeNom}) rejoint l’escouade pour ${prix} cr.`,
+        texte: `${c.nom} (${c.archetypeNom}) rejoint ${g.nom} pour ${prix} cr.`,
         regionId,
         important: true,
+        groupe: g.id,
       });
       return true;
     }
@@ -5321,19 +5678,19 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1) {
         log({ type: 'rencontre', texte: 'Une caravane passe. On la laisse filer.', regionId, discret: true });
         return true;
       }
-      const stock = COMMODITY_KEYS.filter((k) => (state.player.inventaire[k] || 0) > 0);
+      const stock = COMMODITY_KEYS.filter((k) => (g.inventaire[k] || 0) > 0);
       if (!stock.length) {
         log({ type: 'rencontre', texte: 'Une caravane passe. Rien à lui vendre.', regionId, discret: true });
         return true;
       }
       const k = rng.pick(stock);
-      const q = Math.min(state.player.inventaire[k], rng.irange(3, 25));
+      const q = Math.min(g.inventaire[k], rng.irange(3, 25));
       const negoc = debout.length
         ? debout.reduce((a, b) => (comp(a, 'commerce') >= comp(b, 'commerce') ? a : b))
         : null;
       const bonus = negoc ? comp(negoc, 'commerce') / 260 : 0;
       const prix = Math.round(COMMODITIES[k].prix * (1.15 + bonus) * q);
-      state.player.inventaire[k] -= q;
+      g.inventaire[k] -= q;
       state.player.credits += prix;
       if (negoc) gagnerXp(negoc, 'commerce', 1.4);
       log({
@@ -5367,9 +5724,9 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1) {
         });
       } else {
         const bande = genererBande(rng, FACTIONS[f] ? f : 'bandits', rng.irange(2, 4), Math.min(2, Math.floor(state.temps / 900)));
-        log({ type: 'peage', texte: `Péage refusé. Ça tourne mal.`, regionId });
+        log({ type: 'peage', texte: `${g.nom} : péage refusé. Ça tourne mal.`, regionId, groupe: g.id });
         reputation(state, f, -8);
-        combatContre(state, bande, log, ctx);
+        combatContre(state, bande, log, ctx, g);
       }
       return true;
     }
@@ -5382,9 +5739,10 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1) {
  * Aléa environnemental du biome (radiations, pluie acide, éboulement…).
  * `exposition` : 1 en plein travail dehors, ~0.3 au repos ou à l'abri.
  */
-function tenterAlea(state, log, ctx, exposition = 1) {
+function tenterAlea(state, log, ctx, exposition = 1, groupe) {
   const rng = ctx.rng;
-  const regionId = state.player.regionId;
+  const g = groupe || groupeActif(state);
+  const regionId = g.regionId;
   const r = state.world.regions[regionId];
   const h = BIOMES[r.biome].hazard;
   if (!h) return false;
@@ -5395,7 +5753,7 @@ function tenterAlea(state, log, ctx, exposition = 1) {
   if (!rng.chance(h.p * exposition * abri * protege * climat)) return false;
 
   const touches = [];
-  for (const c of state.player.squad) {
+  for (const c of g.membres) {
     if (!estVivant(c)) continue;
     if (!rng.chance(0.7)) continue;
     const armure = c.equip.armure ? (ITEMS[c.equip.armure].armure || 0) : 0;
@@ -5411,8 +5769,9 @@ function tenterAlea(state, log, ctx, exposition = 1) {
   if (!touches.length) return false;
   log({
     type: 'alea',
-    texte: `${h.nom} sur ${nomRegion(state.world, regionId)}. ${touches.length} membre(s) touché(s).`,
+    texte: `${h.nom} sur ${nomRegion(state.world, regionId)}. ${touches.length} de ${g.nom} touché(s).`,
     regionId,
+    groupe: g.id,
   });
   return true;
 }
@@ -5436,11 +5795,12 @@ function couleurLog(type) {
  * Fouille le site de la région courante. Action ponctuelle : un site ne se
  * fouille qu'une fois, et il peut être gardé.
  */
-function fouillerSite(state, rng, log) {
-  const r = state.world.regions[state.player.regionId];
+function fouillerSite(state, rng, log, groupe) {
+  const g = groupe || groupeActif(state);
+  const r = state.world.regions[g.regionId];
   if (!r.site || !r.site.connu) return { ok: false, motif: 'Aucun site repéré ici.' };
   if (r.site.fouille) return { ok: false, motif: 'Ce site a déjà été vidé.' };
-  const debout = state.player.squad.filter(estDebout);
+  const debout = deboutDe(g);
   if (!debout.length) return { ok: false, motif: 'Personne n’est en état.' };
 
   const def = POI[r.site.type];
@@ -5455,9 +5815,9 @@ function fouillerSite(state, rng, log) {
 
   // Le site est gardé ? On le saura en entrant.
   if (rng.chance(def.danger)) {
-    const bande = bandeLocale(state, { rng });
+    const bande = bandeLocale(state, { rng }, g);
     log({ type: 'site', texte: `${def.nom} : on n’est pas seuls.`, important: true, regionId: r.i });
-    const res = combatContre(state, bande, log, { rng });
+    const res = combatContre(state, bande, log, { rng }, g);
     if (res.vainqueur !== 'A') {
       return { ok: true, combat: true, gagne: false, motif: 'Le site reste aux autres.' };
     }
@@ -5469,7 +5829,7 @@ function fouillerSite(state, rng, log) {
     const [min, max] = def.loot[k];
     const q = rng.irange(min, max);
     if (q <= 0) continue;
-    const reel = ajouterAuSac(state, k, q);
+    const reel = ajouterAuSac(state, k, q, g);
     if (reel > 0) pris.push(`${reel} ${COMMODITIES[k].nom.toLowerCase()}`);
   }
   const cr = rng.irange(def.credits[0], def.credits[1]);
@@ -5482,8 +5842,8 @@ function fouillerSite(state, rng, log) {
     const choix = Object.keys(PALIERS_ITEM).filter((k) => PALIERS_ITEM[k] === palier);
     if (!choix.length) continue;
     const key = rng.pick(choix);
-    if (state.player.objets.length < 40) {
-      state.player.objets.push(key);
+    if (g.objets.length < 40) {
+      g.objets.push(key);
       objets.push(ITEMS[key].nom);
     }
   }
@@ -5517,7 +5877,11 @@ function fouillerSite(state, rng, log) {
 }
 
 // ===== src/squad.js ==================================================
-// Résolution des ordres de l'escouade, heure par heure.
+// Résolution des ordres, heure par heure, groupe par groupe.
+//
+// Un groupe porte un ordre ; chaque membre peut lui préférer une tâche à lui.
+// Le tick partitionne donc les gens debout par tâche effective et résout chaque
+// paquet séparément — deux qui fouillent et un qui chasse, c'est deux récoltes.
 
 
 const ORDRES = {
@@ -5536,9 +5900,11 @@ const ORDRES = {
  * Sert à l'affichage : un bouton qui ne rend rien doit le dire avant le clic,
  * pas après six heures de travail.
  */
-function rendementPrevu(state, type, regionId = state.player.regionId) {
+function rendementPrevu(state, type, regionId) {
+  const g = groupeActif(state);
+  const rid = regionId === undefined ? (g ? g.regionId : 0) : regionId;
   const climat = conditions(state.world, state.temps);
-  const r = state.world.regions[regionId];
+  const r = state.world.regions[rid];
   const biome = BIOMES[r.biome];
   const filtre = FILTRES[type];
   if (filtre === undefined) return null;
@@ -5562,22 +5928,18 @@ function rendementPrevu(state, type, regionId = state.player.regionId) {
 // Ordres
 // ---------------------------------------------------------------------------
 
-function donnerOrdre(state, ordre) {
+function donnerOrdre(state, ordre, groupe) {
+  const g = groupe || groupeActif(state);
+  if (!g) return { ok: false, motif: 'Aucun groupe.' };
   if (ordre.type === 'voyage') {
-    const mods = { reductionVoyage: (state.base.recherche.logistique || 0) * 0.06 };
-    const route = chemin(state.world, state.player.regionId, ordre.dest, mods);
+    const m = { reductionVoyage: (state.base.recherche.logistique || 0) * 0.06 };
+    const route = chemin(state.world, g.regionId, ordre.dest, m);
     if (!route || !route.length) return { ok: false, motif: 'Aucune route.' };
-    state.player.ordre = {
-      type: 'voyage',
-      dest: ordre.dest,
-      route,
-      etape: 0,
-      progres: 0,
-    };
+    g.ordre = { type: 'voyage', dest: ordre.dest, route, etape: 0, progres: 0 };
     return { ok: true };
   }
   if (!ORDRES[ordre.type]) return { ok: false, motif: 'Ordre inconnu.' };
-  state.player.ordre = Object.assign({}, ordre);
+  g.ordre = Object.assign({}, ordre);
   return { ok: true };
 }
 
@@ -5593,16 +5955,14 @@ const FILTRES = {
 
 const SKILL_ORDRE = { fouille: 'ingenierie', mine: 'force', chasse: 'tir' };
 
-function recolter(state, type, log, ctx) {
+/** `travailleurs` : ceux qui exécutent *cette* tâche, pas tout le groupe. */
+function recolter(state, g, type, travailleurs, log, ctx) {
   const rng = ctx.rng;
-  const regionId = state.player.regionId;
-  const r = state.world.regions[regionId];
+  const r = state.world.regions[g.regionId];
   const biome = BIOMES[r.biome];
   const posture = POSTURES[state.player.posture] || POSTURES.neutre;
   const skill = SKILL_ORDRE[type];
   const filtre = FILTRES[type];
-
-  const travailleurs = state.player.squad.filter(estDebout);
   if (!travailleurs.length) return {};
 
   // Même un désert nourrit son homme, mal : la chasse a un plancher partout,
@@ -5631,7 +5991,6 @@ function recolter(state, type, log, ctx) {
     gagnerXp(c, skill, 1.1);
     gagnerXp(c, 'endurance', 0.4);
   }
-  // La chasse transforme une part de la biomasse en rations directes
   // Chasser, c'est manger : l'essentiel part en rations, pas en biomasse brute
   // qu'on ne saurait pas transformer sans avant-poste.
   if (type === 'chasse' && recolte.biomasse) {
@@ -5645,8 +6004,8 @@ function recolter(state, type, log, ctx) {
 
   // Les rendements horaires sont fractionnaires : sans report d'une heure sur
   // l'autre, tout ce qui rapporte moins d'une unité par heure rapporte zéro.
-  const reste = state.player.reste || (state.player.reste = {});
-  const bilan = state.player.bilan || (state.player.bilan = { res: {}, depuis: state.temps });
+  const reste = g.reste || (g.reste = {});
+  const bilan = g.bilan || (g.bilan = { res: {}, depuis: state.temps });
   let total = 0;
   const detail = [];
   for (const k of Object.keys(recolte)) {
@@ -5654,7 +6013,7 @@ function recolter(state, type, log, ctx) {
     const q = Math.floor(cumul);
     reste[k] = cumul - q;
     if (q <= 0) continue;
-    const pris = ajouterAuSac(state, k, q);
+    const pris = ajouterAuSac(state, k, q, g);
     reste[k] += q - pris; // sac plein : on ne jette pas, on garde en attente
     if (pris > 0) {
       total += pris;
@@ -5664,9 +6023,7 @@ function recolter(state, type, log, ctx) {
   }
   if (total > 0) {
     state.stats.recolte += total;
-    state.player.recolteHeure = detail.join(', ');
-  } else {
-    state.player.recolteHeure = null;
+    g.recolteHeure = [g.recolteHeure, detail.join(', ')].filter(Boolean).join(', ');
   }
   return recolte;
 }
@@ -5679,17 +6036,16 @@ function recolter(state, type, log, ctx) {
  * Lève la carte de proche en proche et fait apparaître les sites. Sans ça,
  * la carte reste un grand rectangle noir et rien n'invite à bouger.
  */
-function explorer(state, log, ctx) {
+function explorer(state, g, eclaireurs, log, ctx) {
   const rng = ctx.rng;
-  const debout = state.player.squad.filter(estDebout);
-  if (!debout.length) return;
+  if (!eclaireurs.length) return;
 
   let portee = 2 + (state.base.recherche.optique || 0);
-  const meilleur = Math.max(...debout.map((c) => comp(c, 'furtivite')));
+  const meilleur = Math.max(...eclaireurs.map((c) => comp(c, 'furtivite')));
   if (meilleur > 45) portee += 1;
 
   // La région du dessous d'abord : on remarque ce qu'on a sous les pieds.
-  const ici = state.world.regions[state.player.regionId];
+  const ici = state.world.regions[g.regionId];
   if (ici.site && !ici.site.connu) {
     ici.site.connu = true;
     log({
@@ -5702,8 +6058,8 @@ function explorer(state, log, ctx) {
 
   // Puis on repousse le noir, une case à la fois.
   const candidates = state.world.regions
-    .filter((r) => !r.decouvert && distance(r.i, state.player.regionId) <= portee)
-    .sort((a, b) => distance(a.i, state.player.regionId) - distance(b.i, state.player.regionId));
+    .filter((r) => !r.decouvert && distance(r.i, g.regionId) <= portee)
+    .sort((a, b) => distance(a.i, g.regionId) - distance(b.i, g.regionId));
 
   if (candidates.length) {
     const vue = ctx.climat ? ctx.climat.vue : 1;
@@ -5725,7 +6081,7 @@ function explorer(state, log, ctx) {
     log({ type: 'exploration', texte: 'Plus rien à lever dans ce secteur.', regionId: ici.i, discret: true });
   }
 
-  for (const c of debout) {
+  for (const c of eclaireurs) {
     gagnerXp(c, 'furtivite', 0.9);
     gagnerXp(c, 'endurance', 0.6);
   }
@@ -5735,13 +6091,12 @@ function explorer(state, log, ctx) {
 // Soins
 // ---------------------------------------------------------------------------
 
-function qualiteSoin(state, auRepos) {
-  const debout = state.player.squad.filter(estDebout);
+function qualiteSoin(state, g, auRepos) {
   let medic = 0;
-  for (const c of debout) medic = Math.max(medic, comp(c, 'medecine'));
+  for (const c of deboutDe(g)) medic = Math.max(medic, comp(c, 'medecine'));
   let q = 0.25 + medic / 90;
   q *= 1 + (state.base.recherche.medecine || 0) * 0.25;
-  if (state.base.fonde && state.player.regionId === state.base.regionId) {
+  if (state.base.fonde && g.regionId === state.base.regionId) {
     q *= 1 + nivBat(state.base, 'infirmerie') * 0.35;
   }
   if (!auRepos) q *= 0.35;
@@ -5749,18 +6104,18 @@ function qualiteSoin(state, auRepos) {
 }
 
 /** Consomme un medkit sur le plus mal en point si ça vaut le coup. */
-function utiliserMedkit(state, log, ctx) {
-  if ((state.player.inventaire.medkit || 0) < 1) return;
-  const blesses = state.player.squad.filter((c) => estVivant(c) && (pvTotal(c).pct < 0.55 || c.sang > 20));
+function utiliserMedkit(state, g, log, ctx) {
+  if ((g.inventaire.medkit || 0) < 1) return;
+  const blesses = g.membres.filter((c) => estVivant(c) && (pvTotal(c).pct < 0.55 || c.sang > 20));
   if (!blesses.length) return;
   const cible = blesses.reduce((a, b) => (pvTotal(a).pct <= pvTotal(b).pct ? a : b));
-  state.player.inventaire.medkit -= 1;
+  g.inventaire.medkit -= 1;
   cible.sang = 0;
   for (const p of Object.keys(cible.corps)) {
     const part = cible.corps[p];
     part.pv = Math.min(part.max, part.pv + part.max * 0.22);
   }
-  const soigneur = state.player.squad.filter(estDebout)
+  const soigneur = deboutDe(g)
     .reduce((a, b) => (!a || comp(b, 'medecine') > comp(a, 'medecine') ? b : a), null);
   if (soigneur) gagnerXp(soigneur, 'medecine', 3);
   if (cible.etat === 'ko' && pvTotal(cible).pct > 0.45) {
@@ -5774,9 +6129,9 @@ function utiliserMedkit(state, log, ctx) {
 // Voyage
 // ---------------------------------------------------------------------------
 
-function avancerVoyage(state, log, ctx) {
-  const o = state.player.ordre;
-  const debout = state.player.squad.filter(estDebout);
+function avancerVoyage(state, g, log, ctx) {
+  const o = g.ordre;
+  const debout = deboutDe(g);
   if (!debout.length) return;
 
   // Vitesse dictée par le plus lent, alourdie par le sac et les K.O. portés
@@ -5785,24 +6140,24 @@ function avancerVoyage(state, log, ctx) {
     const v = 0.5 + comp(c, 'endurance') / 90;
     vitesse = Math.min(vitesse, v);
   }
-  const cap = Math.max(1, capacitePortage(state));
-  const charge = poidsInventaire(state.player.inventaire) / cap;
+  const cap = Math.max(1, capacitePortage(state, g));
+  const charge = poidsInventaire(g.inventaire) / cap;
   vitesse *= 1 - Math.min(0.55, Math.max(0, charge - 0.6) * 0.9);
-  const portes = state.player.squad.filter((c) => c.etat === 'ko').length;
+  const portes = g.membres.filter((c) => c.etat === 'ko').length;
   vitesse *= 1 - Math.min(0.5, portes * 0.18);
   vitesse = Math.max(0.15, vitesse);
 
   o.progres += vitesse;
   const prochaine = o.route[o.etape];
-  const mods = { reductionVoyage: (state.base.recherche.logistique || 0) * 0.06 };
+  const m = { reductionVoyage: (state.base.recherche.logistique || 0) * 0.06 };
   // Le climat alourdit la marche, mais à moitié : le coût de base tient déjà
   // compte du terrain, et cumuler les deux pleinement immobilise l'escouade.
   const gene = ctx.climat ? 1 + (ctx.climat.marche - 1) * 0.6 : 1;
-  const cout = coutTraversee(state.world, prochaine, mods) * gene;
+  const cout = coutTraversee(state.world, prochaine, m) * gene;
 
   if (o.progres >= cout) {
     o.progres = 0;
-    state.player.regionId = prochaine;
+    g.regionId = prochaine;
     o.etape++;
     const rayon = 1 + (state.base.recherche.optique || 0);
     decouvrir(state.world, prochaine, rayon);
@@ -5812,81 +6167,87 @@ function avancerVoyage(state, log, ctx) {
     if (col) {
       log({
         type: 'voyage',
-        texte: `Arrivée à ${col.nom} (${col.faction ? state.world.factions[col.faction].nom : 'sans maître'}).`,
+        texte: `${g.nom} : arrivée à ${col.nom} (${col.faction ? state.world.factions[col.faction].nom : 'sans maître'}).`,
         regionId: prochaine,
+        groupe: g.id,
       });
     }
     if (o.etape >= o.route.length) {
-      state.player.ordre = { type: 'repos' };
+      g.ordre = { type: 'repos' };
       log({
         type: 'voyage',
-        texte: `Destination atteinte : ${nomRegion(state.world, prochaine)}.`,
+        texte: `${g.nom} : destination atteinte, ${nomRegion(state.world, prochaine)}.`,
         regionId: prochaine,
         important: true,
+        groupe: g.id,
       });
     }
   }
 }
 
 // ---------------------------------------------------------------------------
-// Tick
+// Tick d'un groupe
 // ---------------------------------------------------------------------------
 
-function tickSquad(state, log, ctx) {
-  const rng = ctx.rng;
-  const vivants = state.player.squad.filter(estVivant);
-  if (!vivants.length) {
-    if (!state.fin) {
-      state.fin = 'extinction';
-      log({ type: 'fin', texte: 'L’escouade a cessé d’exister. Fin de partie.', important: true });
-    }
-    return;
+/** Groupe les gens debout par tâche effective : [[type, {tache, gens}], …] */
+function partitionner(g, debout) {
+  const par = new Map();
+  for (const c of debout) {
+    const t = tacheDe(g, c);
+    let e = par.get(t.type);
+    if (!e) { e = { tache: t, gens: [] }; par.set(t.type, e); }
+    e.gens.push(c);
   }
+  return par;
+}
 
-  const ordre = state.player.ordre || { type: 'repos' };
-  const def = ORDRES[ordre.type] || ORDRES.repos;
-  let effort = def.effort;
+/** Effort demandé par une tâche, corrigé par la nuit. */
+function effortDe(type, nuit) {
+  const def = ORDRES[type] || ORDRES.repos;
+  if (!nuit) return def.effort;
+  if (type === 'voyage') return 1.35; // marche de nuit : épuisant
+  return 0;
+}
+
+function tickGroupe(state, g, log, ctx) {
+  const rng = ctx.rng;
+  const vivants = vivantsDe(g);
+  if (!vivants.length) return;
+
+  const ordre = g.ordre || (g.ordre = { type: 'repos' });
+  g.recolteHeure = null;
 
   // Cycle jour/nuit : on campe la nuit, sauf en marche forcée. C'est ce qui
   // permet à la fatigue de redescendre — sans ça, elle se colle au plafond.
   const heure = state.temps % 24;
   const nuit = heure >= 22 || heure < 6;
-  let travaille = true;
-  if (nuit && ordre.type !== 'voyage') {
-    travaille = false;
-    effort = 0;
-  } else if (nuit) {
-    effort = 1.35; // marche de nuit : épuisant
-  }
-  state.player.nuit = nuit;
+  const travaille = !nuit || ordre.type === 'voyage';
+  g.nuit = nuit;
 
-  // Personne debout : on ne fait que survivre
-  const debout = state.player.squad.filter(estDebout);
-  if (!debout.length) { effort = 0; travaille = false; }
+  const debout = deboutDe(g);
 
-  // --- Cohésion : une escouade au repos et bien nourrie se ressoude, une
-  // escouade qui enchaîne les défaites se délite. Le moral suit.
-  const p = state.player;
-  if (p.cohesion === undefined) p.cohesion = 55;
+  // --- Cohésion : un groupe au repos et bien nourri se ressoude, un groupe qui
+  // enchaîne les défaites se délite. Le moral suit.
+  if (g.cohesion === undefined) g.cohesion = 55;
   const affames = vivants.filter((c) => c.faim > 80).length;
-  const ko = state.player.squad.filter((c) => c.etat === 'ko').length;
+  const ko = g.membres.filter((c) => c.etat === 'ko').length;
   let derive = 0.02;
   if (affames) derive -= 0.06 * affames;
   if (ko) derive -= 0.05 * ko;
   if (ordre.type === 'repos' && !affames) derive += 0.05;
+  // Un groupe d'une personne ne se « ressoude » pas : il tient ou il craque.
+  if (vivants.length === 1) derive *= 0.5;
   // Même amortissement que les liens : une escouade parfaite n'existe pas.
-  const freinCoh = derive > 0 ? 1 - Math.min(0.95, p.cohesion / 100) : 1;
-  p.cohesion = Math.max(0, Math.min(100, p.cohesion + derive * freinCoh));
+  const freinCoh = derive > 0 ? 1 - Math.min(0.95, g.cohesion / 100) : 1;
+  g.cohesion = Math.max(0, Math.min(100, g.cohesion + derive * freinCoh));
+
   // Les liens se tissent en vivant côte à côte, et se distendent quand l'un
-  // s'écroule pendant que l'autre tient debout.
+  // s'écroule pendant que l'autre tient debout. Séparés, ils s'étiolent.
   if (state.temps % 6 === 0 && vivants.length > 1) {
     for (let i = 0; i < vivants.length; i++) {
       for (let j = i + 1; j < vivants.length; j++) {
         const a = vivants[i];
         const b = vivants[j];
-        // La simple coexistence tend vers une camaraderie ordinaire ; ce sont
-        // les épreuves partagées qui poussent au-delà, et les caractères
-        // incompatibles qui tirent en dessous.
         const ensemble = estDebout(a) && estDebout(b);
         let cible = 40;
         const ta = a.traits || [];
@@ -5903,7 +6264,7 @@ function tickSquad(state, log, ctx) {
 
   for (const c of vivants) {
     // Le moral tient à deux choses : l'état du groupe, et ceux sur qui on peut
-    // compter nommément.
+    // compter nommément — ceux qui sont là, pas ceux partis à l'autre bout.
     let apport = 0;
     let n = 0;
     for (const autre of vivants) {
@@ -5911,90 +6272,111 @@ function tickSquad(state, log, ctx) {
       apport += lien(c, autre);
       n++;
     }
-    const social = n ? apport / n : 0;
-    const cible = Math.max(0, Math.min(100, p.cohesion + social * 0.25));
+    const social = n ? apport / n : -8; // seul : personne sur qui compter
+    const cible = Math.max(0, Math.min(100, g.cohesion + social * 0.25));
     c.moral = Math.max(0, Math.min(100, c.moral + (cible - c.moral) * 0.012 * (mods(c).moral || 1)));
   }
 
-  // --- Nourriture : on mange dès qu'on a faim et de quoi
+  // --- Nourriture : on mange dès qu'on a faim et de quoi. Chaque groupe puise
+  // dans ce qu'il porte : c'est tout l'enjeu d'un détachement.
   for (const c of vivants) {
     if (c.faim > 42) {
-      const dispo = state.player.inventaire.rations || 0;
+      const dispo = g.inventaire.rations || 0;
       const mange = nourrir(c, dispo);
-      if (mange > 0) state.player.inventaire.rations -= mange;
+      if (mange > 0) g.inventaire.rations -= mange;
     }
   }
 
-  // --- Exécution de l'ordre
-  if (debout.length && travaille) {
-    switch (ordre.type) {
-      case 'voyage':
-        avancerVoyage(state, log, ctx);
-        break;
-      case 'fouille':
-      case 'mine':
-      case 'chasse':
-        recolter(state, ordre.type, log, ctx);
-        break;
-      case 'entrainement': {
-        const skill = ordre.skill || 'melee';
-        const cout = Math.ceil(debout.length / 2);
-        if ((state.player.inventaire.rations || 0) >= cout) {
-          state.player.inventaire.rations -= cout;
-          for (const c of debout) {
-            const av = c.skills[skill];
-            gagnerXp(c, skill, 5.5);
-            if (c.skills[skill] > av) {
-              log({ type: 'progres', texte: `${c.nom} : ${skill} ${c.skills[skill]}.`, discret: true });
+  // --- Exécution. Le cas courant est que personne n'a de tâche à soi : on ne
+  // partitionne alors pas du tout, ce qui évite une Map et deux tableaux par
+  // groupe et par heure de jeu.
+  let uniforme = true;
+  for (const c of debout) if (c.tache) { uniforme = false; break; }
+
+  if (travaille && debout.length) {
+    const paquets = uniforme
+      ? [[ordre.type, { tache: ordre, gens: debout }]]
+      : partitionner(g, debout);
+    for (const [type, paquet] of paquets) {
+      switch (type) {
+        case 'voyage':
+          avancerVoyage(state, g, log, ctx);
+          break;
+        case 'fouille':
+        case 'mine':
+        case 'chasse':
+          recolter(state, g, type, paquet.gens, log, ctx);
+          break;
+        case 'entrainement': {
+          const skill = paquet.tache.skill || 'melee';
+          const cout = Math.ceil(paquet.gens.length / 2);
+          if ((g.inventaire.rations || 0) >= cout) {
+            g.inventaire.rations -= cout;
+            for (const c of paquet.gens) {
+              const av = c.skills[skill];
+              gagnerXp(c, skill, 5.5);
+              if (c.skills[skill] > av) {
+                log({ type: 'progres', texte: `${c.nom} : ${skill} ${c.skills[skill]}.`, discret: true });
+              }
             }
+          } else {
+            // On ne s'entraîne pas le ventre vide : la tâche retombe au repos.
+            for (const c of paquet.gens) if (c.tache) delete c.tache;
+            if (g.ordre.type === 'entrainement') g.ordre = { type: 'repos' };
+            log({
+              type: 'ordre',
+              texte: `${g.nom} : plus de rations, entraînement interrompu.`,
+              regionId: g.regionId,
+              groupe: g.id,
+            });
           }
-        } else {
-          effort = 0.2;
-          state.player.ordre = { type: 'repos' };
-          log({ type: 'ordre', texte: 'Plus de rations : entraînement interrompu.', regionId: state.player.regionId });
+          break;
         }
-        break;
+        case 'exploration':
+          explorer(state, g, paquet.gens, log, ctx);
+          break;
+        case 'patrouille': {
+          const f = state.world.regions[g.regionId].controle;
+          if (f) reputation(state, f, 0.05);
+          break;
+        }
+        default:
+          break;
       }
-      case 'exploration':
-        explorer(state, log, ctx);
-        break;
-      case 'patrouille': {
-        const f = state.world.regions[state.player.regionId].controle;
-        if (f) reputation(state, f, 0.05);
-        break;
-      }
-      default:
-        break;
     }
   }
 
-  // --- Aléas et rencontres
+  // --- Aléas et rencontres, pour ce groupe et là où il se trouve
   const exposition = travaille ? 1 : 0.35;
-  tenterAlea(state, log, ctx, exposition);
-  if (!state.fin) tenterChasseurs(state, log, ctx);
+  tenterAlea(state, log, ctx, exposition, g);
   if (!state.fin) {
     let mult = ordre.type === 'patrouille' ? 2.4 : ordre.type === 'repos' ? 0.45 : 1;
     if (!travaille) mult *= 0.5; // camp de nuit, feu éteint
-    tenterRencontre(state, log, ctx, mult);
+    // Un petit groupe se fait moins remarquer — et se défend moins bien.
+    if (vivants.length <= 1) mult *= 0.7;
+    tenterRencontre(state, log, ctx, mult, g);
   }
 
-  // --- Soins et besoins
-  const auRepos = effort <= 0.05;
-  const q = qualiteSoin(state, auRepos);
-  utiliserMedkit(state, log, ctx);
-  for (const c of state.player.squad) {
-    const msgs = tickPerso(c, effort, rng, { soin: q, premiersSecours: debout.length > 0 });
+  // --- Soins et besoins, avec l'effort réellement fourni par chacun
+  const effortMoyen = debout.length
+    ? debout.reduce((s, c) => s + effortDe(tacheDe(g, c).type, nuit), 0) / debout.length
+    : 0;
+  const q = qualiteSoin(state, g, effortMoyen <= 0.05);
+  utiliserMedkit(state, g, log, ctx);
+  for (const c of g.membres) {
+    const eff = estDebout(c) ? effortDe(tacheDe(g, c).type, nuit) : 0;
+    const msgs = tickPerso(c, eff, rng, { soin: q, premiersSecours: debout.length > 0 });
     for (const m of msgs) {
-      log({ type: m.type, texte: m.texte, important: m.type === 'mort' });
+      log({ type: m.type, texte: m.texte, important: m.type === 'mort', groupe: g.id });
       if (m.type === 'mort') {
-        inscrireAuMemorial(state, c, 'mort en route', nomRegion(state.world, state.player.regionId));
+        inscrireAuMemorial(state, c, 'mort en route', nomRegion(state.world, g.regionId));
       }
     }
   }
 
   // Bilan périodique : sans lui, une nuit de récolte ne laisse aucune trace
   // à l'écran et le jeu paraît ne rien faire.
-  const bilan = state.player.bilan;
+  const bilan = g.bilan;
   if (bilan && state.temps - (bilan.depuis || 0) >= 6) {
     const lignes = Object.keys(bilan.res)
       .filter((k) => bilan.res[k] > 0)
@@ -6003,11 +6385,66 @@ function tickSquad(state, log, ctx) {
     if (lignes.length) {
       log({
         type: 'recolte',
-        texte: `Six heures de ${ORDRES[ordre.type] ? ORDRES[ordre.type].nom.toLowerCase() : 'travail'} : ${lignes.join(', ')}.`,
-        regionId: state.player.regionId,
+        texte: `${g.nom}, six heures de travail : ${lignes.join(', ')}.`,
+        regionId: g.regionId,
+        groupe: g.id,
       });
     }
-    state.player.bilan = { res: {}, depuis: state.temps };
+    g.bilan = { res: {}, depuis: state.temps };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tick de tous les groupes
+// ---------------------------------------------------------------------------
+
+/** Quelqu'un, quelque part, est-il encore en vie ? Sans allouer de tableau :
+ *  c'est appelé deux fois par heure de jeu. */
+function quelquUnDebout(state) {
+  const gs = state.player.groupes;
+  for (let i = 0; i < gs.length; i++) {
+    const m = gs[i].membres;
+    for (let j = 0; j < m.length; j++) if (estVivant(m[j])) return true;
+  }
+  return false;
+}
+
+function tickSquad(state, log, ctx) {
+  if (!quelquUnDebout(state)) {
+    if (!state.fin) {
+      state.fin = 'extinction';
+      log({ type: 'fin', texte: 'Plus personne. Fin de partie.', important: true });
+    }
+    return;
+  }
+
+  // Les chasseurs de prime cherchent le joueur, pas un groupe : un seul tirage
+  // par heure, sinon leur fréquence serait multipliée par le nombre de groupes.
+  tenterChasseurs(state, log, ctx);
+  if (state.fin) return;
+
+  // Index décroissant : un groupe peut disparaître en cours de tick (anéanti),
+  // et parcourir à l'envers évite d'en copier la liste à chaque heure.
+  const gs = state.player.groupes;
+  for (let i = 0; i < gs.length; i++) {
+    if (state.fin) break;
+    tickGroupe(state, gs[i], log, ctx);
+  }
+
+  // Un groupe dont plus personne n'est vivant cesse d'exister, et ce qu'il
+  // portait avec lui. Dire lesquels : perdre trente rations en silence, c'est
+  // le genre de chose qu'on découvre trois heures plus tard.
+  for (let i = gs.length - 1; i >= 0 && gs.length > 1; i--) {
+    const g = gs[i];
+    if (g.membres.some(estVivant)) continue;
+    log({
+      type: 'fin',
+      texte: `${g.nom} a cessé d’exister en ${nomRegion(state.world, g.regionId)}. Tout ce que le groupe portait est perdu.`,
+      important: true,
+      regionId: g.regionId,
+    });
+    // Les morts sont déjà au mémorial : ils y ont été inscrits en tombant.
+    retirerGroupe(state, g);
   }
 
   // La région se régénère lentement de la fouille
@@ -6016,9 +6453,9 @@ function tickSquad(state, log, ctx) {
   }
 
   // Fin de partie
-  if (!state.player.squad.some(estVivant) && !state.fin) {
+  if (!quelquUnDebout(state) && !state.fin) {
     state.fin = 'extinction';
-    log({ type: 'fin', texte: 'L’escouade a cessé d’exister. Fin de partie.', important: true });
+    log({ type: 'fin', texte: 'Plus personne. Fin de partie.', important: true });
   }
 }
 
@@ -6061,19 +6498,17 @@ function nouvellePartie(seed, opts = {}) {
 
   // On part équipé : sans armure, la première bande de pillards venue
   // liquide l'escouade avant qu'elle ait appris quoi que ce soit.
-  const squad = [];
+  const premier = groupeVide(idDepuisRng(rng, 'g'), 'Convoi', depart.regionId, 0);
   const depart2 = [
     { archetype: 'ferrailleur', arme: 'machette', armure: 'cuir' },
     { archetype: 'chasseur', arme: 'clous', armure: 'cuir' },
     { archetype: 'medic', arme: 'barre', armure: 'cuir' },
   ];
-  for (const d of depart2) squad.push(makeCharacter(rng, d));
-
-  const inventaire = {};
-  for (const k of COMMODITY_KEYS) inventaire[k] = 0;
-  inventaire.rations = 45;
-  inventaire.ferraille = 20;
-  inventaire.medkit = 2;
+  for (const d of depart2) premier.membres.push(makeCharacter(rng, d));
+  premier.inventaire.rations = 45;
+  premier.inventaire.ferraille = 20;
+  premier.inventaire.medkit = 2;
+  premier.objets = ['machette', 'cuir'];
 
   const reputation = {};
   for (const k of DIPLO_FACTIONS) reputation[k] = 0;
@@ -6090,11 +6525,9 @@ function nouvellePartie(seed, opts = {}) {
     world,
     player: {
       credits: 450,
-      regionId: depart.regionId,
-      squad,
-      ordre: { type: 'repos' },
-      inventaire,
-      objets: ['machette', 'cuir'],
+      // Les gens et ce qu'ils portent vivent dans les groupes ; le reste, ici.
+      groupes: [premier],
+      groupeActif: premier.id,
       reputation,
       posture: 'neutre',
       politique: {
@@ -6103,14 +6536,7 @@ function nouvellePartie(seed, opts = {}) {
         payerPeage: true,
         achever: false,
       },
-      recolteHeure: null,
-      reste: {},
-      nuit: false,
       contrats: [],
-      bilan: { res: {}, depuis: 0 },
-      // Une escouade n'est pas une addition d'individus : elle tient ou elle
-      // se délite, et ça se voit sur le moral de tout le monde.
-      cohesion: 55,
       primes: {},
       allegeance: null,
     },
@@ -6353,6 +6779,7 @@ function resumeMonde(state) {
 // références circulaires, pas de fonctions. C'est ce qui rend possible à la
 // fois la persistance navigateur et, plus tard, un envoi au serveur.
 
+
 const CLE = 'cendres.save.v1';
 const VERSION = 1;
 
@@ -6367,11 +6794,39 @@ function serialiser(state) {
  */
 function normaliser(state) {
   const p = state.player;
+
+  // Avant les groupes, l'escouade était un bloc unique posé sur `player`.
+  // On la reconstitue en un premier groupe : une partie en cours ne se jette
+  // pas parce que le moteur a appris à en tenir plusieurs.
+  if (!p.groupes) {
+    const g = groupeVide('g0', 'Convoi', p.regionId || 0, state.temps);
+    g.membres = p.squad || [];
+    g.ordre = p.ordre || { type: 'repos' };
+    g.inventaire = Object.assign(g.inventaire, p.inventaire || {});
+    g.objets = p.objets || [];
+    g.reste = p.reste || {};
+    g.bilan = p.bilan || { res: {}, depuis: state.temps };
+    g.cohesion = p.cohesion === undefined ? 55 : p.cohesion;
+    p.groupes = [g];
+    p.groupeActif = g.id;
+    delete p.squad; delete p.ordre; delete p.inventaire; delete p.objets;
+    delete p.regionId; delete p.reste; delete p.bilan; delete p.cohesion;
+    delete p.recolteHeure; delete p.nuit;
+  }
+  for (const g of p.groupes) {
+    if (!g.reste) g.reste = {};
+    if (!g.objets) g.objets = [];
+    if (!g.bilan) g.bilan = { res: {}, depuis: state.temps };
+    if (g.cohesion === undefined) g.cohesion = 55;
+    if (!g.ordre) g.ordre = { type: 'repos' };
+    if (!g.membres) g.membres = [];
+  }
+  if (!p.groupeActif || !p.groupes.some((g) => g.id === p.groupeActif)) {
+    p.groupeActif = p.groupes.length ? p.groupes[0].id : null;
+  }
+
   if (!p.contrats) p.contrats = [];
-  if (!p.bilan) p.bilan = { res: {}, depuis: state.temps };
-  if (!p.reste) p.reste = {};
   if (!p.primes) p.primes = {};
-  if (p.cohesion === undefined) p.cohesion = 55;
   if (p.allegeance === undefined) p.allegeance = null;
   if (!state.memorial) state.memorial = [];
   if (!state.stats) state.stats = {};
@@ -6385,9 +6840,11 @@ function normaliser(state) {
     if (c.declin === undefined) c.declin = 0;
     if (c.prises === undefined) c.prises = 0;
   }
-  for (const c of p.squad) {
-    if (!c.traits) c.traits = [];
-    if (!c.liens) c.liens = {};
+  for (const g of p.groupes) {
+    for (const c of g.membres) {
+      if (!c.traits) c.traits = [];
+      if (!c.liens) c.liens = {};
+    }
   }
   const b = state.base;
   if (b) {
@@ -6468,6 +6925,8 @@ let dernierRendu = -1;
 let dernierRenduMs = 0;
 let derniereInteraction = 0;
 let toastTimer = null;
+/** Cases cochées dans le panneau « Détacher » — purement d'interface. */
+let detaches = new Set();
 
 /** Cadence minimale entre deux reconstructions complètes de l'écran (ms). */
 const RENDU_MIN_MS = 600;
@@ -6476,9 +6935,16 @@ const REPIT_APRES_CLIC_MS = 400;
 
 const $ = (sel) => document.querySelector(sel);
 
+/**
+ * Le groupe que l'écran montre. Presque tout l'affichage est relatif à lui :
+ * la carte, le sac, l'étal, l'avant-poste. Changer de groupe change de point
+ * de vue, pas de partie.
+ */
+const G = () => groupeActif(S);
+
 function attacherEtat(state) {
   S = state;
-  selection = state ? state.player.regionId : null;
+  selection = state ? groupeActif(state).regionId : null;
 }
 
 function monterUI(api) {
@@ -6596,25 +7062,33 @@ function rafraichir(force) {
 function rendreBarreHaut() {
   const h = horloge(S.temps);
   const p = S.player;
-  const cap = capacitePortage(S);
-  const poids = poidsInventaire(p.inventaire);
+  const cap = capacitePortage(S, G());
+  const g = G();
+  const poids = poidsInventaire(g.inventaire);
   const charge = cap > 0 ? poids / cap : 1;
-  const vivants = p.squad.filter(estVivant).length;
-  const debout = p.squad.filter(estDebout).length;
+  const vivants = g.membres.filter(estVivant).length;
+  const debout = g.membres.filter(estDebout).length;
 
   const cl = conditions(S.world, S.temps);
+  // Les indicateurs vivent dans leur propre boîte, qui rogne par la droite si
+  // l'écran est trop étroit. Sans ça, les blocs se compriment les uns dans les
+  // autres et les libellés se chevauchent — et c'est le sélecteur de vitesse,
+  // le seul vrai bouton de la barre, qui finissait par sortir de l'écran.
   $('#barre-haut').innerHTML = `
-    <div class="hd-bloc"><span class="hd-eti">${p.nuit ? 'nuit' : 'jour'}</span>
-      <span class="hd-val cyan">${h.texte}</span></div>
-    <div class="hd-bloc"><span class="hd-eti">saison</span>
-      <span class="hd-val" style="color:${cl.saison.def.couleur}"
-        title="${e(cl.saison.def.nom)} — ${e(cl.meteo.nom)}">${e(cl.saison.def.court)}</span></div>
-    <div class="hd-bloc"><span class="hd-eti">cr</span>
-      <span class="hd-val ambre">${n(p.credits)}</span></div>
-    <div class="hd-bloc"><span class="hd-eti">sac</span>
-      <span class="hd-val ${charge > 0.95 ? 'rouge' : ''}">${n(poids)}/${n(cap)}</span></div>
-    <div class="hd-bloc"><span class="hd-eti">esc</span>
-      <span class="hd-val ${debout < vivants ? 'rouge' : ''}">${debout}/${vivants}</span></div>
+    <div class="hd-metriques">
+      <div class="hd-bloc" title="${g.nuit ? 'Nuit — on campe' : 'Jour'}">
+        <span class="hd-val hd-cycle">${g.nuit ? '☾' : '☀'}</span>
+        <span class="hd-val cyan">${h.texte}</span></div>
+      <div class="hd-bloc" title="${e(cl.saison.def.nom)} — ${e(cl.meteo.nom)}">
+        <span class="hd-val hd-saison" style="color:${cl.saison.def.couleur}"
+          aria-label="${e(cl.saison.def.nom)}">◆</span></div>
+      <div class="hd-bloc"><span class="hd-eti">cr</span>
+        <span class="hd-val ambre">${n(p.credits)}</span></div>
+      <div class="hd-bloc"><span class="hd-eti">sac</span>
+        <span class="hd-val ${charge > 0.95 ? 'rouge' : ''}">${n(poids)}/${n(cap)}</span></div>
+      <div class="hd-bloc" title="${e(g.nom)}"><span class="hd-eti">${e(groupes(S).length > 1 ? g.nom.slice(0, 3) : 'esc')}</span>
+        <span class="hd-val ${debout < vivants ? 'rouge' : ''}">${debout}/${vivants}</span></div>
+    </div>
     <div class="hd-pousse vitesse" role="group" aria-label="Vitesse">
       ${VITESSES.map((v) => `<button data-a="vitesse" data-v="${v}"
         aria-pressed="${S.vitesse === v}">×${v}</button>`).join('')}
@@ -6759,23 +7233,37 @@ function dessinerCarte(cv) {
     g.fillRect(x + 12, y + 3, 1, 1);
   }
 
-  // Escouade du joueur
-  const rp = w.regions[S.player.regionId];
-  if (rp) {
+  // Les groupes. Tous sont dessinés — savoir où sont les siens est la moitié de
+  // l'intérêt de les séparer. Celui qu'on regarde est plein et cerclé ; les
+  // autres sont creux, pour qu'un coup d'œil suffise à les distinguer.
+  const actif = G();
+  for (const gr of groupes(S)) {
+    const rp = w.regions[gr.regionId];
+    if (!rp) continue;
     const x = rp.x * CELL;
     const y = rp.y * CELL;
+    const moi = gr.id === actif.id;
     g.fillStyle = '#05070a';
     g.fillRect(x + 5, y + 5, 6, 6);
     g.fillStyle = '#f2f6fb';
-    g.fillRect(x + 6, y + 6, 4, 4);
-    g.fillStyle = '#05070a';
-    g.fillRect(x + 7, y + 7, 2, 2);
+    if (moi) {
+      g.fillRect(x + 6, y + 6, 4, 4);
+      g.fillStyle = '#05070a';
+      g.fillRect(x + 7, y + 7, 2, 2);
+    } else {
+      // Contour seul : un carré creux de 4 px, sans anticrénelage.
+      g.fillRect(x + 6, y + 6, 4, 1);
+      g.fillRect(x + 6, y + 9, 4, 1);
+      g.fillRect(x + 6, y + 7, 1, 2);
+      g.fillRect(x + 9, y + 7, 1, 2);
+    }
   }
 
-  // Itinéraire en cours
-  const o = S.player.ordre;
-  if (o && o.type === 'voyage' && o.route) {
-    g.fillStyle = 'rgba(242,246,251,.55)';
+  // Itinéraires en cours, celui du groupe affiché en clair, les autres estompés
+  for (const gr of groupes(S)) {
+    const o = gr.ordre;
+    if (!o || o.type !== 'voyage' || !o.route) continue;
+    g.fillStyle = gr.id === actif.id ? 'rgba(242,246,251,.55)' : 'rgba(242,246,251,.22)';
     for (let k = o.etape; k < o.route.length; k++) {
       const r = w.regions[o.route[k]];
       g.fillRect(r.x * CELL + 7, r.y * CELL + 7, 2, 2);
@@ -6810,11 +7298,11 @@ function surClicCarte(ev) {
 
 function etaVoyage(dest) {
   const mods = { reductionVoyage: (S.base.recherche.logistique || 0) * 0.06 };
-  const route = chemin(S.world, S.player.regionId, dest, mods);
+  const route = chemin(S.world, G().regionId, dest, mods);
   if (!route) return null;
   let h = 0;
   for (const i of route) h += coutTraversee(S.world, i, mods);
-  const debout = S.player.squad.filter(estDebout);
+  const debout = G().membres.filter(estDebout);
   let v = 1;
   if (debout.length) v = Math.min(...debout.map((c) => 0.5 + comp(c, 'endurance') / 90));
   return { heures: Math.ceil(h / Math.max(0.2, v)), cases: route.length };
@@ -6837,7 +7325,7 @@ function blocFil() {
 }
 
 function blocSite() {
-  const r = S.world.regions[S.player.regionId];
+  const r = S.world.regions[G().regionId];
   if (!r.site || !r.site.connu) return '';
   const def = POI[r.site.type];
   if (r.site.fouille) {
@@ -6846,7 +7334,7 @@ function blocSite() {
       <div class="aide">Il n\u2019y a plus rien à en tirer.</div>
     </section>`;
   }
-  const debout = S.player.squad.filter(estDebout);
+  const debout = G().membres.filter(estDebout);
   const ing = debout.length ? Math.max(...debout.map((c) => comp(c, 'ingenierie'))) : 0;
   const bloque = def.reqIngenierie && ing < def.reqIngenierie;
   return `<section class="panneau site">
@@ -6902,12 +7390,25 @@ function blocContratsActifs() {
   </section>`;
 }
 
+/**
+ * Qui fait quoi dans le groupe, quand tout le monde ne fait pas la même chose.
+ * Muet tant qu'il n'y a rien à signaler : l'ordre du groupe suffit alors.
+ */
+function blocRepartition() {
+  const g = G();
+  const rep = repartition(g);
+  const clefs = Object.keys(rep);
+  if (clefs.length <= 1) return '';
+  return `<div class="aide" style="color:var(--cyan)">Réparti : ${clefs
+    .map((k) => `${rep[k]} × ${ORDRES[k] ? ORDRES[k].nom.toLowerCase() : k}`).join(' · ')}</div>`;
+}
+
 function blocRegionCourante() {
-  const rid = S.player.regionId;
+  const rid = G().regionId;
   const r = S.world.regions[rid];
   const b = BIOMES[r.biome];
   const col = colonieDe(S.world, rid);
-  const o = S.player.ordre;
+  const o = G().ordre;
   const ici = S.base.fonde && S.base.regionId === rid;
 
   const ordresDispo = ['repos', 'fouille', 'mine', 'chasse', 'exploration', 'patrouille'];
@@ -6943,7 +7444,7 @@ function blocRegionCourante() {
 
   return `
   <section class="panneau">
-    <h2 class="titre">Ordre en cours <span class="droite">${e(enTete)}</span></h2>
+    <h2 class="titre">Ordre de ${e(G().nom)} <span class="droite">${e(enTete)}</span></h2>
     ${progression}
     <div class="grille-ordres">${boutons}
       <button class="act ordre" data-a="modale" data-m="entrainement">
@@ -6951,7 +7452,8 @@ function blocRegionCourante() {
     </div>
     <div class="aide" style="margin-top:6px">${e(ORDRES[o.type] ? ORDRES[o.type].desc : '')}</div>
     ${detailRendement ? `<div class="aide" style="color:var(--texte-2)">Ici : ${e(detailRendement)} par heure de travail.</div>` : ''}
-    ${S.player.recolteHeure ? `<div class="aide" style="color:var(--vert)">Dernière heure : ${e(S.player.recolteHeure)}</div>` : ''}
+    ${G().recolteHeure ? `<div class="aide" style="color:var(--vert)">Dernière heure : ${e(G().recolteHeure)}</div>` : ''}
+    ${blocRepartition()}
   </section>
 
   <section class="panneau">
@@ -7017,7 +7519,7 @@ function blocEngagement(col) {
 }
 
 function blocSelection() {
-  if (selection == null || selection === S.player.regionId) return '';
+  if (selection == null || selection === G().regionId) return '';
   const r = S.world.regions[selection];
   const col = colonieDe(S.world, selection);
   const eta = etaVoyage(selection);
@@ -7040,7 +7542,7 @@ function blocSelection() {
       <span class="v" style="color:${couleurFaction(col.faction)}">${e(FACTIONS[col.faction].nom)}</span></div>
       <div class="ligne"><span class="k">Population</span><span class="v">${n(col.pop)}</span></div>
       <div class="ligne"><span class="k">Défense</span><span class="v">${n(col.defense)}</span></div>` : ''}
-    <div class="ligne"><span class="k">Distance</span><span class="v">${distance(S.player.regionId, selection)} cases</span></div>
+    <div class="ligne"><span class="k">Distance</span><span class="v">${distance(G().regionId, selection)} cases</span></div>
     <div class="ligne"><span class="k">Rencontres</span><span class="v">${(r.danger * 100).toFixed(1)} %/h</span></div>
     ${armeesIci(selection)}
     <div class="sep"></div>
@@ -7061,11 +7563,13 @@ function ecranCarte() {
   return `
   <div id="carte-boite"><canvas id="carte" aria-label="Carte du monde"></canvas></div>
   <div class="legende">
-    <span><i style="background:#f2f6fb"></i>escouade</span>
+    <span><i style="background:#f2f6fb"></i>${groupes(S).length > 1 ? 'groupe affiché' : 'escouade'}</span>
+    ${groupes(S).length > 1 ? '<span><i style="border:1px solid #f2f6fb"></i>autre groupe</span>' : ''}
     <span><i style="border:1px solid #4fd0e3"></i>avant-poste</span>
     ${classement(S.world).slice(0, 6).map((f) =>
     `<span><i style="background:${f.couleur}"></i>${e(FACTIONS[f.key].court)}</span>`).join('')}
   </div>
+  ${groupes(S).length > 1 ? barreGroupes() : ''}
   ${blocSelection()}
   ${blocRegionCourante()}
   ${blocCaravanes()}
@@ -7119,7 +7623,7 @@ function ficheMembre(c) {
         <div><span class="aide">Saignement</span>${jauge(c.sang / 100, c.sang > 5 ? 'rouge' : '')}</div>
       </div>
       ${(() => {
-    const rel = relationsNotables(c, S.player.squad);
+    const rel = relationsNotables(c, tousLesMembres(S));
     if (!rel.ami && !rel.rival) return '';
     return `<div class="titre">Relations</div><div class="aide">${[
       rel.ami ? `S’entend avec ${e(rel.ami.nom)} (${Math.round(lien(c, rel.ami))})` : null,
@@ -7143,20 +7647,101 @@ function ficheMembre(c) {
       <div class="ligne"><span class="k">Éliminations</span><span class="v">${c.kills}</span></div>
       <div class="sep"></div>
       <button class="act mini" data-a="modale" data-m="equipement" data-c="${e(c.id)}">Équiper</button>
+      ${blocTacheMembre(c)}
     </div>
   </details>`;
 }
 
+/**
+ * Ce que fait cette personne, et comment le changer. Sans tâche propre, elle
+ * suit l'ordre du groupe — c'est le cas courant, et il ne doit pas coûter un
+ * clic de plus.
+ */
+function blocTacheMembre(c) {
+  if (!estVivant(c)) return '';
+  const g = G();
+  const enMarche = g.ordre.type === 'voyage';
+  const perso = c.tache && TACHES_INDIVIDUELLES.includes(c.tache.type) ? c.tache.type : null;
+  const effective = tacheDe(g, c).type;
+
+  return `<div class="sep"></div>
+    <div class="titre">Tâche
+      <span class="droite ${perso ? 'cyan' : ''}">${e(ORDRES[effective].nom)}${perso ? '' : ' (ordre du groupe)'}</span></div>
+    ${enMarche
+    ? '<div class="aide">En marche, tout le monde marche. La tâche personnelle reprendra à l’arrivée.</div>'
+    : ''}
+    <div class="taches">
+      <button class="act mini" data-a="tache" data-c="${e(c.id)}" data-k=""
+        aria-pressed="${!perso}">Suivre le groupe</button>
+      ${TACHES_INDIVIDUELLES.map((k) => `<button class="act mini" data-a="tache"
+        data-c="${e(c.id)}" data-k="${k}" aria-pressed="${perso === k}">${e(ORDRES[k].nom)}</button>`).join('')}
+    </div>`;
+}
+
+/**
+ * La barre de groupes : où est chacun, ce qu'il fait, combien il en reste
+ * debout. C'est le seul endroit d'où l'on voit toute l'escouade d'un coup.
+ */
+function barreGroupes() {
+  const gs = groupes(S);
+  const actif = G();
+  const onglets = gs.map((g) => {
+    const viv = g.membres.filter(estVivant).length;
+    const deb = g.membres.filter(estDebout).length;
+    const ici = g.ordre.type === 'voyage'
+      ? `→ ${e(nomRegion(S.world, g.ordre.dest))}`
+      : e(nomRegion(S.world, g.regionId));
+    return `<button class="grp ${g.id === actif.id ? 'on' : ''}" data-a="groupe" data-k="${e(g.id)}">
+      <span class="grp-n">${e(g.nom)}</span>
+      <span class="grp-d">${deb < viv ? `<b class="rouge">${deb}</b>` : deb}/${viv} · ${ici}</span>
+      <span class="grp-o">${e(ORDRES[g.ordre.type].nom)}</span>
+    </button>`;
+  }).join('');
+  return `<section class="panneau">
+    <h2 class="titre">Groupes <span class="droite">${gs.length} / ${maxGroupes(S)}</span></h2>
+    <div class="groupes">${onglets}</div>
+  </section>`;
+}
+
+/** Détacher et regrouper : la seule façon d'être à deux endroits à la fois. */
+function blocDetachement() {
+  const g = G();
+  const dispo = g.membres.filter(estDebout);
+  const voisins = fusionnablesAvec(S, g);
+  const place = groupes(S).length < maxGroupes(S);
+
+  const cases = dispo.map((c) => `<button class="act mini" data-a="detacher-sel" data-c="${e(c.id)}"
+    aria-pressed="${detaches.has(c.id)}">${detaches.has(c.id) ? '×' : ' '} ${e(c.nom)}</button>`).join('');
+
+  const choisis = dispo.filter((c) => detaches.has(c.id)).length;
+  const possible = place && choisis > 0 && choisis < dispo.length;
+
+  return `<section class="panneau">
+    <h2 class="titre">Détacher</h2>
+    ${dispo.length < 2
+    ? '<div class="aide">Il faut au moins deux personnes debout pour se séparer.</div>'
+    : `<div class="aide">Les vivres et le matériel suivent au prorata. Choisissez qui part.</div>
+       <div class="taches">${cases}</div>
+       <button class="act" data-a="detacher" ${possible ? '' : 'disabled'}>
+         Détacher ${choisis || ''} ${choisis > 1 ? 'membres' : 'membre'}</button>
+       ${place ? '' : '<div class="aide">Plus de quoi coordonner un groupe de plus — montez l’antenne de l’avant-poste.</div>'}`}
+    ${voisins.length ? `<div class="sep"></div>
+      <div class="titre">Regrouper</div>
+      <div class="taches">${voisins.map((o) => `<button class="act mini" data-a="fusionner" data-k="${e(o.id)}">
+        Absorber ${e(o.nom)} (${o.membres.filter(estVivant).length})</button>`).join('')}</div>` : ''}
+  </section>`;
+}
+
 function blocInventaire() {
-  const inv = S.player.inventaire;
-  const cap = capacitePortage(S);
+  const inv = G().inventaire;
+  const cap = capacitePortage(S, G());
   const poids = poidsInventaire(inv);
   const lignes = COMMODITY_KEYS.filter((k) => (inv[k] || 0) > 0)
     .map((k) => `<div class="ligne"><span class="k">${e(COMMODITIES[k].nom)}</span>
       <span class="v">${n(inv[k])}</span></div>`).join('') || '<div class="aide">Sac vide.</div>';
 
-  const objets = S.player.objets.length
-    ? S.player.objets.map((o) => `<span class="puce">${e(ITEMS[o].nom)}</span>`).join(' ')
+  const objets = G().objets.length
+    ? G().objets.map((o) => `<span class="puce">${e(ITEMS[o].nom)}</span>`).join(' ')
     : '<span class="aide">Aucun équipement en réserve.</span>';
 
   return `<section class="panneau">
@@ -7195,8 +7780,10 @@ function ecranEscouade() {
   const p = S.player;
   const pol = p.politique;
   const max = tailleEscouadeMax(S.base);
+  const g = G();
 
   return `
+  ${barreGroupes()}
   <section class="panneau">
     <h2 class="titre">Posture</h2>
     <div class="grille3">
@@ -7221,16 +7808,18 @@ function ecranEscouade() {
   </section>
 
   <section class="panneau">
-    <h2 class="titre">Cohésion <span class="droite">${Math.round(p.cohesion ?? 55)} / 100</span></h2>
-    ${jauge((p.cohesion ?? 55) / 100, (p.cohesion ?? 55) < 30 ? 'rouge' : (p.cohesion ?? 55) < 60 ? 'ambre' : 'vert')}
-    <div class="aide" style="margin-top:5px">${e(texteCohesion(p.cohesion ?? 55))}</div>
+    <h2 class="titre">Cohésion de ${e(g.nom)} <span class="droite">${Math.round(g.cohesion ?? 55)} / 100</span></h2>
+    ${jauge((g.cohesion ?? 55) / 100, (g.cohesion ?? 55) < 30 ? 'rouge' : (g.cohesion ?? 55) < 60 ? 'ambre' : 'vert')}
+    <div class="aide" style="margin-top:5px">${e(texteCohesion(g.cohesion ?? 55))}</div>
   </section>
 
   <section class="panneau">
-    <h2 class="titre">Escouade <span class="droite">${p.squad.filter(estVivant).length} / ${max}</span></h2>
-    ${p.squad.map(ficheMembre).join('')}
+    <h2 class="titre">${e(g.nom)}
+      <span class="droite">${tousLesMembres(S).filter(estVivant).length} / ${max} au total</span></h2>
+    ${g.membres.map(ficheMembre).join('')}
   </section>
 
+  ${blocDetachement()}
   ${blocInventaire()}
   ${blocMemorial()}`;
 }
@@ -7242,8 +7831,8 @@ function ecranEscouade() {
 function ecranBase() {
   const b = S.base;
   if (!b.fonde) {
-    const r = S.world.regions[S.player.regionId];
-    const inv = S.player.inventaire;
+    const r = S.world.regions[G().regionId];
+    const inv = G().inventaire;
     const manque = Object.keys(COUT_FONDATION)
       .filter((k) => (inv[k] || 0) < COUT_FONDATION[k])
       .map((k) => `${COMMODITIES[k].nom.toLowerCase()} ${n(inv[k] || 0)}/${COUT_FONDATION[k]}`);
@@ -7254,7 +7843,7 @@ function ecranBase() {
       et la recherche. Il faut le bâtir hors d’une ville existante, et il pourra être attaqué.</div>
       <div class="sep"></div>
       <div class="ligne"><span class="k">Coût</span><span class="v">${e(coutTexte(COUT_FONDATION))}</span></div>
-      <div class="ligne"><span class="k">Emplacement</span><span class="v">${e(nomRegion(S.world, S.player.regionId))}</span></div>
+      <div class="ligne"><span class="k">Emplacement</span><span class="v">${e(nomRegion(S.world, G().regionId))}</span></div>
       ${manque.length ? `<div class="aide" style="color:var(--rouge)">Manque : ${e(manque.join(', '))}</div>` : ''}
       ${enVille ? '<div class="aide" style="color:var(--rouge)">Impossible ici : une ville occupe déjà la région.</div>' : ''}
       <div class="sep"></div>
@@ -7439,7 +8028,7 @@ function blocAllegeance() {
 
 function ecranContrats() {
   const enCours = S.player.contrats;
-  const col = colonieDe(S.world, S.player.regionId);
+  const col = colonieDe(S.world, G().regionId);
   const dispo = col && col.contrats ? col.contrats : [];
 
   return `
@@ -7648,16 +8237,16 @@ function contenuModale() {
 }
 
 function modaleMarche() {
-  const col = colonieDe(S.world, S.player.regionId);
+  const col = colonieDe(S.world, G().regionId);
   if (!col) return '<div class="aide">Il n’y a pas de marché ici.</div>';
-  const negoc = meilleurCommercant(S.player.squad);
+  const negoc = meilleurCommercant(G().membres);
   const hab = negoc ? comp(negoc, 'commerce') : 0;
   const repu = S.player.reputation[col.faction] || 0;
 
   const lignes = COMMODITY_KEYS.map((k) => {
     const p = prixJoueur(col, k, hab, repu);
     const stock = Math.floor(col.stock[k] || 0);
-    const aMoi = S.player.inventaire[k] || 0;
+    const aMoi = G().inventaire[k] || 0;
     return `<div class="marche-l">
       <span class="nm">${e(COMMODITIES[k].nom)}<br>
         <span class="aide">ville ${n(stock)} · sac ${n(aMoi)}</span></span>
@@ -7675,12 +8264,12 @@ function modaleMarche() {
 }
 
 function modaleEtal() {
-  const col = colonieDe(S.world, S.player.regionId);
+  const col = colonieDe(S.world, G().regionId);
   if (!col) return '<div class="aide">Pas d’armurier ici.</div>';
   const etal = col.etal;
   if (!etal || !etal.items.length) return '<div class="aide">L’étal est vide aujourd’hui.</div>';
 
-  const negoc = meilleurCommercant(S.player.squad);
+  const negoc = meilleurCommercant(G().membres);
   const hab = negoc ? comp(negoc, 'commerce') : 0;
   const repu = S.player.reputation[col.faction] || 0;
 
@@ -7710,7 +8299,7 @@ function modaleEtal() {
     </div>`;
   }).join('');
 
-  const reserve = S.player.objets.map((key, i) => {
+  const reserve = G().objets.map((key, i) => {
     const it = ITEMS[key];
     const p = prixItem(col, key, 1, hab, repu);
     return `<div class="marche-l">
@@ -7732,7 +8321,7 @@ function modaleEtal() {
 }
 
 function modalePanneau() {
-  const col = colonieDe(S.world, S.player.regionId);
+  const col = colonieDe(S.world, G().regionId);
   if (!col) return '<div class="aide">Aucun panneau ici.</div>';
   const liste = col.contrats || [];
   return `<h2 class="titre">Panneau de ${e(col.nom)}
@@ -7744,11 +8333,11 @@ function modalePanneau() {
 
 function modaleTransfert() {
   const b = S.base;
-  if (!b.fonde || S.player.regionId !== b.regionId) {
+  if (!b.fonde || G().regionId !== b.regionId) {
     return '<div class="aide">Il faut être à l’avant-poste.</div>';
   }
   const lignes = COMMODITY_KEYS.map((k) => {
-    const sac = S.player.inventaire[k] || 0;
+    const sac = G().inventaire[k] || 0;
     const ent = b.stock[k] || 0;
     return `<div class="marche-l">
       <span class="nm">${e(COMMODITIES[k].nom)}<br>
@@ -7765,9 +8354,9 @@ function modaleTransfert() {
 }
 
 function modaleEquipement() {
-  const c = S.player.squad.find((x) => x.id === modale.c);
+  const c = G().membres.find((x) => x.id === modale.c);
   if (!c) return '<div class="aide">Ce membre n’est plus là.</div>';
-  const dispo = S.player.objets;
+  const dispo = G().objets;
   const groupes = { arme: [], armure: [], greffe: [] };
   dispo.forEach((k, i) => {
     const it = ITEMS[k];
@@ -7810,10 +8399,10 @@ function modaleEntrainement() {
 }
 
 function modaleRecrutement() {
-  const col = colonieDe(S.world, S.player.regionId);
+  const col = colonieDe(S.world, G().regionId);
   if (!col) return '<div class="aide">Personne à recruter ici.</div>';
   const max = tailleEscouadeMax(S.base);
-  const vivants = S.player.squad.filter(estVivant).length;
+  const vivants = tousLesMembres(S).filter(estVivant).length;
   const prix = Math.round(180 + col.pop * 0.35 + vivants * 90);
   return `<h2 class="titre">Recrutement à ${e(col.nom)}</h2>
     <div class="ligne"><span class="k">Escouade</span><span class="v">${vivants} / ${max}</span></div>
@@ -7902,6 +8491,47 @@ function surClic(ev) {
       rafraichir(true);
       break;
 
+    // --- Groupes ----------------------------------------------------------
+
+    case 'groupe':
+      ACTIONS.choisirGroupe(el.dataset.k);
+      selection = G().regionId;
+      detaches = new Set();
+      break;
+
+    case 'tache': {
+      const k = el.dataset.k;
+      const r = ACTIONS.assignerTache(el.dataset.c, k ? { type: k } : null);
+      if (!r.ok) toast(r.motif, true);
+      rafraichir(true);
+      break;
+    }
+
+    case 'detacher-sel': {
+      const id = el.dataset.c;
+      if (detaches.has(id)) detaches.delete(id);
+      else detaches.add(id);
+      rafraichir(true);
+      break;
+    }
+
+    case 'detacher': {
+      const r = ACTIONS.scinder([...detaches]);
+      detaches = new Set();
+      if (!r.ok) toast(r.motif, true);
+      else toast(`${r.groupe.nom} part de son côté.`);
+      rafraichir(true);
+      break;
+    }
+
+    case 'fusionner': {
+      const r = ACTIONS.fusionner(el.dataset.k);
+      if (!r.ok) toast(r.motif, true);
+      else toast('Groupes réunis.');
+      rafraichir(true);
+      break;
+    }
+
     case 'politique':
       S.player.politique[el.dataset.k] = !S.player.politique[el.dataset.k];
       rafraichir(true);
@@ -7956,7 +8586,7 @@ function surClic(ev) {
     }
 
     case 'accepter': {
-      const col = colonieDe(S.world, S.player.regionId);
+      const col = colonieDe(S.world, G().regionId);
       const r = accepter(S, col, el.dataset.k, logger());
       toast(r.ok ? 'Contrat accepté.' : r.motif, !r.ok);
       if (r.ok && modale) { modale = null; rendreModale(); }
@@ -7972,7 +8602,7 @@ function surClic(ev) {
     }
 
     case 'acheter-item': {
-      const col = colonieDe(S.world, S.player.regionId);
+      const col = colonieDe(S.world, G().regionId);
       const r = acheterItem(S, col, Number(el.dataset.i));
       toast(r.ok ? `${r.nom} acheté pour ${r.prix} cr.` : r.motif, !r.ok);
       rendreModale();
@@ -7981,7 +8611,7 @@ function surClic(ev) {
     }
 
     case 'vendre-item': {
-      const col = colonieDe(S.world, S.player.regionId);
+      const col = colonieDe(S.world, G().regionId);
       const r = vendreItem(S, col, Number(el.dataset.i));
       toast(r.ok ? `${r.nom} vendu ${r.prix} cr.` : r.motif, !r.ok);
       rendreModale();
@@ -8018,7 +8648,7 @@ function surClic(ev) {
     }
 
     case 'acheter': {
-      const col = colonieDe(S.world, S.player.regionId);
+      const col = colonieDe(S.world, G().regionId);
       const r = acheter(S, col, el.dataset.k, Number(el.dataset.q));
       toast(r.ok ? `${r.qte} acheté(s) pour ${r.cout} cr.` : r.motif, !r.ok);
       rendreModale();
@@ -8027,7 +8657,7 @@ function surClic(ev) {
     }
 
     case 'vendre': {
-      const col = colonieDe(S.world, S.player.regionId);
+      const col = colonieDe(S.world, G().regionId);
       const r = vendre(S, col, el.dataset.k, Number(el.dataset.q));
       toast(r.ok ? `${r.qte} vendu(s) pour ${r.gain} cr.` : r.motif, !r.ok);
       rendreModale();
@@ -8037,7 +8667,7 @@ function surClic(ev) {
 
     case 'deposer': {
       const k = el.dataset.k;
-      const r = deposer(S, k, S.player.inventaire[k] || 0);
+      const r = deposer(S, k, G().inventaire[k] || 0);
       if (!r.ok) toast(r.motif, true);
       rendreModale();
       rafraichir(true);
@@ -8046,7 +8676,7 @@ function surClic(ev) {
 
     case 'retirer': {
       const k = el.dataset.k;
-      const libre = capacitePortage(S) - poidsInventaire(S.player.inventaire);
+      const libre = capacitePortage(S, G()) - poidsInventaire(G().inventaire);
       const qte = Math.floor(libre / Math.max(0.01, COMMODITIES[k].poids));
       const r = retirer(S, k, qte, qte);
       if (!r.ok) toast(r.motif, true);
@@ -8056,24 +8686,24 @@ function surClic(ev) {
     }
 
     case 'equiper': {
-      const c = S.player.squad.find((x) => x.id === el.dataset.c);
+      const c = G().membres.find((x) => x.id === el.dataset.c);
       const i = Number(el.dataset.i);
-      const key = S.player.objets[i];
+      const key = G().objets[i];
       if (!c || !key) break;
       const it = ITEMS[key];
       if (it.type === 'greffe' && niveauRech(S.base, 'cybernetique') < 1) {
         toast('Cybernétique non recherchée.', true);
         break;
       }
-      S.player.objets.splice(i, 1);
+      G().objets.splice(i, 1);
       if (it.type === 'greffe') {
         const ancien = c.equip.greffes[it.membre];
-        if (ancien) S.player.objets.push(ancien);
+        if (ancien) G().objets.push(ancien);
         c.equip.greffes[it.membre] = key;
       } else {
         const slot = it.type === 'arme' ? 'arme' : 'armure';
         const ancien = c.equip[slot];
-        if (ancien) S.player.objets.push(ancien);
+        if (ancien) G().objets.push(ancien);
         c.equip[slot] = key;
       }
       toast(`${it.nom} équipé.`);
@@ -8231,11 +8861,12 @@ const API = {
     return res;
   },
 
-  /** Engagement d'un mercenaire dans une ville. */
+  /** Engagement d'un mercenaire dans une ville : il rejoint le groupe affiché. */
   recruter(prix) {
-    const col = state.world.regions[state.player.regionId].colonie;
+    const g = groupeActif(state);
+    const col = state.world.regions[g.regionId].colonie;
     if (!col) return { ok: false, motif: 'Personne à recruter ici.' };
-    const vivants = state.player.squad.filter(estVivant).length;
+    const vivants = tousLesMembres(state).filter(estVivant).length;
     if (vivants >= tailleEscouadeMax(state.base)) return { ok: false, motif: 'Escouade au complet.' };
     if (state.player.credits < prix) return { ok: false, motif: 'Crédits insuffisants.' };
 
@@ -8245,15 +8876,69 @@ const API = {
     state.rngState = rng.save();
 
     state.player.credits -= prix;
-    state.player.squad.push(c);
+    g.membres.push(c);
     creerLogger(state)({
       type: 'recrue',
-      texte: `${c.nom} (${c.archetypeNom}) s’engage pour ${prix} cr.`,
+      texte: `${c.nom} (${c.archetypeNom}) s’engage dans ${g.nom} pour ${prix} cr.`,
       important: true,
-      regionId: state.player.regionId,
+      regionId: g.regionId,
+      groupe: g.id,
     });
     sauver();
     return { ok: true, nom: c.nom };
+  },
+
+  // --- Groupes -------------------------------------------------------------
+
+  choisirGroupe(id) {
+    choisirGroupe(state, id);
+    rafraichir(true);
+  },
+
+  /** Détache des membres dans un nouveau groupe. Tirage : RNG de la partie. */
+  scinder(ids) {
+    const rng = new Rng(state.rngState);
+    const r = scinder(state, groupeActif(state), ids, rng);
+    state.rngState = rng.save();
+    if (r.ok) {
+      creerLogger(state)({
+        type: 'groupe',
+        texte: `${r.groupe.nom} se détache : ${r.groupe.membres.map((c) => c.nom).join(', ')}.`,
+        important: true,
+        regionId: r.groupe.regionId,
+        groupe: r.groupe.id,
+      });
+      sauver();
+    }
+    return r;
+  },
+
+  fusionner(idAutre) {
+    const a = groupeActif(state);
+    const b = (state.player.groupes || []).find((x) => x.id === idAutre);
+    if (!b) return { ok: false, motif: 'Groupe introuvable.' };
+    const nomB = b.nom;
+    const r = fusionner(state, a, b);
+    if (r.ok) {
+      creerLogger(state)({
+        type: 'groupe',
+        texte: `${nomB} rejoint ${a.nom}.`,
+        important: true,
+        regionId: a.regionId,
+        groupe: a.id,
+      });
+      sauver();
+    }
+    return r;
+  },
+
+  /** Tâche personnelle d'un membre. `null` le remet sous l'ordre du groupe. */
+  assignerTache(idPerso, tache) {
+    const c = tousLesMembres(state).find((x) => x.id === idPerso);
+    if (!c) return { ok: false, motif: 'Introuvable.' };
+    const r = assignerTache(state, c, tache);
+    if (r.ok) sauver();
+    return r;
   },
 };
 

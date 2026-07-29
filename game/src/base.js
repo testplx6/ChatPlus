@@ -3,6 +3,7 @@
 
 import { BUILDINGS, RESEARCH, COMMODITY_KEYS } from './data.js';
 import { comp, gagnerXp, estDebout } from './characters.js';
+import { groupes, groupeActif } from './groupes.js';
 
 export function creerBase() {
   const stock = {};
@@ -173,18 +174,19 @@ export function lancerRecherche(state, key) {
   return { ok: true };
 }
 
-export function fonderBase(state, log) {
+export function fonderBase(state, log, groupe) {
+  const g = groupe || groupeActif(state);
   const base = state.base;
   if (base.fonde) return { ok: false, motif: 'Avant-poste déjà fondé.' };
-  const inv = state.player.inventaire;
+  const inv = g.inventaire;
   if (!peutPayer(inv, COUT_FONDATION)) {
     return { ok: false, motif: 'Il faut 120 ferraille, 40 polymère, 5 composants dans le sac.' };
   }
-  const r = state.world.regions[state.player.regionId];
+  const r = state.world.regions[g.regionId];
   if (r.colonie) return { ok: false, motif: 'Impossible de bâtir dans une ville existante.' };
   payer(inv, COUT_FONDATION);
   base.fonde = true;
-  base.regionId = state.player.regionId;
+  base.regionId = g.regionId;
   base.batiments = {};
   base.defense = 10;
   log({ type: 'base', texte: `Avant-poste fondé. Ici, au moins, c’est chez nous.`, regionId: base.regionId });
@@ -216,7 +218,10 @@ export function tickBase(state, log, ctx) {
   if (!base.fonde) return null;
   const rng = ctx.rng;
   const rech = base.recherche;
-  const surPlace = state.player.regionId === base.regionId;
+  // N'importe quel groupe présent fait avancer les chantiers. Test direct
+  // plutôt que `filter` : c'est du travail par heure de jeu, pas par clic.
+  let surPlace = false;
+  for (const g of state.player.groupes) if (g.regionId === base.regionId) { surPlace = true; break; }
 
   // --- Énergie
   const gen = niveau(base, 'generateur');
@@ -287,12 +292,15 @@ export function tickBase(state, log, ctx) {
     const item = base.file[0];
     let vitesse = 1 + Math.min(1, (base.pop || 0) / 30);
     if (surPlace) {
-      // L'escouade met la main à la pâte
+      // Ceux qui sont là mettent la main à la pâte
       let ing = 0;
-      for (const c of state.player.squad) {
-        if (!estDebout(c)) continue;
-        ing += comp(c, 'ingenierie');
-        gagnerXp(c, 'ingenierie', 0.25);
+      for (const g of state.player.groupes) {
+        if (g.regionId !== base.regionId) continue;
+        for (const c of g.membres) {
+          if (!estDebout(c)) continue;
+          ing += comp(c, 'ingenierie');
+          gagnerXp(c, 'ingenierie', 0.25);
+        }
       }
       vitesse += Math.min(1.2, ing / 160);
     }
@@ -328,7 +336,9 @@ export function tickBase(state, log, ctx) {
   if (t - base.derniereAttaque > 72 && rng.chance(0.0016 * (1 + reg.danger * 4))) {
     base.derniereAttaque = t;
     const force = rng.irange(20, 45) + Math.floor(t / 600) + Math.round((base.pop || 0) * 1.5);
-    const defense = base.defense + (surPlace ? forceEscouade(state) : 0);
+    // `forceEscouade` ne compte déjà que les gens présents : laisser
+    // l'avant-poste sans personne, c'est le laisser à sa garnison.
+    const defense = base.defense + forceEscouade(state);
     if (defense > force) {
       base.defense = Math.max(0, base.defense - force * 0.3);
       log({
@@ -360,9 +370,14 @@ export function tickBase(state, log, ctx) {
   return { energie: e };
 }
 
+/** Ce que valent, l'arme à la main, les gens présents à l'avant-poste. */
 export function forceEscouade(state) {
+  const base = state.base;
   let f = 0;
-  for (const c of state.player.squad) {
+  const presents = base.fonde
+    ? groupes(state).filter((g) => g.regionId === base.regionId).flatMap((g) => g.membres)
+    : [];
+  for (const c of presents) {
     if (!estDebout(c)) continue;
     f += comp(c, 'melee') * 0.4 + comp(c, 'tir') * 0.4 + comp(c, 'endurance') * 0.2;
   }
@@ -373,29 +388,31 @@ export function forceEscouade(state) {
 // Transferts sac ↔ avant-poste
 // ---------------------------------------------------------------------------
 
-export function deposer(state, key, qte) {
+export function deposer(state, key, qte, groupe) {
+  const g = groupe || groupeActif(state);
   const base = state.base;
-  if (!base.fonde || state.player.regionId !== base.regionId) {
+  if (!base.fonde || !g || g.regionId !== base.regionId) {
     return { ok: false, motif: 'Il faut être à l’avant-poste.' };
   }
-  const dispo = state.player.inventaire[key] || 0;
+  const dispo = g.inventaire[key] || 0;
   const libre = capaciteStock(base) - totalStock(base);
   const n = Math.max(0, Math.min(Math.floor(qte), dispo, Math.floor(libre)));
   if (n <= 0) return { ok: false, motif: 'Rien à déposer, ou entrepôt plein.' };
-  state.player.inventaire[key] -= n;
+  g.inventaire[key] -= n;
   base.stock[key] = (base.stock[key] || 0) + n;
   return { ok: true, qte: n };
 }
 
-export function retirer(state, key, qte, capaciteLibre) {
+export function retirer(state, key, qte, capaciteLibre, groupe) {
+  const g = groupe || groupeActif(state);
   const base = state.base;
-  if (!base.fonde || state.player.regionId !== base.regionId) {
+  if (!base.fonde || !g || g.regionId !== base.regionId) {
     return { ok: false, motif: 'Il faut être à l’avant-poste.' };
   }
   const dispo = base.stock[key] || 0;
   const n = Math.max(0, Math.min(Math.floor(qte), dispo, Math.floor(capaciteLibre)));
   if (n <= 0) return { ok: false, motif: 'Rien à prendre, ou sac plein.' };
   base.stock[key] -= n;
-  state.player.inventaire[key] = (state.player.inventaire[key] || 0) + n;
+  g.inventaire[key] = (g.inventaire[key] || 0) + n;
   return { ok: true, qte: n };
 }

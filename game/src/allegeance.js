@@ -8,6 +8,7 @@
 import { FACTIONS, DIPLO_FACTIONS, COMMODITIES } from './data.js';
 import { colonieParId, distance } from './world.js';
 import { idDepuisRng } from './characters.js';
+import { groupes, groupeActif } from './groupes.js';
 
 export const RANGS = [
   {
@@ -34,6 +35,13 @@ export const RANGS = [
 
 /** Réputation minimale pour être seulement reçu. */
 export const REPUTATION_MINIMALE = 20;
+
+/** Le premier groupe en `regionId` qui porte assez de `key`. */
+function porteurA(state, regionId, key, quantite) {
+  return groupes(state).find(
+    (g) => g.regionId === regionId && (g.inventaire[key] || 0) >= quantite
+  ) || null;
+}
 
 export function rangDe(all) {
   if (!all) return null;
@@ -233,9 +241,15 @@ export function avancementOrdre(state, o) {
       return { fait: vu ? 1 : 0, total: 1, pret: vu, texte: vu ? 'secteur vu' : 'non exploré' };
     }
     case 'ravitaillement': {
-      const q = Math.floor(state.player.inventaire[o.ressource] || 0);
+      // Le groupe qui livre n'a pas d'importance : ce qui compte, c'est qu'un
+      // groupe soit sur place avec la marchandise.
       const col = colonieParId(state.world, o.colonieId);
-      const surPlace = col && state.player.regionId === col.regionId;
+      const porteur = col ? porteurA(state, col.regionId, o.ressource, o.quantite) : null;
+      const q = Math.max(
+        porteur ? Math.floor(porteur.inventaire[o.ressource] || 0) : 0,
+        Math.max(0, ...groupes(state).map((g) => Math.floor(g.inventaire[o.ressource] || 0)))
+      );
+      const surPlace = !!porteur;
       return {
         fait: Math.min(q, o.quantite),
         total: o.quantite,
@@ -298,7 +312,8 @@ export function tickAllegeance(state, log, ctx) {
       const o = all.ordre;
       if (o.type === 'ravitaillement') {
         const col = colonieParId(state.world, o.colonieId);
-        state.player.inventaire[o.ressource] -= o.quantite;
+        const porteur = col ? porteurA(state, col.regionId, o.ressource, o.quantite) : null;
+        if (porteur) porteur.inventaire[o.ressource] -= o.quantite;
         if (col) col.stock[o.ressource] = (col.stock[o.ressource] || 0) + o.quantite;
       }
       state.player.credits += o.recompense;
@@ -347,12 +362,14 @@ export function tickAllegeance(state, log, ctx) {
  * Renfort : à partir de Capitaine, une escouade amie peut arriver au milieu
  * d'un combat livré en territoire ami. Retourne le nombre de renforts.
  */
-export function renfortsDisponibles(state) {
+export function renfortsDisponibles(state, groupe) {
   const all = state.player.allegeance;
   if (!all) return 0;
   const rang = rangDe(all);
   if (rang.index < 3) return 0;
-  const r = state.world.regions[state.player.regionId];
+  const g = groupe || groupeActif(state);
+  if (!g) return 0;
+  const r = state.world.regions[g.regionId];
   if (r.controle !== all.faction) return 0;
   return rang.index - 2;
 }

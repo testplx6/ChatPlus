@@ -9,6 +9,7 @@ import { COMMODITIES, COMMODITY_KEYS, FACTIONS, DIPLO_FACTIONS } from './data.js
 import { colonieParId, distance, nomRegion } from './world.js';
 import { idDepuisRng } from './characters.js';
 import { crediter, estAuService } from './allegeance.js';
+import { groupes, groupeActif } from './groupes.js';
 
 /** Durée de vie d'un panneau d'affichage avant renouvellement. */
 const DUREE_PANNEAU = 220;
@@ -151,7 +152,8 @@ export function rafraichirPanneaux(state, rng, t) {
 
 export const MAX_CONTRATS = 4;
 
-export function accepter(state, col, id, log) {
+export function accepter(state, col, id, log, groupe) {
+  const g = groupe || groupeActif(state);
   if (!col.contrats) return { ok: false, motif: 'Aucun panneau ici.' };
   const i = col.contrats.findIndex((c) => c.id === id);
   if (i < 0) return { ok: false, motif: 'Ce contrat n’est plus affiché.' };
@@ -162,8 +164,9 @@ export function accepter(state, col, id, log) {
 
   // Une livraison, ça se charge : il faut la place dans le sac.
   if (c.type === 'livraison') {
-    state.player.inventaire[c.ressource] = (state.player.inventaire[c.ressource] || 0) + c.quantite;
+    g.inventaire[c.ressource] = (g.inventaire[c.ressource] || 0) + c.quantite;
     c.charge = true;
+    c.porteur = g.id;
   }
 
   col.contrats.splice(i, 1);
@@ -202,13 +205,16 @@ export function abandonner(state, id, log) {
 export function progres(state, c) {
   switch (c.type) {
     case 'collecte': {
-      const q = Math.floor(state.player.inventaire[c.ressource] || 0);
+      // Un contrat est celui du joueur, pas d'un groupe : on additionne ce que
+      // tout le monde porte. Reste à ce qu'un groupe l'apporte au commanditaire.
+      let q = 0;
+      for (const g of groupes(state)) q += Math.floor(g.inventaire[c.ressource] || 0);
       return { fait: Math.min(q, c.quantite), total: c.quantite, pret: q >= c.quantite,
         texte: `${Math.min(q, c.quantite)} / ${c.quantite}` };
     }
     case 'livraison': {
       const dest = colonieParId(state.world, c.destId);
-      const surPlace = dest && state.player.regionId === dest.regionId;
+      const surPlace = dest && groupes(state).some((g) => g.regionId === dest.regionId);
       return { fait: surPlace ? 1 : 0, total: 1, pret: surPlace,
         texte: dest ? `→ ${dest.nom}` : '→ ville disparue' };
     }
@@ -249,31 +255,40 @@ function recompenser(state, c, log) {
 }
 
 /** Une heure de suivi : validation, échéances. */
+/** Le premier groupe présent en `regionId` qui porte assez de `key`. */
+function auLieu(state, regionId, key, quantite) {
+  return groupes(state).find(
+    (g) => g.regionId === regionId && (g.inventaire[key] || 0) >= quantite
+  ) || null;
+}
+
 export function tickContrats(state, log, ctx) {
   const restants = [];
   for (const c of state.player.contrats) {
     const p = progres(state, c);
     const donneur = colonieParId(state.world, c.colonieId);
 
-    // Validation : il faut être au bon endroit pour être payé.
+    // Validation : il faut qu'un groupe soit au bon endroit, avec la
+    // marchandise. Lequel, peu importe — c'est le joueur qui a signé.
     if (p.pret) {
       if (c.type === 'collecte') {
-        if (donneur && state.player.regionId === donneur.regionId) {
-          state.player.inventaire[c.ressource] -= c.quantite;
+        const porteur = donneur && auLieu(state, donneur.regionId, c.ressource, c.quantite);
+        if (porteur) {
+          porteur.inventaire[c.ressource] -= c.quantite;
           donneur.stock[c.ressource] = (donneur.stock[c.ressource] || 0) + c.quantite;
           recompenser(state, c, log);
           continue;
         }
       } else if (c.type === 'livraison') {
         const dest = colonieParId(state.world, c.destId);
-        const dispo = state.player.inventaire[c.ressource] || 0;
-        if (dest && dispo >= c.quantite) {
-          state.player.inventaire[c.ressource] -= c.quantite;
+        const porteur = dest && auLieu(state, dest.regionId, c.ressource, c.quantite);
+        if (porteur) {
+          porteur.inventaire[c.ressource] -= c.quantite;
           dest.stock[c.ressource] = (dest.stock[c.ressource] || 0) + c.quantite;
           recompenser(state, c, log);
           continue;
         }
-      } else if (donneur && state.player.regionId === donneur.regionId) {
+      } else if (donneur && groupes(state).some((g) => g.regionId === donneur.regionId)) {
         recompenser(state, c, log);
         continue;
       }

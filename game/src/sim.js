@@ -3,9 +3,9 @@
 // côté serveur en multijoueur), `state.player` / `state.base` la moitié privée.
 
 import { Rng } from './rng.js';
-import { COMMODITY_KEYS, FACTIONS, DIPLO_FACTIONS } from './data.js';
+import { FACTIONS, DIPLO_FACTIONS } from './data.js';
 import { genererMonde, decouvrir, colonieParId, nomRegion } from './world.js';
-import { makeCharacter } from './characters.js';
+import { makeCharacter, idDepuisRng } from './characters.js';
 import { creerBase, tickBase } from './base.js';
 import { tickColonie, etalDe, effondrer, faireSecession } from './economy.js';
 import { tickClimat, conditions, saison } from './climat.js';
@@ -13,6 +13,7 @@ import { tickCaravanes } from './caravanes.js';
 import { tickFactions } from './factions.js';
 import { tickSquad } from './squad.js';
 import { creerLogger } from './events.js';
+import { groupeVide } from './groupes.js';
 import { rafraichirPanneaux, tickContrats } from './contrats.js';
 import { tickAllegeance, palierBonus } from './allegeance.js';
 
@@ -49,19 +50,17 @@ export function nouvellePartie(seed, opts = {}) {
 
   // On part équipé : sans armure, la première bande de pillards venue
   // liquide l'escouade avant qu'elle ait appris quoi que ce soit.
-  const squad = [];
+  const premier = groupeVide(idDepuisRng(rng, 'g'), 'Convoi', depart.regionId, 0);
   const depart2 = [
     { archetype: 'ferrailleur', arme: 'machette', armure: 'cuir' },
     { archetype: 'chasseur', arme: 'clous', armure: 'cuir' },
     { archetype: 'medic', arme: 'barre', armure: 'cuir' },
   ];
-  for (const d of depart2) squad.push(makeCharacter(rng, d));
-
-  const inventaire = {};
-  for (const k of COMMODITY_KEYS) inventaire[k] = 0;
-  inventaire.rations = 45;
-  inventaire.ferraille = 20;
-  inventaire.medkit = 2;
+  for (const d of depart2) premier.membres.push(makeCharacter(rng, d));
+  premier.inventaire.rations = 45;
+  premier.inventaire.ferraille = 20;
+  premier.inventaire.medkit = 2;
+  premier.objets = ['machette', 'cuir'];
 
   const reputation = {};
   for (const k of DIPLO_FACTIONS) reputation[k] = 0;
@@ -78,11 +77,9 @@ export function nouvellePartie(seed, opts = {}) {
     world,
     player: {
       credits: 450,
-      regionId: depart.regionId,
-      squad,
-      ordre: { type: 'repos' },
-      inventaire,
-      objets: ['machette', 'cuir'],
+      // Les gens et ce qu'ils portent vivent dans les groupes ; le reste, ici.
+      groupes: [premier],
+      groupeActif: premier.id,
       reputation,
       posture: 'neutre',
       politique: {
@@ -91,14 +88,7 @@ export function nouvellePartie(seed, opts = {}) {
         payerPeage: true,
         achever: false,
       },
-      recolteHeure: null,
-      reste: {},
-      nuit: false,
       contrats: [],
-      bilan: { res: {}, depuis: 0 },
-      // Une escouade n'est pas une addition d'individus : elle tient ou elle
-      // se délite, et ça se voit sur le moral de tout le monde.
-      cohesion: 55,
       primes: {},
       allegeance: null,
     },
