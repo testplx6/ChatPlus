@@ -347,6 +347,10 @@ export function colonieParId(world, id) {
   return index(world).get(id) || null;
 }
 
+// Le coût d'un secteur n'a pas bougé avec l'agrandissement de la carte, et le
+// banc a montré que ce n'était pas là qu'était le problème : le diviser par
+// deux ne fait passer le temps de marche que de 39 à 35 %, sans rien changer au
+// revenu. Voir le rapport dans README.
 export function coutTraversee(world, i, mods = {}) {
   const r = world.regions[i];
   const base = BIOMES[r.biome].cout;

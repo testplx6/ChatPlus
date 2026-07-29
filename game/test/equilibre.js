@@ -5,7 +5,7 @@
 // Deux interrupteurs servent à isoler un système à la fois, ce qui est la seule
 // façon d'attribuer un déséquilibre à sa cause plutôt qu'à une intuition :
 //
-//   SANS=detach,contrats,livraison,services,intel   coupe ces comportements
+//   SANS=detach,contrats,livraison,services,intel,base   coupe ces comportements
 //   VAGABOND=1                       le bot voyage autant, mais sans contrat
 //
 // `intel` est le témoin de la connaissance imparfaite : sans lui le bot choisit
@@ -32,7 +32,12 @@ import { accepter, progres as progresContrat, MAX_CONTRATS } from '../src/contra
 import {
   sEngager, peutSEngager, rangDe, avancementOrdre,
 } from '../src/allegeance.js';
-import { ITEMS } from '../src/data.js';
+import {
+  fonderBase, lancerConstruction, deposer, retirer, affecter, niveau as nivBat,
+  placesMetier, affectes, coutBatiment, peutPayer, capaciteStock, totalStock,
+  COUT_FONDATION,
+} from '../src/base.js';
+import { ITEMS, BUILDING_KEYS, METIER_KEYS, METIERS, BIOMES as BIOMES_BAT } from '../src/data.js';
 import { saison } from '../src/climat.js';
 import { COMMODITY_KEYS, COMMODITIES, BIOMES } from '../src/data.js';
 import { vueColonie, PEREMPTION } from '../src/connaissance.js';
@@ -44,6 +49,9 @@ const TRACE = {
   voyagesPerdus: 0,
   // Combien de demandes le bot croise, et combien il en honore.
   demandesVues: 0,
+  // Où va l'argent. Sans ce détail, « le bot est pauvre » ne dit rien de ce
+  // qu'il faut corriger.
+  gagneVente: 0, gagneContrat: 0, payeVivres: 0, payeSoins: 0, payeMateriel: 0,
 };
 const HEURES = Number(process.argv[2]) || 4000;
 // Trente parties par défaut, pas huit. À huit, l'écart-type sur un taux de
@@ -139,6 +147,130 @@ function destinationContrat(state, g) {
 }
 
 /**
+ * Ce qu'on bâtit, et dans quel ordre.
+ *
+ * L'ordre n'est pas décoratif : le générateur d'abord, parce que sans énergie
+ * aucune chaîne ne tourne ; l'entrepôt ensuite, parce qu'un avant-poste plein
+ * ne reçoit plus rien ; le baraquement, parce que sans habitants aucun métier
+ * n'a de bras. Le reste suit l'utilité décroissante.
+ */
+const PLAN_BATI = [
+  'generateur', 'entrepot', 'baraquement', 'hydroponie', 'cantine', 'mur',
+  'halle', 'baraquement', 'entrepot', 'fonderie', 'poste', 'infirmerie',
+  'atelier', 'generateur', 'antenne', 'raffinerie', 'hydroponie', 'cantine',
+];
+
+/** Où l'on veut des bras en priorité, quand des places s'ouvrent. */
+const PLAN_POSTES = [
+  'cultivateur', 'cuisinier', 'recoltant', 'magasinier', 'batisseur',
+  'milicien', 'garde', 'fondeur', 'infirmier', 'mecanicien', 'machiniste',
+  'operateur', 'raffineur',
+];
+
+/** Une case où l'on peut vivre : vide, pas trop dangereuse, et qui rend. */
+function siteAvantPoste(state, g) {
+  let best = null;
+  let bestSc = -Infinity;
+  for (const r of state.world.regions) {
+    if (r.colonie || !r.decouvert) continue;
+    const d = distance(r.i, g.regionId);
+    if (d > 6) continue;
+    const y = BIOMES_BAT[r.biome].yields || {};
+    const rend = (y.biomasse || 0) * 1.4 + (y.ferraille || 0) + (y.minerai || 0) * 0.8;
+    // On veut une ville à portée : c'est là qu'on vend et qu'on achète le
+    // carburant sans lequel rien ne tourne.
+    let versVille = Infinity;
+    for (const c of state.world.colonies) {
+      if (c.ruine) continue;
+      versVille = Math.min(versVille, distance(r.i, c.regionId));
+    }
+    if (versVille > 5) continue;
+    const sc = rend * 10 * r.richesse - r.danger * 40 - d * 4 - versVille * 3;
+    if (sc > bestSc) { bestSc = sc; best = r; }
+  }
+  return best;
+}
+
+/**
+ * Fonder, bâtir, staffer, ravitailler. Jusqu'ici le banc ne fondait jamais
+ * d'avant-poste : treize bâtiments et treize métiers n'avaient donc jamais été
+ * éprouvés en partie, seulement à l'unité. `SANS=base` rétablit l'ancien
+ * comportement pour mesurer ce que l'avant-poste apporte — ou coûte.
+ */
+function tenirAvantPoste(state, g, memo) {
+  const base = state.base;
+
+  // --- Fonder, une fois qu'on a de quoi et un endroit où.
+  if (!base.fonde) {
+    if (state.temps < 300) return;             // on apprend le terrain d'abord
+    if (!peutPayer(g.inventaire, COUT_FONDATION)) {
+      memo.viseFondation = true;
+      return;
+    }
+    if (process.env.TRACE_BASE) {
+      console.log('  t', state.temps, 'inv',
+        Object.keys(COUT_FONDATION).map((k) => k + ':' + Math.floor(g.inventaire[k] || 0)).join(' '),
+        'cr', Math.round(state.player.credits), 'ordre', g.ordre.type);
+    }
+    const ici = state.world.regions[g.regionId];
+    if (!ici.colonie) {
+      const r = fonderBase(state, () => {}, g);
+      if (r.ok) { memo.viseFondation = false; memo.fonde = state.temps; }
+      return;
+    }
+    // On tient la marchandise : le voyage vers le site passe devant tout le
+    // reste. Refuser d'écraser une route en cours revenait à ne jamais fonder —
+    // le bot est presque toujours en chemin vers quelque chose.
+    const site = siteAvantPoste(state, g);
+    if (site && !(g.ordre.type === 'voyage' && g.ordre.dest === site.i)) {
+      donnerOrdre(state, { type: 'voyage', dest: site.i }, g);
+      memo.routeFondation = site.i;
+    }
+    return;
+  }
+
+  const surPlace = g.regionId === base.regionId;
+
+  // --- Sur place : on vide le sac dans l'entrepôt, on lance ce qu'on peut.
+  if (surPlace) {
+    const libre = capaciteStock(base) - totalStock(base);
+    if (libre > 20) {
+      for (const k of COMMODITY_KEYS) {
+        if (k === 'rations' || k === 'medkit') continue;
+        const q = Math.floor(g.inventaire[k] || 0);
+        if (q > 0) deposer(state, k, q, g);
+      }
+    }
+    // Les vivres du sac se refont sur l'entrepôt : c'est tout l'intérêt d'avoir
+    // une maison.
+    const manqueRations = 140 - (g.inventaire.rations || 0);
+    if (manqueRations > 20 && (base.stock.rations || 0) > 120) {
+      retirer(state, 'rations', manqueRations, capacitePortage(state, g), g);
+    }
+  }
+
+  // --- Chantiers. Un seul en file à la fois : empiler bloque les ressources.
+  if (base.file.length === 0) {
+    for (const k of PLAN_BATI) {
+      const b = BUILDING_KEYS.includes(k) ? k : null;
+      if (!b) continue;
+      const r = lancerConstruction(state, b);
+      if (r.ok) break;
+    }
+  }
+
+  // --- Postes. On garnit dans l'ordre d'utilité, sans laisser un métier
+  // absorber tout le monde.
+  for (const k of PLAN_POSTES) {
+    const places = placesMetier(base, k);
+    if (places <= 0) continue;
+    const tenu = affectes(base, k);
+    if (tenu >= places) continue;
+    if (affecter(state, k, tenu + 1).ok) break;
+  }
+}
+
+/**
  * Rendre service, et se donner les moyens de le faire.
  *
  * Le piège de ce système, c'est qu'une ville demande précisément ce qui lui
@@ -228,17 +360,34 @@ function jouerPrincipal(state, g, memo) {
     const reserves = new Set(p.contrats.filter((c) => c.ressource).map((c) => c.ressource));
     // Ni ce qu'on a promis à quelqu'un.
     if (memo.promesse) reserves.add(memo.promesse.res);
+    // Ni de quoi fonder l'avant-poste : le bot vendait tout à chaque passage en
+    // ville et n'accumulait donc jamais les cent vingt ferrailles qu'il faut.
+    if (!SANS.has('base') && !state.base.fonde && state.temps > 300) {
+      for (const k of Object.keys(COUT_FONDATION)) reserves.add(k);
+    }
     const ordreEnCours = p.allegeance && p.allegeance.ordre;
     if (ordreEnCours && ordreEnCours.ressource) reserves.add(ordreEnCours.ressource);
     for (const k of COMMODITY_KEYS) {
       if (k === 'rations' || k === 'medkit' || reserves.has(k)) continue;
       const q = g.inventaire[k] || 0;
-      if (q > 0) vendre(state, colIci, k, q, g);
+      if (q > 0) {
+        const av = p.credits;
+        vendre(state, colIci, k, q, g);
+        TRACE.gagneVente += p.credits - av;
+      }
     }
     // On voit venir la saison : on ne part pas en hiver avec trois boîtes.
     const cible = saison(state.temps).key === 'pluies' || saison(state.temps).key === 'accalmie' ? 190 : 120;
-    if (rations < cible && p.credits > 200) acheter(state, colIci, 'rations', cible - rations, g);
-    if ((g.inventaire.medkit || 0) < 3 && p.credits > 400) acheter(state, colIci, 'medkit', 2, g);
+    if (rations < cible && p.credits > 200) {
+      const av = p.credits;
+      acheter(state, colIci, 'rations', cible - rations, g);
+      TRACE.payeVivres += av - p.credits;
+    }
+    if ((g.inventaire.medkit || 0) < 3 && p.credits > 400) {
+      const av = p.credits;
+      acheter(state, colIci, 'medkit', 2, g);
+      TRACE.payeSoins += av - p.credits;
+    }
 
     // Compléter une collecte au marché plutôt que d'attendre que le biome la
     // donne. Un joueur qui a compris le jeu compare d'abord : payer 900 cr de
@@ -256,6 +405,39 @@ function jouerPrincipal(state, g, memo) {
       const cout = unitaire * manque;
       if (cout > c.recompense * 0.55 || p.credits < cout * 1.4) continue;
       acheter(state, colIci, c.ressource, manque, g);
+    }
+
+    // De quoi fonder, puis de quoi faire tourner. Un générateur sans carburant
+    // ne produit rien, et sans énergie aucune chaîne ne tourne : c'est la
+    // dépendance que le banc doit éprouver.
+    if (!SANS.has('base')) {
+      // On achète ce qui manque pour fonder dès qu'on peut se le payer — pas à
+      // partir d'un seuil rond. Le polymère et les composants ne se ramassent
+      // presque jamais à la fouille : les attendre, c'est ne jamais fonder.
+      if (!S_base(state).fonde && state.temps > 250) {
+        const negocB = g.membres.filter(estVivant)
+          .reduce((a, b) => (!a || comp(b, 'commerce') > comp(a, 'commerce') ? b : a), null);
+        const hab = negocB ? comp(negocB, 'commerce') : 0;
+        const rep = p.reputation[colIci.faction] || 0;
+        let cout = 0;
+        const achats = [];
+        for (const k of Object.keys(COUT_FONDATION)) {
+          const manque = COUT_FONDATION[k] - Math.floor(g.inventaire[k] || 0);
+          if (manque <= 0) continue;
+          if ((colIci.stock[k] || 0) < manque) { cout = Infinity; break; }
+          cout += prixJoueur(colIci, k, hab, rep).achat * manque;
+          achats.push([k, manque]);
+        }
+        // On garde de quoi manger : fonder un avant-poste et mourir de faim
+        // dedans serait une drôle de stratégie.
+        if (achats.length && cout + 150 <= p.credits) {
+          for (const [k, q] of achats) acheter(state, colIci, k, q, g);
+        }
+      }
+      if (S_base(state).fonde && p.credits > 500
+          && (S_base(state).stock.carburant || 0) + (g.inventaire.carburant || 0) < 150) {
+        acheter(state, colIci, 'carburant', 120, g);
+      }
     }
 
     // S'engager dès qu'une faction accepte : la solde et la remise valent
@@ -310,6 +492,13 @@ function jouerPrincipal(state, g, memo) {
       donnerOrdre(state, { type: 'voyage', dest: o.regionId }, g);
       return;
     }
+  }
+
+  // Une route vers le site du futur avant-poste ne se détourne pas : c'est le
+  // seul voyage du jeu qui, une fois arrivé, change la partie.
+  if (memo.routeFondation != null && !state.base.fonde
+      && g.ordre.type === 'voyage' && g.ordre.dest === memo.routeFondation) {
+    return;
   }
 
   // Sac plein, ou réserves au plus bas et de quoi payer : on rentre en ville.
@@ -438,7 +627,12 @@ function envisagerDetachement(state, memo) {
   if (r.ok) memo.eclaireur = r.groupe.id;
 }
 
+/** Raccourci lisible : l'avant-poste du joueur. */
+function S_base(state) { return state.base; }
+
 function jouer(state, memo) {
+  const principal = groupes(state).find((x) => x.id !== memo.eclaireur && x.membres.some(estVivant));
+  if (!SANS.has('base') && principal) tenirAvantPoste(state, principal, memo);
   for (const g of groupes(state).slice()) {
     if (!g.membres.some(estVivant)) continue;
     if (g.id === memo.eclaireur) jouerEclaireur(state, g, memo);
@@ -455,7 +649,8 @@ for (let n = 0; n < PARTIES; n++) {
   const state = nouvellePartie(1000 + n * 7919, { maintenant: 0 });
   state.player.posture = 'neutre';
   // Mémoire du bot : hors de l'état de jeu, donc rien à sérialiser.
-  const memo = { eclaireur: null, detachements: 0, courtisee: null, services: 0, promesse: null };
+  const memo = { eclaireur: null, detachements: 0, courtisee: null, services: 0,
+    promesse: null, viseFondation: false, fonde: null, routeFondation: null };
   let groupesMax = 1;
   for (let i = 0; i < HEURES; i++) {
     if (state.fin) break;
@@ -500,13 +695,16 @@ for (let n = 0; n < PARTIES; n++) {
     guerres: state.world.guerres.length,
     captures: state.world.colonies.reduce((t, c) => t + (c.prises || 0), 0),
     services: memo.services,
+    bati: state.base.fonde
+      ? BUILDING_KEYS.reduce((t, k) => t + nivBat(state.base, k), 0) : 0,
+    hab: state.base.fonde ? Math.round(state.base.pop || 0) : 0,
     // Ce que l'estime a effectivement ouvert, à la fin de la partie.
     amis: state.world.colonies.reduce(
       (t, c) => t + (c.notables || []).filter((x) => (x.opinion || 0) >= 35).length, 0),
   });
 }
 
-const largeur = { seed: 8, t: 6, fin: 11, viv: 5, cr: 7, wl: 7, comp: 5, contrats: 9, detach: 7, grade: 10, ordres: 7, guerres: 8, captures: 9, services: 9, amis: 5 };
+const largeur = { seed: 8, t: 6, fin: 11, viv: 5, cr: 7, wl: 7, comp: 5, contrats: 9, detach: 7, grade: 10, ordres: 7, guerres: 8, captures: 9, services: 9, amis: 5, bati: 5, hab: 4 };
 const entetes = Object.keys(largeur);
 console.log(entetes.map((k) => k.padStart(largeur[k])).join(' '));
 for (const l of lignes) {
@@ -521,6 +719,9 @@ console.log(`Récolte moyenne : ${moy('recolte')} unités — contrats remplis :
 const gradés = lignes.filter((l) => l.grade !== '—').length;
 console.log(`Détachements : ${moy('detach')} par partie — parties avec allégeance : ${gradés}/${PARTIES}`);
 console.log(`Colonies prises et reprises dans le monde : ${moy('captures')} en moyenne`);
+const fondes = lignes.filter((l) => l.bati > 0).length;
+console.log(`Avant-postes fondés : ${fondes}/${PARTIES} — `
+  + `${moy('bati')} niveaux de bâtiment et ${moy('hab')} habitants en moyenne`);
 console.log(`Services rendus : ${moy('services')} par partie — `
   + `gens acquis (estime ≥ 35) : ${moy('amis')} en fin de partie`);
 console.log(`Demandes croisées : ${TRACE.demandesVues} — honorées : `
@@ -529,6 +730,9 @@ console.log(`Voyages entrepris vers une ville déjà morte : ${TRACE.voyagesPerd
 const totH = TRACE.voyage + TRACE.repos + TRACE.travail;
 console.log(`Temps : ${Math.round(100 * TRACE.voyage / totH)} % en marche · `
   + `${Math.round(100 * TRACE.repos / totH)} % au repos · ${Math.round(100 * TRACE.travail / totH)} % au travail`);
+console.log(`Argent : +${Math.round(TRACE.gagneVente / PARTIES)} de ventes · `
+  + `−${Math.round(TRACE.payeVivres / PARTIES)} de vivres · −${Math.round(TRACE.payeSoins / PARTIES)} de soins `
+  + `· −${Math.round(TRACE.crPilles / PARTIES)} pillés, par partie`);
 console.log(`Défaites : ${TRACE.defaites} pour ${TRACE.crPilles} cr pillés `
   + `(${TRACE.defaites ? Math.round(TRACE.crPilles / TRACE.defaites) : 0} cr par défaite)`);
 

@@ -96,6 +96,44 @@ code : à 130 le test échouait une fois sur trois sur une machine chargée, et 
 garde-fou qui crie sans motif est pire qu'un garde-fou absent. Sans cette trace, relever le budget deviendrait un moyen commode de ne
 jamais voir une régression.
 
+### Ce que la grande carte a coûté, et qui n'est pas réglé
+
+Le banc tient les comptes du joueur depuis peu, et ils sont sans appel. Par
+partie de 4 000 heures, sur la carte de 24×18 :
+
+    +3 165 cr de ventes
+    −2 305 cr de vivres      (73 % du brut)
+    −  295 cr de soins
+    −1 409 cr pillés en défaite
+
+Le solde est négatif. Sur l'ancienne carte le bot finissait à 2 041 crédits ;
+il finit maintenant autour de 500. La cause est mesurée et tient en une ligne :
+le temps de travail est passé de 63 % à 40 %, la marche de 26 à 39 %, le repos
+de 13 à 21 % — et la récolte suit exactement cette proportion (912 unités
+contre 1 450, soit 0,63, soit précisément le rapport des temps de travail).
+
+Trois hypothèses ont été testées et écartées :
+
+- **le coût de traversée** — le diviser par deux ne fait passer la marche que
+  de 39 à 35 %, et le revenu ne bouge pas ;
+- **la densité des villes** — déjà rétablie à une pour cinq secteurs, et c'est
+  ce qui a ramené la survie de 13 à 21 sur trente ;
+- **le coût de fondation de l'avant-poste** — le diviser par quatre ne fait
+  passer les fondations que de 0 à 3 sur vingt-quatre parties.
+
+Ce qui reste, et qui n'est pas un réglage mais une décision de conception : une
+escouade itinérante n'a aucune production de vivres à elle. Le jeu a la réponse
+— l'avant-poste, l'hydroponie, la cantine — mais elle demande un capital
+d'environ sept cents crédits que le bot n'accumule jamais, parce que les trois
+quarts de ses recettes partent en nourriture. On ne peut pas s'offrir la chose
+qui réglerait le problème qu'on a.
+
+Conséquence directe : **treize bâtiments et treize métiers de l'avant-poste ne
+sont éprouvés qu'à l'unité, jamais en partie.** Le bot sait désormais fonder,
+bâtir dans l'ordre, staffer les postes et se ravitailler chez lui
+(`SANS=base` coupe ce comportement pour comparer) — il n'en a simplement pas
+les moyens.
+
 Le banc d'équilibrage est le plus utile des trois : c'est lui qui a montré que
 l'économie alimentaire des colonies n'avait jamais été à l'équilibre, que les
 chasseurs de prime créaient une spirale sans issue, et que la route prélevait
