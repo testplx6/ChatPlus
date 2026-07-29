@@ -13,6 +13,7 @@
 import { DIPLOMES, DIPLOME_KEYS, FACTIONS, SKILLS } from './data.js';
 import { accorderDiplome, estVivant, comp, gagnerXp, XP_PRATIQUE } from './characters.js';
 import { groupes } from './groupes.js';
+import { estAuService } from './allegeance.js';
 
 /** Ce qu'une ville enseigne, d'après qui la tient et ce qu'elle pèse. */
 export function ecolesDe(world, col) {
@@ -53,7 +54,9 @@ export function peutSInscrire(state, col, perso, key) {
 export function inscrire(state, col, perso, key, log) {
   const v = peutSInscrire(state, col, perso, key);
   if (!v.ok) return v;
-  const remise = state.player.allegeance && state.player.allegeance.faction === col.faction ? 0.15 : 0;
+  // La remise d'une école va à qui sert la maison : n'importe laquelle de vos
+  // colonnes engagée chez eux suffit à vous ouvrir le tarif.
+  const remise = estAuService(state, col.faction) ? 0.15 : 0;
   const prix = prixFormation(col, key, remise);
   if (state.player.credits < prix) {
     return { ok: false, motif: `Il manque ${prix - state.player.credits} cr.` };

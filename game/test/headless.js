@@ -18,6 +18,10 @@ import {
 import { METIER_KEYS, BIOMES, BUILDINGS } from '../src/data.js';
 import { genererBanc, primeDe, tensionRecrutement, engager } from '../src/recrues.js';
 import {
+  REQUETES, peutDemander, demander, inscrireConsigne, pousseeConsigne,
+  poids as poidsInfluence, chances as chancesInfluence,
+} from '../src/influence.js';
+import {
   acheterBete, betesDe, lenteurAttelage, tickBetes, conduite, surnombre,
   visibiliteAttelage,
 } from '../src/betes.js';
@@ -505,18 +509,18 @@ const rate = nouvellePartie(5959, { maintenant: 0 });
 const colRate = rate.world.colonies.find((c) => !c.ruine);
 rate.player.reputation[colRate.faction] = 40;
 sEngager(rate, colRate.faction, () => {});
-rate.player.allegeance.points = 200;
-rate.player.allegeance.ordre = {
+groupeActif(rate).allegeance.points = 200;
+groupeActif(rate).allegeance.ordre = {
   type: 'reconnaissance', regionId: rate.world.regions.findIndex((r) => !r.decouvert),
   titre: 'x', recompense: 100, service: 60, duree: 10, echeance: rate.temps + 10,
 };
-const ptsAvant = rate.player.allegeance.points;
+const ptsAvant = groupeActif(rate).allegeance.points;
 const repAvantOrdre = rate.player.reputation[colRate.faction];
 avancer(rate, 40);
-ok(!rate.player.allegeance.ordre, 'un ordre échu est retiré');
-ok(rate.player.allegeance.points === ptsAvant,
+ok(!groupeActif(rate).allegeance.ordre, 'un ordre échu est retiré');
+ok(groupeActif(rate).allegeance.points === ptsAvant,
   'et ne coûte plus les points déjà gagnés : rater est neutre, réussir paie',
-  `${ptsAvant} → ${rate.player.allegeance.points}`);
+  `${ptsAvant} → ${groupeActif(rate).allegeance.points}`);
 ok(rate.player.reputation[colRate.faction] < repAvantOrdre,
   'ce qu’on perd, c’est l’estime');
 
@@ -528,7 +532,7 @@ groupeActif(garn).regionId = colGarn.regionId;
 sEngager(garn, colGarn.faction, () => {});
 ok(!garnison(garn, colGarn.regionId), 'un affilié n’est logé nulle part');
 ok(abriDe(garn, colGarn.regionId) === 1, 'et dort comme tout le monde');
-garn.player.allegeance.points = RANGS[RANG_GARNISON].points;
+groupeActif(garn).allegeance.points = RANGS[RANG_GARNISON].points;
 ok(!!garnison(garn, colGarn.regionId), 'un lieutenant est chez lui dans les villes des siens');
 ok(abriDe(garn, colGarn.regionId) > 1.5, 'et y dort à l’abri',
   `×${abriDe(garn, colGarn.regionId).toFixed(2)}`);
@@ -541,9 +545,9 @@ const s9c = nouvellePartie(4242, { maintenant: 0 });
 s9c.player.reputation.hexa = 40;
 const eng = sEngager(s9c, 'hexa', () => {});
 ok(eng.ok, 'on peut entrer au service d’une faction', eng.motif);
-ok(rangDe(s9c.player.allegeance).def.nom === 'Affilié', 'on démarre au premier grade');
+ok(rangDe(groupeActif(s9c).allegeance).def.nom === 'Affilié', 'on démarre au premier grade');
 for (let i = 0; i < 8000; i++) tick(s9c);
-ok(!!s9c.player.allegeance, 'la faction servie existe encore après 8 000 h');
+ok(!!groupeActif(s9c).allegeance, 'la faction servie existe encore après 8 000 h');
 const debout9c = DIPLO_FACTIONS.filter((k) => s9c.world.factions[k].colonies.length);
 ok(debout9c.length === 6, 'aucune faction n’est rayée de la carte', `${debout9c.length}/6`);
 ok(s9c.world.colonies.filter((c) => !c.ruine).length >= 10, 'le monde garde ses villes',
@@ -757,7 +761,7 @@ const s9i = nouvellePartie(80808, { maintenant: 0 });
 const colService = s9i.world.colonies.find((c) => c.regionId === groupeActif(s9i).regionId);
 s9i.player.reputation[colService.faction] = 60;
 sEngager(s9i, colService.faction, () => {});
-s9i.player.allegeance.points = RANGS[1].points; // grade d'Agent
+groupeActif(s9i).allegeance.points = RANGS[1].points; // grade d'Agent
 const sienne = s9i.world.colonies.find(
   (c) => c.faction === colService.faction && c.regionId !== colService.regionId
 );
@@ -1143,6 +1147,97 @@ for (const k of METIER_KEYS) totalPostes += affectes(s9t.base, k);
 ok(totalPostes <= s9t.base.pop, 'les postes se dégarnissent si la population tombe',
   `${totalPostes} pour ${s9t.base.pop} habitants`);
 verifierCoherence(s9t, 'après affectation des métiers');
+
+section('9 nonies septies. Servir par colonne, et peser au conseil');
+const multi = nouvellePartie(9797, { maintenant: 0 });
+const gA = groupeActif(multi);
+const rngM = new Rng(21);
+for (let i = 0; i < 4; i++) gA.membres.push(makeCharacter(rngM, {}));
+const detA = scinder(multi, gA, [gA.membres[0].id, gA.membres[1].id], rngM, 'Colonne B');
+ok(detA.ok, 'on détache une seconde colonne', detA.motif);
+const gB = detA.groupe;
+
+// Deux colonnes, deux engagements différents dans la même partie.
+const bourgUn = multi.world.colonies.find((c) => !c.ruine);
+const bourgDeux = multi.world.colonies.find((c) => !c.ruine && c.faction !== bourgUn.faction);
+multi.player.reputation[bourgUn.faction] = 40;
+multi.player.reputation[bourgDeux.faction] = 40;
+gA.regionId = bourgUn.regionId;
+gB.regionId = bourgDeux.regionId;
+ok(sEngager(multi, bourgUn.faction, () => {}, gA).ok, 'la première entre au service');
+const deux = sEngager(multi, bourgDeux.faction, () => {}, gB);
+const enGuerreAB = multi.world.guerres.some(
+  (w) => (w.a === bourgUn.faction && w.b === bourgDeux.faction)
+    || (w.b === bourgUn.faction && w.a === bourgDeux.faction)
+);
+if (enGuerreAB) {
+  ok(!deux.ok, 'mais pas deux camps en guerre l’un contre l’autre', deux.motif);
+} else {
+  ok(deux.ok, 'et la seconde en sert une autre — les voies sont complémentaires',
+    deux.motif);
+  ok(gA.allegeance.faction !== gB.allegeance.faction,
+    'chaque colonne a son propre engagement');
+  ok(!multi.player.allegeance, 'et rien n’est resté accroché au joueur');
+}
+
+// Le grade donne voix au chapitre, pas avant.
+const pol = nouvellePartie(9898, { maintenant: 0 });
+const gPol = groupeActif(pol);
+const villePol = pol.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
+gPol.regionId = villePol.regionId;
+pol.player.reputation[villePol.faction] = 60;
+sEngager(pol, villePol.faction, () => {}, gPol);
+ok(!peutDemander(pol, villePol.faction, 'paix').ok,
+  'un affilié n’a rien à dire au conseil',
+  peutDemander(pol, villePol.faction, 'paix').motif);
+
+gPol.allegeance.points = RANGS[2].points; // Lieutenant
+const voix = peutDemander(pol, villePol.faction, 'paix');
+ok(voix.ok, 'un lieutenant peut plaider la paix', voix.motif);
+ok(!peutDemander(pol, villePol.faction, 'guerre').ok,
+  'mais pas réclamer la guerre — on n’envoie pas des gens mourir à ce grade');
+gPol.allegeance.points = RANGS[3].points; // Capitaine
+ok(peutDemander(pol, villePol.faction, 'guerre').ok,
+  'un capitaine, si');
+
+// Le poids monte avec le grade, plus vite que linéairement.
+gPol.allegeance.points = RANGS[2].points;
+const poidsLt = poidsInfluence(pol, villePol.faction);
+gPol.allegeance.points = RANGS[4].points;
+const poidsCmd = poidsInfluence(pol, villePol.faction);
+ok(poidsCmd > poidsLt * 2, 'un commandeur pèse bien plus que deux lieutenants',
+  `${poidsLt} → ${poidsCmd}`);
+
+// Le tempérament du chef décide de ce qu'on peut obtenir de lui.
+const chefPol = dirigeant(pol.world, villePol.faction);
+chefPol.temperament = 'conquerant';
+chefPol.legitimite = 50;
+const guerreFacile = chancesInfluence(pol, villePol.faction, 'guerre');
+const paixDure = chancesInfluence(pol, villePol.faction, 'paix');
+chefPol.temperament = 'conciliateur';
+const guerreDure = chancesInfluence(pol, villePol.faction, 'guerre');
+const paixFacile = chancesInfluence(pol, villePol.faction, 'paix');
+ok(guerreFacile > guerreDure * 1.5 && paixFacile > paixDure * 1.5,
+  'on ne convainc pas un conciliateur de faire la guerre, ni l’inverse',
+  `guerre ${(guerreFacile * 100).toFixed(0)} % vs ${(guerreDure * 100).toFixed(0)} %`);
+
+// Une requête acceptée s'inscrit et pousse le conseil.
+inscrireConsigne(pol.world, villePol.faction, 'guerre', null, pol.temps);
+ok(pousseeConsigne(pol.world, villePol.faction, 'guerre', pol.temps) > 2,
+  'la consigne double le penchant du conseil sur cette décision');
+ok(pousseeConsigne(pol.world, villePol.faction, 'treve', pol.temps) === 1,
+  'et ne touche pas aux autres');
+ok(pousseeConsigne(pol.world, villePol.faction, 'guerre', pol.temps + 500) === 1,
+  'elle finit par expirer : on ne dirige pas une faction par procuration');
+
+// Demander coûte, qu'on obtienne ou non.
+gPol.allegeance.points = RANGS[4].points;
+const ptsAvantDem = gPol.allegeance.points;
+const reponse = demander(pol, villePol.faction, 'paix', null, new Rng(5), () => {});
+ok(reponse.ok, 'la requête est portée', reponse.motif);
+ok(gPol.allegeance.points < ptsAvantDem,
+  'et elle brûle du capital politique, écoutée ou non',
+  `${ptsAvantDem} → ${gPol.allegeance.points}`);
 
 section('9 nonies sexies. Qui accepte de partir, et pour combien');
 const rec = nouvellePartie(9494, { maintenant: 0 });

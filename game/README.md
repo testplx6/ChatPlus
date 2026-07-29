@@ -262,6 +262,49 @@ Ce qui reste n'est pas un réglage mais une décision de conception, traitée
 juste au-dessus : le nomadisme est une voie viable, l'avant-poste n'en est pas
 encore une.
 
+### Servir par colonne, et peser au conseil
+
+L'engagement appartenait au joueur : `state.player.allegeance`, un seul pour
+toute la partie. Les trois voies s'excluaient donc mécaniquement — on ne pouvait
+pas envoyer une colonne servir les Corpos pendant qu'une autre bâtit un camp et
+qu'une troisième court les pistes. C'est pourtant exactement ainsi qu'une
+compagnie de mercenaires travaille.
+
+**L'engagement appartient désormais à la colonne qui l'a signé.** Chacune a son
+grade, ses ordres, son intendance, sa garnison. La réputation, elle, reste au
+joueur : une faction sait qui vous êtes, pas quelle colonne se tient devant
+elle. Une seule interdiction, et elle se justifie : on ne sert pas deux camps en
+guerre l'un contre l'autre, même avec deux colonnes différentes — ça se sait.
+
+Et puisqu'on monte en grade, monter doit finir par vouloir dire quelque chose.
+Servir rapportait de la solde, des rations et un toit : une carrière d'employé.
+**À partir de Lieutenant, on peut demander.** Pas ordonner — demander :
+
+    Plaider la paix               Lieutenant
+    Faire lever une colonne       Lieutenant
+    Faire fonder un poste         Lieutenant
+    Réclamer la guerre            Capitaine
+
+Chaque requête vise un levier que le conseil actionne déjà tout seul : on ne
+crée pas de pouvoir nouveau, on donne une voix dans des délibérations qui
+existent. Une requête acceptée devient une consigne qui double le penchant du
+conseil sur cette décision, et qui expire — on n'administre pas une faction par
+procuration.
+
+Ce qu'on obtient dépend de trois choses, et le jeu les montre avant de
+demander :
+
+- **le grade**, au carré — un Commandeur pèse quatre fois un Lieutenant ;
+- **le crédit** — les ordres tenus comptent, ceux qu'on a laissés tomber se
+  retranchent ;
+- **le tempérament du chef**, qui multiplie tout le reste à la puissance 1,7.
+  On ne convainc pas un Conciliateur de déclarer la guerre. La première version
+  laissait un Commandeur l'obtenir deux fois sur trois : le grade écrasait le
+  caractère, ce qui vide les tempéraments de leur sens.
+
+Demander brûle du capital politique, écouté ou non. Et un chef solidement assis
+écoute moins : il n'a besoin de personne.
+
 ### Ni le nombre de colonnes, ni la prime d'engagement
 
 Deux derniers plafonds écrits en dur, retirés dans le même esprit.
@@ -831,6 +874,7 @@ game/
     recrues.js        qui accepte de partir avec vous, et pour combien
     notables.js       les gens qui comptent dans une ville, leur état, leurs effets
     dirigeants.js     chefs de faction, tempéraments, légitimité, buts de guerre
+    influence.js      ce qu'un grade permet de peser au conseil d'une faction
     services.js       ce que les notables vous demandent, ce qu'ils retiennent
     sim.js            orchestration, rattrapage hors ligne
     save.js           sérialisation

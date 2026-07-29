@@ -130,7 +130,7 @@ function colonieLaPlusProche(state, g) {
     // touche l'intendance, qu'on a la remise, et — à partir de Lieutenant —
     // qu'on est logé. Sans ce penchant, le bot passait sa vie sur les marchés
     // des autres et ne touchait que dix rations en quatre mille heures.
-    const sien = state.player.allegeance && c.faction === state.player.allegeance.faction;
+    const sien = groupeActif(state).allegeance && c.faction === groupeActif(state).allegeance.faction;
     const sc = attrait / (1 + d * 1.4) - d * 14 - age * 90 + (sien ? 140 : 0);
     if (sc > bestSc) { bestSc = sc; best = c; }
   }
@@ -476,7 +476,7 @@ function jouerPrincipal(state, g, memo) {
     if (!SANS.has('base') && state.base.fonde) {
       for (const k of ['ferraille', 'polymere', 'composant']) reserves.add(k);
     }
-    const ordreEnCours = p.allegeance && p.allegeance.ordre;
+    const ordreEnCours = g.allegeance && g.allegeance.ordre;
     if (ordreEnCours && ordreEnCours.ressource) reserves.add(ordreEnCours.ressource);
     for (const k of COMMODITY_KEYS) {
       if (k === 'rations' || k === 'medkit' || reserves.has(k)) continue;
@@ -600,12 +600,12 @@ function jouerPrincipal(state, g, memo) {
 
     // S'engager dès qu'une faction accepte : la solde, la remise et
     // l'intendance valent largement le prix de quelques ordres à honorer.
-    if (!SANS.has('service') && !p.allegeance && peutSEngager(state, colIci.faction).ok) {
+    if (!SANS.has('service') && !g.allegeance && peutSEngager(state, colIci.faction).ok) {
       sEngager(state, colIci.faction, () => {});
     }
     // Passer à l'intendance : c'est gratuit, c'est de la nourriture, et c'est
     // toute la différence entre servir et ne pas servir.
-    if (p.allegeance && droitIntendance(state, colIci).ok) {
+    if (g.allegeance && droitIntendance(state, colIci).ok) {
       const av = g.inventaire.rations || 0;
       toucherRations(state, colIci, () => {}, g);
       TRACE.rationsTouchees += (g.inventaire.rations || 0) - av;
@@ -643,7 +643,7 @@ function jouerPrincipal(state, g, memo) {
   }
 
   // Honorer l'ordre de mission : c'est le chemin le plus rentable du jeu.
-  const o = p.allegeance && p.allegeance.ordre;
+  const o = g.allegeance && g.allegeance.ordre;
   if (o && g.ordre.type !== 'voyage' && rations > 40) {
     const av = avancementOrdre(state, o);
     if (o.type === 'ravitaillement' && av && av.fait >= o.quantite) {
@@ -993,7 +993,7 @@ for (let n = 0; n < PARTIES; n++) {
     recolte: state.stats.recolte,
     comp: skills,
     contrats: state.stats.contratsRemplis || 0,
-    grade: state.player.allegeance ? rangDe(state.player.allegeance).def.nom.slice(0, 9) : '—',
+    grade: groupeActif(state).allegeance ? rangDe(groupeActif(state).allegeance).def.nom.slice(0, 9) : '—',
     ordres: state.stats.ordresRemplis || 0,
     guerres: state.world.guerres.length,
     captures: state.world.colonies.reduce((t, c) => t + (c.prises || 0), 0),

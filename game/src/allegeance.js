@@ -65,32 +65,81 @@ export function rangDe(all) {
   return { index: i, def: RANGS[i], suivant: RANGS[i + 1] || null };
 }
 
-export function estAuService(state, faction) {
-  return !!state.player.allegeance && state.player.allegeance.faction === faction;
+/**
+ * L'engagement d'un groupe. C'était `state.player.allegeance` — un seul pour
+ * toute la partie —, ce qui rendait les trois voies exclusives : on ne pouvait
+ * pas envoyer une colonne au service des Corpos pendant qu'une autre bâtit un
+ * camp. C'est pourtant exactement comme ça qu'une compagnie de mercenaires
+ * travaille, et c'est ce qui rend les voies complémentaires plutôt que
+ * concurrentes.
+ *
+ * La réputation, elle, reste au joueur : une faction sait qui vous êtes, pas
+ * quelle colonne se tient devant elle.
+ */
+export function allegeanceDe(g) {
+  return (g && g.allegeance) || null;
+}
+
+/** Les groupes actuellement au service de quelqu'un. */
+export function groupesEngages(state, faction) {
+  return (state.player.groupes || []).filter(
+    (g) => g.allegeance && (!faction || g.allegeance.faction === faction)
+  );
+}
+
+/** Le meilleur grade obtenu auprès de cette faction, tous groupes confondus. */
+export function meilleurGrade(state, faction) {
+  let best = null;
+  for (const g of groupesEngages(state, faction)) {
+    const r = rangDe(g.allegeance);
+    if (!best || r.index > best.index) best = r;
+  }
+  return best;
+}
+
+export function estAuService(state, faction, groupe) {
+  if (groupe) return !!(groupe.allegeance && groupe.allegeance.faction === faction);
+  return groupesEngages(state, faction).length > 0;
 }
 
 /** Remise consentie par sa propre faction, 0 ailleurs. */
 export function remiseDe(state, faction) {
   if (!estAuService(state, faction)) return 0;
-  return rangDe(state.player.allegeance).def.remise;
+  const r = meilleurGrade(state, faction);
+  return r ? r.def.remise : 0;
 }
 
 /** Palier d'équipement supplémentaire débloqué chez les siens. */
 export function palierBonus(state, faction) {
-  if (!estAuService(state, faction)) return 0;
-  return rangDe(state.player.allegeance).index >= 2 ? 1 : 0;
+  const r = meilleurGrade(state, faction);
+  return r && r.index >= 2 ? 1 : 0;
 }
 
 // ---------------------------------------------------------------------------
 // Entrer et sortir
 // ---------------------------------------------------------------------------
 
-export function peutSEngager(state, faction) {
+export function peutSEngager(state, faction, groupe) {
+  const g = groupe || groupeActif(state);
   if (!FACTIONS[faction] || faction === 'essaim') {
     return { ok: false, motif: 'Cette faction n’enrôle personne.' };
   }
-  if (state.player.allegeance) {
-    return { ok: false, motif: `Déjà au service ${FACTIONS[state.player.allegeance.faction].genitif}.` };
+  if (g && g.allegeance) {
+    return { ok: false, motif: `${g.nom} sert déjà ${FACTIONS[g.allegeance.faction].genitif}.` };
+  }
+  // On ne sert pas deux camps en guerre l'un contre l'autre, même avec deux
+  // colonnes différentes : ça se sait.
+  for (const autre of groupesEngages(state)) {
+    const enGuerre = state.world.guerres.some(
+      (w) => (w.a === faction && w.b === autre.allegeance.faction)
+        || (w.b === faction && w.a === autre.allegeance.faction)
+    );
+    if (enGuerre) {
+      return {
+        ok: false,
+        motif: `${autre.nom} sert ${FACTIONS[autre.allegeance.faction].genitif}, en guerre contre eux.`,
+      };
+    }
   }
   const rep = state.player.reputation[faction] || 0;
   if (rep < REPUTATION_MINIMALE) {
@@ -99,11 +148,13 @@ export function peutSEngager(state, faction) {
   return { ok: true };
 }
 
-export function sEngager(state, faction, log) {
-  const v = peutSEngager(state, faction);
+export function sEngager(state, faction, log, groupe) {
+  const g = groupe || groupeActif(state);
+  if (!g) return { ok: false, motif: 'Aucun groupe.' };
+  const v = peutSEngager(state, faction, g);
   if (!v.ok) return v;
 
-  state.player.allegeance = {
+  g.allegeance = {
     faction,
     points: 0,
     depuis: state.temps,
@@ -116,25 +167,27 @@ export function sEngager(state, faction, log) {
   };
 
   // On ne choisit pas un camp sans que l'autre le remarque.
-  for (const g of state.world.guerres) {
-    const autre = g.a === faction ? g.b : g.b === faction ? g.a : null;
+  for (const w of state.world.guerres) {
+    const autre = w.a === faction ? w.b : w.b === faction ? w.a : null;
     if (!autre) continue;
     state.player.reputation[autre] = Math.max(-100, (state.player.reputation[autre] || 0) - 20);
   }
 
   log({
     type: 'allegeance',
-    texte: `Vous entrez au service ${FACTIONS[faction].genitif}. Rang : ${RANGS[0].nom}.`,
+    texte: `${g.nom} entre au service ${FACTIONS[faction].genitif}. Rang : ${RANGS[0].nom}.`,
     important: true,
+    groupe: g.id,
   });
   return { ok: true };
 }
 
-export function quitter(state, log) {
-  const all = state.player.allegeance;
-  if (!all) return { ok: false, motif: 'Vous n’êtes au service de personne.' };
+export function quitter(state, log, groupe) {
+  const g = groupe || groupeActif(state);
+  const all = allegeanceDe(g);
+  if (!all) return { ok: false, motif: 'Cette colonne ne sert personne.' };
   const f = all.faction;
-  state.player.allegeance = null;
+  g.allegeance = null;
   state.player.reputation[f] = Math.max(-100, (state.player.reputation[f] || 0) - 30);
   log({
     type: 'allegeance',
@@ -160,8 +213,9 @@ export const RANG_GARNISON = 2; // Lieutenant
  * l'engagé se la fait prêter. On y dort à l'abri et on y est soigné — ce que
  * coûterait sinon un baraquement et une infirmerie.
  */
-export function garnison(state, regionId) {
-  const all = state.player.allegeance;
+export function garnison(state, regionId, groupe) {
+  const g = groupe || (state.player.groupes || []).find((x) => x.regionId === regionId);
+  const all = allegeanceDe(g);
   if (!all) return null;
   if (rangDe(all).index < RANG_GARNISON) return null;
   const r = state.world.regions[regionId];
@@ -188,9 +242,10 @@ export const JOURS_INTENDANCE = 5;
  * ce qui empêche l'intendance d'être un robinet et en fait une raison de
  * repasser chez soi.
  */
-export function droitIntendance(state, col) {
-  const all = state.player.allegeance;
-  if (!all) return { ok: false, motif: 'Vous ne servez personne.' };
+export function droitIntendance(state, col, groupe) {
+  const g = groupe || groupeActif(state);
+  const all = allegeanceDe(g);
+  if (!all) return { ok: false, motif: 'Cette colonne ne sert personne.' };
   if (!col || col.ruine || col.faction !== all.faction) {
     return { ok: false, motif: 'Ce n’est pas une ville des vôtres.' };
   }
@@ -219,16 +274,16 @@ export function droitIntendance(state, col) {
 }
 
 export function toucherRations(state, col, log, groupe) {
-  const d = droitIntendance(state, col);
-  if (!d.ok) return d;
   const g = groupe || groupeActif(state);
+  const d = droitIntendance(state, col, g);
+  if (!d.ok) return d;
   if (!g || g.regionId !== col.regionId) {
     return { ok: false, motif: 'Il faut être sur place.' };
   }
-  const f = state.world.factions[state.player.allegeance.faction];
+  const f = state.world.factions[g.allegeance.faction];
   f.tresor = Math.max(0, f.tresor - d.cout);
   g.inventaire.rations = (g.inventaire.rations || 0) + d.quantite;
-  state.player.allegeance.intendance = state.temps;
+  g.allegeance.intendance = state.temps;
   if (log) {
     log({
       type: 'allegeance',
@@ -241,8 +296,8 @@ export function toucherRations(state, col, log, groupe) {
 
 // ---------------------------------------------------------------------------
 
-export function crediter(state, points, log, motif) {
-  const all = state.player.allegeance;
+export function crediter(state, points, log, motif, groupe) {
+  const all = allegeanceDe(groupe || groupeActif(state));
   if (!all || points <= 0) return 0;
   const avant = rangDe(all).index;
   all.points += points;
@@ -288,12 +343,13 @@ function delai(d, rng, base = 200) {
   return Math.round((base + d * 26) * rng.range(0.95, 1.35));
 }
 
-function fabriquerOrdre(state, rng) {
-  const all = state.player.allegeance;
+function fabriquerOrdre(state, rng, g) {
+  const all = allegeanceDe(g);
   const miennes = villesDe(state, all.faction);
   if (!miennes.length) return null;
   const rang = rangDe(all);
-  const ici = positionJoueur(state);
+  // On envoie la colonne depuis où elle est, pas depuis où est le joueur.
+  const ici = g.regionId;
 
   // On vise ce qui sert vraiment la faction : ravitailler une ville en manque,
   // frapper un ennemi déclaré, ou reconnaître un secteur convoité.
@@ -384,7 +440,7 @@ function fabriquerOrdre(state, rng) {
   };
 }
 
-export function avancementOrdre(state, o) {
+export function avancementOrdre(state, o, groupe) {
   if (!o) return null;
   switch (o.type) {
     case 'frappe':
@@ -417,11 +473,16 @@ export function avancementOrdre(state, o) {
 }
 
 /** Une victoire compte pour l'ordre en cours, comme pour les primes. */
-export function compterVictoireOrdre(state, factionBande) {
-  const all = state.player.allegeance;
-  if (!all || !all.ordre || all.ordre.type !== 'frappe') return;
-  if (all.ordre.cibleFaction === factionBande) {
-    all.ordre.progres = Math.min(all.ordre.victoires, all.ordre.progres + 1);
+export function compterVictoireOrdre(state, factionBande, groupe) {
+  // Toute colonne engagée qui a une frappe en cours en profite : c'est le même
+  // ennemi qui tombe, et la nouvelle remonte.
+  for (const g of groupesEngages(state)) {
+    if (groupe && g.id !== groupe.id) continue;
+    const all = g.allegeance;
+    if (!all.ordre || all.ordre.type !== 'frappe') continue;
+    if (all.ordre.cibleFaction === factionBande) {
+      all.ordre.progres = Math.min(all.ordre.victoires, all.ordre.progres + 1);
+    }
   }
 }
 
@@ -430,8 +491,15 @@ export function compterVictoireOrdre(state, factionBande) {
 // ---------------------------------------------------------------------------
 
 export function tickAllegeance(state, log, ctx) {
-  const all = state.player.allegeance;
-  if (!all) return;
+  // Chaque colonne a son engagement, son grade et ses ordres : c'est ce qui
+  // permet d'en envoyer une servir les Corpos pendant qu'une autre bâtit.
+  for (const g of state.player.groupes) {
+    if (g.allegeance) tickEngagement(state, g, log, ctx);
+  }
+}
+
+function tickEngagement(state, g, log, ctx) {
+  const all = g.allegeance;
   const rng = ctx.rng;
   const f = state.world.factions[all.faction];
 
@@ -439,10 +507,11 @@ export function tickAllegeance(state, log, ctx) {
   if (!f || !f.colonies.length) {
     log({
       type: 'allegeance',
-      texte: `${FACTIONS[all.faction].nom} n’existe plus. Votre engagement tombe avec elle.`,
+      texte: `${FACTIONS[all.faction].nom} n’existe plus. L’engagement de ${g.nom} tombe avec elle.`,
       important: true,
+      groupe: g.id,
     });
-    state.player.allegeance = null;
+    g.allegeance = null;
     return;
   }
 
@@ -461,7 +530,7 @@ export function tickAllegeance(state, log, ctx) {
 
   // Ordre en cours : validation, échéance.
   if (all.ordre) {
-    const p = avancementOrdre(state, all.ordre);
+    const p = avancementOrdre(state, all.ordre, g);
     if (p && p.pret) {
       const o = all.ordre;
       if (o.type === 'ravitaillement') {
@@ -475,7 +544,7 @@ export function tickAllegeance(state, log, ctx) {
       all.ordre = null;
       all.prochainOrdre = state.temps + rng.irange(120, 260);
       state.stats.ordresRemplis = (state.stats.ordresRemplis || 0) + 1;
-      crediter(state, o.service, log, null);
+      crediter(state, o.service, log, null, g);
       log({
         type: 'allegeance',
         texte: `Ordre exécuté : ${o.titre}. ${o.recompense} cr.`,
@@ -499,7 +568,7 @@ export function tickAllegeance(state, log, ctx) {
       });
     }
   } else if (state.temps >= all.prochainOrdre) {
-    const o = fabriquerOrdre(state, rng);
+    const o = fabriquerOrdre(state, rng, g);
     if (o) {
       o.echeance = state.temps + o.duree;
       all.ordre = o;
@@ -522,12 +591,12 @@ export function tickAllegeance(state, log, ctx) {
  * d'un combat livré en territoire ami. Retourne le nombre de renforts.
  */
 export function renfortsDisponibles(state, groupe) {
-  const all = state.player.allegeance;
+  const g = groupe || groupeActif(state);
+  if (!g) return 0;
+  const all = allegeanceDe(g);
   if (!all) return 0;
   const rang = rangDe(all);
   if (rang.index < 3) return 0;
-  const g = groupe || groupeActif(state);
-  if (!g) return 0;
   const r = state.world.regions[g.regionId];
   if (r.controle !== all.faction) return 0;
   return rang.index - 2;

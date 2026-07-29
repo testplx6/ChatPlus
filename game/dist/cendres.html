@@ -678,8 +678,11 @@ const deboutDe = debout;
 const nivBat = niveau;
 const vivantsDe = vivants;
 const progresContrat = progres;
+const poidsInfluence = poids;
+const chancesInfluence = chances;
 const toucherRationsA = toucherRations;
 const honorerService = honorer;
+const demanderA = demander;
 
 // ===== src/data.js ===================================================
 // Données statiques du monde : marchandises, biomes, factions, bâtiments,
@@ -2141,6 +2144,9 @@ function attribuerFactions(rng, regions, colonies) {
       capitale: null,
       humeur: 0,
       prochainConseil: rng.irange(6, 40),
+      // Ce que le joueur a obtenu du conseil, s'il a le grade pour demander.
+      // Voir influence.js.
+      consigne: null,
     };
   }
   factions.essaim = {
@@ -2153,6 +2159,7 @@ function attribuerFactions(rng, regions, colonies) {
     capitale: null,
     humeur: 0,
     prochainConseil: rng.irange(12, 60),
+    consigne: null,
   };
 
   // Relations initiales, symétriques (−100 guerre ouverte, +100 alliance)
@@ -3364,6 +3371,217 @@ function tickDirigeant(world, key, rng, dt, t, log) {
   }
 }
 
+// ===== src/influence.js ==============================================
+// Ce qu'un grade permet de peser.
+//
+// Servir une faction rapportait de la solde, des rations et un toit. C'était
+// une carrière d'employé. Or gravir des échelons, dans une faction qui fait la
+// guerre et fonde des villes, ça devrait finir par donner voix au chapitre —
+// sinon le Commandeur d'une armée n'est qu'un affilié bien payé.
+//
+// À partir de Lieutenant, on peut donc demander. Pas ordonner : demander. Ce
+// qu'on obtient dépend de trois choses, et aucune n'est le hasard seul :
+//
+//   son grade — un Commandeur pèse quatre fois ce que pèse un Lieutenant ;
+//   son crédit auprès du chef — les ordres qu'on a honorés, les villes qu'on a
+//     rapportées, comptent ; ceux qu'on a laissés tomber comptent aussi ;
+//   le tempérament du chef — on ne convainc pas un Conquérant de signer la
+//     paix, ni un Conciliateur de déclarer la guerre. Voir dirigeants.js.
+//
+// Et une demande refusée coûte : on n'insiste pas deux fois sans y perdre.
+
+
+/** Grade à partir duquel on peut ouvrir la bouche au conseil. */
+const RANG_VOIX = 2; // Lieutenant
+
+/** Ce qu'une demande coûte en crédit politique, et ce qu'il faut avoir. */
+const COUT_DEMANDE = 30;
+
+/**
+ * Ce qu'on peut demander. Chaque requête vise un levier que la faction actionne
+ * déjà toute seule dans `conseil()` — on ne crée pas de pouvoir nouveau, on
+ * donne au joueur une voix dans des délibérations qui existent.
+ */
+const REQUETES = {
+  guerre: {
+    nom: 'Réclamer la guerre',
+    desc: 'Pousser le conseil à déclarer les hostilités contre une faction.',
+    penchant: 'guerre',
+    rang: 3, // Capitaine : on n'envoie pas des gens mourir à partir de Lieutenant
+  },
+  paix: {
+    nom: 'Plaider la paix',
+    desc: 'Obtenir qu’on cesse les hostilités et qu’on rentre les colonnes.',
+    penchant: 'treve',
+    rang: 2,
+  },
+  colonne: {
+    nom: 'Faire lever une colonne',
+    desc: 'Obtenir qu’une colonne marche sur une ville précise.',
+    penchant: 'colonne',
+    rang: 2,
+  },
+  fondation: {
+    nom: 'Faire fonder un poste',
+    desc: 'Obtenir qu’on plante un nouveau bourg sur une case libre.',
+    penchant: 'expansion',
+    rang: 2,
+  },
+};
+
+const REQUETE_KEYS = Object.keys(REQUETES);
+
+/**
+ * Le poids politique d'un joueur auprès d'une faction : son meilleur grade, ce
+ * qu'il a fait pour elle, et ce qu'il a laissé tomber.
+ */
+function poids(state, faction) {
+  let total = 0;
+  for (const g of groupesEngages(state, faction)) {
+    const all = g.allegeance;
+    const rang = rangDe(all);
+    if (rang.index < RANG_VOIX) continue;
+    // Le grade, au carré : un Commandeur ne pèse pas deux Lieutenants, il en
+    // pèse quatre. C'est ce qui fait que monter vaut la peine.
+    total += (rang.index - 1) * (rang.index - 1) * 20;
+    // Les ordres tenus valent plus que les points, qui s'accumulent aussi en
+    // restant vivant. Ce qu'on a laissé tomber se retranche.
+    total += Math.min(60, all.points / 12) - (all.manques || 0) * 8;
+  }
+  const rep = state.player.reputation[faction] || 0;
+  return Math.max(0, Math.round(total + Math.max(0, rep) * 0.4));
+}
+
+/** Le meilleur grade tenu auprès de cette faction, ou null. */
+function gradeAupres(state, faction) {
+  let best = null;
+  for (const g of groupesEngages(state, faction)) {
+    const r = rangDe(g.allegeance);
+    if (!best || r.index > best.index) best = r;
+  }
+  return best;
+}
+
+/**
+ * Peut-on porter cette requête ? On refuse tôt et on dit pourquoi : rien n'est
+ * plus frustrant qu'un bouton grisé sans motif.
+ */
+function peutDemander(state, faction, key) {
+  const def = REQUETES[key];
+  if (!def) return { ok: false, motif: 'Requête inconnue.' };
+  const grade = gradeAupres(state, faction);
+  if (!grade) return { ok: false, motif: `Vous ne servez pas ${FACTIONS[faction].nom}.` };
+  if (grade.index < def.rang) {
+    return { ok: false, motif: `Il faut être ${['', '', 'Lieutenant', 'Capitaine', 'Commandeur'][def.rang]}.` };
+  }
+  const d = dirigeant(state.world, faction);
+  if (!d) return { ok: false, motif: 'Personne ne dirige cette faction.' };
+  const p = poids(state, faction);
+  if (p < COUT_DEMANDE) {
+    return { ok: false, motif: `Votre crédit ne suffit pas : ${p} / ${COUT_DEMANDE}.` };
+  }
+  return { ok: true, poids: p, dirigeant: d };
+}
+
+/**
+ * Les chances d'être écouté, entre 0 et 1. On les montre avant de demander :
+ * c'est une décision politique, pas un tirage à l'aveugle.
+ */
+function chances(state, faction, key) {
+  const v = peutDemander(state, faction, key);
+  if (!v.ok) return 0;
+  const def = REQUETES[key];
+  const d = v.dirigeant;
+  // Le penchant du chef fait presque tout : réclamer la guerre à un Conciliateur
+  // est une mauvaise idée, et le jeu le dit avant qu'on la prenne.
+  const inclinaison = penchant(state.world, faction, def.penchant);
+  const credit = Math.min(1, v.poids / 160);
+  // Un chef solidement assis écoute moins : il n'a besoin de personne.
+  const besoin = 1 - Math.min(0.3, d.legitimite / 320);
+  // Le tempérament multiplie l'ensemble, et il est exponentié : sans ça, un
+  // Commandeur obtenait deux fois sur trois d'un Conciliateur qu'il déclare la
+  // guerre — le grade écrasait le caractère, ce qui vide les tempéraments de
+  // leur sens. Ce qu'on achète en montant, c'est le droit de demander et une
+  // meilleure chance ; pas celui de faire dire n'importe quoi à n'importe qui.
+  const base = 0.05 + credit * 0.32 * (1 + besoin);
+  return Math.max(0.02, Math.min(0.92, base * Math.pow(inclinaison, 1.7)));
+}
+
+/**
+ * Porter la requête. Le résultat est immédiat et lisible : soit le conseil
+ * s'incline, soit il vous renvoie — et dans les deux cas ça vous coûte du
+ * crédit, parce qu'on ne dépense pas son influence gratuitement.
+ */
+function demander(state, faction, key, cible, rng, log) {
+  const v = peutDemander(state, faction, key);
+  if (!v.ok) return v;
+  const def = REQUETES[key];
+  const d = v.dirigeant;
+  const p = chances(state, faction, key);
+  const ecoute = rng.chance(p);
+
+  // Demander coûte, obtenir coûte davantage : on brûle du capital politique.
+  for (const g of groupesEngages(state, faction)) {
+    g.allegeance.points = Math.max(0, g.allegeance.points - (ecoute ? 90 : 40));
+  }
+
+  const nomChef = `${d.titre} ${d.nom}`;
+  if (!ecoute) {
+    // Un refus se souvient : le chef vous trouve encombrant.
+    d.legitimite = Math.min(100, d.legitimite + 2);
+    if (log) {
+      log({
+        type: 'influence',
+        texte: `${nomChef} écarte votre demande. « ${TEMPERAMENTS[d.temperament].mot} »`,
+        important: true,
+        factions: [faction],
+      });
+    }
+    return { ok: true, ecoute: false, chances: p };
+  }
+
+  if (log) {
+    log({
+      type: 'influence',
+      texte: `${nomChef} vous écoute : ${def.nom.toLowerCase()}.`,
+      important: true,
+      factions: [faction],
+    });
+  }
+  return { ok: true, ecoute: true, chances: p, requete: key, cible };
+}
+
+/**
+ * Une requête acceptée devient une consigne que le conseil suivra à sa
+ * prochaine délibération. On ne force pas la main du monde dans l'instant : on
+ * infléchit une décision qui allait de toute façon se prendre.
+ */
+function inscrireConsigne(world, faction, key, cible, t) {
+  const f = world.factions[faction];
+  if (!f) return;
+  f.consigne = { key, cible: cible ?? null, depuis: t, expire: t + 400 };
+}
+
+/** La consigne en cours, si elle n'a pas expiré. */
+function consigneDe(world, faction, t) {
+  const f = world.factions[faction];
+  if (!f || !f.consigne) return null;
+  if (t >= f.consigne.expire) { f.consigne = null; return null; }
+  return f.consigne;
+}
+
+/**
+ * Ce que la consigne du joueur ajoute au penchant du conseil sur une décision.
+ * Doublé, pas imposé : le conseil garde son tempérament, on l'a seulement
+ * poussé dans un sens.
+ */
+function pousseeConsigne(world, faction, quoi, t) {
+  const c = consigneDe(world, faction, t);
+  if (!c) return 1;
+  const def = REQUETES[c.key];
+  return def && def.penchant === quoi ? 2.2 : 1;
+}
+
 // ===== src/groupes.js ================================================
 // Les groupes : l'escouade n'est plus un bloc unique.
 //
@@ -3417,16 +3635,19 @@ function porteeOrdres(state) {
  */
 function joignable(state, g) {
   if (!g) return { ok: false, motif: 'Groupe inconnu.' };
+  // Le groupe qu'on regarde est celui où l'on est : on se commande toujours
+  // soi-même. Sans cette règle, deux colonnes éloignées se retrouvaient toutes
+  // les deux injoignables, y compris celle où se tient le joueur — et le banc
+  // a montré des escouades plantées à ne rien faire trente pour cent du temps.
+  if (g.id === state.player.groupeActif) return { ok: true };
   const portee = porteeOrdres(state);
   const b = state.base;
   if (b && b.fonde && distance(g.regionId, b.regionId) <= portee) return { ok: true };
+  // On relaie par le groupe où l'on se tient, et par les autres qu'on joint.
   for (const autre of state.player.groupes) {
     if (autre.id === g.id || !autre.membres.length) continue;
     if (distance(g.regionId, autre.regionId) <= portee) return { ok: true };
   }
-  // Un groupe seul au monde s'entend toujours lui-même.
-  const seuls = state.player.groupes.filter((x) => x.membres.length);
-  if (seuls.length <= 1 && !(b && b.fonde)) return { ok: true };
   return {
     ok: false,
     motif: `Hors de portée : ${portee} secteurs par coureur, davantage avec une antenne.`,
@@ -3455,6 +3676,9 @@ function groupeVide(id, nom, regionId, t = 0) {
     objets: [],
     // Ce qui porte à votre place. Voir betes.js.
     betes: [],
+    // Au service de qui, avec quel grade et quels ordres. Voir allegeance.js :
+    // c'est par colonne, pas par joueur.
+    allegeance: null,
     reste: {},
     bilan: { res: {}, depuis: t },
     recolteHeure: null,
@@ -4451,32 +4675,81 @@ function rangDe(all) {
   return { index: i, def: RANGS[i], suivant: RANGS[i + 1] || null };
 }
 
-function estAuService(state, faction) {
-  return !!state.player.allegeance && state.player.allegeance.faction === faction;
+/**
+ * L'engagement d'un groupe. C'était `state.player.allegeance` — un seul pour
+ * toute la partie —, ce qui rendait les trois voies exclusives : on ne pouvait
+ * pas envoyer une colonne au service des Corpos pendant qu'une autre bâtit un
+ * camp. C'est pourtant exactement comme ça qu'une compagnie de mercenaires
+ * travaille, et c'est ce qui rend les voies complémentaires plutôt que
+ * concurrentes.
+ *
+ * La réputation, elle, reste au joueur : une faction sait qui vous êtes, pas
+ * quelle colonne se tient devant elle.
+ */
+function allegeanceDe(g) {
+  return (g && g.allegeance) || null;
+}
+
+/** Les groupes actuellement au service de quelqu'un. */
+function groupesEngages(state, faction) {
+  return (state.player.groupes || []).filter(
+    (g) => g.allegeance && (!faction || g.allegeance.faction === faction)
+  );
+}
+
+/** Le meilleur grade obtenu auprès de cette faction, tous groupes confondus. */
+function meilleurGrade(state, faction) {
+  let best = null;
+  for (const g of groupesEngages(state, faction)) {
+    const r = rangDe(g.allegeance);
+    if (!best || r.index > best.index) best = r;
+  }
+  return best;
+}
+
+function estAuService(state, faction, groupe) {
+  if (groupe) return !!(groupe.allegeance && groupe.allegeance.faction === faction);
+  return groupesEngages(state, faction).length > 0;
 }
 
 /** Remise consentie par sa propre faction, 0 ailleurs. */
 function remiseDe(state, faction) {
   if (!estAuService(state, faction)) return 0;
-  return rangDe(state.player.allegeance).def.remise;
+  const r = meilleurGrade(state, faction);
+  return r ? r.def.remise : 0;
 }
 
 /** Palier d'équipement supplémentaire débloqué chez les siens. */
 function palierBonus(state, faction) {
-  if (!estAuService(state, faction)) return 0;
-  return rangDe(state.player.allegeance).index >= 2 ? 1 : 0;
+  const r = meilleurGrade(state, faction);
+  return r && r.index >= 2 ? 1 : 0;
 }
 
 // ---------------------------------------------------------------------------
 // Entrer et sortir
 // ---------------------------------------------------------------------------
 
-function peutSEngager(state, faction) {
+function peutSEngager(state, faction, groupe) {
+  const g = groupe || groupeActif(state);
   if (!FACTIONS[faction] || faction === 'essaim') {
     return { ok: false, motif: 'Cette faction n’enrôle personne.' };
   }
-  if (state.player.allegeance) {
-    return { ok: false, motif: `Déjà au service ${FACTIONS[state.player.allegeance.faction].genitif}.` };
+  if (g && g.allegeance) {
+    return { ok: false, motif: `${g.nom} sert déjà ${FACTIONS[g.allegeance.faction].genitif}.` };
+  }
+  // On ne sert pas deux camps en guerre l'un contre l'autre, même avec deux
+  // colonnes différentes : ça se sait.
+  for (const autre of groupesEngages(state)) {
+    const enGuerre = state.world.guerres.some(
+      (w) => (w.a === faction && w.b === autre.allegeance.faction)
+        || (w.b === faction && w.a === autre.allegeance.faction)
+    );
+    if (enGuerre) {
+      return {
+        ok: false,
+        motif: `${autre.nom} sert ${FACTIONS[autre.allegeance.faction].genitif}, en guerre contre eux.`,
+      };
+    }
   }
   const rep = state.player.reputation[faction] || 0;
   if (rep < REPUTATION_MINIMALE) {
@@ -4485,11 +4758,13 @@ function peutSEngager(state, faction) {
   return { ok: true };
 }
 
-function sEngager(state, faction, log) {
-  const v = peutSEngager(state, faction);
+function sEngager(state, faction, log, groupe) {
+  const g = groupe || groupeActif(state);
+  if (!g) return { ok: false, motif: 'Aucun groupe.' };
+  const v = peutSEngager(state, faction, g);
   if (!v.ok) return v;
 
-  state.player.allegeance = {
+  g.allegeance = {
     faction,
     points: 0,
     depuis: state.temps,
@@ -4502,25 +4777,27 @@ function sEngager(state, faction, log) {
   };
 
   // On ne choisit pas un camp sans que l'autre le remarque.
-  for (const g of state.world.guerres) {
-    const autre = g.a === faction ? g.b : g.b === faction ? g.a : null;
+  for (const w of state.world.guerres) {
+    const autre = w.a === faction ? w.b : w.b === faction ? w.a : null;
     if (!autre) continue;
     state.player.reputation[autre] = Math.max(-100, (state.player.reputation[autre] || 0) - 20);
   }
 
   log({
     type: 'allegeance',
-    texte: `Vous entrez au service ${FACTIONS[faction].genitif}. Rang : ${RANGS[0].nom}.`,
+    texte: `${g.nom} entre au service ${FACTIONS[faction].genitif}. Rang : ${RANGS[0].nom}.`,
     important: true,
+    groupe: g.id,
   });
   return { ok: true };
 }
 
-function quitter(state, log) {
-  const all = state.player.allegeance;
-  if (!all) return { ok: false, motif: 'Vous n’êtes au service de personne.' };
+function quitter(state, log, groupe) {
+  const g = groupe || groupeActif(state);
+  const all = allegeanceDe(g);
+  if (!all) return { ok: false, motif: 'Cette colonne ne sert personne.' };
   const f = all.faction;
-  state.player.allegeance = null;
+  g.allegeance = null;
   state.player.reputation[f] = Math.max(-100, (state.player.reputation[f] || 0) - 30);
   log({
     type: 'allegeance',
@@ -4546,8 +4823,9 @@ const RANG_GARNISON = 2; // Lieutenant
  * l'engagé se la fait prêter. On y dort à l'abri et on y est soigné — ce que
  * coûterait sinon un baraquement et une infirmerie.
  */
-function garnison(state, regionId) {
-  const all = state.player.allegeance;
+function garnison(state, regionId, groupe) {
+  const g = groupe || (state.player.groupes || []).find((x) => x.regionId === regionId);
+  const all = allegeanceDe(g);
   if (!all) return null;
   if (rangDe(all).index < RANG_GARNISON) return null;
   const r = state.world.regions[regionId];
@@ -4574,9 +4852,10 @@ const JOURS_INTENDANCE = 5;
  * ce qui empêche l'intendance d'être un robinet et en fait une raison de
  * repasser chez soi.
  */
-function droitIntendance(state, col) {
-  const all = state.player.allegeance;
-  if (!all) return { ok: false, motif: 'Vous ne servez personne.' };
+function droitIntendance(state, col, groupe) {
+  const g = groupe || groupeActif(state);
+  const all = allegeanceDe(g);
+  if (!all) return { ok: false, motif: 'Cette colonne ne sert personne.' };
   if (!col || col.ruine || col.faction !== all.faction) {
     return { ok: false, motif: 'Ce n’est pas une ville des vôtres.' };
   }
@@ -4605,16 +4884,16 @@ function droitIntendance(state, col) {
 }
 
 function toucherRations(state, col, log, groupe) {
-  const d = droitIntendance(state, col);
-  if (!d.ok) return d;
   const g = groupe || groupeActif(state);
+  const d = droitIntendance(state, col, g);
+  if (!d.ok) return d;
   if (!g || g.regionId !== col.regionId) {
     return { ok: false, motif: 'Il faut être sur place.' };
   }
-  const f = state.world.factions[state.player.allegeance.faction];
+  const f = state.world.factions[g.allegeance.faction];
   f.tresor = Math.max(0, f.tresor - d.cout);
   g.inventaire.rations = (g.inventaire.rations || 0) + d.quantite;
-  state.player.allegeance.intendance = state.temps;
+  g.allegeance.intendance = state.temps;
   if (log) {
     log({
       type: 'allegeance',
@@ -4627,8 +4906,8 @@ function toucherRations(state, col, log, groupe) {
 
 // ---------------------------------------------------------------------------
 
-function crediter(state, points, log, motif) {
-  const all = state.player.allegeance;
+function crediter(state, points, log, motif, groupe) {
+  const all = allegeanceDe(groupe || groupeActif(state));
   if (!all || points <= 0) return 0;
   const avant = rangDe(all).index;
   all.points += points;
@@ -4674,12 +4953,13 @@ function delai(d, rng, base = 200) {
   return Math.round((base + d * 26) * rng.range(0.95, 1.35));
 }
 
-function fabriquerOrdre(state, rng) {
-  const all = state.player.allegeance;
+function fabriquerOrdre(state, rng, g) {
+  const all = allegeanceDe(g);
   const miennes = villesDe(state, all.faction);
   if (!miennes.length) return null;
   const rang = rangDe(all);
-  const ici = positionJoueur(state);
+  // On envoie la colonne depuis où elle est, pas depuis où est le joueur.
+  const ici = g.regionId;
 
   // On vise ce qui sert vraiment la faction : ravitailler une ville en manque,
   // frapper un ennemi déclaré, ou reconnaître un secteur convoité.
@@ -4770,7 +5050,7 @@ function fabriquerOrdre(state, rng) {
   };
 }
 
-function avancementOrdre(state, o) {
+function avancementOrdre(state, o, groupe) {
   if (!o) return null;
   switch (o.type) {
     case 'frappe':
@@ -4803,11 +5083,16 @@ function avancementOrdre(state, o) {
 }
 
 /** Une victoire compte pour l'ordre en cours, comme pour les primes. */
-function compterVictoireOrdre(state, factionBande) {
-  const all = state.player.allegeance;
-  if (!all || !all.ordre || all.ordre.type !== 'frappe') return;
-  if (all.ordre.cibleFaction === factionBande) {
-    all.ordre.progres = Math.min(all.ordre.victoires, all.ordre.progres + 1);
+function compterVictoireOrdre(state, factionBande, groupe) {
+  // Toute colonne engagée qui a une frappe en cours en profite : c'est le même
+  // ennemi qui tombe, et la nouvelle remonte.
+  for (const g of groupesEngages(state)) {
+    if (groupe && g.id !== groupe.id) continue;
+    const all = g.allegeance;
+    if (!all.ordre || all.ordre.type !== 'frappe') continue;
+    if (all.ordre.cibleFaction === factionBande) {
+      all.ordre.progres = Math.min(all.ordre.victoires, all.ordre.progres + 1);
+    }
   }
 }
 
@@ -4816,8 +5101,15 @@ function compterVictoireOrdre(state, factionBande) {
 // ---------------------------------------------------------------------------
 
 function tickAllegeance(state, log, ctx) {
-  const all = state.player.allegeance;
-  if (!all) return;
+  // Chaque colonne a son engagement, son grade et ses ordres : c'est ce qui
+  // permet d'en envoyer une servir les Corpos pendant qu'une autre bâtit.
+  for (const g of state.player.groupes) {
+    if (g.allegeance) tickEngagement(state, g, log, ctx);
+  }
+}
+
+function tickEngagement(state, g, log, ctx) {
+  const all = g.allegeance;
   const rng = ctx.rng;
   const f = state.world.factions[all.faction];
 
@@ -4825,10 +5117,11 @@ function tickAllegeance(state, log, ctx) {
   if (!f || !f.colonies.length) {
     log({
       type: 'allegeance',
-      texte: `${FACTIONS[all.faction].nom} n’existe plus. Votre engagement tombe avec elle.`,
+      texte: `${FACTIONS[all.faction].nom} n’existe plus. L’engagement de ${g.nom} tombe avec elle.`,
       important: true,
+      groupe: g.id,
     });
-    state.player.allegeance = null;
+    g.allegeance = null;
     return;
   }
 
@@ -4847,7 +5140,7 @@ function tickAllegeance(state, log, ctx) {
 
   // Ordre en cours : validation, échéance.
   if (all.ordre) {
-    const p = avancementOrdre(state, all.ordre);
+    const p = avancementOrdre(state, all.ordre, g);
     if (p && p.pret) {
       const o = all.ordre;
       if (o.type === 'ravitaillement') {
@@ -4861,7 +5154,7 @@ function tickAllegeance(state, log, ctx) {
       all.ordre = null;
       all.prochainOrdre = state.temps + rng.irange(120, 260);
       state.stats.ordresRemplis = (state.stats.ordresRemplis || 0) + 1;
-      crediter(state, o.service, log, null);
+      crediter(state, o.service, log, null, g);
       log({
         type: 'allegeance',
         texte: `Ordre exécuté : ${o.titre}. ${o.recompense} cr.`,
@@ -4885,7 +5178,7 @@ function tickAllegeance(state, log, ctx) {
       });
     }
   } else if (state.temps >= all.prochainOrdre) {
-    const o = fabriquerOrdre(state, rng);
+    const o = fabriquerOrdre(state, rng, g);
     if (o) {
       o.echeance = state.temps + o.duree;
       all.ordre = o;
@@ -4908,12 +5201,12 @@ function tickAllegeance(state, log, ctx) {
  * d'un combat livré en territoire ami. Retourne le nombre de renforts.
  */
 function renfortsDisponibles(state, groupe) {
-  const all = state.player.allegeance;
+  const g = groupe || groupeActif(state);
+  if (!g) return 0;
+  const all = allegeanceDe(g);
   if (!all) return 0;
   const rang = rangDe(all);
   if (rang.index < 3) return 0;
-  const g = groupe || groupeActif(state);
-  if (!g) return 0;
   const r = state.world.regions[g.regionId];
   if (r.controle !== all.faction) return 0;
   return rang.index - 2;
@@ -4967,8 +5260,10 @@ function regionsVues(state) {
   // Servir une faction, c'est recevoir ses rapports. À partir d'Agent, ses
   // villes ne sont plus jamais une surprise : c'est la contrepartie concrète
   // d'un grade, et ça vaut mieux qu'une remise de deux pour cent.
-  const all = state.player.allegeance;
-  if (all && rangDe(all).index >= 1) {
+  // Chaque colonne engagée rapporte ce que sa faction lui transmet.
+  for (const g of groupes(state)) {
+    const all = g.allegeance;
+    if (!all || rangDe(all).index < 1) continue;
     for (const col of state.world.colonies) {
       if (!col.ruine && col.faction === all.faction) vues.add(col.regionId);
     }
@@ -5104,10 +5399,12 @@ function estSurveillee(state, regionId) {
     if (state.base.regionId === regionId) return true;
     if (portee && distance(state.base.regionId, regionId) <= portee) return true;
   }
-  const all = state.player.allegeance;
-  if (all && rangDe(all).index >= 1) {
-    const col = state.world.colonies.find((c) => c.regionId === regionId);
-    if (col && !col.ruine && col.faction === all.faction) return true;
+  const col = state.world.colonies.find((c) => c.regionId === regionId);
+  if (col && !col.ruine) {
+    for (const g of groupes(state)) {
+      const all = g.allegeance;
+      if (all && rangDe(all).index >= 1 && col.faction === all.faction) return true;
+    }
   }
   return false;
 }
@@ -5217,7 +5514,9 @@ function peutSInscrire(state, col, perso, key) {
 function inscrire(state, col, perso, key, log) {
   const v = peutSInscrire(state, col, perso, key);
   if (!v.ok) return v;
-  const remise = state.player.allegeance && state.player.allegeance.faction === col.faction ? 0.15 : 0;
+  // La remise d'une école va à qui sert la maison : n'importe laquelle de vos
+  // colonnes engagée chez eux suffit à vous ouvrir le tarif.
+  const remise = estAuService(state, col.faction) ? 0.15 : 0;
   const prix = prixFormation(col, key, remise);
   if (state.player.credits < prix) {
     return { ok: false, motif: `Il manque ${prix - state.player.credits} cr.` };
@@ -6944,7 +7243,7 @@ function conseil(world, key, t, log, ctx) {
     }
     const fatigue = duree / 900 + g.batailles * 0.08;
     const envie = Math.min(0.7, fatigue * 0.35 + (leur > maPuissance * 1.4 ? 0.25 : 0))
-      * penchant(world, key, 'treve');
+      * penchant(world, key, 'treve') * pousseeConsigne(world, key, 'treve', t);
     if (duree > 220 && rng.chance(envie)) {
       signerPaix(world, key, autre, t, log);
     }
@@ -6952,7 +7251,8 @@ function conseil(world, key, t, log, ctx) {
 
   // 2) Déclarer une guerre si une cible est faible et mal aimée
   const enGuerreAvec = new Set(guerresDe(world, key).map((g) => (g.a === key ? g.b : g.a)));
-  if (enGuerreAvec.size < 2 && rng.chance(f.agression * 0.5 * penchant(world, key, 'guerre'))) {
+  if (enGuerreAvec.size < 2 && rng.chance(f.agression * 0.5 * penchant(world, key, 'guerre')
+      * pousseeConsigne(world, key, 'guerre', t))) {
     const candidats = DIPLO_FACTIONS.filter(
       (k) => k !== key && !enGuerreAvec.has(k) && coloniesDe(world, k).length > 0
     ).map((k) => {
@@ -6976,7 +7276,8 @@ function conseil(world, key, t, log, ctx) {
     const ennemi = g.a === key ? g.b : g.a;
     const dejaEnRoute = world.armees.filter((a) => a.faction === key).length;
     if (dejaEnRoute >= 2) break;
-    if (!rng.chance(Math.min(1, 0.75 * penchant(world, key, 'colonne')))) continue;
+    if (!rng.chance(Math.min(1, 0.75 * penchant(world, key, 'colonne')
+        * pousseeConsigne(world, key, 'colonne', t)))) continue;
     const prox = cibleLaPlusProche(world, key, ennemi);
     if (!prox) continue;
     const force = Math.min(
@@ -6996,7 +7297,8 @@ function conseil(world, key, t, log, ctx) {
   // factions : aucune n'était plus jamais sous son plafond, et plus une seule
   // ville n'a été fondée de toute une partie.
   const plafond = Math.max(7, Math.round(world.regions.length / 36));
-  if (mesColonies.length < plafond && rng.chance(Math.min(0.9, 0.4 * penchant(world, key, 'expansion')))
+  if (mesColonies.length < plafond && rng.chance(Math.min(0.9, 0.4 * penchant(world, key, 'expansion')
+      * pousseeConsigne(world, key, 'expansion', t)))
       && f.tresor > (enPaix ? 1700 : 4200)) {
     // Une case libre, à portée de nos terres mais assez loin des villes
     // existantes pour ne pas se marcher dessus. Chercher parmi les seules
@@ -8255,7 +8557,7 @@ function combatContre(state, bande, log, ctx, groupe) {
   if (renforts.length) {
     log({
       type: 'renfort',
-      texte: `${renforts.length} homme${renforts.length > 1 ? 's' : ''} ${FACTIONS[state.player.allegeance.faction].genitif} accourent.`,
+      texte: `${renforts.length} homme${renforts.length > 1 ? 's' : ''} ${FACTIONS[g.allegeance.faction].genitif} accourent.`,
       regionId: g.regionId,
     });
   }
@@ -8294,7 +8596,7 @@ function combatContre(state, bande, log, ctx, groupe) {
     compterVictoire(state, bande.faction);
     compterVictoireOrdre(state, bande.faction);
     // Frapper un ennemi déclaré de sa faction, c'est du service rendu.
-    const all = state.player.allegeance;
+    const all = g.allegeance;
     if (all && bande.faction && bande.faction !== all.faction) {
       const enGuerreAvec = state.world.guerres.some(
         (w) => (w.a === all.faction && w.b === bande.faction) || (w.b === all.faction && w.a === bande.faction)
@@ -8672,7 +8974,8 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       const f = r.controle || 'bandits';
       const taxe = rng.irange(40, 220);
       // Les siens ne rançonnent pas les leurs, dès le grade d'Agent.
-      if (estAuService(state, f) && rangDe(state.player.allegeance).index >= 1) {
+      const monGrade = g.allegeance && g.allegeance.faction === f ? rangDe(g.allegeance) : null;
+      if (monGrade && monGrade.index >= 1) {
         log({
           type: 'peage',
           texte: `Barrage ${FACTIONS[f].genitif} : on vous reconnaît, on vous laisse passer.`,
@@ -9637,11 +9940,19 @@ function normaliser(state) {
 
   if (!p.contrats) p.contrats = [];
   if (!p.primes) p.primes = {};
-  if (p.allegeance === undefined) p.allegeance = null;
-  // Avant l'intendance, servir ne nourrissait pas.
+  // Avant, l'engagement appartenait au joueur : un seul pour toute la partie.
+  // Il appartient désormais à la colonne qui l'a signé, ce qui permet d'en
+  // envoyer une servir pendant qu'une autre bâtit. On le remet à la première.
   if (p.allegeance) {
-    if (p.allegeance.intendance === undefined) p.allegeance.intendance = state.temps;
-    if (p.allegeance.manques === undefined) p.allegeance.manques = 0;
+    const premier = p.groupes[0];
+    if (premier && !premier.allegeance) premier.allegeance = p.allegeance;
+    delete p.allegeance;
+  }
+  for (const g of p.groupes) {
+    if (g.allegeance === undefined) g.allegeance = null;
+    if (!g.allegeance) continue;
+    if (g.allegeance.intendance === undefined) g.allegeance.intendance = state.temps;
+    if (g.allegeance.manques === undefined) g.allegeance.manques = 0;
   }
   if (!state.memorial) state.memorial = [];
   if (!state.stats) state.stats = {};
@@ -9654,6 +9965,8 @@ function normaliser(state) {
   // premier tick leur donne quelqu'un à leur tête.
   for (const k of Object.keys(w.factions || {})) {
     if (w.factions[k].dirigeant === undefined) w.factions[k].dirigeant = null;
+    // Avant l'influence, servir ne donnait pas voix au chapitre.
+    if (w.factions[k].consigne === undefined) w.factions[k].consigne = null;
   }
   if (!w.meteo) w.meteo = { type: 'couvert', restant: 4 };
   for (const c of w.colonies) {
@@ -9871,7 +10184,6 @@ function nouvellePartie(seed, opts = {}) {
       },
       contrats: [],
       primes: {},
-      allegeance: null,
     },
     base: creerBase(),
     journal: [],
@@ -11026,7 +11338,7 @@ function blocColonie(col) {
 }
 
 function blocEngagement(col) {
-  const all = S.player.allegeance;
+  const all = G() && G().allegeance;
   if (all && all.faction === col.faction) {
     const rang = rangDe(all);
     return `<div class="sep"></div>
@@ -11679,6 +11991,42 @@ function ligneContrat(c, enCours) {
  * L'intendance, quand on est dans une ville des siens. C'est ce qui distingue
  * la voie du service des deux autres : on n'achète pas à manger, on le touche.
  */
+/**
+ * Ce qu'un grade permet de peser. On montre les chances avant de demander : une
+ * décision politique n'est pas un tirage à l'aveugle, et savoir qu'on n'a que
+ * huit pour cent de convaincre un Conciliateur de faire la guerre fait partie
+ * de l'information qu'on achète en montant en grade.
+ */
+function blocInfluence(faction) {
+  const p = poidsInfluence(S, faction);
+  const d = dirigeant(S.world, faction);
+  if (!d) return '';
+  const c = consigneDe(S.world, faction, S.temps);
+  const lignes = REQUETE_KEYS.map((k) => {
+    const def = REQUETES[k];
+    const v = peutDemander(S, faction, k);
+    const ch = chancesInfluence(S, faction, k);
+    return `<div style="border-bottom:1px solid #1b2029;padding:5px 0">
+      <div class="ligne"><span class="k">${e(def.nom)}</span>
+        <span class="v">${v.ok ? `${Math.round(ch * 100)} % d’être écouté` : '—'}</span></div>
+      <div class="aide">${e(def.desc)}</div>
+      <button class="act mini" data-a="demander" data-f="${e(faction)}" data-r="${k}"
+        style="margin-top:4px" ${v.ok ? '' : 'disabled'}>
+        ${v.ok ? 'Porter la requête' : e(v.motif)}</button>
+    </div>`;
+  }).join('');
+
+  return `<div class="sep"></div>
+  <div class="titre">Voix au conseil</div>
+  <div class="ligne"><span class="k">Votre crédit auprès ${e(FACTIONS[faction].genitif)}</span>
+    <span class="v">${n(p)}</span></div>
+  <div class="aide">${e(d.titre)} ${e(d.nom)}, ${e(TEMPERAMENTS[d.temperament].nom.toLowerCase())}.
+    On ne convainc pas un conquérant de signer la paix.</div>
+  ${c ? `<div class="aide" style="border-left:2px solid #4fd0e3;padding-left:8px">
+    Le conseil suit votre demande : ${e(REQUETES[c.key] ? REQUETES[c.key].nom.toLowerCase() : c.key)}.</div>` : ''}
+  ${lignes}`;
+}
+
 function blocIntendance() {
   const g = G();
   if (!g) return '';
@@ -11697,7 +12045,7 @@ function blocIntendance() {
 }
 
 function blocAllegeance() {
-  const all = S.player.allegeance;
+  const all = G() && G().allegeance;
   if (!all) {
     return `<section class="panneau">
       <h2 class="titre">Allégeance <span class="droite">indépendant</span></h2>
@@ -11745,6 +12093,7 @@ function blocAllegeance() {
       <div class="aide">${e(p ? p.texte : '')} · ${n(o.recompense)} cr ·
         <span class="${o.echeance - S.temps < 48 ? 'alerte' : ''}">${dureeTexte(Math.max(0, o.echeance - S.temps))} restantes</span></div>`
     : '<div class="aide">Aucun ordre en attente. Ils vous rappelleront.</div>'}
+    ${blocInfluence(all.faction)}
     <div class="sep"></div>
     <button class="act mini danger" data-a="quitter-service">Rompre l’engagement</button>
   </section>`;
@@ -12195,7 +12544,7 @@ function modaleEcole() {
   const offres = ecolesDe(S.world, col);
   if (!offres.length) return '<div class="aide">On n’enseigne rien ici.</div>';
   const g = G();
-  const remise = S.player.allegeance && S.player.allegeance.faction === col.faction ? 0.15 : 0;
+  const remise = estAuService(S, col.faction) ? 0.15 : 0;
 
   const enCours = g.membres.filter((c) => c.formation).map((c) => {
     const d = DIPLOMES[c.formation.key];
@@ -12840,6 +13189,15 @@ function surClic(ev) {
       break;
     }
 
+    case 'demander': {
+      const r = ACTIONS.demander(el.dataset.f, el.dataset.r, null);
+      toast(r.ok
+        ? (r.ecoute ? 'Le conseil vous suit.' : 'On vous a écouté poliment, et non.')
+        : r.motif, !r.ok || !r.ecoute);
+      rafraichir(true);
+      break;
+    }
+
     case 'intendance': {
       const r = ACTIONS.toucherRations();
       toast(r.ok ? `${r.quantite} rations touchées.` : r.motif, !r.ok);
@@ -13016,6 +13374,19 @@ const API = {
     const g = groupeActif(state);
     const col = state.world.colonies.find((c) => !c.ruine && c.regionId === g.regionId);
     const r = vendreBete(state, col, id, creerLogger(state), g);
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /**
+   * Porter une requête au conseil de la faction qu'on sert. Tirage : RNG de la
+   * partie — on demande, on n'ordonne pas.
+   */
+  demander(faction, key, cible) {
+    const rng = new Rng(state.rngState);
+    const r = demanderA(state, faction, key, cible ? Number(cible) : null, rng, creerLogger(state));
+    state.rngState = rng.save();
+    if (r.ok && r.ecoute) inscrireConsigne(state.world, faction, key, cible, state.temps);
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },

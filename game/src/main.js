@@ -16,6 +16,7 @@ import { verifierExercice } from './squad.js';
 import { honorer as honorerService } from './services.js';
 import { acheterBete, vendreBete } from './betes.js';
 import { engager } from './recrues.js';
+import { demander as demanderA, inscrireConsigne } from './influence.js';
 
 let state = null;
 let boucle = null;
@@ -141,6 +142,19 @@ const API = {
     const g = groupeActif(state);
     const col = state.world.colonies.find((c) => !c.ruine && c.regionId === g.regionId);
     const r = vendreBete(state, col, id, creerLogger(state), g);
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /**
+   * Porter une requête au conseil de la faction qu'on sert. Tirage : RNG de la
+   * partie — on demande, on n'ordonne pas.
+   */
+  demander(faction, key, cible) {
+    const rng = new Rng(state.rngState);
+    const r = demanderA(state, faction, key, cible ? Number(cible) : null, rng, creerLogger(state));
+    state.rngState = rng.save();
+    if (r.ok && r.ecoute) inscrireConsigne(state.world, faction, key, cible, state.temps);
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },

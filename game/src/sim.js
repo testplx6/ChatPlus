@@ -128,7 +128,6 @@ export function nouvellePartie(seed, opts = {}) {
       },
       contrats: [],
       primes: {},
-      allegeance: null,
     },
     base: creerBase(),
     journal: [],

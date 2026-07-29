@@ -28,6 +28,7 @@ const MODULES = [
   'characters.js',
   'notables.js',
   'dirigeants.js',
+  'influence.js',
   'groupes.js',
   'betes.js',
   'recrues.js',
@@ -110,6 +111,23 @@ for (const nom of MODULES) {
   const { code, alias, requis } = retirerImports(brut);
   for (const r of requis) if (!requisTous.has(r)) requisTous.set(r, nom);
   const propre = retirerExports(code);
+  // Un même nom importé deux fois dans le *même* fichier casse la page servie
+  // en modules ES, mais pas l'assemblage : le bundler retire les imports, donc
+  // il ne voyait rien et annonçait « 0 collision » sur un jeu qui ne démarrait
+  // plus. Le test navigateur l'attrapait, dix minutes plus tard.
+  const importes = new Map();
+  for (const m of brut.matchAll(/^import\s*\{([^}]*)\}\s*from\s*'([^']+)'/gm)) {
+    for (const brut2 of m[1].split(',')) {
+      const nom = brut2.trim().split(/\s+as\s+/).pop().trim();
+      if (!nom) continue;
+      if (importes.has(nom)) {
+        console.error(`${nom} : « ${nom} » importé deux fois — depuis `
+          + `${importes.get(nom)} puis depuis ${m[2]}`);
+        collisions++;
+      }
+      importes.set(nom, m[2]);
+    }
+  }
   for (const g of nomsGlobaux(propre)) {
     if (vus.has(g)) {
       console.error(`Collision : « ${g} » déclaré dans ${vus.get(g)} et ${nom}`);

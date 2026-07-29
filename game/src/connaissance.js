@@ -52,8 +52,10 @@ export function regionsVues(state) {
   // Servir une faction, c'est recevoir ses rapports. À partir d'Agent, ses
   // villes ne sont plus jamais une surprise : c'est la contrepartie concrète
   // d'un grade, et ça vaut mieux qu'une remise de deux pour cent.
-  const all = state.player.allegeance;
-  if (all && rangDe(all).index >= 1) {
+  // Chaque colonne engagée rapporte ce que sa faction lui transmet.
+  for (const g of groupes(state)) {
+    const all = g.allegeance;
+    if (!all || rangDe(all).index < 1) continue;
     for (const col of state.world.colonies) {
       if (!col.ruine && col.faction === all.faction) vues.add(col.regionId);
     }
@@ -189,10 +191,12 @@ export function estSurveillee(state, regionId) {
     if (state.base.regionId === regionId) return true;
     if (portee && distance(state.base.regionId, regionId) <= portee) return true;
   }
-  const all = state.player.allegeance;
-  if (all && rangDe(all).index >= 1) {
-    const col = state.world.colonies.find((c) => c.regionId === regionId);
-    if (col && !col.ruine && col.faction === all.faction) return true;
+  const col = state.world.colonies.find((c) => c.regionId === regionId);
+  if (col && !col.ruine) {
+    for (const g of groupes(state)) {
+      const all = g.allegeance;
+      if (all && rangDe(all).index >= 1 && col.faction === all.faction) return true;
+    }
   }
   return false;
 }

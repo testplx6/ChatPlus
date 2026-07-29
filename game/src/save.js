@@ -72,11 +72,19 @@ export function normaliser(state) {
 
   if (!p.contrats) p.contrats = [];
   if (!p.primes) p.primes = {};
-  if (p.allegeance === undefined) p.allegeance = null;
-  // Avant l'intendance, servir ne nourrissait pas.
+  // Avant, l'engagement appartenait au joueur : un seul pour toute la partie.
+  // Il appartient désormais à la colonne qui l'a signé, ce qui permet d'en
+  // envoyer une servir pendant qu'une autre bâtit. On le remet à la première.
   if (p.allegeance) {
-    if (p.allegeance.intendance === undefined) p.allegeance.intendance = state.temps;
-    if (p.allegeance.manques === undefined) p.allegeance.manques = 0;
+    const premier = p.groupes[0];
+    if (premier && !premier.allegeance) premier.allegeance = p.allegeance;
+    delete p.allegeance;
+  }
+  for (const g of p.groupes) {
+    if (g.allegeance === undefined) g.allegeance = null;
+    if (!g.allegeance) continue;
+    if (g.allegeance.intendance === undefined) g.allegeance.intendance = state.temps;
+    if (g.allegeance.manques === undefined) g.allegeance.manques = 0;
   }
   if (!state.memorial) state.memorial = [];
   if (!state.stats) state.stats = {};
@@ -89,6 +97,8 @@ export function normaliser(state) {
   // premier tick leur donne quelqu'un à leur tête.
   for (const k of Object.keys(w.factions || {})) {
     if (w.factions[k].dirigeant === undefined) w.factions[k].dirigeant = null;
+    // Avant l'influence, servir ne donnait pas voix au chapitre.
+    if (w.factions[k].consigne === undefined) w.factions[k].consigne = null;
   }
   if (!w.meteo) w.meteo = { type: 'couvert', restant: 4 };
   for (const c of w.colonies) {

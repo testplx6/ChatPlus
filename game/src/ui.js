@@ -49,6 +49,10 @@ import { CHARGES, CARACTERES, margeMarchand, vocation } from './notables.js';
 import { demandesIci, souvenirs, faveurChef, SOINS_SEUIL, REGISTRES_SEUIL } from './services.js';
 import { primeDe, apercu, tensionRecrutement } from './recrues.js';
 import {
+  REQUETES, REQUETE_KEYS, peutDemander, consigneDe,
+  poids as poidsInfluence, chances as chancesInfluence,
+} from './influence.js';
+import {
   BETES, BETE_KEYS, betesDe, prixBete, portageAttelage, lenteurAttelage,
   conduite, surnombre, visibiliteAttelage,
 } from './betes.js';
@@ -905,7 +909,7 @@ function blocColonie(col) {
 }
 
 function blocEngagement(col) {
-  const all = S.player.allegeance;
+  const all = G() && G().allegeance;
   if (all && all.faction === col.faction) {
     const rang = rangDe(all);
     return `<div class="sep"></div>
@@ -1558,6 +1562,42 @@ function ligneContrat(c, enCours) {
  * L'intendance, quand on est dans une ville des siens. C'est ce qui distingue
  * la voie du service des deux autres : on n'achète pas à manger, on le touche.
  */
+/**
+ * Ce qu'un grade permet de peser. On montre les chances avant de demander : une
+ * décision politique n'est pas un tirage à l'aveugle, et savoir qu'on n'a que
+ * huit pour cent de convaincre un Conciliateur de faire la guerre fait partie
+ * de l'information qu'on achète en montant en grade.
+ */
+function blocInfluence(faction) {
+  const p = poidsInfluence(S, faction);
+  const d = dirigeant(S.world, faction);
+  if (!d) return '';
+  const c = consigneDe(S.world, faction, S.temps);
+  const lignes = REQUETE_KEYS.map((k) => {
+    const def = REQUETES[k];
+    const v = peutDemander(S, faction, k);
+    const ch = chancesInfluence(S, faction, k);
+    return `<div style="border-bottom:1px solid #1b2029;padding:5px 0">
+      <div class="ligne"><span class="k">${e(def.nom)}</span>
+        <span class="v">${v.ok ? `${Math.round(ch * 100)} % d’être écouté` : '—'}</span></div>
+      <div class="aide">${e(def.desc)}</div>
+      <button class="act mini" data-a="demander" data-f="${e(faction)}" data-r="${k}"
+        style="margin-top:4px" ${v.ok ? '' : 'disabled'}>
+        ${v.ok ? 'Porter la requête' : e(v.motif)}</button>
+    </div>`;
+  }).join('');
+
+  return `<div class="sep"></div>
+  <div class="titre">Voix au conseil</div>
+  <div class="ligne"><span class="k">Votre crédit auprès ${e(FACTIONS[faction].genitif)}</span>
+    <span class="v">${n(p)}</span></div>
+  <div class="aide">${e(d.titre)} ${e(d.nom)}, ${e(TEMPERAMENTS[d.temperament].nom.toLowerCase())}.
+    On ne convainc pas un conquérant de signer la paix.</div>
+  ${c ? `<div class="aide" style="border-left:2px solid #4fd0e3;padding-left:8px">
+    Le conseil suit votre demande : ${e(REQUETES[c.key] ? REQUETES[c.key].nom.toLowerCase() : c.key)}.</div>` : ''}
+  ${lignes}`;
+}
+
 function blocIntendance() {
   const g = G();
   if (!g) return '';
@@ -1576,7 +1616,7 @@ function blocIntendance() {
 }
 
 function blocAllegeance() {
-  const all = S.player.allegeance;
+  const all = G() && G().allegeance;
   if (!all) {
     return `<section class="panneau">
       <h2 class="titre">Allégeance <span class="droite">indépendant</span></h2>
@@ -1624,6 +1664,7 @@ function blocAllegeance() {
       <div class="aide">${e(p ? p.texte : '')} · ${n(o.recompense)} cr ·
         <span class="${o.echeance - S.temps < 48 ? 'alerte' : ''}">${dureeTexte(Math.max(0, o.echeance - S.temps))} restantes</span></div>`
     : '<div class="aide">Aucun ordre en attente. Ils vous rappelleront.</div>'}
+    ${blocInfluence(all.faction)}
     <div class="sep"></div>
     <button class="act mini danger" data-a="quitter-service">Rompre l’engagement</button>
   </section>`;
@@ -2074,7 +2115,7 @@ function modaleEcole() {
   const offres = ecolesDe(S.world, col);
   if (!offres.length) return '<div class="aide">On n’enseigne rien ici.</div>';
   const g = G();
-  const remise = S.player.allegeance && S.player.allegeance.faction === col.faction ? 0.15 : 0;
+  const remise = estAuService(S, col.faction) ? 0.15 : 0;
 
   const enCours = g.membres.filter((c) => c.formation).map((c) => {
     const d = DIPLOMES[c.formation.key];
@@ -2716,6 +2757,15 @@ function surClic(ev) {
       const r = ACTIONS.vendreBete(el.dataset.b);
       toast(r.ok ? `Cédée pour ${r.prix} cr.` : r.motif, !r.ok);
       rendreModale();
+      break;
+    }
+
+    case 'demander': {
+      const r = ACTIONS.demander(el.dataset.f, el.dataset.r, null);
+      toast(r.ok
+        ? (r.ecoute ? 'Le conseil vous suit.' : 'On vous a écouté poliment, et non.')
+        : r.motif, !r.ok || !r.ecoute);
+      rafraichir(true);
       break;
     }
 

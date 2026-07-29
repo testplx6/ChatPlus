@@ -7,6 +7,7 @@ import {
 } from './dirigeants.js';
 import { effondrer, emploisInitiaux } from './economy.js';
 import { pourvoirCharges } from './notables.js';
+import { pousseeConsigne } from './influence.js';
 import { chemin, colonieParId, distance, voisins } from './world.js';
 
 // ---------------------------------------------------------------------------
@@ -430,7 +431,7 @@ function conseil(world, key, t, log, ctx) {
     }
     const fatigue = duree / 900 + g.batailles * 0.08;
     const envie = Math.min(0.7, fatigue * 0.35 + (leur > maPuissance * 1.4 ? 0.25 : 0))
-      * penchant(world, key, 'treve');
+      * penchant(world, key, 'treve') * pousseeConsigne(world, key, 'treve', t);
     if (duree > 220 && rng.chance(envie)) {
       signerPaix(world, key, autre, t, log);
     }
@@ -438,7 +439,8 @@ function conseil(world, key, t, log, ctx) {
 
   // 2) Déclarer une guerre si une cible est faible et mal aimée
   const enGuerreAvec = new Set(guerresDe(world, key).map((g) => (g.a === key ? g.b : g.a)));
-  if (enGuerreAvec.size < 2 && rng.chance(f.agression * 0.5 * penchant(world, key, 'guerre'))) {
+  if (enGuerreAvec.size < 2 && rng.chance(f.agression * 0.5 * penchant(world, key, 'guerre')
+      * pousseeConsigne(world, key, 'guerre', t))) {
     const candidats = DIPLO_FACTIONS.filter(
       (k) => k !== key && !enGuerreAvec.has(k) && coloniesDe(world, k).length > 0
     ).map((k) => {
@@ -462,7 +464,8 @@ function conseil(world, key, t, log, ctx) {
     const ennemi = g.a === key ? g.b : g.a;
     const dejaEnRoute = world.armees.filter((a) => a.faction === key).length;
     if (dejaEnRoute >= 2) break;
-    if (!rng.chance(Math.min(1, 0.75 * penchant(world, key, 'colonne')))) continue;
+    if (!rng.chance(Math.min(1, 0.75 * penchant(world, key, 'colonne')
+        * pousseeConsigne(world, key, 'colonne', t)))) continue;
     const prox = cibleLaPlusProche(world, key, ennemi);
     if (!prox) continue;
     const force = Math.min(
@@ -482,7 +485,8 @@ function conseil(world, key, t, log, ctx) {
   // factions : aucune n'était plus jamais sous son plafond, et plus une seule
   // ville n'a été fondée de toute une partie.
   const plafond = Math.max(7, Math.round(world.regions.length / 36));
-  if (mesColonies.length < plafond && rng.chance(Math.min(0.9, 0.4 * penchant(world, key, 'expansion')))
+  if (mesColonies.length < plafond && rng.chance(Math.min(0.9, 0.4 * penchant(world, key, 'expansion')
+      * pousseeConsigne(world, key, 'expansion', t)))
       && f.tresor > (enPaix ? 1700 : 4200)) {
     // Une case libre, à portée de nos terres mais assez loin des villes
     // existantes pour ne pas se marcher dessus. Chercher parmi les seules

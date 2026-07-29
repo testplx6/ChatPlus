@@ -94,6 +94,9 @@ export function groupeVide(id, nom, regionId, t = 0) {
     objets: [],
     // Ce qui porte à votre place. Voir betes.js.
     betes: [],
+    // Au service de qui, avec quel grade et quels ordres. Voir allegeance.js :
+    // c'est par colonne, pas par joueur.
+    allegeance: null,
     reste: {},
     bilan: { res: {}, depuis: t },
     recolteHeure: null,

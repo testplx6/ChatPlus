@@ -146,7 +146,7 @@ export function combatContre(state, bande, log, ctx, groupe) {
   if (renforts.length) {
     log({
       type: 'renfort',
-      texte: `${renforts.length} homme${renforts.length > 1 ? 's' : ''} ${FACTIONS[state.player.allegeance.faction].genitif} accourent.`,
+      texte: `${renforts.length} homme${renforts.length > 1 ? 's' : ''} ${FACTIONS[g.allegeance.faction].genitif} accourent.`,
       regionId: g.regionId,
     });
   }
@@ -185,7 +185,7 @@ export function combatContre(state, bande, log, ctx, groupe) {
     compterVictoire(state, bande.faction);
     compterVictoireOrdre(state, bande.faction);
     // Frapper un ennemi déclaré de sa faction, c'est du service rendu.
-    const all = state.player.allegeance;
+    const all = g.allegeance;
     if (all && bande.faction && bande.faction !== all.faction) {
       const enGuerreAvec = state.world.guerres.some(
         (w) => (w.a === all.faction && w.b === bande.faction) || (w.b === all.faction && w.a === bande.faction)
@@ -563,7 +563,8 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       const f = r.controle || 'bandits';
       const taxe = rng.irange(40, 220);
       // Les siens ne rançonnent pas les leurs, dès le grade d'Agent.
-      if (estAuService(state, f) && rangDe(state.player.allegeance).index >= 1) {
+      const monGrade = g.allegeance && g.allegeance.faction === f ? rangDe(g.allegeance) : null;
+      if (monGrade && monGrade.index >= 1) {
         log({
           type: 'peage',
           texte: `Barrage ${FACTIONS[f].genitif} : on vous reconnaît, on vous laisse passer.`,

@@ -464,6 +464,54 @@ ok(notables && notables.n >= 2 && notables.ok,
 await page.click('[data-a="fermer"]');
 await page.waitForTimeout(300);
 
+console.log('\n8 sexdecies. Servir par colonne, et peser au conseil');
+const carriere = partieAvancee();
+const gCar = groupeActif(carriere);
+const villeCar = carriere.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
+gCar.regionId = villeCar.regionId;
+carriere.player.reputation[villeCar.faction] = 60;
+gCar.allegeance = {
+  faction: villeCar.faction, points: 900, depuis: 0, ordre: null,
+  prochainOrdre: 99999, intendance: carriere.temps, manques: 0,
+  derniereSolde: carriere.temps,
+};
+carriere.dernierReel = Date.now();
+await page.reload({ waitUntil: 'networkidle' });
+await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(carriere));
+await page.click('[data-a="continuer"]');
+await page.waitForSelector('#carte');
+await page.click('[data-a="onglet"][data-k="contrats"]');
+await page.waitForTimeout(500);
+const texteCar = await page.evaluate(() => document.querySelector('#ecran').textContent);
+ok(/VOIX AU CONSEIL/i.test(texteCar), 'un gradé a voix au conseil');
+ok(/d’être écouté/.test(texteCar), 'et voit ses chances avant de demander');
+ok(await page.locator('[data-a="demander"]').count() >= 3,
+  'plusieurs requêtes lui sont ouvertes');
+await page.screenshot({ path: join(CAPTURES, '25-conseil.png'), fullPage: true });
+
+const avantDem = await page.evaluate(() => {
+  const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  return s2.player.groupes[0].allegeance.points;
+});
+await page.click('[data-a="demander"]:not([disabled])');
+await page.waitForTimeout(500);
+const apresDem = await page.evaluate(() => {
+  const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const f = s2.world.factions[s2.player.groupes[0].allegeance.faction];
+  return { pts: s2.player.groupes[0].allegeance.points, consigne: !!f.consigne };
+});
+ok(apresDem.pts < avantDem, 'porter une requête brûle du capital politique',
+  `${avantDem} → ${apresDem.pts}`);
+
+// L'engagement est bien sur la colonne, pas sur le joueur.
+const ouEstLEngagement = await page.evaluate(() => {
+  const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  return { joueur: s2.player.allegeance === undefined, colonne: !!s2.player.groupes[0].allegeance };
+});
+ok(ouEstLEngagement.colonne && ouEstLEngagement.joueur,
+  'l’engagement appartient à la colonne, plus au joueur',
+  JSON.stringify(ouEstLEngagement));
+
 console.log('\n8 quindecies. Camper sur une ville morte');
 // Une ville effondrée perd son drapeau : `faction` repasse à null. L'écran de
 // carte lisait ce drapeau sans se demander s'il existait encore, et plantait
