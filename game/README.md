@@ -19,12 +19,44 @@ Un simple serveur statique — les modules ES ne se chargent pas depuis `file://
 Aucune dépendance, aucune étape de build, aucun compte. La partie est sauvegardée
 dans le `localStorage` du navigateur.
 
+## Jouer depuis un téléphone
+
+`npm start` écoute sur toutes les interfaces et affiche l'adresse à taper :
+
+```
+Cendres & Protocole
+  sur cette machine   http://localhost:8123
+  depuis un téléphone du même réseau Wi-Fi :
+    http://192.168.1.24:8123   (en0)
+```
+
+Ouvrez cette adresse depuis le téléphone (même réseau Wi-Fi que l'ordinateur),
+puis **Ajouter à l'écran d'accueil** : le jeu s'ouvre alors en plein écran, sans
+barre d'adresse, avec son icône. Le manifeste et les encoches sont gérés.
+
+Deux limites à connaître :
+
+- La sauvegarde vit dans le `localStorage` **de ce navigateur-là**. Une partie
+  commencée sur l'ordinateur ne suit pas sur le téléphone — c'est la
+  contrepartie du choix « aucun compte, aucun serveur ».
+- Une fois l'ordinateur éteint, l'adresse ne répond plus. Pour y jouer n'importe
+  où, n'importe quel hébergement statique suffit : le dossier `game/` se
+  déploie tel quel sur GitHub Pages, Netlify, ou le Firebase Hosting déjà
+  utilisé par ce dépôt. Rien à compiler.
+
+Le jeu n'installe pas de *service worker* : sans réseau, la page ne se charge
+pas. En ajouter un le rendrait jouable hors ligne, au prix des ennuis habituels
+de cache périmé.
+
 ## Tests
 
 ```bash
 npm test                     # 49 assertions sur le moteur, sans navigateur
 node test/equilibre.js       # banc d'équilibrage : un bot joue 8 parties
 node test/equilibre.js 8000 12   # plus long, plus de parties
+
+npm install --no-save playwright-core
+node test/navigateur.js      # 19 vérifications dans un Chromium réel
 ```
 
 Le harnais couvre la génération du monde, le déterminisme, la sauvegarde, la
@@ -72,6 +104,9 @@ subie.
 game/
   index.html          page unique
   styles.css          feuille unique, mobile first
+  manifest.json       ajout à l'écran d'accueil
+  icone.svg           icône (manifeste)
+  icone-180.png       icône (iOS), régénérable via tools/icone.js
   src/
     rng.js            mulberry32, état sur 32 bits
     data.js           biomes, factions, bâtiments, recherches, équipement
@@ -90,7 +125,10 @@ game/
   test/
     headless.js       tests du moteur
     equilibre.js      banc d'équilibrage avec bot joueur
+    navigateur.js     test de bout en bout dans un Chromium réel
     serve.js          serveur statique
+  tools/
+    icone.js          génère icone-180.png (encodeur PNG maison)
 ```
 
 Deux règles tiennent l'ensemble :

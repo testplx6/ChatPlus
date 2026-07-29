@@ -1,0 +1,16 @@
+{
+  "name": "Cendres & Protocole",
+  "short_name": "Cendres",
+  "lang": "fr",
+  "description": "Simulation textuelle post-cyberpunk. Une escouade, un monde qui tourne sans vous.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0c10",
+  "theme_color": "#0a0c10",
+  "icons": [
+    { "src": "icone-180.png", "sizes": "180x180", "type": "image/png", "purpose": "any" },
+    { "src": "icone.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

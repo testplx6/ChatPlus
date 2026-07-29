@@ -44,6 +44,9 @@ const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
 };
 
 const serveur = createServer(async (req, res) => {
@@ -165,6 +168,24 @@ ok(!deborde, 'aucun débordement horizontal');
 const boutonsPetits = await page.evaluate(() => [...document.querySelectorAll('button')]
   .filter((b) => b.getBoundingClientRect().height < 28).length);
 ok(boutonsPetits === 0, 'toutes les cibles tactiles font au moins 28 px', `${boutonsPetits} trop petites`);
+
+console.log('\n5 bis. Installation sur l’écran d’accueil');
+const ressources = await page.evaluate(async () => {
+  const res = {};
+  for (const url of ['manifest.json', 'icone-180.png', 'icone.svg']) {
+    try {
+      const r = await fetch(url);
+      res[url] = r.status;
+    } catch { res[url] = 0; }
+  }
+  const m = await (await fetch('manifest.json')).json();
+  res.display = m.display;
+  res.nbIcones = (m.icons || []).length;
+  return res;
+});
+ok(ressources['manifest.json'] === 200, 'le manifeste est servi');
+ok(ressources['icone-180.png'] === 200 && ressources['icone.svg'] === 200, 'les icônes sont servies');
+ok(ressources.display === 'standalone' && ressources.nbIcones >= 2, 'le manifeste déclare le plein écran et ses icônes');
 
 console.log('\n6. Persistance');
 const avantRechargement = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).temps);
