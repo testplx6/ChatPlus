@@ -31,7 +31,7 @@ import { couleurLog, creerLogger } from './events.js';
 // ---------------------------------------------------------------------------
 
 let S = null;
-let API = {};
+let ACTIONS = {};
 let onglet = 'carte';
 let selection = null;
 let ouverts = new Set();
@@ -55,7 +55,7 @@ export function attacherEtat(state) {
 }
 
 export function monterUI(api) {
-  API = api;
+  ACTIONS = api;
   $('#ecran').addEventListener('click', surClic);
   $('#barre-nav').addEventListener('click', surClic);
   $('#barre-haut').addEventListener('click', surClic);
@@ -1006,7 +1006,7 @@ function surClic(ev) {
 
     case 'vitesse':
       S.vitesse = Number(el.dataset.v);
-      API.sauver();
+      ACTIONS.sauver();
       rafraichir(true);
       break;
 
@@ -1154,7 +1154,7 @@ function surClic(ev) {
     }
 
     case 'recruter': {
-      const r = API.recruter(Number(el.dataset.p));
+      const r = ACTIONS.recruter(Number(el.dataset.p));
       toast(r.ok ? `${r.nom} rejoint l’escouade.` : r.motif, !r.ok);
       modale = null;
       rendreModale();
@@ -1164,16 +1164,16 @@ function surClic(ev) {
 
     case 'nouvelle': {
       const champ = document.getElementById('graine');
-      API.nouvelle(champ ? champ.value.trim() : '');
+      ACTIONS.nouvelle(champ ? champ.value.trim() : '');
       break;
     }
 
     case 'continuer':
-      API.continuer();
+      ACTIONS.continuer();
       break;
 
     case 'effacer':
-      if (confirm('Effacer définitivement la sauvegarde ?')) API.effacer();
+      if (confirm('Effacer définitivement la sauvegarde ?')) ACTIONS.effacer();
       break;
 
     default:

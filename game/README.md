@@ -19,6 +19,21 @@ Un simple serveur statique — les modules ES ne se chargent pas depuis `file://
 Aucune dépendance, aucune étape de build, aucun compte. La partie est sauvegardée
 dans le `localStorage` du navigateur.
 
+## Un seul fichier, sans rien installer
+
+```bash
+node tools/bundle.js     # → dist/cendres.html
+```
+
+`dist/cendres.html` contient tout : style, moteur, interface. Il s'ouvre par
+double-clic, sans serveur ni connexion, et se transfère tel quel sur un
+téléphone (AirDrop, pièce jointe, clé USB). C'est le moyen le plus court de
+jouer. Le bundler concatène les modules dans l'ordre des dépendances et
+s'arrête si deux d'entre eux déclarent le même nom de premier niveau.
+
+`node tools/bundle.js --fragment <chemin>` produit la même chose sans
+`<html>`/`<head>`/`<body>`, pour les hébergeurs qui fournissent le squelette.
+
 ## Jouer depuis un téléphone
 
 `npm start` écoute sur toutes les interfaces et affiche l'adresse à taper :
@@ -56,7 +71,7 @@ node test/equilibre.js       # banc d'équilibrage : un bot joue 8 parties
 node test/equilibre.js 8000 12   # plus long, plus de parties
 
 npm install --no-save playwright-core
-node test/navigateur.js      # 19 vérifications dans un Chromium réel
+node test/navigateur.js      # 23 vérifications dans un Chromium réel
 ```
 
 Le harnais couvre la génération du monde, le déterminisme, la sauvegarde, la
@@ -128,7 +143,10 @@ game/
     navigateur.js     test de bout en bout dans un Chromium réel
     serve.js          serveur statique
   tools/
+    bundle.js         assemble dist/cendres.html, fichier unique autonome
     icone.js          génère icone-180.png (encodeur PNG maison)
+  dist/
+    cendres.html      le jeu entier en un fichier (généré)
 ```
 
 Deux règles tiennent l'ensemble :

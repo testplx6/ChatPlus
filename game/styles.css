@@ -45,7 +45,10 @@ body {
 #racine {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  /* On ne dépend pas de la chaîne html/body en 100 % : elle casse en iframe.
+     dvh suit la barre d'adresse mobile qui se rétracte au défilement. */
+  height: 100vh;
+  height: 100dvh;
   max-width: 620px;
   margin: 0 auto;
   border-left: 1px solid var(--bord);

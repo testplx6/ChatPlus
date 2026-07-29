@@ -231,6 +231,37 @@ await large.screenshot({ path: join(CAPTURES, '08-large.png') });
 ok(!(await large.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)),
   'pas de débordement en écran large');
 
+console.log('\n9. Fichier unique ouvert en file://');
+const { existsSync } = await import('node:fs');
+const chemin = join(RACINE, 'dist', 'cendres.html');
+if (!existsSync(chemin)) {
+  console.log('  — dist/cendres.html absent (node tools/bundle.js), section ignorée');
+} else {
+  const seul = await navigateur.newPage({ viewport: { width: 390, height: 844 } });
+  const errSeul = [];
+  seul.on('pageerror', (e) => errSeul.push(e.message));
+  seul.on('console', (m) => { if (m.type() === 'error') errSeul.push(m.text()); });
+  await seul.goto(`file://${chemin}`);
+  await seul.waitForSelector('[data-a="nouvelle"]', { timeout: 5000 });
+  await seul.click('[data-a="nouvelle"]');
+  await seul.waitForSelector('#carte', { timeout: 5000 });
+  await seul.waitForTimeout(1500);
+  ok(await seul.locator('#carte').isVisible(), 'le fichier unique démarre sans serveur');
+  const couleurs = await seul.evaluate(() => {
+    const c = document.querySelector('#carte');
+    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    const v = new Set();
+    for (let i = 0; i < d.length; i += 4) v.add(`${d[i]},${d[i + 1]},${d[i + 2]}`);
+    return v.size;
+  });
+  ok(couleurs > 10, 'la carte est dessinée en file://', `${couleurs} couleurs`);
+  await seul.click('[data-a="onglet"][data-k="escouade"]');
+  await seul.waitForTimeout(300);
+  ok((await seul.evaluate(() => document.querySelector('#ecran').textContent.length)) > 200,
+    'la navigation fonctionne en file://');
+  ok(errSeul.length === 0, 'aucune erreur dans le fichier unique', errSeul.join(' | '));
+}
+
 console.log('\n' + '='.repeat(42));
 ok(erreurs.length === 0, 'aucune erreur console', erreurs.join(' | '));
 console.log(`Captures écrites dans ${CAPTURES}`);
