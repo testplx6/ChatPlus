@@ -245,6 +245,38 @@ Ce qui reste n'est pas un réglage mais une décision de conception, traitée
 juste au-dessus : le nomadisme est une voie viable, l'avant-poste n'en est pas
 encore une.
 
+### Calibrer l'instrument avant de mesurer avec
+
+Un banc ne vaut que ce que vaut son joueur. Et le nôtre, pendant toute
+l'histoire de ce projet, jouait comme un civil : `acheterItem` était importé
+dans le fichier du banc **et n'a jamais été appelé une seule fois**. Le bot
+traversait quatre mille heures avec l'armure de cuir du premier jour, ne donnait
+jamais un ordre d'entraînement, et laissait sa posture sur « neutre » de bout en
+bout. Toutes les conclusions d'équilibrage sur les raids, les pertes et la
+survie portaient donc sur une escouade désarmée qui ne cherchait ni à se
+protéger ni à progresser.
+
+Trois corrections — s'armer chez l'armurier et équiper ce qu'on trouve,
+s'entraîner quand on est à l'abri et le ventre plein, choisir sa posture selon
+ce qu'on vaut ce jour-là :
+
+                        avant      après
+    survivants          25/48      31/48
+    défaites              599        294
+    crédits pillés    115 664     49 355
+    avant-postes         5/48      10/48
+
+Rien n'a changé dans le jeu. C'est la même simulation, mesurée par quelqu'un qui
+sait s'habiller. Tout ce qui précède dans ce document a été mesuré avant cette
+correction et doit être relu avec ça en tête.
+
+Deux choses restent visiblement fausses et attendent le même traitement : le bot
+passe **56 % de son temps en marche** (contre 26 % sur l'ancienne carte), et sa
+compétence de combat plafonne à 7 après quatre mille heures — elle *baisse*
+même, puisque l'escouade démarre autour de dix. Les vétérans meurent et les
+recrues arrivent vierges : l'expérience ne s'accumule pas dans une escouade,
+elle se remplace.
+
 Le banc d'équilibrage est le plus utile des trois : c'est lui qui a montré que
 l'économie alimentaire des colonies n'avait jamais été à l'équilibre, que les
 chasseurs de prime créaient une spirale sans issue, et que la route prélevait

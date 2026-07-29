@@ -160,6 +160,89 @@ function destinationContrat(state, g) {
   return null;
 }
 
+/** Un contrat qui presse : on ne s'entraîne pas quand une échéance court. */
+function collecteUrgente(state) {
+  return state.player.contrats.some(
+    (c) => c.echeance - state.temps < 120 && !progresContrat(state, c).pret
+  );
+}
+
+/**
+ * Ce que vaut une arme, une armure. Grossier à dessein : le bot n'a pas besoin
+ * d'optimiser, il a besoin de ne pas se battre en chemise avec la machette du
+ * premier jour — ce qu'il a fait pendant toute l'histoire de ce banc.
+ */
+function valeurItem(key) {
+  const it = ITEMS[key];
+  if (!it) return 0;
+  if (it.type === 'arme') return it.degats * (1 + (it.pen || 0));
+  if (it.type === 'armure') return it.armure * 3;
+  return 0;
+}
+
+/** Ce que porte déjà quelqu'un à cet emplacement. */
+function equipe(c, slot) {
+  return valeurItem(c.equip && c.equip[slot]);
+}
+
+/**
+ * S'équiper, et s'équiper vraiment.
+ *
+ * `acheterItem` était importé dans ce fichier depuis le début et n'a jamais été
+ * appelé une seule fois : le bot traversait quatre mille heures avec l'armure de
+ * cuir du départ, perdait la moitié de ses combats et finissait à cinq de
+ * compétence. Toutes les conclusions d'équilibrage sur les raids, les pertes et
+ * la survie reposaient donc sur une escouade de civils désarmés.
+ */
+function sEquiper(state, g, colIci) {
+  const p = state.player;
+  if (!colIci.etal || !colIci.etal.items.length) return;
+  const vivants = g.membres.filter(estVivant);
+  if (!vivants.length) return;
+
+  // On équipe d'abord ce qu'on a déjà dans la réserve : c'est gratuit.
+  for (let i = g.objets.length - 1; i >= 0; i--) {
+    const key = g.objets[i];
+    const it = ITEMS[key];
+    if (!it || (it.type !== 'arme' && it.type !== 'armure')) continue;
+    const slot = it.type === 'arme' ? 'arme' : 'armure';
+    // Au plus mal doté, et seulement si ça l'améliore.
+    const cible = vivants.reduce((a, b) => (equipe(b, slot) < equipe(a, slot) ? b : a));
+    if (valeurItem(key) <= equipe(cible, slot)) continue;
+    if (it.reqForce && comp(cible, 'force') < it.reqForce) continue;
+    g.objets.splice(i, 1);
+    if (cible.equip[slot]) g.objets.push(cible.equip[slot]);
+    cible.equip[slot] = key;
+  }
+
+  // Puis on achète, si l'étal a mieux que le pire de nos gens et qu'on peut se
+  // le payer sans se mettre à jeun.
+  const negoc = vivants.reduce((a, b) => (comp(b, 'commerce') > comp(a, 'commerce') ? b : a));
+  const hab = comp(negoc, 'commerce');
+  const repu = p.reputation[colIci.faction] || 0;
+  for (let tour = 0; tour < 2; tour++) {
+    let meilleur = -1;
+    let gain = 0;
+    let prixRetenu = 0;
+    colIci.etal.items.forEach((ligne, i) => {
+      const it = ITEMS[ligne.key];
+      if (!it || (it.type !== 'arme' && it.type !== 'armure')) return;
+      const slot = it.type === 'arme' ? 'arme' : 'armure';
+      const cible = vivants.reduce((a, b) => (equipe(b, slot) < equipe(a, slot) ? b : a));
+      if (it.reqForce && comp(cible, 'force') < it.reqForce) return;
+      const d = valeurItem(ligne.key) - equipe(cible, slot);
+      if (d <= 0) return;
+      const prix = prixItem(colIci, ligne.key, ligne.coef, hab, repu).achat;
+      // On garde de quoi manger : un mort bien armé reste un mort.
+      if (prix > p.credits - 250) return;
+      if (d > gain) { gain = d; meilleur = i; prixRetenu = prix; }
+    });
+    if (meilleur < 0 || prixRetenu <= 0) break;
+    if (!acheterItem(state, colIci, meilleur, g).ok) break;
+    TRACE.payeMateriel += prixRetenu;
+  }
+}
+
 /**
  * Ce qu'on bâtit, et dans quel ordre.
  *
@@ -428,6 +511,10 @@ function jouerPrincipal(state, g, memo) {
       acheter(state, colIci, c.ressource, manque, g);
     }
 
+    // S'armer. Avant les contrats, avant l'avant-poste : une escouade qui perd
+    // ses combats ne fait rien d'autre de la partie.
+    sEquiper(state, g, colIci);
+
     // De quoi fonder, puis de quoi faire tourner. Un générateur sans carburant
     // ne produit rien, et sans énergie aucune chaîne ne tourne : c'est la
     // dépendance que le banc doit éprouver.
@@ -621,6 +708,27 @@ function jouerPrincipal(state, g, memo) {
     return;
   }
 
+  // --- S'entraîner. Le banc n'avait jamais fait donner un seul ordre
+  // d'entraînement : le bot finissait à cinq de compétence de combat après
+  // quatre mille heures, et toutes les mesures sur les raids et les pertes
+  // portaient donc sur des gens qui n'avaient jamais tenu une arme.
+  //
+  // On s'entraîne quand on peut se le permettre : à l'abri, le ventre plein, et
+  // tant qu'on est faible. Un vétéran retourne travailler.
+  const combat = vivants.length
+    ? vivants.reduce((a, c) => a + Math.max(comp(c, 'melee'), comp(c, 'tir')), 0) / vivants.length
+    : 0;
+  // On s'entraîne au combat, et à rien d'autre : la première version montait
+  // l'endurance tant que le combat était sous quatorze, donc n'atteignait jamais
+  // quatorze de combat. Le bot est resté à cinq de compétence, comme avant.
+  if (combat < 26 && rations > 150 && !collecteUrgente(state)
+      && vivants.every((c) => pvTotal(c).pct > 0.7)) {
+    if (g.ordre.type !== 'entrainement') {
+      donnerOrdre(state, { type: 'entrainement', skill: 'melee' }, g);
+    }
+    return;
+  }
+
   // Une collecte en cours dicte comment on récolte : extraire pour du minerai,
   // fouiller pour le reste. Récolter au hasard ne remplit jamais un contrat.
   const collecte = p.contrats.find((c) => c.type === 'collecte' && !progresContrat(state, c).pret);
@@ -694,7 +802,26 @@ function envisagerDetachement(state, memo) {
 /** Raccourci lisible : l'avant-poste du joueur. */
 function S_base(state) { return state.base; }
 
+/**
+ * La posture n'avait jamais bougé de « neutre » depuis la création du banc,
+ * alors que c'est le seul réglage qui décide si l'on évite ou si l'on encaisse.
+ * Un joueur la change selon ce qu'il vaut ce jour-là.
+ */
+function choisirPosture(state) {
+  const gens = tousLesMembres(state).filter(estVivant);
+  if (!gens.length) return;
+  const debout = gens.filter(estDebout);
+  const combat = gens.reduce((a, c) => a + Math.max(comp(c, 'melee'), comp(c, 'tir')), 0) / gens.length;
+  const entier = debout.length === gens.length
+    && gens.every((c) => pvTotal(c).pct > 0.75);
+  let veut = 'neutre';
+  if (!entier || combat < 16) veut = 'prudent';
+  else if (combat > 34 && debout.length >= 3) veut = 'agressif';
+  if (state.player.posture !== veut) state.player.posture = veut;
+}
+
 function jouer(state, memo) {
+  choisirPosture(state);
   const principal = groupes(state).find((x) => x.id !== memo.eclaireur && x.membres.some(estVivant));
   if (!SANS.has('base') && principal) tenirAvantPoste(state, principal, memo);
   for (const g of groupes(state).slice()) {
@@ -813,6 +940,7 @@ console.log(`Temps : ${Math.round(100 * TRACE.voyage / totH)} % en marche · `
 console.log(`Intendance : ${Math.round(TRACE.rationsTouchees / PARTIES)} rations touchées par partie`);
 console.log(`Argent : +${Math.round(TRACE.gagneVente / PARTIES)} de ventes · `
   + `−${Math.round(TRACE.payeVivres / PARTIES)} de vivres · −${Math.round(TRACE.payeSoins / PARTIES)} de soins `
+  + `· −${Math.round(TRACE.payeMateriel / PARTIES)} d'équipement `
   + `· −${Math.round(TRACE.crPilles / PARTIES)} pillés, par partie`);
 console.log(`Défaites : ${TRACE.defaites} pour ${TRACE.crPilles} cr pillés `
   + `(${TRACE.defaites ? Math.round(TRACE.crPilles / TRACE.defaites) : 0} cr par défaite)`);
