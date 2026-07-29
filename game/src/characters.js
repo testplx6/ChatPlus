@@ -3,7 +3,7 @@
 
 import {
   SKILL_KEYS, BODY_KEYS, BODY_PARTS, ITEMS, NOMS_PERSO, SURNOMS,
-  TRAITS, TRAIT_KEYS,
+  TRAITS, TRAIT_KEYS, DIPLOMES, DIPLOME_ARCHETYPE,
 } from './data.js';
 
 // Les identifiants sont tirés du RNG de la partie, pas d'un compteur global :
@@ -53,17 +53,54 @@ export function makeCharacter(rng, opts = {}) {
     traits: tirerTraits(rng, opts.traits),
     // Ce que celui-ci pense des autres. Se remplit en vivant ensemble.
     liens: {},
+    // Ce qu'il a appris ailleurs qu'à l'usage.
+    diplomes: [],
+    formation: null,
   };
   for (const k of SKILL_KEYS) {
     const base = rng.irange(4, 14) + (def.bonus[k] || 0) + niveau * rng.irange(2, 6);
     c.skills[k] = Math.max(1, Math.min(100, Math.round(base)));
     c.xp[k] = 0;
   }
+  // Un professionnel qui a de la bouteille a souvent été formé quelque part :
+  // c'est ce qui distingue un médic recruté d'un ferrailleur qu'on a mis à
+  // recoudre. Les débutants, eux, n'ont que leurs mains.
+  const dipl = opts.diplome === undefined ? DIPLOME_ARCHETYPE[arch] : opts.diplome;
+  if (dipl && DIPLOMES[dipl] && (opts.diplome || (niveau >= 1 && rng.chance(0.25 + niveau * 0.2)))) {
+    accorderDiplome(c, dipl);
+  }
+
   for (const p of BODY_KEYS) {
     const max = Math.round(BODY_PARTS[p].pv * (0.85 + c.skills.endurance / 220));
     c.corps[p] = { pv: max, max, perdu: false };
   }
   return c;
+}
+
+/**
+ * Remet le diplôme et ce qui va avec : un plancher de compétence — jamais
+ * rabaissé, on n'oublie pas ce qu'on savait — et l'aptitude à progresser plus
+ * vite ensuite, qui est le vrai apport d'une formation.
+ */
+export function accorderDiplome(c, key) {
+  const d = DIPLOMES[key];
+  if (!d) return false;
+  if (!c.diplomes) c.diplomes = [];
+  if (c.diplomes.includes(key)) return false;
+  c.diplomes.push(key);
+  c.skills[d.skill] = Math.max(c.skills[d.skill] || 0, d.plancher);
+  return true;
+}
+
+/** Ce que les diplômes font gagner en vitesse d'apprentissage, par compétence. */
+export function apprentissage(c, skill) {
+  if (!c.diplomes || !c.diplomes.length) return 1;
+  let m = 1;
+  for (const k of c.diplomes) {
+    const d = DIPLOMES[k];
+    if (d && d.skill === skill) m *= d.apprentissage;
+  }
+  return m;
 }
 
 /** Un à trois traits, dont au plus un défaut : de quoi rendre les gens distincts. */
@@ -198,9 +235,10 @@ export function gagnerXp(c, skill, montant) {
   if (!(skill in c.skills) || montant <= 0) return 0;
   const niv = c.skills[skill];
   if (niv >= 100) return 0;
-  // Plus on est bon, plus ça vient lentement.
+  // Plus on est bon, plus ça vient lentement. Un diplôme ne dispense pas de
+  // pratiquer, il apprend à tirer parti de la pratique.
   const facteur = Math.max(0.12, 1 - niv / 115);
-  c.xp[skill] += montant * facteur;
+  c.xp[skill] += montant * facteur * apprentissage(c, skill);
   let gagnes = 0;
   while (c.skills[skill] < 100 && c.xp[skill] >= seuilXp(c.skills[skill])) {
     c.xp[skill] -= seuilXp(c.skills[skill]);

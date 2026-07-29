@@ -11,9 +11,16 @@ import { COMMODITY_KEYS, DIPLO_FACTIONS } from '../src/data.js';
 import { classement, puissance } from '../src/factions.js';
 import { donnerOrdre, verifierExercice, COMPETENCES_EXERCICE } from '../src/squad.js';
 import { fonderBase, lancerConstruction, lancerRecherche } from '../src/base.js';
-import { estVivant } from '../src/characters.js';
+import {
+  estVivant, makeCharacter, accorderDiplome, apprentissage,
+} from '../src/characters.js';
+import { DIPLOMES } from '../src/data.js';
+import { ecolesDe, inscrire, enFormation } from '../src/formation.js';
 import { colonieDe } from '../src/world.js';
-import { groupeActif, groupes, tousLesMembres, scinder, fusionner, assignerTache, tacheDe, maxGroupes } from '../src/groupes.js';
+import {
+  groupeActif, groupes, tousLesMembres, scinder, fusionner, assignerTache,
+  tacheDe, maxGroupes, debout,
+} from '../src/groupes.js';
 import { acheter, vendre, prixJoueur } from '../src/economy.js';
 import { sEngager, rangDe, RANGS } from '../src/allegeance.js';
 import {
@@ -693,6 +700,84 @@ for (let i = 0; i < 80; i++) {
 }
 const comApres = g9q.membres.reduce((m, c) => Math.max(m, c.skills.commerce), 0);
 ok(comApres > comAvant, 'négocier fait monter le commerce', `${comAvant} → ${comApres}`);
+
+section('9 octies. Diplômes et écoles');
+const s9r = nouvellePartie(1717, { maintenant: 0 });
+const g9r = groupeActif(s9r);
+const colEcole = s9r.world.colonies.find((c) => c.regionId === g9r.regionId);
+// On se place dans une ville qui enseigne quelque chose.
+let ville9r = colEcole;
+if (!ecolesDe(s9r.world, ville9r).length) {
+  ville9r = s9r.world.colonies.find((c) => ecolesDe(s9r.world, c).length);
+  g9r.regionId = ville9r.regionId;
+}
+ok(!!ville9r && ecolesDe(s9r.world, ville9r).length > 0, 'des villes tiennent des écoles',
+  ville9r ? ecolesDe(s9r.world, ville9r).join(', ') : 'aucune');
+
+const offre = ecolesDe(s9r.world, ville9r)[0];
+const eleve = g9r.membres[0];
+const skillOffre = DIPLOMES[offre].skill;
+s9r.player.credits = 5000;
+const creditsAvant = s9r.player.credits;
+const insc = inscrire(s9r, ville9r, eleve, offre, () => {});
+ok(insc.ok, 'on peut inscrire quelqu’un', insc.motif);
+ok(s9r.player.credits < creditsAvant, 'la formation se paie', `${creditsAvant} → ${s9r.player.credits}`);
+ok(enFormation(eleve), 'l’élève est en formation');
+ok(!debout(g9r).includes(eleve), 'et n’est plus disponible pour le travail');
+ok(debout(g9r).length === 2, 'les autres continuent', `${debout(g9r).length} debout`);
+
+// Partir suspend la formation ; revenir la reprend.
+const restantA = eleve.formation.restant;
+const ailleurs = s9r.world.regions.find((r) => r.i !== ville9r.regionId && !r.colonie);
+g9r.regionId = ailleurs.i;
+avancer(s9r, 40);
+ok(eleve.formation && eleve.formation.restant === restantA,
+  'loin de l’école, la formation ne progresse pas', `${restantA} → ${eleve.formation.restant}`);
+g9r.regionId = ville9r.regionId;
+avancer(s9r, 40);
+ok(eleve.formation && eleve.formation.restant < restantA,
+  'de retour sur place, elle reprend', `${restantA} → ${eleve.formation.restant}`);
+
+// Jusqu'au diplôme.
+const avantSkill = eleve.skills[skillOffre];
+avancer(s9r, DIPLOMES[offre].heures + 10);
+ok(!eleve.formation, 'la formation finit par s’achever');
+ok((eleve.diplomes || []).includes(offre), 'le diplôme est acquis');
+ok(eleve.skills[skillOffre] >= DIPLOMES[offre].plancher,
+  'et pose un plancher de compétence', `${avantSkill} → ${eleve.skills[skillOffre]}`);
+ok(apprentissage(eleve, skillOffre) > 1, 'le diplômé apprend ensuite plus vite',
+  `×${apprentissage(eleve, skillOffre).toFixed(2)}`);
+ok(!inscrire(s9r, ville9r, eleve, offre, () => {}).ok, 'on ne repasse pas le même diplôme');
+
+// Le diplôme accélère réellement la pratique, à situation égale.
+const dipl = nouvellePartie(1818, { maintenant: 0 });
+const gd = groupeActif(dipl);
+const sans = nouvellePartie(1818, { maintenant: 0 });
+const gs = groupeActif(sans);
+accorderDiplome(gd.membres[0], 'ingenierie');
+gs.membres[0].skills.ingenierie = gd.membres[0].skills.ingenierie; // même point de départ
+gd.inventaire.rations = 55;
+gs.inventaire.rations = 55;
+donnerOrdre(dipl, { type: 'fouille' }, gd);
+donnerOrdre(sans, { type: 'fouille' }, gs);
+avancer(dipl, 600);
+avancer(sans, 600);
+ok(gd.membres[0].skills.ingenierie > gs.membres[0].skills.ingenierie,
+  'à travail égal, le diplômé progresse plus vite',
+  `${gd.membres[0].skills.ingenierie} contre ${gs.membres[0].skills.ingenierie}`);
+
+// Un médic chevronné arrive déjà formé : c'est ce qui le distingue.
+const rngRec = new Rng(4242);
+let formes = 0;
+for (let i = 0; i < 40; i++) {
+  const m = makeCharacter(rngRec, { archetype: 'medic', niveau: 2 });
+  if ((m.diplomes || []).includes('medecine')) formes++;
+}
+ok(formes > 10, 'un médic expérimenté porte souvent son brevet', `${formes}/40`);
+const debutant = makeCharacter(new Rng(7), { archetype: 'medic', niveau: 0 });
+ok((debutant.diplomes || []).length === 0, 'un débutant n’a rien qu’un titre');
+
+verifierCoherence(s9r, 'après formations');
 
 section('10. Rattrapage hors ligne');
 const s10 = nouvellePartie(1010, { maintenant: 1000000 });

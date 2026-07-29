@@ -1352,6 +1352,130 @@ const CONTRAT_KEYS = Object.keys(CONTRATS);
 /** Déclaré ici, après les ajouts d'étal, pour couvrir tout le catalogue. */
 const ITEM_KEYS = Object.keys(ITEMS);
 
+// ---------------------------------------------------------------------------
+// Diplômes
+// ---------------------------------------------------------------------------
+// Un métier ne s'improvise pas entièrement sur le tas. Une école — quand il en
+// reste — fait gagner des années : elle pose un plancher de compétence et,
+// surtout, elle apprend à apprendre. Un diplômé de médecine ne part pas de zéro
+// et progresse ensuite plus vite que l'autodidacte qui recoud au jugé.
+//
+// `plancher`      : compétence garantie à la sortie (jamais rabaissée)
+// `apprentissage` : multiplicateur d'expérience dans cette compétence, à vie
+// `styles`        : quelles factions l'enseignent (styles de leurs villes)
+// `tailleMin`     : une bourgade n'a pas d'école
+
+const DIPLOMES = {
+  medecine: {
+    nom: 'Brevet de médecine de campagne',
+    court: 'Médecine',
+    skill: 'medecine',
+    plancher: 26,
+    apprentissage: 1.6,
+    cout: 950,
+    heures: 220,
+    styles: ['commune', 'corpo'],
+    tailleMin: 2,
+    texte: 'On y apprend surtout ce qu’il ne faut pas faire, et c’est déjà beaucoup.',
+  },
+  ingenierie: {
+    nom: 'Diplôme de mécanique appliquée',
+    court: 'Ingénierie',
+    skill: 'ingenierie',
+    plancher: 26,
+    apprentissage: 1.6,
+    cout: 900,
+    heures: 200,
+    styles: ['corpo', 'criminel'],
+    tailleMin: 2,
+    texte: 'Trois semaines à démonter ce que d’autres ont mal remonté.',
+  },
+  commerce: {
+    nom: 'Licence de négoce',
+    court: 'Commerce',
+    skill: 'commerce',
+    plancher: 26,
+    apprentissage: 1.7,
+    cout: 1100,
+    heures: 180,
+    styles: ['corpo', 'criminel'],
+    tailleMin: 3,
+    texte: 'On n’y apprend pas à compter, on y apprend à qui parler.',
+  },
+  furtivite: {
+    nom: 'Passe des ombres',
+    court: 'Furtivité',
+    skill: 'furtivite',
+    plancher: 24,
+    apprentissage: 1.55,
+    cout: 800,
+    heures: 190,
+    styles: ['criminel'],
+    tailleMin: 2,
+    texte: 'Ça ne s’appelle pas une école et ça ne délivre rien d’écrit.',
+  },
+  tir: {
+    nom: 'École de tir',
+    court: 'Tir',
+    skill: 'tir',
+    plancher: 24,
+    apprentissage: 1.5,
+    cout: 850,
+    heures: 170,
+    styles: ['militaire', 'corpo'],
+    tailleMin: 2,
+    texte: 'Deux cents cartouches et le bruit qui reste dans la tête.',
+  },
+  melee: {
+    nom: 'École de la lame',
+    court: 'Mêlée',
+    skill: 'melee',
+    plancher: 24,
+    apprentissage: 1.5,
+    cout: 780,
+    heures: 170,
+    styles: ['militaire', 'fanatique'],
+    tailleMin: 2,
+    texte: 'On y entre avec ses habitudes, on en sort avec des réflexes.',
+  },
+  force: {
+    nom: 'Certificat de portage lourd',
+    court: 'Force',
+    skill: 'force',
+    plancher: 22,
+    apprentissage: 1.4,
+    cout: 520,
+    heures: 140,
+    styles: ['nomade', 'militaire'],
+    tailleMin: 1,
+    texte: 'Soulever mal pendant vingt ans coûte plus cher que d’apprendre.',
+  },
+  endurance: {
+    nom: 'Brevet de marche',
+    court: 'Endurance',
+    skill: 'endurance',
+    plancher: 22,
+    apprentissage: 1.4,
+    cout: 480,
+    heures: 150,
+    styles: ['nomade', 'commune'],
+    tailleMin: 1,
+    texte: 'Marcher, on croit savoir. Marcher trente jours, non.',
+  },
+};
+
+const DIPLOME_KEYS = Object.keys(DIPLOMES);
+
+/** Le diplôme qu'un professionnel expérimenté a de bonnes chances de porter. */
+const DIPLOME_ARCHETYPE = {
+  medic: 'medecine',
+  ferrailleur: 'ingenierie',
+  courtier: 'commerce',
+  eclaireur: 'furtivite',
+  chasseur: 'tir',
+  brute: 'melee',
+};
+
 // ===== src/climat.js =================================================
 // Saisons et météo. Le monde n'a pas la même tête en pleine saison sèche
 // qu'au milieu d'un hiver de cendre : les rendements, la marche, les aléas et
@@ -1963,17 +2087,54 @@ function makeCharacter(rng, opts = {}) {
     traits: tirerTraits(rng, opts.traits),
     // Ce que celui-ci pense des autres. Se remplit en vivant ensemble.
     liens: {},
+    // Ce qu'il a appris ailleurs qu'à l'usage.
+    diplomes: [],
+    formation: null,
   };
   for (const k of SKILL_KEYS) {
     const base = rng.irange(4, 14) + (def.bonus[k] || 0) + niveau * rng.irange(2, 6);
     c.skills[k] = Math.max(1, Math.min(100, Math.round(base)));
     c.xp[k] = 0;
   }
+  // Un professionnel qui a de la bouteille a souvent été formé quelque part :
+  // c'est ce qui distingue un médic recruté d'un ferrailleur qu'on a mis à
+  // recoudre. Les débutants, eux, n'ont que leurs mains.
+  const dipl = opts.diplome === undefined ? DIPLOME_ARCHETYPE[arch] : opts.diplome;
+  if (dipl && DIPLOMES[dipl] && (opts.diplome || (niveau >= 1 && rng.chance(0.25 + niveau * 0.2)))) {
+    accorderDiplome(c, dipl);
+  }
+
   for (const p of BODY_KEYS) {
     const max = Math.round(BODY_PARTS[p].pv * (0.85 + c.skills.endurance / 220));
     c.corps[p] = { pv: max, max, perdu: false };
   }
   return c;
+}
+
+/**
+ * Remet le diplôme et ce qui va avec : un plancher de compétence — jamais
+ * rabaissé, on n'oublie pas ce qu'on savait — et l'aptitude à progresser plus
+ * vite ensuite, qui est le vrai apport d'une formation.
+ */
+function accorderDiplome(c, key) {
+  const d = DIPLOMES[key];
+  if (!d) return false;
+  if (!c.diplomes) c.diplomes = [];
+  if (c.diplomes.includes(key)) return false;
+  c.diplomes.push(key);
+  c.skills[d.skill] = Math.max(c.skills[d.skill] || 0, d.plancher);
+  return true;
+}
+
+/** Ce que les diplômes font gagner en vitesse d'apprentissage, par compétence. */
+function apprentissage(c, skill) {
+  if (!c.diplomes || !c.diplomes.length) return 1;
+  let m = 1;
+  for (const k of c.diplomes) {
+    const d = DIPLOMES[k];
+    if (d && d.skill === skill) m *= d.apprentissage;
+  }
+  return m;
 }
 
 /** Un à trois traits, dont au plus un défaut : de quoi rendre les gens distincts. */
@@ -2108,9 +2269,10 @@ function gagnerXp(c, skill, montant) {
   if (!(skill in c.skills) || montant <= 0) return 0;
   const niv = c.skills[skill];
   if (niv >= 100) return 0;
-  // Plus on est bon, plus ça vient lentement.
+  // Plus on est bon, plus ça vient lentement. Un diplôme ne dispense pas de
+  // pratiquer, il apprend à tirer parti de la pratique.
   const facteur = Math.max(0.12, 1 - niv / 115);
-  c.xp[skill] += montant * facteur;
+  c.xp[skill] += montant * facteur * apprentissage(c, skill);
   let gagnes = 0;
   while (c.skills[skill] < 100 && c.xp[skill] >= seuilXp(c.skills[skill])) {
     c.xp[skill] -= seuilXp(c.skills[skill]);
@@ -2452,8 +2614,18 @@ function vivants(g) {
   return g.membres.filter(estVivant);
 }
 
+/**
+ * Ceux qui peuvent travailler ou se battre. Un élève à l'école n'en est pas :
+ * il est en ville, la tête ailleurs. Sans ça, une formation ne coûterait que de
+ * l'argent, et envoyer quelqu'un se former serait sans conséquence.
+ */
 function debout(g) {
-  return g.membres.filter(estDebout);
+  return g.membres.filter((c) => estDebout(c) && !(c.formation && c.formation.restant > 0));
+}
+
+/** Ceux qui sont à l'école, pour l'affichage. */
+function eleves(g) {
+  return g.membres.filter((c) => c.formation && c.formation.restant > 0);
 }
 
 /** Un groupe qui n'a plus personne debout ne fait plus rien de son ordre. */
@@ -3186,6 +3358,124 @@ function nouvellesConnues(state, entrees) {
   return out;
 }
 
+// ===== src/formation.js ==============================================
+// Les écoles : ce qui s'apprend ailleurs qu'à l'usage.
+//
+// Un diplôme n'accélère pas la partie, il la réoriente. Il coûte de l'argent,
+// et surtout du temps passé sur place — l'élève ne travaille pas, ne se bat pas
+// et ne porte rien pendant sa formation, et celle-ci ne progresse que tant qu'il
+// est dans la ville qui l'enseigne. Envoyer quelqu'un à l'école, c'est donc se
+// priver d'un bras pendant plusieurs semaines, ou détacher un groupe d'une
+// personne et le laisser là.
+//
+// C'est le pendant de l'exercice : l'exercice ne forme qu'au corps et aux
+// armes, l'école forme aux métiers.
+
+
+/** Ce qu'une ville enseigne, d'après qui la tient et ce qu'elle pèse. */
+function ecolesDe(world, col) {
+  if (!col || col.ruine || !col.faction) return [];
+  const style = FACTIONS[col.faction] && FACTIONS[col.faction].style;
+  if (!style) return [];
+  return DIPLOME_KEYS.filter((k) => {
+    const d = DIPLOMES[k];
+    return d.styles.includes(style) && col.taille >= d.tailleMin;
+  });
+}
+
+/** Le prix demandé ici : une grande ville se paie plus cher qu'un poste. */
+function prixFormation(col, key, remise = 0) {
+  const d = DIPLOMES[key];
+  if (!d) return 0;
+  return Math.round(d.cout * (0.85 + col.taille * 0.09) * (1 - remise));
+}
+
+function peutSInscrire(state, col, perso, key) {
+  const d = DIPLOMES[key];
+  if (!d) return { ok: false, motif: 'Formation inconnue.' };
+  if (!ecolesDe(state.world, col).includes(key)) {
+    return { ok: false, motif: 'On n’enseigne pas ça ici.' };
+  }
+  if (!estVivant(perso)) return { ok: false, motif: 'Pas en état.' };
+  if (perso.formation) return { ok: false, motif: `${perso.nom} est déjà en formation.` };
+  if ((perso.diplomes || []).includes(key)) {
+    return { ok: false, motif: `${perso.nom} a déjà ce diplôme.` };
+  }
+  // Une école ne reprend pas depuis le début quelqu'un qui la dépasse déjà.
+  if (perso.skills[d.skill] >= d.plancher + 25) {
+    return { ok: false, motif: `${perso.nom} en sait déjà plus que l’école.` };
+  }
+  return { ok: true };
+}
+
+function inscrire(state, col, perso, key, log) {
+  const v = peutSInscrire(state, col, perso, key);
+  if (!v.ok) return v;
+  const remise = state.player.allegeance && state.player.allegeance.faction === col.faction ? 0.15 : 0;
+  const prix = prixFormation(col, key, remise);
+  if (state.player.credits < prix) {
+    return { ok: false, motif: `Il manque ${prix - state.player.credits} cr.` };
+  }
+  state.player.credits -= prix;
+  perso.formation = {
+    key,
+    colonieId: col.id,
+    restant: DIPLOMES[key].heures,
+    total: DIPLOMES[key].heures,
+  };
+  if (log) {
+    log({
+      type: 'formation',
+      texte: `${perso.nom} entre à l’école : ${DIPLOMES[key].nom} (${prix} cr).`,
+      important: true,
+      regionId: col.regionId,
+    });
+  }
+  return { ok: true, prix };
+}
+
+function abandonnerFormation(perso) {
+  if (!perso.formation) return { ok: false, motif: 'Aucune formation en cours.' };
+  perso.formation = null;
+  return { ok: true };
+}
+
+/** En formation, on n'est pas disponible : ni au travail, ni au combat. */
+function enFormation(perso) {
+  return !!(perso.formation && perso.formation.restant > 0);
+}
+
+/**
+ * Une heure d'école, pour ceux qui sont au bon endroit. Ailleurs, la formation
+ * ne progresse pas — elle attend, et l'élève peut y revenir.
+ */
+function tickFormation(state, log) {
+  for (const g of groupes(state)) {
+    const col = state.world.colonies.find((c) => c.regionId === g.regionId && !c.ruine);
+    for (const c of g.membres) {
+      if (!c.formation || !estVivant(c)) continue;
+      if (!col || col.id !== c.formation.colonieId) continue; // pas sur place
+      c.formation.restant -= 1;
+      if (c.formation.restant > 0) continue;
+
+      const key = c.formation.key;
+      const avant = c.skills[DIPLOMES[key].skill];
+      c.formation = null;
+      accorderDiplome(c, key);
+      if (log) {
+        log({
+          type: 'formation',
+          texte: `${c.nom} sort diplômé : ${DIPLOMES[key].nom}. `
+            + `${SKILLS[DIPLOMES[key].skill]} ${avant} → ${c.skills[DIPLOMES[key].skill]}, `
+            + 'et apprend désormais plus vite.',
+          important: true,
+          regionId: g.regionId,
+        });
+      }
+    }
+  }
+}
+
 // ===== src/combat.js =================================================
 // Résolution de combat au tour par tour, déterministe.
 // Personne ne meurt d'un coup : on tombe K.O., puis on peut être achevé,
@@ -3763,8 +4053,10 @@ function capacitePortage(state, groupe) {
   let cap = 0;
   const bonus = (state.base.recherche.logistique || 0) * 0.15;
   for (const c of (g ? g.membres : [])) {
-    // Un mort ne porte plus rien, et un K.O. est lui-même porté par les autres.
+    // Un mort ne porte plus rien, un K.O. est lui-même porté par les autres, et
+    // un élève est resté en ville avec ses affaires.
     if (c.etat === 'mort' || c.etat === 'ko') continue;
+    if (c.formation && c.formation.restant > 0) continue;
     cap += portage(c, bonus);
   }
   return Math.round(cap);
@@ -5564,7 +5856,8 @@ function combatContre(state, bande, log, ctx, groupe) {
   const compsAvant = instantaneComps(g.membres);
   const posture = POSTURES[state.player.posture] || POSTURES.neutre;
   const squad = g.membres.filter(estVivant);
-  const combattants = squad.filter((c) => c.etat !== 'mort');
+  // Un élève à l'école ne monte pas au feu : il est en ville, pas au campement.
+  const combattants = squad.filter((c) => c.etat !== 'mort' && !enFormation(c));
 
   // À partir de Capitaine, les siens viennent prêter main-forte chez eux.
   const renforts = [];
@@ -7029,6 +7322,7 @@ function tick(state) {
   if (!state.fin) tickSquad(state, log, ctx);
   if (!state.fin) tickContrats(state, log, ctx);
   if (!state.fin) tickAllegeance(state, log, ctx);
+  if (!state.fin) tickFormation(state, log);
 
   // En dernier : on relève ce qu'on a sous les yeux, après que tout a bougé.
   observer(state);
@@ -7226,6 +7520,8 @@ function normaliser(state) {
     for (const c of g.membres) {
       if (!c.traits) c.traits = [];
       if (!c.liens) c.liens = {};
+      if (!c.diplomes) c.diplomes = [];
+      if (c.formation === undefined) c.formation = null;
     }
   }
   const b = state.base;
@@ -7893,6 +8189,9 @@ function blocColonie(col) {
       <button class="act mini primaire" data-a="modale" data-m="etal">Équipement</button>
       <button class="act mini" data-a="modale" data-m="panneau">Contrats${col.contrats && col.contrats.length ? ` (${col.contrats.length})` : ''}</button>
       <button class="act mini" data-a="modale" data-m="recrutement">Recruter</button>
+      ${ecolesDe(S.world, col).length
+    ? `<button class="act mini" style="grid-column:1/-1" data-a="modale" data-m="ecole">
+        Écoles (${ecolesDe(S.world, col).length})</button>` : ''}
     </div>
     ${blocEngagement(col)}
   </section>`;
@@ -8035,6 +8334,14 @@ function ficheMembre(c) {
       rel.rival ? `Ne supporte pas ${e(rel.rival.nom)} (${Math.round(lien(c, rel.rival))})` : null,
     ].filter(Boolean).join(' · ')}</div><div class="sep"></div>`;
   })()}
+      ${(c.diplomes || []).length ? `<div class="titre">Diplômes</div>
+      <div class="traits">${c.diplomes.map((k) => `<span class="puce ok"
+        title="${e(DIPLOMES[k].nom)} — apprend ×${DIPLOMES[k].apprentissage.toFixed(2)} en ${e(SKILLS[DIPLOMES[k].skill])}">${e(DIPLOMES[k].court)}</span>`).join(' ')}</div>
+      <div class="sep"></div>` : ''}
+      ${c.formation ? `<div class="titre">À l’école</div>
+      <div class="aide">${e(DIPLOMES[c.formation.key].nom)} — encore
+        ${dureeTexte(c.formation.restant)} sur place. Indisponible jusque-là.</div>
+      <div class="sep"></div>` : ''}
       <div class="titre">Traits</div>
       <div class="traits">${(c.traits || []).map((t) => `<span class="puce ${TRAITS[t].malus ? 'mal' : 'ok'}"
         title="${e(TRAITS[t].desc)}">${e(TRAITS[t].nom)}</span>`).join(' ') || '<span class="aide">aucun</span>'}</div>
@@ -8656,6 +8963,7 @@ function contenuModale() {
     case 'etal': return modaleEtal() + fermer;
     case 'panneau': return modalePanneau() + fermer;
     case 'transfert': return modaleTransfert() + fermer;
+    case 'ecole': return modaleEcole() + fermer;
     case 'equipement': return modaleEquipement() + fermer;
     case 'entrainement': return modaleEntrainement() + fermer;
     case 'recrutement': return modaleRecrutement() + fermer;
@@ -8850,6 +9158,65 @@ function modaleEntrainement() {
   <div class="aide">${Object.keys(PAR_LA_PRATIQUE)
     .map((k) => `<b>${e(SKILLS[k])}</b> ${e(PAR_LA_PRATIQUE[k])}`).join(' · ')}.
   Ces métiers-là s’apprennent en les faisant, pas sur un mannequin de paille.</div>`;
+}
+
+/**
+ * Les écoles de la ville. Un diplôme ne remplace pas la pratique : il pose un
+ * plancher et fait apprendre plus vite ensuite, à vie. Le prix est du temps
+ * passé sur place autant que des crédits — l'élève ne travaille plus.
+ */
+function modaleEcole() {
+  const col = colonieDe(S.world, G().regionId);
+  if (!col) return '<div class="aide">Aucune ville ici.</div>';
+  const offres = ecolesDe(S.world, col);
+  if (!offres.length) return '<div class="aide">On n’enseigne rien ici.</div>';
+  const g = G();
+  const remise = S.player.allegeance && S.player.allegeance.faction === col.faction ? 0.15 : 0;
+
+  const enCours = g.membres.filter((c) => c.formation).map((c) => {
+    const d = DIPLOMES[c.formation.key];
+    const surPlace = c.formation.colonieId === col.id;
+    const fait = c.formation.total - c.formation.restant;
+    return `<div class="contrat">
+      <div class="contrat-t">${e(c.nom)} — ${e(d.nom)}</div>
+      ${jauge(fait / c.formation.total, 'cyan')}
+      <div class="aide">${fait} / ${c.formation.total} h${surPlace
+    ? '' : ' · suspendu, l’école est ailleurs'}</div>
+      <button class="act mini danger" data-a="abandonner-formation" data-c="${e(c.id)}">Retirer de l’école</button>
+    </div>`;
+  }).join('');
+
+  const lignes = offres.map((k) => {
+    const d = DIPLOMES[k];
+    const prix = prixFormation(col, k, remise);
+    const candidats = g.membres.filter((c) => estVivant(c) && peutSInscrire(S, col, c, k).ok);
+    return `<div class="contrat">
+      <div class="contrat-t">${e(d.nom)}</div>
+      <div class="aide">${e(d.texte)}</div>
+      <div class="ligne"><span class="k">À la sortie</span>
+        <span class="v">${e(SKILLS[d.skill])} ${d.plancher} au minimum</span></div>
+      <div class="ligne"><span class="k">Apprentissage ensuite</span>
+        <span class="v">×${d.apprentissage.toFixed(2)}</span></div>
+      <div class="ligne"><span class="k">Durée sur place</span>
+        <span class="v">${dureeTexte(d.heures)}</span></div>
+      <div class="ligne"><span class="k">Prix</span>
+        <span class="v ${S.player.credits >= prix ? '' : 'alerte'}">${n(prix)} cr${remise ? ' (remise)' : ''}</span></div>
+      ${candidats.length
+    ? `<div class="taches">${candidats.map((c) => `<button class="act mini"
+        data-a="inscrire" data-k="${k}" data-c="${e(c.id)}"
+        ${S.player.credits >= prix ? '' : 'disabled'}>Inscrire ${e(c.nom)}
+        <span class="aide">(${Math.round(comp(c, d.skill))})</span></button>`).join('')}</div>`
+    : '<div class="aide">Personne du groupe ne peut s’y inscrire — déjà diplômé, déjà en formation, ou en sait plus que l’école.</div>'}
+    </div>`;
+  }).join('');
+
+  return `<h2 class="titre">Écoles de ${e(col.nom)}</h2>
+  <div class="aide">Un diplôme pose un plancher de compétence et fait apprendre plus vite
+  toute la partie. Mais l’élève reste en ville : il ne travaille plus, ne se bat plus et
+  ne porte plus rien, et la formation ne progresse que tant qu’il est sur place.</div>
+  ${enCours ? `<div class="sep"></div><div class="titre">En cours</div>${enCours}` : ''}
+  <div class="sep"></div>
+  ${lignes}`;
 }
 
 function modaleRecrutement() {
@@ -9161,6 +9528,27 @@ function surClic(ev) {
         c.equip[slot] = key;
       }
       toast(`${it.nom} équipé.`);
+      rendreModale();
+      rafraichir(true);
+      break;
+    }
+
+    case 'inscrire': {
+      const col = colonieDe(S.world, G().regionId);
+      const c = G().membres.find((x) => x.id === el.dataset.c);
+      const r = inscrire(S, col, c, el.dataset.k, logger());
+      if (!r.ok) toast(r.motif, true);
+      else toast(`${c.nom} entre à l’école.`);
+      ACTIONS.sauver();
+      rendreModale();
+      rafraichir(true);
+      break;
+    }
+
+    case 'abandonner-formation': {
+      const c = G().membres.find((x) => x.id === el.dataset.c);
+      if (c) abandonnerFormation(c);
+      ACTIONS.sauver();
       rendreModale();
       rafraichir(true);
       break;

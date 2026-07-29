@@ -66,14 +66,14 @@ de cache périmé.
 ## Tests
 
 ```bash
-npm test                     # 140 assertions sur le moteur, sans navigateur
+npm test                     # 157 assertions sur le moteur, sans navigateur
 node test/equilibre.js       # banc d'équilibrage : un bot joue 30 parties
 node test/equilibre.js 4000 60   # échantillon large, une vingtaine de secondes
 SANS=detach,contrats node test/equilibre.js   # coupe un système pour l'isoler
 VAGABOND=1 node test/equilibre.js             # témoin : voyager sans contrats
 
 npm install --no-save playwright-core
-node test/navigateur.js      # 58 vérifications dans un Chromium réel
+node test/navigateur.js      # 64 vérifications dans un Chromium réel
 ```
 
 Le harnais couvre la génération du monde, le déterminisme, la sauvegarde, la
@@ -184,6 +184,18 @@ sa peau. Le meilleur du groupe fait l'instructeur — plus l'écart est grand, p
 l'élève monte vite —, ce qui donne un rôle au vétéran qu'on a mis longtemps à
 former. Un membre peut s'y mettre seul pendant que les autres travaillent.
 
+**Les diplômes.** Certaines villes tiennent une école, selon qui les tient et ce
+qu'elles pèsent : les corpos forment à la mécanique et au négoce, les militaires
+au tir et à la lame, les communes à la médecine et à la marche, les criminels à
+ce qui ne délivre rien d'écrit. Un diplôme pose un plancher de compétence — on
+n'en sort pas de zéro — et surtout fait apprendre **plus vite pour le reste de la
+partie** : c'est ce qui distingue durablement un médic formé d'un ferrailleur
+qu'on a mis à recoudre. Le prix n'est pas que l'argent : l'élève reste en ville
+plusieurs semaines, ne travaille plus, ne se bat plus, ne porte plus rien, et sa
+formation ne progresse que tant qu'il est sur place. D'où l'intérêt de l'y
+laisser en groupe d'une personne pendant que les autres continuent. Un
+professionnel chevronné qu'on recrute porte souvent déjà le sien.
+
 **La route.** Marcher n'est pas du temps mort : on glane le long du chemin, à
 un peu plus de la moitié de ce que rapporterait une vraie fouille. Sans ça, un
 quart du temps de jeu ne produisait rien et toute la carte coûtait plus qu'elle
@@ -283,6 +295,7 @@ game/
     caravanes.js      routes marchandes, embuscades
     groupes.js        groupes, tâches individuelles, scission et fusion
     connaissance.js   ce que le joueur sait, relevés datés, délai des nouvelles
+    formation.js      écoles des villes, diplômes, apprentissage accéléré
     sim.js            orchestration, rattrapage hors ligne
     save.js           sérialisation
     ui.js             rendu DOM + carte pixel sur canvas

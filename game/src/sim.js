@@ -15,6 +15,7 @@ import { tickSquad } from './squad.js';
 import { creerLogger } from './events.js';
 import { groupeVide } from './groupes.js';
 import { creerConnaissance, observer } from './connaissance.js';
+import { tickFormation } from './formation.js';
 import { rafraichirPanneaux, tickContrats } from './contrats.js';
 import { tickAllegeance, palierBonus } from './allegeance.js';
 
@@ -211,6 +212,7 @@ export function tick(state) {
   if (!state.fin) tickSquad(state, log, ctx);
   if (!state.fin) tickContrats(state, log, ctx);
   if (!state.fin) tickAllegeance(state, log, ctx);
+  if (!state.fin) tickFormation(state, log);
 
   // En dernier : on relève ce qu'on a sous les yeux, après que tout a bougé.
   observer(state);

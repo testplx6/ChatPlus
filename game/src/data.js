@@ -696,3 +696,127 @@ export const CONTRAT_KEYS = Object.keys(CONTRATS);
 
 /** Déclaré ici, après les ajouts d'étal, pour couvrir tout le catalogue. */
 export const ITEM_KEYS = Object.keys(ITEMS);
+
+// ---------------------------------------------------------------------------
+// Diplômes
+// ---------------------------------------------------------------------------
+// Un métier ne s'improvise pas entièrement sur le tas. Une école — quand il en
+// reste — fait gagner des années : elle pose un plancher de compétence et,
+// surtout, elle apprend à apprendre. Un diplômé de médecine ne part pas de zéro
+// et progresse ensuite plus vite que l'autodidacte qui recoud au jugé.
+//
+// `plancher`      : compétence garantie à la sortie (jamais rabaissée)
+// `apprentissage` : multiplicateur d'expérience dans cette compétence, à vie
+// `styles`        : quelles factions l'enseignent (styles de leurs villes)
+// `tailleMin`     : une bourgade n'a pas d'école
+
+export const DIPLOMES = {
+  medecine: {
+    nom: 'Brevet de médecine de campagne',
+    court: 'Médecine',
+    skill: 'medecine',
+    plancher: 26,
+    apprentissage: 1.6,
+    cout: 950,
+    heures: 220,
+    styles: ['commune', 'corpo'],
+    tailleMin: 2,
+    texte: 'On y apprend surtout ce qu’il ne faut pas faire, et c’est déjà beaucoup.',
+  },
+  ingenierie: {
+    nom: 'Diplôme de mécanique appliquée',
+    court: 'Ingénierie',
+    skill: 'ingenierie',
+    plancher: 26,
+    apprentissage: 1.6,
+    cout: 900,
+    heures: 200,
+    styles: ['corpo', 'criminel'],
+    tailleMin: 2,
+    texte: 'Trois semaines à démonter ce que d’autres ont mal remonté.',
+  },
+  commerce: {
+    nom: 'Licence de négoce',
+    court: 'Commerce',
+    skill: 'commerce',
+    plancher: 26,
+    apprentissage: 1.7,
+    cout: 1100,
+    heures: 180,
+    styles: ['corpo', 'criminel'],
+    tailleMin: 3,
+    texte: 'On n’y apprend pas à compter, on y apprend à qui parler.',
+  },
+  furtivite: {
+    nom: 'Passe des ombres',
+    court: 'Furtivité',
+    skill: 'furtivite',
+    plancher: 24,
+    apprentissage: 1.55,
+    cout: 800,
+    heures: 190,
+    styles: ['criminel'],
+    tailleMin: 2,
+    texte: 'Ça ne s’appelle pas une école et ça ne délivre rien d’écrit.',
+  },
+  tir: {
+    nom: 'École de tir',
+    court: 'Tir',
+    skill: 'tir',
+    plancher: 24,
+    apprentissage: 1.5,
+    cout: 850,
+    heures: 170,
+    styles: ['militaire', 'corpo'],
+    tailleMin: 2,
+    texte: 'Deux cents cartouches et le bruit qui reste dans la tête.',
+  },
+  melee: {
+    nom: 'École de la lame',
+    court: 'Mêlée',
+    skill: 'melee',
+    plancher: 24,
+    apprentissage: 1.5,
+    cout: 780,
+    heures: 170,
+    styles: ['militaire', 'fanatique'],
+    tailleMin: 2,
+    texte: 'On y entre avec ses habitudes, on en sort avec des réflexes.',
+  },
+  force: {
+    nom: 'Certificat de portage lourd',
+    court: 'Force',
+    skill: 'force',
+    plancher: 22,
+    apprentissage: 1.4,
+    cout: 520,
+    heures: 140,
+    styles: ['nomade', 'militaire'],
+    tailleMin: 1,
+    texte: 'Soulever mal pendant vingt ans coûte plus cher que d’apprendre.',
+  },
+  endurance: {
+    nom: 'Brevet de marche',
+    court: 'Endurance',
+    skill: 'endurance',
+    plancher: 22,
+    apprentissage: 1.4,
+    cout: 480,
+    heures: 150,
+    styles: ['nomade', 'commune'],
+    tailleMin: 1,
+    texte: 'Marcher, on croit savoir. Marcher trente jours, non.',
+  },
+};
+
+export const DIPLOME_KEYS = Object.keys(DIPLOMES);
+
+/** Le diplôme qu'un professionnel expérimenté a de bonnes chances de porter. */
+export const DIPLOME_ARCHETYPE = {
+  medic: 'medecine',
+  ferrailleur: 'ingenierie',
+  courtier: 'commerce',
+  eclaireur: 'furtivite',
+  chasseur: 'tir',
+  brute: 'melee',
+};

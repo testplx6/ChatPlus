@@ -15,6 +15,7 @@ import { fonderBase, lancerConstruction, lancerRecherche } from '../src/base.js'
 import { donnerOrdre } from '../src/squad.js';
 import { serialiser } from '../src/save.js';
 import { groupeActif } from '../src/groupes.js';
+import { ecolesDe } from '../src/formation.js';
 
 const RACINE = resolve(new URL('..', import.meta.url).pathname);
 const CAPTURES = join(RACINE, 'captures');
@@ -402,6 +403,55 @@ const refusion = await page.evaluate(() => {
 });
 ok(refusion.n === avantGroupes, 'les groupes sont réunis', `${refusion.n}`);
 ok(refusion.membres === 3, 'tout le monde est rassemblé', `${refusion.membres}`);
+
+console.log('\n8 septies. Écoles et diplômes');
+// On se pose dans une ville qui enseigne, avec de quoi payer.
+const ecolier = nouvellePartie(1717, { maintenant: Date.now() });
+const gEc = groupeActif(ecolier);
+const villeEcole = ecolier.world.colonies.find((c) => ecolesDe(ecolier.world, c).length);
+gEc.regionId = villeEcole.regionId;
+ecolier.player.credits = 9000;
+avancer(ecolier, 3);
+ecolier.dernierReel = Date.now();
+await page.reload({ waitUntil: 'networkidle' });
+await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(ecolier));
+await page.click('[data-a="continuer"]');
+await page.waitForSelector('#carte');
+await page.waitForTimeout(500);
+
+ok(await page.locator('[data-a="modale"][data-m="ecole"]').count() > 0,
+  'la ville propose ses écoles');
+await page.click('[data-a="modale"][data-m="ecole"]');
+await page.waitForTimeout(400);
+const texteEcole = await page.evaluate(() => document.querySelector('#modale').textContent);
+ok(/au minimum/.test(texteEcole) && /Apprentissage ensuite/.test(texteEcole),
+  'chaque diplôme annonce son plancher et son gain d’apprentissage');
+await page.screenshot({ path: join(CAPTURES, '18-ecole.png') });
+
+const inscriptible = page.locator('[data-a="inscrire"]:not([disabled])');
+ok(await inscriptible.count() > 0, 'quelqu’un peut s’inscrire');
+await inscriptible.first().click();
+await page.waitForTimeout(500);
+const apresInscription = await page.evaluate(() => {
+  const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const gens = s.player.groupes.flatMap((g) => g.membres);
+  return {
+    enFormation: gens.filter((c) => c.formation).length,
+    credits: s.player.credits,
+  };
+});
+ok(apresInscription.enFormation === 1, 'l’élève est inscrit', `${apresInscription.enFormation}`);
+ok(apresInscription.credits < 9000, 'et la formation a été payée', `${apresInscription.credits} cr`);
+await page.click('[data-a="fermer"]');
+await page.waitForTimeout(300);
+// La fiche du membre doit dire qu'il est à l'école.
+await page.click('[data-a="onglet"][data-k="escouade"]');
+await page.waitForTimeout(300);
+const fiches = page.locator('details.perso summary');
+for (let i = 0; i < await fiches.count(); i++) await fiches.nth(i).click();
+await page.waitForTimeout(400);
+ok(/À L’ÉCOLE|Indisponible/i.test(await page.evaluate(() => document.querySelector('#ecran').textContent)),
+  'la fiche du membre annonce qu’il est indisponible');
 
 console.log('\n8 sexies. Information imparfaite');
 // On fabrique une partie où l'escouade a vu une ville, puis s'en est allée.

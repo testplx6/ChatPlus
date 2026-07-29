@@ -92,8 +92,18 @@ export function vivants(g) {
   return g.membres.filter(estVivant);
 }
 
+/**
+ * Ceux qui peuvent travailler ou se battre. Un élève à l'école n'en est pas :
+ * il est en ville, la tête ailleurs. Sans ça, une formation ne coûterait que de
+ * l'argent, et envoyer quelqu'un se former serait sans conséquence.
+ */
 export function debout(g) {
-  return g.membres.filter(estDebout);
+  return g.membres.filter((c) => estDebout(c) && !(c.formation && c.formation.restant > 0));
+}
+
+/** Ceux qui sont à l'école, pour l'affichage. */
+export function eleves(g) {
+  return g.membres.filter((c) => c.formation && c.formation.restant > 0);
 }
 
 /** Un groupe qui n'a plus personne debout ne fait plus rien de son ordre. */

@@ -74,6 +74,8 @@ export function normaliser(state) {
     for (const c of g.membres) {
       if (!c.traits) c.traits = [];
       if (!c.liens) c.liens = {};
+      if (!c.diplomes) c.diplomes = [];
+      if (c.formation === undefined) c.formation = null;
     }
   }
   const b = state.base;

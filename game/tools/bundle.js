@@ -29,6 +29,7 @@ const MODULES = [
   'groupes.js',
   'allegeance.js',
   'connaissance.js',
+  'formation.js',
   'combat.js',
   'economy.js',
   'caravanes.js',
