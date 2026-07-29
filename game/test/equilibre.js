@@ -29,7 +29,7 @@
 import { nouvellePartie, tick } from '../src/sim.js';
 import { Rng } from '../src/rng.js';
 import {
-  groupeActif, groupes, scinder, fusionner, maxGroupes, tousLesMembres, noyau,
+  groupeActif, groupes, scinder, fusionner, tousLesMembres, noyau,
   rendementCohesion,
 } from '../src/groupes.js';
 import { donnerOrdre } from '../src/squad.js';
@@ -832,7 +832,8 @@ function jouerEclaireur(state, g, memo) {
 function envisagerDetachement(state, memo) {
   if (SANS.has('detach')) return;
   if (memo.eclaireur) return;
-  if (groupes(state).length >= maxGroupes(state)) return;
+  // Plus de plafond : on se limite à ce qu'on peut joindre, comme un joueur.
+  if (groupes(state).length >= 3) return;
   const g = groupes(state)[0];
   if (!g) return;
   const debout = g.membres.filter(estDebout);

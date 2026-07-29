@@ -551,6 +551,7 @@ export function fonderColonie(world, key, region, rng, t) {
     unrest: 0.1,
     marche: 1.35,
     prises: 0,
+    banc: null,
     declin: 0,
     fondeeA: t,
     factionOrigine: key,

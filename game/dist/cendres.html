@@ -2112,6 +2112,10 @@ function genererColonies(rng, regions) {
       unrest: Number(rng.range(0, 0.2).toFixed(2)),
       // Qui travaille à quoi. Rempli une fois la faction attribuée.
       emplois: null,
+      // Qui cherche à partir d'ici. Ne se garnit que quand le joueur y est :
+      // voir recrues.js. La clé existe dès la création, sinon `normaliser`
+      // l'ajoute au rechargement et l'aller-retour JSON n'est plus exact.
+      banc: null,
       marche: 1 + taille * 0.35,
       prises: 0,
     };
@@ -3381,19 +3385,57 @@ const NOMS = ['Convoi', 'Pointe', 'Arrière-garde', 'Éclaireurs', 'Escorte'];
 
 /** Deux groupes sans rien ; l'antenne en autorise davantage. */
 const GROUPES_BASE = 2;
-const GROUPES_MAX = 4;
-
 /**
- * Combien de groupes on peut tenir à la fois. Coordonner des gens qu'on ne voit
- * pas suppose de quoi leur parler : l'antenne de l'avant-poste sert à ça.
+ * Portée de commandement : jusqu'où l'on peut donner un ordre.
+ *
+ * Il y avait un plafond de quatre groupes. Comme les autres, c'était une limite
+ * écrite dans le code plutôt qu'une limite du monde — rien, dans la fiction,
+ * n'empêche de séparer son monde en six colonnes.
+ *
+ * Ce qui l'empêche vraiment, c'est de leur parler. À portée de voix — quelques
+ * secteurs — on transmet par coureur. Au-delà, il faut une antenne, et une
+ * antenne se bâtit. Un groupe hors de portée n'est pas perdu : il exécute le
+ * dernier ordre reçu jusqu'à ce qu'on le rattrape, ce qui est exactement la
+ * façon dont on perdait des colonnes avant la radio.
  */
-function maxGroupes(state) {
+const PORTEE_COUREUR = 4;
+const PORTEE_PAR_ANTENNE = 6;
+
+function porteeOrdres(state) {
   // Lecture directe du bâtiment plutôt que `niveau()` de base.js : ce module est
   // en amont de l'avant-poste dans l'ordre des dépendances, et un cycle
   // d'imports casserait l'assemblage en fichier unique.
   const b = state.base;
   const ant = b && b.fonde && b.batiments ? (b.batiments.antenne || 0) : 0;
-  return Math.min(GROUPES_MAX, GROUPES_BASE + Math.floor(ant / 2));
+  return PORTEE_COUREUR + ant * PORTEE_PAR_ANTENNE;
+}
+
+/**
+ * Peut-on encore commander ce groupe ? On mesure depuis le groupe le plus
+ * proche qu'on commande déjà — un ordre se relaie — et depuis l'avant-poste,
+ * qui a la radio.
+ */
+function joignable(state, g) {
+  if (!g) return { ok: false, motif: 'Groupe inconnu.' };
+  const portee = porteeOrdres(state);
+  const b = state.base;
+  if (b && b.fonde && distance(g.regionId, b.regionId) <= portee) return { ok: true };
+  for (const autre of state.player.groupes) {
+    if (autre.id === g.id || !autre.membres.length) continue;
+    if (distance(g.regionId, autre.regionId) <= portee) return { ok: true };
+  }
+  // Un groupe seul au monde s'entend toujours lui-même.
+  const seuls = state.player.groupes.filter((x) => x.membres.length);
+  if (seuls.length <= 1 && !(b && b.fonde)) return { ok: true };
+  return {
+    ok: false,
+    motif: `Hors de portée : ${portee} secteurs par coureur, davantage avec une antenne.`,
+  };
+}
+
+/** Conservé pour l'affichage : ce que la portée permet, en nombre de colonnes. */
+function maxGroupes(state) {
+  return Infinity;
 }
 
 // ---------------------------------------------------------------------------
@@ -3580,9 +3622,6 @@ function nomLibre(state) {
  * Partir à deux avec un tiers des rations, c'est un choix, pas une formalité.
  */
 function scinder(state, g, ids, rng, nom) {
-  if (groupes(state).length >= maxGroupes(state)) {
-    return { ok: false, motif: 'Pas de quoi coordonner un groupe de plus. Montez l’antenne.' };
-  }
   const partants = g.membres.filter((c) => ids.includes(c.id) && estVivant(c));
   if (!partants.length) return { ok: false, motif: 'Personne à détacher.' };
   const restants = g.membres.filter((c) => !ids.includes(c.id) && estVivant(c));
@@ -3955,6 +3994,129 @@ function valeurAttelage(g) {
   let v = 0;
   for (const b of betesDe(g)) v += (BETES[b.key] || {}).prix * 0.5 * (b.sante / 100);
   return Math.round(v);
+}
+
+// ===== src/recrues.js ================================================
+// Qui accepte de partir avec vous, et pour combien.
+//
+// La prime d'engagement montait de quatre-vingt-dix crédits par membre déjà
+// présent. C'était de l'équilibrage déguisé en économie : un ferrailleur au
+// chômage dans un bourg de la steppe n'a aucune idée du nombre de gens que vous
+// menez déjà, et si vous en menez vingt, il devrait plutôt être *rassuré*.
+//
+// Ce qui décide vraiment d'une prime, c'est trois choses :
+//
+//   ce que vaut la personne — un médic diplômé ne part pas au tarif d'un bras ;
+//   ce que vaut sa place ici — on quitte pour rien une ville affamée et agitée,
+//     on se fait payer cher pour quitter une ville prospère ;
+//   ce que vous valez, vous — on suit moins cher un nom qu'on connaît.
+//
+// Et surtout : on voit qui l'on engage. Un banc de bourg propose deux ou trois
+// personnes, avec leur nom, leur métier et leur prix, renouvelées de loin en
+// loin. On ne tire plus un inconnu au sort en payant d'avance.
+
+
+/** Durée de vie d'un banc de recrutement avant que les gens se placent ailleurs. */
+const DUREE_BANC = 260;
+
+/**
+ * Ce que quelqu'un vaut sur le marché du travail : ses compétences, son
+ * équipement, et le fait d'avoir un vrai métier plutôt que deux bras.
+ */
+function valeurRecrue(c) {
+  let somme = 0;
+  for (const k of SKILL_KEYS) somme += c.skills[k] || 0;
+  const meilleur = SKILL_KEYS.reduce((m, k) => Math.max(m, c.skills[k] || 0), 0);
+  const brevets = (c.diplomes || []).length;
+  // La somme dit l'expérience générale, le meilleur dit la spécialité, les
+  // diplômes disent qu'on a payé pour l'apprendre.
+  return 90 + somme * 3.2 + meilleur * 6 + brevets * 220;
+}
+
+/**
+ * Ce que la ville fait au prix. Une ville qui a faim et qui gronde laisse
+ * partir les siens pour presque rien ; une ville prospère les garde.
+ */
+function tensionRecrutement(col) {
+  if (!col) return 1;
+  const vivres = (col.stock.rations || 0) / Math.max(1, col.pop);
+  const aise = Math.max(0, Math.min(1, vivres / 0.9));
+  // 0,55 dans un bourg affamé et révolté, 1,35 dans une ville qui va bien.
+  return Math.max(0.55, Math.min(1.35, 0.7 + aise * 0.65 - (col.unrest || 0) * 0.5));
+}
+
+/** La prime demandée par cette personne, dans cette ville, à ce joueur. */
+function primeDe(state, col, c) {
+  const repu = (col && state.player.reputation[col.faction]) || 0;
+  // On suit moins cher quelqu'un dont on a entendu du bien. Et beaucoup plus
+  // cher quelqu'un dont on a entendu du mal.
+  const nom = repu >= 0 ? 1 - Math.min(0.25, repu / 320) : 1 + Math.min(0.6, -repu / 160);
+  return Math.max(60, Math.round(valeurRecrue(c) * tensionRecrutement(col) * nom));
+}
+
+/**
+ * Le banc d'une ville : qui s'y trouve, en ce moment, prêt à partir. Une grande
+ * ville en propose plus ; une ville qui gronde en propose beaucoup plus, parce
+ * que tout le monde veut s'en aller.
+ */
+function genererBanc(state, col, rng, t) {
+  const combien = Math.max(1, Math.min(5,
+    Math.round(1 + col.taille * 0.8 + (col.unrest || 0) * 4)));
+  const gens = [];
+  for (let i = 0; i < combien; i++) {
+    // Le niveau suit la ville : on ne trouve pas de vétéran dans un hameau.
+    const niveau = rng.weighted([[0, 4], [1, 3], [2, 1.5 + col.taille], [3, col.taille * 0.6]]);
+    const c = makeCharacter(rng, { archetype: rng.pick(ARCHETYPE_KEYS), niveau });
+    gens.push(c);
+  }
+  col.banc = { gens, expire: t + DUREE_BANC };
+  return col.banc;
+}
+
+function bancDe(state, col, rng, t) {
+  if (!col || col.ruine) return null;
+  if (!col.banc || t >= col.banc.expire) genererBanc(state, col, rng, t);
+  return col.banc;
+}
+
+/**
+ * Engager quelqu'un du banc. Aucun plafond d'effectif : ce qui dissuade
+ * d'entasser du monde, c'est la cohésion qui se délite (voir groupes.js), pas
+ * une règle qui interdit.
+ */
+function engager(state, col, index, log, groupe) {
+  const g = groupe || (state.player.groupes || [])[0];
+  if (!g) return { ok: false, motif: 'Aucun groupe.' };
+  if (!col || col.ruine || g.regionId !== col.regionId) {
+    return { ok: false, motif: 'Il faut être en ville.' };
+  }
+  const banc = col.banc;
+  if (!banc || !banc.gens[index]) return { ok: false, motif: 'Cette personne s’est placée ailleurs.' };
+  const c = banc.gens[index];
+  const prix = primeDe(state, col, c);
+  if (state.player.credits < prix) {
+    return { ok: false, motif: `Il manque ${prix - state.player.credits} cr.` };
+  }
+  state.player.credits -= prix;
+  banc.gens.splice(index, 1);
+  g.membres.push(c);
+  if (log) {
+    log({
+      type: 'recrue',
+      texte: `${c.nom} (${c.archetypeNom}) s’engage dans ${g.nom} pour ${prix} cr.`,
+      important: true,
+      regionId: col.regionId,
+      groupe: g.id,
+    });
+  }
+  return { ok: true, perso: c, prix };
+}
+
+/** Ce qu'on peut dire d'une recrue avant de signer, en une ligne. */
+function apercu(c) {
+  let meilleur = SKILL_KEYS[0];
+  for (const k of SKILL_KEYS) if ((c.skills[k] || 0) > (c.skills[meilleur] || 0)) meilleur = k;
+  return { skill: meilleur, niveau: Math.round(c.skills[meilleur] || 0), comp: comp(c, meilleur) };
 }
 
 // ===== src/services.js ===============================================
@@ -6903,6 +7065,7 @@ function fonderColonie(world, key, region, rng, t) {
     unrest: 0.1,
     marche: 1.35,
     prises: 0,
+    banc: null,
     declin: 0,
     fondeeA: t,
     factionOrigine: key,
@@ -8736,6 +8899,13 @@ function rendementPrevu(state, type, regionId) {
 function donnerOrdre(state, ordre, groupe) {
   const g = groupe || groupeActif(state);
   if (!g) return { ok: false, motif: 'Aucun groupe.' };
+  // On ne commande pas ce qu'on ne peut pas joindre. Un groupe hors de portée
+  // n'est pas perdu : il continue son dernier ordre jusqu'à ce qu'on le
+  // rattrape, ou qu'on monte l'antenne. C'est ce qui remplace le plafond de
+  // quatre groupes — rien n'empêche d'en faire six, il faut pouvoir leur
+  // parler.
+  const port = joignable(state, g);
+  if (!port.ok) return port;
   if (ordre.type === 'voyage') {
     const m = { reductionVoyage: (state.base.recherche.logistique || 0) * 0.06 };
     const route = chemin(state.world, g.regionId, ordre.dest, m);
@@ -9493,6 +9663,9 @@ function normaliser(state) {
     if (c.emplois === undefined) c.emplois = null;
     // Les gens qui comptent : le premier tick pourvoit les charges.
     if (!c.notables) c.notables = [];
+    // Avant le banc de recrutement, on tirait un inconnu au sort en payant
+    // d'avance. Le premier passage en ville en garnit un.
+    if (c.banc === undefined) c.banc = null;
     // Avant les services, ces gens n'attendaient rien et ne retenaient rien.
     for (const p2 of c.notables) {
       if (p2.demande === undefined) p2.demande = null;
@@ -9831,6 +10004,11 @@ function tick(state) {
     // un avant-poste sur une ville : pour une colonie, c'est bien « un groupe
     // est ici ».
     const present = yeux.includes(col.regionId);
+    // Le banc de recrutement ne se garnit que là où l'on est. Le tenir à jour
+    // dans les quatre-vingt-six villes, ce serait deux cents personnages
+    // inventés pour rien dans chaque sauvegarde.
+    if (present) bancDe(state, col, rng, state.temps);
+    else if (col.banc) col.banc = null;
     const ev = tickColonie(state.world, col, rng, climat, du, rep, log, state.temps, present);
     if (!ev) continue;
     if (ev.evenement === 'croissance') {
@@ -11065,7 +11243,7 @@ function barreGroupes() {
     </button>`;
   }).join('');
   return `<section class="panneau">
-    <h2 class="titre">Groupes <span class="droite">${gs.length} / ${maxGroupes(S)}</span></h2>
+    <h2 class="titre">Groupes <span class="droite">${gs.length} · portée ${porteeOrdres(S)}</span></h2>
     <div class="groupes">${onglets}</div>
   </section>`;
 }
@@ -11075,7 +11253,7 @@ function blocDetachement() {
   const g = G();
   const dispo = g.membres.filter(estDebout);
   const voisins = fusionnablesAvec(S, g);
-  const place = groupes(S).length < maxGroupes(S);
+  const place = true; // rien ne limite le nombre : c'est la portée qui décide
 
   const cases = dispo.map((c) => `<button class="act mini" data-a="detacher-sel" data-c="${e(c.id)}"
     aria-pressed="${detaches.has(c.id)}">${detaches.has(c.id) ? '×' : ' '} ${e(c.nom)}</button>`).join('');
@@ -12232,24 +12410,50 @@ function modaleRecrutement() {
   const g = G();
   const noy = noyau(S, g);
   const ici = vivantsDe(g).length;
-  const vivants = tousLesMembres(S).filter(estVivant).length;
-  const prix = Math.round(180 + col.pop * 0.35 + vivants * 90);
   const plafond = plafondCohesion(S, g);
   const apres = Math.max(12, 100 / (1 + Math.max(0, ici + 1 - noy) / 7));
-  return `<h2 class="titre">Recrutement à ${e(col.nom)}</h2>
+  const banc = (col.banc && col.banc.gens) || [];
+
+  const gens = banc.length ? banc.map((c, i) => {
+    const prix = primeDe(S, col, c);
+    const a = apercu(c);
+    return `<div class="contrat">
+      <div class="contrat-t">${e(c.nom)}
+        <span class="aide">— ${e(c.archetypeNom)}</span></div>
+      <div class="ligne"><span class="k">Meilleure compétence</span>
+        <span class="v">${e(SKILLS[a.skill])} ${a.niveau}</span></div>
+      ${(c.diplomes || []).length ? `<div class="ligne"><span class="k">Brevets</span>
+        <span class="v">${c.diplomes.map((d) => e(DIPLOMES[d] ? DIPLOMES[d].nom : d)).join(', ')}</span></div>` : ''}
+      ${(c.traits || []).length ? `<div class="aide">${c.traits.map((t) =>
+    e(TRAITS[t] ? TRAITS[t].nom : t)).join(' · ')}</div>` : ''}
+      <div class="ligne"><span class="k">Prime</span><span class="v">${n(prix)} cr</span></div>
+      <button class="act mini${S.player.credits >= prix ? ' primaire' : ''}"
+        data-a="recruter" data-i="${i}" style="margin-top:4px"
+        ${S.player.credits < prix ? 'disabled' : ''}>
+        ${S.player.credits < prix ? 'Crédits insuffisants' : 'Engager'}</button>
+    </div>`;
+  }).join('') : '<div class="aide">Personne ne cherche à partir d’ici en ce moment.</div>';
+
+  const tension = tensionRecrutement(col);
+  return `<h2 class="titre">Recrutement à ${e(col.nom)}
+    <span class="droite">${n(S.player.credits)} cr</span></h2>
+  <div class="aide">${tension < 0.8
+    ? 'La ville va mal. Beaucoup de gens veulent s’en aller, et pour pas cher.'
+    : tension > 1.15
+      ? 'La ville va bien. On n’en part pas sans une bonne raison, ni pour rien.'
+      : 'Quelques bras cherchent de l’ouvrage.'}</div>
+  <div class="grille2">
     <div class="ligne"><span class="k">${e(g.nom)}</span><span class="v">${ici} personnes</span></div>
     <div class="ligne"><span class="k">Noyau qu’on tient</span><span class="v">${n(noy)}</span></div>
     <div class="ligne"><span class="k">Cohésion possible</span>
       <span class="v">${Math.round(plafond)} %${apres < plafond
     ? ` → <span class="alerte">${Math.round(apres)} %</span>` : ''}</span></div>
-    <div class="ligne"><span class="k">Prime d’engagement</span><span class="v">${n(prix)} cr</span></div>
-    <div class="aide">On ne choisit pas ce qui se présente. Rien ne limite le nombre :
-      au-delà du noyau, on se connaît moins, on travaille moins bien et on se bat
-      moins bien. Un baraquement élargit ce qu’on arrive à tenir ensemble.</div>
-    <div class="sep"></div>
-    <button class="act primaire" data-a="recruter" data-p="${prix}"
-      ${S.player.credits < prix ? 'disabled' : ''}>
-      ${S.player.credits < prix ? 'Crédits insuffisants' : 'Engager'}</button>`;
+  </div>
+  <div class="aide">Rien ne limite le nombre : au-delà du noyau, on se connaît
+    moins, on travaille moins bien et on se bat moins bien. Un baraquement
+    élargit ce qu’on arrive à tenir ensemble.</div>
+  <div class="sep"></div>
+  ${gens}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -12650,11 +12854,9 @@ function surClic(ev) {
     }
 
     case 'recruter': {
-      const r = ACTIONS.recruter(Number(el.dataset.p));
-      toast(r.ok ? `${r.nom} rejoint l’escouade.` : r.motif, !r.ok);
-      modale = null;
+      const r = ACTIONS.recruter(el.dataset.i);
+      toast(r.ok ? `${r.perso.nom} rejoint l’escouade.` : r.motif, !r.ok);
       rendreModale();
-      rafraichir(true);
       break;
     }
 
@@ -12790,31 +12992,13 @@ const API = {
   },
 
   /** Engagement d'un mercenaire dans une ville : il rejoint le groupe affiché. */
-  recruter(prix) {
+  /** Engager quelqu'un du banc de la ville où l'on se trouve. */
+  recruter(index) {
     const g = groupeActif(state);
-    const col = state.world.regions[g.regionId].colonie;
-    if (!col) return { ok: false, motif: 'Personne à recruter ici.' };
-    // Aucun plafond : on recrute tant qu'on peut payer. Ce qui dissuade
-    // d'entasser du monde, c'est que la cohésion d'une colonne se délite, et
-    // avec elle le rendement du travail et la force au combat.
-    if (state.player.credits < prix) return { ok: false, motif: 'Crédits insuffisants.' };
-
-    const rng = new Rng(state.rngState);
-    const c = makeCharacter(rng, { niveau: rng.irange(0, 2) });
-    c.equip.armure = c.equip.armure || (rng.chance(0.5) ? 'cuir' : null);
-    state.rngState = rng.save();
-
-    state.player.credits -= prix;
-    g.membres.push(c);
-    creerLogger(state)({
-      type: 'recrue',
-      texte: `${c.nom} (${c.archetypeNom}) s’engage dans ${g.nom} pour ${prix} cr.`,
-      important: true,
-      regionId: g.regionId,
-      groupe: g.id,
-    });
-    sauver();
-    return { ok: true, nom: c.nom };
+    const col = state.world.colonies.find((c) => !c.ruine && c.regionId === g.regionId);
+    const r = engager(state, col, Number(index), creerLogger(state), g);
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
   },
 
   /** Acheter une bête de somme. Tirage : RNG de la partie. */

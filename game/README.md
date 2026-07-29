@@ -262,6 +262,47 @@ Ce qui reste n'est pas un réglage mais une décision de conception, traitée
 juste au-dessus : le nomadisme est une voie viable, l'avant-poste n'en est pas
 encore une.
 
+### Ni le nombre de colonnes, ni la prime d'engagement
+
+Deux derniers plafonds écrits en dur, retirés dans le même esprit.
+
+**La prime d'engagement montait de quatre-vingt-dix crédits par membre déjà
+présent.** C'était de l'équilibrage déguisé en économie : un ferrailleur au
+chômage dans un bourg de la steppe n'a aucune idée du nombre de gens que vous
+menez, et si vous en menez vingt, il devrait plutôt être rassuré. Ce qui décide
+d'une prime, c'est ce que vaut la personne, ce que vaut sa place ici, et ce que
+vous valez :
+
+- un vétéran diplômé ne part pas au tarif d'un bras ;
+- **on quitte pour presque rien une ville affamée et révoltée** (×0,55), on se
+  fait payer cher pour quitter une ville prospère (×1,35) ;
+- on suit moins cher un nom dont on a entendu du bien, beaucoup plus cher un
+  nom dont on a entendu du mal.
+
+Et surtout, **on voit qui l'on engage**. Chaque ville tient un banc de deux à
+cinq personnes, avec leur nom, leur métier, leur meilleure compétence, leurs
+brevets et leur prix — renouvelé de loin en loin, et d'autant plus fourni que la
+ville va mal. On ne tire plus un inconnu au sort en payant d'avance. Le banc ne
+se garnit que là où le joueur se trouve : le tenir dans les quatre-vingt-six
+villes, ce serait deux cents personnages inventés pour rien dans chaque
+sauvegarde.
+
+**Le nombre de colonnes était plafonné à quatre.** Rien, dans la fiction,
+n'empêche de séparer son monde en six. Ce qui l'empêche, c'est de leur parler.
+
+    portée des ordres = 4 secteurs (coureur) + 6 par niveau d'antenne
+
+Un groupe hors de portée **n'est pas perdu : il est sourd.** Il exécute le
+dernier ordre reçu jusqu'à ce qu'on le rattrape ou qu'on monte l'antenne — ce
+qui est exactement la façon dont on perdait des colonnes avant la radio.
+L'antenne cesse d'être décorative : c'est elle qui décide de la profondeur à
+laquelle on peut opérer.
+
+Un détail qui a coûté une mesure : la première version rendait injoignables
+*les deux* colonnes quand elles s'éloignaient l'une de l'autre, y compris celle
+où se tenait le joueur. Résultat, des escouades plantées à ne rien faire trente
+pour cent du temps. On se commande toujours soi-même.
+
 ### Une escouade n'a pas de plafond, elle a un noyau
 
 Même défaut, même correction. La taille d'une escouade était bornée par
@@ -787,6 +828,7 @@ game/
     connaissance.js   ce que le joueur sait, relevés datés, délai des nouvelles
     formation.js      écoles des villes, transmission maison, diplômes
     betes.js          bêtes de somme et charrettes : ce qui porte à votre place
+    recrues.js        qui accepte de partir avec vous, et pour combien
     notables.js       les gens qui comptent dans une ville, leur état, leurs effets
     dirigeants.js     chefs de faction, tempéraments, légitimité, buts de guerre
     services.js       ce que les notables vous demandent, ce qu'ils retiennent

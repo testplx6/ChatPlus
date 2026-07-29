@@ -47,6 +47,7 @@ import {
 } from './formation.js';
 import { CHARGES, CARACTERES, margeMarchand, vocation } from './notables.js';
 import { demandesIci, souvenirs, faveurChef, SOINS_SEUIL, REGISTRES_SEUIL } from './services.js';
+import { primeDe, apercu, tensionRecrutement } from './recrues.js';
 import {
   BETES, BETE_KEYS, betesDe, prixBete, portageAttelage, lenteurAttelage,
   conduite, surnombre, visibiliteAttelage,
@@ -55,7 +56,7 @@ import { dirigeant, TEMPERAMENTS, LEGITIMITE_CRITIQUE } from './dirigeants.js';
 import { vueColonie, vueRegion, estSurveillee, ageTexte, nouvellesConnues } from './connaissance.js';
 import {
   groupeActif, groupes, groupeParId, choisirGroupe, tousLesMembres, tacheDe,
-  assignerTache, scinder, fusionner, fusionnablesAvec, maxGroupes, repartition,
+  assignerTache, scinder, fusionner, fusionnablesAvec, porteeOrdres, joignable, repartition,
   TACHES_INDIVIDUELLES, noyau, plafondCohesion, rendementCohesion,
   vivants as vivantsDe,
 } from './groupes.js';
@@ -1121,7 +1122,7 @@ function barreGroupes() {
     </button>`;
   }).join('');
   return `<section class="panneau">
-    <h2 class="titre">Groupes <span class="droite">${gs.length} / ${maxGroupes(S)}</span></h2>
+    <h2 class="titre">Groupes <span class="droite">${gs.length} · portée ${porteeOrdres(S)}</span></h2>
     <div class="groupes">${onglets}</div>
   </section>`;
 }
@@ -1131,7 +1132,7 @@ function blocDetachement() {
   const g = G();
   const dispo = g.membres.filter(estDebout);
   const voisins = fusionnablesAvec(S, g);
-  const place = groupes(S).length < maxGroupes(S);
+  const place = true; // rien ne limite le nombre : c'est la portée qui décide
 
   const cases = dispo.map((c) => `<button class="act mini" data-a="detacher-sel" data-c="${e(c.id)}"
     aria-pressed="${detaches.has(c.id)}">${detaches.has(c.id) ? '×' : ' '} ${e(c.nom)}</button>`).join('');
@@ -2288,24 +2289,50 @@ function modaleRecrutement() {
   const g = G();
   const noy = noyau(S, g);
   const ici = vivantsDe(g).length;
-  const vivants = tousLesMembres(S).filter(estVivant).length;
-  const prix = Math.round(180 + col.pop * 0.35 + vivants * 90);
   const plafond = plafondCohesion(S, g);
   const apres = Math.max(12, 100 / (1 + Math.max(0, ici + 1 - noy) / 7));
-  return `<h2 class="titre">Recrutement à ${e(col.nom)}</h2>
+  const banc = (col.banc && col.banc.gens) || [];
+
+  const gens = banc.length ? banc.map((c, i) => {
+    const prix = primeDe(S, col, c);
+    const a = apercu(c);
+    return `<div class="contrat">
+      <div class="contrat-t">${e(c.nom)}
+        <span class="aide">— ${e(c.archetypeNom)}</span></div>
+      <div class="ligne"><span class="k">Meilleure compétence</span>
+        <span class="v">${e(SKILLS[a.skill])} ${a.niveau}</span></div>
+      ${(c.diplomes || []).length ? `<div class="ligne"><span class="k">Brevets</span>
+        <span class="v">${c.diplomes.map((d) => e(DIPLOMES[d] ? DIPLOMES[d].nom : d)).join(', ')}</span></div>` : ''}
+      ${(c.traits || []).length ? `<div class="aide">${c.traits.map((t) =>
+    e(TRAITS[t] ? TRAITS[t].nom : t)).join(' · ')}</div>` : ''}
+      <div class="ligne"><span class="k">Prime</span><span class="v">${n(prix)} cr</span></div>
+      <button class="act mini${S.player.credits >= prix ? ' primaire' : ''}"
+        data-a="recruter" data-i="${i}" style="margin-top:4px"
+        ${S.player.credits < prix ? 'disabled' : ''}>
+        ${S.player.credits < prix ? 'Crédits insuffisants' : 'Engager'}</button>
+    </div>`;
+  }).join('') : '<div class="aide">Personne ne cherche à partir d’ici en ce moment.</div>';
+
+  const tension = tensionRecrutement(col);
+  return `<h2 class="titre">Recrutement à ${e(col.nom)}
+    <span class="droite">${n(S.player.credits)} cr</span></h2>
+  <div class="aide">${tension < 0.8
+    ? 'La ville va mal. Beaucoup de gens veulent s’en aller, et pour pas cher.'
+    : tension > 1.15
+      ? 'La ville va bien. On n’en part pas sans une bonne raison, ni pour rien.'
+      : 'Quelques bras cherchent de l’ouvrage.'}</div>
+  <div class="grille2">
     <div class="ligne"><span class="k">${e(g.nom)}</span><span class="v">${ici} personnes</span></div>
     <div class="ligne"><span class="k">Noyau qu’on tient</span><span class="v">${n(noy)}</span></div>
     <div class="ligne"><span class="k">Cohésion possible</span>
       <span class="v">${Math.round(plafond)} %${apres < plafond
     ? ` → <span class="alerte">${Math.round(apres)} %</span>` : ''}</span></div>
-    <div class="ligne"><span class="k">Prime d’engagement</span><span class="v">${n(prix)} cr</span></div>
-    <div class="aide">On ne choisit pas ce qui se présente. Rien ne limite le nombre :
-      au-delà du noyau, on se connaît moins, on travaille moins bien et on se bat
-      moins bien. Un baraquement élargit ce qu’on arrive à tenir ensemble.</div>
-    <div class="sep"></div>
-    <button class="act primaire" data-a="recruter" data-p="${prix}"
-      ${S.player.credits < prix ? 'disabled' : ''}>
-      ${S.player.credits < prix ? 'Crédits insuffisants' : 'Engager'}</button>`;
+  </div>
+  <div class="aide">Rien ne limite le nombre : au-delà du noyau, on se connaît
+    moins, on travaille moins bien et on se bat moins bien. Un baraquement
+    élargit ce qu’on arrive à tenir ensemble.</div>
+  <div class="sep"></div>
+  ${gens}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -2706,11 +2733,9 @@ function surClic(ev) {
     }
 
     case 'recruter': {
-      const r = ACTIONS.recruter(Number(el.dataset.p));
-      toast(r.ok ? `${r.nom} rejoint l’escouade.` : r.motif, !r.ok);
-      modale = null;
+      const r = ACTIONS.recruter(el.dataset.i);
+      toast(r.ok ? `${r.perso.nom} rejoint l’escouade.` : r.motif, !r.ok);
       rendreModale();
-      rafraichir(true);
       break;
     }
 

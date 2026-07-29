@@ -16,6 +16,7 @@ import {
   manoeuvres, affecter, rendementMetier, mainDoeuvre,
 } from '../src/base.js';
 import { METIER_KEYS, BIOMES, BUILDINGS } from '../src/data.js';
+import { genererBanc, primeDe, tensionRecrutement, engager } from '../src/recrues.js';
 import {
   acheterBete, betesDe, lenteurAttelage, tickBetes, conduite, surnombre,
   visibiliteAttelage,
@@ -32,7 +33,8 @@ import {
 import { colonieDe } from '../src/world.js';
 import {
   groupeActif, groupes, tousLesMembres, scinder, fusionner, assignerTache,
-  tacheDe, maxGroupes, debout, noyau, plafondCohesion, rendementCohesion,
+  tacheDe, debout, noyau, plafondCohesion, rendementCohesion,
+  porteeOrdres, joignable, PORTEE_COUREUR, PORTEE_PAR_ANTENNE,
   vivants as vivantsGroupe,
 } from '../src/groupes.js';
 import {
@@ -223,7 +225,6 @@ function verifierCoherence(state, label) {
       vusIds.add(c.id);
     }
   }
-  if (groupes(state).length > maxGroupes(state)) pb = pb || 'plus de groupes que permis';
   for (const c of tousLesMembres(state)) {
     for (const part of Object.keys(c.corps)) {
       const b = c.corps[part];
@@ -633,12 +634,55 @@ ok(groupeActif(migree).inventaire.rations === gAvant.inventaire.rations, 'le sac
 avancer(migree, 200);
 ok(migree.temps === 280, 'et la partie repart', `t=${migree.temps}`);
 
-// Le plafond de groupes tient à l'antenne.
+// Il n'y a plus de plafond de groupes : c'est la portée des ordres qui décide.
 const s9e = nouvellePartie(2718, { maintenant: 0 });
-ok(maxGroupes(s9e) === 2, 'deux groupes sans avant-poste', `${maxGroupes(s9e)}`);
+ok(porteeOrdres(s9e) === PORTEE_COUREUR,
+  'sans antenne, on commande à portée de coureur', `${porteeOrdres(s9e)} secteurs`);
 s9e.base.fonde = true;
+s9e.base.regionId = groupeActif(s9e).regionId;
 s9e.base.batiments = { antenne: 4 };
-ok(maxGroupes(s9e) === 4, 'l’antenne autorise davantage de groupes', `${maxGroupes(s9e)}`);
+ok(porteeOrdres(s9e) === PORTEE_COUREUR + 4 * PORTEE_PAR_ANTENNE,
+  'chaque antenne allonge la portée', `${porteeOrdres(s9e)} secteurs`);
+
+// On peut détacher autant de colonnes qu'on veut — mais il faut les joindre.
+const s9e2 = nouvellePartie(2718, { maintenant: 0 });
+const gE = groupeActif(s9e2);
+const rngE = new Rng(77);
+for (let i = 0; i < 6; i++) gE.membres.push(makeCharacter(rngE, {}));
+let detaches = 0;
+for (let i = 0; i < 5; i++) {
+  const libre = gE.membres.filter(estVivant)[0];
+  if (!libre || gE.membres.length < 2) break;
+  if (scinder(s9e2, gE, [libre.id], rngE).ok) detaches++;
+}
+ok(detaches >= 4, 'rien ne limite le nombre de colonnes', `${detaches} détachements`);
+ok(groupes(s9e2).length >= 5, 'et elles existent toutes', `${groupes(s9e2).length} groupes`);
+
+// Une colonne à portée reçoit ses ordres ; une colonne trop loin, non.
+const gLoin = groupes(s9e2)[1];
+gLoin.regionId = gE.regionId;
+ok(joignable(s9e2, gLoin).ok, 'sur place, on se parle');
+ok(donnerOrdre(s9e2, { type: 'fouille' }, gLoin).ok, 'et on donne ses ordres');
+const horsPortee = s9e2.world.regions.find(
+  (r) => distance(r.i, gE.regionId) > PORTEE_COUREUR + 2
+);
+gLoin.regionId = horsPortee.i;
+for (const autre of groupes(s9e2)) {
+  if (autre.id !== gLoin.id) autre.regionId = gE.regionId;
+}
+ok(!joignable(s9e2, gLoin).ok, 'trop loin, on ne se parle plus',
+  joignable(s9e2, gLoin).motif);
+const refus = donnerOrdre(s9e2, { type: 'mine' }, gLoin);
+ok(!refus.ok, 'et l’ordre n’arrive pas', refus.motif);
+ok(gLoin.ordre.type === 'fouille',
+  'la colonne continue le dernier ordre reçu — elle n’est pas perdue, elle est sourde');
+
+// Une antenne assez haute la rattrape.
+s9e2.base.fonde = true;
+s9e2.base.regionId = gE.regionId;
+s9e2.base.batiments = { antenne: 6 };
+ok(joignable(s9e2, gLoin).ok, 'une antenne assez haute la rattrape',
+  `portée ${porteeOrdres(s9e2)}`);
 
 section('9 quinquies. Information imparfaite');
 const s9g = nouvellePartie(60606, { maintenant: 0 });
@@ -1099,6 +1143,52 @@ for (const k of METIER_KEYS) totalPostes += affectes(s9t.base, k);
 ok(totalPostes <= s9t.base.pop, 'les postes se dégarnissent si la population tombe',
   `${totalPostes} pour ${s9t.base.pop} habitants`);
 verifierCoherence(s9t, 'après affectation des métiers');
+
+section('9 nonies sexies. Qui accepte de partir, et pour combien');
+const rec = nouvellePartie(9494, { maintenant: 0 });
+const colRec = rec.world.colonies.find((c) => !c.ruine);
+const gRec = groupeActif(rec);
+gRec.regionId = colRec.regionId;
+const rngBanc = new Rng(55);
+const bancandidat = genererBanc(rec, colRec, rngBanc, 0);
+ok(bancandidat.gens.length >= 1, 'une ville propose des gens', `${bancandidat.gens.length}`);
+ok(bancandidat.gens.every((c) => c.nom && c.archetypeNom),
+  'on voit qui l’on engage, avec son nom et son métier');
+
+// La prime ne dépend PAS du nombre de gens qu'on mène déjà.
+const candidat = bancandidat.gens[0];
+const primeSeul = primeDe(rec, colRec, candidat);
+for (let i = 0; i < 15; i++) gRec.membres.push(makeCharacter(new Rng(100 + i), {}));
+ok(primeDe(rec, colRec, candidat) === primeSeul,
+  'la prime ne monte pas parce qu’on mène déjà du monde — ça n’aurait aucun sens',
+  `${primeSeul} cr dans les deux cas`);
+
+// Elle dépend de ce que vaut la personne.
+const bleuRec = makeCharacter(new Rng(3), { niveau: 0 });
+const vieuxRec = makeCharacter(new Rng(3), { niveau: 3 });
+ok(primeDe(rec, colRec, vieuxRec) > primeDe(rec, colRec, bleuRec) * 1.2,
+  'un vétéran se fait payer plus cher qu’un bleu',
+  `${primeDe(rec, colRec, bleuRec)} contre ${primeDe(rec, colRec, vieuxRec)} cr`);
+
+// Et de l'état de la ville : on quitte pour rien un endroit qui va mal.
+const aiseRec = tensionRecrutement(colRec);
+const memeVille = Object.assign({}, colRec, {
+  unrest: 0.9, stock: Object.assign({}, colRec.stock, { rations: 0 }),
+});
+ok(tensionRecrutement(memeVille) < aiseRec * 0.9,
+  'une ville affamée et révoltée laisse partir les siens pour moins cher',
+  `×${aiseRec.toFixed(2)} → ×${tensionRecrutement(memeVille).toFixed(2)}`);
+
+// Engager : la personne quitte le banc et rejoint le groupe.
+const avantRec = gRec.membres.length;
+const choisi = colRec.banc.gens[0];
+rec.player.credits = 99999;
+const engagement = engager(rec, colRec, 0, () => {}, gRec);
+ok(engagement.ok, 'on engage quelqu’un de précis', engagement.motif);
+ok(gRec.membres.length === avantRec + 1
+  && gRec.membres[gRec.membres.length - 1].id === choisi.id,
+  'et c’est bien celui qu’on avait choisi');
+ok(!colRec.banc.gens.some((x) => x.id === choisi.id), 'il ne figure plus au banc');
 
 section('9 nonies quinquies. Une escouade n’a pas de plafond, elle a un noyau');
 const coh = nouvellePartie(8686, { maintenant: 0 });

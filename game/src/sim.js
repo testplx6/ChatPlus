@@ -22,6 +22,7 @@ import { pourvoirCharges } from './notables.js';
 import { creerDirigeant } from './dirigeants.js';
 import { tickFormation } from './formation.js';
 import { rafraichirPanneaux, tickContrats } from './contrats.js';
+import { bancDe } from './recrues.js';
 import { tickAllegeance, palierBonus } from './allegeance.js';
 
 /** Durée réelle d'une heure de jeu, à vitesse ×1. */
@@ -260,6 +261,11 @@ export function tick(state) {
     // un avant-poste sur une ville : pour une colonie, c'est bien « un groupe
     // est ici ».
     const present = yeux.includes(col.regionId);
+    // Le banc de recrutement ne se garnit que là où l'on est. Le tenir à jour
+    // dans les quatre-vingt-six villes, ce serait deux cents personnages
+    // inventés pour rien dans chaque sauvegarde.
+    if (present) bancDe(state, col, rng, state.temps);
+    else if (col.banc) col.banc = null;
     const ev = tickColonie(state.world, col, rng, climat, du, rep, log, state.temps, present);
     if (!ev) continue;
     if (ev.evenement === 'croissance') {

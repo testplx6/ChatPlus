@@ -174,6 +174,10 @@ function genererColonies(rng, regions) {
       unrest: Number(rng.range(0, 0.2).toFixed(2)),
       // Qui travaille à quoi. Rempli une fois la faction attribuée.
       emplois: null,
+      // Qui cherche à partir d'ici. Ne se garnit que quand le joueur y est :
+      // voir recrues.js. La clé existe dès la création, sinon `normaliser`
+      // l'ajoute au rechargement et l'aller-retour JSON n'est plus exact.
+      banc: null,
       marche: 1 + taille * 0.35,
       prises: 0,
     };

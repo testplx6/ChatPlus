@@ -30,6 +30,7 @@ const MODULES = [
   'dirigeants.js',
   'groupes.js',
   'betes.js',
+  'recrues.js',
   'services.js',
   'allegeance.js',
   'connaissance.js',

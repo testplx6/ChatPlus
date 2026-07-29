@@ -15,6 +15,7 @@ import { tailleEscouadeMax } from './base.js';
 import { verifierExercice } from './squad.js';
 import { honorer as honorerService } from './services.js';
 import { acheterBete, vendreBete } from './betes.js';
+import { engager } from './recrues.js';
 
 let state = null;
 let boucle = null;
@@ -116,31 +117,13 @@ const API = {
   },
 
   /** Engagement d'un mercenaire dans une ville : il rejoint le groupe affiché. */
-  recruter(prix) {
+  /** Engager quelqu'un du banc de la ville où l'on se trouve. */
+  recruter(index) {
     const g = groupeActif(state);
-    const col = state.world.regions[g.regionId].colonie;
-    if (!col) return { ok: false, motif: 'Personne à recruter ici.' };
-    // Aucun plafond : on recrute tant qu'on peut payer. Ce qui dissuade
-    // d'entasser du monde, c'est que la cohésion d'une colonne se délite, et
-    // avec elle le rendement du travail et la force au combat.
-    if (state.player.credits < prix) return { ok: false, motif: 'Crédits insuffisants.' };
-
-    const rng = new Rng(state.rngState);
-    const c = makeCharacter(rng, { niveau: rng.irange(0, 2) });
-    c.equip.armure = c.equip.armure || (rng.chance(0.5) ? 'cuir' : null);
-    state.rngState = rng.save();
-
-    state.player.credits -= prix;
-    g.membres.push(c);
-    creerLogger(state)({
-      type: 'recrue',
-      texte: `${c.nom} (${c.archetypeNom}) s’engage dans ${g.nom} pour ${prix} cr.`,
-      important: true,
-      regionId: g.regionId,
-      groupe: g.id,
-    });
-    sauver();
-    return { ok: true, nom: c.nom };
+    const col = state.world.colonies.find((c) => !c.ruine && c.regionId === g.regionId);
+    const r = engager(state, col, Number(index), creerLogger(state), g);
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
   },
 
   /** Acheter une bête de somme. Tirage : RNG de la partie. */

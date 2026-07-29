@@ -11,6 +11,7 @@
 
 import { COMMODITY_KEYS } from './data.js';
 import { estVivant, estDebout, idDepuisRng } from './characters.js';
+import { distance } from './world.js';
 
 /** Tâches qu'un membre peut prendre seul, en marge de l'ordre du groupe. */
 export const TACHES_INDIVIDUELLES = ['repos', 'fouille', 'mine', 'chasse', 'exploration', 'entrainement'];
@@ -20,19 +21,60 @@ const NOMS = ['Convoi', 'Pointe', 'Arrière-garde', 'Éclaireurs', 'Escorte'];
 
 /** Deux groupes sans rien ; l'antenne en autorise davantage. */
 export const GROUPES_BASE = 2;
-export const GROUPES_MAX = 4;
-
 /**
- * Combien de groupes on peut tenir à la fois. Coordonner des gens qu'on ne voit
- * pas suppose de quoi leur parler : l'antenne de l'avant-poste sert à ça.
+ * Portée de commandement : jusqu'où l'on peut donner un ordre.
+ *
+ * Il y avait un plafond de quatre groupes. Comme les autres, c'était une limite
+ * écrite dans le code plutôt qu'une limite du monde — rien, dans la fiction,
+ * n'empêche de séparer son monde en six colonnes.
+ *
+ * Ce qui l'empêche vraiment, c'est de leur parler. À portée de voix — quelques
+ * secteurs — on transmet par coureur. Au-delà, il faut une antenne, et une
+ * antenne se bâtit. Un groupe hors de portée n'est pas perdu : il exécute le
+ * dernier ordre reçu jusqu'à ce qu'on le rattrape, ce qui est exactement la
+ * façon dont on perdait des colonnes avant la radio.
  */
-export function maxGroupes(state) {
+export const PORTEE_COUREUR = 4;
+export const PORTEE_PAR_ANTENNE = 6;
+
+export function porteeOrdres(state) {
   // Lecture directe du bâtiment plutôt que `niveau()` de base.js : ce module est
   // en amont de l'avant-poste dans l'ordre des dépendances, et un cycle
   // d'imports casserait l'assemblage en fichier unique.
   const b = state.base;
   const ant = b && b.fonde && b.batiments ? (b.batiments.antenne || 0) : 0;
-  return Math.min(GROUPES_MAX, GROUPES_BASE + Math.floor(ant / 2));
+  return PORTEE_COUREUR + ant * PORTEE_PAR_ANTENNE;
+}
+
+/**
+ * Peut-on encore commander ce groupe ? On mesure depuis le groupe le plus
+ * proche qu'on commande déjà — un ordre se relaie — et depuis l'avant-poste,
+ * qui a la radio.
+ */
+export function joignable(state, g) {
+  if (!g) return { ok: false, motif: 'Groupe inconnu.' };
+  // Le groupe qu'on regarde est celui où l'on est : on se commande toujours
+  // soi-même. Sans cette règle, deux colonnes éloignées se retrouvaient toutes
+  // les deux injoignables, y compris celle où se tient le joueur — et le banc
+  // a montré des escouades plantées à ne rien faire trente pour cent du temps.
+  if (g.id === state.player.groupeActif) return { ok: true };
+  const portee = porteeOrdres(state);
+  const b = state.base;
+  if (b && b.fonde && distance(g.regionId, b.regionId) <= portee) return { ok: true };
+  // On relaie par le groupe où l'on se tient, et par les autres qu'on joint.
+  for (const autre of state.player.groupes) {
+    if (autre.id === g.id || !autre.membres.length) continue;
+    if (distance(g.regionId, autre.regionId) <= portee) return { ok: true };
+  }
+  return {
+    ok: false,
+    motif: `Hors de portée : ${portee} secteurs par coureur, davantage avec une antenne.`,
+  };
+}
+
+/** Conservé pour l'affichage : ce que la portée permet, en nombre de colonnes. */
+export function maxGroupes(state) {
+  return Infinity;
 }
 
 // ---------------------------------------------------------------------------
@@ -219,9 +261,6 @@ function nomLibre(state) {
  * Partir à deux avec un tiers des rations, c'est un choix, pas une formalité.
  */
 export function scinder(state, g, ids, rng, nom) {
-  if (groupes(state).length >= maxGroupes(state)) {
-    return { ok: false, motif: 'Pas de quoi coordonner un groupe de plus. Montez l’antenne.' };
-  }
   const partants = g.membres.filter((c) => ids.includes(c.id) && estVivant(c));
   if (!partants.length) return { ok: false, motif: 'Personne à détacher.' };
   const restants = g.membres.filter((c) => !ids.includes(c.id) && estVivant(c));

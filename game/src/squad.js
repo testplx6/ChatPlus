@@ -19,7 +19,7 @@ import { niveau as nivBat, abriDe } from './base.js';
 import { conditions } from './climat.js';
 import {
   groupeActif, tacheDe, debout as deboutDe, vivants as vivantsDe, retirerGroupe,
-  plafondCohesion, rendementCohesion,
+  plafondCohesion, rendementCohesion, joignable,
 } from './groupes.js';
 import { renfortSoin } from './services.js';
 import { tickBetes, lenteurAttelage } from './betes.js';
@@ -72,6 +72,13 @@ export function rendementPrevu(state, type, regionId) {
 export function donnerOrdre(state, ordre, groupe) {
   const g = groupe || groupeActif(state);
   if (!g) return { ok: false, motif: 'Aucun groupe.' };
+  // On ne commande pas ce qu'on ne peut pas joindre. Un groupe hors de portée
+  // n'est pas perdu : il continue son dernier ordre jusqu'à ce qu'on le
+  // rattrape, ou qu'on monte l'antenne. C'est ce qui remplace le plafond de
+  // quatre groupes — rien n'empêche d'en faire six, il faut pouvoir leur
+  // parler.
+  const port = joignable(state, g);
+  if (!port.ok) return port;
   if (ordre.type === 'voyage') {
     const m = { reductionVoyage: (state.base.recherche.logistique || 0) * 0.06 };
     const route = chemin(state.world, g.regionId, ordre.dest, m);
