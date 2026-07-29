@@ -29,7 +29,8 @@
 import { nouvellePartie, tick } from '../src/sim.js';
 import { Rng } from '../src/rng.js';
 import {
-  groupeActif, groupes, scinder, fusionner, maxGroupes, tousLesMembres,
+  groupeActif, groupes, scinder, fusionner, maxGroupes, tousLesMembres, noyau,
+  rendementCohesion,
 } from '../src/groupes.js';
 import { donnerOrdre } from '../src/squad.js';
 import { estVivant, estDebout, comp, pvTotal } from '../src/characters.js';
@@ -48,6 +49,7 @@ import {
 } from '../src/base.js';
 import { ITEMS, BUILDING_KEYS, METIER_KEYS, METIERS, BIOMES as BIOMES_BAT } from '../src/data.js';
 import { acheterBete, prixBete, betesDe, portageAttelage, conduite } from '../src/betes.js';
+import { makeCharacter } from '../src/characters.js';
 import { saison } from '../src/climat.js';
 import { COMMODITY_KEYS, COMMODITIES, BIOMES } from '../src/data.js';
 import { vueColonie, PEREMPTION } from '../src/connaissance.js';
@@ -65,6 +67,7 @@ const TRACE = {
   // Ce que l'intendance donne : la voie du service se lit là.
   rationsTouchees: 0,
   betes: 0,
+  recrues: 0,
 };
 const HEURES = Number(process.argv[2]) || 4000;
 // Trente parties par défaut, pas huit. À huit, l'écart-type sur un taux de
@@ -513,6 +516,29 @@ function jouerPrincipal(state, g, memo) {
       const cout = unitaire * manque;
       if (cout > c.recompense * 0.55 || p.credits < cout * 1.4) continue;
       acheter(state, colIci, c.ressource, manque, g);
+    }
+
+    // Recruter jusqu'au noyau qu'on sait tenir, pas au-delà : au-delà la
+    // cohésion se délite et tout le monde rend moins. Rien ne l'interdit — c'est
+    // simplement une mauvaise affaire, et un joueur avisé le sait.
+    if (!SANS.has('recrue')) {
+      const ici = g.membres.filter(estVivant).length;
+      const prixR = Math.round(180 + colIci.pop * 0.35 + tousLesMembres(state).filter(estVivant).length * 90);
+      // GROS=n : on recrute jusqu'à n personnes quoi qu'il en coûte. C'est le
+      // témoin qui dit si la limite émergente mord vraiment, ou si entasser du
+      // monde reste la stratégie gagnante malgré tout ce qu'on a écrit.
+      const vise = process.env.GROS ? Number(process.env.GROS) : noyau(state, g);
+      // En mode témoin on paie la prime quoi qu'il arrive : sinon c'est le prix
+      // du recrutement qu'on mesure, pas la cohésion.
+      if (process.env.GROS && ici < vise) p.credits = Math.max(p.credits, prixR + 950);
+      if (ici < vise && p.credits > prixR + 900) {
+        const rngR = new Rng(state.rngState);
+        const nouveau = makeCharacter(rngR, { niveau: rngR.irange(0, 2) });
+        state.rngState = rngR.save();
+        p.credits -= prixR;
+        g.membres.push(nouveau);
+        TRACE.recrues++;
+      }
     }
 
     // S'armer. Avant les contrats, avant l'avant-poste : une escouade qui perd
@@ -1010,6 +1036,7 @@ console.log('Départs par motif : ' + Object.entries(MOTIFS).sort((a, b) => b[1]
   + ` (${Math.round(totMotifs / PARTIES)} départs par partie)`);
 console.log(`Temps : ${Math.round(100 * TRACE.voyage / totH)} % en marche · `
   + `${Math.round(100 * TRACE.repos / totH)} % au repos · ${Math.round(100 * TRACE.travail / totH)} % au travail`);
+console.log(`Recrues engagées : ${(TRACE.recrues / PARTIES).toFixed(1)} par partie`);
 console.log(`Intendance : ${Math.round(TRACE.rationsTouchees / PARTIES)} rations touchées par partie`
   + ` — bêtes achetées : ${(TRACE.betes / PARTIES).toFixed(1)} par partie`);
 console.log(`Argent : +${Math.round(TRACE.gagneVente / PARTIES)} de ventes · `

@@ -262,6 +262,44 @@ Ce qui reste n'est pas un réglage mais une décision de conception, traitée
 juste au-dessus : le nomadisme est une voie viable, l'avant-poste n'en est pas
 encore une.
 
+### Une escouade n'a pas de plafond, elle a un noyau
+
+Même défaut, même correction. La taille d'une escouade était bornée par
+`4 + baraquement` : au-delà, le bouton « Engager » se grisait. Une limite écrite
+dans le code, encore.
+
+Le plafond est retiré. Ce qui le remplace : **la cohésion, qui ne servait
+jusqu'ici à rien.** Elle dérivait, elle s'affichait, et aucun calcul ne la
+lisait. Elle porte désormais tout le poids de la question.
+
+- Un **noyau** de `4 + baraquement` personnes tient ensemble sans effort. Le
+  baraquement n'ouvre plus des places : il élargit ce qu'on arrive à tenir.
+- Au-delà, le **plafond de cohésion** descend en courbe douce —
+  `100 / (1 + (n − noyau) / 7)` — sans jamais tomber à zéro. À trente, on ne se
+  connaît plus.
+- La cohésion **multiplie le travail et le combat** : ×0,70 pour une foule
+  désunie, ×1,15 pour une bande soudée. Une bande rend plus que la somme de ses
+  bras ; une colonne rend moins.
+- Une troupe nombreuse **se voit de loin** : +5 % de rencontres par personne
+  au-delà de quatre.
+- La prime d'engagement monte de 90 crédits par membre déjà présent.
+
+Mesuré, en donnant au bot une bourse sans fond pour isoler la cohésion du prix :
+
+    taille de l'escouade        6        12        20
+    survivants              24/24     23/24     22/24
+    récolte totale          4 739     6 452     6 748
+    récolte par personne      790       538       337
+    défaites                   96        25        27
+    recrues pour tenir          5        19        44
+
+La récolte par tête **est divisée par plus de deux** entre six et vingt : c'est
+la cohésion qui mord, et elle mord exactement où on le voulait. En valeur
+absolue une grosse troupe reste plus sûre et rapporte davantage — ce qui est
+juste, une bande de vingt gaillards *doit* gagner ses combats. Ce qu'elle coûte,
+c'est quarante-quatre recrutements par partie pour tenir vingt places, à une
+prime qui monte avec l'effectif. On ne l'interdit pas : on la fait payer.
+
 ### Ce qui porte à votre place
 
 Une fois les nuits rendues à l'escouade, le banc a montré le chiffre suivant :

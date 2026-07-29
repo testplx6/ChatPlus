@@ -93,6 +93,7 @@ function forceCamp(camp) {
  * ctx : {
  *   rng, biome, posture, bonusDegats, bonusArmure,
  *   letalA, letalB   (probabilité d'achever un K.O. adverse)
+ *   cohA             (rendement de cohésion du camp A, défaut 1)
  * }
  *
  * Retourne { vainqueur:'A'|'B'|'nul', tours, journal:[], morts:[], koA, koB, fuite }
@@ -165,7 +166,11 @@ export function resoudreCombat(campA, campB, ctx) {
         // L'armure réduit fortement mais ne rend jamais invulnérable : sinon un
         // groupe blindé devient impossible à entamer avec de l'équipement de départ.
         const absorbe = arm * (1 - arme.pen) * 0.6;
-        const net = Math.max(1.5, brut - absorbe * rng.range(0.5, 1.0));
+        // Une bande qui se connaît couvre ses angles ; une foule se gêne. La
+        // cohésion ne joue que pour le joueur : une bande de pillards n'a pas
+        // d'histoire commune à faire valoir.
+        const coh = acteur.camp === 'A' ? (ctx.cohA || 1) : 1;
+        const net = Math.max(1.5, (brut * coh) - absorbe * rng.range(0.5, 1.0));
 
         // La létalité tient à qui frappe *et* à qui encaisse. Un corps aguerri
         // encaisse un coup qui aurait tué un bleu — c'est le seul endroit du

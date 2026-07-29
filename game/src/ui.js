@@ -56,7 +56,8 @@ import { vueColonie, vueRegion, estSurveillee, ageTexte, nouvellesConnues } from
 import {
   groupeActif, groupes, groupeParId, choisirGroupe, tousLesMembres, tacheDe,
   assignerTache, scinder, fusionner, fusionnablesAvec, maxGroupes, repartition,
-  TACHES_INDIVIDUELLES,
+  TACHES_INDIVIDUELLES, noyau, plafondCohesion, rendementCohesion,
+  vivants as vivantsDe,
 } from './groupes.js';
 
 // ---------------------------------------------------------------------------
@@ -1201,11 +1202,34 @@ function blocMemorial() {
 function ecranEscouade() {
   const p = S.player;
   const pol = p.politique;
-  const max = tailleEscouadeMax(S.base);
   const g = G();
+  const noy = noyau(S, g);
+  const nGens = vivantsDe(g).length;
+  const plafond = plafondCohesion(S, g);
+  const rend = rendementCohesion(g);
+  const cohCls = rend >= 1 ? 'ok' : rend >= 0.9 ? 'att' : 'mal';
 
   return `
   ${barreGroupes()}
+  <section class="panneau">
+    <h2 class="titre">Cohésion de ${e(g.nom)}
+      <span class="droite"><span class="puce ${cohCls}">${Math.round(g.cohesion ?? 55)} %</span></span></h2>
+    ${jauge((g.cohesion ?? 55) / 100, '', rend >= 1 ? '#4fd0e3' : undefined)}
+    <div class="grille2">
+      <div class="ligne"><span class="k">Effectif</span>
+        <span class="v">${nGens} pour un noyau de ${n(noy)}</span></div>
+      <div class="ligne"><span class="k">Plafond atteignable</span>
+        <span class="v">${Math.round(plafond)} %</span></div>
+      <div class="ligne"><span class="k">Travail et combat</span>
+        <span class="v">×${rend.toFixed(2)}</span></div>
+      <div class="ligne"><span class="k">Se voit de loin</span>
+        <span class="v">+${(Math.max(0, nGens - 4) * 5)} % de rencontres</span></div>
+    </div>
+    <div class="aide">${nGens > noy
+    ? 'Au-delà du noyau, on se connaît moins. Rien ne l’interdit : ça coûte, simplement.'
+    : 'Une bande de cette taille peut se souder complètement.'}</div>
+  </section>
+
   <section class="panneau">
     <h2 class="titre">Posture</h2>
     <div class="grille3">
@@ -1237,7 +1261,7 @@ function ecranEscouade() {
 
   <section class="panneau">
     <h2 class="titre">${e(g.nom)}
-      <span class="droite">${tousLesMembres(S).filter(estVivant).length} / ${max} au total</span></h2>
+      <span class="droite">${tousLesMembres(S).filter(estVivant).length} au total</span></h2>
     ${g.membres.map(ficheMembre).join('')}
   </section>
 
@@ -2261,17 +2285,27 @@ function modaleAttelage() {
 function modaleRecrutement() {
   const col = colonieDe(S.world, G().regionId);
   if (!col) return '<div class="aide">Personne à recruter ici.</div>';
-  const max = tailleEscouadeMax(S.base);
+  const g = G();
+  const noy = noyau(S, g);
+  const ici = vivantsDe(g).length;
   const vivants = tousLesMembres(S).filter(estVivant).length;
   const prix = Math.round(180 + col.pop * 0.35 + vivants * 90);
+  const plafond = plafondCohesion(S, g);
+  const apres = Math.max(12, 100 / (1 + Math.max(0, ici + 1 - noy) / 7));
   return `<h2 class="titre">Recrutement à ${e(col.nom)}</h2>
-    <div class="ligne"><span class="k">Escouade</span><span class="v">${vivants} / ${max}</span></div>
+    <div class="ligne"><span class="k">${e(g.nom)}</span><span class="v">${ici} personnes</span></div>
+    <div class="ligne"><span class="k">Noyau qu’on tient</span><span class="v">${n(noy)}</span></div>
+    <div class="ligne"><span class="k">Cohésion possible</span>
+      <span class="v">${Math.round(plafond)} %${apres < plafond
+    ? ` → <span class="alerte">${Math.round(apres)} %</span>` : ''}</span></div>
     <div class="ligne"><span class="k">Prime d’engagement</span><span class="v">${n(prix)} cr</span></div>
-    <div class="aide">On ne choisit pas ce qui se présente. Un baraquement agrandit l’escouade.</div>
+    <div class="aide">On ne choisit pas ce qui se présente. Rien ne limite le nombre :
+      au-delà du noyau, on se connaît moins, on travaille moins bien et on se bat
+      moins bien. Un baraquement élargit ce qu’on arrive à tenir ensemble.</div>
     <div class="sep"></div>
     <button class="act primaire" data-a="recruter" data-p="${prix}"
-      ${vivants >= max || S.player.credits < prix ? 'disabled' : ''}>
-      ${vivants >= max ? 'Escouade au complet' : S.player.credits < prix ? 'Crédits insuffisants' : 'Engager'}</button>`;
+      ${S.player.credits < prix ? 'disabled' : ''}>
+      ${S.player.credits < prix ? 'Crédits insuffisants' : 'Engager'}</button>`;
 }
 
 // ---------------------------------------------------------------------------

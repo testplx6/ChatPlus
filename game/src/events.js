@@ -13,6 +13,7 @@ import {
 } from './allegeance.js';
 import { genererBande, resoudreCombat, butin } from './combat.js';
 import { perdreBete, visibiliteAttelage } from './betes.js';
+import { rendementCohesion } from './groupes.js';
 import {
   comp, gagnerXp, estDebout, estVivant, makeCharacter, blesser, pvTotal,
   ajusterLien, XP_PRATIQUE,
@@ -157,6 +158,7 @@ export function combatContre(state, bande, log, ctx, groupe) {
     bonusDegats: (state.base.recherche.balistique || 0) * 0.1,
     bonusArmure: (state.base.recherche.blindage || 0) * 0.1,
     letalA: state.player.politique.achever ? 0.5 : 0.06,
+    cohA: rendementCohesion(g),
     letalB: bande.letal,
   });
 
@@ -463,8 +465,10 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
   // Une armée dans le secteur, c'est du monde sur les routes
   const armeesIci = state.world.armees.filter((a) => distance(a.regionId, regionId) <= 1).length;
   p *= 1 + armeesIci * 0.6;
-  // Une colonne de bêtes chargées se voit de loin, et se convoite.
+  // Une colonne de bêtes chargées se voit de loin, et se convoite. Une troupe
+  // nombreuse aussi : on ne fait pas passer trente personnes inaperçues.
   p *= visibiliteAttelage(g);
+  p *= 1 + Math.max(0, debout.length - 4) * 0.05;
 
   if (!rng.chance(Math.min(0.5, p))) return false;
 

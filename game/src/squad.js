@@ -19,6 +19,7 @@ import { niveau as nivBat, abriDe } from './base.js';
 import { conditions } from './climat.js';
 import {
   groupeActif, tacheDe, debout as deboutDe, vivants as vivantsDe, retirerGroupe,
+  plafondCohesion, rendementCohesion,
 } from './groupes.js';
 import { renfortSoin } from './services.js';
 import { tickBetes, lenteurAttelage } from './betes.js';
@@ -193,6 +194,9 @@ function recolter(state, g, type, travailleurs, log, ctx, facteur = 1) {
   }
 
   const epuisement = 1 - r.fouille;
+  // Ce que vaut une bande soudée, et ce que coûte une foule. C'est ici que la
+  // taille d'une escouade se paie : à trente, on se marche dessus.
+  const coh = rendementCohesion(g);
   const recolte = {};
   for (const c of travailleurs) {
     const habilete = 0.45 + comp(c, skill) / 115;
@@ -200,7 +204,7 @@ function recolter(state, g, type, travailleurs, log, ctx, facteur = 1) {
       if (filtre && !filtre.includes(k)) continue;
       const climatMult = ctx.climat ? ctx.climat.rendement(k) : 1;
       let q = rendements[k] * r.richesse * habilete * posture.rendement
-        * epuisement * climatMult * facteur * rng.range(0.75, 1.25);
+        * epuisement * climatMult * facteur * coh * rng.range(0.75, 1.25);
       // La saison amaigrit le gibier, elle ne le fait pas disparaître : sans ce
       // plancher, un hiver de cendre affame l'escouade où qu'elle aille.
       if (type === 'chasse' && k === 'biomasse') {
@@ -487,8 +491,11 @@ function tickGroupe(state, g, log, ctx) {
   // Un groupe d'une personne ne se « ressoude » pas : il tient ou il craque.
   if (vivants.length === 1) derive *= 0.5;
   // Même amortissement que les liens : une escouade parfaite n'existe pas.
-  const freinCoh = derive > 0 ? 1 - Math.min(0.95, g.cohesion / 100) : 1;
-  g.cohesion = Math.max(0, Math.min(100, g.cohesion + derive * freinCoh));
+  // Une colonne trop nombreuse ne se ressoude pas : au-delà du noyau qu'on sait
+  // tenir, le plafond descend, et la cohésion avec lui.
+  const plafond = plafondCohesion(state, g);
+  const freinCoh = derive > 0 ? 1 - Math.min(0.95, g.cohesion / plafond) : 1;
+  g.cohesion = Math.max(0, Math.min(plafond, g.cohesion + derive * freinCoh));
 
   // Les liens se tissent en vivant côte à côte, et se distendent quand l'un
   // s'écroule pendant que l'autre tient debout. Séparés, ils s'étiolent.
@@ -522,7 +529,7 @@ function tickGroupe(state, g, log, ctx) {
       n++;
     }
     const social = n ? apport / n : -8; // seul : personne sur qui compter
-    const cible = Math.max(0, Math.min(100, g.cohesion + social * 0.25));
+    const cible = Math.max(0, Math.min(plafondCohesion(state, g), g.cohesion + social * 0.25));
     c.moral = Math.max(0, Math.min(100, c.moral + (cible - c.moral) * 0.012 * (mods(c).moral || 1)));
   }
 

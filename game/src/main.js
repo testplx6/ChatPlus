@@ -120,8 +120,9 @@ const API = {
     const g = groupeActif(state);
     const col = state.world.regions[g.regionId].colonie;
     if (!col) return { ok: false, motif: 'Personne à recruter ici.' };
-    const vivants = tousLesMembres(state).filter(estVivant).length;
-    if (vivants >= tailleEscouadeMax(state.base)) return { ok: false, motif: 'Escouade au complet.' };
+    // Aucun plafond : on recrute tant qu'on peut payer. Ce qui dissuade
+    // d'entasser du monde, c'est que la cohésion d'une colonne se délite, et
+    // avec elle le rendement du travail et la force au combat.
     if (state.player.credits < prix) return { ok: false, motif: 'Crédits insuffisants.' };
 
     const rng = new Rng(state.rngState);

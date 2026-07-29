@@ -32,7 +32,8 @@ import {
 import { colonieDe } from '../src/world.js';
 import {
   groupeActif, groupes, tousLesMembres, scinder, fusionner, assignerTache,
-  tacheDe, maxGroupes, debout,
+  tacheDe, maxGroupes, debout, noyau, plafondCohesion, rendementCohesion,
+  vivants as vivantsGroupe,
 } from '../src/groupes.js';
 import {
   acheter, vendre, prixJoueur, actifs, emploi, productionColonie, consommationColonie,
@@ -1098,6 +1099,58 @@ for (const k of METIER_KEYS) totalPostes += affectes(s9t.base, k);
 ok(totalPostes <= s9t.base.pop, 'les postes se dégarnissent si la population tombe',
   `${totalPostes} pour ${s9t.base.pop} habitants`);
 verifierCoherence(s9t, 'après affectation des métiers');
+
+section('9 nonies quinquies. Une escouade n’a pas de plafond, elle a un noyau');
+const coh = nouvellePartie(8686, { maintenant: 0 });
+const gCoh = groupeActif(coh);
+const colCoh = coh.world.colonies.find((c) => !c.ruine);
+gCoh.regionId = colCoh.regionId;
+ok(plafondCohesion(coh, gCoh) === 100,
+  'une petite bande peut se souder complètement');
+const noy = noyau(coh, gCoh);
+ok(noy >= 4, 'le noyau tient au moins quatre personnes', `${noy}`);
+
+// On recrute au-delà du noyau : rien ne l'interdit.
+const rngCoh = new Rng(31);
+for (let i = 0; i < 12; i++) {
+  gCoh.membres.push(makeCharacter(rngCoh, { archetype: 'ferrailleur' }));
+}
+ok(vivantsGroupe(gCoh).length > noy, 'on peut mener bien plus que le noyau',
+  `${vivantsGroupe(gCoh).length} personnes`);
+const plafondGros = plafondCohesion(coh, gCoh);
+ok(plafondGros < 60, 'mais une colonne ne se soude plus',
+  `plafond ${Math.round(plafondGros)} %`);
+ok(plafondGros > 10, 'sans jamais tomber à zéro non plus');
+
+// La cohésion redescend d'elle-même vers ce plafond, et le rendement suit.
+gCoh.cohesion = 100;
+gCoh.inventaire.rations = 3000;
+avancer(coh, 300);
+ok(gCoh.cohesion <= plafondCohesion(coh, gCoh) + 0.5,
+  'la cohésion redescend au plafond que la taille autorise',
+  `${Math.round(gCoh.cohesion)} % pour un plafond de ${Math.round(plafondCohesion(coh, gCoh))} %`);
+ok(rendementCohesion(gCoh) < 0.95,
+  'et une foule travaille et se bat moins bien qu’une bande',
+  `×${rendementCohesion(gCoh).toFixed(2)}`);
+
+// Une bande soudée, elle, dépasse la simple addition des gens.
+const petit = nouvellePartie(8787, { maintenant: 0 });
+const gPetit = groupeActif(petit);
+gPetit.cohesion = 100;
+ok(rendementCohesion(gPetit) > 1.1, 'une bande soudée rend plus que la somme des bras',
+  `×${rendementCohesion(gPetit).toFixed(2)}`);
+
+// Un baraquement élargit le noyau au lieu d'ouvrir des places.
+const bar = nouvellePartie(8888, { maintenant: 0 });
+const gBar = groupeActif(bar);
+const noyAvant = noyau(bar, gBar);
+gBar.regionId = bar.world.regions.find((r) => !r.colonie).i;
+Object.assign(gBar.inventaire, { ferraille: 300, polymere: 100 });
+fonderBase(bar, () => {});
+bar.base.batiments.baraquement = 4;
+ok(noyau(bar, gBar) === noyAvant + 4,
+  'chaque baraquement élargit ce qu’on tient ensemble',
+  `${noyAvant} → ${noyau(bar, gBar)}`);
 
 section('9 nonies quater. L’attelage porte à votre place');
 const att = nouvellePartie(8181, { maintenant: 0 });

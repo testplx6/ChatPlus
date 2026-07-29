@@ -99,6 +99,49 @@ export function vivants(g) {
  * il est en ville, la tête ailleurs. Sans ça, une formation ne coûterait que de
  * l'argent, et envoyer quelqu'un se former serait sans conséquence.
  */
+// ---------------------------------------------------------------------------
+// Cohésion : ce qui remplace le plafond d'escouade
+// ---------------------------------------------------------------------------
+
+/**
+ * Combien de gens tiennent ensemble sans effort. Au-delà, ce n'est plus une
+ * escouade, c'est une colonne — et une colonne, ça se commande mal.
+ *
+ * C'était un plafond en dur (`4 + baraquement`) : on ne pouvait simplement pas
+ * recruter au-delà. Une limite écrite dans le code n'apprend rien ; celle-ci se
+ * sent. Rien n'interdit de mener trente personnes ; ce qui l'en dissuade, c'est
+ * qu'à trente on ne se connaît plus, on travaille mal et on se bat mal.
+ */
+export function noyau(state, g) {
+  const base = state && state.base;
+  const abri = base && base.fonde ? (base.batiments.baraquement || 0) : 0;
+  return 4 + abri;
+}
+
+/**
+ * Le plafond de cohésion qu'un groupe de cette taille peut atteindre. Courbe
+ * douce et sans palier : à quatre on peut être soudés, à trente jamais.
+ */
+export function plafondCohesion(state, g) {
+  const n = vivants(g).length;
+  const cœur = noyau(state, g);
+  if (n <= cœur) return 100;
+  return Math.max(12, 100 / (1 + (n - cœur) / 7));
+}
+
+/**
+ * Ce que la cohésion vaut, en travail comme au combat. Une bande soudée rend
+ * plus qu'une addition de gens ; une foule rend moins.
+ *
+ * Jusqu'ici la cohésion ne servait à rien : elle dérivait, elle s'affichait, et
+ * aucun calcul ne la lisait. C'est elle qui porte désormais tout le poids de la
+ * taille d'une escouade.
+ */
+export function rendementCohesion(g) {
+  const c = g && g.cohesion !== undefined ? g.cohesion : 55;
+  return 0.7 + (c / 100) * 0.45;
+}
+
 export function debout(g) {
   return g.membres.filter((c) => estDebout(c)
     && !(c.formation && c.formation.restant > 0)

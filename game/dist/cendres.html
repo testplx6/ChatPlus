@@ -3460,6 +3460,49 @@ function vivants(g) {
  * il est en ville, la tête ailleurs. Sans ça, une formation ne coûterait que de
  * l'argent, et envoyer quelqu'un se former serait sans conséquence.
  */
+// ---------------------------------------------------------------------------
+// Cohésion : ce qui remplace le plafond d'escouade
+// ---------------------------------------------------------------------------
+
+/**
+ * Combien de gens tiennent ensemble sans effort. Au-delà, ce n'est plus une
+ * escouade, c'est une colonne — et une colonne, ça se commande mal.
+ *
+ * C'était un plafond en dur (`4 + baraquement`) : on ne pouvait simplement pas
+ * recruter au-delà. Une limite écrite dans le code n'apprend rien ; celle-ci se
+ * sent. Rien n'interdit de mener trente personnes ; ce qui l'en dissuade, c'est
+ * qu'à trente on ne se connaît plus, on travaille mal et on se bat mal.
+ */
+function noyau(state, g) {
+  const base = state && state.base;
+  const abri = base && base.fonde ? (base.batiments.baraquement || 0) : 0;
+  return 4 + abri;
+}
+
+/**
+ * Le plafond de cohésion qu'un groupe de cette taille peut atteindre. Courbe
+ * douce et sans palier : à quatre on peut être soudés, à trente jamais.
+ */
+function plafondCohesion(state, g) {
+  const n = vivants(g).length;
+  const cœur = noyau(state, g);
+  if (n <= cœur) return 100;
+  return Math.max(12, 100 / (1 + (n - cœur) / 7));
+}
+
+/**
+ * Ce que la cohésion vaut, en travail comme au combat. Une bande soudée rend
+ * plus qu'une addition de gens ; une foule rend moins.
+ *
+ * Jusqu'ici la cohésion ne servait à rien : elle dérivait, elle s'affichait, et
+ * aucun calcul ne la lisait. C'est elle qui porte désormais tout le poids de la
+ * taille d'une escouade.
+ */
+function rendementCohesion(g) {
+  const c = g && g.cohesion !== undefined ? g.cohesion : 55;
+  return 0.7 + (c / 100) * 0.45;
+}
+
 function debout(g) {
   return g.membres.filter((c) => estDebout(c)
     && !(c.formation && c.formation.restant > 0)
@@ -5293,6 +5336,7 @@ function forceCamp(camp) {
  * ctx : {
  *   rng, biome, posture, bonusDegats, bonusArmure,
  *   letalA, letalB   (probabilité d'achever un K.O. adverse)
+ *   cohA             (rendement de cohésion du camp A, défaut 1)
  * }
  *
  * Retourne { vainqueur:'A'|'B'|'nul', tours, journal:[], morts:[], koA, koB, fuite }
@@ -5365,7 +5409,11 @@ function resoudreCombat(campA, campB, ctx) {
         // L'armure réduit fortement mais ne rend jamais invulnérable : sinon un
         // groupe blindé devient impossible à entamer avec de l'équipement de départ.
         const absorbe = arm * (1 - arme.pen) * 0.6;
-        const net = Math.max(1.5, brut - absorbe * rng.range(0.5, 1.0));
+        // Une bande qui se connaît couvre ses angles ; une foule se gêne. La
+        // cohésion ne joue que pour le joueur : une bande de pillards n'a pas
+        // d'histoire commune à faire valoir.
+        const coh = acteur.camp === 'A' ? (ctx.cohA || 1) : 1;
+        const net = Math.max(1.5, (brut * coh) - absorbe * rng.range(0.5, 1.0));
 
         // La létalité tient à qui frappe *et* à qui encaisse. Un corps aguerri
         // encaisse un coup qui aurait tué un bleu — c'est le seul endroit du
@@ -7178,6 +7226,15 @@ function totalStock(base) {
   return Math.round(t);
 }
 
+/**
+ * Le noyau qu'on tient sans effort — plus un baraquement où les loger.
+ *
+ * Ce n'est plus un plafond : rien n'interdit de mener trente personnes. C'est
+ * le nombre au-delà duquel la cohésion commence à se déliter, et avec elle le
+ * rendement du travail et la force au combat. Voir `plafondCohesion` dans
+ * groupes.js. Le baraquement ne débloque plus des places : il élargit ce qu'on
+ * arrive à tenir ensemble.
+ */
 function tailleEscouadeMax(base) {
   return 4 + niveau(base, 'baraquement');
 }
@@ -8047,6 +8104,7 @@ function combatContre(state, bande, log, ctx, groupe) {
     bonusDegats: (state.base.recherche.balistique || 0) * 0.1,
     bonusArmure: (state.base.recherche.blindage || 0) * 0.1,
     letalA: state.player.politique.achever ? 0.5 : 0.06,
+    cohA: rendementCohesion(g),
     letalB: bande.letal,
   });
 
@@ -8353,8 +8411,10 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
   // Une armée dans le secteur, c'est du monde sur les routes
   const armeesIci = state.world.armees.filter((a) => distance(a.regionId, regionId) <= 1).length;
   p *= 1 + armeesIci * 0.6;
-  // Une colonne de bêtes chargées se voit de loin, et se convoite.
+  // Une colonne de bêtes chargées se voit de loin, et se convoite. Une troupe
+  // nombreuse aussi : on ne fait pas passer trente personnes inaperçues.
   p *= visibiliteAttelage(g);
+  p *= 1 + Math.max(0, debout.length - 4) * 0.05;
 
   if (!rng.chance(Math.min(0.5, p))) return false;
 
@@ -8798,6 +8858,9 @@ function recolter(state, g, type, travailleurs, log, ctx, facteur = 1) {
   }
 
   const epuisement = 1 - r.fouille;
+  // Ce que vaut une bande soudée, et ce que coûte une foule. C'est ici que la
+  // taille d'une escouade se paie : à trente, on se marche dessus.
+  const coh = rendementCohesion(g);
   const recolte = {};
   for (const c of travailleurs) {
     const habilete = 0.45 + comp(c, skill) / 115;
@@ -8805,7 +8868,7 @@ function recolter(state, g, type, travailleurs, log, ctx, facteur = 1) {
       if (filtre && !filtre.includes(k)) continue;
       const climatMult = ctx.climat ? ctx.climat.rendement(k) : 1;
       let q = rendements[k] * r.richesse * habilete * posture.rendement
-        * epuisement * climatMult * facteur * rng.range(0.75, 1.25);
+        * epuisement * climatMult * facteur * coh * rng.range(0.75, 1.25);
       // La saison amaigrit le gibier, elle ne le fait pas disparaître : sans ce
       // plancher, un hiver de cendre affame l'escouade où qu'elle aille.
       if (type === 'chasse' && k === 'biomasse') {
@@ -9092,8 +9155,11 @@ function tickGroupe(state, g, log, ctx) {
   // Un groupe d'une personne ne se « ressoude » pas : il tient ou il craque.
   if (vivants.length === 1) derive *= 0.5;
   // Même amortissement que les liens : une escouade parfaite n'existe pas.
-  const freinCoh = derive > 0 ? 1 - Math.min(0.95, g.cohesion / 100) : 1;
-  g.cohesion = Math.max(0, Math.min(100, g.cohesion + derive * freinCoh));
+  // Une colonne trop nombreuse ne se ressoude pas : au-delà du noyau qu'on sait
+  // tenir, le plafond descend, et la cohésion avec lui.
+  const plafond = plafondCohesion(state, g);
+  const freinCoh = derive > 0 ? 1 - Math.min(0.95, g.cohesion / plafond) : 1;
+  g.cohesion = Math.max(0, Math.min(plafond, g.cohesion + derive * freinCoh));
 
   // Les liens se tissent en vivant côte à côte, et se distendent quand l'un
   // s'écroule pendant que l'autre tient debout. Séparés, ils s'étiolent.
@@ -9127,7 +9193,7 @@ function tickGroupe(state, g, log, ctx) {
       n++;
     }
     const social = n ? apport / n : -8; // seul : personne sur qui compter
-    const cible = Math.max(0, Math.min(100, g.cohesion + social * 0.25));
+    const cible = Math.max(0, Math.min(plafondCohesion(state, g), g.cohesion + social * 0.25));
     c.moral = Math.max(0, Math.min(100, c.moral + (cible - c.moral) * 0.012 * (mods(c).moral || 1)));
   }
 
@@ -11080,11 +11146,34 @@ function blocMemorial() {
 function ecranEscouade() {
   const p = S.player;
   const pol = p.politique;
-  const max = tailleEscouadeMax(S.base);
   const g = G();
+  const noy = noyau(S, g);
+  const nGens = vivantsDe(g).length;
+  const plafond = plafondCohesion(S, g);
+  const rend = rendementCohesion(g);
+  const cohCls = rend >= 1 ? 'ok' : rend >= 0.9 ? 'att' : 'mal';
 
   return `
   ${barreGroupes()}
+  <section class="panneau">
+    <h2 class="titre">Cohésion de ${e(g.nom)}
+      <span class="droite"><span class="puce ${cohCls}">${Math.round(g.cohesion ?? 55)} %</span></span></h2>
+    ${jauge((g.cohesion ?? 55) / 100, '', rend >= 1 ? '#4fd0e3' : undefined)}
+    <div class="grille2">
+      <div class="ligne"><span class="k">Effectif</span>
+        <span class="v">${nGens} pour un noyau de ${n(noy)}</span></div>
+      <div class="ligne"><span class="k">Plafond atteignable</span>
+        <span class="v">${Math.round(plafond)} %</span></div>
+      <div class="ligne"><span class="k">Travail et combat</span>
+        <span class="v">×${rend.toFixed(2)}</span></div>
+      <div class="ligne"><span class="k">Se voit de loin</span>
+        <span class="v">+${(Math.max(0, nGens - 4) * 5)} % de rencontres</span></div>
+    </div>
+    <div class="aide">${nGens > noy
+    ? 'Au-delà du noyau, on se connaît moins. Rien ne l’interdit : ça coûte, simplement.'
+    : 'Une bande de cette taille peut se souder complètement.'}</div>
+  </section>
+
   <section class="panneau">
     <h2 class="titre">Posture</h2>
     <div class="grille3">
@@ -11116,7 +11205,7 @@ function ecranEscouade() {
 
   <section class="panneau">
     <h2 class="titre">${e(g.nom)}
-      <span class="droite">${tousLesMembres(S).filter(estVivant).length} / ${max} au total</span></h2>
+      <span class="droite">${tousLesMembres(S).filter(estVivant).length} au total</span></h2>
     ${g.membres.map(ficheMembre).join('')}
   </section>
 
@@ -12140,17 +12229,27 @@ function modaleAttelage() {
 function modaleRecrutement() {
   const col = colonieDe(S.world, G().regionId);
   if (!col) return '<div class="aide">Personne à recruter ici.</div>';
-  const max = tailleEscouadeMax(S.base);
+  const g = G();
+  const noy = noyau(S, g);
+  const ici = vivantsDe(g).length;
   const vivants = tousLesMembres(S).filter(estVivant).length;
   const prix = Math.round(180 + col.pop * 0.35 + vivants * 90);
+  const plafond = plafondCohesion(S, g);
+  const apres = Math.max(12, 100 / (1 + Math.max(0, ici + 1 - noy) / 7));
   return `<h2 class="titre">Recrutement à ${e(col.nom)}</h2>
-    <div class="ligne"><span class="k">Escouade</span><span class="v">${vivants} / ${max}</span></div>
+    <div class="ligne"><span class="k">${e(g.nom)}</span><span class="v">${ici} personnes</span></div>
+    <div class="ligne"><span class="k">Noyau qu’on tient</span><span class="v">${n(noy)}</span></div>
+    <div class="ligne"><span class="k">Cohésion possible</span>
+      <span class="v">${Math.round(plafond)} %${apres < plafond
+    ? ` → <span class="alerte">${Math.round(apres)} %</span>` : ''}</span></div>
     <div class="ligne"><span class="k">Prime d’engagement</span><span class="v">${n(prix)} cr</span></div>
-    <div class="aide">On ne choisit pas ce qui se présente. Un baraquement agrandit l’escouade.</div>
+    <div class="aide">On ne choisit pas ce qui se présente. Rien ne limite le nombre :
+      au-delà du noyau, on se connaît moins, on travaille moins bien et on se bat
+      moins bien. Un baraquement élargit ce qu’on arrive à tenir ensemble.</div>
     <div class="sep"></div>
     <button class="act primaire" data-a="recruter" data-p="${prix}"
-      ${vivants >= max || S.player.credits < prix ? 'disabled' : ''}>
-      ${vivants >= max ? 'Escouade au complet' : S.player.credits < prix ? 'Crédits insuffisants' : 'Engager'}</button>`;
+      ${S.player.credits < prix ? 'disabled' : ''}>
+      ${S.player.credits < prix ? 'Crédits insuffisants' : 'Engager'}</button>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -12695,8 +12794,9 @@ const API = {
     const g = groupeActif(state);
     const col = state.world.regions[g.regionId].colonie;
     if (!col) return { ok: false, motif: 'Personne à recruter ici.' };
-    const vivants = tousLesMembres(state).filter(estVivant).length;
-    if (vivants >= tailleEscouadeMax(state.base)) return { ok: false, motif: 'Escouade au complet.' };
+    // Aucun plafond : on recrute tant qu'on peut payer. Ce qui dissuade
+    // d'entasser du monde, c'est que la cohésion d'une colonne se délite, et
+    // avec elle le rendement du travail et la force au combat.
     if (state.player.credits < prix) return { ok: false, motif: 'Crédits insuffisants.' };
 
     const rng = new Rng(state.rngState);

@@ -233,6 +233,15 @@ export function totalStock(base) {
   return Math.round(t);
 }
 
+/**
+ * Le noyau qu'on tient sans effort — plus un baraquement où les loger.
+ *
+ * Ce n'est plus un plafond : rien n'interdit de mener trente personnes. C'est
+ * le nombre au-delà duquel la cohésion commence à se déliter, et avec elle le
+ * rendement du travail et la force au combat. Voir `plafondCohesion` dans
+ * groupes.js. Le baraquement ne débloque plus des places : il élargit ce qu'on
+ * arrive à tenir ensemble.
+ */
 export function tailleEscouadeMax(base) {
   return 4 + niveau(base, 'baraquement');
 }
