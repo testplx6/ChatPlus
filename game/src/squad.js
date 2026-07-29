@@ -21,6 +21,7 @@ import {
   groupeActif, tacheDe, debout as deboutDe, vivants as vivantsDe, retirerGroupe,
 } from './groupes.js';
 import { renfortSoin } from './services.js';
+import { garnison } from './allegeance.js';
 
 export const ORDRES = {
   repos: { nom: 'Repos', desc: 'Récupération, soins, rien d’autre.', effort: 0 },
@@ -316,6 +317,9 @@ function qualiteSoin(state, g, auRepos) {
     // Le camp lui-même compte, avant la moindre infirmerie : on recoud à
     // l'abri, sur une table, avec de l'eau propre.
     q *= 1.45 + nivBat(state.base, 'infirmerie') * 0.35;
+  } else if (garnison(state, g.regionId)) {
+    // Les siens vous soignent chez eux, et sans compter à partir de Capitaine.
+    q *= 1.5;
   }
   // Camper sous les murs d'une ville dont le médecin vous apprécie, ce n'est
   // pas camper dans le sable : il passe voir vos gens.

@@ -68,6 +68,11 @@ export function normaliser(state) {
   if (!p.contrats) p.contrats = [];
   if (!p.primes) p.primes = {};
   if (p.allegeance === undefined) p.allegeance = null;
+  // Avant l'intendance, servir ne nourrissait pas.
+  if (p.allegeance) {
+    if (p.allegeance.intendance === undefined) p.allegeance.intendance = state.temps;
+    if (p.allegeance.manques === undefined) p.allegeance.manques = 0;
+  }
   if (!state.memorial) state.memorial = [];
   if (!state.stats) state.stats = {};
   for (const k of ['contratsRemplis', 'sitesFouilles', 'caravanesPillees', 'distanceParcourue', 'servicesRendus']) {

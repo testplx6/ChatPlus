@@ -12,23 +12,23 @@ import { groupes, groupeActif } from './groupes.js';
 
 export const RANGS = [
   {
-    nom: 'Affilié', points: 0, remise: 0.05, solde: 10,
-    desc: 'On vous laisse entrer par la porte de service, et on vous défraie.',
+    nom: 'Affilié', points: 0, remise: 0.05, solde: 10, ration: 3,
+    desc: 'On vous laisse entrer par la porte de service, et on vous nourrit.',
   },
   {
-    nom: 'Agent', points: 130, remise: 0.10, solde: 30,
+    nom: 'Agent', points: 130, remise: 0.10, solde: 30, ration: 6,
     desc: 'On vous connaît. Les péages ne vous concernent plus.',
   },
   {
-    nom: 'Lieutenant', points: 380, remise: 0.16, solde: 75,
-    desc: 'Les armuriers vous sortent ce qu’ils gardent derrière.',
+    nom: 'Lieutenant', points: 380, remise: 0.16, solde: 75, ration: 10,
+    desc: 'Les armuriers vous sortent ce qu’ils gardent derrière, et leurs villes vous logent.',
   },
   {
-    nom: 'Capitaine', points: 850, remise: 0.22, solde: 160,
+    nom: 'Capitaine', points: 850, remise: 0.22, solde: 160, ration: 15,
     desc: 'On vous soigne sans compter, et on vient parfois à votre secours.',
   },
   {
-    nom: 'Commandeur', points: 1700, remise: 0.30, solde: 300,
+    nom: 'Commandeur', points: 1700, remise: 0.30, solde: 300, ration: 22,
     desc: 'Votre nom vaut un ordre écrit.',
   },
 ];
@@ -109,6 +109,9 @@ export function sEngager(state, faction, log) {
     depuis: state.temps,
     ordre: null,
     prochainOrdre: state.temps + 60,
+    // Dernière fois qu'on est passé à l'intendance.
+    intendance: state.temps,
+    manques: 0,
     derniereSolde: state.temps,
   };
 
@@ -142,6 +145,102 @@ export function quitter(state, log) {
 }
 
 /** Points de service gagnés. Retourne le nombre de grades franchis. */
+// ---------------------------------------------------------------------------
+// Garnison
+// ---------------------------------------------------------------------------
+
+/** Grade à partir duquel les villes des siens vous logent. */
+export const RANG_GARNISON = 2; // Lieutenant
+
+/**
+ * Ce qu'une ville de votre faction vous offre quand vous y avez un grade.
+ *
+ * C'est le pendant de l'avant-poste, et le lien entre la deuxième voie et la
+ * troisième plutôt que leur concurrence : le colon se bâtit une maison,
+ * l'engagé se la fait prêter. On y dort à l'abri et on y est soigné — ce que
+ * coûterait sinon un baraquement et une infirmerie.
+ */
+export function garnison(state, regionId) {
+  const all = state.player.allegeance;
+  if (!all) return null;
+  if (rangDe(all).index < RANG_GARNISON) return null;
+  const r = state.world.regions[regionId];
+  if (!r || !r.colonie) return null;
+  const col = state.world.colonies.find((c) => c.id === r.colonie);
+  if (!col || col.ruine || col.faction !== all.faction) return null;
+  return col;
+}
+
+// ---------------------------------------------------------------------------
+// Intendance
+// ---------------------------------------------------------------------------
+
+/** Au-delà, on ne cumule plus : une intendance n'est pas un compte en banque. */
+export const JOURS_INTENDANCE = 5;
+
+/**
+ * Ce qui distingue vraiment cette voie des deux autres : on ne vous paie pas
+ * pour que vous achetiez à manger, on vous nourrit. Le colon produit ses
+ * vivres, le nomade les achète, l'engagé les touche.
+ *
+ * Il faut passer les prendre : une escouade partie dix jours sur les routes ne
+ * touche rien pendant dix jours, et ne rattrape que cinq jours d'arriéré. C'est
+ * ce qui empêche l'intendance d'être un robinet et en fait une raison de
+ * repasser chez soi.
+ */
+export function droitIntendance(state, col) {
+  const all = state.player.allegeance;
+  if (!all) return { ok: false, motif: 'Vous ne servez personne.' };
+  if (!col || col.ruine || col.faction !== all.faction) {
+    return { ok: false, motif: 'Ce n’est pas une ville des vôtres.' };
+  }
+  const rep = state.player.reputation[all.faction] || 0;
+  if (rep < REPUTATION_MINIMALE) {
+    return { ok: false, motif: `On ne vous sert plus : réputation ${Math.round(rep)}.` };
+  }
+  const rang = rangDe(all);
+  const jours = Math.min(
+    JOURS_INTENDANCE,
+    (state.temps - (all.intendance ?? all.depuis ?? 0)) / 24
+  );
+  const du = Math.floor(jours * (rang.def.ration || 0));
+  if (du < 1) return { ok: false, motif: 'Rien à toucher pour l’instant.' };
+  // On ne puise pas dans le grenier du village : une faction nourrit ses gens
+  // sur ses propres deniers. C'est la différence entre une réquisition et une
+  // intendance — et c'est aussi ce qui rend la chose possible, les villes ne
+  // gardant quasiment aucune réserve (vingt-quatre sur quatre-vingt-deux en
+  // avaient une, mesuré à deux mille heures).
+  const f = state.world.factions[all.faction];
+  const cout = Math.round(du * COMMODITIES.rations.prix * 0.6);
+  if (!f || f.tresor < cout) {
+    return { ok: false, motif: `${FACTIONS[all.faction].nom} n’a pas de quoi vous ravitailler.` };
+  }
+  return { ok: true, quantite: du, cout, rang };
+}
+
+export function toucherRations(state, col, log, groupe) {
+  const d = droitIntendance(state, col);
+  if (!d.ok) return d;
+  const g = groupe || groupeActif(state);
+  if (!g || g.regionId !== col.regionId) {
+    return { ok: false, motif: 'Il faut être sur place.' };
+  }
+  const f = state.world.factions[state.player.allegeance.faction];
+  f.tresor = Math.max(0, f.tresor - d.cout);
+  g.inventaire.rations = (g.inventaire.rations || 0) + d.quantite;
+  state.player.allegeance.intendance = state.temps;
+  if (log) {
+    log({
+      type: 'allegeance',
+      texte: `Intendance de ${col.nom} : ${d.quantite} rations touchées.`,
+      regionId: col.regionId,
+    });
+  }
+  return { ok: true, quantite: d.quantite };
+}
+
+// ---------------------------------------------------------------------------
+
 export function crediter(state, points, log, motif) {
   const all = state.player.allegeance;
   if (!all || points <= 0) return 0;
@@ -344,8 +443,13 @@ export function tickAllegeance(state, log, ctx) {
       const o = all.ordre;
       all.ordre = null;
       all.prochainOrdre = state.temps + rng.irange(180, 320);
-      all.points = Math.max(0, all.points - Math.round(o.service * 0.8));
-      state.player.reputation[all.faction] = Math.max(-100, (state.player.reputation[all.faction] || 0) - 8);
+      // Rater est neutre, réussir paie. On ne retire plus les points acquis :
+      // à −80 % du service par ordre manqué, on avançait de trois pas et on en
+      // reculait de deux, et le banc l'a chiffré — quarante-quatre escouades sur
+      // quarante-huit ne quittaient jamais le premier grade. Ce qu'on perd,
+      // c'est l'estime, et elle finit par fermer l'intendance.
+      state.player.reputation[all.faction] = Math.max(-100, (state.player.reputation[all.faction] || 0) - 3);
+      all.manques = (all.manques || 0) + 1;
       log({
         type: 'allegeance',
         texte: `Ordre non exécuté : ${o.titre}. On le note.`,

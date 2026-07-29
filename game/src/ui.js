@@ -37,6 +37,7 @@ import { horloge, VITESSES } from './sim.js';
 import { conditions, SAISONS, METEO } from './climat.js';
 import {
   RANGS, rangDe, estAuService, peutSEngager, avancementOrdre, REPUTATION_MINIMALE,
+  droitIntendance, garnison, RANG_GARNISON,
 } from './allegeance.js';
 import { caravanesIci, valeurCargaison } from './caravanes.js';
 import { couleurLog, creerLogger } from './events.js';
@@ -1507,6 +1508,27 @@ function ligneContrat(c, enCours) {
   </div>`;
 }
 
+/**
+ * L'intendance, quand on est dans une ville des siens. C'est ce qui distingue
+ * la voie du service des deux autres : on n'achète pas à manger, on le touche.
+ */
+function blocIntendance() {
+  const g = G();
+  if (!g) return '';
+  const col = colonieDe(S.world, g.regionId);
+  if (!col) return '';
+  const d = droitIntendance(S, col);
+  const garn = garnison(S, g.regionId);
+  const abri = garn
+    ? `<div class="aide">Vous êtes chez vous ici : on vous loge et on vous soigne.</div>` : '';
+  if (!d.ok) {
+    return `<div class="sep"></div><div class="aide">Intendance de ${e(col.nom)} : ${e(d.motif)}</div>${abri}`;
+  }
+  return `<div class="sep"></div>${abri}
+    <button class="act primaire" data-a="intendance">Toucher ${n(d.quantite)} rations
+      à l’intendance de ${e(col.nom)}</button>`;
+}
+
 function blocAllegeance() {
   const all = S.player.allegeance;
   if (!all) {
@@ -1543,7 +1565,12 @@ function blocAllegeance() {
       <div class="ligne"><span class="k">Solde</span><span class="v">${n(rang.def.solde)} cr/jour</span></div>
       <div class="ligne"><span class="k">Barrages</span><span class="v">${rang.index >= 1 ? 'libres' : 'payants'}</span></div>
       <div class="ligne"><span class="k">Renforts</span><span class="v">${rang.index >= 3 ? 'oui, chez eux' : 'non'}</span></div>
+      <div class="ligne"><span class="k">Intendance</span>
+        <span class="v">${n(rang.def.ration || 0)} rations/jour</span></div>
+      <div class="ligne"><span class="k">Logement</span>
+        <span class="v">${rang.index >= RANG_GARNISON ? 'leurs villes' : `à partir de ${e(RANGS[RANG_GARNISON].nom)}`}</span></div>
     </div>
+    ${blocIntendance()}
     <div class="sep"></div>
     ${o ? `<div class="titre">Ordre de mission</div>
       <div class="contrat-t">${e(o.titre)}</div>
@@ -2522,6 +2549,12 @@ function surClic(ev) {
       modale = null;
       rendreModale();
       rafraichir(true);
+      break;
+    }
+
+    case 'intendance': {
+      const r = ACTIONS.toucherRations();
+      toast(r.ok ? `${r.quantite} rations touchées.` : r.motif, !r.ok);
       break;
     }
 

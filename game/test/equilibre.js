@@ -37,7 +37,7 @@ import {
 } from '../src/economy.js';
 import { accepter, progres as progresContrat, MAX_CONTRATS } from '../src/contrats.js';
 import {
-  sEngager, peutSEngager, rangDe, avancementOrdre,
+  sEngager, peutSEngager, rangDe, avancementOrdre, droitIntendance, toucherRations,
 } from '../src/allegeance.js';
 import {
   fonderBase, lancerConstruction, deposer, retirer, affecter, niveau as nivBat,
@@ -59,6 +59,8 @@ const TRACE = {
   // Où va l'argent. Sans ce détail, « le bot est pauvre » ne dit rien de ce
   // qu'il faut corriger.
   gagneVente: 0, gagneContrat: 0, payeVivres: 0, payeSoins: 0, payeMateriel: 0,
+  // Ce que l'intendance donne : la voie du service se lit là.
+  rationsTouchees: 0,
 };
 const HEURES = Number(process.argv[2]) || 4000;
 // Trente parties par défaut, pas huit. À huit, l'écart-type sur un taux de
@@ -117,7 +119,12 @@ function colonieLaPlusProche(state, g) {
       const stock = vue.stock ? (vue.stock[k] || 0) : 0;
       attrait += q * COMMODITIES[k].prix * (stock < (vue.pop || 50) * 0.4 ? 1 : 0.7);
     }
-    const sc = attrait / (1 + d * 1.4) - d * 14 - age * 90;
+    // Quand on sert quelqu'un, on fait ses courses chez lui : c'est là qu'on
+    // touche l'intendance, qu'on a la remise, et — à partir de Lieutenant —
+    // qu'on est logé. Sans ce penchant, le bot passait sa vie sur les marchés
+    // des autres et ne touchait que dix rations en quatre mille heures.
+    const sien = state.player.allegeance && c.faction === state.player.allegeance.faction;
+    const sc = attrait / (1 + d * 1.4) - d * 14 - age * 90 + (sien ? 140 : 0);
     if (sc > bestSc) { bestSc = sc; best = c; }
   }
   // Rien de connu debout : on retombe sur la plus proche, quitte à se tromper.
@@ -454,10 +461,17 @@ function jouerPrincipal(state, g, memo) {
       }
     }
 
-    // S'engager dès qu'une faction accepte : la solde et la remise valent
-    // largement le prix de quelques ordres à honorer.
+    // S'engager dès qu'une faction accepte : la solde, la remise et
+    // l'intendance valent largement le prix de quelques ordres à honorer.
     if (!p.allegeance && peutSEngager(state, colIci.faction).ok) {
       sEngager(state, colIci.faction, () => {});
+    }
+    // Passer à l'intendance : c'est gratuit, c'est de la nourriture, et c'est
+    // toute la différence entre servir et ne pas servir.
+    if (p.allegeance && droitIntendance(state, colIci).ok) {
+      const av = g.inventaire.rations || 0;
+      toucherRations(state, colIci, () => {}, g);
+      TRACE.rationsTouchees += (g.inventaire.rations || 0) - av;
     }
 
     // On prend ce qu'on peut tenir. La livraison est le contrat le mieux payé
@@ -796,6 +810,7 @@ console.log(`Voyages entrepris vers une ville déjà morte : ${TRACE.voyagesPerd
 const totH = TRACE.voyage + TRACE.repos + TRACE.travail;
 console.log(`Temps : ${Math.round(100 * TRACE.voyage / totH)} % en marche · `
   + `${Math.round(100 * TRACE.repos / totH)} % au repos · ${Math.round(100 * TRACE.travail / totH)} % au travail`);
+console.log(`Intendance : ${Math.round(TRACE.rationsTouchees / PARTIES)} rations touchées par partie`);
 console.log(`Argent : +${Math.round(TRACE.gagneVente / PARTIES)} de ventes · `
   + `−${Math.round(TRACE.payeVivres / PARTIES)} de vivres · −${Math.round(TRACE.payeSoins / PARTIES)} de soins `
   + `· −${Math.round(TRACE.crPilles / PARTIES)} pillés, par partie`);

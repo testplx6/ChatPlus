@@ -161,13 +161,44 @@ coûter de l'argent.
 
 Résultat : **48 engagements sur 48 parties**.
 
-Mais la voie s'ouvre sans aller nulle part, et la mesure le dit aussi
-crûment : sur ces quarante-huit parties, quarante-quatre escouades restent au
-premier grade et deux seulement atteignent le second. La raison est dans le
-code — **un ordre manqué coûte 80 % de ses points et 8 de réputation**. On
-avance de trois pas et on en recule de deux, donc les points ne s'accumulent
-jamais. C'est exactement la forme des deux autres problèmes : la voie punit
-celui qui la tente. C'est le prochain chantier.
+Ouvrir la porte ne suffisait pas : quarante-quatre escouades sur quarante-huit
+restaient au premier grade, et deux seulement atteignaient le second. La raison
+était dans le code — **un ordre manqué coûtait 80 % de ses points et 8 de
+réputation**. On avançait de trois pas et on en reculait de deux, donc les
+points ne s'accumulaient jamais. Même forme que les deux autres voies : elle
+punissait celui qui la tentait.
+
+Trois choses ont changé, et elles disent ensemble ce qu'être au service veut
+dire — *vous ne décidez plus quoi faire, on vous le dit, et en échange on vous
+entretient* :
+
+- **On nourrit ses soldats.** Chaque grade donne droit à un quota quotidien de
+  rations, qu'on touche à l'intendance d'une ville des siens. C'est là que la
+  voie devient économiquement distincte des deux autres : le colon produit ses
+  vivres, le nomade les achète, l'engagé les touche. Deux garde-fous : il faut
+  passer les prendre — cinq jours d'arriéré au maximum, une escouade partie dix
+  jours sur les routes en perd la moitié — et c'est la faction qui paie sur son
+  trésor, pas le grenier du village. Une intendance n'est pas une réquisition,
+  et de toute façon les villes ne gardent presque aucune réserve : vingt-quatre
+  sur quatre-vingt-deux en avaient une, mesuré à deux mille heures.
+- **Rater est neutre, réussir paie.** Un ordre manqué ne retire plus les points
+  acquis ; ce qu'on y perd, c'est l'estime — trois points de réputation — et si
+  elle tombe sous le seuil d'entrée, l'intendance se ferme.
+- **La garnison.** À partir de Lieutenant, les villes de votre faction vous
+  logent : on y dort à l'abri et on y est soigné, ce que coûteraient sinon un
+  baraquement et une infirmerie. C'est ce qui relie la troisième voie à la
+  deuxième au lieu de les opposer — le colon se bâtit une maison, l'engagé se
+  la fait prêter.
+
+Les grades montent enfin. Sur quarante-huit parties :
+
+    avant   44 Affilié ·  2 Agent ·  0 Lieutenant ·  0 Capitaine
+    après   31 Affilié · 11 Agent ·  6 Lieutenant
+
+Reste que la voie n'est pas encore à parité : 25 survivants sur 48 contre 28
+pour le nomade, et l'intendance ne rapporte que vingt-six rations par partie
+là où une escouade en consomme deux cents. Le bot ne repasse pas assez souvent
+chez les siens — et c'est autant sa limite que celle du jeu.
 
 ### Ce qui reste : le bot ne sait pas encore s'installer tout seul
 

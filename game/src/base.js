@@ -4,6 +4,7 @@
 import { BUILDINGS, RESEARCH, COMMODITY_KEYS, METIERS, METIER_KEYS, BIOMES } from './data.js';
 import { comp, gagnerXp, estDebout, XP_PRATIQUE } from './characters.js';
 import { groupes, groupeActif } from './groupes.js';
+import { garnison } from './allegeance.js';
 
 export function creerBase() {
   const stock = {};
@@ -47,8 +48,13 @@ export const ABRI_PAR_BARAQUEMENT = 0.22;
 /** Le facteur de récupération d'un repos pris dans cette région. */
 export function abriDe(state, regionId) {
   const base = state.base;
-  if (!base || !base.fonde || base.regionId !== regionId) return 1;
-  return ABRI_CAMP + niveau(base, 'baraquement') * ABRI_PAR_BARAQUEMENT;
+  if (base && base.fonde && base.regionId === regionId) {
+    return ABRI_CAMP + niveau(base, 'baraquement') * ABRI_PAR_BARAQUEMENT;
+  }
+  // À partir du grade de Lieutenant, les villes des siens vous logent. C'est le
+  // pendant du campement pour qui a choisi de servir plutôt que de bâtir.
+  if (garnison(state, regionId)) return ABRI_CAMP;
+  return 1;
 }
 
 /** Combien de personnes l'avant-poste peut loger et nourrir. */

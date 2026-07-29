@@ -678,6 +678,7 @@ const deboutDe = debout;
 const nivBat = niveau;
 const vivantsDe = vivants;
 const progresContrat = progres;
+const toucherRationsA = toucherRations;
 const honorerService = honorer;
 
 // ===== src/data.js ===================================================
@@ -3843,23 +3844,23 @@ function villesOuvertes(state) {
 
 const RANGS = [
   {
-    nom: 'Affilié', points: 0, remise: 0.05, solde: 10,
-    desc: 'On vous laisse entrer par la porte de service, et on vous défraie.',
+    nom: 'Affilié', points: 0, remise: 0.05, solde: 10, ration: 3,
+    desc: 'On vous laisse entrer par la porte de service, et on vous nourrit.',
   },
   {
-    nom: 'Agent', points: 130, remise: 0.10, solde: 30,
+    nom: 'Agent', points: 130, remise: 0.10, solde: 30, ration: 6,
     desc: 'On vous connaît. Les péages ne vous concernent plus.',
   },
   {
-    nom: 'Lieutenant', points: 380, remise: 0.16, solde: 75,
-    desc: 'Les armuriers vous sortent ce qu’ils gardent derrière.',
+    nom: 'Lieutenant', points: 380, remise: 0.16, solde: 75, ration: 10,
+    desc: 'Les armuriers vous sortent ce qu’ils gardent derrière, et leurs villes vous logent.',
   },
   {
-    nom: 'Capitaine', points: 850, remise: 0.22, solde: 160,
+    nom: 'Capitaine', points: 850, remise: 0.22, solde: 160, ration: 15,
     desc: 'On vous soigne sans compter, et on vient parfois à votre secours.',
   },
   {
-    nom: 'Commandeur', points: 1700, remise: 0.30, solde: 300,
+    nom: 'Commandeur', points: 1700, remise: 0.30, solde: 300, ration: 22,
     desc: 'Votre nom vaut un ordre écrit.',
   },
 ];
@@ -3940,6 +3941,9 @@ function sEngager(state, faction, log) {
     depuis: state.temps,
     ordre: null,
     prochainOrdre: state.temps + 60,
+    // Dernière fois qu'on est passé à l'intendance.
+    intendance: state.temps,
+    manques: 0,
     derniereSolde: state.temps,
   };
 
@@ -3973,6 +3977,102 @@ function quitter(state, log) {
 }
 
 /** Points de service gagnés. Retourne le nombre de grades franchis. */
+// ---------------------------------------------------------------------------
+// Garnison
+// ---------------------------------------------------------------------------
+
+/** Grade à partir duquel les villes des siens vous logent. */
+const RANG_GARNISON = 2; // Lieutenant
+
+/**
+ * Ce qu'une ville de votre faction vous offre quand vous y avez un grade.
+ *
+ * C'est le pendant de l'avant-poste, et le lien entre la deuxième voie et la
+ * troisième plutôt que leur concurrence : le colon se bâtit une maison,
+ * l'engagé se la fait prêter. On y dort à l'abri et on y est soigné — ce que
+ * coûterait sinon un baraquement et une infirmerie.
+ */
+function garnison(state, regionId) {
+  const all = state.player.allegeance;
+  if (!all) return null;
+  if (rangDe(all).index < RANG_GARNISON) return null;
+  const r = state.world.regions[regionId];
+  if (!r || !r.colonie) return null;
+  const col = state.world.colonies.find((c) => c.id === r.colonie);
+  if (!col || col.ruine || col.faction !== all.faction) return null;
+  return col;
+}
+
+// ---------------------------------------------------------------------------
+// Intendance
+// ---------------------------------------------------------------------------
+
+/** Au-delà, on ne cumule plus : une intendance n'est pas un compte en banque. */
+const JOURS_INTENDANCE = 5;
+
+/**
+ * Ce qui distingue vraiment cette voie des deux autres : on ne vous paie pas
+ * pour que vous achetiez à manger, on vous nourrit. Le colon produit ses
+ * vivres, le nomade les achète, l'engagé les touche.
+ *
+ * Il faut passer les prendre : une escouade partie dix jours sur les routes ne
+ * touche rien pendant dix jours, et ne rattrape que cinq jours d'arriéré. C'est
+ * ce qui empêche l'intendance d'être un robinet et en fait une raison de
+ * repasser chez soi.
+ */
+function droitIntendance(state, col) {
+  const all = state.player.allegeance;
+  if (!all) return { ok: false, motif: 'Vous ne servez personne.' };
+  if (!col || col.ruine || col.faction !== all.faction) {
+    return { ok: false, motif: 'Ce n’est pas une ville des vôtres.' };
+  }
+  const rep = state.player.reputation[all.faction] || 0;
+  if (rep < REPUTATION_MINIMALE) {
+    return { ok: false, motif: `On ne vous sert plus : réputation ${Math.round(rep)}.` };
+  }
+  const rang = rangDe(all);
+  const jours = Math.min(
+    JOURS_INTENDANCE,
+    (state.temps - (all.intendance ?? all.depuis ?? 0)) / 24
+  );
+  const du = Math.floor(jours * (rang.def.ration || 0));
+  if (du < 1) return { ok: false, motif: 'Rien à toucher pour l’instant.' };
+  // On ne puise pas dans le grenier du village : une faction nourrit ses gens
+  // sur ses propres deniers. C'est la différence entre une réquisition et une
+  // intendance — et c'est aussi ce qui rend la chose possible, les villes ne
+  // gardant quasiment aucune réserve (vingt-quatre sur quatre-vingt-deux en
+  // avaient une, mesuré à deux mille heures).
+  const f = state.world.factions[all.faction];
+  const cout = Math.round(du * COMMODITIES.rations.prix * 0.6);
+  if (!f || f.tresor < cout) {
+    return { ok: false, motif: `${FACTIONS[all.faction].nom} n’a pas de quoi vous ravitailler.` };
+  }
+  return { ok: true, quantite: du, cout, rang };
+}
+
+function toucherRations(state, col, log, groupe) {
+  const d = droitIntendance(state, col);
+  if (!d.ok) return d;
+  const g = groupe || groupeActif(state);
+  if (!g || g.regionId !== col.regionId) {
+    return { ok: false, motif: 'Il faut être sur place.' };
+  }
+  const f = state.world.factions[state.player.allegeance.faction];
+  f.tresor = Math.max(0, f.tresor - d.cout);
+  g.inventaire.rations = (g.inventaire.rations || 0) + d.quantite;
+  state.player.allegeance.intendance = state.temps;
+  if (log) {
+    log({
+      type: 'allegeance',
+      texte: `Intendance de ${col.nom} : ${d.quantite} rations touchées.`,
+      regionId: col.regionId,
+    });
+  }
+  return { ok: true, quantite: d.quantite };
+}
+
+// ---------------------------------------------------------------------------
+
 function crediter(state, points, log, motif) {
   const all = state.player.allegeance;
   if (!all || points <= 0) return 0;
@@ -4175,8 +4275,13 @@ function tickAllegeance(state, log, ctx) {
       const o = all.ordre;
       all.ordre = null;
       all.prochainOrdre = state.temps + rng.irange(180, 320);
-      all.points = Math.max(0, all.points - Math.round(o.service * 0.8));
-      state.player.reputation[all.faction] = Math.max(-100, (state.player.reputation[all.faction] || 0) - 8);
+      // Rater est neutre, réussir paie. On ne retire plus les points acquis :
+      // à −80 % du service par ordre manqué, on avançait de trois pas et on en
+      // reculait de deux, et le banc l'a chiffré — quarante-quatre escouades sur
+      // quarante-huit ne quittaient jamais le premier grade. Ce qu'on perd,
+      // c'est l'estime, et elle finit par fermer l'intendance.
+      state.player.reputation[all.faction] = Math.max(-100, (state.player.reputation[all.faction] || 0) - 3);
+      all.manques = (all.manques || 0) + 1;
       log({
         type: 'allegeance',
         texte: `Ordre non exécuté : ${o.titre}. On le note.`,
@@ -6482,8 +6587,13 @@ const ABRI_PAR_BARAQUEMENT = 0.22;
 /** Le facteur de récupération d'un repos pris dans cette région. */
 function abriDe(state, regionId) {
   const base = state.base;
-  if (!base || !base.fonde || base.regionId !== regionId) return 1;
-  return ABRI_CAMP + niveau(base, 'baraquement') * ABRI_PAR_BARAQUEMENT;
+  if (base && base.fonde && base.regionId === regionId) {
+    return ABRI_CAMP + niveau(base, 'baraquement') * ABRI_PAR_BARAQUEMENT;
+  }
+  // À partir du grade de Lieutenant, les villes des siens vous logent. C'est le
+  // pendant du campement pour qui a choisi de servir plutôt que de bâtir.
+  if (garnison(state, regionId)) return ABRI_CAMP;
+  return 1;
 }
 
 /** Combien de personnes l'avant-poste peut loger et nourrir. */
@@ -8397,6 +8507,9 @@ function qualiteSoin(state, g, auRepos) {
     // Le camp lui-même compte, avant la moindre infirmerie : on recoud à
     // l'abri, sur une table, avec de l'eau propre.
     q *= 1.45 + nivBat(state.base, 'infirmerie') * 0.35;
+  } else if (garnison(state, g.regionId)) {
+    // Les siens vous soignent chez eux, et sans compter à partir de Capitaine.
+    q *= 1.5;
   }
   // Camper sous les murs d'une ville dont le médecin vous apprécie, ce n'est
   // pas camper dans le sable : il passe voir vos gens.
@@ -8845,6 +8958,11 @@ function normaliser(state) {
   if (!p.contrats) p.contrats = [];
   if (!p.primes) p.primes = {};
   if (p.allegeance === undefined) p.allegeance = null;
+  // Avant l'intendance, servir ne nourrissait pas.
+  if (p.allegeance) {
+    if (p.allegeance.intendance === undefined) p.allegeance.intendance = state.temps;
+    if (p.allegeance.manques === undefined) p.allegeance.manques = 0;
+  }
   if (!state.memorial) state.memorial = [];
   if (!state.stats) state.stats = {};
   for (const k of ['contratsRemplis', 'sitesFouilles', 'caravanesPillees', 'distanceParcourue', 'servicesRendus']) {
@@ -10828,6 +10946,27 @@ function ligneContrat(c, enCours) {
   </div>`;
 }
 
+/**
+ * L'intendance, quand on est dans une ville des siens. C'est ce qui distingue
+ * la voie du service des deux autres : on n'achète pas à manger, on le touche.
+ */
+function blocIntendance() {
+  const g = G();
+  if (!g) return '';
+  const col = colonieDe(S.world, g.regionId);
+  if (!col) return '';
+  const d = droitIntendance(S, col);
+  const garn = garnison(S, g.regionId);
+  const abri = garn
+    ? `<div class="aide">Vous êtes chez vous ici : on vous loge et on vous soigne.</div>` : '';
+  if (!d.ok) {
+    return `<div class="sep"></div><div class="aide">Intendance de ${e(col.nom)} : ${e(d.motif)}</div>${abri}`;
+  }
+  return `<div class="sep"></div>${abri}
+    <button class="act primaire" data-a="intendance">Toucher ${n(d.quantite)} rations
+      à l’intendance de ${e(col.nom)}</button>`;
+}
+
 function blocAllegeance() {
   const all = S.player.allegeance;
   if (!all) {
@@ -10864,7 +11003,12 @@ function blocAllegeance() {
       <div class="ligne"><span class="k">Solde</span><span class="v">${n(rang.def.solde)} cr/jour</span></div>
       <div class="ligne"><span class="k">Barrages</span><span class="v">${rang.index >= 1 ? 'libres' : 'payants'}</span></div>
       <div class="ligne"><span class="k">Renforts</span><span class="v">${rang.index >= 3 ? 'oui, chez eux' : 'non'}</span></div>
+      <div class="ligne"><span class="k">Intendance</span>
+        <span class="v">${n(rang.def.ration || 0)} rations/jour</span></div>
+      <div class="ligne"><span class="k">Logement</span>
+        <span class="v">${rang.index >= RANG_GARNISON ? 'leurs villes' : `à partir de ${e(RANGS[RANG_GARNISON].nom)}`}</span></div>
     </div>
+    ${blocIntendance()}
     <div class="sep"></div>
     ${o ? `<div class="titre">Ordre de mission</div>
       <div class="contrat-t">${e(o.titre)}</div>
@@ -11846,6 +11990,12 @@ function surClic(ev) {
       break;
     }
 
+    case 'intendance': {
+      const r = ACTIONS.toucherRations();
+      toast(r.ok ? `${r.quantite} rations touchées.` : r.motif, !r.ok);
+      break;
+    }
+
     case 'honorer': {
       const r = ACTIONS.honorer(el.dataset.c, el.dataset.n);
       toast(r.ok ? 'Il vous doit quelque chose, maintenant.' : r.motif, !r.ok);
@@ -12018,6 +12168,17 @@ const API = {
     });
     sauver();
     return { ok: true, nom: c.nom };
+  },
+
+  /** Toucher ses rations à l'intendance de la ville où l'on se trouve. */
+  toucherRations() {
+    const g = groupeActif(state);
+    const col = state.world.colonies.find(
+      (c) => !c.ruine && c.regionId === g.regionId
+    );
+    const r = toucherRationsA(state, col, creerLogger(state), g);
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
   },
 
   /** Rendre à quelqu'un le service qu'il a demandé, en main propre. */

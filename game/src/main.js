@@ -8,7 +8,7 @@ import { Rng, seedFromString } from './rng.js';
 import { makeCharacter, estVivant } from './characters.js';
 import { creerLogger, fouillerSite, combatContre } from './events.js';
 import { attaquerCaravane } from './caravanes.js';
-import { sEngager, quitter } from './allegeance.js';
+import { sEngager, quitter, toucherRations as toucherRationsA } from './allegeance.js';
 import { genererBande } from './combat.js';
 import { groupeActif, tousLesMembres, scinder, fusionner, choisirGroupe, assignerTache } from './groupes.js';
 import { tailleEscouadeMax } from './base.js';
@@ -139,6 +139,17 @@ const API = {
     });
     sauver();
     return { ok: true, nom: c.nom };
+  },
+
+  /** Toucher ses rations à l'intendance de la ville où l'on se trouve. */
+  toucherRations() {
+    const g = groupeActif(state);
+    const col = state.world.colonies.find(
+      (c) => !c.ruine && c.regionId === g.regionId
+    );
+    const r = toucherRationsA(state, col, creerLogger(state), g);
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
   },
 
   /** Rendre à quelqu'un le service qu'il a demandé, en main propre. */

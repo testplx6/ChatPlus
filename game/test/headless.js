@@ -48,6 +48,7 @@ function coloniesVivantes(state, key) {
 import { METIER_VILLE_KEYS } from '../src/data.js';
 import {
   sEngager, rangDe, RANGS, peutSEngager, REPUTATION_MINIMALE,
+  droitIntendance, toucherRations, garnison, RANG_GARNISON,
 } from '../src/allegeance.js';
 import {
   vueColonie, estSurveillee, ageTexte, nouvellesConnues, DELAI_NOUVELLE, observer,
@@ -459,6 +460,74 @@ const etrangere = Object.keys(ouvre.player.reputation).find((k) => k !== faction
 ok(!peutSEngager(ouvre, etrangere).ok, 'mais pas chez les autres, qui ne vous connaissent pas');
 ok(RANGS[0].solde > 0, 'le premier grade défraie : servir ne doit pas coûter de l’argent',
   `${RANGS[0].solde} cr par jour`);
+
+// --- L'intendance : on ne vous paie pas pour acheter à manger, on vous nourrit.
+const serv = nouvellePartie(5858, { maintenant: 0 });
+const gServ = groupeActif(serv);
+const colServ = serv.world.colonies.find((c) => !c.ruine);
+serv.player.reputation[colServ.faction] = 40;
+gServ.regionId = colServ.regionId;
+ok(!droitIntendance(serv, colServ).ok, 'sans engagement, pas d’intendance');
+sEngager(serv, colServ.faction, () => {});
+ok(!droitIntendance(serv, colServ).ok, 'ni le jour même où l’on signe');
+avancer(serv, 72);
+const droit = droitIntendance(serv, colServ);
+ok(droit.ok && droit.quantite >= 3, 'trois jours plus tard, il y a des rations à toucher',
+  droit.ok ? `${droit.quantite} rations` : droit.motif);
+const tresorAvant = serv.world.factions[colServ.faction].tresor;
+const grainAvant = colServ.stock.rations || 0;
+const sacAvant = gServ.inventaire.rations || 0;
+const pris = toucherRations(serv, colServ, () => {}, gServ);
+ok(pris.ok && (gServ.inventaire.rations || 0) === sacAvant + pris.quantite,
+  'et elles arrivent dans le sac', `${pris.quantite}`);
+ok(serv.world.factions[colServ.faction].tresor < tresorAvant,
+  'la faction les paie de sa poche');
+ok((colServ.stock.rations || 0) === grainAvant,
+  'et non le grenier du village : une intendance n’est pas une réquisition');
+ok(!droitIntendance(serv, colServ).ok, 'on ne touche pas deux fois le même jour');
+
+// Une ville qui n'est pas des vôtres ne vous doit rien.
+const autreVille = serv.world.colonies.find((c) => !c.ruine && c.faction !== colServ.faction);
+if (autreVille) {
+  ok(!droitIntendance(serv, autreVille).ok, 'les villes des autres ne vous nourrissent pas');
+}
+
+// --- Rater un ordre ne fait plus reculer.
+const rate = nouvellePartie(5959, { maintenant: 0 });
+const colRate = rate.world.colonies.find((c) => !c.ruine);
+rate.player.reputation[colRate.faction] = 40;
+sEngager(rate, colRate.faction, () => {});
+rate.player.allegeance.points = 200;
+rate.player.allegeance.ordre = {
+  type: 'reconnaissance', regionId: rate.world.regions.findIndex((r) => !r.decouvert),
+  titre: 'x', recompense: 100, service: 60, duree: 10, echeance: rate.temps + 10,
+};
+const ptsAvant = rate.player.allegeance.points;
+const repAvantOrdre = rate.player.reputation[colRate.faction];
+avancer(rate, 40);
+ok(!rate.player.allegeance.ordre, 'un ordre échu est retiré');
+ok(rate.player.allegeance.points === ptsAvant,
+  'et ne coûte plus les points déjà gagnés : rater est neutre, réussir paie',
+  `${ptsAvant} → ${rate.player.allegeance.points}`);
+ok(rate.player.reputation[colRate.faction] < repAvantOrdre,
+  'ce qu’on perd, c’est l’estime');
+
+// --- La garnison : à partir de Lieutenant, les villes des siens vous logent.
+const garn = nouvellePartie(6060, { maintenant: 0 });
+const colGarn = garn.world.colonies.find((c) => !c.ruine);
+garn.player.reputation[colGarn.faction] = 40;
+groupeActif(garn).regionId = colGarn.regionId;
+sEngager(garn, colGarn.faction, () => {});
+ok(!garnison(garn, colGarn.regionId), 'un affilié n’est logé nulle part');
+ok(abriDe(garn, colGarn.regionId) === 1, 'et dort comme tout le monde');
+garn.player.allegeance.points = RANGS[RANG_GARNISON].points;
+ok(!!garnison(garn, colGarn.regionId), 'un lieutenant est chez lui dans les villes des siens');
+ok(abriDe(garn, colGarn.regionId) > 1.5, 'et y dort à l’abri',
+  `×${abriDe(garn, colGarn.regionId).toFixed(2)}`);
+const villeEtrangere = garn.world.colonies.find((c) => !c.ruine && c.faction !== colGarn.faction);
+if (villeEtrangere) {
+  ok(!garnison(garn, villeEtrangere.regionId), 'mais pas chez les autres');
+}
 
 const s9c = nouvellePartie(4242, { maintenant: 0 });
 s9c.player.reputation.hexa = 40;
