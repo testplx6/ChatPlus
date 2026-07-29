@@ -65,6 +65,10 @@ export const SAISONS = {
 
 export const ORDRE_SAISONS = ['accalmie', 'seche', 'pluies', 'cendres'];
 
+/** Une année de jeu : quatre saisons de trente jours. Tout ce qui vieillit s'y
+ *  rapporte — sans ça, on fait vieillir les gens trois fois trop lentement. */
+export const HEURES_PAR_AN = HEURES_PAR_SAISON * ORDRE_SAISONS.length;
+
 /** Saison courante, déduite de l'horloge : rien à stocker, rien à désynchroniser. */
 export function saison(t) {
   const index = Math.floor(t / HEURES_PAR_SAISON) % ORDRE_SAISONS.length;

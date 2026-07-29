@@ -66,14 +66,14 @@ de cache périmé.
 ## Tests
 
 ```bash
-npm test                     # 196 assertions sur le moteur, sans navigateur
+npm test                     # 211 assertions sur le moteur, sans navigateur
 node test/equilibre.js       # banc d'équilibrage : un bot joue 30 parties
 node test/equilibre.js 4000 60   # échantillon large, une vingtaine de secondes
 SANS=detach,contrats node test/equilibre.js   # coupe un système pour l'isoler
 VAGABOND=1 node test/equilibre.js             # témoin : voyager sans contrats
 
 npm install --no-save playwright-core
-node test/navigateur.js      # 77 vérifications dans un Chromium réel
+node test/navigateur.js      # 82 vérifications dans un Chromium réel
 ```
 
 Le harnais couvre la génération du monde, le déterminisme, la sauvegarde, la
@@ -157,11 +157,28 @@ les colonnes en campagne — et vous pouvez leur tendre une embuscade, au prix
 d'une réputation durablement abîmée.
 
 **Les factions.** Sept, dont l'Essaim qui ne négocie pas. Elles tiennent un
-trésor, délibèrent périodiquement, déclarent des guerres selon un calcul de
-rapport de force et de rancune, lèvent des colonnes, les font marcher, mettent
-le siège, prennent des villes, se ravitaillent mal et se dispersent, signent des
-trêves quand la guerre coûte trop cher. La carte politique de la fin de partie
-n'est pas celle du début.
+trésor, délibèrent périodiquement, lèvent des colonnes, les font marcher, mettent
+le siège, prennent des villes, se ravitaillent mal et se dispersent. La carte
+politique de la fin de partie n'est pas celle du début.
+
+**Qui décide.** Une faction ne délibère plus comme une moyenne : elle a quelqu'un
+à sa tête, avec un nom, un titre, un âge, un tempérament et une légitimité. Un
+conquérant déclare des guerres qu'un prudent n'aurait pas déclarées ; un rancunier
+ne signe pas la trêve qu'un conciliateur aurait signée ; un bâtisseur pousse des
+postes pendant que les autres se battent. Un chef contesté décide moins nettement
+— ni guerre franche, ni paix nette.
+
+Prendre une ville l'assoit, en perdre une le ronge, abandonner une guerre sans
+avoir obtenu ce qu'on cherchait lui coûte. En dessous d'un seuil, il est écarté —
+et son successeur n'a pas forcément le même tempérament. C'est ainsi qu'une
+faction pacifique se réveille conquérante sans que rien d'autre n'ait bougé.
+
+**Les guerres ont un objet.** Plus de conflits qui s'éteignent d'usure sans qu'on
+sache ce qu'ils cherchaient : chaque déclaration porte un but tiré du tempérament
+de celui qui la veut — prendre une ville nommée, solder un compte en trois
+batailles, desserrer l'étau. La guerre s'arrête quand le but est atteint ou
+devenu hors d'atteinte, et la trêve le dit : « l'affaire est réglée pour prendre
+Camp-Ithaque ». La chronique du monde se lit enfin comme une histoire.
 
 **Les groupes.** L'escouade n'est pas un bloc. On la scinde en groupes qui ont
 chacun leur position, leur ordre et ce qu'ils portent — vivres compris, partagés
@@ -348,6 +365,7 @@ game/
     connaissance.js   ce que le joueur sait, relevés datés, délai des nouvelles
     formation.js      écoles des villes, transmission maison, diplômes
     notables.js       les gens qui comptent dans une ville, leur état, leurs effets
+    dirigeants.js     chefs de faction, tempéraments, légitimité, buts de guerre
     sim.js            orchestration, rattrapage hors ligne
     save.js           sérialisation
     ui.js             rendu DOM + carte pixel sur canvas

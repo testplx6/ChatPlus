@@ -45,6 +45,7 @@ import {
   ecolesAvantPoste, peutApprendreChezSoi, enseignerChezSoi, LENTEUR_MAISON,
 } from './formation.js';
 import { CHARGES, CARACTERES, margeMarchand, vocation } from './notables.js';
+import { dirigeant, TEMPERAMENTS, LEGITIMITE_CRITIQUE } from './dirigeants.js';
 import { vueColonie, vueRegion, estSurveillee, ageTexte, nouvellesConnues } from './connaissance.js';
 import {
   groupeActif, groupes, groupeParId, choisirGroupe, tousLesMembres, tacheDe,
@@ -1394,6 +1395,17 @@ function ecranMonde() {
         <span class="v"><span class="puce ${cls}">rép ${repu > 0 ? '+' : ''}${n(repu)}</span></span>
       </div>
       ${jauge(f.puissance / max, '', f.couleur)}
+      ${(() => {
+    const d = dirigeant(S.world, f.key);
+    if (!d) return '';
+    const t = TEMPERAMENTS[d.temperament];
+    const assise = d.legitimite < LEGITIMITE_CRITIQUE ? 'contesté'
+      : d.legitimite > 75 ? 'bien assis' : 'en place';
+    return `<div class="aide"><b>${e(d.titre)} ${e(d.nom)}</b> — ${e(t.nom.toLowerCase())},
+      ${e(assise)}${crypto ? ` (légitimité ${Math.round(d.legitimite)})` : ''}.
+      ${d.guerres ? `${d.guerres} guerre(s), ` : ''}${d.prises} ville(s) prise(s),
+      ${d.pertes} perdue(s).</div>`;
+  })()}
       <div class="aide">${f.colonies} colonie(s) · ${crypto
     ? `trésor ${n(f.tresor)} cr`
     : 'trésor inconnu'} · ${e(FACTIONS[f.key].devise)}</div>
@@ -1401,10 +1413,13 @@ function ecranMonde() {
   }).join('');
 
   const guerres = S.world.guerres.length
-    ? S.world.guerres.map((g) => `<div class="ligne">
-        <span class="k"><span style="color:${couleurFaction(g.a)}">${e(FACTIONS[g.a].court)}</span>
-          ✕ <span style="color:${couleurFaction(g.b)}">${e(FACTIONS[g.b].court)}</span></span>
-        <span class="v">${dureeTexte(S.temps - g.depuis)} · ${g.batailles} bataille(s)</span></div>`).join('')
+    ? S.world.guerres.map((g) => `<div style="border-bottom:1px solid #1b2029;padding:4px 0">
+        <div class="ligne">
+          <span class="k"><span style="color:${couleurFaction(g.a)}">${e(FACTIONS[g.a].court)}</span>
+            ✕ <span style="color:${couleurFaction(g.b)}">${e(FACTIONS[g.b].court)}</span></span>
+          <span class="v">${dureeTexte(S.temps - g.depuis)} · ${g.batailles} bataille(s)</span></div>
+        ${g.but ? `<div class="aide">Déclarée ${e(g.but.texte)}.</div>` : ''}
+      </div>`).join('')
     : '<div class="aide">Paix générale. Ça ne dure jamais.</div>';
 
   // Une colonne en marche se voit si on a quelqu'un dans le secteur — ou si on

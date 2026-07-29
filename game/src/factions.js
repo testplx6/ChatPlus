@@ -2,7 +2,11 @@
 // prennent des colonies, signent des paix. C'est le cœur « vivant » de la sim.
 
 import { FACTIONS, DIPLO_FACTIONS, COMMODITY_KEYS } from './data.js';
-import { effondrer } from './economy.js';
+import {
+  dirigeant, penchant, crediterDirigeant, butDeGuerre, etatDuBut, tickDirigeant,
+} from './dirigeants.js';
+import { effondrer, emploisInitiaux } from './economy.js';
+import { pourvoirCharges } from './notables.js';
 import { chemin, colonieParId, distance, voisins } from './world.js';
 
 // ---------------------------------------------------------------------------
@@ -51,27 +55,35 @@ function majRelation(world, a, b, delta) {
   fb.relations[a] = v;
 }
 
-export function declarerGuerre(world, a, b, t, log) {
+export function declarerGuerre(world, a, b, t, log, but) {
   if (enGuerre(world, a, b)) return;
-  world.guerres.push({ a, b, depuis: t, batailles: 0 });
+  world.guerres.push({ a, b, depuis: t, batailles: 0, but: but || null, initiateur: a });
   majRelation(world, a, b, -60);
+  crediterDirigeant(world, a, 'guerre');
+  const d = dirigeant(world, a);
   log({
     type: 'guerre',
-    texte: `${FACTIONS[a].nom} déclare${FACTIONS[a].pluriel ? 'nt' : ''} la guerre ${FACTIONS[b].datif}.`,
+    texte: `${FACTIONS[a].nom} déclare${FACTIONS[a].pluriel ? 'nt' : ''} la guerre ${FACTIONS[b].datif}`
+      + `${but ? ` ${but.texte}` : ''}.${d ? ` ${d.titre} ${d.nom} l’a voulue.` : ''}`,
     factions: [a, b],
   });
 }
 
-export function signerPaix(world, a, b, t, log) {
+export function signerPaix(world, a, b, t, log, motif) {
   const i = world.guerres.findIndex(
     (g) => (g.a === a && g.b === b) || (g.a === b && g.b === a)
   );
   if (i < 0) return;
+  const g = world.guerres[i];
   world.guerres.splice(i, 1);
   majRelation(world, a, b, 45);
+  // Une guerre abandonnée sans avoir obtenu ce qu'on cherchait coûte à celui
+  // qui l'a déclarée : c'est la façon la plus nette de faire tomber un chef.
+  if (motif !== 'atteint' && g.initiateur) crediterDirigeant(world, g.initiateur, 'paix');
   log({
     type: 'paix',
-    texte: `${FACTIONS[a].nom} et ${FACTIONS[b].nom} signent une trêve.`,
+    texte: `${FACTIONS[a].nom} et ${FACTIONS[b].nom} signent une trêve`
+      + `${motif === 'atteint' && g.but ? ` — l’affaire est réglée ${g.but.texte}` : ''}.`,
     factions: [a, b],
   });
 }
@@ -155,6 +167,9 @@ function capturer(world, armee, col, t, log, ctx) {
     col.pop = Math.max(50, Math.round(col.pop * 0.82));
     col.unrest = Math.min(1, col.unrest + 0.35);
     col.prises = (col.prises || 0) + 1;
+    // Prendre une ville assoit celui qui l'a voulue ; la perdre ronge l'autre.
+    crediterDirigeant(world, nouveau, 'prise');
+    if (ancien) crediterDirigeant(world, ancien, 'perte');
     // Pillage : une partie du stock file dans le trésor du vainqueur
     let butin = 0;
     for (const k of COMMODITY_KEYS) {
@@ -406,15 +421,24 @@ function conseil(world, key, t, log, ctx) {
     const autre = g.a === key ? g.b : g.a;
     const duree = t - g.depuis;
     const leur = puissance(world, autre);
+    // Une guerre qui a obtenu ce qu'elle voulait s'arrête, même fraîche : c'est
+    // ce qui distingue une campagne d'une usure sans objet.
+    const but = etatDuBut(world, g, key);
+    if (but === 'atteint' || but === 'perdu') {
+      signerPaix(world, key, autre, t, log, but);
+      continue;
+    }
     const fatigue = duree / 900 + g.batailles * 0.08;
-    if (duree > 220 && rng.chance(Math.min(0.7, fatigue * 0.35 + (leur > maPuissance * 1.4 ? 0.25 : 0)))) {
+    const envie = Math.min(0.7, fatigue * 0.35 + (leur > maPuissance * 1.4 ? 0.25 : 0))
+      * penchant(world, key, 'treve');
+    if (duree > 220 && rng.chance(envie)) {
       signerPaix(world, key, autre, t, log);
     }
   }
 
   // 2) Déclarer une guerre si une cible est faible et mal aimée
   const enGuerreAvec = new Set(guerresDe(world, key).map((g) => (g.a === key ? g.b : g.a)));
-  if (enGuerreAvec.size < 2 && rng.chance(f.agression * 0.5)) {
+  if (enGuerreAvec.size < 2 && rng.chance(f.agression * 0.5 * penchant(world, key, 'guerre'))) {
     const candidats = DIPLO_FACTIONS.filter(
       (k) => k !== key && !enGuerreAvec.has(k) && coloniesDe(world, k).length > 0
     ).map((k) => {
@@ -427,7 +451,9 @@ function conseil(world, key, t, log, ctx) {
     }).filter((e) => e[1] > 0.02);
     if (candidats.length) {
       const victime = rng.weighted(candidats);
-      declarerGuerre(world, key, victime, t, log);
+      const prox = cibleLaPlusProche(world, key, victime);
+      declarerGuerre(world, key, victime, t, log,
+        butDeGuerre(world, key, victime, rng, prox && prox.cible));
     }
   }
 
@@ -436,6 +462,7 @@ function conseil(world, key, t, log, ctx) {
     const ennemi = g.a === key ? g.b : g.a;
     const dejaEnRoute = world.armees.filter((a) => a.faction === key).length;
     if (dejaEnRoute >= 2) break;
+    if (!rng.chance(Math.min(1, 0.75 * penchant(world, key, 'colonne')))) continue;
     const prox = cibleLaPlusProche(world, key, ennemi);
     if (!prox) continue;
     const force = Math.min(
@@ -450,7 +477,7 @@ function conseil(world, key, t, log, ctx) {
   // 4) Fonder : une faction riche et en paix pousse un nouveau poste sur une
   //    case vide de son voisinage. La carte bouge autrement que par conquête.
   const enPaix = !guerresDe(world, key).length;
-  if (mesColonies.length < 7 && rng.chance(0.4)
+  if (mesColonies.length < 7 && rng.chance(Math.min(0.9, 0.4 * penchant(world, key, 'expansion')))
       && f.tresor > (enPaix ? 1700 : 4200)) {
     // Une case libre, à portée de nos terres mais assez loin des villes
     // existantes pour ne pas se marcher dessus. Chercher parmi les seules
@@ -468,6 +495,7 @@ function conseil(world, key, t, log, ctx) {
       const r = rng.pick(candidates);
       const col = fonderColonie(world, key, r, rng, t);
       f.tresor -= 1500;
+      crediterDirigeant(world, key, 'fondation');
       log({
         type: 'fondation',
         texte: `${FACTIONS[key].nom} fonde ${col.nom} en terrain vierge.`,
@@ -528,6 +556,12 @@ export function fonderColonie(world, key, region, rng, t) {
   world.factions[key].colonies.push(col.id);
   region.colonie = col.id;
   region.controle = key;
+  // Une ville neuve naît complète : des gens qui y travaillent, et quelqu'un
+  // pour la tenir. La laisser vide jusqu'au premier tick, c'est la laisser sans
+  // métiers ni notables pendant plusieurs heures de jeu, et tout ce qui la lit
+  // doit alors se défendre contre l'absence.
+  col.emplois = emploisInitiaux(world, col, rng);
+  pourvoirCharges(col, rng, t);
   return col;
 }
 
@@ -540,6 +574,12 @@ export function tickFactions(world, t, log, ctx) {
     const f = world.factions[key];
     f.prochainConseil -= 1;
     if (f.prochainConseil <= 0) conseil(world, key, t, log, ctx);
+  }
+
+  // Les chefs vieillissent une fois par jour de jeu, pas vingt-quatre : leur
+  // usure se compte en années, pas en heures.
+  if (t % 24 === 0) {
+    for (const key of DIPLO_FACTIONS) tickDirigeant(world, key, ctx.rng, 24, t, log);
   }
 
   for (const armee of world.armees.slice()) {

@@ -65,6 +65,11 @@ export function normaliser(state) {
   }
   const w = state.world;
   if (!w.caravanes) w.caravanes = [];
+  // Avant les dirigeants, les factions décidaient comme des moyennes. Le
+  // premier tick leur donne quelqu'un à leur tête.
+  for (const k of Object.keys(w.factions || {})) {
+    if (w.factions[k].dirigeant === undefined) w.factions[k].dirigeant = null;
+  }
   if (!w.meteo) w.meteo = { type: 'couvert', restant: 4 };
   for (const c of w.colonies) {
     if (c.declin === undefined) c.declin = 0;

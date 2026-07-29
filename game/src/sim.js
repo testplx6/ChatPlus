@@ -18,6 +18,7 @@ import { creerLogger } from './events.js';
 import { groupeVide } from './groupes.js';
 import { creerConnaissance, observer } from './connaissance.js';
 import { pourvoirCharges } from './notables.js';
+import { creerDirigeant } from './dirigeants.js';
 import { tickFormation } from './formation.js';
 import { rafraichirPanneaux, tickContrats } from './contrats.js';
 import { tickAllegeance, palierBonus } from './allegeance.js';
@@ -133,6 +134,12 @@ export function nouvellePartie(seed, opts = {}) {
   for (const col of world.colonies) {
     col.emplois = emploisInitiaux(world, col, rng);
     pourvoirCharges(col, rng, 0);
+  }
+  // Et chaque faction a quelqu'un à sa tête dès le premier jour — sauf l'Essaim,
+  // qui n'a pas de politique : il déferle. On pose quand même la clé, sinon
+  // recharger une partie l'ajoute et l'aller-retour JSON n'est plus exact.
+  for (const k of Object.keys(world.factions)) {
+    world.factions[k].dirigeant = k === 'essaim' ? null : creerDirigeant(rng, k, 0);
   }
 
   decouvrir(world, depart.regionId, 2);

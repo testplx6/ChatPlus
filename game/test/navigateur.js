@@ -404,6 +404,37 @@ const refusion = await page.evaluate(() => {
 ok(refusion.n === avantGroupes, 'les groupes sont réunis', `${refusion.n}`);
 ok(refusion.membres === 3, 'tout le monde est rassemblé', `${refusion.membres}`);
 
+console.log('\n8 duodecies. Une politique qui a un visage');
+const politique = nouvellePartie(6363, { maintenant: Date.now() });
+avancer(politique, 3000);
+politique.world.regions.forEach((r) => { r.decouvert = true; });
+politique.base.recherche.cryptographie = 1;
+politique.dernierReel = Date.now();
+await page.reload({ waitUntil: 'networkidle' });
+await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(politique));
+await page.click('[data-a="continuer"]');
+await page.waitForSelector('#carte');
+await page.click('[data-a="onglet"][data-k="monde"]');
+await page.waitForTimeout(500);
+const textePol = await page.evaluate(() => document.querySelector('#ecran').textContent);
+ok(/Directeur|Commandant|Parrain|Porte-parole|Voix du Signal|Chef de convoi/.test(textePol),
+  'chaque faction montre qui la dirige');
+ok(/conquérant|prudent|bâtisseur|rancunier|conciliateur|rapace|méthodique/i.test(textePol),
+  'avec son tempérament');
+ok(/ville\(s\) prise\(s\)/.test(textePol), 'et son bilan');
+await page.screenshot({ path: join(CAPTURES, '22-politique.png'), fullPage: true });
+const guerresAffichees = await page.evaluate(() => {
+  const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  return { n: s.world.guerres.length, avecBut: s.world.guerres.filter((g) => g.but).length };
+});
+if (guerresAffichees.n > 0) {
+  ok(guerresAffichees.avecBut === guerresAffichees.n,
+    'toute guerre en cours a un objet déclaré', JSON.stringify(guerresAffichees));
+  ok(/Déclarée /.test(textePol), 'et cet objet est affiché');
+} else {
+  ok(true, 'aucune guerre en cours à cet instant');
+}
+
 console.log('\n8 undecies. Métiers et gens d’une ville');
 await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
 await page.reload({ waitUntil: 'networkidle' });

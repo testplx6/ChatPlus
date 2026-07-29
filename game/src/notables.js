@@ -14,6 +14,7 @@
 
 import { NOMS_PERSO, SURNOMS, METIERS_VILLE, METIER_VILLE_KEYS, FACTIONS } from './data.js';
 import { idDepuisRng } from './characters.js';
+import { HEURES_PAR_AN } from './climat.js';
 
 /** Les charges qu'une ville pourvoit, selon ce qu'elle est. */
 export const CHARGES = {
@@ -181,7 +182,7 @@ export function tickNotables(col, rng, dt, reputation, log) {
   const socle = 30 + aise * 45 - (col.unrest || 0) * 40;
 
   for (const p of col.notables) {
-    p.age += dt / (24 * 360);
+    p.age += dt / HEURES_PAR_AN; // quatre saisons de trente jours, pas 360 jours
     // L'humeur suit ce que vaut la vie ici, amortie par le caractère.
     const t = trait(p);
     const cible = socle + t.humeur;
@@ -193,7 +194,7 @@ export function tickNotables(col, rng, dt, reputation, log) {
 
     // On finit par se retirer, ou pire.
     const vieux = Math.max(0, p.age - 58) / 30;
-    const q = 0.00002 + vieux * 0.0004;
+    const q = 0.00006 + vieux * 0.0006;
     if (rng.chance(dt === 1 ? q : 1 - Math.pow(1 - q, dt))) {
       const partant = p.nom;
       const neuf = creerNotable(rng, p.charge, col, 0);
