@@ -6,7 +6,9 @@ import { charger, sauvegarder, effacer, existeSauvegarde } from './save.js';
 import { monterUI, rafraichir, attacherEtat, rendreAccueil, ouvrirOnglet } from './ui.js';
 import { Rng, seedFromString } from './rng.js';
 import { makeCharacter, estVivant } from './characters.js';
-import { creerLogger, fouillerSite } from './events.js';
+import { creerLogger, fouillerSite, combatContre } from './events.js';
+import { attaquerCaravane } from './caravanes.js';
+import { genererBande } from './combat.js';
 import { tailleEscouadeMax } from './base.js';
 
 let state = null;
@@ -77,6 +79,17 @@ const API = {
   fouillerSite() {
     const rng = new Rng(state.rngState);
     const res = fouillerSite(state, rng, creerLogger(state));
+    state.rngState = rng.save();
+    sauver();
+    return res;
+  },
+
+  /** Embuscade sur une caravane présente dans la région. */
+  attaquerCaravane(id) {
+    const car = (state.world.caravanes || []).find((c) => c.id === id);
+    if (!car) return { ok: false, motif: 'La caravane est déjà loin.' };
+    const rng = new Rng(state.rngState);
+    const res = attaquerCaravane(state, car, rng, creerLogger(state), combatContre, genererBande);
     state.rngState = rng.save();
     sauver();
     return res;

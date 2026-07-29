@@ -3,7 +3,7 @@
 
 import { nouvellePartie, avancer, tick, rattraper, TICK_MS, RATTRAPAGE_MAX } from '../src/sim.js';
 import { serialiser, deserialiser } from '../src/save.js';
-import { COMMODITY_KEYS } from '../src/data.js';
+import { COMMODITY_KEYS, DIPLO_FACTIONS } from '../src/data.js';
 import { classement, puissance } from '../src/factions.js';
 import { donnerOrdre } from '../src/squad.js';
 import { fonderBase, lancerConstruction, lancerRecherche } from '../src/base.js';
@@ -298,6 +298,23 @@ const blesse = s9.player.squad.some((ch) => Object.values(ch.corps).some((p) => 
 ok(blesse || s9.stats.combats === 0, 'les blessures sont localisées et persistent');
 ok(s9.player.squad.every((ch) => ['ok', 'ko', 'mort'].includes(ch.etat)), 'états de personnage valides');
 verifierCoherence(s9, 'après 400 h de patrouille agressive');
+
+section('9 bis. Monde vivant sur la durée');
+const s9b = nouvellePartie(31415, { maintenant: 0 });
+s9b.player.posture = 'agressif';
+donnerOrdre(s9b, { type: 'patrouille' });
+for (let i = 0; i < 8000; i++) tick(s9b);
+ok(s9b.temps === 8000, 'huit mille heures sans plantage', `t=${s9b.temps}`);
+const repInconnue = Object.keys(s9b.player.reputation).filter((k) => !DIPLO_FACTIONS.includes(k));
+ok(repInconnue.length === 0, 'la réputation ne contient que de vraies factions', repInconnue.join(','));
+const vivantes = s9b.world.colonies.filter((c) => !c.ruine);
+ok(vivantes.length >= 6, 'le monde garde un socle de villes vivantes', `${vivantes.length}/${s9b.world.colonies.length}`);
+ok(s9b.world.colonies.some((c) => c.fondeeA !== undefined), 'des villes ont été fondées en cours de partie');
+ok(s9b.world.colonies.some((c) => c.ruine), 'des villes se sont effondrées');
+const popTotale = vivantes.reduce((t, c) => t + c.pop, 0);
+ok(popTotale > 1500, 'la population du monde ne s’effondre pas', `${Math.round(popTotale)} habitants`);
+ok(s9b.world.meteo && s9b.world.meteo.type, 'une météo est toujours en cours');
+verifierCoherence(s9b, 'après 8 000 h de monde vivant');
 
 section('10. Rattrapage hors ligne');
 const s10 = nouvellePartie(1010, { maintenant: 1000000 });

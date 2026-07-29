@@ -54,16 +54,30 @@ export function prixJoueur(col, key, habilete = 0, repu = 0) {
   };
 }
 
+/**
+ * Fertilité agricole du biome. Une ville ne se contente pas de ramasser ce que
+ * le terrain offre : elle cultive. Sans ça, aucune colonie n'est à l'équilibre
+ * alimentaire et la carte se vide toute seule en quelques saisons.
+ */
+export const FERTILITE = {
+  marais: 1.45, steppe: 1.15, dalles: 0.95, canyons: 0.8,
+  plastique: 0.75, friche: 0.7, desert: 0.65, brulees: 0.6, relais: 0.5,
+};
+
 /** Production horaire d'une colonie, dérivée de son biome et de sa taille. */
 export function productionColonie(world, col) {
-  const biome = BIOMES[world.regions[col.regionId].biome];
+  const biomeKey = world.regions[col.regionId].biome;
+  const biome = BIOMES[biomeKey];
   const ech = col.pop * 0.012 * world.regions[col.regionId].richesse;
   const prod = {};
   for (const k of Object.keys(biome.yields)) {
     prod[k] = biome.yields[k] * ech;
   }
-  // Transformation locale : un peu de biomasse devient rations, du minerai devient alliage
-  prod.rations = (prod.rations || 0) + Math.min(prod.biomasse || 0, col.pop * 0.006) * 0.8;
+  // Cultures : la part de nourriture qui ne dépend pas de la cueillette.
+  prod.biomasse = (prod.biomasse || 0) + col.pop * 0.013 * (FERTILITE[biomeKey] ?? 1);
+  // Transformation locale : biomasse → rations, minerai → alliage
+  prod.rations = (prod.rations || 0) + Math.min(prod.biomasse, col.pop * 0.022) * 0.85;
+  prod.biomasse = Math.max(0, prod.biomasse - Math.min(prod.biomasse, col.pop * 0.022));
   if (col.taille >= 2) {
     prod.alliage = (prod.alliage || 0) + (prod.minerai || 0) * 0.12;
     prod.composant = (prod.composant || 0) + col.pop * 0.00035 * col.taille;
@@ -74,36 +88,70 @@ export function productionColonie(world, col) {
   return prod;
 }
 
+/**
+ * Une ville qui manque se rationne avant de mourir. Sans cette élasticité,
+ * une mauvaise saison suffit à vider la carte de ses habitants.
+ */
 export function consommationColonie(col) {
+  const vivres = col.stock.rations || 0;
+  const confort = Math.max(1, col.pop * 0.9);
+  const serrage = Math.max(0.45, Math.min(1, 0.45 + (vivres / confort) * 0.9));
   return {
-    rations: col.pop * 0.014,
-    biomasse: col.pop * 0.006,
-    carburant: col.pop * 0.0022 * col.taille,
+    rations: col.pop * 0.014 * serrage,
+    biomasse: col.pop * 0.006 * serrage,
+    carburant: col.pop * 0.0022 * col.taille * serrage,
     ferraille: col.pop * 0.004,
     composant: col.pop * 0.00018 * col.taille,
     medkit: col.pop * 0.00006,
   };
 }
 
-/** Une heure de vie économique et sociale pour une colonie. */
-export function tickColonie(world, col, rng) {
+/** Une ville morte ne produit plus, ne commerce plus, ne recrute plus. */
+export function estVivante(col) {
+  return !!col && !col.ruine;
+}
+
+/**
+ * Une heure de vie économique et sociale pour une colonie.
+ * `climat` module les rendements : une saison sèche ne nourrit pas une ville
+ * comme une saison de pluies.
+ */
+export function tickColonie(world, col, rng, climat) {
+  if (col.ruine) return null;
   const prod = productionColonie(world, col);
   const cons = consommationColonie(col);
 
   for (const k of COMMODITY_KEYS) {
-    const p = prod[k] || 0;
+    if (k === 'rations') continue; // traité à part, c'est la survie
+    // Une ville encaisse mieux les saisons qu'une escouade : elle a des
+    // réserves, des serres, des habitudes. On amortit donc l'effet de moitié.
+    const brut = climat ? climat.rendement(k) : 1;
+    const amorti = 1 + (brut - 1) * 0.45;
+    const p = (prod[k] || 0) * amorti;
     const c = cons[k] || 0;
     col.stock[k] = Math.max(0, (col.stock[k] || 0) + p - c);
   }
 
-  // Pénurie de rations → agitation, puis exode
-  const manque = (col.stock.rations || 0) < col.pop * 0.05;
-  if (manque) {
-    col.unrest = Math.min(1, col.unrest + 0.006);
-    if (rng.chance(0.05)) col.pop = Math.max(30, col.pop - rng.irange(1, 4));
+  // --- Vivres. On sert ce qu'on peut ; la satiété commande tout le reste.
+  const amortiVivant = climat ? 1 + (climat.rendement('rations') - 1) * 0.45 : 1;
+  const arrivage = (prod.rations || 0) * amortiVivant;
+  const besoin = col.pop * 0.014;
+  const disponible = (col.stock.rations || 0) + arrivage;
+  const servi = Math.min(besoin, disponible);
+  col.stock.rations = Math.max(0, disponible - servi);
+  const satiete = besoin > 0 ? servi / besoin : 1;
+
+  if (satiete < 0.8) {
+    // On se serre la ceinture, puis on s'énerve, puis on s'en va.
+    col.unrest = Math.min(1, col.unrest + 0.004 * (0.8 - satiete) / 0.8);
+    if (rng.chance(0.05 * (0.8 - satiete) / 0.8)) {
+      col.pop = Math.max(25, col.pop - rng.irange(1, 3));
+    }
   } else {
-    col.unrest = Math.max(0, col.unrest - 0.0025);
-    if (rng.chance(0.02)) col.pop += rng.irange(0, 2);
+    col.unrest = Math.max(0, col.unrest - 0.0035);
+    // La croissance suit l'abondance, pas le hasard seul.
+    const abondance = Math.min(1, (col.stock.rations || 0) / Math.max(1, col.pop * 0.6));
+    if (rng.chance(0.03 + abondance * 0.05)) col.pop += rng.irange(0, 2);
   }
   col.pop = Math.min(col.taille * 900, col.pop);
 
@@ -118,6 +166,46 @@ export function tickColonie(world, col, rng) {
     const plafond = cibleStock(col, k) * 4;
     if (col.stock[k] > plafond) col.stock[k] = plafond;
   }
+
+  // --- Une ville n'est pas un décor : elle grandit ou elle meurt. Mais
+  // l'effondrement doit rester un événement marquant, pas la norme : il faut
+  // une agonie longue et profonde, et le monde garde toujours un socle de
+  // villes vivantes.
+  col.declin = col.declin || 0;
+  if (col.pop < 55 && col.unrest > 0.75) col.declin += 1;
+  else col.declin = Math.max(0, col.declin - 4);
+
+  if (col.pop > col.taille * 620 && col.unrest < 0.3 && col.taille < 3) {
+    col.taille += 1;
+    col.murs += 2;
+    return { evenement: 'croissance' };
+  }
+  if (col.declin > 900) {
+    const vivantes = world.colonies.filter((c) => !c.ruine).length;
+    const socle = Math.max(6, Math.round(world.colonies.length * 0.6));
+    if (vivantes > socle) return { evenement: 'effondrement' };
+    col.declin = 600; // en sursis : on ne vide pas la carte
+  }
+  return null;
+}
+
+/** Transforme une colonie en ruine : la carte garde la cicatrice. */
+export function effondrer(world, col) {
+  col.ruine = true;
+  col.contrats = [];
+  col.etal = null;
+  const ancienne = col.faction;
+  if (ancienne && world.factions[ancienne]) {
+    const f = world.factions[ancienne];
+    f.colonies = f.colonies.filter((id) => id !== col.id);
+    if (f.capitale === col.id) f.capitale = f.colonies[0] || null;
+  }
+  col.faction = null;
+  const r = world.regions[col.regionId];
+  r.controle = null;
+  // Ce qu'il reste se fouille : une ville morte, c'est un site de plus.
+  r.site = { type: 'ville_morte', connu: true, fouille: false };
+  return ancienne;
 }
 
 // ---------------------------------------------------------------------------

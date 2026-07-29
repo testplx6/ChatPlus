@@ -9,12 +9,42 @@ export function serialiser(state) {
   return JSON.stringify(state);
 }
 
+/**
+ * Complète une sauvegarde plus ancienne que le code courant. Le jeu gagne des
+ * systèmes au fil des versions ; effacer la partie du joueur à chaque ajout
+ * serait la solution paresseuse.
+ */
+export function normaliser(state) {
+  const p = state.player;
+  if (!p.contrats) p.contrats = [];
+  if (!p.bilan) p.bilan = { res: {}, depuis: state.temps };
+  if (!p.reste) p.reste = {};
+  if (!p.primes) p.primes = {};
+  if (p.cohesion === undefined) p.cohesion = 55;
+  if (!state.memorial) state.memorial = [];
+  if (!state.stats) state.stats = {};
+  for (const k of ['contratsRemplis', 'sitesFouilles', 'caravanesPillees', 'distanceParcourue']) {
+    if (state.stats[k] === undefined) state.stats[k] = 0;
+  }
+  const w = state.world;
+  if (!w.caravanes) w.caravanes = [];
+  if (!w.meteo) w.meteo = { type: 'couvert', restant: 4 };
+  for (const c of w.colonies) {
+    if (c.declin === undefined) c.declin = 0;
+    if (c.prises === undefined) c.prises = 0;
+  }
+  for (const c of p.squad) {
+    if (!c.traits) c.traits = [];
+  }
+  return state;
+}
+
 export function deserialiser(txt) {
   const state = JSON.parse(txt);
   if (!state || state.version !== VERSION) {
     throw new Error('Sauvegarde incompatible.');
   }
-  return state;
+  return normaliser(state);
 }
 
 function stockage() {

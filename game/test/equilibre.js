@@ -11,6 +11,7 @@ import {
 } from '../src/economy.js';
 import { accepter, progres as progresContrat, MAX_CONTRATS } from '../src/contrats.js';
 import { ITEMS } from '../src/data.js';
+import { saison } from '../src/climat.js';
 import { COMMODITY_KEYS, BIOMES } from '../src/data.js';
 
 const HEURES = Number(process.argv[2]) || 4000;
@@ -27,6 +28,7 @@ function colonieLaPlusProche(state) {
   let best = null;
   let bestD = Infinity;
   for (const c of state.world.colonies) {
+    if (c.ruine) continue; // une ville morte ne vend rien
     const d = distance(state.player.regionId, c.regionId);
     if (d < bestD) { bestD = d; best = c; }
   }
@@ -51,7 +53,9 @@ function jouer(state) {
       const q = p.inventaire[k] || 0;
       if (q > 0) vendre(state, colIci, k, q);
     }
-    if (rations < 80 && p.credits > 200) acheter(state, colIci, 'rations', 80 - rations);
+    // On voit venir la saison : on ne part pas en hiver avec trois boîtes.
+    const cible = saison(state.temps).key === 'pluies' || saison(state.temps).key === 'accalmie' ? 190 : 120;
+    if (rations < cible && p.credits > 200) acheter(state, colIci, 'rations', cible - rations);
     if ((p.inventaire.medkit || 0) < 3 && p.credits > 400) acheter(state, colIci, 'medkit', 2);
 
     // Achat d'équipement : on remplace ce qui est moins bon que l'étal.
@@ -89,24 +93,28 @@ function jouer(state) {
     }
   }
 
-  // Blessés ou épuisés : on se pose.
+  // Blessés ou épuisés : on se pose — mais pas au point de mourir de faim en
+  // convalescence. Se reposer sans vivres est le meilleur moyen de ne jamais
+  // se relever.
   const vivants = p.squad.filter(estVivant);
   const mal = vivants.filter((c) => !estDebout(c) || pvTotal(c).pct < 0.6).length;
-  if (mal > 0 && rations > 15) {
+  if (mal > 0 && rations > 50) {
     if (p.ordre.type !== 'repos') donnerOrdre(state, { type: 'repos' });
     return;
   }
 
-  // Sac plein : direction la ville la plus proche.
-  if (charge > 0.85 && !colIci) {
+  // Sac plein, ou réserves au plus bas et de quoi payer : on rentre en ville.
+  const besoinVille = charge > 0.85 || (rations < 45 && p.credits > 300);
+  if (besoinVille && !colIci) {
     const col = colonieLaPlusProche(state);
     if (col && p.ordre.type !== 'voyage') donnerOrdre(state, { type: 'voyage', dest: col.regionId });
     return;
   }
   if (p.ordre.type === 'voyage') return;
 
-  // Vivres au plus bas : on chasse là où c'est le plus giboyeux du secteur.
-  if (rations < 30) {
+  // On ne laisse pas les réserves tomber au plus bas avant de réagir : à 30
+  // rations il est déjà trop tard si le biome ne nourrit personne.
+  if (rations < 90) {
     const ici = scoreNourriture(state, p.regionId);
     let mieux = null;
     for (const r of state.world.regions) {

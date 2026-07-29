@@ -425,3 +425,14 @@ button.act.ordre[aria-pressed="true"] .o-r { color: var(--cyan); }
 .hd-val.ambre, .v.ambre { color: var(--ambre); }
 
 #barre-nav .pastille.calme { background: var(--bord-vif); color: var(--texte); }
+
+/* ------------------------------------------------------------------ Mémorial */
+/* Une stèle, pas une ligne de log : les morts d'une escouade qu'on a fait
+   progresser pendant des semaines méritent une fiche. */
+
+.stele {
+  border-left: 2px solid var(--bord-vif);
+  padding: 4px 0 4px 8px;
+  margin-bottom: 5px;
+}
+.stele .k { color: var(--texte); }

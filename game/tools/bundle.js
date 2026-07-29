@@ -23,10 +23,12 @@ const FRAGMENT = iFragment >= 0 ? process.argv[iFragment + 1] : null;
 const MODULES = [
   'rng.js',
   'data.js',
+  'climat.js',
   'world.js',
   'characters.js',
   'combat.js',
   'economy.js',
+  'caravanes.js',
   'factions.js',
   'base.js',
   'contrats.js',

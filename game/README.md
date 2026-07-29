@@ -66,18 +66,23 @@ de cache périmé.
 ## Tests
 
 ```bash
-npm test                     # 49 assertions sur le moteur, sans navigateur
+npm test                     # 57 assertions sur le moteur, sans navigateur
 node test/equilibre.js       # banc d'équilibrage : un bot joue 8 parties
 node test/equilibre.js 8000 12   # plus long, plus de parties
 
 npm install --no-save playwright-core
-node test/navigateur.js      # 30 vérifications dans un Chromium réel
+node test/navigateur.js      # 36 vérifications dans un Chromium réel
 ```
 
 Le harnais couvre la génération du monde, le déterminisme, la sauvegarde, la
-cohérence de l'état sur 4 000 heures simulées, l'économie, les ordres, l'avant-poste,
-le combat, le rattrapage hors ligne et les cas limites (escouade décimée, famine,
-sac plein).
+cohérence de l'état sur 8 000 heures simulées, l'économie, les ordres,
+l'avant-poste, le combat, le rattrapage hors ligne, la vitalité du monde sur la
+durée (villes fondées, villes effondrées, population qui ne s'écroule pas) et
+les cas limites (escouade décimée, famine, sac plein).
+
+Le banc d'équilibrage est le plus utile des trois : c'est lui qui a montré que
+l'économie alimentaire des colonies n'avait jamais été à l'équilibre, et que les
+chasseurs de prime créaient une spirale sans issue.
 
 ## Ce que la simulation fait
 
@@ -86,10 +91,24 @@ démarre à ×4, parce qu'à ×1 il ne se passe visiblement rien. Fermez
 l'onglet : au retour, les heures écoulées sont rejouées d'un coup (plafond de
 48 h réelles). Le monde n'attend personne.
 
+**Le climat.** Quatre saisons de trente jours qui tournent en boucle, et une
+météo qui change toutes les quelques heures. Elles pèsent sur les rendements
+(vivant et minéral séparément), le coût de la marche, la fréquence des aléas et
+des rencontres, la portée du regard. Un hiver de cendre se prépare : on stocke
+en saison des pluies, ou on ne passe pas.
+
 **Le monde.** Carte de 10×8 régions, neuf biomes aux rendements et aux aléas
-propres, seize colonies. Chaque colonie produit, consomme, nourrit sa population
-ou la laisse partir, et fixe ses prix sur sa propre tension offre/demande — une
-ville affamée paie les rations au prix fort.
+propres, seize colonies au départ. Chaque colonie produit, consomme, se rationne
+avant de mourir, et fixe ses prix sur sa propre tension offre/demande — une ville
+affamée paie les rations au prix fort. Une ville prospère change de rang ; une
+ville saignée par les guerres finit abandonnée et devient un site à fouiller ;
+une faction riche en fonde de nouvelles. Sur une année de jeu, la carte perd et
+gagne des villes.
+
+**Les caravanes.** Ce qu'une ville a en trop part chez celle qui en manque, sur
+des routes réelles et dangereuses. Elles se font piller par les pillards et par
+les colonnes en campagne — et vous pouvez leur tendre une embuscade, au prix
+d'une réputation durablement abîmée.
 
 **Les factions.** Sept, dont l'Essaim qui ne négocie pas. Elles tiennent un
 trésor, délibèrent périodiquement, déclarent des guerres selon un calcul de
@@ -101,7 +120,9 @@ n'est pas celle du début.
 **L'escouade.** Chaque membre a huit compétences qui montent en s'exerçant, six
 zones de corps blessables séparément, un à quatre traits de caractère qui le
 distinguent (Costaud, Ombre, Gouffre, Hémophile…), de la faim, de la fatigue, du
-moral et du sang à perdre. Un membre à zéro peut être perdu — et remplacé par une
+moral et du sang à perdre. Le groupe a sa propre cohésion, qui monte au repos et
+s'effondre quand les vôtres tombent, et qui tire le moral de chacun. Ceux qui
+survivent finissent par gagner un surnom ; ceux qui tombent entrent au mémorial. Un membre à zéro peut être perdu — et remplacé par une
 greffe si vous avez cherché la Cybernétique. On tombe K.O. avant de mourir :
 perdre un combat, c'est se réveiller plus loin, dépouillé, pas game over.
 
@@ -122,6 +143,11 @@ une fois, et certains sont gardés.
 niveaux, contrainte d'énergie, chaînes de transformation (biomasse → rations,
 minerai → alliage → composants), entrepôt plafonné, dix recherches, et des raids
 à encaisser quand vous n'êtes pas là.
+
+**La réputation.** Elle s'émousse avec le temps — les rancunes ne sont pas
+éternelles. Mais tomber trop bas met une prime sur votre tête, et une faction
+qui vous déteste finit par payer des gens pour vous trouver. Perdre contre eux
+solde l'affaire : il existe toujours une sortie.
 
 **Les consignes.** Posture de combat et quatre consignes permanentes (recruter,
 commercer, payer les péages, achever les blessés) qui s'appliquent aussi pendant
@@ -148,6 +174,8 @@ game/
     base.js           avant-poste, files, production
     squad.js          ordres, récolte, cycle jour/nuit, voyage
     events.js         rencontres, journal de bord
+    climat.js         saisons, météo, effets combinés
+    caravanes.js      routes marchandes, embuscades
     sim.js            orchestration, rattrapage hors ligne
     save.js           sérialisation
     ui.js             rendu DOM + carte pixel sur canvas

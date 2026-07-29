@@ -7,7 +7,9 @@ import { COMMODITY_KEYS, FACTIONS, DIPLO_FACTIONS } from './data.js';
 import { genererMonde, decouvrir, colonieParId, nomRegion } from './world.js';
 import { makeCharacter } from './characters.js';
 import { creerBase, tickBase } from './base.js';
-import { tickColonie, etalDe } from './economy.js';
+import { tickColonie, etalDe, effondrer } from './economy.js';
+import { tickClimat, conditions, saison } from './climat.js';
+import { tickCaravanes } from './caravanes.js';
 import { tickFactions } from './factions.js';
 import { tickSquad } from './squad.js';
 import { creerLogger } from './events.js';
@@ -85,6 +87,10 @@ export function nouvellePartie(seed, opts = {}) {
       nuit: false,
       contrats: [],
       bilan: { res: {}, depuis: 0 },
+      // Une escouade n'est pas une addition d'individus : elle tient ou elle
+      // se délite, et ça se voit sur le moral de tout le monde.
+      cohesion: 55,
+      primes: {},
     },
     base: creerBase(),
     journal: [],
@@ -99,11 +105,15 @@ export function nouvellePartie(seed, opts = {}) {
       contratsRemplis: 0,
       sitesFouilles: 0,
       distanceParcourue: 0,
+      caravanesPillees: 0,
     },
+    memorial: [],
     fin: null,
   };
+  world.caravanes = [];
 
   decouvrir(world, depart.regionId, 2);
+  tickClimat(world, 0, rng);
   rafraichirPanneaux(state, rng, 0);
   for (const col of world.colonies) etalDe(world, col, rng, 0);
   state.rngState = rng.save();
@@ -130,14 +140,52 @@ export function tick(state) {
   state.temps += 1;
   state.stats.ticks += 1;
 
-  // Le monde d'abord : il tourne que le joueur agisse ou non.
-  for (const col of state.world.colonies) tickColonie(state.world, col, rng);
+  // Le climat d'abord : tout le reste s'y adosse.
+  const changement = tickClimat(state.world, state.temps, rng);
+  if (changement) log(changement);
+  const climat = conditions(state.world, state.temps);
+  ctx.climat = climat;
+
+  // Passage de saison : ça se remarque.
+  const sPrec = saison(state.temps - 1);
+  if (sPrec.key !== climat.saison.key) {
+    log({
+      type: 'saison',
+      texte: `${climat.saison.def.nom}. ${climat.saison.def.texte}`,
+      important: true,
+    });
+  }
+
+  // Le monde ensuite : il tourne que le joueur agisse ou non.
+  for (const col of state.world.colonies) {
+    const ev = tickColonie(state.world, col, rng, climat);
+    if (!ev) continue;
+    if (ev.evenement === 'croissance') {
+      log({
+        type: 'croissance',
+        texte: `${col.nom} s’agrandit : la ville passe au rang ${col.taille}.`,
+        regionId: col.regionId,
+        important: true,
+      });
+    } else if (ev.evenement === 'effondrement') {
+      const ancienne = effondrer(state.world, col);
+      log({
+        type: 'effondrement',
+        texte: `${col.nom} est abandonnée${ancienne ? ` par ${FACTIONS[ancienne].nom}` : ''}. Il n’en reste que des ruines.`,
+        regionId: col.regionId,
+        important: true,
+      });
+    }
+  }
   tickFactions(state.world, state.temps, log, ctx);
+  tickCaravanes(state, log, ctx);
 
   // Panneaux d'affichage et étals se renouvellent de loin en loin.
   if (state.temps % 40 === 0) {
     rafraichirPanneaux(state, rng, state.temps);
-    for (const col of state.world.colonies) etalDe(state.world, col, rng, state.temps);
+    for (const col of state.world.colonies) {
+      if (!col.ruine) etalDe(state.world, col, rng, state.temps);
+    }
   }
 
   // Puis l'avant-poste et l'escouade.

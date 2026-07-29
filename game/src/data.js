@@ -649,6 +649,14 @@ export const POI = {
     objet: 1,
     danger: 0.35,
   },
+  ville_morte: {
+    nom: 'Ville morte',
+    texte: 'Les enseignes tiennent encore. Les gens, non. C’était habité il y a peu.',
+    loot: { ferraille: [30, 90], polymere: [10, 40], composant: [2, 10], rations: [0, 15] },
+    credits: [80, 400],
+    objet: 2,
+    danger: 0.35,
+  },
   charnier: {
     nom: 'Charnier',
     texte: 'Une trentaine de corps alignés avec soin. C’est ce soin qui inquiète.',

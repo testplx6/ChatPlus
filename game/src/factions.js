@@ -2,6 +2,7 @@
 // prennent des colonies, signent des paix. C'est le cœur « vivant » de la sim.
 
 import { FACTIONS, DIPLO_FACTIONS, COMMODITY_KEYS } from './data.js';
+import { effondrer } from './economy.js';
 import { chemin, colonieParId, distance, voisins } from './world.js';
 
 // ---------------------------------------------------------------------------
@@ -79,8 +80,10 @@ export function signerPaix(world, a, b, t, log) {
 // Armées
 // ---------------------------------------------------------------------------
 
+// Lever des hommes coûte cher : sans ça, les factions passent leur temps à
+// s'échanger les mêmes villes et la carte devient du bruit.
 function coutArmee(force) {
-  return Math.round(force * 3.2);
+  return Math.round(force * 5.2);
 }
 
 function leverArmee(world, key, force, depuis, cibleId, log) {
@@ -318,7 +321,9 @@ function tickArmee(world, armee, t, log, ctx) {
 // ---------------------------------------------------------------------------
 
 function coloniesDe(world, key) {
-  return world.factions[key].colonies.map((id) => colonieParId(world, id)).filter(Boolean);
+  return world.factions[key].colonies
+    .map((id) => colonieParId(world, id))
+    .filter((c) => c && !c.ruine);
 }
 
 function cibleLaPlusProche(world, key, ennemi) {
@@ -408,7 +413,7 @@ function conseil(world, key, t, log, ctx) {
     const prox = cibleLaPlusProche(world, key, ennemi);
     if (!prox) continue;
     const force = Math.min(
-      Math.floor(f.tresor / 3.2),
+      Math.floor(f.tresor / 5.2),
       Math.round(prox.cible.defense * rng.range(1.1, 2.0) + 25)
     );
     if (force >= 25 && f.tresor >= coutArmee(force)) {
@@ -416,7 +421,39 @@ function conseil(world, key, t, log, ctx) {
     }
   }
 
-  // 4) Sinon, investir : murs et défense
+  // 4) Fonder : une faction riche et en paix pousse un nouveau poste sur une
+  //    case vide de son voisinage. La carte bouge autrement que par conquête.
+  const enPaix = !guerresDe(world, key).length;
+  if (mesColonies.length < 7 && rng.chance(0.4)
+      && f.tresor > (enPaix ? 1700 : 4200)) {
+    // Une case libre, à portée de nos terres mais assez loin des villes
+    // existantes pour ne pas se marcher dessus. Chercher parmi les seules
+    // cases adjacentes était contradictoire : elles sont toutes à distance 1
+    // d'une colonie, donc aucune ne passait jamais le filtre d'espacement.
+    const candidates = [];
+    for (const r of world.regions) {
+      if (r.colonie || r.biome === 'relais') continue;
+      const tropPres = world.colonies.some((c) => !c.ruine && distance(c.regionId, r.i) < 2);
+      if (tropPres) continue;
+      const aPortee = mesColonies.some((c) => distance(c.regionId, r.i) <= 3);
+      if (aPortee) candidates.push(r);
+    }
+    if (candidates.length) {
+      const r = rng.pick(candidates);
+      const col = fonderColonie(world, key, r, rng, t);
+      f.tresor -= 1500;
+      log({
+        type: 'fondation',
+        texte: `${FACTIONS[key].nom} fonde ${col.nom} en terrain vierge.`,
+        regionId: r.i,
+        factions: [key],
+        important: true,
+      });
+      return;
+    }
+  }
+
+  // 5) Sinon, investir : murs et défense
   if (!guerresDe(world, key).length && f.tresor > 900 && rng.chance(0.6)) {
     const col = rng.pick(mesColonies);
     col.murs += 1;
@@ -429,6 +466,42 @@ function conseil(world, key, t, log, ctx) {
       discret: true,
     });
   }
+}
+
+const NOMS_NEUFS = [
+  'Aval', 'Bréchant', 'Cendrier', 'Dorne', 'Escarre', 'Fauvel', 'Givre',
+  'Houle', 'Ithaque', 'Jonque', 'Klaxon', 'Limaille', 'Meute', 'Norne',
+];
+
+/** Crée une colonie neuve pour une faction. Petite, fragile, mais bien réelle. */
+export function fonderColonie(world, key, region, rng, t) {
+  const stock = {};
+  for (const k of COMMODITY_KEYS) stock[k] = rng.irange(10, 60);
+  world.prochaineColonieId = (world.prochaineColonieId || world.colonies.length) + 1;
+  const col = {
+    id: `s${world.prochaineColonieId}`,
+    nom: `${rng.pick(['Poste', 'Halte', 'Camp', 'Enclos'])}-${rng.pick(NOMS_NEUFS)}`,
+    regionId: region.i,
+    faction: key,
+    taille: 1,
+    pop: rng.irange(90, 170),
+    defense: 0,
+    defenseMax: 0,
+    murs: rng.irange(2, 5),
+    stock,
+    unrest: 0.1,
+    marche: 1.35,
+    prises: 0,
+    declin: 0,
+    fondeeA: t,
+  };
+  col.defenseMax = Math.round(col.pop * 0.09 + col.murs * 12);
+  col.defense = col.defenseMax;
+  world.colonies.push(col);
+  world.factions[key].colonies.push(col.id);
+  region.colonie = col.id;
+  region.controle = key;
+  return col;
 }
 
 // ---------------------------------------------------------------------------

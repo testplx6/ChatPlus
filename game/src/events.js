@@ -4,7 +4,7 @@
 
 import {
   FACTIONS, POSTURES, COMMODITIES, COMMODITY_KEYS, ITEMS, BIOMES,
-  POI, SKILLS, SKILL_KEYS, PALIERS_ITEM,
+  POI, SKILLS, SKILL_KEYS, PALIERS_ITEM, SURNOMS, TRAITS,
 } from './data.js';
 import { colonieDe, voisins, nomRegion, distance } from './world.js';
 import { compterVictoire } from './contrats.js';
@@ -43,7 +43,10 @@ export function ajouterAuSac(state, key, qte) {
 }
 
 export function reputation(state, faction, delta) {
-  if (!faction || faction === 'essaim') return;
+  // « bandits » n'est pas une faction : on tape sur des pillards, pas sur une
+  // institution. Sans ce garde-fou, la table de réputation se remplit de clés
+  // qui n'ont ni nom ni couleur, et tout ce qui la parcourt casse.
+  if (!faction || faction === 'essaim' || !FACTIONS[faction]) return;
   const r = state.player.reputation;
   r[faction] = Math.max(-100, Math.min(100, (r[faction] || 0) + delta));
 }
@@ -53,6 +56,34 @@ function factionDominante(state, regionId) {
   if (r.controle) return r.controle;
   const col = colonieDe(state.world, regionId);
   return col ? col.faction : null;
+}
+
+// ---------------------------------------------------------------------------
+// Mémoire des morts
+// ---------------------------------------------------------------------------
+
+/**
+ * Un mort laisse une fiche, pas une ligne qui défile. C'est ce qui donne du
+ * poids à une escouade qu'on a fait progresser pendant deux cents heures.
+ */
+export function inscrireAuMemorial(state, c, cause, lieu) {
+  if (!state.memorial) state.memorial = [];
+  if (state.memorial.some((m) => m.id === c.id)) return;
+  const meilleure = SKILL_KEYS.reduce(
+    (best, k) => (c.skills[k] > (c.skills[best] ?? 0) ? k : best), SKILL_KEYS[0]
+  );
+  state.memorial.push({
+    id: c.id,
+    nom: c.nom,
+    archetype: c.archetypeNom,
+    t: state.temps,
+    cause,
+    lieu,
+    kills: c.kills,
+    traits: (c.traits || []).slice(0, 3),
+    meilleure: `${SKILLS[meilleure]} ${c.skills[meilleure]}`,
+  });
+  if (state.memorial.length > 60) state.memorial.shift();
 }
 
 // ---------------------------------------------------------------------------
@@ -128,7 +159,25 @@ export function combatContre(state, bande, log, ctx) {
   const morts = state.player.squad.filter((c) => c.etat === 'mort' && !c._compte);
   for (const m of morts) {
     m._compte = true;
+    inscrireAuMemorial(state, m, `tombé face à ${bande.nom}`, lieu);
     log({ type: 'mort', texte: `${m.nom} est mort à ${lieu}.`, important: true });
+  }
+  // Une escouade qui perd des siens se délite ; une victoire ressoude.
+  state.player.cohesion = Math.max(0, Math.min(100,
+    (state.player.cohesion ?? 55) + (res.vainqueur === 'A' ? 2.5 : -4) - morts.length * 9));
+
+  // Ceux qui survivent finissent par se faire un nom.
+  for (const c of state.player.squad) {
+    if (c.etat === 'mort' || c.surnomGagne) continue;
+    const membrePerdu = Object.keys(c.corps).some((k) => c.corps[k].perdu);
+    if (c.kills >= 18 || membrePerdu) {
+      c.surnomGagne = true;
+      const avant = c.nom;
+      c.nom = `${c.nom.split(' ')[0]} ${rng.pick(SURNOMS)}`;
+      if (c.nom !== avant) {
+        log({ type: 'surnom', texte: `On ne l’appelle plus ${avant}, mais ${c.nom}.`, important: true });
+      }
+    }
   }
 
   annoncerProgres(state, compsAvant, log);
@@ -167,11 +216,13 @@ function perdreCombat(state, bande, log, ctx, lieu) {
   let perdu = 0;
   for (const k of COMMODITY_KEYS) {
     const q = state.player.inventaire[k] || 0;
-    const pris = Math.round(q * rng.range(0.5, 0.85));
+    const pris = Math.round(q * rng.range(0.4, 0.75));
     state.player.inventaire[k] = q - pris;
     perdu += pris;
   }
-  const cr = Math.round(state.player.credits * rng.range(0.4, 0.8));
+  // On garde de quoi repartir : tout rafler à chaque défaite interdit
+  // définitivement de s'équiper, donc de cesser de perdre.
+  const cr = Math.round(state.player.credits * rng.range(0.25, 0.55));
   state.player.credits -= cr;
   if (state.player.objets.length && rng.chance(0.6)) {
     state.player.objets.splice(rng.int(state.player.objets.length), 1);
@@ -232,6 +283,80 @@ function bandeLocale(state, ctx) {
   return genererBande(rng, faction, Math.min(6, taille), niveauMonde);
 }
 
+/**
+ * Quand une faction vous déteste assez, elle cesse d'attendre que vous passiez :
+ * elle paie des gens pour vous trouver. La réputation devient une menace.
+ */
+export function tenterChasseurs(state, log, ctx) {
+  const rng = ctx.rng;
+  const primes = state.player.primes || (state.player.primes = {});
+
+  // Les rancunes s'émoussent. Sans cet oubli, la réputation n'est qu'un
+  // cliquet qui descend : dix accrochages suffisent à se rendre le monde
+  // définitivement hostile, et plus rien ne peut réparer ça.
+  if (state.temps % 24 === 0) {
+    for (const k of Object.keys(state.player.reputation)) {
+      const v = state.player.reputation[k];
+      if (v === 0) continue;
+      const pas = Math.min(Math.abs(v), 0.4);
+      state.player.reputation[k] = v > 0 ? v - pas : v + pas;
+    }
+  }
+
+  for (const k of Object.keys(state.player.reputation)) {
+    if (!FACTIONS[k] || k === 'essaim') continue;
+    const rep = state.player.reputation[k];
+    const niveau = rep <= -75 ? 2 : rep <= -50 ? 1 : 0;
+    if (niveau > (primes[k] || 0)) {
+      primes[k] = niveau;
+      log({
+        type: 'prime_tete',
+        texte: niveau === 2
+          ? `${FACTIONS[k].nom} double la prime sur votre tête. On vous cherche activement.`
+          : `${FACTIONS[k].nom} met une prime sur votre tête.`,
+        important: true,
+      });
+    } else if (niveau < (primes[k] || 0) && rep > -40) {
+      primes[k] = niveau;
+      if (niveau === 0) {
+        log({ type: 'prime_tete', texte: `${FACTIONS[k].nom} retire la prime sur votre tête.`, important: true });
+      }
+    }
+  }
+
+  const traques = Object.keys(primes).filter((k) => primes[k] > 0 && FACTIONS[k]);
+  if (!traques.length) return false;
+  const intensite = traques.reduce((t, k) => t + primes[k], 0);
+  // Une visite tous les deux à trois mois de jeu : une menace, pas un métronome.
+  if (!rng.chance(0.0012 * intensite)) return false;
+
+  const k = rng.pick(traques);
+  const taille = 2 + rng.irange(0, primes[k]);
+  const bande = genererBande(rng, k, taille, primes[k]);
+  bande.nom = `Chasseurs de prime ${FACTIONS[k].genitif}`;
+  bande.letal = 0.3;
+  log({
+    type: 'chasseurs',
+    texte: `Des chasseurs de prime ${FACTIONS[k].genitif} vous ont retrouvés.`,
+    important: true,
+    regionId: state.player.regionId,
+  });
+  const res = combatContre(state, bande, log, ctx);
+
+  // Perdre solde l'affaire : ils ont eu ce qu'ils voulaient. Sinon la prime
+  // s'auto-entretient et il n'existe aucune sortie.
+  if (res.vainqueur === 'B') {
+    primes[k] = Math.max(0, primes[k] - 1);
+    state.player.reputation[k] = Math.min(100, (state.player.reputation[k] || 0) + 10);
+    log({
+      type: 'prime_tete',
+      texte: `${FACTIONS[k].nom} considère l’affaire réglée. La prime retombe.`,
+      important: true,
+    });
+  }
+  return true;
+}
+
 /** Tente une rencontre sur l'heure écoulée. Retourne true si quelque chose est arrivé. */
 export function tenterRencontre(state, log, ctx, multiplicateur = 1) {
   const rng = ctx.rng;
@@ -241,7 +366,8 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1) {
   const col = colonieDe(state.world, regionId);
 
   // En ville, on est relativement tranquille
-  let p = r.danger * multiplicateur * (col ? 0.25 : 1);
+  const climat = ctx.climat;
+  let p = r.danger * multiplicateur * (col ? 0.25 : 1) * (climat ? climat.rencontres : 1);
   // Furtivité du plus discret de l'escouade
   let furtif = 0;
   const debout = state.player.squad.filter(estDebout);
@@ -378,9 +504,10 @@ export function tenterAlea(state, log, ctx, exposition = 1) {
   const h = BIOMES[r.biome].hazard;
   if (!h) return false;
   const col = colonieDe(state.world, regionId);
-  const abri = col ? 0.25 : 1;
+  const abri = col && !col.ruine ? 0.25 : 1;
   const protege = state.base.fonde && state.base.regionId === regionId ? 0.3 : 1;
-  if (!rng.chance(h.p * exposition * abri * protege)) return false;
+  const climat = ctx.climat ? ctx.climat.aleas : 1;
+  if (!rng.chance(h.p * exposition * abri * protege * climat)) return false;
 
   const touches = [];
   for (const c of state.player.squad) {

@@ -5,9 +5,13 @@ import { chemin, coutTraversee, decouvrir, nomRegion, colonieDe, distance } from
 import {
   comp, gagnerXp, estDebout, estVivant, tickPerso, nourrir, pvTotal,
 } from './characters.js';
-import { ajouterAuSac, tenterRencontre, tenterAlea, reputation } from './events.js';
+import {
+  ajouterAuSac, tenterRencontre, tenterAlea, reputation, tenterChasseurs,
+  inscrireAuMemorial,
+} from './events.js';
 import { poidsInventaire, capacitePortage } from './economy.js';
 import { niveau as nivBat } from './base.js';
+import { conditions } from './climat.js';
 
 export const ORDRES = {
   repos: { nom: 'Repos', desc: 'Récupération, soins, rien d’autre.', effort: 0 },
@@ -26,6 +30,7 @@ export const ORDRES = {
  * pas après six heures de travail.
  */
 export function rendementPrevu(state, type, regionId = state.player.regionId) {
+  const climat = conditions(state.world, state.temps);
   const r = state.world.regions[regionId];
   const biome = BIOMES[r.biome];
   const filtre = FILTRES[type];
@@ -38,7 +43,7 @@ export function rendementPrevu(state, type, regionId = state.player.regionId) {
   let total = 0;
   for (const k of Object.keys(rendements)) {
     if (filtre && !filtre.includes(k)) continue;
-    const q = rendements[k] * r.richesse * (1 - Math.min(0.8, r.fouille));
+    const q = rendements[k] * r.richesse * (1 - Math.min(0.8, r.fouille)) * climat.rendement(k);
     if (q <= 0.001) continue;
     out[k] = q;
     total += q;
@@ -106,7 +111,14 @@ function recolter(state, type, log, ctx) {
     const habilete = 0.45 + comp(c, skill) / 115;
     for (const k of Object.keys(rendements)) {
       if (filtre && !filtre.includes(k)) continue;
-      const q = rendements[k] * r.richesse * habilete * posture.rendement * epuisement * rng.range(0.75, 1.25);
+      const climatMult = ctx.climat ? ctx.climat.rendement(k) : 1;
+      let q = rendements[k] * r.richesse * habilete * posture.rendement
+        * epuisement * climatMult * rng.range(0.75, 1.25);
+      // La saison amaigrit le gibier, elle ne le fait pas disparaître : sans ce
+      // plancher, un hiver de cendre affame l'escouade où qu'elle aille.
+      if (type === 'chasse' && k === 'biomasse') {
+        q = Math.max(q, 0.16 * habilete * rng.range(0.8, 1.2));
+      }
       recolte[k] = (recolte[k] || 0) + q;
     }
     gagnerXp(c, skill, 1.1);
@@ -187,7 +199,8 @@ function explorer(state, log, ctx) {
     .sort((a, b) => distance(a.i, state.player.regionId) - distance(b.i, state.player.regionId));
 
   if (candidates.length) {
-    const combien = rng.chance(0.55) ? 1 : 0;
+    const vue = ctx.climat ? ctx.climat.vue : 1;
+    const combien = rng.chance(Math.max(0.08, Math.min(0.9, 0.55 * vue))) ? 1 : 0;
     for (let k = 0; k < combien && k < candidates.length; k++) {
       const r = candidates[k];
       r.decouvert = true;
@@ -275,7 +288,10 @@ function avancerVoyage(state, log, ctx) {
   o.progres += vitesse;
   const prochaine = o.route[o.etape];
   const mods = { reductionVoyage: (state.base.recherche.logistique || 0) * 0.06 };
-  const cout = coutTraversee(state.world, prochaine, mods);
+  // Le climat alourdit la marche, mais à moitié : le coût de base tient déjà
+  // compte du terrain, et cumuler les deux pleinement immobilise l'escouade.
+  const gene = ctx.climat ? 1 + (ctx.climat.marche - 1) * 0.6 : 1;
+  const cout = coutTraversee(state.world, prochaine, mods) * gene;
 
   if (o.progres >= cout) {
     o.progres = 0;
@@ -341,6 +357,22 @@ export function tickSquad(state, log, ctx) {
   const debout = state.player.squad.filter(estDebout);
   if (!debout.length) { effort = 0; travaille = false; }
 
+  // --- Cohésion : une escouade au repos et bien nourrie se ressoude, une
+  // escouade qui enchaîne les défaites se délite. Le moral suit.
+  const p = state.player;
+  if (p.cohesion === undefined) p.cohesion = 55;
+  const affames = vivants.filter((c) => c.faim > 80).length;
+  const ko = state.player.squad.filter((c) => c.etat === 'ko').length;
+  let derive = 0.02;
+  if (affames) derive -= 0.06 * affames;
+  if (ko) derive -= 0.05 * ko;
+  if (ordre.type === 'repos' && !affames) derive += 0.05;
+  p.cohesion = Math.max(0, Math.min(100, p.cohesion + derive));
+  for (const c of vivants) {
+    // Le moral individuel tend vers la cohésion du groupe.
+    c.moral = Math.max(0, Math.min(100, c.moral + (p.cohesion - c.moral) * 0.01));
+  }
+
   // --- Nourriture : on mange dès qu'on a faim et de quoi
   for (const c of vivants) {
     if (c.faim > 42) {
@@ -396,6 +428,7 @@ export function tickSquad(state, log, ctx) {
   // --- Aléas et rencontres
   const exposition = travaille ? 1 : 0.35;
   tenterAlea(state, log, ctx, exposition);
+  if (!state.fin) tenterChasseurs(state, log, ctx);
   if (!state.fin) {
     let mult = ordre.type === 'patrouille' ? 2.4 : ordre.type === 'repos' ? 0.45 : 1;
     if (!travaille) mult *= 0.5; // camp de nuit, feu éteint
@@ -410,6 +443,9 @@ export function tickSquad(state, log, ctx) {
     const msgs = tickPerso(c, effort, rng, { soin: q, premiersSecours: debout.length > 0 });
     for (const m of msgs) {
       log({ type: m.type, texte: m.texte, important: m.type === 'mort' });
+      if (m.type === 'mort') {
+        inscrireAuMemorial(state, c, 'mort en route', nomRegion(state.world, state.player.regionId));
+      }
     }
   }
 

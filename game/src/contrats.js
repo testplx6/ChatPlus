@@ -42,7 +42,7 @@ function contratCollecte(rng, state, col, t) {
 
 function contratLivraison(rng, state, col, t) {
   const autres = state.world.colonies.filter(
-    (c) => c.id !== col.id && distance(c.regionId, col.regionId) >= 2
+    (c) => !c.ruine && c.id !== col.id && distance(c.regionId, col.regionId) >= 2
   );
   if (!autres.length) return null;
   const dest = rng.pick(autres);
@@ -137,6 +137,7 @@ export function genererContrats(state, col, rng, t) {
 /** Renouvelle les panneaux périmés. Appelé de loin en loin, pas à chaque heure. */
 export function rafraichirPanneaux(state, rng, t) {
   for (const col of state.world.colonies) {
+    if (col.ruine) { col.contrats = []; continue; }
     if (!col.contrats || t >= (col.contratsExpire || 0)) {
       genererContrats(state, col, rng, t);
     }
@@ -271,6 +272,17 @@ export function tickContrats(state, log, ctx) {
         recompenser(state, c, log);
         continue;
       }
+    }
+
+    // Le commanditaire a disparu : plus personne pour payer.
+    const mort = (!donneur || donneur.ruine)
+      || (c.type === 'livraison' && (() => {
+        const d = colonieParId(state.world, c.destId);
+        return !d || d.ruine;
+      })());
+    if (mort) {
+      log({ type: 'contrat', texte: `Contrat caduc : ${c.titre}. La ville n’existe plus.`, important: true });
+      continue;
     }
 
     // Échéance dépassée

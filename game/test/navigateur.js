@@ -287,6 +287,27 @@ ok(ordres.length >= 6, 'tous les ordres sont proposés', `${ordres.length}`);
 ok(ordres.every((o) => o.rendement.trim().length > 0), 'chaque ordre annonce ce qu’il rapporte ici');
 console.log('     ' + ordres.map((o) => `${o.nom}:${o.rendement}${o.off ? '(off)' : ''}`).join('  '));
 
+console.log('\n8 ter. Monde vivant : climat, caravanes, villes qui bougent');
+const monde = await page.evaluate(() => {
+  const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  return {
+    meteo: s.world.meteo && s.world.meteo.type,
+    caravanes: (s.world.caravanes || []).length,
+    cohesion: s.player.cohesion,
+    sites: s.world.regions.filter((r) => r.site).length,
+  };
+});
+ok(!!monde.meteo, 'une météo est en cours', String(monde.meteo));
+ok(monde.sites > 10, 'des sites sont semés sur la carte', `${monde.sites}`);
+ok(typeof monde.cohesion === 'number', 'la cohésion d’escouade est suivie', String(monde.cohesion));
+await page.click('[data-a="onglet"][data-k="monde"]');
+await page.waitForTimeout(400);
+const texteMonde = await page.evaluate(() => document.querySelector('#ecran').textContent);
+ok(/Climat/.test(texteMonde), 'l’écran Monde annonce le climat');
+ok(/Chronique du monde/.test(texteMonde), 'l’écran Monde tient une chronique');
+ok(/Routes marchandes/.test(texteMonde), 'l’écran Monde suit les routes marchandes');
+await page.screenshot({ path: join(CAPTURES, '13-monde.png'), fullPage: true });
+
 console.log('\n9. Fichier unique ouvert en file://');
 const { existsSync } = await import('node:fs');
 const chemin = join(RACINE, 'dist', 'cendres.html');

@@ -28,6 +28,8 @@ import {
   progres as progresContrat, lieuValidation, accepter, abandonner, MAX_CONTRATS,
 } from './contrats.js';
 import { horloge, VITESSES } from './sim.js';
+import { conditions, SAISONS, METEO } from './climat.js';
+import { caravanesIci, valeurCargaison } from './caravanes.js';
 import { couleurLog, creerLogger } from './events.js';
 
 // ---------------------------------------------------------------------------
@@ -179,9 +181,13 @@ function rendreBarreHaut() {
   const vivants = p.squad.filter(estVivant).length;
   const debout = p.squad.filter(estDebout).length;
 
+  const cl = conditions(S.world, S.temps);
   $('#barre-haut').innerHTML = `
     <div class="hd-bloc"><span class="hd-eti">${p.nuit ? 'nuit' : 'jour'}</span>
       <span class="hd-val cyan">${h.texte}</span></div>
+    <div class="hd-bloc"><span class="hd-eti">saison</span>
+      <span class="hd-val" style="color:${cl.saison.def.couleur}"
+        title="${e(cl.saison.def.nom)} — ${e(cl.meteo.nom)}">${e(cl.saison.def.court)}</span></div>
     <div class="hd-bloc"><span class="hd-eti">cr</span>
       <span class="hd-val ambre">${n(p.credits)}</span></div>
     <div class="hd-bloc"><span class="hd-eti">sac</span>
@@ -274,7 +280,7 @@ function dessinerCarte(cv) {
     }
   }
 
-  // Colonies
+  // Colonies — les ruines gardent une trace, en gris et brisée
   for (const col of w.colonies) {
     const r = w.regions[col.regionId];
     if (!r.decouvert) continue;
@@ -285,10 +291,27 @@ function dessinerCarte(cv) {
     const oy = y + Math.floor((CELL - t) / 2);
     g.fillStyle = '#05070a';
     g.fillRect(ox - 1, oy - 1, t + 2, t + 2);
+    if (col.ruine) {
+      g.fillStyle = '#4a4f5a';
+      g.fillRect(ox, oy, t, 1);
+      g.fillRect(ox, oy, 1, t);
+      g.fillRect(ox + t - 1, oy + t - 2, 1, 2);
+      continue;
+    }
     g.fillStyle = couleurFaction(col.faction);
     g.fillRect(ox, oy, t, t);
     g.fillStyle = '#05070a';
     g.fillRect(ox + 1, oy + 1, t - 2, t - 2);
+  }
+
+  // Caravanes : de petits convois qui traversent réellement la carte
+  for (const car of w.caravanes || []) {
+    const r = w.regions[car.regionId];
+    if (!r || !r.decouvert) continue;
+    g.fillStyle = '#05070a';
+    g.fillRect(r.x * CELL + 1, r.y * CELL + 11, 5, 3);
+    g.fillStyle = couleurFaction(car.faction);
+    g.fillRect(r.x * CELL + 2, r.y * CELL + 12, 3, 1);
   }
 
   // Avant-poste
@@ -418,6 +441,28 @@ function blocSite() {
   </section>`;
 }
 
+function blocCaravanes() {
+  const ici = caravanesIci(S);
+  if (!ici.length) return '';
+  return `<section class="panneau">
+    <h2 class="titre">Caravane de passage</h2>
+    ${ici.map((car, i) => {
+    const de = colonieParId(S.world, car.deId);
+    const vers = colonieParId(S.world, car.versId);
+    const rep = S.player.reputation[car.faction] || 0;
+    return `<div class="article">
+      <div class="ligne"><span class="k" style="color:${couleurFaction(car.faction)}">${e(FACTIONS[car.faction].nom)}</span>
+        <span class="v ambre">~${n(valeurCargaison(car))} cr de marchandise</span></div>
+      <div class="aide">${e(de ? de.nom : '?')} → ${e(vers ? vers.nom : '?')} ·
+        escorte ${n(car.escorte)} ·
+        ${Object.keys(car.cargaison).map((k) => `${n(car.cargaison[k])} ${COMMODITIES[k].nom.toLowerCase()}`).join(', ')}</div>
+      <div class="aide alerte">Les attaquer coûte 22 points de réputation${rep < -20 ? ' — déjà mal vu ici.' : '.'}</div>
+      <button class="act mini danger" data-a="attaquer-caravane" data-k="${e(car.id)}">Tendre une embuscade</button>
+    </div>`;
+  }).join('')}
+  </section>`;
+}
+
 function blocContratsActifs() {
   const liste = S.player.contrats;
   if (!liste.length) return '';
@@ -495,6 +540,8 @@ function blocRegionCourante() {
     <div class="ligne"><span class="k">Épuisement</span><span class="v">${(r.fouille * 100).toFixed(0)} %</span></div>
     <div class="ligne"><span class="k">Rencontres</span><span class="v">${(r.danger * 100).toFixed(1)} %/h</span></div>
     <div class="ligne"><span class="k">Aléa</span><span class="v">${e(b.hazard.nom)}</span></div>
+    <div class="ligne"><span class="k">Ciel</span>
+      <span class="v" style="color:${conditions(S.world, S.temps).meteo.couleur}">${e(conditions(S.world, S.temps).meteo.nom)}</span></div>
     ${r.controle ? `<div class="ligne"><span class="k">Territoire</span>
       <span class="v" style="color:${couleurFaction(r.controle)}">${e(FACTIONS[r.controle].nom)}</span></div>` : ''}
   </section>
@@ -582,6 +629,7 @@ function ecranCarte() {
   </div>
   ${blocSelection()}
   ${blocRegionCourante()}
+  ${blocCaravanes()}
   ${blocContratsActifs()}
   ${blocFil()}`;
 }
@@ -674,6 +722,28 @@ function blocInventaire() {
   </section>`;
 }
 
+function texteCohesion(v) {
+  if (v >= 80) return 'Ces gens se feraient tuer les uns pour les autres. Le moral remonte tout seul.';
+  if (v >= 60) return 'L’escouade tient. On se parle, on se couvre.';
+  if (v >= 35) return 'Ça tient par habitude. Une mauvaise semaine de plus et ça craquera.';
+  if (v >= 15) return 'Plus grand monde ne se regarde. Le moral s’effondre à chaque coup dur.';
+  return 'Ce n’est plus une escouade, ce sont des gens qui marchent dans la même direction.';
+}
+
+function blocMemorial() {
+  const m = S.memorial || [];
+  if (!m.length) return '';
+  return `<section class="panneau">
+    <h2 class="titre">Mémorial <span class="droite">${m.length} disparu${m.length > 1 ? 's' : ''}</span></h2>
+    ${m.slice().reverse().slice(0, 12).map((x) => `<div class="stele">
+      <div class="ligne"><span class="k">${e(x.nom)}</span>
+        <span class="v">${horloge(x.t).texte}</span></div>
+      <div class="aide">${e(x.archetype)} · ${e(x.cause)}${x.lieu ? ` · ${e(x.lieu)}` : ''}
+        ${x.kills ? ` · ${x.kills} éliminations` : ''} · ${e(x.meilleure)}</div>
+    </div>`).join('')}
+  </section>`;
+}
+
 function ecranEscouade() {
   const p = S.player;
   const pol = p.politique;
@@ -704,11 +774,18 @@ function ecranEscouade() {
   </section>
 
   <section class="panneau">
+    <h2 class="titre">Cohésion <span class="droite">${Math.round(p.cohesion ?? 55)} / 100</span></h2>
+    ${jauge((p.cohesion ?? 55) / 100, (p.cohesion ?? 55) < 30 ? 'rouge' : (p.cohesion ?? 55) < 60 ? 'ambre' : 'vert')}
+    <div class="aide" style="margin-top:5px">${e(texteCohesion(p.cohesion ?? 55))}</div>
+  </section>
+
+  <section class="panneau">
     <h2 class="titre">Escouade <span class="droite">${p.squad.filter(estVivant).length} / ${max}</span></h2>
     ${p.squad.map(ficheMembre).join('')}
   </section>
 
-  ${blocInventaire()}`;
+  ${blocInventaire()}
+  ${blocMemorial()}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -932,9 +1009,16 @@ function ecranMonde() {
   const villes = connues.length
     ? connues.map((c) => `<div class="ligne">
         <span class="k">${e(c.nom)}</span>
-        <span class="v" style="color:${couleurFaction(c.faction)}">${e(FACTIONS[c.faction].court)} · ${n(c.pop)} hab.</span></div>`).join('')
+        ${c.ruine
+    ? '<span class="v" style="color:var(--texte-3)">en ruines</span>'
+    : `<span class="v" style="color:${couleurFaction(c.faction)}">${e(FACTIONS[c.faction].court)} · rang ${c.taille} · ${n(c.pop)} hab.</span>`}
+      </div>`).join('')
     : '<div class="aide">Aucune ville repérée.</div>';
 
+  const meteoNow = conditions(S.world, S.temps);
+  const car = S.world.caravanes || [];
+  const ruines = S.world.colonies.filter((c) => c.ruine);
+  const neuves = S.world.colonies.filter((c) => c.fondeeA !== undefined);
   const st = S.stats;
   const sites = S.world.regions.filter((r) => r.site).length;
   const sitesVus = S.world.regions.filter((r) => r.site && r.site.connu).length;
@@ -945,11 +1029,55 @@ function ecranMonde() {
     ['Ressources récoltées', n(st.recolte)],
     ['Contrats remplis', n(st.contratsRemplis || 0)],
     ['Sites fouillés', `${n(st.sitesFouilles || 0)} / ${sitesVus} repérés (${sites} en tout)`],
+    ['Caravanes pillées', n(st.caravanesPillees || 0)],
     ['Carte levée', `${n(S.world.regions.filter((r) => r.decouvert).length)} / ${n(S.world.regions.length)}`],
-    ['Villes connues', `${n(S.world.colonies.filter((c) => S.world.regions[c.regionId].decouvert).length)} / ${n(S.world.colonies.length)}`],
+    ['Villes vivantes', `${n(S.world.colonies.filter((c) => !c.ruine).length)} · ${n(ruines.length)} en ruines · ${n(neuves.length)} fondées depuis`],
+    ['Disparus', n((S.memorial || []).length)],
   ];
 
+
+  const chronique = S.journal
+    .filter((x) => ['capture', 'guerre', 'paix', 'fondation', 'effondrement', 'croissance', 'saison'].includes(x.type))
+    .slice(-14).reverse();
+
   return `
+  <section class="panneau">
+    <h2 class="titre">Climat
+      <span class="droite" style="color:${meteoNow.saison.def.couleur}">${e(meteoNow.saison.def.nom)} · jour ${meteoNow.saison.jour}/30 · an ${meteoNow.saison.annee}</span></h2>
+    <div class="aide">${e(meteoNow.saison.def.texte)}</div>
+    <div class="sep"></div>
+    <div class="ligne"><span class="k">Ciel</span>
+      <span class="v" style="color:${meteoNow.meteo.couleur}">${e(meteoNow.meteo.nom)}</span></div>
+    <div class="aide">${e(meteoNow.meteo.texte)}</div>
+    <div class="sep"></div>
+    <div class="grille2">
+      <div class="ligne"><span class="k">Récolte vivante</span><span class="v">×${meteoNow.rendement('biomasse').toFixed(2)}</span></div>
+      <div class="ligne"><span class="k">Récolte minérale</span><span class="v">×${meteoNow.rendement('minerai').toFixed(2)}</span></div>
+      <div class="ligne"><span class="k">Marche</span><span class="v">×${meteoNow.marche.toFixed(2)}</span></div>
+      <div class="ligne"><span class="k">Aléas</span><span class="v">×${meteoNow.aleas.toFixed(2)}</span></div>
+      <div class="ligne"><span class="k">Rencontres</span><span class="v">×${meteoNow.rencontres.toFixed(2)}</span></div>
+      <div class="ligne"><span class="k">Visibilité</span><span class="v">×${meteoNow.vue.toFixed(2)}</span></div>
+    </div>
+  </section>
+
+  <section class="panneau">
+    <h2 class="titre">Chronique du monde</h2>
+    ${chronique.length ? `<div class="fil">${chronique.map((x) => `<div class="fil-l ${couleurLog(x.type)}">
+      <span class="fil-t">${horloge(x.t).texte}</span><span class="fil-x">${e(x.texte)}</span></div>`).join('')}</div>`
+    : '<div class="aide">Rien de notable pour l’instant.</div>'}
+  </section>
+
+  <section class="panneau">
+    <h2 class="titre">Routes marchandes <span class="droite">${car.length} en circulation</span></h2>
+    ${car.length ? car.map((c) => {
+    const de = colonieParId(S.world, c.deId);
+    const vers = colonieParId(S.world, c.versId);
+    return `<div class="ligne">
+        <span class="k" style="color:${couleurFaction(c.faction)}">${e(FACTIONS[c.faction].court)}</span>
+        <span class="v">${e(de ? de.nom : '?')} → ${e(vers ? vers.nom : '?')} · ${n(valeurCargaison(c))} cr</span></div>`;
+  }).join('') : '<div class="aide">Aucune caravane sur les routes. Mauvais signe.</div>'}
+  </section>
+
   <section class="panneau"><h2 class="titre">Rapport de puissance</h2>${factionsHtml}</section>
   <section class="panneau"><h2 class="titre">Chiffres</h2>
     ${chiffres.map(([k, v]) => `<div class="ligne"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('')}
@@ -1290,6 +1418,15 @@ function surClic(ev) {
       rendreModale();
       rafraichir(true);
       break;
+
+    case 'attaquer-caravane': {
+      const r = ACTIONS.attaquerCaravane(el.dataset.k);
+      if (!r.ok) toast(r.motif, true);
+      else if (!r.gagne) toast(r.motif || 'L’escorte a tenu.', true);
+      else toast('Caravane détroussée.');
+      rafraichir(true);
+      break;
+    }
 
     case 'fouiller-site': {
       const r = ACTIONS.fouillerSite();
