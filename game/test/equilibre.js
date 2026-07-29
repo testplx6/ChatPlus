@@ -47,7 +47,7 @@ import {
   COUT_FONDATION,
 } from '../src/base.js';
 import { ITEMS, BUILDING_KEYS, METIER_KEYS, METIERS, BIOMES as BIOMES_BAT } from '../src/data.js';
-import { acheterBete, prixBete, betesDe, portageAttelage } from '../src/betes.js';
+import { acheterBete, prixBete, betesDe, portageAttelage, conduite } from '../src/betes.js';
 import { saison } from '../src/climat.js';
 import { COMMODITY_KEYS, COMMODITIES, BIOMES } from '../src/data.js';
 import { vueColonie, PEREMPTION } from '../src/connaissance.js';
@@ -521,7 +521,9 @@ function jouerPrincipal(state, g, memo) {
 
     // S'atteler. Un dos de plus, c'est un aller-retour en ville de moins — et
     // soixante-dix pour cent des départs d'un convoi sont des allers-retours.
-    if (!SANS.has('betes') && betesDe(g).length < 2) {
+    // On s'arrête à ce qu'on sait mener : rien ne l'interdit, mais au-delà
+    // c'est une mauvaise affaire — et un joueur raisonnable le sait.
+    if (!SANS.has('betes') && betesDe(g).length < conduite(g)) {
       const cap = capacitePortage(state, g);
       // On ne s'attelle que si le sac est réellement le facteur limitant, et
       // qu'on peut nourrir la bête sans se ruiner.

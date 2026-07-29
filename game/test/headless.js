@@ -16,7 +16,10 @@ import {
   manoeuvres, affecter, rendementMetier, mainDoeuvre,
 } from '../src/base.js';
 import { METIER_KEYS, BIOMES, BUILDINGS } from '../src/data.js';
-import { acheterBete, betesDe, lenteurAttelage, tickBetes } from '../src/betes.js';
+import {
+  acheterBete, betesDe, lenteurAttelage, tickBetes, conduite, surnombre,
+  visibiliteAttelage,
+} from '../src/betes.js';
 import {
   estVivant, makeCharacter, accorderDiplome, apprentissage, tickPerso, resistanceLetale,
   comp as compPerso,
@@ -1140,6 +1143,46 @@ ok(betesDe(gAtt2).length === 1 && betesDe(gAtt2)[0].sante > 90,
   betesDe(gAtt2).length ? `${Math.round(betesDe(gAtt2)[0].sante)} %` : 'partie');
 ok((gAtt2.inventaire.biomasse || 0) < 900, 'et elle a bien mangé la biomasse',
   `${Math.round(gAtt2.inventaire.biomasse)} restants`);
+
+// Rien n'interdit d'en prendre trop — c'est juste une mauvaise affaire.
+const tropS = nouvellePartie(8383, { maintenant: 0 });
+const gTrop = groupeActif(tropS);
+const colTrop = tropS.world.colonies.find((c) => !c.ruine);
+gTrop.regionId = colTrop.regionId;
+tropS.player.credits = 90000;
+const bras = conduite(gTrop);
+ok(bras >= 4, 'trois personnes savent mener plusieurs bêtes', `${bras}`);
+const rngT = new Rng(99);
+for (let i = 0; i < bras; i++) acheterBete(tropS, colTrop, 'mulet', rngT, () => {}, gTrop);
+const capTenue = capacitePortage(tropS, gTrop);
+const lentTenue = lenteurAttelage(gTrop);
+ok(surnombre(gTrop) === 0, 'à la limite de ce qu’on sait mener, tout est tenu');
+
+// Trois de plus : aucune règle ne l'empêche.
+for (let i = 0; i < 3; i++) {
+  ok(acheterBete(tropS, colTrop, 'mulet', rngT, () => {}, gTrop).ok === true,
+    'on peut en acheter une de plus, même sans personne pour la mener');
+}
+ok(surnombre(gTrop) === 3, 'trois bêtes sont en surnombre', `${surnombre(gTrop)}`);
+ok(capacitePortage(tropS, gTrop) > capTenue,
+  'elles portent quand même quelque chose');
+ok(capacitePortage(tropS, gTrop) < capTenue * (1 + 3 / bras),
+  'mais nettement moins que si on les tenait',
+  `${capTenue} → ${capacitePortage(tropS, gTrop)} kg`);
+ok(lenteurAttelage(gTrop) > lentTenue * 1.5, 'et elles traînent la colonne',
+  `−${(lentTenue * 100).toFixed(0)} % → −${(lenteurAttelage(gTrop) * 100).toFixed(0)} %`);
+ok(lenteurAttelage(gTrop) < 1, 'sans jamais immobiliser personne');
+ok(visibiliteAttelage(gTrop) > 1.5, 'une telle colonne se voit de loin',
+  `×${visibiliteAttelage(gTrop).toFixed(2)} de rencontres`);
+
+// Et les bêtes non tenues dépérissent plus vite, même bien nourries.
+gTrop.inventaire.biomasse = 100000;
+const santeAvant = betesDe(gTrop).reduce((a, b) => a + b.sante, 0) / betesDe(gTrop).length;
+for (let i = 0; i < 300; i++) tickBetes(gTrop, new Rng(i + 1), () => {});
+const santeApres = betesDe(gTrop).length
+  ? betesDe(gTrop).reduce((a, b) => a + b.sante, 0) / betesDe(gTrop).length : 0;
+ok(santeApres < santeAvant, 'un attelage négligé dépérit, même le ventre plein',
+  `${santeAvant.toFixed(0)} % → ${santeApres.toFixed(0)} %`);
 
 // L'attelage se sauvegarde.
 ok(JSON.parse(serialiser(att2)).player.groupes[0].betes.length === 1,

@@ -286,6 +286,26 @@ Trois attelages, trois compromis : le **mulet** (petit, sobre, increvable), la
 **brahmine** (le meilleur dos, le plus gros appétit), la **charrette à bras**
 (ne mange rien, mais c'est vous qui tirez).
 
+**Et aucun plafond.** La première version en autorisait trois par convoi, ce
+qui était une limite écrite dans le code plutôt qu'une limite du monde. Une
+limite en dur n'apprend rien au joueur ; une limite qui se sent lui apprend
+comment les choses marchent. Rien n'interdit donc d'acheter une dixième bête —
+ce qui l'en dissuadera, c'est que :
+
+- **personne ne la mène.** Deux bêtes par paire de bras valides. Au-delà, tout
+  l'attelage est mal tenu : il ne rend plus qu'un tiers de son dos, et il
+  dépérit même le ventre plein, faute de pansement et de charge rééquilibrée ;
+- **elle traîne la colonne.** La lenteur ne s'additionne plus jusqu'à un plafond
+  arbitraire : elle passe par une courbe qui tend vers le pas d'escargot sans
+  jamais immobiliser personne, et ce qu'on ne tient pas compte double ;
+- **elle mange**, tenue ou pas ;
+- **elle se voit de loin.** Une colonne chargée attire les mauvaises rencontres,
+  proportionnellement à sa taille.
+
+L'interface le dit sans l'interdire : le bouton passe de « Acheter » à
+« Acheter — personne pour la mener », et un avertissement chiffre ce que ça
+coûte. Le joueur décide.
+
     départs logistiques        70 %      43 %
     contrats + ordres          22 %      32 %
     survivants               39/48     43/48

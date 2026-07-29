@@ -58,8 +58,44 @@ export const BETES = {
 
 export const BETE_KEYS = Object.keys(BETES);
 
-/** Combien un convoi peut en mener de front avant que ça ne rime plus à rien. */
-export const ATTELAGE_MAX = 3;
+/**
+ * Combien de bêtes une paire de bras sait mener.
+ *
+ * Il n'y a pas de plafond en dur, et c'est délibéré : une limite écrite dans le
+ * code n'apprend rien au joueur, alors qu'une limite qui se sent lui apprend
+ * comment le monde fonctionne. Rien n'interdit d'acheter une dixième bête ; ce
+ * qui l'en dissuadera, c'est qu'il n'aura personne pour la mener, qu'elle
+ * mangera quand même, qu'elle traînera le convoi, qu'elle dépérira faute
+ * d'attention, et qu'elle rendra la colonne visible à des lieues.
+ */
+export const BETES_PAR_HOMME = 2;
+
+/** Combien l'escouade sait en mener, d'après ceux qui tiennent debout. */
+export function conduite(g) {
+  if (!g) return 0;
+  let bras = 0;
+  for (const c of g.membres || []) {
+    if (c.etat === 'mort' || c.etat === 'ko') continue;
+    if ((c.formation && c.formation.restant > 0) || c.enseigne) continue;
+    bras++;
+  }
+  return bras * BETES_PAR_HOMME;
+}
+
+/**
+ * Ce qui dépasse ce qu'on sait mener. Une bête non tenue n'est pas perdue : elle
+ * est mal tenue, ce qui n'est pas la même chose et se paie autrement.
+ */
+export function surnombre(g) {
+  return Math.max(0, betesDe(g).length - conduite(g));
+}
+
+/** Part de l'attelage réellement tenue en main, entre 0 et 1. */
+function tenue(g) {
+  const n = betesDe(g).length;
+  if (!n) return 1;
+  return Math.min(1, conduite(g) / n);
+}
 
 const NOMS_BETES = [
   'Cendre', 'Bourrique', 'Suif', 'Vieille', 'Caillou', 'Poussière', 'Trogne',
@@ -94,14 +130,36 @@ export function portageAttelage(g) {
     if (!def) continue;
     t += def.portage * (0.35 + 0.65 * (b.sante / 100));
   }
-  return t;
+  // Ce qu'on ne tient pas en main s'égaille, balke et se décharge mal. On garde
+  // un tiers du dos d'une bête livrée à elle-même : elle suit, elle ne sert pas.
+  const part = tenue(g);
+  return part >= 1 ? t : t * (0.35 + 0.65 * part);
 }
 
-/** Ce que l'attelage retire à la vitesse du convoi. Plafonné : on avance encore. */
+/**
+ * Ce que l'attelage retire à la vitesse du convoi.
+ *
+ * Pas de plafond arbitraire : la somme des lenteurs passe par une courbe qui
+ * tend vers l'immobilité sans jamais l'atteindre. Vingt bêtes ne vous figent
+ * pas sur place, elles vous réduisent à un pas d'escargot — ce qui revient au
+ * même en jeu, mais s'explique tout seul. Ce qu'on ne sait pas mener compte
+ * double : une bête qui s'égaille, il faut aller la rechercher.
+ */
 export function lenteurAttelage(g) {
   let l = 0;
   for (const b of betesDe(g)) l += (BETES[b.key] || {}).lenteur || 0;
-  return Math.min(0.3, l);
+  l += surnombre(g) * 0.09;
+  return 1 - 1 / (1 + l);
+}
+
+/**
+ * Ce qu'une colonne d'animaux ajoute au risque de mauvaise rencontre. Un convoi
+ * chargé se voit de loin, et se convoite.
+ */
+export function visibiliteAttelage(g) {
+  const n = betesDe(g).length;
+  if (!n) return 1;
+  return 1 + n * 0.08 + surnombre(g) * 0.12;
 }
 
 /** Ce que l'attelage mange par heure, en biomasse. */
@@ -130,9 +188,6 @@ export function acheterBete(state, col, key, rng, log, groupe) {
   if (!g) return { ok: false, motif: 'Aucun groupe.' };
   if (!col || col.ruine || g.regionId !== col.regionId) {
     return { ok: false, motif: 'Il faut être en ville.' };
-  }
-  if (betesDe(g).length >= ATTELAGE_MAX) {
-    return { ok: false, motif: `Un convoi ne mène pas plus de ${ATTELAGE_MAX} bêtes.` };
   }
   const prix = prixBete(col, key);
   if (state.player.credits < prix) {
@@ -182,6 +237,9 @@ export function vendreBete(state, col, beteId, log, groupe) {
 export function tickBetes(g, rng, log) {
   const betes = betesDe(g);
   if (!betes.length) return;
+  // Combien de bêtes par bête : au-delà de ce qu'on sait mener, tout le monde
+  // est un peu négligé, pas seulement les dernières arrivées.
+  const neglige = betes.length ? surnombre(g) / betes.length : 0;
   const restantes = [];
   for (const b of betes) {
     const def = BETES[b.key];
@@ -202,6 +260,10 @@ export function tickBetes(g, rng, log) {
       // Une charrette ne mange pas : elle s'use sur la piste.
       b.sante = Math.max(0, b.sante - 0.015);
     }
+    // Ce qu'on ne tient pas se néglige : pas de pansement, pas de sabot curé,
+    // pas de charge rééquilibrée. C'est ce qui rend un trop grand attelage
+    // coûteux sans qu'aucune règle ne l'interdise.
+    if (neglige > 0) b.sante = Math.max(0, b.sante - 0.05 * neglige);
     if (b.sante <= 0) {
       if (log) {
         log({

@@ -12,7 +12,7 @@ import {
   compterVictoireOrdre, crediter, estAuService, rangDe, renfortsDisponibles,
 } from './allegeance.js';
 import { genererBande, resoudreCombat, butin } from './combat.js';
-import { perdreBete } from './betes.js';
+import { perdreBete, visibiliteAttelage } from './betes.js';
 import {
   comp, gagnerXp, estDebout, estVivant, makeCharacter, blesser, pvTotal,
   ajusterLien, XP_PRATIQUE,
@@ -463,6 +463,8 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
   // Une armée dans le secteur, c'est du monde sur les routes
   const armeesIci = state.world.armees.filter((a) => distance(a.regionId, regionId) <= 1).length;
   p *= 1 + armeesIci * 0.6;
+  // Une colonne de bêtes chargées se voit de loin, et se convoite.
+  p *= visibiliteAttelage(g);
 
   if (!rng.chance(Math.min(0.5, p))) return false;
 

@@ -48,7 +48,8 @@ import {
 import { CHARGES, CARACTERES, margeMarchand, vocation } from './notables.js';
 import { demandesIci, souvenirs, faveurChef, SOINS_SEUIL, REGISTRES_SEUIL } from './services.js';
 import {
-  BETES, BETE_KEYS, betesDe, prixBete, portageAttelage, lenteurAttelage, ATTELAGE_MAX,
+  BETES, BETE_KEYS, betesDe, prixBete, portageAttelage, lenteurAttelage,
+  conduite, surnombre, visibiliteAttelage,
 } from './betes.js';
 import { dirigeant, TEMPERAMENTS, LEGITIMITE_CRITIQUE } from './dirigeants.js';
 import { vueColonie, vueRegion, estSurveillee, ageTexte, nouvellesConnues } from './connaissance.js';
@@ -2219,7 +2220,8 @@ function modaleAttelage() {
   const etal = col ? BETE_KEYS.map((k) => {
     const def = BETES[k];
     const prix = prixBete(col, k);
-    const plein = miennes.length >= ATTELAGE_MAX;
+    // Rien n'est interdit : on dit ce que ça coûtera, et le joueur décide.
+    const auDela = miennes.length >= conduite(g);
     return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
       <div class="ligne"><span class="k">${e(def.nom)}</span>
         <span class="v">${n(prix)} cr</span></div>
@@ -2227,9 +2229,10 @@ function modaleAttelage() {
       <div class="aide">+${def.portage} kg · ${def.appetit
     ? `mange ${(def.appetit * 24).toFixed(1)} biomasse/jour` : 'ne mange rien'}
         · −${(def.lenteur * 100).toFixed(0)} % de vitesse</div>
-      <button class="act mini" data-a="acheter-bete" data-k="${k}" style="margin-top:4px"
-        ${plein || S.player.credits < prix ? 'disabled' : ''}>
-        ${plein ? 'Attelage complet' : S.player.credits < prix ? 'Crédits insuffisants' : 'Acheter'}</button>
+      <button class="act mini${auDela ? '' : ' primaire'}" data-a="acheter-bete" data-k="${k}"
+        style="margin-top:4px" ${S.player.credits < prix ? 'disabled' : ''}>
+        ${S.player.credits < prix ? 'Crédits insuffisants'
+    : auDela ? 'Acheter — personne pour la mener' : 'Acheter'}</button>
     </div>`;
   }).join('') : '<div class="aide">On n’achète pas une bête au milieu du désert.</div>';
 
@@ -2238,8 +2241,15 @@ function modaleAttelage() {
   <div class="aide">Une bête porte à votre place, mange ce que personne ne mange,
     et ralentit le convoi. Elle maigrit si on l’oublie, et les pillards
     l’emmènent avant le reste.</div>
+  <div class="ligne"><span class="k">Bras disponibles</span>
+    <span class="v">${miennes.length} bête${miennes.length > 1 ? 's' : ''} pour ${n(conduite(g))} qu’on sait mener</span></div>
   ${portageAttelage(g) > 0 ? `<div class="ligne"><span class="k">Porté par l’attelage</span>
-    <span class="v">${n(Math.round(portageAttelage(g)))} kg · −${(lenteurAttelage(g) * 100).toFixed(0)} % de vitesse</span></div>` : ''}
+    <span class="v">${n(Math.round(portageAttelage(g)))} kg · −${(lenteurAttelage(g) * 100).toFixed(0)} % de vitesse</span></div>
+  <div class="ligne"><span class="k">Se voit de loin</span>
+    <span class="v">+${((visibiliteAttelage(g) - 1) * 100).toFixed(0)} % de rencontres</span></div>` : ''}
+  ${surnombre(g) > 0 ? `<div class="aide alerte">${surnombre(g)} bête${surnombre(g) > 1 ? 's' : ''}
+    que personne ne tient : elles portent mal, elles dépérissent, et elles traînent
+    la colonne. Rien ne l’interdit — c’est juste une mauvaise affaire.</div>` : ''}
   <div class="sep"></div>
   <div class="titre">Vos bêtes</div>
   ${aMoi}
