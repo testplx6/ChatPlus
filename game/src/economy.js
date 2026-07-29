@@ -11,7 +11,7 @@ import { remiseDe, palierBonus } from './allegeance.js';
 import { distance as distanceCases } from './world.js';
 import { groupeActif } from './groupes.js';
 import {
-  METIERS_VILLE, METIER_VILLE_KEYS, PART_ACTIVE, VOCATION_BIOME, VOCATION_STYLE,
+  METIERS_VILLE, METIER_VILLE_KEYS, PART_ACTIVE, VOCATION_BIOME, VOCATION_STYLE, POIDS_BASE,
 } from './data.js';
 import {
   pourvoirCharges, tickNotables, rendementNotables, margeMarchand, ordreDe,
@@ -95,7 +95,9 @@ export function emploisInitiaux(world, col, rng) {
   const biome = world.regions[col.regionId].biome;
   const style = col.faction && FACTIONS[col.faction] ? FACTIONS[col.faction].style : null;
   const poids = {};
-  for (const k of METIER_VILLE_KEYS) poids[k] = 0.35; // tout le monde a un peu de tout
+  // Tout le monde a un peu de tout — mais pas la même part de tout : voir
+  // POIDS_BASE, et la mesure qui l'a rendu nécessaire.
+  for (const k of METIER_VILLE_KEYS) poids[k] = POIDS_BASE[k] ?? 0.35;
   const voc = VOCATION_BIOME[biome] || {};
   for (const k of Object.keys(voc)) poids[k] += voc[k];
   const st = (style && VOCATION_STYLE[style]) || {};

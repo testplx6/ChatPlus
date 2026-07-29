@@ -995,6 +995,23 @@ export const METIER_VILLE_KEYS = Object.keys(METIERS_VILLE);
  */
 export const PART_ACTIVE = 0.55;
 
+/**
+ * Ce que chaque métier reçoit d'office, avant vocation. Les métiers qui
+ * produisent une marchandise partent tous du même socle ; ceux qui rendent un
+ * service — nourrir, bâtir — partent plus bas, parce qu'ils se prennent sur les
+ * autres.
+ *
+ * Ce n'est pas de l'esthétique. En ajoutant les cantiniers et les ouvriers à un
+ * socle uniforme, on a discrètement prélevé un dixième de la main-d'œuvre de
+ * chaque ville de la carte : minerai −8 %, rations −4 %, alliage −6 %. Un
+ * métier nouveau ne doit pas taxer tous les autres du seul fait d'exister.
+ */
+export const POIDS_BASE = {
+  paysan: 0.35, mineur: 0.35, ferrailleur: 0.35, artisan: 0.35,
+  medecin: 0.35, milicien: 0.35, marchand: 0.35,
+  cantinier: 0.11, ouvrier: 0.13,
+};
+
 /** Vocation d'un biome : ce vers quoi la main-d'œuvre d'une ville se porte. */
 export const VOCATION_BIOME = {
   marais: { paysan: 4, ferrailleur: 1, mineur: 0.4 },

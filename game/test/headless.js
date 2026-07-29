@@ -659,7 +659,9 @@ g9k.inventaire.rations = 20000;
 // Niveau de départ fixé : la courbe ralentit avec le niveau, et ce que la
 // génération tire varie dès qu'un autre système consomme du hasard avant elle.
 for (const c of g9k.membres) c.skills.melee = 10;
-const avantMelee = g9k.membres.map((c) => c.skills.melee);
+// Par identité, pas par position : quelqu'un peut rejoindre le groupe pendant
+// les cent heures, et l'aligner sur l'indice d'un autre donnait un NaN.
+const avantMelee = new Map(g9k.membres.map((c) => [c.id, c.skills.melee]));
 donnerOrdre(s9k, { type: 'entrainement', skill: 'melee' }, g9k);
 const rationsEntrainement = g9k.inventaire.rations;
 // Une rencontre perdue déplace le groupe et remet l'ordre au repos : on le
@@ -673,7 +675,9 @@ for (let i = 0; i < 100; i++) {
   }
   avancer(s9k, 1);
 }
-const gains = g9k.membres.map((c, i) => c.skills.melee - avantMelee[i]);
+const gains = g9k.membres
+  .filter((c) => avantMelee.has(c.id))
+  .map((c) => c.skills.melee - avantMelee.get(c.id));
 ok(gains.every((x) => x >= 2), 'cent heures d’entraînement se voient', gains.join(', '));
 ok(rationsEntrainement - g9k.inventaire.rations > 50, 'et coûtent des vivres',
   `${Math.round(rationsEntrainement - g9k.inventaire.rations)} rations`);

@@ -832,15 +832,24 @@ function blocRegionCourante() {
   </section>
 
   ${blocSite()}
-  ${col ? blocColonie(col) : ''}
+  ${col && !col.ruine ? blocColonie(col) : ''}
   ${ici ? `<section class="panneau">
       <h2 class="titre">Avant-poste</h2>
       <button class="act" data-a="modale" data-m="transfert">Transférer des ressources</button>
     </section>` : ''}`;
 }
 
-/** Le panneau de la ville où l'on se trouve : forcément de première main. */
+/**
+ * Le panneau de la ville où l'on se trouve : forcément de première main.
+ *
+ * On n'appelle jamais ceci sur une ruine — une ville effondrée n'a plus de
+ * drapeau (`faction` repasse à null), et l'affichage plantait sur ce cas dès
+ * qu'une partie durait assez pour qu'une ville s'éteigne sous les pieds du
+ * joueur. Le garde-fou est ici aussi, parce qu'un rendu ne doit jamais casser
+ * l'écran entier.
+ */
 function blocColonie(col) {
+  if (!col || col.ruine || !FACTIONS[col.faction]) return '';
   const repu = S.player.reputation[col.faction] || 0;
   const cls = repu > 20 ? 'ok' : repu < -20 ? 'mal' : 'att';
   return `

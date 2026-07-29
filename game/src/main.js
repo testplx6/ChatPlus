@@ -213,7 +213,21 @@ const API = {
  */
 const RATTRAPAGE_ECRAN = 800;
 /** Budget par tranche : sous les 16 ms d'une image, la barre reste fluide. */
-const BUDGET_TRANCHE_MS = 12;
+/**
+ * Travail visé par image pendant le rattrapage. Douze millisecondes visaient
+ * soixante images par seconde, ce qui est le bon réflexe pour une animation —
+ * et le mauvais ici. Un rattrapage n'anime rien : il affiche une barre qui
+ * avance. Ce qui compte, c'est que la page réponde au doigt, pas qu'elle
+ * redessine soixante fois par seconde.
+ *
+ * Et surtout : le nombre d'images nécessaires ne dépend pas de la machine, mais
+ * `requestAnimationFrame` si. Un onglet en arrière-plan, un téléphone qui
+ * économise, un navigateur sans compositeur — et les images tombent à quatre par
+ * seconde. Depuis que la carte compte 432 secteurs et 86 villes, dix-sept mille
+ * heures demandaient cent soixante-dix images : deux secondes et demie sur un
+ * écran actif, trois quarts de minute sur un onglet endormi.
+ */
+const BUDGET_TRANCHE_MS = 30;
 
 /**
  * Rejoue le temps dû, puis appelle `apres`. Court, c'est immédiat ; long, ça
@@ -274,7 +288,7 @@ function ecranRattrapage(r, fini) {
     const encore = r.pas(tranche);
     const dt = performance.now() - t0;
     // Recalage doux vers le budget, borné pour ne pas osciller.
-    if (dt > 0.5) tranche = Math.max(25, Math.min(2000, Math.round(tranche * (BUDGET_TRANCHE_MS / dt))));
+    if (dt > 0.5) tranche = Math.max(25, Math.min(6000, Math.round(tranche * (BUDGET_TRANCHE_MS / dt))));
 
     const faits = r.faits();
     jauge.textContent = `${Math.round(faits / 24)} / ${Math.round(total / 24)} jours rejoués`;

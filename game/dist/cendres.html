@@ -1678,6 +1678,23 @@ const METIER_VILLE_KEYS = Object.keys(METIERS_VILLE);
  */
 const PART_ACTIVE = 0.55;
 
+/**
+ * Ce que chaque métier reçoit d'office, avant vocation. Les métiers qui
+ * produisent une marchandise partent tous du même socle ; ceux qui rendent un
+ * service — nourrir, bâtir — partent plus bas, parce qu'ils se prennent sur les
+ * autres.
+ *
+ * Ce n'est pas de l'esthétique. En ajoutant les cantiniers et les ouvriers à un
+ * socle uniforme, on a discrètement prélevé un dixième de la main-d'œuvre de
+ * chaque ville de la carte : minerai −8 %, rations −4 %, alliage −6 %. Un
+ * métier nouveau ne doit pas taxer tous les autres du seul fait d'exister.
+ */
+const POIDS_BASE = {
+  paysan: 0.35, mineur: 0.35, ferrailleur: 0.35, artisan: 0.35,
+  medecin: 0.35, milicien: 0.35, marchand: 0.35,
+  cantinier: 0.11, ouvrier: 0.13,
+};
+
 /** Vocation d'un biome : ce vers quoi la main-d'œuvre d'une ville se porte. */
 const VOCATION_BIOME = {
   marais: { paysan: 4, ferrailleur: 1, mineur: 0.4 },
@@ -4970,7 +4987,9 @@ function emploisInitiaux(world, col, rng) {
   const biome = world.regions[col.regionId].biome;
   const style = col.faction && FACTIONS[col.faction] ? FACTIONS[col.faction].style : null;
   const poids = {};
-  for (const k of METIER_VILLE_KEYS) poids[k] = 0.35; // tout le monde a un peu de tout
+  // Tout le monde a un peu de tout — mais pas la même part de tout : voir
+  // POIDS_BASE, et la mesure qui l'a rendu nécessaire.
+  for (const k of METIER_VILLE_KEYS) poids[k] = POIDS_BASE[k] ?? 0.35;
   const voc = VOCATION_BIOME[biome] || {};
   for (const k of Object.keys(voc)) poids[k] += voc[k];
   const st = (style && VOCATION_STYLE[style]) || {};
@@ -10049,15 +10068,24 @@ function blocRegionCourante() {
   </section>
 
   ${blocSite()}
-  ${col ? blocColonie(col) : ''}
+  ${col && !col.ruine ? blocColonie(col) : ''}
   ${ici ? `<section class="panneau">
       <h2 class="titre">Avant-poste</h2>
       <button class="act" data-a="modale" data-m="transfert">Transférer des ressources</button>
     </section>` : ''}`;
 }
 
-/** Le panneau de la ville où l'on se trouve : forcément de première main. */
+/**
+ * Le panneau de la ville où l'on se trouve : forcément de première main.
+ *
+ * On n'appelle jamais ceci sur une ruine — une ville effondrée n'a plus de
+ * drapeau (`faction` repasse à null), et l'affichage plantait sur ce cas dès
+ * qu'une partie durait assez pour qu'une ville s'éteigne sous les pieds du
+ * joueur. Le garde-fou est ici aussi, parce qu'un rendu ne doit jamais casser
+ * l'écran entier.
+ */
 function blocColonie(col) {
+  if (!col || col.ruine || !FACTIONS[col.faction]) return '';
   const repu = S.player.reputation[col.faction] || 0;
   const cls = repu > 20 ? 'ok' : repu < -20 ? 'mal' : 'att';
   return `
@@ -11979,7 +12007,21 @@ const API = {
  */
 const RATTRAPAGE_ECRAN = 800;
 /** Budget par tranche : sous les 16 ms d'une image, la barre reste fluide. */
-const BUDGET_TRANCHE_MS = 12;
+/**
+ * Travail visé par image pendant le rattrapage. Douze millisecondes visaient
+ * soixante images par seconde, ce qui est le bon réflexe pour une animation —
+ * et le mauvais ici. Un rattrapage n'anime rien : il affiche une barre qui
+ * avance. Ce qui compte, c'est que la page réponde au doigt, pas qu'elle
+ * redessine soixante fois par seconde.
+ *
+ * Et surtout : le nombre d'images nécessaires ne dépend pas de la machine, mais
+ * `requestAnimationFrame` si. Un onglet en arrière-plan, un téléphone qui
+ * économise, un navigateur sans compositeur — et les images tombent à quatre par
+ * seconde. Depuis que la carte compte 432 secteurs et 86 villes, dix-sept mille
+ * heures demandaient cent soixante-dix images : deux secondes et demie sur un
+ * écran actif, trois quarts de minute sur un onglet endormi.
+ */
+const BUDGET_TRANCHE_MS = 30;
 
 /**
  * Rejoue le temps dû, puis appelle `apres`. Court, c'est immédiat ; long, ça
@@ -12040,7 +12082,7 @@ function ecranRattrapage(r, fini) {
     const encore = r.pas(tranche);
     const dt = performance.now() - t0;
     // Recalage doux vers le budget, borné pour ne pas osciller.
-    if (dt > 0.5) tranche = Math.max(25, Math.min(2000, Math.round(tranche * (BUDGET_TRANCHE_MS / dt))));
+    if (dt > 0.5) tranche = Math.max(25, Math.min(6000, Math.round(tranche * (BUDGET_TRANCHE_MS / dt))));
 
     const faits = r.faits();
     jauge.textContent = `${Math.round(faits / 24)} / ${Math.round(total / 24)} jours rejoués`;

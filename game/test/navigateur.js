@@ -464,6 +464,31 @@ ok(notables && notables.n >= 2 && notables.ok,
 await page.click('[data-a="fermer"]');
 await page.waitForTimeout(300);
 
+console.log('\n8 quindecies. Camper sur une ville morte');
+// Une ville effondrée perd son drapeau : `faction` repasse à null. L'écran de
+// carte lisait ce drapeau sans se demander s'il existait encore, et plantait
+// l'interface entière — un cas qui n'arrivait qu'après des centaines d'heures,
+// donc jamais sous les yeux d'un test jusqu'ici.
+const ruines = partieAvancee();
+const colMorte = ruines.world.colonies[0];
+colMorte.ruine = true;
+colMorte.faction = null;
+colMorte.contrats = [];
+colMorte.etal = null;
+ruines.world.regions[colMorte.regionId].controle = null;
+ruines.world.regions[colMorte.regionId].site = { type: 'ville_morte', connu: true, fouille: false };
+groupeActif(ruines).regionId = colMorte.regionId;
+ruines.dernierReel = Date.now();
+await page.reload({ waitUntil: 'networkidle' });
+await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(ruines));
+await page.click('[data-a="continuer"]');
+await page.waitForSelector('#carte', { timeout: 15000 });
+await page.waitForTimeout(400);
+const texteRuine = await page.evaluate(() => document.querySelector('#ecran').textContent);
+ok(texteRuine.length > 200, 'l’écran tient debout sur une ville sans drapeau',
+  `${texteRuine.length} caractères`);
+ok(!/undefined|NaN/.test(texteRuine), 'et n’affiche ni undefined ni NaN');
+
 console.log('\n8 quaterdecies. Manœuvrer la carte');
 await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
 await page.reload({ waitUntil: 'networkidle' });
@@ -817,7 +842,10 @@ ok(progression > 0, 'la page répond et la barre progresse pendant le rattrapage
   `${progression.toFixed(0)} %`);
 
 await page.waitForSelector('.rattrapage', { state: 'detached', timeout: 120000 });
-await page.waitForSelector('#carte');
+// Le rattrapage rejoue deux ans de jeu : le Chromium sans écran d'un conteneur
+// ne cadence pas `requestAnimationFrame` comme un vrai navigateur, et trente
+// secondes n'y suffisent pas toujours.
+await page.waitForSelector('#carte', { timeout: 60000 });
 const tApres = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).temps);
 ok(tApres - tAvant > 2000, 'le temps passé a bien été rejoué', `${tAvant} → ${tApres} h`);
 await page.click('[data-a="onglet"][data-k="monde"]');
