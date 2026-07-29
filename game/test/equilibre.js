@@ -834,6 +834,8 @@ function jouer(state, memo) {
   envisagerDetachement(state, memo);
 }
 
+const NECRO = { causes: {}, skills: [], kills: [], vivants: [] };
+
 console.log(`Banc d'équilibrage — ${PARTIES} parties × ${HEURES} h\n${'='.repeat(52)}`);
 
 let survivants = 0;
@@ -881,6 +883,17 @@ for (let n = 0; n < PARTIES; n++) {
     if (state.stats.defaites > defAvant) {
       TRACE.defaites += state.stats.defaites - defAvant;
       TRACE.crPilles += Math.max(0, crAvant - state.player.credits);
+    }
+  }
+  if (process.env.NECRO) {
+    for (const m of state.memorial || []) {
+      const c = String(m.cause).replace(/face à .*/, 'face à une bande');
+      NECRO.causes[c] = (NECRO.causes[c] || 0) + 1;
+      NECRO.skills.push(Number(String(m.meilleure).split(' ').pop()) || 0);
+      NECRO.kills.push(m.kills || 0);
+    }
+    for (const c of tousLesMembres(state).filter(estVivant)) {
+      NECRO.vivants.push(Math.max(comp(c, 'melee'), comp(c, 'tir')));
     }
   }
   const viv = tousLesMembres(state).filter(estVivant);
@@ -946,6 +959,18 @@ console.log(`Argent : +${Math.round(TRACE.gagneVente / PARTIES)} de ventes · `
   + `· −${Math.round(TRACE.crPilles / PARTIES)} pillés, par partie`);
 console.log(`Défaites : ${TRACE.defaites} pour ${TRACE.crPilles} cr pillés `
   + `(${TRACE.defaites ? Math.round(TRACE.crPilles / TRACE.defaites) : 0} cr par défaite)`);
+
+if (process.env.NECRO) {
+  const moy = (a) => (a.length ? (a.reduce((x, y) => x + y, 0) / a.length).toFixed(1) : '—');
+  console.log('--- nécrologie ---');
+  console.log(Object.entries(NECRO.causes).sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `${v} ${k}`).join(' · '));
+  console.log(`Meilleure compétence au moment de mourir : ${moy(NECRO.skills)}`
+    + ` (max ${NECRO.skills.length ? Math.max(...NECRO.skills) : 0})`);
+  console.log(`Ennemis abattus avant de tomber : ${moy(NECRO.kills)}`);
+  console.log(`Compétence de combat des survivants : ${moy(NECRO.vivants)}`
+    + ` (max ${NECRO.vivants.length ? Math.max(...NECRO.vivants).toFixed(0) : 0})`);
+}
 
 if (survivants === 0) {
   console.log('\nALERTE : aucune escouade ne survit. Le jeu est injouable en l’état.');
