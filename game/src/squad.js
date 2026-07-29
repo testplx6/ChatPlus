@@ -8,7 +8,7 @@ import { BIOMES, POSTURES, COMMODITIES, POI, SKILLS } from './data.js';
 import { chemin, coutTraversee, decouvrir, nomRegion, colonieDe, distance } from './world.js';
 import {
   comp, gagnerXp, estDebout, estVivant, tickPerso, nourrir, pvTotal,
-  tendreLien, lien, mods,
+  tendreLien, lien, mods, XP_PRATIQUE,
 } from './characters.js';
 import {
   ajouterAuSac, tenterRencontre, tenterAlea, reputation, tenterChasseurs,
@@ -76,8 +76,25 @@ export function donnerOrdre(state, ordre, groupe) {
     return { ok: true };
   }
   if (!ORDRES[ordre.type]) return { ok: false, motif: 'Ordre inconnu.' };
+  if (ordre.type === 'entrainement') {
+    const v = verifierExercice(ordre.skill);
+    if (!v.ok) return v;
+  }
   g.ordre = Object.assign({}, ordre);
   return { ok: true };
+}
+
+/** Refus explicite plutôt que retombée silencieuse sur la mêlée. */
+export function verifierExercice(skill) {
+  if (!skill) return { ok: false, motif: 'Quelle compétence ?' };
+  if (COMPETENCES_EXERCICE.includes(skill)) return { ok: true };
+  const comment = PAR_LA_PRATIQUE[skill];
+  return {
+    ok: false,
+    motif: comment
+      ? `${SKILLS[skill]} ne se travaille pas à l’exercice : ça vient ${comment}.`
+      : `${SKILLS[skill]} ne se travaille pas à l’exercice.`,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -99,6 +116,27 @@ const SKILL_ORDRE = { fouille: 'ingenierie', mine: 'force', chasse: 'tir' };
  * voyait rien bouger et l'ordre ne servait à rien qu'à manger des rations.
  */
 export const XP_ENTRAINEMENT = 24;
+
+/**
+ * Ce qui s'exerce à vide, et rien d'autre. On soulève des charges, on court, on
+ * répète une frappe, on tire sur une cible — mais on ne s'exerce pas à
+ * l'ingénierie, à la médecine ou au commerce : ces métiers-là s'apprennent en
+ * démontant, en soignant et en négociant pour de vrai. La furtivité non plus :
+ * elle s'acquiert en se déplaçant sans se faire voir.
+ *
+ * Le reste des compétences monte donc uniquement par la pratique — c'est le
+ * pendant de XP_PRATIQUE, et les deux règles se tiennent : le métier forme au
+ * métier, l'exercice ne forme qu'au corps et aux armes.
+ */
+export const COMPETENCES_EXERCICE = ['force', 'endurance', 'melee', 'tir'];
+
+/** Comment chaque compétence non exerçable se travaille, pour le dire au joueur. */
+export const PAR_LA_PRATIQUE = {
+  furtivite: 'en explorant et en évitant les mauvaises rencontres',
+  ingenierie: 'en fouillant, en fouillant des sites et en bâtissant l’avant-poste',
+  medecine: 'en soignant les siens',
+  commerce: 'en achetant et en vendant',
+};
 /**
  * Un vétéran qui corrige les gestes vaut mieux qu'un mannequin de paille. Le
  * meilleur du groupe dans la compétence travaillée accélère les autres —
@@ -163,8 +201,10 @@ function recolter(state, g, type, travailleurs, log, ctx, facteur = 1) {
       }
       recolte[k] = (recolte[k] || 0) + q;
     }
-    gagnerXp(c, skill, 1.1);
-    gagnerXp(c, 'endurance', 0.4);
+    // Le métier forme au métier. `facteur` vaut aussi ici : glaner en marchant
+    // enseigne moins que fouiller pour de bon.
+    gagnerXp(c, skill, XP_PRATIQUE * facteur);
+    gagnerXp(c, 'endurance', XP_PRATIQUE * 0.35 * facteur);
   }
   // Chasser, c'est manger : l'essentiel part en rations, pas en biomasse brute
   // qu'on ne saurait pas transformer sans avant-poste.
@@ -257,8 +297,8 @@ function explorer(state, g, eclaireurs, log, ctx) {
   }
 
   for (const c of eclaireurs) {
-    gagnerXp(c, 'furtivite', 0.9);
-    gagnerXp(c, 'endurance', 0.6);
+    gagnerXp(c, 'furtivite', XP_PRATIQUE);
+    gagnerXp(c, 'endurance', XP_PRATIQUE * 0.5);
   }
 }
 
@@ -292,7 +332,7 @@ function utiliserMedkit(state, g, log, ctx) {
   }
   const soigneur = deboutDe(g)
     .reduce((a, b) => (!a || comp(b, 'medecine') > comp(a, 'medecine') ? b : a), null);
-  if (soigneur) gagnerXp(soigneur, 'medecine', 3);
+  if (soigneur) gagnerXp(soigneur, 'medecine', XP_PRATIQUE * 1.4);
   if (cible.etat === 'ko' && pvTotal(cible).pct > 0.45) {
     cible.etat = 'ok';
     cible.koHeures = 0;
@@ -336,7 +376,7 @@ function avancerVoyage(state, g, log, ctx) {
     o.etape++;
     const rayon = 1 + (state.base.recherche.optique || 0);
     decouvrir(state.world, prochaine, rayon);
-    for (const c of debout) gagnerXp(c, 'endurance', 1.2);
+    for (const c of debout) gagnerXp(c, 'endurance', XP_PRATIQUE);
 
     const col = colonieDe(state.world, prochaine);
     if (col) {
@@ -486,7 +526,8 @@ function tickGroupe(state, g, log, ctx) {
           recolter(state, g, type, paquet.gens, log, ctx);
           break;
         case 'entrainement': {
-          const skill = paquet.tache.skill || 'melee';
+          const skill = COMPETENCES_EXERCICE.includes(paquet.tache.skill)
+            ? paquet.tache.skill : 'melee';
           const cout = Math.ceil(paquet.gens.length / 2);
           if ((g.inventaire.rations || 0) >= cout) {
             g.inventaire.rations -= cout;

@@ -179,6 +179,21 @@ export function seuilXp(niveau) {
 }
 
 /** Retourne le nombre de niveaux gagnés (0 la plupart du temps). */
+/**
+ * Ce que rapporte une heure passée à faire son métier, pour la compétence que
+ * ce métier exerce. Fouiller monte l'ingénierie, extraire la force, chasser le
+ * tir, explorer la furtivité, marcher l'endurance, soigner la médecine,
+ * négocier le commerce.
+ *
+ * Valeur mesurée : à l'ancien taux (1,1), passer de 10 à 30 en travaillant
+ * demandait mille cent quinze jours de travail — autant dire que le métier ne
+ * formait personne, et que seul l'exercice comptait. À 10, une saison de
+ * travail à plein temps fait passer de 10 à 20, et trois ou quatre saisons
+ * mènent à 30. Le travail forme, l'exercice va deux fois plus vite mais ne
+ * produit rien et se paie en vivres.
+ */
+export const XP_PRATIQUE = 10;
+
 export function gagnerXp(c, skill, montant) {
   if (!(skill in c.skills) || montant <= 0) return 0;
   const niv = c.skills[skill];

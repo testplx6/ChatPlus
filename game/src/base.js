@@ -2,7 +2,7 @@
 // production contrainte par l'énergie, stockage plafonné, raids à encaisser.
 
 import { BUILDINGS, RESEARCH, COMMODITY_KEYS } from './data.js';
-import { comp, gagnerXp, estDebout } from './characters.js';
+import { comp, gagnerXp, estDebout, XP_PRATIQUE } from './characters.js';
 import { groupes, groupeActif } from './groupes.js';
 
 export function creerBase() {
@@ -299,7 +299,9 @@ export function tickBase(state, log, ctx) {
         for (const c of g.membres) {
           if (!estDebout(c)) continue;
           ing += comp(c, 'ingenierie');
-          gagnerXp(c, 'ingenierie', 0.25);
+          // Un chantier forme moins vite qu'une fouille : on tient la clé,
+          // on ne cherche pas.
+          gagnerXp(c, 'ingenierie', XP_PRATIQUE * 0.5);
         }
       }
       vitesse += Math.min(1.2, ing / 160);

@@ -14,7 +14,7 @@ import {
 import { genererBande, resoudreCombat, butin } from './combat.js';
 import {
   comp, gagnerXp, estDebout, estVivant, makeCharacter, blesser, pvTotal,
-  ajusterLien,
+  ajusterLien, XP_PRATIQUE,
 } from './characters.js';
 import { poidsInventaire, capacitePortage } from './economy.js';
 import { tailleEscouadeMax } from './base.js';
@@ -468,7 +468,7 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       const bande = bandeLocale(state, ctx, g);
       if (posture.evitement > 0 && rng.chance(posture.evitement * 0.8)) {
         log({ type: 'esquive', texte: `${g.nom} : ${bande.nom} repéré à temps. Contournement.`, regionId, groupe: g.id });
-        for (const c of debout) gagnerXp(c, 'furtivite', 1.2);
+        for (const c of debout) gagnerXp(c, 'furtivite', XP_PRATIQUE);
         return true;
       }
       combatContre(state, bande, log, ctx, g);
@@ -482,7 +482,7 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       const pris = ajouterAuSac(state, k, q, g);
       const cr = rng.irange(0, 60);
       state.player.credits += cr;
-      for (const c of debout) gagnerXp(c, 'ingenierie', 1.5);
+      for (const c of debout) gagnerXp(c, 'ingenierie', XP_PRATIQUE * 1.2);
       log({
         type: 'trouvaille',
         texte: `Épave fouillée : ${pris} ${COMMODITIES[k].nom.toLowerCase()}${cr ? ` et ${cr} cr` : ''}.`,
@@ -534,7 +534,7 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       const prix = Math.round(COMMODITIES[k].prix * (1.15 + bonus) * q);
       g.inventaire[k] -= q;
       state.player.credits += prix;
-      if (negoc) gagnerXp(negoc, 'commerce', 1.4);
+      if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.8);
       log({
         type: 'commerce',
         texte: `Caravane : ${q} ${COMMODITIES[k].nom.toLowerCase()} vendus pour ${prix} cr.`,
@@ -703,7 +703,7 @@ export function fouillerSite(state, rng, log, groupe) {
     if (leves) pris.push(`${leves} secteurs levés`);
   }
 
-  for (const c of debout) gagnerXp(c, 'ingenierie', 4);
+  for (const c of debout) gagnerXp(c, 'ingenierie', XP_PRATIQUE * 3);
   state.stats.sitesFouilles = (state.stats.sitesFouilles || 0) + 1;
 
   const resume = [pris.join(', '), cr ? `${cr} cr` : null, objets.length ? objets.join(', ') : null]

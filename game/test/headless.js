@@ -9,7 +9,7 @@ import { Rng } from '../src/rng.js';
 import { serialiser, deserialiser } from '../src/save.js';
 import { COMMODITY_KEYS, DIPLO_FACTIONS } from '../src/data.js';
 import { classement, puissance } from '../src/factions.js';
-import { donnerOrdre } from '../src/squad.js';
+import { donnerOrdre, verifierExercice, COMPETENCES_EXERCICE } from '../src/squad.js';
 import { fonderBase, lancerConstruction, lancerRecherche } from '../src/base.js';
 import { estVivant } from '../src/characters.js';
 import { colonieDe } from '../src/world.js';
@@ -636,17 +636,63 @@ const s9o = nouvellePartie(558, { maintenant: 0 });
 const g9o = groupeActif(s9o);
 g9o.inventaire.rations = 20000;
 donnerOrdre(s9o, { type: 'fouille' }, g9o);
-assignerTache(s9o, g9o.membres[0], { type: 'entrainement', skill: 'medecine' });
-const medAvant = g9o.membres[0].skills.medecine;
+assignerTache(s9o, g9o.membres[0], { type: 'entrainement', skill: 'tir' }, verifierExercice);
+const tirAvant = g9o.membres[0].skills.tir;
 avancer(s9o, 150);
-ok(g9o.membres[0].skills.medecine > medAvant, 'le membre détaché à l’entraînement travaille sa compétence',
-  `${medAvant} → ${g9o.membres[0].skills.medecine}`);
+ok(g9o.membres[0].skills.tir > tirAvant, 'le membre détaché à l’entraînement travaille sa compétence',
+  `${tirAvant} → ${g9o.membres[0].skills.tir}`);
 // On vérifie la répartition, pas la récolte : c'est elle le sujet, et la
 // mesurer en unités ramassées dépendrait de la place restante dans le sac.
 ok(tacheDe(g9o, g9o.membres[0]).type === 'entrainement'
   && tacheDe(g9o, g9o.membres[1]).type === 'fouille',
 'pendant que les autres continuent de fouiller',
 `${tacheDe(g9o, g9o.membres[0]).type} / ${tacheDe(g9o, g9o.membres[1]).type}`);
+
+// On ne s'exerce qu'au corps et aux armes : le reste s'apprend en le faisant.
+for (const k of ['force', 'endurance', 'melee', 'tir']) {
+  ok(verifierExercice(k).ok, `${k} s’exerce`);
+}
+for (const k of ['ingenierie', 'medecine', 'commerce', 'furtivite']) {
+  const v = verifierExercice(k);
+  ok(!v.ok && /pratique|vient|exercice/.test(v.motif), `${k} ne s’exerce pas, et on dit pourquoi`, v.motif);
+}
+const s9p = nouvellePartie(559, { maintenant: 0 });
+ok(!donnerOrdre(s9p, { type: 'entrainement', skill: 'commerce' }).ok,
+  'l’ordre d’entraînement au commerce est refusé, pas rabattu sur la mêlée');
+ok(!assignerTache(s9p, groupeActif(s9p).membres[0], { type: 'entrainement', skill: 'ingenierie' }, verifierExercice).ok,
+  'et la tâche personnelle aussi');
+
+section('9 septies. Le métier forme au métier');
+// Une saison de travail à plein temps doit se voir sur la compétence exercée.
+const metiers = [
+  ['fouille', 'ingenierie'],
+  ['mine', 'force'],
+  ['chasse', 'tir'],
+  ['exploration', 'furtivite'],
+];
+for (const [ordre, skill] of metiers) {
+  const st = nouvellePartie(4321, { maintenant: 0 });
+  const gt = groupeActif(st);
+  gt.inventaire.rations = 55;
+  const av = gt.membres[0].skills[skill];
+  donnerOrdre(st, { type: ordre }, gt);
+  avancer(st, 700); // ≈ un mois, dont environ deux tiers ouvrés
+  const ap = gt.membres[0].skills[skill];
+  ok(ap > av + 2, `${ordre} fait monter ${skill} de façon visible`, `${av} → ${ap}`);
+}
+// Le commerce et la médecine se pratiquent aussi, à leur rythme.
+const s9q = nouvellePartie(4322, { maintenant: 0 });
+const g9q = groupeActif(s9q);
+const colVente = colonieDe(s9q.world, g9q.regionId);
+const comAvant = g9q.membres.reduce((m, c) => Math.max(m, c.skills.commerce), 0);
+// Quatre-vingts transactions : la tournée d'un marchand sur une saison. Un
+// niveau de commerce se gagne, il ne se ramasse pas.
+for (let i = 0; i < 80; i++) {
+  g9q.inventaire.ferraille = 20;
+  vendre(s9q, colVente, 'ferraille', 20, g9q);
+}
+const comApres = g9q.membres.reduce((m, c) => Math.max(m, c.skills.commerce), 0);
+ok(comApres > comAvant, 'négocier fait monter le commerce', `${comAvant} → ${comApres}`);
 
 section('10. Rattrapage hors ligne');
 const s10 = nouvellePartie(1010, { maintenant: 1000000 });

@@ -6,7 +6,7 @@ import {
   COMMODITIES, COMMODITY_KEYS, BIOMES, ITEMS, FACTIONS,
   ETAL_PAR_STYLE, PALIERS_ITEM,
 } from './data.js';
-import { comp, gagnerXp, portage } from './characters.js';
+import { comp, gagnerXp, portage, XP_PRATIQUE } from './characters.js';
 import { remiseDe, palierBonus } from './allegeance.js';
 import { distance as distanceCases } from './world.js';
 import { groupeActif } from './groupes.js';
@@ -323,7 +323,7 @@ export function acheter(state, col, key, qte, groupe) {
   cout = Math.round(cout);
   state.player.credits -= cout;
   g.inventaire[key] = (g.inventaire[key] || 0) + achetes;
-  if (negoc) gagnerXp(negoc, 'commerce', 0.6 + achetes * 0.06);
+  if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.5 + achetes * 0.3);
   return { ok: true, qte: achetes, cout };
 }
 
@@ -346,7 +346,7 @@ export function vendre(state, col, key, qte, groupe) {
   gain = Math.round(gain);
   g.inventaire[key] -= vendus;
   state.player.credits += gain;
-  if (negoc) gagnerXp(negoc, 'commerce', 0.6 + vendus * 0.06);
+  if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.5 + vendus * 0.3);
   return { ok: true, qte: vendus, gain };
 }
 
@@ -433,7 +433,7 @@ export function acheterItem(state, col, index, groupe) {
   state.player.credits -= p;
   ligne.qte -= 1;
   g.objets.push(ligne.key);
-  if (negoc) gagnerXp(negoc, 'commerce', 2.5);
+  if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 1.2);
   return { ok: true, prix: p, nom: ITEMS[ligne.key].nom };
 }
 
@@ -447,6 +447,6 @@ export function vendreItem(state, col, indexObjet, groupe) {
   const p = prixItem(col, key, 1, hab, repu, remiseDe(state, col.faction)).vente;
   g.objets.splice(indexObjet, 1);
   state.player.credits += p;
-  if (negoc) gagnerXp(negoc, 'commerce', 1.8);
+  if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.9);
   return { ok: true, prix: p, nom: ITEMS[key].nom };
 }

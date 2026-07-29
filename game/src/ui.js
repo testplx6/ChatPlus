@@ -25,7 +25,9 @@ import {
   COUT_FONDATION, tailleEscouadeMax,
 } from './base.js';
 import { classement, enGuerre } from './factions.js';
-import { donnerOrdre, ORDRES, rendementPrevu } from './squad.js';
+import {
+  donnerOrdre, ORDRES, rendementPrevu, COMPETENCES_EXERCICE, PAR_LA_PRATIQUE,
+} from './squad.js';
 import {
   progres as progresContrat, lieuValidation, accepter, abandonner, MAX_CONTRATS,
 } from './contrats.js';
@@ -1576,18 +1578,18 @@ function modaleEntrainement() {
   const g = G();
   const c = modale.c ? g.membres.find((x) => x.id === modale.c) : null;
   const meilleurs = {};
-  for (const k of SKILL_KEYS) {
+  for (const k of COMPETENCES_EXERCICE) {
     meilleurs[k] = g.membres.filter(estVivant)
       .reduce((m, x) => Math.max(m, comp(x, k)), 0);
   }
-  return `<h2 class="titre">Entraînement${c ? ` — ${e(c.nom)}` : ''}</h2>
+  return `<h2 class="titre">Exercice${c ? ` — ${e(c.nom)}` : ''}</h2>
   <div class="aide">${c
     ? 'Cette personne seule travaille la compétence choisie ; le reste du groupe suit son ordre.'
     : 'Tout le groupe travaille la même compétence.'}
-  Consomme des rations et ne rapporte rien — mais c’est de loin le moyen le plus rapide de
-  progresser. Le meilleur du groupe fait l’instructeur : plus l’écart est grand, plus l’élève monte vite.</div>
+  Consomme des rations et ne rapporte rien — mais c’est deux fois plus rapide que le terrain.
+  Le meilleur du groupe fait l’instructeur : plus l’écart est grand, plus l’élève monte vite.</div>
   <div class="sep"></div>
-  <div class="pile">${SKILL_KEYS.map((k) => {
+  <div class="pile">${COMPETENCES_EXERCICE.map((k) => {
     const niv = c ? comp(c, k) : null;
     const ecart = c ? Math.max(0, meilleurs[k] - niv) : 0;
     return `<button class="act mini" style="text-align:left"
@@ -1595,7 +1597,12 @@ function modaleEntrainement() {
       ${e(SKILLS[k])}${c ? ` <span class="aide">— ${Math.round(niv)}${ecart > 2
       ? `, instructeur à ${Math.round(meilleurs[k])}` : ', personne pour l’encadrer'}</span>` : ''}
     </button>`;
-  }).join('')}</div>`;
+  }).join('')}</div>
+  <div class="sep"></div>
+  <div class="titre">Ce qui ne s’exerce pas</div>
+  <div class="aide">${Object.keys(PAR_LA_PRATIQUE)
+    .map((k) => `<b>${e(SKILLS[k])}</b> ${e(PAR_LA_PRATIQUE[k])}`).join(' · ')}.
+  Ces métiers-là s’apprennent en les faisant, pas sur un mannequin de paille.</div>`;
 }
 
 function modaleRecrutement() {

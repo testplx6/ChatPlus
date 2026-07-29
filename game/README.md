@@ -66,7 +66,7 @@ de cache périmé.
 ## Tests
 
 ```bash
-npm test                     # 125 assertions sur le moteur, sans navigateur
+npm test                     # 140 assertions sur le moteur, sans navigateur
 node test/equilibre.js       # banc d'équilibrage : un bot joue 30 parties
 node test/equilibre.js 4000 60   # échantillon large, une vingtaine de secondes
 SANS=detach,contrats node test/equilibre.js   # coupe un système pour l'isoler
@@ -167,13 +167,22 @@ Ce dont vous avez été témoin est immédiat et sûr ; le reste est donné pour
 qu'il est, un rapport. Le trésor d'une faction et les colonnes en campagne
 restent invisibles tant qu'on n'a pas cherché la Cryptographie.
 
-**L'entraînement.** Le moyen le plus rapide de progresser, et le seul qui se
-voie à l'échelle d'une session : cent heures rendent trois à quatre points, là
-où le travail de terrain en rend un dixième. Ça coûte des rations et ça ne
-rapporte rien d'autre. Le meilleur du groupe fait l'instructeur — plus l'écart
-est grand, plus l'élève monte vite —, ce qui donne un rôle au vétéran qu'on a
-mis deux cents heures à former. Un membre peut s'y mettre seul pendant que les
-autres travaillent.
+**Le métier forme au métier.** Fouiller monte l'ingénierie, extraire la force,
+chasser le tir, explorer la furtivité, marcher l'endurance, soigner la médecine,
+négocier le commerce. Une saison de travail à plein temps fait passer de 10 à 20
+dans la compétence exercée, trois ou quatre saisons mènent à 30. C'est la voie
+normale : elle produit en même temps qu'elle forme.
+
+**L'exercice ne concerne que le corps et les armes.** Force, endurance, mêlée,
+tir : ce qui se répète à vide. On ne s'exerce pas à l'ingénierie, à la médecine,
+au commerce ou à la furtivité — ces métiers-là s'apprennent en démontant, en
+soignant, en négociant, en se déplaçant sans se faire voir, et le jeu le dit au
+lieu de rabattre silencieusement le choix sur la mêlée. L'exercice va deux fois
+plus vite que le terrain, coûte des rations et ne rapporte rien d'autre ; il sert
+surtout aux compétences de combat, qu'on ne peut sinon travailler qu'en risquant
+sa peau. Le meilleur du groupe fait l'instructeur — plus l'écart est grand, plus
+l'élève monte vite —, ce qui donne un rôle au vétéran qu'on a mis longtemps à
+former. Un membre peut s'y mettre seul pendant que les autres travaillent.
 
 **La route.** Marcher n'est pas du temps mort : on glane le long du chemin, à
 un peu plus de la moitié de ce que rapporterait une vraie fouille. Sans ça, un

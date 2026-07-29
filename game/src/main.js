@@ -12,6 +12,7 @@ import { sEngager, quitter } from './allegeance.js';
 import { genererBande } from './combat.js';
 import { groupeActif, tousLesMembres, scinder, fusionner, choisirGroupe, assignerTache } from './groupes.js';
 import { tailleEscouadeMax } from './base.js';
+import { verifierExercice } from './squad.js';
 
 let state = null;
 let boucle = null;
@@ -187,7 +188,7 @@ const API = {
   assignerTache(idPerso, tache) {
     const c = tousLesMembres(state).find((x) => x.id === idPerso);
     if (!c) return { ok: false, motif: 'Introuvable.' };
-    const r = assignerTache(state, c, tache);
+    const r = assignerTache(state, c, tache, verifierExercice);
     if (r.ok) sauver();
     return r;
   },

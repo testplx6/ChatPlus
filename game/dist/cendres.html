@@ -2089,6 +2089,21 @@ function seuilXp(niveau) {
 }
 
 /** Retourne le nombre de niveaux gagnés (0 la plupart du temps). */
+/**
+ * Ce que rapporte une heure passée à faire son métier, pour la compétence que
+ * ce métier exerce. Fouiller monte l'ingénierie, extraire la force, chasser le
+ * tir, explorer la furtivité, marcher l'endurance, soigner la médecine,
+ * négocier le commerce.
+ *
+ * Valeur mesurée : à l'ancien taux (1,1), passer de 10 à 30 en travaillant
+ * demandait mille cent quinze jours de travail — autant dire que le métier ne
+ * formait personne, et que seul l'exercice comptait. À 10, une saison de
+ * travail à plein temps fait passer de 10 à 20, et trois ou quatre saisons
+ * mènent à 30. Le travail forme, l'exercice va deux fois plus vite mais ne
+ * produit rien et se paie en vivres.
+ */
+const XP_PRATIQUE = 10;
+
 function gagnerXp(c, skill, montant) {
   if (!(skill in c.skills) || montant <= 0) return 0;
   const niv = c.skills[skill];
@@ -2463,10 +2478,16 @@ function tacheDe(g, c) {
 }
 
 /** `null` remet le membre sous l'ordre du groupe. */
-function assignerTache(state, perso, tache) {
+function assignerTache(state, perso, tache, verifierExercice) {
   if (!tache) { delete perso.tache; return { ok: true }; }
   if (!TACHES_INDIVIDUELLES.includes(tache.type)) {
     return { ok: false, motif: 'Cette tâche ne se prend pas seul.' };
+  }
+  // `verifierExercice` est passé par l'appelant : squad.js est en aval de ce
+  // module dans l'ordre des dépendances, et l'importer ferait un cycle.
+  if (tache.type === 'entrainement' && verifierExercice) {
+    const v = verifierExercice(tache.skill);
+    if (!v.ok) return v;
   }
   perso.tache = Object.assign({}, tache);
   return { ok: true };
@@ -3333,8 +3354,9 @@ function resoudreCombat(campA, campB, ctx) {
         const letal = acteur.camp === 'A' ? (ctx.letalA || 0.08) : (ctx.letalB || 0.2);
         const res = blesser(cible, net, membre, rng, { letal: rng.chance(letal) });
 
-        gagnerXp(c, arme.comp === 'tir' ? 'tir' : 'melee', 1.4 + net * 0.06);
-        gagnerXp(cible, 'endurance', 0.7 + net * 0.03);
+        // Se battre forme vite : c'est cher payé, mais ça forme.
+        gagnerXp(c, arme.comp === 'tir' ? 'tir' : 'melee', XP_PRATIQUE * 1.2 + net * 0.4);
+        gagnerXp(cible, 'endurance', XP_PRATIQUE * 0.6 + net * 0.2);
 
         if (res.mort) {
           c.kills++;
@@ -3708,7 +3730,7 @@ function acheter(state, col, key, qte, groupe) {
   cout = Math.round(cout);
   state.player.credits -= cout;
   g.inventaire[key] = (g.inventaire[key] || 0) + achetes;
-  if (negoc) gagnerXp(negoc, 'commerce', 0.6 + achetes * 0.06);
+  if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.5 + achetes * 0.3);
   return { ok: true, qte: achetes, cout };
 }
 
@@ -3731,7 +3753,7 @@ function vendre(state, col, key, qte, groupe) {
   gain = Math.round(gain);
   g.inventaire[key] -= vendus;
   state.player.credits += gain;
-  if (negoc) gagnerXp(negoc, 'commerce', 0.6 + vendus * 0.06);
+  if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.5 + vendus * 0.3);
   return { ok: true, qte: vendus, gain };
 }
 
@@ -3818,7 +3840,7 @@ function acheterItem(state, col, index, groupe) {
   state.player.credits -= p;
   ligne.qte -= 1;
   g.objets.push(ligne.key);
-  if (negoc) gagnerXp(negoc, 'commerce', 2.5);
+  if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 1.2);
   return { ok: true, prix: p, nom: ITEMS[ligne.key].nom };
 }
 
@@ -3832,7 +3854,7 @@ function vendreItem(state, col, indexObjet, groupe) {
   const p = prixItem(col, key, 1, hab, repu, remiseDe(state, col.faction)).vente;
   g.objets.splice(indexObjet, 1);
   state.player.credits += p;
-  if (negoc) gagnerXp(negoc, 'commerce', 1.8);
+  if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.9);
   return { ok: true, prix: p, nom: ITEMS[key].nom };
 }
 
@@ -4965,7 +4987,9 @@ function tickBase(state, log, ctx) {
         for (const c of g.membres) {
           if (!estDebout(c)) continue;
           ing += comp(c, 'ingenierie');
-          gagnerXp(c, 'ingenierie', 0.25);
+          // Un chantier forme moins vite qu'une fouille : on tient la clé,
+          // on ne cherche pas.
+          gagnerXp(c, 'ingenierie', XP_PRATIQUE * 0.5);
         }
       }
       vitesse += Math.min(1.2, ing / 160);
@@ -5881,7 +5905,7 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       const bande = bandeLocale(state, ctx, g);
       if (posture.evitement > 0 && rng.chance(posture.evitement * 0.8)) {
         log({ type: 'esquive', texte: `${g.nom} : ${bande.nom} repéré à temps. Contournement.`, regionId, groupe: g.id });
-        for (const c of debout) gagnerXp(c, 'furtivite', 1.2);
+        for (const c of debout) gagnerXp(c, 'furtivite', XP_PRATIQUE);
         return true;
       }
       combatContre(state, bande, log, ctx, g);
@@ -5895,7 +5919,7 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       const pris = ajouterAuSac(state, k, q, g);
       const cr = rng.irange(0, 60);
       state.player.credits += cr;
-      for (const c of debout) gagnerXp(c, 'ingenierie', 1.5);
+      for (const c of debout) gagnerXp(c, 'ingenierie', XP_PRATIQUE * 1.2);
       log({
         type: 'trouvaille',
         texte: `Épave fouillée : ${pris} ${COMMODITIES[k].nom.toLowerCase()}${cr ? ` et ${cr} cr` : ''}.`,
@@ -5947,7 +5971,7 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       const prix = Math.round(COMMODITIES[k].prix * (1.15 + bonus) * q);
       g.inventaire[k] -= q;
       state.player.credits += prix;
-      if (negoc) gagnerXp(negoc, 'commerce', 1.4);
+      if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.8);
       log({
         type: 'commerce',
         texte: `Caravane : ${q} ${COMMODITIES[k].nom.toLowerCase()} vendus pour ${prix} cr.`,
@@ -6116,7 +6140,7 @@ function fouillerSite(state, rng, log, groupe) {
     if (leves) pris.push(`${leves} secteurs levés`);
   }
 
-  for (const c of debout) gagnerXp(c, 'ingenierie', 4);
+  for (const c of debout) gagnerXp(c, 'ingenierie', XP_PRATIQUE * 3);
   state.stats.sitesFouilles = (state.stats.sitesFouilles || 0) + 1;
 
   const resume = [pris.join(', '), cr ? `${cr} cr` : null, objets.length ? objets.join(', ') : null]
@@ -6194,8 +6218,25 @@ function donnerOrdre(state, ordre, groupe) {
     return { ok: true };
   }
   if (!ORDRES[ordre.type]) return { ok: false, motif: 'Ordre inconnu.' };
+  if (ordre.type === 'entrainement') {
+    const v = verifierExercice(ordre.skill);
+    if (!v.ok) return v;
+  }
   g.ordre = Object.assign({}, ordre);
   return { ok: true };
+}
+
+/** Refus explicite plutôt que retombée silencieuse sur la mêlée. */
+function verifierExercice(skill) {
+  if (!skill) return { ok: false, motif: 'Quelle compétence ?' };
+  if (COMPETENCES_EXERCICE.includes(skill)) return { ok: true };
+  const comment = PAR_LA_PRATIQUE[skill];
+  return {
+    ok: false,
+    motif: comment
+      ? `${SKILLS[skill]} ne se travaille pas à l’exercice : ça vient ${comment}.`
+      : `${SKILLS[skill]} ne se travaille pas à l’exercice.`,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -6217,6 +6258,27 @@ const SKILL_ORDRE = { fouille: 'ingenierie', mine: 'force', chasse: 'tir' };
  * voyait rien bouger et l'ordre ne servait à rien qu'à manger des rations.
  */
 const XP_ENTRAINEMENT = 24;
+
+/**
+ * Ce qui s'exerce à vide, et rien d'autre. On soulève des charges, on court, on
+ * répète une frappe, on tire sur une cible — mais on ne s'exerce pas à
+ * l'ingénierie, à la médecine ou au commerce : ces métiers-là s'apprennent en
+ * démontant, en soignant et en négociant pour de vrai. La furtivité non plus :
+ * elle s'acquiert en se déplaçant sans se faire voir.
+ *
+ * Le reste des compétences monte donc uniquement par la pratique — c'est le
+ * pendant de XP_PRATIQUE, et les deux règles se tiennent : le métier forme au
+ * métier, l'exercice ne forme qu'au corps et aux armes.
+ */
+const COMPETENCES_EXERCICE = ['force', 'endurance', 'melee', 'tir'];
+
+/** Comment chaque compétence non exerçable se travaille, pour le dire au joueur. */
+const PAR_LA_PRATIQUE = {
+  furtivite: 'en explorant et en évitant les mauvaises rencontres',
+  ingenierie: 'en fouillant, en fouillant des sites et en bâtissant l’avant-poste',
+  medecine: 'en soignant les siens',
+  commerce: 'en achetant et en vendant',
+};
 /**
  * Un vétéran qui corrige les gestes vaut mieux qu'un mannequin de paille. Le
  * meilleur du groupe dans la compétence travaillée accélère les autres —
@@ -6281,8 +6343,10 @@ function recolter(state, g, type, travailleurs, log, ctx, facteur = 1) {
       }
       recolte[k] = (recolte[k] || 0) + q;
     }
-    gagnerXp(c, skill, 1.1);
-    gagnerXp(c, 'endurance', 0.4);
+    // Le métier forme au métier. `facteur` vaut aussi ici : glaner en marchant
+    // enseigne moins que fouiller pour de bon.
+    gagnerXp(c, skill, XP_PRATIQUE * facteur);
+    gagnerXp(c, 'endurance', XP_PRATIQUE * 0.35 * facteur);
   }
   // Chasser, c'est manger : l'essentiel part en rations, pas en biomasse brute
   // qu'on ne saurait pas transformer sans avant-poste.
@@ -6375,8 +6439,8 @@ function explorer(state, g, eclaireurs, log, ctx) {
   }
 
   for (const c of eclaireurs) {
-    gagnerXp(c, 'furtivite', 0.9);
-    gagnerXp(c, 'endurance', 0.6);
+    gagnerXp(c, 'furtivite', XP_PRATIQUE);
+    gagnerXp(c, 'endurance', XP_PRATIQUE * 0.5);
   }
 }
 
@@ -6410,7 +6474,7 @@ function utiliserMedkit(state, g, log, ctx) {
   }
   const soigneur = deboutDe(g)
     .reduce((a, b) => (!a || comp(b, 'medecine') > comp(a, 'medecine') ? b : a), null);
-  if (soigneur) gagnerXp(soigneur, 'medecine', 3);
+  if (soigneur) gagnerXp(soigneur, 'medecine', XP_PRATIQUE * 1.4);
   if (cible.etat === 'ko' && pvTotal(cible).pct > 0.45) {
     cible.etat = 'ok';
     cible.koHeures = 0;
@@ -6454,7 +6518,7 @@ function avancerVoyage(state, g, log, ctx) {
     o.etape++;
     const rayon = 1 + (state.base.recherche.optique || 0);
     decouvrir(state.world, prochaine, rayon);
-    for (const c of debout) gagnerXp(c, 'endurance', 1.2);
+    for (const c of debout) gagnerXp(c, 'endurance', XP_PRATIQUE);
 
     const col = colonieDe(state.world, prochaine);
     if (col) {
@@ -6604,7 +6668,8 @@ function tickGroupe(state, g, log, ctx) {
           recolter(state, g, type, paquet.gens, log, ctx);
           break;
         case 'entrainement': {
-          const skill = paquet.tache.skill || 'melee';
+          const skill = COMPETENCES_EXERCICE.includes(paquet.tache.skill)
+            ? paquet.tache.skill : 'melee';
           const cout = Math.ceil(paquet.gens.length / 2);
           if ((g.inventaire.rations || 0) >= cout) {
             g.inventaire.rations -= cout;
@@ -8760,18 +8825,18 @@ function modaleEntrainement() {
   const g = G();
   const c = modale.c ? g.membres.find((x) => x.id === modale.c) : null;
   const meilleurs = {};
-  for (const k of SKILL_KEYS) {
+  for (const k of COMPETENCES_EXERCICE) {
     meilleurs[k] = g.membres.filter(estVivant)
       .reduce((m, x) => Math.max(m, comp(x, k)), 0);
   }
-  return `<h2 class="titre">Entraînement${c ? ` — ${e(c.nom)}` : ''}</h2>
+  return `<h2 class="titre">Exercice${c ? ` — ${e(c.nom)}` : ''}</h2>
   <div class="aide">${c
     ? 'Cette personne seule travaille la compétence choisie ; le reste du groupe suit son ordre.'
     : 'Tout le groupe travaille la même compétence.'}
-  Consomme des rations et ne rapporte rien — mais c’est de loin le moyen le plus rapide de
-  progresser. Le meilleur du groupe fait l’instructeur : plus l’écart est grand, plus l’élève monte vite.</div>
+  Consomme des rations et ne rapporte rien — mais c’est deux fois plus rapide que le terrain.
+  Le meilleur du groupe fait l’instructeur : plus l’écart est grand, plus l’élève monte vite.</div>
   <div class="sep"></div>
-  <div class="pile">${SKILL_KEYS.map((k) => {
+  <div class="pile">${COMPETENCES_EXERCICE.map((k) => {
     const niv = c ? comp(c, k) : null;
     const ecart = c ? Math.max(0, meilleurs[k] - niv) : 0;
     return `<button class="act mini" style="text-align:left"
@@ -8779,7 +8844,12 @@ function modaleEntrainement() {
       ${e(SKILLS[k])}${c ? ` <span class="aide">— ${Math.round(niv)}${ecart > 2
       ? `, instructeur à ${Math.round(meilleurs[k])}` : ', personne pour l’encadrer'}</span>` : ''}
     </button>`;
-  }).join('')}</div>`;
+  }).join('')}</div>
+  <div class="sep"></div>
+  <div class="titre">Ce qui ne s’exerce pas</div>
+  <div class="aide">${Object.keys(PAR_LA_PRATIQUE)
+    .map((k) => `<b>${e(SKILLS[k])}</b> ${e(PAR_LA_PRATIQUE[k])}`).join(' · ')}.
+  Ces métiers-là s’apprennent en les faisant, pas sur un mannequin de paille.</div>`;
 }
 
 function modaleRecrutement() {
@@ -9328,7 +9398,7 @@ const API = {
   assignerTache(idPerso, tache) {
     const c = tousLesMembres(state).find((x) => x.id === idPerso);
     if (!c) return { ok: false, motif: 'Introuvable.' };
-    const r = assignerTache(state, c, tache);
+    const r = assignerTache(state, c, tache, verifierExercice);
     if (r.ok) sauver();
     return r;
   },

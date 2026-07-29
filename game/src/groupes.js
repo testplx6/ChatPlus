@@ -118,10 +118,16 @@ export function tacheDe(g, c) {
 }
 
 /** `null` remet le membre sous l'ordre du groupe. */
-export function assignerTache(state, perso, tache) {
+export function assignerTache(state, perso, tache, verifierExercice) {
   if (!tache) { delete perso.tache; return { ok: true }; }
   if (!TACHES_INDIVIDUELLES.includes(tache.type)) {
     return { ok: false, motif: 'Cette tâche ne se prend pas seul.' };
+  }
+  // `verifierExercice` est passé par l'appelant : squad.js est en aval de ce
+  // module dans l'ordre des dépendances, et l'importer ferait un cycle.
+  if (tache.type === 'entrainement' && verifierExercice) {
+    const v = verifierExercice(tache.skill);
+    if (!v.ok) return v;
   }
   perso.tache = Object.assign({}, tache);
   return { ok: true };

@@ -5,7 +5,7 @@
 import { ITEMS, BIOMES } from './data.js';
 import {
   comp, blesser, tirerMembre, armureTotale, estDebout, estVivant, pvTotal,
-  gagnerXp, makeCharacter,
+  gagnerXp, makeCharacter, XP_PRATIQUE,
 } from './characters.js';
 
 // ---------------------------------------------------------------------------
@@ -170,8 +170,9 @@ export function resoudreCombat(campA, campB, ctx) {
         const letal = acteur.camp === 'A' ? (ctx.letalA || 0.08) : (ctx.letalB || 0.2);
         const res = blesser(cible, net, membre, rng, { letal: rng.chance(letal) });
 
-        gagnerXp(c, arme.comp === 'tir' ? 'tir' : 'melee', 1.4 + net * 0.06);
-        gagnerXp(cible, 'endurance', 0.7 + net * 0.03);
+        // Se battre forme vite : c'est cher payé, mais ça forme.
+        gagnerXp(c, arme.comp === 'tir' ? 'tir' : 'melee', XP_PRATIQUE * 1.2 + net * 0.4);
+        gagnerXp(cible, 'endurance', XP_PRATIQUE * 0.6 + net * 0.2);
 
         if (res.mort) {
           c.kills++;
