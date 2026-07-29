@@ -198,6 +198,9 @@ function attribuerFactions(rng, regions, colonies) {
     });
     const k = rng.weighted(scores);
     col.faction = k;
+    // Une ville se souvient de sa maison mère : c'est ce qui rend possible une
+    // sécession, et donc le retour d'une faction qu'on croyait éteinte.
+    col.factionOrigine = k;
     factions[k].colonies.push(col.id);
     regions[col.regionId].controle = k;
   }

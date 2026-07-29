@@ -555,6 +555,7 @@ function seedFromString(str) {
 }
 
 // Alias d'import
+const distanceCases = distance;
 const nivBat = niveau;
 const progresContrat = progres;
 
@@ -1662,6 +1663,9 @@ function attribuerFactions(rng, regions, colonies) {
     });
     const k = rng.weighted(scores);
     col.faction = k;
+    // Une ville se souvient de sa maison mère : c'est ce qui rend possible une
+    // sécession, et donc le retour d'une faction qu'on croyait éteinte.
+    col.factionOrigine = k;
     factions[k].colonies.push(col.id);
     regions[col.regionId].controle = k;
   }
@@ -1864,6 +1868,8 @@ function makeCharacter(rng, opts = {}) {
     kills: 0,
     joursSurvecus: 0,
     traits: tirerTraits(rng, opts.traits),
+    // Ce que celui-ci pense des autres. Se remplit en vivant ensemble.
+    liens: {},
   };
   for (const k of SKILL_KEYS) {
     const base = rng.irange(4, 14) + (def.bonus[k] || 0) + niveau * rng.irange(2, 6);
@@ -2189,6 +2195,50 @@ function nourrir(c, dispo) {
   return besoin;
 }
 
+/** Le lien mutuel entre deux membres, borné à ±100. */
+function lien(a, b) {
+  if (!a.liens) a.liens = {};
+  return a.liens[b.id] ?? 0;
+}
+
+function ajusterLien(a, b, delta) {
+  if (!a.liens) a.liens = {};
+  if (!b.liens) b.liens = {};
+  const v0 = a.liens[b.id] ?? 0;
+  // Amortissement aux extrêmes : sans lui, tout le monde atteint 100 en deux
+  // semaines et la notion de relation ne veut plus rien dire.
+  const frein = 1 - Math.min(0.95, Math.abs(v0) / 100);
+  const v = Math.max(-100, Math.min(100, v0 + delta * frein));
+  a.liens[b.id] = v;
+  b.liens[a.id] = v;
+}
+
+/**
+ * Tire un lien vers une valeur d'équilibre. Un ajout constant finit toujours
+ * par saturer à 100 ; une cible produit des relations qui se distinguent.
+ */
+function tendreLien(a, b, cible, taux) {
+  if (!a.liens) a.liens = {};
+  if (!b.liens) b.liens = {};
+  const v0 = a.liens[b.id] ?? 0;
+  const v = Math.max(-100, Math.min(100, v0 + (cible - v0) * taux));
+  a.liens[b.id] = v;
+  b.liens[a.id] = v;
+}
+
+/** Le meilleur et le pire, pour l'affichage. */
+function relationsNotables(c, squad) {
+  let ami = null;
+  let rival = null;
+  for (const autre of squad) {
+    if (autre.id === c.id || autre.etat === 'mort') continue;
+    const v = lien(c, autre);
+    if (v >= 25 && (!ami || v > lien(c, ami))) ami = autre;
+    if (v <= -25 && (!rival || v < lien(c, rival))) rival = autre;
+  }
+  return { ami, rival };
+}
+
 /** Résumé court pour l'UI. */
 function etatCourt(c) {
   if (c.etat === 'mort') return 'MORT';
@@ -2199,6 +2249,363 @@ function etatCourt(c) {
   if (c.faim > 85) return 'AFFAMÉ';
   if (c.fatigue > 90) return 'ÉPUISÉ';
   return 'OK';
+}
+
+// ===== src/allegeance.js =============================================
+// Allégeance. Jusqu'ici les factions étaient un décor avec lequel on
+// commerçait ; on peut désormais entrer à leur service, monter en grade, en
+// recevoir des ordres et en tirer des avantages concrets.
+//
+// C'est la progression longue du jeu : la réputation était un chiffre, le grade
+// est une position dans le monde.
+
+
+const RANGS = [
+  {
+    nom: 'Affilié', points: 0, remise: 0.05, solde: 0,
+    desc: 'On vous laisse entrer par la porte de service.',
+  },
+  {
+    nom: 'Agent', points: 130, remise: 0.10, solde: 30,
+    desc: 'On vous connaît. Les péages ne vous concernent plus.',
+  },
+  {
+    nom: 'Lieutenant', points: 380, remise: 0.16, solde: 75,
+    desc: 'Les armuriers vous sortent ce qu’ils gardent derrière.',
+  },
+  {
+    nom: 'Capitaine', points: 850, remise: 0.22, solde: 160,
+    desc: 'On vous soigne sans compter, et on vient parfois à votre secours.',
+  },
+  {
+    nom: 'Commandeur', points: 1700, remise: 0.30, solde: 300,
+    desc: 'Votre nom vaut un ordre écrit.',
+  },
+];
+
+/** Réputation minimale pour être seulement reçu. */
+const REPUTATION_MINIMALE = 20;
+
+function rangDe(all) {
+  if (!all) return null;
+  let i = 0;
+  for (let k = 0; k < RANGS.length; k++) {
+    if (all.points >= RANGS[k].points) i = k;
+  }
+  return { index: i, def: RANGS[i], suivant: RANGS[i + 1] || null };
+}
+
+function estAuService(state, faction) {
+  return !!state.player.allegeance && state.player.allegeance.faction === faction;
+}
+
+/** Remise consentie par sa propre faction, 0 ailleurs. */
+function remiseDe(state, faction) {
+  if (!estAuService(state, faction)) return 0;
+  return rangDe(state.player.allegeance).def.remise;
+}
+
+/** Palier d'équipement supplémentaire débloqué chez les siens. */
+function palierBonus(state, faction) {
+  if (!estAuService(state, faction)) return 0;
+  return rangDe(state.player.allegeance).index >= 2 ? 1 : 0;
+}
+
+// ---------------------------------------------------------------------------
+// Entrer et sortir
+// ---------------------------------------------------------------------------
+
+function peutSEngager(state, faction) {
+  if (!FACTIONS[faction] || faction === 'essaim') {
+    return { ok: false, motif: 'Cette faction n’enrôle personne.' };
+  }
+  if (state.player.allegeance) {
+    return { ok: false, motif: `Déjà au service ${FACTIONS[state.player.allegeance.faction].genitif}.` };
+  }
+  const rep = state.player.reputation[faction] || 0;
+  if (rep < REPUTATION_MINIMALE) {
+    return { ok: false, motif: `Réputation insuffisante : ${Math.round(rep)} / ${REPUTATION_MINIMALE}.` };
+  }
+  return { ok: true };
+}
+
+function sEngager(state, faction, log) {
+  const v = peutSEngager(state, faction);
+  if (!v.ok) return v;
+
+  state.player.allegeance = {
+    faction,
+    points: 0,
+    depuis: state.temps,
+    ordre: null,
+    prochainOrdre: state.temps + 60,
+    derniereSolde: state.temps,
+  };
+
+  // On ne choisit pas un camp sans que l'autre le remarque.
+  for (const g of state.world.guerres) {
+    const autre = g.a === faction ? g.b : g.b === faction ? g.a : null;
+    if (!autre) continue;
+    state.player.reputation[autre] = Math.max(-100, (state.player.reputation[autre] || 0) - 20);
+  }
+
+  log({
+    type: 'allegeance',
+    texte: `Vous entrez au service ${FACTIONS[faction].genitif}. Rang : ${RANGS[0].nom}.`,
+    important: true,
+  });
+  return { ok: true };
+}
+
+function quitter(state, log) {
+  const all = state.player.allegeance;
+  if (!all) return { ok: false, motif: 'Vous n’êtes au service de personne.' };
+  const f = all.faction;
+  state.player.allegeance = null;
+  state.player.reputation[f] = Math.max(-100, (state.player.reputation[f] || 0) - 30);
+  log({
+    type: 'allegeance',
+    texte: `Vous rompez avec ${FACTIONS[f].nom}. On n’oublie pas ce genre de départ.`,
+    important: true,
+  });
+  return { ok: true };
+}
+
+/** Points de service gagnés. Retourne le nombre de grades franchis. */
+function crediter(state, points, log, motif) {
+  const all = state.player.allegeance;
+  if (!all || points <= 0) return 0;
+  const avant = rangDe(all).index;
+  all.points += points;
+  const apres = rangDe(all).index;
+  if (apres > avant) {
+    log({
+      type: 'allegeance',
+      texte: `${FACTIONS[all.faction].nom} vous élève au rang de ${RANGS[apres].nom}. ${RANGS[apres].desc}`,
+      important: true,
+    });
+  } else if (motif) {
+    log({ type: 'allegeance', texte: `${motif} (+${Math.round(points)} au service).`, discret: true });
+  }
+  return apres - avant;
+}
+
+// ---------------------------------------------------------------------------
+// Ordres de mission
+// ---------------------------------------------------------------------------
+// Un contrat que la faction vous impose plutôt que de vous proposer. Mieux
+// payé, et le refuser se paie.
+
+function villesDe(state, faction) {
+  return state.world.colonies.filter((c) => !c.ruine && c.faction === faction);
+}
+
+function fabriquerOrdre(state, rng) {
+  const all = state.player.allegeance;
+  const miennes = villesDe(state, all.faction);
+  if (!miennes.length) return null;
+  const rang = rangDe(all);
+
+  // On vise ce qui sert vraiment la faction : ravitailler une ville en manque,
+  // frapper un ennemi déclaré, ou reconnaître un secteur convoité.
+  const guerres = state.world.guerres.filter((g) => g.a === all.faction || g.b === all.faction);
+  const ennemis = guerres.map((g) => (g.a === all.faction ? g.b : g.a));
+
+  const choix = [];
+  choix.push(['ravitaillement', 3]);
+  if (ennemis.length) choix.push(['frappe', 3]);
+  choix.push(['reconnaissance', 1.5]);
+  const type = rng.weighted(choix);
+
+  if (type === 'frappe') {
+    const cible = rng.pick(ennemis);
+    const victoires = 1 + rng.int(1 + rang.index);
+    return {
+      id: idDepuisRng(rng, 'o'),
+      type: 'frappe',
+      cibleFaction: cible,
+      victoires,
+      progres: 0,
+      titre: `${victoires} victoire${victoires > 1 ? 's' : ''} contre ${FACTIONS[cible].nom}`,
+      recompense: Math.round(victoires * rng.irange(300, 560) * (1 + rang.index * 0.25)),
+      service: Math.round(victoires * 45 * (1 + rang.index * 0.2)),
+      duree: rng.irange(260, 460),
+    };
+  }
+
+  if (type === 'reconnaissance') {
+    const inconnues = state.world.regions.filter((r) => !r.decouvert);
+    if (!inconnues.length) return null;
+    const r = rng.pick(inconnues);
+    return {
+      id: idDepuisRng(rng, 'o'),
+      type: 'reconnaissance',
+      regionId: r.i,
+      titre: `Reconnaître le secteur ${String.fromCharCode(65 + r.x)}${r.y + 1}`,
+      recompense: Math.round(rng.irange(180, 340) * (1 + rang.index * 0.2)),
+      service: Math.round(40 * (1 + rang.index * 0.2)),
+      duree: rng.irange(200, 380),
+    };
+  }
+
+  // Ravitaillement : la ville la plus en peine de la faction.
+  let pire = null;
+  let pireManque = 0;
+  let ressource = 'rations';
+  for (const col of miennes) {
+    for (const k of ['rations', 'composant', 'alliage', 'medkit', 'carburant']) {
+      const manque = Math.max(0, col.pop * 0.25 - (col.stock[k] || 0));
+      if (manque > pireManque) { pireManque = manque; pire = col; ressource = k; }
+    }
+  }
+  if (!pire) pire = rng.pick(miennes);
+  const quantite = Math.max(15, Math.min(120, Math.round(pireManque * rng.range(0.3, 0.6)) || 30));
+  return {
+    id: idDepuisRng(rng, 'o'),
+    type: 'ravitaillement',
+    colonieId: pire.id,
+    ressource,
+    quantite,
+    titre: `Ravitailler ${pire.nom} : ${quantite} ${COMMODITIES[ressource].nom.toLowerCase()}`,
+    recompense: Math.round(COMMODITIES[ressource].prix * quantite * rng.range(1.8, 2.6)),
+    service: Math.round(quantite * 1.5 + 30),
+    duree: rng.irange(240, 420),
+  };
+}
+
+function avancementOrdre(state, o) {
+  if (!o) return null;
+  switch (o.type) {
+    case 'frappe':
+      return { fait: o.progres, total: o.victoires, pret: o.progres >= o.victoires,
+        texte: `${o.progres} / ${o.victoires}` };
+    case 'reconnaissance': {
+      const vu = state.world.regions[o.regionId].decouvert;
+      return { fait: vu ? 1 : 0, total: 1, pret: vu, texte: vu ? 'secteur vu' : 'non exploré' };
+    }
+    case 'ravitaillement': {
+      const q = Math.floor(state.player.inventaire[o.ressource] || 0);
+      const col = colonieParId(state.world, o.colonieId);
+      const surPlace = col && state.player.regionId === col.regionId;
+      return {
+        fait: Math.min(q, o.quantite),
+        total: o.quantite,
+        pret: q >= o.quantite && surPlace,
+        texte: `${Math.min(q, o.quantite)} / ${o.quantite}${col ? ` · ${col.nom}` : ''}`,
+      };
+    }
+    default:
+      return null;
+  }
+}
+
+/** Une victoire compte pour l'ordre en cours, comme pour les primes. */
+function compterVictoireOrdre(state, factionBande) {
+  const all = state.player.allegeance;
+  if (!all || !all.ordre || all.ordre.type !== 'frappe') return;
+  if (all.ordre.cibleFaction === factionBande) {
+    all.ordre.progres = Math.min(all.ordre.victoires, all.ordre.progres + 1);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tick
+// ---------------------------------------------------------------------------
+
+function tickAllegeance(state, log, ctx) {
+  const all = state.player.allegeance;
+  if (!all) return;
+  const rng = ctx.rng;
+  const f = state.world.factions[all.faction];
+
+  // Une faction éteinte ne commande plus personne.
+  if (!f || !f.colonies.length) {
+    log({
+      type: 'allegeance',
+      texte: `${FACTIONS[all.faction].nom} n’existe plus. Votre engagement tombe avec elle.`,
+      important: true,
+    });
+    state.player.allegeance = null;
+    return;
+  }
+
+  const rang = rangDe(all);
+
+  // Solde versée tous les jours, à partir du grade d'Agent.
+  if (rang.def.solde > 0 && state.temps - all.derniereSolde >= 24) {
+    all.derniereSolde = state.temps;
+    state.player.credits += rang.def.solde;
+    log({
+      type: 'solde',
+      texte: `Solde ${FACTIONS[all.faction].genitif} : ${rang.def.solde} cr.`,
+      discret: true,
+    });
+  }
+
+  // Ordre en cours : validation, échéance.
+  if (all.ordre) {
+    const p = avancementOrdre(state, all.ordre);
+    if (p && p.pret) {
+      const o = all.ordre;
+      if (o.type === 'ravitaillement') {
+        const col = colonieParId(state.world, o.colonieId);
+        state.player.inventaire[o.ressource] -= o.quantite;
+        if (col) col.stock[o.ressource] = (col.stock[o.ressource] || 0) + o.quantite;
+      }
+      state.player.credits += o.recompense;
+      state.player.reputation[all.faction] = Math.min(100, (state.player.reputation[all.faction] || 0) + 5);
+      all.ordre = null;
+      all.prochainOrdre = state.temps + rng.irange(120, 260);
+      state.stats.ordresRemplis = (state.stats.ordresRemplis || 0) + 1;
+      crediter(state, o.service, log, null);
+      log({
+        type: 'allegeance',
+        texte: `Ordre exécuté : ${o.titre}. ${o.recompense} cr.`,
+        important: true,
+      });
+    } else if (state.temps > all.ordre.echeance) {
+      const o = all.ordre;
+      all.ordre = null;
+      all.prochainOrdre = state.temps + rng.irange(180, 320);
+      all.points = Math.max(0, all.points - Math.round(o.service * 0.8));
+      state.player.reputation[all.faction] = Math.max(-100, (state.player.reputation[all.faction] || 0) - 8);
+      log({
+        type: 'allegeance',
+        texte: `Ordre non exécuté : ${o.titre}. On le note.`,
+        important: true,
+      });
+    }
+  } else if (state.temps >= all.prochainOrdre) {
+    const o = fabriquerOrdre(state, rng);
+    if (o) {
+      o.echeance = state.temps + o.duree;
+      all.ordre = o;
+      log({
+        type: 'allegeance',
+        texte: `Ordre de mission ${FACTIONS[all.faction].genitif} : ${o.titre} (${o.recompense} cr).`,
+        important: true,
+      });
+    } else {
+      all.prochainOrdre = state.temps + 120;
+    }
+  }
+
+  // Au grade de Capitaine, les siens viennent parfois prêter main-forte.
+  if (rang.index >= 3 && state.player.secours === undefined) state.player.secours = 0;
+}
+
+/**
+ * Renfort : à partir de Capitaine, une escouade amie peut arriver au milieu
+ * d'un combat livré en territoire ami. Retourne le nombre de renforts.
+ */
+function renfortsDisponibles(state) {
+  const all = state.player.allegeance;
+  if (!all) return 0;
+  const rang = rangDe(all);
+  if (rang.index < 3) return 0;
+  const r = state.world.regions[state.player.regionId];
+  if (r.controle !== all.faction) return 0;
+  return rang.index - 2;
 }
 
 // ===== src/combat.js =================================================
@@ -2466,9 +2873,9 @@ function prixUnitaire(col, key) {
  * `habilete` : compétence de commerce du meilleur négociateur (0-100).
  * `repu`     : réputation avec la faction propriétaire (−100..100).
  */
-function prixJoueur(col, key, habilete = 0, repu = 0) {
+function prixJoueur(col, key, habilete = 0, repu = 0, remise = 0) {
   const p = prixUnitaire(col, key);
-  const marge = Math.max(0.06, 0.18 - habilete / 900 - Math.max(0, repu) / 1400);
+  const marge = Math.max(0.02, 0.18 - habilete / 900 - Math.max(0, repu) / 1400 - remise);
   const majorationHostile = repu < -20 ? 0.15 + Math.min(0.4, -repu / 220) : 0;
   // Non arrondi volontairement : arrondir à l'unité écraserait la marge sur les
   // marchandises bon marché et rendrait l'aller-retour achat/revente gratuit.
@@ -2565,6 +2972,18 @@ function tickColonie(world, col, rng, climat) {
   col.stock.rations = Math.max(0, disponible - servi);
   const satiete = besoin > 0 ? servi / besoin : 1;
 
+  // Surextension : une faction qui tient trop de villes, trop loin de sa
+  // capitale, les tient mal. C'est le frein qui empêche un vainqueur d'avaler
+  // la carte entière.
+  if (col.faction && world.factions[col.faction]) {
+    const f = world.factions[col.faction];
+    const cap = f.capitale && world.colonies.find((c) => c.id === f.capitale);
+    const eloignement = cap ? distanceCases(world, cap.regionId, col.regionId) : 0;
+    const surcharge = Math.max(0, f.colonies.length - 3);
+    const tension = eloignement * 0.00016 + surcharge * 0.00035;
+    if (tension > 0) col.unrest = Math.min(1, col.unrest + tension);
+  }
+
   if (satiete < 0.8) {
     // On se serre la ceinture, puis on s'énerve, puis on s'en va.
     col.unrest = Math.min(1, col.unrest + 0.004 * (0.8 - satiete) / 0.8);
@@ -2599,6 +3018,15 @@ function tickColonie(world, col, rng, climat) {
   if (col.pop < 55 && col.unrest > 0.75) col.declin += 1;
   else col.declin = Math.max(0, col.declin - 4);
 
+  // Sécession : une ville occupée, affamée et exaspérée retourne à sa maison
+  // d'origine — quitte à la ressusciter. C'est le contre-pouvoir qui empêche
+  // la carte de finir en monoculture.
+  if (col.factionOrigine && col.faction && col.faction !== col.factionOrigine
+      && col.unrest > 0.6 && rng.chance(0.0012 * (col.unrest - 0.6) / 0.4)
+      && world.factions[col.faction].colonies.length > 1) {
+    return { evenement: 'secession' };
+  }
+
   if (col.pop > col.taille * 620 && col.unrest < 0.3 && col.taille < 3) {
     col.taille += 1;
     col.murs += 2;
@@ -2607,10 +3035,39 @@ function tickColonie(world, col, rng, climat) {
   if (col.declin > 900) {
     const vivantes = world.colonies.filter((c) => !c.ruine).length;
     const socle = Math.max(6, Math.round(world.colonies.length * 0.6));
-    if (vivantes > socle) return { evenement: 'effondrement' };
+    // On n'abandonne pas la dernière ville d'une faction : ce serait la rayer
+    // de la carte par la démographie après l'avoir protégée des armées.
+    const derniere = col.faction && world.factions[col.faction]
+      && world.factions[col.faction].colonies.length <= 1;
+    if (vivantes > socle && !derniere) return { evenement: 'effondrement' };
     col.declin = 600; // en sursis : on ne vide pas la carte
+    if (derniere) {
+      // Une capitale acculée reçoit du renfort des siens : elle ne meurt pas.
+      col.unrest = Math.max(0, col.unrest - 0.02);
+      col.pop = Math.max(col.pop, 60);
+    }
   }
   return null;
+}
+
+/** Rend une colonie à sa faction d'origine, en la ressuscitant s'il le faut. */
+function faireSecession(world, col) {
+  const ancienne = col.faction;
+  const rendue = col.factionOrigine;
+  if (ancienne && world.factions[ancienne]) {
+    const f = world.factions[ancienne];
+    f.colonies = f.colonies.filter((id) => id !== col.id);
+    if (f.capitale === col.id) f.capitale = f.colonies[0] || null;
+  }
+  col.faction = rendue;
+  const cible = world.factions[rendue];
+  if (!cible.colonies.includes(col.id)) cible.colonies.push(col.id);
+  if (!cible.capitale) cible.capitale = col.id;
+  cible.prochainConseil = Math.min(cible.prochainConseil, 20);
+  world.regions[col.regionId].controle = rendue;
+  col.unrest = 0.3;
+  col.defense = Math.round(col.defenseMax * 0.5);
+  return { ancienne, rendue, renaissance: cible.colonies.length === 1 };
 }
 
 /** Transforme une colonie en ruine : la carte garde la cicatrice. */
@@ -2676,7 +3133,7 @@ function acheter(state, col, key, qte) {
 
   while (restant > 0) {
     if ((col.stock[key] || 0) < 1) break;
-    const p = prixJoueur(col, key, hab, repu).achat;
+    const p = prixJoueur(col, key, hab, repu, remiseDe(state, col.faction)).achat;
     if (state.player.credits - cout < p) break;
     cout += p;
     col.stock[key] -= 1;
@@ -2699,7 +3156,7 @@ function vendre(state, col, key, qte) {
   let gain = 0;
   let vendus = 0;
   while (restant > 0) {
-    const p = prixJoueur(col, key, hab, repu).vente;
+    const p = prixJoueur(col, key, hab, repu, remiseDe(state, col.faction)).vente;
     gain += p;
     col.stock[key] = (col.stock[key] || 0) + 1;
     vendus += 1;
@@ -2742,10 +3199,10 @@ function valeurLot(lot) {
 
 const DUREE_ETAL = 180; // heures avant renouvellement
 
-function genererEtal(rng, world, col, t) {
+function genererEtal(rng, world, col, t, bonusPalier = 0) {
   const style = FACTIONS[col.faction] ? FACTIONS[col.faction].style : 'commune';
   const catalogue = ETAL_PAR_STYLE[style] || ETAL_PAR_STYLE.commune;
-  const palierMax = col.taille >= 3 ? 3 : col.taille >= 2 ? 2 : 1;
+  const palierMax = Math.min(3, (col.taille >= 3 ? 3 : col.taille >= 2 ? 2 : 1) + bonusPalier);
   const possibles = catalogue.filter((k) => (PALIERS_ITEM[k] ?? 0) <= palierMax);
   const combien = Math.min(possibles.length, rng.irange(2, 2 + col.taille * 2));
   const choisis = rng.shuffle(possibles).slice(0, combien);
@@ -2761,15 +3218,15 @@ function genererEtal(rng, world, col, t) {
   return col.etal;
 }
 
-function etalDe(world, col, rng, t) {
-  if (!col.etal || t >= col.etal.expire) genererEtal(rng, world, col, t);
+function etalDe(world, col, rng, t, bonusPalier = 0) {
+  if (!col.etal || t >= col.etal.expire) genererEtal(rng, world, col, t, bonusPalier);
   return col.etal;
 }
 
 /** Prix d'un objet pour le joueur, achat et revente. */
-function prixItem(col, key, coef = 1, habilete = 0, repu = 0) {
+function prixItem(col, key, coef = 1, habilete = 0, repu = 0, remise = 0) {
   const base = ITEMS[key].prix * coef * (1 + col.unrest * 0.2);
-  const marge = Math.max(0.08, 0.28 - habilete / 700 - Math.max(0, repu) / 900);
+  const marge = Math.max(0.03, 0.28 - habilete / 700 - Math.max(0, repu) / 900 - remise);
   const hostile = repu < -20 ? 0.2 + Math.min(0.5, -repu / 200) : 0;
   return {
     achat: Math.round(base * (1 + marge + hostile)),
@@ -2788,7 +3245,7 @@ function acheterItem(state, col, index) {
   const negoc = meilleurCommercant(state.player.squad);
   const hab = negoc ? comp(negoc, 'commerce') : 0;
   const repu = state.player.reputation[col.faction] || 0;
-  const p = prixItem(col, ligne.key, ligne.coef, hab, repu).achat;
+  const p = prixItem(col, ligne.key, ligne.coef, hab, repu, remiseDe(state, col.faction)).achat;
   if (state.player.credits < p) return { ok: false, motif: `Il manque ${p - state.player.credits} cr.` };
 
   state.player.credits -= p;
@@ -2804,7 +3261,7 @@ function vendreItem(state, col, indexObjet) {
   const negoc = meilleurCommercant(state.player.squad);
   const hab = negoc ? comp(negoc, 'commerce') : 0;
   const repu = state.player.reputation[col.faction] || 0;
-  const p = prixItem(col, key, 1, hab, repu).vente;
+  const p = prixItem(col, key, 1, hab, repu, remiseDe(state, col.faction)).vente;
   state.player.objets.splice(indexObjet, 1);
   state.player.credits += p;
   if (negoc) gagnerXp(negoc, 'commerce', 1.8);
@@ -3331,8 +3788,15 @@ function tickArmee(world, armee, t, log, ctx) {
     if (!col) { dissoudre(world, armee); return; }
     if (col.faction === armee.faction) { dissoudre(world, armee); return; }
 
+    // Une capitale se défend comme une capitale : sans ça, une faction se fait
+    // rayer de la carte en une campagne et ne revient jamais.
+    const estCapitale = col.faction && world.factions[col.faction]
+      && world.factions[col.faction].capitale === col.id;
+    const derniere = col.faction && world.factions[col.faction]
+      && world.factions[col.faction].colonies.length <= 1;
+    const acharnement = (estCapitale ? 1.8 : 1) * (derniere ? 1.6 : 1);
     const assaut = armee.force * rng.range(0.5, 1.1);
-    const tenue = col.defense * rng.range(0.6, 1.15) + col.murs * 2;
+    const tenue = (col.defense * rng.range(0.6, 1.15) + col.murs * 2) * acharnement;
     if (assaut > tenue) {
       col.defense = Math.max(0, col.defense - assaut * 0.12);
       armee.force -= Math.max(0, Math.round(tenue * 0.02));
@@ -3354,6 +3818,25 @@ function tickArmee(world, armee, t, log, ctx) {
       return;
     }
     if (col.defense <= 1) {
+      // On ne raye pas une faction de la carte par les armes. Sa dernière
+      // ville tient, quel qu'en soit le prix : c'est ce qui laisse au monde
+      // six acteurs plutôt qu'un vainqueur et des ruines.
+      const proprio = col.faction && world.factions[col.faction];
+      if (proprio && proprio.colonies.length <= 1 && armee.faction !== 'essaim') {
+        col.defense = Math.round(col.defenseMax * 0.35);
+        col.pop = Math.max(40, Math.round(col.pop * 0.9));
+        armee.force = Math.round(armee.force * 0.45);
+        log({
+          type: 'siege',
+          texte: `${col.nom} tient. ${FACTIONS[col.faction].nom} n’a plus que cette ville, et la défend comme telle.`,
+          regionId: col.regionId,
+          factions: [col.faction, armee.faction],
+          important: true,
+        });
+        if (armee.force <= 8) dissoudre(world, armee);
+        else { armee.etat = 'marche'; armee.ravitaillement = Math.min(armee.ravitaillement, 20); }
+        return;
+      }
       capturer(world, armee, col, t, log, ctx);
     }
   }
@@ -3537,6 +4020,7 @@ function fonderColonie(world, key, region, rng, t) {
     prises: 0,
     declin: 0,
     fondeeA: t,
+    factionOrigine: key,
   };
   col.defenseMax = Math.round(col.pop * 0.09 + col.murs * 12);
   col.defense = col.defenseMax;
@@ -3561,6 +4045,25 @@ function tickFactions(world, t, log, ctx) {
   for (const armee of world.armees.slice()) {
     if (!world.armees.includes(armee)) continue;
     tickArmee(world, armee, t, log, ctx);
+  }
+
+  // Le plus fort se fait détester : les autres se liguent doucement contre
+  // celui qui domine. Sans cela, le vainqueur d'une guerre gagne toutes les
+  // suivantes et la carte se referme.
+  if (t % 24 === 0) {
+    let chef = null;
+    let chefP = 0;
+    for (const k of DIPLO_FACTIONS) {
+      if (!world.factions[k].colonies.length) continue;
+      const p = puissance(world, k);
+      if (p > chefP) { chefP = p; chef = k; }
+    }
+    if (chef) {
+      for (const k of DIPLO_FACTIONS) {
+        if (k === chef || !world.factions[k].colonies.length) continue;
+        majRelation(world, chef, k, -1.2);
+      }
+    }
   }
 
   // Dérive lente des relations vers la neutralité, sauf en guerre
@@ -3613,7 +4116,22 @@ function creerBase() {
     stock,
     defense: 0,
     derniereAttaque: -999,
+    // Un avant-poste n'est pas un entrepôt avec des murs : des gens finissent
+    // par s'y installer, y travailler, et y manger.
+    pop: 0,
+    moral: 60,
+    recrues: 0,
   };
+}
+
+/** Combien de personnes l'avant-poste peut loger et nourrir. */
+function populationMax(base) {
+  return niveau(base, 'baraquement') * 9 + niveau(base, 'hydroponie') * 4;
+}
+
+/** Le travail des habitants, en multiplicateur de production. */
+function mainDoeuvre(base) {
+  return 1 + Math.min(1.2, (base.pop || 0) / 45);
 }
 
 const COUT_FONDATION = { ferraille: 120, polymere: 40, composant: 5 };
@@ -3804,26 +4322,53 @@ function tickBase(state, log, ctx) {
   const e = energie(base);
   const r = e.ratio;
 
+  // --- Population : elle s'installe si on peut la loger et la nourrir, elle
+  // s'en va si l'un des deux manque. Sa main-d'œuvre fait tourner les ateliers.
+  const maxPop = populationMax(base);
+  const rationsDispo = base.stock.rations || 0;
+  const besoinPop = (base.pop || 0) * 0.014;
+  if (base.pop > 0) {
+    const servi = Math.min(besoinPop, rationsDispo);
+    base.stock.rations = Math.max(0, rationsDispo - servi);
+    const satiete = besoinPop > 0 ? servi / besoinPop : 1;
+    if (satiete < 0.75) {
+      base.moral = Math.max(0, base.moral - 0.15);
+      if (rng.chance(0.03)) base.pop = Math.max(0, base.pop - 1);
+    } else {
+      base.moral = Math.min(100, base.moral + 0.05);
+    }
+  }
+  if (base.pop < maxPop && rationsDispo > (base.pop + 1) * 3 && rng.chance(0.012)) {
+    base.pop += 1;
+    if (base.pop === 1) {
+      log({ type: 'base', texte: 'Quelqu’un s’installe à l’avant-poste. Ça commence comme ça.', regionId: base.regionId, important: true });
+    } else if (base.pop % 5 === 0) {
+      log({ type: 'base', texte: `L’avant-poste compte ${base.pop} habitants.`, regionId: base.regionId, important: true });
+    }
+  }
+  if (base.pop > maxPop) base.pop = maxPop;
+  const mo = mainDoeuvre(base);
+
   // --- Chaînes de production
   const hyd = niveau(base, 'hydroponie');
   if (hyd > 0) {
-    const bio = consommer(base, 'biomasse', 1.25 * hyd * r);
+    const bio = consommer(base, 'biomasse', 1.25 * hyd * r * mo);
     ajouter(base, 'rations', bio * 0.9 * (1 + (rech.hydroponie_av || 0) * 0.15));
   }
   const fond = niveau(base, 'fonderie');
   if (fond > 0) {
-    const min = consommer(base, 'minerai', 1.2 * fond * r);
+    const min = consommer(base, 'minerai', 1.2 * fond * r * mo);
     ajouter(base, 'alliage', min * 0.42 * (1 + (rech.metallurgie || 0) * 0.12));
   }
   const raf = niveau(base, 'raffinerie');
   if (raf > 0) {
-    const pol = consommer(base, 'polymere', 0.9 * raf * r);
+    const pol = consommer(base, 'polymere', 0.9 * raf * r * mo);
     ajouter(base, 'carburant', pol * 0.55);
   }
   const atl = niveau(base, 'atelier');
   if (atl > 0) {
-    const all = consommer(base, 'alliage', 0.35 * atl * r);
-    const pol = consommer(base, 'polymere', 0.5 * atl * r);
+    const all = consommer(base, 'alliage', 0.35 * atl * r * mo);
+    const pol = consommer(base, 'polymere', 0.5 * atl * r * mo);
     ajouter(base, 'composant', Math.min(all / 0.35, pol / 0.5) * 0.14 * atl * r);
   }
   const inf = niveau(base, 'infirmerie');
@@ -3832,12 +4377,13 @@ function tickBase(state, log, ctx) {
     ajouter(base, 'medkit', bio * 0.09);
   }
 
-  base.defense = niveau(base, 'mur') * 22 + 10;
+  // Les habitants ne regardent pas un raid les bras croisés.
+  base.defense = niveau(base, 'mur') * 22 + 10 + (base.pop || 0) * 2.5;
 
   // --- File de construction
   if (base.file.length) {
     const item = base.file[0];
-    let vitesse = 1;
+    let vitesse = 1 + Math.min(1, (base.pop || 0) / 30);
     if (surPlace) {
       // L'escouade met la main à la pâte
       let ing = 0;
@@ -3879,7 +4425,7 @@ function tickBase(state, log, ctx) {
   const t = state.temps;
   if (t - base.derniereAttaque > 72 && rng.chance(0.0016 * (1 + reg.danger * 4))) {
     base.derniereAttaque = t;
-    const force = rng.irange(20, 45) + Math.floor(t / 600);
+    const force = rng.irange(20, 45) + Math.floor(t / 600) + Math.round((base.pop || 0) * 1.5);
     const defense = base.defense + (surPlace ? forceEscouade(state) : 0);
     if (defense > force) {
       base.defense = Math.max(0, base.defense - force * 0.3);
@@ -4186,6 +4732,10 @@ function compterVictoire(state, factionBande) {
 
 function recompenser(state, c, log) {
   state.player.credits += c.recompense;
+  // Un contrat rempli pour les siens compte double : il paie et il fait monter.
+  if (estAuService(state, c.faction)) {
+    crediter(state, Math.round(c.recompense / 7) + 10, log, 'Contrat honoré pour les vôtres');
+  }
   state.player.reputation[c.faction] = Math.min(100, (state.player.reputation[c.faction] || 0) + c.reputation);
   state.stats.contratsRemplis = (state.stats.contratsRemplis || 0) + 1;
   log({
@@ -4370,7 +4920,24 @@ function combatContre(state, bande, log, ctx) {
   const squad = state.player.squad.filter(estVivant);
   const combattants = squad.filter((c) => c.etat !== 'mort');
 
-  const res = resoudreCombat(combattants, bande.membres, {
+  // À partir de Capitaine, les siens viennent prêter main-forte chez eux.
+  const renforts = [];
+  const nbRenforts = renfortsDisponibles(state);
+  for (let i = 0; i < nbRenforts; i++) {
+    const allie = makeCharacter(rng, { niveau: 2 });
+    allie.equip.armure = allie.equip.armure || 'plaque';
+    allie.renfort = true;
+    renforts.push(allie);
+  }
+  if (renforts.length) {
+    log({
+      type: 'renfort',
+      texte: `${renforts.length} homme${renforts.length > 1 ? 's' : ''} ${FACTIONS[state.player.allegeance.faction].genitif} accourent.`,
+      regionId: state.player.regionId,
+    });
+  }
+
+  const res = resoudreCombat(combattants.concat(renforts), bande.membres, {
     rng,
     biome: state.world.regions[state.player.regionId].biome,
     posture,
@@ -4401,6 +4968,15 @@ function combatContre(state, bande, log, ctx) {
     }
     state.stats.combatsGagnes++;
     compterVictoire(state, bande.faction);
+    compterVictoireOrdre(state, bande.faction);
+    // Frapper un ennemi déclaré de sa faction, c'est du service rendu.
+    const all = state.player.allegeance;
+    if (all && bande.faction && bande.faction !== all.faction) {
+      const enGuerreAvec = state.world.guerres.some(
+        (w) => (w.a === all.faction && w.b === bande.faction) || (w.b === all.faction && w.a === bande.faction)
+      );
+      if (enGuerreAvec) crediter(state, 28, log, 'Ennemi déclaré abattu');
+    }
     texte = `${bande.nom} mis en déroute à ${lieu} — ${ramasse} unités et ${b.credits} cr récupérés.`;
   } else if (res.vainqueur === 'B') {
     texte = perdreCombat(state, bande, log, ctx, lieu);
@@ -4431,6 +5007,18 @@ function combatContre(state, bande, log, ctx) {
         log({ type: 'surnom', texte: `On ne l’appelle plus ${avant}, mais ${c.nom}.`, important: true });
       }
     }
+  }
+
+  // Sortir vivants du même combat rapproche ; y laisser quelqu'un aussi, mais
+  // dans l'autre sens pour ceux qui n'ont pas tenu leur poste.
+  const debouts = state.player.squad.filter(estDebout);
+  for (let i = 0; i < debouts.length; i++) {
+    for (let j = i + 1; j < debouts.length; j++) {
+      ajusterLien(debouts[i], debouts[j], res.vainqueur === 'A' ? 7 : 3);
+    }
+  }
+  for (const tombe of state.player.squad.filter((c) => c.etat === 'ko')) {
+    for (const d of debouts) ajusterLien(tombe, d, -2);
   }
 
   annoncerProgres(state, compsAvant, log);
@@ -4551,7 +5139,10 @@ function tenterChasseurs(state, log, ctx) {
     for (const k of Object.keys(state.player.reputation)) {
       const v = state.player.reputation[k];
       if (v === 0) continue;
-      const pas = Math.min(Math.abs(v), 0.4);
+      // Asymétrique à dessein : une rancune s'émousse vite, un service rendu
+      // reste longtemps. Sinon on ne peut ni sortir de l'hostilité, ni
+      // accumuler assez d'estime pour être reçu quelque part.
+      const pas = v > 0 ? Math.min(v, 0.1) : Math.min(-v, 0.45);
       state.player.reputation[k] = v > 0 ? v - pas : v + pas;
     }
   }
@@ -4724,6 +5315,16 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1) {
     case 'peage': {
       const f = r.controle || 'bandits';
       const taxe = rng.irange(40, 220);
+      // Les siens ne rançonnent pas les leurs, dès le grade d'Agent.
+      if (estAuService(state, f) && rangDe(state.player.allegeance).index >= 1) {
+        log({
+          type: 'peage',
+          texte: `Barrage ${FACTIONS[f].genitif} : on vous reconnaît, on vous laisse passer.`,
+          regionId,
+          discret: true,
+        });
+        return true;
+      }
       const agressif = state.player.posture === 'agressif';
       if (!agressif && state.player.credits >= taxe && state.player.politique.payerPeage) {
         state.player.credits -= taxe;
@@ -5242,10 +5843,46 @@ function tickSquad(state, log, ctx) {
   if (affames) derive -= 0.06 * affames;
   if (ko) derive -= 0.05 * ko;
   if (ordre.type === 'repos' && !affames) derive += 0.05;
-  p.cohesion = Math.max(0, Math.min(100, p.cohesion + derive));
+  // Même amortissement que les liens : une escouade parfaite n'existe pas.
+  const freinCoh = derive > 0 ? 1 - Math.min(0.95, p.cohesion / 100) : 1;
+  p.cohesion = Math.max(0, Math.min(100, p.cohesion + derive * freinCoh));
+  // Les liens se tissent en vivant côte à côte, et se distendent quand l'un
+  // s'écroule pendant que l'autre tient debout.
+  if (state.temps % 6 === 0 && vivants.length > 1) {
+    for (let i = 0; i < vivants.length; i++) {
+      for (let j = i + 1; j < vivants.length; j++) {
+        const a = vivants[i];
+        const b = vivants[j];
+        // La simple coexistence tend vers une camaraderie ordinaire ; ce sont
+        // les épreuves partagées qui poussent au-delà, et les caractères
+        // incompatibles qui tirent en dessous.
+        const ensemble = estDebout(a) && estDebout(b);
+        let cible = 40;
+        const ta = a.traits || [];
+        const tb = b.traits || [];
+        if (ta.includes('teigneux') && tb.includes('teigneux')) cible -= 55;
+        if (ta.includes('froussard') !== tb.includes('froussard')) cible -= 15;
+        if (ta.includes('beau_parleur') || tb.includes('beau_parleur')) cible += 15;
+        if (ta.includes('rebouteux') || tb.includes('rebouteux')) cible += 10;
+        if (!ensemble) cible -= 20;
+        tendreLien(a, b, cible, ordre.type === 'repos' && ensemble ? 0.035 : 0.02);
+      }
+    }
+  }
+
   for (const c of vivants) {
-    // Le moral individuel tend vers la cohésion du groupe.
-    c.moral = Math.max(0, Math.min(100, c.moral + (p.cohesion - c.moral) * 0.01));
+    // Le moral tient à deux choses : l'état du groupe, et ceux sur qui on peut
+    // compter nommément.
+    let apport = 0;
+    let n = 0;
+    for (const autre of vivants) {
+      if (autre.id === c.id) continue;
+      apport += lien(c, autre);
+      n++;
+    }
+    const social = n ? apport / n : 0;
+    const cible = Math.max(0, Math.min(100, p.cohesion + social * 0.25));
+    c.moral = Math.max(0, Math.min(100, c.moral + (cible - c.moral) * 0.012 * (mods(c).moral || 1)));
   }
 
   // --- Nourriture : on mange dès qu'on a faim et de quoi
@@ -5436,6 +6073,7 @@ function nouvellePartie(seed, opts = {}) {
       // se délite, et ça se voit sur le moral de tout le monde.
       cohesion: 55,
       primes: {},
+      allegeance: null,
     },
     base: creerBase(),
     journal: [],
@@ -5451,6 +6089,7 @@ function nouvellePartie(seed, opts = {}) {
       sitesFouilles: 0,
       distanceParcourue: 0,
       caravanesPillees: 0,
+      ordresRemplis: 0,
     },
     memorial: [],
     fin: null,
@@ -5512,6 +6151,16 @@ function tick(state) {
         regionId: col.regionId,
         important: true,
       });
+    } else if (ev.evenement === 'secession') {
+      const r = faireSecession(state.world, col);
+      log({
+        type: 'secession',
+        texte: r.renaissance
+          ? `${col.nom} se soulève : ${FACTIONS[r.rendue].nom} renaît de ses cendres.`
+          : `${col.nom} chasse ${FACTIONS[r.ancienne].nom} et rejoint ${FACTIONS[r.rendue].nom}.`,
+        regionId: col.regionId,
+        important: true,
+      });
     } else if (ev.evenement === 'effondrement') {
       const ancienne = effondrer(state.world, col);
       log({
@@ -5529,7 +6178,7 @@ function tick(state) {
   if (state.temps % 40 === 0) {
     rafraichirPanneaux(state, rng, state.temps);
     for (const col of state.world.colonies) {
-      if (!col.ruine) etalDe(state.world, col, rng, state.temps);
+      if (!col.ruine) etalDe(state.world, col, rng, state.temps, palierBonus(state, col.faction));
     }
   }
 
@@ -5537,6 +6186,7 @@ function tick(state) {
   tickBase(state, log, ctx);
   if (!state.fin) tickSquad(state, log, ctx);
   if (!state.fin) tickContrats(state, log, ctx);
+  if (!state.fin) tickAllegeance(state, log, ctx);
 
   state.rngState = rng.save();
   return state;
@@ -5628,6 +6278,7 @@ function normaliser(state) {
   if (!p.reste) p.reste = {};
   if (!p.primes) p.primes = {};
   if (p.cohesion === undefined) p.cohesion = 55;
+  if (p.allegeance === undefined) p.allegeance = null;
   if (!state.memorial) state.memorial = [];
   if (!state.stats) state.stats = {};
   for (const k of ['contratsRemplis', 'sitesFouilles', 'caravanesPillees', 'distanceParcourue']) {
@@ -5642,7 +6293,14 @@ function normaliser(state) {
   }
   for (const c of p.squad) {
     if (!c.traits) c.traits = [];
+    if (!c.liens) c.liens = {};
   }
+  const b = state.base;
+  if (b) {
+    if (b.pop === undefined) b.pop = 0;
+    if (b.moral === undefined) b.moral = 60;
+  }
+  if (state.stats.ordresRemplis === undefined) state.stats.ordresRemplis = 0;
   return state;
 }
 
@@ -6243,7 +6901,25 @@ function blocColonie(col) {
       <button class="act mini" data-a="modale" data-m="panneau">Contrats${col.contrats && col.contrats.length ? ` (${col.contrats.length})` : ''}</button>
       <button class="act mini" data-a="modale" data-m="recrutement">Recruter</button>
     </div>
+    ${blocEngagement(col)}
   </section>`;
+}
+
+function blocEngagement(col) {
+  const all = S.player.allegeance;
+  if (all && all.faction === col.faction) {
+    const rang = rangDe(all);
+    return `<div class="sep"></div>
+      <div class="ligne"><span class="k">Vous servez ici</span>
+        <span class="v" style="color:${couleurFaction(col.faction)}">${e(rang.def.nom)}</span></div>`;
+  }
+  if (all) return '';
+  const v = peutSEngager(S, col.faction);
+  const rep = S.player.reputation[col.faction] || 0;
+  return `<div class="sep"></div>
+    <button class="act mini" data-a="engager" data-k="${e(col.faction)}" ${v.ok ? '' : 'disabled'}>
+      ${v.ok ? `Entrer au service ${e(FACTIONS[col.faction].genitif)}`
+    : `Engagement refusé — réputation ${Math.round(rep)}/${REPUTATION_MINIMALE}`}</button>`;
 }
 
 function blocSelection() {
@@ -6348,6 +7024,14 @@ function ficheMembre(c) {
         <div><span class="aide">Moral</span>${jauge(c.moral / 100, c.moral < 30 ? 'rouge' : 'vert')}</div>
         <div><span class="aide">Saignement</span>${jauge(c.sang / 100, c.sang > 5 ? 'rouge' : '')}</div>
       </div>
+      ${(() => {
+    const rel = relationsNotables(c, S.player.squad);
+    if (!rel.ami && !rel.rival) return '';
+    return `<div class="titre">Relations</div><div class="aide">${[
+      rel.ami ? `S’entend avec ${e(rel.ami.nom)} (${Math.round(lien(c, rel.ami))})` : null,
+      rel.rival ? `Ne supporte pas ${e(rel.rival.nom)} (${Math.round(lien(c, rel.rival))})` : null,
+    ].filter(Boolean).join(' · ')}</div><div class="sep"></div>`;
+  })()}
       <div class="titre">Traits</div>
       <div class="traits">${(c.traits || []).map((t) => `<span class="puce ${TRAITS[t].malus ? 'mal' : 'ok'}"
         title="${e(TRAITS[t].desc)}">${e(TRAITS[t].nom)}</span>`).join(' ') || '<span class="aide">aucun</span>'}</div>
@@ -6549,6 +7233,13 @@ function ecranBase() {
     <div class="sep"></div>
     <div class="ligne"><span class="k">Entrepôt</span><span class="v">${n(stock)} / ${n(capa)}</span></div>
     ${jauge(stock / capa, stock / capa > 0.95 ? 'rouge' : '')}
+    <div class="sep"></div>
+    <div class="ligne"><span class="k">Habitants</span>
+      <span class="v">${n(b.pop || 0)} / ${n(populationMax(b))}</span></div>
+    ${jauge(populationMax(b) ? (b.pop || 0) / populationMax(b) : 0, '', '#6be08a')}
+    <div class="aide">${(b.pop || 0) === 0
+    ? 'Personne ne vit ici. Un baraquement et des vivres y changeraient quelque chose.'
+    : `Main-d’œuvre ×${mainDoeuvre(b).toFixed(2)} sur les chaînes · +${n(Math.round((b.pop || 0) * 2.5))} de défense · ${n(((b.pop || 0) * 0.014 * 24).toFixed(1))} rations/jour consommées`}</div>
   </section>
 
   <section class="panneau">
@@ -6603,12 +7294,62 @@ function ligneContrat(c, enCours) {
   </div>`;
 }
 
+function blocAllegeance() {
+  const all = S.player.allegeance;
+  if (!all) {
+    return `<section class="panneau">
+      <h2 class="titre">Allégeance <span class="droite">indépendant</span></h2>
+      <div class="aide">Vous ne servez personne. Entrer au service d’une faction demande
+        ${REPUTATION_MINIMALE} de réputation ; cela donne une remise chez elle, une solde,
+        le passage libre à ses barrages, l’accès à son bon matériel — et des ordres de
+        mission qu’on ne refuse pas sans conséquence.</div>
+      <div class="sep"></div>
+      <div class="aide">Rendez-vous dans une de leurs villes pour vous engager.</div>
+    </section>`;
+  }
+
+  const rang = rangDe(all);
+  const f = FACTIONS[all.faction];
+  const versSuivant = rang.suivant
+    ? (all.points - rang.def.points) / (rang.suivant.points - rang.def.points)
+    : 1;
+  const o = all.ordre;
+  const p = o ? avancementOrdre(S, o) : null;
+
+  return `<section class="panneau">
+    <h2 class="titre">Au service ${e(f.genitif)}
+      <span class="droite" style="color:${f.couleur}">${e(rang.def.nom)}</span></h2>
+    <div class="aide">${e(rang.def.desc)}</div>
+    <div class="sep"></div>
+    ${jauge(versSuivant, '', f.couleur)}
+    <div class="aide">${n(all.points)} points de service${rang.suivant
+    ? ` · ${n(rang.suivant.points - all.points)} avant ${e(rang.suivant.nom)}` : ' · grade maximal'}</div>
+    <div class="sep"></div>
+    <div class="grille2">
+      <div class="ligne"><span class="k">Remise</span><span class="v">${(rang.def.remise * 100).toFixed(0)} %</span></div>
+      <div class="ligne"><span class="k">Solde</span><span class="v">${n(rang.def.solde)} cr/jour</span></div>
+      <div class="ligne"><span class="k">Barrages</span><span class="v">${rang.index >= 1 ? 'libres' : 'payants'}</span></div>
+      <div class="ligne"><span class="k">Renforts</span><span class="v">${rang.index >= 3 ? 'oui, chez eux' : 'non'}</span></div>
+    </div>
+    <div class="sep"></div>
+    ${o ? `<div class="titre">Ordre de mission</div>
+      <div class="contrat-t">${e(o.titre)}</div>
+      ${jauge(p && p.total ? p.fait / p.total : 0, p && p.pret ? 'vert' : '')}
+      <div class="aide">${e(p ? p.texte : '')} · ${n(o.recompense)} cr ·
+        <span class="${o.echeance - S.temps < 48 ? 'alerte' : ''}">${dureeTexte(Math.max(0, o.echeance - S.temps))} restantes</span></div>`
+    : '<div class="aide">Aucun ordre en attente. Ils vous rappelleront.</div>'}
+    <div class="sep"></div>
+    <button class="act mini danger" data-a="quitter-service">Rompre l’engagement</button>
+  </section>`;
+}
+
 function ecranContrats() {
   const enCours = S.player.contrats;
   const col = colonieDe(S.world, S.player.regionId);
   const dispo = col && col.contrats ? col.contrats : [];
 
   return `
+  ${blocAllegeance()}
   <section class="panneau">
     <h2 class="titre">En cours <span class="droite">${enCours.length} / ${MAX_CONTRATS}</span></h2>
     ${enCours.length
@@ -7088,6 +7829,20 @@ function surClic(ev) {
       rafraichir(true);
       break;
 
+    case 'engager': {
+      const r = ACTIONS.sEngager(el.dataset.k);
+      toast(r.ok ? 'Engagement conclu.' : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
+    case 'quitter-service': {
+      const r = ACTIONS.quitterService();
+      toast(r.ok ? 'Engagement rompu.' : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
     case 'attaquer-caravane': {
       const r = ACTIONS.attaquerCaravane(el.dataset.k);
       if (!r.ok) toast(r.motif, true);
@@ -7354,6 +8109,19 @@ const API = {
     state.rngState = rng.save();
     sauver();
     return res;
+  },
+
+  /** Entrer au service d'une faction, et en sortir. */
+  sEngager(faction) {
+    const r = sEngager(state, faction, creerLogger(state));
+    sauver();
+    return r;
+  },
+
+  quitterService() {
+    const r = quitter(state, creerLogger(state));
+    sauver();
+    return r;
   },
 
   /** Embuscade sur une caravane présente dans la région. */

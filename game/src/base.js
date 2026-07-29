@@ -18,7 +18,22 @@ export function creerBase() {
     stock,
     defense: 0,
     derniereAttaque: -999,
+    // Un avant-poste n'est pas un entrepôt avec des murs : des gens finissent
+    // par s'y installer, y travailler, et y manger.
+    pop: 0,
+    moral: 60,
+    recrues: 0,
   };
+}
+
+/** Combien de personnes l'avant-poste peut loger et nourrir. */
+export function populationMax(base) {
+  return niveau(base, 'baraquement') * 9 + niveau(base, 'hydroponie') * 4;
+}
+
+/** Le travail des habitants, en multiplicateur de production. */
+export function mainDoeuvre(base) {
+  return 1 + Math.min(1.2, (base.pop || 0) / 45);
 }
 
 export const COUT_FONDATION = { ferraille: 120, polymere: 40, composant: 5 };
@@ -209,26 +224,53 @@ export function tickBase(state, log, ctx) {
   const e = energie(base);
   const r = e.ratio;
 
+  // --- Population : elle s'installe si on peut la loger et la nourrir, elle
+  // s'en va si l'un des deux manque. Sa main-d'œuvre fait tourner les ateliers.
+  const maxPop = populationMax(base);
+  const rationsDispo = base.stock.rations || 0;
+  const besoinPop = (base.pop || 0) * 0.014;
+  if (base.pop > 0) {
+    const servi = Math.min(besoinPop, rationsDispo);
+    base.stock.rations = Math.max(0, rationsDispo - servi);
+    const satiete = besoinPop > 0 ? servi / besoinPop : 1;
+    if (satiete < 0.75) {
+      base.moral = Math.max(0, base.moral - 0.15);
+      if (rng.chance(0.03)) base.pop = Math.max(0, base.pop - 1);
+    } else {
+      base.moral = Math.min(100, base.moral + 0.05);
+    }
+  }
+  if (base.pop < maxPop && rationsDispo > (base.pop + 1) * 3 && rng.chance(0.012)) {
+    base.pop += 1;
+    if (base.pop === 1) {
+      log({ type: 'base', texte: 'Quelqu’un s’installe à l’avant-poste. Ça commence comme ça.', regionId: base.regionId, important: true });
+    } else if (base.pop % 5 === 0) {
+      log({ type: 'base', texte: `L’avant-poste compte ${base.pop} habitants.`, regionId: base.regionId, important: true });
+    }
+  }
+  if (base.pop > maxPop) base.pop = maxPop;
+  const mo = mainDoeuvre(base);
+
   // --- Chaînes de production
   const hyd = niveau(base, 'hydroponie');
   if (hyd > 0) {
-    const bio = consommer(base, 'biomasse', 1.25 * hyd * r);
+    const bio = consommer(base, 'biomasse', 1.25 * hyd * r * mo);
     ajouter(base, 'rations', bio * 0.9 * (1 + (rech.hydroponie_av || 0) * 0.15));
   }
   const fond = niveau(base, 'fonderie');
   if (fond > 0) {
-    const min = consommer(base, 'minerai', 1.2 * fond * r);
+    const min = consommer(base, 'minerai', 1.2 * fond * r * mo);
     ajouter(base, 'alliage', min * 0.42 * (1 + (rech.metallurgie || 0) * 0.12));
   }
   const raf = niveau(base, 'raffinerie');
   if (raf > 0) {
-    const pol = consommer(base, 'polymere', 0.9 * raf * r);
+    const pol = consommer(base, 'polymere', 0.9 * raf * r * mo);
     ajouter(base, 'carburant', pol * 0.55);
   }
   const atl = niveau(base, 'atelier');
   if (atl > 0) {
-    const all = consommer(base, 'alliage', 0.35 * atl * r);
-    const pol = consommer(base, 'polymere', 0.5 * atl * r);
+    const all = consommer(base, 'alliage', 0.35 * atl * r * mo);
+    const pol = consommer(base, 'polymere', 0.5 * atl * r * mo);
     ajouter(base, 'composant', Math.min(all / 0.35, pol / 0.5) * 0.14 * atl * r);
   }
   const inf = niveau(base, 'infirmerie');
@@ -237,12 +279,13 @@ export function tickBase(state, log, ctx) {
     ajouter(base, 'medkit', bio * 0.09);
   }
 
-  base.defense = niveau(base, 'mur') * 22 + 10;
+  // Les habitants ne regardent pas un raid les bras croisés.
+  base.defense = niveau(base, 'mur') * 22 + 10 + (base.pop || 0) * 2.5;
 
   // --- File de construction
   if (base.file.length) {
     const item = base.file[0];
-    let vitesse = 1;
+    let vitesse = 1 + Math.min(1, (base.pop || 0) / 30);
     if (surPlace) {
       // L'escouade met la main à la pâte
       let ing = 0;
@@ -284,7 +327,7 @@ export function tickBase(state, log, ctx) {
   const t = state.temps;
   if (t - base.derniereAttaque > 72 && rng.chance(0.0016 * (1 + reg.danger * 4))) {
     base.derniereAttaque = t;
-    const force = rng.irange(20, 45) + Math.floor(t / 600);
+    const force = rng.irange(20, 45) + Math.floor(t / 600) + Math.round((base.pop || 0) * 1.5);
     const defense = base.defense + (surPlace ? forceEscouade(state) : 0);
     if (defense > force) {
       base.defense = Math.max(0, base.defense - force * 0.3);

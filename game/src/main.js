@@ -8,6 +8,7 @@ import { Rng, seedFromString } from './rng.js';
 import { makeCharacter, estVivant } from './characters.js';
 import { creerLogger, fouillerSite, combatContre } from './events.js';
 import { attaquerCaravane } from './caravanes.js';
+import { sEngager, quitter } from './allegeance.js';
 import { genererBande } from './combat.js';
 import { tailleEscouadeMax } from './base.js';
 
@@ -82,6 +83,19 @@ const API = {
     state.rngState = rng.save();
     sauver();
     return res;
+  },
+
+  /** Entrer au service d'une faction, et en sortir. */
+  sEngager(faction) {
+    const r = sEngager(state, faction, creerLogger(state));
+    sauver();
+    return r;
+  },
+
+  quitterService() {
+    const r = quitter(state, creerLogger(state));
+    sauver();
+    return r;
   },
 
   /** Embuscade sur une caravane présente dans la région. */

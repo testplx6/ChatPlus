@@ -10,6 +10,9 @@ import {
   acheter, vendre, poidsInventaire, capacitePortage, acheterItem, prixItem,
 } from '../src/economy.js';
 import { accepter, progres as progresContrat, MAX_CONTRATS } from '../src/contrats.js';
+import {
+  sEngager, peutSEngager, rangDe, avancementOrdre,
+} from '../src/allegeance.js';
 import { ITEMS } from '../src/data.js';
 import { saison } from '../src/climat.js';
 import { COMMODITY_KEYS, BIOMES } from '../src/data.js';
@@ -48,6 +51,8 @@ function jouer(state) {
     // Ne jamais vendre ce qu'un contrat en cours réclame : c'est exactement
     // l'erreur que ferait un joueur distrait, et elle doit se voir au banc.
     const reserves = new Set(p.contrats.filter((c) => c.ressource).map((c) => c.ressource));
+    const ordreEnCours = p.allegeance && p.allegeance.ordre;
+    if (ordreEnCours && ordreEnCours.ressource) reserves.add(ordreEnCours.ressource);
     for (const k of COMMODITY_KEYS) {
       if (k === 'rations' || k === 'medkit' || reserves.has(k)) continue;
       const q = p.inventaire[k] || 0;
@@ -86,6 +91,12 @@ function jouer(state) {
       });
     }
 
+    // S'engager dès qu'une faction accepte : la solde et la remise valent
+    // largement le prix de quelques ordres à honorer.
+    if (!p.allegeance && peutSEngager(state, colIci.faction).ok) {
+      sEngager(state, colIci.faction, () => {});
+    }
+
     // On prend ce qu'on peut tenir : collecte et prime se remplissent en jouant.
     if (colIci.contrats && p.contrats.length < MAX_CONTRATS - 1) {
       const faisable = colIci.contrats.find((c) => c.type === 'collecte' || c.type === 'prime');
@@ -101,6 +112,23 @@ function jouer(state) {
   if (mal > 0 && rations > 50) {
     if (p.ordre.type !== 'repos') donnerOrdre(state, { type: 'repos' });
     return;
+  }
+
+  // Honorer l'ordre de mission : c'est le chemin le plus rentable du jeu.
+  const o = p.allegeance && p.allegeance.ordre;
+  if (o && p.ordre.type !== 'voyage' && rations > 40) {
+    const av = avancementOrdre(state, o);
+    if (o.type === 'ravitaillement' && av && av.fait >= o.quantite) {
+      const col = colonieParId(state.world, o.colonieId);
+      if (col && !col.ruine && col.regionId !== p.regionId) {
+        donnerOrdre(state, { type: 'voyage', dest: col.regionId });
+        return;
+      }
+    }
+    if (o.type === 'reconnaissance' && !state.world.regions[o.regionId].decouvert) {
+      donnerOrdre(state, { type: 'voyage', dest: o.regionId });
+      return;
+    }
   }
 
   // Sac plein, ou réserves au plus bas et de quoi payer : on rentre en ville.
@@ -158,12 +186,14 @@ for (let n = 0; n < PARTIES; n++) {
     recolte: state.stats.recolte,
     comp: skills,
     contrats: state.stats.contratsRemplis || 0,
+    grade: state.player.allegeance ? rangDe(state.player.allegeance).def.nom.slice(0, 9) : '—',
+    ordres: state.stats.ordresRemplis || 0,
     guerres: state.world.guerres.length,
     captures: state.world.colonies.reduce((t, c) => t + (c.prises || 0), 0),
   });
 }
 
-const largeur = { seed: 8, t: 6, fin: 11, viv: 5, cr: 7, wl: 7, recolte: 8, comp: 5, contrats: 9, guerres: 8, captures: 9 };
+const largeur = { seed: 8, t: 6, fin: 11, viv: 5, cr: 7, wl: 7, comp: 5, contrats: 9, grade: 10, ordres: 7, guerres: 8, captures: 9 };
 const entetes = Object.keys(largeur);
 console.log(entetes.map((k) => k.padStart(largeur[k])).join(' '));
 for (const l of lignes) {

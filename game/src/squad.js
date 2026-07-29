@@ -4,6 +4,7 @@ import { BIOMES, POSTURES, COMMODITIES, POI } from './data.js';
 import { chemin, coutTraversee, decouvrir, nomRegion, colonieDe, distance } from './world.js';
 import {
   comp, gagnerXp, estDebout, estVivant, tickPerso, nourrir, pvTotal,
+  ajusterLien, tendreLien, lien, mods,
 } from './characters.js';
 import {
   ajouterAuSac, tenterRencontre, tenterAlea, reputation, tenterChasseurs,
@@ -367,10 +368,46 @@ export function tickSquad(state, log, ctx) {
   if (affames) derive -= 0.06 * affames;
   if (ko) derive -= 0.05 * ko;
   if (ordre.type === 'repos' && !affames) derive += 0.05;
-  p.cohesion = Math.max(0, Math.min(100, p.cohesion + derive));
+  // Même amortissement que les liens : une escouade parfaite n'existe pas.
+  const freinCoh = derive > 0 ? 1 - Math.min(0.95, p.cohesion / 100) : 1;
+  p.cohesion = Math.max(0, Math.min(100, p.cohesion + derive * freinCoh));
+  // Les liens se tissent en vivant côte à côte, et se distendent quand l'un
+  // s'écroule pendant que l'autre tient debout.
+  if (state.temps % 6 === 0 && vivants.length > 1) {
+    for (let i = 0; i < vivants.length; i++) {
+      for (let j = i + 1; j < vivants.length; j++) {
+        const a = vivants[i];
+        const b = vivants[j];
+        // La simple coexistence tend vers une camaraderie ordinaire ; ce sont
+        // les épreuves partagées qui poussent au-delà, et les caractères
+        // incompatibles qui tirent en dessous.
+        const ensemble = estDebout(a) && estDebout(b);
+        let cible = 40;
+        const ta = a.traits || [];
+        const tb = b.traits || [];
+        if (ta.includes('teigneux') && tb.includes('teigneux')) cible -= 55;
+        if (ta.includes('froussard') !== tb.includes('froussard')) cible -= 15;
+        if (ta.includes('beau_parleur') || tb.includes('beau_parleur')) cible += 15;
+        if (ta.includes('rebouteux') || tb.includes('rebouteux')) cible += 10;
+        if (!ensemble) cible -= 20;
+        tendreLien(a, b, cible, ordre.type === 'repos' && ensemble ? 0.035 : 0.02);
+      }
+    }
+  }
+
   for (const c of vivants) {
-    // Le moral individuel tend vers la cohésion du groupe.
-    c.moral = Math.max(0, Math.min(100, c.moral + (p.cohesion - c.moral) * 0.01));
+    // Le moral tient à deux choses : l'état du groupe, et ceux sur qui on peut
+    // compter nommément.
+    let apport = 0;
+    let n = 0;
+    for (const autre of vivants) {
+      if (autre.id === c.id) continue;
+      apport += lien(c, autre);
+      n++;
+    }
+    const social = n ? apport / n : 0;
+    const cible = Math.max(0, Math.min(100, p.cohesion + social * 0.25));
+    c.moral = Math.max(0, Math.min(100, c.moral + (cible - c.moral) * 0.012 * (mods(c).moral || 1)));
   }
 
   // --- Nourriture : on mange dès qu'on a faim et de quoi

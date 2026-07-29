@@ -8,9 +8,13 @@ import {
 } from './data.js';
 import { colonieDe, voisins, nomRegion, distance } from './world.js';
 import { compterVictoire } from './contrats.js';
+import {
+  compterVictoireOrdre, crediter, estAuService, rangDe, renfortsDisponibles,
+} from './allegeance.js';
 import { genererBande, resoudreCombat, butin } from './combat.js';
 import {
   comp, gagnerXp, estDebout, estVivant, makeCharacter, blesser, pvTotal,
+  ajusterLien,
 } from './characters.js';
 import { poidsInventaire, capacitePortage } from './economy.js';
 import { tailleEscouadeMax } from './base.js';
@@ -117,7 +121,24 @@ export function combatContre(state, bande, log, ctx) {
   const squad = state.player.squad.filter(estVivant);
   const combattants = squad.filter((c) => c.etat !== 'mort');
 
-  const res = resoudreCombat(combattants, bande.membres, {
+  // À partir de Capitaine, les siens viennent prêter main-forte chez eux.
+  const renforts = [];
+  const nbRenforts = renfortsDisponibles(state);
+  for (let i = 0; i < nbRenforts; i++) {
+    const allie = makeCharacter(rng, { niveau: 2 });
+    allie.equip.armure = allie.equip.armure || 'plaque';
+    allie.renfort = true;
+    renforts.push(allie);
+  }
+  if (renforts.length) {
+    log({
+      type: 'renfort',
+      texte: `${renforts.length} homme${renforts.length > 1 ? 's' : ''} ${FACTIONS[state.player.allegeance.faction].genitif} accourent.`,
+      regionId: state.player.regionId,
+    });
+  }
+
+  const res = resoudreCombat(combattants.concat(renforts), bande.membres, {
     rng,
     biome: state.world.regions[state.player.regionId].biome,
     posture,
@@ -148,6 +169,15 @@ export function combatContre(state, bande, log, ctx) {
     }
     state.stats.combatsGagnes++;
     compterVictoire(state, bande.faction);
+    compterVictoireOrdre(state, bande.faction);
+    // Frapper un ennemi déclaré de sa faction, c'est du service rendu.
+    const all = state.player.allegeance;
+    if (all && bande.faction && bande.faction !== all.faction) {
+      const enGuerreAvec = state.world.guerres.some(
+        (w) => (w.a === all.faction && w.b === bande.faction) || (w.b === all.faction && w.a === bande.faction)
+      );
+      if (enGuerreAvec) crediter(state, 28, log, 'Ennemi déclaré abattu');
+    }
     texte = `${bande.nom} mis en déroute à ${lieu} — ${ramasse} unités et ${b.credits} cr récupérés.`;
   } else if (res.vainqueur === 'B') {
     texte = perdreCombat(state, bande, log, ctx, lieu);
@@ -178,6 +208,18 @@ export function combatContre(state, bande, log, ctx) {
         log({ type: 'surnom', texte: `On ne l’appelle plus ${avant}, mais ${c.nom}.`, important: true });
       }
     }
+  }
+
+  // Sortir vivants du même combat rapproche ; y laisser quelqu'un aussi, mais
+  // dans l'autre sens pour ceux qui n'ont pas tenu leur poste.
+  const debouts = state.player.squad.filter(estDebout);
+  for (let i = 0; i < debouts.length; i++) {
+    for (let j = i + 1; j < debouts.length; j++) {
+      ajusterLien(debouts[i], debouts[j], res.vainqueur === 'A' ? 7 : 3);
+    }
+  }
+  for (const tombe of state.player.squad.filter((c) => c.etat === 'ko')) {
+    for (const d of debouts) ajusterLien(tombe, d, -2);
   }
 
   annoncerProgres(state, compsAvant, log);
@@ -298,7 +340,10 @@ export function tenterChasseurs(state, log, ctx) {
     for (const k of Object.keys(state.player.reputation)) {
       const v = state.player.reputation[k];
       if (v === 0) continue;
-      const pas = Math.min(Math.abs(v), 0.4);
+      // Asymétrique à dessein : une rancune s'émousse vite, un service rendu
+      // reste longtemps. Sinon on ne peut ni sortir de l'hostilité, ni
+      // accumuler assez d'estime pour être reçu quelque part.
+      const pas = v > 0 ? Math.min(v, 0.1) : Math.min(-v, 0.45);
       state.player.reputation[k] = v > 0 ? v - pas : v + pas;
     }
   }
@@ -471,6 +516,16 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1) {
     case 'peage': {
       const f = r.controle || 'bandits';
       const taxe = rng.irange(40, 220);
+      // Les siens ne rançonnent pas les leurs, dès le grade d'Agent.
+      if (estAuService(state, f) && rangDe(state.player.allegeance).index >= 1) {
+        log({
+          type: 'peage',
+          texte: `Barrage ${FACTIONS[f].genitif} : on vous reconnaît, on vous laisse passer.`,
+          regionId,
+          discret: true,
+        });
+        return true;
+      }
       const agressif = state.player.posture === 'agressif';
       if (!agressif && state.player.credits >= taxe && state.player.politique.payerPeage) {
         state.player.credits -= taxe;

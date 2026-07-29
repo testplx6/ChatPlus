@@ -288,8 +288,15 @@ function tickArmee(world, armee, t, log, ctx) {
     if (!col) { dissoudre(world, armee); return; }
     if (col.faction === armee.faction) { dissoudre(world, armee); return; }
 
+    // Une capitale se défend comme une capitale : sans ça, une faction se fait
+    // rayer de la carte en une campagne et ne revient jamais.
+    const estCapitale = col.faction && world.factions[col.faction]
+      && world.factions[col.faction].capitale === col.id;
+    const derniere = col.faction && world.factions[col.faction]
+      && world.factions[col.faction].colonies.length <= 1;
+    const acharnement = (estCapitale ? 1.8 : 1) * (derniere ? 1.6 : 1);
     const assaut = armee.force * rng.range(0.5, 1.1);
-    const tenue = col.defense * rng.range(0.6, 1.15) + col.murs * 2;
+    const tenue = (col.defense * rng.range(0.6, 1.15) + col.murs * 2) * acharnement;
     if (assaut > tenue) {
       col.defense = Math.max(0, col.defense - assaut * 0.12);
       armee.force -= Math.max(0, Math.round(tenue * 0.02));
@@ -311,6 +318,25 @@ function tickArmee(world, armee, t, log, ctx) {
       return;
     }
     if (col.defense <= 1) {
+      // On ne raye pas une faction de la carte par les armes. Sa dernière
+      // ville tient, quel qu'en soit le prix : c'est ce qui laisse au monde
+      // six acteurs plutôt qu'un vainqueur et des ruines.
+      const proprio = col.faction && world.factions[col.faction];
+      if (proprio && proprio.colonies.length <= 1 && armee.faction !== 'essaim') {
+        col.defense = Math.round(col.defenseMax * 0.35);
+        col.pop = Math.max(40, Math.round(col.pop * 0.9));
+        armee.force = Math.round(armee.force * 0.45);
+        log({
+          type: 'siege',
+          texte: `${col.nom} tient. ${FACTIONS[col.faction].nom} n’a plus que cette ville, et la défend comme telle.`,
+          regionId: col.regionId,
+          factions: [col.faction, armee.faction],
+          important: true,
+        });
+        if (armee.force <= 8) dissoudre(world, armee);
+        else { armee.etat = 'marche'; armee.ravitaillement = Math.min(armee.ravitaillement, 20); }
+        return;
+      }
       capturer(world, armee, col, t, log, ctx);
     }
   }
@@ -494,6 +520,7 @@ export function fonderColonie(world, key, region, rng, t) {
     prises: 0,
     declin: 0,
     fondeeA: t,
+    factionOrigine: key,
   };
   col.defenseMax = Math.round(col.pop * 0.09 + col.murs * 12);
   col.defense = col.defenseMax;
@@ -518,6 +545,25 @@ export function tickFactions(world, t, log, ctx) {
   for (const armee of world.armees.slice()) {
     if (!world.armees.includes(armee)) continue;
     tickArmee(world, armee, t, log, ctx);
+  }
+
+  // Le plus fort se fait détester : les autres se liguent doucement contre
+  // celui qui domine. Sans cela, le vainqueur d'une guerre gagne toutes les
+  // suivantes et la carte se referme.
+  if (t % 24 === 0) {
+    let chef = null;
+    let chefP = 0;
+    for (const k of DIPLO_FACTIONS) {
+      if (!world.factions[k].colonies.length) continue;
+      const p = puissance(world, k);
+      if (p > chefP) { chefP = p; chef = k; }
+    }
+    if (chef) {
+      for (const k of DIPLO_FACTIONS) {
+        if (k === chef || !world.factions[k].colonies.length) continue;
+        majRelation(world, chef, k, -1.2);
+      }
+    }
   }
 
   // Dérive lente des relations vers la neutralité, sauf en guerre

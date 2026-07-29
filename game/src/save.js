@@ -21,6 +21,7 @@ export function normaliser(state) {
   if (!p.reste) p.reste = {};
   if (!p.primes) p.primes = {};
   if (p.cohesion === undefined) p.cohesion = 55;
+  if (p.allegeance === undefined) p.allegeance = null;
   if (!state.memorial) state.memorial = [];
   if (!state.stats) state.stats = {};
   for (const k of ['contratsRemplis', 'sitesFouilles', 'caravanesPillees', 'distanceParcourue']) {
@@ -35,7 +36,14 @@ export function normaliser(state) {
   }
   for (const c of p.squad) {
     if (!c.traits) c.traits = [];
+    if (!c.liens) c.liens = {};
   }
+  const b = state.base;
+  if (b) {
+    if (b.pop === undefined) b.pop = 0;
+    if (b.moral === undefined) b.moral = 60;
+  }
+  if (state.stats.ordresRemplis === undefined) state.stats.ordresRemplis = 0;
   return state;
 }
 

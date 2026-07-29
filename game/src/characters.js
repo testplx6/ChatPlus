@@ -51,6 +51,8 @@ export function makeCharacter(rng, opts = {}) {
     kills: 0,
     joursSurvecus: 0,
     traits: tirerTraits(rng, opts.traits),
+    // Ce que celui-ci pense des autres. Se remplit en vivant ensemble.
+    liens: {},
   };
   for (const k of SKILL_KEYS) {
     const base = rng.irange(4, 14) + (def.bonus[k] || 0) + niveau * rng.irange(2, 6);
@@ -374,6 +376,50 @@ export function nourrir(c, dispo) {
   c.faim = Math.max(0, c.faim - besoin * 45);
   c.moral = Math.min(100, c.moral + besoin * 1.5);
   return besoin;
+}
+
+/** Le lien mutuel entre deux membres, borné à ±100. */
+export function lien(a, b) {
+  if (!a.liens) a.liens = {};
+  return a.liens[b.id] ?? 0;
+}
+
+export function ajusterLien(a, b, delta) {
+  if (!a.liens) a.liens = {};
+  if (!b.liens) b.liens = {};
+  const v0 = a.liens[b.id] ?? 0;
+  // Amortissement aux extrêmes : sans lui, tout le monde atteint 100 en deux
+  // semaines et la notion de relation ne veut plus rien dire.
+  const frein = 1 - Math.min(0.95, Math.abs(v0) / 100);
+  const v = Math.max(-100, Math.min(100, v0 + delta * frein));
+  a.liens[b.id] = v;
+  b.liens[a.id] = v;
+}
+
+/**
+ * Tire un lien vers une valeur d'équilibre. Un ajout constant finit toujours
+ * par saturer à 100 ; une cible produit des relations qui se distinguent.
+ */
+export function tendreLien(a, b, cible, taux) {
+  if (!a.liens) a.liens = {};
+  if (!b.liens) b.liens = {};
+  const v0 = a.liens[b.id] ?? 0;
+  const v = Math.max(-100, Math.min(100, v0 + (cible - v0) * taux));
+  a.liens[b.id] = v;
+  b.liens[a.id] = v;
+}
+
+/** Le meilleur et le pire, pour l'affichage. */
+export function relationsNotables(c, squad) {
+  let ami = null;
+  let rival = null;
+  for (const autre of squad) {
+    if (autre.id === c.id || autre.etat === 'mort') continue;
+    const v = lien(c, autre);
+    if (v >= 25 && (!ami || v > lien(c, ami))) ami = autre;
+    if (v <= -25 && (!rival || v < lien(c, rival))) rival = autre;
+  }
+  return { ami, rival };
 }
 
 /** Résumé court pour l'UI. */

@@ -7,13 +7,14 @@ import { COMMODITY_KEYS, FACTIONS, DIPLO_FACTIONS } from './data.js';
 import { genererMonde, decouvrir, colonieParId, nomRegion } from './world.js';
 import { makeCharacter } from './characters.js';
 import { creerBase, tickBase } from './base.js';
-import { tickColonie, etalDe, effondrer } from './economy.js';
+import { tickColonie, etalDe, effondrer, faireSecession } from './economy.js';
 import { tickClimat, conditions, saison } from './climat.js';
 import { tickCaravanes } from './caravanes.js';
 import { tickFactions } from './factions.js';
 import { tickSquad } from './squad.js';
 import { creerLogger } from './events.js';
 import { rafraichirPanneaux, tickContrats } from './contrats.js';
+import { tickAllegeance, palierBonus } from './allegeance.js';
 
 /** Durée réelle d'une heure de jeu, à vitesse ×1. */
 export const TICK_MS = 10000;
@@ -91,6 +92,7 @@ export function nouvellePartie(seed, opts = {}) {
       // se délite, et ça se voit sur le moral de tout le monde.
       cohesion: 55,
       primes: {},
+      allegeance: null,
     },
     base: creerBase(),
     journal: [],
@@ -106,6 +108,7 @@ export function nouvellePartie(seed, opts = {}) {
       sitesFouilles: 0,
       distanceParcourue: 0,
       caravanesPillees: 0,
+      ordresRemplis: 0,
     },
     memorial: [],
     fin: null,
@@ -167,6 +170,16 @@ export function tick(state) {
         regionId: col.regionId,
         important: true,
       });
+    } else if (ev.evenement === 'secession') {
+      const r = faireSecession(state.world, col);
+      log({
+        type: 'secession',
+        texte: r.renaissance
+          ? `${col.nom} se soulève : ${FACTIONS[r.rendue].nom} renaît de ses cendres.`
+          : `${col.nom} chasse ${FACTIONS[r.ancienne].nom} et rejoint ${FACTIONS[r.rendue].nom}.`,
+        regionId: col.regionId,
+        important: true,
+      });
     } else if (ev.evenement === 'effondrement') {
       const ancienne = effondrer(state.world, col);
       log({
@@ -184,7 +197,7 @@ export function tick(state) {
   if (state.temps % 40 === 0) {
     rafraichirPanneaux(state, rng, state.temps);
     for (const col of state.world.colonies) {
-      if (!col.ruine) etalDe(state.world, col, rng, state.temps);
+      if (!col.ruine) etalDe(state.world, col, rng, state.temps, palierBonus(state, col.faction));
     }
   }
 
@@ -192,6 +205,7 @@ export function tick(state) {
   tickBase(state, log, ctx);
   if (!state.fin) tickSquad(state, log, ctx);
   if (!state.fin) tickContrats(state, log, ctx);
+  if (!state.fin) tickAllegeance(state, log, ctx);
 
   state.rngState = rng.save();
   return state;

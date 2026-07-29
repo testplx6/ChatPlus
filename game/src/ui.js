@@ -11,12 +11,14 @@ import {
 } from './world.js';
 import {
   comp, pvTotal, etatCourt, estVivant, estDebout, ratio, peutEquiper,
+  relationsNotables, lien,
 } from './characters.js';
 import {
   prixJoueur, acheter, vendre, poidsInventaire, capacitePortage, meilleurCommercant,
   prixItem, acheterItem, vendreItem,
 } from './economy.js';
 import {
+  populationMax, mainDoeuvre,
   niveau as nivBat, niveauRech, coutBatiment, tempsBatiment, coutRecherche,
   tempsRecherche, capaciteStock, totalStock, energie, lancerConstruction,
   lancerRecherche, annulerConstruction, fonderBase, deposer, retirer,
@@ -29,6 +31,9 @@ import {
 } from './contrats.js';
 import { horloge, VITESSES } from './sim.js';
 import { conditions, SAISONS, METEO } from './climat.js';
+import {
+  RANGS, rangDe, estAuService, peutSEngager, avancementOrdre, REPUTATION_MINIMALE,
+} from './allegeance.js';
 import { caravanesIci, valeurCargaison } from './caravanes.js';
 import { couleurLog, creerLogger } from './events.js';
 
@@ -574,7 +579,25 @@ function blocColonie(col) {
       <button class="act mini" data-a="modale" data-m="panneau">Contrats${col.contrats && col.contrats.length ? ` (${col.contrats.length})` : ''}</button>
       <button class="act mini" data-a="modale" data-m="recrutement">Recruter</button>
     </div>
+    ${blocEngagement(col)}
   </section>`;
+}
+
+function blocEngagement(col) {
+  const all = S.player.allegeance;
+  if (all && all.faction === col.faction) {
+    const rang = rangDe(all);
+    return `<div class="sep"></div>
+      <div class="ligne"><span class="k">Vous servez ici</span>
+        <span class="v" style="color:${couleurFaction(col.faction)}">${e(rang.def.nom)}</span></div>`;
+  }
+  if (all) return '';
+  const v = peutSEngager(S, col.faction);
+  const rep = S.player.reputation[col.faction] || 0;
+  return `<div class="sep"></div>
+    <button class="act mini" data-a="engager" data-k="${e(col.faction)}" ${v.ok ? '' : 'disabled'}>
+      ${v.ok ? `Entrer au service ${e(FACTIONS[col.faction].genitif)}`
+    : `Engagement refusé — réputation ${Math.round(rep)}/${REPUTATION_MINIMALE}`}</button>`;
 }
 
 function blocSelection() {
@@ -679,6 +702,14 @@ function ficheMembre(c) {
         <div><span class="aide">Moral</span>${jauge(c.moral / 100, c.moral < 30 ? 'rouge' : 'vert')}</div>
         <div><span class="aide">Saignement</span>${jauge(c.sang / 100, c.sang > 5 ? 'rouge' : '')}</div>
       </div>
+      ${(() => {
+    const rel = relationsNotables(c, S.player.squad);
+    if (!rel.ami && !rel.rival) return '';
+    return `<div class="titre">Relations</div><div class="aide">${[
+      rel.ami ? `S’entend avec ${e(rel.ami.nom)} (${Math.round(lien(c, rel.ami))})` : null,
+      rel.rival ? `Ne supporte pas ${e(rel.rival.nom)} (${Math.round(lien(c, rel.rival))})` : null,
+    ].filter(Boolean).join(' · ')}</div><div class="sep"></div>`;
+  })()}
       <div class="titre">Traits</div>
       <div class="traits">${(c.traits || []).map((t) => `<span class="puce ${TRAITS[t].malus ? 'mal' : 'ok'}"
         title="${e(TRAITS[t].desc)}">${e(TRAITS[t].nom)}</span>`).join(' ') || '<span class="aide">aucun</span>'}</div>
@@ -880,6 +911,13 @@ function ecranBase() {
     <div class="sep"></div>
     <div class="ligne"><span class="k">Entrepôt</span><span class="v">${n(stock)} / ${n(capa)}</span></div>
     ${jauge(stock / capa, stock / capa > 0.95 ? 'rouge' : '')}
+    <div class="sep"></div>
+    <div class="ligne"><span class="k">Habitants</span>
+      <span class="v">${n(b.pop || 0)} / ${n(populationMax(b))}</span></div>
+    ${jauge(populationMax(b) ? (b.pop || 0) / populationMax(b) : 0, '', '#6be08a')}
+    <div class="aide">${(b.pop || 0) === 0
+    ? 'Personne ne vit ici. Un baraquement et des vivres y changeraient quelque chose.'
+    : `Main-d’œuvre ×${mainDoeuvre(b).toFixed(2)} sur les chaînes · +${n(Math.round((b.pop || 0) * 2.5))} de défense · ${n(((b.pop || 0) * 0.014 * 24).toFixed(1))} rations/jour consommées`}</div>
   </section>
 
   <section class="panneau">
@@ -934,12 +972,62 @@ function ligneContrat(c, enCours) {
   </div>`;
 }
 
+function blocAllegeance() {
+  const all = S.player.allegeance;
+  if (!all) {
+    return `<section class="panneau">
+      <h2 class="titre">Allégeance <span class="droite">indépendant</span></h2>
+      <div class="aide">Vous ne servez personne. Entrer au service d’une faction demande
+        ${REPUTATION_MINIMALE} de réputation ; cela donne une remise chez elle, une solde,
+        le passage libre à ses barrages, l’accès à son bon matériel — et des ordres de
+        mission qu’on ne refuse pas sans conséquence.</div>
+      <div class="sep"></div>
+      <div class="aide">Rendez-vous dans une de leurs villes pour vous engager.</div>
+    </section>`;
+  }
+
+  const rang = rangDe(all);
+  const f = FACTIONS[all.faction];
+  const versSuivant = rang.suivant
+    ? (all.points - rang.def.points) / (rang.suivant.points - rang.def.points)
+    : 1;
+  const o = all.ordre;
+  const p = o ? avancementOrdre(S, o) : null;
+
+  return `<section class="panneau">
+    <h2 class="titre">Au service ${e(f.genitif)}
+      <span class="droite" style="color:${f.couleur}">${e(rang.def.nom)}</span></h2>
+    <div class="aide">${e(rang.def.desc)}</div>
+    <div class="sep"></div>
+    ${jauge(versSuivant, '', f.couleur)}
+    <div class="aide">${n(all.points)} points de service${rang.suivant
+    ? ` · ${n(rang.suivant.points - all.points)} avant ${e(rang.suivant.nom)}` : ' · grade maximal'}</div>
+    <div class="sep"></div>
+    <div class="grille2">
+      <div class="ligne"><span class="k">Remise</span><span class="v">${(rang.def.remise * 100).toFixed(0)} %</span></div>
+      <div class="ligne"><span class="k">Solde</span><span class="v">${n(rang.def.solde)} cr/jour</span></div>
+      <div class="ligne"><span class="k">Barrages</span><span class="v">${rang.index >= 1 ? 'libres' : 'payants'}</span></div>
+      <div class="ligne"><span class="k">Renforts</span><span class="v">${rang.index >= 3 ? 'oui, chez eux' : 'non'}</span></div>
+    </div>
+    <div class="sep"></div>
+    ${o ? `<div class="titre">Ordre de mission</div>
+      <div class="contrat-t">${e(o.titre)}</div>
+      ${jauge(p && p.total ? p.fait / p.total : 0, p && p.pret ? 'vert' : '')}
+      <div class="aide">${e(p ? p.texte : '')} · ${n(o.recompense)} cr ·
+        <span class="${o.echeance - S.temps < 48 ? 'alerte' : ''}">${dureeTexte(Math.max(0, o.echeance - S.temps))} restantes</span></div>`
+    : '<div class="aide">Aucun ordre en attente. Ils vous rappelleront.</div>'}
+    <div class="sep"></div>
+    <button class="act mini danger" data-a="quitter-service">Rompre l’engagement</button>
+  </section>`;
+}
+
 function ecranContrats() {
   const enCours = S.player.contrats;
   const col = colonieDe(S.world, S.player.regionId);
   const dispo = col && col.contrats ? col.contrats : [];
 
   return `
+  ${blocAllegeance()}
   <section class="panneau">
     <h2 class="titre">En cours <span class="droite">${enCours.length} / ${MAX_CONTRATS}</span></h2>
     ${enCours.length
@@ -1418,6 +1506,20 @@ function surClic(ev) {
       rendreModale();
       rafraichir(true);
       break;
+
+    case 'engager': {
+      const r = ACTIONS.sEngager(el.dataset.k);
+      toast(r.ok ? 'Engagement conclu.' : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
+    case 'quitter-service': {
+      const r = ACTIONS.quitterService();
+      toast(r.ok ? 'Engagement rompu.' : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
 
     case 'attaquer-caravane': {
       const r = ACTIONS.attaquerCaravane(el.dataset.k);

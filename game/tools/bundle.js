@@ -26,6 +26,7 @@ const MODULES = [
   'climat.js',
   'world.js',
   'characters.js',
+  'allegeance.js',
   'combat.js',
   'economy.js',
   'caravanes.js',

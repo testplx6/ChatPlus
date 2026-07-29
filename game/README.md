@@ -66,7 +66,7 @@ de cache périmé.
 ## Tests
 
 ```bash
-npm test                     # 57 assertions sur le moteur, sans navigateur
+npm test                     # 64 assertions sur le moteur, sans navigateur
 node test/equilibre.js       # banc d'équilibrage : un bot joue 8 parties
 node test/equilibre.js 8000 12   # plus long, plus de parties
 
@@ -144,10 +144,35 @@ niveaux, contrainte d'énergie, chaînes de transformation (biomasse → rations
 minerai → alliage → composants), entrepôt plafonné, dix recherches, et des raids
 à encaisser quand vous n'êtes pas là.
 
+**L'allégeance.** On peut entrer au service d'une faction, à partir de 20 de
+réputation. Cinq grades, gagnés en honorant ses contrats et ses ordres de
+mission : remise chez elle, solde quotidienne, passage libre à ses barrages,
+accès à ce que ses armuriers gardent derrière le comptoir, et des renforts qui
+accourent sur ses terres. Elle vous donne en retour des ordres — ravitailler une
+ville en peine, frapper un ennemi déclaré, reconnaître un secteur — qu'on ne
+laisse pas expirer sans que cela se sache.
+
+**Les gens de l'avant-poste.** Des habitants finissent par s'y installer si on
+peut les loger et les nourrir. Ils font tourner les chaînes, accélèrent les
+chantiers, prennent les armes quand un raid arrive — et mangent.
+
+**Les liens.** Chaque membre d'escouade entretient une relation chiffrée avec
+chacun des autres, qui tend vers une camaraderie ordinaire, monte quand on sort
+vivants du même combat, et descend entre caractères incompatibles. Le moral de
+chacun suit ce que valent ses liens, pas seulement la cohésion du groupe.
+
 **La réputation.** Elle s'émousse avec le temps — les rancunes ne sont pas
 éternelles. Mais tomber trop bas met une prime sur votre tête, et une faction
 qui vous déteste finit par payer des gens pour vous trouver. Perdre contre eux
-solde l'affaire : il existe toujours une sortie.
+solde l'affaire : il existe toujours une sortie. L'oubli est asymétrique — une
+rancune s'efface quatre fois plus vite qu'un service rendu.
+
+**La pluralité du monde.** Une faction ne peut pas être rayée de la carte : sa
+dernière ville ne se prend pas, ne s'abandonne pas, ne fait pas sécession. À
+l'autre bout, tenir trop de villes trop loin de sa capitale les rend
+ingouvernables, une ville occupée assez longtemps se soulève et rentre chez elle
+— quitte à ressusciter une faction —, et tout le monde se ligue doucement contre
+le premier. Après un an de jeu, les six factions sont encore debout.
 
 **Les consignes.** Posture de combat et quatre consignes permanentes (recruter,
 commercer, payer les péages, achever les blessés) qui s'appliquent aussi pendant
@@ -174,6 +199,7 @@ game/
     base.js           avant-poste, files, production
     squad.js          ordres, récolte, cycle jour/nuit, voyage
     events.js         rencontres, journal de bord
+    allegeance.js     service d'une faction, grades, ordres de mission
     climat.js         saisons, météo, effets combinés
     caravanes.js      routes marchandes, embuscades
     sim.js            orchestration, rattrapage hors ligne

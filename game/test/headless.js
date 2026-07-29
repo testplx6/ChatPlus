@@ -10,6 +10,7 @@ import { fonderBase, lancerConstruction, lancerRecherche } from '../src/base.js'
 import { estVivant } from '../src/characters.js';
 import { colonieDe } from '../src/world.js';
 import { acheter, vendre, prixJoueur } from '../src/economy.js';
+import { sEngager, rangDe } from '../src/allegeance.js';
 
 let echecs = 0;
 let total = 0;
@@ -315,6 +316,23 @@ const popTotale = vivantes.reduce((t, c) => t + c.pop, 0);
 ok(popTotale > 1500, 'la population du monde ne s’effondre pas', `${Math.round(popTotale)} habitants`);
 ok(s9b.world.meteo && s9b.world.meteo.type, 'une météo est toujours en cours');
 verifierCoherence(s9b, 'après 8 000 h de monde vivant');
+
+section('9 ter. Allégeance et pluralité du monde');
+const s9c = nouvellePartie(4242, { maintenant: 0 });
+s9c.player.reputation.hexa = 40;
+const eng = sEngager(s9c, 'hexa', () => {});
+ok(eng.ok, 'on peut entrer au service d’une faction', eng.motif);
+ok(rangDe(s9c.player.allegeance).def.nom === 'Affilié', 'on démarre au premier grade');
+for (let i = 0; i < 8000; i++) tick(s9c);
+ok(!!s9c.player.allegeance, 'la faction servie existe encore après 8 000 h');
+const debout9c = DIPLO_FACTIONS.filter((k) => s9c.world.factions[k].colonies.length);
+ok(debout9c.length === 6, 'aucune faction n’est rayée de la carte', `${debout9c.length}/6`);
+ok(s9c.world.colonies.filter((c) => !c.ruine).length >= 10, 'le monde garde ses villes',
+  `${s9c.world.colonies.filter((c) => !c.ruine).length}`);
+const liens9c = s9c.player.squad.flatMap((c) => Object.values(c.liens || {}));
+ok(liens9c.length === 0 || Math.max(...liens9c) < 100,
+  'les liens d’escouade ne saturent pas', liens9c.join(','));
+verifierCoherence(s9c, 'après 8 000 h au service d’une faction');
 
 section('10. Rattrapage hors ligne');
 const s10 = nouvellePartie(1010, { maintenant: 1000000 });

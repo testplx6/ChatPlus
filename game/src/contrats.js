@@ -8,6 +8,7 @@
 import { COMMODITIES, COMMODITY_KEYS, FACTIONS, DIPLO_FACTIONS } from './data.js';
 import { colonieParId, distance, nomRegion } from './world.js';
 import { idDepuisRng } from './characters.js';
+import { crediter, estAuService } from './allegeance.js';
 
 /** Durée de vie d'un panneau d'affichage avant renouvellement. */
 const DUREE_PANNEAU = 220;
@@ -234,6 +235,10 @@ export function compterVictoire(state, factionBande) {
 
 function recompenser(state, c, log) {
   state.player.credits += c.recompense;
+  // Un contrat rempli pour les siens compte double : il paie et il fait monter.
+  if (estAuService(state, c.faction)) {
+    crediter(state, Math.round(c.recompense / 7) + 10, log, 'Contrat honoré pour les vôtres');
+  }
   state.player.reputation[c.faction] = Math.min(100, (state.player.reputation[c.faction] || 0) + c.reputation);
   state.stats.contratsRemplis = (state.stats.contratsRemplis || 0) + 1;
   log({

@@ -7,6 +7,8 @@ import {
   ETAL_PAR_STYLE, PALIERS_ITEM,
 } from './data.js';
 import { comp, gagnerXp, portage } from './characters.js';
+import { remiseDe, palierBonus } from './allegeance.js';
+import { distance as distanceCases } from './world.js';
 
 /** Stock « confortable » visé par une colonie pour une marchandise. */
 export function cibleStock(col, key) {
@@ -42,9 +44,9 @@ export function prixUnitaire(col, key) {
  * `habilete` : compétence de commerce du meilleur négociateur (0-100).
  * `repu`     : réputation avec la faction propriétaire (−100..100).
  */
-export function prixJoueur(col, key, habilete = 0, repu = 0) {
+export function prixJoueur(col, key, habilete = 0, repu = 0, remise = 0) {
   const p = prixUnitaire(col, key);
-  const marge = Math.max(0.06, 0.18 - habilete / 900 - Math.max(0, repu) / 1400);
+  const marge = Math.max(0.02, 0.18 - habilete / 900 - Math.max(0, repu) / 1400 - remise);
   const majorationHostile = repu < -20 ? 0.15 + Math.min(0.4, -repu / 220) : 0;
   // Non arrondi volontairement : arrondir à l'unité écraserait la marge sur les
   // marchandises bon marché et rendrait l'aller-retour achat/revente gratuit.
@@ -141,6 +143,18 @@ export function tickColonie(world, col, rng, climat) {
   col.stock.rations = Math.max(0, disponible - servi);
   const satiete = besoin > 0 ? servi / besoin : 1;
 
+  // Surextension : une faction qui tient trop de villes, trop loin de sa
+  // capitale, les tient mal. C'est le frein qui empêche un vainqueur d'avaler
+  // la carte entière.
+  if (col.faction && world.factions[col.faction]) {
+    const f = world.factions[col.faction];
+    const cap = f.capitale && world.colonies.find((c) => c.id === f.capitale);
+    const eloignement = cap ? distanceCases(world, cap.regionId, col.regionId) : 0;
+    const surcharge = Math.max(0, f.colonies.length - 3);
+    const tension = eloignement * 0.00016 + surcharge * 0.00035;
+    if (tension > 0) col.unrest = Math.min(1, col.unrest + tension);
+  }
+
   if (satiete < 0.8) {
     // On se serre la ceinture, puis on s'énerve, puis on s'en va.
     col.unrest = Math.min(1, col.unrest + 0.004 * (0.8 - satiete) / 0.8);
@@ -175,6 +189,15 @@ export function tickColonie(world, col, rng, climat) {
   if (col.pop < 55 && col.unrest > 0.75) col.declin += 1;
   else col.declin = Math.max(0, col.declin - 4);
 
+  // Sécession : une ville occupée, affamée et exaspérée retourne à sa maison
+  // d'origine — quitte à la ressusciter. C'est le contre-pouvoir qui empêche
+  // la carte de finir en monoculture.
+  if (col.factionOrigine && col.faction && col.faction !== col.factionOrigine
+      && col.unrest > 0.6 && rng.chance(0.0012 * (col.unrest - 0.6) / 0.4)
+      && world.factions[col.faction].colonies.length > 1) {
+    return { evenement: 'secession' };
+  }
+
   if (col.pop > col.taille * 620 && col.unrest < 0.3 && col.taille < 3) {
     col.taille += 1;
     col.murs += 2;
@@ -183,10 +206,39 @@ export function tickColonie(world, col, rng, climat) {
   if (col.declin > 900) {
     const vivantes = world.colonies.filter((c) => !c.ruine).length;
     const socle = Math.max(6, Math.round(world.colonies.length * 0.6));
-    if (vivantes > socle) return { evenement: 'effondrement' };
+    // On n'abandonne pas la dernière ville d'une faction : ce serait la rayer
+    // de la carte par la démographie après l'avoir protégée des armées.
+    const derniere = col.faction && world.factions[col.faction]
+      && world.factions[col.faction].colonies.length <= 1;
+    if (vivantes > socle && !derniere) return { evenement: 'effondrement' };
     col.declin = 600; // en sursis : on ne vide pas la carte
+    if (derniere) {
+      // Une capitale acculée reçoit du renfort des siens : elle ne meurt pas.
+      col.unrest = Math.max(0, col.unrest - 0.02);
+      col.pop = Math.max(col.pop, 60);
+    }
   }
   return null;
+}
+
+/** Rend une colonie à sa faction d'origine, en la ressuscitant s'il le faut. */
+export function faireSecession(world, col) {
+  const ancienne = col.faction;
+  const rendue = col.factionOrigine;
+  if (ancienne && world.factions[ancienne]) {
+    const f = world.factions[ancienne];
+    f.colonies = f.colonies.filter((id) => id !== col.id);
+    if (f.capitale === col.id) f.capitale = f.colonies[0] || null;
+  }
+  col.faction = rendue;
+  const cible = world.factions[rendue];
+  if (!cible.colonies.includes(col.id)) cible.colonies.push(col.id);
+  if (!cible.capitale) cible.capitale = col.id;
+  cible.prochainConseil = Math.min(cible.prochainConseil, 20);
+  world.regions[col.regionId].controle = rendue;
+  col.unrest = 0.3;
+  col.defense = Math.round(col.defenseMax * 0.5);
+  return { ancienne, rendue, renaissance: cible.colonies.length === 1 };
 }
 
 /** Transforme une colonie en ruine : la carte garde la cicatrice. */
@@ -252,7 +304,7 @@ export function acheter(state, col, key, qte) {
 
   while (restant > 0) {
     if ((col.stock[key] || 0) < 1) break;
-    const p = prixJoueur(col, key, hab, repu).achat;
+    const p = prixJoueur(col, key, hab, repu, remiseDe(state, col.faction)).achat;
     if (state.player.credits - cout < p) break;
     cout += p;
     col.stock[key] -= 1;
@@ -275,7 +327,7 @@ export function vendre(state, col, key, qte) {
   let gain = 0;
   let vendus = 0;
   while (restant > 0) {
-    const p = prixJoueur(col, key, hab, repu).vente;
+    const p = prixJoueur(col, key, hab, repu, remiseDe(state, col.faction)).vente;
     gain += p;
     col.stock[key] = (col.stock[key] || 0) + 1;
     vendus += 1;
@@ -318,10 +370,10 @@ export function valeurLot(lot) {
 
 const DUREE_ETAL = 180; // heures avant renouvellement
 
-export function genererEtal(rng, world, col, t) {
+export function genererEtal(rng, world, col, t, bonusPalier = 0) {
   const style = FACTIONS[col.faction] ? FACTIONS[col.faction].style : 'commune';
   const catalogue = ETAL_PAR_STYLE[style] || ETAL_PAR_STYLE.commune;
-  const palierMax = col.taille >= 3 ? 3 : col.taille >= 2 ? 2 : 1;
+  const palierMax = Math.min(3, (col.taille >= 3 ? 3 : col.taille >= 2 ? 2 : 1) + bonusPalier);
   const possibles = catalogue.filter((k) => (PALIERS_ITEM[k] ?? 0) <= palierMax);
   const combien = Math.min(possibles.length, rng.irange(2, 2 + col.taille * 2));
   const choisis = rng.shuffle(possibles).slice(0, combien);
@@ -337,15 +389,15 @@ export function genererEtal(rng, world, col, t) {
   return col.etal;
 }
 
-export function etalDe(world, col, rng, t) {
-  if (!col.etal || t >= col.etal.expire) genererEtal(rng, world, col, t);
+export function etalDe(world, col, rng, t, bonusPalier = 0) {
+  if (!col.etal || t >= col.etal.expire) genererEtal(rng, world, col, t, bonusPalier);
   return col.etal;
 }
 
 /** Prix d'un objet pour le joueur, achat et revente. */
-export function prixItem(col, key, coef = 1, habilete = 0, repu = 0) {
+export function prixItem(col, key, coef = 1, habilete = 0, repu = 0, remise = 0) {
   const base = ITEMS[key].prix * coef * (1 + col.unrest * 0.2);
-  const marge = Math.max(0.08, 0.28 - habilete / 700 - Math.max(0, repu) / 900);
+  const marge = Math.max(0.03, 0.28 - habilete / 700 - Math.max(0, repu) / 900 - remise);
   const hostile = repu < -20 ? 0.2 + Math.min(0.5, -repu / 200) : 0;
   return {
     achat: Math.round(base * (1 + marge + hostile)),
@@ -364,7 +416,7 @@ export function acheterItem(state, col, index) {
   const negoc = meilleurCommercant(state.player.squad);
   const hab = negoc ? comp(negoc, 'commerce') : 0;
   const repu = state.player.reputation[col.faction] || 0;
-  const p = prixItem(col, ligne.key, ligne.coef, hab, repu).achat;
+  const p = prixItem(col, ligne.key, ligne.coef, hab, repu, remiseDe(state, col.faction)).achat;
   if (state.player.credits < p) return { ok: false, motif: `Il manque ${p - state.player.credits} cr.` };
 
   state.player.credits -= p;
@@ -380,7 +432,7 @@ export function vendreItem(state, col, indexObjet) {
   const negoc = meilleurCommercant(state.player.squad);
   const hab = negoc ? comp(negoc, 'commerce') : 0;
   const repu = state.player.reputation[col.faction] || 0;
-  const p = prixItem(col, key, 1, hab, repu).vente;
+  const p = prixItem(col, key, 1, hab, repu, remiseDe(state, col.faction)).vente;
   state.player.objets.splice(indexObjet, 1);
   state.player.credits += p;
   if (negoc) gagnerXp(negoc, 'commerce', 1.8);
