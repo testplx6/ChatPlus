@@ -255,6 +255,35 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
 
 /* ------------------------------------------------------------------ Carte */
 
+/* Commandes de carte : croix directionnelle et zoom, au pouce. */
+.carte-cmd {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 34px);
+  grid-auto-rows: 30px;
+  gap: 2px;
+}
+.zoom {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 44px;
+}
+.zoom .act.mini { height: 30px; }
+.act.mini {
+  padding: 0;
+  min-height: 0;
+  font-size: 15px;
+  line-height: 1;
+  width: auto;
+}
+
 /* La carte ne tient plus dans un écran de téléphone, et c'est voulu : un monde
    de vingt-quatre sur dix-huit qu'on verrait d'un coup d'œil ne serait pas un
    monde à explorer. On garde donc les pixels gros et on fait défiler, en
@@ -265,7 +294,7 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
   line-height: 0;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
-  max-height: 62vh;
+  max-height: 50vh;
 }
 #carte {
   display: block;

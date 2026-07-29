@@ -2,7 +2,7 @@
 // sauvegarde régulièrement. Le seul module avec des effets de bord temporels.
 
 import { nouvellePartie, rattraper, rattrapageEtale, TICK_MS } from './sim.js';
-import { charger, sauvegarder, effacer, existeSauvegarde } from './save.js';
+import { charger, sauvegarder, effacer, existeSauvegarde, sauvegardePerimee } from './save.js';
 import { monterUI, rafraichir, attacherEtat, rendreAccueil, ouvrirOnglet } from './ui.js';
 import { Rng, seedFromString } from './rng.js';
 import { makeCharacter, estVivant } from './characters.js';
@@ -69,7 +69,7 @@ const API = {
 
   continuer() {
     const s = charger();
-    if (!s) { rendreAccueil(false); return; }
+    if (!s) { rendreAccueil(false, sauvegardePerimee()); return; }
     lancer(s);
   },
 
@@ -293,7 +293,7 @@ const sauvegarde = charger();
 if (sauvegarde) {
   rendreAccueil(true);
 } else {
-  rendreAccueil(existeSauvegarde());
+  rendreAccueil(existeSauvegarde() && !sauvegardePerimee(), sauvegardePerimee());
 }
 
 // Ne jamais perdre une session parce que l'onglet est passé en arrière-plan.

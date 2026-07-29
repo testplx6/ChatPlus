@@ -261,10 +261,22 @@ function rendreNav() {
 // Carte pixel
 // ---------------------------------------------------------------------------
 
-// Vingt et un pixels par région : assez gros pour rester lisible au pouce sur
-// un téléphone, et la carte entière fait alors 504×378, ce qui ne tient dans
-// aucun écran — d'où le défilement, et le recentrage sur le groupe.
-const CELL = 21;
+/**
+ * Taille d'une région à l'écran, par niveau de zoom. Le monde fait 24×18 : au
+ * plus large on ne voit qu'un cinquième de la carte à la fois — c'est le
+ * propos —, au plus serré la carte entière tient dans un téléphone, ce qui
+ * sert à décider où aller plutôt qu'à jouer.
+ */
+const NIVEAUX_ZOOM = [11, 16, 24, 34];
+let niveauZoom = 2;
+let CELL = NIVEAUX_ZOOM[niveauZoom];
+
+/** Un carré centré dans la case, en proportion de la case. */
+function pave(g, x, y, part) {
+  const t = Math.max(2, Math.round(CELL * part));
+  g.fillRect(x + Math.round((CELL - t) / 2), y + Math.round((CELL - t) / 2), t, t);
+  return t;
+}
 
 /** Bruit déterministe : la même case a toujours la même texture. */
 function bruit(i, j) {
@@ -283,18 +295,69 @@ function bruit(i, j) {
  * la main sur son doigt est la façon la plus sûre de rendre une carte
  * détestable.
  */
-let derniereRegionCentree = null;
-function centrerCarte(cv) {
+let derniereVue = null;
+let recentrerAuProchainRendu = false;
+function centrerCarte(cv, force) {
   const boite = cv.parentElement;
   if (!boite) return;
   const g = G();
   if (!g) return;
-  if (derniereRegionCentree === g.regionId) return;
-  derniereRegionCentree = g.regionId;
+  const cle = `${g.regionId}:${niveauZoom}`;
+  if (!force && !recentrerAuProchainRendu && derniereVue === cle) return;
+  derniereVue = cle;
+  recentrerAuProchainRendu = false;
   const r = S.world.regions[g.regionId];
   if (!r) return;
   boite.scrollLeft = Math.max(0, r.x * CELL + CELL / 2 - boite.clientWidth / 2);
   boite.scrollTop = Math.max(0, r.y * CELL + CELL / 2 - boite.clientHeight / 2);
+}
+
+/**
+ * Déplacer et zoomer au pouce. Une carte qui ne se manœuvre qu'en la faisant
+ * glisser est injouable dès qu'on la met dans une page qui défile elle aussi :
+ * un geste vertical sur la carte fait partir la page, et on n'atteint jamais le
+ * sud du monde. D'où des boutons francs.
+ */
+function commandesCarte() {
+  const g = G();
+  const r = g ? S.world.regions[g.regionId] : null;
+  const pos = r ? `${String.fromCharCode(65 + r.x)}${r.y + 1}` : '—';
+  return `<div class="carte-cmd">
+    <div class="dpad">
+      <button class="act mini" data-a="pan" data-d="hg" aria-label="Haut gauche">↖</button>
+      <button class="act mini" data-a="pan" data-d="h" aria-label="Haut">↑</button>
+      <button class="act mini" data-a="pan" data-d="hd" aria-label="Haut droite">↗</button>
+      <button class="act mini" data-a="pan" data-d="g" aria-label="Gauche">←</button>
+      <button class="act mini" data-a="recentrer" aria-label="Recentrer sur le groupe">◎</button>
+      <button class="act mini" data-a="pan" data-d="d" aria-label="Droite">→</button>
+      <button class="act mini" data-a="pan" data-d="bg" aria-label="Bas gauche">↙</button>
+      <button class="act mini" data-a="pan" data-d="b" aria-label="Bas">↓</button>
+      <button class="act mini" data-a="pan" data-d="bd" aria-label="Bas droite">↘</button>
+    </div>
+    <div class="zoom">
+      <button class="act mini" data-a="zoom" data-z="1" aria-label="Zoom avant"
+        ${niveauZoom >= NIVEAUX_ZOOM.length - 1 ? 'disabled' : ''}>+</button>
+      <div class="aide" style="text-align:center">${niveauZoom + 1}/${NIVEAUX_ZOOM.length}</div>
+      <button class="act mini" data-a="zoom" data-z="-1" aria-label="Zoom arrière"
+        ${niveauZoom <= 0 ? 'disabled' : ''}>−</button>
+      <div class="aide" style="text-align:center">${e(pos)}</div>
+    </div>
+  </div>`;
+}
+
+/** Fait défiler la fenêtre de carte d'un demi-écran dans une direction. */
+function deplacerCarte(dir) {
+  const boite = $('#carte-boite');
+  if (!boite) return;
+  const dx = dir.includes('g') && dir !== 'h' ? -1 : dir.includes('d') ? 1 : 0;
+  const dy = dir[0] === 'h' ? -1 : dir[0] === 'b' ? 1 : 0;
+  const px = Math.max(CELL * 2, boite.clientWidth * 0.55);
+  const py = Math.max(CELL * 2, boite.clientHeight * 0.55);
+  boite.scrollLeft += dx * px;
+  boite.scrollTop += dy * py;
+  // On vient de regarder ailleurs volontairement : le rendu suivant ne doit pas
+  // ramener la vue sur le groupe.
+  derniereVue = `${G() ? G().regionId : 0}:${niveauZoom}`;
 }
 
 function dessinerCarte(cv) {
@@ -385,10 +448,14 @@ function dessinerCarte(cv) {
   for (const car of w.caravanes || []) {
     const r = w.regions[car.regionId];
     if (!r || !r.decouvert || !estSurveillee(S, car.regionId)) continue;
+    const cx = r.x * CELL;
+    const cy = r.y * CELL;
+    const lg = Math.max(3, Math.round(CELL * 0.31));
+    const ht = Math.max(2, Math.round(CELL * 0.19));
     g.fillStyle = '#05070a';
-    g.fillRect(r.x * CELL + 1, r.y * CELL + 11, 5, 3);
+    g.fillRect(cx + 1, cy + CELL - ht - 2, lg, ht);
     g.fillStyle = couleurFaction(car.faction);
-    g.fillRect(r.x * CELL + 2, r.y * CELL + 12, 3, 1);
+    g.fillRect(cx + 2, cy + CELL - ht - 1, lg - 2, Math.max(1, ht - 2));
   }
 
   // Avant-poste
@@ -412,10 +479,11 @@ function dessinerCarte(cv) {
     if (!crypto && !estSurveillee(S, a.regionId)) continue;
     const x = r.x * CELL;
     const y = r.y * CELL;
+    const t = Math.max(3, Math.round(CELL * 0.19));
     g.fillStyle = couleurFaction(a.faction);
-    g.fillRect(x + 11, y + 2, 3, 3);
+    g.fillRect(x + CELL - t - 2, y + 2, t, t);
     g.fillStyle = '#05070a';
-    g.fillRect(x + 12, y + 3, 1, 1);
+    g.fillRect(x + CELL - t - 1, y + 3, Math.max(1, t - 2), Math.max(1, t - 2));
   }
 
   // Les groupes. Tous sont dessinés — savoir où sont les siens est la moitié de
@@ -429,18 +497,17 @@ function dessinerCarte(cv) {
     const y = rp.y * CELL;
     const moi = gr.id === actif.id;
     g.fillStyle = '#05070a';
-    g.fillRect(x + 5, y + 5, 6, 6);
+    pave(g, x, y, 0.42);
     g.fillStyle = '#f2f6fb';
+    const t = pave(g, x, y, 0.3);
     if (moi) {
-      g.fillRect(x + 6, y + 6, 4, 4);
       g.fillStyle = '#05070a';
-      g.fillRect(x + 7, y + 7, 2, 2);
+      pave(g, x, y, 0.14);
     } else {
-      // Contour seul : un carré creux de 4 px, sans anticrénelage.
-      g.fillRect(x + 6, y + 6, 4, 1);
-      g.fillRect(x + 6, y + 9, 4, 1);
-      g.fillRect(x + 6, y + 7, 1, 2);
-      g.fillRect(x + 9, y + 7, 1, 2);
+      // Contour seul : un carré creux, pour distinguer d'un coup d'œil.
+      const o = Math.round((CELL - t) / 2);
+      g.fillStyle = '#05070a';
+      g.fillRect(x + o + 1, y + o + 1, t - 2, t - 2);
     }
   }
 
@@ -451,7 +518,7 @@ function dessinerCarte(cv) {
     g.fillStyle = gr.id === actif.id ? 'rgba(242,246,251,.55)' : 'rgba(242,246,251,.22)';
     for (let k = o.etape; k < o.route.length; k++) {
       const r = w.regions[o.route[k]];
-      g.fillRect(r.x * CELL + 7, r.y * CELL + 7, 2, 2);
+      pave(g, r.x * CELL, r.y * CELL, 0.14);
     }
   }
 
@@ -761,6 +828,7 @@ function armeesIci(rid) {
 function ecranCarte() {
   return `
   <div id="carte-boite"><canvas id="carte" aria-label="Carte du monde"></canvas></div>
+  ${commandesCarte()}
   <div class="legende">
     <span><i style="background:#f2f6fb"></i>${groupes(S).length > 1 ? 'groupe affiché' : 'escouade'}</span>
     ${groupes(S).length > 1 ? '<span><i style="border:1px solid #f2f6fb"></i>autre groupe</span>' : ''}
@@ -1973,7 +2041,7 @@ function modaleRecrutement() {
 // Accueil
 // ---------------------------------------------------------------------------
 
-export function rendreAccueil(aSauvegarde) {
+export function rendreAccueil(aSauvegarde, perimee = false) {
   $('#barre-haut').innerHTML = '';
   $('#barre-nav').innerHTML = '';
   $('#ecran').innerHTML = `
@@ -1988,6 +2056,14 @@ export function rendreAccueil(aSauvegarde) {
       avant de mourir, et se souviennent de la faim.</div>
     </div>
     ${aSauvegarde ? '<button class="act primaire" data-a="continuer">Reprendre la partie</button><div style="height:8px"></div>' : ''}
+    ${!aSauvegarde && perimee ? `<div class="panneau">
+      <div class="titre">Ancienne partie</div>
+      <div class="aide">Une sauvegarde est là, mais elle a été commencée sur la carte
+      de 10×8. Le monde d’une partie ne s’agrandit pas en cours de route : les
+      secteurs y sont numérotés selon l’ancienne grille, et les relire avec la
+      nouvelle donnerait une carte fausse d’un bout à l’autre.<br><br>
+      Une nouvelle partie ouvre la carte de 24×18 — 432 secteurs, 86 villes.</div>
+    </div>` : ''}
     <div class="panneau">
       <div class="titre">Nouvelle partie</div>
       <label class="aide" for="graine">Graine (facultatif — même graine, même monde)</label>
@@ -2327,6 +2403,27 @@ function surClic(ev) {
       rafraichir(true);
       break;
     }
+
+    case 'pan':
+      deplacerCarte(el.dataset.d);
+      break;
+
+    case 'zoom': {
+      const n = Math.max(0, Math.min(NIVEAUX_ZOOM.length - 1,
+        niveauZoom + Number(el.dataset.z)));
+      if (n !== niveauZoom) {
+        niveauZoom = n;
+        CELL = NIVEAUX_ZOOM[n];
+        recentrerAuProchainRendu = true;
+        rafraichir(true);
+      }
+      break;
+    }
+
+    case 'recentrer':
+      recentrerAuProchainRendu = true;
+      rafraichir(true);
+      break;
 
     case 'honorer': {
       const r = ACTIONS.honorer(el.dataset.c, el.dataset.n);

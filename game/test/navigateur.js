@@ -464,6 +464,42 @@ ok(notables && notables.n >= 2 && notables.ok,
 await page.click('[data-a="fermer"]');
 await page.waitForTimeout(300);
 
+console.log('\n8 quaterdecies. Manœuvrer la carte');
+await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
+await page.reload({ waitUntil: 'networkidle' });
+await page.click('[data-a="nouvelle"]');
+await page.waitForSelector('#carte');
+await page.waitForTimeout(400);
+const dims = await page.evaluate(() => {
+  const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const cv = document.querySelector('#carte');
+  return { l: s2.world.largeur, h: s2.world.hauteur, w: cv.width, ht: cv.height };
+});
+ok(dims.l === 24 && dims.h === 18, 'le monde fait 24 sur 18', `${dims.l}×${dims.h}`);
+ok(dims.w > 380, 'et la carte est plus large qu’un écran de téléphone', `${dims.w} px`);
+ok(await page.locator('[data-a="pan"]').count() === 8, 'huit flèches pour se déplacer');
+ok(await page.locator('[data-a="zoom"]').count() === 2, 'deux boutons pour zoomer');
+
+// Zoom arrière : la carte doit rétrécir pour de vrai.
+const avantZoom = dims.w;
+await page.click('[data-a="zoom"][data-z="-1"]');
+await page.waitForTimeout(300);
+const apresZoom = await page.evaluate(() => document.querySelector('#carte').width);
+ok(apresZoom < avantZoom, 'le zoom arrière réduit la carte', `${avantZoom} → ${apresZoom}`);
+await page.click('[data-a="zoom"][data-z="1"]');
+await page.waitForTimeout(300);
+ok(await page.evaluate(() => document.querySelector('#carte').width) === avantZoom,
+  'et le zoom avant la rend');
+
+// Les flèches font défiler, et le rendu suivant ne reprend pas la main.
+await page.click('[data-a="pan"][data-d="d"]');
+await page.waitForTimeout(300);
+const decale = await page.evaluate(() => document.querySelector('#carte-boite').scrollLeft);
+ok(decale > 0, 'la flèche droite fait défiler la carte', `scrollLeft ${Math.round(decale)}`);
+await page.click('[data-a="recentrer"]');
+await page.waitForTimeout(300);
+await page.screenshot({ path: join(CAPTURES, '24-carte-vaste.png'), fullPage: true });
+
 console.log('\n8 terdecies. Quelqu’un vous demande quelque chose');
 // On pose une demande à la main : le hasard finit par en produire, mais un test
 // d'interface ne doit pas attendre le hasard.

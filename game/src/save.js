@@ -6,7 +6,17 @@ import { groupeVide } from './groupes.js';
 import { creerConnaissance } from './connaissance.js';
 
 export const CLE = 'cendres.save.v1';
-export const VERSION = 1;
+/**
+ * 2 : la carte est passée de 10×8 à 24×18.
+ *
+ * C'est la seule migration qu'on ne sait pas faire. Le reste du jeu se complète
+ * à la volée dans `normaliser` — un système qui s'ajoute ne doit pas coûter sa
+ * partie au joueur. Mais la taille de la carte est la clé qui traduit un indice
+ * de région en coordonnées : la lire de travers ne dégrade pas une sauvegarde,
+ * elle la rend fausse partout à la fois, silencieusement. On refuse donc les
+ * parties d'avant, plutôt que de les ouvrir corrompues.
+ */
+export const VERSION = 2;
 
 export function serialiser(state) {
   return JSON.stringify(state);
@@ -111,6 +121,24 @@ export function deserialiser(txt) {
     throw new Error('Sauvegarde incompatible.');
   }
   return normaliser(state);
+}
+
+/**
+ * Y a-t-il une sauvegarde qu'on ne sait plus lire ? L'écran d'accueil doit le
+ * dire : proposer « Reprendre » sur un bouton qui ne reprend rien est la pire
+ * des réponses.
+ */
+export function sauvegardePerimee() {
+  const s = stockage();
+  if (!s) return false;
+  const txt = s.getItem(CLE);
+  if (!txt) return false;
+  try {
+    const brut = JSON.parse(txt);
+    return !!brut && brut.version !== VERSION;
+  } catch (e) {
+    return true;
+  }
 }
 
 function stockage() {

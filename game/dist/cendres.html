@@ -270,6 +270,35 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
 
 /* ------------------------------------------------------------------ Carte */
 
+/* Commandes de carte : croix directionnelle et zoom, au pouce. */
+.carte-cmd {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 34px);
+  grid-auto-rows: 30px;
+  gap: 2px;
+}
+.zoom {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 44px;
+}
+.zoom .act.mini { height: 30px; }
+.act.mini {
+  padding: 0;
+  min-height: 0;
+  font-size: 15px;
+  line-height: 1;
+  width: auto;
+}
+
 /* La carte ne tient plus dans un écran de téléphone, et c'est voulu : un monde
    de vingt-quatre sur dix-huit qu'on verrait d'un coup d'œil ne serait pas un
    monde à explorer. On garde donc les pixels gros et on fait défiler, en
@@ -280,7 +309,7 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
   line-height: 0;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
-  max-height: 62vh;
+  max-height: 50vh;
 }
 #carte {
   display: block;
@@ -8551,6 +8580,190 @@ function tickSquad(state, log, ctx) {
   }
 }
 
+// ===== src/save.js ===================================================
+// Sauvegarde locale. L'état est du JSON pur : pas de classes, pas de
+// références circulaires, pas de fonctions. C'est ce qui rend possible à la
+// fois la persistance navigateur et, plus tard, un envoi au serveur.
+
+
+const CLE = 'cendres.save.v1';
+/**
+ * 2 : la carte est passée de 10×8 à 24×18.
+ *
+ * C'est la seule migration qu'on ne sait pas faire. Le reste du jeu se complète
+ * à la volée dans `normaliser` — un système qui s'ajoute ne doit pas coûter sa
+ * partie au joueur. Mais la taille de la carte est la clé qui traduit un indice
+ * de région en coordonnées : la lire de travers ne dégrade pas une sauvegarde,
+ * elle la rend fausse partout à la fois, silencieusement. On refuse donc les
+ * parties d'avant, plutôt que de les ouvrir corrompues.
+ */
+const VERSION = 2;
+
+function serialiser(state) {
+  return JSON.stringify(state);
+}
+
+/**
+ * Complète une sauvegarde plus ancienne que le code courant. Le jeu gagne des
+ * systèmes au fil des versions ; effacer la partie du joueur à chaque ajout
+ * serait la solution paresseuse.
+ */
+function normaliser(state) {
+  const p = state.player;
+
+  // Avant les groupes, l'escouade était un bloc unique posé sur `player`.
+  // On la reconstitue en un premier groupe : une partie en cours ne se jette
+  // pas parce que le moteur a appris à en tenir plusieurs.
+  if (!p.groupes) {
+    const g = groupeVide('g0', 'Convoi', p.regionId || 0, state.temps);
+    g.membres = p.squad || [];
+    g.ordre = p.ordre || { type: 'repos' };
+    g.inventaire = Object.assign(g.inventaire, p.inventaire || {});
+    g.objets = p.objets || [];
+    g.reste = p.reste || {};
+    g.bilan = p.bilan || { res: {}, depuis: state.temps };
+    g.cohesion = p.cohesion === undefined ? 55 : p.cohesion;
+    p.groupes = [g];
+    p.groupeActif = g.id;
+    delete p.squad; delete p.ordre; delete p.inventaire; delete p.objets;
+    delete p.regionId; delete p.reste; delete p.bilan; delete p.cohesion;
+    delete p.recolteHeure; delete p.nuit;
+  }
+  for (const g of p.groupes) {
+    if (!g.reste) g.reste = {};
+    if (!g.objets) g.objets = [];
+    if (!g.bilan) g.bilan = { res: {}, depuis: state.temps };
+    if (g.cohesion === undefined) g.cohesion = 55;
+    if (!g.ordre) g.ordre = { type: 'repos' };
+    if (!g.membres) g.membres = [];
+  }
+  if (!p.groupeActif || !p.groupes.some((g) => g.id === p.groupeActif)) {
+    p.groupeActif = p.groupes.length ? p.groupes[0].id : null;
+  }
+
+  // Avant la connaissance imparfaite, tout était su en permanence. On repart
+  // d'une ardoise vide : le premier tick relève ce qu'on a sous les yeux, et le
+  // reste de la carte redevient un souvenir à rafraîchir.
+  if (!state.connaissance) state.connaissance = creerConnaissance(state.temps);
+
+  if (!p.contrats) p.contrats = [];
+  if (!p.primes) p.primes = {};
+  if (p.allegeance === undefined) p.allegeance = null;
+  if (!state.memorial) state.memorial = [];
+  if (!state.stats) state.stats = {};
+  for (const k of ['contratsRemplis', 'sitesFouilles', 'caravanesPillees', 'distanceParcourue', 'servicesRendus']) {
+    if (state.stats[k] === undefined) state.stats[k] = 0;
+  }
+  const w = state.world;
+  if (!w.caravanes) w.caravanes = [];
+  // Avant les dirigeants, les factions décidaient comme des moyennes. Le
+  // premier tick leur donne quelqu'un à leur tête.
+  for (const k of Object.keys(w.factions || {})) {
+    if (w.factions[k].dirigeant === undefined) w.factions[k].dirigeant = null;
+  }
+  if (!w.meteo) w.meteo = { type: 'couvert', restant: 4 };
+  for (const c of w.colonies) {
+    if (c.declin === undefined) c.declin = 0;
+    if (c.prises === undefined) c.prises = 0;
+    // Les métiers d'une ville d'avant : le premier tick les répartira.
+    if (c.emplois === undefined) c.emplois = null;
+    // Les gens qui comptent : le premier tick pourvoit les charges.
+    if (!c.notables) c.notables = [];
+    // Avant les services, ces gens n'attendaient rien et ne retenaient rien.
+    for (const p2 of c.notables) {
+      if (p2.demande === undefined) p2.demande = null;
+      if (!p2.memoire) p2.memoire = [];
+    }
+  }
+  for (const g of p.groupes) {
+    for (const c of g.membres) {
+      if (!c.traits) c.traits = [];
+      if (!c.liens) c.liens = {};
+      if (!c.diplomes) c.diplomes = [];
+      if (c.formation === undefined) c.formation = null;
+      if (c.enseigne === undefined) delete c.enseigne;
+    }
+  }
+  const b = state.base;
+  if (b) {
+    if (b.pop === undefined) b.pop = 0;
+    if (b.moral === undefined) b.moral = 60;
+    // Avant les métiers, les habitants étaient un multiplicateur anonyme : on
+    // les laisse manœuvres, le joueur les affectera s'il le veut.
+    if (!b.postes) b.postes = {};
+  }
+  if (state.stats.ordresRemplis === undefined) state.stats.ordresRemplis = 0;
+  return state;
+}
+
+function deserialiser(txt) {
+  const state = JSON.parse(txt);
+  if (!state || state.version !== VERSION) {
+    throw new Error('Sauvegarde incompatible.');
+  }
+  return normaliser(state);
+}
+
+/**
+ * Y a-t-il une sauvegarde qu'on ne sait plus lire ? L'écran d'accueil doit le
+ * dire : proposer « Reprendre » sur un bouton qui ne reprend rien est la pire
+ * des réponses.
+ */
+function sauvegardePerimee() {
+  const s = stockage();
+  if (!s) return false;
+  const txt = s.getItem(CLE);
+  if (!txt) return false;
+  try {
+    const brut = JSON.parse(txt);
+    return !!brut && brut.version !== VERSION;
+  } catch (e) {
+    return true;
+  }
+}
+
+function stockage() {
+  try {
+    if (typeof localStorage !== 'undefined') return localStorage;
+  } catch (e) {
+    // Mode privé, quota, iframe verrouillée…
+  }
+  return null;
+}
+
+function sauvegarder(state) {
+  const s = stockage();
+  if (!s) return { ok: false, motif: 'Stockage local indisponible.' };
+  try {
+    s.setItem(CLE, serialiser(state));
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, motif: 'Écriture impossible (quota ?).' };
+  }
+}
+
+function charger() {
+  const s = stockage();
+  if (!s) return null;
+  const txt = s.getItem(CLE);
+  if (!txt) return null;
+  try {
+    return deserialiser(txt);
+  } catch (e) {
+    return null;
+  }
+}
+
+function effacer() {
+  const s = stockage();
+  if (s) s.removeItem(CLE);
+}
+
+function existeSauvegarde() {
+  const s = stockage();
+  return !!(s && s.getItem(CLE));
+}
+
 // ===== src/sim.js ====================================================
 // Orchestration : création de partie, tick horaire, rattrapage du temps passé
 // hors ligne. `state.world` est la moitié partagée de l'état (celle qui vivrait
@@ -8637,7 +8850,7 @@ function nouvellePartie(seed, opts = {}) {
   reputation[depart.faction] = 12;
 
   const state = {
-    version: 1,
+    version: VERSION,
     seed,
     rngState: rng.save(),
     temps: 0,
@@ -8961,162 +9174,6 @@ function resumeMonde(state) {
   };
 }
 
-// ===== src/save.js ===================================================
-// Sauvegarde locale. L'état est du JSON pur : pas de classes, pas de
-// références circulaires, pas de fonctions. C'est ce qui rend possible à la
-// fois la persistance navigateur et, plus tard, un envoi au serveur.
-
-
-const CLE = 'cendres.save.v1';
-const VERSION = 1;
-
-function serialiser(state) {
-  return JSON.stringify(state);
-}
-
-/**
- * Complète une sauvegarde plus ancienne que le code courant. Le jeu gagne des
- * systèmes au fil des versions ; effacer la partie du joueur à chaque ajout
- * serait la solution paresseuse.
- */
-function normaliser(state) {
-  const p = state.player;
-
-  // Avant les groupes, l'escouade était un bloc unique posé sur `player`.
-  // On la reconstitue en un premier groupe : une partie en cours ne se jette
-  // pas parce que le moteur a appris à en tenir plusieurs.
-  if (!p.groupes) {
-    const g = groupeVide('g0', 'Convoi', p.regionId || 0, state.temps);
-    g.membres = p.squad || [];
-    g.ordre = p.ordre || { type: 'repos' };
-    g.inventaire = Object.assign(g.inventaire, p.inventaire || {});
-    g.objets = p.objets || [];
-    g.reste = p.reste || {};
-    g.bilan = p.bilan || { res: {}, depuis: state.temps };
-    g.cohesion = p.cohesion === undefined ? 55 : p.cohesion;
-    p.groupes = [g];
-    p.groupeActif = g.id;
-    delete p.squad; delete p.ordre; delete p.inventaire; delete p.objets;
-    delete p.regionId; delete p.reste; delete p.bilan; delete p.cohesion;
-    delete p.recolteHeure; delete p.nuit;
-  }
-  for (const g of p.groupes) {
-    if (!g.reste) g.reste = {};
-    if (!g.objets) g.objets = [];
-    if (!g.bilan) g.bilan = { res: {}, depuis: state.temps };
-    if (g.cohesion === undefined) g.cohesion = 55;
-    if (!g.ordre) g.ordre = { type: 'repos' };
-    if (!g.membres) g.membres = [];
-  }
-  if (!p.groupeActif || !p.groupes.some((g) => g.id === p.groupeActif)) {
-    p.groupeActif = p.groupes.length ? p.groupes[0].id : null;
-  }
-
-  // Avant la connaissance imparfaite, tout était su en permanence. On repart
-  // d'une ardoise vide : le premier tick relève ce qu'on a sous les yeux, et le
-  // reste de la carte redevient un souvenir à rafraîchir.
-  if (!state.connaissance) state.connaissance = creerConnaissance(state.temps);
-
-  if (!p.contrats) p.contrats = [];
-  if (!p.primes) p.primes = {};
-  if (p.allegeance === undefined) p.allegeance = null;
-  if (!state.memorial) state.memorial = [];
-  if (!state.stats) state.stats = {};
-  for (const k of ['contratsRemplis', 'sitesFouilles', 'caravanesPillees', 'distanceParcourue', 'servicesRendus']) {
-    if (state.stats[k] === undefined) state.stats[k] = 0;
-  }
-  const w = state.world;
-  if (!w.caravanes) w.caravanes = [];
-  // Avant les dirigeants, les factions décidaient comme des moyennes. Le
-  // premier tick leur donne quelqu'un à leur tête.
-  for (const k of Object.keys(w.factions || {})) {
-    if (w.factions[k].dirigeant === undefined) w.factions[k].dirigeant = null;
-  }
-  if (!w.meteo) w.meteo = { type: 'couvert', restant: 4 };
-  for (const c of w.colonies) {
-    if (c.declin === undefined) c.declin = 0;
-    if (c.prises === undefined) c.prises = 0;
-    // Les métiers d'une ville d'avant : le premier tick les répartira.
-    if (c.emplois === undefined) c.emplois = null;
-    // Les gens qui comptent : le premier tick pourvoit les charges.
-    if (!c.notables) c.notables = [];
-    // Avant les services, ces gens n'attendaient rien et ne retenaient rien.
-    for (const p2 of c.notables) {
-      if (p2.demande === undefined) p2.demande = null;
-      if (!p2.memoire) p2.memoire = [];
-    }
-  }
-  for (const g of p.groupes) {
-    for (const c of g.membres) {
-      if (!c.traits) c.traits = [];
-      if (!c.liens) c.liens = {};
-      if (!c.diplomes) c.diplomes = [];
-      if (c.formation === undefined) c.formation = null;
-      if (c.enseigne === undefined) delete c.enseigne;
-    }
-  }
-  const b = state.base;
-  if (b) {
-    if (b.pop === undefined) b.pop = 0;
-    if (b.moral === undefined) b.moral = 60;
-    // Avant les métiers, les habitants étaient un multiplicateur anonyme : on
-    // les laisse manœuvres, le joueur les affectera s'il le veut.
-    if (!b.postes) b.postes = {};
-  }
-  if (state.stats.ordresRemplis === undefined) state.stats.ordresRemplis = 0;
-  return state;
-}
-
-function deserialiser(txt) {
-  const state = JSON.parse(txt);
-  if (!state || state.version !== VERSION) {
-    throw new Error('Sauvegarde incompatible.');
-  }
-  return normaliser(state);
-}
-
-function stockage() {
-  try {
-    if (typeof localStorage !== 'undefined') return localStorage;
-  } catch (e) {
-    // Mode privé, quota, iframe verrouillée…
-  }
-  return null;
-}
-
-function sauvegarder(state) {
-  const s = stockage();
-  if (!s) return { ok: false, motif: 'Stockage local indisponible.' };
-  try {
-    s.setItem(CLE, serialiser(state));
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, motif: 'Écriture impossible (quota ?).' };
-  }
-}
-
-function charger() {
-  const s = stockage();
-  if (!s) return null;
-  const txt = s.getItem(CLE);
-  if (!txt) return null;
-  try {
-    return deserialiser(txt);
-  } catch (e) {
-    return null;
-  }
-}
-
-function effacer() {
-  const s = stockage();
-  if (s) s.removeItem(CLE);
-}
-
-function existeSauvegarde() {
-  const s = stockage();
-  return !!(s && s.getItem(CLE));
-}
-
 // ===== src/ui.js =====================================================
 // Interface : rendu HTML + carte pixel sur canvas. C'est le SEUL module qui
 // touche au DOM — tout le reste du dossier src/ tourne aussi bien sous Node.
@@ -9329,10 +9386,22 @@ function rendreNav() {
 // Carte pixel
 // ---------------------------------------------------------------------------
 
-// Vingt et un pixels par région : assez gros pour rester lisible au pouce sur
-// un téléphone, et la carte entière fait alors 504×378, ce qui ne tient dans
-// aucun écran — d'où le défilement, et le recentrage sur le groupe.
-const CELL = 21;
+/**
+ * Taille d'une région à l'écran, par niveau de zoom. Le monde fait 24×18 : au
+ * plus large on ne voit qu'un cinquième de la carte à la fois — c'est le
+ * propos —, au plus serré la carte entière tient dans un téléphone, ce qui
+ * sert à décider où aller plutôt qu'à jouer.
+ */
+const NIVEAUX_ZOOM = [11, 16, 24, 34];
+let niveauZoom = 2;
+let CELL = NIVEAUX_ZOOM[niveauZoom];
+
+/** Un carré centré dans la case, en proportion de la case. */
+function pave(g, x, y, part) {
+  const t = Math.max(2, Math.round(CELL * part));
+  g.fillRect(x + Math.round((CELL - t) / 2), y + Math.round((CELL - t) / 2), t, t);
+  return t;
+}
 
 /** Bruit déterministe : la même case a toujours la même texture. */
 function bruit(i, j) {
@@ -9351,18 +9420,69 @@ function bruit(i, j) {
  * la main sur son doigt est la façon la plus sûre de rendre une carte
  * détestable.
  */
-let derniereRegionCentree = null;
-function centrerCarte(cv) {
+let derniereVue = null;
+let recentrerAuProchainRendu = false;
+function centrerCarte(cv, force) {
   const boite = cv.parentElement;
   if (!boite) return;
   const g = G();
   if (!g) return;
-  if (derniereRegionCentree === g.regionId) return;
-  derniereRegionCentree = g.regionId;
+  const cle = `${g.regionId}:${niveauZoom}`;
+  if (!force && !recentrerAuProchainRendu && derniereVue === cle) return;
+  derniereVue = cle;
+  recentrerAuProchainRendu = false;
   const r = S.world.regions[g.regionId];
   if (!r) return;
   boite.scrollLeft = Math.max(0, r.x * CELL + CELL / 2 - boite.clientWidth / 2);
   boite.scrollTop = Math.max(0, r.y * CELL + CELL / 2 - boite.clientHeight / 2);
+}
+
+/**
+ * Déplacer et zoomer au pouce. Une carte qui ne se manœuvre qu'en la faisant
+ * glisser est injouable dès qu'on la met dans une page qui défile elle aussi :
+ * un geste vertical sur la carte fait partir la page, et on n'atteint jamais le
+ * sud du monde. D'où des boutons francs.
+ */
+function commandesCarte() {
+  const g = G();
+  const r = g ? S.world.regions[g.regionId] : null;
+  const pos = r ? `${String.fromCharCode(65 + r.x)}${r.y + 1}` : '—';
+  return `<div class="carte-cmd">
+    <div class="dpad">
+      <button class="act mini" data-a="pan" data-d="hg" aria-label="Haut gauche">↖</button>
+      <button class="act mini" data-a="pan" data-d="h" aria-label="Haut">↑</button>
+      <button class="act mini" data-a="pan" data-d="hd" aria-label="Haut droite">↗</button>
+      <button class="act mini" data-a="pan" data-d="g" aria-label="Gauche">←</button>
+      <button class="act mini" data-a="recentrer" aria-label="Recentrer sur le groupe">◎</button>
+      <button class="act mini" data-a="pan" data-d="d" aria-label="Droite">→</button>
+      <button class="act mini" data-a="pan" data-d="bg" aria-label="Bas gauche">↙</button>
+      <button class="act mini" data-a="pan" data-d="b" aria-label="Bas">↓</button>
+      <button class="act mini" data-a="pan" data-d="bd" aria-label="Bas droite">↘</button>
+    </div>
+    <div class="zoom">
+      <button class="act mini" data-a="zoom" data-z="1" aria-label="Zoom avant"
+        ${niveauZoom >= NIVEAUX_ZOOM.length - 1 ? 'disabled' : ''}>+</button>
+      <div class="aide" style="text-align:center">${niveauZoom + 1}/${NIVEAUX_ZOOM.length}</div>
+      <button class="act mini" data-a="zoom" data-z="-1" aria-label="Zoom arrière"
+        ${niveauZoom <= 0 ? 'disabled' : ''}>−</button>
+      <div class="aide" style="text-align:center">${e(pos)}</div>
+    </div>
+  </div>`;
+}
+
+/** Fait défiler la fenêtre de carte d'un demi-écran dans une direction. */
+function deplacerCarte(dir) {
+  const boite = $('#carte-boite');
+  if (!boite) return;
+  const dx = dir.includes('g') && dir !== 'h' ? -1 : dir.includes('d') ? 1 : 0;
+  const dy = dir[0] === 'h' ? -1 : dir[0] === 'b' ? 1 : 0;
+  const px = Math.max(CELL * 2, boite.clientWidth * 0.55);
+  const py = Math.max(CELL * 2, boite.clientHeight * 0.55);
+  boite.scrollLeft += dx * px;
+  boite.scrollTop += dy * py;
+  // On vient de regarder ailleurs volontairement : le rendu suivant ne doit pas
+  // ramener la vue sur le groupe.
+  derniereVue = `${G() ? G().regionId : 0}:${niveauZoom}`;
 }
 
 function dessinerCarte(cv) {
@@ -9453,10 +9573,14 @@ function dessinerCarte(cv) {
   for (const car of w.caravanes || []) {
     const r = w.regions[car.regionId];
     if (!r || !r.decouvert || !estSurveillee(S, car.regionId)) continue;
+    const cx = r.x * CELL;
+    const cy = r.y * CELL;
+    const lg = Math.max(3, Math.round(CELL * 0.31));
+    const ht = Math.max(2, Math.round(CELL * 0.19));
     g.fillStyle = '#05070a';
-    g.fillRect(r.x * CELL + 1, r.y * CELL + 11, 5, 3);
+    g.fillRect(cx + 1, cy + CELL - ht - 2, lg, ht);
     g.fillStyle = couleurFaction(car.faction);
-    g.fillRect(r.x * CELL + 2, r.y * CELL + 12, 3, 1);
+    g.fillRect(cx + 2, cy + CELL - ht - 1, lg - 2, Math.max(1, ht - 2));
   }
 
   // Avant-poste
@@ -9480,10 +9604,11 @@ function dessinerCarte(cv) {
     if (!crypto && !estSurveillee(S, a.regionId)) continue;
     const x = r.x * CELL;
     const y = r.y * CELL;
+    const t = Math.max(3, Math.round(CELL * 0.19));
     g.fillStyle = couleurFaction(a.faction);
-    g.fillRect(x + 11, y + 2, 3, 3);
+    g.fillRect(x + CELL - t - 2, y + 2, t, t);
     g.fillStyle = '#05070a';
-    g.fillRect(x + 12, y + 3, 1, 1);
+    g.fillRect(x + CELL - t - 1, y + 3, Math.max(1, t - 2), Math.max(1, t - 2));
   }
 
   // Les groupes. Tous sont dessinés — savoir où sont les siens est la moitié de
@@ -9497,18 +9622,17 @@ function dessinerCarte(cv) {
     const y = rp.y * CELL;
     const moi = gr.id === actif.id;
     g.fillStyle = '#05070a';
-    g.fillRect(x + 5, y + 5, 6, 6);
+    pave(g, x, y, 0.42);
     g.fillStyle = '#f2f6fb';
+    const t = pave(g, x, y, 0.3);
     if (moi) {
-      g.fillRect(x + 6, y + 6, 4, 4);
       g.fillStyle = '#05070a';
-      g.fillRect(x + 7, y + 7, 2, 2);
+      pave(g, x, y, 0.14);
     } else {
-      // Contour seul : un carré creux de 4 px, sans anticrénelage.
-      g.fillRect(x + 6, y + 6, 4, 1);
-      g.fillRect(x + 6, y + 9, 4, 1);
-      g.fillRect(x + 6, y + 7, 1, 2);
-      g.fillRect(x + 9, y + 7, 1, 2);
+      // Contour seul : un carré creux, pour distinguer d'un coup d'œil.
+      const o = Math.round((CELL - t) / 2);
+      g.fillStyle = '#05070a';
+      g.fillRect(x + o + 1, y + o + 1, t - 2, t - 2);
     }
   }
 
@@ -9519,7 +9643,7 @@ function dessinerCarte(cv) {
     g.fillStyle = gr.id === actif.id ? 'rgba(242,246,251,.55)' : 'rgba(242,246,251,.22)';
     for (let k = o.etape; k < o.route.length; k++) {
       const r = w.regions[o.route[k]];
-      g.fillRect(r.x * CELL + 7, r.y * CELL + 7, 2, 2);
+      pave(g, r.x * CELL, r.y * CELL, 0.14);
     }
   }
 
@@ -9829,6 +9953,7 @@ function armeesIci(rid) {
 function ecranCarte() {
   return `
   <div id="carte-boite"><canvas id="carte" aria-label="Carte du monde"></canvas></div>
+  ${commandesCarte()}
   <div class="legende">
     <span><i style="background:#f2f6fb"></i>${groupes(S).length > 1 ? 'groupe affiché' : 'escouade'}</span>
     ${groupes(S).length > 1 ? '<span><i style="border:1px solid #f2f6fb"></i>autre groupe</span>' : ''}
@@ -11041,7 +11166,7 @@ function modaleRecrutement() {
 // Accueil
 // ---------------------------------------------------------------------------
 
-function rendreAccueil(aSauvegarde) {
+function rendreAccueil(aSauvegarde, perimee = false) {
   $('#barre-haut').innerHTML = '';
   $('#barre-nav').innerHTML = '';
   $('#ecran').innerHTML = `
@@ -11056,6 +11181,14 @@ function rendreAccueil(aSauvegarde) {
       avant de mourir, et se souviennent de la faim.</div>
     </div>
     ${aSauvegarde ? '<button class="act primaire" data-a="continuer">Reprendre la partie</button><div style="height:8px"></div>' : ''}
+    ${!aSauvegarde && perimee ? `<div class="panneau">
+      <div class="titre">Ancienne partie</div>
+      <div class="aide">Une sauvegarde est là, mais elle a été commencée sur la carte
+      de 10×8. Le monde d’une partie ne s’agrandit pas en cours de route : les
+      secteurs y sont numérotés selon l’ancienne grille, et les relire avec la
+      nouvelle donnerait une carte fausse d’un bout à l’autre.<br><br>
+      Une nouvelle partie ouvre la carte de 24×18 — 432 secteurs, 86 villes.</div>
+    </div>` : ''}
     <div class="panneau">
       <div class="titre">Nouvelle partie</div>
       <label class="aide" for="graine">Graine (facultatif — même graine, même monde)</label>
@@ -11396,6 +11529,27 @@ function surClic(ev) {
       break;
     }
 
+    case 'pan':
+      deplacerCarte(el.dataset.d);
+      break;
+
+    case 'zoom': {
+      const n = Math.max(0, Math.min(NIVEAUX_ZOOM.length - 1,
+        niveauZoom + Number(el.dataset.z)));
+      if (n !== niveauZoom) {
+        niveauZoom = n;
+        CELL = NIVEAUX_ZOOM[n];
+        recentrerAuProchainRendu = true;
+        rafraichir(true);
+      }
+      break;
+    }
+
+    case 'recentrer':
+      recentrerAuProchainRendu = true;
+      rafraichir(true);
+      break;
+
     case 'honorer': {
       const r = ACTIONS.honorer(el.dataset.c, el.dataset.n);
       toast(r.ok ? 'Il vous doit quelque chose, maintenant.' : r.motif, !r.ok);
@@ -11498,7 +11652,7 @@ const API = {
 
   continuer() {
     const s = charger();
-    if (!s) { rendreAccueil(false); return; }
+    if (!s) { rendreAccueil(false, sauvegardePerimee()); return; }
     lancer(s);
   },
 
@@ -11722,7 +11876,7 @@ const sauvegarde = charger();
 if (sauvegarde) {
   rendreAccueil(true);
 } else {
-  rendreAccueil(existeSauvegarde());
+  rendreAccueil(existeSauvegarde() && !sauvegardePerimee(), sauvegardePerimee());
 }
 
 // Ne jamais perdre une session parce que l'onglet est passé en arrière-plan.

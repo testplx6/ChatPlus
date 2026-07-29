@@ -15,6 +15,7 @@ import { tickCaravanes } from './caravanes.js';
 import { tickFactions } from './factions.js';
 import { tickSquad } from './squad.js';
 import { creerLogger } from './events.js';
+import { VERSION } from './save.js';
 import { groupeVide } from './groupes.js';
 import { creerConnaissance, observer } from './connaissance.js';
 import { pourvoirCharges } from './notables.js';
@@ -103,7 +104,7 @@ export function nouvellePartie(seed, opts = {}) {
   reputation[depart.faction] = 12;
 
   const state = {
-    version: 1,
+    version: VERSION,
     seed,
     rngState: rng.save(),
     temps: 0,

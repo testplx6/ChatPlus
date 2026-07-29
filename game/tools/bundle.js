@@ -41,8 +41,8 @@ const MODULES = [
   'contrats.js',
   'events.js',
   'squad.js',
-  'sim.js',
   'save.js',
+  'sim.js',
   'ui.js',
   'main.js',
 ];
