@@ -12,8 +12,8 @@ import { groupes, groupeActif } from './groupes.js';
 
 export const RANGS = [
   {
-    nom: 'Affilié', points: 0, remise: 0.05, solde: 0,
-    desc: 'On vous laisse entrer par la porte de service.',
+    nom: 'Affilié', points: 0, remise: 0.05, solde: 10,
+    desc: 'On vous laisse entrer par la porte de service, et on vous défraie.',
   },
   {
     nom: 'Agent', points: 130, remise: 0.10, solde: 30,
@@ -33,8 +33,21 @@ export const RANGS = [
   },
 ];
 
-/** Réputation minimale pour être seulement reçu. */
-export const REPUTATION_MINIMALE = 20;
+/**
+ * Réputation minimale pour être seulement reçu.
+ *
+ * Vingt, c'était deux ou trois contrats honorés pour la même faction avant
+ * qu'on vous parle — et remplir un contrat est l'une des choses les plus dures
+ * du jeu sur une grande carte. Le banc était formel : sur quarante-huit
+ * parties, le bot entrait au service de quelqu'un dans zéro à deux d'entre
+ * elles. La troisième voie n'existait pas.
+ *
+ * Dix : on démarre à douze auprès de la faction qui vous accueille, donc
+ * s'engager chez elle est une décision d'ouverture, pas une récompense de
+ * milieu de partie. Les autres demandent un minimum de bonne volonté. Ce qui
+ * se mérite, ce sont les grades — et là, rien n'a bougé.
+ */
+export const REPUTATION_MINIMALE = 10;
 
 /** Le premier groupe en `regionId` qui porte assez de `key`. */
 function porteurA(state, regionId, key, quantite) {

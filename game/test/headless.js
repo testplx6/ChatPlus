@@ -46,7 +46,9 @@ function coloniesVivantes(state, key) {
   return state.world.colonies.filter((c) => !c.ruine && c.faction === key);
 }
 import { METIER_VILLE_KEYS } from '../src/data.js';
-import { sEngager, rangDe, RANGS } from '../src/allegeance.js';
+import {
+  sEngager, rangDe, RANGS, peutSEngager, REPUTATION_MINIMALE,
+} from '../src/allegeance.js';
 import {
   vueColonie, estSurveillee, ageTexte, nouvellesConnues, DELAI_NOUVELLE, observer,
 } from '../src/connaissance.js';
@@ -440,6 +442,24 @@ ok(s9b.world.meteo && s9b.world.meteo.type, 'une météo est toujours en cours')
 verifierCoherence(s9b, 'après 8 000 h de monde vivant');
 
 section('9 ter. Allégeance et pluralité du monde');
+// La porte d'entrée. Elle était à vingt de réputation, c'est-à-dire deux ou
+// trois contrats honorés pour la même faction — et remplir un contrat est
+// l'une des choses les plus dures du jeu sur une grande carte. Le banc était
+// formel : le bot entrait au service de quelqu'un dans zéro à deux parties sur
+// quarante-huit. À dix, on démarre déjà au-dessus du seuil chez la faction qui
+// vous accueille, donc s'engager est une décision d'ouverture. Résultat mesuré
+// au banc : 48 parties sur 48.
+const ouvre = nouvellePartie(5757, { maintenant: 0 });
+const factionDepart = Object.keys(ouvre.player.reputation)
+  .find((k) => ouvre.player.reputation[k] >= REPUTATION_MINIMALE);
+ok(!!factionDepart, 'la faction qui vous accueille vous reçoit dès le premier jour',
+  `seuil ${REPUTATION_MINIMALE}`);
+ok(peutSEngager(ouvre, factionDepart).ok, 'et on peut s’y engager sans rien avoir prouvé');
+const etrangere = Object.keys(ouvre.player.reputation).find((k) => k !== factionDepart);
+ok(!peutSEngager(ouvre, etrangere).ok, 'mais pas chez les autres, qui ne vous connaissent pas');
+ok(RANGS[0].solde > 0, 'le premier grade défraie : servir ne doit pas coûter de l’argent',
+  `${RANGS[0].solde} cr par jour`);
+
 const s9c = nouvellePartie(4242, { maintenant: 0 });
 s9c.player.reputation.hexa = 40;
 const eng = sEngager(s9c, 'hexa', () => {});

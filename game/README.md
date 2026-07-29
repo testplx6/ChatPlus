@@ -143,6 +143,32 @@ sable, et on y recoud mieux) et un dépôt (huit cents unités de stock sans le
 moindre entrepôt). Sans ça, s'installer revenait à creuser un trou et à y
 cacher des matériaux pendant des semaines sans contrepartie.
 
+### La troisième voie : entrer au service
+
+Servir une faction était, sur le papier, la troisième façon de vivre. En
+pratique elle n'existait pas : il fallait vingt de réputation pour être
+seulement reçu, c'est-à-dire deux ou trois contrats honorés pour la même
+faction — et remplir un contrat est l'une des choses les plus dures du jeu sur
+une grande carte. Le banc, sur quarante-huit parties, comptait **zéro à deux
+engagements**.
+
+Le seuil est passé à dix. On démarre à douze auprès de la faction qui vous
+accueille : s'engager chez elle est donc une décision d'ouverture et non une
+récompense de milieu de partie, tandis que les autres demandent qu'on se soit
+fait un nom. Ce qui se mérite, ce sont les grades — et là rien n'a bougé. Le
+premier grade défraie désormais dix crédits par jour : servir ne doit pas
+coûter de l'argent.
+
+Résultat : **48 engagements sur 48 parties**.
+
+Mais la voie s'ouvre sans aller nulle part, et la mesure le dit aussi
+crûment : sur ces quarante-huit parties, quarante-quatre escouades restent au
+premier grade et deux seulement atteignent le second. La raison est dans le
+code — **un ordre manqué coûte 80 % de ses points et 8 de réputation**. On
+avance de trois pas et on en recule de deux, donc les points ne s'accumulent
+jamais. C'est exactement la forme des deux autres problèmes : la voie punit
+celui qui la tente. C'est le prochain chantier.
+
 ### Ce qui reste : le bot ne sait pas encore s'installer tout seul
 
 Le chiffre ci-dessus est obtenu en *donnant* le camp au bot (`CAMP=1`). Livré à
