@@ -1,7 +1,11 @@
 // Harnais de test sans navigateur : le moteur doit tourner tel quel sous Node.
 // C'est aussi la preuve qu'il pourra tourner côté serveur en multijoueur.
 
-import { nouvellePartie, avancer, tick, rattraper, TICK_MS, RATTRAPAGE_MAX } from '../src/sim.js';
+import {
+  nouvellePartie, avancer, tick, rattraper, rattrapageEtale,
+  TICK_MS, RATTRAPAGE_MAX,
+} from '../src/sim.js';
+import { Rng } from '../src/rng.js';
 import { serialiser, deserialiser } from '../src/save.js';
 import { COMMODITY_KEYS, DIPLO_FACTIONS } from '../src/data.js';
 import { classement, puissance } from '../src/factions.js';
@@ -32,6 +36,32 @@ function section(titre) {
 function fini(v) {
   return typeof v === 'number' && Number.isFinite(v);
 }
+
+// --- Budget de performance -------------------------------------------------
+// Un plafond en microsecondes sèches serait soit trop lâche pour attraper une
+// régression, soit capricieux selon la machine qui fait tourner les tests. On
+// mesure donc un étalon — un travail fixe, sans allocation — et on rapporte le
+// coût du tick à la vitesse de la machine. ETALON_MS est ce que cet étalon coûte
+// sur la machine de référence ; BUDGET_US le plafond du tick une fois normalisé.
+const ETALON_MS = 25;
+const BUDGET_US = 100;
+
+/** Mesure la vitesse de la machine. Le minimum de trois passes : le bruit du
+ *  ramasse-miettes et de la compilation ne fait que ralentir, jamais accélérer. */
+function etalonnerMachine() {
+  let best = Infinity;
+  for (let p = 0; p < 3; p++) {
+    const t = process.hrtime.bigint();
+    const r = new Rng(1);
+    let acc = 0;
+    for (let i = 0; i < 3e6; i++) acc += r.f();
+    if (acc < 0) return 1; // inatteignable, mais empêche l'élimination de la boucle
+    best = Math.min(best, Number(process.hrtime.bigint() - t) / 1e6);
+  }
+  return best / ETALON_MS;
+}
+
+const facteurMachine = etalonnerMachine();
 
 /** Parcourt l'état à la recherche de NaN / Infinity : le tueur silencieux des sims. */
 function chercherNaN(obj, chemin = '$', vus = new Set()) {
@@ -174,8 +204,18 @@ const t0 = process.hrtime.bigint();
 for (let i = 0; i < 3000; i++) tick(s4);
 const t1 = process.hrtime.bigint();
 const ms = Number(t1 - t0) / 1e6;
-console.log(`  → ${ms.toFixed(0)} ms pour 3 000 ticks (${(ms / 3000).toFixed(3)} ms/tick)`);
-ok(ms < 4000, 'moins de 4 s pour 3 000 ticks', `${ms.toFixed(0)} ms`);
+const us = (ms * 1000) / 3000;
+
+const usNorm = us / facteurMachine;
+
+console.log(`  → ${ms.toFixed(0)} ms pour 3 000 ticks (${us.toFixed(0)} µs/tick, ` +
+  `${usNorm.toFixed(0)} µs normalisés — machine ×${(1 / facteurMachine).toFixed(2)})`);
+ok(usNorm < BUDGET_US, `tick sous ${BUDGET_US} µs (budget normalisé)`,
+  `${usNorm.toFixed(0)} µs`);
+// Le rattrapage maximal est le pire cas réel : deux ans hors ligne, rejoués
+// d'un coup au chargement. Il doit rester de l'ordre de la seconde.
+ok(usNorm * RATTRAPAGE_MAX / 1e6 < 2.5, 'rattrapage maximal sous 2,5 s',
+  `${(usNorm * RATTRAPAGE_MAX / 1e6).toFixed(2)} s`);
 verifierCoherence(s4, 'après 3 000 h');
 ok(s4.temps === 3000, 'horloge à 3 000 h', `reçu ${s4.temps}`);
 
@@ -343,6 +383,31 @@ ok(s10.temps === 100, 'horloge cohérente');
 const res10b = rattraper(s10, 1000000 + TICK_MS * 100 + TICK_MS * 1e6);
 ok(res10b.tronque, 'le rattrapage est plafonné');
 ok(s10.temps <= 100 + RATTRAPAGE_MAX, 'plafond respecté', `t=${s10.temps}`);
+
+// Le rattrapage étalé sert l'interface : il doit produire exactement le même
+// monde que le rattrapage d'un bloc, quel que soit le découpage.
+const bloc = nouvellePartie(2020, { maintenant: 500 });
+bloc.vitesse = 1;
+rattraper(bloc, 500 + TICK_MS * 600);
+const etale = nouvellePartie(2020, { maintenant: 500 });
+etale.vitesse = 1;
+const pas10 = rattrapageEtale(etale, 500 + TICK_MS * 600, 37);
+let tranches = 0;
+while (pas10.pas()) tranches++;
+ok(pas10.total === 600, 'rattrapage étalé : 600 heures planifiées', `reçu ${pas10.total}`);
+ok(tranches > 5, 'découpé en plusieurs tranches', `${tranches} tranches`);
+ok(serialiser(etale) === serialiser(bloc), 'étalé et d’un bloc donnent le même monde');
+
+// Fermer la page en cours de rattrapage ne doit ni perdre ni rejouer le temps
+// déjà passé : ce qui reste dû se retrouve au chargement suivant.
+const coupe = nouvellePartie(2020, { maintenant: 500 });
+coupe.vitesse = 1;
+const pas10b = rattrapageEtale(coupe, 500 + TICK_MS * 600, 37);
+pas10b.pas();
+pas10b.pas();
+const reste = rattraper(coupe, 500 + TICK_MS * 600);
+ok(coupe.temps === 600, 'reprise après coupure : ni perte ni doublon', `t=${coupe.temps}`);
+ok(reste.ticks === 600 - 74, 'le reste dû est exactement ce qui manquait', `reçu ${reste.ticks}`);
 
 section('11. Robustesse : escouade décimée');
 const s11 = nouvellePartie(1111, { maintenant: 0 });

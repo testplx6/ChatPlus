@@ -118,10 +118,16 @@ export function estVivante(col) {
  * `climat` module les rendements : une saison sèche ne nourrit pas une ville
  * comme une saison de pluies.
  */
-export function tickColonie(world, col, rng, climat) {
+export function tickColonie(world, col, rng, climat, dt = 1) {
   if (col.ruine) return null;
   const prod = productionColonie(world, col);
   const cons = consommationColonie(col);
+  // `dt` : nombre d'heures couvertes par cet appel. Une économie de colonie n'a
+  // aucun besoin d'une résolution horaire ; la traiter par tranches divise le
+  // coût du tick sans que rien ne se voie en jeu. Une probabilité horaire p
+  // devient 1-(1-p)^dt sur la tranche, pas p×dt : la différence compte dès que
+  // p n'est plus minuscule.
+  const surDt = (p) => (dt === 1 ? p : 1 - Math.pow(1 - p, dt));
 
   for (const k of COMMODITY_KEYS) {
     if (k === 'rations') continue; // traité à part, c'est la survie
@@ -129,15 +135,15 @@ export function tickColonie(world, col, rng, climat) {
     // réserves, des serres, des habitudes. On amortit donc l'effet de moitié.
     const brut = climat ? climat.rendement(k) : 1;
     const amorti = 1 + (brut - 1) * 0.45;
-    const p = (prod[k] || 0) * amorti;
-    const c = cons[k] || 0;
+    const p = (prod[k] || 0) * amorti * dt;
+    const c = (cons[k] || 0) * dt;
     col.stock[k] = Math.max(0, (col.stock[k] || 0) + p - c);
   }
 
   // --- Vivres. On sert ce qu'on peut ; la satiété commande tout le reste.
   const amortiVivant = climat ? 1 + (climat.rendement('rations') - 1) * 0.45 : 1;
-  const arrivage = (prod.rations || 0) * amortiVivant;
-  const besoin = col.pop * 0.014;
+  const arrivage = (prod.rations || 0) * amortiVivant * dt;
+  const besoin = col.pop * 0.014 * dt;
   const disponible = (col.stock.rations || 0) + arrivage;
   const servi = Math.min(besoin, disponible);
   col.stock.rations = Math.max(0, disponible - servi);
@@ -151,27 +157,27 @@ export function tickColonie(world, col, rng, climat) {
     const cap = f.capitale && world.colonies.find((c) => c.id === f.capitale);
     const eloignement = cap ? distanceCases(world, cap.regionId, col.regionId) : 0;
     const surcharge = Math.max(0, f.colonies.length - 3);
-    const tension = eloignement * 0.00016 + surcharge * 0.00035;
+    const tension = (eloignement * 0.00016 + surcharge * 0.00035) * dt;
     if (tension > 0) col.unrest = Math.min(1, col.unrest + tension);
   }
 
   if (satiete < 0.8) {
     // On se serre la ceinture, puis on s'énerve, puis on s'en va.
-    col.unrest = Math.min(1, col.unrest + 0.004 * (0.8 - satiete) / 0.8);
-    if (rng.chance(0.05 * (0.8 - satiete) / 0.8)) {
+    col.unrest = Math.min(1, col.unrest + 0.004 * (0.8 - satiete) / 0.8 * dt);
+    if (rng.chance(surDt(0.05 * (0.8 - satiete) / 0.8))) {
       col.pop = Math.max(25, col.pop - rng.irange(1, 3));
     }
   } else {
-    col.unrest = Math.max(0, col.unrest - 0.0035);
+    col.unrest = Math.max(0, col.unrest - 0.0035 * dt);
     // La croissance suit l'abondance, pas le hasard seul.
     const abondance = Math.min(1, (col.stock.rations || 0) / Math.max(1, col.pop * 0.6));
-    if (rng.chance(0.03 + abondance * 0.05)) col.pop += rng.irange(0, 2);
+    if (rng.chance(surDt(0.03 + abondance * 0.05))) col.pop += rng.irange(0, 2);
   }
   col.pop = Math.min(col.taille * 900, col.pop);
 
   // Reconstruction de la défense
   if (col.defense < col.defenseMax) {
-    col.defense = Math.min(col.defenseMax, col.defense + col.defenseMax * 0.004 * (1 - col.unrest));
+    col.defense = Math.min(col.defenseMax, col.defense + col.defenseMax * 0.004 * (1 - col.unrest) * dt);
   }
   col.defenseMax = Math.round(col.pop * 0.09 + col.murs * 12);
 
@@ -186,14 +192,14 @@ export function tickColonie(world, col, rng, climat) {
   // une agonie longue et profonde, et le monde garde toujours un socle de
   // villes vivantes.
   col.declin = col.declin || 0;
-  if (col.pop < 55 && col.unrest > 0.75) col.declin += 1;
-  else col.declin = Math.max(0, col.declin - 4);
+  if (col.pop < 55 && col.unrest > 0.75) col.declin += dt;
+  else col.declin = Math.max(0, col.declin - 4 * dt);
 
   // Sécession : une ville occupée, affamée et exaspérée retourne à sa maison
   // d'origine — quitte à la ressusciter. C'est le contre-pouvoir qui empêche
   // la carte de finir en monoculture.
   if (col.factionOrigine && col.faction && col.faction !== col.factionOrigine
-      && col.unrest > 0.6 && rng.chance(0.0012 * (col.unrest - 0.6) / 0.4)
+      && col.unrest > 0.6 && rng.chance(surDt(0.0012 * (col.unrest - 0.6) / 0.4))
       && world.factions[col.faction].colonies.length > 1) {
     return { evenement: 'secession' };
   }

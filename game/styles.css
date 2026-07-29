@@ -362,6 +362,31 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
 }
 .toast.err { border-color: var(--rouge); color: var(--rouge); }
 
+/* ------------------------------------------------------------------ Rattrapage */
+/* Deux ans hors ligne, ça se rejoue : autant le montrer plutôt que de laisser
+   croire que la page a planté. */
+
+.rattrapage {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(10, 12, 16, .93);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.rattrapage-b { width: 100%; max-width: 320px; text-align: center; }
+.rattrapage-t { color: var(--cyan); font-size: 13px; letter-spacing: .06em; }
+.rattrapage-j { color: var(--texte-2); font-size: 12px; margin: 6px 0 10px; }
+.rattrapage-p {
+  height: 6px;
+  background: var(--panneau);
+  border: 1px solid var(--bord);
+  overflow: hidden;
+}
+.rattrapage-p i { display: block; height: 100%; width: 0; background: var(--cyan); }
+
 @media (prefers-reduced-motion: no-preference) {
   .toast { animation: apparait .16s ease-out; }
   @keyframes apparait { from { opacity: 0; transform: translate(-50%, 6px); } }

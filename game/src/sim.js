@@ -22,6 +22,14 @@ export const TICK_MS = 10000;
 export const RATTRAPAGE_MAX = 17000;
 
 export const VITESSES = [1, 4, 16, 60];
+
+/**
+ * Tranche d'heures traitée d'un coup pour une colonie. Les colonies avancent
+ * par tourniquet plutôt que toutes ensemble à chaque heure : le coût du tick
+ * chute d'autant, et l'économie d'une ville n'a pas besoin d'être résolue à
+ * l'heure près.
+ */
+export const PAS_COLONIE = 3;
 /** On démarre déjà accéléré : à ×1 il ne se passe visiblement rien. */
 export const VITESSE_DEFAUT = 4;
 
@@ -159,9 +167,12 @@ export function tick(state) {
     });
   }
 
-  // Le monde ensuite : il tourne que le joueur agisse ou non.
-  for (const col of state.world.colonies) {
-    const ev = tickColonie(state.world, col, rng, climat);
+  // Le monde ensuite. Les colonies sont traitées par tourniquet : chacune
+  // avance de PAS_COLONIE heures d'un coup, un tiers d'entre elles par heure.
+  // C'est 62 % du coût du tick, et rien ne se voit en jeu.
+  for (let i = state.temps % PAS_COLONIE; i < state.world.colonies.length; i += PAS_COLONIE) {
+    const col = state.world.colonies[i];
+    const ev = tickColonie(state.world, col, rng, climat, PAS_COLONIE);
     if (!ev) continue;
     if (ev.evenement === 'croissance') {
       log({
@@ -223,24 +234,76 @@ export function avancer(state, n) {
 }
 
 /**
+ * Ce que le temps réel écoulé nous doit, sans rien appliquer.
+ * Retourne { ticks, tronque, pas } — `tronque` si on a tapé le plafond.
+ */
+export function rattrapageDu(state, maintenantMs) {
+  const pas = TICK_MS / (state.vitesse || 1);
+  if (!state.dernierReel) return { ticks: 0, tronque: false, pas };
+  const ecoule = Math.max(0, maintenantMs - state.dernierReel);
+  let ticks = Math.floor(ecoule / pas);
+  const tronque = ticks > RATTRAPAGE_MAX;
+  if (tronque) ticks = RATTRAPAGE_MAX;
+  return { ticks, tronque, pas };
+}
+
+/**
  * Rattrapage : applique le temps réel écoulé depuis la dernière session.
- * Retourne { ticks, tronque } — `tronque` si on a tapé le plafond.
+ * Retourne { ticks, tronque }.
  */
 export function rattraper(state, maintenantMs) {
   if (!state.dernierReel) {
     state.dernierReel = maintenantMs;
     return { ticks: 0, tronque: false };
   }
-  const ecoule = Math.max(0, maintenantMs - state.dernierReel);
-  const pas = TICK_MS / (state.vitesse || 1);
-  let ticks = Math.floor(ecoule / pas);
-  const tronque = ticks > RATTRAPAGE_MAX;
-  if (tronque) ticks = RATTRAPAGE_MAX;
+  const { ticks, tronque, pas } = rattrapageDu(state, maintenantMs);
   const joues = avancer(state, ticks);
   // On garde le reste pour ne pas perdre les fractions d'heure
-  state.dernierReel = maintenantMs - (ecoule - ticks * pas);
+  state.dernierReel += ticks * pas;
   if (tronque) state.dernierReel = maintenantMs;
   return { ticks: joues, tronque };
+}
+
+/**
+ * Même rattrapage, mais découpé en tranches que l'appelant fait avancer une par
+ * une. Deux ans hors ligne, c'est dix-sept mille heures : les jouer d'un bloc
+ * fige l'onglet une seconde ou deux, sur un téléphone bien davantage. Ici
+ * l'interface garde la main entre deux tranches et peut afficher où on en est.
+ *
+ * `state.dernierReel` avance tranche par tranche : si la page est fermée en
+ * cours de route, ce qui a déjà été joué n'est pas rejoué au retour.
+ */
+export function rattrapageEtale(state, maintenantMs, tranche = 200) {
+  if (!state.dernierReel) {
+    state.dernierReel = maintenantMs;
+    return { total: 0, tronque: false, faits: () => 0, pas: () => false };
+  }
+  const plan = rattrapageDu(state, maintenantMs);
+  let faits = 0;
+  const finir = () => {
+    if (plan.tronque) state.dernierReel = maintenantMs;
+  };
+  if (plan.ticks === 0) {
+    return { total: 0, tronque: plan.tronque, faits: () => 0, pas: () => false };
+  }
+  return {
+    total: plan.ticks,
+    tronque: plan.tronque,
+    faits: () => faits,
+    /** Joue la tranche suivante. Retourne true tant qu'il reste du travail. */
+    pas(n = tranche) {
+      const voulu = Math.min(Math.max(1, n | 0), plan.ticks - faits);
+      const joues = avancer(state, voulu);
+      faits += joues;
+      state.dernierReel += joues * plan.pas;
+      // `joues < voulu` : la partie s'est terminée en route, plus rien à jouer.
+      if (faits >= plan.ticks || joues < voulu) {
+        finir();
+        return false;
+      }
+      return true;
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------

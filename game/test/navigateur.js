@@ -308,6 +308,59 @@ ok(/Chronique du monde/.test(texteMonde), 'l’écran Monde tient une chronique'
 ok(/Routes marchandes/.test(texteMonde), 'l’écran Monde suit les routes marchandes');
 await page.screenshot({ path: join(CAPTURES, '13-monde.png'), fullPage: true });
 
+console.log('\n8 quater. Retour après une longue absence');
+// Le pire cas réel : le plafond de rattrapage, dix-sept mille heures à rejouer
+// au chargement. Ça doit se voir à l'écran et rendre la main, pas figer l'onglet.
+// Une escouade bien approvisionnée, pour que le rattrapage aille loin plutôt
+// que de s'arrêter sur une fin de partie au bout de quelques centaines d'heures.
+const veille = nouvellePartie(20260729, { maintenant: Date.now() });
+veille.player.inventaire.rations = 200000;
+veille.player.inventaire.medkit = 500;
+const veilleTxt = serialiser(veille);
+await page.reload({ waitUntil: 'networkidle' });
+await page.evaluate((txt) => {
+  const s = JSON.parse(txt);
+  // Quatre heures de vraie absence à la vitesse par défaut : près de six mille
+  // heures de jeu à rejouer, largement au-delà du seuil de l'écran.
+  s.dernierReel = Date.now() - 4 * 3600 * 1000;
+  localStorage.setItem('cendres.save.v1', JSON.stringify(s));
+}, veilleTxt);
+const tAvant = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).temps);
+await page.click('[data-a="continuer"]');
+await page.waitForSelector('.rattrapage', { timeout: 5000 });
+ok(true, 'l’écran de rattrapage s’affiche');
+
+// On interroge la page pendant qu'elle rejoue : si elle répond et que la barre
+// progresse, c'est que le fil d'exécution n'est pas bloqué — tout l'objet du
+// découpage en tranches.
+let progression = 0;
+let capture = false;
+for (let i = 0; i < 200; i++) {
+  const vu = await page.evaluate(() => {
+    const b = document.querySelector('.rattrapage-p i');
+    const j = document.querySelector('.rattrapage-j');
+    return b ? { l: b.style.width, t: j ? j.textContent : '' } : null;
+  });
+  if (!vu) break;
+  const pct = parseFloat(vu.l);
+  if (pct > 0 && pct < 100 && /jours rejoués/.test(vu.t)) {
+    progression = Math.max(progression, pct);
+    if (!capture) { await page.screenshot({ path: join(CAPTURES, '14-rattrapage.png') }); capture = true; }
+  }
+  await page.waitForTimeout(40);
+}
+ok(progression > 0, 'la page répond et la barre progresse pendant le rattrapage',
+  `${progression.toFixed(0)} %`);
+
+await page.waitForSelector('.rattrapage', { state: 'detached', timeout: 120000 });
+await page.waitForSelector('#carte');
+const tApres = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).temps);
+ok(tApres - tAvant > 2000, 'le temps passé a bien été rejoué', `${tAvant} → ${tApres} h`);
+await page.click('[data-a="onglet"][data-k="monde"]');
+await page.waitForTimeout(300);
+ok((await page.evaluate(() => document.querySelector('#ecran').textContent.trim().length)) > 60,
+  'le jeu est jouable au sortir du rattrapage');
+
 console.log('\n9. Fichier unique ouvert en file://');
 const { existsSync } = await import('node:fs');
 const chemin = join(RACINE, 'dist', 'cendres.html');

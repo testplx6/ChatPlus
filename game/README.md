@@ -66,12 +66,12 @@ de cache périmé.
 ## Tests
 
 ```bash
-npm test                     # 64 assertions sur le moteur, sans navigateur
+npm test                     # 70 assertions sur le moteur, sans navigateur
 node test/equilibre.js       # banc d'équilibrage : un bot joue 8 parties
 node test/equilibre.js 8000 12   # plus long, plus de parties
 
 npm install --no-save playwright-core
-node test/navigateur.js      # 36 vérifications dans un Chromium réel
+node test/navigateur.js      # 40 vérifications dans un Chromium réel
 ```
 
 Le harnais couvre la génération du monde, le déterminisme, la sauvegarde, la
@@ -80,6 +80,12 @@ l'avant-poste, le combat, le rattrapage hors ligne, la vitalité du monde sur la
 durée (villes fondées, villes effondrées, population qui ne s'écroule pas) et
 les cas limites (escouade décimée, famine, sac plein).
 
+Il tient aussi un **budget de performance** : le coût d'un tick est mesuré, puis
+rapporté à la vitesse de la machine par un étalon (le même travail fixe partout).
+Un plafond en microsecondes sèches serait soit trop lâche pour attraper une
+régression, soit capricieux d'une machine à l'autre ; normalisé, il tient à 60 µs
+près et le test tombe si le tick se remet à coûter le double.
+
 Le banc d'équilibrage est le plus utile des trois : c'est lui qui a montré que
 l'économie alimentaire des colonies n'avait jamais été à l'équilibre, et que les
 chasseurs de prime créaient une spirale sans issue.
@@ -87,9 +93,12 @@ chasseurs de prime créaient une spirale sans issue.
 ## Ce que la simulation fait
 
 **Le temps.** Un tick = une heure de jeu, dix secondes réelles à ×1 — et le jeu
-démarre à ×4, parce qu'à ×1 il ne se passe visiblement rien. Fermez
-l'onglet : au retour, les heures écoulées sont rejouées d'un coup (plafond de
-48 h réelles). Le monde n'attend personne.
+démarre à ×4, parce qu'à ×1 il ne se passe visiblement rien. Fermez l'onglet :
+au retour, les heures écoulées sont rejouées (plafond de deux ans de jeu). Une
+longue absence passe par un écran de rattrapage qui rejoue le temps par
+tranches, entre deux images, avec une barre qui avance : la page répond pendant,
+et fermer en cours de route ne rejoue pas deux fois ce qui a déjà été joué. Le
+monde n'attend personne.
 
 **Le climat.** Quatre saisons de trente jours qui tournent en boucle, et une
 météo qui change toutes les quelques heures. Elles pèsent sur les rendements
@@ -228,6 +237,13 @@ Deux règles tiennent l'ensemble :
    pas de fonctions. Le RNG est sérialisé avec le reste : recharger une partie
    la reprend exactement où elle en était, et deux parties lancées sur la même
    graine sont identiques au caractère près.
+
+Ces deux règles ne se négocient pas contre de la vitesse : l'état lisible à la
+main est ce qui permet de tester, de déboguer et, un jour, de faire tourner le
+monde côté serveur. Le coût du tick se réduit par la structure, pas par le format
+— les colonies, par exemple, avancent par tourniquet (chacune trois heures d'un
+coup, un tiers d'entre elles par heure), ce qui divise par deux le coût du tick
+sans que rien ne se voie en jeu et sans toucher à une seule structure de données.
 
 ## Et le multijoueur ?
 
