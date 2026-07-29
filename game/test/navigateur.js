@@ -231,6 +231,62 @@ await large.screenshot({ path: join(CAPTURES, '08-large.png') });
 ok(!(await large.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)),
   'pas de débordement en écran large');
 
+console.log('\n8 bis. Contenu de jeu : contrats, étal, sites');
+// On repart d'une partie neuve, posée dans une ville.
+await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
+await page.reload({ waitUntil: 'networkidle' });
+await page.click('[data-a="nouvelle"]');
+await page.waitForSelector('#carte');
+await page.waitForTimeout(600);
+
+// Étal d'équipement : le catalogue existait, rien n'était achetable.
+await page.click('[data-a="modale"][data-m="etal"]');
+await page.waitForTimeout(400);
+const articles = await page.locator('[data-a="acheter-item"]').count();
+ok(articles > 0, 'l’armurier propose de l’équipement', `${articles} articles`);
+await page.screenshot({ path: join(CAPTURES, '09-etal.png') });
+const objetsAvant = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).player.objets.length);
+const abordable = await page.locator('[data-a="acheter-item"]:not([disabled])').count();
+if (abordable) {
+  await page.click('[data-a="acheter-item"]:not([disabled])');
+  await page.waitForTimeout(500);
+}
+const objetsApres = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).player.objets.length);
+ok(!abordable || objetsApres > objetsAvant, 'un achat d’équipement arrive dans la réserve',
+  `${objetsAvant} → ${objetsApres}`);
+await page.click('[data-a="fermer"]');
+await page.waitForTimeout(300);
+
+// Panneau de contrats
+await page.click('[data-a="modale"][data-m="panneau"]');
+await page.waitForTimeout(400);
+const offres = await page.locator('[data-a="accepter"]').count();
+ok(offres > 0, 'la ville affiche des contrats', `${offres} offres`);
+await page.screenshot({ path: join(CAPTURES, '10-panneau.png') });
+if (offres) {
+  await page.click('[data-a="accepter"]');
+  await page.waitForTimeout(600);
+}
+const pris = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).player.contrats.length);
+ok(pris > 0, 'un contrat accepté part en cours', `${pris} en cours`);
+await page.click('[data-a="onglet"][data-k="contrats"]');
+await page.waitForTimeout(400);
+await page.screenshot({ path: join(CAPTURES, '11-contrats.png'), fullPage: true });
+
+// Fil d'actualité sur la carte
+await page.click('[data-a="onglet"][data-k="carte"]');
+await page.waitForTimeout(2500);
+const filLignes = await page.locator('.fil-l').count();
+ok(filLignes > 0, 'le fil d’actualité montre ce qui vient d’arriver', `${filLignes} lignes`);
+await page.screenshot({ path: join(CAPTURES, '12-carte-fil.png'), fullPage: true });
+
+// Chaque ordre annonce son rendement, et un ordre stérile est désactivé
+const ordres = await page.evaluate(() => [...document.querySelectorAll('button.act.ordre')]
+  .map((b) => ({ nom: b.querySelector('.o-n').textContent, rendement: b.querySelector('.o-r').textContent, off: b.disabled })));
+ok(ordres.length >= 6, 'tous les ordres sont proposés', `${ordres.length}`);
+ok(ordres.every((o) => o.rendement.trim().length > 0), 'chaque ordre annonce ce qu’il rapporte ici');
+console.log('     ' + ordres.map((o) => `${o.nom}:${o.rendement}${o.off ? '(off)' : ''}`).join('  '));
+
 console.log('\n9. Fichier unique ouvert en file://');
 const { existsSync } = await import('node:fs');
 const chemin = join(RACINE, 'dist', 'cendres.html');

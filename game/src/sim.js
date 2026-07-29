@@ -7,17 +7,20 @@ import { COMMODITY_KEYS, FACTIONS, DIPLO_FACTIONS } from './data.js';
 import { genererMonde, decouvrir, colonieParId, nomRegion } from './world.js';
 import { makeCharacter } from './characters.js';
 import { creerBase, tickBase } from './base.js';
-import { tickColonie } from './economy.js';
+import { tickColonie, etalDe } from './economy.js';
 import { tickFactions } from './factions.js';
 import { tickSquad } from './squad.js';
 import { creerLogger } from './events.js';
+import { rafraichirPanneaux, tickContrats } from './contrats.js';
 
 /** Durée réelle d'une heure de jeu, à vitesse ×1. */
-export const TICK_MS = 20000;
-/** Plafond de rattrapage hors ligne : 48 h réelles à ×1. */
-export const RATTRAPAGE_MAX = 8640;
+export const TICK_MS = 10000;
+/** Plafond de rattrapage hors ligne, en heures de jeu (environ deux ans). */
+export const RATTRAPAGE_MAX = 17000;
 
-export const VITESSES = [1, 4, 16];
+export const VITESSES = [1, 4, 16, 60];
+/** On démarre déjà accéléré : à ×1 il ne se passe visiblement rien. */
+export const VITESSE_DEFAUT = 4;
 
 // ---------------------------------------------------------------------------
 // Création
@@ -58,7 +61,7 @@ export function nouvellePartie(seed, opts = {}) {
     seed,
     rngState: rng.save(),
     temps: 0,
-    vitesse: 1,
+    vitesse: VITESSE_DEFAUT,
     dernierReel: opts.maintenant ?? 0,
     nom: opts.nom || 'Convoi sans nom',
     world,
@@ -80,6 +83,8 @@ export function nouvellePartie(seed, opts = {}) {
       recolteHeure: null,
       reste: {},
       nuit: false,
+      contrats: [],
+      bilan: { res: {}, depuis: 0 },
     },
     base: creerBase(),
     journal: [],
@@ -91,11 +96,17 @@ export function nouvellePartie(seed, opts = {}) {
       defaites: 0,
       recolte: 0,
       creditsGagnes: 0,
+      contratsRemplis: 0,
+      sitesFouilles: 0,
+      distanceParcourue: 0,
     },
     fin: null,
   };
 
   decouvrir(world, depart.regionId, 2);
+  rafraichirPanneaux(state, rng, 0);
+  for (const col of world.colonies) etalDe(world, col, rng, 0);
+  state.rngState = rng.save();
   const log = creerLogger(state);
   log({
     type: 'debut',
@@ -123,9 +134,16 @@ export function tick(state) {
   for (const col of state.world.colonies) tickColonie(state.world, col, rng);
   tickFactions(state.world, state.temps, log, ctx);
 
+  // Panneaux d'affichage et étals se renouvellent de loin en loin.
+  if (state.temps % 40 === 0) {
+    rafraichirPanneaux(state, rng, state.temps);
+    for (const col of state.world.colonies) etalDe(state.world, col, rng, state.temps);
+  }
+
   // Puis l'avant-poste et l'escouade.
   tickBase(state, log, ctx);
   if (!state.fin) tickSquad(state, log, ctx);
+  if (!state.fin) tickContrats(state, log, ctx);
 
   state.rngState = rng.save();
   return state;

@@ -457,7 +457,6 @@ export const ITEMS = {
   coeur_synth: { nom: 'Cœur synthétique', type: 'greffe', membre: 'torse', poids: 0, prix: 900, bonus: { endurance: 18 } },
 };
 
-export const ITEM_KEYS = Object.keys(ITEMS);
 
 // ---------------------------------------------------------------------------
 // Compétences
@@ -545,3 +544,147 @@ export const POSTURES = {
 };
 
 export const POSTURE_KEYS = Object.keys(POSTURES);
+
+// ---------------------------------------------------------------------------
+// Équipement supplémentaire (étals des villes)
+// ---------------------------------------------------------------------------
+
+Object.assign(ITEMS, {
+  hachoir: { nom: 'Hachoir d’abattoir', type: 'arme', portee: 'melee', degats: 12, pen: 0.14, poids: 4, prix: 170, comp: 'melee' },
+  arbalete: { nom: 'Arbalète à poulies', type: 'arme', portee: 'tir', degats: 13, pen: 0.3, poids: 3, prix: 290, comp: 'tir', discrete: true },
+  pompe: { nom: 'Fusil à pompe', type: 'arme', portee: 'tir', degats: 19, pen: 0.16, poids: 5, prix: 470, comp: 'tir' },
+  lance_harpon: { nom: 'Lance-harpon', type: 'arme', portee: 'tir', degats: 22, pen: 0.4, poids: 7, prix: 760, comp: 'tir', reqForce: 35 },
+  manteau: { nom: 'Manteau lesté', type: 'armure', armure: 7, poids: 6, prix: 140, bonus: { furtivite: 6 } },
+  harnais: { nom: 'Harnais de portage', type: 'armure', armure: 3, poids: 3, prix: 190, bonus: { force: 4 } },
+});
+
+/** Palier d'équipement : sert à garnir les étals et à armer les bandes. */
+export const PALIERS_ITEM = {
+  barre: 0, clous: 0, cuir: 0, manteau: 0,
+  machette: 1, hachoir: 1, plaque: 1, harnais: 1,
+  arbalete: 2, verrou: 2, katana: 2, pompe: 2, kevlar: 2,
+  smg: 2, masse: 3, rail: 3, exo: 3, lance_harpon: 3,
+  bras_hydro: 3, oeil_optique: 3, jambe_servo: 3, coeur_synth: 3,
+};
+
+/** Ce que chaque faction accepte de vendre. L'Essaim ne tient pas boutique. */
+export const ETAL_PAR_STYLE = {
+  corpo: ['clous', 'verrou', 'smg', 'kevlar', 'exo', 'oeil_optique', 'coeur_synth', 'rail'],
+  nomade: ['barre', 'machette', 'hachoir', 'plaque', 'harnais', 'masse', 'bras_hydro'],
+  fanatique: ['machette', 'katana', 'arbalete', 'manteau', 'plaque', 'jambe_servo'],
+  criminel: ['clous', 'arbalete', 'smg', 'manteau', 'cuir', 'katana', 'pompe'],
+  militaire: ['verrou', 'pompe', 'smg', 'plaque', 'kevlar', 'masse', 'lance_harpon'],
+  commune: ['barre', 'machette', 'clous', 'cuir', 'harnais', 'arbalete'],
+};
+
+// ---------------------------------------------------------------------------
+// Traits de personnage
+// ---------------------------------------------------------------------------
+// bonus : ajouté à la compétence · mult : multiplicateurs de besoins et d'effets
+
+export const TRAITS = {
+  costaud: { nom: 'Costaud', desc: '+10 force, porte davantage.', bonus: { force: 10 }, mult: { portage: 1.15 } },
+  vif: { nom: 'Vif', desc: '+9 endurance, marche plus vite.', bonus: { endurance: 9 }, mult: { vitesse: 1.12 } },
+  oeil: { nom: 'Œil de lynx', desc: '+12 tir.', bonus: { tir: 12 } },
+  teigneux: { nom: 'Teigneux', desc: '+12 mêlée, mais s’use plus vite.', bonus: { melee: 12 }, mult: { fatigue: 1.2 } },
+  ombre: { nom: 'Ombre', desc: '+14 furtivité, évite mieux les ennuis.', bonus: { furtivite: 14 }, mult: { evitement: 1.25 } },
+  bricoleur: { nom: 'Bricoleur', desc: '+14 ingénierie.', bonus: { ingenierie: 14 } },
+  rebouteux: { nom: 'Rebouteux', desc: '+14 médecine.', bonus: { medecine: 14 } },
+  beau_parleur: { nom: 'Beau parleur', desc: '+14 commerce.', bonus: { commerce: 14 } },
+  coriace: { nom: 'Coriace', desc: 'Encaisse 15 % de dégâts en moins.', mult: { degatsSubis: 0.85 } },
+  sobre: { nom: 'Sobre', desc: 'Mange 30 % de moins.', mult: { faim: 0.7 } },
+  gouffre: { nom: 'Gouffre', desc: 'Mange 45 % de plus.', mult: { faim: 1.45 }, malus: true },
+  hemophile: { nom: 'Hémophile', desc: 'Saigne bien plus.', mult: { saignement: 1.6 }, malus: true },
+  insomniaque: { nom: 'Insomniaque', desc: 'Récupère mal.', mult: { fatigue: 1.3 }, malus: true },
+  froussard: { nom: 'Froussard', desc: 'Moral fragile, mais fuit à temps.', mult: { evitement: 1.2, moral: 0.8 }, malus: true },
+  mule: { nom: 'Mule', desc: 'Porte 30 % de plus, mais lent.', mult: { portage: 1.3, vitesse: 0.9 } },
+  survivant: { nom: 'Survivant', desc: 'Guérit plus vite, encaisse mieux la faim.', mult: { soin: 1.35, faim: 0.9 } },
+};
+
+export const TRAIT_KEYS = Object.keys(TRAITS);
+
+// ---------------------------------------------------------------------------
+// Points d'intérêt, trouvés en explorant
+// ---------------------------------------------------------------------------
+// loot : [min, max] par ressource · unique : disparaît une fois fouillé
+
+export const POI = {
+  ruine: {
+    nom: 'Ruine ensevelie',
+    texte: 'Un immeuble couché sur le flanc, à moitié avalé par le sol.',
+    loot: { ferraille: [20, 70], polymere: [5, 30], composant: [0, 4] },
+    credits: [0, 120],
+    danger: 0.2,
+  },
+  convoi: {
+    nom: 'Convoi éventré',
+    texte: 'Six remorques en file, portes arrachées. Quelqu’un est passé avant vous — pas tout emporté.',
+    loot: { rations: [10, 40], carburant: [5, 25], medkit: [0, 3] },
+    credits: [40, 260],
+    objet: 1,
+    danger: 0.3,
+  },
+  bunker: {
+    nom: 'Bunker scellé',
+    texte: 'Une trappe blindée, une serrure qui a tenu quarante ans. Elle ne tiendra pas la journée.',
+    loot: { composant: [4, 20], isotope: [2, 12], alliage: [5, 25] },
+    credits: [100, 500],
+    objet: 2,
+    danger: 0.45,
+    reqIngenierie: 25,
+  },
+  station: {
+    nom: 'Station météo',
+    texte: 'Les antennes tournent encore. Quelque chose les alimente.',
+    loot: { composant: [3, 12], isotope: [0, 6] },
+    credits: [20, 180],
+    revele: 3,
+    danger: 0.25,
+  },
+  cache: {
+    nom: 'Cache de contrebande',
+    texte: 'Trois bidons enterrés sous une dalle, marqués d’un signe qui ne vous dit rien.',
+    loot: { medkit: [1, 5], carburant: [10, 30], rations: [5, 25] },
+    credits: [60, 340],
+    objet: 1,
+    danger: 0.35,
+  },
+  charnier: {
+    nom: 'Charnier',
+    texte: 'Une trentaine de corps alignés avec soin. C’est ce soin qui inquiète.',
+    loot: { ferraille: [5, 20], medkit: [0, 2] },
+    credits: [30, 200],
+    objet: 1,
+    danger: 0.6,
+  },
+};
+
+export const POI_KEYS = Object.keys(POI);
+
+// ---------------------------------------------------------------------------
+// Contrats proposés par les villes
+// ---------------------------------------------------------------------------
+
+export const CONTRATS = {
+  collecte: {
+    nom: 'Collecte',
+    desc: 'Rapporter une quantité de marchandise à la ville.',
+  },
+  livraison: {
+    nom: 'Livraison',
+    desc: 'Transporter un colis jusqu’à une autre ville.',
+  },
+  prime: {
+    nom: 'Prime',
+    desc: 'Remporter des combats contre une faction désignée.',
+  },
+  reconnaissance: {
+    nom: 'Reconnaissance',
+    desc: 'Aller voir un secteur et en revenir.',
+  },
+};
+
+export const CONTRAT_KEYS = Object.keys(CONTRATS);
+
+/** Déclaré ici, après les ajouts d'étal, pour couvrir tout le catalogue. */
+export const ITEM_KEYS = Object.keys(ITEMS);

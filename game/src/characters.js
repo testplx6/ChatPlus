@@ -3,6 +3,7 @@
 
 import {
   SKILL_KEYS, BODY_KEYS, BODY_PARTS, ITEMS, NOMS_PERSO, SURNOMS,
+  TRAITS, TRAIT_KEYS,
 } from './data.js';
 
 // Les identifiants sont tirés du RNG de la partie, pas d'un compteur global :
@@ -49,6 +50,7 @@ export function makeCharacter(rng, opts = {}) {
     equip: { arme: opts.arme || def.arme, armure: opts.armure || null, greffes: {} },
     kills: 0,
     joursSurvecus: 0,
+    traits: tirerTraits(rng, opts.traits),
   };
   for (const k of SKILL_KEYS) {
     const base = rng.irange(4, 14) + (def.bonus[k] || 0) + niveau * rng.irange(2, 6);
@@ -60,6 +62,33 @@ export function makeCharacter(rng, opts = {}) {
     c.corps[p] = { pv: max, max, perdu: false };
   }
   return c;
+}
+
+/** Un à trois traits, dont au plus un défaut : de quoi rendre les gens distincts. */
+function tirerTraits(rng, imposes) {
+  if (imposes) return imposes.slice();
+  const atouts = TRAIT_KEYS.filter((k) => !TRAITS[k].malus);
+  const defauts = TRAIT_KEYS.filter((k) => TRAITS[k].malus);
+  const out = [];
+  const combien = rng.weighted([[1, 4], [2, 3], [3, 1]]);
+  const pioche = rng.shuffle(atouts);
+  for (let i = 0; i < combien && i < pioche.length; i++) out.push(pioche[i]);
+  if (rng.chance(0.4)) out.push(rng.pick(defauts));
+  return out;
+}
+
+/** Multiplicateurs cumulés des traits. Recalculé à la volée : deux traits, c'est gratuit. */
+export function mods(c) {
+  const m = {
+    faim: 1, fatigue: 1, portage: 1, vitesse: 1,
+    degatsSubis: 1, evitement: 1, saignement: 1, soin: 1, moral: 1,
+  };
+  for (const t of c.traits || []) {
+    const def = TRAITS[t];
+    if (!def || !def.mult) continue;
+    for (const k of Object.keys(def.mult)) m[k] = (m[k] ?? 1) * def.mult[k];
+  }
+  return m;
 }
 
 export function genNom(rng) {
@@ -95,9 +124,13 @@ export function estVivant(c) {
   return c.etat !== 'mort';
 }
 
-/** Bonus d'équipement (armure, greffes) sur une compétence. */
+/** Bonus d'équipement et de traits sur une compétence. */
 function bonusEquip(c, skill) {
   let b = 0;
+  for (const t of c.traits || []) {
+    const def = TRAITS[t];
+    if (def && def.bonus && def.bonus[skill]) b += def.bonus[skill];
+  }
   const arm = c.equip.armure && ITEMS[c.equip.armure];
   if (arm && arm.bonus && arm.bonus[skill]) b += arm.bonus[skill];
   for (const membre of Object.keys(c.equip.greffes)) {
@@ -181,8 +214,9 @@ export function tirerMembre(rng) {
  */
 export function blesser(c, montant, membre, rng, opts = {}) {
   if (c.etat === 'mort') return { degats: 0, membre, ko: false, mort: false, membrePerdu: false };
+  const m = mods(c);
   const part = c.corps[membre];
-  const d = Math.max(1, Math.round(montant));
+  const d = Math.max(1, Math.round(montant * m.degatsSubis));
   part.pv = Math.max(0, part.pv - d);
 
   let ko = false;
@@ -215,7 +249,7 @@ export function blesser(c, montant, membre, rng, opts = {}) {
     c.koHeures = rng.irange(3, 10);
   }
   // Saignement
-  c.sang = Math.min(100, c.sang + d * (vital ? 0.55 : 0.35));
+  c.sang = Math.min(100, c.sang + d * (vital ? 0.55 : 0.35) * m.saignement);
   return { degats: d, membre, ko, mort, membrePerdu };
 }
 
@@ -242,7 +276,7 @@ export function portage(c, bonusPct = 0) {
   if (!estVivant(c)) return 0;
   const base = 30 + comp(c, 'force') * 0.7 + comp(c, 'endurance') * 0.25;
   const equip = poidsEquip(c);
-  return Math.max(0, base * (1 + bonusPct) - equip);
+  return Math.max(0, base * (1 + bonusPct) * mods(c).portage - equip);
 }
 
 export function poidsEquip(c) {
@@ -277,12 +311,13 @@ export function tickPerso(c, effort, rng, ctx = {}) {
   const msgs = [];
   if (c.etat === 'mort') return msgs;
 
-  c.faim = Math.min(120, c.faim + 0.55 + 0.25 * effort);
+  const m = mods(c);
+  c.faim = Math.min(120, c.faim + (0.55 + 0.25 * effort) * m.faim);
   if (effort <= 0.05) {
-    c.fatigue = Math.max(0, c.fatigue - 6);
+    c.fatigue = Math.max(0, c.fatigue - 6 / m.fatigue);
   } else {
     const end = comp(c, 'endurance');
-    c.fatigue = Math.min(120, c.fatigue + (1.6 * effort) * (1 - Math.min(0.5, end / 200)));
+    c.fatigue = Math.min(120, c.fatigue + (1.6 * effort) * (1 - Math.min(0.5, end / 200)) * m.fatigue);
   }
 
   // Saignement : une plaie légère se referme seule ; une hémorragie tue.
@@ -316,9 +351,9 @@ export function tickPerso(c, effort, rng, ctx = {}) {
   }
 
   // Récupération naturelle légère hors combat
-  const q = ctx.soin ?? 0;
+  const q = (ctx.soin ?? 0) * m.soin;
   if (q > 0) soigner(c, q, rng);
-  else if (effort <= 0.05) soigner(c, 0.35, rng);
+  else if (effort <= 0.05) soigner(c, 0.35 * m.soin, rng);
 
   if (c.etat === 'ko') {
     c.koHeures = Math.max(0, c.koHeures - 1);

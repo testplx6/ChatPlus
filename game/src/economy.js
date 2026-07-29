@@ -2,7 +2,10 @@
 // de son propre stock. Une ville affamée paie les rations au prix fort ; une
 // ville assise sur une mine brade son minerai.
 
-import { COMMODITIES, COMMODITY_KEYS, BIOMES } from './data.js';
+import {
+  COMMODITIES, COMMODITY_KEYS, BIOMES, ITEMS, FACTIONS,
+  ETAL_PAR_STYLE, PALIERS_ITEM,
+} from './data.js';
 import { comp, gagnerXp, portage } from './characters.js';
 
 /** Stock « confortable » visé par une colonie pour une marchandise. */
@@ -217,4 +220,81 @@ export function valeurLot(lot) {
     if (COMMODITIES[k]) v += lot[k] * COMMODITIES[k].prix;
   }
   return Math.round(v);
+}
+
+// ---------------------------------------------------------------------------
+// Étal d'équipement
+// ---------------------------------------------------------------------------
+// Chaque ville tient boutique selon le style de sa faction et sa taille.
+// Le stock se renouvelle : revenir plus tard vaut le coup.
+
+const DUREE_ETAL = 180; // heures avant renouvellement
+
+export function genererEtal(rng, world, col, t) {
+  const style = FACTIONS[col.faction] ? FACTIONS[col.faction].style : 'commune';
+  const catalogue = ETAL_PAR_STYLE[style] || ETAL_PAR_STYLE.commune;
+  const palierMax = col.taille >= 3 ? 3 : col.taille >= 2 ? 2 : 1;
+  const possibles = catalogue.filter((k) => (PALIERS_ITEM[k] ?? 0) <= palierMax);
+  const combien = Math.min(possibles.length, rng.irange(2, 2 + col.taille * 2));
+  const choisis = rng.shuffle(possibles).slice(0, combien);
+  col.etal = {
+    expire: t + DUREE_ETAL + rng.irange(0, 80),
+    items: choisis.map((key) => ({
+      key,
+      qte: rng.irange(1, ITEMS[key].type === 'greffe' ? 1 : 3),
+      // Chaque ville a sa propre humeur sur les prix
+      coef: Number(rng.range(0.85, 1.3).toFixed(2)),
+    })),
+  };
+  return col.etal;
+}
+
+export function etalDe(world, col, rng, t) {
+  if (!col.etal || t >= col.etal.expire) genererEtal(rng, world, col, t);
+  return col.etal;
+}
+
+/** Prix d'un objet pour le joueur, achat et revente. */
+export function prixItem(col, key, coef = 1, habilete = 0, repu = 0) {
+  const base = ITEMS[key].prix * coef * (1 + col.unrest * 0.2);
+  const marge = Math.max(0.08, 0.28 - habilete / 700 - Math.max(0, repu) / 900);
+  const hostile = repu < -20 ? 0.2 + Math.min(0.5, -repu / 200) : 0;
+  return {
+    achat: Math.round(base * (1 + marge + hostile)),
+    // On revend toujours mal : les armes d'occasion n'intéressent personne.
+    vente: Math.round(base * 0.42 * (1 - hostile * 0.5)),
+  };
+}
+
+export function acheterItem(state, col, index) {
+  const etal = col.etal;
+  if (!etal || !etal.items[index]) return { ok: false, motif: 'Article déjà parti.' };
+  const ligne = etal.items[index];
+  if (ligne.qte <= 0) return { ok: false, motif: 'Rupture de stock.' };
+  if (state.player.objets.length >= 40) return { ok: false, motif: 'Réserve d’équipement pleine.' };
+
+  const negoc = meilleurCommercant(state.player.squad);
+  const hab = negoc ? comp(negoc, 'commerce') : 0;
+  const repu = state.player.reputation[col.faction] || 0;
+  const p = prixItem(col, ligne.key, ligne.coef, hab, repu).achat;
+  if (state.player.credits < p) return { ok: false, motif: `Il manque ${p - state.player.credits} cr.` };
+
+  state.player.credits -= p;
+  ligne.qte -= 1;
+  state.player.objets.push(ligne.key);
+  if (negoc) gagnerXp(negoc, 'commerce', 2.5);
+  return { ok: true, prix: p, nom: ITEMS[ligne.key].nom };
+}
+
+export function vendreItem(state, col, indexObjet) {
+  const key = state.player.objets[indexObjet];
+  if (!key) return { ok: false, motif: 'Objet introuvable.' };
+  const negoc = meilleurCommercant(state.player.squad);
+  const hab = negoc ? comp(negoc, 'commerce') : 0;
+  const repu = state.player.reputation[col.faction] || 0;
+  const p = prixItem(col, key, 1, hab, repu).vente;
+  state.player.objets.splice(indexObjet, 1);
+  state.player.credits += p;
+  if (negoc) gagnerXp(negoc, 'commerce', 1.8);
+  return { ok: true, prix: p, nom: ITEMS[key].nom };
 }

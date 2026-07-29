@@ -1,7 +1,7 @@
 // Harnais de test sans navigateur : le moteur doit tourner tel quel sous Node.
 // C'est aussi la preuve qu'il pourra tourner côté serveur en multijoueur.
 
-import { nouvellePartie, avancer, tick, rattraper, TICK_MS } from '../src/sim.js';
+import { nouvellePartie, avancer, tick, rattraper, TICK_MS, RATTRAPAGE_MAX } from '../src/sim.js';
 import { serialiser, deserialiser } from '../src/save.js';
 import { COMMODITY_KEYS } from '../src/data.js';
 import { classement, puissance } from '../src/factions.js';
@@ -221,10 +221,10 @@ section('7. Escouade et ordres');
 const s7 = nouvellePartie(5150, { maintenant: 0 });
 s7.player.posture = 'prudent';
 donnerOrdre(s7, { type: 'fouille' });
-const invAvant = COMMODITY_KEYS.reduce((t, k) => t + (s7.player.inventaire[k] || 0), 0);
 avancer(s7, 40);
-const invApres = COMMODITY_KEYS.reduce((t, k) => t + (s7.player.inventaire[k] || 0), 0);
-ok(invApres > invAvant, 'fouiller rapporte des ressources', `${invAvant} → ${invApres}`);
+// On mesure la récolte cumulée, pas le contenu du sac : perdre un combat en
+// route vide le sac et ferait échouer un test qui n'a rien à voir.
+ok(s7.stats.recolte > 0, 'fouiller rapporte des ressources', `${s7.stats.recolte} unités`);
 
 const s7b = nouvellePartie(5151, { maintenant: 0 });
 const depart = s7b.player.regionId;
@@ -301,12 +301,13 @@ verifierCoherence(s9, 'après 400 h de patrouille agressive');
 
 section('10. Rattrapage hors ligne');
 const s10 = nouvellePartie(1010, { maintenant: 1000000 });
+s10.vitesse = 1; // le rattrapage dépend de la vitesse choisie
 const res10 = rattraper(s10, 1000000 + TICK_MS * 100);
 ok(res10.ticks === 100, '100 heures rattrapées après 100 pas de temps réel', `reçu ${res10.ticks}`);
 ok(s10.temps === 100, 'horloge cohérente');
 const res10b = rattraper(s10, 1000000 + TICK_MS * 100 + TICK_MS * 1e6);
 ok(res10b.tronque, 'le rattrapage est plafonné');
-ok(s10.temps <= 100 + 8640, 'plafond respecté', `t=${s10.temps}`);
+ok(s10.temps <= 100 + RATTRAPAGE_MAX, 'plafond respecté', `t=${s10.temps}`);
 
 section('11. Robustesse : escouade décimée');
 const s11 = nouvellePartie(1111, { maintenant: 0 });

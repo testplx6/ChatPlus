@@ -2,8 +2,12 @@
 // posture et les consignes de l'escouade : c'est ce qui permet à la simulation
 // de tourner pendant que le joueur est hors ligne.
 
-import { FACTIONS, POSTURES, COMMODITIES, COMMODITY_KEYS, ITEMS, BIOMES } from './data.js';
+import {
+  FACTIONS, POSTURES, COMMODITIES, COMMODITY_KEYS, ITEMS, BIOMES,
+  POI, SKILLS, SKILL_KEYS, PALIERS_ITEM,
+} from './data.js';
 import { colonieDe, voisins, nomRegion, distance } from './world.js';
+import { compterVictoire } from './contrats.js';
 import { genererBande, resoudreCombat, butin } from './combat.js';
 import {
   comp, gagnerXp, estDebout, estVivant, makeCharacter, blesser, pvTotal,
@@ -55,8 +59,29 @@ function factionDominante(state, regionId) {
 // Combat impliquant le joueur
 // ---------------------------------------------------------------------------
 
+/** Photographie des compétences, pour pouvoir annoncer les progrès après coup. */
+function instantaneComps(squad) {
+  const m = {};
+  for (const c of squad) m[c.id] = Object.assign({}, c.skills);
+  return m;
+}
+
+function annoncerProgres(state, avant, log) {
+  for (const c of state.player.squad) {
+    const a = avant[c.id];
+    if (!a) continue;
+    const montees = SKILL_KEYS.filter((k) => c.skills[k] > (a[k] ?? 0));
+    if (!montees.length) continue;
+    log({
+      type: 'progres',
+      texte: `${c.nom} progresse : ${montees.map((k) => `${SKILLS[k]} ${c.skills[k]}`).join(', ')}.`,
+    });
+  }
+}
+
 export function combatContre(state, bande, log, ctx) {
   const rng = ctx.rng;
+  const compsAvant = instantaneComps(state.player.squad);
   const posture = POSTURES[state.player.posture] || POSTURES.neutre;
   const squad = state.player.squad.filter(estVivant);
   const combattants = squad.filter((c) => c.etat !== 'mort');
@@ -91,6 +116,7 @@ export function combatContre(state, bande, log, ctx) {
       if (g) reputation(state, k, 2);
     }
     state.stats.combatsGagnes++;
+    compterVictoire(state, bande.faction);
     texte = `${bande.nom} mis en déroute à ${lieu} — ${ramasse} unités et ${b.credits} cr récupérés.`;
   } else if (res.vainqueur === 'B') {
     texte = perdreCombat(state, bande, log, ctx, lieu);
@@ -104,6 +130,8 @@ export function combatContre(state, bande, log, ctx) {
     m._compte = true;
     log({ type: 'mort', texte: `${m.nom} est mort à ${lieu}.`, important: true });
   }
+
+  annoncerProgres(state, compsAvant, log);
 
   log({
     type: 'combat',
@@ -174,14 +202,25 @@ function bandeLocale(state, ctx) {
   const repu = dominante ? (state.player.reputation[dominante] || 0) : 0;
 
   // Une faction dont on est mal vu envoie ses hommes ; sinon, la faune du coin.
+  // Une prime en cours fait sortir sa cible du bois : accepter un contrat
+  // change ce qu'on rencontre, sinon on ne peut jamais l'honorer.
+  const vises = new Set(
+    state.player.contrats.filter((c) => c.type === 'prime').map((c) => c.cibleFaction)
+  );
+
   let faction;
   if (dominante && repu < -25 && rng.chance(0.6)) faction = dominante;
   else {
-    faction = rng.weighted([
-      ['bandits', 3],
+    const poids = [
+      ['bandits', 3 + (vises.has('bandits') ? 3 : 0)],
       ['essaim', state.world.regions[regionId].biome === 'plastique' ? 2.2 : 1.1],
-      [dominante || 'bandits', dominante ? 1.4 : 0],
-    ]);
+    ];
+    if (dominante) poids.push([dominante, 1.4 + (vises.has(dominante) ? 3 : 0)]);
+    // Une faction visée par contrat peut aussi croiser la route hors de chez elle.
+    for (const v of vises) {
+      if (v !== 'bandits' && v !== dominante && FACTIONS[v]) poids.push([v, 2.2]);
+    }
+    faction = rng.weighted(poids);
   }
   // Le monde durcit lentement, mais les bandes restent le plus souvent
   // inférieures en nombre : c'est au joueur de choisir quand ça vaut le coup.
@@ -375,4 +414,92 @@ export function couleurLog(type) {
     case 'base': case 'recherche': case 'chantier': return 'base';
     default: return 'neutre';
   }
+}
+
+// ---------------------------------------------------------------------------
+// Sites : la récompense d'aller voir ailleurs
+// ---------------------------------------------------------------------------
+
+/**
+ * Fouille le site de la région courante. Action ponctuelle : un site ne se
+ * fouille qu'une fois, et il peut être gardé.
+ */
+export function fouillerSite(state, rng, log) {
+  const r = state.world.regions[state.player.regionId];
+  if (!r.site || !r.site.connu) return { ok: false, motif: 'Aucun site repéré ici.' };
+  if (r.site.fouille) return { ok: false, motif: 'Ce site a déjà été vidé.' };
+  const debout = state.player.squad.filter(estDebout);
+  if (!debout.length) return { ok: false, motif: 'Personne n’est en état.' };
+
+  const def = POI[r.site.type];
+
+  // Certains sites demandent de savoir ouvrir une porte.
+  if (def.reqIngenierie) {
+    const meilleur = Math.max(...debout.map((c) => comp(c, 'ingenierie')));
+    if (meilleur < def.reqIngenierie) {
+      return { ok: false, motif: `Il faut ${def.reqIngenierie} en ingénierie (meilleur : ${Math.round(meilleur)}).` };
+    }
+  }
+
+  // Le site est gardé ? On le saura en entrant.
+  if (rng.chance(def.danger)) {
+    const bande = bandeLocale(state, { rng });
+    log({ type: 'site', texte: `${def.nom} : on n’est pas seuls.`, important: true, regionId: r.i });
+    const res = combatContre(state, bande, log, { rng });
+    if (res.vainqueur !== 'A') {
+      return { ok: true, combat: true, gagne: false, motif: 'Le site reste aux autres.' };
+    }
+  }
+
+  r.site.fouille = true;
+  const pris = [];
+  for (const k of Object.keys(def.loot)) {
+    const [min, max] = def.loot[k];
+    const q = rng.irange(min, max);
+    if (q <= 0) continue;
+    const reel = ajouterAuSac(state, k, q);
+    if (reel > 0) pris.push(`${reel} ${COMMODITIES[k].nom.toLowerCase()}`);
+  }
+  const cr = rng.irange(def.credits[0], def.credits[1]);
+  state.player.credits += cr;
+
+  const objets = [];
+  for (let i = 0; i < (def.objet || 0); i++) {
+    if (!rng.chance(0.6)) continue;
+    const palier = rng.weighted([[0, 3], [1, 3], [2, 1.6], [3, 0.4]]);
+    const choix = Object.keys(PALIERS_ITEM).filter((k) => PALIERS_ITEM[k] === palier);
+    if (!choix.length) continue;
+    const key = rng.pick(choix);
+    if (state.player.objets.length < 40) {
+      state.player.objets.push(key);
+      objets.push(ITEMS[key].nom);
+    }
+  }
+
+  // Une station météo rend surtout de la carte.
+  if (def.revele) {
+    let leves = 0;
+    for (const reg of state.world.regions) {
+      if (reg.decouvert) continue;
+      if (distance(reg.i, r.i) > def.revele) continue;
+      reg.decouvert = true;
+      leves++;
+      if (reg.site) reg.site.connu = true;
+    }
+    if (leves) pris.push(`${leves} secteurs levés`);
+  }
+
+  for (const c of debout) gagnerXp(c, 'ingenierie', 4);
+  state.stats.sitesFouilles = (state.stats.sitesFouilles || 0) + 1;
+
+  const resume = [pris.join(', '), cr ? `${cr} cr` : null, objets.length ? objets.join(', ') : null]
+    .filter(Boolean).join(' · ') || 'rien d’exploitable';
+  log({
+    type: 'trouvaille',
+    texte: `${def.nom} fouillé : ${resume}.`,
+    important: true,
+    regionId: r.i,
+    detail: [def.texte],
+  });
+  return { ok: true, resume };
 }

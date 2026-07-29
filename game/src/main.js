@@ -6,7 +6,7 @@ import { charger, sauvegarder, effacer, existeSauvegarde } from './save.js';
 import { monterUI, rafraichir, attacherEtat, rendreAccueil, ouvrirOnglet } from './ui.js';
 import { Rng, seedFromString } from './rng.js';
 import { makeCharacter, estVivant } from './characters.js';
-import { creerLogger } from './events.js';
+import { creerLogger, fouillerSite } from './events.js';
 import { tailleEscouadeMax } from './base.js';
 
 let state = null;
@@ -71,6 +71,15 @@ const API = {
     state = null;
     attacherEtat(null);
     rendreAccueil(false);
+  },
+
+  /** Fouille du site de la région courante : tirage, donc RNG de la partie. */
+  fouillerSite() {
+    const rng = new Rng(state.rngState);
+    const res = fouillerSite(state, rng, creerLogger(state));
+    state.rngState = rng.save();
+    sauver();
+    return res;
   },
 
   /** Engagement d'un mercenaire dans une ville. */

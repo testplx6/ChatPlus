@@ -2,7 +2,10 @@
 // Tout ce qui est ici appartient à `state.world` : c'est la moitié « partagée »
 // de l'état, celle qui vivrait côté serveur dans une future version multijoueur.
 
-import { BIOMES, BIOME_KEYS, FACTIONS, DIPLO_FACTIONS, VILLE_A, VILLE_B, COMMODITY_KEYS } from './data.js';
+import {
+  BIOMES, BIOME_KEYS, FACTIONS, DIPLO_FACTIONS, VILLE_A, VILLE_B, COMMODITY_KEYS,
+  POI, POI_KEYS,
+} from './data.js';
 
 export const LARGEUR = 10;
 export const HAUTEUR = 8;
@@ -224,9 +227,32 @@ function attribuerFactions(rng, regions, colonies) {
   return factions;
 }
 
+/**
+ * Sème des sites à fouiller sur les régions vides. C'est ce qui donne une
+ * raison d'aller voir ailleurs plutôt que de camper sur une seule case.
+ */
+function semerSites(rng, regions) {
+  const vides = rng.shuffle(regions.filter((r) => !r.colonie));
+  const combien = Math.min(vides.length, 22);
+  for (let i = 0; i < combien; i++) {
+    const r = vides[i];
+    // Les biomes riches attirent les sites intéressants.
+    const type = rng.weighted(POI_KEYS.map((k) => {
+      const def = POI[k];
+      const affinite = r.biome === 'dalles' && k === 'ruine' ? 3
+        : r.biome === 'relais' && k === 'station' ? 4
+          : r.biome === 'friche' && k === 'bunker' ? 3
+            : r.biome === 'plastique' && k === 'convoi' ? 2.5 : 1;
+      return [k, affinite * (1 + (1 - def.danger))];
+    }));
+    r.site = { type, connu: false, fouille: false };
+  }
+}
+
 export function genererMonde(rng) {
   const regions = genererBiomes(rng);
   const colonies = genererColonies(rng, regions);
+  semerSites(rng, regions);
   const factions = attribuerFactions(rng, regions, colonies);
   return {
     largeur: LARGEUR,
@@ -309,6 +335,12 @@ export function decouvrir(world, i, rayon = 1) {
       world.regions[idx(nx, ny)].decouvert = true;
     }
   }
+}
+
+/** Le site d'une région, s'il est connu du joueur. */
+export function siteConnu(world, i) {
+  const r = world.regions[i];
+  return r && r.site && r.site.connu && !r.site.fouille ? r.site : null;
 }
 
 export function nomRegion(world, i) {

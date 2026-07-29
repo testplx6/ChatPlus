@@ -71,7 +71,7 @@ node test/equilibre.js       # banc d'équilibrage : un bot joue 8 parties
 node test/equilibre.js 8000 12   # plus long, plus de parties
 
 npm install --no-save playwright-core
-node test/navigateur.js      # 23 vérifications dans un Chromium réel
+node test/navigateur.js      # 30 vérifications dans un Chromium réel
 ```
 
 Le harnais couvre la génération du monde, le déterminisme, la sauvegarde, la
@@ -81,7 +81,8 @@ sac plein).
 
 ## Ce que la simulation fait
 
-**Le temps.** Un tick = une heure de jeu, vingt secondes réelles à ×1. Fermez
+**Le temps.** Un tick = une heure de jeu, dix secondes réelles à ×1 — et le jeu
+démarre à ×4, parce qu'à ×1 il ne se passe visiblement rien. Fermez
 l'onglet : au retour, les heures écoulées sont rejouées d'un coup (plafond de
 48 h réelles). Le monde n'attend personne.
 
@@ -98,10 +99,24 @@ trêves quand la guerre coûte trop cher. La carte politique de la fin de partie
 n'est pas celle du début.
 
 **L'escouade.** Chaque membre a huit compétences qui montent en s'exerçant, six
-zones de corps blessables séparément, de la faim, de la fatigue, du moral et du
-sang à perdre. Un membre à zéro peut être perdu — et remplacé par une greffe si
-vous avez cherché la Cybernétique. On tombe K.O. avant de mourir : perdre un
-combat, c'est se réveiller plus loin, dépouillé, pas game over.
+zones de corps blessables séparément, un à quatre traits de caractère qui le
+distinguent (Costaud, Ombre, Gouffre, Hémophile…), de la faim, de la fatigue, du
+moral et du sang à perdre. Un membre à zéro peut être perdu — et remplacé par une
+greffe si vous avez cherché la Cybernétique. On tombe K.O. avant de mourir :
+perdre un combat, c'est se réveiller plus loin, dépouillé, pas game over.
+
+**Les contrats.** Chaque ville tient un panneau d'affichage qui se renouvelle :
+collecte, livraison d'un colis à l'autre bout de la carte, prime sur une bande,
+reconnaissance d'un secteur. Tout se valide tout seul, y compris hors ligne, et
+une échéance manquée coûte de la réputation. Accepter une prime fait sortir sa
+cible du bois : le monde répond à ce que vous signez.
+
+**Les étals.** Vingt-deux pièces d'équipement, achetables chez l'armurier de
+chaque ville selon le style de sa faction et sa taille. Le stock se renouvelle.
+
+**Les sites.** Vingt-deux points d'intérêt semés sur la carte — ruines, convois
+éventrés, bunkers scellés, charniers. On les repère en explorant, on les fouille
+une fois, et certains sont gardés.
 
 **L'avant-poste.** À bâtir où vous voulez hors des villes. Dix bâtiments à
 niveaux, contrainte d'énergie, chaînes de transformation (biomasse → rations,
@@ -137,6 +152,7 @@ game/
     save.js           sérialisation
     ui.js             rendu DOM + carte pixel sur canvas
     main.js           amorçage et horloge réelle
+    contrats.js       panneaux d'affichage, suivi, validation
   test/
     headless.js       tests du moteur
     equilibre.js      banc d'équilibrage avec bot joueur

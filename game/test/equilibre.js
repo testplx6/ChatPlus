@@ -6,7 +6,11 @@ import { nouvellePartie, tick } from '../src/sim.js';
 import { donnerOrdre } from '../src/squad.js';
 import { estVivant, estDebout, comp, pvTotal } from '../src/characters.js';
 import { colonieDe, colonieParId, distance } from '../src/world.js';
-import { acheter, vendre, poidsInventaire, capacitePortage } from '../src/economy.js';
+import {
+  acheter, vendre, poidsInventaire, capacitePortage, acheterItem, prixItem,
+} from '../src/economy.js';
+import { accepter, progres as progresContrat, MAX_CONTRATS } from '../src/contrats.js';
+import { ITEMS } from '../src/data.js';
 import { COMMODITY_KEYS, BIOMES } from '../src/data.js';
 
 const HEURES = Number(process.argv[2]) || 4000;
@@ -36,15 +40,53 @@ function jouer(state) {
   const rations = p.inventaire.rations || 0;
   const colIci = colonieDe(state.world, p.regionId);
 
-  // En ville : on vend le surplus et on refait les vivres.
+  // En ville : on vend le surplus, on refait les vivres, on s'équipe, on prend
+  // du travail. C'est ce que ferait un joueur qui regarde ses écrans.
   if (colIci) {
+    // Ne jamais vendre ce qu'un contrat en cours réclame : c'est exactement
+    // l'erreur que ferait un joueur distrait, et elle doit se voir au banc.
+    const reserves = new Set(p.contrats.filter((c) => c.ressource).map((c) => c.ressource));
     for (const k of COMMODITY_KEYS) {
-      if (k === 'rations' || k === 'medkit') continue;
+      if (k === 'rations' || k === 'medkit' || reserves.has(k)) continue;
       const q = p.inventaire[k] || 0;
       if (q > 0) vendre(state, colIci, k, q);
     }
     if (rations < 80 && p.credits > 200) acheter(state, colIci, 'rations', 80 - rations);
     if ((p.inventaire.medkit || 0) < 3 && p.credits > 400) acheter(state, colIci, 'medkit', 2);
+
+    // Achat d'équipement : on remplace ce qui est moins bon que l'étal.
+    if (colIci.etal && p.credits > 900) {
+      colIci.etal.items.forEach((ligne, i) => {
+        if (ligne.qte < 1 || p.credits < 900) return;
+        const it = ITEMS[ligne.key];
+        const pire = p.squad.find((c) => {
+          if (!estVivant(c)) return false;
+          if (it.type === 'arme') {
+            const a = c.equip.arme && ITEMS[c.equip.arme];
+            return !a || a.degats < it.degats;
+          }
+          if (it.type === 'armure') {
+            const a = c.equip.armure && ITEMS[c.equip.armure];
+            return !a || a.armure < it.armure;
+          }
+          return false;
+        });
+        if (!pire) return;
+        if (acheterItem(state, colIci, i).ok) {
+          const key = p.objets.pop();
+          const slot = ITEMS[key].type === 'arme' ? 'arme' : 'armure';
+          const ancien = pire.equip[slot];
+          pire.equip[slot] = key;
+          if (ancien) p.objets.push(ancien);
+        }
+      });
+    }
+
+    // On prend ce qu'on peut tenir : collecte et prime se remplissent en jouant.
+    if (colIci.contrats && p.contrats.length < MAX_CONTRATS - 1) {
+      const faisable = colIci.contrats.find((c) => c.type === 'collecte' || c.type === 'prime');
+      if (faisable) accepter(state, colIci, faisable.id, () => {});
+    }
   }
 
   // Blessés ou épuisés : on se pose.
@@ -107,12 +149,13 @@ for (let n = 0; n < PARTIES; n++) {
     wl: `${state.stats.combatsGagnes}/${state.stats.defaites}`,
     recolte: state.stats.recolte,
     comp: skills,
+    contrats: state.stats.contratsRemplis || 0,
     guerres: state.world.guerres.length,
-    captures: state.journal.filter((e) => e.type === 'capture').length,
+    captures: state.world.colonies.reduce((t, c) => t + (c.prises || 0), 0),
   });
 }
 
-const largeur = { seed: 8, t: 6, fin: 11, viv: 5, cr: 7, wl: 7, recolte: 8, comp: 5, guerres: 8, captures: 9 };
+const largeur = { seed: 8, t: 6, fin: 11, viv: 5, cr: 7, wl: 7, recolte: 8, comp: 5, contrats: 9, guerres: 8, captures: 9 };
 const entetes = Object.keys(largeur);
 console.log(entetes.map((k) => k.padStart(largeur[k])).join(' '));
 for (const l of lignes) {
@@ -123,7 +166,8 @@ console.log('='.repeat(52));
 console.log(`Escouades encore vivantes après ${HEURES} h : ${survivants}/${PARTIES}`);
 const moy = (k) => Math.round(lignes.reduce((s, l) => s + (typeof l[k] === 'number' ? l[k] : 0), 0) / lignes.length);
 console.log(`Crédits moyens : ${moy('cr')} — compétence de combat moyenne : ${moy('comp')}`);
-console.log(`Récolte moyenne : ${moy('recolte')} unités — captures de colonies : ${moy('captures')}`);
+console.log(`Récolte moyenne : ${moy('recolte')} unités — contrats remplis : ${moy('contrats')}`);
+console.log(`Colonies prises et reprises dans le monde : ${moy('captures')} en moyenne`);
 
 if (survivants === 0) {
   console.log('\nALERTE : aucune escouade ne survit. Le jeu est injouable en l’état.');

@@ -29,6 +29,7 @@ const MODULES = [
   'economy.js',
   'factions.js',
   'base.js',
+  'contrats.js',
   'events.js',
   'squad.js',
   'sim.js',
@@ -42,6 +43,7 @@ function retirerImports(source) {
   const lignes = source.split('\n');
   const sortie = [];
   const alias = [];
+  const requis = [];
   let dansImport = false;
   let tampon = '';
 
@@ -57,8 +59,11 @@ function retirerImports(source) {
         const accolades = tampon.match(/\{([^}]*)\}/);
         if (accolades) {
           for (const brut of accolades[1].split(',')) {
-            const m = brut.trim().match(/^([\w$]+)\s+as\s+([\w$]+)$/);
-            if (m) alias.push([m[2], m[1]]);
+            const nom = brut.trim();
+            if (!nom) continue;
+            const m = nom.match(/^([\w$]+)\s+as\s+([\w$]+)$/);
+            if (m) { alias.push([m[2], m[1]]); requis.push(m[1]); }
+            else if (/^[\w$]+$/.test(nom)) requis.push(nom);
           }
         }
       }
@@ -66,7 +71,7 @@ function retirerImports(source) {
     }
     sortie.push(ligne);
   }
-  return { code: sortie.join('\n'), alias };
+  return { code: sortie.join('\n'), alias, requis };
 }
 
 /** `export function x` → `function x`, `export const X` → `const X`. */
@@ -86,11 +91,13 @@ function nomsGlobaux(source) {
 const morceaux = [];
 const vus = new Map();
 const aliasTous = [];
+const requisTous = new Map(); // nom importé → module qui le réclame
 let collisions = 0;
 
 for (const nom of MODULES) {
   const brut = await readFile(join(RACINE, 'src', nom), 'utf8');
-  const { code, alias } = retirerImports(brut);
+  const { code, alias, requis } = retirerImports(brut);
+  for (const r of requis) if (!requisTous.has(r)) requisTous.set(r, nom);
   const propre = retirerExports(code);
   for (const g of nomsGlobaux(propre)) {
     if (vus.has(g)) {
@@ -106,6 +113,16 @@ for (const nom of MODULES) {
 
 if (collisions) {
   console.error(`\n${collisions} collision(s) de noms : le bundle serait cassé. Abandon.`);
+  process.exit(1);
+}
+
+// Un module oublié dans MODULES ne se voit pas : ses exports deviennent
+// simplement des identifiants inconnus, et la page meurt au chargement.
+const manquants = [...requisTous.entries()].filter(([nom]) => !vus.has(nom));
+if (manquants.length) {
+  console.error('Symboles importés mais absents du bundle :');
+  for (const [nom, mod] of manquants) console.error(`  « ${nom} » réclamé par src/${mod}`);
+  console.error('\nUn module manque probablement dans MODULES. Abandon.');
   process.exit(1);
 }
 

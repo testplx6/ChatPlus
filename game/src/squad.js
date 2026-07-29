@@ -1,7 +1,7 @@
 // Résolution des ordres de l'escouade, heure par heure.
 
-import { BIOMES, POSTURES, COMMODITIES } from './data.js';
-import { chemin, coutTraversee, decouvrir, nomRegion, colonieDe } from './world.js';
+import { BIOMES, POSTURES, COMMODITIES, POI } from './data.js';
+import { chemin, coutTraversee, decouvrir, nomRegion, colonieDe, distance } from './world.js';
 import {
   comp, gagnerXp, estDebout, estVivant, tickPerso, nourrir, pvTotal,
 } from './characters.js';
@@ -14,10 +14,37 @@ export const ORDRES = {
   fouille: { nom: 'Fouiller', desc: 'Ratisser la région pour tout ce qui traîne.', effort: 1 },
   mine: { nom: 'Extraire', desc: 'Minerai et métaux, à la force du poignet.', effort: 1.2 },
   chasse: { nom: 'Chasser', desc: 'Biomasse et viande, de quoi manger.', effort: 1 },
+  exploration: { nom: 'Explorer', desc: 'Lever la carte alentour et repérer les sites.', effort: 0.9 },
   entrainement: { nom: 'S’entraîner', desc: 'Progresser vite, consommer des vivres.', effort: 1.1 },
   patrouille: { nom: 'Patrouiller', desc: 'Chercher l’affrontement dans le secteur.', effort: 1.1 },
   voyage: { nom: 'En route', desc: 'Déplacement vers une région.', effort: 1 },
 };
+
+/**
+ * Ce qu'un ordre rapporterait ici, par heure, avant compétences.
+ * Sert à l'affichage : un bouton qui ne rend rien doit le dire avant le clic,
+ * pas après six heures de travail.
+ */
+export function rendementPrevu(state, type, regionId = state.player.regionId) {
+  const r = state.world.regions[regionId];
+  const biome = BIOMES[r.biome];
+  const filtre = FILTRES[type];
+  if (filtre === undefined) return null;
+  const rendements = Object.assign({}, biome.yields);
+  if (type === 'chasse') {
+    rendements.biomasse = Math.max(rendements.biomasse || 0, r.biome === 'relais' ? 0.05 : 0.18);
+  }
+  const out = {};
+  let total = 0;
+  for (const k of Object.keys(rendements)) {
+    if (filtre && !filtre.includes(k)) continue;
+    const q = rendements[k] * r.richesse * (1 - Math.min(0.8, r.fouille));
+    if (q <= 0.001) continue;
+    out[k] = q;
+    total += q;
+  }
+  return { par: out, total };
+}
 
 // ---------------------------------------------------------------------------
 // Ordres
@@ -100,6 +127,7 @@ function recolter(state, type, log, ctx) {
   // Les rendements horaires sont fractionnaires : sans report d'une heure sur
   // l'autre, tout ce qui rapporte moins d'une unité par heure rapporte zéro.
   const reste = state.player.reste || (state.player.reste = {});
+  const bilan = state.player.bilan || (state.player.bilan = { res: {}, depuis: state.temps });
   let total = 0;
   const detail = [];
   for (const k of Object.keys(recolte)) {
@@ -111,6 +139,7 @@ function recolter(state, type, log, ctx) {
     reste[k] += q - pris; // sac plein : on ne jette pas, on garde en attente
     if (pris > 0) {
       total += pris;
+      bilan.res[k] = (bilan.res[k] || 0) + pris;
       detail.push(`${pris} ${COMMODITIES[k].nom.toLowerCase()}`);
     }
   }
@@ -121,6 +150,65 @@ function recolter(state, type, log, ctx) {
     state.player.recolteHeure = null;
   }
   return recolte;
+}
+
+// ---------------------------------------------------------------------------
+// Exploration
+// ---------------------------------------------------------------------------
+
+/**
+ * Lève la carte de proche en proche et fait apparaître les sites. Sans ça,
+ * la carte reste un grand rectangle noir et rien n'invite à bouger.
+ */
+function explorer(state, log, ctx) {
+  const rng = ctx.rng;
+  const debout = state.player.squad.filter(estDebout);
+  if (!debout.length) return;
+
+  let portee = 2 + (state.base.recherche.optique || 0);
+  const meilleur = Math.max(...debout.map((c) => comp(c, 'furtivite')));
+  if (meilleur > 45) portee += 1;
+
+  // La région du dessous d'abord : on remarque ce qu'on a sous les pieds.
+  const ici = state.world.regions[state.player.regionId];
+  if (ici.site && !ici.site.connu) {
+    ici.site.connu = true;
+    log({
+      type: 'site',
+      texte: `Site repéré sur place : ${POI[ici.site.type].nom}.`,
+      important: true,
+      regionId: ici.i,
+    });
+  }
+
+  // Puis on repousse le noir, une case à la fois.
+  const candidates = state.world.regions
+    .filter((r) => !r.decouvert && distance(r.i, state.player.regionId) <= portee)
+    .sort((a, b) => distance(a.i, state.player.regionId) - distance(b.i, state.player.regionId));
+
+  if (candidates.length) {
+    const combien = rng.chance(0.55) ? 1 : 0;
+    for (let k = 0; k < combien && k < candidates.length; k++) {
+      const r = candidates[k];
+      r.decouvert = true;
+      if (r.site && rng.chance(0.7)) {
+        r.site.connu = true;
+        log({
+          type: 'site',
+          texte: `${POI[r.site.type].nom} repéré en ${nomRegion(state.world, r.i)}.`,
+          important: true,
+          regionId: r.i,
+        });
+      }
+    }
+  } else if (rng.chance(0.02)) {
+    log({ type: 'exploration', texte: 'Plus rien à lever dans ce secteur.', regionId: ici.i, discret: true });
+  }
+
+  for (const c of debout) {
+    gagnerXp(c, 'furtivite', 0.9);
+    gagnerXp(c, 'endurance', 0.6);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -292,6 +380,9 @@ export function tickSquad(state, log, ctx) {
         }
         break;
       }
+      case 'exploration':
+        explorer(state, log, ctx);
+        break;
       case 'patrouille': {
         const f = state.world.regions[state.player.regionId].controle;
         if (f) reputation(state, f, 0.05);
@@ -320,6 +411,24 @@ export function tickSquad(state, log, ctx) {
     for (const m of msgs) {
       log({ type: m.type, texte: m.texte, important: m.type === 'mort' });
     }
+  }
+
+  // Bilan périodique : sans lui, une nuit de récolte ne laisse aucune trace
+  // à l'écran et le jeu paraît ne rien faire.
+  const bilan = state.player.bilan;
+  if (bilan && state.temps - (bilan.depuis || 0) >= 6) {
+    const lignes = Object.keys(bilan.res)
+      .filter((k) => bilan.res[k] > 0)
+      .sort((a, b) => bilan.res[b] - bilan.res[a])
+      .map((k) => `${bilan.res[k]} ${COMMODITIES[k].nom.toLowerCase()}`);
+    if (lignes.length) {
+      log({
+        type: 'recolte',
+        texte: `Six heures de ${ORDRES[ordre.type] ? ORDRES[ordre.type].nom.toLowerCase() : 'travail'} : ${lignes.join(', ')}.`,
+        regionId: state.player.regionId,
+      });
+    }
+    state.player.bilan = { res: {}, depuis: state.temps };
   }
 
   // La région se régénère lentement de la fouille

@@ -127,7 +127,7 @@ body {
 #barre-nav {
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   background: var(--fond-2);
   border-top: 1px solid var(--bord);
   padding-bottom: env(safe-area-inset-bottom);
@@ -139,9 +139,9 @@ body {
   border-top: 2px solid transparent;
   color: var(--texte-3);
   font: inherit;
-  font-size: 10px;
-  letter-spacing: .1em;
-  padding: 9px 2px;
+  font-size: 9px;
+  letter-spacing: .04em;
+  padding: 9px 1px;
   min-height: var(--nav-h);
   cursor: pointer;
   display: flex;
@@ -381,6 +381,65 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
   .toast { animation: apparait .16s ease-out; }
   @keyframes apparait { from { opacity: 0; transform: translate(-50%, 6px); } }
 }
+
+/* ------------------------------------------------------------------ Fil d'actualité */
+/* Le retour immédiat : ce qui vient d'arriver, sous les yeux, sans aller
+   le chercher dans le journal. */
+
+.fil { display: flex; flex-direction: column; gap: 3px; }
+.fil-l {
+  display: flex;
+  gap: 7px;
+  align-items: baseline;
+  border-left: 2px solid var(--bord);
+  padding-left: 7px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.fil-t { color: var(--texte-3); font-size: 10px; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.fil-x { flex: 1 1 auto; min-width: 0; }
+.fil-l.danger { border-left-color: var(--rouge); }
+.fil-l.guerre { border-left-color: var(--violet); }
+.fil-l.gain { border-left-color: var(--vert); }
+.fil-l.base { border-left-color: var(--cyan); }
+
+/* ------------------------------------------------------------------ Ordres */
+/* Chaque bouton annonce ce qu'il rapporte ici : un ordre qui ne rend rien
+   doit le dire avant le clic, pas après six heures de travail. */
+
+.grille-ordres { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+button.act.ordre {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 46px;
+  padding: 6px 7px;
+}
+.o-n { font-size: 12px; }
+.o-r { font-size: 10px; color: var(--texte-3); font-variant-numeric: tabular-nums; }
+button.act.ordre[aria-pressed="true"] .o-r { color: var(--cyan); }
+
+.alerte { color: var(--rouge); }
+
+/* ------------------------------------------------------------------ Sites, contrats, étal */
+
+.panneau.site { border-color: var(--ambre); }
+
+.traits { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 5px; }
+
+.contrat { border-bottom: 1px solid #1b2029; padding: 7px 0; }
+.contrat:last-child { border-bottom: 0; }
+.contrat-t { font-size: 13px; margin: 2px 0 5px; }
+.contrat button { margin-top: 5px; }
+
+.article { border-bottom: 1px solid #1b2029; padding: 7px 0; }
+.article:last-child { border-bottom: 0; }
+.article button { margin-top: 5px; }
+
+.hd-val.ambre, .v.ambre { color: var(--ambre); }
+
+#barre-nav .pastille.calme { background: var(--bord-vif); color: var(--texte); }
 </style>
 </head>
 <body>
@@ -486,6 +545,7 @@ function seedFromString(str) {
 
 // Alias d'import
 const nivBat = niveau;
+const progresContrat = progres;
 
 // ===== src/data.js ===================================================
 // Données statiques du monde : marchandises, biomes, factions, bâtiments,
@@ -947,7 +1007,6 @@ const ITEMS = {
   coeur_synth: { nom: 'Cœur synthétique', type: 'greffe', membre: 'torse', poids: 0, prix: 900, bonus: { endurance: 18 } },
 };
 
-const ITEM_KEYS = Object.keys(ITEMS);
 
 // ---------------------------------------------------------------------------
 // Compétences
@@ -1035,6 +1094,150 @@ const POSTURES = {
 };
 
 const POSTURE_KEYS = Object.keys(POSTURES);
+
+// ---------------------------------------------------------------------------
+// Équipement supplémentaire (étals des villes)
+// ---------------------------------------------------------------------------
+
+Object.assign(ITEMS, {
+  hachoir: { nom: 'Hachoir d’abattoir', type: 'arme', portee: 'melee', degats: 12, pen: 0.14, poids: 4, prix: 170, comp: 'melee' },
+  arbalete: { nom: 'Arbalète à poulies', type: 'arme', portee: 'tir', degats: 13, pen: 0.3, poids: 3, prix: 290, comp: 'tir', discrete: true },
+  pompe: { nom: 'Fusil à pompe', type: 'arme', portee: 'tir', degats: 19, pen: 0.16, poids: 5, prix: 470, comp: 'tir' },
+  lance_harpon: { nom: 'Lance-harpon', type: 'arme', portee: 'tir', degats: 22, pen: 0.4, poids: 7, prix: 760, comp: 'tir', reqForce: 35 },
+  manteau: { nom: 'Manteau lesté', type: 'armure', armure: 7, poids: 6, prix: 140, bonus: { furtivite: 6 } },
+  harnais: { nom: 'Harnais de portage', type: 'armure', armure: 3, poids: 3, prix: 190, bonus: { force: 4 } },
+});
+
+/** Palier d'équipement : sert à garnir les étals et à armer les bandes. */
+const PALIERS_ITEM = {
+  barre: 0, clous: 0, cuir: 0, manteau: 0,
+  machette: 1, hachoir: 1, plaque: 1, harnais: 1,
+  arbalete: 2, verrou: 2, katana: 2, pompe: 2, kevlar: 2,
+  smg: 2, masse: 3, rail: 3, exo: 3, lance_harpon: 3,
+  bras_hydro: 3, oeil_optique: 3, jambe_servo: 3, coeur_synth: 3,
+};
+
+/** Ce que chaque faction accepte de vendre. L'Essaim ne tient pas boutique. */
+const ETAL_PAR_STYLE = {
+  corpo: ['clous', 'verrou', 'smg', 'kevlar', 'exo', 'oeil_optique', 'coeur_synth', 'rail'],
+  nomade: ['barre', 'machette', 'hachoir', 'plaque', 'harnais', 'masse', 'bras_hydro'],
+  fanatique: ['machette', 'katana', 'arbalete', 'manteau', 'plaque', 'jambe_servo'],
+  criminel: ['clous', 'arbalete', 'smg', 'manteau', 'cuir', 'katana', 'pompe'],
+  militaire: ['verrou', 'pompe', 'smg', 'plaque', 'kevlar', 'masse', 'lance_harpon'],
+  commune: ['barre', 'machette', 'clous', 'cuir', 'harnais', 'arbalete'],
+};
+
+// ---------------------------------------------------------------------------
+// Traits de personnage
+// ---------------------------------------------------------------------------
+// bonus : ajouté à la compétence · mult : multiplicateurs de besoins et d'effets
+
+const TRAITS = {
+  costaud: { nom: 'Costaud', desc: '+10 force, porte davantage.', bonus: { force: 10 }, mult: { portage: 1.15 } },
+  vif: { nom: 'Vif', desc: '+9 endurance, marche plus vite.', bonus: { endurance: 9 }, mult: { vitesse: 1.12 } },
+  oeil: { nom: 'Œil de lynx', desc: '+12 tir.', bonus: { tir: 12 } },
+  teigneux: { nom: 'Teigneux', desc: '+12 mêlée, mais s’use plus vite.', bonus: { melee: 12 }, mult: { fatigue: 1.2 } },
+  ombre: { nom: 'Ombre', desc: '+14 furtivité, évite mieux les ennuis.', bonus: { furtivite: 14 }, mult: { evitement: 1.25 } },
+  bricoleur: { nom: 'Bricoleur', desc: '+14 ingénierie.', bonus: { ingenierie: 14 } },
+  rebouteux: { nom: 'Rebouteux', desc: '+14 médecine.', bonus: { medecine: 14 } },
+  beau_parleur: { nom: 'Beau parleur', desc: '+14 commerce.', bonus: { commerce: 14 } },
+  coriace: { nom: 'Coriace', desc: 'Encaisse 15 % de dégâts en moins.', mult: { degatsSubis: 0.85 } },
+  sobre: { nom: 'Sobre', desc: 'Mange 30 % de moins.', mult: { faim: 0.7 } },
+  gouffre: { nom: 'Gouffre', desc: 'Mange 45 % de plus.', mult: { faim: 1.45 }, malus: true },
+  hemophile: { nom: 'Hémophile', desc: 'Saigne bien plus.', mult: { saignement: 1.6 }, malus: true },
+  insomniaque: { nom: 'Insomniaque', desc: 'Récupère mal.', mult: { fatigue: 1.3 }, malus: true },
+  froussard: { nom: 'Froussard', desc: 'Moral fragile, mais fuit à temps.', mult: { evitement: 1.2, moral: 0.8 }, malus: true },
+  mule: { nom: 'Mule', desc: 'Porte 30 % de plus, mais lent.', mult: { portage: 1.3, vitesse: 0.9 } },
+  survivant: { nom: 'Survivant', desc: 'Guérit plus vite, encaisse mieux la faim.', mult: { soin: 1.35, faim: 0.9 } },
+};
+
+const TRAIT_KEYS = Object.keys(TRAITS);
+
+// ---------------------------------------------------------------------------
+// Points d'intérêt, trouvés en explorant
+// ---------------------------------------------------------------------------
+// loot : [min, max] par ressource · unique : disparaît une fois fouillé
+
+const POI = {
+  ruine: {
+    nom: 'Ruine ensevelie',
+    texte: 'Un immeuble couché sur le flanc, à moitié avalé par le sol.',
+    loot: { ferraille: [20, 70], polymere: [5, 30], composant: [0, 4] },
+    credits: [0, 120],
+    danger: 0.2,
+  },
+  convoi: {
+    nom: 'Convoi éventré',
+    texte: 'Six remorques en file, portes arrachées. Quelqu’un est passé avant vous — pas tout emporté.',
+    loot: { rations: [10, 40], carburant: [5, 25], medkit: [0, 3] },
+    credits: [40, 260],
+    objet: 1,
+    danger: 0.3,
+  },
+  bunker: {
+    nom: 'Bunker scellé',
+    texte: 'Une trappe blindée, une serrure qui a tenu quarante ans. Elle ne tiendra pas la journée.',
+    loot: { composant: [4, 20], isotope: [2, 12], alliage: [5, 25] },
+    credits: [100, 500],
+    objet: 2,
+    danger: 0.45,
+    reqIngenierie: 25,
+  },
+  station: {
+    nom: 'Station météo',
+    texte: 'Les antennes tournent encore. Quelque chose les alimente.',
+    loot: { composant: [3, 12], isotope: [0, 6] },
+    credits: [20, 180],
+    revele: 3,
+    danger: 0.25,
+  },
+  cache: {
+    nom: 'Cache de contrebande',
+    texte: 'Trois bidons enterrés sous une dalle, marqués d’un signe qui ne vous dit rien.',
+    loot: { medkit: [1, 5], carburant: [10, 30], rations: [5, 25] },
+    credits: [60, 340],
+    objet: 1,
+    danger: 0.35,
+  },
+  charnier: {
+    nom: 'Charnier',
+    texte: 'Une trentaine de corps alignés avec soin. C’est ce soin qui inquiète.',
+    loot: { ferraille: [5, 20], medkit: [0, 2] },
+    credits: [30, 200],
+    objet: 1,
+    danger: 0.6,
+  },
+};
+
+const POI_KEYS = Object.keys(POI);
+
+// ---------------------------------------------------------------------------
+// Contrats proposés par les villes
+// ---------------------------------------------------------------------------
+
+const CONTRATS = {
+  collecte: {
+    nom: 'Collecte',
+    desc: 'Rapporter une quantité de marchandise à la ville.',
+  },
+  livraison: {
+    nom: 'Livraison',
+    desc: 'Transporter un colis jusqu’à une autre ville.',
+  },
+  prime: {
+    nom: 'Prime',
+    desc: 'Remporter des combats contre une faction désignée.',
+  },
+  reconnaissance: {
+    nom: 'Reconnaissance',
+    desc: 'Aller voir un secteur et en revenir.',
+  },
+};
+
+const CONTRAT_KEYS = Object.keys(CONTRATS);
+
+/** Déclaré ici, après les ajouts d'étal, pour couvrir tout le catalogue. */
+const ITEM_KEYS = Object.keys(ITEMS);
 
 // ===== src/world.js ==================================================
 // Génération du monde et navigation.
@@ -1262,9 +1465,32 @@ function attribuerFactions(rng, regions, colonies) {
   return factions;
 }
 
+/**
+ * Sème des sites à fouiller sur les régions vides. C'est ce qui donne une
+ * raison d'aller voir ailleurs plutôt que de camper sur une seule case.
+ */
+function semerSites(rng, regions) {
+  const vides = rng.shuffle(regions.filter((r) => !r.colonie));
+  const combien = Math.min(vides.length, 22);
+  for (let i = 0; i < combien; i++) {
+    const r = vides[i];
+    // Les biomes riches attirent les sites intéressants.
+    const type = rng.weighted(POI_KEYS.map((k) => {
+      const def = POI[k];
+      const affinite = r.biome === 'dalles' && k === 'ruine' ? 3
+        : r.biome === 'relais' && k === 'station' ? 4
+          : r.biome === 'friche' && k === 'bunker' ? 3
+            : r.biome === 'plastique' && k === 'convoi' ? 2.5 : 1;
+      return [k, affinite * (1 + (1 - def.danger))];
+    }));
+    r.site = { type, connu: false, fouille: false };
+  }
+}
+
 function genererMonde(rng) {
   const regions = genererBiomes(rng);
   const colonies = genererColonies(rng, regions);
+  semerSites(rng, regions);
   const factions = attribuerFactions(rng, regions, colonies);
   return {
     largeur: LARGEUR,
@@ -1349,6 +1575,12 @@ function decouvrir(world, i, rayon = 1) {
   }
 }
 
+/** Le site d'une région, s'il est connu du joueur. */
+function siteConnu(world, i) {
+  const r = world.regions[i];
+  return r && r.site && r.site.connu && !r.site.fouille ? r.site : null;
+}
+
 function nomRegion(world, i) {
   const r = world.regions[i];
   const col = colonieDe(world, i);
@@ -1405,6 +1637,7 @@ function makeCharacter(rng, opts = {}) {
     equip: { arme: opts.arme || def.arme, armure: opts.armure || null, greffes: {} },
     kills: 0,
     joursSurvecus: 0,
+    traits: tirerTraits(rng, opts.traits),
   };
   for (const k of SKILL_KEYS) {
     const base = rng.irange(4, 14) + (def.bonus[k] || 0) + niveau * rng.irange(2, 6);
@@ -1416,6 +1649,33 @@ function makeCharacter(rng, opts = {}) {
     c.corps[p] = { pv: max, max, perdu: false };
   }
   return c;
+}
+
+/** Un à trois traits, dont au plus un défaut : de quoi rendre les gens distincts. */
+function tirerTraits(rng, imposes) {
+  if (imposes) return imposes.slice();
+  const atouts = TRAIT_KEYS.filter((k) => !TRAITS[k].malus);
+  const defauts = TRAIT_KEYS.filter((k) => TRAITS[k].malus);
+  const out = [];
+  const combien = rng.weighted([[1, 4], [2, 3], [3, 1]]);
+  const pioche = rng.shuffle(atouts);
+  for (let i = 0; i < combien && i < pioche.length; i++) out.push(pioche[i]);
+  if (rng.chance(0.4)) out.push(rng.pick(defauts));
+  return out;
+}
+
+/** Multiplicateurs cumulés des traits. Recalculé à la volée : deux traits, c'est gratuit. */
+function mods(c) {
+  const m = {
+    faim: 1, fatigue: 1, portage: 1, vitesse: 1,
+    degatsSubis: 1, evitement: 1, saignement: 1, soin: 1, moral: 1,
+  };
+  for (const t of c.traits || []) {
+    const def = TRAITS[t];
+    if (!def || !def.mult) continue;
+    for (const k of Object.keys(def.mult)) m[k] = (m[k] ?? 1) * def.mult[k];
+  }
+  return m;
 }
 
 function genNom(rng) {
@@ -1451,9 +1711,13 @@ function estVivant(c) {
   return c.etat !== 'mort';
 }
 
-/** Bonus d'équipement (armure, greffes) sur une compétence. */
+/** Bonus d'équipement et de traits sur une compétence. */
 function bonusEquip(c, skill) {
   let b = 0;
+  for (const t of c.traits || []) {
+    const def = TRAITS[t];
+    if (def && def.bonus && def.bonus[skill]) b += def.bonus[skill];
+  }
   const arm = c.equip.armure && ITEMS[c.equip.armure];
   if (arm && arm.bonus && arm.bonus[skill]) b += arm.bonus[skill];
   for (const membre of Object.keys(c.equip.greffes)) {
@@ -1537,8 +1801,9 @@ function tirerMembre(rng) {
  */
 function blesser(c, montant, membre, rng, opts = {}) {
   if (c.etat === 'mort') return { degats: 0, membre, ko: false, mort: false, membrePerdu: false };
+  const m = mods(c);
   const part = c.corps[membre];
-  const d = Math.max(1, Math.round(montant));
+  const d = Math.max(1, Math.round(montant * m.degatsSubis));
   part.pv = Math.max(0, part.pv - d);
 
   let ko = false;
@@ -1571,7 +1836,7 @@ function blesser(c, montant, membre, rng, opts = {}) {
     c.koHeures = rng.irange(3, 10);
   }
   // Saignement
-  c.sang = Math.min(100, c.sang + d * (vital ? 0.55 : 0.35));
+  c.sang = Math.min(100, c.sang + d * (vital ? 0.55 : 0.35) * m.saignement);
   return { degats: d, membre, ko, mort, membrePerdu };
 }
 
@@ -1598,7 +1863,7 @@ function portage(c, bonusPct = 0) {
   if (!estVivant(c)) return 0;
   const base = 30 + comp(c, 'force') * 0.7 + comp(c, 'endurance') * 0.25;
   const equip = poidsEquip(c);
-  return Math.max(0, base * (1 + bonusPct) - equip);
+  return Math.max(0, base * (1 + bonusPct) * mods(c).portage - equip);
 }
 
 function poidsEquip(c) {
@@ -1633,12 +1898,13 @@ function tickPerso(c, effort, rng, ctx = {}) {
   const msgs = [];
   if (c.etat === 'mort') return msgs;
 
-  c.faim = Math.min(120, c.faim + 0.55 + 0.25 * effort);
+  const m = mods(c);
+  c.faim = Math.min(120, c.faim + (0.55 + 0.25 * effort) * m.faim);
   if (effort <= 0.05) {
-    c.fatigue = Math.max(0, c.fatigue - 6);
+    c.fatigue = Math.max(0, c.fatigue - 6 / m.fatigue);
   } else {
     const end = comp(c, 'endurance');
-    c.fatigue = Math.min(120, c.fatigue + (1.6 * effort) * (1 - Math.min(0.5, end / 200)));
+    c.fatigue = Math.min(120, c.fatigue + (1.6 * effort) * (1 - Math.min(0.5, end / 200)) * m.fatigue);
   }
 
   // Saignement : une plaie légère se referme seule ; une hémorragie tue.
@@ -1672,9 +1938,9 @@ function tickPerso(c, effort, rng, ctx = {}) {
   }
 
   // Récupération naturelle légère hors combat
-  const q = ctx.soin ?? 0;
+  const q = (ctx.soin ?? 0) * m.soin;
   if (q > 0) soigner(c, q, rng);
-  else if (effort <= 0.05) soigner(c, 0.35, rng);
+  else if (effort <= 0.05) soigner(c, 0.35 * m.soin, rng);
 
   if (c.etat === 'ko') {
     c.koHeures = Math.max(0, c.koHeures - 1);
@@ -2152,6 +2418,83 @@ function valeurLot(lot) {
     if (COMMODITIES[k]) v += lot[k] * COMMODITIES[k].prix;
   }
   return Math.round(v);
+}
+
+// ---------------------------------------------------------------------------
+// Étal d'équipement
+// ---------------------------------------------------------------------------
+// Chaque ville tient boutique selon le style de sa faction et sa taille.
+// Le stock se renouvelle : revenir plus tard vaut le coup.
+
+const DUREE_ETAL = 180; // heures avant renouvellement
+
+function genererEtal(rng, world, col, t) {
+  const style = FACTIONS[col.faction] ? FACTIONS[col.faction].style : 'commune';
+  const catalogue = ETAL_PAR_STYLE[style] || ETAL_PAR_STYLE.commune;
+  const palierMax = col.taille >= 3 ? 3 : col.taille >= 2 ? 2 : 1;
+  const possibles = catalogue.filter((k) => (PALIERS_ITEM[k] ?? 0) <= palierMax);
+  const combien = Math.min(possibles.length, rng.irange(2, 2 + col.taille * 2));
+  const choisis = rng.shuffle(possibles).slice(0, combien);
+  col.etal = {
+    expire: t + DUREE_ETAL + rng.irange(0, 80),
+    items: choisis.map((key) => ({
+      key,
+      qte: rng.irange(1, ITEMS[key].type === 'greffe' ? 1 : 3),
+      // Chaque ville a sa propre humeur sur les prix
+      coef: Number(rng.range(0.85, 1.3).toFixed(2)),
+    })),
+  };
+  return col.etal;
+}
+
+function etalDe(world, col, rng, t) {
+  if (!col.etal || t >= col.etal.expire) genererEtal(rng, world, col, t);
+  return col.etal;
+}
+
+/** Prix d'un objet pour le joueur, achat et revente. */
+function prixItem(col, key, coef = 1, habilete = 0, repu = 0) {
+  const base = ITEMS[key].prix * coef * (1 + col.unrest * 0.2);
+  const marge = Math.max(0.08, 0.28 - habilete / 700 - Math.max(0, repu) / 900);
+  const hostile = repu < -20 ? 0.2 + Math.min(0.5, -repu / 200) : 0;
+  return {
+    achat: Math.round(base * (1 + marge + hostile)),
+    // On revend toujours mal : les armes d'occasion n'intéressent personne.
+    vente: Math.round(base * 0.42 * (1 - hostile * 0.5)),
+  };
+}
+
+function acheterItem(state, col, index) {
+  const etal = col.etal;
+  if (!etal || !etal.items[index]) return { ok: false, motif: 'Article déjà parti.' };
+  const ligne = etal.items[index];
+  if (ligne.qte <= 0) return { ok: false, motif: 'Rupture de stock.' };
+  if (state.player.objets.length >= 40) return { ok: false, motif: 'Réserve d’équipement pleine.' };
+
+  const negoc = meilleurCommercant(state.player.squad);
+  const hab = negoc ? comp(negoc, 'commerce') : 0;
+  const repu = state.player.reputation[col.faction] || 0;
+  const p = prixItem(col, ligne.key, ligne.coef, hab, repu).achat;
+  if (state.player.credits < p) return { ok: false, motif: `Il manque ${p - state.player.credits} cr.` };
+
+  state.player.credits -= p;
+  ligne.qte -= 1;
+  state.player.objets.push(ligne.key);
+  if (negoc) gagnerXp(negoc, 'commerce', 2.5);
+  return { ok: true, prix: p, nom: ITEMS[ligne.key].nom };
+}
+
+function vendreItem(state, col, indexObjet) {
+  const key = state.player.objets[indexObjet];
+  if (!key) return { ok: false, motif: 'Objet introuvable.' };
+  const negoc = meilleurCommercant(state.player.squad);
+  const hab = negoc ? comp(negoc, 'commerce') : 0;
+  const repu = state.player.reputation[col.faction] || 0;
+  const p = prixItem(col, key, 1, hab, repu).vente;
+  state.player.objets.splice(indexObjet, 1);
+  state.player.credits += p;
+  if (negoc) gagnerXp(negoc, 'commerce', 1.8);
+  return { ok: true, prix: p, nom: ITEMS[key].nom };
 }
 
 // ===== src/factions.js ===============================================
@@ -2991,6 +3334,304 @@ function retirer(state, key, qte, capaciteLibre) {
   return { ok: true, qte: n };
 }
 
+// ===== src/contrats.js ===============================================
+// Contrats : ce que les villes vous demandent de faire. C'est ce qui donne un
+// but à court terme entre deux ordres de récolte, et une raison de traverser la
+// carte plutôt que de camper.
+//
+// Tout se résout automatiquement (livrer, ramener, compter les victoires), donc
+// un contrat continue d'avancer pendant que le joueur est hors ligne.
+
+
+/** Durée de vie d'un panneau d'affichage avant renouvellement. */
+const DUREE_PANNEAU = 220;
+
+const RESSOURCES_DEMANDEES = ['ferraille', 'minerai', 'polymere', 'biomasse', 'alliage', 'carburant', 'composant', 'isotope'];
+
+// ---------------------------------------------------------------------------
+// Génération
+// ---------------------------------------------------------------------------
+
+function contratCollecte(rng, state, col, t) {
+  // Une ville demande ce qui lui manque vraiment.
+  const manques = RESSOURCES_DEMANDEES
+    .map((k) => [k, Math.max(0.1, 1 - (col.stock[k] || 0) / Math.max(1, col.pop * 0.4))])
+    .filter((e) => e[1] > 0.15);
+  const ressource = rng.weighted(manques.length ? manques : RESSOURCES_DEMANDEES.map((k) => [k, 1]));
+  // On raisonne en valeur, pas en nombre : sinon une ville réclame quarante
+  // isotopes comme elle réclamerait quarante ferrailles.
+  const cible = rng.range(160, 520) * (1 + col.taille * 0.35);
+  const quantite = Math.max(8, Math.min(140, Math.round(cible / COMMODITIES[ressource].prix)));
+  const valeur = COMMODITIES[ressource].prix * quantite;
+  return {
+    type: 'collecte',
+    ressource,
+    quantite,
+    recompense: Math.round(valeur * rng.range(1.5, 2.3)),
+    reputation: rng.irange(3, 7),
+    duree: rng.irange(180, 400),
+    titre: `Rassembler ${quantite} ${COMMODITIES[ressource].nom.toLowerCase()}`,
+  };
+}
+
+function contratLivraison(rng, state, col, t) {
+  const autres = state.world.colonies.filter(
+    (c) => c.id !== col.id && distance(c.regionId, col.regionId) >= 2
+  );
+  if (!autres.length) return null;
+  const dest = rng.pick(autres);
+  const d = distance(col.regionId, dest.regionId);
+  const ressource = rng.pick(['composant', 'medkit', 'alliage', 'rations', 'isotope']);
+  const quantite = rng.irange(8, 25);
+  const poids = COMMODITIES[ressource].poids * quantite;
+  return {
+    type: 'livraison',
+    destId: dest.id,
+    ressource,
+    quantite,
+    poids: Number(poids.toFixed(1)),
+    recompense: Math.round((80 + d * 55 + poids * 6) * rng.range(0.9, 1.4)),
+    reputation: rng.irange(4, 9),
+    duree: Math.round(d * rng.range(14, 24)),
+    titre: `Porter ${quantite} ${COMMODITIES[ressource].nom.toLowerCase()} à ${dest.nom}`,
+  };
+}
+
+function contratPrime(rng, state, col, t) {
+  // On paie pour taper sur un ennemi, ou sur les pillards par défaut.
+  const ennemis = DIPLO_FACTIONS.filter((k) => {
+    if (k === col.faction) return false;
+    const f = state.world.factions[col.faction];
+    return f && (f.relations[k] ?? 0) < 15;
+  });
+  // Les pillards courent les routes ; une faction précise se croise beaucoup
+  // moins. On penche vers ce qui est réellement trouvable, sinon la prime est
+  // un contrat qu'on ne peut pas honorer.
+  const cible = ennemis.length && rng.chance(0.3) ? rng.pick(ennemis) : 'bandits';
+  const victoires = rng.irange(1, 3);
+  return {
+    type: 'prime',
+    cibleFaction: cible,
+    victoires,
+    progres: 0,
+    recompense: Math.round(victoires * rng.irange(220, 460)),
+    reputation: rng.irange(4, 10),
+    duree: rng.irange(240, 500),
+    titre: `${victoires} victoire${victoires > 1 ? 's' : ''} contre ${cible === 'bandits' ? 'les pillards' : FACTIONS[cible].nom}`,
+  };
+}
+
+function contratReconnaissance(rng, state, col, t) {
+  const inconnues = state.world.regions.filter(
+    (r) => !r.decouvert && distance(r.i, col.regionId) >= 2
+  );
+  if (!inconnues.length) return null;
+  const r = rng.pick(inconnues);
+  const d = distance(col.regionId, r.i);
+  return {
+    type: 'reconnaissance',
+    regionId: r.i,
+    recompense: Math.round((70 + d * 45) * rng.range(0.9, 1.3)),
+    reputation: rng.irange(2, 6),
+    duree: Math.round(d * rng.range(16, 28)),
+    titre: `Reconnaître le secteur ${String.fromCharCode(65 + r.x)}${r.y + 1}`,
+  };
+}
+
+const FABRIQUES = {
+  collecte: contratCollecte,
+  livraison: contratLivraison,
+  prime: contratPrime,
+  reconnaissance: contratReconnaissance,
+};
+
+/** (Re)garnit le panneau d'affichage d'une ville. */
+function genererContrats(state, col, rng, t) {
+  const combien = 1 + col.taille;
+  const liste = [];
+  const types = Object.keys(FABRIQUES);
+  for (let i = 0; i < combien; i++) {
+    const type = rng.weighted([
+      ['collecte', 3], ['livraison', 2.2], ['prime', 2], ['reconnaissance', 1.4],
+    ]);
+    const c = FABRIQUES[type](rng, state, col, t);
+    if (!c) continue;
+    c.id = idDepuisRng(rng, 'k');
+    c.colonieId = col.id;
+    c.faction = col.faction;
+    // Une ville agitée paie mal, une ville prospère paie bien.
+    c.recompense = Math.max(50, Math.round(c.recompense * (1 - col.unrest * 0.3)));
+    liste.push(c);
+  }
+  col.contrats = liste;
+  col.contratsExpire = t + DUREE_PANNEAU;
+  return liste;
+}
+
+/** Renouvelle les panneaux périmés. Appelé de loin en loin, pas à chaque heure. */
+function rafraichirPanneaux(state, rng, t) {
+  for (const col of state.world.colonies) {
+    if (!col.contrats || t >= (col.contratsExpire || 0)) {
+      genererContrats(state, col, rng, t);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Acceptation
+// ---------------------------------------------------------------------------
+
+const MAX_CONTRATS = 4;
+
+function accepter(state, col, id, log) {
+  if (!col.contrats) return { ok: false, motif: 'Aucun panneau ici.' };
+  const i = col.contrats.findIndex((c) => c.id === id);
+  if (i < 0) return { ok: false, motif: 'Ce contrat n’est plus affiché.' };
+  if (state.player.contrats.length >= MAX_CONTRATS) {
+    return { ok: false, motif: `Déjà ${MAX_CONTRATS} contrats en cours.` };
+  }
+  const c = col.contrats[i];
+
+  // Une livraison, ça se charge : il faut la place dans le sac.
+  if (c.type === 'livraison') {
+    state.player.inventaire[c.ressource] = (state.player.inventaire[c.ressource] || 0) + c.quantite;
+    c.charge = true;
+  }
+
+  col.contrats.splice(i, 1);
+  c.accepteA = state.temps;
+  c.echeance = state.temps + c.duree;
+  state.player.contrats.push(c);
+  log({
+    type: 'contrat',
+    texte: `Contrat accepté : ${c.titre} (${c.recompense} cr).`,
+    important: true,
+    regionId: col.regionId,
+  });
+  return { ok: true };
+}
+
+function abandonner(state, id, log) {
+  const i = state.player.contrats.findIndex((c) => c.id === id);
+  if (i < 0) return { ok: false, motif: 'Contrat introuvable.' };
+  const c = state.player.contrats[i];
+  state.player.contrats.splice(i, 1);
+  if (c.type === 'livraison' && c.charge) {
+    // On garde la marchandise : ça s'appelle du vol, et ça se paie.
+    state.player.reputation[c.faction] = Math.max(-100, (state.player.reputation[c.faction] || 0) - 12);
+  } else {
+    state.player.reputation[c.faction] = Math.max(-100, (state.player.reputation[c.faction] || 0) - 4);
+  }
+  log({ type: 'contrat', texte: `Contrat abandonné : ${c.titre}.`, important: true });
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Suivi
+// ---------------------------------------------------------------------------
+
+/** Avancement lisible d'un contrat : { fait, total, texte, pret }. */
+function progres(state, c) {
+  switch (c.type) {
+    case 'collecte': {
+      const q = Math.floor(state.player.inventaire[c.ressource] || 0);
+      return { fait: Math.min(q, c.quantite), total: c.quantite, pret: q >= c.quantite,
+        texte: `${Math.min(q, c.quantite)} / ${c.quantite}` };
+    }
+    case 'livraison': {
+      const dest = colonieParId(state.world, c.destId);
+      const surPlace = dest && state.player.regionId === dest.regionId;
+      return { fait: surPlace ? 1 : 0, total: 1, pret: surPlace,
+        texte: dest ? `→ ${dest.nom}` : '→ ville disparue' };
+    }
+    case 'prime':
+      return { fait: c.progres, total: c.victoires, pret: c.progres >= c.victoires,
+        texte: `${c.progres} / ${c.victoires}` };
+    case 'reconnaissance': {
+      const vu = state.world.regions[c.regionId].decouvert;
+      return { fait: vu ? 1 : 0, total: 1, pret: vu, texte: vu ? 'secteur vu' : 'non exploré' };
+    }
+    default:
+      return { fait: 0, total: 1, pret: false, texte: '' };
+  }
+}
+
+/** Incrémenté depuis le combat : une victoire compte pour les primes en cours. */
+function compterVictoire(state, factionBande) {
+  for (const c of state.player.contrats) {
+    if (c.type !== 'prime') continue;
+    const vise = c.cibleFaction === 'bandits' ? 'bandits' : c.cibleFaction;
+    if (factionBande === vise) c.progres = Math.min(c.victoires, c.progres + 1);
+  }
+}
+
+function recompenser(state, c, log) {
+  state.player.credits += c.recompense;
+  state.player.reputation[c.faction] = Math.min(100, (state.player.reputation[c.faction] || 0) + c.reputation);
+  state.stats.contratsRemplis = (state.stats.contratsRemplis || 0) + 1;
+  log({
+    type: 'contrat',
+    texte: `Contrat rempli : ${c.titre}. ${c.recompense} cr, réputation +${c.reputation}.`,
+    important: true,
+  });
+}
+
+/** Une heure de suivi : validation, échéances. */
+function tickContrats(state, log, ctx) {
+  const restants = [];
+  for (const c of state.player.contrats) {
+    const p = progres(state, c);
+    const donneur = colonieParId(state.world, c.colonieId);
+
+    // Validation : il faut être au bon endroit pour être payé.
+    if (p.pret) {
+      if (c.type === 'collecte') {
+        if (donneur && state.player.regionId === donneur.regionId) {
+          state.player.inventaire[c.ressource] -= c.quantite;
+          donneur.stock[c.ressource] = (donneur.stock[c.ressource] || 0) + c.quantite;
+          recompenser(state, c, log);
+          continue;
+        }
+      } else if (c.type === 'livraison') {
+        const dest = colonieParId(state.world, c.destId);
+        const dispo = state.player.inventaire[c.ressource] || 0;
+        if (dest && dispo >= c.quantite) {
+          state.player.inventaire[c.ressource] -= c.quantite;
+          dest.stock[c.ressource] = (dest.stock[c.ressource] || 0) + c.quantite;
+          recompenser(state, c, log);
+          continue;
+        }
+      } else if (donneur && state.player.regionId === donneur.regionId) {
+        recompenser(state, c, log);
+        continue;
+      }
+    }
+
+    // Échéance dépassée
+    if (state.temps > c.echeance) {
+      state.player.reputation[c.faction] = Math.max(-100, (state.player.reputation[c.faction] || 0) - 6);
+      log({
+        type: 'contrat',
+        texte: `Contrat échu : ${c.titre}. Réputation entamée.`,
+        important: true,
+      });
+      continue;
+    }
+    restants.push(c);
+  }
+  state.player.contrats = restants;
+}
+
+/** Là où il faut se rendre pour toucher la prime, pour l'affichage. */
+function lieuValidation(state, c) {
+  if (c.type === 'livraison') {
+    const d = colonieParId(state.world, c.destId);
+    return d ? d.nom : '—';
+  }
+  const donneur = colonieParId(state.world, c.colonieId);
+  return donneur ? donneur.nom : '—';
+}
+
 // ===== src/events.js =================================================
 // Journal de bord et rencontres. Tout se résout automatiquement selon la
 // posture et les consignes de l'escouade : c'est ce qui permet à la simulation
@@ -3041,8 +3682,29 @@ function factionDominante(state, regionId) {
 // Combat impliquant le joueur
 // ---------------------------------------------------------------------------
 
+/** Photographie des compétences, pour pouvoir annoncer les progrès après coup. */
+function instantaneComps(squad) {
+  const m = {};
+  for (const c of squad) m[c.id] = Object.assign({}, c.skills);
+  return m;
+}
+
+function annoncerProgres(state, avant, log) {
+  for (const c of state.player.squad) {
+    const a = avant[c.id];
+    if (!a) continue;
+    const montees = SKILL_KEYS.filter((k) => c.skills[k] > (a[k] ?? 0));
+    if (!montees.length) continue;
+    log({
+      type: 'progres',
+      texte: `${c.nom} progresse : ${montees.map((k) => `${SKILLS[k]} ${c.skills[k]}`).join(', ')}.`,
+    });
+  }
+}
+
 function combatContre(state, bande, log, ctx) {
   const rng = ctx.rng;
+  const compsAvant = instantaneComps(state.player.squad);
   const posture = POSTURES[state.player.posture] || POSTURES.neutre;
   const squad = state.player.squad.filter(estVivant);
   const combattants = squad.filter((c) => c.etat !== 'mort');
@@ -3077,6 +3739,7 @@ function combatContre(state, bande, log, ctx) {
       if (g) reputation(state, k, 2);
     }
     state.stats.combatsGagnes++;
+    compterVictoire(state, bande.faction);
     texte = `${bande.nom} mis en déroute à ${lieu} — ${ramasse} unités et ${b.credits} cr récupérés.`;
   } else if (res.vainqueur === 'B') {
     texte = perdreCombat(state, bande, log, ctx, lieu);
@@ -3090,6 +3753,8 @@ function combatContre(state, bande, log, ctx) {
     m._compte = true;
     log({ type: 'mort', texte: `${m.nom} est mort à ${lieu}.`, important: true });
   }
+
+  annoncerProgres(state, compsAvant, log);
 
   log({
     type: 'combat',
@@ -3160,14 +3825,25 @@ function bandeLocale(state, ctx) {
   const repu = dominante ? (state.player.reputation[dominante] || 0) : 0;
 
   // Une faction dont on est mal vu envoie ses hommes ; sinon, la faune du coin.
+  // Une prime en cours fait sortir sa cible du bois : accepter un contrat
+  // change ce qu'on rencontre, sinon on ne peut jamais l'honorer.
+  const vises = new Set(
+    state.player.contrats.filter((c) => c.type === 'prime').map((c) => c.cibleFaction)
+  );
+
   let faction;
   if (dominante && repu < -25 && rng.chance(0.6)) faction = dominante;
   else {
-    faction = rng.weighted([
-      ['bandits', 3],
+    const poids = [
+      ['bandits', 3 + (vises.has('bandits') ? 3 : 0)],
       ['essaim', state.world.regions[regionId].biome === 'plastique' ? 2.2 : 1.1],
-      [dominante || 'bandits', dominante ? 1.4 : 0],
-    ]);
+    ];
+    if (dominante) poids.push([dominante, 1.4 + (vises.has(dominante) ? 3 : 0)]);
+    // Une faction visée par contrat peut aussi croiser la route hors de chez elle.
+    for (const v of vises) {
+      if (v !== 'bandits' && v !== dominante && FACTIONS[v]) poids.push([v, 2.2]);
+    }
+    faction = rng.weighted(poids);
   }
   // Le monde durcit lentement, mais les bandes restent le plus souvent
   // inférieures en nombre : c'est au joueur de choisir quand ça vaut le coup.
@@ -3363,6 +4039,94 @@ function couleurLog(type) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Sites : la récompense d'aller voir ailleurs
+// ---------------------------------------------------------------------------
+
+/**
+ * Fouille le site de la région courante. Action ponctuelle : un site ne se
+ * fouille qu'une fois, et il peut être gardé.
+ */
+function fouillerSite(state, rng, log) {
+  const r = state.world.regions[state.player.regionId];
+  if (!r.site || !r.site.connu) return { ok: false, motif: 'Aucun site repéré ici.' };
+  if (r.site.fouille) return { ok: false, motif: 'Ce site a déjà été vidé.' };
+  const debout = state.player.squad.filter(estDebout);
+  if (!debout.length) return { ok: false, motif: 'Personne n’est en état.' };
+
+  const def = POI[r.site.type];
+
+  // Certains sites demandent de savoir ouvrir une porte.
+  if (def.reqIngenierie) {
+    const meilleur = Math.max(...debout.map((c) => comp(c, 'ingenierie')));
+    if (meilleur < def.reqIngenierie) {
+      return { ok: false, motif: `Il faut ${def.reqIngenierie} en ingénierie (meilleur : ${Math.round(meilleur)}).` };
+    }
+  }
+
+  // Le site est gardé ? On le saura en entrant.
+  if (rng.chance(def.danger)) {
+    const bande = bandeLocale(state, { rng });
+    log({ type: 'site', texte: `${def.nom} : on n’est pas seuls.`, important: true, regionId: r.i });
+    const res = combatContre(state, bande, log, { rng });
+    if (res.vainqueur !== 'A') {
+      return { ok: true, combat: true, gagne: false, motif: 'Le site reste aux autres.' };
+    }
+  }
+
+  r.site.fouille = true;
+  const pris = [];
+  for (const k of Object.keys(def.loot)) {
+    const [min, max] = def.loot[k];
+    const q = rng.irange(min, max);
+    if (q <= 0) continue;
+    const reel = ajouterAuSac(state, k, q);
+    if (reel > 0) pris.push(`${reel} ${COMMODITIES[k].nom.toLowerCase()}`);
+  }
+  const cr = rng.irange(def.credits[0], def.credits[1]);
+  state.player.credits += cr;
+
+  const objets = [];
+  for (let i = 0; i < (def.objet || 0); i++) {
+    if (!rng.chance(0.6)) continue;
+    const palier = rng.weighted([[0, 3], [1, 3], [2, 1.6], [3, 0.4]]);
+    const choix = Object.keys(PALIERS_ITEM).filter((k) => PALIERS_ITEM[k] === palier);
+    if (!choix.length) continue;
+    const key = rng.pick(choix);
+    if (state.player.objets.length < 40) {
+      state.player.objets.push(key);
+      objets.push(ITEMS[key].nom);
+    }
+  }
+
+  // Une station météo rend surtout de la carte.
+  if (def.revele) {
+    let leves = 0;
+    for (const reg of state.world.regions) {
+      if (reg.decouvert) continue;
+      if (distance(reg.i, r.i) > def.revele) continue;
+      reg.decouvert = true;
+      leves++;
+      if (reg.site) reg.site.connu = true;
+    }
+    if (leves) pris.push(`${leves} secteurs levés`);
+  }
+
+  for (const c of debout) gagnerXp(c, 'ingenierie', 4);
+  state.stats.sitesFouilles = (state.stats.sitesFouilles || 0) + 1;
+
+  const resume = [pris.join(', '), cr ? `${cr} cr` : null, objets.length ? objets.join(', ') : null]
+    .filter(Boolean).join(' · ') || 'rien d’exploitable';
+  log({
+    type: 'trouvaille',
+    texte: `${def.nom} fouillé : ${resume}.`,
+    important: true,
+    regionId: r.i,
+    detail: [def.texte],
+  });
+  return { ok: true, resume };
+}
+
 // ===== src/squad.js ==================================================
 // Résolution des ordres de l'escouade, heure par heure.
 
@@ -3372,10 +4136,37 @@ const ORDRES = {
   fouille: { nom: 'Fouiller', desc: 'Ratisser la région pour tout ce qui traîne.', effort: 1 },
   mine: { nom: 'Extraire', desc: 'Minerai et métaux, à la force du poignet.', effort: 1.2 },
   chasse: { nom: 'Chasser', desc: 'Biomasse et viande, de quoi manger.', effort: 1 },
+  exploration: { nom: 'Explorer', desc: 'Lever la carte alentour et repérer les sites.', effort: 0.9 },
   entrainement: { nom: 'S’entraîner', desc: 'Progresser vite, consommer des vivres.', effort: 1.1 },
   patrouille: { nom: 'Patrouiller', desc: 'Chercher l’affrontement dans le secteur.', effort: 1.1 },
   voyage: { nom: 'En route', desc: 'Déplacement vers une région.', effort: 1 },
 };
+
+/**
+ * Ce qu'un ordre rapporterait ici, par heure, avant compétences.
+ * Sert à l'affichage : un bouton qui ne rend rien doit le dire avant le clic,
+ * pas après six heures de travail.
+ */
+function rendementPrevu(state, type, regionId = state.player.regionId) {
+  const r = state.world.regions[regionId];
+  const biome = BIOMES[r.biome];
+  const filtre = FILTRES[type];
+  if (filtre === undefined) return null;
+  const rendements = Object.assign({}, biome.yields);
+  if (type === 'chasse') {
+    rendements.biomasse = Math.max(rendements.biomasse || 0, r.biome === 'relais' ? 0.05 : 0.18);
+  }
+  const out = {};
+  let total = 0;
+  for (const k of Object.keys(rendements)) {
+    if (filtre && !filtre.includes(k)) continue;
+    const q = rendements[k] * r.richesse * (1 - Math.min(0.8, r.fouille));
+    if (q <= 0.001) continue;
+    out[k] = q;
+    total += q;
+  }
+  return { par: out, total };
+}
 
 // ---------------------------------------------------------------------------
 // Ordres
@@ -3458,6 +4249,7 @@ function recolter(state, type, log, ctx) {
   // Les rendements horaires sont fractionnaires : sans report d'une heure sur
   // l'autre, tout ce qui rapporte moins d'une unité par heure rapporte zéro.
   const reste = state.player.reste || (state.player.reste = {});
+  const bilan = state.player.bilan || (state.player.bilan = { res: {}, depuis: state.temps });
   let total = 0;
   const detail = [];
   for (const k of Object.keys(recolte)) {
@@ -3469,6 +4261,7 @@ function recolter(state, type, log, ctx) {
     reste[k] += q - pris; // sac plein : on ne jette pas, on garde en attente
     if (pris > 0) {
       total += pris;
+      bilan.res[k] = (bilan.res[k] || 0) + pris;
       detail.push(`${pris} ${COMMODITIES[k].nom.toLowerCase()}`);
     }
   }
@@ -3479,6 +4272,65 @@ function recolter(state, type, log, ctx) {
     state.player.recolteHeure = null;
   }
   return recolte;
+}
+
+// ---------------------------------------------------------------------------
+// Exploration
+// ---------------------------------------------------------------------------
+
+/**
+ * Lève la carte de proche en proche et fait apparaître les sites. Sans ça,
+ * la carte reste un grand rectangle noir et rien n'invite à bouger.
+ */
+function explorer(state, log, ctx) {
+  const rng = ctx.rng;
+  const debout = state.player.squad.filter(estDebout);
+  if (!debout.length) return;
+
+  let portee = 2 + (state.base.recherche.optique || 0);
+  const meilleur = Math.max(...debout.map((c) => comp(c, 'furtivite')));
+  if (meilleur > 45) portee += 1;
+
+  // La région du dessous d'abord : on remarque ce qu'on a sous les pieds.
+  const ici = state.world.regions[state.player.regionId];
+  if (ici.site && !ici.site.connu) {
+    ici.site.connu = true;
+    log({
+      type: 'site',
+      texte: `Site repéré sur place : ${POI[ici.site.type].nom}.`,
+      important: true,
+      regionId: ici.i,
+    });
+  }
+
+  // Puis on repousse le noir, une case à la fois.
+  const candidates = state.world.regions
+    .filter((r) => !r.decouvert && distance(r.i, state.player.regionId) <= portee)
+    .sort((a, b) => distance(a.i, state.player.regionId) - distance(b.i, state.player.regionId));
+
+  if (candidates.length) {
+    const combien = rng.chance(0.55) ? 1 : 0;
+    for (let k = 0; k < combien && k < candidates.length; k++) {
+      const r = candidates[k];
+      r.decouvert = true;
+      if (r.site && rng.chance(0.7)) {
+        r.site.connu = true;
+        log({
+          type: 'site',
+          texte: `${POI[r.site.type].nom} repéré en ${nomRegion(state.world, r.i)}.`,
+          important: true,
+          regionId: r.i,
+        });
+      }
+    }
+  } else if (rng.chance(0.02)) {
+    log({ type: 'exploration', texte: 'Plus rien à lever dans ce secteur.', regionId: ici.i, discret: true });
+  }
+
+  for (const c of debout) {
+    gagnerXp(c, 'furtivite', 0.9);
+    gagnerXp(c, 'endurance', 0.6);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -3650,6 +4502,9 @@ function tickSquad(state, log, ctx) {
         }
         break;
       }
+      case 'exploration':
+        explorer(state, log, ctx);
+        break;
       case 'patrouille': {
         const f = state.world.regions[state.player.regionId].controle;
         if (f) reputation(state, f, 0.05);
@@ -3680,6 +4535,24 @@ function tickSquad(state, log, ctx) {
     }
   }
 
+  // Bilan périodique : sans lui, une nuit de récolte ne laisse aucune trace
+  // à l'écran et le jeu paraît ne rien faire.
+  const bilan = state.player.bilan;
+  if (bilan && state.temps - (bilan.depuis || 0) >= 6) {
+    const lignes = Object.keys(bilan.res)
+      .filter((k) => bilan.res[k] > 0)
+      .sort((a, b) => bilan.res[b] - bilan.res[a])
+      .map((k) => `${bilan.res[k]} ${COMMODITIES[k].nom.toLowerCase()}`);
+    if (lignes.length) {
+      log({
+        type: 'recolte',
+        texte: `Six heures de ${ORDRES[ordre.type] ? ORDRES[ordre.type].nom.toLowerCase() : 'travail'} : ${lignes.join(', ')}.`,
+        regionId: state.player.regionId,
+      });
+    }
+    state.player.bilan = { res: {}, depuis: state.temps };
+  }
+
   // La région se régénère lentement de la fouille
   for (const r of state.world.regions) {
     if (r.fouille > 0) r.fouille = Math.max(0, r.fouille - 0.003);
@@ -3699,11 +4572,13 @@ function tickSquad(state, log, ctx) {
 
 
 /** Durée réelle d'une heure de jeu, à vitesse ×1. */
-const TICK_MS = 20000;
-/** Plafond de rattrapage hors ligne : 48 h réelles à ×1. */
-const RATTRAPAGE_MAX = 8640;
+const TICK_MS = 10000;
+/** Plafond de rattrapage hors ligne, en heures de jeu (environ deux ans). */
+const RATTRAPAGE_MAX = 17000;
 
-const VITESSES = [1, 4, 16];
+const VITESSES = [1, 4, 16, 60];
+/** On démarre déjà accéléré : à ×1 il ne se passe visiblement rien. */
+const VITESSE_DEFAUT = 4;
 
 // ---------------------------------------------------------------------------
 // Création
@@ -3744,7 +4619,7 @@ function nouvellePartie(seed, opts = {}) {
     seed,
     rngState: rng.save(),
     temps: 0,
-    vitesse: 1,
+    vitesse: VITESSE_DEFAUT,
     dernierReel: opts.maintenant ?? 0,
     nom: opts.nom || 'Convoi sans nom',
     world,
@@ -3766,6 +4641,8 @@ function nouvellePartie(seed, opts = {}) {
       recolteHeure: null,
       reste: {},
       nuit: false,
+      contrats: [],
+      bilan: { res: {}, depuis: 0 },
     },
     base: creerBase(),
     journal: [],
@@ -3777,11 +4654,17 @@ function nouvellePartie(seed, opts = {}) {
       defaites: 0,
       recolte: 0,
       creditsGagnes: 0,
+      contratsRemplis: 0,
+      sitesFouilles: 0,
+      distanceParcourue: 0,
     },
     fin: null,
   };
 
   decouvrir(world, depart.regionId, 2);
+  rafraichirPanneaux(state, rng, 0);
+  for (const col of world.colonies) etalDe(world, col, rng, 0);
+  state.rngState = rng.save();
   const log = creerLogger(state);
   log({
     type: 'debut',
@@ -3809,9 +4692,16 @@ function tick(state) {
   for (const col of state.world.colonies) tickColonie(state.world, col, rng);
   tickFactions(state.world, state.temps, log, ctx);
 
+  // Panneaux d'affichage et étals se renouvellent de loin en loin.
+  if (state.temps % 40 === 0) {
+    rafraichirPanneaux(state, rng, state.temps);
+    for (const col of state.world.colonies) etalDe(state.world, col, rng, state.temps);
+  }
+
   // Puis l'avant-poste et l'escouade.
   tickBase(state, log, ctx);
   if (!state.fin) tickSquad(state, log, ctx);
+  if (!state.fin) tickContrats(state, log, ctx);
 
   state.rngState = rng.save();
   return state;
@@ -4068,6 +4958,7 @@ function rafraichir(force) {
     case 'carte': ecran.innerHTML = ecranCarte(); break;
     case 'escouade': ecran.innerHTML = ecranEscouade(); break;
     case 'base': ecran.innerHTML = ecranBase(); break;
+    case 'contrats': ecran.innerHTML = ecranContrats(); break;
     case 'monde': ecran.innerHTML = ecranMonde(); break;
     case 'journal': ecran.innerHTML = ecranJournal(); break;
     default: ecran.innerHTML = ecranCarte();
@@ -4110,17 +5001,19 @@ function rendreBarreHaut() {
 }
 
 function rendreNav() {
+  const enCours = S.player.contrats.length;
   const tabs = [
-    ['carte', '▚', 'CARTE'],
-    ['escouade', '⌂', 'ESCOUADE'],
-    ['base', '⌸', 'BASE'],
-    ['monde', '◈', 'MONDE'],
-    ['journal', '≡', 'JOURNAL'],
+    ['carte', '▚', 'CARTE', 0],
+    ['escouade', '⌂', 'ESCOUADE', 0],
+    ['contrats', '✦', 'CONTRATS', enCours],
+    ['base', '⌸', 'BASE', S.base.file.length + S.base.fileRech.length],
+    ['monde', '◈', 'MONDE', 0],
+    ['journal', '≡', 'JOURNAL', S.nonLus],
   ];
-  $('#barre-nav').innerHTML = tabs.map(([k, g, l]) => `
+  $('#barre-nav').innerHTML = tabs.map(([k, g, l, compte]) => `
     <button data-a="onglet" data-k="${k}" aria-current="${onglet === k ? 'page' : 'false'}">
       <span class="glyphe" aria-hidden="true">${g}</span>${l}
-      ${k === 'journal' && S.nonLus ? `<span class="pastille">${S.nonLus > 99 ? '99' : S.nonLus}</span>` : ''}
+      ${compte ? `<span class="pastille ${k === 'journal' ? '' : 'calme'}">${compte > 99 ? '99' : compte}</span>` : ''}
     </button>`).join('');
 }
 
@@ -4289,6 +5182,66 @@ function etaVoyage(dest) {
   return { heures: Math.ceil(h / Math.max(0.2, v)), cases: route.length };
 }
 
+function blocFil() {
+  // Le fil : ce qui vient de se passer, sous les yeux, sans aller le chercher
+  // dans le journal. C'est ce qui manquait le plus.
+  const recentes = S.journal.filter((x) => !x.discret).slice(-7).reverse();
+  if (!recentes.length) return '';
+  return `<section class="panneau">
+    <h2 class="titre">Dernières nouvelles</h2>
+    <div class="fil">
+      ${recentes.map((x) => `<div class="fil-l ${couleurLog(x.type)}">
+        <span class="fil-t">${horloge(x.t).texte}</span>
+        <span class="fil-x">${e(x.texte)}</span>
+      </div>`).join('')}
+    </div>
+  </section>`;
+}
+
+function blocSite() {
+  const r = S.world.regions[S.player.regionId];
+  if (!r.site || !r.site.connu) return '';
+  const def = POI[r.site.type];
+  if (r.site.fouille) {
+    return `<section class="panneau">
+      <h2 class="titre">${e(def.nom)} <span class="droite">vidé</span></h2>
+      <div class="aide">Il n\u2019y a plus rien à en tirer.</div>
+    </section>`;
+  }
+  const debout = S.player.squad.filter(estDebout);
+  const ing = debout.length ? Math.max(...debout.map((c) => comp(c, 'ingenierie'))) : 0;
+  const bloque = def.reqIngenierie && ing < def.reqIngenierie;
+  return `<section class="panneau site">
+    <h2 class="titre">${e(def.nom)} <span class="droite">site non fouillé</span></h2>
+    <div class="aide">${e(def.texte)}</div>
+    <div class="ligne"><span class="k">Risque</span>
+      <span class="v">${def.danger > 0.4 ? 'élevé' : def.danger > 0.25 ? 'moyen' : 'faible'}</span></div>
+    ${def.reqIngenierie ? `<div class="ligne"><span class="k">Ingénierie requise</span>
+      <span class="v ${bloque ? 'alerte' : ''}">${def.reqIngenierie} (vous : ${Math.round(ing)})</span></div>` : ''}
+    <div class="sep"></div>
+    <button class="act primaire" data-a="fouiller-site" ${bloque || !debout.length ? 'disabled' : ''}>
+      ${bloque ? 'Hors de portée' : 'Fouiller le site'}</button>
+  </section>`;
+}
+
+function blocContratsActifs() {
+  const liste = S.player.contrats;
+  if (!liste.length) return '';
+  return `<section class="panneau">
+    <h2 class="titre">Contrats en cours <span class="droite">${liste.length}/${MAX_CONTRATS}</span></h2>
+    ${liste.map((c) => {
+    const p = progresContrat(S, c);
+    const reste = c.echeance - S.temps;
+    return `<div style="padding:4px 0">
+        <div class="ligne"><span class="k">${e(c.titre)}</span>
+          <span class="v ${reste < 48 ? 'alerte' : ''}">${dureeTexte(Math.max(0, reste))}</span></div>
+        ${jauge(p.total ? p.fait / p.total : 0, p.pret ? 'vert' : '')}
+        <div class="aide">${e(p.texte)} · à rendre à ${e(lieuValidation(S, c))}</div>
+      </div>`;
+  }).join('')}
+  </section>`;
+}
+
 function blocRegionCourante() {
   const rid = S.player.regionId;
   const r = S.world.regions[rid];
@@ -4297,19 +5250,50 @@ function blocRegionCourante() {
   const o = S.player.ordre;
   const ici = S.base.fonde && S.base.regionId === rid;
 
-  let etat = ORDRES[o.type] ? ORDRES[o.type].nom : 'Repos';
+  const ordresDispo = ['repos', 'fouille', 'mine', 'chasse', 'exploration', 'patrouille'];
+  const boutons = ordresDispo.map((k) => {
+    const prev = rendementPrevu(S, k);
+    const rien = prev && prev.total <= 0.02;
+    const chiffre = prev
+      ? (rien ? 'rien ici' : `${prev.total.toFixed(2)}/h`)
+      : k === 'exploration' ? 'carte' : k === 'patrouille' ? 'combat' : 'récup.';
+    return `<button class="act ordre" data-a="ordre" data-k="${k}"
+      aria-pressed="${o.type === k}" ${rien ? 'disabled' : ''}>
+      <span class="o-n">${e(ORDRES[k].nom)}</span>
+      <span class="o-r ${rien ? 'alerte' : ''}">${e(chiffre)}</span>
+    </button>`;
+  }).join('');
+
+  // Ce que l'ordre en cours rapporte, détaillé
+  const prevActuel = rendementPrevu(S, o.type);
+  const detailRendement = prevActuel && prevActuel.total > 0
+    ? Object.keys(prevActuel.par).sort((a, x) => prevActuel.par[x] - prevActuel.par[a])
+      .map((k) => `${COMMODITIES[k].nom.toLowerCase()} ${prevActuel.par[k].toFixed(2)}`).join(' · ')
+    : null;
+
+  let enTete = ORDRES[o.type] ? ORDRES[o.type].nom : 'Repos';
+  let progression = '';
   if (o.type === 'voyage') {
     const restant = o.route.length - o.etape;
-    etat = `En route — ${restant} région${restant > 1 ? 's' : ''} restante${restant > 1 ? 's' : ''}`;
+    const eta = etaVoyage(o.dest);
+    enTete = `En route — ${restant} région${restant > 1 ? 's' : ''}`;
+    progression = `${jauge(o.route.length ? o.etape / o.route.length : 0, 'cyan')}
+      <div class="aide">Vers ${e(nomRegion(S.world, o.dest))}${eta ? ` · encore ${dureeTexte(eta.heures)}` : ''}</div>`;
   }
 
-  const rendements = Object.keys(b.yields)
-    .map((k) => `${COMMODITIES[k].nom.toLowerCase()} ${b.yields[k].toFixed(2)}`)
-    .join(' · ');
-
-  const ordresDispo = ['repos', 'fouille', 'mine', 'chasse', 'patrouille'];
-
   return `
+  <section class="panneau">
+    <h2 class="titre">Ordre en cours <span class="droite">${e(enTete)}</span></h2>
+    ${progression}
+    <div class="grille-ordres">${boutons}
+      <button class="act ordre" data-a="modale" data-m="entrainement">
+        <span class="o-n">Entraîner</span><span class="o-r">xp</span></button>
+    </div>
+    <div class="aide" style="margin-top:6px">${e(ORDRES[o.type] ? ORDRES[o.type].desc : '')}</div>
+    ${detailRendement ? `<div class="aide" style="color:var(--texte-2)">Ici : ${e(detailRendement)} par heure de travail.</div>` : ''}
+    ${S.player.recolteHeure ? `<div class="aide" style="color:var(--vert)">Dernière heure : ${e(S.player.recolteHeure)}</div>` : ''}
+  </section>
+
   <section class="panneau">
     <h2 class="titre">Position <span class="droite">${e(nomRegion(S.world, rid))}</span></h2>
     <div class="ligne"><span class="k">Biome</span><span class="v">${e(b.nom)}</span></div>
@@ -4319,28 +5303,13 @@ function blocRegionCourante() {
     <div class="ligne"><span class="k">Aléa</span><span class="v">${e(b.hazard.nom)}</span></div>
     ${r.controle ? `<div class="ligne"><span class="k">Territoire</span>
       <span class="v" style="color:${couleurFaction(r.controle)}">${e(FACTIONS[r.controle].nom)}</span></div>` : ''}
-    <div class="sep"></div>
-    <div class="titre" style="margin-bottom:3px">Ressources sur place · par heure de travail</div>
-    <div class="aide">${e(rendements)}</div>
   </section>
 
-  <section class="panneau">
-    <h2 class="titre">Ordre en cours <span class="droite">${e(etat)}</span></h2>
-    <div class="grille3">
-      ${ordresDispo.map((k) => `<button class="act mini" data-a="ordre" data-k="${k}"
-        aria-pressed="${o.type === k}">${e(ORDRES[k].nom)}</button>`).join('')}
-      <button class="act mini" data-a="modale" data-m="entrainement">Entraîner</button>
-    </div>
-    <div class="aide" style="margin-top:6px">${e(ORDRES[o.type] ? ORDRES[o.type].desc : '')}</div>
-    ${S.player.recolteHeure ? `<div class="aide" style="color:var(--vert)">Dernière heure : ${e(S.player.recolteHeure)}</div>` : ''}
-  </section>
-
+  ${blocSite()}
   ${col ? blocColonie(col) : ''}
   ${ici ? `<section class="panneau">
       <h2 class="titre">Avant-poste</h2>
-      <div class="rangee">
-        <button class="act mini" data-a="modale" data-m="transfert">Transférer des ressources</button>
-      </div>
+      <button class="act" data-a="modale" data-m="transfert">Transférer des ressources</button>
     </section>` : ''}`;
 }
 
@@ -4358,8 +5327,10 @@ function blocColonie(col) {
       <div class="ligne"><span class="k">Réputation</span><span class="v"><span class="puce ${cls}">${repu > 0 ? '+' : ''}${n(repu)}</span></span></div>
     </div>
     <div class="sep"></div>
-    <div class="rangee">
+    <div class="grille2" style="gap:5px">
       <button class="act mini primaire" data-a="modale" data-m="marche">Marché</button>
+      <button class="act mini primaire" data-a="modale" data-m="etal">Équipement</button>
+      <button class="act mini" data-a="modale" data-m="panneau">Contrats${col.contrats && col.contrats.length ? ` (${col.contrats.length})` : ''}</button>
       <button class="act mini" data-a="modale" data-m="recrutement">Recruter</button>
     </div>
   </section>`;
@@ -4416,7 +5387,9 @@ function ecranCarte() {
     `<span><i style="background:${f.couleur}"></i>${e(FACTIONS[f.key].court)}</span>`).join('')}
   </div>
   ${blocSelection()}
-  ${blocRegionCourante()}`;
+  ${blocRegionCourante()}
+  ${blocContratsActifs()}
+  ${blocFil()}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -4464,6 +5437,11 @@ function ficheMembre(c) {
         <div><span class="aide">Moral</span>${jauge(c.moral / 100, c.moral < 30 ? 'rouge' : 'vert')}</div>
         <div><span class="aide">Saignement</span>${jauge(c.sang / 100, c.sang > 5 ? 'rouge' : '')}</div>
       </div>
+      <div class="titre">Traits</div>
+      <div class="traits">${(c.traits || []).map((t) => `<span class="puce ${TRAITS[t].malus ? 'mal' : 'ok'}"
+        title="${e(TRAITS[t].desc)}">${e(TRAITS[t].nom)}</span>`).join(' ') || '<span class="aide">aucun</span>'}</div>
+      <div class="aide">${(c.traits || []).map((t) => e(TRAITS[t].desc)).join(' · ')}</div>
+      <div class="sep"></div>
       <div class="titre">Blessures</div>
       <div class="membres">${membres}</div>
       <div class="sep"></div>
@@ -4662,6 +5640,67 @@ function ecranBase() {
 }
 
 // ---------------------------------------------------------------------------
+// Écran CONTRATS
+// ---------------------------------------------------------------------------
+
+function ligneContrat(c, enCours) {
+  const p = enCours ? progresContrat(S, c) : null;
+  const reste = enCours ? c.echeance - S.temps : c.duree;
+  const donneur = colonieParId(S.world, c.colonieId);
+  return `<div class="contrat">
+    <div class="ligne">
+      <span class="k"><span class="puce" style="border-color:${couleurFaction(c.faction)};color:${couleurFaction(c.faction)}">${e(CONTRATS[c.type].nom)}</span></span>
+      <span class="v ambre">${n(c.recompense)} cr · rép +${c.reputation}</span>
+    </div>
+    <div class="contrat-t">${e(c.titre)}</div>
+    ${p ? `${jauge(p.total ? p.fait / p.total : 0, p.pret ? 'vert' : '')}
+      <div class="aide">${e(p.texte)} · à rendre à ${e(lieuValidation(S, c))}
+        · <span class="${reste < 48 ? 'alerte' : ''}">${dureeTexte(Math.max(0, reste))} restantes</span></div>`
+    : `<div class="aide">Commanditaire : ${e(donneur ? donneur.nom : '—')} · ${dureeTexte(reste)} accordées</div>`}
+    ${enCours
+    ? `<button class="act mini danger" data-a="abandonner" data-k="${e(c.id)}">Abandonner</button>`
+    : `<button class="act mini primaire" data-a="accepter" data-k="${e(c.id)}">Accepter</button>`}
+  </div>`;
+}
+
+function ecranContrats() {
+  const enCours = S.player.contrats;
+  const col = colonieDe(S.world, S.player.regionId);
+  const dispo = col && col.contrats ? col.contrats : [];
+
+  return `
+  <section class="panneau">
+    <h2 class="titre">En cours <span class="droite">${enCours.length} / ${MAX_CONTRATS}</span></h2>
+    ${enCours.length
+    ? enCours.map((c) => ligneContrat(c, true)).join('')
+    : `<div class="aide">Aucun contrat. Les panneaux d’affichage sont dans les villes —
+        rendez-vous dans une ville et ouvrez « Contrats ».</div>`}
+  </section>
+
+  <section class="panneau">
+    <h2 class="titre">Panneau d’affichage
+      <span class="droite">${col ? e(col.nom) : 'hors ville'}</span></h2>
+    ${col
+    ? (dispo.length
+      ? dispo.map((c) => ligneContrat(c, false)).join('')
+      : '<div class="aide">Rien d’affiché pour le moment. Les offres se renouvellent.</div>')
+    : '<div class="aide">Il faut être dans une ville pour consulter un panneau.</div>'}
+  </section>
+
+  <section class="panneau">
+    <h2 class="titre">Comment ça marche</h2>
+    <div class="aide">
+      <b>Collecte</b> — rassembler la marchandise, puis revenir dans la ville commanditaire.<br>
+      <b>Livraison</b> — le colis est chargé dans le sac à l’acceptation ; il faut le porter à destination.<br>
+      <b>Prime</b> — remporter des combats contre la faction visée, où que ce soit.<br>
+      <b>Reconnaissance</b> — découvrir le secteur, puis revenir toucher la prime.<br><br>
+      Tout se valide tout seul, y compris pendant votre absence. Une échéance dépassée
+      coûte de la réputation.
+    </div>
+  </section>`;
+}
+
+// ---------------------------------------------------------------------------
 // Écran MONDE
 // ---------------------------------------------------------------------------
 
@@ -4702,8 +5741,25 @@ function ecranMonde() {
         <span class="v" style="color:${couleurFaction(c.faction)}">${e(FACTIONS[c.faction].court)} · ${n(c.pop)} hab.</span></div>`).join('')
     : '<div class="aide">Aucune ville repérée.</div>';
 
+  const st = S.stats;
+  const sites = S.world.regions.filter((r) => r.site).length;
+  const sitesVus = S.world.regions.filter((r) => r.site && r.site.connu).length;
+  const chiffres = [
+    ['Heures vécues', n(S.temps)],
+    ['Combats', `${n(st.combats)} (${n(st.combatsGagnes)} gagnés)`],
+    ['Défaites', n(st.defaites)],
+    ['Ressources récoltées', n(st.recolte)],
+    ['Contrats remplis', n(st.contratsRemplis || 0)],
+    ['Sites fouillés', `${n(st.sitesFouilles || 0)} / ${sitesVus} repérés (${sites} en tout)`],
+    ['Carte levée', `${n(S.world.regions.filter((r) => r.decouvert).length)} / ${n(S.world.regions.length)}`],
+    ['Villes connues', `${n(S.world.colonies.filter((c) => S.world.regions[c.regionId].decouvert).length)} / ${n(S.world.colonies.length)}`],
+  ];
+
   return `
   <section class="panneau"><h2 class="titre">Rapport de puissance</h2>${factionsHtml}</section>
+  <section class="panneau"><h2 class="titre">Chiffres</h2>
+    ${chiffres.map(([k, v]) => `<div class="ligne"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('')}
+  </section>
   <section class="panneau"><h2 class="titre">Guerres en cours</h2>${guerres}</section>
   <section class="panneau"><h2 class="titre">Colonnes en campagne</h2>${armees}</section>
   <section class="panneau"><h2 class="titre">Villes connues <span class="droite">${connues.length}/${S.world.colonies.length}</span></h2>${villes}</section>`;
@@ -4755,6 +5811,8 @@ function contenuModale() {
   const fermer = '<button class="act mini" data-a="fermer" style="margin-top:10px">Fermer</button>';
   switch (modale.m) {
     case 'marche': return modaleMarche() + fermer;
+    case 'etal': return modaleEtal() + fermer;
+    case 'panneau': return modalePanneau() + fermer;
     case 'transfert': return modaleTransfert() + fermer;
     case 'equipement': return modaleEquipement() + fermer;
     case 'entrainement': return modaleEntrainement() + fermer;
@@ -4788,6 +5846,74 @@ function modaleMarche() {
   <div class="aide">Négociateur : ${negoc ? `${e(negoc.nom)} (commerce ${hab.toFixed(0)})` : 'aucun'}.
     Une bonne réputation et un bon commerçant resserrent la marge.</div>
   <div class="sep"></div>${lignes}`;
+}
+
+function modaleEtal() {
+  const col = colonieDe(S.world, S.player.regionId);
+  if (!col) return '<div class="aide">Pas d’armurier ici.</div>';
+  const etal = col.etal;
+  if (!etal || !etal.items.length) return '<div class="aide">L’étal est vide aujourd’hui.</div>';
+
+  const negoc = meilleurCommercant(S.player.squad);
+  const hab = negoc ? comp(negoc, 'commerce') : 0;
+  const repu = S.player.reputation[col.faction] || 0;
+
+  const decrire = (it) => {
+    if (it.type === 'arme') {
+      return `dégâts ${it.degats} · pénétration ${(it.pen * 100).toFixed(0)} % · ${it.poids} kg`
+        + (it.portee === 'tir' ? ' · à distance' : ' · au corps à corps')
+        + (it.reqForce ? ` · force ${it.reqForce}` : '');
+    }
+    if (it.type === 'armure') {
+      return `armure ${it.armure} · ${it.poids} kg`
+        + (it.bonus ? ` · ${Object.keys(it.bonus).map((b) => `+${it.bonus[b]} ${SKILLS[b] || b}`).join(', ')}` : '');
+    }
+    return Object.keys(it.bonus || {}).map((b) => `+${it.bonus[b]} ${SKILLS[b] || b}`).join(', ');
+  };
+
+  const achats = etal.items.map((ligne, i) => {
+    const it = ITEMS[ligne.key];
+    const p = prixItem(col, ligne.key, ligne.coef, hab, repu);
+    const trop = S.player.credits < p.achat;
+    return `<div class="article">
+      <div class="ligne"><span class="k">${e(it.nom)}</span>
+        <span class="v ambre">${n(p.achat)} cr${ligne.qte > 1 ? ` ×${ligne.qte}` : ''}</span></div>
+      <div class="aide">${e(decrire(it))}</div>
+      <button class="act mini ${trop ? '' : 'primaire'}" data-a="acheter-item" data-i="${i}"
+        ${ligne.qte < 1 || trop ? 'disabled' : ''}>${ligne.qte < 1 ? 'Épuisé' : trop ? 'Trop cher' : 'Acheter'}</button>
+    </div>`;
+  }).join('');
+
+  const reserve = S.player.objets.map((key, i) => {
+    const it = ITEMS[key];
+    const p = prixItem(col, key, 1, hab, repu);
+    return `<div class="marche-l">
+      <span class="nm">${e(it.nom)}<br><span class="aide">${e(decrire(it))}</span></span>
+      <span class="px">${n(p.vente)} cr</span>
+      <button class="act" data-a="vendre-item" data-i="${i}">Vendre</button>
+    </div>`;
+  }).join('') || '<div class="aide">Rien à revendre.</div>';
+
+  return `<h2 class="titre">Armurier de ${e(col.nom)}
+    <span class="droite">${n(S.player.credits)} cr</span></h2>
+  <div class="aide">Le stock se renouvelle. Ce que vous ne prenez pas aujourd’hui ne sera
+    peut-être plus là demain.</div>
+  <div class="sep"></div>
+  ${achats}
+  <div class="sep"></div>
+  <div class="titre">Revendre votre réserve</div>
+  ${reserve}`;
+}
+
+function modalePanneau() {
+  const col = colonieDe(S.world, S.player.regionId);
+  if (!col) return '<div class="aide">Aucun panneau ici.</div>';
+  const liste = col.contrats || [];
+  return `<h2 class="titre">Panneau de ${e(col.nom)}
+    <span class="droite">${S.player.contrats.length}/${MAX_CONTRATS} en cours</span></h2>
+  ${liste.length
+    ? liste.map((c) => ligneContrat(c, false)).join('')
+    : '<div class="aide">Rien d’affiché. Repassez plus tard.</div>'}`;
 }
 
 function modaleTransfert() {
@@ -4971,6 +6097,49 @@ function surClic(ev) {
       rafraichir(true);
       break;
 
+    case 'fouiller-site': {
+      const r = ACTIONS.fouillerSite();
+      if (!r.ok) toast(r.motif, true);
+      else if (r.combat && !r.gagne) toast('Le site était gardé. Repli.', true);
+      else toast('Site fouillé.');
+      rafraichir(true);
+      break;
+    }
+
+    case 'accepter': {
+      const col = colonieDe(S.world, S.player.regionId);
+      const r = accepter(S, col, el.dataset.k, logger());
+      toast(r.ok ? 'Contrat accepté.' : r.motif, !r.ok);
+      if (r.ok && modale) { modale = null; rendreModale(); }
+      rafraichir(true);
+      break;
+    }
+
+    case 'abandonner': {
+      const r = abandonner(S, el.dataset.k, logger());
+      toast(r.ok ? 'Contrat abandonné.' : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
+    case 'acheter-item': {
+      const col = colonieDe(S.world, S.player.regionId);
+      const r = acheterItem(S, col, Number(el.dataset.i));
+      toast(r.ok ? `${r.nom} acheté pour ${r.prix} cr.` : r.motif, !r.ok);
+      rendreModale();
+      rafraichir(true);
+      break;
+    }
+
+    case 'vendre-item': {
+      const col = colonieDe(S.world, S.player.regionId);
+      const r = vendreItem(S, col, Number(el.dataset.i));
+      toast(r.ok ? `${r.nom} vendu ${r.prix} cr.` : r.motif, !r.ok);
+      rendreModale();
+      rafraichir(true);
+      break;
+    }
+
     case 'fonder': {
       const r = fonderBase(S, logger());
       toast(r.ok ? 'Avant-poste fondé.' : r.motif, !r.ok);
@@ -5099,6 +6268,10 @@ function surClic(ev) {
     default:
       break;
   }
+
+  // Un clic change l'état : on le grave tout de suite plutôt que d'attendre
+  // la sauvegarde automatique, qui peut arriver après la fermeture de l'onglet.
+  if (S && ACTIONS.sauver) ACTIONS.sauver();
 }
 
 function ouvrirOnglet(k) {
@@ -5172,6 +6345,15 @@ const API = {
     state = null;
     attacherEtat(null);
     rendreAccueil(false);
+  },
+
+  /** Fouille du site de la région courante : tirage, donc RNG de la partie. */
+  fouillerSite() {
+    const rng = new Rng(state.rngState);
+    const res = fouillerSite(state, rng, creerLogger(state));
+    state.rngState = rng.save();
+    sauver();
+    return res;
   },
 
   /** Engagement d'un mercenaire dans une ville. */
