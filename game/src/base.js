@@ -130,7 +130,25 @@ export function reajusterPostes(base) {
   }
 }
 
-export const COUT_FONDATION = { ferraille: 120, polymere: 40, composant: 5 };
+/**
+ * Ce qu'il faut pour planter le premier piquet.
+ *
+ * Il y avait cinq composants là-dedans, et c'est ce détail qui rendait tout le
+ * jeu bancal : les composants ne se ramassent presque nulle part, il faut donc
+ * les acheter, donc avoir des crédits, donc en gagner — alors que les trois
+ * quarts des recettes d'une escouade itinérante partent en nourriture, et que
+ * la seule façon de produire sa nourriture est justement d'avoir un
+ * avant-poste. On ne pouvait pas s'offrir la chose qui réglait le problème
+ * qu'on avait, et le banc l'a chiffré : zéro avant-poste fondé sur vingt-quatre
+ * parties de quatre mille heures.
+ *
+ * Le premier campement se paie donc en ferraille, et en ferraille seulement :
+ * c'est ce qu'une escouade de fouilleurs a toujours dans le dos. Le polymère et
+ * les composants restent indispensables à tout ce qui vient après — hydroponie,
+ * atelier, antenne, infirmerie — et c'est là qu'ils ont un sens : ils gardent le
+ * développement, pas la survie.
+ */
+export const COUT_FONDATION = { ferraille: 110 };
 
 export function niveau(base, key) {
   return base.batiments[key] || 0;

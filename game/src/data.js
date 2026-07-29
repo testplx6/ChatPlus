@@ -250,7 +250,10 @@ export const BUILDINGS = {
   hydroponie: {
     nom: 'Hydroponie',
     desc: 'Transforme la biomasse en rations comestibles.',
-    cout: { ferraille: 50, polymere: 40 },
+    // Volontairement bon marché au premier niveau : c'est le bâtiment qui fait
+    // passer une escouade de « acheter à manger » à « en produire », et le
+    // laisser hors de portée revenait à laisser tout le jeu hors de portée.
+    cout: { ferraille: 45, polymere: 25 },
     coutMul: 1.6,
     heures: 6,
     tempsMul: 1.5,

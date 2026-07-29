@@ -365,6 +365,10 @@ function jouerPrincipal(state, g, memo) {
     if (!SANS.has('base') && !state.base.fonde && state.temps > 300) {
       for (const k of Object.keys(COUT_FONDATION)) reserves.add(k);
     }
+    // Ni les matériaux que les chantiers de la maison réclament.
+    if (!SANS.has('base') && state.base.fonde) {
+      for (const k of ['ferraille', 'polymere', 'composant']) reserves.add(k);
+    }
     const ordreEnCours = p.allegeance && p.allegeance.ordre;
     if (ordreEnCours && ordreEnCours.ressource) reserves.add(ordreEnCours.ressource);
     for (const k of COMMODITY_KEYS) {
@@ -499,6 +503,25 @@ function jouerPrincipal(state, g, memo) {
   if (memo.routeFondation != null && !state.base.fonde
       && g.ordre.type === 'voyage' && g.ordre.dest === memo.routeFondation) {
     return;
+  }
+
+  // --- Rentrer chez soi. Un avant-poste qu'on ne réapprovisionne jamais reste
+  // un piquet planté dans le sable : il ne bâtit rien, ne loge personne, ne
+  // produit rien. Tant qu'il a faim de matériaux, il passe avant le marché.
+  const base = state.base;
+  if (!SANS.has('base') && base.fonde && g.regionId !== base.regionId) {
+    const chargeUtile = ['ferraille', 'polymere', 'minerai', 'composant', 'alliage']
+      .reduce((a, k) => a + (g.inventaire[k] || 0), 0);
+    const chantierEnAttente = base.file.length > 0 || BUILDING_KEYS.some(
+      (k) => nivBat(base, k) === 0 && ['generateur', 'entrepot', 'baraquement', 'hydroponie'].includes(k)
+    );
+    if ((charge > 0.7 || chantierEnAttente) && chargeUtile > 40 && rations > 40
+        && distance(g.regionId, base.regionId) <= 6) {
+      if (!(g.ordre.type === 'voyage' && g.ordre.dest === base.regionId)) {
+        donnerOrdre(state, { type: 'voyage', dest: base.regionId }, g);
+      }
+      return;
+    }
   }
 
   // Sac plein, ou réserves au plus bas et de quoi payer : on rentre en ville.

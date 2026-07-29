@@ -96,7 +96,44 @@ code : à 130 le test échouait une fois sur trois sur une machine chargée, et 
 garde-fou qui crie sans motif est pire qu'un garde-fou absent. Sans cette trace, relever le budget deviendrait un moyen commode de ne
 jamais voir une régression.
 
-### Ce que la grande carte a coûté, et qui n'est pas réglé
+### Le nomadisme marche. C'est l'avant-poste qui ne paie pas.
+
+Mesure à quarante-huit parties, le même code des deux côtés, `SANS=base` pour
+couper le comportement d'avant-poste du bot :
+
+    nomade pur          28/48 survivants, 831 cr
+    avec avant-poste    26/48 survivants, 273 cr
+
+Le nomade survit plus d'une fois sur deux et finit trois fois plus riche. La
+voie itinérante n'a donc rien de cassé — c'est la voie sédentaire qui coûte
+plus qu'elle ne rend. Sur quarante-huit parties le bot fonde neuf camps, et ces
+neuf camps atteignent en moyenne **un niveau de bâtiment et zéro habitant**.
+La chaîne est trop longue : générateur, puis carburant acheté, puis hydroponie,
+puis population, puis métiers. Chaque maillon demande un investissement, et une
+escouade qui survit au jour le jour n'a pas de marge à investir.
+
+Conséquence à écrire sans détour : **treize bâtiments et treize métiers de
+l'avant-poste sont, en pratique, du contenu mort.** Pas parce que le nomadisme
+les rendrait inutiles, mais parce que rien ne rend le premier camp rentable
+assez tôt pour qu'on ait envie du deuxième.
+
+Une réserve d'honnêteté sur ce chiffre : le bot du banc est un joueur médiocre.
+Il vend tout au premier étal venu, voyage mal, perd beaucoup de combats. Un
+humain qui *vise* un camp y arriverait bien plus vite. « Neuf avant-postes sur
+quarante-huit » mesure le bot autant que le jeu.
+
+Premier pas fait dans cette direction, et mesuré : le campement se paie
+désormais en ferraille seule. Il y avait cinq composants dans le coût de
+fondation, et les composants ne se ramassent presque nulle part — il fallait
+donc les acheter, donc avoir des crédits, donc en gagner, alors que les trois
+quarts des recettes partent en nourriture et que la seule façon de produire sa
+nourriture est justement d'avoir un avant-poste. On ne pouvait pas s'offrir la
+chose qui réglait le problème qu'on avait. Les fondations passent de 0 à 9 sur
+quarante-huit ; ça ne suffit pas, mais le verrou de marché sur la survie a
+sauté. Le polymère et les composants gardent maintenant le développement
+— hydroponie, atelier, antenne — et non plus la survie.
+
+### Ce que la grande carte a coûté
 
 Le banc tient les comptes du joueur depuis peu, et ils sont sans appel. Par
 partie de 4 000 heures, sur la carte de 24×18 :
@@ -121,18 +158,9 @@ Trois hypothèses ont été testées et écartées :
 - **le coût de fondation de l'avant-poste** — le diviser par quatre ne fait
   passer les fondations que de 0 à 3 sur vingt-quatre parties.
 
-Ce qui reste, et qui n'est pas un réglage mais une décision de conception : une
-escouade itinérante n'a aucune production de vivres à elle. Le jeu a la réponse
-— l'avant-poste, l'hydroponie, la cantine — mais elle demande un capital
-d'environ sept cents crédits que le bot n'accumule jamais, parce que les trois
-quarts de ses recettes partent en nourriture. On ne peut pas s'offrir la chose
-qui réglerait le problème qu'on a.
-
-Conséquence directe : **treize bâtiments et treize métiers de l'avant-poste ne
-sont éprouvés qu'à l'unité, jamais en partie.** Le bot sait désormais fonder,
-bâtir dans l'ordre, staffer les postes et se ravitailler chez lui
-(`SANS=base` coupe ce comportement pour comparer) — il n'en a simplement pas
-les moyens.
+Ce qui reste n'est pas un réglage mais une décision de conception, traitée
+juste au-dessus : le nomadisme est une voie viable, l'avant-poste n'en est pas
+encore une.
 
 Le banc d'équilibrage est le plus utile des trois : c'est lui qui a montré que
 l'économie alimentaire des colonies n'avait jamais été à l'équilibre, que les
