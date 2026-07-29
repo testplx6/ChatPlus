@@ -1,14 +1,27 @@
 // Banc d'équilibrage : un bot « joueur raisonnable » joue plusieurs parties
 // complètes et on regarde s'il survit, progresse, et finit par tenir debout.
 // Ce n'est pas un test de régression stricte — c'est un thermomètre.
+//
+// Deux interrupteurs servent à isoler un système à la fois, ce qui est la seule
+// façon d'attribuer un déséquilibre à sa cause plutôt qu'à une intuition :
+//
+//   SANS=detach,contrats,livraison   coupe ces comportements du bot
+//   VAGABOND=1                       le bot voyage autant, mais sans contrat
+//
+// Le mode vagabond est le témoin : il sépare ce que coûte la route de ce que
+// coûtent les contrats. C'est lui qui a montré que la route prélevait 55 % du
+// revenu et que les contrats n'y étaient pour rien.
 
 import { nouvellePartie, tick } from '../src/sim.js';
-import { groupeActif } from '../src/groupes.js';
+import { Rng } from '../src/rng.js';
+import {
+  groupeActif, groupes, scinder, fusionner, maxGroupes, tousLesMembres,
+} from '../src/groupes.js';
 import { donnerOrdre } from '../src/squad.js';
 import { estVivant, estDebout, comp, pvTotal } from '../src/characters.js';
 import { colonieDe, colonieParId, distance } from '../src/world.js';
 import {
-  acheter, vendre, poidsInventaire, capacitePortage, acheterItem, prixItem,
+  acheter, vendre, poidsInventaire, capacitePortage, acheterItem, prixItem, prixJoueur,
 } from '../src/economy.js';
 import { accepter, progres as progresContrat, MAX_CONTRATS } from '../src/contrats.js';
 import {
@@ -18,8 +31,18 @@ import { ITEMS } from '../src/data.js';
 import { saison } from '../src/climat.js';
 import { COMMODITY_KEYS, BIOMES } from '../src/data.js';
 
+const TRACE = { voyage: 0, repos: 0, travail: 0, defaites: 0, crPilles: 0 };
 const HEURES = Number(process.argv[2]) || 4000;
-const PARTIES = Number(process.argv[3]) || 8;
+// Trente parties par défaut, pas huit. À huit, l'écart-type sur un taux de
+// survie de 85 % vaut douze points : on lit du bruit et on croit lire un
+// réglage. Trente parties coûtent dix secondes.
+const PARTIES = Number(process.argv[3]) || 30;
+// Interrupteurs d'isolement : c'est en coupant un système à la fois qu'on
+// trouve lequel déséquilibre le reste. `SANS=detach,contrats,livraison`
+const SANS = new Set((process.env.SANS || '').split(',').filter(Boolean));
+// Mode témoin : le bot bouge autant qu'un joueur de contrats, mais sans en
+// prendre aucun. Il isole le coût du voyage lui-même du prix des contrats.
+const VAGABOND = process.env.VAGABOND === '1';
 
 /** Où trouver de quoi manger : on note les régions par rendement en nourriture. */
 function scoreNourriture(state, i) {
@@ -28,20 +51,45 @@ function scoreNourriture(state, i) {
   return (y.biomasse || 0.18) * r.richesse * (1 - r.fouille);
 }
 
-function colonieLaPlusProche(state) {
+function colonieLaPlusProche(state, g) {
   let best = null;
   let bestD = Infinity;
   for (const c of state.world.colonies) {
     if (c.ruine) continue; // une ville morte ne vend rien
-    const d = distance(groupeActif(state).regionId, c.regionId);
+    const d = distance(g.regionId, c.regionId);
     if (d < bestD) { bestD = d; best = c; }
   }
   return best;
 }
 
-function jouer(state) {
+/** Ce que le groupe doit aller chercher pour honorer ce qu'il a signé. */
+function destinationContrat(state, g) {
+  for (const c of state.player.contrats) {
+    const av = progresContrat(state, c);
+    if (c.type === 'collecte') {
+      // Prêt : on rapporte. Pas prêt : on reste où on récolte.
+      if (!av.pret) continue;
+      const donneur = colonieParId(state.world, c.colonieId);
+      if (donneur && !donneur.ruine && donneur.regionId !== g.regionId) return donneur.regionId;
+    } else if (c.type === 'livraison') {
+      const dest = colonieParId(state.world, c.destId);
+      if (!dest || dest.ruine) continue;
+      // On ne part livrer que si c'est bien nous qui portons le colis.
+      if ((g.inventaire[c.ressource] || 0) < c.quantite) continue;
+      if (dest.regionId !== g.regionId) return dest.regionId;
+    } else if (c.type === 'reconnaissance') {
+      if (!state.world.regions[c.regionId].decouvert) return c.regionId;
+    }
+  }
+  return null;
+}
+
+/**
+ * Le groupe principal : celui qui commerce, s'équipe et prend le travail.
+ * C'est lui qui porte la partie.
+ */
+function jouerPrincipal(state, g, memo) {
   const p = state.player;
-  const g = groupeActif(state);
   const cap = capacitePortage(state, g);
   const charge = poidsInventaire(g.inventaire) / Math.max(1, cap);
   const rations = g.inventaire.rations || 0;
@@ -58,39 +106,29 @@ function jouer(state) {
     for (const k of COMMODITY_KEYS) {
       if (k === 'rations' || k === 'medkit' || reserves.has(k)) continue;
       const q = g.inventaire[k] || 0;
-      if (q > 0) vendre(state, colIci, k, q);
+      if (q > 0) vendre(state, colIci, k, q, g);
     }
     // On voit venir la saison : on ne part pas en hiver avec trois boîtes.
     const cible = saison(state.temps).key === 'pluies' || saison(state.temps).key === 'accalmie' ? 190 : 120;
-    if (rations < cible && p.credits > 200) acheter(state, colIci, 'rations', cible - rations);
-    if ((g.inventaire.medkit || 0) < 3 && p.credits > 400) acheter(state, colIci, 'medkit', 2);
+    if (rations < cible && p.credits > 200) acheter(state, colIci, 'rations', cible - rations, g);
+    if ((g.inventaire.medkit || 0) < 3 && p.credits > 400) acheter(state, colIci, 'medkit', 2, g);
 
-    // Achat d'équipement : on remplace ce qui est moins bon que l'étal.
-    if (colIci.etal && p.credits > 900) {
-      colIci.etal.items.forEach((ligne, i) => {
-        if (ligne.qte < 1 || p.credits < 900) return;
-        const it = ITEMS[ligne.key];
-        const pire = g.membres.find((c) => {
-          if (!estVivant(c)) return false;
-          if (it.type === 'arme') {
-            const a = c.equip.arme && ITEMS[c.equip.arme];
-            return !a || a.degats < it.degats;
-          }
-          if (it.type === 'armure') {
-            const a = c.equip.armure && ITEMS[c.equip.armure];
-            return !a || a.armure < it.armure;
-          }
-          return false;
-        });
-        if (!pire) return;
-        if (acheterItem(state, colIci, i).ok) {
-          const key = g.objets.pop();
-          const slot = ITEMS[key].type === 'arme' ? 'arme' : 'armure';
-          const ancien = pire.equip[slot];
-          pire.equip[slot] = key;
-          if (ancien) g.objets.push(ancien);
-        }
-      });
+    // Compléter une collecte au marché plutôt que d'attendre que le biome la
+    // donne. Un joueur qui a compris le jeu compare d'abord : payer 900 cr de
+    // minerai pour un contrat à 800, c'est travailler à perte avec le
+    // sentiment d'avancer.
+    for (const c of p.contrats) {
+      if (c.type !== 'collecte') continue;
+      const manque = c.quantite - Math.floor(g.inventaire[c.ressource] || 0);
+      if (manque <= 0) continue;
+      if ((colIci.stock[c.ressource] || 0) < manque) continue;
+      const negoc = g.membres.filter(estVivant)
+        .reduce((a, b) => (!a || comp(b, 'commerce') > comp(a, 'commerce') ? b : a), null);
+      const unitaire = prixJoueur(colIci, c.ressource, negoc ? comp(negoc, 'commerce') : 0,
+        p.reputation[colIci.faction] || 0).achat;
+      const cout = unitaire * manque;
+      if (cout > c.recompense * 0.55 || p.credits < cout * 1.4) continue;
+      acheter(state, colIci, c.ressource, manque, g);
     }
 
     // S'engager dès qu'une faction accepte : la solde et la remise valent
@@ -99,10 +137,24 @@ function jouer(state) {
       sEngager(state, colIci.faction, () => {});
     }
 
-    // On prend ce qu'on peut tenir : collecte et prime se remplissent en jouant.
-    if (colIci.contrats && p.contrats.length < MAX_CONTRATS - 1) {
-      const faisable = colIci.contrats.find((c) => c.type === 'collecte' || c.type === 'prime');
-      if (faisable) accepter(state, colIci, faisable.id, () => {});
+    // On prend ce qu'on peut tenir. La livraison est le contrat le mieux payé
+    // du panneau : la refuser par prudence, c'est jouer à moitié.
+    if (colIci.contrats && !SANS.has('contrats') && p.contrats.length < MAX_CONTRATS - 1) {
+      // Un joueur qui vise un engagement courtise une faction plutôt que de
+      // rendre service à tout le monde : l'estime se dilue et s'émousse.
+      const courtisee = memo.courtisee || (memo.courtisee = colIci.faction);
+      const faisables = colIci.contrats.filter((c) => {
+        if (c.type === 'livraison') {
+          if (SANS.has('livraison')) return false;
+          const d = colonieParId(state.world, c.destId);
+          return d && !d.ruine && distance(d.regionId, g.regionId) <= 6;
+        }
+        return c.type === 'collecte' || c.type === 'prime' || c.type === 'reconnaissance';
+      });
+      // On préfère toujours ce qui fait monter chez celle qu'on courtise.
+      faisables.sort((a, b) => (b.faction === courtisee ? 1 : 0) - (a.faction === courtisee ? 1 : 0)
+        || (b.reputation || 0) - (a.reputation || 0));
+      if (faisables.length) accepter(state, colIci, faisables[0].id, () => {}, g);
     }
   }
 
@@ -112,7 +164,7 @@ function jouer(state) {
   const vivants = g.membres.filter(estVivant);
   const mal = vivants.filter((c) => !estDebout(c) || pvTotal(c).pct < 0.6).length;
   if (mal > 0 && rations > 50) {
-    if (g.ordre.type !== 'repos') donnerOrdre(state, { type: 'repos' });
+    if (g.ordre.type !== 'repos') donnerOrdre(state, { type: 'repos' }, g);
     return;
   }
 
@@ -123,12 +175,12 @@ function jouer(state) {
     if (o.type === 'ravitaillement' && av && av.fait >= o.quantite) {
       const col = colonieParId(state.world, o.colonieId);
       if (col && !col.ruine && col.regionId !== g.regionId) {
-        donnerOrdre(state, { type: 'voyage', dest: col.regionId });
+        donnerOrdre(state, { type: 'voyage', dest: col.regionId }, g);
         return;
       }
     }
     if (o.type === 'reconnaissance' && !state.world.regions[o.regionId].decouvert) {
-      donnerOrdre(state, { type: 'voyage', dest: o.regionId });
+      donnerOrdre(state, { type: 'voyage', dest: o.regionId }, g);
       return;
     }
   }
@@ -136,11 +188,27 @@ function jouer(state) {
   // Sac plein, ou réserves au plus bas et de quoi payer : on rentre en ville.
   const besoinVille = charge > 0.85 || (rations < 45 && p.credits > 300);
   if (besoinVille && !colIci) {
-    const col = colonieLaPlusProche(state);
-    if (col && g.ordre.type !== 'voyage') donnerOrdre(state, { type: 'voyage', dest: col.regionId });
+    const col = colonieLaPlusProche(state, g);
+    if (col && g.ordre.type !== 'voyage') donnerOrdre(state, { type: 'voyage', dest: col.regionId }, g);
     return;
   }
   if (g.ordre.type === 'voyage') return;
+
+  // Témoin : on erre sans raison, pour mesurer ce que coûte la route seule.
+  if (VAGABOND && rations > 60 && state.temps - (memo.dernierSaut || 0) > 90) {
+    const cibles = state.world.regions.filter((r) => r.decouvert && distance(r.i, g.regionId) >= 3);
+    if (cibles.length) {
+      memo.dernierSaut = state.temps;
+      donnerOrdre(state, { type: 'voyage', dest: cibles[(state.temps * 7) % cibles.length].i }, g);
+      return;
+    }
+  }
+
+  // Ce qu'on a signé passe avant ce qu'on ramasse au hasard.
+  if (rations > 60) {
+    const dest = destinationContrat(state, g);
+    if (dest != null) { donnerOrdre(state, { type: 'voyage', dest }, g); return; }
+  }
 
   // On ne laisse pas les réserves tomber au plus bas avant de réagir : à 30
   // rations il est déjà trop tard si le biome ne nourrit personne.
@@ -149,16 +217,91 @@ function jouer(state) {
     let mieux = null;
     for (const r of state.world.regions) {
       if (distance(r.i, g.regionId) > 2 || !r.decouvert) continue;
-      const s = scoreNourriture(state, r.i);
-      if (s > ici * 1.6 && (!mieux || s > scoreNourriture(state, mieux.i))) mieux = r;
+      const sc = scoreNourriture(state, r.i);
+      if (sc > ici * 1.6 && (!mieux || sc > scoreNourriture(state, mieux.i))) mieux = r;
     }
-    if (mieux) { donnerOrdre(state, { type: 'voyage', dest: mieux.i }); return; }
-    if (g.ordre.type !== 'chasse') donnerOrdre(state, { type: 'chasse' });
+    if (mieux) { donnerOrdre(state, { type: 'voyage', dest: mieux.i }, g); return; }
+    if (g.ordre.type !== 'chasse') donnerOrdre(state, { type: 'chasse' }, g);
     return;
   }
 
-  // Sinon on ramasse ce qui se vend.
-  if (g.ordre.type !== 'fouille') donnerOrdre(state, { type: 'fouille' });
+  // Une collecte en cours dicte comment on récolte : extraire pour du minerai,
+  // fouiller pour le reste. Récolter au hasard ne remplit jamais un contrat.
+  const collecte = p.contrats.find((c) => c.type === 'collecte' && !progresContrat(state, c).pret);
+  const voulu = collecte
+    && ['minerai', 'ferraille', 'alliage', 'isotope'].includes(collecte.ressource) ? 'mine' : 'fouille';
+  if (g.ordre.type !== voulu) donnerOrdre(state, { type: voulu }, g);
+}
+
+/**
+ * L'éclaireur : une personne détachée qui lève la carte. Il rentre dès qu'il
+ * manque de vivres ou qu'il est amoché — un homme seul ne gagne aucun combat.
+ */
+function jouerEclaireur(state, g, memo) {
+  const principal = groupes(state).find((x) => x.id !== g.id && x.membres.some(estVivant));
+  const rations = g.inventaire.rations || 0;
+  const amoche = g.membres.some((c) => !estDebout(c) || pvTotal(c).pct < 0.65);
+
+  if (!principal) { memo.eclaireur = null; return; }
+
+  // Retour au bercail : on rejoint, puis on se refond dans le groupe.
+  if (rations < 25 || amoche) {
+    if (g.regionId === principal.regionId) {
+      fusionner(state, principal, g);
+      memo.eclaireur = null;
+      return;
+    }
+    if (g.ordre.type !== 'voyage' || g.ordre.dest !== principal.regionId) {
+      donnerOrdre(state, { type: 'voyage', dest: principal.regionId }, g);
+    }
+    return;
+  }
+  if (g.ordre.type === 'voyage') return;
+
+  // Sinon : lever le noir. On vise la région inconnue la plus proche.
+  let cible = null;
+  let best = Infinity;
+  for (const r of state.world.regions) {
+    if (r.decouvert) continue;
+    const d = distance(r.i, g.regionId);
+    if (d < best) { best = d; cible = r; }
+  }
+  if (cible && best > 1) { donnerOrdre(state, { type: 'voyage', dest: cible.i }, g); return; }
+  if (g.ordre.type !== 'exploration') donnerOrdre(state, { type: 'exploration' }, g);
+}
+
+/**
+ * Détacher un éclaireur quand on peut se le permettre : quatre bras debout, de
+ * quoi manger des deux côtés, et de la carte à lever. C'est le pari que le banc
+ * doit trancher — un homme seul rapporte-t-il plus qu'il ne coûte ?
+ */
+function envisagerDetachement(state, memo) {
+  if (SANS.has('detach')) return;
+  if (memo.eclaireur) return;
+  if (groupes(state).length >= maxGroupes(state)) return;
+  const g = groupes(state)[0];
+  if (!g) return;
+  const debout = g.membres.filter(estDebout);
+  if (debout.length < 3) return;
+  if ((g.inventaire.rations || 0) < 140) return;
+  if (g.ordre.type === 'voyage') return;
+  if (!state.world.regions.some((r) => !r.decouvert)) return;
+
+  // On envoie le plus discret : c'est lui qui survit le mieux seul.
+  const choisi = debout.reduce((a, b) => (comp(b, 'furtivite') > comp(a, 'furtivite') ? b : a));
+  const rng = new Rng(state.rngState);
+  const r = scinder(state, g, [choisi.id], rng);
+  state.rngState = rng.save();
+  if (r.ok) memo.eclaireur = r.groupe.id;
+}
+
+function jouer(state, memo) {
+  for (const g of groupes(state).slice()) {
+    if (!g.membres.some(estVivant)) continue;
+    if (g.id === memo.eclaireur) jouerEclaireur(state, g, memo);
+    else jouerPrincipal(state, g, memo);
+  }
+  envisagerDetachement(state, memo);
 }
 
 console.log(`Banc d'équilibrage — ${PARTIES} parties × ${HEURES} h\n${'='.repeat(52)}`);
@@ -168,12 +311,32 @@ const lignes = [];
 for (let n = 0; n < PARTIES; n++) {
   const state = nouvellePartie(1000 + n * 7919, { maintenant: 0 });
   state.player.posture = 'neutre';
+  // Mémoire du bot : hors de l'état de jeu, donc rien à sérialiser.
+  const memo = { eclaireur: null, detachements: 0, courtisee: null };
+  let groupesMax = 1;
   for (let i = 0; i < HEURES; i++) {
     if (state.fin) break;
-    if (i % 4 === 0) jouer(state);
+    if (i % 4 === 0) {
+      const avant = groupes(state).length;
+      jouer(state, memo);
+      if (groupes(state).length > avant) memo.detachements++;
+      groupesMax = Math.max(groupesMax, groupes(state).length);
+    }
+    // Instrumentation : à quoi passe-t-on ses heures, et où part l'argent ?
+    const gPrinc = groupes(state)[0];
+    if (gPrinc) {
+      const t = gPrinc.ordre.type;
+      TRACE[t === 'voyage' ? 'voyage' : t === 'repos' ? 'repos' : 'travail']++;
+    }
+    const crAvant = state.player.credits;
+    const defAvant = state.stats.defaites;
     tick(state);
+    if (state.stats.defaites > defAvant) {
+      TRACE.defaites += state.stats.defaites - defAvant;
+      TRACE.crPilles += Math.max(0, crAvant - state.player.credits);
+    }
   }
-  const viv = groupeActif(state).membres.filter(estVivant);
+  const viv = tousLesMembres(state).filter(estVivant);
   if (!state.fin) survivants++;
   const skills = viv.length
     ? Math.round(viv.reduce((s, c) => s + Math.max(comp(c, 'melee'), comp(c, 'tir')), 0) / viv.length)
@@ -182,7 +345,8 @@ for (let n = 0; n < PARTIES; n++) {
     seed: 1000 + n * 7919,
     t: state.temps,
     fin: state.fin || '—',
-    viv: `${viv.length}/${groupeActif(state).membres.length}`,
+    viv: `${viv.length}/${tousLesMembres(state).length}`,
+    detach: memo.detachements,
     cr: state.player.credits,
     wl: `${state.stats.combatsGagnes}/${state.stats.defaites}`,
     recolte: state.stats.recolte,
@@ -195,7 +359,7 @@ for (let n = 0; n < PARTIES; n++) {
   });
 }
 
-const largeur = { seed: 8, t: 6, fin: 11, viv: 5, cr: 7, wl: 7, comp: 5, contrats: 9, grade: 10, ordres: 7, guerres: 8, captures: 9 };
+const largeur = { seed: 8, t: 6, fin: 11, viv: 5, cr: 7, wl: 7, comp: 5, contrats: 9, detach: 7, grade: 10, ordres: 7, guerres: 8, captures: 9 };
 const entetes = Object.keys(largeur);
 console.log(entetes.map((k) => k.padStart(largeur[k])).join(' '));
 for (const l of lignes) {
@@ -207,7 +371,14 @@ console.log(`Escouades encore vivantes après ${HEURES} h : ${survivants}/${PART
 const moy = (k) => Math.round(lignes.reduce((s, l) => s + (typeof l[k] === 'number' ? l[k] : 0), 0) / lignes.length);
 console.log(`Crédits moyens : ${moy('cr')} — compétence de combat moyenne : ${moy('comp')}`);
 console.log(`Récolte moyenne : ${moy('recolte')} unités — contrats remplis : ${moy('contrats')}`);
+const gradés = lignes.filter((l) => l.grade !== '—').length;
+console.log(`Détachements : ${moy('detach')} par partie — parties avec allégeance : ${gradés}/${PARTIES}`);
 console.log(`Colonies prises et reprises dans le monde : ${moy('captures')} en moyenne`);
+const totH = TRACE.voyage + TRACE.repos + TRACE.travail;
+console.log(`Temps : ${Math.round(100 * TRACE.voyage / totH)} % en marche · `
+  + `${Math.round(100 * TRACE.repos / totH)} % au repos · ${Math.round(100 * TRACE.travail / totH)} % au travail`);
+console.log(`Défaites : ${TRACE.defaites} pour ${TRACE.crPilles} cr pillés `
+  + `(${TRACE.defaites ? Math.round(TRACE.crPilles / TRACE.defaites) : 0} cr par défaite)`);
 
 if (survivants === 0) {
   console.log('\nALERTE : aucune escouade ne survit. Le jeu est injouable en l’état.');

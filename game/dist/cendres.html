@@ -4883,11 +4883,16 @@ function contratCollecte(rng, state, col, t) {
   const cible = rng.range(160, 520) * (1 + col.taille * 0.35);
   const quantite = Math.max(8, Math.min(140, Math.round(cible / COMMODITIES[ressource].prix)));
   const valeur = COMMODITIES[ressource].prix * quantite;
+  // On remet la marchandise en même temps qu'on encaisse : à 1,5× la valeur
+  // marchande, le contrat ne rapportait qu'une demi-vente de plus que d'aller
+  // vendre le même lot — pour le prix d'un voyage dédié jusqu'au
+  // commanditaire. Le gain net doit valoir le détour, sinon le panneau
+  // d'affichage n'est qu'un piège à joueur consciencieux.
   return {
     type: 'collecte',
     ressource,
     quantite,
-    recompense: Math.round(valeur * rng.range(1.5, 2.3)),
+    recompense: Math.round(valeur * rng.range(2.6, 3.6)),
     reputation: rng.irange(3, 7),
     duree: rng.irange(180, 400),
     titre: `Rassembler ${quantite} ${COMMODITIES[ressource].nom.toLowerCase()}`,
@@ -5053,22 +5058,41 @@ function abandonner(state, id, log) {
 // Suivi
 // ---------------------------------------------------------------------------
 
+/** Le premier groupe présent en `regionId` qui porte assez de `key`. */
+function auLieu(state, regionId, key, quantite) {
+  return groupes(state).find(
+    (g) => g.regionId === regionId && (g.inventaire[key] || 0) >= quantite
+  ) || null;
+}
+
 /** Avancement lisible d'un contrat : { fait, total, texte, pret }. */
 function progres(state, c) {
   switch (c.type) {
     case 'collecte': {
-      // Un contrat est celui du joueur, pas d'un groupe : on additionne ce que
-      // tout le monde porte. Reste à ce qu'un groupe l'apporte au commanditaire.
+      // Le meilleur groupe, pas la somme : c'est un groupe qui apporte la
+      // marchandise au commanditaire, et il l'apporte entière. Additionner ce
+      // que portent des gens séparés par la moitié de la carte annoncerait un
+      // contrat livrable qui ne le serait jamais.
       let q = 0;
-      for (const g of groupes(state)) q += Math.floor(g.inventaire[c.ressource] || 0);
+      for (const g of groupes(state)) q = Math.max(q, Math.floor(g.inventaire[c.ressource] || 0));
       return { fait: Math.min(q, c.quantite), total: c.quantite, pret: q >= c.quantite,
         texte: `${Math.min(q, c.quantite)} / ${c.quantite}` };
     }
     case 'livraison': {
+      // Être là ne suffit pas : il faut y être avec le colis. Le groupe qui a
+      // signé n'est pas forcément celui qui arrive, et le colis ne se
+      // téléporte pas d'un groupe à l'autre.
       const dest = colonieParId(state.world, c.destId);
+      const porteur = dest && auLieu(state, dest.regionId, c.ressource, c.quantite);
       const surPlace = dest && groupes(state).some((g) => g.regionId === dest.regionId);
-      return { fait: surPlace ? 1 : 0, total: 1, pret: surPlace,
-        texte: dest ? `→ ${dest.nom}` : '→ ville disparue' };
+      return {
+        fait: porteur ? 1 : 0,
+        total: 1,
+        pret: !!porteur,
+        texte: !dest ? '→ ville disparue'
+          : surPlace && !porteur ? `→ ${dest.nom} · colis ailleurs`
+            : `→ ${dest.nom}`,
+      };
     }
     case 'prime':
       return { fait: c.progres, total: c.victoires, pret: c.progres >= c.victoires,
@@ -5107,13 +5131,6 @@ function recompenser(state, c, log) {
 }
 
 /** Une heure de suivi : validation, échéances. */
-/** Le premier groupe présent en `regionId` qui porte assez de `key`. */
-function auLieu(state, regionId, key, quantite) {
-  return groupes(state).find(
-    (g) => g.regionId === regionId && (g.inventaire[key] || 0) >= quantite
-  ) || null;
-}
-
 function tickContrats(state, log, ctx) {
   const restants = [];
   for (const c of state.player.contrats) {
@@ -5427,11 +5444,17 @@ function perdreCombat(state, bande, log, ctx, lieu, g) {
     return `L’Essaim submerge l’escouade à ${lieu}.`;
   }
 
-  // Dépouillés et abandonnés plus loin : on survit, on repart de rien.
+  // Dépouillés et abandonnés plus loin : on survit, on repart de rien — mais
+  // pas le ventre vide. Rafler jusqu'à la dernière ration enclenche une
+  // spirale : battu, donc affamé, donc incapable de se poser pour récupérer,
+  // donc battu de nouveau. Ces gens veulent ce qui se revend, pas des cadavres.
+  const bouches = Math.max(1, g.membres.filter(estVivant).length);
+  const planchers = { rations: bouches * 5, medkit: 1 };
   let perdu = 0;
   for (const k of COMMODITY_KEYS) {
     const q = g.inventaire[k] || 0;
-    const pris = Math.round(q * rng.range(0.4, 0.75));
+    const garde = Math.min(q, planchers[k] || 0);
+    const pris = Math.round((q - garde) * rng.range(0.4, 0.75));
     g.inventaire[k] = q - pris;
     perdu += pris;
   }
@@ -5916,7 +5939,7 @@ function rendementPrevu(state, type, regionId) {
   let total = 0;
   for (const k of Object.keys(rendements)) {
     if (filtre && !filtre.includes(k)) continue;
-    const q = rendements[k] * r.richesse * (1 - Math.min(0.8, r.fouille)) * climat.rendement(k);
+    const q = rendements[k] * r.richesse * (1 - r.fouille) * climat.rendement(k);
     if (q <= 0.001) continue;
     out[k] = q;
     total += q;
@@ -5955,8 +5978,32 @@ const FILTRES = {
 
 const SKILL_ORDRE = { fouille: 'ingenierie', mine: 'force', chasse: 'tir' };
 
+/**
+ * Ce qu'on ramasse en marchant, rapporté à ce qu'on ramasserait en fouillant
+ * vraiment. On ne traverse pas cinquante kilomètres de ferraille sans rien
+ * mettre dans son sac — et sans ça, un quart du temps de jeu ne produit rien.
+ *
+ * La valeur est mesurée, pas devinée : le banc d'équilibrage a montré que la
+ * route prélevait 55 % du revenu, ce qui rendait tout le contenu du jeu —
+ * contrats, ordres de mission, sites, commerce — moins rentable que camper sur
+ * une bonne case. À 0,35 l'écart restait de 45 % ; à 0,55 il tombe à 30 % et la
+ * survie s'égalise ; au-delà, ça ne rapporte plus rien de plus.
+ */
+const GLANE_EN_MARCHE = 0.55;
+
+/**
+ * Jusqu'où une région se laisse épuiser. Le plafond précédent (0,6) laissait
+ * 40 % de rendement pour toujours : camper au même endroit restait la
+ * meilleure stratégie du jeu, et tout le contenu qui demande de bouger —
+ * contrats, ordres de mission, sites, commerce — devenait un luxe. Un secteur
+ * ratissé doit finir par ne plus rien donner.
+ */
+const EPUISEMENT_MAX = 0.88;
+/** Ce que la terre reprend chaque heure. Lent : un secteur reste bon des semaines. */
+const REPOUSSE = 0.0022;
+
 /** `travailleurs` : ceux qui exécutent *cette* tâche, pas tout le groupe. */
-function recolter(state, g, type, travailleurs, log, ctx) {
+function recolter(state, g, type, travailleurs, log, ctx, facteur = 1) {
   const rng = ctx.rng;
   const r = state.world.regions[g.regionId];
   const biome = BIOMES[r.biome];
@@ -5972,7 +6019,7 @@ function recolter(state, g, type, travailleurs, log, ctx) {
     rendements.biomasse = Math.max(rendements.biomasse || 0, r.biome === 'relais' ? 0.05 : 0.18);
   }
 
-  const epuisement = 1 - Math.min(0.8, r.fouille);
+  const epuisement = 1 - r.fouille;
   const recolte = {};
   for (const c of travailleurs) {
     const habilete = 0.45 + comp(c, skill) / 115;
@@ -5980,11 +6027,11 @@ function recolter(state, g, type, travailleurs, log, ctx) {
       if (filtre && !filtre.includes(k)) continue;
       const climatMult = ctx.climat ? ctx.climat.rendement(k) : 1;
       let q = rendements[k] * r.richesse * habilete * posture.rendement
-        * epuisement * climatMult * rng.range(0.75, 1.25);
+        * epuisement * climatMult * facteur * rng.range(0.75, 1.25);
       // La saison amaigrit le gibier, elle ne le fait pas disparaître : sans ce
       // plancher, un hiver de cendre affame l'escouade où qu'elle aille.
       if (type === 'chasse' && k === 'biomasse') {
-        q = Math.max(q, 0.16 * habilete * rng.range(0.8, 1.2));
+        q = Math.max(q, 0.16 * habilete * facteur * rng.range(0.8, 1.2));
       }
       recolte[k] = (recolte[k] || 0) + q;
     }
@@ -6000,7 +6047,7 @@ function recolter(state, g, type, travailleurs, log, ctx) {
 
   // Épuisement local : rester camper au même endroit rapporte de moins en
   // moins. Assez lent pour laisser une région exploitable plusieurs semaines.
-  r.fouille = Math.min(0.6, r.fouille + 0.0012 * travailleurs.length);
+  r.fouille = Math.min(EPUISEMENT_MAX, r.fouille + 0.0012 * facteur * travailleurs.length);
 
   // Les rendements horaires sont fractionnaires : sans report d'une heure sur
   // l'autre, tout ce qui rapporte moins d'une unité par heure rapporte zéro.
@@ -6301,6 +6348,9 @@ function tickGroupe(state, g, log, ctx) {
       switch (type) {
         case 'voyage':
           avancerVoyage(state, g, log, ctx);
+          // On glane le long de la route. Le rendement est celui de la région
+          // qu'on vient de quitter ou d'atteindre — c'est le terrain traversé.
+          if (!nuit) recolter(state, g, 'fouille', paquet.gens, log, ctx, GLANE_EN_MARCHE);
           break;
         case 'fouille':
         case 'mine':
@@ -6449,7 +6499,7 @@ function tickSquad(state, log, ctx) {
 
   // La région se régénère lentement de la fouille
   for (const r of state.world.regions) {
-    if (r.fouille > 0) r.fouille = Math.max(0, r.fouille - 0.003);
+    if (r.fouille > 0) r.fouille = Math.max(0, r.fouille - REPOUSSE);
   }
 
   // Fin de partie

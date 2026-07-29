@@ -53,7 +53,7 @@ export function rendementPrevu(state, type, regionId) {
   let total = 0;
   for (const k of Object.keys(rendements)) {
     if (filtre && !filtre.includes(k)) continue;
-    const q = rendements[k] * r.richesse * (1 - Math.min(0.8, r.fouille)) * climat.rendement(k);
+    const q = rendements[k] * r.richesse * (1 - r.fouille) * climat.rendement(k);
     if (q <= 0.001) continue;
     out[k] = q;
     total += q;
@@ -92,8 +92,32 @@ const FILTRES = {
 
 const SKILL_ORDRE = { fouille: 'ingenierie', mine: 'force', chasse: 'tir' };
 
+/**
+ * Ce qu'on ramasse en marchant, rapporté à ce qu'on ramasserait en fouillant
+ * vraiment. On ne traverse pas cinquante kilomètres de ferraille sans rien
+ * mettre dans son sac — et sans ça, un quart du temps de jeu ne produit rien.
+ *
+ * La valeur est mesurée, pas devinée : le banc d'équilibrage a montré que la
+ * route prélevait 55 % du revenu, ce qui rendait tout le contenu du jeu —
+ * contrats, ordres de mission, sites, commerce — moins rentable que camper sur
+ * une bonne case. À 0,35 l'écart restait de 45 % ; à 0,55 il tombe à 30 % et la
+ * survie s'égalise ; au-delà, ça ne rapporte plus rien de plus.
+ */
+export const GLANE_EN_MARCHE = 0.55;
+
+/**
+ * Jusqu'où une région se laisse épuiser. Le plafond précédent (0,6) laissait
+ * 40 % de rendement pour toujours : camper au même endroit restait la
+ * meilleure stratégie du jeu, et tout le contenu qui demande de bouger —
+ * contrats, ordres de mission, sites, commerce — devenait un luxe. Un secteur
+ * ratissé doit finir par ne plus rien donner.
+ */
+export const EPUISEMENT_MAX = 0.88;
+/** Ce que la terre reprend chaque heure. Lent : un secteur reste bon des semaines. */
+export const REPOUSSE = 0.0022;
+
 /** `travailleurs` : ceux qui exécutent *cette* tâche, pas tout le groupe. */
-function recolter(state, g, type, travailleurs, log, ctx) {
+function recolter(state, g, type, travailleurs, log, ctx, facteur = 1) {
   const rng = ctx.rng;
   const r = state.world.regions[g.regionId];
   const biome = BIOMES[r.biome];
@@ -109,7 +133,7 @@ function recolter(state, g, type, travailleurs, log, ctx) {
     rendements.biomasse = Math.max(rendements.biomasse || 0, r.biome === 'relais' ? 0.05 : 0.18);
   }
 
-  const epuisement = 1 - Math.min(0.8, r.fouille);
+  const epuisement = 1 - r.fouille;
   const recolte = {};
   for (const c of travailleurs) {
     const habilete = 0.45 + comp(c, skill) / 115;
@@ -117,11 +141,11 @@ function recolter(state, g, type, travailleurs, log, ctx) {
       if (filtre && !filtre.includes(k)) continue;
       const climatMult = ctx.climat ? ctx.climat.rendement(k) : 1;
       let q = rendements[k] * r.richesse * habilete * posture.rendement
-        * epuisement * climatMult * rng.range(0.75, 1.25);
+        * epuisement * climatMult * facteur * rng.range(0.75, 1.25);
       // La saison amaigrit le gibier, elle ne le fait pas disparaître : sans ce
       // plancher, un hiver de cendre affame l'escouade où qu'elle aille.
       if (type === 'chasse' && k === 'biomasse') {
-        q = Math.max(q, 0.16 * habilete * rng.range(0.8, 1.2));
+        q = Math.max(q, 0.16 * habilete * facteur * rng.range(0.8, 1.2));
       }
       recolte[k] = (recolte[k] || 0) + q;
     }
@@ -137,7 +161,7 @@ function recolter(state, g, type, travailleurs, log, ctx) {
 
   // Épuisement local : rester camper au même endroit rapporte de moins en
   // moins. Assez lent pour laisser une région exploitable plusieurs semaines.
-  r.fouille = Math.min(0.6, r.fouille + 0.0012 * travailleurs.length);
+  r.fouille = Math.min(EPUISEMENT_MAX, r.fouille + 0.0012 * facteur * travailleurs.length);
 
   // Les rendements horaires sont fractionnaires : sans report d'une heure sur
   // l'autre, tout ce qui rapporte moins d'une unité par heure rapporte zéro.
@@ -438,6 +462,9 @@ function tickGroupe(state, g, log, ctx) {
       switch (type) {
         case 'voyage':
           avancerVoyage(state, g, log, ctx);
+          // On glane le long de la route. Le rendement est celui de la région
+          // qu'on vient de quitter ou d'atteindre — c'est le terrain traversé.
+          if (!nuit) recolter(state, g, 'fouille', paquet.gens, log, ctx, GLANE_EN_MARCHE);
           break;
         case 'fouille':
         case 'mine':
@@ -586,7 +613,7 @@ export function tickSquad(state, log, ctx) {
 
   // La région se régénère lentement de la fouille
   for (const r of state.world.regions) {
-    if (r.fouille > 0) r.fouille = Math.max(0, r.fouille - 0.003);
+    if (r.fouille > 0) r.fouille = Math.max(0, r.fouille - REPOUSSE);
   }
 
   // Fin de partie

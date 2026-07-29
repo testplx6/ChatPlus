@@ -31,11 +31,16 @@ function contratCollecte(rng, state, col, t) {
   const cible = rng.range(160, 520) * (1 + col.taille * 0.35);
   const quantite = Math.max(8, Math.min(140, Math.round(cible / COMMODITIES[ressource].prix)));
   const valeur = COMMODITIES[ressource].prix * quantite;
+  // On remet la marchandise en même temps qu'on encaisse : à 1,5× la valeur
+  // marchande, le contrat ne rapportait qu'une demi-vente de plus que d'aller
+  // vendre le même lot — pour le prix d'un voyage dédié jusqu'au
+  // commanditaire. Le gain net doit valoir le détour, sinon le panneau
+  // d'affichage n'est qu'un piège à joueur consciencieux.
   return {
     type: 'collecte',
     ressource,
     quantite,
-    recompense: Math.round(valeur * rng.range(1.5, 2.3)),
+    recompense: Math.round(valeur * rng.range(2.6, 3.6)),
     reputation: rng.irange(3, 7),
     duree: rng.irange(180, 400),
     titre: `Rassembler ${quantite} ${COMMODITIES[ressource].nom.toLowerCase()}`,
@@ -201,22 +206,41 @@ export function abandonner(state, id, log) {
 // Suivi
 // ---------------------------------------------------------------------------
 
+/** Le premier groupe présent en `regionId` qui porte assez de `key`. */
+function auLieu(state, regionId, key, quantite) {
+  return groupes(state).find(
+    (g) => g.regionId === regionId && (g.inventaire[key] || 0) >= quantite
+  ) || null;
+}
+
 /** Avancement lisible d'un contrat : { fait, total, texte, pret }. */
 export function progres(state, c) {
   switch (c.type) {
     case 'collecte': {
-      // Un contrat est celui du joueur, pas d'un groupe : on additionne ce que
-      // tout le monde porte. Reste à ce qu'un groupe l'apporte au commanditaire.
+      // Le meilleur groupe, pas la somme : c'est un groupe qui apporte la
+      // marchandise au commanditaire, et il l'apporte entière. Additionner ce
+      // que portent des gens séparés par la moitié de la carte annoncerait un
+      // contrat livrable qui ne le serait jamais.
       let q = 0;
-      for (const g of groupes(state)) q += Math.floor(g.inventaire[c.ressource] || 0);
+      for (const g of groupes(state)) q = Math.max(q, Math.floor(g.inventaire[c.ressource] || 0));
       return { fait: Math.min(q, c.quantite), total: c.quantite, pret: q >= c.quantite,
         texte: `${Math.min(q, c.quantite)} / ${c.quantite}` };
     }
     case 'livraison': {
+      // Être là ne suffit pas : il faut y être avec le colis. Le groupe qui a
+      // signé n'est pas forcément celui qui arrive, et le colis ne se
+      // téléporte pas d'un groupe à l'autre.
       const dest = colonieParId(state.world, c.destId);
+      const porteur = dest && auLieu(state, dest.regionId, c.ressource, c.quantite);
       const surPlace = dest && groupes(state).some((g) => g.regionId === dest.regionId);
-      return { fait: surPlace ? 1 : 0, total: 1, pret: surPlace,
-        texte: dest ? `→ ${dest.nom}` : '→ ville disparue' };
+      return {
+        fait: porteur ? 1 : 0,
+        total: 1,
+        pret: !!porteur,
+        texte: !dest ? '→ ville disparue'
+          : surPlace && !porteur ? `→ ${dest.nom} · colis ailleurs`
+            : `→ ${dest.nom}`,
+      };
     }
     case 'prime':
       return { fait: c.progres, total: c.victoires, pret: c.progres >= c.victoires,
@@ -255,13 +279,6 @@ function recompenser(state, c, log) {
 }
 
 /** Une heure de suivi : validation, échéances. */
-/** Le premier groupe présent en `regionId` qui porte assez de `key`. */
-function auLieu(state, regionId, key, quantite) {
-  return groupes(state).find(
-    (g) => g.regionId === regionId && (g.inventaire[key] || 0) >= quantite
-  ) || null;
-}
-
 export function tickContrats(state, log, ctx) {
   const restants = [];
   for (const c of state.player.contrats) {

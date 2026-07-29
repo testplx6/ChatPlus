@@ -67,8 +67,10 @@ de cache périmé.
 
 ```bash
 npm test                     # 94 assertions sur le moteur, sans navigateur
-node test/equilibre.js       # banc d'équilibrage : un bot joue 8 parties
-node test/equilibre.js 8000 12   # plus long, plus de parties
+node test/equilibre.js       # banc d'équilibrage : un bot joue 30 parties
+node test/equilibre.js 4000 60   # échantillon large, une vingtaine de secondes
+SANS=detach,contrats node test/equilibre.js   # coupe un système pour l'isoler
+VAGABOND=1 node test/equilibre.js             # témoin : voyager sans contrats
 
 npm install --no-save playwright-core
 node test/navigateur.js      # 54 vérifications dans un Chromium réel
@@ -87,8 +89,17 @@ régression, soit capricieux d'une machine à l'autre ; normalisé, il tient à 
 près et le test tombe si le tick se remet à coûter le double.
 
 Le banc d'équilibrage est le plus utile des trois : c'est lui qui a montré que
-l'économie alimentaire des colonies n'avait jamais été à l'équilibre, et que les
-chasseurs de prime créaient une spirale sans issue.
+l'économie alimentaire des colonies n'avait jamais été à l'équilibre, que les
+chasseurs de prime créaient une spirale sans issue, et que la route prélevait
+55 % du revenu — ce qui rendait tout le contenu du jeu moins rentable que camper
+sur une bonne case.
+
+Il tient trente parties par défaut, pas huit : à huit, l'écart-type sur un taux
+de survie de 85 % vaut douze points, et on lit du bruit en croyant lire un
+réglage. Ses deux interrupteurs (`SANS=`, `VAGABOND=1`) servent à couper un
+système à la fois : c'est la seule façon d'attribuer un déséquilibre à sa cause
+plutôt qu'à une intuition. Le mode vagabond — voyager autant, sans prendre un
+seul contrat — est le témoin qui a innocenté les contrats et accusé la route.
 
 ## Ce que la simulation fait
 
@@ -138,6 +149,18 @@ partie. Coordonner plus de deux groupes suppose une antenne à l'avant-poste.
 sur l'ordre collectif : deux ferraillent, le troisième chasse, et les trois
 récoltes se résolvent séparément. En marche, tout le monde marche — on ne
 s'entraîne pas en colonne — et les tâches personnelles reprennent à l'arrivée.
+
+**La route.** Marcher n'est pas du temps mort : on glane le long du chemin, à
+un peu plus de la moitié de ce que rapporterait une vraie fouille. Sans ça, un
+quart du temps de jeu ne produisait rien et toute la carte coûtait plus qu'elle
+ne rapportait. À l'inverse, un secteur se ratisse jusqu'à l'os : rester campé au
+même endroit finit par ne plus rien donner, et il faut lever le camp.
+
+**Perdre n'est pas une spirale.** Une défaite coûte le sac, une partie des
+crédits, parfois une pièce d'équipement — mais jamais les derniers vivres. Se
+faire rafler jusqu'à la dernière ration enclenchait un cycle sans issue : battu,
+donc affamé, donc incapable de se poser pour récupérer, donc battu de nouveau.
+Il reste toujours de quoi souffler.
 
 **L'escouade.** Chaque membre a huit compétences qui montent en s'exerçant, six
 zones de corps blessables séparément, un à quatre traits de caractère qui le

@@ -259,11 +259,17 @@ function perdreCombat(state, bande, log, ctx, lieu, g) {
     return `L’Essaim submerge l’escouade à ${lieu}.`;
   }
 
-  // Dépouillés et abandonnés plus loin : on survit, on repart de rien.
+  // Dépouillés et abandonnés plus loin : on survit, on repart de rien — mais
+  // pas le ventre vide. Rafler jusqu'à la dernière ration enclenche une
+  // spirale : battu, donc affamé, donc incapable de se poser pour récupérer,
+  // donc battu de nouveau. Ces gens veulent ce qui se revend, pas des cadavres.
+  const bouches = Math.max(1, g.membres.filter(estVivant).length);
+  const planchers = { rations: bouches * 5, medkit: 1 };
   let perdu = 0;
   for (const k of COMMODITY_KEYS) {
     const q = g.inventaire[k] || 0;
-    const pris = Math.round(q * rng.range(0.4, 0.75));
+    const garde = Math.min(q, planchers[k] || 0);
+    const pris = Math.round((q - garde) * rng.range(0.4, 0.75));
     g.inventaire[k] = q - pris;
     perdu += pris;
   }
