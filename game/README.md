@@ -96,42 +96,68 @@ code : à 130 le test échouait une fois sur trois sur une machine chargée, et 
 garde-fou qui crie sans motif est pire qu'un garde-fou absent. Sans cette trace, relever le budget deviendrait un moyen commode de ne
 jamais voir une régression.
 
-### Le nomadisme marche. C'est l'avant-poste qui ne paie pas.
+### Deux voies, deux façons de tenir
 
-Mesure à quarante-huit parties, le même code des deux côtés, `SANS=base` pour
-couper le comportement d'avant-poste du bot :
+Mesure à quarante-huit parties, même code, seule change la façon de jouer :
 
-    nomade pur          28/48 survivants, 831 cr
-    avec avant-poste    26/48 survivants, 273 cr
+    nomade pur                 28/48 survivants
+    installé (camp donné)      28/48 survivants
 
-Le nomade survit plus d'une fois sur deux et finit trois fois plus riche. La
-voie itinérante n'a donc rien de cassé — c'est la voie sédentaire qui coûte
-plus qu'elle ne rend. Sur quarante-huit parties le bot fonde neuf camps, et ces
-neuf camps atteignent en moyenne **un niveau de bâtiment et zéro habitant**.
-La chaîne est trop longue : générateur, puis carburant acheté, puis hydroponie,
-puis population, puis métiers. Chaque maillon demande un investissement, et une
-escouade qui survit au jour le jour n'a pas de marge à investir.
+À égalité — et c'était le but. Ce qui compte est *comment* ils tiennent, et là
+tout diffère :
 
-Conséquence à écrire sans détour : **treize bâtiments et treize métiers de
-l'avant-poste sont, en pratique, du contenu mort.** Pas parce que le nomadisme
-les rendrait inutiles, mais parce que rien ne rend le premier camp rentable
-assez tôt pour qu'on ait envie du deuxième.
+                        nomade      installé
+    ventes              5 382 cr    1 445 cr
+    nourriture         −3 468 cr   −1 405 cr
+    pillé en défaite   −2 850 cr     −545 cr
 
-Une réserve d'honnêteté sur ce chiffre : le bot du banc est un joueur médiocre.
-Il vend tout au premier étal venu, voyage mal, perd beaucoup de combats. Un
-humain qui *vise* un camp y arriverait bien plus vite. « Neuf avant-postes sur
-quarante-huit » mesure le bot autant que le jeu.
+Le colon touche le marché quatre fois moins, mange presque gratuitement ce
+qu'il ramasse, et se fait beaucoup moins dépouiller parce qu'il tourne autour de
+chez lui. Le nomade brasse, vend, achète et prend des coups sur les routes. Ce
+sont deux jeux, et aucun ne remplace l'autre.
 
-Premier pas fait dans cette direction, et mesuré : le campement se paie
-désormais en ferraille seule. Il y avait cinq composants dans le coût de
-fondation, et les composants ne se ramassent presque nulle part — il fallait
-donc les acheter, donc avoir des crédits, donc en gagner, alors que les trois
-quarts des recettes partent en nourriture et que la seule façon de produire sa
-nourriture est justement d'avoir un avant-poste. On ne pouvait pas s'offrir la
-chose qui réglait le problème qu'on avait. Les fondations passent de 0 à 9 sur
-quarante-huit ; ça ne suffit pas, mais le verrou de marché sur la survie a
-sauté. Le polymère et les composants gardent maintenant le développement
-— hydroponie, atelier, antenne — et non plus la survie.
+Trois verrous ont dû sauter pour en arriver là, et ils se ressemblaient tous :
+
+1. **Le coût de fondation contenait cinq composants.** Les composants ne se
+   ramassent presque nulle part : il fallait les acheter, donc avoir des
+   crédits, donc en gagner — alors que les trois quarts des recettes partent en
+   nourriture et que la seule façon d'en produire est justement d'avoir un camp.
+   Le campement se paie désormais en ferraille seule.
+2. **L'hydroponie ne tournait pas sans courant.** Il fallait donc un générateur,
+   donc du carburant acheté en ville. Faire pousser et ramasser se font avec des
+   bras : hydroponie et halle produisent maintenant sans énergie, à 40 % du
+   régime. L'énergie les rend rapides, elle ne les rend plus possibles.
+3. **La halle demandait des composants.** C'est elle qui remplit les bacs de
+   l'hydroponie. Le banc a montré le camp mourir de faim avec ses bacs vides :
+   population 10 à mille cinq cents heures, zéro à trois mille. Elle nourrit,
+   elle ne développe pas — plus de composants dedans.
+
+La règle qui en sort, et qui vaut pour tout ce qu'on ajoutera : **ce qui garde
+la survie doit se ramasser ; ce qui garde le développement peut s'acheter.**
+Le polymère et les composants gardent maintenant l'atelier, l'antenne,
+l'infirmerie — pas le droit de manger.
+
+Un camp rend d'ailleurs quelque chose dès le premier piquet, avant toute
+construction : c'est un toit (on y récupère 70 % plus vite qu'en dormant dans le
+sable, et on y recoud mieux) et un dépôt (huit cents unités de stock sans le
+moindre entrepôt). Sans ça, s'installer revenait à creuser un trou et à y
+cacher des matériaux pendant des semaines sans contrepartie.
+
+### Ce qui reste : le bot ne sait pas encore s'installer tout seul
+
+Le chiffre ci-dessus est obtenu en *donnant* le camp au bot (`CAMP=1`). Livré à
+lui-même il n'en fonde que sept sur quarante-huit, et c'est une limite du bot
+autant que du jeu : il vend tout au premier étal venu, voyage mal, perd beaucoup
+de combats. Un humain qui *vise* un camp y arrive bien plus vite. La question
+« l'avant-poste est-il atteignable ? » reste donc ouverte ; la question
+« l'avant-poste vaut-il le coup ? » est tranchée, et la réponse est oui.
+
+Trois bugs de bot ont été corrigés en route, et chacun expliquait à lui seul un
+camp mort-né : le bot ne rentrait jamais chez lui (garde-fou de distance calé
+sur l'ancienne carte), il ne rentrait qu'avec un sac plein de matériaux alors
+que son sac est plein de vivres, et il continuait à vagabonder à quinze secteurs
+de sa maison. Sur une trace, le camp avait reçu vingt-neuf ferrailles en quatre
+mille heures.
 
 ### Ce que la grande carte a coûté
 

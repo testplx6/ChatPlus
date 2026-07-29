@@ -369,7 +369,10 @@ export function tickPerso(c, effort, rng, ctx = {}) {
   const m = mods(c);
   c.faim = Math.min(120, c.faim + (0.55 + 0.25 * effort) * m.faim);
   if (effort <= 0.05) {
-    c.fatigue = Math.max(0, c.fatigue - 6 / m.fatigue);
+    // Dormir chez soi n'est pas dormir dans le sable. `abri` vaut 1 en plein
+    // désert, davantage sous un toit qu'on a monté soi-même : c'est le premier
+    // service que rend un campement, avant qu'on y ait bâti quoi que ce soit.
+    c.fatigue = Math.max(0, c.fatigue - 6 * (ctx.abri || 1) / m.fatigue);
   } else {
     const end = comp(c, 'endurance');
     c.fatigue = Math.min(120, c.fatigue + (1.6 * effort) * (1 - Math.min(0.5, end / 200)) * m.fatigue);

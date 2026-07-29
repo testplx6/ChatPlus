@@ -15,7 +15,7 @@ import {
   inscrireAuMemorial,
 } from './events.js';
 import { poidsInventaire, capacitePortage } from './economy.js';
-import { niveau as nivBat } from './base.js';
+import { niveau as nivBat, abriDe } from './base.js';
 import { conditions } from './climat.js';
 import {
   groupeActif, tacheDe, debout as deboutDe, vivants as vivantsDe, retirerGroupe,
@@ -313,7 +313,9 @@ function qualiteSoin(state, g, auRepos) {
   let q = 0.25 + medic / 90;
   q *= 1 + (state.base.recherche.medecine || 0) * 0.25;
   if (state.base.fonde && g.regionId === state.base.regionId) {
-    q *= 1 + nivBat(state.base, 'infirmerie') * 0.35;
+    // Le camp lui-même compte, avant la moindre infirmerie : on recoud à
+    // l'abri, sur une table, avec de l'eau propre.
+    q *= 1.45 + nivBat(state.base, 'infirmerie') * 0.35;
   }
   // Camper sous les murs d'une ville dont le médecin vous apprécie, ce n'est
   // pas camper dans le sable : il passe voir vos gens.
@@ -598,7 +600,8 @@ function tickGroupe(state, g, log, ctx) {
   utiliserMedkit(state, g, log, ctx);
   for (const c of g.membres) {
     const eff = estDebout(c) ? effortDe(tacheDe(g, c).type, nuit) : 0;
-    const msgs = tickPerso(c, eff, rng, { soin: q, premiersSecours: debout.length > 0 });
+    const msgs = tickPerso(c, eff, rng,
+      { soin: q, premiersSecours: debout.length > 0, abri: abriDe(state, g.regionId) });
     for (const m of msgs) {
       log({ type: m.type, texte: m.texte, important: m.type === 'mort', groupe: g.id });
       if (m.type === 'mort') {

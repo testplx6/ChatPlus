@@ -303,7 +303,12 @@ export const BUILDINGS = {
   halle: {
     nom: 'Halle de récolte',
     desc: 'Bacs, treuils, brouettes : l’avant-poste ramasse enfin sa propre région.',
-    cout: { ferraille: 65, polymere: 20, composant: 4 },
+    // Pas de composants ici, et c'est délibéré. La halle est ce qui nourrit
+    // l'hydroponie ; la mettre derrière une pièce qu'on ne trouve nulle part
+    // revenait à laisser le camp mourir de faim avec ses bacs pleins de terre.
+    // Le banc l'a montré noir sur blanc : population 10 à mille cinq cents
+    // heures, zéro à trois mille, biomasse à sec.
+    cout: { ferraille: 65, polymere: 20 },
     coutMul: 1.6,
     heures: 7,
     tempsMul: 1.45,

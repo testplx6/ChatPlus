@@ -29,7 +29,32 @@ export function creerBase() {
   };
 }
 
+/**
+ * Ce que le campement lui-même vaut, avant toute construction.
+ *
+ * C'était le trou du jeu : fonder un avant-poste ne rendait rien tant qu'on n'y
+ * avait pas monté trois bâtiments, et on ne pouvait pas se les payer parce
+ * qu'on dépensait tout en nourriture. On planquait donc des matériaux dans un
+ * trou pendant des semaines sans contrepartie, et le banc était formel — mieux
+ * valait ne pas s'installer du tout.
+ *
+ * Un campement, même vide, c'est un toit et un dépôt. Le toit se paie ici, le
+ * dépôt existait déjà (huit cents unités de stock sans le moindre entrepôt).
+ */
+export const ABRI_CAMP = 1.7;
+export const ABRI_PAR_BARAQUEMENT = 0.22;
+
+/** Le facteur de récupération d'un repos pris dans cette région. */
+export function abriDe(state, regionId) {
+  const base = state.base;
+  if (!base || !base.fonde || base.regionId !== regionId) return 1;
+  return ABRI_CAMP + niveau(base, 'baraquement') * ABRI_PAR_BARAQUEMENT;
+}
+
 /** Combien de personnes l'avant-poste peut loger et nourrir. */
+/** Ce qu'on tire d'une chaîne quand personne ne fournit de courant. */
+export const SOCLE_MANUEL = 0.4;
+
 export function populationMax(base) {
   return niveau(base, 'baraquement') * 9 + niveau(base, 'hydroponie') * 4;
 }
@@ -385,9 +410,20 @@ export function tickBase(state, log, ctx) {
   // --- Chaînes de production
   // Chaque chaîne tourne au rythme de ceux qui la tiennent : les manœuvres
   // aident partout un peu, les ouvriers affectés beaucoup, et seulement ici.
+  // Ce qui se fait à la main, et ce qui ne se fait pas.
+  //
+  // Fondre du minerai, assembler un composant, raffiner du polymère : sans
+  // courant, rien. Faire pousser et ramasser, en revanche, se fait avec des
+  // bras. Tant que ces deux chaînes-là s'arrêtaient net faute de carburant, la
+  // seule façon de produire sa nourriture passait par un générateur, donc par
+  // du carburant acheté en ville, donc par des crédits qu'on n'avait pas parce
+  // qu'on achetait à manger. L'énergie les rend rapides ; elle ne les rend plus
+  // possibles.
+  const aLaMain = Math.max(SOCLE_MANUEL, r);
+
   const hyd = niveau(base, 'hydroponie');
   if (hyd > 0) {
-    const bio = consommer(base, 'biomasse', 1.25 * hyd * r * mo * M.cultivateur);
+    const bio = consommer(base, 'biomasse', 1.25 * hyd * aLaMain * mo * M.cultivateur);
     ajouter(base, 'rations', bio * 0.9 * (1 + (rech.hydroponie_av || 0) * 0.15));
   }
   const fond = niveau(base, 'fonderie');
@@ -413,7 +449,7 @@ export function tickBase(state, log, ctx) {
   if (halle > 0) {
     const regHalle = state.world.regions[base.regionId];
     const y = BIOMES[regHalle.biome].yields || {};
-    const taux = 0.5 * halle * r * mo * M.recoltant * regHalle.richesse
+    const taux = 0.5 * halle * aLaMain * mo * M.recoltant * regHalle.richesse
       * (ctx.climat ? 1 + (ctx.climat.rendement('ferraille') - 1) * 0.6 : 1);
     for (const k of Object.keys(y)) ajouter(base, k, y[k] * taux);
   }

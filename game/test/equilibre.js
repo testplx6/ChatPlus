@@ -6,6 +6,13 @@
 // façon d'attribuer un déséquilibre à sa cause plutôt qu'à une intuition :
 //
 //   SANS=detach,contrats,livraison,services,intel,base   coupe ces comportements
+//   CAMP=1                           la partie démarre avec un campement fondé
+//
+// `CAMP=1` répond à une question que le reste ne sait pas poser : un
+// avant-poste, une fois qu'on en a un, paie-t-il ? Comparer « le bot essaie de
+// fonder » à « le bot n'essaie pas » ne mesure pas ça — le premier gèle ses
+// matériaux en attendant de pouvoir fonder et vend deux fois moins. Il faut
+// donner le camp pour savoir ce qu'il vaut.
 //   VAGABOND=1                       le bot voyage autant, mais sans contrat
 //
 // `intel` est le témoin de la connaissance imparfaite : sans lui le bot choisit
@@ -155,9 +162,12 @@ function destinationContrat(state, g) {
  * n'a de bras. Le reste suit l'utilité décroissante.
  */
 const PLAN_BATI = [
-  'generateur', 'entrepot', 'baraquement', 'hydroponie', 'cantine', 'mur',
-  'halle', 'baraquement', 'entrepot', 'fonderie', 'poste', 'infirmerie',
-  'atelier', 'generateur', 'antenne', 'raffinerie', 'hydroponie', 'cantine',
+  // La halle avant tout le reste, ou presque : c'est elle qui remplit les bacs
+  // de l'hydroponie. Sans elle, le camp attend qu'on lui apporte à manger, ce
+  // qui est exactement ce dont on voulait le sortir.
+  'entrepot', 'halle', 'hydroponie', 'baraquement', 'cantine', 'mur',
+  'generateur', 'halle', 'hydroponie', 'baraquement', 'entrepot', 'poste',
+  'fonderie', 'infirmerie', 'atelier', 'generateur', 'antenne', 'raffinerie',
 ];
 
 /** Où l'on veut des bras en priorité, quand des places s'ouvrent. */
@@ -515,8 +525,11 @@ function jouerPrincipal(state, g, memo) {
     const chantierEnAttente = base.file.length > 0 || BUILDING_KEYS.some(
       (k) => nivBat(base, k) === 0 && ['generateur', 'entrepot', 'baraquement', 'hydroponie'].includes(k)
     );
-    if ((charge > 0.7 || chantierEnAttente) && chargeUtile > 40 && rations > 40
-        && distance(g.regionId, base.regionId) <= 6) {
+    // Pas de plafond de distance : sur une carte de 24×18 le bot est presque
+    // toujours à plus de six secteurs de chez lui, et un « rentrer si c'est
+    // près » revenait à ne jamais rentrer. Le camp a reçu vingt-neuf ferrailles
+    // en quatre mille heures, et n'a jamais rien bâti.
+    if ((charge > 0.7 || chantierEnAttente) && chargeUtile > 22 && rations > 40) {
       if (!(g.ordre.type === 'voyage' && g.ordre.dest === base.regionId)) {
         donnerOrdre(state, { type: 'voyage', dest: base.regionId }, g);
       }
@@ -561,6 +574,20 @@ function jouerPrincipal(state, g, memo) {
     const col = colonieParId(state.world, memo.promesse.colId);
     if (col && !col.ruine && col.regionId !== g.regionId) {
       donnerOrdre(state, { type: 'voyage', dest: col.regionId }, g);
+      return;
+    }
+  }
+
+  // Un colon ne vagabonde pas : une fois le camp planté, on travaille dans son
+  // rayon. Sans ça le bot dérivait à quinze secteurs de chez lui et n'y
+  // remettait plus les pieds de la partie.
+  if (!SANS.has('base') && state.base.fonde
+      && distance(g.regionId, state.base.regionId) > 5 && rations > 60) {
+    const proche = state.world.regions
+      .filter((r) => r.decouvert && !r.colonie && distance(r.i, state.base.regionId) <= 3)
+      .sort((a, b) => scoreNourriture(state, b.i) - scoreNourriture(state, a.i))[0];
+    if (proche && g.ordre.type !== 'voyage') {
+      donnerOrdre(state, { type: 'voyage', dest: proche.i }, g);
       return;
     }
   }
@@ -671,6 +698,22 @@ const lignes = [];
 for (let n = 0; n < PARTIES; n++) {
   const state = nouvellePartie(1000 + n * 7919, { maintenant: 0 });
   state.player.posture = 'neutre';
+  if (process.env.CAMP === '1') {
+    // On plante le camp sur la première case vide à portée, avec de quoi le
+    // payer. Ce n'est pas une partie normale : c'est l'expérience qui isole la
+    // valeur de l'avant-poste de la difficulté à s'en offrir un.
+    const g0 = groupes(state)[0];
+    const vide = state.world.regions.find(
+      (r) => !r.colonie && distance(r.i, g0.regionId) <= 2
+    ) || state.world.regions.find((r) => !r.colonie);
+    const dep = g0.regionId;
+    g0.regionId = vide.i;
+    for (const k of Object.keys(COUT_FONDATION)) {
+      g0.inventaire[k] = (g0.inventaire[k] || 0) + COUT_FONDATION[k];
+    }
+    fonderBase(state, () => {}, g0);
+    g0.regionId = dep;
+  }
   // Mémoire du bot : hors de l'état de jeu, donc rien à sérialiser.
   const memo = { eclaireur: null, detachements: 0, courtisee: null, services: 0,
     promesse: null, viseFondation: false, fonde: null, routeFondation: null };

@@ -12,11 +12,12 @@ import { classement, puissance } from '../src/factions.js';
 import { donnerOrdre, verifierExercice, COMPETENCES_EXERCICE } from '../src/squad.js';
 import {
   fonderBase, lancerConstruction, lancerRecherche, placesMetier, affectes,
+  abriDe, capaciteStock, energie, COUT_FONDATION,
   manoeuvres, affecter, rendementMetier, mainDoeuvre,
 } from '../src/base.js';
-import { METIER_KEYS, BIOMES } from '../src/data.js';
+import { METIER_KEYS, BIOMES, BUILDINGS } from '../src/data.js';
 import {
-  estVivant, makeCharacter, accorderDiplome, apprentissage,
+  estVivant, makeCharacter, accorderDiplome, apprentissage, tickPerso,
 } from '../src/characters.js';
 import { DIPLOMES } from '../src/data.js';
 import {
@@ -381,7 +382,9 @@ ok(fond.ok, 'fondation de l’avant-poste');
 // rations dans le sac : une escouade affamée meurt et la partie s'arrête.
 Object.assign(s8.base.stock, {
   ferraille: 300, polymere: 120, composant: 40, minerai: 120,
-  carburant: 100, biomasse: 150, alliage: 30,
+  // De la biomasse en quantité : ce qu'on vérifie ici, c'est que l'hydroponie
+  // fabrique des rations, pas combien de temps un tas fini dure.
+  carburant: 100, biomasse: 900, alliage: 30,
 });
 groupeActif(s8).inventaire.rations = 400;
 const c1 = lancerConstruction(s8, 'generateur');
@@ -1000,6 +1003,50 @@ for (const k of METIER_KEYS) totalPostes += affectes(s9t.base, k);
 ok(totalPostes <= s9t.base.pop, 'les postes se dégarnissent si la population tombe',
   `${totalPostes} pour ${s9t.base.pop} habitants`);
 verifierCoherence(s9t, 'après affectation des métiers');
+
+section('9 nonies ter. Le campement paie dès le premier piquet');
+const camp1 = nouvellePartie(9191, { maintenant: 0 });
+const gCamp1 = groupeActif(camp1);
+const videCamp1 = camp1.world.regions.find((r) => !r.colonie);
+gCamp1.regionId = videCamp1.i;
+ok(abriDe(camp1, gCamp1.regionId) === 1, 'dormir dans le sable ne vaut rien de plus');
+Object.assign(gCamp1.inventaire, { ferraille: 200, polymere: 60 });
+ok(fonderBase(camp1, () => {}).ok, 'un campement se paie en ferraille seule',
+  JSON.stringify(COUT_FONDATION));
+ok(abriDe(camp1, gCamp1.regionId) > 1.5,
+  'et dès le premier piquet, on y dort mieux qu’ailleurs',
+  `×${abriDe(camp1, gCamp1.regionId).toFixed(2)}`);
+ok(capaciteStock(camp1.base) > 500,
+  'un camp vide est déjà un dépôt', `${capaciteStock(camp1.base)} unités`);
+
+// Le toit se voit sur la fatigue : deux escouades identiques, l'une chez elle.
+const dehors = makeCharacter(new Rng(31), { archetype: 'ferrailleur' });
+const chezSoi = makeCharacter(new Rng(31), { archetype: 'ferrailleur' });
+dehors.fatigue = 90; chezSoi.fatigue = 90;
+for (let i = 0; i < 8; i++) {
+  tickPerso(dehors, 0, new Rng(1), { abri: 1 });
+  tickPerso(chezSoi, 0, new Rng(1), { abri: abriDe(camp1, gCamp1.regionId) });
+}
+ok(chezSoi.fatigue < dehors.fatigue - 8, 'huit heures de repos sous un toit valent mieux',
+  `${dehors.fatigue.toFixed(0)} dehors contre ${chezSoi.fatigue.toFixed(0)} au camp`);
+
+// Hydroponie et halle marchent sans courant — lentement, mais elles marchent.
+const camp2 = nouvellePartie(9292, { maintenant: 0 });
+const gCamp2 = groupeActif(camp2);
+gCamp2.regionId = camp2.world.regions.find((r) => !r.colonie).i;
+Object.assign(gCamp2.inventaire, { ferraille: 300, polymere: 100 });
+fonderBase(camp2, () => {});
+Object.assign(camp2.base.batiments, { hydroponie: 1, halle: 1 });
+camp2.base.stock.biomasse = 400;
+camp2.base.stock.carburant = 0;       // pas une goutte, pas de générateur
+ok(energie(camp2.base).ratio === 0, 'aucune énergie disponible');
+const ratAvant = camp2.base.stock.rations || 0;
+avancer(camp2, 200);
+ok((camp2.base.stock.rations || 0) > ratAvant + 10,
+  'à la main et sans courant, les bacs produisent quand même',
+  `${ratAvant} → ${Math.round(camp2.base.stock.rations)} rations`);
+ok(!BUILDINGS.halle.cout.composant,
+  'et la halle ne demande aucun composant : elle nourrit, elle ne développe pas');
 
 section('9 nonies bis. Cantine, halle et poste de garde');
 const s9n2 = nouvellePartie(8484, { maintenant: 0 });
