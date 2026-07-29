@@ -17,6 +17,7 @@ import {
   pourvoirCharges, tickNotables, rendementNotables, margeMarchand, ordreDe,
 } from './notables.js';
 import { tickServices } from './services.js';
+import { portageAttelage } from './betes.js';
 
 /** Stock « confortable » visé par une colonie pour une marchandise. */
 export function cibleStock(col, key) {
@@ -547,6 +548,11 @@ export function capacitePortage(state, groupe) {
     if ((c.formation && c.formation.restant > 0) || c.enseigne) continue;
     cap += portage(c, bonus);
   }
+  // Ce que l'attelage porte à leur place. C'est là tout son intérêt : un convoi
+  // qui passe soixante-dix pour cent de ses départs à faire la navette avec la
+  // ville n'a pas besoin d'un plus grand sac, il a besoin de quelqu'un pour le
+  // porter.
+  cap += portageAttelage(g);
   return Math.round(cap);
 }
 

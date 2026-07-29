@@ -50,6 +50,8 @@ export function groupeVide(id, nom, regionId, t = 0) {
     membres: [],
     inventaire,
     objets: [],
+    // Ce qui porte à votre place. Voir betes.js.
+    betes: [],
     reste: {},
     bilan: { res: {}, depuis: t },
     recolteHeure: null,

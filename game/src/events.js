@@ -12,6 +12,7 @@ import {
   compterVictoireOrdre, crediter, estAuService, rangDe, renfortsDisponibles,
 } from './allegeance.js';
 import { genererBande, resoudreCombat, butin } from './combat.js';
+import { perdreBete } from './betes.js';
 import {
   comp, gagnerXp, estDebout, estVivant, makeCharacter, blesser, pvTotal,
   ajusterLien, XP_PRATIQUE,
@@ -291,6 +292,9 @@ function perdreCombat(state, bande, log, ctx, lieu, g) {
   if (g.objets.length && rng.chance(0.6)) {
     g.objets.splice(rng.int(g.objets.length), 1);
   }
+  // Une bête se mène toute seule et se revend bien : c'est la première chose
+  // qu'on emmène. C'est aussi ce qui fait qu'on y tient.
+  perdreBete(g, rng, log);
   reputation(state, bande.faction, -3);
 
   // On se réveille ailleurs, quelques heures plus tard. Dépouillés, pas égorgés :

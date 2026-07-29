@@ -16,6 +16,7 @@ import {
   manoeuvres, affecter, rendementMetier, mainDoeuvre,
 } from '../src/base.js';
 import { METIER_KEYS, BIOMES, BUILDINGS } from '../src/data.js';
+import { acheterBete, betesDe, lenteurAttelage, tickBetes } from '../src/betes.js';
 import {
   estVivant, makeCharacter, accorderDiplome, apprentissage, tickPerso, resistanceLetale,
   comp as compPerso,
@@ -32,6 +33,7 @@ import {
 } from '../src/groupes.js';
 import {
   acheter, vendre, prixJoueur, actifs, emploi, productionColonie, consommationColonie,
+  capacitePortage,
 } from '../src/economy.js';
 import { vocation, notable } from '../src/notables.js';
 import {
@@ -1093,6 +1095,55 @@ for (const k of METIER_KEYS) totalPostes += affectes(s9t.base, k);
 ok(totalPostes <= s9t.base.pop, 'les postes se dégarnissent si la population tombe',
   `${totalPostes} pour ${s9t.base.pop} habitants`);
 verifierCoherence(s9t, 'après affectation des métiers');
+
+section('9 nonies quater. L’attelage porte à votre place');
+const att = nouvellePartie(8181, { maintenant: 0 });
+const gAtt = groupeActif(att);
+const colAtt = att.world.colonies.find((c) => !c.ruine);
+gAtt.regionId = colAtt.regionId;
+att.player.credits = 5000;
+const capSeul = capacitePortage(att, gAtt);
+ok(betesDe(gAtt).length === 0, 'on part sans rien qui porte');
+const rngAtt = new Rng(4242);
+const achat = acheterBete(att, colAtt, 'mulet', rngAtt, () => {}, gAtt);
+ok(achat.ok, 'on peut acheter un mulet en ville', achat.motif);
+ok(capacitePortage(att, gAtt) > capSeul + 30, 'et le convoi porte nettement plus',
+  `${capSeul} → ${capacitePortage(att, gAtt)} kg`);
+ok(lenteurAttelage(gAtt) > 0, 'au prix d’un peu de vitesse',
+  `−${(lenteurAttelage(gAtt) * 100).toFixed(0)} %`);
+
+// On n'achète pas une bête au milieu du désert.
+const videAtt = att.world.regions.find((r) => !r.colonie);
+gAtt.regionId = videAtt.i;
+ok(!acheterBete(att, colAtt, 'mulet', rngAtt, () => {}, gAtt).ok,
+  'ni au milieu du désert');
+gAtt.regionId = colAtt.regionId;
+
+// Une bête qu'on oublie de nourrir maigrit, porte moins, et finit par rester là.
+const capPleine = capacitePortage(att, gAtt);
+gAtt.inventaire.biomasse = 0;
+for (let i = 0; i < 400; i++) tickBetes(gAtt, new Rng(i + 1), () => {});
+ok(betesDe(gAtt).length === 0 || capacitePortage(att, gAtt) < capPleine,
+  'une bête affamée porte moins — et finit par ne plus suivre',
+  betesDe(gAtt).length ? `${capacitePortage(att, gAtt)} kg` : 'restée sur la piste');
+
+// Nourrie, elle tient.
+const att2 = nouvellePartie(8282, { maintenant: 0 });
+const gAtt2 = groupeActif(att2);
+gAtt2.regionId = att2.world.colonies.find((c) => !c.ruine).regionId;
+att2.player.credits = 5000;
+acheterBete(att2, att2.world.colonies.find((c) => !c.ruine), 'mulet', new Rng(7), () => {}, gAtt2);
+gAtt2.inventaire.biomasse = 900;
+for (let i = 0; i < 400; i++) tickBetes(gAtt2, new Rng(i + 1), () => {});
+ok(betesDe(gAtt2).length === 1 && betesDe(gAtt2)[0].sante > 90,
+  'nourrie, elle se porte bien au bout de quatre cents heures',
+  betesDe(gAtt2).length ? `${Math.round(betesDe(gAtt2)[0].sante)} %` : 'partie');
+ok((gAtt2.inventaire.biomasse || 0) < 900, 'et elle a bien mangé la biomasse',
+  `${Math.round(gAtt2.inventaire.biomasse)} restants`);
+
+// L'attelage se sauvegarde.
+ok(JSON.parse(serialiser(att2)).player.groupes[0].betes.length === 1,
+  'l’attelage survit à l’aller-retour JSON');
 
 section('9 nonies bis bis. On campe la nuit, sauf ordre contraire');
 const nuitS = nouvellePartie(7777, { maintenant: 0 });

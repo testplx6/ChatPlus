@@ -51,6 +51,8 @@ export function normaliser(state) {
   for (const g of p.groupes) {
     if (!g.reste) g.reste = {};
     if (!g.objets) g.objets = [];
+    // Avant les bêtes de somme, on portait tout sur le dos.
+    if (!g.betes) g.betes = [];
     if (!g.bilan) g.bilan = { res: {}, depuis: state.temps };
     if (g.cohesion === undefined) g.cohesion = 55;
     if (!g.ordre) g.ordre = { type: 'repos' };

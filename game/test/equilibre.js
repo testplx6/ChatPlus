@@ -47,6 +47,7 @@ import {
   COUT_FONDATION,
 } from '../src/base.js';
 import { ITEMS, BUILDING_KEYS, METIER_KEYS, METIERS, BIOMES as BIOMES_BAT } from '../src/data.js';
+import { acheterBete, prixBete, betesDe, portageAttelage } from '../src/betes.js';
 import { saison } from '../src/climat.js';
 import { COMMODITY_KEYS, COMMODITIES, BIOMES } from '../src/data.js';
 import { vueColonie, PEREMPTION } from '../src/connaissance.js';
@@ -63,6 +64,7 @@ const TRACE = {
   gagneVente: 0, gagneContrat: 0, payeVivres: 0, payeSoins: 0, payeMateriel: 0,
   // Ce que l'intendance donne : la voie du service se lit là.
   rationsTouchees: 0,
+  betes: 0,
 };
 const HEURES = Number(process.argv[2]) || 4000;
 // Trente parties par défaut, pas huit. À huit, l'écart-type sur un taux de
@@ -325,7 +327,7 @@ function tenirAvantPoste(state, g, memo) {
     // le bot est presque toujours en chemin vers quelque chose.
     const site = siteAvantPoste(state, g);
     if (site && !(g.ordre.type === 'voyage' && g.ordre.dest === site.i)) {
-      donnerOrdre(state, { type: 'voyage', dest: site.i }, g);
+      partir(state, g, site.i, 'aller fonder');
       memo.routeFondation = site.i;
     }
     return;
@@ -517,6 +519,24 @@ function jouerPrincipal(state, g, memo) {
     // ses combats ne fait rien d'autre de la partie.
     sEquiper(state, g, colIci);
 
+    // S'atteler. Un dos de plus, c'est un aller-retour en ville de moins — et
+    // soixante-dix pour cent des départs d'un convoi sont des allers-retours.
+    if (!SANS.has('betes') && betesDe(g).length < 2) {
+      const cap = capacitePortage(state, g);
+      // On ne s'attelle que si le sac est réellement le facteur limitant, et
+      // qu'on peut nourrir la bête sans se ruiner.
+      if (poidsInventaire(g.inventaire) / Math.max(1, cap) > 0.6) {
+        for (const k of ['mulet', 'charrette', 'brahmine']) {
+          const prix = prixBete(colIci, k);
+          if (p.credits < prix + 400) continue;
+          const rngB = new Rng(state.rngState);
+          const r = acheterBete(state, colIci, k, rngB, () => {}, g);
+          state.rngState = rngB.save();
+          if (r.ok) { TRACE.payeMateriel += r.prix; TRACE.betes++; break; }
+        }
+      }
+    }
+
     // De quoi fonder, puis de quoi faire tourner. Un générateur sans carburant
     // ne produit rien, et sans énergie aucune chaîne ne tourne : c'est la
     // dépendance que le banc doit éprouver.
@@ -601,12 +621,12 @@ function jouerPrincipal(state, g, memo) {
     if (o.type === 'ravitaillement' && av && av.fait >= o.quantite) {
       const col = colonieParId(state.world, o.colonieId);
       if (col && !col.ruine && col.regionId !== g.regionId) {
-        donnerOrdre(state, { type: 'voyage', dest: col.regionId }, g);
+        partir(state, g, col.regionId, 'ordre de mission');
         return;
       }
     }
     if (o.type === 'reconnaissance' && !state.world.regions[o.regionId].decouvert) {
-      donnerOrdre(state, { type: 'voyage', dest: o.regionId }, g);
+      partir(state, g, o.regionId, 'ordre de mission');
       return;
     }
   }
@@ -634,7 +654,7 @@ function jouerPrincipal(state, g, memo) {
     // en quatre mille heures, et n'a jamais rien bâti.
     if ((charge > 0.7 || chantierEnAttente) && chargeUtile > 22 && rations > 40) {
       if (!(g.ordre.type === 'voyage' && g.ordre.dest === base.regionId)) {
-        donnerOrdre(state, { type: 'voyage', dest: base.regionId }, g);
+        partir(state, g, base.regionId, 'rentrer au camp');
       }
       return;
     }
@@ -648,7 +668,7 @@ function jouerPrincipal(state, g, memo) {
       // Instrumentation : on compte les voyages entrepris vers une ville qui
       // n'existe déjà plus. C'est le prix exact d'un renseignement périmé.
       if (col.ruine) TRACE.voyagesPerdus++;
-      donnerOrdre(state, { type: 'voyage', dest: col.regionId }, g);
+      partir(state, g, col.regionId, 'marché : vendre ou se ravitailler');
     }
     return;
   }
@@ -667,7 +687,7 @@ function jouerPrincipal(state, g, memo) {
   // Ce qu'on a signé passe avant ce qu'on ramasse au hasard.
   if (rations > 60) {
     const dest = destinationContrat(state, g);
-    if (dest != null) { donnerOrdre(state, { type: 'voyage', dest }, g); return; }
+    if (dest != null) { partir(state, g, dest, 'honorer un contrat'); return; }
   }
 
   // Une promesse tenue en main se livre : on ne garde pas dans son sac ce que
@@ -690,7 +710,7 @@ function jouerPrincipal(state, g, memo) {
       .filter((r) => r.decouvert && !r.colonie && distance(r.i, state.base.regionId) <= 3)
       .sort((a, b) => scoreNourriture(state, b.i) - scoreNourriture(state, a.i))[0];
     if (proche && g.ordre.type !== 'voyage') {
-      donnerOrdre(state, { type: 'voyage', dest: proche.i }, g);
+      partir(state, g, proche.i, 'revenir dans le rayon du camp');
       return;
     }
   }
@@ -705,7 +725,7 @@ function jouerPrincipal(state, g, memo) {
       const sc = scoreNourriture(state, r.i);
       if (sc > ici * 1.6 && (!mieux || sc > scoreNourriture(state, mieux.i))) mieux = r;
     }
-    if (mieux) { donnerOrdre(state, { type: 'voyage', dest: mieux.i }, g); return; }
+    if (mieux) { partir(state, g, mieux.i, 'chercher à manger'); return; }
     if (g.ordre.type !== 'chasse') donnerOrdre(state, { type: 'chasse' }, g);
     return;
   }
@@ -832,6 +852,13 @@ function jouer(state, memo) {
     else jouerPrincipal(state, g, memo);
   }
   envisagerDetachement(state, memo);
+}
+
+const MOTIFS = {};
+function partir(state, g, dest, motif) {
+  const r = donnerOrdre(state, { type: 'voyage', dest }, g);
+  if (r.ok) MOTIFS[motif] = (MOTIFS[motif] || 0) + 1;
+  return r;
 }
 
 const NECRO = { causes: {}, skills: [], kills: [], vivants: [], endurance: [], anciens: [] };
@@ -975,9 +1002,14 @@ console.log(`Demandes croisées : ${TRACE.demandesVues} — honorées : `
   + `${lignes.reduce((t, l) => t + l.services, 0)}`);
 console.log(`Voyages entrepris vers une ville déjà morte : ${TRACE.voyagesPerdus}`);
 const totH = TRACE.voyage + TRACE.repos + TRACE.travail;
+const totMotifs = Object.values(MOTIFS).reduce((a, b) => a + b, 0) || 1;
+console.log('Départs par motif : ' + Object.entries(MOTIFS).sort((a, b) => b[1] - a[1])
+  .map(([k, v]) => `${k} ${Math.round(100 * v / totMotifs)} %`).join(' · ')
+  + ` (${Math.round(totMotifs / PARTIES)} départs par partie)`);
 console.log(`Temps : ${Math.round(100 * TRACE.voyage / totH)} % en marche · `
   + `${Math.round(100 * TRACE.repos / totH)} % au repos · ${Math.round(100 * TRACE.travail / totH)} % au travail`);
-console.log(`Intendance : ${Math.round(TRACE.rationsTouchees / PARTIES)} rations touchées par partie`);
+console.log(`Intendance : ${Math.round(TRACE.rationsTouchees / PARTIES)} rations touchées par partie`
+  + ` — bêtes achetées : ${(TRACE.betes / PARTIES).toFixed(1)} par partie`);
 console.log(`Argent : +${Math.round(TRACE.gagneVente / PARTIES)} de ventes · `
   + `−${Math.round(TRACE.payeVivres / PARTIES)} de vivres · −${Math.round(TRACE.payeSoins / PARTIES)} de soins `
   + `· −${Math.round(TRACE.payeMateriel / PARTIES)} d'équipement `

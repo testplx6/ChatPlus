@@ -3411,6 +3411,8 @@ function groupeVide(id, nom, regionId, t = 0) {
     membres: [],
     inventaire,
     objets: [],
+    // Ce qui porte à votre place. Voir betes.js.
+    betes: [],
     reste: {},
     bilan: { res: {}, depuis: t },
     recolteHeure: null,
@@ -3595,6 +3597,259 @@ function retirerGroupe(state, g) {
 /** Un groupe rejoint par un autre au même endroit peut être absorbé. */
 function fusionnablesAvec(state, g) {
   return groupes(state).filter((o) => o.id !== g.id && o.regionId === g.regionId);
+}
+
+// ===== src/betes.js ==================================================
+// Ce qui porte à votre place.
+//
+// Le banc a fini par chiffrer ce que le jeu était devenu : soixante-dix pour
+// cent des départs d'un convoi sont de la logistique — le sac se remplit, on
+// marche jusqu'en ville, on vend, on repart. Cinquante-neuf pour cent du temps
+// de jeu passe sur les pistes. Sur une carte cinq fois plus grande, cette
+// boucle coûte cinq fois plus, et elle écrase tout le reste : onze pour cent
+// des départs seulement servent un contrat, onze pour cent un ordre de mission.
+//
+// La réponse n'est pas d'agrandir le sac : ce serait retirer la logistique du
+// jeu au lieu de la rendre intéressante. C'est de la déléguer à quelque chose
+// qui a son propre état — qui mange, qui s'épuise, qu'on peut perdre. Une bête
+// de somme n'est pas un bonus de portage, c'est un membre de plus dont il faut
+// s'occuper, et qui vous manque cruellement le jour où on vous la tue.
+
+
+/**
+ * Ce qu'on peut atteler. Deux voies, deux compromis : la bête mange mais ne
+ * craint pas le terrain ; la charrette ne mange pas mais peine dans les
+ * cassures.
+ */
+const BETES = {
+  brahmine: {
+    nom: 'Brahmine',
+    desc: 'Deux estomacs, mauvais caractère, et le dos qu’il faut.',
+    prix: 900,
+    portage: 75,
+    // Ce qu'elle avale par heure, en biomasse. Elle broute ce que personne ne
+    // mange, ce qui est tout l'intérêt.
+    appetit: 0.09,
+    lenteur: 0.05,
+    robustesse: 1,
+  },
+  mulet: {
+    nom: 'Mulet de fret',
+    desc: 'Petit, têtu, increvable. On en croise sur toutes les pistes.',
+    prix: 520,
+    portage: 42,
+    appetit: 0.05,
+    lenteur: 0.02,
+    robustesse: 1.35,
+  },
+  charrette: {
+    nom: 'Charrette à bras',
+    desc: 'Ne mange rien, ne se plaint pas, et déteste les cassures.',
+    prix: 340,
+    portage: 55,
+    appetit: 0,
+    // On la tire soi-même : c'est le convoi qui ralentit, et beaucoup.
+    lenteur: 0.14,
+    robustesse: 2.2,
+    // Elle ne meurt pas de faim ; elle casse.
+    objet: true,
+  },
+};
+
+const BETE_KEYS = Object.keys(BETES);
+
+/** Combien un convoi peut en mener de front avant que ça ne rime plus à rien. */
+const ATTELAGE_MAX = 3;
+
+const NOMS_BETES = [
+  'Cendre', 'Bourrique', 'Suif', 'Vieille', 'Caillou', 'Poussière', 'Trogne',
+  'Bosse', 'Rouille', 'Tempête', 'Fer-Blanc', 'Chignole', 'Sabot', 'Bréhaigne',
+];
+
+function creerBete(rng, key) {
+  const def = BETES[key];
+  return {
+    id: idDepuisRng(rng, 'b'),
+    key,
+    nom: def.objet ? def.nom : rng.pick(NOMS_BETES),
+    // 0 à 100. Une bête mal nourrie maigrit et porte moins ; à zéro, elle reste
+    // sur le bord de la piste.
+    sante: 100,
+    faim: 0,
+  };
+}
+
+function betesDe(g) {
+  return (g && g.betes) || [];
+}
+
+/**
+ * Ce que l'attelage ajoute au portage. Une bête affamée ou blessée porte moins :
+ * c'est ce qui rend la négligence coûteuse plutôt que gratuite.
+ */
+function portageAttelage(g) {
+  let t = 0;
+  for (const b of betesDe(g)) {
+    const def = BETES[b.key];
+    if (!def) continue;
+    t += def.portage * (0.35 + 0.65 * (b.sante / 100));
+  }
+  return t;
+}
+
+/** Ce que l'attelage retire à la vitesse du convoi. Plafonné : on avance encore. */
+function lenteurAttelage(g) {
+  let l = 0;
+  for (const b of betesDe(g)) l += (BETES[b.key] || {}).lenteur || 0;
+  return Math.min(0.3, l);
+}
+
+/** Ce que l'attelage mange par heure, en biomasse. */
+function appetitAttelage(g) {
+  let a = 0;
+  for (const b of betesDe(g)) a += (BETES[b.key] || {}).appetit || 0;
+  return a;
+}
+
+// ---------------------------------------------------------------------------
+// Achat, cession
+// ---------------------------------------------------------------------------
+
+function prixBete(col, key) {
+  const def = BETES[key];
+  if (!def) return 0;
+  // Une ville prospère et paisible vend moins cher ce dont elle a moins besoin.
+  const tension = 1 + (col ? col.unrest * 0.5 : 0);
+  return Math.round(def.prix * tension);
+}
+
+function acheterBete(state, col, key, rng, log, groupe) {
+  const g = groupe || (state.player.groupes || [])[0];
+  const def = BETES[key];
+  if (!def) return { ok: false, motif: 'On ne vend pas ça.' };
+  if (!g) return { ok: false, motif: 'Aucun groupe.' };
+  if (!col || col.ruine || g.regionId !== col.regionId) {
+    return { ok: false, motif: 'Il faut être en ville.' };
+  }
+  if (betesDe(g).length >= ATTELAGE_MAX) {
+    return { ok: false, motif: `Un convoi ne mène pas plus de ${ATTELAGE_MAX} bêtes.` };
+  }
+  const prix = prixBete(col, key);
+  if (state.player.credits < prix) {
+    return { ok: false, motif: `Il manque ${prix - state.player.credits} cr.` };
+  }
+  state.player.credits -= prix;
+  if (!g.betes) g.betes = [];
+  const b = creerBete(rng, key);
+  g.betes.push(b);
+  if (log) {
+    log({
+      type: 'bete',
+      texte: `${def.nom} ${def.objet ? 'achetée' : `— ${b.nom} — achetée`} à ${col.nom} pour ${prix} cr.`,
+      important: true,
+      regionId: col.regionId,
+      groupe: g.id,
+    });
+  }
+  return { ok: true, bete: b, prix };
+}
+
+function vendreBete(state, col, beteId, log, groupe) {
+  const g = groupe || (state.player.groupes || [])[0];
+  const i = betesDe(g).findIndex((b) => b.id === beteId);
+  if (i < 0) return { ok: false, motif: 'Pas à vous.' };
+  if (!col || col.ruine || g.regionId !== col.regionId) {
+    return { ok: false, motif: 'Il faut être en ville.' };
+  }
+  const b = g.betes[i];
+  // On récupère la moitié, au prorata de l'état : personne n'achète une carne.
+  const prix = Math.round(prixBete(col, b.key) * 0.5 * (0.4 + 0.6 * (b.sante / 100)));
+  state.player.credits += prix;
+  g.betes.splice(i, 1);
+  if (log) log({ type: 'bete', texte: `${b.nom} cédée à ${col.nom} pour ${prix} cr.`, regionId: col.regionId });
+  return { ok: true, prix };
+}
+
+// ---------------------------------------------------------------------------
+// Tick
+// ---------------------------------------------------------------------------
+
+/**
+ * Une heure de vie de l'attelage. Elles broutent la biomasse du sac — celle que
+ * personne d'autre ne mange —, maigrissent quand il n'y en a pas, et finissent
+ * par rester sur le bord de la piste.
+ */
+function tickBetes(g, rng, log) {
+  const betes = betesDe(g);
+  if (!betes.length) return;
+  const restantes = [];
+  for (const b of betes) {
+    const def = BETES[b.key];
+    if (!def) continue;
+    if (def.appetit > 0) {
+      const dispo = g.inventaire.biomasse || 0;
+      const veut = def.appetit;
+      const servi = Math.min(dispo, veut);
+      g.inventaire.biomasse = dispo - servi;
+      if (servi >= veut * 0.9) {
+        b.faim = Math.max(0, b.faim - 1.2);
+        b.sante = Math.min(100, b.sante + 0.25);
+      } else {
+        b.faim = Math.min(120, b.faim + 0.8);
+        if (b.faim > 45) b.sante = Math.max(0, b.sante - 0.35);
+      }
+    } else {
+      // Une charrette ne mange pas : elle s'use sur la piste.
+      b.sante = Math.max(0, b.sante - 0.015);
+    }
+    if (b.sante <= 0) {
+      if (log) {
+        log({
+          type: 'bete',
+          texte: def.objet
+            ? `${b.nom} rend l’âme sur la piste. On répartit la charge.`
+            : `${b.nom} n’ira pas plus loin. On la laisse là.`,
+          important: true,
+          groupe: g.id,
+        });
+      }
+      continue;
+    }
+    restantes.push(b);
+  }
+  g.betes = restantes;
+}
+
+/**
+ * Une défaite peut coûter une bête : c'est ce qui fait qu'on y tient. Le
+ * pillard prend d'abord ce qui se revend et se mène tout seul.
+ */
+function perdreBete(g, rng, log) {
+  const betes = betesDe(g);
+  if (!betes.length) return null;
+  const i = rng.int(betes.length);
+  const b = betes[i];
+  const def = BETES[b.key] || {};
+  if (!rng.chance(0.55 / (def.robustesse || 1))) return null;
+  g.betes.splice(i, 1);
+  if (log) {
+    log({
+      type: 'bete',
+      texte: def.objet
+        ? `${b.nom} est emportée dans la déroute.`
+        : `On a emmené ${b.nom} avec le reste.`,
+      important: true,
+      groupe: g.id,
+    });
+  }
+  return b;
+}
+
+/** Ce qu'un attelage vaut, pour l'affichage et pour un bilan. */
+function valeurAttelage(g) {
+  let v = 0;
+  for (const b of betesDe(g)) v += (BETES[b.key] || {}).prix * 0.5 * (b.sante / 100);
+  return Math.round(v);
 }
 
 // ===== src/services.js ===============================================
@@ -5656,6 +5911,11 @@ function capacitePortage(state, groupe) {
     if ((c.formation && c.formation.restant > 0) || c.enseigne) continue;
     cap += portage(c, bonus);
   }
+  // Ce que l'attelage porte à leur place. C'est là tout son intérêt : un convoi
+  // qui passe soixante-dix pour cent de ses départs à faire la navette avec la
+  // ville n'a pas besoin d'un plus grand sac, il a besoin de quelqu'un pour le
+  // porter.
+  cap += portageAttelage(g);
   return Math.round(cap);
 }
 
@@ -7860,6 +8120,9 @@ function perdreCombat(state, bande, log, ctx, lieu, g) {
   if (g.objets.length && rng.chance(0.6)) {
     g.objets.splice(rng.int(g.objets.length), 1);
   }
+  // Une bête se mène toute seule et se revend bien : c'est la première chose
+  // qu'on emmène. C'est aussi ce qui fait qu'on y tient.
+  perdreBete(g, rng, log);
   reputation(state, bande.faction, -3);
 
   // On se réveille ailleurs, quelques heures plus tard. Dépouillés, pas égorgés :
@@ -8653,6 +8916,9 @@ function avancerVoyage(state, g, log, ctx) {
   vitesse *= 1 - Math.min(0.55, Math.max(0, charge - 0.6) * 0.9);
   const portes = g.membres.filter((c) => c.etat === 'ko').length;
   vitesse *= 1 - Math.min(0.5, portes * 0.18);
+  // Une bête suit le convoi ; une charrette le retient. C'est le prix du dos
+  // qu'on s'est acheté.
+  vitesse *= 1 - lenteurAttelage(g);
   vitesse = Math.max(0.15, vitesse);
 
   o.progres += vitesse;
@@ -8745,6 +9011,10 @@ function tickGroupe(state, g, log, ctx) {
   g.nuit = nuit;
 
   const debout = deboutDe(g);
+
+  // L'attelage broute, maigrit, et finit parfois par rester sur le bord de la
+  // piste. Il mange de la biomasse : celle que personne d'autre ne mange.
+  tickBetes(g, rng, log);
 
   // --- Cohésion : un groupe au repos et bien nourri se ressoude, un groupe qui
   // enchaîne les défaites se délite. Le moral suit.
@@ -9046,6 +9316,8 @@ function normaliser(state) {
   for (const g of p.groupes) {
     if (!g.reste) g.reste = {};
     if (!g.objets) g.objets = [];
+    // Avant les bêtes de somme, on portait tout sur le dos.
+    if (!g.betes) g.betes = [];
     if (!g.bilan) g.bilan = { res: {}, depuis: state.temps };
     if (g.cohesion === undefined) g.cohesion = 55;
     if (!g.ordre) g.ordre = { type: 'repos' };
@@ -10434,6 +10706,7 @@ function blocColonie(col) {
       <button class="act mini primaire" data-a="modale" data-m="etal">Équipement</button>
       <button class="act mini" data-a="modale" data-m="panneau">Contrats${col.contrats && col.contrats.length ? ` (${col.contrats.length})` : ''}</button>
       <button class="act mini" data-a="modale" data-m="recrutement">Recruter</button>
+      <button class="act mini" data-a="modale" data-m="attelage">Attelage${betesDe(G()).length ? ` (${betesDe(G()).length})` : ''}</button>
       ${ecolesDe(S.world, col).length
     ? `<button class="act mini" style="grid-column:1/-1" data-a="modale" data-m="ecole">
         Écoles (${ecolesDe(S.world, col).length})</button>` : ''}
@@ -11383,6 +11656,7 @@ function contenuModale() {
     case 'transfert': return modaleTransfert() + fermer;
     case 'ecole': return modaleEcole() + fermer;
     case 'ville': return modaleVille() + fermer;
+    case 'attelage': return modaleAttelage() + fermer;
     case 'equipement': return modaleEquipement() + fermer;
     case 'entrainement': return modaleEntrainement() + fermer;
     case 'recrutement': return modaleRecrutement() + fermer;
@@ -11730,6 +12004,64 @@ function modaleVille() {
     ${Math.abs(marge * 100).toFixed(0)} % ${marge > 0 ? 'de plus' : 'de moins'} que l’ordinaire.</div>` : ''}
   ${acquisHtml(col)}
   ${gensHtml}`;
+}
+
+/**
+ * L'attelage : ce qui porte à votre place. Le sujet n'est pas le portage en
+ * soi — c'est que soixante-dix pour cent des départs d'un convoi servent à
+ * faire la navette avec la ville, et qu'une bête, ça se nourrit et ça se perd.
+ */
+function modaleAttelage() {
+  const g = G();
+  const col = colonieDe(S.world, g.regionId);
+  const miennes = betesDe(g);
+
+  const aMoi = miennes.length ? miennes.map((b) => {
+    const def = BETES[b.key];
+    const etat = b.sante > 75 ? 'ok' : b.sante > 35 ? 'att' : 'mal';
+    return `<div class="contrat">
+      <div class="contrat-t">${e(b.nom)} <span class="aide">— ${e(def.nom.toLowerCase())}</span></div>
+      <div class="ligne"><span class="k">État</span>
+        <span class="v"><span class="puce ${etat}">${Math.round(b.sante)} %</span></span></div>
+      <div class="ligne"><span class="k">Porte</span>
+        <span class="v">${n(Math.round(def.portage * (0.35 + 0.65 * b.sante / 100)))} kg</span></div>
+      ${def.appetit ? `<div class="ligne"><span class="k">Faim</span>
+        <span class="v">${b.faim > 45 ? '<span class="alerte">affamée</span>' : 'repue'}</span></div>` : ''}
+      ${col ? `<button class="act mini" data-a="vendre-bete" data-b="${e(b.id)}"
+        style="margin-top:4px">Céder à ${e(col.nom)}</button>` : ''}
+    </div>`;
+  }).join('') : '<div class="aide">Vous portez tout sur le dos.</div>';
+
+  const etal = col ? BETE_KEYS.map((k) => {
+    const def = BETES[k];
+    const prix = prixBete(col, k);
+    const plein = miennes.length >= ATTELAGE_MAX;
+    return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
+      <div class="ligne"><span class="k">${e(def.nom)}</span>
+        <span class="v">${n(prix)} cr</span></div>
+      <div class="aide">${e(def.desc)}</div>
+      <div class="aide">+${def.portage} kg · ${def.appetit
+    ? `mange ${(def.appetit * 24).toFixed(1)} biomasse/jour` : 'ne mange rien'}
+        · −${(def.lenteur * 100).toFixed(0)} % de vitesse</div>
+      <button class="act mini" data-a="acheter-bete" data-k="${k}" style="margin-top:4px"
+        ${plein || S.player.credits < prix ? 'disabled' : ''}>
+        ${plein ? 'Attelage complet' : S.player.credits < prix ? 'Crédits insuffisants' : 'Acheter'}</button>
+    </div>`;
+  }).join('') : '<div class="aide">On n’achète pas une bête au milieu du désert.</div>';
+
+  return `<h2 class="titre">Attelage de ${e(g.nom)}
+    <span class="droite">${n(S.player.credits)} cr</span></h2>
+  <div class="aide">Une bête porte à votre place, mange ce que personne ne mange,
+    et ralentit le convoi. Elle maigrit si on l’oublie, et les pillards
+    l’emmènent avant le reste.</div>
+  ${portageAttelage(g) > 0 ? `<div class="ligne"><span class="k">Porté par l’attelage</span>
+    <span class="v">${n(Math.round(portageAttelage(g)))} kg · −${(lenteurAttelage(g) * 100).toFixed(0)} % de vitesse</span></div>` : ''}
+  <div class="sep"></div>
+  <div class="titre">Vos bêtes</div>
+  ${aMoi}
+  <div class="sep"></div>
+  <div class="titre">À vendre ici</div>
+  ${etal}`;
 }
 
 function modaleRecrutement() {
@@ -12118,6 +12450,20 @@ function surClic(ev) {
       break;
     }
 
+    case 'acheter-bete': {
+      const r = ACTIONS.acheterBete(el.dataset.k);
+      toast(r.ok ? `${r.bete.nom} rejoint le convoi.` : r.motif, !r.ok);
+      rendreModale();
+      break;
+    }
+
+    case 'vendre-bete': {
+      const r = ACTIONS.vendreBete(el.dataset.b);
+      toast(r.ok ? `Cédée pour ${r.prix} cr.` : r.motif, !r.ok);
+      rendreModale();
+      break;
+    }
+
     case 'intendance': {
       const r = ACTIONS.toucherRations();
       toast(r.ok ? `${r.quantite} rations touchées.` : r.motif, !r.ok);
@@ -12296,6 +12642,25 @@ const API = {
     });
     sauver();
     return { ok: true, nom: c.nom };
+  },
+
+  /** Acheter une bête de somme. Tirage : RNG de la partie. */
+  acheterBete(key) {
+    const g = groupeActif(state);
+    const col = state.world.colonies.find((c) => !c.ruine && c.regionId === g.regionId);
+    const rng = new Rng(state.rngState);
+    const r = acheterBete(state, col, key, rng, creerLogger(state), g);
+    state.rngState = rng.save();
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  vendreBete(id) {
+    const g = groupeActif(state);
+    const col = state.world.colonies.find((c) => !c.ruine && c.regionId === g.regionId);
+    const r = vendreBete(state, col, id, creerLogger(state), g);
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
   },
 
   /** Toucher ses rations à l'intendance de la ville où l'on se trouve. */

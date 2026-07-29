@@ -47,6 +47,9 @@ import {
 } from './formation.js';
 import { CHARGES, CARACTERES, margeMarchand, vocation } from './notables.js';
 import { demandesIci, souvenirs, faveurChef, SOINS_SEUIL, REGISTRES_SEUIL } from './services.js';
+import {
+  BETES, BETE_KEYS, betesDe, prixBete, portageAttelage, lenteurAttelage, ATTELAGE_MAX,
+} from './betes.js';
 import { dirigeant, TEMPERAMENTS, LEGITIMITE_CRITIQUE } from './dirigeants.js';
 import { vueColonie, vueRegion, estSurveillee, ageTexte, nouvellesConnues } from './connaissance.js';
 import {
@@ -887,6 +890,7 @@ function blocColonie(col) {
       <button class="act mini primaire" data-a="modale" data-m="etal">Équipement</button>
       <button class="act mini" data-a="modale" data-m="panneau">Contrats${col.contrats && col.contrats.length ? ` (${col.contrats.length})` : ''}</button>
       <button class="act mini" data-a="modale" data-m="recrutement">Recruter</button>
+      <button class="act mini" data-a="modale" data-m="attelage">Attelage${betesDe(G()).length ? ` (${betesDe(G()).length})` : ''}</button>
       ${ecolesDe(S.world, col).length
     ? `<button class="act mini" style="grid-column:1/-1" data-a="modale" data-m="ecole">
         Écoles (${ecolesDe(S.world, col).length})</button>` : ''}
@@ -1836,6 +1840,7 @@ function contenuModale() {
     case 'transfert': return modaleTransfert() + fermer;
     case 'ecole': return modaleEcole() + fermer;
     case 'ville': return modaleVille() + fermer;
+    case 'attelage': return modaleAttelage() + fermer;
     case 'equipement': return modaleEquipement() + fermer;
     case 'entrainement': return modaleEntrainement() + fermer;
     case 'recrutement': return modaleRecrutement() + fermer;
@@ -2183,6 +2188,64 @@ function modaleVille() {
     ${Math.abs(marge * 100).toFixed(0)} % ${marge > 0 ? 'de plus' : 'de moins'} que l’ordinaire.</div>` : ''}
   ${acquisHtml(col)}
   ${gensHtml}`;
+}
+
+/**
+ * L'attelage : ce qui porte à votre place. Le sujet n'est pas le portage en
+ * soi — c'est que soixante-dix pour cent des départs d'un convoi servent à
+ * faire la navette avec la ville, et qu'une bête, ça se nourrit et ça se perd.
+ */
+function modaleAttelage() {
+  const g = G();
+  const col = colonieDe(S.world, g.regionId);
+  const miennes = betesDe(g);
+
+  const aMoi = miennes.length ? miennes.map((b) => {
+    const def = BETES[b.key];
+    const etat = b.sante > 75 ? 'ok' : b.sante > 35 ? 'att' : 'mal';
+    return `<div class="contrat">
+      <div class="contrat-t">${e(b.nom)} <span class="aide">— ${e(def.nom.toLowerCase())}</span></div>
+      <div class="ligne"><span class="k">État</span>
+        <span class="v"><span class="puce ${etat}">${Math.round(b.sante)} %</span></span></div>
+      <div class="ligne"><span class="k">Porte</span>
+        <span class="v">${n(Math.round(def.portage * (0.35 + 0.65 * b.sante / 100)))} kg</span></div>
+      ${def.appetit ? `<div class="ligne"><span class="k">Faim</span>
+        <span class="v">${b.faim > 45 ? '<span class="alerte">affamée</span>' : 'repue'}</span></div>` : ''}
+      ${col ? `<button class="act mini" data-a="vendre-bete" data-b="${e(b.id)}"
+        style="margin-top:4px">Céder à ${e(col.nom)}</button>` : ''}
+    </div>`;
+  }).join('') : '<div class="aide">Vous portez tout sur le dos.</div>';
+
+  const etal = col ? BETE_KEYS.map((k) => {
+    const def = BETES[k];
+    const prix = prixBete(col, k);
+    const plein = miennes.length >= ATTELAGE_MAX;
+    return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
+      <div class="ligne"><span class="k">${e(def.nom)}</span>
+        <span class="v">${n(prix)} cr</span></div>
+      <div class="aide">${e(def.desc)}</div>
+      <div class="aide">+${def.portage} kg · ${def.appetit
+    ? `mange ${(def.appetit * 24).toFixed(1)} biomasse/jour` : 'ne mange rien'}
+        · −${(def.lenteur * 100).toFixed(0)} % de vitesse</div>
+      <button class="act mini" data-a="acheter-bete" data-k="${k}" style="margin-top:4px"
+        ${plein || S.player.credits < prix ? 'disabled' : ''}>
+        ${plein ? 'Attelage complet' : S.player.credits < prix ? 'Crédits insuffisants' : 'Acheter'}</button>
+    </div>`;
+  }).join('') : '<div class="aide">On n’achète pas une bête au milieu du désert.</div>';
+
+  return `<h2 class="titre">Attelage de ${e(g.nom)}
+    <span class="droite">${n(S.player.credits)} cr</span></h2>
+  <div class="aide">Une bête porte à votre place, mange ce que personne ne mange,
+    et ralentit le convoi. Elle maigrit si on l’oublie, et les pillards
+    l’emmènent avant le reste.</div>
+  ${portageAttelage(g) > 0 ? `<div class="ligne"><span class="k">Porté par l’attelage</span>
+    <span class="v">${n(Math.round(portageAttelage(g)))} kg · −${(lenteurAttelage(g) * 100).toFixed(0)} % de vitesse</span></div>` : ''}
+  <div class="sep"></div>
+  <div class="titre">Vos bêtes</div>
+  ${aMoi}
+  <div class="sep"></div>
+  <div class="titre">À vendre ici</div>
+  ${etal}`;
 }
 
 function modaleRecrutement() {
@@ -2568,6 +2631,20 @@ function surClic(ev) {
       modale = null;
       rendreModale();
       rafraichir(true);
+      break;
+    }
+
+    case 'acheter-bete': {
+      const r = ACTIONS.acheterBete(el.dataset.k);
+      toast(r.ok ? `${r.bete.nom} rejoint le convoi.` : r.motif, !r.ok);
+      rendreModale();
+      break;
+    }
+
+    case 'vendre-bete': {
+      const r = ACTIONS.vendreBete(el.dataset.b);
+      toast(r.ok ? `Cédée pour ${r.prix} cr.` : r.motif, !r.ok);
+      rendreModale();
       break;
     }
 

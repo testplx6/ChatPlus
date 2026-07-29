@@ -21,6 +21,7 @@ import {
   groupeActif, tacheDe, debout as deboutDe, vivants as vivantsDe, retirerGroupe,
 } from './groupes.js';
 import { renfortSoin } from './services.js';
+import { tickBetes, lenteurAttelage } from './betes.js';
 import { garnison } from './allegeance.js';
 
 export const ORDRES = {
@@ -374,6 +375,9 @@ function avancerVoyage(state, g, log, ctx) {
   vitesse *= 1 - Math.min(0.55, Math.max(0, charge - 0.6) * 0.9);
   const portes = g.membres.filter((c) => c.etat === 'ko').length;
   vitesse *= 1 - Math.min(0.5, portes * 0.18);
+  // Une bête suit le convoi ; une charrette le retient. C'est le prix du dos
+  // qu'on s'est acheté.
+  vitesse *= 1 - lenteurAttelage(g);
   vitesse = Math.max(0.15, vitesse);
 
   o.progres += vitesse;
@@ -466,6 +470,10 @@ function tickGroupe(state, g, log, ctx) {
   g.nuit = nuit;
 
   const debout = deboutDe(g);
+
+  // L'attelage broute, maigrit, et finit parfois par rester sur le bord de la
+  // piste. Il mange de la biomasse : celle que personne d'autre ne mange.
+  tickBetes(g, rng, log);
 
   // --- Cohésion : un groupe au repos et bien nourri se ressoude, un groupe qui
   // enchaîne les défaites se délite. Le moral suit.

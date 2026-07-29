@@ -14,6 +14,7 @@ import { groupeActif, tousLesMembres, scinder, fusionner, choisirGroupe, assigne
 import { tailleEscouadeMax } from './base.js';
 import { verifierExercice } from './squad.js';
 import { honorer as honorerService } from './services.js';
+import { acheterBete, vendreBete } from './betes.js';
 
 let state = null;
 let boucle = null;
@@ -139,6 +140,25 @@ const API = {
     });
     sauver();
     return { ok: true, nom: c.nom };
+  },
+
+  /** Acheter une bête de somme. Tirage : RNG de la partie. */
+  acheterBete(key) {
+    const g = groupeActif(state);
+    const col = state.world.colonies.find((c) => !c.ruine && c.regionId === g.regionId);
+    const rng = new Rng(state.rngState);
+    const r = acheterBete(state, col, key, rng, creerLogger(state), g);
+    state.rngState = rng.save();
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  vendreBete(id) {
+    const g = groupeActif(state);
+    const col = state.world.colonies.find((c) => !c.ruine && c.regionId === g.regionId);
+    const r = vendreBete(state, col, id, creerLogger(state), g);
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
   },
 
   /** Toucher ses rations à l'intendance de la ville où l'on se trouve. */

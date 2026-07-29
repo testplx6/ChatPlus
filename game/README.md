@@ -262,6 +262,42 @@ Ce qui reste n'est pas un réglage mais une décision de conception, traitée
 juste au-dessus : le nomadisme est une voie viable, l'avant-poste n'en est pas
 encore une.
 
+### Ce qui porte à votre place
+
+Une fois les nuits rendues à l'escouade, le banc a montré le chiffre suivant :
+**soixante-dix pour cent des départs d'un convoi sont de la logistique.** Le sac
+se remplit, on marche jusqu'en ville, on vend, on repart. Onze pour cent des
+départs seulement servaient un contrat, onze pour cent un ordre de mission.
+
+    marché : vendre ou se ravitailler   37 %
+    chercher à manger                   33 %
+    ordre de mission                    11 %
+    honorer un contrat                  11 %
+    rentrer au camp                      8 %
+
+La réponse n'était pas d'agrandir le sac : ce serait retirer la logistique du
+jeu au lieu de la rendre intéressante. C'est de la déléguer à quelque chose qui
+a son propre état. **Une bête de somme n'est pas un bonus de portage** : elle
+mange la biomasse que personne d'autre ne mange, elle maigrit si on l'oublie,
+elle porte moins quand elle va mal, elle ralentit le convoi, et les pillards
+l'emmènent avant le reste — c'est un membre de plus dont il faut s'occuper.
+
+Trois attelages, trois compromis : le **mulet** (petit, sobre, increvable), la
+**brahmine** (le meilleur dos, le plus gros appétit), la **charrette à bras**
+(ne mange rien, mais c'est vous qui tirez).
+
+    départs logistiques        70 %      43 %
+    contrats + ordres          22 %      32 %
+    survivants               39/48     43/48
+    avant-postes fondés      10/48     33/48
+
+Le dernier chiffre n'était pas prévu et c'est le plus intéressant. Un convoi qui
+peut porter finit par rapporter assez de matériaux chez lui pour bâtir : les
+camps passent de dix à trente-trois sur quarante-huit parties, et de un à
+**dix niveaux de bâtiment** avec deux habitants. La voie du colon ne s'est pas
+débloquée par une remise sur les fondations, mais parce qu'on a enfin de quoi
+transporter ce qu'on ramasse.
+
 ### Le bug le plus cher du projet tenait dans un commentaire
 
 Le tick d'une escouade portait cette ligne depuis toujours :
@@ -692,6 +728,7 @@ game/
     groupes.js        groupes, tâches individuelles, scission et fusion
     connaissance.js   ce que le joueur sait, relevés datés, délai des nouvelles
     formation.js      écoles des villes, transmission maison, diplômes
+    betes.js          bêtes de somme et charrettes : ce qui porte à votre place
     notables.js       les gens qui comptent dans une ville, leur état, leurs effets
     dirigeants.js     chefs de faction, tempéraments, légitimité, buts de guerre
     services.js       ce que les notables vous demandent, ce qu'ils retiennent
