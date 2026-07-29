@@ -110,7 +110,13 @@ export function combatContre(state, bande, log, ctx) {
     texte,
     important: true,
     regionId: state.player.regionId,
-    detail: res.journal.slice(0, 18).map((j) => j.txt),
+    // On garde le début de l'échange et son épilogue : le détail complet
+    // noie l'écran sur mobile.
+    detail: res.journal.length > 12
+      ? res.journal.slice(0, 7).map((j) => j.txt)
+        .concat([`… ${res.journal.length - 12} échanges …`])
+        .concat(res.journal.slice(-5).map((j) => j.txt))
+      : res.journal.map((j) => j.txt),
   });
   return res;
 }

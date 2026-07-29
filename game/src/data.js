@@ -125,6 +125,9 @@ export const FACTIONS = {
   hexa: {
     nom: 'Consortium Hexa',
     court: 'HEXA',
+    pluriel: false,
+    datif: 'au Consortium Hexa',
+    genitif: 'du Consortium Hexa',
     couleur: '#4fd0e3',
     devise: 'Le contrat prime sur le sang.',
     agression: 0.42,
@@ -135,6 +138,9 @@ export const FACTIONS = {
   rouilleurs: {
     nom: 'Les Rouilleurs',
     court: 'ROUIL',
+    pluriel: true,
+    datif: 'aux Rouilleurs',
+    genitif: 'des Rouilleurs',
     couleur: '#d98a3a',
     devise: 'Tout se démonte, même toi.',
     agression: 0.5,
@@ -145,6 +151,9 @@ export const FACTIONS = {
   signal: {
     nom: 'Église du Signal',
     court: 'SIGNL',
+    pluriel: false,
+    datif: 'à l’Église du Signal',
+    genitif: 'de l’Église du Signal',
     couleur: '#b06be0',
     devise: 'La statique parle à qui écoute.',
     agression: 0.62,
@@ -155,6 +164,9 @@ export const FACTIONS = {
   ombrelle: {
     nom: 'Syndicat Ombrelle',
     court: 'OMBRL',
+    pluriel: false,
+    datif: 'au Syndicat Ombrelle',
+    genitif: 'du Syndicat Ombrelle',
     couleur: '#6be08a',
     devise: 'Rien n’est interdit, tout est tarifé.',
     agression: 0.52,
@@ -165,6 +177,9 @@ export const FACTIONS = {
   cendre: {
     nom: 'Milice de Cendre',
     court: 'CENDR',
+    pluriel: false,
+    datif: 'à la Milice de Cendre',
+    genitif: 'de la Milice de Cendre',
     couleur: '#e05b5b',
     devise: 'L’ordre, ou la cendre.',
     agression: 0.78,
@@ -175,6 +190,9 @@ export const FACTIONS = {
   libres: {
     nom: 'Communes Libres',
     court: 'LIBRE',
+    pluriel: true,
+    datif: 'aux Communes Libres',
+    genitif: 'des Communes Libres',
     couleur: '#e0d36b',
     devise: 'On ne rend de comptes qu’à la récolte.',
     agression: 0.18,
@@ -185,6 +203,9 @@ export const FACTIONS = {
   essaim: {
     nom: 'L’Essaim',
     court: 'ESSAM',
+    pluriel: false,
+    datif: 'à l’Essaim',
+    genitif: 'de l’Essaim',
     couleur: '#8a8f9a',
     devise: '—',
     agression: 0.95,

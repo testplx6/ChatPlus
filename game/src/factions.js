@@ -56,7 +56,7 @@ export function declarerGuerre(world, a, b, t, log) {
   majRelation(world, a, b, -60);
   log({
     type: 'guerre',
-    texte: `${FACTIONS[a].nom} déclare la guerre à ${FACTIONS[b].nom}.`,
+    texte: `${FACTIONS[a].nom} déclare${FACTIONS[a].pluriel ? 'nt' : ''} la guerre ${FACTIONS[b].datif}.`,
     factions: [a, b],
   });
 }
@@ -105,7 +105,7 @@ function leverArmee(world, key, force, depuis, cibleId, log) {
   f.tresor -= coutArmee(force);
   log({
     type: 'armee',
-    texte: `${FACTIONS[key].nom} lève une colonne (${force}) en direction de ${col.nom}.`,
+    texte: `${FACTIONS[key].nom} lève${FACTIONS[key].pluriel ? 'nt' : ''} une colonne (${force}) en direction de ${col.nom}.`,
     factions: [key],
     regionId: depuis,
   });
@@ -163,7 +163,7 @@ function capturer(world, armee, col, t, log, ctx) {
     col.defense = Math.round(col.defenseMax * 0.25);
     log({
       type: 'capture',
-      texte: `${FACTIONS[nouveau].nom} s’empare de ${col.nom}${ancien ? ` (${FACTIONS[ancien].nom})` : ''}.`,
+      texte: `${FACTIONS[nouveau].nom} s’empare${FACTIONS[nouveau].pluriel ? 'nt' : ''} de ${col.nom}${ancien ? ` (${FACTIONS[ancien].nom})` : ''}.`,
       regionId: col.regionId,
       factions: [nouveau, ancien].filter(Boolean),
     });
@@ -202,7 +202,7 @@ function batailleArmees(world, a, b, t, log, ctx) {
     if (armee.force <= 8) {
       log({
         type: 'armee',
-        texte: `La colonne de ${FACTIONS[armee.faction].nom} est anéantie.`,
+        texte: `La colonne ${FACTIONS[armee.faction].genitif} est anéantie.`,
         regionId: armee.regionId,
         factions: [armee.faction],
       });
@@ -221,7 +221,7 @@ function tickArmee(world, armee, t, log, ctx) {
     if (armee.force <= 8) {
       log({
         type: 'armee',
-        texte: `La colonne de ${FACTIONS[armee.faction].nom} se disperse, faute de vivres.`,
+        texte: `La colonne ${FACTIONS[armee.faction].genitif} se disperse, faute de vivres.`,
         regionId: armee.regionId,
         factions: [armee.faction],
       });
@@ -245,7 +245,7 @@ function tickArmee(world, armee, t, log, ctx) {
     if (cible.faction === armee.faction) {
       log({
         type: 'armee',
-        texte: `La colonne de ${FACTIONS[armee.faction].nom} rebrousse chemin : ${cible.nom} est déjà tombée.`,
+        texte: `La colonne ${FACTIONS[armee.faction].genitif} rebrousse chemin : ${cible.nom} est déjà tombée.`,
         regionId: armee.regionId,
         factions: [armee.faction],
       });
@@ -257,7 +257,7 @@ function tickArmee(world, armee, t, log, ctx) {
       armee.regionId = cible.regionId;
       log({
         type: 'siege',
-        texte: `${FACTIONS[armee.faction].nom} met le siège devant ${cible.nom}.`,
+        texte: `${FACTIONS[armee.faction].nom} met${FACTIONS[armee.faction].pluriel ? 'tent' : ''} le siège devant ${cible.nom}.`,
         regionId: cible.regionId,
         factions: [armee.faction, cible.faction].filter(Boolean),
       });
@@ -299,7 +299,7 @@ function tickArmee(world, armee, t, log, ctx) {
     if (armee.force <= 8) {
       log({
         type: 'siege',
-        texte: `Le siège de ${col.nom} est brisé : ${FACTIONS[armee.faction].nom} recule.`,
+        texte: `Le siège de ${col.nom} est brisé : ${FACTIONS[armee.faction].nom} recule${FACTIONS[armee.faction].pluriel ? 'nt' : ''}.`,
         regionId: col.regionId,
         factions: [armee.faction, col.faction].filter(Boolean),
       });
@@ -423,7 +423,7 @@ function conseil(world, key, t, log, ctx) {
     f.tresor -= 400;
     log({
       type: 'chantier',
-      texte: `${FACTIONS[key].nom} renforce les défenses de ${col.nom}.`,
+      texte: `${FACTIONS[key].nom} renforce${FACTIONS[key].pluriel ? 'nt' : ''} les défenses de ${col.nom}.`,
       regionId: col.regionId,
       factions: [key],
       discret: true,

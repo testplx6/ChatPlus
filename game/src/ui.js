@@ -1,0 +1,1186 @@
+// Interface : rendu HTML + carte pixel sur canvas. C'est le SEUL module qui
+// touche au DOM — tout le reste du dossier src/ tourne aussi bien sous Node.
+
+import {
+  BIOMES, FACTIONS, COMMODITIES, COMMODITY_KEYS, BUILDINGS, BUILDING_KEYS,
+  RESEARCH, RESEARCH_KEYS, ITEMS, SKILLS, SKILL_KEYS, BODY_PARTS, BODY_KEYS,
+  POSTURES, POSTURE_KEYS,
+} from './data.js';
+import {
+  nomRegion, colonieDe, colonieParId, coord, chemin, coutTraversee, distance,
+} from './world.js';
+import {
+  comp, pvTotal, etatCourt, estVivant, estDebout, ratio, peutEquiper,
+} from './characters.js';
+import {
+  prixJoueur, acheter, vendre, poidsInventaire, capacitePortage, meilleurCommercant,
+} from './economy.js';
+import {
+  niveau as nivBat, niveauRech, coutBatiment, tempsBatiment, coutRecherche,
+  tempsRecherche, capaciteStock, totalStock, energie, lancerConstruction,
+  lancerRecherche, annulerConstruction, fonderBase, deposer, retirer,
+  COUT_FONDATION, tailleEscouadeMax,
+} from './base.js';
+import { classement, enGuerre } from './factions.js';
+import { donnerOrdre, ORDRES } from './squad.js';
+import { horloge, VITESSES } from './sim.js';
+import { couleurLog, creerLogger } from './events.js';
+
+// ---------------------------------------------------------------------------
+// État local de l'interface
+// ---------------------------------------------------------------------------
+
+let S = null;
+let API = {};
+let onglet = 'carte';
+let selection = null;
+let ouverts = new Set();
+let filtreJournal = 'tout';
+let modale = null;
+let dernierRendu = -1;
+let dernierRenduMs = 0;
+let derniereInteraction = 0;
+let toastTimer = null;
+
+/** Cadence minimale entre deux reconstructions complètes de l'écran (ms). */
+const RENDU_MIN_MS = 600;
+/** Après un geste de l'utilisateur, on laisse le DOM tranquille un instant. */
+const REPIT_APRES_CLIC_MS = 400;
+
+const $ = (sel) => document.querySelector(sel);
+
+export function attacherEtat(state) {
+  S = state;
+  selection = state ? state.player.regionId : null;
+}
+
+export function monterUI(api) {
+  API = api;
+  $('#ecran').addEventListener('click', surClic);
+  $('#barre-nav').addEventListener('click', surClic);
+  $('#barre-haut').addEventListener('click', surClic);
+  $('#modale').addEventListener('click', surClic);
+  document.addEventListener('toggle', (ev) => {
+    const d = ev.target.closest('details[data-id]');
+    if (!d) return;
+    if (d.open) ouverts.add(d.dataset.id);
+    else ouverts.delete(d.dataset.id);
+  }, true);
+}
+
+// ---------------------------------------------------------------------------
+// Utilitaires
+// ---------------------------------------------------------------------------
+
+function e(s) {
+  return String(s).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+function n(v, dec = 0) {
+  if (!Number.isFinite(v)) return '—';
+  return v.toLocaleString('fr-FR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+
+function jauge(pct, cls = '', couleur) {
+  const p = Math.max(0, Math.min(100, pct * 100));
+  const st = `width:${p.toFixed(0)}%` + (couleur ? `;background:${couleur}` : '');
+  return `<div class="jauge ${cls}"><i style="${st}"></i></div>`;
+}
+
+function toast(msg, err) {
+  const vieux = document.querySelector('.toast');
+  if (vieux) vieux.remove();
+  const d = document.createElement('div');
+  d.className = 'toast' + (err ? ' err' : '');
+  d.textContent = msg;
+  document.body.appendChild(d);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => d.remove(), 2600);
+}
+
+function logger() {
+  return creerLogger(S);
+}
+
+function coutTexte(cout) {
+  return Object.keys(cout)
+    .map((k) => `${n(cout[k])} ${k === 'credits' ? 'cr' : COMMODITIES[k].nom.toLowerCase()}`)
+    .join(' · ');
+}
+
+function dureeTexte(h) {
+  if (h < 24) return `${Math.ceil(h)} h`;
+  const j = Math.floor(h / 24);
+  const r = Math.ceil(h % 24);
+  return r ? `${j} j ${r} h` : `${j} j`;
+}
+
+function couleurFaction(k) {
+  return (FACTIONS[k] && FACTIONS[k].couleur) || '#7b8699';
+}
+
+// ---------------------------------------------------------------------------
+// Rendu principal
+// ---------------------------------------------------------------------------
+
+export function rafraichir(force) {
+  if (!S) { rendreAccueil(); return; }
+  const maintenant = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  if (!force) {
+    if (S.temps === dernierRendu) return;
+    // On reconstruit tout l'écran d'un bloc : à vitesse ×16 cela arriverait
+    // plusieurs fois par seconde et pourrait avaler le geste de l'utilisateur.
+    if (maintenant - dernierRenduMs < RENDU_MIN_MS) return;
+    if (maintenant - derniereInteraction < REPIT_APRES_CLIC_MS) return;
+  }
+  dernierRendu = S.temps;
+  dernierRenduMs = maintenant;
+
+  const ecran = $('#ecran');
+  const scroll = ecran.scrollTop;
+
+  rendreBarreHaut();
+  rendreNav();
+
+  switch (onglet) {
+    case 'carte': ecran.innerHTML = ecranCarte(); break;
+    case 'escouade': ecran.innerHTML = ecranEscouade(); break;
+    case 'base': ecran.innerHTML = ecranBase(); break;
+    case 'monde': ecran.innerHTML = ecranMonde(); break;
+    case 'journal': ecran.innerHTML = ecranJournal(); break;
+    default: ecran.innerHTML = ecranCarte();
+  }
+  ecran.scrollTop = scroll;
+
+  const cv = $('#carte');
+  if (cv) {
+    dessinerCarte(cv);
+    if (!cv.dataset.lie) {
+      cv.dataset.lie = '1';
+      cv.addEventListener('click', surClicCarte);
+    }
+  }
+  if (modale) rendreModale();
+}
+
+function rendreBarreHaut() {
+  const h = horloge(S.temps);
+  const p = S.player;
+  const cap = capacitePortage(S);
+  const poids = poidsInventaire(p.inventaire);
+  const charge = cap > 0 ? poids / cap : 1;
+  const vivants = p.squad.filter(estVivant).length;
+  const debout = p.squad.filter(estDebout).length;
+
+  $('#barre-haut').innerHTML = `
+    <div class="hd-bloc"><span class="hd-eti">${p.nuit ? 'nuit' : 'jour'}</span>
+      <span class="hd-val cyan">${h.texte}</span></div>
+    <div class="hd-bloc"><span class="hd-eti">cr</span>
+      <span class="hd-val ambre">${n(p.credits)}</span></div>
+    <div class="hd-bloc"><span class="hd-eti">sac</span>
+      <span class="hd-val ${charge > 0.95 ? 'rouge' : ''}">${n(poids)}/${n(cap)}</span></div>
+    <div class="hd-bloc"><span class="hd-eti">esc</span>
+      <span class="hd-val ${debout < vivants ? 'rouge' : ''}">${debout}/${vivants}</span></div>
+    <div class="hd-pousse vitesse" role="group" aria-label="Vitesse">
+      ${VITESSES.map((v) => `<button data-a="vitesse" data-v="${v}"
+        aria-pressed="${S.vitesse === v}">×${v}</button>`).join('')}
+    </div>`;
+}
+
+function rendreNav() {
+  const tabs = [
+    ['carte', '▚', 'CARTE'],
+    ['escouade', '⌂', 'ESCOUADE'],
+    ['base', '⌸', 'BASE'],
+    ['monde', '◈', 'MONDE'],
+    ['journal', '≡', 'JOURNAL'],
+  ];
+  $('#barre-nav').innerHTML = tabs.map(([k, g, l]) => `
+    <button data-a="onglet" data-k="${k}" aria-current="${onglet === k ? 'page' : 'false'}">
+      <span class="glyphe" aria-hidden="true">${g}</span>${l}
+      ${k === 'journal' && S.nonLus ? `<span class="pastille">${S.nonLus > 99 ? '99' : S.nonLus}</span>` : ''}
+    </button>`).join('');
+}
+
+// ---------------------------------------------------------------------------
+// Carte pixel
+// ---------------------------------------------------------------------------
+
+const CELL = 16;
+
+/** Bruit déterministe : la même case a toujours la même texture. */
+function bruit(i, j) {
+  let h = (i * 374761393 + j * 668265263) >>> 0;
+  h = (h ^ (h >>> 13)) >>> 0;
+  h = Math.imul(h, 1274126177) >>> 0;
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+function dessinerCarte(cv) {
+  const w = S.world;
+  const L = w.largeur * CELL;
+  const H = w.hauteur * CELL;
+  if (cv.width !== L) { cv.width = L; cv.height = H; }
+  const g = cv.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  g.fillStyle = '#05070a';
+  g.fillRect(0, 0, L, H);
+
+  for (const r of w.regions) {
+    const x = r.x * CELL;
+    const y = r.y * CELL;
+    if (!r.decouvert) {
+      g.fillStyle = '#0b0e14';
+      g.fillRect(x, y, CELL, CELL);
+      for (let k = 0; k < 4; k++) {
+        const b = bruit(r.i, k);
+        g.fillStyle = 'rgba(120,132,152,.07)';
+        g.fillRect(x + Math.floor(b * 14), y + Math.floor(bruit(r.i, k + 9) * 14), 2, 2);
+      }
+      continue;
+    }
+    const cols = BIOMES[r.biome].couleurs;
+    g.fillStyle = cols[0];
+    g.fillRect(x, y, CELL, CELL);
+    // Texture : quelques pixels plus clairs et plus sombres, toujours les mêmes
+    for (let k = 0; k < 11; k++) {
+      const b = bruit(r.i, k);
+      const px = x + Math.floor(bruit(r.i, k + 31) * (CELL - 2));
+      const py = y + Math.floor(bruit(r.i, k + 57) * (CELL - 2));
+      g.fillStyle = b > 0.5 ? cols[1] : cols[2];
+      g.fillRect(px, py, 2, 2);
+    }
+    // Territoire d'une faction : liseré dans sa couleur
+    if (r.controle) {
+      g.fillStyle = couleurFaction(r.controle);
+      g.globalAlpha = 0.5;
+      g.fillRect(x, y, CELL, 1);
+      g.fillRect(x, y, 1, CELL);
+      g.globalAlpha = 1;
+    }
+    // Épuisement de la région : voile sombre
+    if (r.fouille > 0.15) {
+      g.fillStyle = `rgba(0,0,0,${(r.fouille * 0.45).toFixed(2)})`;
+      g.fillRect(x, y, CELL, CELL);
+    }
+  }
+
+  // Colonies
+  for (const col of w.colonies) {
+    const r = w.regions[col.regionId];
+    if (!r.decouvert) continue;
+    const x = r.x * CELL;
+    const y = r.y * CELL;
+    const t = 3 + col.taille;
+    const ox = x + Math.floor((CELL - t) / 2);
+    const oy = y + Math.floor((CELL - t) / 2);
+    g.fillStyle = '#05070a';
+    g.fillRect(ox - 1, oy - 1, t + 2, t + 2);
+    g.fillStyle = couleurFaction(col.faction);
+    g.fillRect(ox, oy, t, t);
+    g.fillStyle = '#05070a';
+    g.fillRect(ox + 1, oy + 1, t - 2, t - 2);
+  }
+
+  // Avant-poste
+  if (S.base.fonde) {
+    const r = w.regions[S.base.regionId];
+    if (r) {
+      const x = r.x * CELL;
+      const y = r.y * CELL;
+      g.strokeStyle = '#4fd0e3';
+      g.lineWidth = 1;
+      g.strokeRect(x + 2.5, y + 2.5, CELL - 5, CELL - 5);
+    }
+  }
+
+  // Armées
+  for (const a of w.armees) {
+    const r = w.regions[a.regionId];
+    if (!r || !r.decouvert) continue;
+    const x = r.x * CELL;
+    const y = r.y * CELL;
+    g.fillStyle = couleurFaction(a.faction);
+    g.fillRect(x + 11, y + 2, 3, 3);
+    g.fillStyle = '#05070a';
+    g.fillRect(x + 12, y + 3, 1, 1);
+  }
+
+  // Escouade du joueur
+  const rp = w.regions[S.player.regionId];
+  if (rp) {
+    const x = rp.x * CELL;
+    const y = rp.y * CELL;
+    g.fillStyle = '#05070a';
+    g.fillRect(x + 5, y + 5, 6, 6);
+    g.fillStyle = '#f2f6fb';
+    g.fillRect(x + 6, y + 6, 4, 4);
+    g.fillStyle = '#05070a';
+    g.fillRect(x + 7, y + 7, 2, 2);
+  }
+
+  // Itinéraire en cours
+  const o = S.player.ordre;
+  if (o && o.type === 'voyage' && o.route) {
+    g.fillStyle = 'rgba(242,246,251,.55)';
+    for (let k = o.etape; k < o.route.length; k++) {
+      const r = w.regions[o.route[k]];
+      g.fillRect(r.x * CELL + 7, r.y * CELL + 7, 2, 2);
+    }
+  }
+
+  // Sélection
+  if (selection != null) {
+    const r = w.regions[selection];
+    g.strokeStyle = '#f2f6fb';
+    g.lineWidth = 1;
+    g.strokeRect(r.x * CELL + 0.5, r.y * CELL + 0.5, CELL - 1, CELL - 1);
+  }
+}
+
+function surClicCarte(ev) {
+  const cv = ev.currentTarget;
+  const rect = cv.getBoundingClientRect();
+  const echelle = cv.width / rect.width;
+  const px = (ev.clientX - rect.left) * echelle;
+  const py = (ev.clientY - rect.top) * echelle;
+  const x = Math.floor(px / CELL);
+  const y = Math.floor(py / CELL);
+  if (x < 0 || y < 0 || x >= S.world.largeur || y >= S.world.hauteur) return;
+  selection = y * S.world.largeur + x;
+  rafraichir(true);
+}
+
+// ---------------------------------------------------------------------------
+// Écran CARTE
+// ---------------------------------------------------------------------------
+
+function etaVoyage(dest) {
+  const mods = { reductionVoyage: (S.base.recherche.logistique || 0) * 0.06 };
+  const route = chemin(S.world, S.player.regionId, dest, mods);
+  if (!route) return null;
+  let h = 0;
+  for (const i of route) h += coutTraversee(S.world, i, mods);
+  const debout = S.player.squad.filter(estDebout);
+  let v = 1;
+  if (debout.length) v = Math.min(...debout.map((c) => 0.5 + comp(c, 'endurance') / 90));
+  return { heures: Math.ceil(h / Math.max(0.2, v)), cases: route.length };
+}
+
+function blocRegionCourante() {
+  const rid = S.player.regionId;
+  const r = S.world.regions[rid];
+  const b = BIOMES[r.biome];
+  const col = colonieDe(S.world, rid);
+  const o = S.player.ordre;
+  const ici = S.base.fonde && S.base.regionId === rid;
+
+  let etat = ORDRES[o.type] ? ORDRES[o.type].nom : 'Repos';
+  if (o.type === 'voyage') {
+    const restant = o.route.length - o.etape;
+    etat = `En route — ${restant} région${restant > 1 ? 's' : ''} restante${restant > 1 ? 's' : ''}`;
+  }
+
+  const rendements = Object.keys(b.yields)
+    .map((k) => `${COMMODITIES[k].nom.toLowerCase()} ${b.yields[k].toFixed(2)}`)
+    .join(' · ');
+
+  const ordresDispo = ['repos', 'fouille', 'mine', 'chasse', 'patrouille'];
+
+  return `
+  <section class="panneau">
+    <h2 class="titre">Position <span class="droite">${e(nomRegion(S.world, rid))}</span></h2>
+    <div class="ligne"><span class="k">Biome</span><span class="v">${e(b.nom)}</span></div>
+    <div class="ligne"><span class="k">Richesse</span><span class="v">×${r.richesse.toFixed(2)}</span></div>
+    <div class="ligne"><span class="k">Épuisement</span><span class="v">${(r.fouille * 100).toFixed(0)} %</span></div>
+    <div class="ligne"><span class="k">Rencontres</span><span class="v">${(r.danger * 100).toFixed(1)} %/h</span></div>
+    <div class="ligne"><span class="k">Aléa</span><span class="v">${e(b.hazard.nom)}</span></div>
+    ${r.controle ? `<div class="ligne"><span class="k">Territoire</span>
+      <span class="v" style="color:${couleurFaction(r.controle)}">${e(FACTIONS[r.controle].nom)}</span></div>` : ''}
+    <div class="sep"></div>
+    <div class="titre" style="margin-bottom:3px">Ressources sur place · par heure de travail</div>
+    <div class="aide">${e(rendements)}</div>
+  </section>
+
+  <section class="panneau">
+    <h2 class="titre">Ordre en cours <span class="droite">${e(etat)}</span></h2>
+    <div class="grille3">
+      ${ordresDispo.map((k) => `<button class="act mini" data-a="ordre" data-k="${k}"
+        aria-pressed="${o.type === k}">${e(ORDRES[k].nom)}</button>`).join('')}
+      <button class="act mini" data-a="modale" data-m="entrainement">Entraîner</button>
+    </div>
+    <div class="aide" style="margin-top:6px">${e(ORDRES[o.type] ? ORDRES[o.type].desc : '')}</div>
+    ${S.player.recolteHeure ? `<div class="aide" style="color:var(--vert)">Dernière heure : ${e(S.player.recolteHeure)}</div>` : ''}
+  </section>
+
+  ${col ? blocColonie(col) : ''}
+  ${ici ? `<section class="panneau">
+      <h2 class="titre">Avant-poste</h2>
+      <div class="rangee">
+        <button class="act mini" data-a="modale" data-m="transfert">Transférer des ressources</button>
+      </div>
+    </section>` : ''}`;
+}
+
+function blocColonie(col) {
+  const repu = S.player.reputation[col.faction] || 0;
+  const cls = repu > 20 ? 'ok' : repu < -20 ? 'mal' : 'att';
+  return `
+  <section class="panneau">
+    <h2 class="titre">${e(col.nom)}
+      <span class="droite" style="color:${couleurFaction(col.faction)}">${e(FACTIONS[col.faction].nom)}</span></h2>
+    <div class="grille2">
+      <div class="ligne"><span class="k">Population</span><span class="v">${n(col.pop)}</span></div>
+      <div class="ligne"><span class="k">Défense</span><span class="v">${n(col.defense)}</span></div>
+      <div class="ligne"><span class="k">Agitation</span><span class="v">${(col.unrest * 100).toFixed(0)} %</span></div>
+      <div class="ligne"><span class="k">Réputation</span><span class="v"><span class="puce ${cls}">${repu > 0 ? '+' : ''}${n(repu)}</span></span></div>
+    </div>
+    <div class="sep"></div>
+    <div class="rangee">
+      <button class="act mini primaire" data-a="modale" data-m="marche">Marché</button>
+      <button class="act mini" data-a="modale" data-m="recrutement">Recruter</button>
+    </div>
+  </section>`;
+}
+
+function blocSelection() {
+  if (selection == null || selection === S.player.regionId) return '';
+  const r = S.world.regions[selection];
+  const col = colonieDe(S.world, selection);
+  const eta = etaVoyage(selection);
+  const c = coord(selection);
+  const nomCase = `${String.fromCharCode(65 + c.x)}${c.y + 1}`;
+
+  if (!r.decouvert) {
+    return `<section class="panneau">
+      <h2 class="titre">Secteur ${nomCase} <span class="droite">inexploré</span></h2>
+      <div class="aide">Rien de connu sur ce secteur. Il faudra aller voir.</div>
+      ${eta ? `<div class="sep"></div><button class="act primaire" data-a="voyage" data-r="${selection}">
+        Y aller — ${dureeTexte(eta.heures)}</button>` : ''}
+    </section>`;
+  }
+
+  return `<section class="panneau">
+    <h2 class="titre">${e(col ? col.nom : `Secteur ${nomCase}`)}
+      <span class="droite">${e(BIOMES[r.biome].nom)}</span></h2>
+    ${col ? `<div class="ligne"><span class="k">Tenue par</span>
+      <span class="v" style="color:${couleurFaction(col.faction)}">${e(FACTIONS[col.faction].nom)}</span></div>
+      <div class="ligne"><span class="k">Population</span><span class="v">${n(col.pop)}</span></div>
+      <div class="ligne"><span class="k">Défense</span><span class="v">${n(col.defense)}</span></div>` : ''}
+    <div class="ligne"><span class="k">Distance</span><span class="v">${distance(S.player.regionId, selection)} cases</span></div>
+    <div class="ligne"><span class="k">Rencontres</span><span class="v">${(r.danger * 100).toFixed(1)} %/h</span></div>
+    ${armeesIci(selection)}
+    <div class="sep"></div>
+    ${eta ? `<button class="act primaire" data-a="voyage" data-r="${selection}">
+      Y aller — ${dureeTexte(eta.heures)} (${eta.cases} régions)</button>`
+    : '<div class="aide">Aucune route connue.</div>'}
+  </section>`;
+}
+
+function armeesIci(rid) {
+  const as = S.world.armees.filter((a) => a.regionId === rid);
+  if (!as.length) return '';
+  return as.map((a) => `<div class="ligne"><span class="k">Colonne</span>
+    <span class="v" style="color:${couleurFaction(a.faction)}">${e(FACTIONS[a.faction].nom)} · ${n(a.force)} · ${e(a.etat)}</span></div>`).join('');
+}
+
+function ecranCarte() {
+  return `
+  <div id="carte-boite"><canvas id="carte" aria-label="Carte du monde"></canvas></div>
+  <div class="legende">
+    <span><i style="background:#f2f6fb"></i>escouade</span>
+    <span><i style="border:1px solid #4fd0e3"></i>avant-poste</span>
+    ${classement(S.world).slice(0, 6).map((f) =>
+    `<span><i style="background:${f.couleur}"></i>${e(FACTIONS[f.key].court)}</span>`).join('')}
+  </div>
+  ${blocSelection()}
+  ${blocRegionCourante()}`;
+}
+
+// ---------------------------------------------------------------------------
+// Écran ESCOUADE
+// ---------------------------------------------------------------------------
+
+function ficheMembre(c) {
+  const t = pvTotal(c);
+  const et = etatCourt(c);
+  const cls = c.etat === 'mort' ? 'mal' : c.etat === 'ko' ? 'mal' : t.pct < 0.6 ? 'att' : 'ok';
+  const ouvert = ouverts.has(c.id) ? ' open' : '';
+
+  const membres = BODY_KEYS.map((p) => {
+    const b = c.corps[p];
+    const pr = ratio(c, p);
+    const g = pr > 0.66 ? 'vert' : pr > 0.33 ? 'ambre' : 'rouge';
+    return `<div class="membre ${b.perdu ? 'perdu' : ''}">
+      <div class="n">${e(BODY_PARTS[p].nom)}${b.perdu ? ' ✕' : ''}</div>
+      ${jauge(pr, g)}
+    </div>`;
+  }).join('');
+
+  const comps = SKILL_KEYS.map((k) => {
+    const v = c.skills[k];
+    const eff = comp(c, k);
+    return `<div class="comp-l"><span class="n">${e(SKILLS[k])}</span>
+      <span class="j">${jauge(v / 100)}</span>
+      <span class="v" title="effectif ${eff.toFixed(0)}">${v}</span></div>`;
+  }).join('');
+
+  const arme = c.equip.arme ? ITEMS[c.equip.arme].nom : '—';
+  const armure = c.equip.armure ? ITEMS[c.equip.armure].nom : '—';
+  const greffes = Object.keys(c.equip.greffes).map((m) => ITEMS[c.equip.greffes[m]].nom).join(', ') || '—';
+
+  return `<details class="perso" data-id="${e(c.id)}"${ouvert}>
+    <summary>
+      <span class="puce ${cls}">${e(et)}</span>
+      <span class="nom">${e(c.nom)} <span class="arch">${e(c.archetypeNom)}</span></span>
+      <span class="mono-num" style="color:var(--texte-3)">${(t.pct * 100).toFixed(0)}%</span>
+    </summary>
+    <div class="corps-detail">
+      <div class="grille2" style="margin-bottom:8px">
+        <div><span class="aide">Faim</span>${jauge(c.faim / 100, c.faim > 75 ? 'rouge' : c.faim > 45 ? 'ambre' : 'vert')}</div>
+        <div><span class="aide">Fatigue</span>${jauge(c.fatigue / 100, c.fatigue > 75 ? 'rouge' : c.fatigue > 45 ? 'ambre' : 'vert')}</div>
+        <div><span class="aide">Moral</span>${jauge(c.moral / 100, c.moral < 30 ? 'rouge' : 'vert')}</div>
+        <div><span class="aide">Saignement</span>${jauge(c.sang / 100, c.sang > 5 ? 'rouge' : '')}</div>
+      </div>
+      <div class="titre">Blessures</div>
+      <div class="membres">${membres}</div>
+      <div class="sep"></div>
+      <div class="titre">Compétences</div>
+      <div class="comps">${comps}</div>
+      <div class="sep"></div>
+      <div class="ligne"><span class="k">Arme</span><span class="v">${e(arme)}</span></div>
+      <div class="ligne"><span class="k">Armure</span><span class="v">${e(armure)}</span></div>
+      <div class="ligne"><span class="k">Greffes</span><span class="v">${e(greffes)}</span></div>
+      <div class="ligne"><span class="k">Éliminations</span><span class="v">${c.kills}</span></div>
+      <div class="sep"></div>
+      <button class="act mini" data-a="modale" data-m="equipement" data-c="${e(c.id)}">Équiper</button>
+    </div>
+  </details>`;
+}
+
+function blocInventaire() {
+  const inv = S.player.inventaire;
+  const cap = capacitePortage(S);
+  const poids = poidsInventaire(inv);
+  const lignes = COMMODITY_KEYS.filter((k) => (inv[k] || 0) > 0)
+    .map((k) => `<div class="ligne"><span class="k">${e(COMMODITIES[k].nom)}</span>
+      <span class="v">${n(inv[k])}</span></div>`).join('') || '<div class="aide">Sac vide.</div>';
+
+  const objets = S.player.objets.length
+    ? S.player.objets.map((o) => `<span class="puce">${e(ITEMS[o].nom)}</span>`).join(' ')
+    : '<span class="aide">Aucun équipement en réserve.</span>';
+
+  return `<section class="panneau">
+    <h2 class="titre">Sac <span class="droite">${n(poids)} / ${n(cap)} kg</span></h2>
+    ${jauge(cap ? poids / cap : 1, poids / cap > 0.95 ? 'rouge' : poids / cap > 0.8 ? 'ambre' : '')}
+    <div style="margin-top:7px">${lignes}</div>
+    <div class="sep"></div>
+    <div class="titre">Réserve d’équipement</div>
+    <div>${objets}</div>
+  </section>`;
+}
+
+function ecranEscouade() {
+  const p = S.player;
+  const pol = p.politique;
+  const max = tailleEscouadeMax(S.base);
+
+  return `
+  <section class="panneau">
+    <h2 class="titre">Posture</h2>
+    <div class="grille3">
+      ${POSTURE_KEYS.map((k) => `<button class="act mini" data-a="posture" data-k="${k}"
+        aria-pressed="${p.posture === k}">${e(POSTURES[k].nom)}</button>`).join('')}
+    </div>
+    <div class="aide" style="margin-top:6px">${e(POSTURES[p.posture].desc)}</div>
+  </section>
+
+  <section class="panneau">
+    <h2 class="titre">Consignes permanentes</h2>
+    <div class="pile">
+      ${[
+    ['recruter', 'Recruter les errants croisés en route'],
+    ['commercer', 'Traiter avec les caravanes'],
+    ['payerPeage', 'Payer les péages plutôt que se battre'],
+    ['achever', 'Achever les ennemis à terre'],
+  ].map(([k, l]) => `<button class="act mini" style="text-align:left" data-a="politique" data-k="${k}"
+        aria-pressed="${!!pol[k]}">[${pol[k] ? '×' : ' '}] ${e(l)}</button>`).join('')}
+    </div>
+    <div class="aide" style="margin-top:6px">Ces consignes s’appliquent aussi pendant votre absence.</div>
+  </section>
+
+  <section class="panneau">
+    <h2 class="titre">Escouade <span class="droite">${p.squad.filter(estVivant).length} / ${max}</span></h2>
+    ${p.squad.map(ficheMembre).join('')}
+  </section>
+
+  ${blocInventaire()}`;
+}
+
+// ---------------------------------------------------------------------------
+// Écran BASE
+// ---------------------------------------------------------------------------
+
+function ecranBase() {
+  const b = S.base;
+  if (!b.fonde) {
+    const r = S.world.regions[S.player.regionId];
+    const inv = S.player.inventaire;
+    const manque = Object.keys(COUT_FONDATION)
+      .filter((k) => (inv[k] || 0) < COUT_FONDATION[k])
+      .map((k) => `${COMMODITIES[k].nom.toLowerCase()} ${n(inv[k] || 0)}/${COUT_FONDATION[k]}`);
+    const enVille = !!r.colonie;
+    return `<section class="panneau">
+      <h2 class="titre">Aucun avant-poste</h2>
+      <div class="aide">Un avant-poste vous donne un entrepôt, des chaînes de production
+      et la recherche. Il faut le bâtir hors d’une ville existante, et il pourra être attaqué.</div>
+      <div class="sep"></div>
+      <div class="ligne"><span class="k">Coût</span><span class="v">${e(coutTexte(COUT_FONDATION))}</span></div>
+      <div class="ligne"><span class="k">Emplacement</span><span class="v">${e(nomRegion(S.world, S.player.regionId))}</span></div>
+      ${manque.length ? `<div class="aide" style="color:var(--rouge)">Manque : ${e(manque.join(', '))}</div>` : ''}
+      ${enVille ? '<div class="aide" style="color:var(--rouge)">Impossible ici : une ville occupe déjà la région.</div>' : ''}
+      <div class="sep"></div>
+      <button class="act primaire" data-a="fonder" ${manque.length || enVille ? 'disabled' : ''}>
+        Fonder l’avant-poste ici</button>
+    </section>`;
+  }
+
+  const en = energie(b);
+  const stock = totalStock(b);
+  const capa = capaciteStock(b);
+
+  const fileHtml = b.file.length ? b.file.map((it, i) => `
+    <div style="margin-bottom:6px">
+      <div class="ligne"><span class="k">${e(BUILDINGS[it.key].nom)} → niv. ${it.niveau}</span>
+        <span class="v">${dureeTexte(Math.max(0, it.restant))}</span></div>
+      ${jauge(1 - it.restant / it.total, 'cyan')}
+      ${i === 0 ? '' : ''}
+      <button class="act mini" data-a="annuler" data-i="${i}" style="margin-top:4px">Annuler (70 % remboursé)</button>
+    </div>`).join('') : '<div class="aide">Rien en construction.</div>';
+
+  const batHtml = BUILDING_KEYS.map((k) => {
+    const bd = BUILDINGS[k];
+    const niv = nivBat(b, k);
+    const enFile = b.file.filter((x) => x.key === k).length;
+    const cout = coutBatiment(b, k);
+    const dispo = Object.keys(cout).every((c) => (b.stock[c] || 0) >= cout[c]);
+    const plein = niv + enFile >= bd.max;
+    return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
+      <div class="ligne"><span class="k">${e(bd.nom)} <span class="puce">niv ${niv}${enFile ? `+${enFile}` : ''}</span></span>
+        <span class="v">${bd.energie > 0 ? `+${bd.energie * (niv + 1)}` : bd.energie < 0 ? `${bd.energie * (niv + 1)}` : '—'} én.</span></div>
+      <div class="aide">${e(bd.desc)}</div>
+      <div class="aide">Coût : ${e(coutTexte(cout))} · ${dureeTexte(tempsBatiment(b, k))}</div>
+      <button class="act mini" data-a="construire" data-k="${k}" ${plein || !dispo ? 'disabled' : ''}
+        style="margin-top:4px">${plein ? 'Niveau maximum' : `Construire niv. ${niv + enFile + 1}`}</button>
+    </div>`;
+  }).join('');
+
+  const rechHtml = RESEARCH_KEYS.map((k) => {
+    const rd = RESEARCH[k];
+    const niv = niveauRech(b, k);
+    const enFile = b.fileRech.filter((x) => x.key === k).length;
+    const cout = coutRecherche(b, k);
+    const dispo = Object.keys(cout).every((c) => (c === 'credits' ? S.player.credits : (b.stock[c] || 0)) >= cout[c]);
+    const plein = niv + enFile >= rd.max;
+    const sansAntenne = nivBat(b, 'antenne') < 1;
+    return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
+      <div class="ligne"><span class="k">${e(rd.nom)}</span><span class="v"><span class="puce">niv ${niv}/${rd.max}</span></span></div>
+      <div class="aide">${e(rd.desc)}</div>
+      <div class="aide">Coût : ${e(coutTexte(cout))} · ${dureeTexte(tempsRecherche(b, k))}</div>
+      <button class="act mini" data-a="chercher" data-k="${k}"
+        ${plein || !dispo || sansAntenne ? 'disabled' : ''} style="margin-top:4px">
+        ${plein ? 'Terminé' : sansAntenne ? 'Antenne requise' : 'Lancer'}</button>
+    </div>`;
+  }).join('');
+
+  const stockHtml = COMMODITY_KEYS.map((k) => `<div class="ligne">
+    <span class="k">${e(COMMODITIES[k].nom)}</span><span class="v">${n(b.stock[k] || 0)}</span></div>`).join('');
+
+  return `
+  <section class="panneau">
+    <h2 class="titre">${e(b.nom)} <span class="droite">${e(nomRegion(S.world, b.regionId))}</span></h2>
+    <div class="grille2">
+      <div class="ligne"><span class="k">Énergie</span>
+        <span class="v ${en.ratio < 1 ? '' : ''}">${n(en.prod)} / ${n(en.conso)}</span></div>
+      <div class="ligne"><span class="k">Défense</span><span class="v">${n(b.defense)}</span></div>
+    </div>
+    ${en.ratio < 1 ? `<div class="aide" style="color:var(--ambre)">Production réduite à ${(en.ratio * 100).toFixed(0)} % :
+      ${(b.stock.carburant || 0) <= 0 ? 'plus de carburant.' : 'énergie insuffisante.'}</div>` : ''}
+    <div class="sep"></div>
+    <div class="ligne"><span class="k">Entrepôt</span><span class="v">${n(stock)} / ${n(capa)}</span></div>
+    ${jauge(stock / capa, stock / capa > 0.95 ? 'rouge' : '')}
+  </section>
+
+  <section class="panneau">
+    <h2 class="titre">File de construction <span class="droite">${b.file.length}/5</span></h2>
+    ${fileHtml}
+  </section>
+
+  <section class="panneau">
+    <h2 class="titre">Bâtiments</h2>
+    ${batHtml}
+  </section>
+
+  <section class="panneau">
+    <h2 class="titre">Recherche <span class="droite">${b.fileRech.length}/3</span></h2>
+    ${b.fileRech.length ? b.fileRech.map((it) => `
+      <div style="margin-bottom:6px">
+        <div class="ligne"><span class="k">${e(RESEARCH[it.key].nom)} → niv. ${it.niveau}</span>
+          <span class="v">${dureeTexte(Math.max(0, it.restant))}</span></div>
+        ${jauge(1 - it.restant / it.total, 'cyan')}
+      </div>`).join('') : '<div class="aide">Aucune recherche en cours.</div>'}
+    <div class="sep"></div>
+    ${rechHtml}
+  </section>
+
+  <section class="panneau">
+    <h2 class="titre">Stock</h2>
+    ${stockHtml}
+  </section>`;
+}
+
+// ---------------------------------------------------------------------------
+// Écran MONDE
+// ---------------------------------------------------------------------------
+
+function ecranMonde() {
+  const cl = classement(S.world);
+  const max = Math.max(1, cl[0] ? cl[0].puissance : 1);
+
+  const factionsHtml = cl.map((f) => {
+    const repu = S.player.reputation[f.key] || 0;
+    const cls = repu > 20 ? 'ok' : repu < -20 ? 'mal' : 'att';
+    return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
+      <div class="ligne">
+        <span class="k" style="color:${f.couleur}">${e(f.nom)}</span>
+        <span class="v"><span class="puce ${cls}">rép ${repu > 0 ? '+' : ''}${n(repu)}</span></span>
+      </div>
+      ${jauge(f.puissance / max, '', f.couleur)}
+      <div class="aide">${f.colonies} colonie(s) · trésor ${n(f.tresor)} cr · ${e(FACTIONS[f.key].devise)}</div>
+    </div>`;
+  }).join('');
+
+  const guerres = S.world.guerres.length
+    ? S.world.guerres.map((g) => `<div class="ligne">
+        <span class="k"><span style="color:${couleurFaction(g.a)}">${e(FACTIONS[g.a].court)}</span>
+          ✕ <span style="color:${couleurFaction(g.b)}">${e(FACTIONS[g.b].court)}</span></span>
+        <span class="v">${dureeTexte(S.temps - g.depuis)} · ${g.batailles} bataille(s)</span></div>`).join('')
+    : '<div class="aide">Paix générale. Ça ne dure jamais.</div>';
+
+  const armees = S.world.armees.length
+    ? S.world.armees.map((a) => `<div class="ligne">
+        <span class="k" style="color:${couleurFaction(a.faction)}">${e(FACTIONS[a.faction].court)} · ${n(a.force)}</span>
+        <span class="v">${e(a.etat)} → ${e((colonieParId(S.world, a.cible) || {}).nom || '—')}</span></div>`).join('')
+    : '<div class="aide">Aucune colonne en campagne.</div>';
+
+  const connues = S.world.colonies.filter((c) => S.world.regions[c.regionId].decouvert);
+  const villes = connues.length
+    ? connues.map((c) => `<div class="ligne">
+        <span class="k">${e(c.nom)}</span>
+        <span class="v" style="color:${couleurFaction(c.faction)}">${e(FACTIONS[c.faction].court)} · ${n(c.pop)} hab.</span></div>`).join('')
+    : '<div class="aide">Aucune ville repérée.</div>';
+
+  return `
+  <section class="panneau"><h2 class="titre">Rapport de puissance</h2>${factionsHtml}</section>
+  <section class="panneau"><h2 class="titre">Guerres en cours</h2>${guerres}</section>
+  <section class="panneau"><h2 class="titre">Colonnes en campagne</h2>${armees}</section>
+  <section class="panneau"><h2 class="titre">Villes connues <span class="droite">${connues.length}/${S.world.colonies.length}</span></h2>${villes}</section>`;
+}
+
+// ---------------------------------------------------------------------------
+// Écran JOURNAL
+// ---------------------------------------------------------------------------
+
+function ecranJournal() {
+  S.nonLus = 0;
+  const entrees = S.journal
+    .filter((x) => (filtreJournal === 'tout' ? !x.discret : x.important))
+    .slice(-160)
+    .reverse();
+
+  const html = entrees.length ? entrees.map((x) => {
+    const h = horloge(x.t);
+    return `<div class="entree ${couleurLog(x.type)}">
+      <div class="t">${h.texte}</div>
+      <div>${e(x.texte)}</div>
+      ${x.detail && x.detail.length ? `<div class="detail">${x.detail.map(e).join('<br>')}</div>` : ''}
+    </div>`;
+  }).join('') : '<div class="aide">Rien à signaler.</div>';
+
+  return `
+  <section class="panneau">
+    <h2 class="titre">Journal de bord</h2>
+    <div class="rangee">
+      <button class="act mini" data-a="filtre" data-k="tout" aria-pressed="${filtreJournal === 'tout'}">Tout</button>
+      <button class="act mini" data-a="filtre" data-k="important" aria-pressed="${filtreJournal === 'important'}">Marquant</button>
+    </div>
+  </section>
+  <section class="panneau">${html}</section>`;
+}
+
+// ---------------------------------------------------------------------------
+// Modales
+// ---------------------------------------------------------------------------
+
+function rendreModale() {
+  const el = $('#modale');
+  if (!modale) { el.hidden = true; el.innerHTML = ''; return; }
+  el.hidden = false;
+  el.innerHTML = `<div class="boite">${contenuModale()}</div>`;
+}
+
+function contenuModale() {
+  const fermer = '<button class="act mini" data-a="fermer" style="margin-top:10px">Fermer</button>';
+  switch (modale.m) {
+    case 'marche': return modaleMarche() + fermer;
+    case 'transfert': return modaleTransfert() + fermer;
+    case 'equipement': return modaleEquipement() + fermer;
+    case 'entrainement': return modaleEntrainement() + fermer;
+    case 'recrutement': return modaleRecrutement() + fermer;
+    default: return fermer;
+  }
+}
+
+function modaleMarche() {
+  const col = colonieDe(S.world, S.player.regionId);
+  if (!col) return '<div class="aide">Il n’y a pas de marché ici.</div>';
+  const negoc = meilleurCommercant(S.player.squad);
+  const hab = negoc ? comp(negoc, 'commerce') : 0;
+  const repu = S.player.reputation[col.faction] || 0;
+
+  const lignes = COMMODITY_KEYS.map((k) => {
+    const p = prixJoueur(col, k, hab, repu);
+    const stock = Math.floor(col.stock[k] || 0);
+    const aMoi = S.player.inventaire[k] || 0;
+    return `<div class="marche-l">
+      <span class="nm">${e(COMMODITIES[k].nom)}<br>
+        <span class="aide">ville ${n(stock)} · sac ${n(aMoi)}</span></span>
+      <span class="px">A ${n(p.achat, 1)}<br>V ${n(p.vente, 1)}</span>
+      <button class="act" data-a="acheter" data-k="${k}" data-q="10" ${stock < 1 ? 'disabled' : ''}>+10</button>
+      <button class="act" data-a="vendre" data-k="${k}" data-q="9999" ${aMoi < 1 ? 'disabled' : ''}>tout</button>
+    </div>`;
+  }).join('');
+
+  return `<h2 class="titre">Marché de ${e(col.nom)}
+    <span class="droite">${n(S.player.credits)} cr</span></h2>
+  <div class="aide">Négociateur : ${negoc ? `${e(negoc.nom)} (commerce ${hab.toFixed(0)})` : 'aucun'}.
+    Une bonne réputation et un bon commerçant resserrent la marge.</div>
+  <div class="sep"></div>${lignes}`;
+}
+
+function modaleTransfert() {
+  const b = S.base;
+  if (!b.fonde || S.player.regionId !== b.regionId) {
+    return '<div class="aide">Il faut être à l’avant-poste.</div>';
+  }
+  const lignes = COMMODITY_KEYS.map((k) => {
+    const sac = S.player.inventaire[k] || 0;
+    const ent = b.stock[k] || 0;
+    return `<div class="marche-l">
+      <span class="nm">${e(COMMODITIES[k].nom)}<br>
+        <span class="aide">sac ${n(sac)} · entrepôt ${n(ent)}</span></span>
+      <span class="px"></span>
+      <button class="act" data-a="deposer" data-k="${k}" ${sac < 1 ? 'disabled' : ''}>↓</button>
+      <button class="act" data-a="retirer" data-k="${k}" ${ent < 1 ? 'disabled' : ''}>↑</button>
+    </div>`;
+  }).join('');
+  return `<h2 class="titre">Transfert
+    <span class="droite">${n(totalStock(b))}/${n(capaciteStock(b))}</span></h2>
+  <div class="aide">↓ dépose tout dans l’entrepôt · ↑ reprend ce que le sac peut porter.</div>
+  <div class="sep"></div>${lignes}`;
+}
+
+function modaleEquipement() {
+  const c = S.player.squad.find((x) => x.id === modale.c);
+  if (!c) return '<div class="aide">Ce membre n’est plus là.</div>';
+  const dispo = S.player.objets;
+  const groupes = { arme: [], armure: [], greffe: [] };
+  dispo.forEach((k, i) => {
+    const it = ITEMS[k];
+    if (it) groupes[it.type].push({ k, i, it });
+  });
+
+  const bloc = (type, titre) => {
+    const items = groupes[type];
+    if (!items.length) return `<div class="titre">${titre}</div><div class="aide">Rien en réserve.</div>`;
+    return `<div class="titre">${titre}</div><div class="pile">${items.map(({ k, i, it }) => {
+      const possible = peutEquiper(c, k);
+      const desc = it.type === 'arme'
+        ? `dégâts ${it.degats} · pén. ${(it.pen * 100).toFixed(0)} % · ${it.poids} kg`
+        : it.type === 'armure' ? `armure ${it.armure} · ${it.poids} kg`
+          : Object.keys(it.bonus || {}).map((b) => `+${it.bonus[b]} ${SKILLS[b] || b}`).join(', ');
+      return `<button class="act mini" style="text-align:left" data-a="equiper" data-i="${i}" data-c="${e(c.id)}"
+        ${possible ? '' : 'disabled'}>${e(it.nom)} — ${e(desc)}${possible ? '' : ' (force insuffisante)'}</button>`;
+    }).join('')}</div>`;
+  };
+
+  return `<h2 class="titre">${e(c.nom)}</h2>
+    <div class="ligne"><span class="k">Arme</span><span class="v">${e(c.equip.arme ? ITEMS[c.equip.arme].nom : '—')}</span></div>
+    <div class="ligne"><span class="k">Armure</span><span class="v">${e(c.equip.armure ? ITEMS[c.equip.armure].nom : '—')}</span></div>
+    <div class="sep"></div>
+    ${bloc('arme', 'Armes')}
+    <div class="sep"></div>
+    ${bloc('armure', 'Armures')}
+    <div class="sep"></div>
+    ${bloc('greffe', 'Greffes')}
+    ${niveauRech(S.base, 'cybernetique') < 1 ? '<div class="aide" style="color:var(--ambre)">Les greffes exigent la recherche Cybernétique.</div>' : ''}`;
+}
+
+function modaleEntrainement() {
+  return `<h2 class="titre">Entraînement</h2>
+  <div class="aide">Toute l’escouade travaille la même compétence. Consomme des rations,
+  progresse bien plus vite que sur le terrain — mais ne rapporte rien.</div>
+  <div class="sep"></div>
+  <div class="pile">${SKILL_KEYS.map((k) => `<button class="act mini" style="text-align:left"
+    data-a="entrainer" data-k="${k}">${e(SKILLS[k])}</button>`).join('')}</div>`;
+}
+
+function modaleRecrutement() {
+  const col = colonieDe(S.world, S.player.regionId);
+  if (!col) return '<div class="aide">Personne à recruter ici.</div>';
+  const max = tailleEscouadeMax(S.base);
+  const vivants = S.player.squad.filter(estVivant).length;
+  const prix = Math.round(180 + col.pop * 0.35 + vivants * 90);
+  return `<h2 class="titre">Recrutement à ${e(col.nom)}</h2>
+    <div class="ligne"><span class="k">Escouade</span><span class="v">${vivants} / ${max}</span></div>
+    <div class="ligne"><span class="k">Prime d’engagement</span><span class="v">${n(prix)} cr</span></div>
+    <div class="aide">On ne choisit pas ce qui se présente. Un baraquement agrandit l’escouade.</div>
+    <div class="sep"></div>
+    <button class="act primaire" data-a="recruter" data-p="${prix}"
+      ${vivants >= max || S.player.credits < prix ? 'disabled' : ''}>
+      ${vivants >= max ? 'Escouade au complet' : S.player.credits < prix ? 'Crédits insuffisants' : 'Engager'}</button>`;
+}
+
+// ---------------------------------------------------------------------------
+// Accueil
+// ---------------------------------------------------------------------------
+
+export function rendreAccueil(aSauvegarde) {
+  $('#barre-haut').innerHTML = '';
+  $('#barre-nav').innerHTML = '';
+  $('#ecran').innerHTML = `
+  <div class="accueil">
+    <h1>Cendres &amp; Protocole</h1>
+    <div class="sous">Une escouade. Un monde qui tourne sans vous.</div>
+    <div class="panneau">
+      <div class="aide">Vous n’êtes l’élu de personne. Six factions se disputent une carte
+      que vous ne connaissez pas. Elles se font la guerre, prennent des villes et en perdent,
+      que vous soyez là ou non — y compris pendant que cet onglet est fermé.<br><br>
+      Vos gens apprennent en faisant. Ils se blessent membre par membre, tombent K.O.
+      avant de mourir, et se souviennent de la faim.</div>
+    </div>
+    ${aSauvegarde ? '<button class="act primaire" data-a="continuer">Reprendre la partie</button><div style="height:8px"></div>' : ''}
+    <div class="panneau">
+      <div class="titre">Nouvelle partie</div>
+      <label class="aide" for="graine">Graine (facultatif — même graine, même monde)</label>
+      <input id="graine" type="text" inputmode="text" placeholder="au hasard" autocomplete="off">
+      <div style="height:8px"></div>
+      <button class="act primaire" data-a="nouvelle">Commencer</button>
+    </div>
+    ${aSauvegarde ? '<button class="act danger" data-a="effacer">Effacer la sauvegarde</button>' : ''}
+  </div>`;
+  $('#modale').hidden = true;
+}
+
+// ---------------------------------------------------------------------------
+// Actions
+// ---------------------------------------------------------------------------
+
+function surClic(ev) {
+  const el = ev.target.closest('[data-a]');
+  if (!el) {
+    if (ev.currentTarget.id === 'modale' && ev.target.id === 'modale') { modale = null; rendreModale(); }
+    return;
+  }
+  const a = el.dataset.a;
+  ev.preventDefault();
+  derniereInteraction = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+  switch (a) {
+    case 'onglet':
+      onglet = el.dataset.k;
+      rafraichir(true);
+      break;
+
+    case 'vitesse':
+      S.vitesse = Number(el.dataset.v);
+      API.sauver();
+      rafraichir(true);
+      break;
+
+    case 'ordre': {
+      const r = donnerOrdre(S, { type: el.dataset.k });
+      if (!r.ok) toast(r.motif, true);
+      rafraichir(true);
+      break;
+    }
+
+    case 'voyage': {
+      const r = donnerOrdre(S, { type: 'voyage', dest: Number(el.dataset.r) });
+      if (!r.ok) toast(r.motif, true);
+      else { onglet = 'carte'; toast('En route.'); }
+      rafraichir(true);
+      break;
+    }
+
+    case 'posture':
+      S.player.posture = el.dataset.k;
+      rafraichir(true);
+      break;
+
+    case 'politique':
+      S.player.politique[el.dataset.k] = !S.player.politique[el.dataset.k];
+      rafraichir(true);
+      break;
+
+    case 'filtre':
+      filtreJournal = el.dataset.k;
+      rafraichir(true);
+      break;
+
+    case 'modale':
+      modale = { m: el.dataset.m, c: el.dataset.c };
+      rendreModale();
+      break;
+
+    case 'fermer':
+      modale = null;
+      rendreModale();
+      rafraichir(true);
+      break;
+
+    case 'fonder': {
+      const r = fonderBase(S, logger());
+      toast(r.ok ? 'Avant-poste fondé.' : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
+    case 'construire': {
+      const r = lancerConstruction(S, el.dataset.k);
+      if (!r.ok) toast(r.motif, true);
+      rafraichir(true);
+      break;
+    }
+
+    case 'annuler': {
+      const r = annulerConstruction(S, Number(el.dataset.i));
+      if (!r.ok) toast(r.motif, true);
+      rafraichir(true);
+      break;
+    }
+
+    case 'chercher': {
+      const r = lancerRecherche(S, el.dataset.k);
+      if (!r.ok) toast(r.motif, true);
+      rafraichir(true);
+      break;
+    }
+
+    case 'acheter': {
+      const col = colonieDe(S.world, S.player.regionId);
+      const r = acheter(S, col, el.dataset.k, Number(el.dataset.q));
+      toast(r.ok ? `${r.qte} acheté(s) pour ${r.cout} cr.` : r.motif, !r.ok);
+      rendreModale();
+      rafraichir(true);
+      break;
+    }
+
+    case 'vendre': {
+      const col = colonieDe(S.world, S.player.regionId);
+      const r = vendre(S, col, el.dataset.k, Number(el.dataset.q));
+      toast(r.ok ? `${r.qte} vendu(s) pour ${r.gain} cr.` : r.motif, !r.ok);
+      rendreModale();
+      rafraichir(true);
+      break;
+    }
+
+    case 'deposer': {
+      const k = el.dataset.k;
+      const r = deposer(S, k, S.player.inventaire[k] || 0);
+      if (!r.ok) toast(r.motif, true);
+      rendreModale();
+      rafraichir(true);
+      break;
+    }
+
+    case 'retirer': {
+      const k = el.dataset.k;
+      const libre = capacitePortage(S) - poidsInventaire(S.player.inventaire);
+      const qte = Math.floor(libre / Math.max(0.01, COMMODITIES[k].poids));
+      const r = retirer(S, k, qte, qte);
+      if (!r.ok) toast(r.motif, true);
+      rendreModale();
+      rafraichir(true);
+      break;
+    }
+
+    case 'equiper': {
+      const c = S.player.squad.find((x) => x.id === el.dataset.c);
+      const i = Number(el.dataset.i);
+      const key = S.player.objets[i];
+      if (!c || !key) break;
+      const it = ITEMS[key];
+      if (it.type === 'greffe' && niveauRech(S.base, 'cybernetique') < 1) {
+        toast('Cybernétique non recherchée.', true);
+        break;
+      }
+      S.player.objets.splice(i, 1);
+      if (it.type === 'greffe') {
+        const ancien = c.equip.greffes[it.membre];
+        if (ancien) S.player.objets.push(ancien);
+        c.equip.greffes[it.membre] = key;
+      } else {
+        const slot = it.type === 'arme' ? 'arme' : 'armure';
+        const ancien = c.equip[slot];
+        if (ancien) S.player.objets.push(ancien);
+        c.equip[slot] = key;
+      }
+      toast(`${it.nom} équipé.`);
+      rendreModale();
+      rafraichir(true);
+      break;
+    }
+
+    case 'entrainer': {
+      donnerOrdre(S, { type: 'entrainement', skill: el.dataset.k });
+      modale = null;
+      rendreModale();
+      toast(`Entraînement : ${SKILLS[el.dataset.k]}.`);
+      rafraichir(true);
+      break;
+    }
+
+    case 'recruter': {
+      const r = API.recruter(Number(el.dataset.p));
+      toast(r.ok ? `${r.nom} rejoint l’escouade.` : r.motif, !r.ok);
+      modale = null;
+      rendreModale();
+      rafraichir(true);
+      break;
+    }
+
+    case 'nouvelle': {
+      const champ = document.getElementById('graine');
+      API.nouvelle(champ ? champ.value.trim() : '');
+      break;
+    }
+
+    case 'continuer':
+      API.continuer();
+      break;
+
+    case 'effacer':
+      if (confirm('Effacer définitivement la sauvegarde ?')) API.effacer();
+      break;
+
+    default:
+      break;
+  }
+}
+
+export function ouvrirOnglet(k) {
+  onglet = k;
+}
