@@ -11,7 +11,7 @@
 // armes, l'école forme aux métiers.
 
 import { DIPLOMES, DIPLOME_KEYS, FACTIONS, SKILLS } from './data.js';
-import { accorderDiplome, estVivant } from './characters.js';
+import { accorderDiplome, estVivant, comp, gagnerXp, XP_PRATIQUE } from './characters.js';
 import { groupes } from './groupes.js';
 
 /** Ce qu'une ville enseigne, d'après qui la tient et ce qu'elle pèse. */
@@ -76,8 +76,9 @@ export function inscrire(state, col, perso, key, log) {
   return { ok: true, prix };
 }
 
-export function abandonnerFormation(perso) {
+export function abandonnerFormation(perso, state) {
   if (!perso.formation) return { ok: false, motif: 'Aucune formation en cours.' };
+  if (state) libererInstructeur(state, perso);
   perso.formation = null;
   return { ok: true };
 }
@@ -92,28 +93,152 @@ export function enFormation(perso) {
  * ne progresse pas — elle attend, et l'élève peut y revenir.
  */
 export function tickFormation(state, log) {
+  const base = state.base;
   for (const g of groupes(state)) {
     const col = state.world.colonies.find((c) => c.regionId === g.regionId && !c.ruine);
+    const aLaBase = base && base.fonde && g.regionId === base.regionId;
     for (const c of g.membres) {
       if (!c.formation || !estVivant(c)) continue;
-      if (!col || col.id !== c.formation.colonieId) continue; // pas sur place
+
+      if (c.formation.maison) {
+        // Chez soi : il faut l'avant-poste, le maître à côté, et de quoi manger.
+        if (!aLaBase) continue;
+        const maitre = presentsBase(state).find((x) => x.id === c.formation.instructeurId);
+        if (!maitre || !estVivant(maitre)) continue;
+        if ((base.stock.rations || 0) < RATIONS_COURS) continue;
+        base.stock.rations -= RATIONS_COURS;
+        // Enseigner fait aussi réviser : le maître y gagne, un peu.
+        gagnerXp(maitre, DIPLOMES[c.formation.key].skill, XP_PRATIQUE * 0.25);
+      } else if (!col || col.id !== c.formation.colonieId) {
+        continue; // l'école est ailleurs
+      }
+
       c.formation.restant -= 1;
       if (c.formation.restant > 0) continue;
 
       const key = c.formation.key;
+      const maison = c.formation.maison;
       const avant = c.skills[DIPLOMES[key].skill];
+      libererInstructeur(state, c);
       c.formation = null;
       accorderDiplome(c, key);
       if (log) {
         log({
           type: 'formation',
-          texte: `${c.nom} sort diplômé : ${DIPLOMES[key].nom}. `
+          texte: `${c.nom} ${maison ? 'achève sa formation' : 'sort diplômé'} : ${DIPLOMES[key].nom}. `
             + `${SKILLS[DIPLOMES[key].skill]} ${avant} → ${c.skills[DIPLOMES[key].skill]}, `
             + 'et apprend désormais plus vite.',
           important: true,
           regionId: g.regionId,
         });
       }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// L'école de l'avant-poste
+// ---------------------------------------------------------------------------
+//
+// Une ville vend une formation ; chez soi, on la transmet. Il faut quelqu'un qui
+// sache — un diplômé, ou simplement quelqu'un qui en sait bien plus que ce que
+// l'école apprendrait —, de quoi consigner et projeter (l'antenne), et de quoi
+// nourrir tout ce monde. C'est plus lent qu'une vraie école, ça ne coûte pas un
+// crédit, et ça immobilise deux personnes au lieu d'une : l'élève et le maître.
+//
+// C'est ce qui donne un débouché au vétéran qu'on a mis six cents heures à
+// former, et une raison de rentrer.
+
+/** Ce qu'il faut savoir de plus que le diplôme pour l'enseigner sans l'avoir. */
+export const MARGE_INSTRUCTEUR = 15;
+/** Une transmission maison est plus lente qu'une école qui ne fait que ça. */
+export const LENTEUR_MAISON = 1.35;
+/** Rations prélevées sur l'entrepôt par heure de cours. */
+export const RATIONS_COURS = 0.5;
+
+/** Quelqu'un est-il occupé — à apprendre ou à enseigner ? */
+export function occupeParEcole(c) {
+  return !!(c && ((c.formation && c.formation.restant > 0) || c.enseigne));
+}
+
+/** Les gens présents à l'avant-poste, tous groupes confondus. */
+function presentsBase(state) {
+  const base = state.base;
+  if (!base || !base.fonde) return [];
+  const out = [];
+  for (const g of groupes(state)) {
+    if (g.regionId !== base.regionId) continue;
+    for (const c of g.membres) if (estVivant(c)) out.push(c);
+  }
+  return out;
+}
+
+/** Qui peut enseigner quoi, ici et maintenant. */
+export function ecolesAvantPoste(state) {
+  const base = state.base;
+  if (!base || !base.fonde) return [];
+  if ((base.batiments.antenne || 0) < 1) return [];
+  const gens = presentsBase(state);
+  const out = [];
+  for (const k of DIPLOME_KEYS) {
+    const d = DIPLOMES[k];
+    const maitre = gens.find((c) => !occupeParEcole(c)
+      && ((c.diplomes || []).includes(k) || comp(c, d.skill) >= d.plancher + MARGE_INSTRUCTEUR));
+    if (maitre) out.push({ key: k, instructeur: maitre });
+  }
+  return out;
+}
+
+export function peutApprendreChezSoi(state, perso, key) {
+  const offre = ecolesAvantPoste(state).find((o) => o.key === key);
+  if (!offre) return { ok: false, motif: 'Personne ici ne sait l’enseigner.' };
+  if (offre.instructeur.id === perso.id) {
+    return { ok: false, motif: 'On ne s’enseigne pas à soi-même.' };
+  }
+  if (!presentsBase(state).some((c) => c.id === perso.id)) {
+    return { ok: false, motif: `${perso.nom} n’est pas à l’avant-poste.` };
+  }
+  if (occupeParEcole(perso)) return { ok: false, motif: `${perso.nom} est déjà pris.` };
+  if ((perso.diplomes || []).includes(key)) {
+    return { ok: false, motif: `${perso.nom} a déjà ce diplôme.` };
+  }
+  if (perso.skills[DIPLOMES[key].skill] >= DIPLOMES[key].plancher + 25) {
+    return { ok: false, motif: `${perso.nom} en sait déjà plus que le cours.` };
+  }
+  return { ok: true, instructeur: offre.instructeur };
+}
+
+export function enseignerChezSoi(state, perso, key, log) {
+  const v = peutApprendreChezSoi(state, perso, key);
+  if (!v.ok) return v;
+  const heures = Math.round(DIPLOMES[key].heures * LENTEUR_MAISON);
+  perso.formation = {
+    key,
+    colonieId: null,
+    maison: true,
+    instructeurId: v.instructeur.id,
+    restant: heures,
+    total: heures,
+  };
+  v.instructeur.enseigne = { key, eleveId: perso.id };
+  if (log) {
+    log({
+      type: 'formation',
+      texte: `${v.instructeur.nom} prend ${perso.nom} en formation : ${DIPLOMES[key].court.toLowerCase()}.`,
+      important: true,
+      regionId: state.base.regionId,
+    });
+  }
+  return { ok: true, heures, instructeur: v.instructeur.nom };
+}
+
+/** Libère le maître quand l'élève s'arrête, quelle qu'en soit la raison. */
+function libererInstructeur(state, perso) {
+  if (!perso.formation || !perso.formation.instructeurId) return;
+  for (const g of groupes(state)) {
+    for (const c of g.membres) {
+      if (c.id === perso.formation.instructeurId && c.enseigne
+        && c.enseigne.eleveId === perso.id) delete c.enseigne;
     }
   }
 }

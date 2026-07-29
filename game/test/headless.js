@@ -15,7 +15,10 @@ import {
   estVivant, makeCharacter, accorderDiplome, apprentissage,
 } from '../src/characters.js';
 import { DIPLOMES } from '../src/data.js';
-import { ecolesDe, inscrire, enFormation } from '../src/formation.js';
+import {
+  ecolesDe, inscrire, enFormation, ecolesAvantPoste, enseignerChezSoi,
+  occupeParEcole, MARGE_INSTRUCTEUR,
+} from '../src/formation.js';
 import { colonieDe } from '../src/world.js';
 import {
   groupeActif, groupes, tousLesMembres, scinder, fusionner, assignerTache,
@@ -778,6 +781,66 @@ const debutant = makeCharacter(new Rng(7), { archetype: 'medic', niveau: 0 });
 ok((debutant.diplomes || []).length === 0, 'un débutant n’a rien qu’un titre');
 
 verifierCoherence(s9r, 'après formations');
+
+// L'avant-poste transmet : un vétéran forme les suivants, sans passer par une ville.
+const s9s = nouvellePartie(2626, { maintenant: 0 });
+const g9s = groupeActif(s9s);
+const videS = s9s.world.regions.find((r) => !r.colonie);
+g9s.regionId = videS.i;
+Object.assign(g9s.inventaire, { ferraille: 200, polymere: 60, composant: 10 });
+fonderBase(s9s, () => {});
+ok(ecolesAvantPoste(s9s).length === 0, 'sans antenne, on n’enseigne rien chez soi');
+s9s.base.batiments.antenne = 1;
+s9s.base.stock.rations = 500;
+// Un maître : quelqu'un qui dépasse largement le cours.
+const maitre = g9s.membres[0];
+const eleveS = g9s.membres[1];
+maitre.skills.medecine = DIPLOMES.medecine.plancher + MARGE_INSTRUCTEUR + 5;
+eleveS.skills.medecine = 8;
+const offresMaison = ecolesAvantPoste(s9s);
+ok(offresMaison.some((o) => o.key === 'medecine'), 'un vétéran rend la matière enseignable',
+  offresMaison.map((o) => o.key).join(', '));
+
+const creditsAvantMaison = s9s.player.credits;
+const rMaison = enseignerChezSoi(s9s, eleveS, 'medecine', () => {});
+ok(rMaison.ok, 'on peut former chez soi', rMaison.motif);
+ok(s9s.player.credits === creditsAvantMaison, 'et ça ne coûte pas un crédit');
+ok(occupeParEcole(maitre) && occupeParEcole(eleveS), 'le maître aussi est immobilisé');
+ok(debout(g9s).length === 1, 'deux personnes en moins sur le terrain', `${debout(g9s).length} debout`);
+ok(rMaison.heures > DIPLOMES.medecine.heures, 'c’est plus lent qu’une vraie école',
+  `${rMaison.heures} contre ${DIPLOMES.medecine.heures} h`);
+
+// Partir suspend le cours ; les rations de l'entrepôt le nourrissent.
+const restantMaison = eleveS.formation.restant;
+g9s.regionId = (videS.i + 1) % 80;
+avancer(s9s, 30);
+ok(eleveS.formation.restant === restantMaison, 'loin de l’avant-poste, le cours s’arrête');
+g9s.regionId = videS.i;
+const rationsAvantCours = s9s.base.stock.rations;
+avancer(s9s, 30);
+ok(eleveS.formation.restant < restantMaison, 'de retour, il reprend');
+ok(s9s.base.stock.rations < rationsAvantCours, 'et se paie en vivres de l’entrepôt',
+  `${rationsAvantCours} → ${s9s.base.stock.rations}`);
+
+// Immobiliser deux personnes sur trois rend le groupe fragile : une défaite le
+// dépose ailleurs, et le cours s'arrête là. On joue donc le joueur qui ramène
+// les siens à l'avant-poste — c'est ce que ferait quelqu'un qui tient à sa
+// formation, et ça vaut d'être vérifié plutôt que contourné.
+let deplacements = 0;
+for (let i = 0; i < rMaison.heures + 200 && eleveS.formation; i++) {
+  if (g9s.regionId !== s9s.base.regionId) {
+    deplacements++;
+    g9s.regionId = s9s.base.regionId;
+    donnerOrdre(s9s, { type: 'repos' }, g9s);
+  }
+  if (s9s.base.stock.rations < 50) s9s.base.stock.rations = 300;
+  avancer(s9s, 1);
+}
+ok(deplacements > 0, 'un groupe amputé de deux bras se fait effectivement bousculer',
+  `${deplacements} retours forcés`);
+ok((eleveS.diplomes || []).includes('medecine'), 'l’élève finit par être formé');
+ok(!occupeParEcole(maitre), 'et le maître est rendu à ses occupations');
+verifierCoherence(s9s, 'après transmission à l’avant-poste');
 
 section('10. Rattrapage hors ligne');
 const s10 = nouvellePartie(1010, { maintenant: 1000000 });

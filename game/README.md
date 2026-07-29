@@ -66,14 +66,14 @@ de cache périmé.
 ## Tests
 
 ```bash
-npm test                     # 157 assertions sur le moteur, sans navigateur
+npm test                     # 171 assertions sur le moteur, sans navigateur
 node test/equilibre.js       # banc d'équilibrage : un bot joue 30 parties
 node test/equilibre.js 4000 60   # échantillon large, une vingtaine de secondes
 SANS=detach,contrats node test/equilibre.js   # coupe un système pour l'isoler
 VAGABOND=1 node test/equilibre.js             # témoin : voyager sans contrats
 
 npm install --no-save playwright-core
-node test/navigateur.js      # 64 vérifications dans un Chromium réel
+node test/navigateur.js      # 67 vérifications dans un Chromium réel
 ```
 
 Le harnais couvre la génération du monde, le déterminisme, la sauvegarde, la
@@ -196,6 +196,15 @@ formation ne progresse que tant qu'il est sur place. D'où l'intérêt de l'y
 laisser en groupe d'une personne pendant que les autres continuent. Un
 professionnel chevronné qu'on recrute porte souvent déjà le sien.
 
+**Transmettre chez soi.** Avec une antenne à l'avant-poste, ce que les vôtres
+savent, ils peuvent l'apprendre aux autres : un diplômé — ou simplement quelqu'un
+qui en sait bien plus que le cours — forme un camarade sans qu'on paie une ville.
+C'est plus lent qu'une vraie école, ça ne coûte pas un crédit, ça se nourrit sur
+l'entrepôt, et ça immobilise **deux** personnes au lieu d'une : l'élève et le
+maître. Un groupe amputé de deux bras se fait bousculer, et une défaite qui le
+dépose ailleurs interrompt le cours — le harnais le vérifie. C'est le débouché du
+vétéran qu'on a mis six cents heures à former, et une raison de rentrer.
+
 **La route.** Marcher n'est pas du temps mort : on glane le long du chemin, à
 un peu plus de la moitié de ce que rapporterait une vraie fouille. Sans ça, un
 quart du temps de jeu ne produisait rien et toute la carte coûtait plus qu'elle
@@ -295,7 +304,7 @@ game/
     caravanes.js      routes marchandes, embuscades
     groupes.js        groupes, tâches individuelles, scission et fusion
     connaissance.js   ce que le joueur sait, relevés datés, délai des nouvelles
-    formation.js      écoles des villes, diplômes, apprentissage accéléré
+    formation.js      écoles des villes, transmission maison, diplômes
     sim.js            orchestration, rattrapage hors ligne
     save.js           sérialisation
     ui.js             rendu DOM + carte pixel sur canvas

@@ -404,6 +404,41 @@ const refusion = await page.evaluate(() => {
 ok(refusion.n === avantGroupes, 'les groupes sont réunis', `${refusion.n}`);
 ok(refusion.membres === 3, 'tout le monde est rassemblé', `${refusion.membres}`);
 
+console.log('\n8 nonies. Transmission à l’avant-poste');
+const transmet = partieAvancee();
+const gTr = groupeActif(transmet);
+transmet.base.batiments.antenne = Math.max(1, transmet.base.batiments.antenne || 0);
+transmet.base.stock.rations = 600;
+gTr.regionId = transmet.base.regionId;
+gTr.membres[0].skills.medecine = 45;   // le vétéran qui peut enseigner
+gTr.membres[1].skills.medecine = 6;
+transmet.dernierReel = Date.now();
+await page.reload({ waitUntil: 'networkidle' });
+await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(transmet));
+await page.click('[data-a="continuer"]');
+await page.waitForSelector('#carte');
+await page.click('[data-a="onglet"][data-k="base"]');
+await page.waitForTimeout(500);
+const texteBase = await page.evaluate(() => document.querySelector('#ecran').textContent);
+ok(/TRANSMISSION/i.test(texteBase), 'l’avant-poste propose de transmettre');
+const former = page.locator('[data-a="apprendre-maison"]');
+ok(await former.count() > 0, 'un vétéran présent rend une matière enseignable');
+await page.screenshot({ path: join(CAPTURES, '19-transmission.png'), fullPage: true });
+if (await former.count() > 0) {
+  await former.first().click();
+  await page.waitForTimeout(500);
+  const etat = await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const gens = s.player.groupes.flatMap((g) => g.membres);
+    return {
+      eleves: gens.filter((c) => c.formation && c.formation.maison).length,
+      maitres: gens.filter((c) => c.enseigne).length,
+    };
+  });
+  ok(etat.eleves === 1 && etat.maitres === 1,
+    'l’élève et le maître sont tous deux immobilisés', `${etat.eleves} / ${etat.maitres}`);
+}
+
 console.log('\n8 septies. Écoles et diplômes');
 // On se pose dans une ville qui enseigne, avec de quoi payer.
 const ecolier = nouvellePartie(1717, { maintenant: Date.now() });

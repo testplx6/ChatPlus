@@ -98,12 +98,14 @@ export function vivants(g) {
  * l'argent, et envoyer quelqu'un se former serait sans conséquence.
  */
 export function debout(g) {
-  return g.membres.filter((c) => estDebout(c) && !(c.formation && c.formation.restant > 0));
+  return g.membres.filter((c) => estDebout(c)
+    && !(c.formation && c.formation.restant > 0)
+    && !c.enseigne);
 }
 
-/** Ceux qui sont à l'école, pour l'affichage. */
+/** Ceux que l'école immobilise — élèves et maîtres —, pour l'affichage. */
 export function eleves(g) {
-  return g.membres.filter((c) => c.formation && c.formation.restant > 0);
+  return g.membres.filter((c) => (c.formation && c.formation.restant > 0) || c.enseigne);
 }
 
 /** Un groupe qui n'a plus personne debout ne fait plus rien de son ordre. */

@@ -20,7 +20,7 @@ import { poidsInventaire, capacitePortage } from './economy.js';
 import { tailleEscouadeMax } from './base.js';
 import { groupeActif, groupes, tousLesMembres, debout as deboutDe } from './groupes.js';
 import { estSurveillee } from './connaissance.js';
-import { enFormation } from './formation.js';
+import { occupeParEcole } from './formation.js';
 
 export const LOG_MAX = 400;
 
@@ -129,7 +129,7 @@ export function combatContre(state, bande, log, ctx, groupe) {
   const posture = POSTURES[state.player.posture] || POSTURES.neutre;
   const squad = g.membres.filter(estVivant);
   // Un élève à l'école ne monte pas au feu : il est en ville, pas au campement.
-  const combattants = squad.filter((c) => c.etat !== 'mort' && !enFormation(c));
+  const combattants = squad.filter((c) => c.etat !== 'mort' && !occupeParEcole(c));
 
   // À partir de Capitaine, les siens viennent prêter main-forte chez eux.
   const renforts = [];

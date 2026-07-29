@@ -40,6 +40,7 @@ import { caravanesIci, valeurCargaison } from './caravanes.js';
 import { couleurLog, creerLogger } from './events.js';
 import {
   ecolesDe, prixFormation, peutSInscrire, inscrire, abandonnerFormation,
+  ecolesAvantPoste, peutApprendreChezSoi, enseignerChezSoi, LENTEUR_MAISON,
 } from './formation.js';
 import { vueColonie, vueRegion, estSurveillee, ageTexte, nouvellesConnues } from './connaissance.js';
 import {
@@ -1004,6 +1005,71 @@ function ecranEscouade() {
 // Écran BASE
 // ---------------------------------------------------------------------------
 
+/**
+ * Transmettre chez soi. Un vétéran qu'on a mis six cents heures à former peut
+ * enfin servir à autre chose qu'à cogner : il forme les suivants. Ça ne coûte
+ * pas un crédit, ça immobilise deux personnes au lieu d'une, et ça donne une
+ * raison de rentrer.
+ */
+function blocEcoleBase() {
+  const b = S.base;
+  const surPlace = G().regionId === b.regionId;
+  const antenne = nivBat(b, 'antenne');
+
+  const cours = groupes(S).flatMap((g) => g.membres)
+    .filter((c) => c.formation && c.formation.maison)
+    .map((c) => {
+      const d = DIPLOMES[c.formation.key];
+      const fait = c.formation.total - c.formation.restant;
+      const maitre = groupes(S).flatMap((x) => x.membres)
+        .find((x) => x.id === c.formation.instructeurId);
+      return `<div class="contrat">
+        <div class="contrat-t">${e(c.nom)} — ${e(d.court.toLowerCase())}${maitre ? `, sous ${e(maitre.nom)}` : ''}</div>
+        ${jauge(fait / c.formation.total, 'cyan')}
+        <div class="aide">${fait} / ${c.formation.total} h${surPlace ? '' : ' · suspendu, tout le monde est parti'}</div>
+        <button class="act mini danger" data-a="abandonner-formation" data-c="${e(c.id)}">Interrompre</button>
+      </div>`;
+    }).join('');
+
+  if (antenne < 1) {
+    return `<section class="panneau">
+      <h2 class="titre">Transmission</h2>
+      <div class="aide">Vos gens pourraient se former entre eux, mais il faut de quoi
+        consigner et projeter : montez une antenne.</div>
+    </section>`;
+  }
+
+  const offres = ecolesAvantPoste(S);
+  const lignes = offres.map((o) => {
+    const d = DIPLOMES[o.key];
+    const heures = Math.round(d.heures * LENTEUR_MAISON);
+    const candidats = groupes(S).flatMap((g) => g.membres)
+      .filter((c) => peutApprendreChezSoi(S, c, o.key).ok);
+    return `<div class="contrat">
+      <div class="contrat-t">${e(d.court)} — ${e(o.instructeur.nom)} enseigne</div>
+      <div class="ligne"><span class="k">À la sortie</span>
+        <span class="v">${e(SKILLS[d.skill])} ${d.plancher} au minimum</span></div>
+      <div class="ligne"><span class="k">Durée</span><span class="v">${dureeTexte(heures)}</span></div>
+      ${candidats.length
+    ? `<div class="taches">${candidats.map((c) => `<button class="act mini"
+        data-a="apprendre-maison" data-k="${o.key}" data-c="${e(c.id)}">Former ${e(c.nom)}
+        <span class="aide">(${Math.round(comp(c, d.skill))})</span></button>`).join('')}</div>`
+    : '<div class="aide">Personne à former là-dedans pour l’instant.</div>'}
+    </div>`;
+  }).join('');
+
+  return `<section class="panneau">
+    <h2 class="titre">Transmission <span class="droite">${offres.length} matière(s)</span></h2>
+    <div class="aide">Ce que les vôtres savent, ils peuvent l’apprendre aux autres — sans
+      payer une ville, mais plus lentement, et à deux immobilisés : l’élève et le maître.
+      Il faut un diplômé, ou quelqu’un qui en sait bien plus que le cours.</div>
+    ${cours ? `<div class="sep"></div><div class="titre">En cours</div>${cours}` : ''}
+    ${!surPlace ? '<div class="aide" style="color:var(--ambre);margin-top:6px">Personne n’est à l’avant-poste.</div>' : ''}
+    <div class="sep"></div>
+    ${lignes || '<div class="aide">Personne ici n’en sait assez pour enseigner quoi que ce soit.</div>'}
+  </section>`;
+}
+
 function ecranBase() {
   const b = S.base;
   if (!b.fonde) {
@@ -1100,6 +1166,8 @@ function ecranBase() {
     ? 'Personne ne vit ici. Un baraquement et des vivres y changeraient quelque chose.'
     : `Main-d’œuvre ×${mainDoeuvre(b).toFixed(2)} sur les chaînes · +${n(Math.round((b.pop || 0) * 2.5))} de défense · ${n(((b.pop || 0) * 0.014 * 24).toFixed(1))} rations/jour consommées`}</div>
   </section>
+
+  ${blocEcoleBase()}
 
   <section class="panneau">
     <h2 class="titre">File de construction <span class="droite">${b.file.length}/5</span></h2>
@@ -2005,9 +2073,19 @@ function surClic(ev) {
       break;
     }
 
+    case 'apprendre-maison': {
+      const c = groupes(S).flatMap((g) => g.membres).find((x) => x.id === el.dataset.c);
+      const r = enseignerChezSoi(S, c, el.dataset.k, logger());
+      if (!r.ok) toast(r.motif, true);
+      else toast(`${r.instructeur} forme ${c.nom}.`);
+      ACTIONS.sauver();
+      rafraichir(true);
+      break;
+    }
+
     case 'abandonner-formation': {
-      const c = G().membres.find((x) => x.id === el.dataset.c);
-      if (c) abandonnerFormation(c);
+      const c = groupes(S).flatMap((g) => g.membres).find((x) => x.id === el.dataset.c);
+      if (c) abandonnerFormation(c, S);
       ACTIONS.sauver();
       rendreModale();
       rafraichir(true);

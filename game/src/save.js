@@ -76,6 +76,7 @@ export function normaliser(state) {
       if (!c.liens) c.liens = {};
       if (!c.diplomes) c.diplomes = [];
       if (c.formation === undefined) c.formation = null;
+      if (c.enseigne === undefined) delete c.enseigne;
     }
   }
   const b = state.base;

@@ -359,7 +359,7 @@ export function capacitePortage(state, groupe) {
     // Un mort ne porte plus rien, un K.O. est lui-même porté par les autres, et
     // un élève est resté en ville avec ses affaires.
     if (c.etat === 'mort' || c.etat === 'ko') continue;
-    if (c.formation && c.formation.restant > 0) continue;
+    if ((c.formation && c.formation.restant > 0) || c.enseigne) continue;
     cap += portage(c, bonus);
   }
   return Math.round(cap);
