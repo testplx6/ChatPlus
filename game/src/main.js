@@ -11,7 +11,7 @@ import { attaquerCaravane } from './caravanes.js';
 import { sEngager, quitter, toucherRations as toucherRationsA } from './allegeance.js';
 import { genererBande, TACTIQUES } from './combat.js';
 import { groupeActif, tousLesMembres, scinder, fusionner, choisirGroupe, assignerTache } from './groupes.js';
-import { tailleEscouadeMax } from './base.js';
+import { tailleEscouadeMax, reconnaitreAvantPoste, peutReconnaitre } from './base.js';
 import { verifierExercice } from './squad.js';
 import { honorer as honorerService } from './services.js';
 import { acheterBete, vendreBete } from './betes.js';
@@ -229,6 +229,15 @@ const API = {
     sauver();
     rafraichir(true);
     return { ok: true };
+  },
+
+  /** Se faire écrire sur les cartes. Irréversible, et l'on vous convoitera. */
+  reconnaitre() {
+    const r = reconnaitreAvantPoste(state, creerLogger(state));
+    if (!r) return peutReconnaitre(state);
+    sauver();
+    rafraichir(true);
+    return { ok: true, colonie: r };
   },
 
   /** Ouvrir ou fermer la porte aux colporteurs. */

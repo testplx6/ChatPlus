@@ -40,6 +40,10 @@ export function creerBase() {
     // Laisser les colporteurs traiter avec l'intendance. Voir `visiteMarchand`.
     commerce: true,
     dernierMarchand: -9999,
+    // Combien s'y sont arrêtés depuis le début. Le journal est plafonné à
+    // quatre cents lignes : on ne peut pas l'utiliser pour compter quoi que ce
+    // soit sur la durée d'une partie.
+    marchands: 0,
     // Un avant-poste n'est pas un entrepôt avec des murs : des gens finissent
     // par s'y installer, y travailler, et y manger.
     pop: 0,
@@ -707,9 +711,8 @@ export function tickBase(state, log, ctx) {
     }
   }
 
-  // Un camp qui compte finit par exister pour les autres, et sa vitrine se
-  // recopie une fois par jour.
-  reconnaitreAvantPoste(state, log);
+  // La reconnaissance ne se fait plus toute seule : c'est au joueur de décider
+  // s'il veut exister pour les autres. Voir `peutReconnaitre`.
   if (base.colonieId && t - (base.majVitrine || -999) >= 24) {
     base.majVitrine = t;
     synchroniserVitrine(state);
@@ -755,13 +758,37 @@ export const POP_RECONNUE = 18;
  * ville, les cases voisines cessent d'être libres à la fondation — et surtout,
  * les conseils voisins le voient comme une place à prendre.
  */
+/**
+ * Peut-on se faire écrire sur les cartes, et faut-il le vouloir ?
+ *
+ * Ce fut d'abord automatique, et le banc a montré ce que ça donne : sur
+ * quatorze mille heures, les camps atteignaient dix-sept habitants, étaient
+ * reconnus, puis une colonne venait les prendre — et l'on retrouvait des
+ * avant-postes à 1,8 habitant avec dix-neuf niveaux de bâtiment, c'est-à-dire
+ * des ruines rebâties en boucle. Le mécanisme marchait ; c'est de l'avoir rendu
+ * involontaire qui était faux.
+ *
+ * Exister est une décision. On la prend quand on a des murs.
+ */
+export function peutReconnaitre(state) {
+  const base = state.base;
+  if (!base.fonde) return { ok: false, motif: 'Aucun avant-poste.' };
+  if (base.colonieId) return { ok: false, motif: 'Déjà sur les cartes.' };
+  if ((base.pop || 0) < POP_RECONNUE) {
+    return { ok: false, motif: `${Math.round(base.pop || 0)} habitants sur ${POP_RECONNUE}.` };
+  }
+  if (niveau(base, 'halle') < 1) return { ok: false, motif: 'Il faut une halle de récolte.' };
+  if (state.world.regions[base.regionId].colonie) {
+    return { ok: false, motif: 'Une ville occupe déjà cette case.' };
+  }
+  return { ok: true };
+}
+
 export function reconnaitreAvantPoste(state, log) {
   const base = state.base;
-  if (!base.fonde || base.colonieId) return null;
-  if ((base.pop || 0) < POP_RECONNUE || niveau(base, 'halle') < 1) return null;
+  if (!peutReconnaitre(state).ok) return null;
   const w = state.world;
   const r = w.regions[base.regionId];
-  if (r.colonie) return null;
   w.prochaineColonieId = (w.prochaineColonieId || w.colonies.length) + 1;
   const stock = {};
   for (const k of COMMODITY_KEYS) stock[k] = 0;
@@ -796,7 +823,7 @@ export function reconnaitreAvantPoste(state, log) {
     log({
       type: 'base',
       texte: `${base.nom} n’est plus un camp : on l’écrit sur les cartes. `
-        + `Ce qui veut dire aussi qu’on la convoitera.`,
+        + `Vous l’avez voulu — et l’on vous la convoitera.`,
       regionId: base.regionId,
       important: true,
     });
@@ -865,7 +892,13 @@ export function visiteMarchand(state, rng, log) {
   let vendu = 0;
   let achete = 0;
   let credits = 0;
-  const pop = Math.max(1, base.pop || 0);
+  // La réserve de vivres se calcule sur ce que le camp peut *tenir*, pas sur ce
+  // qu'il tient à l'instant. Calculée sur la population du moment, elle vendait
+  // la semence : un camp qui s'effondre à deux habitants bradait tout ce qui
+  // dépassait cinquante rations, donc ne se relevait jamais. Sur quatorze mille
+  // heures, les avant-postes finissaient à 1,2 habitant avec dix-sept niveaux
+  // de bâtiment — des hangars vides et bien approvisionnés en rien.
+  const pop = Math.max(1, base.pop || 0, populationMax(base));
   for (const k of COMMODITY_KEYS) {
     const garde = k === 'rations' ? pop * RESERVE_JOURS : GARDE_MATERIAUX;
     const surplus = (base.stock[k] || 0) - garde;
@@ -891,6 +924,7 @@ export function visiteMarchand(state, rng, log) {
     achete += qte;
   }
 
+  if (vendu || achete) base.marchands = (base.marchands || 0) + 1;
   if (log && (vendu || achete)) {
     log({
       type: 'marchand',

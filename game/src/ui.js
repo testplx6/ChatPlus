@@ -23,6 +23,7 @@ import {
   rendementMetier,
   niveau as nivBat, niveauRech, coutBatiment, tempsBatiment, coutRecherche,
   tempsRecherche, capaciteStock, totalStock, energie, lancerConstruction, POP_RECONNUE,
+  peutReconnaitre,
   lancerRecherche, annulerConstruction, fonderBase, deposer, retirer,
   COUT_FONDATION, tailleEscouadeMax,
 } from './base.js';
@@ -1636,8 +1637,13 @@ function ecranBase() {
     ${b.colonieId
     ? `<div class="aide">${e(b.nom)} est écrite sur les cartes : elle tient ses routes
         comme une ville, et l’on peut vouloir vous la prendre.</div>`
-    : `<div class="aide">À ${POP_RECONNUE} habitants et une halle, le monde cessera de
-        l’ignorer — pour le meilleur et pour le reste.</div>`}
+    : `<div class="aide">Un camp que personne n’a inscrit nulle part n’intéresse personne.
+        Se faire reconnaître, c’est tenir ses routes comme une ville, voir passer trois
+        fois plus de monde — et devenir une place que les conseils voisins convoitent.
+        On ne revient pas en arrière.</div>
+      <button class="act mini ${peutReconnaitre(S).ok ? 'primaire' : ''}" data-a="reconnaitre"
+        style="margin-bottom:6px" ${peutReconnaitre(S).ok ? '' : 'disabled'}>
+        ${peutReconnaitre(S).ok ? `Faire reconnaître ${e(b.nom)}` : e(peutReconnaitre(S).motif)}</button>`}
     <button class="act mini" data-a="autoemploi" style="margin-bottom:4px"
       aria-pressed="${b.autoEmploi !== false}">[${b.autoEmploi !== false ? '×' : ' '}]
       Les habitants se placent eux-mêmes</button>
@@ -3126,6 +3132,12 @@ function surClic(ev) {
         ? (r.prix ? `C’est réglé. ${r.prix} cr.` : 'C’est réglé.')
         : r.motif, !r.ok);
       rafraichir(true);
+      break;
+    }
+
+    case 'reconnaitre': {
+      const r = ACTIONS.reconnaitre();
+      toast(r.ok ? 'On vous écrit sur les cartes.' : r.motif, !r.ok);
       break;
     }
 

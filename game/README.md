@@ -766,6 +766,53 @@ passer un de temps en temps, une ville trois fois plus.
     Crédits moyens          1 022  →  1 688
     Avant-postes fondés     42/60  →  47/60
 
+### Exister est une décision
+
+La reconnaissance était automatique — dix-huit habitants et une halle, et le
+monde vous écrivait sur ses cartes. Le banc a montré ce que ça donne sur la
+durée. **Quatorze mille heures, vingt parties : 1,8 habitant par avant-poste
+pour dix-neuf niveaux de bâtiment.** Des ruines rebâties en boucle.
+
+La trace d'une partie raconte l'histoire en une ligne : t=9600, dix-sept
+habitants, cinq bâtiments ; t=10800, zéro habitant, un bâtiment. Une colonne
+était passée. Le mécanisme fonctionnait exactement comme prévu — une ville sur
+les cartes est une place que les conseils convoitent — mais l'avoir rendu
+**involontaire** en faisait un piège : on grandissait, on devenait visible, on
+se faisait prendre, et l'on n'avait jamais choisi aucune des trois étapes.
+
+Elle se demande maintenant. Un bouton, un avertissement explicite, et l'on ne
+revient pas en arrière. Le bot du banc, lui, ne se déclare pas ville avant
+d'avoir deux niveaux de mur — parce que c'est ce qu'un joueur ferait.
+
+                        automatique   sur décision
+    Habitants (14 000 h)        1,8           14,1
+    Habitants (4 000 h)         4,4           11,3
+    Avant-postes fondés       44/60          51/60
+    Crédits (14 000 h)       20 085         34 248
+
+C'est le troisième mécanisme de cette session dont le défaut n'était pas la
+règle mais **le fait qu'elle s'applique sans qu'on l'ait voulue** — après le
+dé qui décidait à la place du gradé, et l'émeute qu'on lisait trois fois par
+jour.
+
+Corrigé au passage, et trouvé en cherchant pourquoi les camps ne se relevaient
+pas : le colporteur calculait sa réserve de vivres sur la population **du
+moment**. Un camp effondré à deux habitants bradait donc tout ce qui dépassait
+cinquante rations, et ne se relevait jamais. Il la calcule sur ce que le camp
+peut *tenir*.
+
+### La relève
+
+Le dernier des vôtres tombe, et la partie s'arrête — même avec dix-huit
+habitants, une halle, des murs et un nom sur les cartes. C'était le dernier
+endroit où bâtir ne servait à rien : tout ce qu'on avait fait tenait à quatre
+paires de jambes et disparaissait avec elles.
+
+**Une ville qui a des gens envoie des gens.** Ce ne sont pas vos vétérans — ce
+sont des colons qui n'ont jamais tenu une arme, ils partent à quarante de moral,
+et la ville les perd. Mais c'est votre ville, et elle continue. Sans avant-poste,
+ou avec moins de trois habitants, c'est fini comme avant.
+
 ### Ce que l'entrepôt refuse ne disparaît plus en silence
 
 Trouvé en cherchant pourquoi un test échouait, pas en jouant : un entrepôt plein

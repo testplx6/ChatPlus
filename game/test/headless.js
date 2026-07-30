@@ -22,6 +22,7 @@ import { donnerOrdre, verifierExercice, COMPETENCES_EXERCICE } from '../src/squa
 import {
   fonderBase, lancerConstruction, lancerRecherche, placesMetier, affectes,
   abriDe, capaciteStock, totalStock, energie, COUT_FONDATION, POP_RECONNUE,
+  peutReconnaitre, reconnaitreAvantPoste,
   manoeuvres, affecter, rendementMetier, mainDoeuvre,
 } from '../src/base.js';
 import { METIER_KEYS, BIOMES, BUILDINGS, POSTURES } from '../src/data.js';
@@ -184,6 +185,11 @@ function chercherNaN(obj, chemin = '$', vus = new Set()) {
     if (r) return r;
   }
   return null;
+}
+
+/** Les vivants d'un groupe, pour les tests qui n'importent pas groupes.js. */
+function vivantsDeTest(g) {
+  return g.membres.filter((c) => c.etat !== 'mort');
 }
 
 function verifierCoherence(state, label) {
@@ -2131,10 +2137,15 @@ ok(Object.keys(camp.base.postes).length === 0,
 camp.base.autoEmploi = true;
 
 // Au-delà d'un seuil, le monde cesse de l'ignorer.
-ok(!camp.base.colonieId, 'un camp de moins de vingt-cinq âmes n’intéresse personne');
+ok(!peutReconnaitre(camp).ok, 'un hameau de quinze âmes n’intéresse personne',
+  peutReconnaitre(camp).motif);
 camp.base.pop = POP_RECONNUE + 6;
+ok(peutReconnaitre(camp).ok, 'passé le seuil, on peut se faire écrire sur les cartes',
+  peutReconnaitre(camp).motif);
 avancer(camp, 30);
-ok(!!camp.base.colonieId, 'passé le seuil, on l’écrit sur les cartes');
+ok(!camp.base.colonieId,
+  'mais ça ne se fait pas tout seul : exister est une décision, pas un accident');
+ok(!!reconnaitreAvantPoste(camp, () => {}), 'et le joueur la prend quand il veut');
 const vitrine = camp.world.colonies.find((c) => c.id === camp.base.colonieId);
 ok(!!vitrine && vitrine.avantPoste, 'elle est une colonie comme les autres, et marquée comme vôtre');
 ok(camp.world.regions[camp.base.regionId].colonie === vitrine.id,
@@ -2167,6 +2178,7 @@ ok(abord.insecurite < 0.9, 'une ville tient ses routes, celle-ci comme les autre
 // Et l'on peut vous la prendre. C'est le prix d'exister.
 const conquis = campDeveloppe(2828);
 conquis.base.pop = POP_RECONNUE + 10;
+reconnaitreAvantPoste(conquis, () => {});
 avancer(conquis, 30);
 ok(!!conquis.base.colonieId, 'la ville est reconnue');
 const villeCible = conquis.world.colonies.find((c) => c.id === conquis.base.colonieId);
@@ -2219,7 +2231,11 @@ ok(halte.journal.some((x) => x.type === 'marchand'), 'le passage est noté');
 function passages(piste) {
   const t = campMarchand(piste);
   avancer(t, 3000);
-  return t.journal.filter((x) => x.type === 'marchand').length;
+  // Compté sur le camp, pas sur le journal : celui-ci est plafonné à quatre
+  // cents lignes, et sur trois mille heures les passages en sortent avant
+  // qu'on les compte. Le test disait « zéro contre zéro » pour cette seule
+  // raison.
+  return t.base.marchands || 0;
 }
 const surRoute = passages(1);
 const auBoutDuMonde = passages(0);
@@ -2236,6 +2252,43 @@ ok(sansCommerce.journal.every((x) => x.type !== 'marchand'),
   'et le joueur peut fermer sa porte');
 
 verifierCoherence(halte, 'après une saison de colportage');
+
+section('9 nonies terdecies. La relève');
+// Le dernier des vôtres tombe et la partie s'arrête — même avec dix-huit
+// habitants, une halle, des murs et un nom sur les cartes. C'était le dernier
+// endroit où bâtir ne servait à rien.
+const succession = nouvellePartie(9090, { maintenant: 0 });
+const gRel = groupeActif(succession);
+gRel.regionId = succession.world.regions.find((r) => !r.colonie).i;
+Object.assign(gRel.inventaire, { ferraille: 400, polymere: 200, composant: 40 });
+fonderBase(succession, () => {});
+Object.assign(succession.base.batiments, { baraquement: 2, hydroponie: 2, entrepot: 3, halle: 1 });
+succession.base.pop = 12;
+succession.base.stock.rations = 400;
+succession.base.commerce = false;
+for (const c of gRel.membres) c.etat = 'mort';
+avancer(succession, 2);
+ok(!succession.fin, 'la ville envoie les siens plutôt que de laisser finir la partie');
+ok(vivantsDeTest(gRel).length > 0, 'il y a de nouveau du monde debout',
+  `${vivantsDeTest(gRel).length}`);
+ok(succession.base.pop < 12, 'et la ville les a perdus', `${succession.base.pop}`);
+ok(gRel.regionId === succession.base.regionId, 'ils partent de chez eux');
+ok((gRel.inventaire.rations || 0) > 0, 'avec de quoi tenir la première semaine');
+
+// Sans ville, ou sans personne dedans, c'est fini comme avant.
+const seulAuMonde = nouvellePartie(9191, { maintenant: 0 });
+for (const c of groupeActif(seulAuMonde).membres) c.etat = 'mort';
+avancer(seulAuMonde, 2);
+ok(seulAuMonde.fin === 'extinction', 'sans rien derrière soi, c’est fini');
+const campVide = nouvellePartie(9292, { maintenant: 0 });
+const gVide = groupeActif(campVide);
+gVide.regionId = campVide.world.regions.find((r) => !r.colonie).i;
+Object.assign(gVide.inventaire, { ferraille: 400, polymere: 200, composant: 40 });
+fonderBase(campVide, () => {});
+campVide.base.pop = 1;
+for (const c of gVide.membres) c.etat = 'mort';
+avancer(campVide, 2);
+ok(campVide.fin === 'extinction', 'et un camp d’une âme n’envoie personne');
 
 section('9 nonies sexies. Qui accepte de partir, et pour combien');
 const rec = nouvellePartie(9494, { maintenant: 0 });

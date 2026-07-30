@@ -44,6 +44,7 @@ import {
 } from '../src/allegeance.js';
 import {
   fonderBase, lancerConstruction, deposer, retirer, affecter, niveau as nivBat,
+  peutReconnaitre, reconnaitreAvantPoste,
   placesMetier, affectes, coutBatiment, peutPayer, capaciteStock, totalStock,
   COUT_FONDATION,
 } from '../src/base.js';
@@ -88,7 +89,7 @@ const TRACE = {
   hEngage: 0, pointsFin: 0, manques: 0, ordresDonnes: 0,
   secteurs: 0, etatSecteur: 0, bilans: 0,
   revoltes: 0, matees: 0, libres: 0, renverses: 0, grogne: 0,
-  disposes: 0, relaches: 0, gagneCaptifs: 0, captures: 0,
+  disposes: 0, relaches: 0, gagneCaptifs: 0, captures: 0, marchands: 0,
   mortsCombat: 0, koSubis: 0, piste: 0, pisteVues: 0, reconnus: 0, popCamp: 0,
   // Ce que les conseils votent quand personne ne les tient.
   impots: {}, peines: {}, esclavagistes: 0, factionsVues: 0,
@@ -300,7 +301,7 @@ function sEquiper(state, g, colIci) {
 const PLAN_BATI = [
   ['entrepot', 1], ['halle', 1], ['hydroponie', 1], ['baraquement', 1],
   ['cantine', 1], ['halle', 2], ['baraquement', 2], ['hydroponie', 2],
-  ['generateur', 1], ['mur', 1], ['entrepot', 2], ['baraquement', 3],
+  ['generateur', 1], ['mur', 1], ['baraquement', 3], ['mur', 2],
   ['halle', 3], ['hydroponie', 3], ['poste', 1], ['infirmerie', 1],
   ['cantine', 2], ['baraquement', 4], ['entrepot', 3], ['generateur', 2],
   ['fonderie', 1], ['atelier', 1], ['antenne', 1], ['mur', 2],
@@ -396,12 +397,33 @@ function tenirAvantPoste(state, g, memo) {
     }
   }
 
+  // Se faire reconnaître, mais pas avant d'avoir des murs : une ville sur les
+  // cartes est une place que les conseils voisins convoitent, et un camp de
+  // dix-sept âmes sans muraille ne tient pas devant une colonne.
+  if (!base.colonieId && nivBat(base, 'mur') >= 2 && peutReconnaitre(state).ok) {
+    reconnaitreAvantPoste(state, () => {});
+  }
+
   // --- Chantiers. Un seul en file à la fois : empiler bloque les ressources.
+  // On bâtit le prochain du plan, ou l'on attend d'en avoir les moyens. Prendre
+  // « le premier abordable » revenait à ne jamais bâtir ce qui coûte cher : le
+  // banc montrait des camps avec infirmerie, poste de garde et antenne, et pas
+  // de baraquement — donc un plafond de quatre habitants, puisque c'est lui qui
+  // fait les lits. Un joueur, lui, économise pour le dortoir.
+  // Une fenêtre de trois, ni plus ni moins. « Le premier abordable » faisait
+  // bâtir infirmerie, poste de garde et antenne avant le moindre dortoir — donc
+  // un plafond de quatre habitants, puisque ce sont les lits qui le fixent.
+  // « Attendre d'avoir les moyens du prochain » bloquait tout sur un seul
+  // bâtiment cher : six niveaux au lieu de dix, et trois habitants au lieu de
+  // cinq. On économise pour ce qui vient, sans s'interdire ce qui est juste
+  // derrière.
   if (base.file.length === 0) {
+    let fenetre = 0;
     for (const [k, cible] of PLAN_BATI) {
       if (!BUILDING_KEYS.includes(k)) continue;
       if (nivBat(base, k) >= cible) continue;
       if (lancerConstruction(state, k).ok) break;
+      if (++fenetre >= 3) break;
     }
   }
 
@@ -1213,6 +1235,7 @@ for (let n = 0; n < PARTIES; n++) {
   }
   if (state.base.colonieId) TRACE.reconnus++;
   TRACE.popCamp += state.base.pop || 0;
+  TRACE.marchands += state.base.marchands || 0;
   {
     const v = state.world.colonies.filter((c) => !c.ruine);
     TRACE.libres += v.filter((c) => !c.faction).length;
@@ -1325,6 +1348,7 @@ console.log(`Secteurs tenus : ${TRACE.secteurs} — état moyen `
   + `${(TRACE.etatSecteur / Math.max(1, TRACE.secteurs)).toFixed(2)} `
   + `(0 = sûr, 1 = infréquentable) sur ${Math.round(TRACE.bilans / Math.max(1, TRACE.secteurs))} relevés`);
 console.log(`Échelle atteinte : ${RANGS.map((r, i) => `${r.nom} ${TRACE.rangs[i]}`).join(' · ')}`);
+console.log(`Colporteurs reçus : ${(TRACE.marchands / PARTIES).toFixed(1)} par partie`);
 console.log(`Avant-postes écrits sur les cartes : ${TRACE.reconnus}/${PARTIES} — `
   + `${(TRACE.popCamp / PARTIES).toFixed(1)} habitants en moyenne`);
 console.log(`Pistes : ${(TRACE.piste / Math.max(1, TRACE.pisteVues)).toFixed(2)} de damage moyen `

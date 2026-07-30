@@ -10,7 +10,7 @@ import {
 } from './world.js';
 import {
   comp, gagnerXp, estDebout, estVivant, tickPerso, nourrir, pvTotal,
-  tendreLien, lien, mods, XP_PRATIQUE,
+  tendreLien, lien, mods, XP_PRATIQUE, makeCharacter, ARCHETYPE_KEYS,
 } from './characters.js';
 import {
   ajouterAuSac, tenterRencontre, tenterAlea, reputation, tenterChasseurs,
@@ -700,13 +700,59 @@ function quelquUnDebout(state) {
   return false;
 }
 
+/**
+ * La relève.
+ *
+ * Le dernier des vôtres tombe, et la partie s'arrête — même si vous avez
+ * dix-huit habitants, une halle, des murs et un nom sur les cartes. C'était le
+ * dernier endroit où bâtir ne servait à rien : tout ce qu'on avait fait tenait
+ * à quatre paires de jambes, et disparaissait avec elles.
+ *
+ * Une ville qui a des gens envoie des gens. Ce ne sont pas vos vétérans — ce
+ * sont des colons qui n'ont jamais tenu une arme, et la ville les perd. Mais
+ * c'est votre ville, et elle continue.
+ */
+function releverDepuisLaVille(state, rng, log) {
+  const base = state.base;
+  if (!base.fonde || (base.pop || 0) < 3) return false;
+  const combien = Math.min(3, Math.floor(base.pop / 2));
+  const g = state.player.groupes[0];
+  if (!g) return false;
+  base.pop -= combien;
+  // Ils partent la peur au ventre, et la ville se demande qui sera le prochain.
+  base.moral = Math.max(0, base.moral - 18);
+  g.regionId = base.regionId;
+  g.ordre = { type: 'repos' };
+  const noms = [];
+  for (let i = 0; i < combien; i++) {
+    const c = makeCharacter(rng, { archetype: rng.pick(ARCHETYPE_KEYS), niveau: 0 });
+    // Ce ne sont pas des soldats. Ils apprendront, ou pas.
+    c.moral = 40;
+    g.membres.push(c);
+    noms.push(c.nom);
+  }
+  state.player.groupeActif = g.id;
+  // De quoi tenir la première semaine, pris sur l'entrepôt.
+  const vivres = Math.min(base.stock.rations || 0, combien * 24);
+  base.stock.rations -= vivres;
+  g.inventaire.rations = (g.inventaire.rations || 0) + vivres;
+  log({
+    type: 'fin',
+    texte: `Il ne restait personne. ${base.nom} a envoyé les siens : `
+      + `${noms.join(', ')}. Ils n’ont jamais tenu une arme. C’est tout ce qu’il y a.`,
+    important: true,
+    regionId: base.regionId,
+  });
+  return true;
+}
+
 export function tickSquad(state, log, ctx) {
   if (!quelquUnDebout(state)) {
-    if (!state.fin) {
+    if (!state.fin && !releverDepuisLaVille(state, ctx.rng, log)) {
       state.fin = 'extinction';
       log({ type: 'fin', texte: 'Plus personne. Fin de partie.', important: true });
     }
-    return;
+    if (state.fin) return;
   }
 
   // Les chasseurs de prime cherchent le joueur, pas un groupe : un seul tirage
@@ -743,8 +789,9 @@ export function tickSquad(state, log, ctx) {
     if (r.fouille > 0) r.fouille = Math.max(0, r.fouille - REPOUSSE);
   }
 
-  // Fin de partie
-  if (!quelquUnDebout(state) && !state.fin) {
+  // Fin de partie — sauf si la ville peut envoyer les siens.
+  if (!quelquUnDebout(state) && !state.fin
+      && !releverDepuisLaVille(state, ctx.rng, log)) {
     state.fin = 'extinction';
     log({ type: 'fin', texte: 'Plus personne. Fin de partie.', important: true });
   }

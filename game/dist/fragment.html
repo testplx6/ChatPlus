@@ -9545,6 +9545,10 @@ function creerBase() {
     // Laisser les colporteurs traiter avec l'intendance. Voir `visiteMarchand`.
     commerce: true,
     dernierMarchand: -9999,
+    // Combien s'y sont arrêtés depuis le début. Le journal est plafonné à
+    // quatre cents lignes : on ne peut pas l'utiliser pour compter quoi que ce
+    // soit sur la durée d'une partie.
+    marchands: 0,
     // Un avant-poste n'est pas un entrepôt avec des murs : des gens finissent
     // par s'y installer, y travailler, et y manger.
     pop: 0,
@@ -10212,9 +10216,8 @@ function tickBase(state, log, ctx) {
     }
   }
 
-  // Un camp qui compte finit par exister pour les autres, et sa vitrine se
-  // recopie une fois par jour.
-  reconnaitreAvantPoste(state, log);
+  // La reconnaissance ne se fait plus toute seule : c'est au joueur de décider
+  // s'il veut exister pour les autres. Voir `peutReconnaitre`.
   if (base.colonieId && t - (base.majVitrine || -999) >= 24) {
     base.majVitrine = t;
     synchroniserVitrine(state);
@@ -10260,13 +10263,37 @@ const POP_RECONNUE = 18;
  * ville, les cases voisines cessent d'être libres à la fondation — et surtout,
  * les conseils voisins le voient comme une place à prendre.
  */
+/**
+ * Peut-on se faire écrire sur les cartes, et faut-il le vouloir ?
+ *
+ * Ce fut d'abord automatique, et le banc a montré ce que ça donne : sur
+ * quatorze mille heures, les camps atteignaient dix-sept habitants, étaient
+ * reconnus, puis une colonne venait les prendre — et l'on retrouvait des
+ * avant-postes à 1,8 habitant avec dix-neuf niveaux de bâtiment, c'est-à-dire
+ * des ruines rebâties en boucle. Le mécanisme marchait ; c'est de l'avoir rendu
+ * involontaire qui était faux.
+ *
+ * Exister est une décision. On la prend quand on a des murs.
+ */
+function peutReconnaitre(state) {
+  const base = state.base;
+  if (!base.fonde) return { ok: false, motif: 'Aucun avant-poste.' };
+  if (base.colonieId) return { ok: false, motif: 'Déjà sur les cartes.' };
+  if ((base.pop || 0) < POP_RECONNUE) {
+    return { ok: false, motif: `${Math.round(base.pop || 0)} habitants sur ${POP_RECONNUE}.` };
+  }
+  if (niveau(base, 'halle') < 1) return { ok: false, motif: 'Il faut une halle de récolte.' };
+  if (state.world.regions[base.regionId].colonie) {
+    return { ok: false, motif: 'Une ville occupe déjà cette case.' };
+  }
+  return { ok: true };
+}
+
 function reconnaitreAvantPoste(state, log) {
   const base = state.base;
-  if (!base.fonde || base.colonieId) return null;
-  if ((base.pop || 0) < POP_RECONNUE || niveau(base, 'halle') < 1) return null;
+  if (!peutReconnaitre(state).ok) return null;
   const w = state.world;
   const r = w.regions[base.regionId];
-  if (r.colonie) return null;
   w.prochaineColonieId = (w.prochaineColonieId || w.colonies.length) + 1;
   const stock = {};
   for (const k of COMMODITY_KEYS) stock[k] = 0;
@@ -10301,7 +10328,7 @@ function reconnaitreAvantPoste(state, log) {
     log({
       type: 'base',
       texte: `${base.nom} n’est plus un camp : on l’écrit sur les cartes. `
-        + `Ce qui veut dire aussi qu’on la convoitera.`,
+        + `Vous l’avez voulu — et l’on vous la convoitera.`,
       regionId: base.regionId,
       important: true,
     });
@@ -10370,7 +10397,13 @@ function visiteMarchand(state, rng, log) {
   let vendu = 0;
   let achete = 0;
   let credits = 0;
-  const pop = Math.max(1, base.pop || 0);
+  // La réserve de vivres se calcule sur ce que le camp peut *tenir*, pas sur ce
+  // qu'il tient à l'instant. Calculée sur la population du moment, elle vendait
+  // la semence : un camp qui s'effondre à deux habitants bradait tout ce qui
+  // dépassait cinquante rations, donc ne se relevait jamais. Sur quatorze mille
+  // heures, les avant-postes finissaient à 1,2 habitant avec dix-sept niveaux
+  // de bâtiment — des hangars vides et bien approvisionnés en rien.
+  const pop = Math.max(1, base.pop || 0, populationMax(base));
   for (const k of COMMODITY_KEYS) {
     const garde = k === 'rations' ? pop * RESERVE_JOURS : GARDE_MATERIAUX;
     const surplus = (base.stock[k] || 0) - garde;
@@ -10396,6 +10429,7 @@ function visiteMarchand(state, rng, log) {
     achete += qte;
   }
 
+  if (vendu || achete) base.marchands = (base.marchands || 0) + 1;
   if (log && (vendu || achete)) {
     log({
       type: 'marchand',
@@ -12253,13 +12287,59 @@ function quelquUnDebout(state) {
   return false;
 }
 
+/**
+ * La relève.
+ *
+ * Le dernier des vôtres tombe, et la partie s'arrête — même si vous avez
+ * dix-huit habitants, une halle, des murs et un nom sur les cartes. C'était le
+ * dernier endroit où bâtir ne servait à rien : tout ce qu'on avait fait tenait
+ * à quatre paires de jambes, et disparaissait avec elles.
+ *
+ * Une ville qui a des gens envoie des gens. Ce ne sont pas vos vétérans — ce
+ * sont des colons qui n'ont jamais tenu une arme, et la ville les perd. Mais
+ * c'est votre ville, et elle continue.
+ */
+function releverDepuisLaVille(state, rng, log) {
+  const base = state.base;
+  if (!base.fonde || (base.pop || 0) < 3) return false;
+  const combien = Math.min(3, Math.floor(base.pop / 2));
+  const g = state.player.groupes[0];
+  if (!g) return false;
+  base.pop -= combien;
+  // Ils partent la peur au ventre, et la ville se demande qui sera le prochain.
+  base.moral = Math.max(0, base.moral - 18);
+  g.regionId = base.regionId;
+  g.ordre = { type: 'repos' };
+  const noms = [];
+  for (let i = 0; i < combien; i++) {
+    const c = makeCharacter(rng, { archetype: rng.pick(ARCHETYPE_KEYS), niveau: 0 });
+    // Ce ne sont pas des soldats. Ils apprendront, ou pas.
+    c.moral = 40;
+    g.membres.push(c);
+    noms.push(c.nom);
+  }
+  state.player.groupeActif = g.id;
+  // De quoi tenir la première semaine, pris sur l'entrepôt.
+  const vivres = Math.min(base.stock.rations || 0, combien * 24);
+  base.stock.rations -= vivres;
+  g.inventaire.rations = (g.inventaire.rations || 0) + vivres;
+  log({
+    type: 'fin',
+    texte: `Il ne restait personne. ${base.nom} a envoyé les siens : `
+      + `${noms.join(', ')}. Ils n’ont jamais tenu une arme. C’est tout ce qu’il y a.`,
+    important: true,
+    regionId: base.regionId,
+  });
+  return true;
+}
+
 function tickSquad(state, log, ctx) {
   if (!quelquUnDebout(state)) {
-    if (!state.fin) {
+    if (!state.fin && !releverDepuisLaVille(state, ctx.rng, log)) {
       state.fin = 'extinction';
       log({ type: 'fin', texte: 'Plus personne. Fin de partie.', important: true });
     }
-    return;
+    if (state.fin) return;
   }
 
   // Les chasseurs de prime cherchent le joueur, pas un groupe : un seul tirage
@@ -12296,8 +12376,9 @@ function tickSquad(state, log, ctx) {
     if (r.fouille > 0) r.fouille = Math.max(0, r.fouille - REPOUSSE);
   }
 
-  // Fin de partie
-  if (!quelquUnDebout(state) && !state.fin) {
+  // Fin de partie — sauf si la ville peut envoyer les siens.
+  if (!quelquUnDebout(state) && !state.fin
+      && !releverDepuisLaVille(state, ctx.rng, log)) {
     state.fin = 'extinction';
     log({ type: 'fin', texte: 'Plus personne. Fin de partie.', important: true });
   }
@@ -12467,6 +12548,7 @@ function normaliser(state) {
     // Avant, une ville reconnue n'avait toujours pas de marché.
     if (b.commerce === undefined) b.commerce = true;
     if (b.dernierMarchand === undefined) b.dernierMarchand = -9999;
+    if (b.marchands === undefined) b.marchands = 0;
     if (b.majVitrine === undefined) b.majVitrine = -999;
     if (b.majEmploi === undefined) b.majEmploi = -999;
     if (b.gaspilleJour === undefined) b.gaspilleJour = 0;
@@ -14601,8 +14683,13 @@ function ecranBase() {
     ${b.colonieId
     ? `<div class="aide">${e(b.nom)} est écrite sur les cartes : elle tient ses routes
         comme une ville, et l’on peut vouloir vous la prendre.</div>`
-    : `<div class="aide">À ${POP_RECONNUE} habitants et une halle, le monde cessera de
-        l’ignorer — pour le meilleur et pour le reste.</div>`}
+    : `<div class="aide">Un camp que personne n’a inscrit nulle part n’intéresse personne.
+        Se faire reconnaître, c’est tenir ses routes comme une ville, voir passer trois
+        fois plus de monde — et devenir une place que les conseils voisins convoitent.
+        On ne revient pas en arrière.</div>
+      <button class="act mini ${peutReconnaitre(S).ok ? 'primaire' : ''}" data-a="reconnaitre"
+        style="margin-bottom:6px" ${peutReconnaitre(S).ok ? '' : 'disabled'}>
+        ${peutReconnaitre(S).ok ? `Faire reconnaître ${e(b.nom)}` : e(peutReconnaitre(S).motif)}</button>`}
     <button class="act mini" data-a="autoemploi" style="margin-bottom:4px"
       aria-pressed="${b.autoEmploi !== false}">[${b.autoEmploi !== false ? '×' : ' '}]
       Les habitants se placent eux-mêmes</button>
@@ -16094,6 +16181,12 @@ function surClic(ev) {
       break;
     }
 
+    case 'reconnaitre': {
+      const r = ACTIONS.reconnaitre();
+      toast(r.ok ? 'On vous écrit sur les cartes.' : r.motif, !r.ok);
+      break;
+    }
+
     case 'commerce': {
       ACTIONS.commerce();
       break;
@@ -16367,6 +16460,15 @@ const API = {
     sauver();
     rafraichir(true);
     return { ok: true };
+  },
+
+  /** Se faire écrire sur les cartes. Irréversible, et l'on vous convoitera. */
+  reconnaitre() {
+    const r = reconnaitreAvantPoste(state, creerLogger(state));
+    if (!r) return peutReconnaitre(state);
+    sauver();
+    rafraichir(true);
+    return { ok: true, colonie: r };
   },
 
   /** Ouvrir ou fermer la porte aux colporteurs. */

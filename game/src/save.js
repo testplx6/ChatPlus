@@ -163,6 +163,7 @@ export function normaliser(state) {
     // Avant, une ville reconnue n'avait toujours pas de marché.
     if (b.commerce === undefined) b.commerce = true;
     if (b.dernierMarchand === undefined) b.dernierMarchand = -9999;
+    if (b.marchands === undefined) b.marchands = 0;
     if (b.majVitrine === undefined) b.majVitrine = -999;
     if (b.majEmploi === undefined) b.majEmploi = -999;
     if (b.gaspilleJour === undefined) b.gaspilleJour = 0;
