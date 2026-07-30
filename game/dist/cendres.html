@@ -4432,7 +4432,7 @@ function manque(col, besoin) {
  * rythme des colonies : on ne parle pas de quelques dizaines d'objets par heure
  * mais de quelques-uns par jour de jeu sur la carte entière.
  */
-function tickServices(col, rng, dt, t, present = false) {
+function tickServices(col, rng, dt, t, present = false, aDeQuoi = null) {
   if (!col.notables || !col.notables.length) return;
   const surDt = (p) => (dt === 1 ? p : 1 - Math.pow(1 - p, dt));
 
@@ -4440,13 +4440,25 @@ function tickServices(col, rng, dt, t, present = false) {
     if (p.demande) {
       // Une demande ne devient la vôtre qu'une fois que vous l'avez entendue.
       if (present) p.demande.vu = true;
+      // Et l'on ne vous en tient rigueur que si vous pouviez y répondre.
+      //
+      // La première version punissait sur `vu` seul, c'est-à-dire sur le fait
+      // d'avoir traversé la ville. Elle se gardait bien d'un joueur qui n'y
+      // était jamais passé, et pas du tout d'un joueur qui passe partout : le
+      // banc a mesuré **487 oublis en mémoire pour un bot qui ne touche jamais
+      // à ce système**, et une opinion moyenne plus basse chez celui qui rend
+      // le plus de services que chez celui qui les ignore, parce qu'il visite
+      // plus de villes. Marcher devenait une dette.
+      //
+      // Un affront, c'est de refuser ce qu'on avait sous la main. Pas d'être
+      // passé dans la rue les poches vides.
+      if (present && aDeQuoi && aDeQuoi(p.demande.res, p.demande.quantite)) {
+        p.demande.snob = true;
+      }
       // On n'attend pas éternellement. Une demande qui s'éteint laisse une
-      // trace — mais seulement si vous étiez passé l'entendre. On ne tient
-      // rigueur à personne d'un besoin qu'il ignorait, sinon un joueur qui ne
-      // s'occupe pas de ce système se fait détester par une carte entière sans
-      // avoir jamais rien vu venir.
+      // trace — mais seulement si vous étiez là, en mesure d'aider.
       if (t >= p.demande.echeance) {
-        if (p.demande.vu) {
+        if (p.demande.snob) {
           retenir(p, 'oubli', p.demande.res, t);
           p.opinion = Math.max(-100, (p.opinion || 0) - PERTE_OUBLI);
         }
@@ -4471,6 +4483,8 @@ function tickServices(col, rng, dt, t, present = false) {
       texte: besoin.texte(Math.max(4, q)),
       // Vrai dès qu'on est passé l'entendre. Voir plus haut.
       vu: present,
+      // Vrai seulement si on était là avec de quoi et qu'on a passé son chemin.
+      snob: false,
       // On rembourse la marchandise sans plus : le reste se paie en estime.
       prime: Math.round(COMMODITIES[besoin.res].prix * Math.max(4, q) * rng.range(0.9, 1.3)),
     };
@@ -6435,12 +6449,12 @@ function estVivante(col) {
  * `climat` module les rendements : une saison sèche ne nourrit pas une ville
  * comme une saison de pluies.
  */
-function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null, t = 0, present = false) {
+function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null, t = 0, present = false, aDeQuoi = null) {
   if (col.ruine) return null;
   ajusterEmplois(world, col, rng, dt);
   pourvoirCharges(col, rng, t);
   tickNotables(col, rng, dt, reputation, log, t);
-  tickServices(col, rng, dt, t, present);
+  tickServices(col, rng, dt, t, present, aDeQuoi);
   const prod = productionColonie(world, col);
   const cons = consommationColonie(col);
   // `dt` : nombre d'heures couvertes par cet appel. Une économie de colonie n'a
@@ -12704,6 +12718,25 @@ const RENOMMEES = [
     quand: (f) => f.captifsLivres >= 15,
   },
   {
+    key: 'bienfaiteur',
+    nom: 'Bienfaiteur',
+    dit: 'Des gens vous doivent quelque chose, et s’en souviennent.',
+    // Au-dessus du bâtisseur et de l'officier, et ce n'est pas de la morale :
+    // c'est de la fréquence. Mesuré sur cent vingt parties, quatre façons de
+    // jouer, un camp de douze habitants arrive dans deux parties sur cinq et un
+    // grade d'officier dans une sur trois — les deux presque sans le vouloir.
+    // Six personnes qui se souviennent de vous, une partie sur quatre pour qui
+    // en fait son métier. Un titre qui se mérite ne doit pas être masqué par un
+    // titre qui s'attrape.
+    //
+    // Le seuil était à douze, posé sans mesure — rien n'avait jamais joué cette
+    // voie. Mesurée enfin, sur soixante parties d'un bot qui ne fait que ça :
+    // médiane trois services, neuvième décile sept, record quatorze. Douze,
+    // c'était une partie sur soixante ; six, c'est une sur quatre, ce qui est le
+    // taux des autres titres pour qui les vise.
+    quand: (f) => f.services >= 6,
+  },
+  {
     key: 'batisseur',
     nom: 'Bâtisseur',
     dit: 'Quelque part, des gens dorment sous un toit que vous avez monté.',
@@ -12720,12 +12753,6 @@ const RENOMMEES = [
     nom: 'Maison marchande',
     dit: 'Vous avez fait fortune sans qu’on ait à vous craindre.',
     quand: (f) => f.credits >= 6000 && f.combatsGagnes < 25,
-  },
-  {
-    key: 'bienfaiteur',
-    nom: 'Bienfaiteur',
-    dit: 'Des gens vous doivent quelque chose, et s’en souviennent.',
-    quand: (f) => f.services >= 12,
   },
   {
     key: 'ferrailleur',
@@ -13382,7 +13409,13 @@ function tick(state) {
     // Ce que la loi fait à l'humeur : on ne pend pas vite sans que la ville
     // s'en ressente, et on ne relâche pas non plus sans que ça se voie.
     tickOrdrePublic(state, col, du);
-    const ev = tickColonie(state.world, col, rng, climat, du, rep, log, state.temps, present);
+    // Ce qu'on avait sur soi en passant : c'est ce qui distingue un affront
+    // d'un simple passage. Voir tickServices.
+    const aDeQuoi = present
+      ? (res, qte) => state.player.groupes.some(
+        (gr) => gr.regionId === col.regionId && (gr.inventaire[res] || 0) >= qte)
+      : null;
+    const ev = tickColonie(state.world, col, rng, climat, du, rep, log, state.temps, present, aDeQuoi);
     if (!ev) continue;
     if (ev.evenement === 'croissance') {
       log({

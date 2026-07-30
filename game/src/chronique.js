@@ -60,6 +60,25 @@ export const RENOMMEES = [
     quand: (f) => f.captifsLivres >= 15,
   },
   {
+    key: 'bienfaiteur',
+    nom: 'Bienfaiteur',
+    dit: 'Des gens vous doivent quelque chose, et s’en souviennent.',
+    // Au-dessus du bâtisseur et de l'officier, et ce n'est pas de la morale :
+    // c'est de la fréquence. Mesuré sur cent vingt parties, quatre façons de
+    // jouer, un camp de douze habitants arrive dans deux parties sur cinq et un
+    // grade d'officier dans une sur trois — les deux presque sans le vouloir.
+    // Six personnes qui se souviennent de vous, une partie sur quatre pour qui
+    // en fait son métier. Un titre qui se mérite ne doit pas être masqué par un
+    // titre qui s'attrape.
+    //
+    // Le seuil était à douze, posé sans mesure — rien n'avait jamais joué cette
+    // voie. Mesurée enfin, sur soixante parties d'un bot qui ne fait que ça :
+    // médiane trois services, neuvième décile sept, record quatorze. Douze,
+    // c'était une partie sur soixante ; six, c'est une sur quatre, ce qui est le
+    // taux des autres titres pour qui les vise.
+    quand: (f) => f.services >= 6,
+  },
+  {
     key: 'batisseur',
     nom: 'Bâtisseur',
     dit: 'Quelque part, des gens dorment sous un toit que vous avez monté.',
@@ -76,12 +95,6 @@ export const RENOMMEES = [
     nom: 'Maison marchande',
     dit: 'Vous avez fait fortune sans qu’on ait à vous craindre.',
     quand: (f) => f.credits >= 6000 && f.combatsGagnes < 25,
-  },
-  {
-    key: 'bienfaiteur',
-    nom: 'Bienfaiteur',
-    dit: 'Des gens vous doivent quelque chose, et s’en souviennent.',
-    quand: (f) => f.services >= 12,
   },
   {
     key: 'ferrailleur',

@@ -112,7 +112,7 @@ function manque(col, besoin) {
  * rythme des colonies : on ne parle pas de quelques dizaines d'objets par heure
  * mais de quelques-uns par jour de jeu sur la carte entière.
  */
-export function tickServices(col, rng, dt, t, present = false) {
+export function tickServices(col, rng, dt, t, present = false, aDeQuoi = null) {
   if (!col.notables || !col.notables.length) return;
   const surDt = (p) => (dt === 1 ? p : 1 - Math.pow(1 - p, dt));
 
@@ -120,13 +120,25 @@ export function tickServices(col, rng, dt, t, present = false) {
     if (p.demande) {
       // Une demande ne devient la vôtre qu'une fois que vous l'avez entendue.
       if (present) p.demande.vu = true;
+      // Et l'on ne vous en tient rigueur que si vous pouviez y répondre.
+      //
+      // La première version punissait sur `vu` seul, c'est-à-dire sur le fait
+      // d'avoir traversé la ville. Elle se gardait bien d'un joueur qui n'y
+      // était jamais passé, et pas du tout d'un joueur qui passe partout : le
+      // banc a mesuré **487 oublis en mémoire pour un bot qui ne touche jamais
+      // à ce système**, et une opinion moyenne plus basse chez celui qui rend
+      // le plus de services que chez celui qui les ignore, parce qu'il visite
+      // plus de villes. Marcher devenait une dette.
+      //
+      // Un affront, c'est de refuser ce qu'on avait sous la main. Pas d'être
+      // passé dans la rue les poches vides.
+      if (present && aDeQuoi && aDeQuoi(p.demande.res, p.demande.quantite)) {
+        p.demande.snob = true;
+      }
       // On n'attend pas éternellement. Une demande qui s'éteint laisse une
-      // trace — mais seulement si vous étiez passé l'entendre. On ne tient
-      // rigueur à personne d'un besoin qu'il ignorait, sinon un joueur qui ne
-      // s'occupe pas de ce système se fait détester par une carte entière sans
-      // avoir jamais rien vu venir.
+      // trace — mais seulement si vous étiez là, en mesure d'aider.
       if (t >= p.demande.echeance) {
-        if (p.demande.vu) {
+        if (p.demande.snob) {
           retenir(p, 'oubli', p.demande.res, t);
           p.opinion = Math.max(-100, (p.opinion || 0) - PERTE_OUBLI);
         }
@@ -151,6 +163,8 @@ export function tickServices(col, rng, dt, t, present = false) {
       texte: besoin.texte(Math.max(4, q)),
       // Vrai dès qu'on est passé l'entendre. Voir plus haut.
       vu: present,
+      // Vrai seulement si on était là avec de quoi et qu'on a passé son chemin.
+      snob: false,
       // On rembourse la marchandise sans plus : le reste se paie en estime.
       prime: Math.round(COMMODITIES[besoin.res].prix * Math.max(4, q) * rng.range(0.9, 1.3)),
     };

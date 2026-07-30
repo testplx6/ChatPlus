@@ -75,8 +75,14 @@ const TRACE = {
   voyage: 0, repos: 0, travail: 0, defaites: 0, crPilles: 0,
   // Ce que coûte l'information périmée : des voyages vers des villes mortes.
   voyagesPerdus: 0,
-  // Combien de demandes le bot croise, et combien il en honore.
-  demandesVues: 0,
+  // Combien de demandes le bot croise, et combien il en honore. On compte des
+  // demandes distinctes, pas des coups d'œil : la première version incrémentait
+  // à chaque passage en ville et annonçait « 4 527 demandes croisées » pour une
+  // centaine de personnes qui attendaient vraiment quelque chose.
+  demandesVues: 0, demandesPromises: 0, demandesPerdues: 0, demandesLourdes: 0,
+  achatsTentes: 0, achatsFaits: 0, achatsChers: 0, achatsPauvre: 0,
+  opinionFin: 0, nNotables: 0, oublisSubis: 0,
+  coutLot: {}, primeLot: {}, nLot: {}, bourse: 0, nBourse: 0,
   // Où va l'argent. Sans ce détail, « le bot est pauvre » ne dit rien de ce
   // qu'il faut corriger.
   gagneVente: 0, gagneContrat: 0, payeVivres: 0, payeSoins: 0, payeMateriel: 0,
@@ -168,6 +174,25 @@ const CARRIERE = process.env.CARRIERE === '1';
 const NEGRIER = process.env.NEGRIER === '1';
 /** Jusqu'où un négrier s'éloigne du marché où il écoule. */
 const RAYON_RAFLE = 3;
+/**
+ * Profil bienfaiteur : on tient ce qu'on a promis.
+ *
+ * C'est la seule voie non violente du jeu, et la seule dont la monnaie n'est ni
+ * l'argent ni le grade mais l'opinion de gens précis — un armurier qui fait ses
+ * prix, un médecin qui recoud les vôtres, un contremaître qui laisse ses
+ * registres ouverts à l'autre bout de la carte.
+ *
+ * Le bot par défaut adopte une promesse et l'oublie : 233 adoptées pour 209
+ * mortes en route. Il ne ment pas, il fait autre chose — la promesse est
+ * avant-dernière dans son ordre de priorités, et une demande expire en trois
+ * semaines de jeu.
+ *
+ * BIENFAITEUR=1 : la promesse passe devant, on l'achète au lieu d'espérer la
+ * trouver, et l'on accepte des lots que le sac tient à peine.
+ */
+const BIENFAITEUR = process.env.BIENFAITEUR === '1';
+/** L'étendue d'une paroisse : sa ville, et celles où l'on peut aller à pied. */
+const RAYON_PAROISSE = 4;
 
 /** Une ville qui achète des hommes, d'après ce qu'on sait de sa loi. */
 function acheteDesHommes(state, col) {
@@ -338,7 +363,12 @@ function sEquiper(state, g, colIci) {
       if (d <= 0) return;
       const prix = prixItem(colIci, ligne.key, ligne.coef, hab, repu).achat;
       // On garde de quoi manger : un mort bien armé reste un mort.
-      if (prix > p.credits - 250) return;
+      //
+      // Un bienfaiteur garde bien plus que ça : son métier demande du capital.
+      // Mesuré, le bot vivait en permanence à trois cents crédits en poche — il
+      // dépensait tout en équipement dès qu'il vendait — et refusait donc les
+      // lots à cinq cents. Ce n'était pas un problème de prix mais de trésorerie.
+      if (prix > p.credits - (BIENFAITEUR ? 1200 : 250)) return;
       if (d > gain) { gain = d; meilleur = i; prixRetenu = prix; }
     });
     if (meilleur < 0 || prixRetenu <= 0) break;
@@ -526,7 +556,9 @@ function servir(state, g, colIci, memo) {
   const p = state.player;
   // Ce qu'on a déjà sous la main, on le remet tout de suite.
   for (const d of demandesIci(state, colIci)) {
-    TRACE.demandesVues++;
+    if (!memo.vues) memo.vues = new Set();
+    const cle = `${d.notable.id}:${d.demande.echeance}`;
+    if (!memo.vues.has(cle)) { memo.vues.add(cle); TRACE.demandesVues++; }
     if (!d.pret) continue;
     if (honorer(state, colIci.id, d.notable.id, () => {}).ok) {
       memo.services++;
@@ -542,10 +574,14 @@ function servir(state, g, colIci, memo) {
     // La demande a expiré, la personne est partie, ou la ville est tombée :
     // on ne poursuit pas un fantôme.
     if (!col || col.ruine || !pers || !pers.demande || pers.demande.res !== pr.res) {
+      // La promesse est morte sans qu'on l'ait tenue : c'est ça qu'il faut
+      // compter, pas le nombre de demandes affichées quelque part.
+      TRACE.demandesPerdues++;
       memo.promesse = null;
     } else {
       const manque = pr.quantite - Math.floor(g.inventaire[pr.res] || 0);
       if (manque > 0 && (colIci.stock[pr.res] || 0) >= manque) {
+        TRACE.achatsTentes++;
         const negoc = g.membres.filter(estVivant)
           .reduce((a, b) => (!a || comp(b, 'commerce') > comp(a, 'commerce') ? b : a), null);
         const unit = prixJoueur(colIci, pr.res, negoc ? comp(negoc, 'commerce') : 0,
@@ -553,21 +589,66 @@ function servir(state, g, colIci, memo) {
         const cout = unit * manque;
         // On accepte de perdre un peu : l'estime vaut plus que la prime, pas au
         // point de se ruiner pour un inconnu.
-        if (cout <= pr.prime * 1.6 && p.credits > cout * 1.5) {
-          acheter(state, colIci, pr.res, manque, g);
-        }
+        // Un bienfaiteur paie de sa poche : ce qu'il achète, ce n'est pas la
+        // marchandise, c'est l'opinion de quelqu'un. Le bot par défaut refusait
+        // dès que le lot coûtait plus que la prime — or la prime ne rembourse
+        // que la marchandise au prix du marché, donc presque jamais le transport.
+        const plafond = BIENFAITEUR ? pr.prime * 3 : pr.prime * 1.6;
+        // Un bienfaiteur garde de quoi manger, pas une marge de moitié : la
+        // règle prudente du bot par défaut refusait neuf achats sur dix, parce
+        // qu'un lot de cent quarante rations coûte la moitié d'une bourse.
+        TRACE.coutLot[pr.res] = (TRACE.coutLot[pr.res] || 0) + cout;
+        TRACE.primeLot[pr.res] = (TRACE.primeLot[pr.res] || 0) + pr.prime;
+        TRACE.nLot[pr.res] = (TRACE.nLot[pr.res] || 0) + 1;
+        TRACE.bourse += p.credits; TRACE.nBourse++;
+        const garde = BIENFAITEUR ? cout + 350 : cout * 1.5;
+        if (cout > plafond) TRACE.achatsChers++;
+        else if (p.credits <= garde) TRACE.achatsPauvre++;
+        else if (acheter(state, colIci, pr.res, manque, g).ok) TRACE.achatsFaits++;
       }
     }
   }
 
   // Rien en cours : on adopte une demande d'ici, si elle est à notre portée.
   if (memo.promesse) return;
-  const candidates = demandesIci(state, colIci)
-    .filter((d) => COMMODITIES[d.demande.res].poids * d.demande.quantite < capacitePortage(state, g) * 0.5)
+  // Un bienfaiteur a une paroisse, pas une carte.
+  //
+  // L'estime se gagne par 24, l'amitié commence à 35, et les témoins d'un
+  // service n'en prennent que 6 : il faut donc revenir chez les mêmes gens. Le
+  // bot éparpillait quatre services par partie sur soixante villes — quatre-
+  // vingt-seize points d'estime en poussière, et pas un seul ami. On s'attache
+  // à la première ville qui nous demande quelque chose, et l'on y reste.
+  if (BIENFAITEUR) {
+    if (memo.paroisse == null && demandesIci(state, colIci).length) {
+      memo.paroisse = colIci.id;
+    }
+    // Une paroisse, pas une chapelle : les villes voisines en font partie. Une
+    // seule ville ne produit qu'une douzaine de demandes en quatre mille heures
+    // — moins que ce qu'il faut pour qu'on vous appelle un bienfaiteur.
+    const centre = colonieParId(state.world, memo.paroisse);
+    if (centre && distance(centre.regionId, colIci.regionId) > RAYON_PAROISSE) return;
+  }
+  const toutes = demandesIci(state, colIci);
+  const candidates = toutes
+    .filter((d) => COMMODITIES[d.demande.res].poids * d.demande.quantite
+      < capacitePortage(state, g) * (BIENFAITEUR ? 0.8 : 0.5))
     .sort((a, b) => a.demande.quantite * COMMODITIES[a.demande.res].prix
       - b.demande.quantite * COMMODITIES[b.demande.res].prix);
-  if (!candidates.length) return;
+  if (!candidates.length) { TRACE.demandesLourdes += toutes.length; return; }
+  // Un bienfaiteur finit ce qu'il a commencé, chez les mêmes gens.
+  //
+  // L'estime se gagne par 24 et l'amitié commence à 35 : il faut donc revenir.
+  // Le bot par défaut rendait quatre services par partie éparpillés sur soixante
+  // villes et ne recroisait jamais personne — quatre-vingt-seize points d'estime
+  // distribués en poussière, zéro ami. On préfère donc celui qui vous connaît
+  // déjà, puis le plus petit lot.
+  if (BIENFAITEUR) {
+    candidates.sort((a, b) => (b.notable.opinion || 0) - (a.notable.opinion || 0)
+      || a.demande.quantite * COMMODITIES[a.demande.res].prix
+        - b.demande.quantite * COMMODITIES[b.demande.res].prix);
+  }
   const d = candidates[0];
+  TRACE.demandesPromises++;
   memo.promesse = {
     colId: colIci.id, notableId: d.notable.id, res: d.demande.res,
     quantite: d.demande.quantite, prime: d.demande.prime,
@@ -734,6 +815,19 @@ function jouerPrincipal(state, g, memo) {
         TRACE.gagneVente += p.credits - av;
       }
     }
+    // Second passage : la cargaison est vendue, on a de l'argent en main.
+    //
+    // `servir` est appelé en tête de la visite, avant la vente — donc au moment
+    // exact où la bourse est au plus bas. Mesuré : trois cents crédits en poche
+    // en moyenne à l'instant où l'on regarde le prix d'un lot qui en coûte cinq
+    // cents, et deux mille achats refusés « faute de crédits ». Le bot n'était
+    // pas prudent, il était fauché — et il l'était de sa propre faute, puisque
+    // le reste de la visite consiste précisément à vendre.
+    //
+    // Ce passage vient avant les vivres et l'équipement : un bienfaiteur remplit
+    // sa promesse d'abord et son garde-manger ensuite. C'est tout le profil.
+    if (BIENFAITEUR && !SANS.has('services')) servir(state, g, colIci, memo);
+
     // On voit venir la saison : on ne part pas en hiver avec trois boîtes.
     const cible = saison(state.temps).key === 'pluies' || saison(state.temps).key === 'accalmie' ? 190 : 120;
     if (rations < cible && p.credits > 200) {
@@ -1070,6 +1164,59 @@ function jouerPrincipal(state, g, memo) {
     if (cibles.length) {
       memo.dernierSaut = state.temps;
       donnerOrdre(state, { type: 'voyage', dest: cibles[(state.temps * 7) % cibles.length].i }, g);
+      return;
+    }
+  }
+
+  // --- Tenir sa promesse. Pour un bienfaiteur c'est le métier, pas un détour
+  // qu'on fait si la route y passe : le bot par défaut en adoptait deux cent
+  // trente-trois et en laissait mourir deux cent neuf, non par mauvaise foi
+  // mais parce que la promesse venait après les contrats, le camp et le marché,
+  // et qu'une demande s'éteint en trois semaines de jeu.
+  if (BIENFAITEUR && memo.promesse && rations > 40) {
+    const pr = memo.promesse;
+    const col = colonieParId(state.world, pr.colId);
+    if (col && !col.ruine) {
+      const enMain = Math.floor(g.inventaire[pr.res] || 0);
+      if (enMain >= pr.quantite) {
+        if (col.regionId !== g.regionId
+          && !(g.ordre.type === 'voyage' && g.ordre.dest === col.regionId)) {
+          partir(state, g, col.regionId, 'tenir une promesse');
+        }
+        if (col.regionId !== g.regionId) return;
+      } else {
+        // Il manque de quoi : on va le chercher là où il y en a. On paie la
+        // marchandise puis la route jusqu'à celui qui attend — c'est le total
+        // qui décide, comme pour un ordre de ravitaillement.
+        const manque = pr.quantite - enMain;
+        let vend = null;
+        let mieux = Infinity;
+        for (const c of state.world.colonies) {
+          if (c.ruine || c.id === col.id) continue;
+          if ((c.stock[pr.res] || 0) < manque) continue;
+          const d = distance(c.regionId, g.regionId) + distance(c.regionId, col.regionId);
+          if (d < mieux) { mieux = d; vend = c; }
+        }
+        if (vend && vend.regionId !== g.regionId) {
+          if (!(g.ordre.type === 'voyage' && g.ordre.dest === vend.regionId)) {
+            partir(state, g, vend.regionId, 'acheter de quoi tenir parole');
+          }
+          return;
+        }
+      }
+    }
+  }
+
+  // Sans promesse en cours, un bienfaiteur rentre voir ses gens : c'est là que
+  // naîtront les demandes qu'il pourra honorer, et là que l'estime s'accumule.
+  if (BIENFAITEUR && !memo.promesse && memo.paroisse != null && rations > 60) {
+    const par = colonieParId(state.world, memo.paroisse);
+    if (!par || par.ruine) {
+      memo.paroisse = null;
+    } else if (distance(par.regionId, g.regionId) > RAYON_PAROISSE) {
+      if (!(g.ordre.type === 'voyage' && g.ordre.dest === par.regionId)) {
+        partir(state, g, par.regionId, 'retourner voir ses gens');
+      }
       return;
     }
   }
@@ -1535,6 +1682,16 @@ for (let n = 0; n < PARTIES; n++) {
     const t = titreDe(state).nom;
     TRACE.titres[t] = (TRACE.titres[t] || 0) + 1;
   }
+  {
+    // Ce que le système de services laisse derrière lui, sur les gens eux-mêmes.
+    for (const c of state.world.colonies) {
+      for (const n of c.notables || []) {
+        TRACE.opinionFin += n.opinion || 0;
+        TRACE.nNotables++;
+        TRACE.oublisSubis += (n.memoire || []).filter((m) => m.quoi === 'oubli').length;
+      }
+    }
+  }
   if (state.base.colonieId) TRACE.reconnus++;
   TRACE.popCamp += state.base.pop || 0;
   TRACE.marchands += state.base.marchands || 0;
@@ -1613,8 +1770,19 @@ console.log(`Avant-postes fondés : ${fondes}/${PARTIES} — `
   + `${moy('bati')} niveaux de bâtiment et ${moy('hab')} habitants en moyenne`);
 console.log(`Services rendus : ${moy('services')} par partie — `
   + `gens acquis (estime ≥ 35) : ${moy('amis')} en fin de partie`);
-console.log(`Demandes croisées : ${TRACE.demandesVues} — honorées : `
-  + `${lignes.reduce((t, l) => t + l.services, 0)}`);
+console.log(`Demandes distinctes croisées : ${TRACE.demandesVues} — `
+  + `${TRACE.demandesPromises} adoptées, `
+  + `${lignes.reduce((t, l) => t + l.services, 0)} honorées, `
+  + `${TRACE.demandesPerdues} promesses mortes en route, `
+  + `${TRACE.demandesLourdes} vues trop lourdes pour le sac`);
+console.log(`  opinion moyenne des notables : `
+  + `${(TRACE.opinionFin / Math.max(1, TRACE.nNotables)).toFixed(1)} — `
+  + `${TRACE.oublisSubis} oublis encore en mémoire`);
+console.log(`  compléter le lot : ${TRACE.achatsTentes} tentatives — ${TRACE.achatsFaits} achats, `
+  + `${TRACE.achatsChers} refusés trop chers, ${TRACE.achatsPauvre} faute de crédits`);
+console.log('  coût moyen d’un lot : ' + Object.keys(TRACE.nLot).sort().map((k) =>
+  `${k} ${Math.round(TRACE.coutLot[k] / TRACE.nLot[k])} cr (prime ${Math.round(TRACE.primeLot[k] / TRACE.nLot[k])})`
+).join(' · ') + ` — bourse moyenne à cet instant ${Math.round(TRACE.bourse / Math.max(1, TRACE.nBourse))} cr`);
 console.log(`Voyages entrepris vers une ville déjà morte : ${TRACE.voyagesPerdus}`);
 const totH = TRACE.voyage + TRACE.repos + TRACE.travail;
 const totMotifs = Object.values(MOTIFS).reduce((a, b) => a + b, 0) || 1;

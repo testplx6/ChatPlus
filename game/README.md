@@ -74,6 +74,7 @@ VAGABOND=1 node test/equilibre.js             # témoin : voyager sans contrats
 COLON=1 node test/equilibre.js                # profil : bâtir plutôt que courir
 CARRIERE=1 node test/equilibre.js             # profil : servir, monter, ordonner
 NEGRIER=1 node test/equilibre.js              # profil : prendre vivant, vendre
+BIENFAITEUR=1 node test/equilibre.js          # profil : tenir ce qu'on a promis
 
 npm install --no-save playwright-core
 node test/navigateur.js      # 82 vérifications dans un Chromium réel
@@ -1090,6 +1091,77 @@ funérailles, et le mépris de tous ceux qui ne le font pas.** La chronique le d
 sans commenter — sur trente parties, dix-sept finissent sur le titre de Négrier,
 et aucune autre voie ne le décroche jamais.
 
+### Un bot qui rend service, et la dette qu'on contractait en marchant
+
+La voie du bienfaiteur est la seule non violente du jeu, et la seule dont la
+monnaie ne soit ni l'argent ni le grade mais l'opinion de gens précis — un
+armurier qui fait ses prix, un médecin qui recoud les vôtres, un contremaître
+qui laisse ses registres ouverts à l'autre bout de la carte. Personne ne la
+jouait. `BIENFAITEUR=1` la joue.
+
+**Le compteur mentait, d'abord.** Le banc annonçait « 4 527 demandes croisées,
+102 honorées » — 2 %, un chiffre qui a servi de constat pendant des mois. Il
+comptait des coups d'œil : il s'incrémentait à chaque passage en ville, pas par
+personne qui attend quelque chose. En demandes distinctes, le bot par défaut en
+croise 397, en adopte 233, en honore 102 et **en laisse mourir 209**. Ce n'est
+pas de la négligence, c'est un ordre de priorités : la promesse venait après les
+contrats, le camp et le marché, et une demande s'éteint en trois semaines.
+
+**Marcher était une dette.** Une demande non honorée coûte 14 points d'opinion
+« si vous étiez passé l'entendre ». Le code se gardait d'un joueur qui n'y était
+jamais allé, et pas du tout d'un joueur qui va partout. Mesuré :
+
+    oublis inscrits en mémoire, sur 30 parties
+      bot qui ne touche jamais aux services (SANS=services)     487
+      bot par défaut                                            435
+      bot bienfaiteur                                           440
+
+Un bot qui n'a jamais parlé à personne accumulait 487 affronts. Et le bienfaiteur
+finissait avec une opinion moyenne **plus basse** que celui qui ignore le
+système, parce qu'il visite plus de villes. S'en occuper vous faisait détester.
+
+Un affront, c'est de refuser ce qu'on avait sous la main — pas d'être passé dans
+la rue les poches vides. La pénalité ne s'applique plus que si l'on était là **en
+mesure d'aider**. Les 487 oublis fantômes tombent à 58, et à 1 pour qui joue.
+
+**Trois erreurs de profil, toutes de trésorerie ou de dispersion.** Le bot
+tentait d'acheter son lot au moment précis où sa bourse est au plus bas — `servir`
+est appelé en tête de visite, avant la vente : 2 000 achats refusés « faute de
+crédits » sur 2 100 tentatives, avec 340 crédits en poche pour un lot à 500. Il
+dépensait par ailleurs tout son argent en équipement dès qu'il en avait. Et il
+éparpillait quatre services par partie sur soixante villes, alors que l'estime se
+gagne par 24 et que l'amitié commence à 35 : il faut revenir. Un bienfaiteur vend
+d'abord, garde un fonds de roulement, et travaille une paroisse — sa ville et
+celles où l'on va à pied. Amis en fin de partie : 0 → 3.
+
+**Le titre était masqué, puis hors d'atteinte.** `Bienfaiteur` passait après
+`Bâtisseur` et `Officier`, or un camp de douze habitants arrive dans deux parties
+sur cinq et un grade d'officier dans une sur trois, presque sans le vouloir. Un
+titre qui se mérite ne doit pas être masqué par un titre qui s'attrape : il
+remonte au-dessus des deux. Son seuil, lui, était à douze services, posé sans
+mesure puisque rien n'avait jamais joué cette voie. Mesurée : médiane 3, neuvième
+décile 7, record 14 — douze, c'était une partie sur soixante. À six, c'est une
+sur quatre pour qui en fait son métier, et une sur soixante par accident.
+
+    n=60, 4 000 h     défaut  colon  carriériste  négrier  bienfaiteur
+    escouades vivantes 58/60  59/60     55/60      52/60      59/60
+    crédits en fin      4 128  2 456     4 454      5 062      4 616
+    points de service     630    401     1 072        700        655
+    services rendus         3      2         4          2          4
+    amis (estime ≥ 35)      1      1         3          1          2
+    opinion des notables −0,6   −1,1      +1,7      −10,4       −0,8
+
+Le négrier à −10,4 n'est pas un réglage : c'est sa réputation de faction qui
+descend sur les gens de la ville. On sait ce qu'il fait, et on est froid avec
+lui sans qu'aucune règle ne le dise.
+
+**Ce qui reste ouvert, et qu'il faut dire.** Le bienfaiteur plafonne à quatre
+services par partie quelle que soit la variante essayée, parce que le plafond
+n'est pas dans le bot : c'est le débit de demandes (0,0016 par notable et par
+heure, sous condition de manque réel). Une paroisse en produit une douzaine en
+quatre mille heures. C'est une décision de rythme, pas un défaut — mais elle
+n'avait jamais été prise en connaissance de cause, et maintenant elle l'est.
+
 ### Un garde-fou de performance qui ne tient plus tout à fait
 
 À signaler, parce que le taire reviendrait à truquer la mesure. Le même code de
@@ -1350,14 +1422,20 @@ la fois : c'est la seule façon d'attribuer un déséquilibre à sa cause plutô
 qu'à une intuition. Le mode vagabond — voyager autant, sans prendre un seul
 contrat — est le témoin qui a innocenté les contrats et accusé la route.
 
-Ses profils (`COLON=1`, `CARRIERE=1`, `NEGRIER=1`) font autre chose : ils font
-jouer une voie au lieu d'un système. Un bot unique mesure très bien ce qu'il
-fait et très mal ce qu'il ne fait pas — le colon a révélé que personne
-n'apportait de matériaux aux hameaux, le carriériste qu'un ordre de frappe sur
-trente était honorable, le négrier que le marché aux hommes ne s'ouvrait
-jamais. Aucun des trois ne se voyait dans les chiffres du bot par défaut, et
+Ses profils (`COLON=1`, `CARRIERE=1`, `NEGRIER=1`, `BIENFAITEUR=1`) font autre
+chose : ils font jouer une voie au lieu d'un système. Un bot unique mesure très
+bien ce qu'il fait et très mal ce qu'il ne fait pas — le colon a révélé que
+personne n'apportait de matériaux aux hameaux, le carriériste qu'un ordre de
+frappe sur trente était honorable, le négrier que le marché aux hommes ne
+s'ouvrait jamais, le bienfaiteur qu'on contractait une dette en traversant une
+ville. Aucun des quatre ne se voyait dans les chiffres du bot par défaut, et
 c'est la leçon la plus solide du banc : **ce qu'un bot ne joue pas, personne ne
 le mesure.**
+
+Corollaire appris à ses dépens : **un compteur qui compte des coups d'œil
+ment.** « 4 527 demandes croisées, 102 honorées » a servi de constat pendant des
+mois ; en demandes distinctes c'était 397 pour 102, soit un quart et non deux
+pour cent. Un instrument se vérifie avant de conclure avec.
 
 ## Ce que la simulation fait
 

@@ -3241,11 +3241,12 @@ ok(colZ.notables.filter((p) => p !== chefZ).every((p) => p.opinion > 0),
   'ça se sait dans la ville, sans en faire une affaire personnelle');
 ok(!chefZ.demande, 'la demande est close');
 
-// Une demande oubliée coûte, sans qu'on ait rien fait.
+// Refuser ce qu'on avait sous la main se paie. C'est ça, un affront.
 const medZ = colZ.notables[1];
 medZ.demande = { res: 'medkit', quantite: 5, echeance: 100, texte: 'x', prime: 10, vu: true };
 const opZ = medZ.opinion;
-tickServices(colZ, new Rng(7), 3, 120);
+// On est là, avec de quoi, et on s'en va : il le retient.
+tickServices(colZ, new Rng(7), 3, 120, true, () => true);
 ok(!medZ.demande && medZ.opinion < opZ, 'laisser une demande s’éteindre se paie',
   `${Math.round(opZ)} → ${Math.round(medZ.opinion)}`);
 ok(/laissé passer les medkits/.test(souvenirs(medZ).join(' ')), 'et ça aussi, il le retient',
@@ -3258,6 +3259,29 @@ const opArm = armZ.opinion;
 tickServices(colZ, new Rng(8), 3, 220);
 ok(!armZ.demande && armZ.opinion === opArm,
   'une demande qu’on n’a jamais entendue ne se retourne pas contre nous');
+
+// Ni si l'on est passé les poches vides. Marcher n'est pas une dette : le banc
+// comptait 487 oublis en mémoire pour un bot qui n'a jamais touché à ce
+// système, uniquement parce qu'il traversait des villes.
+{
+  const pauvre = colZ.notables.find((n) => !n.demande);
+  ok(!!pauvre, 'il reste quelqu’un sans demande en cours pour ce cas');
+  if (pauvre) {
+    pauvre.demande = {
+      res: 'composant', quantite: 12, echeance: 300, texte: 'x', prime: 10,
+      vu: false, snob: false,
+    };
+    const opP = pauvre.opinion;
+    // Présent à chaque tour, et jamais en mesure d'aider.
+    tickServices(colZ, new Rng(9), 3, 250, true, () => false);
+    ok(pauvre.demande && pauvre.demande.vu,
+      'on entend bien la demande en traversant la ville');
+    tickServices(colZ, new Rng(10), 3, 320, true, () => false);
+    ok(!pauvre.demande && pauvre.opinion === opP,
+      'mais passer les poches vides ne se retourne pas contre nous',
+      `${Math.round(opP)} → ${Math.round(pauvre.opinion)}`);
+  }
+}
 
 // L'estime a des effets qu'on ne peut pas acheter autrement.
 const s9aa = nouvellePartie(7272, { maintenant: 0 });

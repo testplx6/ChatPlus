@@ -316,7 +316,13 @@ export function tick(state) {
     // Ce que la loi fait à l'humeur : on ne pend pas vite sans que la ville
     // s'en ressente, et on ne relâche pas non plus sans que ça se voie.
     tickOrdrePublic(state, col, du);
-    const ev = tickColonie(state.world, col, rng, climat, du, rep, log, state.temps, present);
+    // Ce qu'on avait sur soi en passant : c'est ce qui distingue un affront
+    // d'un simple passage. Voir tickServices.
+    const aDeQuoi = present
+      ? (res, qte) => state.player.groupes.some(
+        (gr) => gr.regionId === col.regionId && (gr.inventaire[res] || 0) >= qte)
+      : null;
+    const ev = tickColonie(state.world, col, rng, climat, du, rep, log, state.temps, present, aDeQuoi);
     if (!ev) continue;
     if (ev.evenement === 'croissance') {
       log({

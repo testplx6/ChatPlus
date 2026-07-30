@@ -284,12 +284,12 @@ export function estVivante(col) {
  * `climat` module les rendements : une saison sèche ne nourrit pas une ville
  * comme une saison de pluies.
  */
-export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null, t = 0, present = false) {
+export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null, t = 0, present = false, aDeQuoi = null) {
   if (col.ruine) return null;
   ajusterEmplois(world, col, rng, dt);
   pourvoirCharges(col, rng, t);
   tickNotables(col, rng, dt, reputation, log, t);
-  tickServices(col, rng, dt, t, present);
+  tickServices(col, rng, dt, t, present, aDeQuoi);
   const prod = productionColonie(world, col);
   const cons = consommationColonie(col);
   // `dt` : nombre d'heures couvertes par cet appel. Une économie de colonie n'a
