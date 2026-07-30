@@ -296,11 +296,10 @@ export function tick(state) {
     col.vuA = state.temps;
     // La réputation locale infléchit ce que les gens d'ici pensent de vous.
     const rep = (col.faction && state.player.reputation[col.faction]) || 0;
-    // Être là change ce qu'on entend : une demande qu'on n'a pas entendue ne
-    // peut pas se retourner contre nous. Voir tickServices.
-    // `yeux` contient aussi la région de l'avant-poste, mais on ne fonde jamais
-    // un avant-poste sur une ville : pour une colonie, c'est bien « un groupe
-    // est ici ».
+    // Être là change ce qui vit : le banc de recrutement ne se garnit que sous
+    // nos yeux. `yeux` contient aussi la région de l'avant-poste, mais on ne
+    // fonde jamais un avant-poste sur une ville : pour une colonie, c'est bien
+    // « un groupe est ici ».
     const present = yeux.includes(col.regionId);
     // Le banc de recrutement ne se garnit que là où l'on est. Le tenir à jour
     // dans les quatre-vingt-six villes, ce serait deux cents personnages
@@ -316,13 +315,7 @@ export function tick(state) {
     // Ce que la loi fait à l'humeur : on ne pend pas vite sans que la ville
     // s'en ressente, et on ne relâche pas non plus sans que ça se voie.
     tickOrdrePublic(state, col, du);
-    // Ce qu'on avait sur soi en passant : c'est ce qui distingue un affront
-    // d'un simple passage. Voir tickServices.
-    const aDeQuoi = present
-      ? (res, qte) => state.player.groupes.some(
-        (gr) => gr.regionId === col.regionId && (gr.inventaire[res] || 0) >= qte)
-      : null;
-    const ev = tickColonie(state.world, col, rng, climat, du, rep, log, state.temps, present, aDeQuoi);
+    const ev = tickColonie(state.world, col, rng, climat, du, rep, log, state.temps, present);
     if (!ev) continue;
     if (ev.evenement === 'croissance') {
       log({

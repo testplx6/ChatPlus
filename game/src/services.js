@@ -3,7 +3,10 @@
 // Le panneau d'affichage d'une ville est anonyme : il paie en crédits, il bouge
 // la réputation d'une faction, et personne ne se souvient de vous. C'est un
 // distributeur. Ici c'est autre chose : quelqu'un a un problème, il vous le dit
-// en face, et il s'en souvient — bien ou mal.
+// en face, et il s'en souvient.
+//
+// Il ne vous en veut pas de ne pas l'avoir aidé — voir GAIN_OPINION. Ce système
+// n'a que du haut : ce qui le borne, c'est qu'on ne peut pas être partout.
 //
 // Le prix est volontairement médiocre. Ce qu'on achète en rendant un service,
 // c'est l'opinion d'une personne précise, et cette opinion a des effets qu'on
@@ -43,10 +46,24 @@ export const BESOINS = {
 /** Une demande non honorée finit par ne plus être une demande. */
 export const DUREE_DEMANDE = [260, 620];
 
-/** Ce qu'un service rapporte, et ce qu'un oubli coûte. */
+/**
+ * Ce qu'un service rapporte. Il n'y a pas de contrepartie négative, et c'est
+ * délibéré.
+ *
+ * Une demande non honorée a longtemps coûté de l'estime. L'idée était qu'un
+ * refus se paie — sauf qu'on n'a jamais rien promis : quelqu'un a un besoin,
+ * vous passez, vous ne le comblez pas. Ce n'est pas un manquement, c'est la vie
+ * ordinaire d'un désert où personne ne peut tout faire. La version qui punissait
+ * le simple passage était franchement mauvaise ; celle qui ne punissait plus que
+ * le refus les mains pleines l'était encore, parce que garder ses cent quarante
+ * rations quand on a soi-même six bouches à nourrir n'est pas un affront.
+ *
+ * Le choix tient debout sans culpabilité : la marchandise part, la prime la
+ * rembourse tout juste, et le vrai prix est le détour. On ne peut pas les servir
+ * tous — voilà la décision.
+ */
 export const GAIN_OPINION = 24;
 export const GAIN_TEMOINS = 6;
-export const PERTE_OUBLI = 14;
 
 /** Combien d'actes on garde en tête. Au-delà, on ne retient que l'impression. */
 export const MEMOIRE_MAX = 4;
@@ -69,6 +86,9 @@ const DIT = {
 
 const ACTES = {
   service: (r) => `Vous lui avez apporté ${(DIT[r] || [r])[0]} quand il en manquait.`,
+  // Plus produit depuis qu'une demande non honorée ne coûte rien. On garde la
+  // phrase : les sauvegardes d'avant en contiennent, et une mémoire qu'on ne
+  // sait plus lire vaut moins qu'un souvenir périmé.
   oubli: (r) => `Vous avez laissé passer ${(DIT[r] || [null, r])[1]} qu’il attendait.`,
   defense: () => 'Vous étiez là quand la ville a été attaquée.',
   pillage: () => 'Vous avez pillé une caravane des siens.',
@@ -112,38 +132,16 @@ function manque(col, besoin) {
  * rythme des colonies : on ne parle pas de quelques dizaines d'objets par heure
  * mais de quelques-uns par jour de jeu sur la carte entière.
  */
-export function tickServices(col, rng, dt, t, present = false, aDeQuoi = null) {
+export function tickServices(col, rng, dt, t) {
   if (!col.notables || !col.notables.length) return;
   const surDt = (p) => (dt === 1 ? p : 1 - Math.pow(1 - p, dt));
 
   for (const p of col.notables) {
     if (p.demande) {
-      // Une demande ne devient la vôtre qu'une fois que vous l'avez entendue.
-      if (present) p.demande.vu = true;
-      // Et l'on ne vous en tient rigueur que si vous pouviez y répondre.
-      //
-      // La première version punissait sur `vu` seul, c'est-à-dire sur le fait
-      // d'avoir traversé la ville. Elle se gardait bien d'un joueur qui n'y
-      // était jamais passé, et pas du tout d'un joueur qui passe partout : le
-      // banc a mesuré **487 oublis en mémoire pour un bot qui ne touche jamais
-      // à ce système**, et une opinion moyenne plus basse chez celui qui rend
-      // le plus de services que chez celui qui les ignore, parce qu'il visite
-      // plus de villes. Marcher devenait une dette.
-      //
-      // Un affront, c'est de refuser ce qu'on avait sous la main. Pas d'être
-      // passé dans la rue les poches vides.
-      if (present && aDeQuoi && aDeQuoi(p.demande.res, p.demande.quantite)) {
-        p.demande.snob = true;
-      }
-      // On n'attend pas éternellement. Une demande qui s'éteint laisse une
-      // trace — mais seulement si vous étiez là, en mesure d'aider.
-      if (t >= p.demande.echeance) {
-        if (p.demande.snob) {
-          retenir(p, 'oubli', p.demande.res, t);
-          p.opinion = Math.max(-100, (p.opinion || 0) - PERTE_OUBLI);
-        }
-        p.demande = null;
-      }
+      // On n'attend pas éternellement, et l'on ne vous en veut pas : la demande
+      // s'éteint, simplement. Voir GAIN_OPINION pour pourquoi il n'y a rien à
+      // perdre ici.
+      if (t >= p.demande.echeance) p.demande = null;
       continue;
     }
     const besoin = BESOINS[p.charge];
@@ -161,10 +159,6 @@ export function tickServices(col, rng, dt, t, present = false, aDeQuoi = null) {
       quantite: Math.max(4, q),
       echeance: t + rng.irange(DUREE_DEMANDE[0], DUREE_DEMANDE[1]),
       texte: besoin.texte(Math.max(4, q)),
-      // Vrai dès qu'on est passé l'entendre. Voir plus haut.
-      vu: present,
-      // Vrai seulement si on était là avec de quoi et qu'on a passé son chemin.
-      snob: false,
       // On rembourse la marchandise sans plus : le reste se paie en estime.
       prime: Math.round(COMMODITIES[besoin.res].prix * Math.max(4, q) * rng.range(0.9, 1.3)),
     };

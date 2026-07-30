@@ -81,7 +81,7 @@ const TRACE = {
   // centaine de personnes qui attendaient vraiment quelque chose.
   demandesVues: 0, demandesPromises: 0, demandesPerdues: 0, demandesLourdes: 0,
   achatsTentes: 0, achatsFaits: 0, achatsChers: 0, achatsPauvre: 0,
-  opinionFin: 0, nNotables: 0, oublisSubis: 0,
+  opinionFin: 0, nNotables: 0,
   coutLot: {}, primeLot: {}, nLot: {}, bourse: 0, nBourse: 0,
   // Où va l'argent. Sans ce détail, « le bot est pauvre » ne dit rien de ce
   // qu'il faut corriger.
@@ -1688,7 +1688,6 @@ for (let n = 0; n < PARTIES; n++) {
       for (const n of c.notables || []) {
         TRACE.opinionFin += n.opinion || 0;
         TRACE.nNotables++;
-        TRACE.oublisSubis += (n.memoire || []).filter((m) => m.quoi === 'oubli').length;
       }
     }
   }
@@ -1776,8 +1775,7 @@ console.log(`Demandes distinctes croisées : ${TRACE.demandesVues} — `
   + `${TRACE.demandesPerdues} promesses mortes en route, `
   + `${TRACE.demandesLourdes} vues trop lourdes pour le sac`);
 console.log(`  opinion moyenne des notables : `
-  + `${(TRACE.opinionFin / Math.max(1, TRACE.nNotables)).toFixed(1)} — `
-  + `${TRACE.oublisSubis} oublis encore en mémoire`);
+  + `${(TRACE.opinionFin / Math.max(1, TRACE.nNotables)).toFixed(1)}`);
 console.log(`  compléter le lot : ${TRACE.achatsTentes} tentatives — ${TRACE.achatsFaits} achats, `
   + `${TRACE.achatsChers} refusés trop chers, ${TRACE.achatsPauvre} faute de crédits`);
 console.log('  coût moyen d’un lot : ' + Object.keys(TRACE.nLot).sort().map((k) =>

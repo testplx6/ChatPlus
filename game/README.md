@@ -1107,9 +1107,10 @@ croise 397, en adopte 233, en honore 102 et **en laisse mourir 209**. Ce n'est
 pas de la négligence, c'est un ordre de priorités : la promesse venait après les
 contrats, le camp et le marché, et une demande s'éteint en trois semaines.
 
-**Marcher était une dette.** Une demande non honorée coûte 14 points d'opinion
-« si vous étiez passé l'entendre ». Le code se gardait d'un joueur qui n'y était
-jamais allé, et pas du tout d'un joueur qui va partout. Mesuré :
+**Marcher était une dette, et le remords n'avait pas lieu d'être.** Une demande
+non honorée coûtait 14 points d'opinion « si vous étiez passé l'entendre ». Le
+code se gardait d'un joueur qui n'y était jamais allé, et pas du tout d'un
+joueur qui va partout. Mesuré :
 
     oublis inscrits en mémoire, sur 30 parties
       bot qui ne touche jamais aux services (SANS=services)     487
@@ -1120,9 +1121,18 @@ Un bot qui n'a jamais parlé à personne accumulait 487 affronts. Et le bienfait
 finissait avec une opinion moyenne **plus basse** que celui qui ignore le
 système, parce qu'il visite plus de villes. S'en occuper vous faisait détester.
 
-Un affront, c'est de refuser ce qu'on avait sous la main — pas d'être passé dans
-la rue les poches vides. La pénalité ne s'applique plus que si l'on était là **en
-mesure d'aider**. Les 487 oublis fantômes tombent à 58, et à 1 pour qui joue.
+Premier correctif : ne punir que si l'on était là **en mesure d'aider** — refuser
+ce qu'on a sous la main, pas passer les poches vides. Les 487 oublis fantômes
+tombaient à 58. C'était la bonne réponse à la mauvaise question.
+
+Car il n'y a rien à punir du tout. **On n'a jamais rien promis.** Quelqu'un a un
+besoin, vous passez, vous ne le comblez pas : ce n'est pas un manquement, c'est
+la vie ordinaire d'un désert où personne ne peut tout faire — et garder ses cent
+quarante rations quand on a soi-même six bouches à nourrir n'est pas un affront.
+La contrepartie négative a donc disparu entièrement, avec les champs `vu` et
+`snob` qui la servaient. Le système n'a plus que du haut, et il tient : la
+marchandise part, la prime la rembourse tout juste, le vrai prix est le détour,
+et l'on ne peut pas les servir tous. **C'est ça, la décision.**
 
 **Trois erreurs de profil, toutes de trésorerie ou de dispersion.** Le bot
 tentait d'acheter son lot au moment précis où sa bourse est au plus bas — `servir`
@@ -1428,7 +1438,7 @@ bien ce qu'il fait et très mal ce qu'il ne fait pas — le colon a révélé qu
 personne n'apportait de matériaux aux hameaux, le carriériste qu'un ordre de
 frappe sur trente était honorable, le négrier que le marché aux hommes ne
 s'ouvrait jamais, le bienfaiteur qu'on contractait une dette en traversant une
-ville. Aucun des quatre ne se voyait dans les chiffres du bot par défaut, et
+ville — pour un remords qui n'avait pas lieu d'être. Aucun des quatre ne se voyait dans les chiffres du bot par défaut, et
 c'est la leçon la plus solide du banc : **ce qu'un bot ne joue pas, personne ne
 le mesure.**
 
