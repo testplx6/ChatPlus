@@ -23,7 +23,7 @@ import {
   fonderBase, lancerConstruction, lancerRecherche, placesMetier, affectes,
   abriDe, capaciteStock, totalStock, energie, COUT_FONDATION, POP_RECONNUE,
   peutReconnaitre, reconnaitreAvantPoste, peutRattacher, rattacherVille,
-  declarerIndependance,
+  declarerIndependance, synchroniserVitrine,
   manoeuvres, affecter, rendementMetier, mainDoeuvre,
 } from '../src/base.js';
 import { METIER_KEYS, BIOMES, BUILDINGS, POSTURES } from '../src/data.js';
@@ -2364,6 +2364,23 @@ ok(monBourg.world.factions[patron].colonies.includes(maVille.id),
 ok(monBourg.world.regions[maVille.regionId].controle === patron,
   'la carte le dit aussi');
 ok(maVille.avantPoste, 'elle reste la vôtre : le camp ne change pas de mains');
+
+// On paie l'impôt, ils paient la garnison. Sans cette contrepartie, prendre des
+// couleurs donnait tout l'inconvénient — leurs guerres — et aucun avantage :
+// onze villes sur vingt-quatre tenaient six mille heures, contre vingt-quatre
+// pour une ville libre en paix.
+monBourg.world.factions[patron].tresor = 20000;
+const defenseSeule = monBourg.base.defense;
+monBourg.base.majVitrine = -999;
+synchroniserVitrine(monBourg);
+ok(maVille.defense > defenseSeule,
+  'un protecteur paie la garnison de ce qu’il protège',
+  `${Math.round(defenseSeule)} → ${Math.round(maVille.defense)}`);
+const caisseAvantGarnison = monBourg.world.factions[patron].tresor;
+monBourg.base.majVitrine = -999;
+synchroniserVitrine(monBourg);
+ok(monBourg.world.factions[patron].tresor < caisseAvantGarnison,
+  'et il la paie sur son trésor, pas par magie');
 
 // La vitrine continue d'être recopiée : une ville rattachée n'est pas une ville
 // perdue, et c'était un piège à écrire — la synchronisation s'arrêtait dès que

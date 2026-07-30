@@ -848,6 +848,29 @@ bourg sans maître à trois jours de marche. En échange :
 On peut reprendre son drapeau. Trente-cinq points de réputation, et l'on
 n'oublie pas ce genre de départ.
 
+**Est-ce seulement viable, de bâtir une ville ?** La question méritait des
+chiffres plutôt qu'une impression. Vingt-quatre villes par cas, six mille
+heures chacune :
+
+    Libre, en paix                    24/24 tiennent
+    Sous couleurs                     13/24
+    Libre, détesté de tous            8/24
+    Sous couleurs, détesté de tous    13/24
+
+**Fonder n'est pas puni — c'est l'état le plus sûr du jeu.** Une ville libre
+dont on n'a rien à reprocher au bâtisseur tient toujours. Ce qui coûte, c'est
+le drapeau : il vous expose aux guerres de votre protecteur.
+
+Et c'est très exactement ce qu'on veut, parce que **le drapeau est une
+assurance**. Il plafonne votre risque quand le monde se retourne contre vous
+(8 → 13) et il vous coûte quand vous vous en seriez sorti seul (24 → 13). On
+paie une prime pour ne pas dépendre de sa réputation.
+
+Encore fallait-il qu'il y ait une contrepartie. Écrit d'abord sans, prendre des
+couleurs donnait tout l'inconvénient et aucun avantage : onze sur vingt-quatre.
+**Un protecteur paie la garnison de ce qu'il protège** — sur son trésor, et à
+proportion de ce qu'il a. Vous payez l'impôt, ils paient les murs.
+
 Un piège évité de justesse en l'écrivant : la recopie de la vitrine s'arrêtait
 dès que la fiche portait des couleurs — c'était la façon de reconnaître qu'on
 nous l'avait prise. Une ville rattachée aurait donc cessé d'être mise à jour

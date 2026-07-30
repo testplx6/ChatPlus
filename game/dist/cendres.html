@@ -10376,8 +10376,20 @@ function synchroniserVitrine(state) {
   // rattachée porte celles de sa faction et reste la vôtre.
   if (!col.avantPoste || col.ruine) return;
   col.pop = Math.round(base.pop || 0);
-  col.defense = Math.round(base.defense || 0);
-  col.defenseMax = Math.max(col.defense, Math.round(base.defense || 0));
+  // Ce que le protecteur met de sa poche. Sans cette ligne, prendre les
+  // couleurs de quelqu'un donnait tout l'inconvénient — ses guerres — et aucun
+  // des avantages : onze villes sur vingt-quatre tenaient six mille heures
+  // contre vingt-quatre pour une ville libre en paix. On paie l'impôt, ils
+  // paient la garnison ; c'est le marché, et il doit se voir dans les murs.
+  let garnison = 0;
+  if (col.faction && state.world.factions[col.faction]) {
+    const f = state.world.factions[col.faction];
+    const veut = Math.round(30 + (base.pop || 0) * 3);
+    const paye = Math.min(veut, Math.floor(f.tresor / 40));
+    if (paye > 0) { f.tresor -= paye * 0.5; garnison = paye; }
+  }
+  col.defense = Math.round((base.defense || 0) + garnison);
+  col.defenseMax = Math.max(col.defense, Math.round((base.defense || 0) + garnison));
   col.murs = niveau(base, 'mur') * 3;
   col.taille = col.pop >= 90 ? 3 : col.pop >= 45 ? 2 : 1;
   col.nom = base.nom;
