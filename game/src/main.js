@@ -11,7 +11,10 @@ import { attaquerCaravane } from './caravanes.js';
 import { sEngager, quitter, toucherRations as toucherRationsA } from './allegeance.js';
 import { genererBande, TACTIQUES } from './combat.js';
 import { groupeActif, tousLesMembres, scinder, fusionner, choisirGroupe, assignerTache } from './groupes.js';
-import { tailleEscouadeMax, reconnaitreAvantPoste, peutReconnaitre } from './base.js';
+import {
+  tailleEscouadeMax, reconnaitreAvantPoste, peutReconnaitre, rattacherVille,
+  declarerIndependance,
+} from './base.js';
 import { verifierExercice } from './squad.js';
 import { honorer as honorerService } from './services.js';
 import { acheterBete, vendreBete } from './betes.js';
@@ -238,6 +241,19 @@ const API = {
     sauver();
     rafraichir(true);
     return { ok: true, colonie: r };
+  },
+
+  /** Prendre les couleurs de ceux qu'on sert, ou reprendre son drapeau. */
+  rattacher(faction) {
+    const r = rattacherVille(state, faction, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  independance() {
+    const r = declarerIndependance(state, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
   },
 
   /** Ouvrir ou fermer la porte aux colporteurs. */

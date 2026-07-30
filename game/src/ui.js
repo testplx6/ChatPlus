@@ -23,7 +23,7 @@ import {
   rendementMetier,
   niveau as nivBat, niveauRech, coutBatiment, tempsBatiment, coutRecherche,
   tempsRecherche, capaciteStock, totalStock, energie, lancerConstruction, POP_RECONNUE,
-  peutReconnaitre,
+  peutReconnaitre, peutRattacher,
   lancerRecherche, annulerConstruction, fonderBase, deposer, retirer,
   COUT_FONDATION, tailleEscouadeMax,
 } from './base.js';
@@ -1261,6 +1261,37 @@ function blocMemorial() {
 }
 
 /**
+ * Sous quel drapeau. Une ville libre vit de votre réputation — personne ne vient
+ * la prendre tant qu'on n'a rien à vous reprocher — et c'est fragile. Prendre
+ * les couleurs de ceux qu'on sert, c'est être défendu, payer l'impôt, et
+ * hériter de leurs guerres.
+ */
+function blocDrapeau(b) {
+  const col = S.world.colonies.find((c) => c.id === b.colonieId);
+  if (!col) return '';
+  if (col.faction) {
+    const l = loisDe(S.world, col.faction);
+    return `<div class="aide">${e(b.nom)} porte les couleurs
+      <span style="color:${couleurFaction(col.faction)}">${e(FACTIONS[col.faction].nom)}</span> :
+      on la défend comme les leurs, on y lève leur impôt
+      (${Math.round(l.impot * 100)} %), et l’on hérite de leurs guerres.</div>
+      <button class="act mini danger" data-a="independance" style="margin-bottom:6px">
+        Reprendre son drapeau (−35 de réputation)</button>`;
+  }
+  const possibles = DIPLO_FACTIONS.filter((k) => peutRattacher(S, k).ok);
+  return `<div class="aide">${e(b.nom)} est écrite sur les cartes et ne porte les
+    couleurs de personne : on ne vient pas la prendre tant qu’on n’a rien à vous
+    reprocher. C’est tenable, et c’est fragile.</div>
+    ${possibles.map((k) => `<button class="act mini" data-a="rattacher" data-k="${e(k)}"
+      style="margin-bottom:4px;text-align:left">Prendre les couleurs
+      ${e(FACTIONS[k].genitif)}<br><span class="aide">Défendue comme les leurs,
+      impôt ${Math.round(loisDe(S.world, k).impot * 100)} %, et leurs guerres deviennent
+      les vôtres.</span></button>`).join('')
+    || `<div class="aide">Aucune faction ne vous estime assez pour vous prendre sous
+      son drapeau. Il faut les servir, ou 40 de réputation.</div>`}`;
+}
+
+/**
  * Comment on se bat. Une tactique n'est pas un bonus : c'est un pari sur le
  * terrain qu'on a sous les pieds, le nombre qu'on a en face et les armes qu'on
  * porte. On l'annonce donc avec son rendement *ici* — c'est la seule façon d'en
@@ -1635,8 +1666,7 @@ function ecranBase() {
       <span class="v">${n(Math.round(b.pop || 0))} / ${n(populationMax(b))}${b.colonieId
     ? ' · <span class="ok">sur les cartes</span>' : ''}</span></div>
     ${b.colonieId
-    ? `<div class="aide">${e(b.nom)} est écrite sur les cartes : elle tient ses routes
-        comme une ville, et l’on peut vouloir vous la prendre.</div>`
+    ? `${blocDrapeau(b)}`
     : `<div class="aide">Un camp que personne n’a inscrit nulle part n’intéresse personne.
         Se faire reconnaître, c’est tenir ses routes comme une ville, voir passer trois
         fois plus de monde — et devenir une place que les conseils voisins convoitent.
@@ -3132,6 +3162,18 @@ function surClic(ev) {
         ? (r.prix ? `C’est réglé. ${r.prix} cr.` : 'C’est réglé.')
         : r.motif, !r.ok);
       rafraichir(true);
+      break;
+    }
+
+    case 'rattacher': {
+      const r = ACTIONS.rattacher(el.dataset.k);
+      toast(r.ok ? 'La ville a changé de drapeau.' : r.motif, !r.ok);
+      break;
+    }
+
+    case 'independance': {
+      const r = ACTIONS.independance();
+      toast(r.ok ? 'On reprend son drapeau. Ils s’en souviendront.' : r.motif, !r.ok);
       break;
     }
 

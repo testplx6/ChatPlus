@@ -3,7 +3,9 @@
 
 import {
   BUILDINGS, RESEARCH, COMMODITY_KEYS, COMMODITIES, METIERS, METIER_KEYS, BIOMES,
+  FACTIONS,
 } from './data.js';
+import { loisDe } from './lois.js';
 import { comp, gagnerXp, estDebout, XP_PRATIQUE } from './characters.js';
 import { groupes, groupeActif } from './groupes.js';
 import { garnison } from './allegeance.js';
@@ -716,6 +718,8 @@ export function tickBase(state, log, ctx) {
   if (base.colonieId && t - (base.majVitrine || -999) >= 24) {
     base.majVitrine = t;
     synchroniserVitrine(state);
+    // Et l'on paie ce qu'on doit à ceux dont on porte les couleurs.
+    preleverImpot(state, log);
   }
   // Les colporteurs s'arrêtent, d'autant plus souvent que la route est faite.
   // C'est ce qui détache la voie du colon des jambes de quatre personnes.
@@ -837,13 +841,140 @@ export function synchroniserVitrine(state) {
   if (!base.colonieId) return;
   const col = state.world.colonies.find((c) => c.id === base.colonieId);
   if (!col) { base.colonieId = null; return; }
-  if (col.faction || col.ruine) return; // elle n'est plus à nous
+  // `avantPoste` tombe à faux quand on nous la prend : c'est ce drapeau-là qui
+  // dit qu'elle est encore nôtre, et non l'absence de couleurs — une ville
+  // rattachée porte celles de sa faction et reste la vôtre.
+  if (!col.avantPoste || col.ruine) return;
   col.pop = Math.round(base.pop || 0);
   col.defense = Math.round(base.defense || 0);
   col.defenseMax = Math.max(col.defense, Math.round(base.defense || 0));
   col.murs = niveau(base, 'mur') * 3;
   col.taille = col.pop >= 90 ? 3 : col.pop >= 45 ? 2 : 1;
   col.nom = base.nom;
+}
+
+/**
+ * Choisir son camp.
+ *
+ * Une ville libre vit de la réputation de celui qui l'a bâtie : personne ne
+ * vient la prendre tant qu'on n'a rien à lui reprocher. C'est tenable, et c'est
+ * fragile — il suffit d'une guerre où l'on a pris parti pour que la place
+ * redevienne convoitable.
+ *
+ * L'autre voie : prendre les couleurs de ceux qu'on sert. Ils la portent sur
+ * leurs cartes, leurs colonnes la comptent parmi les leurs, et l'on cesse
+ * d'être un bourg sans maître à trois jours de marche. En échange on paie
+ * l'impôt qu'ils ont voté — celui-là même qu'on a peut-être voté soi-même, si
+ * l'on est Commandeur — et l'on hérite de leurs guerres.
+ */
+export function peutRattacher(state, faction) {
+  const base = state.base;
+  if (!base.colonieId) return { ok: false, motif: 'La ville n’est pas sur les cartes.' };
+  const col = state.world.colonies.find((c) => c.id === base.colonieId);
+  if (!col || !col.avantPoste) return { ok: false, motif: 'Elle ne vous appartient plus.' };
+  if (col.faction === faction) return { ok: false, motif: 'Elle porte déjà ces couleurs.' };
+  const f = state.world.factions[faction];
+  if (!f || !f.colonies.length) return { ok: false, motif: 'Cette faction n’existe plus.' };
+  const sert = state.player.groupes.some(
+    (g) => g.allegeance && g.allegeance.faction === faction
+  );
+  if (!sert && (state.player.reputation[faction] || 0) < 40) {
+    return { ok: false, motif: 'Il faut les servir, ou qu’ils vous estiment (40).' };
+  }
+  return { ok: true };
+}
+
+export function rattacherVille(state, faction, log) {
+  const v = peutRattacher(state, faction);
+  if (!v.ok) return v;
+  const base = state.base;
+  const col = state.world.colonies.find((c) => c.id === base.colonieId);
+  const ancienne = col.faction;
+  if (ancienne && state.world.factions[ancienne]) {
+    const fa = state.world.factions[ancienne];
+    fa.colonies = fa.colonies.filter((id) => id !== col.id);
+  }
+  col.faction = faction;
+  col.factionOrigine = col.factionOrigine || faction;
+  const f = state.world.factions[faction];
+  if (!f.colonies.includes(col.id)) f.colonies.push(col.id);
+  state.world.regions[col.regionId].controle = faction;
+  if (log) {
+    log({
+      type: 'base',
+      texte: `${base.nom} prend les couleurs ${FACTIONS[faction].genitif}. `
+        + `On la défendra comme les leurs — et l’on y lèvera l’impôt comme chez eux.`,
+      regionId: base.regionId,
+      important: true,
+      factions: [faction],
+    });
+  }
+  return { ok: true };
+}
+
+/** Reprendre son drapeau. On n'oublie pas ce genre de départ. */
+export function declarerIndependance(state, log) {
+  const base = state.base;
+  const col = base.colonieId
+    && state.world.colonies.find((c) => c.id === base.colonieId);
+  if (!col || !col.avantPoste || !col.faction) {
+    return { ok: false, motif: 'Elle ne porte les couleurs de personne.' };
+  }
+  const f = state.world.factions[col.faction];
+  const ancienne = col.faction;
+  if (f) f.colonies = f.colonies.filter((id) => id !== col.id);
+  col.faction = null;
+  state.world.regions[col.regionId].controle = null;
+  state.player.reputation[ancienne] = Math.max(-100,
+    (state.player.reputation[ancienne] || 0) - 35);
+  if (log) {
+    log({
+      type: 'base',
+      texte: `${base.nom} reprend son drapeau. ${FACTIONS[ancienne].nom} `
+        + `n’oubliera pas ce genre de départ.`,
+      regionId: base.regionId,
+      important: true,
+      factions: [ancienne],
+    });
+  }
+  return { ok: true };
+}
+
+/**
+ * L'impôt qu'on paie à ceux dont on porte les couleurs. Prélevé sur la
+ * production, au taux qu'ils ont voté — et l'on n'a pas à aimer ce taux pour
+ * le payer, sauf à être celui qui le fixe.
+ */
+export function preleverImpot(state, log) {
+  const base = state.base;
+  if (!base.colonieId) return 0;
+  const col = state.world.colonies.find((c) => c.id === base.colonieId);
+  if (!col || !col.avantPoste || !col.faction) return 0;
+  const f = state.world.factions[col.faction];
+  if (!f) return 0;
+  const taux = loisDe(state.world, col.faction).impot;
+  const du = Math.round((base.pop || 0) * taux * 24);
+  if (du <= 0) return 0;
+  // On paie d'abord en crédits ; à défaut, en vivres, ce qui revient au même
+  // pour une garnison.
+  const enCredits = Math.min(state.player.credits, du);
+  state.player.credits -= enCredits;
+  let reste = du - enCredits;
+  if (reste > 0) {
+    const rations = Math.min(base.stock.rations || 0, reste / 9);
+    base.stock.rations -= rations;
+    reste -= rations * 9;
+  }
+  f.tresor += du - reste;
+  if (reste > 0 && log && state.temps % 240 === 0) {
+    log({
+      type: 'base',
+      texte: `${base.nom} n’a pas de quoi payer l’impôt ${FACTIONS[col.faction].genitif}. `
+        + `On le note.`,
+      regionId: base.regionId,
+    });
+  }
+  return du - reste;
 }
 
 // ---------------------------------------------------------------------------

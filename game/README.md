@@ -825,6 +825,35 @@ moment**. Un camp effondré à deux habitants bradait donc tout ce qui dépassai
 cinquante rations, et ne se relevait jamais. Il la calcule sur ce que le camp
 peut *tenir*.
 
+### Sous quel drapeau
+
+Une ville libre vit de la réputation de celui qui l'a bâtie : personne ne vient
+la prendre tant qu'on n'a rien à lui reprocher. C'est tenable, et c'est fragile
+— il suffit d'une guerre où l'on a pris parti pour que la place redevienne
+convoitable.
+
+L'autre voie : **prendre les couleurs de ceux qu'on sert.** Il faut les servir,
+ou qu'ils vous estiment (40 de réputation). Ils la portent alors sur leurs
+cartes, leurs colonnes la comptent parmi les leurs, et l'on cesse d'être un
+bourg sans maître à trois jours de marche. En échange :
+
+- on paie **l'impôt qu'ils ont voté** — celui-là même qu'on a peut-être voté
+  soi-même, si l'on est Commandeur ;
+- et **on hérite de leurs guerres**. Ce n'est pas une formule : une ville qui
+  porte des couleurs devient une cible pour les ennemis de son protecteur, et
+  le test de l'impôt a dû être ramené de deux cent quarante à soixante-douze
+  heures parce qu'au-delà elle se faisait prendre. Le mécanisme fonctionne ;
+  c'est simplement autre chose que ce que ce test-là mesure.
+
+On peut reprendre son drapeau. Trente-cinq points de réputation, et l'on
+n'oublie pas ce genre de départ.
+
+Un piège évité de justesse en l'écrivant : la recopie de la vitrine s'arrêtait
+dès que la fiche portait des couleurs — c'était la façon de reconnaître qu'on
+nous l'avait prise. Une ville rattachée aurait donc cessé d'être mise à jour
+tout en restant nôtre. C'est `avantPoste` qui dit qu'elle est encore à vous, et
+non l'absence de drapeau.
+
 ### La relève
 
 Le dernier des vôtres tombe, et la partie s'arrête — même avec dix-huit

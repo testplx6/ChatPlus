@@ -10233,6 +10233,8 @@ function tickBase(state, log, ctx) {
   if (base.colonieId && t - (base.majVitrine || -999) >= 24) {
     base.majVitrine = t;
     synchroniserVitrine(state);
+    // Et l'on paie ce qu'on doit à ceux dont on porte les couleurs.
+    preleverImpot(state, log);
   }
   // Les colporteurs s'arrêtent, d'autant plus souvent que la route est faite.
   // C'est ce qui détache la voie du colon des jambes de quatre personnes.
@@ -10354,13 +10356,140 @@ function synchroniserVitrine(state) {
   if (!base.colonieId) return;
   const col = state.world.colonies.find((c) => c.id === base.colonieId);
   if (!col) { base.colonieId = null; return; }
-  if (col.faction || col.ruine) return; // elle n'est plus à nous
+  // `avantPoste` tombe à faux quand on nous la prend : c'est ce drapeau-là qui
+  // dit qu'elle est encore nôtre, et non l'absence de couleurs — une ville
+  // rattachée porte celles de sa faction et reste la vôtre.
+  if (!col.avantPoste || col.ruine) return;
   col.pop = Math.round(base.pop || 0);
   col.defense = Math.round(base.defense || 0);
   col.defenseMax = Math.max(col.defense, Math.round(base.defense || 0));
   col.murs = niveau(base, 'mur') * 3;
   col.taille = col.pop >= 90 ? 3 : col.pop >= 45 ? 2 : 1;
   col.nom = base.nom;
+}
+
+/**
+ * Choisir son camp.
+ *
+ * Une ville libre vit de la réputation de celui qui l'a bâtie : personne ne
+ * vient la prendre tant qu'on n'a rien à lui reprocher. C'est tenable, et c'est
+ * fragile — il suffit d'une guerre où l'on a pris parti pour que la place
+ * redevienne convoitable.
+ *
+ * L'autre voie : prendre les couleurs de ceux qu'on sert. Ils la portent sur
+ * leurs cartes, leurs colonnes la comptent parmi les leurs, et l'on cesse
+ * d'être un bourg sans maître à trois jours de marche. En échange on paie
+ * l'impôt qu'ils ont voté — celui-là même qu'on a peut-être voté soi-même, si
+ * l'on est Commandeur — et l'on hérite de leurs guerres.
+ */
+function peutRattacher(state, faction) {
+  const base = state.base;
+  if (!base.colonieId) return { ok: false, motif: 'La ville n’est pas sur les cartes.' };
+  const col = state.world.colonies.find((c) => c.id === base.colonieId);
+  if (!col || !col.avantPoste) return { ok: false, motif: 'Elle ne vous appartient plus.' };
+  if (col.faction === faction) return { ok: false, motif: 'Elle porte déjà ces couleurs.' };
+  const f = state.world.factions[faction];
+  if (!f || !f.colonies.length) return { ok: false, motif: 'Cette faction n’existe plus.' };
+  const sert = state.player.groupes.some(
+    (g) => g.allegeance && g.allegeance.faction === faction
+  );
+  if (!sert && (state.player.reputation[faction] || 0) < 40) {
+    return { ok: false, motif: 'Il faut les servir, ou qu’ils vous estiment (40).' };
+  }
+  return { ok: true };
+}
+
+function rattacherVille(state, faction, log) {
+  const v = peutRattacher(state, faction);
+  if (!v.ok) return v;
+  const base = state.base;
+  const col = state.world.colonies.find((c) => c.id === base.colonieId);
+  const ancienne = col.faction;
+  if (ancienne && state.world.factions[ancienne]) {
+    const fa = state.world.factions[ancienne];
+    fa.colonies = fa.colonies.filter((id) => id !== col.id);
+  }
+  col.faction = faction;
+  col.factionOrigine = col.factionOrigine || faction;
+  const f = state.world.factions[faction];
+  if (!f.colonies.includes(col.id)) f.colonies.push(col.id);
+  state.world.regions[col.regionId].controle = faction;
+  if (log) {
+    log({
+      type: 'base',
+      texte: `${base.nom} prend les couleurs ${FACTIONS[faction].genitif}. `
+        + `On la défendra comme les leurs — et l’on y lèvera l’impôt comme chez eux.`,
+      regionId: base.regionId,
+      important: true,
+      factions: [faction],
+    });
+  }
+  return { ok: true };
+}
+
+/** Reprendre son drapeau. On n'oublie pas ce genre de départ. */
+function declarerIndependance(state, log) {
+  const base = state.base;
+  const col = base.colonieId
+    && state.world.colonies.find((c) => c.id === base.colonieId);
+  if (!col || !col.avantPoste || !col.faction) {
+    return { ok: false, motif: 'Elle ne porte les couleurs de personne.' };
+  }
+  const f = state.world.factions[col.faction];
+  const ancienne = col.faction;
+  if (f) f.colonies = f.colonies.filter((id) => id !== col.id);
+  col.faction = null;
+  state.world.regions[col.regionId].controle = null;
+  state.player.reputation[ancienne] = Math.max(-100,
+    (state.player.reputation[ancienne] || 0) - 35);
+  if (log) {
+    log({
+      type: 'base',
+      texte: `${base.nom} reprend son drapeau. ${FACTIONS[ancienne].nom} `
+        + `n’oubliera pas ce genre de départ.`,
+      regionId: base.regionId,
+      important: true,
+      factions: [ancienne],
+    });
+  }
+  return { ok: true };
+}
+
+/**
+ * L'impôt qu'on paie à ceux dont on porte les couleurs. Prélevé sur la
+ * production, au taux qu'ils ont voté — et l'on n'a pas à aimer ce taux pour
+ * le payer, sauf à être celui qui le fixe.
+ */
+function preleverImpot(state, log) {
+  const base = state.base;
+  if (!base.colonieId) return 0;
+  const col = state.world.colonies.find((c) => c.id === base.colonieId);
+  if (!col || !col.avantPoste || !col.faction) return 0;
+  const f = state.world.factions[col.faction];
+  if (!f) return 0;
+  const taux = loisDe(state.world, col.faction).impot;
+  const du = Math.round((base.pop || 0) * taux * 24);
+  if (du <= 0) return 0;
+  // On paie d'abord en crédits ; à défaut, en vivres, ce qui revient au même
+  // pour une garnison.
+  const enCredits = Math.min(state.player.credits, du);
+  state.player.credits -= enCredits;
+  let reste = du - enCredits;
+  if (reste > 0) {
+    const rations = Math.min(base.stock.rations || 0, reste / 9);
+    base.stock.rations -= rations;
+    reste -= rations * 9;
+  }
+  f.tresor += du - reste;
+  if (reste > 0 && log && state.temps % 240 === 0) {
+    log({
+      type: 'base',
+      texte: `${base.nom} n’a pas de quoi payer l’impôt ${FACTIONS[col.faction].genitif}. `
+        + `On le note.`,
+      regionId: base.regionId,
+    });
+  }
+  return du - reste;
 }
 
 // ---------------------------------------------------------------------------
@@ -14333,6 +14462,37 @@ function blocMemorial() {
 }
 
 /**
+ * Sous quel drapeau. Une ville libre vit de votre réputation — personne ne vient
+ * la prendre tant qu'on n'a rien à vous reprocher — et c'est fragile. Prendre
+ * les couleurs de ceux qu'on sert, c'est être défendu, payer l'impôt, et
+ * hériter de leurs guerres.
+ */
+function blocDrapeau(b) {
+  const col = S.world.colonies.find((c) => c.id === b.colonieId);
+  if (!col) return '';
+  if (col.faction) {
+    const l = loisDe(S.world, col.faction);
+    return `<div class="aide">${e(b.nom)} porte les couleurs
+      <span style="color:${couleurFaction(col.faction)}">${e(FACTIONS[col.faction].nom)}</span> :
+      on la défend comme les leurs, on y lève leur impôt
+      (${Math.round(l.impot * 100)} %), et l’on hérite de leurs guerres.</div>
+      <button class="act mini danger" data-a="independance" style="margin-bottom:6px">
+        Reprendre son drapeau (−35 de réputation)</button>`;
+  }
+  const possibles = DIPLO_FACTIONS.filter((k) => peutRattacher(S, k).ok);
+  return `<div class="aide">${e(b.nom)} est écrite sur les cartes et ne porte les
+    couleurs de personne : on ne vient pas la prendre tant qu’on n’a rien à vous
+    reprocher. C’est tenable, et c’est fragile.</div>
+    ${possibles.map((k) => `<button class="act mini" data-a="rattacher" data-k="${e(k)}"
+      style="margin-bottom:4px;text-align:left">Prendre les couleurs
+      ${e(FACTIONS[k].genitif)}<br><span class="aide">Défendue comme les leurs,
+      impôt ${Math.round(loisDe(S.world, k).impot * 100)} %, et leurs guerres deviennent
+      les vôtres.</span></button>`).join('')
+    || `<div class="aide">Aucune faction ne vous estime assez pour vous prendre sous
+      son drapeau. Il faut les servir, ou 40 de réputation.</div>`}`;
+}
+
+/**
  * Comment on se bat. Une tactique n'est pas un bonus : c'est un pari sur le
  * terrain qu'on a sous les pieds, le nombre qu'on a en face et les armes qu'on
  * porte. On l'annonce donc avec son rendement *ici* — c'est la seule façon d'en
@@ -14707,8 +14867,7 @@ function ecranBase() {
       <span class="v">${n(Math.round(b.pop || 0))} / ${n(populationMax(b))}${b.colonieId
     ? ' · <span class="ok">sur les cartes</span>' : ''}</span></div>
     ${b.colonieId
-    ? `<div class="aide">${e(b.nom)} est écrite sur les cartes : elle tient ses routes
-        comme une ville, et l’on peut vouloir vous la prendre.</div>`
+    ? `${blocDrapeau(b)}`
     : `<div class="aide">Un camp que personne n’a inscrit nulle part n’intéresse personne.
         Se faire reconnaître, c’est tenir ses routes comme une ville, voir passer trois
         fois plus de monde — et devenir une place que les conseils voisins convoitent.
@@ -16207,6 +16366,18 @@ function surClic(ev) {
       break;
     }
 
+    case 'rattacher': {
+      const r = ACTIONS.rattacher(el.dataset.k);
+      toast(r.ok ? 'La ville a changé de drapeau.' : r.motif, !r.ok);
+      break;
+    }
+
+    case 'independance': {
+      const r = ACTIONS.independance();
+      toast(r.ok ? 'On reprend son drapeau. Ils s’en souviendront.' : r.motif, !r.ok);
+      break;
+    }
+
     case 'reconnaitre': {
       const r = ACTIONS.reconnaitre();
       toast(r.ok ? 'On vous écrit sur les cartes.' : r.motif, !r.ok);
@@ -16495,6 +16666,19 @@ const API = {
     sauver();
     rafraichir(true);
     return { ok: true, colonie: r };
+  },
+
+  /** Prendre les couleurs de ceux qu'on sert, ou reprendre son drapeau. */
+  rattacher(faction) {
+    const r = rattacherVille(state, faction, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  independance() {
+    const r = declarerIndependance(state, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
   },
 
   /** Ouvrir ou fermer la porte aux colporteurs. */

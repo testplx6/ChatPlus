@@ -22,7 +22,8 @@ import { donnerOrdre, verifierExercice, COMPETENCES_EXERCICE } from '../src/squa
 import {
   fonderBase, lancerConstruction, lancerRecherche, placesMetier, affectes,
   abriDe, capaciteStock, totalStock, energie, COUT_FONDATION, POP_RECONNUE,
-  peutReconnaitre, reconnaitreAvantPoste,
+  peutReconnaitre, reconnaitreAvantPoste, peutRattacher, rattacherVille,
+  declarerIndependance,
   manoeuvres, affecter, rendementMetier, mainDoeuvre,
 } from '../src/base.js';
 import { METIER_KEYS, BIOMES, BUILDINGS, POSTURES } from '../src/data.js';
@@ -188,6 +189,11 @@ function chercherNaN(obj, chemin = '$', vus = new Set()) {
 }
 
 /** Les vivants d'un groupe, pour les tests qui n'importent pas groupes.js. */
+/** Le trésor d'une faction, pour les tests. */
+function drawTresor(state, k) {
+  return state.world.factions[k].tresor;
+}
+
 function vivantsDeTest(g) {
   return g.membres.filter((c) => c.etat !== 'mort');
 }
@@ -2330,6 +2336,69 @@ campVide.base.pop = 1;
 for (const c of gVide.membres) c.etat = 'mort';
 avancer(campVide, 2);
 ok(campVide.fin === 'extinction', 'et un camp d’une âme n’envoie personne');
+
+section('9 nonies quaterdecies. Sous quel drapeau');
+// Une ville libre vit de la réputation de celui qui l'a bâtie. C'est tenable et
+// c'est fragile : il suffit d'une guerre où l'on a pris parti pour que la place
+// redevienne convoitable. L'autre voie, c'est de prendre les couleurs de ceux
+// qu'on sert.
+const monBourg = campDeveloppe(5757);
+monBourg.base.pop = POP_RECONNUE + 8;
+reconnaitreAvantPoste(monBourg, () => {});
+const maVille = monBourg.world.colonies.find((c) => c.id === monBourg.base.colonieId);
+const patron = DIPLO_FACTIONS.find(
+  (k) => monBourg.world.colonies.some((c) => !c.ruine && c.faction === k)
+);
+ok(!maVille.faction, 'une ville reconnue ne porte d’abord les couleurs de personne');
+ok(!peutRattacher(monBourg, patron).ok,
+  'on ne se met pas sous la protection de gens qui ne vous connaissent pas',
+  peutRattacher(monBourg, patron).motif);
+
+monBourg.player.reputation[patron] = 55;
+ok(peutRattacher(monBourg, patron).ok, 'ceux qui vous estiment, si',
+  peutRattacher(monBourg, patron).motif);
+ok(rattacherVille(monBourg, patron, () => {}).ok, 'la ville change de drapeau');
+ok(maVille.faction === patron, 'elle porte leurs couleurs');
+ok(monBourg.world.factions[patron].colonies.includes(maVille.id),
+  'et ils la comptent parmi les leurs');
+ok(monBourg.world.regions[maVille.regionId].controle === patron,
+  'la carte le dit aussi');
+ok(maVille.avantPoste, 'elle reste la vôtre : le camp ne change pas de mains');
+
+// La vitrine continue d'être recopiée : une ville rattachée n'est pas une ville
+// perdue, et c'était un piège à écrire — la synchronisation s'arrêtait dès que
+// la fiche portait des couleurs.
+monBourg.base.pop = POP_RECONNUE + 20;
+monBourg.base.majVitrine = -999;
+avancer(monBourg, 30);
+ok(maVille.pop === monBourg.base.pop,
+  'ce que devient le camp se recopie encore', `${maVille.pop} vs ${monBourg.base.pop}`);
+
+// On paie l'impôt qu'ils ont voté.
+loisDe(monBourg.world, patron).impot = 0.15;
+monBourg.player.credits = 5000;
+const caisseAvant = drawTresor(monBourg, patron);
+const bourseAvant = monBourg.player.credits;
+// Soixante-douze heures suffisent, et il ne faut pas en prendre beaucoup plus :
+// une ville qui porte des couleurs hérite des guerres qui vont avec, et sur
+// deux cent quarante heures elle se faisait prendre par les ennemis de son
+// protecteur — ce qui est le fonctionnement voulu, mais pas ce qu'on mesure ici.
+avancer(monBourg, 72);
+ok(monBourg.player.credits < bourseAvant, 'porter des couleurs se paie en impôt',
+  `${bourseAvant} → ${monBourg.player.credits}`);
+ok(drawTresor(monBourg, patron) > caisseAvant, 'et ce qu’on paie va dans leur trésor');
+
+// Et l'on peut reprendre son drapeau, ce qui ne s'oublie pas.
+const estimeAvant = monBourg.player.reputation[patron];
+ok(declarerIndependance(monBourg, () => {}).ok, 'on peut reprendre son drapeau');
+ok(!maVille.faction && !monBourg.world.factions[patron].colonies.includes(maVille.id),
+  'la ville redevient libre');
+ok(monBourg.player.reputation[patron] < estimeAvant - 30,
+  'et l’on n’oublie pas ce genre de départ',
+  `${estimeAvant} → ${monBourg.player.reputation[patron]}`);
+ok(!declarerIndependance(monBourg, () => {}).ok, 'deux fois, non');
+
+verifierCoherence(monBourg, 'après un changement de drapeau');
 
 section('9 nonies sexies. Qui accepte de partir, et pour combien');
 const rec = nouvellePartie(9494, { maintenant: 0 });
