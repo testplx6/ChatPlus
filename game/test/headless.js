@@ -2175,6 +2175,47 @@ for (let i = 0; i < 40; i++) { camp.temps += 24; tickInsecurite(camp); }
 ok(abord.insecurite < 0.9, 'une ville tient ses routes, celle-ci comme les autres',
   `${abord.insecurite.toFixed(2)}`);
 
+// Une ville à vous n'est pas un terrain vague. Cette règle a été écrite pour
+// les bourgs qu'une révolte laisse sans drapeau ; appliquée à l'avant-poste du
+// joueur, elle envoyait une colonne dans les cinquante heures suivant la
+// déclaration — vingt-trois villes prises sur vingt-quatre en six mille heures,
+// six niveaux de mur compris.
+function survitAuMonde(hostile, murs) {
+  const t = campDeveloppe(4949);
+  Object.assign(t.base.batiments, { mur: murs });
+  t.base.pop = POP_RECONNUE + 6;
+  reconnaitreAvantPoste(t, () => {});
+  if (hostile) for (const f of DIPLO_FACTIONS) t.player.reputation[f] = -45;
+  for (let i = 0; i < 40 && t.base.fonde; i++) {
+    for (const gg of groupes(t)) {
+      gg.inventaire.rations = 200;
+      for (const c of gg.membres) { c.faim = 0; c.soif = 0; c.fatigue = 0; }
+    }
+    avancer(t, 50);
+  }
+  return t.base.fonde;
+}
+ok(survitAuMonde(false, 2), 'une ville dont on n’a rien à reprocher n’est pas convoitée');
+// La graine décide de qui est voisin et de ce qu'il a en caisse : on en essaie
+// plusieurs plutôt que de parier sur une.
+let prises = 0;
+for (const gr of [4949, 5050, 5151, 5252, 5353, 5454]) {
+  const t = campDeveloppe(gr);
+  t.base.pop = POP_RECONNUE + 6;
+  reconnaitreAvantPoste(t, () => {});
+  for (const f of DIPLO_FACTIONS) t.player.reputation[f] = -45;
+  for (let i = 0; i < 40 && t.base.fonde; i++) {
+    for (const gg of groupes(t)) {
+      gg.inventaire.rations = 200;
+      for (const c of gg.membres) { c.faim = 0; c.soif = 0; c.fatigue = 0; }
+    }
+    avancer(t, 50);
+  }
+  if (!t.base.fonde) prises++;
+}
+ok(prises >= 3, 'une ville de quelqu’un que tout le monde déteste, si',
+  `${prises}/6 prises`);
+
 // Et l'on peut vous la prendre. C'est le prix d'exister.
 const conquis = campDeveloppe(2828);
 conquis.base.pop = POP_RECONNUE + 10;

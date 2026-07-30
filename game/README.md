@@ -795,6 +795,30 @@ règle mais **le fait qu'elle s'applique sans qu'on l'ait voulue** — après le
 dé qui décidait à la place du gradé, et l'émeute qu'on lisait trois fois par
 jour.
 
+**Restait à savoir si une ville déclarée pouvait tenir.** Elle ne le pouvait
+pas : vingt-quatre villes bâties à la main, déclarées, laissées six mille
+heures — **vingt-trois prises, six niveaux de mur compris.** Les remparts ne
+servaient à rien puisque les conseils dimensionnent leur colonne sur la défense
+d'en face : plus on se fortifiait, plus l'armée envoyée était grosse.
+
+La cause n'était pas le calcul mais la règle qui l'appelait. L'étape « reprendre
+une ville libre » avait été écrite pour les bourgs qu'une révolte laisse sans
+drapeau : personne ne les tient, quelqu'un les prendra. Appliquée telle quelle à
+l'avant-poste du joueur, elle en faisait une place vacante — la colonne partait
+dans les cinquante heures suivant la déclaration. **Une ville à vous n'est pas
+un terrain vague.** On ne prend celle de quelqu'un que si l'on a une raison de
+lui en vouloir : la sûreté d'une ville tient donc à la diplomatie de celui qui
+l'a bâtie, ce qui est exactement le propos du jeu.
+
+    Vingt-quatre villes, six mille heures        tenues
+    En paix, deux niveaux de mur                  24/24
+    Détesté partout (−45), deux niveaux            2/24
+    Détesté partout, six niveaux de mur            9/24
+
+Les murs redeviennent ce qu'ils doivent être : non pas ce qui rend une ville
+imprenable, mais ce qui la rend chère — le dernier recours quand la diplomatie
+a échoué.
+
 Corrigé au passage, et trouvé en cherchant pourquoi les camps ne se relevaient
 pas : le colporteur calculait sa réserve de vivres sur la population **du
 moment**. Un camp effondré à deux habitants bradait donc tout ce qui dépassait

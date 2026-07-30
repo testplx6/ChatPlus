@@ -524,6 +524,18 @@ function conseil(world, key, t, log, ctx) {
   const libres = world.colonies.filter(
     (c) => !c.ruine && !c.faction
       && mesColonies.some((m) => distance(m.regionId, c.regionId) <= 5)
+      // Une ville à vous n'est pas un terrain vague. Cette étape a été écrite
+      // pour les bourgs qu'une révolte a laissés sans drapeau — personne ne les
+      // tient, quelqu'un les prendra. Appliquée telle quelle à l'avant-poste du
+      // joueur, elle en faisait une place vacante : la colonne partait dans les
+      // cinquante heures suivant la déclaration, dimensionnée à une fois et
+      // demie la défense, et vingt-trois villes sur vingt-quatre tombaient en
+      // six mille heures — six niveaux de mur compris.
+      //
+      // On ne prend la ville de quelqu'un que si l'on a une raison de lui en
+      // vouloir. La sûreté d'une ville tient donc à la diplomatie de celui qui
+      // l'a bâtie, ce qui est très exactement le propos de ce jeu.
+      && !(c.avantPoste && !(ctx && ctx.rancune && ctx.rancune(key)))
   );
   if (libres.length && !world.armees.some((a) => a.faction === key && a.cible === libres[0].id)) {
     const cible = libres.reduce((a, b) => {

@@ -235,6 +235,20 @@ export function tick(state) {
   // Ce qu'il faut faire si une colonne prend l'avant-poste du joueur : le
   // monde ne connaît que sa vitrine, il ne saurait pas démonter le camp.
   ctx.perdreAvantPoste = () => perdreAvantPoste(state, log);
+  // Qui a une raison de venir prendre votre ville : ceux qui vous détestent, et
+  // ceux à qui vous faites la guerre en portant d'autres couleurs. Les autres
+  // savent qu'elle a un propriétaire et regardent ailleurs.
+  ctx.rancune = (faction) => {
+    if ((state.player.reputation[faction] || 0) <= -20) return true;
+    for (const g of state.player.groupes) {
+      const all = g.allegeance;
+      if (all && all.faction !== faction
+        && state.world.guerres.some(
+          (w) => (w.a === all.faction && w.b === faction)
+            || (w.b === all.faction && w.a === faction))) return true;
+    }
+    return false;
+  };
   const log = creerLogger(state);
 
   state.temps += 1;
