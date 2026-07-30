@@ -71,6 +71,8 @@ node test/equilibre.js       # banc d'équilibrage : un bot joue 30 parties
 node test/equilibre.js 4000 60   # échantillon large, une vingtaine de secondes
 SANS=detach,contrats node test/equilibre.js   # coupe un système pour l'isoler
 VAGABOND=1 node test/equilibre.js             # témoin : voyager sans contrats
+COLON=1 node test/equilibre.js                # profil : bâtir plutôt que courir
+CARRIERE=1 node test/equilibre.js             # profil : servir, monter, ordonner
 
 npm install --no-save playwright-core
 node test/navigateur.js      # 82 vérifications dans un Chromium réel
@@ -959,6 +961,65 @@ et elle est dite comme telle. La chronique ne récompense rien, ne débloque rie
 et ne classe personne. Elle liste **ce qui est arrivé** — jamais une rubrique
 vide, parce qu'une chronique qui énumère des zéros ne raconte rien.
 
+### Un bot qui joue en carriériste, et l'ordre qu'on ne pouvait pas honorer
+
+La voie du service est celle qui a reçu le plus de code — grades, charges,
+secteurs, prérogatives, lois — et aucun bot ne la jouait. Le bot par défaut
+s'engage, puis continue sa vie d'aventurier. `CARRIERE=1` fait passer l'ordre de
+mission avant tout le reste : on va acheter la marchandise qu'il réclame, on va
+chercher l'ennemi qu'il désigne.
+
+La première version était mauvaise, et pour une raison bête : elle redonnait
+l'ordre de marche toutes les quatre heures, remettait la route à zéro, et le
+carriériste passait **62 % de son temps à marcher sans jamais arriver nulle
+part**. Corrigée, elle a mis à nu deux défauts qui n'étaient pas dans le bot.
+
+**Ce que le compteur a montré.** Un « 5,4 ordres manqués par engagé » ne dit pas
+lesquels. Le banc compte maintenant les ordres reçus et honorés par type, et le
+verdict a été immédiat :
+
+    bot par défaut, n=30      honorés
+    ravitaillement            27 / 131   (21 %)
+    frappe                     1 /  40   ( 3 %)
+    reconnaissance            41 /  59   (69 %)
+
+Un ordre de mission sur trois est une frappe, et la frappe n'était honorable
+qu'une fois sur trente. Deux causes, trouvées l'une après l'autre.
+
+**L'ordre survivait à sa guerre.** Les traités se signent pendant que la colonne
+marche. Mesuré : **45 % des heures passées à honorer une frappe l'étaient contre
+une faction avec qui la paix était déjà faite** — on chassait des gens avec qui
+on venait de traiter, sur des terres qui ne sortaient plus personne, et l'on
+perdait de l'estime pour ne pas y être arrivé. Un ordre de frappe est maintenant
+retiré quand la guerre s'arrête : pas de manque, pas de perte d'estime, et l'on
+est rappelé vite pour autre chose.
+
+**Même chez l'ennemi, en guerre, on ne croisait que des bandits.** Un bot qui
+laisse tout tomber pour aller camper en pays ennemi pendant toute la durée de
+l'ordre acquérait **quatre victoires sur les cinquante-deux demandées** : trois
+rencontres hostiles sur quatre étaient des pillards, parce que le poids de la
+faction dominante ne regardait pas si elle était en guerre contre vous.
+Désormais, sur les terres d'une faction en guerre contre celle qu'on sert, ce
+sont ses hommes qui sortent. A/B à n=60 : **1 143 points de service contre
+949**, pour la même survie.
+
+**Une idée démentie par la mesure.** J'avais interdit au carriériste de fonder
+un camp — il sert une maison, il n'en bâtit pas. C'était une idée, pas une
+mesure. Sans camp, **neuf escouades de plus sur soixante s'éteignent, pour
+exactement les mêmes points de service**. Un camp ne concurrence pas une
+carrière, il la loge. L'interdiction a été retirée.
+
+    n=60, 4 000 h            défaut   carriériste
+    escouades vivantes        58/60     58/60
+    points de service           559      1 091
+    ordres manqués              5,1        3,3
+    ravitaillement            21 %       50 %
+    Commandeur atteint            1          9
+
+Les deux correctifs profitent aussi au bot par défaut, qui ne joue pas la
+carrière : 413 points avant, 559 après. Ce n'est pas le profil qui a rendu la
+voie jouable, c'est ce que le profil a permis de voir.
+
 ### Un garde-fou de performance qui ne tient plus tout à fait
 
 À signaler, parce que le taire reviendrait à truquer la mesure. Le même code de
@@ -1214,10 +1275,16 @@ sur une bonne case.
 
 Il tient trente parties par défaut, pas huit : à huit, l'écart-type sur un taux
 de survie de 85 % vaut douze points, et on lit du bruit en croyant lire un
-réglage. Ses deux interrupteurs (`SANS=`, `VAGABOND=1`) servent à couper un
-système à la fois : c'est la seule façon d'attribuer un déséquilibre à sa cause
-plutôt qu'à une intuition. Le mode vagabond — voyager autant, sans prendre un
-seul contrat — est le témoin qui a innocenté les contrats et accusé la route.
+réglage. Ses interrupteurs (`SANS=`, `VAGABOND=1`) servent à couper un système à
+la fois : c'est la seule façon d'attribuer un déséquilibre à sa cause plutôt
+qu'à une intuition. Le mode vagabond — voyager autant, sans prendre un seul
+contrat — est le témoin qui a innocenté les contrats et accusé la route.
+
+Ses profils (`COLON=1`, `CARRIERE=1`) font autre chose : ils font jouer une voie
+au lieu d'un système. Un bot unique mesure très bien ce qu'il fait et très mal
+ce qu'il ne fait pas — le colon a révélé que personne n'apportait de matériaux
+aux hameaux, le carriériste qu'un ordre de frappe sur trente était honorable.
+Aucun des deux ne se voyait dans les chiffres du bot par défaut.
 
 ## Ce que la simulation fait
 

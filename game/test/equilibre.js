@@ -87,6 +87,11 @@ const TRACE = {
   // affirmation invérifiable. On mesure les heures effectivement passées sous
   // les couleurs de quelqu'un, ce qu'elles rapportent, et où l'échelle bloque.
   hEngage: 0, pointsFin: 0, manques: 0, ordresDonnes: 0,
+  // Un « 5.6 ordres manqués » ne dit pas lesquels. Or les trois types ne se
+  // jouent pas du tout pareil : ravitailler demande d'acheter et de porter,
+  // frapper demande de croiser l'ennemi, reconnaître demande de marcher. On
+  // compte donc reçus / honorés par type, sans quoi on corrige à l'aveugle.
+  recus: {}, faits: {}, annules: {},
   secteurs: 0, etatSecteur: 0, bilans: 0,
   revoltes: 0, matees: 0, libres: 0, renverses: 0, grogne: 0,
   disposes: 0, relaches: 0, gagneCaptifs: 0, captures: 0, marchands: 0,
@@ -123,6 +128,25 @@ const VAGABOND = process.env.VAGABOND === '1';
 const COLON = process.env.COLON === '1';
 /** Jusqu'où un colon accepte de s'éloigner de son camp. */
 const RAYON_COLON = 5;
+/**
+ * Profil carriériste : on sert, on monte, on ordonne.
+ *
+ * C'est la voie qui a reçu le plus de code — grades, charges, secteurs,
+ * prérogatives, lois — et celle qu'aucun bot ne jouait vraiment. Le bot par
+ * défaut s'engage puis continue sa vie d'aventurier : il rate quatre ou cinq
+ * ordres de mission pour un honoré, ce qui est exactement la façon de ne jamais
+ * dépasser Lieutenant.
+ *
+ * CARRIERE=1 : un ordre de mission passe avant tout le reste — on va acheter la
+ * marchandise qu'il réclame, on va chercher l'ennemi qu'il désigne.
+ *
+ * La première version interdisait aussi de fonder un camp, au motif qu'un
+ * carriériste sert une maison au lieu d'en bâtir une. C'était une idée, pas une
+ * mesure, et la mesure l'a démentie : sans camp, neuf escouades de plus sur
+ * soixante s'éteignent, pour exactement les mêmes points de service. Un camp ne
+ * concurrence pas une carrière, il la loge.
+ */
+const CARRIERE = process.env.CARRIERE === '1';
 
 /** Où trouver de quoi manger : on note les régions par rendement en nourriture. */
 function scoreNourriture(state, i) {
@@ -364,7 +388,6 @@ function siteAvantPoste(state, g) {
  */
 function tenirAvantPoste(state, g, memo) {
   const base = state.base;
-
   // --- Fonder, une fois qu'on a de quoi et un endroit où.
   if (!base.fonde) {
     // Un colon ne passe pas trois cents heures à visiter : il plante son piquet
@@ -818,6 +841,27 @@ function jouerPrincipal(state, g, memo) {
       if (r.ok) { TRACE.disposes++; TRACE.gagneCaptifs += r.prix || 0; }
     }
 
+    // Un carriériste achète ce que son ordre réclame. L'ordre paie la
+    // marchandise entre 1.8 et 2.6 fois son prix de marché : c'est le seul
+    // commerce du jeu dont la marge soit connue d'avance, et le bot par défaut
+    // ne s'en sert jamais — il livre le ravitaillement uniquement s'il avait
+    // déjà la marchandise dans le sac, soit une fois sur cinq.
+    if (CARRIERE && memo.achatOrdre) {
+      const { res, qte } = memo.achatOrdre;
+      const ordre = g.allegeance && g.allegeance.ordre;
+      const dest = ordre && ordre.type === 'ravitaillement' ? ordre.colonieId : null;
+      const manque = qte - Math.floor(g.inventaire[res] || 0);
+      if (!dest || colIci.id === dest || manque <= 0) {
+        memo.achatOrdre = null;
+      } else if ((colIci.stock[res] || 0) > 0) {
+        const r = acheter(state, colIci, res, manque, g);
+        if (r.ok) {
+          TRACE.payeMateriel += r.cout;
+          if (Math.floor(g.inventaire[res] || 0) >= qte) memo.achatOrdre = null;
+        }
+      }
+    }
+
     // S'engager dès qu'une faction accepte : la solde, la remise et
     // l'intendance valent largement le prix de quelques ordres à honorer.
     if (!SANS.has('service') && !g.allegeance && peutSEngager(state, colIci.faction).ok) {
@@ -862,8 +906,11 @@ function jouerPrincipal(state, g, memo) {
     return;
   }
 
-  // Honorer l'ordre de mission : c'est le chemin le plus rentable du jeu.
+  // Honorer l'ordre de mission : c'est le chemin le plus rentable du jeu, et
+  // pour un carriériste c'est le seul qui compte. Un ordre raté ne coûte pas de
+  // points — il coûte de l'estime, et l'estime finit par fermer l'intendance.
   const o = g.allegeance && g.allegeance.ordre;
+  if (CARRIERE && servirOrdre(state, g, memo, rations)) return;
   if (o && g.ordre.type !== 'voyage' && rations > 40) {
     const av = avancementOrdre(state, o);
     if (o.type === 'ravitaillement' && av && av.fait >= o.quantite) {
@@ -1147,6 +1194,83 @@ function partir(state, g, dest, motif) {
   return r;
 }
 
+/**
+ * Ce qu'un carriériste fait de son ordre de mission — et pourquoi il faut un
+ * bot pour ça.
+ *
+ * Mesuré sur le bot par défaut, sur trente parties : ravitaillement 21 %
+ * honoré, frappe 3 %, reconnaissance 69 %. Les deux premiers échouent pour la
+ * même raison, et ce n'est pas que l'ordre soit trop dur : c'est que le bot
+ * attend qu'il se réalise pendant qu'il vit sa vie. Un ravitaillement, ça
+ * s'achète et ça se porte — l'ordre paie deux fois le prix du marché, l'aller
+ * simple est déjà rentable. Une frappe, ça se trouve : les bandes d'une faction
+ * ne sortent que sur les cases qu'elle contrôle.
+ *
+ * Retourne vrai quand l'ordre a pris le tour.
+ */
+function servirOrdre(state, g, memo, rations) {
+  const o = g.allegeance && g.allegeance.ordre;
+  // Le ventre d'abord : un engagé mort ne monte plus en grade.
+  if (!o || rations <= 30) return false;
+  // Aller ailleurs sans relancer le voyage à chaque tour. C'est exactement ce
+  // qui manquait à la première version : elle redonnait l'ordre de marche
+  // toutes les quatre heures, remettait la route à zéro, et le carriériste
+  // passait 62 % de son temps à marcher sans jamais arriver nulle part.
+  const allerA = (dest, motif) => {
+    if (dest == null || dest === g.regionId) return false;
+    if (g.ordre.type === 'voyage' && g.ordre.dest === dest) return true;
+    return partir(state, g, dest, motif).ok;
+  };
+
+  if (o.type === 'reconnaissance') {
+    if (state.world.regions[o.regionId].decouvert) return false;
+    return allerA(o.regionId, 'ordre de mission');
+  }
+
+  if (o.type === 'ravitaillement') {
+    const col = colonieParId(state.world, o.colonieId);
+    if (!col || col.ruine) return false;
+    const enMain = Math.floor(g.inventaire[o.ressource] || 0);
+    if (enMain >= o.quantite) return allerA(col.regionId, 'livrer un ordre');
+    // Il manque de la marchandise : on va la chercher là où il y en a. La ville
+    // à ravitailler en manque par définition, donc jamais chez elle.
+    memo.achatOrdre = { res: o.ressource, qte: o.quantite };
+    const manque = o.quantite - enMain;
+    let vend = null;
+    let mieux = Infinity;
+    for (const c of state.world.colonies) {
+      if (c.ruine || c.id === col.id) continue;
+      if ((c.stock[o.ressource] || 0) < manque * 0.7) continue;
+      // On paie la marchandise, puis la route jusqu'à la ville en peine : c'est
+      // le total qui décide, pas la ville la plus proche de nous.
+      const d = distance(c.regionId, g.regionId) + distance(c.regionId, col.regionId);
+      if (d < mieux) { mieux = d; vend = c; }
+    }
+    if (!vend) return false;
+    return allerA(vend.regionId, 'acheter de quoi ravitailler');
+  }
+
+  if (o.type === 'frappe') {
+    // On ne croise les hommes d'une faction que chez elle : le bot par défaut
+    // honorait une frappe sur quarante parce qu'il attendait la rencontre au
+    // lieu d'aller la provoquer.
+    const ici = state.world.regions[g.regionId];
+    if (ici.controle === o.cibleFaction && !ici.colonie) {
+      if (g.ordre.type !== 'patrouille') donnerOrdre(state, { type: 'patrouille' }, g);
+      return true;
+    }
+    // Pas la ville : la campagne autour. On se fait quatre fois moins attaquer
+    // sous les murs d'une colonie qu'à une case de là, et la première version
+    // campait justement sur la place du marché ennemi — deux mille tours de
+    // patrouille pour trois frappes honorées sur trente-huit.
+    const chez = state.world.regions
+      .filter((r) => r.controle === o.cibleFaction && r.decouvert && !r.colonie)
+      .sort((a, b) => distance(a.i, g.regionId) - distance(b.i, g.regionId))[0];
+    return chez ? allerA(chez.i, 'aller chercher l’ennemi') : false;
+  }
+  return false;
+}
+
 const NECRO = { causes: {}, skills: [], kills: [], vivants: [], endurance: [], anciens: [] };
 
 console.log(`Banc d'équilibrage — ${PARTIES} parties × ${HEURES} h\n${'='.repeat(52)}`);
@@ -1205,7 +1329,38 @@ for (let n = 0; n < PARTIES; n++) {
     const crAvant = state.player.credits;
     const defAvant = state.stats.defaites;
     const captifsAvant = groupes(state).reduce((t, x) => t + prisonniersDe(x).length, 0);
+    // Les ordres de mission naissent et meurent pendant le tick : on relève
+    // l'ordre en cours de chaque colonne avant, et l'on regarde ce qu'il est
+    // devenu après. Un ordre disparu sans manque compté est un ordre honoré.
+    const ordresAvant = new Map();
+    for (const gg of groupes(state)) {
+      if (gg.allegeance) {
+        ordresAvant.set(gg.id, { o: gg.allegeance.ordre, m: gg.allegeance.manques || 0 });
+      }
+    }
+    const remplisAvant = state.stats.ordresRemplis || 0;
     tick(state);
+    let credit = (state.stats.ordresRemplis || 0) - remplisAvant;
+    for (const gg of groupes(state)) {
+      if (!gg.allegeance) continue;
+      const av = ordresAvant.get(gg.id);
+      const ap = gg.allegeance.ordre;
+      if (ap && (!av || !av.o || av.o.id !== ap.id)) {
+        TRACE.recus[ap.type] = (TRACE.recus[ap.type] || 0) + 1;
+      }
+      if (!av || !av.o || (ap && ap.id === av.o.id)) continue;
+      const t = av.o.type;
+      if ((gg.allegeance.manques || 0) > av.m) {
+        // Raté : l'échéance est passée. Rien à compter de plus, le total des
+        // manques est déjà relevé en fin de partie.
+      } else if (credit > 0) {
+        credit--;
+        TRACE.faits[t] = (TRACE.faits[t] || 0) + 1;
+      } else {
+        // Ni honoré ni raté : l'ordre a été retiré, la guerre s'étant arrêtée.
+        TRACE.annules[t] = (TRACE.annules[t] || 0) + 1;
+      }
+    }
     const captifsApres = groupes(state).reduce((t, x) => t + prisonniersDe(x).length, 0);
     if (captifsApres > captifsAvant) TRACE.captures += captifsApres - captifsAvant;
     for (const gg of groupes(state)) {
@@ -1357,6 +1512,15 @@ console.log(`Argent : +${Math.round(TRACE.gagneVente / PARTIES)} de ventes · `
 console.log(`Carrière : ${Math.round(TRACE.hEngage / PARTIES)} h sous les couleurs par partie · `
   + `${Math.round(TRACE.pointsFin / Math.max(1, gradés))} points en fin de service · `
   + `${(TRACE.manques / Math.max(1, gradés)).toFixed(1)} ordre(s) manqué(s) par engagé`);
+console.log('Ordres de mission par type — '
+  + ['ravitaillement', 'frappe', 'reconnaissance'].map((t) => {
+    const r = TRACE.recus[t] || 0;
+    const f = TRACE.faits[t] || 0;
+    const a = TRACE.annules[t] || 0;
+    const d = r - a; // ce qui restait à honorer
+    return `${t} ${f}/${d}${d ? ` (${Math.round(100 * f / d)} %)` : ''}`
+      + `${a ? ` +${a} annulé${a > 1 ? 's' : ''}` : ''}`;
+  }).join(' · '));
 console.log(`Prérogatives exercées : ${(TRACE.ordresDonnes / PARTIES).toFixed(1)} par partie`);
 console.log(`Prisonniers : ${(TRACE.captures / PARTIES).toFixed(1)} pris par partie — `
   + `${(TRACE.disposes / PARTIES).toFixed(1)} livrés ou rançonnés pour `

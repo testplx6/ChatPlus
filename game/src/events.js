@@ -331,7 +331,7 @@ function perdreCombat(state, bande, log, ctx, lieu, g) {
 // Table de rencontres
 // ---------------------------------------------------------------------------
 
-function bandeLocale(state, ctx, groupe) {
+export function bandeLocale(state, ctx, groupe) {
   const rng = ctx.rng;
   const g = groupe || groupeActif(state);
   const regionId = g.regionId;
@@ -345,6 +345,22 @@ function bandeLocale(state, ctx, groupe) {
     state.player.contrats.filter((c) => c.type === 'prime').map((c) => c.cibleFaction)
   );
 
+  // Une guerre déclarée change ce qu'on croise. Sur les terres d'une faction en
+  // guerre contre celle qu'on sert, ce ne sont plus des pillards qui sortent du
+  // décor : ce sont ses hommes, et ils vous cherchent.
+  //
+  // Sans ça, l'ordre de frappe était une loterie truquée. Mesuré au banc : un
+  // bot qui laisse tout tomber pour aller camper en pays ennemi pendant toute
+  // la durée de l'ordre acquiert quatre victoires sur les cinquante-deux
+  // demandées — parce que même chez eux, trois rencontres hostiles sur quatre
+  // étaient des bandits. On ratait un ordre sur dix reçus, et rater coûte de
+  // l'estime : la guerre démolissait la carrière de ceux qui la faisaient.
+  const mienne = g.allegeance && g.allegeance.faction;
+  const guerreIci = !!(mienne && dominante && dominante !== mienne
+    && state.world.guerres.some(
+      (w) => (w.a === mienne && w.b === dominante) || (w.b === mienne && w.a === dominante)
+    ));
+
   let faction;
   if (dominante && repu < -25 && rng.chance(0.6)) faction = dominante;
   else {
@@ -352,7 +368,9 @@ function bandeLocale(state, ctx, groupe) {
       ['bandits', 3 + (vises.has('bandits') ? 3 : 0)],
       ['essaim', state.world.regions[regionId].biome === 'plastique' ? 2.2 : 1.1],
     ];
-    if (dominante) poids.push([dominante, 1.4 + (vises.has(dominante) ? 3 : 0)]);
+    if (dominante) {
+      poids.push([dominante, (guerreIci ? 7 : 1.4) + (vises.has(dominante) ? 3 : 0)]);
+    }
     // Une faction visée par contrat peut aussi croiser la route hors de chez elle.
     for (const v of vises) {
       if (v !== 'bandits' && v !== dominante && FACTIONS[v]) poids.push([v, 2.2]);

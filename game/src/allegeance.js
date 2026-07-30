@@ -534,6 +534,29 @@ function tickEngagement(state, g, log, ctx) {
     });
   }
 
+  // Un ordre de frappe meurt avec sa guerre. Les traités se signent pendant que
+  // la colonne marche, et l'ordre lui survivait : on continuait de chasser des
+  // gens avec qui la paix venait d'être faite, sur des terres qui ne sortaient
+  // plus personne, et l'on perdait de l'estime pour ne pas y être arrivé.
+  // Mesuré au banc : 45 % des heures passées à honorer une frappe l'étaient
+  // contre une faction avec qui la guerre était déjà finie.
+  if (all.ordre && all.ordre.type === 'frappe') {
+    const cible = all.ordre.cibleFaction;
+    const encore = state.world.guerres.some(
+      (w) => (w.a === all.faction && w.b === cible) || (w.b === all.faction && w.a === cible)
+    );
+    if (!encore) {
+      const o = all.ordre;
+      all.ordre = null;
+      all.prochainOrdre = state.temps + rng.irange(60, 140);
+      log({
+        type: 'allegeance',
+        texte: `Ordre annulé : ${o.titre}. La paix est signée, on vous rappelle.`,
+        important: true,
+      });
+    }
+  }
+
   // Ordre en cours : validation, échéance.
   if (all.ordre) {
     const p = avancementOrdre(state, all.ordre, g);

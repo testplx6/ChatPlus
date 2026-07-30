@@ -14,6 +14,7 @@ import {
 } from '../src/combat.js';
 import { titreDe, lignesDe, faitsDe, RENOMMEES } from '../src/chronique.js';
 import { faireRevolte, SEUIL_REVOLTE } from '../src/economy.js';
+import { bandeLocale } from '../src/events.js';
 import { damer, coutTraversee, PISTE_GAIN } from '../src/world.js';
 import { distanceMorale } from '../src/factions.js';
 import { loiIci } from '../src/lois.js';
@@ -607,6 +608,83 @@ ok(groupeActif(rate).allegeance.points === ptsAvant,
   `${ptsAvant} → ${groupeActif(rate).allegeance.points}`);
 ok(rate.player.reputation[colRate.faction] < repAvantOrdre,
   'ce qu’on perd, c’est l’estime');
+
+// --- Un ordre de frappe meurt avec sa guerre.
+{
+  const paix = nouvellePartie(5960, { maintenant: 0 });
+  const colPaix = paix.world.colonies.find((c) => !c.ruine);
+  const adverse = paix.world.colonies.find((c) => !c.ruine && c.faction !== colPaix.faction);
+  paix.player.reputation[colPaix.faction] = 40;
+  sEngager(paix, colPaix.faction, () => {});
+  const allPaix = groupeActif(paix).allegeance;
+  allPaix.points = 200;
+  const ptsGuerre = allPaix.points;
+  const repGuerre = paix.player.reputation[colPaix.faction];
+  const manquesAvant = allPaix.manques || 0;
+  // Une guerre déclarée, un ordre de frappe, puis la paix signée avant terme.
+  paix.world.guerres.push({ a: colPaix.faction, b: adverse.faction, depuis: paix.temps });
+  allPaix.ordre = {
+    type: 'frappe', cibleFaction: adverse.faction, victoires: 3, progres: 0,
+    titre: 'x', recompense: 500, service: 120, duree: 600, echeance: paix.temps + 600,
+  };
+  avancer(paix, 2);
+  ok(!!allPaix.ordre, 'tant que la guerre dure, l’ordre de frappe tient');
+  paix.world.guerres = paix.world.guerres.filter(
+    (w) => !((w.a === colPaix.faction && w.b === adverse.faction)
+      || (w.b === colPaix.faction && w.a === adverse.faction))
+  );
+  avancer(paix, 2);
+  ok(!allPaix.ordre, 'la paix signée retire l’ordre de frappe');
+  ok((allPaix.manques || 0) === manquesAvant,
+    'et ce n’est pas un manque : on ne punit pas de n’avoir pas tué ceux avec qui on vient de traiter');
+  ok(paix.player.reputation[colPaix.faction] === repGuerre
+    && allPaix.points === ptsGuerre,
+    'ni l’estime ni les points ne bougent');
+  ok(allPaix.prochainOrdre <= paix.temps + 140,
+    'et l’on est rappelé vite pour autre chose', `+${allPaix.prochainOrdre - paix.temps} h`);
+}
+
+// --- En guerre, ce sont les hommes de l'ennemi qu'on croise chez lui.
+{
+  const gu = nouvellePartie(5961, { maintenant: 0 });
+  const mienne = gu.world.colonies.find((c) => !c.ruine);
+  const leur = gu.world.colonies.find((c) => !c.ruine && c.faction !== mienne.faction);
+  gu.player.reputation[mienne.faction] = 40;
+  sEngager(gu, mienne.faction, () => {});
+  // On se place sur une case que l'adversaire contrôle, sans le détester encore :
+  // c'est la guerre de sa faction qui doit compter, pas sa rancune personnelle.
+  const chezEux = gu.world.regions.findIndex((r) => r.controle === leur.faction);
+  groupeActif(gu).regionId = chezEux;
+  gu.player.reputation[leur.faction] = 0;
+  const part = () => {
+    const rng = new Rng(77);
+    let eux = 0;
+    for (let i = 0; i < 400; i++) {
+      if (bandeLocale(gu, { rng }, groupeActif(gu)).faction === leur.faction) eux++;
+    }
+    return eux / 400;
+  };
+  const enPaix = part();
+  gu.world.guerres.push({ a: mienne.faction, b: leur.faction, depuis: gu.temps });
+  const enGuerreLa = part();
+  ok(chezEux >= 0, 'l’adversaire contrôle bien du terrain');
+  ok(enPaix < 0.35, 'en paix, on croise surtout des pillards sur ses terres',
+    `${Math.round(enPaix * 100)} %`);
+  ok(enGuerreLa > 0.5, 'en guerre, ce sont ses hommes qui sortent',
+    `${Math.round(enGuerreLa * 100)} %`);
+  // Le même terrain, mais la guerre est celle d'un autre : rien ne change.
+  const neutre = nouvellePartie(5961, { maintenant: 0 });
+  neutre.player.reputation[leur.faction] = 0;
+  groupeActif(neutre).regionId = chezEux;
+  neutre.world.guerres.push({ a: mienne.faction, b: leur.faction, depuis: neutre.temps });
+  const rngN = new Rng(77);
+  let euxN = 0;
+  for (let i = 0; i < 400; i++) {
+    if (bandeLocale(neutre, { rng: rngN }, groupeActif(neutre)).faction === leur.faction) euxN++;
+  }
+  ok(euxN / 400 < 0.35, 'qui ne sert personne ne fait la guerre de personne',
+    `${Math.round(euxN / 4)} %`);
+}
 
 // --- La garnison : à partir de Lieutenant, les villes des siens vous logent.
 const garn = nouvellePartie(6060, { maintenant: 0 });
