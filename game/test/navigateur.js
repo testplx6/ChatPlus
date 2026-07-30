@@ -581,6 +581,15 @@ ok(ouEstLEngagement.colonne && ouEstLEngagement.joueur,
   'l’engagement appartient à la colonne, plus au joueur',
   JSON.stringify(ouEstLEngagement));
 
+// Comment on gouverne chez les autres : c'est ce qui fait de « qui servir » un
+// choix informé plutôt qu'un tirage entre six drapeaux de couleurs.
+await page.click('[data-a="onglet"][data-k="monde"]');
+await page.waitForTimeout(400);
+const texteLois = await page.evaluate(() => document.querySelector('#ecran').textContent);
+ok(/Chez eux : impôt/.test(texteLois), 'l’écran du monde dit comment chacun gouverne');
+ok(/justice (clémente|ferme|expéditive)/.test(texteLois),
+  'avec la sévérité de sa justice');
+
 // Les prisonniers : le seul écran où l'on décide de ce qu'on est.
 const captifs = partieAvancee();
 const gCap = groupeActif(captifs);

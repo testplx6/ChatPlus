@@ -61,7 +61,7 @@ import {
 import {
   prisonniersDe, disposer, optionsPour, surveillanceManquante,
 } from '../src/justice.js';
-import { loisDe } from '../src/lois.js';
+import { loisDe, IMPOTS } from '../src/lois.js';
 import {
   peutExercer, colonnesDe, envoyerColonne, leverColonne, coutLevee,
   fonderPoste, sitesFondation, COUT_POSTE, cibleGuerre, declarerGuerreA,
@@ -87,6 +87,8 @@ const TRACE = {
   hEngage: 0, pointsFin: 0, manques: 0, ordresDonnes: 0,
   secteurs: 0, etatSecteur: 0, bilans: 0,
   disposes: 0, relaches: 0, gagneCaptifs: 0, captures: 0,
+  // Ce que les conseils votent quand personne ne les tient.
+  impots: {}, peines: {}, esclavagistes: 0, factionsVues: 0,
   rangs: [0, 0, 0, 0, 0],
 };
 const HEURES = Number(process.argv[2]) || 4000;
@@ -1065,6 +1067,7 @@ for (let n = 0; n < PARTIES; n++) {
     g0.regionId = dep;
   }
   // Mémoire du bot : hors de l'état de jeu, donc rien à sérialiser.
+  if (SANS.has('lois')) state.sansLois = true;
   const memo = { origine: new Map(), eclaireur: null, detachements: 0, courtisee: null, services: 0,
     promesse: null, viseFondation: false, fonde: null, routeFondation: null,
     prochaineCharge: 0, ordresDonnes: 0 };
@@ -1137,6 +1140,16 @@ for (let n = 0; n < PARTIES; n++) {
     ? Math.round(viv.reduce((s, c) => s + Math.max(comp(c, 'melee'), comp(c, 'tir')), 0) / viv.length)
     : 0;
   TRACE.ordresDonnes += memo.ordresDonnes;
+  for (const k of Object.keys(state.world.factions)) {
+    if (k === 'essaim') continue;
+    if (!state.world.colonies.some((c) => !c.ruine && c.faction === k)) continue;
+    const l = loisDe(state.world, k);
+    const imp = IMPOTS.find((x) => Math.abs(x.taux - l.impot) < 0.001);
+    TRACE.impots[imp ? imp.nom : '?'] = (TRACE.impots[imp ? imp.nom : '?'] || 0) + 1;
+    TRACE.peines[l.peine] = (TRACE.peines[l.peine] || 0) + 1;
+    if (l.esclavage) TRACE.esclavagistes++;
+    TRACE.factionsVues++;
+  }
   for (const gg of groupes(state)) {
     if (!gg.allegeance || !gg.allegeance.secteur) continue;
     TRACE.secteurs++;
@@ -1218,6 +1231,11 @@ console.log(`Prérogatives exercées : ${(TRACE.ordresDonnes / PARTIES).toFixed(
 console.log(`Prisonniers : ${(TRACE.captures / PARTIES).toFixed(1)} pris par partie — `
   + `${(TRACE.disposes / PARTIES).toFixed(1)} livrés ou rançonnés pour `
   + `${Math.round(TRACE.gagneCaptifs / PARTIES)} cr, ${(TRACE.relaches / PARTIES).toFixed(1)} relâchés faute de gardiens`);
+const part = (o) => Object.entries(o).sort((a, b) => b[1] - a[1])
+  .map(([k, v]) => `${k} ${Math.round(100 * v / Math.max(1, TRACE.factionsVues))} %`).join(' · ');
+console.log(`Lois votées par les conseils — impôt : ${part(TRACE.impots)}`);
+console.log(`                              justice : ${part(TRACE.peines)}`
+  + ` — esclavagistes : ${Math.round(100 * TRACE.esclavagistes / Math.max(1, TRACE.factionsVues))} %`);
 console.log(`Secteurs tenus : ${TRACE.secteurs} — état moyen `
   + `${(TRACE.etatSecteur / Math.max(1, TRACE.secteurs)).toFixed(2)} `
   + `(0 = sûr, 1 = infréquentable) sur ${Math.round(TRACE.bilans / Math.max(1, TRACE.secteurs))} relevés`);

@@ -27,6 +27,7 @@ import { rangDe } from './allegeance.js';
 import { porterFaute, porterMerite } from './influence.js';
 import { estVivant } from './characters.js';
 import { apaisementGeole } from './justice.js';
+import { loisDe, PEINES } from './lois.js';
 
 /** Rayon du secteur confié. Treize cases : de quoi faire une tournée. */
 export const RAYON_SECTEUR = 2;
@@ -232,9 +233,16 @@ export function tickInsecurite(state) {
     }
     front = suivant;
   }
+  // Ce que la ville la plus proche transmet à ses pistes : son désordre, et la
+  // sévérité de sa loi. `PEINES[].routes` valait 0,6 à 1,5 sans que rien ne le
+  // lise — une justice expéditive rapportait des primes et ne tenait rien.
   const troubleDe = new Map();
+  const dissuasionDe = new Map();
   for (const col of w.colonies) {
-    if (!col.ruine) troubleDe.set(col.regionId, col.unrest || 0);
+    if (col.ruine) continue;
+    troubleDe.set(col.regionId, col.unrest || 0);
+    const peine = col.faction ? PEINES[loisDe(w, col.faction).peine] : null;
+    dissuasionDe.set(col.regionId, peine ? peine.routes : 1);
   }
 
   // Ce qui tient activement les routes, en plus de la simple proximité : les
@@ -258,8 +266,10 @@ export function tickInsecurite(state) {
     // Une ville qui gronde ne tient plus ses abords : son désordre déborde sur
     // les pistes, et c'est ce qui reliera un jour l'ordre public au secteur.
     const trouble = source[r.i] >= 0 ? (troubleDe.get(source[r.i]) || 0) : 0.5;
-    const cible = Math.min(1,
-      REPOS_BASE + REPOS_PAR_CASE * Math.min(4, d === 9 ? 4 : d) + trouble * 0.22);
+    const dissuasion = source[r.i] >= 0 ? (dissuasionDe.get(source[r.i]) || 1) : 1;
+    const cible = Math.max(0, Math.min(1,
+      REPOS_BASE + REPOS_PAR_CASE * Math.min(4, d === 9 ? 4 : d) + trouble * 0.22
+        - (dissuasion - 1) * 0.07));
     const v0 = r.insecurite || 0;
     const v = v0 + ((cible - v0) * RAPPEL - (tenu.get(r.i) || 0)) * dt;
     r.insecurite = v <= 0 ? 0 : v >= 1 ? 1 : v;

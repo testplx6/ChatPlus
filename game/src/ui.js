@@ -1981,6 +1981,15 @@ function ecranMonde() {
       <div class="aide">${f.colonies} colonie(s) · ${crypto
     ? `trésor ${n(f.tresor)} cr`
     : 'trésor inconnu'} · ${e(FACTIONS[f.key].devise)}</div>
+      ${(() => {
+    // Comment on gouverne chez eux. C'est ce qui fait de « qui servir » un
+    // choix informé plutôt qu'un tirage entre six drapeaux de couleurs.
+    const l = loisDe(S.world, f.key);
+    const imp = IMPOTS.reduce((a, b) => (Math.abs(b.taux - l.impot) < Math.abs(a.taux - l.impot) ? b : a));
+    return `<div class="aide">Chez eux : impôt ${e(imp.nom.toLowerCase())} (${Math.round(l.impot * 100)} %),
+      justice ${e(PEINES[l.peine].nom.toLowerCase())}${l.esclavage
+      ? ', <span class="alerte">et l’on y vend des hommes</span>' : ''}.</div>`;
+  })()}
     </div>`;
   }).join('');
 

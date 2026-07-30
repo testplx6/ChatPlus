@@ -4,11 +4,12 @@
 import { FACTIONS, DIPLO_FACTIONS, COMMODITY_KEYS } from './data.js';
 import {
   dirigeant, penchant, crediterDirigeant, butDeGuerre, etatDuBut, tickDirigeant,
+  TEMPERAMENTS,
 } from './dirigeants.js';
 import { effondrer, emploisInitiaux } from './economy.js';
 import { pourvoirCharges } from './notables.js';
 import { chemin, colonieParId, distance, voisins } from './world.js';
-import { loisDe, pressionFiscale } from './lois.js';
+import { loisDe, pressionFiscale, IMPOTS, PEINES } from './lois.js';
 
 // ---------------------------------------------------------------------------
 // Mesures
@@ -410,6 +411,11 @@ function conseil(world, key, t, log, ctx) {
 
   f.prochainConseil = rng.irange(30, 90);
 
+  // Ce qu'on s'autorise avant de décider ce qu'on fait : l'impôt paie les
+  // colonnes, la justice tient les routes, et l'un et l'autre se paient en
+  // grogne. La politique intérieure passe donc avant la politique étrangère.
+  legiferer(world, key, t, log, ctx);
+
   // Revenus : l'impôt, au taux que la loi fixe. Ce n'est plus une constante —
   // c'est la première décision d'un Commandeur qui se lit dans les comptes.
   const taux = loisDe(world, key).impot;
@@ -581,6 +587,155 @@ export function fonderColonie(world, key, region, rng, t) {
   col.emplois = emploisInitiaux(world, col, rng);
   pourvoirCharges(col, rng, t);
   return col;
+}
+
+// ---------------------------------------------------------------------------
+// Politique intérieure
+// ---------------------------------------------------------------------------
+
+/**
+ * Combien de temps une loi tient avant qu'on puisse la rouvrir. Un conseil qui
+ * légiférerait à chaque séance ne serait pas un gouvernement, ce serait du
+ * bruit : le joueur verrait l'impôt changer trois fois par saison sans jamais
+ * pouvoir en tirer de conclusion.
+ */
+export const DELAI_LOI = 700;
+
+/** L'état d'un pays, tel que son conseil le lit avant de légiférer. */
+function etatDuPays(world, key) {
+  const villes = coloniesDe(world, key);
+  if (!villes.length) return null;
+  let grogne = 0;
+  let routes = 0;
+  for (const c of villes) {
+    grogne += c.unrest || 0;
+    routes += (world.regions[c.regionId].insecurite || 0);
+  }
+  return {
+    villes,
+    grogne: grogne / villes.length,
+    routes: routes / villes.length,
+    // Le trésor par ville : mille crédits pour une faction de deux villes et
+    // pour une faction de douze, ce n'est pas la même aisance.
+    caisse: world.factions[key].tresor / villes.length,
+    enGuerre: guerresDe(world, key).length > 0,
+  };
+}
+
+/** Le taux d'imposition que ce conseil vise, converti en palier réel. */
+function impotVise(temp, pays) {
+  // On part de l'ordinaire et on corrige : le caractère du chef, ce que coûte
+  // la guerre, ce que la caisse permet, et ce que le pays supporte.
+  //
+  // La première version poussait systématiquement vers le haut : caisse basse
+  // et guerre ajoutaient un demi-palier chacune sans rien pour les contredire,
+  // l'impôt lourd faisait gronder, la grogne coupait les recettes, la caisse
+  // restait basse. Une boucle qui ne se referme pas. Le banc l'a chiffrée en
+  // A/B : 55 % des conseils à l'ordinaire, 31 % au lourd, 14 % au léger, et le
+  // joueur perdait six escouades et huit avant-postes sur soixante parties.
+  //
+  // Ce qui la referme : un chef à la main légère ne répond pas à une caisse
+  // vide en prélevant davantage — il coupe les dépenses —, et la grogne freine
+  // en deux temps au lieu d'un.
+  // La correction inverse a raté tout autant, et le banc l'a dit aussi : deux
+  // freins en escalier qui se déclenchaient dès 32 % de grogne ont mis 74 % des
+  // conseils à l'impôt léger, et le joueur y a perdu autant — des factions
+  // pauvres lèvent moins de colonnes, donc tiennent moins les routes et donnent
+  // moins d'ordres de mission. Les deux extrêmes coûtent, chacun à sa façon :
+  // c'est ce qui fait que le choix de qui l'on sert compte.
+  //
+  // Ce qui reste : le caractère du chef décide de la ligne, les circonstances la
+  // corrigent à la marge, et le frein de la grogne est continu au lieu d'être
+  // un escalier qui bascule tout le monde du même côté.
+  let cible = 0.05 + (temp.fisc - 1) * 0.075;
+  if (pays.caisse < 700) cible += 0.02 * temp.fisc;
+  if (pays.caisse > 3200) cible -= 0.015;
+  if (pays.enGuerre && temp.fisc >= 1) cible += 0.015;
+  cible -= Math.max(0, pays.grogne - 0.35) * 0.06;
+  // On prend le palier le plus proche : un conseil ne vote pas 7,3 %.
+  let best = IMPOTS[0];
+  for (const imp of IMPOTS) {
+    if (Math.abs(imp.taux - cible) < Math.abs(best.taux - cible)) best = imp;
+  }
+  return best;
+}
+
+/** La sévérité que ce conseil juge nécessaire. */
+function peineVisee(temp, pays) {
+  // Des routes sûres ne réclament pas de corde ; un pays qui gronde, si — et un
+  // chef dur y voit toujours la solution, ce qui n'est pas la même chose que
+  // d'avoir raison.
+  const score = (temp.severite - 1) + (pays.routes - 0.3) * 1.6 + pays.grogne * 0.6;
+  if (score > 0.35) return 'expeditive';
+  if (score < -0.2) return 'legere';
+  return 'ferme';
+}
+
+/**
+ * Un conseil qui vote ses propres lois.
+ *
+ * Sans ça, le monde n'avait de politique intérieure que là où le joueur en
+ * faisait : six factions gouvernaient toutes à l'impôt ordinaire et à la
+ * justice ferme, pour toujours. Un Rapace à la tête des Corpos doit prélever
+ * comme un rapace, et un Conciliateur doit relâcher — sinon le tempérament ne
+ * veut rien dire ailleurs que sur un champ de bataille.
+ *
+ * Une exception, et c'est tout le sens du grade : **tant que le joueur tient la
+ * charge de Commandeur, le conseil s'efface.** Il ne repasse derrière lui que
+ * le jour où il l'a perdue — ce qui arrive quand ses lois ont ruiné le pays.
+ */
+function legiferer(world, key, t, log, ctx) {
+  // Témoin du banc : on gèle la législation pour mesurer ce qu'elle coûte ou
+  // rapporte au joueur. Voir test/equilibre.js, SANS=lois.
+  if (ctx && ctx.sansLois) return;
+  const lois = loisDe(world, key);
+  if (ctx && ctx.legislateur === key) return;
+  if (t - (lois.depuis || 0) < DELAI_LOI) return;
+  const d = dirigeant(world, key);
+  if (!d) return;
+  const temp = TEMPERAMENTS[d.temperament];
+  const pays = etatDuPays(world, key);
+  if (!temp || !pays) return;
+
+  const changements = [];
+
+  const imp = impotVise(temp, pays);
+  if (Math.abs(imp.taux - lois.impot) > 0.001) {
+    const monte = imp.taux > lois.impot;
+    lois.impot = imp.taux;
+    changements.push(`l’impôt ${monte ? 'passe à' : 'retombe à'} ${Math.round(imp.taux * 100)} %`);
+  }
+
+  const peine = peineVisee(temp, pays);
+  if (peine !== lois.peine) {
+    lois.peine = peine;
+    changements.push(`la justice devient ${PEINES[peine].nom.toLowerCase()}`);
+  }
+
+  // L'esclavage ne se vote pas par idéologie : on l'ouvre quand la caisse est
+  // vide et qu'on a un chef que ça n'empêche pas de dormir, on le referme
+  // quand le pays gronde ou qu'un autre chef arrive.
+  const veutOuvrir = !lois.esclavage && temp.humain < 0.85
+    && pays.caisse < 600 && pays.grogne < 0.4;
+  const veutFermer = lois.esclavage && (temp.humain > 1.05 || pays.grogne > 0.55);
+  if (veutOuvrir || veutFermer) {
+    lois.esclavage = veutOuvrir;
+    changements.push(veutOuvrir
+      ? 'le commerce d’hommes est ouvert'
+      : 'le commerce d’hommes est fermé');
+    for (const c of pays.villes) {
+      c.unrest = Math.max(0, Math.min(1, c.unrest + (veutOuvrir ? 0.06 : -0.03)));
+    }
+  }
+
+  if (!changements.length) return;
+  lois.depuis = t;
+  log({
+    type: 'loi',
+    texte: `${FACTIONS[key].nom} : ${d.titre} ${d.nom} légifère — ${changements.join(', ')}.`,
+    important: true,
+    factions: [key],
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -584,6 +584,9 @@ export function fixerLoi(state, faction, quoi, valeur, log) {
   } else {
     return { ok: false, motif: 'On ne légifère pas là-dessus.' };
   }
+  // Une loi promulguée par le joueur est une loi comme une autre : elle tient
+  // son délai avant que quiconque puisse la rouvrir, conseil compris.
+  lois.depuis = state.temps;
   inscrireActe(state, faction, { type: 'loi', quoi, t: state.temps });
   if (log) {
     log({

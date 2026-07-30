@@ -21,9 +21,10 @@ import { genererBanc, primeDe, tensionRecrutement, engager } from '../src/recrue
 import {
   capturables, fairePrisonniers, prisonniersDe, capaciteGarde, disposer,
   surveillanceManquante, lenteurPrisonniers, tickPrisonniers, tickGeole,
-  geoleDe, apaisementGeole,
+  geoleDe, apaisementGeole, tickOrdrePublic,
 } from '../src/justice.js';
 import { loisDe, pressionFiscale, PEINES } from '../src/lois.js';
+import { DELAI_LOI } from '../src/factions.js';
 import {
   tickSecteurs, tickInsecurite, effetPresence, casesDe, menace, motEtat,
   etatSecteur, resumeSecteur, dansSonSecteur,
@@ -1593,6 +1594,107 @@ ok(PEINES.expeditive.duree < PEINES.ferme.duree,
   'et garde moins longtemps : on ne nourrit pas ce qu’on pend');
 
 verifierCoherence(loi, 'après une saison de législation');
+
+section('9 nonies septies quinquies. Des conseils qui votent leurs propres lois');
+// Sans ça, le monde n'avait de politique intérieure que là où le joueur en
+// faisait : six factions à l'impôt ordinaire et à la justice ferme, pour
+// toujours, quel que soit le caractère de leurs chefs.
+const conseils = nouvellePartie(9191, { maintenant: 0 });
+const avantLois = DIPLO_FACTIONS.map((k) => ({ ...loisDe(conseils.world, k) }));
+avancer(conseils, 3000);
+const apresLois = DIPLO_FACTIONS.map((k) => loisDe(conseils.world, k));
+const bouge = apresLois.filter((l, i) => l.impot !== avantLois[i].impot
+  || l.peine !== avantLois[i].peine || l.esclavage !== avantLois[i].esclavage);
+ok(bouge.length > 0, 'les conseils légifèrent d’eux-mêmes',
+  `${bouge.length}/${DIPLO_FACTIONS.length} factions ont changé leur loi`);
+const taux = new Set(apresLois.map((l) => l.impot));
+ok(taux.size > 1, 'et ils ne votent pas tous la même chose',
+  `${[...taux].map((t) => `${Math.round(t * 100)} %`).join(', ')}`);
+
+// Le caractère du chef décide de la ligne. C'est ce qui donne un sens à un
+// tempérament ailleurs que sur un champ de bataille.
+function impotSous(temperament) {
+  const t = nouvellePartie(9292, { maintenant: 0 });
+  for (const k of DIPLO_FACTIONS) {
+    const d = dirigeant(t.world, k);
+    if (d) d.temperament = temperament;
+  }
+  avancer(t, 2600);
+  const vivantes = DIPLO_FACTIONS.filter(
+    (k) => t.world.colonies.some((c) => !c.ruine && c.faction === k)
+  );
+  return vivantes.reduce((a, k) => a + loisDe(t.world, k).impot, 0) / Math.max(1, vivantes.length);
+}
+const impotRapace = impotSous('rapace');
+const impotConciliateur = impotSous('conciliateur');
+ok(impotRapace > impotConciliateur,
+  'un rapace prélève plus qu’un conciliateur, et le monde entier le sait',
+  `${(impotRapace * 100).toFixed(1)} % vs ${(impotConciliateur * 100).toFixed(1)} %`);
+
+// Une loi ne se change pas tous les quatre matins : un conseil qui légifère à
+// chaque séance n'est pas un gouvernement, c'est du bruit.
+const bruit = nouvellePartie(9393, { maintenant: 0 });
+let votes = 0;
+let avantVote = DIPLO_FACTIONS.map((k) => JSON.stringify(loisDe(bruit.world, k)));
+for (let i = 0; i < 3000; i++) {
+  avancer(bruit, 1);
+  const maintenant = DIPLO_FACTIONS.map((k) => JSON.stringify(loisDe(bruit.world, k)));
+  for (let j = 0; j < maintenant.length; j++) if (maintenant[j] !== avantVote[j]) votes++;
+  avantVote = maintenant;
+}
+ok(votes <= Math.ceil(3000 / DELAI_LOI) * DIPLO_FACTIONS.length,
+  'une loi tient au moins sept cents heures avant d’être rouverte',
+  `${votes} votes en 3000 h`);
+
+// Le joueur Commandeur légifère seul : le conseil s'efface tant qu'il tient la
+// charge. C'est tout le sens du grade.
+const regne = nouvellePartie(9494, { maintenant: 0 });
+const gRegne = groupeActif(regne);
+const villeRegne = regne.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
+gRegne.regionId = villeRegne.regionId;
+regne.player.reputation[villeRegne.faction] = 60;
+sEngager(regne, villeRegne.faction, () => {}, gRegne);
+gRegne.allegeance.points = RANGS[4].points;
+const fRegne = villeRegne.faction;
+fixerLoi(regne, fRegne, 'impot', 'confiscatoire', () => {});
+// On tient l'escouade en vie à la main : ce qu'on mesure ici est politique, et
+// `avancer` s'arrête net à la mort du dernier membre.
+const nourrir = (heures) => {
+  for (let i = 0; i < heures / 50; i++) {
+    for (const gr of groupes(regne)) {
+      gr.inventaire.rations = 300;
+      for (const m of gr.membres) { m.faim = 0; m.soif = 0; m.fatigue = 0; }
+    }
+    avancer(regne, 50);
+  }
+};
+nourrir(2000);
+ok(loisDe(regne.world, fRegne).impot === 0.15,
+  'tant que vous tenez la charge, votre loi tient',
+  `${Math.round(loisDe(regne.world, fRegne).impot * 100)} %`);
+// Et le conseil reprend la main dès qu'on n'est plus là pour la tenir.
+gRegne.allegeance = null;
+nourrir(1600);
+ok(loisDe(regne.world, fRegne).impot !== 0.15,
+  'la charge perdue, le conseil repasse derrière vous',
+  `${Math.round(loisDe(regne.world, fRegne).impot * 100)} %`);
+
+// La sévérité n'est plus décorative : elle tient les routes et elle se paie en
+// grogne — les deux champs existaient sans que rien ne les lise.
+ok(PEINES.expeditive.routes > PEINES.legere.routes,
+  'une justice dure dissuade plus qu’une justice clémente');
+const ordre = nouvellePartie(9595, { maintenant: 0 });
+const colOrdre = ordre.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
+loisDe(ordre.world, colOrdre.faction).peine = 'expeditive';
+colOrdre.unrest = 0.1;
+for (let i = 0; i < 4000; i++) { ordre.temps += 1; tickOrdrePublic(ordre, colOrdre, 1); }
+ok(colOrdre.unrest > 0.1, 'on ne pend pas vite sans que la ville s’en ressente',
+  `${colOrdre.unrest.toFixed(2)}`);
+ok(colOrdre.unrest <= 0.46,
+  'mais la peur a un palier : une ville rancunière n’est pas une ville en révolte',
+  `${colOrdre.unrest.toFixed(2)}`);
+
+verifierCoherence(conseils, 'après 3000 h de politique intérieure');
 
 section('9 nonies sexies. Qui accepte de partir, et pour combien');
 const rec = nouvellePartie(9494, { maintenant: 0 });

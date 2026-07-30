@@ -24,7 +24,7 @@ import { estVivant, estDebout, comp } from './characters.js';
 import { colonieDe } from './world.js';
 import { enGuerre } from './factions.js';
 import { crediter } from './allegeance.js';
-import { loisDe, loiIci } from './lois.js';
+import { loisDe, loiIci, PEINES } from './lois.js';
 
 /** Combien de prisonniers une paire de bras surveille sans y penser. */
 export const PAR_GARDIEN = 1.5;
@@ -439,6 +439,28 @@ export function tickGeole(state, col, dt) {
   // Au-delà de ce qu'une ville de cette taille peut tenir, la geôle déborde.
   const capacite = 4 + col.taille * 6;
   if (n > capacite) col.unrest = Math.min(1, (col.unrest || 0) + 0.0015 * (n - capacite) * dt);
+}
+
+/**
+ * Ce que la sévérité fait à l'humeur d'une ville, heure par heure.
+ *
+ * `PEINES[].ordre` existait depuis le début et rien ne le lisait : une justice
+ * expéditive coûtait donc zéro et rapportait des primes. Une ville où l'on pend
+ * vite se tient, mais elle se tient par la peur, et la peur s'accumule.
+ */
+export function tickOrdrePublic(state, col, dt) {
+  if (!col.faction || col.ruine) return;
+  const peine = PEINES[loisDe(state.world, col.faction).peine];
+  if (!peine || !peine.ordre) return;
+  // Une dérive sans borne n'est pas une politique : écrite comme une simple
+  // addition, la justice expéditive ajoutait 0,048 de grogne tous les dix jours
+  // et poussait toute ville à la révolte en une partie. La peur a un palier —
+  // une ville où l'on pend vite reste rancunière, elle ne se soulève pas pour
+  // autant ; une ville clémente s'apaise sans devenir angélique.
+  const u = col.unrest || 0;
+  const palier = peine.ordre > 0 ? 0.45 : 0.05;
+  if ((peine.ordre > 0 && u >= palier) || (peine.ordre < 0 && u <= palier)) return;
+  col.unrest = Math.max(0, Math.min(1, u + peine.ordre * 0.0004 * dt));
 }
 
 /** Ce que les geôles de la faction retirent à l'insécurité des environs. */

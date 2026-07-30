@@ -425,9 +425,61 @@ sept livrés ou rançonnés pour 767 crédits**, et les crédits moyens passent 
 2 006 à 2 530. Le bot ne vend personne — c'est un choix de jeu, pas une
 optimisation, et le banc doit mesurer la voie honnête avant l'autre.
 
-Ce qui manque encore : les factions ne légifèrent pas d'elles-mêmes. Seul le
-joueur devenu Commandeur écrit la loi ; les conseils s'en tiennent à la règle
-par défaut. C'est un trou connu, pas un oubli.
+### Des conseils qui votent leurs propres lois
+
+Le trou signalé plus haut est bouché. Un tempérament ne dit plus seulement
+comment on fait la guerre : il dit aussi ce qu'on prélève (`fisc`), ce qu'on
+punit (`severite`) et ce qui retient d'ouvrir un marché d'hommes (`humain`).
+**Un Rapace à la tête des Corpos prélève comme un rapace**, un Conciliateur
+relâche, et le joueur peut le lire sur l'écran du monde avant de choisir qui
+servir.
+
+Une exception, et c'est tout le sens du grade : **tant que le joueur tient la
+charge de Commandeur, le conseil s'efface.** Il ne repasse derrière lui que le
+jour où il l'a perdue — ce qui arrive précisément quand ses lois ont ruiné le
+pays. Et une loi tient sept cents heures avant qu'on puisse la rouvrir : un
+conseil qui légiférerait à chaque séance ne serait pas un gouvernement, ce
+serait du bruit.
+
+**Deux boucles mal fermées, réfutées l'une après l'autre par le même A/B.** Le
+banc tourne soixante parties avec les conseils législateurs et soixante sans,
+mêmes graines.
+
+*Premier essai — la spirale vers le haut.* Caisse vide et guerre ajoutaient
+chacune un demi-palier d'impôt, sans rien pour les contredire. L'impôt lourd
+faisait gronder, la grogne coupait les recettes, la caisse restait vide. 55 %
+des conseils à l'ordinaire, 31 % au lourd, et le joueur perdait **six escouades
+et huit avant-postes sur soixante**.
+
+*Second essai — la spirale vers le bas.* Deux freins en escalier qui se
+déclenchaient dès 32 % de grogne ont mis **74 % des conseils à l'impôt léger**,
+et le joueur y a perdu tout autant. Des factions pauvres lèvent moins de
+colonnes : elles tiennent moins les routes, et donnent moins d'ordres de
+mission. C'est le résultat intéressant de la journée — **les deux extrêmes
+coûtent, chacun à sa façon**, ce qui veut dire que le taux ordinaire était bien
+choisi et que le choix de qui l'on sert compte vraiment.
+
+*Ce qui tient.* Le caractère du chef décide de la ligne, les circonstances la
+corrigent à la marge, et le frein de la grogne est continu au lieu de basculer
+tout le monde du même côté :
+
+                          sans conseils   avec conseils
+    Survivantes                  51/60           51/60
+    Avant-postes fondés          48/60           44/60
+    Crédits moyens               2 282           2 378
+    État des secteurs             0,35            0,32
+    Capitaine                        6               9
+    Impôt                  Ordinaire 100 %   Lourd 45 · Ordinaire 38 · Léger 14 · Confiscatoire 3
+    Justice                    Ferme 100 %   Ferme 53 · Expéditive 38 · Clémente 9
+
+Deux champs déclarés depuis le début et que rien ne lisait ont été branchés au
+passage — c'est le genre de dette qui ne se voit qu'en cherchant pourquoi une
+mesure ne bouge pas. `PEINES[].routes` : une justice dure dissuade, et abaisse
+le niveau de repos des pistes autour de ses villes. `PEINES[].ordre` : elle se
+paie en rancune. Écrit comme une simple addition, ce second champ ajoutait 0,048
+de grogne tous les dix jours et poussait toute ville à la révolte en une partie
+— **la peur a désormais un palier** : une ville où l'on pend vite reste
+rancunière à 45 %, elle ne se soulève pas pour autant.
 
 ### Ni le nombre de colonnes, ni la prime d'engagement
 

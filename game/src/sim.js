@@ -23,10 +23,10 @@ import { creerDirigeant } from './dirigeants.js';
 import { tickFormation } from './formation.js';
 import { rafraichirPanneaux, tickContrats } from './contrats.js';
 import { bancDe } from './recrues.js';
-import { tickAllegeance, palierBonus } from './allegeance.js';
+import { tickAllegeance, palierBonus, rangDe } from './allegeance.js';
 import { jugerActes, tickCharges } from './influence.js';
 import { tickSecteurs } from './secteur.js';
-import { tickGeole } from './justice.js';
+import { tickGeole, tickOrdrePublic } from './justice.js';
 
 /** Durée réelle d'une heure de jeu, à vitesse ×1. */
 export const TICK_MS = 10000;
@@ -218,6 +218,15 @@ function pasColonie(yeux, col, i) {
 export function tick(state) {
   const rng = new Rng(state.rngState);
   const ctx = { rng };
+  // Tant que le joueur tient la charge de Commandeur quelque part, le conseil
+  // de cette faction ne légifère pas : c'est ce que veut dire avoir la charge.
+  // Voir `legiferer` dans factions.js.
+  for (const g of state.player.groupes) {
+    const all = g.allegeance;
+    if (all && rangDe(all).index >= 4) { ctx.legislateur = all.faction; break; }
+  }
+  // Le banc peut geler la législation pour la mesurer par différence.
+  if (state.sansLois) ctx.sansLois = true;
   const log = creerLogger(state);
 
   state.temps += 1;
@@ -271,6 +280,9 @@ export function tick(state) {
     // La geôle : on nourrit les détenus, on relâche ceux qui ont fait leur
     // temps, et une geôle qui déborde fait gronder la ville.
     tickGeole(state, col, du);
+    // Ce que la loi fait à l'humeur : on ne pend pas vite sans que la ville
+    // s'en ressente, et on ne relâche pas non plus sans que ça se voie.
+    tickOrdrePublic(state, col, du);
     const ev = tickColonie(state.world, col, rng, climat, du, rep, log, state.temps, present);
     if (!ev) continue;
     if (ev.evenement === 'croissance') {

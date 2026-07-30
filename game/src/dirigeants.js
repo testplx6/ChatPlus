@@ -31,33 +31,47 @@ export const TITRES = {
  * seulement celle-là : c'est ce qui rend l'effet lisible en jeu plutôt que
  * dilué dans une moyenne.
  */
+/**
+ * Un tempérament ne dit pas seulement comment on fait la guerre : il dit aussi
+ * ce qu'on prélève, ce qu'on punit et ce qu'on s'autorise. Les trois derniers
+ * champs sont la politique intérieure — `fisc` la main sur la bourse d'autrui,
+ * `severite` celle sur la corde, `humain` ce qui retient d'ouvrir un marché
+ * d'hommes. Ils valent 1 pour un chef sans caractère particulier.
+ */
 export const TEMPERAMENTS = {
   conquerant: {
     nom: 'Conquérant', guerre: 1.6, treve: 0.55, expansion: 0.8, colonne: 1.25,
+    fisc: 1.3, severite: 1.3, humain: 0.8,
     mot: 'Une carte, ça se redessine.',
   },
   prudent: {
     nom: 'Prudent', guerre: 0.45, treve: 1.6, expansion: 1.1, colonne: 0.85,
+    fisc: 0.9, severite: 1.05, humain: 1.05,
     mot: 'On ne meurt pas d’avoir attendu.',
   },
   batisseur: {
     nom: 'Bâtisseur', guerre: 0.6, treve: 1.35, expansion: 1.9, colonne: 0.9,
+    fisc: 1.15, severite: 0.95, humain: 1.1,
     mot: 'Ce qu’on pose reste. Ce qu’on prend se reprend.',
   },
   rancunier: {
     nom: 'Rancunier', guerre: 1.3, treve: 0.35, expansion: 0.9, colonne: 1.1,
+    fisc: 1.0, severite: 1.6, humain: 0.75,
     mot: 'Je n’oublie rien. C’est tout mon travail.',
   },
   conciliateur: {
     nom: 'Conciliateur', guerre: 0.5, treve: 1.9, expansion: 1.2, colonne: 0.8,
+    fisc: 0.75, severite: 0.6, humain: 1.35,
     mot: 'Tout se négocie, même ce qui ne se négocie pas.',
   },
   rapace: {
     nom: 'Rapace', guerre: 1.2, treve: 0.9, expansion: 1.4, colonne: 1.15,
+    fisc: 1.55, severite: 1.1, humain: 0.5,
     mot: 'Ce qui n’est à personne est à moi.',
   },
   methodique: {
     nom: 'Méthodique', guerre: 0.9, treve: 1.0, expansion: 1.15, colonne: 1.3,
+    fisc: 1.05, severite: 1.0, humain: 1.0,
     mot: 'On ne lève pas une colonne sans savoir ce qu’elle rapporte.',
   },
 };

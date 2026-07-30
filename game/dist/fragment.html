@@ -3277,33 +3277,47 @@ const TITRES = {
  * seulement celle-là : c'est ce qui rend l'effet lisible en jeu plutôt que
  * dilué dans une moyenne.
  */
+/**
+ * Un tempérament ne dit pas seulement comment on fait la guerre : il dit aussi
+ * ce qu'on prélève, ce qu'on punit et ce qu'on s'autorise. Les trois derniers
+ * champs sont la politique intérieure — `fisc` la main sur la bourse d'autrui,
+ * `severite` celle sur la corde, `humain` ce qui retient d'ouvrir un marché
+ * d'hommes. Ils valent 1 pour un chef sans caractère particulier.
+ */
 const TEMPERAMENTS = {
   conquerant: {
     nom: 'Conquérant', guerre: 1.6, treve: 0.55, expansion: 0.8, colonne: 1.25,
+    fisc: 1.3, severite: 1.3, humain: 0.8,
     mot: 'Une carte, ça se redessine.',
   },
   prudent: {
     nom: 'Prudent', guerre: 0.45, treve: 1.6, expansion: 1.1, colonne: 0.85,
+    fisc: 0.9, severite: 1.05, humain: 1.05,
     mot: 'On ne meurt pas d’avoir attendu.',
   },
   batisseur: {
     nom: 'Bâtisseur', guerre: 0.6, treve: 1.35, expansion: 1.9, colonne: 0.9,
+    fisc: 1.15, severite: 0.95, humain: 1.1,
     mot: 'Ce qu’on pose reste. Ce qu’on prend se reprend.',
   },
   rancunier: {
     nom: 'Rancunier', guerre: 1.3, treve: 0.35, expansion: 0.9, colonne: 1.1,
+    fisc: 1.0, severite: 1.6, humain: 0.75,
     mot: 'Je n’oublie rien. C’est tout mon travail.',
   },
   conciliateur: {
     nom: 'Conciliateur', guerre: 0.5, treve: 1.9, expansion: 1.2, colonne: 0.8,
+    fisc: 0.75, severite: 0.6, humain: 1.35,
     mot: 'Tout se négocie, même ce qui ne se négocie pas.',
   },
   rapace: {
     nom: 'Rapace', guerre: 1.2, treve: 0.9, expansion: 1.4, colonne: 1.15,
+    fisc: 1.55, severite: 1.1, humain: 0.5,
     mot: 'Ce qui n’est à personne est à moi.',
   },
   methodique: {
     nom: 'Méthodique', guerre: 0.9, treve: 1.0, expansion: 1.15, colonne: 1.3,
+    fisc: 1.05, severite: 1.0, humain: 1.0,
     mot: 'On ne lève pas une colonne sans savoir ce qu’elle rapporte.',
   },
 };
@@ -7107,6 +7121,11 @@ function conseil(world, key, t, log, ctx) {
 
   f.prochainConseil = rng.irange(30, 90);
 
+  // Ce qu'on s'autorise avant de décider ce qu'on fait : l'impôt paie les
+  // colonnes, la justice tient les routes, et l'un et l'autre se paient en
+  // grogne. La politique intérieure passe donc avant la politique étrangère.
+  legiferer(world, key, t, log, ctx);
+
   // Revenus : l'impôt, au taux que la loi fixe. Ce n'est plus une constante —
   // c'est la première décision d'un Commandeur qui se lit dans les comptes.
   const taux = loisDe(world, key).impot;
@@ -7278,6 +7297,155 @@ function fonderColonie(world, key, region, rng, t) {
   col.emplois = emploisInitiaux(world, col, rng);
   pourvoirCharges(col, rng, t);
   return col;
+}
+
+// ---------------------------------------------------------------------------
+// Politique intérieure
+// ---------------------------------------------------------------------------
+
+/**
+ * Combien de temps une loi tient avant qu'on puisse la rouvrir. Un conseil qui
+ * légiférerait à chaque séance ne serait pas un gouvernement, ce serait du
+ * bruit : le joueur verrait l'impôt changer trois fois par saison sans jamais
+ * pouvoir en tirer de conclusion.
+ */
+const DELAI_LOI = 700;
+
+/** L'état d'un pays, tel que son conseil le lit avant de légiférer. */
+function etatDuPays(world, key) {
+  const villes = coloniesDe(world, key);
+  if (!villes.length) return null;
+  let grogne = 0;
+  let routes = 0;
+  for (const c of villes) {
+    grogne += c.unrest || 0;
+    routes += (world.regions[c.regionId].insecurite || 0);
+  }
+  return {
+    villes,
+    grogne: grogne / villes.length,
+    routes: routes / villes.length,
+    // Le trésor par ville : mille crédits pour une faction de deux villes et
+    // pour une faction de douze, ce n'est pas la même aisance.
+    caisse: world.factions[key].tresor / villes.length,
+    enGuerre: guerresDe(world, key).length > 0,
+  };
+}
+
+/** Le taux d'imposition que ce conseil vise, converti en palier réel. */
+function impotVise(temp, pays) {
+  // On part de l'ordinaire et on corrige : le caractère du chef, ce que coûte
+  // la guerre, ce que la caisse permet, et ce que le pays supporte.
+  //
+  // La première version poussait systématiquement vers le haut : caisse basse
+  // et guerre ajoutaient un demi-palier chacune sans rien pour les contredire,
+  // l'impôt lourd faisait gronder, la grogne coupait les recettes, la caisse
+  // restait basse. Une boucle qui ne se referme pas. Le banc l'a chiffrée en
+  // A/B : 55 % des conseils à l'ordinaire, 31 % au lourd, 14 % au léger, et le
+  // joueur perdait six escouades et huit avant-postes sur soixante parties.
+  //
+  // Ce qui la referme : un chef à la main légère ne répond pas à une caisse
+  // vide en prélevant davantage — il coupe les dépenses —, et la grogne freine
+  // en deux temps au lieu d'un.
+  // La correction inverse a raté tout autant, et le banc l'a dit aussi : deux
+  // freins en escalier qui se déclenchaient dès 32 % de grogne ont mis 74 % des
+  // conseils à l'impôt léger, et le joueur y a perdu autant — des factions
+  // pauvres lèvent moins de colonnes, donc tiennent moins les routes et donnent
+  // moins d'ordres de mission. Les deux extrêmes coûtent, chacun à sa façon :
+  // c'est ce qui fait que le choix de qui l'on sert compte.
+  //
+  // Ce qui reste : le caractère du chef décide de la ligne, les circonstances la
+  // corrigent à la marge, et le frein de la grogne est continu au lieu d'être
+  // un escalier qui bascule tout le monde du même côté.
+  let cible = 0.05 + (temp.fisc - 1) * 0.075;
+  if (pays.caisse < 700) cible += 0.02 * temp.fisc;
+  if (pays.caisse > 3200) cible -= 0.015;
+  if (pays.enGuerre && temp.fisc >= 1) cible += 0.015;
+  cible -= Math.max(0, pays.grogne - 0.35) * 0.06;
+  // On prend le palier le plus proche : un conseil ne vote pas 7,3 %.
+  let best = IMPOTS[0];
+  for (const imp of IMPOTS) {
+    if (Math.abs(imp.taux - cible) < Math.abs(best.taux - cible)) best = imp;
+  }
+  return best;
+}
+
+/** La sévérité que ce conseil juge nécessaire. */
+function peineVisee(temp, pays) {
+  // Des routes sûres ne réclament pas de corde ; un pays qui gronde, si — et un
+  // chef dur y voit toujours la solution, ce qui n'est pas la même chose que
+  // d'avoir raison.
+  const score = (temp.severite - 1) + (pays.routes - 0.3) * 1.6 + pays.grogne * 0.6;
+  if (score > 0.35) return 'expeditive';
+  if (score < -0.2) return 'legere';
+  return 'ferme';
+}
+
+/**
+ * Un conseil qui vote ses propres lois.
+ *
+ * Sans ça, le monde n'avait de politique intérieure que là où le joueur en
+ * faisait : six factions gouvernaient toutes à l'impôt ordinaire et à la
+ * justice ferme, pour toujours. Un Rapace à la tête des Corpos doit prélever
+ * comme un rapace, et un Conciliateur doit relâcher — sinon le tempérament ne
+ * veut rien dire ailleurs que sur un champ de bataille.
+ *
+ * Une exception, et c'est tout le sens du grade : **tant que le joueur tient la
+ * charge de Commandeur, le conseil s'efface.** Il ne repasse derrière lui que
+ * le jour où il l'a perdue — ce qui arrive quand ses lois ont ruiné le pays.
+ */
+function legiferer(world, key, t, log, ctx) {
+  // Témoin du banc : on gèle la législation pour mesurer ce qu'elle coûte ou
+  // rapporte au joueur. Voir test/equilibre.js, SANS=lois.
+  if (ctx && ctx.sansLois) return;
+  const lois = loisDe(world, key);
+  if (ctx && ctx.legislateur === key) return;
+  if (t - (lois.depuis || 0) < DELAI_LOI) return;
+  const d = dirigeant(world, key);
+  if (!d) return;
+  const temp = TEMPERAMENTS[d.temperament];
+  const pays = etatDuPays(world, key);
+  if (!temp || !pays) return;
+
+  const changements = [];
+
+  const imp = impotVise(temp, pays);
+  if (Math.abs(imp.taux - lois.impot) > 0.001) {
+    const monte = imp.taux > lois.impot;
+    lois.impot = imp.taux;
+    changements.push(`l’impôt ${monte ? 'passe à' : 'retombe à'} ${Math.round(imp.taux * 100)} %`);
+  }
+
+  const peine = peineVisee(temp, pays);
+  if (peine !== lois.peine) {
+    lois.peine = peine;
+    changements.push(`la justice devient ${PEINES[peine].nom.toLowerCase()}`);
+  }
+
+  // L'esclavage ne se vote pas par idéologie : on l'ouvre quand la caisse est
+  // vide et qu'on a un chef que ça n'empêche pas de dormir, on le referme
+  // quand le pays gronde ou qu'un autre chef arrive.
+  const veutOuvrir = !lois.esclavage && temp.humain < 0.85
+    && pays.caisse < 600 && pays.grogne < 0.4;
+  const veutFermer = lois.esclavage && (temp.humain > 1.05 || pays.grogne > 0.55);
+  if (veutOuvrir || veutFermer) {
+    lois.esclavage = veutOuvrir;
+    changements.push(veutOuvrir
+      ? 'le commerce d’hommes est ouvert'
+      : 'le commerce d’hommes est fermé');
+    for (const c of pays.villes) {
+      c.unrest = Math.max(0, Math.min(1, c.unrest + (veutOuvrir ? 0.06 : -0.03)));
+    }
+  }
+
+  if (!changements.length) return;
+  lois.depuis = t;
+  log({
+    type: 'loi',
+    texte: `${FACTIONS[key].nom} : ${d.titre} ${d.nom} légifère — ${changements.join(', ')}.`,
+    important: true,
+    factions: [key],
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -7931,6 +8099,9 @@ function fixerLoi(state, faction, quoi, valeur, log) {
   } else {
     return { ok: false, motif: 'On ne légifère pas là-dessus.' };
   }
+  // Une loi promulguée par le joueur est une loi comme une autre : elle tient
+  // son délai avant que quiconque puisse la rouvrir, conseil compris.
+  lois.depuis = state.temps;
   inscrireActe(state, faction, { type: 'loi', quoi, t: state.temps });
   if (log) {
     log({
@@ -8465,6 +8636,28 @@ function tickGeole(state, col, dt) {
   if (n > capacite) col.unrest = Math.min(1, (col.unrest || 0) + 0.0015 * (n - capacite) * dt);
 }
 
+/**
+ * Ce que la sévérité fait à l'humeur d'une ville, heure par heure.
+ *
+ * `PEINES[].ordre` existait depuis le début et rien ne le lisait : une justice
+ * expéditive coûtait donc zéro et rapportait des primes. Une ville où l'on pend
+ * vite se tient, mais elle se tient par la peur, et la peur s'accumule.
+ */
+function tickOrdrePublic(state, col, dt) {
+  if (!col.faction || col.ruine) return;
+  const peine = PEINES[loisDe(state.world, col.faction).peine];
+  if (!peine || !peine.ordre) return;
+  // Une dérive sans borne n'est pas une politique : écrite comme une simple
+  // addition, la justice expéditive ajoutait 0,048 de grogne tous les dix jours
+  // et poussait toute ville à la révolte en une partie. La peur a un palier —
+  // une ville où l'on pend vite reste rancunière, elle ne se soulève pas pour
+  // autant ; une ville clémente s'apaise sans devenir angélique.
+  const u = col.unrest || 0;
+  const palier = peine.ordre > 0 ? 0.45 : 0.05;
+  if ((peine.ordre > 0 && u >= palier) || (peine.ordre < 0 && u <= palier)) return;
+  col.unrest = Math.max(0, Math.min(1, u + peine.ordre * 0.0004 * dt));
+}
+
 /** Ce que les geôles de la faction retirent à l'insécurité des environs. */
 function apaisementGeole(col) {
   const n = col.geole ? col.geole.detenus.length : 0;
@@ -8701,9 +8894,16 @@ function tickInsecurite(state) {
     }
     front = suivant;
   }
+  // Ce que la ville la plus proche transmet à ses pistes : son désordre, et la
+  // sévérité de sa loi. `PEINES[].routes` valait 0,6 à 1,5 sans que rien ne le
+  // lise — une justice expéditive rapportait des primes et ne tenait rien.
   const troubleDe = new Map();
+  const dissuasionDe = new Map();
   for (const col of w.colonies) {
-    if (!col.ruine) troubleDe.set(col.regionId, col.unrest || 0);
+    if (col.ruine) continue;
+    troubleDe.set(col.regionId, col.unrest || 0);
+    const peine = col.faction ? PEINES[loisDe(w, col.faction).peine] : null;
+    dissuasionDe.set(col.regionId, peine ? peine.routes : 1);
   }
 
   // Ce qui tient activement les routes, en plus de la simple proximité : les
@@ -8727,8 +8927,10 @@ function tickInsecurite(state) {
     // Une ville qui gronde ne tient plus ses abords : son désordre déborde sur
     // les pistes, et c'est ce qui reliera un jour l'ordre public au secteur.
     const trouble = source[r.i] >= 0 ? (troubleDe.get(source[r.i]) || 0) : 0.5;
-    const cible = Math.min(1,
-      REPOS_BASE + REPOS_PAR_CASE * Math.min(4, d === 9 ? 4 : d) + trouble * 0.22);
+    const dissuasion = source[r.i] >= 0 ? (dissuasionDe.get(source[r.i]) || 1) : 1;
+    const cible = Math.max(0, Math.min(1,
+      REPOS_BASE + REPOS_PAR_CASE * Math.min(4, d === 9 ? 4 : d) + trouble * 0.22
+        - (dissuasion - 1) * 0.07));
     const v0 = r.insecurite || 0;
     const v = v0 + ((cible - v0) * RAPPEL - (tenu.get(r.i) || 0)) * dt;
     r.insecurite = v <= 0 ? 0 : v >= 1 ? 1 : v;
@@ -11669,6 +11871,15 @@ function pasColonie(yeux, col, i) {
 function tick(state) {
   const rng = new Rng(state.rngState);
   const ctx = { rng };
+  // Tant que le joueur tient la charge de Commandeur quelque part, le conseil
+  // de cette faction ne légifère pas : c'est ce que veut dire avoir la charge.
+  // Voir `legiferer` dans factions.js.
+  for (const g of state.player.groupes) {
+    const all = g.allegeance;
+    if (all && rangDe(all).index >= 4) { ctx.legislateur = all.faction; break; }
+  }
+  // Le banc peut geler la législation pour la mesurer par différence.
+  if (state.sansLois) ctx.sansLois = true;
   const log = creerLogger(state);
 
   state.temps += 1;
@@ -11722,6 +11933,9 @@ function tick(state) {
     // La geôle : on nourrit les détenus, on relâche ceux qui ont fait leur
     // temps, et une geôle qui déborde fait gronder la ville.
     tickGeole(state, col, du);
+    // Ce que la loi fait à l'humeur : on ne pend pas vite sans que la ville
+    // s'en ressente, et on ne relâche pas non plus sans que ça se voie.
+    tickOrdrePublic(state, col, du);
     const ev = tickColonie(state.world, col, rng, climat, du, rep, log, state.temps, present);
     if (!ev) continue;
     if (ev.evenement === 'croissance') {
@@ -13808,6 +14022,15 @@ function ecranMonde() {
       <div class="aide">${f.colonies} colonie(s) · ${crypto
     ? `trésor ${n(f.tresor)} cr`
     : 'trésor inconnu'} · ${e(FACTIONS[f.key].devise)}</div>
+      ${(() => {
+    // Comment on gouverne chez eux. C'est ce qui fait de « qui servir » un
+    // choix informé plutôt qu'un tirage entre six drapeaux de couleurs.
+    const l = loisDe(S.world, f.key);
+    const imp = IMPOTS.reduce((a, b) => (Math.abs(b.taux - l.impot) < Math.abs(a.taux - l.impot) ? b : a));
+    return `<div class="aide">Chez eux : impôt ${e(imp.nom.toLowerCase())} (${Math.round(l.impot * 100)} %),
+      justice ${e(PEINES[l.peine].nom.toLowerCase())}${l.esclavage
+      ? ', <span class="alerte">et l’on y vend des hommes</span>' : ''}.</div>`;
+  })()}
     </div>`;
   }).join('');
 
