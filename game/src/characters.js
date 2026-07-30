@@ -311,10 +311,15 @@ export function blesser(c, montant, membre, rng, opts = {}) {
       ko = true;
     }
   }
-  // Un torse ou une tête très amochés font tomber
+  // On s'écroule bien avant d'être détruit : un bras cassé, le souffle coupé,
+  // et l'on ne tient plus debout. Le seuil était à 32 % des points de vie, ce
+  // qui voulait dire encaisser les deux tiers de son corps avant de tomber —
+  // d'où des combats de dix-huit tours où personne n'allait au sol. On tombe
+  // désormais autour de 40 à 50 % de dégâts, et d'autant plus vite qu'on est
+  // amoché : le combat se décide en cinq ou six échanges, comme un vrai.
   if (!mort && c.etat === 'ok') {
     const t = pvTotal(c);
-    if (t.pct < 0.32 && rng.chance(0.5)) ko = true;
+    if (t.pct < 0.6 && rng.chance((0.6 - t.pct) / 0.6 * 0.55)) ko = true;
   }
   if (mort) {
     c.etat = 'mort';

@@ -9,7 +9,7 @@ import { makeCharacter, estVivant } from './characters.js';
 import { creerLogger, fouillerSite, combatContre } from './events.js';
 import { attaquerCaravane } from './caravanes.js';
 import { sEngager, quitter, toucherRations as toucherRationsA } from './allegeance.js';
-import { genererBande } from './combat.js';
+import { genererBande, TACTIQUES } from './combat.js';
 import { groupeActif, tousLesMembres, scinder, fusionner, choisirGroupe, assignerTache } from './groupes.js';
 import { tailleEscouadeMax } from './base.js';
 import { verifierExercice } from './squad.js';
@@ -220,6 +220,15 @@ const API = {
     const r = disposer(state, groupeActif(state), captifId, quoi, creerLogger(state));
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
+  },
+
+  /** Comment on se bat. Vaut aussi pendant votre absence. */
+  tactique(key) {
+    if (!TACTIQUES[key]) return { ok: false, motif: 'Tactique inconnue.' };
+    state.player.tactique = key;
+    sauver();
+    rafraichir(true);
+    return { ok: true };
   },
 
   /** Toucher ses rations à l'intendance de la ville où l'on se trouve. */

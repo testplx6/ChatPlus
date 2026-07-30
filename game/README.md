@@ -567,6 +567,74 @@ l'interdisent chez elles — et voit la guerre arriver sur l'écran du monde, o�
 un régime esclavagiste est signalé avec le nombre de voisins qui ne le
 supportent pas.
 
+### Un combat qu'on mène plutôt qu'on subit
+
+Le combat était le plus vieux défaut du projet, et la mesure était accablante.
+Quatre cents affrontements de quatre contre trois :
+
+    18,1 tours de moyenne     sur un maximum de 24
+    88 % finissent en fuite   personne ne décide, quelqu'un s'en va
+    1,46 ennemi à terre        sur trois
+    0,00 mort                  des deux côtés, toujours
+
+La dernière ligne n'était pas un équilibrage prudent : c'était **un bug de
+structure**. `blesser` n'autorise la mort que sur quelqu'un de déjà au sol, et
+l'on ne visait jamais quelqu'un au sol. Personne n'est mort au combat depuis le
+début du projet, et la létalité déclarée de chaque faction — 0,55 pour l'Essaim,
+0,10 pour une milice de commune — ne servait strictement à rien.
+
+**Ce qui manquait tenait dans une échelle.** Une machette rend une dizaine de
+points nets ; un corps en compte deux cent quarante-sept. Vingt-sept coups au
+but pour abattre quelqu'un. Toute la platitude venait de là. On mord deux fois
+plus fort, on s'écroule vers 40-50 % de dégâts au lieu de 68 %, et un
+affrontement se décide en **sept tours**.
+
+**Achever un homme à terre est désormais possible, et c'est une décision.** La
+consigne existait ; elle ne faisait rien. Elle fait maintenant la différence
+entre repartir avec des prisonniers et repartir avec des cadavres — et elle
+donne à l'Essaim la férocité qu'il prétendait avoir. Un des nôtres qui tombe
+dans un combat qu'on gagne s'en sort presque toujours ; dans un combat qu'on
+perd, presque jamais.
+
+**Cinq tactiques, et chacune est un pari.** Décidées à l'avance, valables aussi
+en votre absence — un chef d'escouade décide avant, pas pendant :
+
+    Tenir la ligne     le choix sûr. Peu de pertes, peu de prises.
+    Charger            le plus de monde à terre, chez eux comme chez nous.
+    Tenir à distance   décisif en terrain découvert avec des fusils.
+                       Sans fusils ou dans les cassures : le pire choix du jeu.
+    Envelopper         ne vaut que si l'on a le nombre. Sinon on se disperse.
+    Harceler           on ne gagne pas, on ramène les siens.
+
+Le jeu annonce ce que chacune vaut *ici* — terrain, armes portées, nombre
+supposé — avant qu'on choisisse. Mesuré sur trois cents combats par case :
+
+                       4v3 steppe fusils   4v3 canyons fusils   6v3 steppe mêlée
+    Tenir la ligne       1,70 / 0,11         1,72 / 0,10         1,52 / 0,14
+    Charger              2,53 / 0,17         1,97 / 0,42         2,16 / 0,17
+    Tenir à distance     2,78 / 0,04         2,02 / 0,17         2,04 / 0,07
+    Envelopper           2,15 / 0,14         1,51 / 0,40         2,19 / 0,09
+                                    (ennemis à terre / pertes)
+
+Trois calibrages ont été **réfutés en mesurant** avant d'être gardés. Charger
+gagnait cent pour cent des combats partout, y compris là où la tactique était
+censée être mauvaise : le multiplicateur d'attaque jouait deux fois — sur la
+touche *et* sur les dégâts — quand la garde ne jouait qu'une. Corrigé, c'est
+Tenir la ligne qui dominait à son tour, parce que la garde jouait alors trois
+fois. Et le rendement situationnel, réservé à la chance de toucher, ne servait à
+rien : à quatre contre trois on touche déjà presque à coup sûr, la probabilité
+est plafonnée à 0,94, et **envelopper à deux contre un ne changeait
+rigoureusement rien**. C'est sur les dégâts que la situation devait payer.
+
+Enfin, harceler était la tactique du perdant plutôt que celle du faible : on
+rompait, donc on perdait, donc on se faisait piller. Se dégager en bon ordre —
+tactique de repli et la moitié des siens encore debout — n'est plus une défaite.
+
+Sur soixante parties de quatre mille heures : crédits moyens **2 635 → 3 391**,
+prisonniers pris 7,8 → 10,3, livrés ou rançonnés pour 785 → 1 183 crédits,
+compétence de combat 15 → 16, survivantes 55 → 53 (dans le bruit), et 8,1 des
+nôtres mis à terre par partie — là où le combat n'en couchait presque aucun.
+
 ### Deux champs morts
 
 Deux champs déclarés depuis le début et que rien ne lisait ont été branchés — c'est le genre de dette qui ne se voit qu'en cherchant pourquoi une

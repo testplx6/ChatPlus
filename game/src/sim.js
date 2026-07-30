@@ -123,11 +123,16 @@ export function nouvellePartie(seed, opts = {}) {
       groupeActif: premier.id,
       reputation,
       posture: 'neutre',
+      // Comment on se bat quand ça tombe dessus. Voir TACTIQUES dans combat.js :
+      // une tactique n'est pas un bonus, c'est un pari sur le terrain, le
+      // nombre et les armes qu'on porte.
+      tactique: 'ligne',
       politique: {
         recruter: true,
         commercer: true,
         payerPeage: true,
         achever: false,
+        viserChefs: false,
       },
       contrats: [],
       primes: {},

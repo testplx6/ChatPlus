@@ -643,6 +643,23 @@ if (await livrable.count()) {
   ok(apresCap.geole > 0, 'et la geôle de la ville se remplit');
 }
 
+console.log('\n8 septdecies. Une tactique qu’on choisit en sachant ce qu’elle vaut');
+await page.click('[data-a="onglet"][data-k="escouade"]');
+await page.waitForTimeout(400);
+const texteTac = await page.evaluate(() => document.querySelector('#ecran').textContent);
+ok(/TACTIQUE/i.test(texteTac), 'l’escouade a une tactique');
+ok(await page.locator('[data-a="tactique"]').count() === 5,
+  'cinq façons de se battre sont proposées');
+ok(/(bien vu ici|convenable|mauvais choix ici)/.test(texteTac),
+  'et chacune annonce ce qu’elle vaut sur le terrain d’ici');
+await page.locator('[data-a="tactique"][data-k="harcelement"]').click();
+await page.waitForTimeout(500);
+const tacRetenue = await page.evaluate(
+  () => JSON.parse(localStorage.getItem('cendres.save.v1')).player.tactique
+);
+ok(tacRetenue === 'harcelement', 'le choix est retenu et sauvegardé', tacRetenue);
+await page.screenshot({ path: join(CAPTURES, '28-tactique.png'), fullPage: true });
+
 console.log('\n8 sexdecies bis. Camper dans une ville affranchie');
 // Une révolte réussie laisse un bourg vivant mais sans drapeau. C'est
 // exactement la forme de cas qui avait fait planter l'écran entier avec les

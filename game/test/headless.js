@@ -8,7 +8,10 @@ import {
 import { Rng } from '../src/rng.js';
 import { serialiser, deserialiser } from '../src/save.js';
 import { COMMODITY_KEYS, DIPLO_FACTIONS } from '../src/data.js';
-import { genererBande } from '../src/combat.js';
+import {
+  genererBande, resoudreCombat, TACTIQUES, TACTIQUE_KEYS, apercuTactique,
+  rendementTactique,
+} from '../src/combat.js';
 import { faireRevolte, SEUIL_REVOLTE } from '../src/economy.js';
 import { distanceMorale } from '../src/factions.js';
 import { loiIci } from '../src/lois.js';
@@ -20,7 +23,7 @@ import {
   abriDe, capaciteStock, energie, COUT_FONDATION,
   manoeuvres, affecter, rendementMetier, mainDoeuvre,
 } from '../src/base.js';
-import { METIER_KEYS, BIOMES, BUILDINGS } from '../src/data.js';
+import { METIER_KEYS, BIOMES, BUILDINGS, POSTURES } from '../src/data.js';
 import { genererBanc, primeDe, tensionRecrutement, engager } from '../src/recrues.js';
 import {
   capturables, fairePrisonniers, prisonniersDe, capaciteGarde, disposer,
@@ -1881,6 +1884,109 @@ ok(etatDuBut(dip.world, abolition, juge) === 'atteint',
 
 verifierCoherence(moral, 'après une guerre de conscience');
 
+section('9 nonies septies octies. Un combat qu’on mène plutôt qu’on subit');
+// L'état des lieux avant : dix-huit tours de moyenne sur vingt-quatre possibles,
+// 88 % des affrontements finissant par une fuite, et zéro mort des deux côtés —
+// jamais, dans aucun combat, depuis le début du projet.
+function bagarre(opts) {
+  const rng = new Rng(opts.graine);
+  const nous = [];
+  for (let i = 0; i < (opts.nous || 4); i++) {
+    const c = makeCharacter(rng, { archetype: opts.arme === 'smg' ? 'chasseur' : 'brute', niveau: 1 });
+    c.equip.arme = opts.arme || 'machette';
+    c.equip.armure = 'cuir';
+    nous.push(c);
+  }
+  const eux = genererBande(rng, 'bandits', opts.eux || 3, 1);
+  const r = resoudreCombat(nous, eux.membres, {
+    rng,
+    biome: opts.biome || 'steppe',
+    posture: POSTURES.neutre,
+    tactique: opts.tactique || 'ligne',
+    letalA: opts.letalA || 0,
+    letalB: opts.letalB === undefined ? 0.25 : opts.letalB,
+    cohA: 1,
+  });
+  return { r, nous, eux };
+}
+function lot(opts, n = 200) {
+  let tours = 0; let vic = 0; let perte = 0; let mortsA = 0; let koB = 0; let mortsB = 0;
+  for (let i = 0; i < n; i++) {
+    const { r } = bagarre({ ...opts, graine: 4000 + i });
+    tours += r.tours;
+    if (r.vainqueur === 'A') vic++;
+    perte += r.koA + r.mortsA;
+    mortsA += r.mortsA;
+    koB += r.koB;
+    mortsB += r.mortsB;
+  }
+  return { tours: tours / n, vic: vic / n, perte: perte / n, mortsA: mortsA / n, koB: koB / n, mortsB: mortsB / n };
+}
+
+const base = lot({});
+ok(base.tours < 10, 'un affrontement se décide en quelques échanges, pas en une demi-journée',
+  `${base.tours.toFixed(1)} tours`);
+ok(base.koB > 0.8, 'et il met vraiment des gens à terre', `${base.koB.toFixed(2)} par combat`);
+
+// La mort au combat existe — elle n'existait pas. `blesser` ne tue que quelqu'un
+// de déjà au sol, et l'on ne visait jamais le sol.
+const feroce = lot({ letalB: 0.55 }, 300);
+ok(feroce.mortsA > 0, 'on peut mourir au combat, ce qui n’avait jamais été le cas',
+  `${feroce.mortsA.toFixed(2)} mort(s) par combat contre l’Essaim`);
+const tiede = lot({ letalB: 0.05 }, 300);
+ok(feroce.mortsA > tiede.mortsA * 2,
+  'et la férocité d’une bande décide de ce qu’il advient de ceux qui tombent',
+  `${feroce.mortsA.toFixed(2)} vs ${tiede.mortsA.toFixed(2)}`);
+const clement = lot({ letalA: 0 }, 200);
+const impitoyable = lot({ letalA: 0.45 }, 200);
+ok(impitoyable.mortsB > clement.mortsB * 3,
+  'achever les hommes à terre est une décision, et elle se voit',
+  `${impitoyable.mortsB.toFixed(2)} vs ${clement.mortsB.toFixed(2)}`);
+
+// Une tactique est un pari, pas un bonus : chacune a sa situation.
+const tirOuvert = lot({ arme: 'smg', biome: 'steppe', tactique: 'feu' });
+const tirCassures = lot({ arme: 'smg', biome: 'canyons', tactique: 'feu' });
+ok(tirOuvert.koB > tirCassures.koB * 1.2,
+  'tenir à distance vaut en terrain découvert et pas dans les cassures',
+  `${tirOuvert.koB.toFixed(2)} vs ${tirCassures.koB.toFixed(2)}`);
+const tirSansFusils = lot({ arme: 'machette', biome: 'steppe', tactique: 'feu' });
+ok(tirSansFusils.koB < tirOuvert.koB * 0.7,
+  'et ne vaut rien du tout sans armes à feu — c’est ce qui manquait',
+  `${tirSansFusils.koB.toFixed(2)} vs ${tirOuvert.koB.toFixed(2)}`);
+
+const enveloppeNombre = lot({ nous: 6, eux: 3, tactique: 'encerclement' });
+const enveloppeSansNombre = lot({ nous: 3, eux: 3, tactique: 'encerclement' });
+const ligneNombre = lot({ nous: 6, eux: 3, tactique: 'ligne' });
+ok(enveloppeNombre.koB > ligneNombre.koB,
+  'envelopper paie quand on a le nombre',
+  `${enveloppeNombre.koB.toFixed(2)} vs ${ligneNombre.koB.toFixed(2)} en ligne`);
+ok(enveloppeSansNombre.koB < enveloppeNombre.koB,
+  'et se disperse pour rien quand on ne l’a pas');
+
+const charge = lot({ tactique: 'charge' });
+const ligne = lot({ tactique: 'ligne' });
+ok(charge.koB > ligne.koB && charge.perte > ligne.perte,
+  'charger met plus de monde à terre, chez eux comme chez nous',
+  `eux ${charge.koB.toFixed(2)} vs ${ligne.koB.toFixed(2)}, nous ${charge.perte.toFixed(2)} vs ${ligne.perte.toFixed(2)}`);
+
+// Harceler ne gagne rien et ne perd personne : c'est la tactique du faible, et
+// elle ne doit pas être la tactique du perdant.
+const harcele = lot({ nous: 2, eux: 5, biome: 'marais', tactique: 'harcelement' }, 200);
+const tientLaLigne = lot({ nous: 2, eux: 5, biome: 'marais', tactique: 'ligne' }, 200);
+ok(harcele.perte < tientLaLigne.perte * 0.3,
+  'harceler ramène les siens là où tenir la ligne les laisse sur place',
+  `${harcele.perte.toFixed(2)} vs ${tientLaLigne.perte.toFixed(2)}`);
+const { r: degage } = bagarre({ nous: 2, eux: 5, biome: 'marais', tactique: 'harcelement', graine: 77 });
+ok(degage.vainqueur !== 'B' || degage.fuite === 'degage',
+  'et se dégager n’est pas se faire battre', `${degage.vainqueur} / ${degage.fuite}`);
+
+// Le rendement d'une tactique se lit avant de la choisir.
+ok(apercuTactique('feu', 'steppe', 1, 1).v > apercuTactique('feu', 'marais', 1, 1).v,
+  'on peut dire au joueur qu’une tactique est mal choisie ici');
+ok(apercuTactique('encerclement', 'steppe', 2, 0.5).v
+  > apercuTactique('encerclement', 'steppe', 0.6, 0.5).v,
+  'et qu’elle dépend du nombre qu’on a en face');
+
 section('9 nonies sexies. Qui accepte de partir, et pour combien');
 const rec = nouvellePartie(9494, { maintenant: 0 });
 const colRec = rec.world.colonies.find((c) => !c.ruine);
@@ -2181,15 +2287,33 @@ b9n.pop = 12;
 b9n.stock.rations = 500;
 b9n.stock.carburant = 400;
 
-// La cantine nourrit mieux avec moins.
-const sansCantine = { ...b9n.stock };
+// La cantine nourrit mieux avec moins. Deux mondes identiques avancés du même
+// nombre d'heures, et non deux fenêtres consécutives du même monde : mesurée
+// ainsi, la comparaison attrapait tout ce que l'escouade avait fait entre-temps
+// — un combat de plus, deux blessés à soigner au camp, et le résultat basculait
+// pour une raison qui n'avait rien à voir avec la cantine.
+function consommationCamp(avecCantine) {
+  const t = nouvellePartie(8484, { maintenant: 0 });
+  const gt = groupeActif(t);
+  gt.regionId = t.world.regions.find((r) => !r.colonie).i;
+  Object.assign(gt.inventaire, { ferraille: 400, polymere: 200, composant: 30 });
+  fonderBase(t, () => {});
+  Object.assign(t.base.batiments, { generateur: 4, baraquement: 3, hydroponie: 2, entrepot: 4 });
+  t.base.pop = 12;
+  t.base.stock.rations = 500;
+  t.base.stock.carburant = 400;
+  if (avecCantine) {
+    t.base.batiments.cantine = 4;
+    t.base.postes.cuisinier = 8;
+  }
+  avancer(t, 200);
+  return 500 - t.base.stock.rations;
+}
+const consSans = consommationCamp(false);
+const consAvec = consommationCamp(true);
 avancer(s9n2, 200);
-const consSans = sansCantine.rations - b9n.stock.rations;
-b9n.stock.rations = 500;
 b9n.batiments.cantine = 4;
 b9n.postes.cuisinier = 8;
-avancer(s9n2, 200);
-const consAvec = 500 - b9n.stock.rations;
 ok(consAvec < consSans * 0.85, 'la cantine fait manger la même population pour moins',
   `${consSans.toFixed(1)} → ${consAvec.toFixed(1)} rations sur 200 h`);
 ok(placesMetier(b9n, 'cuisinier') === 8, 'quatre cantines ouvrent huit postes de cuisinier',

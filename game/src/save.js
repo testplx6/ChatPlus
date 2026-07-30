@@ -70,6 +70,9 @@ export function normaliser(state) {
   // reste de la carte redevient un souvenir à rafraîchir.
   if (!state.connaissance) state.connaissance = creerConnaissance(state.temps);
 
+  // Avant les tactiques, on subissait le combat sans rien en décider.
+  if (!p.tactique) p.tactique = 'ligne';
+  if (p.politique && p.politique.viserChefs === undefined) p.politique.viserChefs = false;
   if (!p.contrats) p.contrats = [];
   if (!p.primes) p.primes = {};
   // Avant, l'engagement appartenait au joueur : un seul pour toute la partie.

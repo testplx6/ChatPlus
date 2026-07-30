@@ -27,6 +27,7 @@ import {
   COUT_FONDATION, tailleEscouadeMax,
 } from './base.js';
 import { classement, enGuerre } from './factions.js';
+import { TACTIQUES, TACTIQUE_KEYS, apercuTactique } from './combat.js';
 import {
   donnerOrdre, ORDRES, rendementPrevu, COMPETENCES_EXERCICE, PAR_LA_PRATIQUE,
 } from './squad.js';
@@ -1250,6 +1251,41 @@ function blocMemorial() {
 }
 
 /**
+ * Comment on se bat. Une tactique n'est pas un bonus : c'est un pari sur le
+ * terrain qu'on a sous les pieds, le nombre qu'on a en face et les armes qu'on
+ * porte. On l'annonce donc avec son rendement *ici* — c'est la seule façon d'en
+ * faire une décision plutôt qu'une case à cocher au hasard.
+ */
+function blocTactique() {
+  const g = G();
+  const vivants = vivantsDe(g).length || 1;
+  const armes = (g.membres || []).filter(
+    (c) => estVivant(c) && c.equip.arme && ITEMS[c.equip.arme]
+      && ITEMS[c.equip.arme].comp === 'tir').length;
+  const biome = S.world.regions[g.regionId].biome;
+  const choisie = S.player.tactique || 'ligne';
+  return `<section class="panneau">
+    <h2 class="titre">Tactique <span class="droite">${e(BIOMES[biome].nom)}</span></h2>
+    <div class="pile">
+      ${TACTIQUE_KEYS.map((k) => {
+    const t = TACTIQUES[k];
+    // On suppose un adversaire de taille comparable : c'est ce qu'on croise le
+    // plus souvent, et l'on ne sait pas à l'avance sur qui l'on tombera.
+    const a = apercuTactique(k, biome, 1, armes / vivants);
+    return `<button class="act mini" style="text-align:left" data-a="tactique" data-k="${k}"
+        aria-pressed="${choisie === k}">
+        [${choisie === k ? '×' : ' '}] ${e(t.nom)}
+        <span class="puce ${a.cls}" style="float:right">${e(a.mot)}</span>
+        <br><span class="aide">${e(t.desc)}</span></button>`;
+  }).join('')}
+    </div>
+    <div class="aide" style="margin-top:6px">${e(TACTIQUES[choisie].quand)}
+      Le jugement porte sur le terrain d’ici, vos armes, et un adversaire de
+      taille comparable.</div>
+  </section>`;
+}
+
+/**
  * Les prisonniers. C'est le seul écran du jeu où l'on décide de ce qu'on est :
  * les cinq issues rapportent des choses différentes et se paient auprès de
  * gens différents, et aucune n'est neutre.
@@ -1334,6 +1370,8 @@ function ecranEscouade() {
     <div class="aide" style="margin-top:6px">${e(POSTURES[p.posture].desc)}</div>
   </section>
 
+  ${blocTactique()}
+
   <section class="panneau">
     <h2 class="titre">Consignes permanentes</h2>
     <div class="pile">
@@ -1342,6 +1380,7 @@ function ecranEscouade() {
     ['commercer', 'Traiter avec les caravanes'],
     ['payerPeage', 'Payer les péages plutôt que se battre'],
     ['achever', 'Achever les ennemis à terre'],
+    ['viserChefs', 'Viser les plus dangereux d’abord'],
   ].map(([k, l]) => `<button class="act mini" style="text-align:left" data-a="politique" data-k="${k}"
         aria-pressed="${!!pol[k]}">[${pol[k] ? '×' : ' '}] ${e(l)}</button>`).join('')}
     </div>
@@ -3057,6 +3096,11 @@ function surClic(ev) {
         ? (r.prix ? `C’est réglé. ${r.prix} cr.` : 'C’est réglé.')
         : r.motif, !r.ok);
       rafraichir(true);
+      break;
+    }
+
+    case 'tactique': {
+      ACTIONS.tactique(el.dataset.k);
       break;
     }
 

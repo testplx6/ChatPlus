@@ -159,9 +159,15 @@ export function combatContre(state, bande, log, ctx, groupe) {
     posture,
     bonusDegats: (state.base.recherche.balistique || 0) * 0.1,
     bonusArmure: (state.base.recherche.blindage || 0) * 0.1,
-    letalA: state.player.politique.achever ? 0.5 : 0.06,
+    // On n'achève pas les hommes à terre sans l'avoir décidé. À 0,06 « par
+    // défaut », l'escouade assassinait des blessés que personne ne lui avait
+    // demandé de tuer — et se privait des prisonniers qui vont avec.
+    letalA: state.player.politique.achever ? 0.45 : 0,
     cohA: rendementCohesion(g),
     letalB: bande.letal,
+    // Comment on se bat : décidé à l'avance, valable aussi en votre absence.
+    tactique: state.player.tactique || 'ligne',
+    viserChefs: !!state.player.politique.viserChefs,
   });
 
   const lieu = nomRegion(state.world, g.regionId);
@@ -201,6 +207,9 @@ export function combatContre(state, bande, log, ctx, groupe) {
       + `${pris.length ? `, ${pris.length} prisonnier${pris.length > 1 ? 's' : ''}` : ''}.`;
   } else if (res.vainqueur === 'B') {
     texte = perdreCombat(state, bande, log, ctx, lieu, g);
+  } else if (res.fuite === 'degage') {
+    texte = `${g.nom} décroche de ${bande.nom} à ${lieu} sans laisser personne. `
+      + `On n’a rien pris, on n’a rien perdu.`;
   } else {
     texte = `Accrochage indécis avec ${bande.nom} à ${lieu}. Chacun décroche.`;
   }

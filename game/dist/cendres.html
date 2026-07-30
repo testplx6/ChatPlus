@@ -2821,10 +2821,15 @@ function blesser(c, montant, membre, rng, opts = {}) {
       ko = true;
     }
   }
-  // Un torse ou une tête très amochés font tomber
+  // On s'écroule bien avant d'être détruit : un bras cassé, le souffle coupé,
+  // et l'on ne tient plus debout. Le seuil était à 32 % des points de vie, ce
+  // qui voulait dire encaisser les deux tiers de son corps avant de tomber —
+  // d'où des combats de dix-huit tours où personne n'allait au sol. On tombe
+  // désormais autour de 40 à 50 % de dégâts, et d'autant plus vite qu'on est
+  // amoché : le combat se décide en cinq ou six échanges, comme un vrai.
   if (!mort && c.etat === 'ok') {
     const t = pvTotal(c);
-    if (t.pct < 0.32 && rng.chance(0.5)) ko = true;
+    if (t.pct < 0.6 && rng.chance((0.6 - t.pct) / 0.6 * 0.55)) ko = true;
   }
   if (mort) {
     c.etat = 'mort';
@@ -5708,8 +5713,116 @@ function genererBande(rng, factionKey, taille, niveauMonde = 0) {
 }
 
 // ---------------------------------------------------------------------------
+// Tactiques
+// ---------------------------------------------------------------------------
+
+/**
+ * Comment on se bat, décidé à l'avance et valable aussi en votre absence.
+ *
+ * Le combat était un dé qu'on subissait, et la mesure était accablante : dix-huit
+ * tours de moyenne sur un maximum de vingt-quatre, quatre-vingt-huit pour cent
+ * des affrontements finissant par une fuite, un virgule cinq ennemi à terre sur
+ * trois — et **zéro mort, jamais, des deux côtés**. La dernière ligne n'était pas
+ * un équilibrage prudent mais un bug de structure : `blesser` n'autorise la mort
+ * que sur quelqu'un de déjà à terre, et l'on ne visait jamais quelqu'un à terre.
+ * Le paramètre de létalité de chaque faction ne servait donc à rien.
+ *
+ * Une tactique n'est pas un bonus : c'est un pari. Chacune est excellente dans
+ * une situation et mauvaise ailleurs, et la situation — le terrain, le rapport
+ * de nombre, les armes qu'on porte — change à chaque rencontre. C'est ce qui
+ * transforme « on subit » en « on décide », sans rien demander au joueur pendant
+ * le combat lui-même : il a décidé avant, comme un vrai chef d'escouade.
+ */
+const TACTIQUES = {
+  ligne: {
+    nom: 'Tenir la ligne',
+    desc: 'Rester groupés, couvrir ses angles. On encaisse mieux, on frappe moins.',
+    quand: 'Quand on est en infériorité, ou qu’on a des blessés à protéger.',
+    attaque: 0.82, defense: 1.45, initiative: 1, moral: 1.4,
+    terrains: {}, nombre: 0, acharnement: 0.5, rompre: 1,
+  },
+  charge: {
+    nom: 'Charger',
+    desc: 'Fondre dessus avant qu’ils s’organisent. Le premier échange décide.',
+    quand: 'Quand on est plus forts, et en terrain ouvert.',
+    attaque: 1.28, defense: 0.6, initiative: 1.7, moral: 0.9,
+    terrains: { steppe: 1.15, dalles: 1.1, desert: 1.05, marais: 0.75, canyons: 0.8, plastique: 0.8 },
+    nombre: 0.15, acharnement: 1.4, rompre: 0.7,
+  },
+  feu: {
+    nom: 'Tenir à distance',
+    desc: 'Les arrêter avant qu’ils arrivent. Décisif en terrain découvert, inutile dans les cassures.',
+    quand: 'Quand on a des armes à feu et de l’espace devant soi.',
+    attaque: 1, defense: 1.1, initiative: 1.5, moral: 1,
+    terrains: { steppe: 1.3, desert: 1.25, dalles: 1.1, plastique: 0.85, marais: 0.6, canyons: 0.65, friche: 0.9 },
+    nombre: 0, tir: 1.6, acharnement: 0.8, rompre: 1.1,
+  },
+  encerclement: {
+    nom: 'Envelopper',
+    desc: 'Les prendre de trois côtés. Ne vaut que si l’on est plus nombreux.',
+    quand: 'Quand on a le nombre pour soi. Sinon on se disperse pour rien.',
+    attaque: 1.12, defense: 0.92, initiative: 1, moral: 1.1,
+    terrains: { steppe: 1.1, dalles: 1.05, canyons: 0.75, marais: 0.85 },
+    nombre: 0.6, acharnement: 1.1, rompre: 1.4,
+  },
+  harcelement: {
+    nom: 'Harceler',
+    desc: 'Frapper et se replier, sans jamais s’engager. On ne gagne pas, on survit.',
+    quand: 'Quand on ne peut pas gagner, et qu’on veut partir avec le sac plein.',
+    attaque: 0.6, defense: 1.5, initiative: 1, moral: 1.2,
+    terrains: { marais: 1.3, canyons: 1.25, friche: 1.2, plastique: 1.15, steppe: 0.8, desert: 0.75 },
+    nombre: -0.1, furtif: 1, acharnement: 0.25, rompre: 2.4,
+  },
+};
+
+const TACTIQUE_KEYS = Object.keys(TACTIQUES);
+
+/**
+ * Ce que la tactique vaut ici, contre ceux-là. Un pari, pas un bonus.
+ *
+ * `partTir` est la part de l'escouade qui porte une arme à feu : tenir à
+ * distance avec des machettes n'est pas tenir à distance. Sans ce facteur, la
+ * tactique de tir était la meilleure du jeu même en mêlée pure, parce que son
+ * bonus de terrain s'appliquait à tout le monde.
+ */
+function rendementTactique(key, biome, ratioNombre, partTir = 0.5) {
+  const t = TACTIQUES[key] || TACTIQUES.ligne;
+  const terrain = (t.terrains && t.terrains[biome]) || 1;
+  // Le nombre : au-delà de un pour un, l'enveloppement paie ; en dessous, il
+  // coûte. Les autres tactiques y sont presque indifférentes.
+  const nombre = 1 + (ratioNombre - 1) * (t.nombre || 0);
+  // Une tactique qui suppose des armes qu'on n'a pas ne vaut rien.
+  const armement = t.tir ? 0.55 + partTir * 0.75 : 1;
+  return Math.max(0.35, terrain * nombre * armement);
+}
+
+/** Ce qu'on peut dire d'une tactique avant de la choisir, ici et maintenant. */
+function apercuTactique(key, biome, ratioNombre, partTir = 0.5) {
+  const v = rendementTactique(key, biome, ratioNombre, partTir);
+  if (v >= 1.15) return { v, mot: 'bien vu ici', cls: 'ok' };
+  if (v >= 0.95) return { v, mot: 'convenable', cls: 'att' };
+  return { v, mot: 'mauvais choix ici', cls: 'mal' };
+}
+
+// ---------------------------------------------------------------------------
 // Combat
 // ---------------------------------------------------------------------------
+
+/**
+ * Ce que pèse un coup, en face de ce que pèse un corps.
+ *
+ * C'est le chiffre qui manquait. Une machette rend une dizaine de points nets,
+ * un corps en compte deux cent quarante-sept : il fallait vingt-sept coups au
+ * but pour abattre quelqu'un, soit un affrontement de dix-huit tours où
+ * personne ne tombait jamais. Toute la platitude du combat tenait là — pas dans
+ * les règles, dans l'échelle. On mord deux fois plus fort, et un échange
+ * commence à vouloir dire quelque chose.
+ *
+ * Les armes gardent leurs valeurs : elles servent aussi à évaluer un butin et à
+ * fixer un prix, et les rééchelonner une à une aurait déplacé toute l'économie
+ * pour une raison qui ne la concerne pas.
+ */
+const MORDANT = 2.3;
 
 function armeDe(c) {
   return (c.equip.arme && ITEMS[c.equip.arme]) || { degats: 4, pen: 0, portee: 'melee', comp: 'melee' };
@@ -5740,16 +5853,23 @@ function forceCamp(camp) {
   return f;
 }
 
+/** Ceux qui sont à terre mais encore en vie : on peut les achever. */
+function aTerre(camp) {
+  return camp.filter((c) => estVivant(c) && !estDebout(c));
+}
+
 /**
  * Résout un affrontement entre deux camps de personnages.
  *
  * ctx : {
  *   rng, biome, posture, bonusDegats, bonusArmure,
- *   letalA, letalB   (probabilité d'achever un K.O. adverse)
- *   cohA             (rendement de cohésion du camp A, défaut 1)
+ *   tactique          clé de TACTIQUES pour le camp A
+ *   letalA, letalB    disposition de chaque camp à achever un homme à terre
+ *   cohA              rendement de cohésion du camp A, défaut 1
+ *   viserChefs        le camp A vise le plus dangereux plutôt que le plus faible
  * }
  *
- * Retourne { vainqueur:'A'|'B'|'nul', tours, journal:[], morts:[], koA, koB, fuite }
+ * Retourne { vainqueur, tours, journal, koA, koB, mortsA, mortsB, deroute }
  */
 function resoudreCombat(campA, campB, ctx) {
   const rng = ctx.rng;
@@ -5758,9 +5878,19 @@ function resoudreCombat(campA, campB, ctx) {
   const biome = BIOMES[ctx.biome];
   const couvert = biome ? (biome.cout > 5 ? 0.12 : 0.04) : 0.06;
 
+  const tac = TACTIQUES[ctx.tactique] || TACTIQUES.ligne;
+  const nA = ciblesValides(campA).length || 1;
+  const nB = ciblesValides(campB).length || 1;
+  const armes = ciblesValides(campA).filter((c) => armeDe(c).comp === 'tir').length;
+  const rendu = rendementTactique(ctx.tactique, ctx.biome, nA / nB, armes / nA);
+
   let tours = 0;
   let fuite = null;
-  const maxTours = 24;
+  // Douze tours au lieu de vingt-quatre. La mesure disait dix-huit tours de
+  // moyenne : un affrontement qui dure une demi-journée n'est pas un combat,
+  // c'est une usure, et le joueur n'y lit rien. On raccourcit et on rend chaque
+  // échange plus lourd.
+  const maxTours = 12;
 
   const f0A = forceCamp(campA);
   const f0B = forceCamp(campB);
@@ -5771,11 +5901,31 @@ function resoudreCombat(campA, campB, ctx) {
     const vivB = ciblesValides(campB);
     if (!vivA.length || !vivB.length) break;
 
-    // Repli : le camp du joueur décroche s'il prend trop cher
+    // Rompre le combat. Ce n'était qu'un dé sur le rapport de force ; c'est
+    // maintenant une affaire de moral, que la tactique tient ou non. Tenir la
+    // ligne fait rester des gens qui auraient fui, harceler fait décrocher au
+    // premier accroc — et c'est précisément ce qu'on leur demande.
     const ratioA = forceCamp(campA) / Math.max(1, f0A);
     const ratioB = forceCamp(campB) / Math.max(1, f0B);
-    if (tours > 2 && ratioA < 0.45 && rng.chance(posture.fuite)) { fuite = 'A'; break; }
-    if (tours > 2 && ratioB < 0.4 && rng.chance(0.35)) { fuite = 'B'; break; }
+    const tenueA = tac.moral * (ctx.cohA || 1);
+    if (tours > 1 && ratioA < 0.5 * tac.rompre
+        && rng.chance(posture.fuite * tac.rompre / tenueA)) {
+      // Décrocher en bon ordre ou se faire disperser : la différence tient à la
+      // tactique et à ce qui tient encore debout. Harceler, c'est se dégager
+      // sans laisser personne — et ce n'est pas une défaite, c'est le but de la
+      // manœuvre. Sans cette distinction, la tactique du faible était
+      // simplement la tactique du perdant : zéro victoire et le sac pillé.
+      const ordonne = tac.rompre > 2
+        && ciblesValides(campA).length >= Math.ceil(campA.length / 2);
+      fuite = ordonne ? 'degage' : 'A';
+      break;
+    }
+    // Eux aussi ont un moral, et il casse d'autant plus vite qu'ils voient
+    // tomber les leurs. Une bande à moitié à terre ne reste pas.
+    const debout = vivB.length;
+    const total = campB.length || 1;
+    const casse = 0.16 + (1 - debout / total) * 0.5 + (1 - ratioB) * 0.35;
+    if (tours > 1 && ratioB < 0.62 && rng.chance(casse)) { fuite = 'B'; break; }
 
     const ordre = rng.shuffle(
       vivA.map((c) => ({ c, camp: 'A' })).concat(vivB.map((c) => ({ c, camp: 'B' })))
@@ -5784,7 +5934,33 @@ function resoudreCombat(campA, campB, ctx) {
     for (const acteur of ordre) {
       const c = acteur.c;
       if (!estDebout(c)) continue;
-      const adverses = ciblesValides(acteur.camp === 'A' ? campB : campA);
+      const nous = acteur.camp === 'A';
+      const campAdverse = nous ? campB : campA;
+      const adverses = ciblesValides(campAdverse);
+
+      // Achever un homme à terre. C'était impossible — `blesser` ne tue que
+      // quelqu'un de déjà au sol, et l'on ne visait jamais le sol : la létalité
+      // de chaque faction ne servait donc strictement à rien, et personne n'est
+      // jamais mort au combat de toute l'histoire du projet. C'est ici que la
+      // consigne « achever les ennemis à terre » devient une vraie décision, et
+      // ici que l'Essaim devient ce qu'il prétend être.
+      // La disposition d'une faction est une inclinaison, pas une cadence :
+      // testée à chaque tour et pour chaque combattant, elle vaut bien plus que
+      // sa valeur nominale. Un cinquième, et un homme à terre dans un combat
+      // qu'on gagne s'en sort presque toujours ; dans un combat qu'on perd,
+      // presque jamais. C'est ce qui rend une défaite grave sans rendre chaque
+      // égratignure mortelle.
+      const disposition = (nous ? (ctx.letalA || 0) : (ctx.letalB || 0)) * 0.2
+        * (nous ? tac.acharnement : 1);
+      const sol = aTerre(campAdverse);
+      if (sol.length && rng.chance(disposition * (adverses.length ? 0.5 : 1))) {
+        const victime = rng.pick(sol);
+        victime.etat = 'mort';
+        c.kills++;
+        c.horsCombat = (c.horsCombat || 0) + 1;
+        journal.push({ t: 'mort', txt: `${c.nom} achève ${victime.nom} au sol.` });
+        continue;
+      }
       if (!adverses.length) break;
 
       const arme = armeDe(c);
@@ -5796,12 +5972,27 @@ function resoudreCombat(campA, campB, ctx) {
         const cibles2 = ciblesValides(acteur.camp === 'A' ? campB : campA);
         if (!cibles2.length) break;
         // On vise de préférence le plus amoché : la simulation est cruelle.
-        const cible = rng.chance(0.55)
-          ? cibles2.reduce((a, b) => (pvTotal(a).pct <= pvTotal(b).pct ? a : b))
-          : rng.pick(cibles2);
+        // Sauf consigne contraire — viser les chefs coûte cher et casse leur
+        // moral plus vite, parce qu'une bande qui perd son plus dangereux ne
+        // reste pas longtemps.
+        const chefs = nous && ctx.viserChefs;
+        const cible = chefs
+          ? cibles2.reduce((a, b) => (forceCamp([a]) >= forceCamp([b]) ? a : b))
+          : rng.chance(0.55)
+            ? cibles2.reduce((a, b) => (pvTotal(a).pct <= pvTotal(b).pct ? a : b))
+            : rng.pick(cibles2);
 
-        const att = scoreAttaque(c, arme, acteur.camp === 'A' ? bonusD * 20 : 0);
-        const def = scoreDefense(cible) * (1 + couvert);
+        // La tactique porte sur l'attaque et la défense, et le premier échange
+        // pèse ce que la tactique en fait : une charge décide au contact, un
+        // tir décide avant, une ligne ne décide rien et c'est son propos.
+        const mult = nous ? tac.attaque * rendu : 1;
+        const elan = nous && tours === 1 ? tac.initiative : 1;
+        const garde = nous ? 1 : tac.defense * (0.55 + 0.45 * rendu);
+        // Une tactique de tir ne vaut que pour ceux qui ont de quoi tirer.
+        const arme2 = nous && tac.tir && arme.comp === 'tir' ? tac.tir : 1;
+        const att = scoreAttaque(c, arme, nous ? bonusD * 20 : 0) * mult * elan * arme2;
+        const def = scoreDefense(cible) * (1 + couvert) * garde
+          * (nous ? 1 : (tac.furtif ? 1.15 : 1));
         const p = Math.max(0.08, Math.min(0.94, 0.5 + (att - def) / (att + def + 30)));
         if (!rng.chance(p)) {
           if (rng.chance(0.25)) {
@@ -5811,26 +6002,44 @@ function resoudreCombat(campA, campB, ctx) {
         }
 
         const membre = tirerMembre(rng);
-        const arm = armureTotale(cible, acteur.camp === 'B' ? bonusArm : 0);
-        const brut = arme.degats
+        const arm = armureTotale(cible, nous ? 0 : bonusArm);
+        // Le rendement de la tactique — le terrain, le rapport de nombre —
+        // porte aussi sur ce qu'un coup fait. Réservé à la chance de toucher,
+        // il ne servait à rien : à quatre contre trois on touche déjà presque à
+        // coup sûr, la probabilité est plafonnée à 0,94, et envelopper à deux
+        // contre un ne changeait donc strictement rien. C'est là que la
+        // situation doit payer, ou coûter.
+        const brut = arme.degats * MORDANT
+          * (nous ? Math.pow(rendu, 0.9) : 1)
+          * (nous && tours === 1 ? tac.initiative * 0.7 + 0.3 : 1)
           * rng.range(0.75, 1.3)
           * (1 + comp(c, 'force') / 260)
-          * (acteur.camp === 'A' ? posture.degats * (1 + bonusD) : 1);
+          * (nous ? posture.degats * (1 + bonusD) : 1);
         // L'armure réduit fortement mais ne rend jamais invulnérable : sinon un
         // groupe blindé devient impossible à entamer avec de l'équipement de départ.
+        // Une formation serrée n'esquive pas seulement : elle encaisse de biais,
+        // pare, et prend les coups sur l'épaule. Sans ça, la garde ne jouait que
+        // sur la fréquence des touches et charger dominait partout — cent pour
+        // cent de victoires dans tous les cas de figure mesurés, y compris ceux
+        // où la tactique était censée être un mauvais choix.
         const absorbe = arm * (1 - arme.pen) * 0.6;
         // Une bande qui se connaît couvre ses angles ; une foule se gêne. La
         // cohésion ne joue que pour le joueur : une bande de pillards n'a pas
         // d'histoire commune à faire valoir.
-        const coh = acteur.camp === 'A' ? (ctx.cohA || 1) : 1;
-        const net = Math.max(1.5, (brut * coh) - absorbe * rng.range(0.5, 1.0));
+        const coh = nous ? (ctx.cohA || 1) : 1;
+        // La garde joue deux fois, comme l'attaque : sur la fréquence des
+        // touches, et sur ce qu'un coup laisse passer. Trois fois — en ajoutant
+        // l'armure — et tenir la ligne dominait à son tour. Une tactique doit
+        // avoir un revers, pas seulement un avers.
+        const encaisse = nous ? 1 : 1 + (tac.defense - 1) * 0.55;
+        const net = Math.max(1.5, (brut * coh) / encaisse - absorbe * rng.range(0.5, 1.0));
 
         // La létalité tient à qui frappe *et* à qui encaisse. Un corps aguerri
         // encaisse un coup qui aurait tué un bleu — c'est le seul endroit du
         // jeu où survivre longtemps finit par payer.
-        const base = acteur.camp === 'A' ? (ctx.letalA || 0.08) : (ctx.letalB || 0.2);
-        const letal = base * resistanceLetale(cible);
-        const res = blesser(cible, net, membre, rng, { letal: rng.chance(letal) });
+        // Un coup porté ne tue pas quelqu'un qui tient debout : il le met à
+        // terre. Mourir se décide au sol, plus haut.
+        const res = blesser(cible, net, membre, rng, { letal: false });
 
         // Se battre forme vite : c'est cher payé, mais ça forme.
         gagnerXp(c, arme.comp === 'tir' ? 'tir' : 'melee', XP_PRATIQUE * 1.2 + net * 0.4);
@@ -5859,7 +6068,8 @@ function resoudreCombat(campA, campB, ctx) {
   const deboutA = ciblesValides(campA).length;
   const deboutB = ciblesValides(campB).length;
   let vainqueur = 'nul';
-  if (fuite === 'A') vainqueur = 'B';
+  if (fuite === 'degage') vainqueur = 'nul';
+  else if (fuite === 'A') vainqueur = 'B';
   else if (fuite === 'B') vainqueur = 'A';
   else if (deboutA && !deboutB) vainqueur = 'A';
   else if (deboutB && !deboutA) vainqueur = 'B';
@@ -5868,6 +6078,11 @@ function resoudreCombat(campA, campB, ctx) {
     vainqueur,
     tours,
     fuite,
+    // Qui a rompu, et donc laissé des gens sur le terrain. C'est de là que
+    // viennent les prisonniers.
+    deroute: fuite,
+    tactique: ctx.tactique || 'ligne',
+    rendu,
     journal,
     koA: campA.filter((c) => c.etat === 'ko').length,
     koB: campB.filter((c) => c.etat === 'ko').length,
@@ -10370,9 +10585,15 @@ function combatContre(state, bande, log, ctx, groupe) {
     posture,
     bonusDegats: (state.base.recherche.balistique || 0) * 0.1,
     bonusArmure: (state.base.recherche.blindage || 0) * 0.1,
-    letalA: state.player.politique.achever ? 0.5 : 0.06,
+    // On n'achève pas les hommes à terre sans l'avoir décidé. À 0,06 « par
+    // défaut », l'escouade assassinait des blessés que personne ne lui avait
+    // demandé de tuer — et se privait des prisonniers qui vont avec.
+    letalA: state.player.politique.achever ? 0.45 : 0,
     cohA: rendementCohesion(g),
     letalB: bande.letal,
+    // Comment on se bat : décidé à l'avance, valable aussi en votre absence.
+    tactique: state.player.tactique || 'ligne',
+    viserChefs: !!state.player.politique.viserChefs,
   });
 
   const lieu = nomRegion(state.world, g.regionId);
@@ -10412,6 +10633,9 @@ function combatContre(state, bande, log, ctx, groupe) {
       + `${pris.length ? `, ${pris.length} prisonnier${pris.length > 1 ? 's' : ''}` : ''}.`;
   } else if (res.vainqueur === 'B') {
     texte = perdreCombat(state, bande, log, ctx, lieu, g);
+  } else if (res.fuite === 'degage') {
+    texte = `${g.nom} décroche de ${bande.nom} à ${lieu} sans laisser personne. `
+      + `On n’a rien pris, on n’a rien perdu.`;
   } else {
     texte = `Accrochage indécis avec ${bande.nom} à ${lieu}. Chacun décroche.`;
   }
@@ -11754,6 +11978,9 @@ function normaliser(state) {
   // reste de la carte redevient un souvenir à rafraîchir.
   if (!state.connaissance) state.connaissance = creerConnaissance(state.temps);
 
+  // Avant les tactiques, on subissait le combat sans rien en décider.
+  if (!p.tactique) p.tactique = 'ligne';
+  if (p.politique && p.politique.viserChefs === undefined) p.politique.viserChefs = false;
   if (!p.contrats) p.contrats = [];
   if (!p.primes) p.primes = {};
   // Avant, l'engagement appartenait au joueur : un seul pour toute la partie.
@@ -12010,11 +12237,16 @@ function nouvellePartie(seed, opts = {}) {
       groupeActif: premier.id,
       reputation,
       posture: 'neutre',
+      // Comment on se bat quand ça tombe dessus. Voir TACTIQUES dans combat.js :
+      // une tactique n'est pas un bonus, c'est un pari sur le terrain, le
+      // nombre et les armes qu'on porte.
+      tactique: 'ligne',
       politique: {
         recruter: true,
         commercer: true,
         payerPeage: true,
         achever: false,
+        viserChefs: false,
       },
       contrats: [],
       primes: {},
@@ -13567,6 +13799,41 @@ function blocMemorial() {
 }
 
 /**
+ * Comment on se bat. Une tactique n'est pas un bonus : c'est un pari sur le
+ * terrain qu'on a sous les pieds, le nombre qu'on a en face et les armes qu'on
+ * porte. On l'annonce donc avec son rendement *ici* — c'est la seule façon d'en
+ * faire une décision plutôt qu'une case à cocher au hasard.
+ */
+function blocTactique() {
+  const g = G();
+  const vivants = vivantsDe(g).length || 1;
+  const armes = (g.membres || []).filter(
+    (c) => estVivant(c) && c.equip.arme && ITEMS[c.equip.arme]
+      && ITEMS[c.equip.arme].comp === 'tir').length;
+  const biome = S.world.regions[g.regionId].biome;
+  const choisie = S.player.tactique || 'ligne';
+  return `<section class="panneau">
+    <h2 class="titre">Tactique <span class="droite">${e(BIOMES[biome].nom)}</span></h2>
+    <div class="pile">
+      ${TACTIQUE_KEYS.map((k) => {
+    const t = TACTIQUES[k];
+    // On suppose un adversaire de taille comparable : c'est ce qu'on croise le
+    // plus souvent, et l'on ne sait pas à l'avance sur qui l'on tombera.
+    const a = apercuTactique(k, biome, 1, armes / vivants);
+    return `<button class="act mini" style="text-align:left" data-a="tactique" data-k="${k}"
+        aria-pressed="${choisie === k}">
+        [${choisie === k ? '×' : ' '}] ${e(t.nom)}
+        <span class="puce ${a.cls}" style="float:right">${e(a.mot)}</span>
+        <br><span class="aide">${e(t.desc)}</span></button>`;
+  }).join('')}
+    </div>
+    <div class="aide" style="margin-top:6px">${e(TACTIQUES[choisie].quand)}
+      Le jugement porte sur le terrain d’ici, vos armes, et un adversaire de
+      taille comparable.</div>
+  </section>`;
+}
+
+/**
  * Les prisonniers. C'est le seul écran du jeu où l'on décide de ce qu'on est :
  * les cinq issues rapportent des choses différentes et se paient auprès de
  * gens différents, et aucune n'est neutre.
@@ -13651,6 +13918,8 @@ function ecranEscouade() {
     <div class="aide" style="margin-top:6px">${e(POSTURES[p.posture].desc)}</div>
   </section>
 
+  ${blocTactique()}
+
   <section class="panneau">
     <h2 class="titre">Consignes permanentes</h2>
     <div class="pile">
@@ -13659,6 +13928,7 @@ function ecranEscouade() {
     ['commercer', 'Traiter avec les caravanes'],
     ['payerPeage', 'Payer les péages plutôt que se battre'],
     ['achever', 'Achever les ennemis à terre'],
+    ['viserChefs', 'Viser les plus dangereux d’abord'],
   ].map(([k, l]) => `<button class="act mini" style="text-align:left" data-a="politique" data-k="${k}"
         aria-pressed="${!!pol[k]}">[${pol[k] ? '×' : ' '}] ${e(l)}</button>`).join('')}
     </div>
@@ -15377,6 +15647,11 @@ function surClic(ev) {
       break;
     }
 
+    case 'tactique': {
+      ACTIONS.tactique(el.dataset.k);
+      break;
+    }
+
     case 'intendance': {
       const r = ACTIONS.toucherRations();
       toast(r.ok ? `${r.quantite} rations touchées.` : r.motif, !r.ok);
@@ -15626,6 +15901,15 @@ const API = {
     const r = disposer(state, groupeActif(state), captifId, quoi, creerLogger(state));
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
+  },
+
+  /** Comment on se bat. Vaut aussi pendant votre absence. */
+  tactique(key) {
+    if (!TACTIQUES[key]) return { ok: false, motif: 'Tactique inconnue.' };
+    state.player.tactique = key;
+    sauver();
+    rafraichir(true);
+    return { ok: true };
   },
 
   /** Toucher ses rations à l'intendance de la ville où l'on se trouve. */

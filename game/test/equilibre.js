@@ -62,6 +62,7 @@ import {
   prisonniersDe, disposer, optionsPour, surveillanceManquante,
 } from '../src/justice.js';
 import { loisDe, IMPOTS } from '../src/lois.js';
+import { TACTIQUE_KEYS, rendementTactique } from '../src/combat.js';
 import {
   peutExercer, colonnesDe, envoyerColonne, leverColonne, coutLevee,
   fonderPoste, sitesFondation, COUT_POSTE, cibleGuerre, declarerGuerreA,
@@ -88,6 +89,7 @@ const TRACE = {
   secteurs: 0, etatSecteur: 0, bilans: 0,
   revoltes: 0, matees: 0, libres: 0, renverses: 0, grogne: 0,
   disposes: 0, relaches: 0, gagneCaptifs: 0, captures: 0,
+  mortsCombat: 0, koSubis: 0,
   // Ce que les conseils votent quand personne ne les tient.
   impots: {}, peines: {}, esclavagistes: 0, factionsVues: 0,
   rangs: [0, 0, 0, 0, 0],
@@ -552,8 +554,37 @@ function villeAPrendre(state, faction) {
   return best;
 }
 
+/**
+ * Comment le bot se bat. Un joueur qui a compris regarde trois choses avant de
+ * décider : ce qu'il a sous les pieds, ce qu'il porte, et s'il peut gagner.
+ */
+function choisirTactique(state, g) {
+  const vivants = g.membres.filter(estVivant);
+  if (!vivants.length) return;
+  const biome = state.world.regions[g.regionId].biome;
+  const armes = vivants.filter(
+    (c) => c.equip.arme && ITEMS[c.equip.arme] && ITEMS[c.equip.arme].comp === 'tir').length;
+  const partTir = armes / vivants.length;
+  // Trop peu nombreux ou trop amochés : on ne cherche pas la victoire, on
+  // ramène les siens.
+  const amoches = vivants.filter((c) => pvTotal(c).pct < 0.6).length;
+  if (vivants.length <= 2 || amoches > vivants.length / 2) {
+    state.player.tactique = 'harcelement';
+    return;
+  }
+  let best = 'ligne';
+  let bestV = -1;
+  for (const k of TACTIQUE_KEYS) {
+    if (k === 'harcelement') continue;
+    const v = rendementTactique(k, biome, 1.3, partTir);
+    if (v > bestV) { bestV = v; best = k; }
+  }
+  state.player.tactique = best;
+}
+
 function jouerPrincipal(state, g, memo) {
   const p = state.player;
+  if (!SANS.has('tactique')) choisirTactique(state, g);
   if (!SANS.has('charge')) exercerCharge(state, g, memo);
   const cap = capacitePortage(state, g);
   const charge = poidsInventaire(g.inventaire) / Math.max(1, cap);
@@ -1102,6 +1133,12 @@ for (let n = 0; n < PARTIES; n++) {
     tick(state);
     const captifsApres = groupes(state).reduce((t, x) => t + prisonniersDe(x).length, 0);
     if (captifsApres > captifsAvant) TRACE.captures += captifsApres - captifsAvant;
+    for (const gg of groupes(state)) {
+      for (const c of gg.membres) {
+        if (c.etat === 'ko' && !c._koVu) { c._koVu = true; TRACE.koSubis++; }
+        if (c.etat !== 'ko' && c._koVu) c._koVu = false;
+      }
+    }
     if (state.stats.defaites > defAvant) {
       TRACE.defaites += state.stats.defaites - defAvant;
       TRACE.crPilles += Math.max(0, crAvant - state.player.credits);
@@ -1253,6 +1290,7 @@ console.log(`Secteurs tenus : ${TRACE.secteurs} — état moyen `
   + `${(TRACE.etatSecteur / Math.max(1, TRACE.secteurs)).toFixed(2)} `
   + `(0 = sûr, 1 = infréquentable) sur ${Math.round(TRACE.bilans / Math.max(1, TRACE.secteurs))} relevés`);
 console.log(`Échelle atteinte : ${RANGS.map((r, i) => `${r.nom} ${TRACE.rangs[i]}`).join(' · ')}`);
+console.log(`Combat : ${(TRACE.koSubis / PARTIES).toFixed(1)} des nôtres mis à terre par partie`);
 console.log(`Défaites : ${TRACE.defaites} pour ${TRACE.crPilles} cr pillés `
   + `(${TRACE.defaites ? Math.round(TRACE.crPilles / TRACE.defaites) : 0} cr par défaite)`);
 
