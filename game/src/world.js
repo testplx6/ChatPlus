@@ -99,6 +99,8 @@ function genererBiomes(rng) {
         controle: null,
         decouvert: false,
         fouille: 0, // épuisement local par la fouille répétée
+        // Ce que les routes sont devenues faute d'être tenues. Voir secteur.js.
+        insecurite: 0,
       });
     }
   }

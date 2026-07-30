@@ -16,6 +16,7 @@ import { donnerOrdre } from '../src/squad.js';
 import { serialiser } from '../src/save.js';
 import { groupeActif } from '../src/groupes.js';
 import { ecolesDe } from '../src/formation.js';
+import { confierSecteur } from '../src/secteur.js';
 
 const RACINE = resolve(new URL('..', import.meta.url).pathname);
 const CAPTURES = join(RACINE, 'captures');
@@ -488,6 +489,10 @@ if (!carriere.world.guerres.some((w) => w.a === villeCar.faction || w.b === vill
     but: null, initiateur: villeCar.faction,
   });
 }
+// Le secteur est normalement confié au premier tick qui suit la promotion ;
+// on l'inscrit dans la sauvegarde pour vérifier du même coup qu'il survit à
+// l'aller-retour JSON.
+confierSecteur(carriere, gCar, () => {});
 carriere.dernierReel = Date.now();
 await page.reload({ waitUntil: 'networkidle' });
 await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(carriere));
@@ -550,6 +555,19 @@ if (aOrdonne) {
     || apresOrdre.guerres > 0,
     'et le monde a bougé sur-le-champ, sans délibération');
 }
+
+// Le secteur : ce dont on répond tous les jours, affiché et dessiné.
+const secteurVu = await page.evaluate(() => {
+  const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  return {
+    secteur: s2.player.groupes[0].allegeance.secteur,
+    texte: document.querySelector('#ecran').textContent,
+  };
+});
+ok(!!secteurVu.secteur, 'un gradé se voit confier un secteur sans rien demander');
+ok(/VOTRE SECTEUR/i.test(secteurVu.texte), 'et l’écran le lui dit');
+ok(/Relevé dans/.test(secteurVu.texte),
+  'avec la date du prochain relevé : on sait de quoi on répond et quand');
 
 // L'engagement est bien sur la colonne, pas sur le joueur.
 const ouEstLEngagement = await page.evaluate(() => {

@@ -324,10 +324,55 @@ colonne sur les routes**, et quatre cent soixante-huit fois elle n'était en
 guerre avec personne. La charge de Lieutenant est vide neuf fois sur dix — elle
 ne s'exerce que si la faction fait la guerre, ce qu'elle décide sans lui.
 
-C'est un vrai trou de conception, et il n'est pas encore rebouché : un
-Lieutenant devrait avoir une responsabilité qu'il peut assumer tous les jours
-(tenir un secteur, escorter, garnir une ville), pas une qui attend que le monde
-veuille bien lui en donner l'occasion.
+C'est un vrai trou de conception, et il est rebouché à la section suivante.
+
+### Ce dont on répond tous les jours
+
+Une charge, ce n'est pas un droit qu'on exerce quand l'occasion se présente :
+c'est une chose dont on répond en permanence, qu'il se passe quelque chose ou
+non. **Passer Lieutenant vous vaut un secteur** — treize cases autour d'une
+ville des vôtres — et personne ne vous dit comment le tenir. On relève l'état
+des routes tous les dix jours, et on le note.
+
+L'insécurité n'est pas une statistique décorative : elle multiplie les mauvaises
+rencontres pour tout le monde, joueur compris. Patrouiller la fait tomber vite,
+travailler sur place à peine, être ailleurs pas du tout.
+
+Deux calibrages ont été **réfutés par le banc avant d'atteindre le joueur**, et
+c'est exactement à ça que sert l'instrument :
+
+**Une dérive sans plafond n'est pas une simulation, c'est un compte à rebours.**
+Premier essai : l'insécurité montait à taux constant partout. Au bout de six
+cents heures, tout ce qui n'était pas collé à une ville saturait à
+« infréquentable ». Les secteurs affichaient 0,79 de moyenne, les défaites
+passaient de 266 à 474, les avant-postes fondés de 35 à 28, et le carriériste
+perdait sa charge pour une faute qu'aucun effort ne pouvait éviter. Chaque case
+a désormais un **niveau de repos** — fonction de son éloignement de toute ville
+et du désordre de la ville la plus proche — vers lequel elle tend. Une piste
+éloignée est mauvaise en permanence ; elle n'est pas condamnée.
+
+**Rendre le monde plus dangereux n'est pas la même chose que rendre un secteur
+mal tenu plus dangereux que les autres.** Second essai : la menace valait
+`1 + insécurité × 1,4`, donc ×1,57 sur la carte entière. Elle se lit maintenant
+en écart à la normale : un secteur tenu est **plus sûr que la moyenne** (×0,7 au
+mieux), un secteur pourri l'est moins (×1,9 au pire). Le joueur sent la
+récompense avant de lire le chiffre.
+
+Ce que ça donne, sur quarante-huit parties de quatre mille heures :
+
+                          avant secteurs   après
+    Survivantes                  40/48     42/48
+    Avant-postes fondés          35/48     38/48
+    Crédits moyens               1 324     2 006
+    Défaites                       266       265
+    Points en fin de service       452       557
+    Capitaine · Commandeur       1 · 1     4 · 3
+
+Le carriériste existe enfin comme voie jouable, et il ne coûte rien aux deux
+autres — il les sert, même : des pistes tenues, ce sont des convois qui
+arrivent. Reste à faire, dans cet ordre : la ville confiée au Capitaine (ordre
+public, garnison, prison), la justice et l'esclavage comme lois qu'un Commandeur
+fixe, et l'impôt.
 
 ### Ni le nombre de colonnes, ni la prime d'engagement
 

@@ -49,6 +49,10 @@ import { CHARGES, CARACTERES, margeMarchand, vocation } from './notables.js';
 import { demandesIci, souvenirs, faveurChef, SOINS_SEUIL, REGISTRES_SEUIL } from './services.js';
 import { primeDe, apercu, tensionRecrutement } from './recrues.js';
 import {
+  resumeSecteur, casesDe, dansSonSecteur, motEtat, NIVEAU_ORDINAIRE,
+  SEUIL_FAUTE, SEUIL_MERITE, RANG_SECTEUR,
+} from './secteur.js';
+import {
   PREROGATIVES, PREROGATIVE_KEYS, peutExercer, credit as creditInfluence,
   colonnesDe, sitesFondation, cibleGuerre, guerresArretables, coutLevee,
   COUT_POSTE, FORCE_LEVEE,
@@ -540,6 +544,40 @@ function dessinerCarte(cv) {
     if (r.fouille > 0.15) {
       g.fillStyle = `rgba(0,0,0,${(r.fouille * 0.45).toFixed(2)})`;
       g.fillRect(x, y, CELL, CELL);
+    }
+    // Ce qu'on sait de l'état des pistes : quelques points rouges là où l'on
+    // ne circule plus. On ne le montre que sur ce qu'on a vu récemment — la
+    // carte reste un carnet, pas un satellite.
+    if (estSurveillee(S, r.i) && (r.insecurite || 0) > NIVEAU_ORDINAIRE + 0.08) {
+      const n2 = Math.min(5, Math.round((r.insecurite - NIVEAU_ORDINAIRE) * 12));
+      g.fillStyle = 'rgba(214,90,74,.75)';
+      for (let k = 0; k < n2; k++) {
+        g.fillRect(x + 2 + Math.floor(bruit(r.i, k + 71) * (CELL - 4)),
+          y + 2 + Math.floor(bruit(r.i, k + 91) * (CELL - 4)), 1, 1);
+      }
+    }
+  }
+
+  // Le secteur dont on répond : un liseré tireté, pour qu'on sache où il est
+  // sans avoir à ouvrir un écran.
+  const monSecteur = G() && G().allegeance && G().allegeance.secteur;
+  if (monSecteur) {
+    g.strokeStyle = 'rgba(217,160,58,.85)';
+    g.lineWidth = 1;
+    for (const r of casesDe(w, monSecteur)) {
+      const x = r.x * CELL;
+      const y = r.y * CELL;
+      for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const nx = r.x + dx;
+        const ny = r.y + dy;
+        const dedans = Math.abs(nx - (monSecteur.centre % w.largeur))
+          + Math.abs(ny - ((monSecteur.centre / w.largeur) | 0)) <= (monSecteur.rayon || 2);
+        if (dedans && nx >= 0 && ny >= 0 && nx < w.largeur && ny < w.hauteur) continue;
+        g.beginPath();
+        if (dx) { g.moveTo(x + (dx > 0 ? CELL : 0) - 0.5, y); g.lineTo(x + (dx > 0 ? CELL : 0) - 0.5, y + CELL); }
+        else { g.moveTo(x, y + (dy > 0 ? CELL : 0) - 0.5); g.lineTo(x + CELL, y + (dy > 0 ? CELL : 0) - 0.5); }
+        g.stroke();
+      }
     }
   }
 
@@ -1564,6 +1602,39 @@ function ligneContrat(c, enCours) {
  * la voie du service des deux autres : on n'achète pas à manger, on le touche.
  */
 /**
+ * Le secteur : ce dont on répond tous les jours. C'est le seul bloc de la
+ * page qui ne parle ni de guerre ni de conseil — on tient des routes, on est
+ * relevé dessus, et ça suffit à remplir une carrière en temps de paix.
+ */
+function blocSecteur() {
+  const all = G() && G().allegeance;
+  if (!all) return '';
+  if (!all.secteur) {
+    return `<div class="sep"></div>
+      <div class="aide">On ne vous confie encore aucun secteur : il faut être
+        ${e(RANGS[RANG_SECTEUR].nom)}.</div>`;
+  }
+  const r = resumeSecteur(S.world, all.secteur);
+  const ville = colonieParId(S.world, all.secteur.ville);
+  const reste = Math.max(0, all.secteur.prochainBilan - S.temps);
+  const mauvais = r.etat >= SEUIL_FAUTE;
+  const bon = r.etat <= SEUIL_MERITE;
+  const ici = dansSonSecteur(G());
+  return `<div class="sep"></div>
+  <div class="titre">Votre secteur
+    <span class="droite ${mauvais ? 'alerte' : bon ? 'vert' : ''}">${e(r.mot)}</span></div>
+  <div class="ligne"><span class="k">Routes autour de ${e(ville ? ville.nom : '—')}</span>
+    <span class="v">${r.cases} cases</span></div>
+  ${jauge(1 - Math.min(1, r.etat / SEUIL_FAUTE), mauvais ? 'alerte' : bon ? 'vert' : '')}
+  <div class="aide">Relevé dans ${dureeTexte(reste)}${all.secteur.dernier !== undefined
+    ? ` · dernier relevé : ${e(motEtat(all.secteur.dernier))}` : ''}.
+    ${r.pire ? `Le pire coin est ${e(r.pire)}.` : ''}</div>
+  <div class="aide">${ici
+    ? 'Vous y êtes. Patrouiller tient les pistes ; y travailler ne fait que les effleurer.'
+    : 'Vous n’y êtes pas. Personne ne tient un secteur depuis l’autre bout de la carte.'}</div>`;
+}
+
+/**
  * Ce que la charge permet d'ordonner. Il n'y a plus de pourcentage affiché :
  * un officier n'a pas de « chances d'être écouté », il a une compétence. Ce
  * qu'on montre à la place, c'est l'étendue de la charge, ce qu'elle coûte au
@@ -1746,6 +1817,7 @@ function blocAllegeance() {
         <span class="v">${rang.index >= RANG_GARNISON ? 'leurs villes' : `à partir de ${e(RANGS[RANG_GARNISON].nom)}`}</span></div>
     </div>
     ${blocIntendance()}
+    ${blocSecteur()}
     <div class="sep"></div>
     ${o ? `<div class="titre">Ordre de mission</div>
       <div class="contrat-t">${e(o.titre)}</div>

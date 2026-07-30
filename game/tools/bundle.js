@@ -42,6 +42,9 @@ const MODULES = [
   // Les prérogatives d'un gradé s'exercent sur ce que factions.js sait faire :
   // lever, fonder, déclarer, signer. Elle vient donc après lui.
   'influence.js',
+  // Ce dont un gradé répond tous les jours : il juge via influence.js, et
+  // events.js lit son insécurité pour peupler les pistes.
+  'secteur.js',
   'base.js',
   'contrats.js',
   'events.js',

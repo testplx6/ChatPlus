@@ -168,6 +168,8 @@ export function sEngager(state, faction, log, groupe) {
     // qu'on a déjà mis à votre charge.
     actes: [],
     fautes: 0,
+    // Le morceau de carte dont on répondra à partir de Lieutenant.
+    secteur: null,
   };
 
   // On ne choisit pas un camp sans que l'autre le remarque.

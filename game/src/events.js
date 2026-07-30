@@ -13,6 +13,7 @@ import {
 } from './allegeance.js';
 import { genererBande, resoudreCombat, butin } from './combat.js';
 import { perdreBete, visibiliteAttelage } from './betes.js';
+import { menace } from './secteur.js';
 import { rendementCohesion } from './groupes.js';
 import {
   comp, gagnerXp, estDebout, estVivant, makeCharacter, blesser, pvTotal,
@@ -453,7 +454,10 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
 
   // En ville, on est relativement tranquille
   const climat = ctx.climat;
-  let p = r.danger * multiplicateur * (col ? 0.25 : 1) * (climat ? climat.rencontres : 1);
+  // Un secteur qu'on ne tient plus n'est pas une statistique : on s'y fait
+  // attaquer davantage, et le joueur le sent avant de lire le chiffre.
+  let p = r.danger * multiplicateur * (col ? 0.25 : 1) * (climat ? climat.rencontres : 1)
+    * menace(state.world, regionId);
   // Furtivité du plus discret de l'escouade
   let furtif = 0;
   const debout = deboutDe(g);

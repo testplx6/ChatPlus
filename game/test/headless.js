@@ -18,6 +18,10 @@ import {
 import { METIER_KEYS, BIOMES, BUILDINGS } from '../src/data.js';
 import { genererBanc, primeDe, tensionRecrutement, engager } from '../src/recrues.js';
 import {
+  tickSecteurs, tickInsecurite, effetPresence, casesDe, menace, motEtat,
+  etatSecteur, resumeSecteur, dansSonSecteur,
+} from '../src/secteur.js';
+import {
   PREROGATIVES, peutExercer, credit as creditCharge, chargeAupres,
   leverColonne, envoyerColonne, fonderPoste, declarerGuerreA, signerPaixAvec,
   sitesFondation, cibleGuerre, jugerActes, tickCharges, porterFaute,
@@ -400,7 +404,9 @@ ok(fond.ok, 'fondation de l’avant-poste');
 Object.assign(s8.base.stock, {
   ferraille: 300, polymere: 120, composant: 40, minerai: 120,
   // De la biomasse en quantité : ce qu'on vérifie ici, c'est que l'hydroponie
-  // fabrique des rations, pas combien de temps un tas fini dure.
+  // fabrique des rations, pas combien de temps un tas fini dure. Mais pas trop :
+  // à neuf cents, l'entrepôt était à saturation, `ajouter` écrêtait, et le test
+  // échouait pour une raison qui n'avait rien à voir avec l'hydroponie.
   carburant: 100, biomasse: 900, alliage: 30,
 });
 groupeActif(s8).inventaire.rations = 400;
@@ -411,6 +417,12 @@ avancer(s8, 60);
 ok((s8.base.batiments.generateur || 0) >= 1, 'générateur construit', JSON.stringify(s8.base.batiments));
 lancerConstruction(s8, 'hydroponie');
 avancer(s8, 80);
+// L'entrepôt a une contenance, et `ajouter` écrête sans rien dire quand elle
+// est atteinte : le test échouait alors pour une raison qui n'avait rien à voir
+// avec l'hydroponie. On fait de la place avant de mesurer.
+s8.base.stock.minerai = 10;
+s8.base.stock.alliage = 5;
+s8.base.stock.biomasse = 260;
 const rationsAvant = s8.base.stock.rations || 0;
 avancer(s8, 60);
 ok((s8.base.stock.rations || 0) > rationsAvant, 'l’hydroponie produit des rations',
@@ -432,9 +444,18 @@ donnerOrdre(s9, { type: 'patrouille' });
 // On va chercher la bagarre dans une région dangereuse
 const dangereuse = s9.world.regions.reduce((x, y) => (y.danger > x.danger ? y : x));
 groupeActif(s9).regionId = dangereuse.i;
-avancer(s9, 400);
+// On relève au fil de l'eau plutôt qu'à l'arrivée : lu seulement à la fin, le
+// test disait « personne n'est blessé » d'une escouade qui s'était battue vingt
+// fois et soignée entre-temps. Ce qu'on vérifie, c'est qu'une blessure se loge
+// quelque part — pas qu'elle soit encore ouverte quatre cents heures plus tard.
+let blesse = false;
+for (let k = 0; k < 40; k++) {
+  avancer(s9, 10);
+  if (groupeActif(s9).membres.some((ch) => Object.values(ch.corps).some((pp) => pp.pv < pp.max))) {
+    blesse = true;
+  }
+}
 ok(s9.stats.combats > 0, 'des combats ont eu lieu', `${s9.stats.combats}`);
-const blesse = groupeActif(s9).membres.some((ch) => Object.values(ch.corps).some((p) => p.pv < p.max));
 ok(blesse || s9.stats.combats === 0, 'les blessures sont localisées et persistent');
 ok(groupeActif(s9).membres.every((ch) => ['ok', 'ko', 'mort'].includes(ch.etat)), 'états de personnage valides');
 verifierCoherence(s9, 'après 400 h de patrouille agressive');
@@ -1303,6 +1324,110 @@ ok(rangDe(gPol.allegeance).index === 3,
 ok(gPol.allegeance.fautes === 0, 'et l’ardoise repart à zéro : on n’est pas fini');
 ok(!peutExercer(pol, fPol, 'guerre').ok,
   'la prérogative perdue avec le grade ne s’exerce plus');
+
+section('9 nonies septies bis. Ce dont un gradé répond tous les jours');
+// Le trou que le banc avait chiffré : la charge de Lieutenant n'avait de
+// contenu que si la faction faisait la guerre. Elle a maintenant un secteur,
+// et un secteur se tient qu'il se passe quelque chose ou non.
+const sec = nouvellePartie(5151, { maintenant: 0 });
+const gSec = groupeActif(sec);
+const villeSec = sec.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
+gSec.regionId = villeSec.regionId;
+sec.player.reputation[villeSec.faction] = 60;
+sEngager(sec, villeSec.faction, () => {}, gSec);
+
+ok(!gSec.allegeance.secteur, 'un affilié ne répond de rien');
+gSec.allegeance.points = RANGS[2].points;
+tickSecteurs(sec, () => {}, { rng: new Rng(3) });
+const monSecteur = gSec.allegeance.secteur;
+ok(!!monSecteur, 'passer Lieutenant vous vaut un secteur, sans rien demander');
+ok(casesDe(sec.world, monSecteur).length >= 9,
+  'et le secteur fait une poignée de cases, pas une case',
+  `${casesDe(sec.world, monSecteur).length} cases`);
+ok(distance(monSecteur.centre, villeSec.regionId) <= 4,
+  'on ne détache pas son lieutenant à l’autre bout de la carte');
+
+// L'insécurité dérive vers le haut si personne ne tient les routes, et elle se
+// paie en mauvaises rencontres pour tout le monde.
+// La case la plus éloignée de toute ville : c'est là que les pistes se
+// referment le plus vite, faute de quiconque pour les tenir.
+let casePerdue = sec.world.regions[0];
+let plusLoin = -1;
+for (const r of sec.world.regions) {
+  if (r.colonie) continue;
+  let d = Infinity;
+  for (const c of sec.world.colonies) if (!c.ruine) d = Math.min(d, distance(c.regionId, r.i));
+  if (d > plusLoin) { plusLoin = d; casePerdue = r; }
+}
+const avantLoin = casePerdue.insecurite;
+for (let i = 0; i < 400; i++) { sec.temps += 1; tickInsecurite(sec); }
+ok(casePerdue.insecurite > avantLoin + 0.2,
+  'une piste que personne ne tient se referme toute seule',
+  `${avantLoin.toFixed(2)} → ${casePerdue.insecurite.toFixed(2)}`);
+// La menace se lit en écart à la normale, pas en valeur absolue : tenir un
+// secteur doit rendre les pistes *plus sûres qu'avant*, sans quoi le système
+// ne fait qu'augmenter la difficulté du monde entier.
+ok(menace(sec.world, casePerdue.i) > 1,
+  'une piste laissée à l’abandon se paie en mauvaises rencontres',
+  `×${menace(sec.world, casePerdue.i).toFixed(2)}`);
+const caseTenue = sec.world.regions[villeSec.regionId];
+caseTenue.insecurite = 0.05;
+ok(menace(sec.world, caseTenue.i) < 1,
+  'et une piste tenue est plus sûre que la normale — c’est ça, la récompense',
+  `×${menace(sec.world, caseTenue.i).toFixed(2)}`);
+const caseVille = sec.world.regions[villeSec.regionId];
+ok(caseVille.insecurite < casePerdue.insecurite,
+  'une ville tient ses abords mieux que le vide ne se tient lui-même',
+  `${caseVille.insecurite.toFixed(2)} vs ${casePerdue.insecurite.toFixed(2)}`);
+
+// Patrouiller nettoie, et nettement plus que passer par là.
+const casePatrouille = sec.world.regions[casePerdue.i];
+gSec.regionId = casePatrouille.i;
+gSec.ordre = { type: 'patrouille' };
+const avantPat = casePatrouille.insecurite;
+for (let i = 0; i < 20; i++) effetPresence(sec, gSec, 1);
+const gainPatrouille = avantPat - casePatrouille.insecurite;
+casePatrouille.insecurite = avantPat;
+gSec.ordre = { type: 'fouille' };
+for (let i = 0; i < 20; i++) effetPresence(sec, gSec, 1);
+const gainPassage = avantPat - casePatrouille.insecurite;
+ok(gainPatrouille > gainPassage * 2,
+  'patrouiller tient un secteur, y travailler ne fait que l’effleurer',
+  `${gainPatrouille.toFixed(3)} vs ${gainPassage.toFixed(3)}`);
+
+// Le bilan : c'est ce qui fait qu'on répond de quelque chose tous les dix
+// jours, sans qu'aucune guerre n'ait besoin d'éclater.
+for (const r of casesDe(sec.world, monSecteur)) r.insecurite = 0.9;
+gSec.allegeance.secteur.prochainBilan = sec.temps;
+const fautesAvant = gSec.allegeance.fautes || 0;
+tickSecteurs(sec, () => {}, { rng: new Rng(4) });
+ok((gSec.allegeance.fautes || 0) > fautesAvant,
+  'un secteur infréquentable est porté à votre charge, guerre ou pas',
+  `${fautesAvant} → ${gSec.allegeance.fautes}`);
+ok(motEtat(0.9) === 'infréquentable' && motEtat(0.1) === 'sûr',
+  'et l’état se dit en français avant de se dire en décimales');
+
+for (const r of casesDe(sec.world, monSecteur)) r.insecurite = 0.05;
+gSec.allegeance.secteur.prochainBilan = sec.temps;
+const ptsAvantBilan = gSec.allegeance.points;
+tickSecteurs(sec, () => {}, { rng: new Rng(5) });
+ok(gSec.allegeance.points > ptsAvantBilan,
+  'un secteur sûr fait monter : c’est la voie du carriériste en temps de paix',
+  `${ptsAvantBilan} → ${gSec.allegeance.points}`);
+
+// La ville de référence tombe : on reçoit un autre secteur, on ne reste pas à
+// répondre d'un morceau de carte qui ne veut plus rien dire.
+const ancienCentre = gSec.allegeance.secteur.centre;
+const villeRef = sec.world.colonies.find((c) => c.id === gSec.allegeance.secteur.ville);
+villeRef.ruine = true;
+tickSecteurs(sec, () => {}, { rng: new Rng(6) });
+ok(gSec.allegeance.secteur && gSec.allegeance.secteur.centre !== ancienCentre,
+  'la ville tombée, le secteur est redistribué');
+
+// Rétrograder rend le secteur : on ne tient pas des routes sans le grade.
+gSec.allegeance.points = 0;
+tickSecteurs(sec, () => {}, { rng: new Rng(7) });
+ok(!gSec.allegeance.secteur, 'perdre le grade, c’est rendre le secteur');
 
 section('9 nonies sexies. Qui accepte de partir, et pour combien');
 const rec = nouvellePartie(9494, { maintenant: 0 });

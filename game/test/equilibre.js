@@ -56,6 +56,9 @@ import { vueColonie, PEREMPTION } from '../src/connaissance.js';
 import { demandesIci, honorer } from '../src/services.js';
 import { enGuerre } from '../src/factions.js';
 import {
+  etatSecteur, pireCase, dansSonSecteur, SEUIL_MERITE, resumeSecteur,
+} from '../src/secteur.js';
+import {
   peutExercer, colonnesDe, envoyerColonne, leverColonne, coutLevee,
   fonderPoste, sitesFondation, COUT_POSTE, cibleGuerre, declarerGuerreA,
   guerresArretables, signerPaixAvec,
@@ -78,6 +81,7 @@ const TRACE = {
   // affirmation invérifiable. On mesure les heures effectivement passées sous
   // les couleurs de quelqu'un, ce qu'elles rapportent, et où l'échelle bloque.
   hEngage: 0, pointsFin: 0, manques: 0, ordresDonnes: 0,
+  secteurs: 0, etatSecteur: 0, bilans: 0,
   rangs: [0, 0, 0, 0, 0],
 };
 const HEURES = Number(process.argv[2]) || 4000;
@@ -875,6 +879,27 @@ function jouerPrincipal(state, g, memo) {
     return;
   }
 
+  // --- Tenir son secteur. Un gradé en répond tous les dix jours, guerre ou
+  // pas : c'est la seule chose qu'un Lieutenant puisse faire de sa charge quand
+  // sa faction est en paix, et c'est donc la seule qui le fasse monter.
+  const monSecteur = g.allegeance && g.allegeance.secteur;
+  if (monSecteur && !collecteUrgente(state) && rations > 60) {
+    const etat = etatSecteur(state.world, monSecteur);
+    if (etat > SEUIL_MERITE * 1.2) {
+      const pire = pireCase(state.world, monSecteur);
+      if (pire && pire.i !== g.regionId && (pire.insecurite || 0) > 0.3) {
+        if (g.ordre.type !== 'voyage' || g.ordre.dest !== pire.i) {
+          donnerOrdre(state, { type: 'voyage', dest: pire.i }, g);
+        }
+        return;
+      }
+      if (dansSonSecteur(g)) {
+        if (g.ordre.type !== 'patrouille') donnerOrdre(state, { type: 'patrouille' }, g);
+        return;
+      }
+    }
+  }
+
   // Une collecte en cours dicte comment on récolte : extraire pour du minerai,
   // fouiller pour le reste. Récolter au hasard ne remplit jamais un contrat.
   const collecte = p.contrats.find((c) => c.type === 'collecte' && !progresContrat(state, c).pret);
@@ -1082,6 +1107,12 @@ for (let n = 0; n < PARTIES; n++) {
     : 0;
   TRACE.ordresDonnes += memo.ordresDonnes;
   for (const gg of groupes(state)) {
+    if (!gg.allegeance || !gg.allegeance.secteur) continue;
+    TRACE.secteurs++;
+    TRACE.etatSecteur += etatSecteur(state.world, gg.allegeance.secteur);
+    TRACE.bilans += gg.allegeance.secteur.bilans || 0;
+  }
+  for (const gg of groupes(state)) {
     if (!gg.allegeance) continue;
     TRACE.pointsFin += gg.allegeance.points;
     TRACE.manques += gg.allegeance.manques || 0;
@@ -1153,6 +1184,9 @@ console.log(`Carrière : ${Math.round(TRACE.hEngage / PARTIES)} h sous les coule
   + `${Math.round(TRACE.pointsFin / Math.max(1, gradés))} points en fin de service · `
   + `${(TRACE.manques / Math.max(1, gradés)).toFixed(1)} ordre(s) manqué(s) par engagé`);
 console.log(`Prérogatives exercées : ${(TRACE.ordresDonnes / PARTIES).toFixed(1)} par partie`);
+console.log(`Secteurs tenus : ${TRACE.secteurs} — état moyen `
+  + `${(TRACE.etatSecteur / Math.max(1, TRACE.secteurs)).toFixed(2)} `
+  + `(0 = sûr, 1 = infréquentable) sur ${Math.round(TRACE.bilans / Math.max(1, TRACE.secteurs))} relevés`);
 console.log(`Échelle atteinte : ${RANGS.map((r, i) => `${r.nom} ${TRACE.rangs[i]}`).join(' · ')}`);
 console.log(`Défaites : ${TRACE.defaites} pour ${TRACE.crPilles} cr pillés `
   + `(${TRACE.defaites ? Math.round(TRACE.crPilles / TRACE.defaites) : 0} cr par défaite)`);

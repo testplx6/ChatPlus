@@ -89,6 +89,8 @@ export function normaliser(state) {
     // assumer. Désormais il ordonne, et ce qu'il ordonne s'inscrit.
     if (!g.allegeance.actes) g.allegeance.actes = [];
     if (g.allegeance.fautes === undefined) g.allegeance.fautes = 0;
+    // Avant les secteurs, un gradé n'avait rien à tenir entre deux guerres.
+    if (g.allegeance.secteur === undefined) g.allegeance.secteur = null;
   }
   if (!state.memorial) state.memorial = [];
   if (!state.stats) state.stats = {};
@@ -106,6 +108,11 @@ export function normaliser(state) {
     if (w.factions[k].consigne !== undefined) delete w.factions[k].consigne;
   }
   if (!w.meteo) w.meteo = { type: 'couvert', restant: 4 };
+  for (const r of w.regions) {
+    // Les routes d'avant les secteurs : sûres par défaut, elles se dégraderont
+    // toutes seules si personne ne les tient.
+    if (r.insecurite === undefined) r.insecurite = 0;
+  }
   for (const c of w.colonies) {
     if (c.declin === undefined) c.declin = 0;
     if (c.prises === undefined) c.prises = 0;
