@@ -537,10 +537,35 @@ plus** : des villes moins furieuses sont mieux approvisionnées, donc leurs
 marchés nourrissent le joueur pour moins cher. Le tick descend au passage de 116
 à 91 µs — un monde calme coûte moins à simuler qu'un monde qui s'effondre.
 
-Ce qui reste, et qui n'est pas un oubli : **les factions ne réagissent pas aux
-lois des autres.** Autoriser l'esclavage abîme votre réputation auprès de toutes
-celles qui l'ont interdit, mais leurs relations diplomatiques entre elles n'en
-tiennent aucun compte.
+### Une loi vaut aussi vers l'extérieur
+
+Les lois n'existaient que vers l'intérieur. Autoriser le commerce d'hommes
+abîmait la réputation du *joueur* auprès de tous ceux qui l'interdisaient — mais
+les factions, elles, s'en moquaient entre elles. Un pays esclavagiste ne se
+faisait aucun ennemi, et un voisin clément n'y voyait aucun motif, alors que
+c'est le casus belli le plus évident qu'un monde puisse produire.
+
+Chaque conseil mesure désormais ce que le régime d'en face a d'insupportable :
+le commerce d'hommes d'abord et de très loin, l'écart de sévérité ensuite — qui
+n'indigne personne mais éloigne. **Le tout pondéré par le chef** : un Rapace
+hausse les épaules là où un Conciliateur s'indigne, et l'on ne reproche à
+personne ce qu'on pratique soi-même. Petit par séance, décisif sur une saison :
+un marchand d'hommes finit à −60 ou −100 avec tout le voisinage.
+
+Ce que ça produit :
+
+- **une cause donne du courage à qui n'en aurait pas eu** — un chef que la
+  guerre ne tente pas se décide tout de même contre un régime qu'il réprouve ;
+- la guerre le dit dans son objet : *pour en finir avec leurs marchés d'hommes* ;
+- et elle **se gagne le jour où ils abolissent**, pas quand on a fini de compter
+  les morts. Un conseil rouvre justement ses lois quand le marché lui coûte une
+  guerre : sur six mondes où l'on installe un régime esclavagiste entouré de
+  conciliateurs, trois ferment leurs marchés sous la pression militaire.
+
+Le joueur voit le prix avant de signer — le bouton dit combien de factions
+l'interdisent chez elles — et voit la guerre arriver sur l'écran du monde, où
+un régime esclavagiste est signalé avec le nombre de voisins qui ne le
+supportent pas.
 
 ### Deux champs morts
 

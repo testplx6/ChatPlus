@@ -18,6 +18,7 @@ import { groupeActif } from '../src/groupes.js';
 import { ecolesDe } from '../src/formation.js';
 import { confierSecteur } from '../src/secteur.js';
 import { capturables, fairePrisonniers } from '../src/justice.js';
+import { loisDe } from '../src/lois.js';
 import { genererBande } from '../src/combat.js';
 import { Rng } from '../src/rng.js';
 
@@ -486,6 +487,9 @@ const adversaire = Object.keys(carriere.world.factions).find(
   (k) => k !== villeCar.faction && k !== 'essaim'
     && carriere.world.colonies.some((c) => !c.ruine && c.faction === k)
 );
+// Un voisin esclavagiste : de quoi vérifier que l'écran du monde le signale, et
+// qu'il annonce combien de factions ne le supportent pas.
+loisDe(carriere.world, adversaire).esclavage = true;
 if (!carriere.world.guerres.some((w) => w.a === villeCar.faction || w.b === villeCar.faction)) {
   carriere.world.guerres.push({
     a: villeCar.faction, b: adversaire, depuis: 0, batailles: 1,
@@ -593,6 +597,12 @@ const texteLois = await page.evaluate(() => document.querySelector('#ecran').tex
 ok(/Chez eux : impôt/.test(texteLois), 'l’écran du monde dit comment chacun gouverne');
 ok(/justice (clémente|ferme|expéditive)/.test(texteLois),
   'avec la sévérité de sa justice');
+// Un régime esclavagiste doit se voir arriver la guerre, pas la découvrir : la
+// sauvegarde chargée plus haut en installe un chez l'adversaire.
+ok(/l’on y vend des hommes/.test(texteLois),
+  'un régime esclavagiste est signalé comme tel');
+ok(/ne le supportent pas/.test(texteLois),
+  'et l’on voit combien de voisins ne le supportent pas');
 
 // Les prisonniers : le seul écran où l'on décide de ce qu'on est.
 const captifs = partieAvancee();

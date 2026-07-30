@@ -2,7 +2,7 @@
 // touche au DOM — tout le reste du dossier src/ tourne aussi bien sous Node.
 
 import {
-  BIOMES, FACTIONS, COMMODITIES, COMMODITY_KEYS, BUILDINGS, BUILDING_KEYS,
+  BIOMES, FACTIONS, DIPLO_FACTIONS, COMMODITIES, COMMODITY_KEYS, BUILDINGS, BUILDING_KEYS,
   RESEARCH, RESEARCH_KEYS, ITEMS, SKILLS, SKILL_KEYS, BODY_PARTS, BODY_KEYS,
   POSTURES, POSTURE_KEYS, TRAITS, POI, CONTRATS, DIPLOMES, METIERS, METIER_KEYS,
   METIERS_VILLE, METIER_VILLE_KEYS,
@@ -53,6 +53,7 @@ import {
   lenteurPrisonniers, geoleDe,
 } from './justice.js';
 import { PEINES, PEINE_KEYS, IMPOTS, loisDe, loiIci } from './lois.js';
+import { distanceMorale } from './factions.js';
 import {
   resumeSecteur, casesDe, dansSonSecteur, motEtat, NIVEAU_ORDINAIRE,
   SEUIL_FAUTE, SEUIL_MERITE, RANG_SECTEUR,
@@ -1803,9 +1804,21 @@ function ciblesCharge(faction, k) {
       if (lois.impot === imp.taux) continue;
       out.push({ val: `impot:${imp.key}`, texte: `Impôt ${imp.nom.toLowerCase()} (${Math.round(imp.taux * 100)} %) — ${imp.desc}` });
     }
+    // On dit le prix avant la signature : combien de voisins l'interdisent chez
+    // eux, et se le rappelleront. Une loi vaut aussi vers l'extérieur.
+    const abolitionnistes = DIPLO_FACTIONS.filter(
+      (k) => k !== faction && !loisDe(w, k).esclavage
+        && w.colonies.some((c) => !c.ruine && c.faction === k)).length;
     out.push(lois.esclavage
-      ? { val: 'esclavage:non', texte: 'Interdire le commerce d’hommes' }
-      : { val: 'esclavage:oui', texte: 'Autoriser le commerce d’hommes' });
+      ? {
+        val: 'esclavage:non',
+        texte: 'Interdire le commerce d’hommes — on cessera de vous en vouloir pour ça',
+      }
+      : {
+        val: 'esclavage:oui',
+        texte: `Autoriser le commerce d’hommes — ${abolitionnistes} faction(s) l’interdisent`
+          + ' chez elles, et vous le feront payer',
+      });
     return out;
   }
   if (k === 'guerre') {
@@ -1986,9 +1999,15 @@ function ecranMonde() {
     // choix informé plutôt qu'un tirage entre six drapeaux de couleurs.
     const l = loisDe(S.world, f.key);
     const imp = IMPOTS.reduce((a, b) => (Math.abs(b.taux - l.impot) < Math.abs(a.taux - l.impot) ? b : a));
+    // Et ce que ça leur coûte auprès des autres : une loi vaut aussi vers
+    // l'extérieur, et le joueur doit pouvoir voir arriver la guerre.
+    const facheurs = DIPLO_FACTIONS.filter(
+      (k) => k !== f.key && distanceMorale(S.world, k, f.key) > 0.45
+        && S.world.colonies.some((c) => !c.ruine && c.faction === k)).length;
     return `<div class="aide">Chez eux : impôt ${e(imp.nom.toLowerCase())} (${Math.round(l.impot * 100)} %),
       justice ${e(PEINES[l.peine].nom.toLowerCase())}${l.esclavage
-      ? ', <span class="alerte">et l’on y vend des hommes</span>' : ''}.</div>`;
+      ? ', <span class="alerte">et l’on y vend des hommes</span>' : ''}.${facheurs
+      ? ` <span class="alerte">${facheurs} faction(s) ne le supportent pas.</span>` : ''}</div>`;
   })()}
     </div>`;
   }).join('');

@@ -10,6 +10,7 @@ import { serialiser, deserialiser } from '../src/save.js';
 import { COMMODITY_KEYS, DIPLO_FACTIONS } from '../src/data.js';
 import { genererBande } from '../src/combat.js';
 import { faireRevolte, SEUIL_REVOLTE } from '../src/economy.js';
+import { distanceMorale } from '../src/factions.js';
 import { loiIci } from '../src/lois.js';
 import { primeLivraison } from '../src/justice.js';
 import { classement, puissance } from '../src/factions.js';
@@ -1823,6 +1824,62 @@ ok(apresGrogne > apresFaiblesse,
   `${apresGrogne}/40 vs ${apresFaiblesse}/40`);
 
 verifierCoherence(monde, 'après 8000 h de révoltes et de renversements');
+
+section('9 nonies septies septies. Ce qu’on pense du régime d’en face');
+// Les lois n'existaient que vers l'intérieur : un pays esclavagiste ne se
+// faisait aucun ennemi, alors que c'est le casus belli le plus évident qu'un
+// monde puisse produire.
+const dip = nouvellePartie(7070, { maintenant: 0 });
+const juge = DIPLO_FACTIONS[0];
+const mis = DIPLO_FACTIONS[1];
+ok(distanceMorale(dip.world, juge, mis) < 0.05,
+  'deux régimes identiques ne se reprochent rien');
+loisDe(dip.world, mis).esclavage = true;
+ok(distanceMorale(dip.world, juge, mis) > 0.4,
+  'ouvrir un marché d’hommes se paie vis-à-vis de ceux qui l’interdisent',
+  `${distanceMorale(dip.world, juge, mis).toFixed(2)}`);
+loisDe(dip.world, juge).esclavage = true;
+ok(distanceMorale(dip.world, juge, mis) < 0.25,
+  'on ne reproche à personne ce qu’on pratique soi-même',
+  `${distanceMorale(dip.world, juge, mis).toFixed(2)}`);
+
+// Le chef pondère : un rapace ne s'offusque de rien, un conciliateur de tout.
+loisDe(dip.world, juge).esclavage = false;
+dirigeant(dip.world, juge).temperament = 'rapace';
+const indifferent = distanceMorale(dip.world, juge, mis);
+dirigeant(dip.world, juge).temperament = 'conciliateur';
+const indigne = distanceMorale(dip.world, juge, mis);
+ok(indigne > indifferent * 1.8,
+  'un conciliateur s’indigne là où un rapace hausse les épaules',
+  `${indigne.toFixed(2)} vs ${indifferent.toFixed(2)}`);
+
+// Sur la durée, ça se voit dans les relations, puis dans les guerres.
+const moral = nouvellePartie(7171, { maintenant: 0 });
+const negrier = DIPLO_FACTIONS[0];
+loisDe(moral.world, negrier).esclavage = true;
+for (const k of DIPLO_FACTIONS) if (k !== negrier) dirigeant(moral.world, k).temperament = 'conciliateur';
+const relDepart = DIPLO_FACTIONS.filter((k) => k !== negrier)
+  .reduce((a, k) => a + (moral.world.factions[k].relations[negrier] ?? 0), 0);
+avancer(moral, 4000);
+const encoreLa = DIPLO_FACTIONS.filter(
+  (k) => k !== negrier && moral.world.colonies.some((c) => !c.ruine && c.faction === k)
+);
+const relFin = encoreLa.reduce((a, k) => a + (moral.world.factions[k].relations[negrier] ?? 0), 0);
+ok(relFin < relDepart, 'un marchand d’hommes se fait détester de tout le voisinage',
+  `${Math.round(relDepart)} → ${Math.round(relFin)}`);
+
+// Une guerre faite au régime se gagne le jour où il change, pas quand on a
+// compté les morts.
+const abolition = { a: juge, b: mis, depuis: 0, batailles: 0, initiateur: juge,
+  but: { type: 'abolition', texte: 'pour en finir avec leurs marchés d’hommes', batailles: 3 } };
+loisDe(dip.world, mis).esclavage = true;
+ok(etatDuBut(dip.world, abolition, juge) === null,
+  'tant qu’ils vendent, la guerre a une raison de durer');
+loisDe(dip.world, mis).esclavage = false;
+ok(etatDuBut(dip.world, abolition, juge) === 'atteint',
+  'le jour où ils abolissent, l’affaire est réglée');
+
+verifierCoherence(moral, 'après une guerre de conscience');
 
 section('9 nonies sexies. Qui accepte de partir, et pour combien');
 const rec = nouvellePartie(9494, { maintenant: 0 });

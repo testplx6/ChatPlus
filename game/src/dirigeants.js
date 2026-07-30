@@ -12,6 +12,7 @@
 // cours d'une partie sans que rien d'autre n'ait bougé.
 
 import { FACTIONS, NOMS_PERSO } from './data.js';
+import { loisDe } from './lois.js';
 import { idDepuisRng } from './characters.js';
 import { HEURES_PAR_AN } from './climat.js';
 
@@ -188,6 +189,12 @@ export function butDeGuerre(world, a, b, rng, cible) {
 export function etatDuBut(world, guerre, key) {
   const but = guerre.but;
   if (!but) return null;
+  if (but.type === 'abolition') {
+    // Une guerre faite au régime d'en face se gagne le jour où il change, pas
+    // quand on a fini de compter les morts.
+    const autre = guerre.a === key ? guerre.b : guerre.a;
+    if (!loisDe(world, autre).esclavage) return 'atteint';
+  }
   if (but.type === 'conquete' && but.villeId) {
     const ville = world.colonies.find((c) => c.id === but.villeId);
     if (!ville || ville.ruine) return 'perdu';

@@ -415,6 +415,9 @@ function conseil(world, key, t, log, ctx) {
   // colonnes, la justice tient les routes, et l'un et l'autre se paient en
   // grogne. La politique intérieure passe donc avant la politique étrangère.
   legiferer(world, key, t, log, ctx);
+  // Puis ce qu'on pense de la façon dont gouvernent les autres. Une loi vaut
+  // aussi vers l'extérieur.
+  jugerLesAutres(world, key);
 
   // Revenus : l'impôt, au taux que la loi fixe. Ce n'est plus une constante —
   // c'est la première décision d'un Commandeur qui se lit dans les comptes.
@@ -454,7 +457,12 @@ function conseil(world, key, t, log, ctx) {
 
   // 2) Déclarer une guerre si une cible est faible et mal aimée
   const enGuerreAvec = new Set(guerresDe(world, key).map((g) => (g.a === key ? g.b : g.a)));
-  if (enGuerreAvec.size < 2 && rng.chance(f.agression * 0.5 * penchant(world, key, 'guerre'))) {
+  // Une cause donne du courage à qui n'en aurait pas eu : un chef que la guerre
+  // ne tente pas se décide tout de même contre un régime qu'il réprouve.
+  const indignation = Math.max(...DIPLO_FACTIONS.map(
+    (k) => (k === key ? 0 : distanceMorale(world, key, k))));
+  if (enGuerreAvec.size < 2 && rng.chance(f.agression * 0.5
+      * penchant(world, key, 'guerre') * (1 + indignation * 1.8))) {
     const candidats = DIPLO_FACTIONS.filter(
       (k) => k !== key && !enGuerreAvec.has(k) && coloniesDe(world, k).length > 0
     ).map((k) => {
@@ -462,14 +470,23 @@ function conseil(world, key, t, log, ctx) {
       const rapport = maPuissance / Math.max(1, puissance(world, k));
       const prox = cibleLaPlusProche(world, key, k);
       if (!prox) return [k, 0];
-      const poids = Math.max(0, (40 - rel) / 40) * Math.max(0, rapport - 0.85) * (1 / (1 + prox.dist * 0.25));
+      // Ce qu'on reproche à leur régime compte autant que ce qu'on convoite :
+      // un Conciliateur ne fait la guerre à personne, sauf à un marchand
+      // d'hommes.
+      const morale = distanceMorale(world, key, k);
+      const poids = Math.max(0, (40 - rel) / 40) * Math.max(0, rapport - 0.85)
+        * (1 / (1 + prox.dist * 0.25)) * (1 + morale * 2.5);
       return [k, poids];
     }).filter((e) => e[1] > 0.02);
     if (candidats.length) {
       const victime = rng.weighted(candidats);
       const prox = cibleLaPlusProche(world, key, victime);
-      declarerGuerre(world, key, victime, t, log,
-        butDeGuerre(world, key, victime, rng, prox && prox.cible));
+      // Quand c'est le régime qu'on vise et pas la carte, la guerre le dit.
+      const morale = distanceMorale(world, key, victime);
+      const but = morale > 0.45
+        ? { type: 'abolition', texte: 'pour en finir avec leurs marchés d’hommes', batailles: rng.irange(2, 4) }
+        : butDeGuerre(world, key, victime, rng, prox && prox.cible);
+      declarerGuerre(world, key, victime, t, log, but);
     }
   }
 
@@ -618,6 +635,54 @@ export function fonderColonie(world, key, region, rng, t) {
 }
 
 // ---------------------------------------------------------------------------
+// Ce qu'on pense du régime d'en face
+// ---------------------------------------------------------------------------
+
+/** L'ordre des peines, du plus doux au plus dur : sert à mesurer un écart. */
+const DURETE = { legere: 0, ferme: 1, expeditive: 2 };
+
+/**
+ * Ce que le régime de `autre` a d'insupportable pour `key`, entre 0 et 1.
+ *
+ * Les lois n'existaient que vers l'intérieur : autoriser le commerce d'hommes
+ * abîmait la réputation du joueur auprès de tous ceux qui l'interdisaient, mais
+ * les factions, elles, s'en moquaient entre elles. Un pays esclavagiste ne se
+ * faisait aucun ennemi, et un voisin clément n'y voyait aucun motif — alors que
+ * c'est le casus belli le plus évident qu'un monde puisse produire.
+ *
+ * Ce qui pèse : le commerce d'hommes d'abord, et de très loin ; l'écart de
+ * sévérité ensuite, qui n'indigne personne mais éloigne. Et tout est pondéré
+ * par le chef : un Rapace ne s'offusque de rien, un Conciliateur de tout.
+ */
+export function distanceMorale(world, key, autre) {
+  const la = loisDe(world, key);
+  const lb = loisDe(world, autre);
+  const d = dirigeant(world, key);
+  const temp = d ? TEMPERAMENTS[d.temperament] : null;
+  const conscience = temp ? temp.humain : 1;
+  let x = 0;
+  // On ne reproche à personne ce qu'on pratique soi-même.
+  if (lb.esclavage && !la.esclavage) x += 0.62;
+  x += Math.abs((DURETE[lb.peine] ?? 1) - (DURETE[la.peine] ?? 1)) * 0.12;
+  return Math.max(0, Math.min(1, x * conscience));
+}
+
+/**
+ * Ce que les régimes d'en face font aux relations, séance après séance. Petit
+ * par tour, décisif sur une saison : deux voisins que tout oppose finissent
+ * sous le seuil où une guerre se déclare toute seule.
+ */
+function jugerLesAutres(world, key) {
+  for (const autre of DIPLO_FACTIONS) {
+    if (autre === key) continue;
+    if (!coloniesDe(world, autre).length) continue;
+    const d = distanceMorale(world, key, autre);
+    if (d > 0.25) majRelation(world, key, autre, -d * 2.2);
+    else if (d < 0.05) majRelation(world, key, autre, 0.4);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Politique intérieure
 // ---------------------------------------------------------------------------
 
@@ -745,7 +810,12 @@ function legiferer(world, key, t, log, ctx) {
   // quand le pays gronde ou qu'un autre chef arrive.
   const veutOuvrir = !lois.esclavage && temp.humain < 0.85
     && pays.caisse < 600 && pays.grogne < 0.4;
-  const veutFermer = lois.esclavage && (temp.humain > 1.05 || pays.grogne > 0.55);
+  // On ferme aussi le marché quand il coûte une guerre : c'est la façon la plus
+  // nette dont la pression extérieure entre dans la politique intérieure.
+  const attaquePourCa = guerresDe(world, key).some(
+    (g) => g.but && g.but.type === 'abolition' && g.batailles >= 2);
+  const veutFermer = lois.esclavage
+    && (temp.humain > 1.05 || pays.grogne > 0.55 || attaquePourCa);
   if (veutOuvrir || veutFermer) {
     lois.esclavage = veutOuvrir;
     changements.push(veutOuvrir

@@ -3449,6 +3449,12 @@ function butDeGuerre(world, a, b, rng, cible) {
 function etatDuBut(world, guerre, key) {
   const but = guerre.but;
   if (!but) return null;
+  if (but.type === 'abolition') {
+    // Une guerre faite au régime d'en face se gagne le jour où il change, pas
+    // quand on a fini de compter les morts.
+    const autre = guerre.a === key ? guerre.b : guerre.a;
+    if (!loisDe(world, autre).esclavage) return 'atteint';
+  }
   if (but.type === 'conquete' && but.villeId) {
     const ville = world.colonies.find((c) => c.id === but.villeId);
     if (!ville || ville.ruine) return 'perdu';
@@ -7250,6 +7256,9 @@ function conseil(world, key, t, log, ctx) {
   // colonnes, la justice tient les routes, et l'un et l'autre se paient en
   // grogne. La politique intérieure passe donc avant la politique étrangère.
   legiferer(world, key, t, log, ctx);
+  // Puis ce qu'on pense de la façon dont gouvernent les autres. Une loi vaut
+  // aussi vers l'extérieur.
+  jugerLesAutres(world, key);
 
   // Revenus : l'impôt, au taux que la loi fixe. Ce n'est plus une constante —
   // c'est la première décision d'un Commandeur qui se lit dans les comptes.
@@ -7289,7 +7298,12 @@ function conseil(world, key, t, log, ctx) {
 
   // 2) Déclarer une guerre si une cible est faible et mal aimée
   const enGuerreAvec = new Set(guerresDe(world, key).map((g) => (g.a === key ? g.b : g.a)));
-  if (enGuerreAvec.size < 2 && rng.chance(f.agression * 0.5 * penchant(world, key, 'guerre'))) {
+  // Une cause donne du courage à qui n'en aurait pas eu : un chef que la guerre
+  // ne tente pas se décide tout de même contre un régime qu'il réprouve.
+  const indignation = Math.max(...DIPLO_FACTIONS.map(
+    (k) => (k === key ? 0 : distanceMorale(world, key, k))));
+  if (enGuerreAvec.size < 2 && rng.chance(f.agression * 0.5
+      * penchant(world, key, 'guerre') * (1 + indignation * 1.8))) {
     const candidats = DIPLO_FACTIONS.filter(
       (k) => k !== key && !enGuerreAvec.has(k) && coloniesDe(world, k).length > 0
     ).map((k) => {
@@ -7297,14 +7311,23 @@ function conseil(world, key, t, log, ctx) {
       const rapport = maPuissance / Math.max(1, puissance(world, k));
       const prox = cibleLaPlusProche(world, key, k);
       if (!prox) return [k, 0];
-      const poids = Math.max(0, (40 - rel) / 40) * Math.max(0, rapport - 0.85) * (1 / (1 + prox.dist * 0.25));
+      // Ce qu'on reproche à leur régime compte autant que ce qu'on convoite :
+      // un Conciliateur ne fait la guerre à personne, sauf à un marchand
+      // d'hommes.
+      const morale = distanceMorale(world, key, k);
+      const poids = Math.max(0, (40 - rel) / 40) * Math.max(0, rapport - 0.85)
+        * (1 / (1 + prox.dist * 0.25)) * (1 + morale * 2.5);
       return [k, poids];
     }).filter((e) => e[1] > 0.02);
     if (candidats.length) {
       const victime = rng.weighted(candidats);
       const prox = cibleLaPlusProche(world, key, victime);
-      declarerGuerre(world, key, victime, t, log,
-        butDeGuerre(world, key, victime, rng, prox && prox.cible));
+      // Quand c'est le régime qu'on vise et pas la carte, la guerre le dit.
+      const morale = distanceMorale(world, key, victime);
+      const but = morale > 0.45
+        ? { type: 'abolition', texte: 'pour en finir avec leurs marchés d’hommes', batailles: rng.irange(2, 4) }
+        : butDeGuerre(world, key, victime, rng, prox && prox.cible);
+      declarerGuerre(world, key, victime, t, log, but);
     }
   }
 
@@ -7453,6 +7476,54 @@ function fonderColonie(world, key, region, rng, t) {
 }
 
 // ---------------------------------------------------------------------------
+// Ce qu'on pense du régime d'en face
+// ---------------------------------------------------------------------------
+
+/** L'ordre des peines, du plus doux au plus dur : sert à mesurer un écart. */
+const DURETE = { legere: 0, ferme: 1, expeditive: 2 };
+
+/**
+ * Ce que le régime de `autre` a d'insupportable pour `key`, entre 0 et 1.
+ *
+ * Les lois n'existaient que vers l'intérieur : autoriser le commerce d'hommes
+ * abîmait la réputation du joueur auprès de tous ceux qui l'interdisaient, mais
+ * les factions, elles, s'en moquaient entre elles. Un pays esclavagiste ne se
+ * faisait aucun ennemi, et un voisin clément n'y voyait aucun motif — alors que
+ * c'est le casus belli le plus évident qu'un monde puisse produire.
+ *
+ * Ce qui pèse : le commerce d'hommes d'abord, et de très loin ; l'écart de
+ * sévérité ensuite, qui n'indigne personne mais éloigne. Et tout est pondéré
+ * par le chef : un Rapace ne s'offusque de rien, un Conciliateur de tout.
+ */
+function distanceMorale(world, key, autre) {
+  const la = loisDe(world, key);
+  const lb = loisDe(world, autre);
+  const d = dirigeant(world, key);
+  const temp = d ? TEMPERAMENTS[d.temperament] : null;
+  const conscience = temp ? temp.humain : 1;
+  let x = 0;
+  // On ne reproche à personne ce qu'on pratique soi-même.
+  if (lb.esclavage && !la.esclavage) x += 0.62;
+  x += Math.abs((DURETE[lb.peine] ?? 1) - (DURETE[la.peine] ?? 1)) * 0.12;
+  return Math.max(0, Math.min(1, x * conscience));
+}
+
+/**
+ * Ce que les régimes d'en face font aux relations, séance après séance. Petit
+ * par tour, décisif sur une saison : deux voisins que tout oppose finissent
+ * sous le seuil où une guerre se déclare toute seule.
+ */
+function jugerLesAutres(world, key) {
+  for (const autre of DIPLO_FACTIONS) {
+    if (autre === key) continue;
+    if (!coloniesDe(world, autre).length) continue;
+    const d = distanceMorale(world, key, autre);
+    if (d > 0.25) majRelation(world, key, autre, -d * 2.2);
+    else if (d < 0.05) majRelation(world, key, autre, 0.4);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Politique intérieure
 // ---------------------------------------------------------------------------
 
@@ -7580,7 +7651,12 @@ function legiferer(world, key, t, log, ctx) {
   // quand le pays gronde ou qu'un autre chef arrive.
   const veutOuvrir = !lois.esclavage && temp.humain < 0.85
     && pays.caisse < 600 && pays.grogne < 0.4;
-  const veutFermer = lois.esclavage && (temp.humain > 1.05 || pays.grogne > 0.55);
+  // On ferme aussi le marché quand il coûte une guerre : c'est la façon la plus
+  // nette dont la pression extérieure entre dans la politique intérieure.
+  const attaquePourCa = guerresDe(world, key).some(
+    (g) => g.but && g.but.type === 'abolition' && g.batailles >= 2);
+  const veutFermer = lois.esclavage
+    && (temp.humain > 1.05 || pays.grogne > 0.55 || attaquePourCa);
   if (veutOuvrir || veutFermer) {
     lois.esclavage = veutOuvrir;
     changements.push(veutOuvrir
@@ -14045,9 +14121,21 @@ function ciblesCharge(faction, k) {
       if (lois.impot === imp.taux) continue;
       out.push({ val: `impot:${imp.key}`, texte: `Impôt ${imp.nom.toLowerCase()} (${Math.round(imp.taux * 100)} %) — ${imp.desc}` });
     }
+    // On dit le prix avant la signature : combien de voisins l'interdisent chez
+    // eux, et se le rappelleront. Une loi vaut aussi vers l'extérieur.
+    const abolitionnistes = DIPLO_FACTIONS.filter(
+      (k) => k !== faction && !loisDe(w, k).esclavage
+        && w.colonies.some((c) => !c.ruine && c.faction === k)).length;
     out.push(lois.esclavage
-      ? { val: 'esclavage:non', texte: 'Interdire le commerce d’hommes' }
-      : { val: 'esclavage:oui', texte: 'Autoriser le commerce d’hommes' });
+      ? {
+        val: 'esclavage:non',
+        texte: 'Interdire le commerce d’hommes — on cessera de vous en vouloir pour ça',
+      }
+      : {
+        val: 'esclavage:oui',
+        texte: `Autoriser le commerce d’hommes — ${abolitionnistes} faction(s) l’interdisent`
+          + ' chez elles, et vous le feront payer',
+      });
     return out;
   }
   if (k === 'guerre') {
@@ -14228,9 +14316,15 @@ function ecranMonde() {
     // choix informé plutôt qu'un tirage entre six drapeaux de couleurs.
     const l = loisDe(S.world, f.key);
     const imp = IMPOTS.reduce((a, b) => (Math.abs(b.taux - l.impot) < Math.abs(a.taux - l.impot) ? b : a));
+    // Et ce que ça leur coûte auprès des autres : une loi vaut aussi vers
+    // l'extérieur, et le joueur doit pouvoir voir arriver la guerre.
+    const facheurs = DIPLO_FACTIONS.filter(
+      (k) => k !== f.key && distanceMorale(S.world, k, f.key) > 0.45
+        && S.world.colonies.some((c) => !c.ruine && c.faction === k)).length;
     return `<div class="aide">Chez eux : impôt ${e(imp.nom.toLowerCase())} (${Math.round(l.impot * 100)} %),
       justice ${e(PEINES[l.peine].nom.toLowerCase())}${l.esclavage
-      ? ', <span class="alerte">et l’on y vend des hommes</span>' : ''}.</div>`;
+      ? ', <span class="alerte">et l’on y vend des hommes</span>' : ''}.${facheurs
+      ? ` <span class="alerte">${facheurs} faction(s) ne le supportent pas.</span>` : ''}</div>`;
   })()}
     </div>`;
   }).join('');
