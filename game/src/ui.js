@@ -1638,9 +1638,16 @@ function ecranBase() {
         comme une ville, et l’on peut vouloir vous la prendre.</div>`
     : `<div class="aide">À ${POP_RECONNUE} habitants et une halle, le monde cessera de
         l’ignorer — pour le meilleur et pour le reste.</div>`}
-    <button class="act mini" data-a="autoemploi" style="margin-bottom:6px"
+    <button class="act mini" data-a="autoemploi" style="margin-bottom:4px"
       aria-pressed="${b.autoEmploi !== false}">[${b.autoEmploi !== false ? '×' : ' '}]
       Les habitants se placent eux-mêmes</button>
+    <button class="act mini" data-a="commerce" style="margin-bottom:6px"
+      aria-pressed="${b.commerce !== false}">[${b.commerce !== false ? '×' : ' '}]
+      Laisser les colporteurs traiter avec l’intendance</button>
+    <div class="aide">Ils prennent le surplus au prix du gros et laissent ce qui manque
+      au prix du détail : moins avantageux que d’aller vendre soi-même, et l’on n’a pas
+      marché. Ils passent d’autant plus souvent que la piste est faite
+      (${Math.round((S.world.regions[b.regionId].piste || 0) * 100)} %).</div>
     <div class="ligne"><span class="k">Entrepôt</span>
       <span class="v ${stock >= capa * 0.98 ? 'alerte' : ''}">${n(stock)} / ${n(capa)}</span></div>
     ${b.gaspille > 20 ? `<div class="aide alerte">L’entrepôt a déjà refusé
@@ -3119,6 +3126,11 @@ function surClic(ev) {
         ? (r.prix ? `C’est réglé. ${r.prix} cr.` : 'C’est réglé.')
         : r.motif, !r.ok);
       rafraichir(true);
+      break;
+    }
+
+    case 'commerce': {
+      ACTIONS.commerce();
       break;
     }
 

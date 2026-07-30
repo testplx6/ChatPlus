@@ -1,7 +1,9 @@
 // L'avant-poste : files de construction et de recherche à la OGame, chaîne de
 // production contrainte par l'énergie, stockage plafonné, raids à encaisser.
 
-import { BUILDINGS, RESEARCH, COMMODITY_KEYS, METIERS, METIER_KEYS, BIOMES } from './data.js';
+import {
+  BUILDINGS, RESEARCH, COMMODITY_KEYS, COMMODITIES, METIERS, METIER_KEYS, BIOMES,
+} from './data.js';
 import { comp, gagnerXp, estDebout, XP_PRATIQUE } from './characters.js';
 import { groupes, groupeActif } from './groupes.js';
 import { garnison } from './allegeance.js';
@@ -35,6 +37,9 @@ export function creerBase() {
     // autres, une fois qu'il compte. Voir `reconnaitreAvantPoste`.
     colonieId: null,
     majVitrine: -999,
+    // Laisser les colporteurs traiter avec l'intendance. Voir `visiteMarchand`.
+    commerce: true,
+    dernierMarchand: -9999,
     // Un avant-poste n'est pas un entrepôt avec des murs : des gens finissent
     // par s'y installer, y travailler, et y manger.
     pop: 0,
@@ -709,6 +714,9 @@ export function tickBase(state, log, ctx) {
     base.majVitrine = t;
     synchroniserVitrine(state);
   }
+  // Les colporteurs s'arrêtent, d'autant plus souvent que la route est faite.
+  // C'est ce qui détache la voie du colon des jambes de quatre personnes.
+  if (t % 12 === 0) visiteMarchand(state, rng, log);
 
   return { energie: e, gaspille: perdu };
 }
@@ -809,6 +817,91 @@ export function synchroniserVitrine(state) {
   col.murs = niveau(base, 'mur') * 3;
   col.taille = col.pop >= 90 ? 3 : col.pop >= 45 ? 2 : 1;
   col.nom = base.nom;
+}
+
+// ---------------------------------------------------------------------------
+// Les marchands de passage
+// ---------------------------------------------------------------------------
+
+/** Ce qu'on garde toujours : des jours de vivres par tête, et de quoi bâtir. */
+const RESERVE_JOURS = 25;
+const GARDE_MATERIAUX = 250;
+
+/** Ce que le camp achète quand il en manque, et jusqu'où. */
+const ACHATS = { polymere: 150, composant: 50, carburant: 200 };
+
+/**
+ * Un marchand s'arrête.
+ *
+ * Une ville reconnue n'avait toujours pas de marché : elle achetait par
+ * l'escouade, comme un camp, et la voie du colon restait attachée aux jambes de
+ * quatre personnes. C'est le couplage que le banc avait mis au jour à cent
+ * vingt parties — marcher est ce qui rend riche, donc bâtir loin des routes
+ * appauvrit.
+ *
+ * On ne lui donne pas un étal, ce qui supposerait un second stock et une
+ * seconde vérité. On lui donne **des visiteurs** : des colporteurs qui traitent
+ * avec l'intendance, prennent le surplus au prix du gros et laissent ce qui
+ * manque au prix du détail. C'est moins avantageux que d'aller vendre soi-même
+ * en ville — et c'est bien le propos : on paie la commodité.
+ *
+ * Ils viennent d'autant plus souvent que la piste est faite. Une ville qu'on
+ * atteint par une route damée voit passer du monde ; une ville au bout d'une
+ * friche n'en voit aucun.
+ */
+export function visiteMarchand(state, rng, log) {
+  const base = state.base;
+  if (!base.fonde || base.commerce === false) return null;
+  const r = state.world.regions[base.regionId];
+  // Un colporteur tous les huit jours sur une bonne route, tous les vingt sur
+  // une piste à peine marquée. Réservé aux villes reconnues, ce mécanisme ne
+  // servait à rien : c'est le camp *avant* le seuil qui a besoin d'écouler son
+  // surplus, puisque c'est comme ça qu'il devient une ville. Un hameau voit
+  // passer un ferrailleur de temps en temps ; une ville en voit trois fois plus.
+  const cadence = 480 / (0.4 + (r.piste || 0) * 1.6) * (base.colonieId ? 1 : 2.4);
+  if (state.temps - (base.dernierMarchand || -9999) < cadence) return null;
+  base.dernierMarchand = state.temps;
+
+  let vendu = 0;
+  let achete = 0;
+  let credits = 0;
+  const pop = Math.max(1, base.pop || 0);
+  for (const k of COMMODITY_KEYS) {
+    const garde = k === 'rations' ? pop * RESERVE_JOURS : GARDE_MATERIAUX;
+    const surplus = (base.stock[k] || 0) - garde;
+    if (surplus < 10) continue;
+    // Au prix du gros : un colporteur qui se déplace prend sa part.
+    const prix = COMMODITIES[k].prix * 0.55 * rng.range(0.9, 1.15);
+    const qte = Math.round(surplus * rng.range(0.5, 0.85));
+    base.stock[k] -= qte;
+    credits += Math.round(qte * prix);
+    vendu += qte;
+  }
+  state.player.credits += credits;
+
+  for (const k of Object.keys(ACHATS)) {
+    const manque = ACHATS[k] - (base.stock[k] || 0);
+    if (manque < 10) continue;
+    const prix = COMMODITIES[k].prix * 1.35 * rng.range(0.9, 1.15);
+    const peut = Math.floor(state.player.credits / prix);
+    const qte = Math.min(manque, peut, Math.round(manque * rng.range(0.4, 0.9)));
+    if (qte < 5) continue;
+    state.player.credits -= Math.round(qte * prix);
+    ajouter(base, k, qte);
+    achete += qte;
+  }
+
+  if (log && (vendu || achete)) {
+    log({
+      type: 'marchand',
+      texte: `Un colporteur s’arrête à ${base.nom}`
+        + `${vendu ? ` : il prend ${vendu} unités pour ${credits} cr` : ''}`
+        + `${achete ? `${vendu ? ' et laisse' : ' : il laisse'} ${achete} unités` : ''}.`,
+      regionId: base.regionId,
+      discret: true,
+    });
+  }
+  return { vendu, achete, credits };
 }
 
 /**

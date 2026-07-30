@@ -231,6 +231,14 @@ const API = {
     return { ok: true };
   },
 
+  /** Ouvrir ou fermer la porte aux colporteurs. */
+  commerce() {
+    state.base.commerce = state.base.commerce === false;
+    sauver();
+    rafraichir(true);
+    return { ok: true };
+  },
+
   /** Comment on se bat. Vaut aussi pendant votre absence. */
   tactique(key) {
     if (!TACTIQUES[key]) return { ok: false, motif: 'Tactique inconnue.' };

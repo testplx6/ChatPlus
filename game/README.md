@@ -739,10 +739,32 @@ s'achète. Le seuil de reconnaissance a lui aussi été corrigé par la mesure �
 vingt-cinq habitants, deux parties sur soixante l'atteignaient, ce qui fait un
 mur et non un palier.
 
-Ce qui manque encore, et qui est la suite évidente : **une ville reconnue n'a
-toujours pas de marché à elle.** Elle achète par l'escouade, comme un camp. Tant
-qu'elle ne commerce pas seule, la voie du colon reste attachée aux jambes de
-quatre personnes.
+### Des marchands qui s'arrêtent
+
+Une ville reconnue n'avait toujours pas de marché : elle achetait par
+l'escouade, comme un camp, et la voie du colon restait attachée aux jambes de
+quatre personnes. C'est exactement le couplage que le n=120 avait mis au jour —
+marcher est ce qui rend riche, donc bâtir loin des routes appauvrit.
+
+On ne lui donne pas un étal, ce qui supposerait un second stock et une seconde
+vérité. On lui donne **des visiteurs** : des colporteurs qui traitent avec
+l'intendance, prennent le surplus au prix du gros (×0,55) et laissent ce qui
+manque au prix du détail (×1,35). C'est moins avantageux que d'aller vendre
+soi-même — et c'est le propos : on paie la commodité, on n'a pas marché.
+
+**Ils viennent d'autant plus souvent que la piste est faite** : un colporteur
+tous les huit jours sur une bonne route, tous les vingt sur une friche à peine
+marquée. Les deux chantiers se rejoignent — les routes du chapitre précédent
+sont ce qui rend une ville habitable, et une ville sur une route est ce qui
+justifie la route.
+
+Le premier réglage réservait les colporteurs aux villes *reconnues*, et ne
+servait donc à rien : c'est le camp d'avant le seuil qui a besoin d'écouler son
+surplus, puisque c'est comme ça qu'il devient une ville. Un hameau en voit
+passer un de temps en temps, une ville trois fois plus.
+
+    Crédits moyens          1 022  →  1 688
+    Avant-postes fondés     42/60  →  47/60
 
 ### Ce que l'entrepôt refuse ne disparaît plus en silence
 

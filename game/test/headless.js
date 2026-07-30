@@ -1182,6 +1182,7 @@ function rationsApres(specialise, heures) {
   // se placent eux-mêmes, les deux bras convergeaient vers la même affectation
   // et le test mesurait deux fois la même chose.
   st.base.autoEmploi = false;
+  st.base.commerce = false;
   st.base.postes = {};
   if (specialise) affecter(st, 'cultivateur', 9);
   const avant = st.base.stock.rations;
@@ -2106,6 +2107,8 @@ function campDeveloppe(graine = 2727) {
     generateur: 3, baraquement: 3, hydroponie: 3, entrepot: 4, halle: 2, cantine: 2, mur: 2,
   });
   Object.assign(t.base.stock, { biomasse: 600, rations: 500, carburant: 400, ferraille: 200 });
+  // On mesure ici ce que devient un camp, pas ce qu'un colporteur lui achète.
+  t.base.commerce = false;
   return t;
 }
 
@@ -2180,6 +2183,59 @@ ok(!conquis.base.colonieId && !conquis.base.pop,
   'il ne reste rien du camp — l’escouade, et de la place ailleurs');
 ok(!conquis.fin, 'mais la partie continue : on n’a pas perdu ses gens');
 verifierCoherence(conquis, 'après la chute d’un avant-poste');
+
+section('9 nonies duodecies. Des marchands qui s’arrêtent');
+// Une ville reconnue n'avait toujours pas de marché : elle achetait par
+// l'escouade, comme un camp, et la voie du colon restait attachée aux jambes de
+// quatre personnes. On ne lui donne pas un étal — ce serait une seconde source
+// de vérité — on lui donne des visiteurs.
+function campMarchand(piste) {
+  const t = nouvellePartie(3838, { maintenant: 0 });
+  const gt = groupeActif(t);
+  gt.regionId = t.world.regions.find((r) => !r.colonie).i;
+  Object.assign(gt.inventaire, { ferraille: 400, polymere: 200, composant: 40 });
+  fonderBase(t, () => {});
+  Object.assign(t.base.batiments, { halle: 2, hydroponie: 2, entrepot: 5, baraquement: 2 });
+  t.base.pop = 10;
+  Object.assign(t.base.stock, { ferraille: 900, rations: 600, polymere: 0, carburant: 0 });
+  t.world.regions[t.base.regionId].piste = piste;
+  t.player.credits = 4000;
+  return t;
+}
+const halte = campMarchand(0.8);
+const crAvantM = halte.player.credits;
+const ferrailleAvant = halte.base.stock.ferraille;
+avancer(halte, 600);
+ok(halte.base.stock.ferraille < ferrailleAvant,
+  'un colporteur prend le surplus qu’on ne saurait pas porter en ville',
+  `${Math.round(ferrailleAvant)} → ${Math.round(halte.base.stock.ferraille)}`);
+ok((halte.base.stock.polymere || 0) > 0,
+  'et laisse ce que la région ne produit pas',
+  `${Math.round(halte.base.stock.polymere || 0)} polymère`);
+ok(halte.journal.some((x) => x.type === 'marchand'), 'le passage est noté');
+
+// Ils viennent d'autant plus souvent que la route est faite : une ville au bout
+// d'une friche n'en voit aucun.
+function passages(piste) {
+  const t = campMarchand(piste);
+  avancer(t, 3000);
+  return t.journal.filter((x) => x.type === 'marchand').length;
+}
+const surRoute = passages(1);
+const auBoutDuMonde = passages(0);
+ok(surRoute > auBoutDuMonde,
+  'une ville qu’on atteint par une route damée voit passer du monde',
+  `${surRoute} contre ${auBoutDuMonde} passages`);
+
+// Le prix de la commodité : on vend au gros et l'on achète au détail.
+ok(halte.player.credits !== crAvantM, 'le commerce se solde en crédits');
+const sansCommerce = campMarchand(0.8);
+sansCommerce.base.commerce = false;
+avancer(sansCommerce, 600);
+ok(sansCommerce.journal.every((x) => x.type !== 'marchand'),
+  'et le joueur peut fermer sa porte');
+
+verifierCoherence(halte, 'après une saison de colportage');
 
 section('9 nonies sexies. Qui accepte de partir, et pour combien');
 const rec = nouvellePartie(9494, { maintenant: 0 });
@@ -2494,6 +2550,7 @@ function consommationCamp(avecCantine) {
   fonderBase(t, () => {});
   Object.assign(t.base.batiments, { generateur: 4, baraquement: 3, hydroponie: 2, entrepot: 4 });
   t.base.pop = 12;
+  t.base.commerce = false;
   t.base.stock.rations = 500;
   t.base.stock.carburant = 400;
   if (avecCantine) {

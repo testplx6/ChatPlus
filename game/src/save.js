@@ -160,6 +160,9 @@ export function normaliser(state) {
     if (b.autoEmploi === undefined) b.autoEmploi = true;
     // Avant, un avant-poste n'existait pas sur la carte du monde.
     if (b.colonieId === undefined) b.colonieId = null;
+    // Avant, une ville reconnue n'avait toujours pas de marché.
+    if (b.commerce === undefined) b.commerce = true;
+    if (b.dernierMarchand === undefined) b.dernierMarchand = -9999;
     if (b.majVitrine === undefined) b.majVitrine = -999;
     if (b.majEmploi === undefined) b.majEmploi = -999;
     if (b.gaspilleJour === undefined) b.gaspilleJour = 0;
