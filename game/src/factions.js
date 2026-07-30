@@ -827,16 +827,30 @@ function legiferer(world, key, t, log, ctx) {
   }
 
   // L'esclavage ne se vote pas par idéologie : on l'ouvre quand la caisse est
-  // vide et qu'on a un chef que ça n'empêche pas de dormir, on le referme
-  // quand le pays gronde ou qu'un autre chef arrive.
-  const veutOuvrir = !lois.esclavage && temp.humain < 0.85
-    && pays.caisse < 600 && pays.grogne < 0.4;
+  // vide et qu'on a un chef que ça n'empêche pas de dormir, on le referme quand
+  // un autre chef arrive, quand on n'en a plus besoin, ou quand ça coûte trop
+  // cher au-dehors.
+  //
+  // La première version exigeait en plus un pays calme — `grogne < 0.4` pour
+  // ouvrir, `grogne > 0.55` pour fermer. Mesuré sur soixante-douze factions en
+  // fin de partie : la caisse est vide dans 92 % des cas, le chef s'en accommode
+  // dans 31 %, et **le pays est calme dans 11 %** — grogne médiane 0,63. Les
+  // trois ensemble : 1 %, et zéro marché ouvert sur douze parties. La règle
+  // était contradictoire, puisqu'un pays gronde justement parce qu'il est
+  // ruiné : elle demandait la ruine et la sérénité en même temps. Tout ce qui
+  // pend à l'esclavage — le prix des captifs, l'estime qu'on y perd, les
+  // guerres d'abolition, le panneau de loi — n'était donc jamais atteignable.
+  //
+  // La grogne n'est plus une condition d'ouverture : elle en est la conséquence
+  // (+0,06 plus bas), ce qui était déjà son rôle. Elle ne referme le marché que
+  // lorsque le pays est réellement en train de se défaire.
+  const veutOuvrir = !lois.esclavage && temp.humain < 0.85 && pays.caisse < 600;
   // On ferme aussi le marché quand il coûte une guerre : c'est la façon la plus
   // nette dont la pression extérieure entre dans la politique intérieure.
   const attaquePourCa = guerresDe(world, key).some(
     (g) => g.but && g.but.type === 'abolition' && g.batailles >= 2);
   const veutFermer = lois.esclavage
-    && (temp.humain > 1.05 || pays.grogne > 0.55 || attaquePourCa);
+    && (temp.humain > 1.05 || pays.caisse > 2500 || pays.grogne > 0.8 || attaquePourCa);
   if (veutOuvrir || veutFermer) {
     lois.esclavage = veutOuvrir;
     changements.push(veutOuvrir

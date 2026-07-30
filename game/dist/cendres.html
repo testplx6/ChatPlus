@@ -7938,16 +7938,30 @@ function legiferer(world, key, t, log, ctx) {
   }
 
   // L'esclavage ne se vote pas par idéologie : on l'ouvre quand la caisse est
-  // vide et qu'on a un chef que ça n'empêche pas de dormir, on le referme
-  // quand le pays gronde ou qu'un autre chef arrive.
-  const veutOuvrir = !lois.esclavage && temp.humain < 0.85
-    && pays.caisse < 600 && pays.grogne < 0.4;
+  // vide et qu'on a un chef que ça n'empêche pas de dormir, on le referme quand
+  // un autre chef arrive, quand on n'en a plus besoin, ou quand ça coûte trop
+  // cher au-dehors.
+  //
+  // La première version exigeait en plus un pays calme — `grogne < 0.4` pour
+  // ouvrir, `grogne > 0.55` pour fermer. Mesuré sur soixante-douze factions en
+  // fin de partie : la caisse est vide dans 92 % des cas, le chef s'en accommode
+  // dans 31 %, et **le pays est calme dans 11 %** — grogne médiane 0,63. Les
+  // trois ensemble : 1 %, et zéro marché ouvert sur douze parties. La règle
+  // était contradictoire, puisqu'un pays gronde justement parce qu'il est
+  // ruiné : elle demandait la ruine et la sérénité en même temps. Tout ce qui
+  // pend à l'esclavage — le prix des captifs, l'estime qu'on y perd, les
+  // guerres d'abolition, le panneau de loi — n'était donc jamais atteignable.
+  //
+  // La grogne n'est plus une condition d'ouverture : elle en est la conséquence
+  // (+0,06 plus bas), ce qui était déjà son rôle. Elle ne referme le marché que
+  // lorsque le pays est réellement en train de se défaire.
+  const veutOuvrir = !lois.esclavage && temp.humain < 0.85 && pays.caisse < 600;
   // On ferme aussi le marché quand il coûte une guerre : c'est la façon la plus
   // nette dont la pression extérieure entre dans la politique intérieure.
   const attaquePourCa = guerresDe(world, key).some(
     (g) => g.but && g.but.type === 'abolition' && g.batailles >= 2);
   const veutFermer = lois.esclavage
-    && (temp.humain > 1.05 || pays.grogne > 0.55 || attaquePourCa);
+    && (temp.humain > 1.05 || pays.caisse > 2500 || pays.grogne > 0.8 || attaquePourCa);
   if (veutOuvrir || veutFermer) {
     lois.esclavage = veutOuvrir;
     changements.push(veutOuvrir
@@ -8793,17 +8807,25 @@ function lenteurPrisonniers(g) {
 }
 
 /**
- * Ce qu'on peut prendre après une victoire. On ne capture pas les morts, on ne
- * capture pas ce qu'on ne saurait pas garder, et on ne capture jamais l'Essaim
- * — on ne négocie pas avec ça, et personne n'en veut.
+ * Ce qu'on peut prendre après une victoire. On ne capture pas les morts, et l'on
+ * ne capture jamais l'Essaim — on ne négocie pas avec ça, et personne n'en veut.
+ *
+ * Rien n'interdit d'en prendre plus qu'on ne sait en garder. C'était le cas
+ * jusqu'ici — `capturables` refusait net au-delà de la capacité — et c'était une
+ * limite écrite, exactement ce que ce projet évite partout ailleurs : on peut
+ * acheter une dixième bête, bâtir un camp trop grand, porter trop lourd. Le
+ * modèle avait déjà le coût qui borne naturellement le nombre — ils mangent
+ * (`tickPrisonniers`), ils ralentissent (`lenteurPrisonniers`), et ceux que
+ * personne ne regarde s'évadent (`surveillanceManquante`) — mais on ne pouvait
+ * jamais entrer dans le régime où il s'applique.
+ *
+ * Conséquence mesurée : la voie du négrier n'avait aucun moyen de grandir. Une
+ * escouade de quatre gardait six captifs, pour toujours, quoi qu'elle achète ou
+ * apprenne. Toutes les autres voies montent en charge ; celle-là était plate.
  */
 function capturables(g, bande) {
   if (!bande || bande.faction === 'essaim') return [];
-  const place = Math.floor(capaciteGarde(g) - prisonniersDe(g).length);
-  if (place <= 0) return [];
-  return (bande.membres || [])
-    .filter((c) => estVivant(c) && !estDebout(c))
-    .slice(0, place);
+  return (bande.membres || []).filter((c) => estVivant(c) && !estDebout(c));
 }
 
 /**
@@ -8943,12 +8965,26 @@ function rancon(state, col, c) {
   return Math.min(Math.round(f.tresor * 0.15), Math.round(valeurCaptif(c) * 1.1));
 }
 
-/** Ce qu'un négrier en donne. Beaucoup, et c'est bien le problème. */
+/**
+ * Ce qu'un négrier en donne. Beaucoup, et c'est bien le problème.
+ *
+ * « Beaucoup » a longtemps été faux. À 1,9 fois la valeur, un homme se vendait
+ * 360 crédits — moins qu'une charrette à bras, trois fois moins qu'une brahmine.
+ * Mesuré au banc, la voie du négrier rapportait 4 750 crédits par partie et en
+ * coûtait près de 8 000 en travail non fait, en soins, en matériel perdu et en
+ * escouades éteintes : elle était strictement dominée par le travail honnête,
+ * ce qui n'est pas un choix moral, c'est un piège. Le coût dominant n'est pas
+ * l'estime perdue, c'est l'heure passée à chasser plutôt qu'à récolter.
+ *
+ * À 3,2, une prise paie mieux que l'heure qu'elle a coûtée — et le risque, les
+ * morts et le mépris redeviennent ce qui décide, au lieu d'être un supplément
+ * à une mauvaise affaire.
+ */
 function prixEsclave(state, col, c) {
   const loi = loiIci(state, col);
   if (!loi.esclavage) return 0;
   // Une ville sans loi paie moins : le marché y est moins organisé qu'ailleurs.
-  return Math.round(valeurCaptif(c) * (loi.sansLoi ? 1.4 : 1.9));
+  return Math.round(valeurCaptif(c) * (loi.sansLoi ? 2.3 : 3.2));
 }
 
 /** Ce qu'on peut faire de ce prisonnier, ici, avec les prix. */

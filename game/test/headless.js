@@ -14,11 +14,12 @@ import {
 } from '../src/combat.js';
 import { titreDe, lignesDe, faitsDe, RENOMMEES } from '../src/chronique.js';
 import { faireRevolte, SEUIL_REVOLTE } from '../src/economy.js';
+import { BETES } from '../src/betes.js';
 import { bandeLocale } from '../src/events.js';
 import { damer, coutTraversee, PISTE_GAIN } from '../src/world.js';
 import { distanceMorale } from '../src/factions.js';
 import { loiIci } from '../src/lois.js';
-import { primeLivraison } from '../src/justice.js';
+import { primeLivraison, prixEsclave } from '../src/justice.js';
 import { classement, puissance } from '../src/factions.js';
 import { donnerOrdre, verifierExercice, COMPETENCES_EXERCICE } from '../src/squad.js';
 import {
@@ -1588,8 +1589,9 @@ const bandeJus = genererBande(new Rng(11), 'bandits', 4, 1);
 for (const c of bandeJus.membres) { c.etat = 'ko'; c.corps.torse.pv = 0; }
 const capt = capturables(gJus, bandeJus);
 ok(capt.length > 0, 'les hommes à terre sont capturables', `${capt.length}`);
-ok(capt.length <= Math.floor(capaciteGarde(gJus)),
-  'et jamais plus que ce qu’on sait garder — la limite n’est écrite nulle part',
+ok(capt.length === bandeJus.membres.filter((c) => c.etat === 'ko').length,
+  'tous ceux qui sont à terre, même au-delà de ce qu’on sait garder : la limite '
+  + 'n’est pas écrite, elle se paie',
   `${capt.length} pour ${capaciteGarde(gJus)} de garde`);
 const prisJus = fairePrisonniers(jus, gJus, bandeJus, capt, () => {});
 ok(prisonniersDe(gJus).length === prisJus.length, 'ils passent dans la colonne');
@@ -1654,6 +1656,48 @@ const vus = DIPLO_FACTIONS.filter(
   (k) => (jus.player.reputation[k] || 0) < (repuAvantVente[k] || 0)
 );
 ok(vus.length > 0, 'ceux qui l’interdisent chez eux l’apprennent', `${vus.length} factions`);
+// Le prix doit valoir la peine qu'on prend : à 1,9 fois la valeur, un homme se
+// vendait moins cher qu'une charrette à bras, et la voie du négrier mesurait
+// moins bien que le travail honnête sur tous les tableaux à la fois.
+{
+  const temoin = prisonniersDe(gJus)[0] || encore;
+  const vendu = prixEsclave(jus, villeJus, temoin);
+  const livre = primeLivraison(jus, villeJus, temoin);
+  ok(vendu > livre * 2, 'vendre paie plus du double de ce que paie la justice',
+    `${vendu} contre ${livre}`);
+  ok(vendu > BETES.charrette.prix,
+    'et un homme vaut plus qu’une charrette à bras', `${vendu} cr`);
+}
+
+// --- Le marché aux hommes doit pouvoir s'ouvrir. Aucune faction ne démarre
+// esclavagiste : si le conseil ne l'ouvre jamais, tout ce qui en dépend est mort.
+{
+  const marche = nouvellePartie(7575, { maintenant: 0 });
+  const kM = DIPLO_FACTIONS.find(
+    (k) => marche.world.colonies.some((c) => !c.ruine && c.faction === k)
+  );
+  ok(!loisDe(marche.world, kM).esclavage, 'personne ne commence esclavagiste');
+  // Une caisse vide, un chef que ça n'empêche pas de dormir, et un pays qui
+  // gronde — ce qui est l'état ordinaire d'un pays ruiné, et ce que l'ancienne
+  // règle excluait : elle demandait la ruine et la sérénité en même temps.
+  marche.world.factions[kM].tresor = 0;
+  dirigeant(marche.world, kM).temperament = 'rapace';
+  for (const c of marche.world.colonies) {
+    if (c.faction === kM) c.unrest = 0.7;
+  }
+  loisDe(marche.world, kM).depuis = -9999;
+  marche.world.factions[kM].prochainConseil = 1;
+  avancer(marche, 40);
+  ok(loisDe(marche.world, kM).esclavage,
+    'une caisse vide et un chef sans scrupule ouvrent le marché, même si ça gronde');
+  // Et il se referme quand la caisse est pleine : ce n'est pas une idéologie.
+  marche.world.factions[kM].tresor = 99999;
+  loisDe(marche.world, kM).depuis = -9999;
+  marche.world.factions[kM].prochainConseil = 1;
+  avancer(marche, 40);
+  ok(!loisDe(marche.world, kM).esclavage,
+    'et se referme quand on n’en a plus besoin');
+}
 
 // Une geôle se vide toute seule quand la peine est purgée.
 const detenu = geoleDe(villeJus).detenus[0];
@@ -1789,16 +1833,30 @@ const nourrir = (heures) => {
     avancer(regne, 50);
   }
 };
+// Une justice clémente dans un pays qui gronde : aucun conseil ne la garde.
+// On légifère sur deux axes pour que la reprise en main soit visible quelle que
+// soit l'humeur du chef en place.
+fixerLoi(regne, fRegne, 'peine', 'legere', () => {});
 nourrir(2000);
-ok(loisDe(regne.world, fRegne).impot === 0.15,
+ok(loisDe(regne.world, fRegne).impot === 0.15
+  && loisDe(regne.world, fRegne).peine === 'legere',
   'tant que vous tenez la charge, votre loi tient',
-  `${Math.round(loisDe(regne.world, fRegne).impot * 100)} %`);
-// Et le conseil reprend la main dès qu'on n'est plus là pour la tenir.
+  `${Math.round(loisDe(regne.world, fRegne).impot * 100)} % · ${loisDe(regne.world, fRegne).peine}`);
+// Et le conseil reprend la main dès qu'on n'est plus là pour la tenir. On
+// mesure qu'il a légiféré, pas qu'il a choisi telle valeur : un conseil peut
+// très bien vouloir le même impôt que vous, et la première version de ce test
+// se contentait de lire le taux — elle passait ou non selon le tempérament tiré
+// pour ce chef-là, ce qui n'était pas ce qu'on voulait vérifier.
 gRegne.allegeance = null;
+const legiferaA = loisDe(regne.world, fRegne).depuis || 0;
+const tLibre = regne.temps;
 nourrir(1600);
-ok(loisDe(regne.world, fRegne).impot !== 0.15,
+ok((loisDe(regne.world, fRegne).depuis || 0) > Math.max(legiferaA, tLibre),
   'la charge perdue, le conseil repasse derrière vous',
-  `${Math.round(loisDe(regne.world, fRegne).impot * 100)} %`);
+  `légiféré à ${loisDe(regne.world, fRegne).depuis} (libre depuis ${tLibre})`);
+ok(loisDe(regne.world, fRegne).peine !== 'legere',
+  'et il ne garde pas une justice clémente dans un pays qui gronde',
+  loisDe(regne.world, fRegne).peine);
 
 // La sévérité n'est plus décorative : elle tient les routes et elle se paie en
 // grogne — les deux champs existaient sans que rien ne les lise.

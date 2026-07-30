@@ -73,6 +73,7 @@ SANS=detach,contrats node test/equilibre.js   # coupe un système pour l'isoler
 VAGABOND=1 node test/equilibre.js             # témoin : voyager sans contrats
 COLON=1 node test/equilibre.js                # profil : bâtir plutôt que courir
 CARRIERE=1 node test/equilibre.js             # profil : servir, monter, ordonner
+NEGRIER=1 node test/equilibre.js              # profil : prendre vivant, vendre
 
 npm install --no-save playwright-core
 node test/navigateur.js      # 82 vérifications dans un Chromium réel
@@ -1020,6 +1021,75 @@ Les deux correctifs profitent aussi au bot par défaut, qui ne joue pas la
 carrière : 413 points avant, 559 après. Ce n'est pas le profil qui a rendu la
 voie jouable, c'est ce que le profil a permis de voir.
 
+### Un bot qui vend des hommes, et le marché qui n'existait pas
+
+Le jeu affirmait deux choses qu'aucune mesure n'avait vérifiées : que vendre des
+hommes est la voie la plus rentable, et qu'elle se paie. La chronique lui donne
+même son titre le plus lourd, celui qui passe avant tout le reste. Le bot par
+défaut refuse de vendre — c'est un choix de jeu, et il reste — si bien que tout
+ce qui pend à l'esclavage n'était vérifié que par des tests unitaires.
+`NEGRIER=1` le joue : on cherche l'affrontement pour faire des captifs, on les
+porte là où la loi les achète, on vend. Le banc ne juge pas, il chiffre.
+
+**Le marché n'existait pas.** Première mesure, avant toute chose : **1,5 ville
+sur 70** achetait des hommes, et le bot en vendait 0,3 par partie pour 11
+prisonniers pris. Aucune faction ne démarre esclavagiste — c'est voulu — et le
+conseil devait l'ouvrir « quand la caisse est vide et qu'on a un chef que ça
+n'empêche pas de dormir ». Sondé sur soixante-douze factions en fin de partie :
+
+    caisse vide (< 600 par ville)      92 %
+    chef qui s'en accommode            31 %
+    pays calme (grogne < 0,40)         11 %      ← grogne médiane 0,63
+    les trois à la fois                 1 %
+    marché effectivement ouvert         0 %
+
+La règle demandait **la ruine et la sérénité en même temps**, alors qu'un pays
+gronde justement parce qu'il est ruiné. La grogne n'est plus une condition
+d'ouverture — elle en est la conséquence, ce qui était déjà son rôle (+0,06 à
+l'ouverture). Le marché se referme quand un chef à conscience arrive, quand la
+caisse se remplit, quand une guerre d'abolition mord, ou quand le pays se défait
+vraiment (grogne > 0,8). Résultat : **un quart des factions** l'ouvrent au cours
+d'une partie.
+
+**Une limite écrite là où le coût existait déjà.** `capturables` refusait net
+au-delà de ce qu'on savait garder. Or le modèle avait déjà tout ce qu'il faut
+pour borner le nombre sans l'écrire — ils mangent, ils ralentissent, ceux que
+personne ne regarde s'évadent — mais on ne pouvait jamais entrer dans le régime
+où ça s'applique. Une escouade de quatre gardait six captifs, pour toujours,
+quoi qu'elle achète ou apprenne : **la seule voie du jeu qui ne montait pas en
+charge**. La limite est maintenant tenue par son coût, comme les bêtes, le
+portage et le camp. Mesuré ensuite : surcharger volontairement fait *perdre* des
+têtes — le coût fait son travail, et le choix a une vraie réponse.
+
+**Un homme valait moins qu'une charrette à bras.** À 1,9 fois sa valeur, un
+captif se vendait 360 crédits — un tiers d'une brahmine. Mesurée, la voie
+rapportait 4 750 crédits par partie et en coûtait près de 8 000 en travail non
+fait, en soins, en matériel et en escouades éteintes : **strictement dominée par
+le travail honnête**, ce qui n'est pas un choix moral mais un piège. Le coût qui
+domine n'est pas l'estime perdue, c'est l'heure passée à chasser plutôt qu'à
+récolter. Le prix passe à 3,2 (2,3 dans une ville sans loi).
+
+**Deux erreurs de profil, corrigées par la mesure.** Le bot patrouillait en
+posture prudente — laquelle coupe un tiers des rencontres *et* esquive quatre
+hostiles sur dix avant qu'on ait vu à qui l'on avait affaire : 444 heures de
+chasse pour **moins** de victoires qu'un bot qui ne chassait pas. Et il partait
+en rafle avant de s'entraîner, à treize de compétence en posture agressive : une
+partie sur quatre s'éteignait. Un négrier s'entraîne d'abord, puis n'esquive
+plus rien.
+
+    n=60, 4 000 h        défaut    colon  carriériste   négrier
+    escouades vivantes    58/60    59/60      55/60      52/60
+    crédits en fin         4 128    2 456      4 454      7 117
+    dont revenu captifs    1 936    1 235      1 945     12 653
+    points de service        630      401      1 072        770
+    estime (non escl.)        −3       −4         −2        −30
+    des nôtres à terre       7,7      6,6       10,4       16,1
+
+C'est enfin la forme que le jeu annonçait : **le plus d'argent, le plus de
+funérailles, et le mépris de tous ceux qui ne le font pas.** La chronique le dit
+sans commenter — sur trente parties, dix-sept finissent sur le titre de Négrier,
+et aucune autre voie ne le décroche jamais.
+
 ### Un garde-fou de performance qui ne tient plus tout à fait
 
 À signaler, parce que le taire reviendrait à truquer la mesure. Le même code de
@@ -1280,11 +1350,14 @@ la fois : c'est la seule façon d'attribuer un déséquilibre à sa cause plutô
 qu'à une intuition. Le mode vagabond — voyager autant, sans prendre un seul
 contrat — est le témoin qui a innocenté les contrats et accusé la route.
 
-Ses profils (`COLON=1`, `CARRIERE=1`) font autre chose : ils font jouer une voie
-au lieu d'un système. Un bot unique mesure très bien ce qu'il fait et très mal
-ce qu'il ne fait pas — le colon a révélé que personne n'apportait de matériaux
-aux hameaux, le carriériste qu'un ordre de frappe sur trente était honorable.
-Aucun des deux ne se voyait dans les chiffres du bot par défaut.
+Ses profils (`COLON=1`, `CARRIERE=1`, `NEGRIER=1`) font autre chose : ils font
+jouer une voie au lieu d'un système. Un bot unique mesure très bien ce qu'il
+fait et très mal ce qu'il ne fait pas — le colon a révélé que personne
+n'apportait de matériaux aux hameaux, le carriériste qu'un ordre de frappe sur
+trente était honorable, le négrier que le marché aux hommes ne s'ouvrait
+jamais. Aucun des trois ne se voyait dans les chiffres du bot par défaut, et
+c'est la leçon la plus solide du banc : **ce qu'un bot ne joue pas, personne ne
+le mesure.**
 
 ## Ce que la simulation fait
 

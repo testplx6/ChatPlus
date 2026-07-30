@@ -60,9 +60,10 @@ import {
   etatSecteur, pireCase, dansSonSecteur, SEUIL_MERITE,
 } from '../src/secteur.js';
 import {
-  prisonniersDe, disposer, optionsPour, surveillanceManquante,
+  prisonniersDe, disposer, optionsPour, surveillanceManquante, capaciteGarde,
 } from '../src/justice.js';
 import { loisDe, IMPOTS } from '../src/lois.js';
+import { titreDe } from '../src/chronique.js';
 import { TACTIQUE_KEYS, rendementTactique } from '../src/combat.js';
 import {
   peutExercer, colonnesDe, envoyerColonne, leverColonne, coutLevee,
@@ -95,6 +96,9 @@ const TRACE = {
   secteurs: 0, etatSecteur: 0, bilans: 0,
   revoltes: 0, matees: 0, libres: 0, renverses: 0, grogne: 0,
   disposes: 0, relaches: 0, gagneCaptifs: 0, captures: 0, marchands: 0,
+  vendus: 0, sansMarche: 0, marchesVus: 0, villesVues: 0, mepris: 0, raflees: 0,
+  titres: {},
+  hPatrouille: 0, victoires: 0,
   mortsCombat: 0, koSubis: 0, piste: 0, pisteVues: 0, reconnus: 0, popCamp: 0,
   // Ce que les conseils votent quand personne ne les tient.
   impots: {}, peines: {}, esclavagistes: 0, factionsVues: 0,
@@ -147,6 +151,32 @@ const RAYON_COLON = 5;
  * concurrence pas une carrière, il la loge.
  */
 const CARRIERE = process.env.CARRIERE === '1';
+/**
+ * Profil négrier : on prend les gens vivants et on les vend.
+ *
+ * Le jeu affirme deux choses qu'aucune mesure n'a jamais vérifiées : que vendre
+ * des hommes est la voie la plus rentable, et qu'elle se paie. La chronique lui
+ * donne même son titre le plus lourd, celui qui passe avant tout le reste. Or le
+ * bot par défaut refuse de vendre — c'est un choix de jeu, et il est resté — si
+ * bien que tout ce qui touche à l'esclavage n'était vérifié que par des tests
+ * unitaires : le prix, la réputation perdue, le marché qui existe ou pas.
+ *
+ * NEGRIER=1 : on cherche l'affrontement pour faire des captifs, on les porte là
+ * où la loi les achète, et l'on vend chaque fois que c'est l'option la mieux
+ * payée. Le banc ne juge pas : il chiffre.
+ */
+const NEGRIER = process.env.NEGRIER === '1';
+/** Jusqu'où un négrier s'éloigne du marché où il écoule. */
+const RAYON_RAFLE = 3;
+
+/** Une ville qui achète des hommes, d'après ce qu'on sait de sa loi. */
+function acheteDesHommes(state, col) {
+  if (!col || col.ruine) return false;
+  // Une ville sans drapeau ne connaît que la loi du plus fort : on y vend
+  // toujours, moins cher. Voir loiIci().
+  if (!col.faction) return true;
+  return !!loisDe(state.world, col.faction).esclavage;
+}
 
 /** Où trouver de quoi manger : on note les régions par rendement en nourriture. */
 function scoreNourriture(state, i) {
@@ -830,15 +860,27 @@ function jouerPrincipal(state, g, memo) {
     // --- Ce qu'on fait des gens qu'on n'a pas tués. Un joueur qui a compris
     // prend l'option la mieux payée qui ne le brûle pas partout : livrer et
     // rançonner rapportent et ne fâchent personne, vendre rapporte plus et se
-    // paie en réputation. Le bot ne vend pas — c'est un choix de jeu, pas une
-    // optimisation, et le banc doit mesurer la voie honnête d'abord.
-    for (const c of prisonniersDe(g).slice()) {
+    // paie en réputation. Le bot par défaut ne vend pas — c'est un choix de jeu,
+    // pas une optimisation, et le banc doit mesurer la voie honnête d'abord.
+    // `NEGRIER=1` mesure l'autre, et c'est la seule façon de savoir ce que ce
+    // que le jeu appelle sa voie la plus rentable coûte vraiment.
+    // Un négrier ne brade pas sa cargaison au premier comptoir : la prime de
+    // justice paie environ le tiers de ce qu'en donne un marché. Il garde, ce
+    // qui n'est pas gratuit — ils mangent, ils ralentissent, ils s'évadent.
+    const garderPourLeMarche = NEGRIER && !acheteDesHommes(state, colIci)
+      && surveillanceManquante(g) <= 0;
+    for (const c of garderPourLeMarche ? [] : prisonniersDe(g).slice()) {
       const opts = optionsPour(state, colIci, g, c)
-        .filter((o) => o.key === 'livrer' || o.key === 'rancon');
+        .filter((o) => o.key === 'livrer' || o.key === 'rancon'
+          || (NEGRIER && o.key === 'vendre'));
       if (!opts.length) continue;
       opts.sort((a, b) => b.prix - a.prix);
       const r = disposer(state, g, c.id, opts[0].key, () => {});
-      if (r.ok) { TRACE.disposes++; TRACE.gagneCaptifs += r.prix || 0; }
+      if (r.ok) {
+        TRACE.disposes++;
+        TRACE.gagneCaptifs += r.prix || 0;
+        if (opts[0].key === 'vendre') TRACE.vendus++;
+      }
     }
 
     // Un carriériste achète ce que son ordre réclame. L'ordre paie la
@@ -923,6 +965,59 @@ function jouerPrincipal(state, g, memo) {
     if (o.type === 'reconnaissance' && !state.world.regions[o.regionId].decouvert) {
       partir(state, g, o.regionId, 'ordre de mission');
       return;
+    }
+  }
+
+  // --- La rafle. Un négrier ne tombe pas sur des captifs par hasard : il va les
+  // chercher, et il travaille un couloir.
+  //
+  // La première version patrouillait n'importe où et rentrait vendre à l'autre
+  // bout du monde. Elle prenait *moins* de prisonniers que le bot par défaut —
+  // 13,5 contre 17,3 — parce qu'on ne capture que ce qu'on a des bras pour
+  // garder : une corde pleine qui marche trois cents heures vers un marché, ce
+  // sont trois cents heures à ne rien pouvoir prendre. Le trajet est le coût
+  // principal du métier, alors on le raccourcit : on chasse autour de son
+  // débouché.
+  // On ne part pas à la chasse à l'homme avec des gens qui n'ont jamais tenu une
+  // arme : la rafle passait avant l'entraînement, l'escouade restait à treize de
+  // compétence en posture agressive, et une partie sur quatre s'éteignait.
+  const prets = vivants.length && vivants.reduce(
+    (a, c) => a + Math.max(comp(c, 'melee'), comp(c, 'tir')), 0) / vivants.length >= 18;
+  if (NEGRIER && prets && rations > 60 && vivants.every((c) => pvTotal(c).pct > 0.65)) {
+    let marche = memo.marche != null ? colonieParId(state.world, memo.marche) : null;
+    if (!acheteDesHommes(state, marche)) {
+      marche = null;
+      let bestD = Infinity;
+      for (const c of state.world.colonies) {
+        if (!acheteDesHommes(state, c)) continue;
+        const d = distance(c.regionId, g.regionId);
+        if (d < bestD) { bestD = d; marche = c; }
+      }
+      memo.marche = marche ? marche.id : null;
+    }
+    if (!marche) {
+      TRACE.sansMarche++;
+    } else {
+      const place = capaciteGarde(g) - prisonniersDe(g).length;
+      const loin = distance(marche.regionId, g.regionId) > RAYON_RAFLE;
+      if (place < 1 || (loin && prisonniersDe(g).length > 0)) {
+        // Plein, ou trop loin avec de la marchandise sur les bras : on vend.
+        if (marche.regionId !== g.regionId) {
+          if (!(g.ordre.type === 'voyage' && g.ordre.dest === marche.regionId)) {
+            partir(state, g, marche.regionId, 'porter la cargaison au marché');
+          }
+          return;
+        }
+      } else if (loin) {
+        if (!(g.ordre.type === 'voyage' && g.ordre.dest === marche.regionId)) {
+          partir(state, g, marche.regionId, 'revenir sur son terrain de chasse');
+        }
+        return;
+      } else {
+        if (g.ordre.type !== 'patrouille') donnerOrdre(state, { type: 'patrouille' }, g);
+        TRACE.raflees++;
+        return;
+      }
     }
   }
 
@@ -1047,8 +1142,9 @@ function jouerPrincipal(state, g, memo) {
   }
 
   // Ce qu'on ne surveille pas s'en va de toute façon, et parfois en emportant
-  // quelque chose. Un joueur avisé relâche plutôt que de se le faire prendre.
-  while (surveillanceManquante(g) > 0) {
+  // quelque chose. Un joueur avisé relâche plutôt que de se le faire prendre —
+  // un négrier, lui, préfère perdre quelques têtes en route que de les rendre.
+  while (!NEGRIER && surveillanceManquante(g) > 0) {
     const gens = prisonniersDe(g);
     if (!gens.length) break;
     disposer(state, g, gens[gens.length - 1].id, 'relacher', () => {});
@@ -1165,6 +1261,11 @@ function choisirPosture(state) {
   let veut = 'neutre';
   if (!entier || combat < 16) veut = 'prudent';
   else if (combat > 34 && debout.length >= 3) veut = 'agressif';
+  // Un négrier ne peut pas être prudent : la prudence coupe un tiers des
+  // rencontres et esquive quatre hostiles sur dix avant qu'on ait vu à qui l'on
+  // avait affaire. C'est cohérent pour qui veut rentrer entier, et ruineux pour
+  // qui vit de ce qu'il ramène vivant.
+  if (NEGRIER && entier) veut = 'agressif';
   if (state.player.posture !== veut) state.player.posture = veut;
 }
 
@@ -1326,6 +1427,7 @@ for (let n = 0; n < PARTIES; n++) {
       TRACE[t === 'voyage' ? 'voyage' : t === 'repos' ? 'repos' : 'travail']++;
     }
     for (const gg of groupes(state)) if (gg.allegeance) TRACE.hEngage++;
+    for (const gg of groupes(state)) if (gg.ordre.type === 'patrouille') TRACE.hPatrouille++;
     const crAvant = state.player.credits;
     const defAvant = state.stats.defaites;
     const captifsAvant = groupes(state).reduce((t, x) => t + prisonniersDe(x).length, 0);
@@ -1413,6 +1515,25 @@ for (let n = 0; n < PARTIES; n++) {
     const vues = state.world.regions.filter((r) => r.decouvert);
     TRACE.piste += vues.reduce((a, r) => a + (r.piste || 0), 0) / Math.max(1, vues.length);
     TRACE.pisteVues++;
+  }
+  {
+    // Le marché aux hommes existe-t-il seulement ? Aucune faction ne démarre
+    // esclavagiste : c'est une loi qu'un conseil ouvre quand la caisse est vide.
+    // Les villes libres, elles, l'ouvrent toujours — faute de loi du tout.
+    const vivantes = state.world.colonies.filter((c) => !c.ruine);
+    TRACE.villesVues += vivantes.length;
+    TRACE.marchesVus += vivantes.filter((c) => acheteDesHommes(state, c)).length;
+    const pudiques = Object.keys(state.world.factions).filter(
+      (k) => k !== 'essaim' && !loisDe(state.world, k).esclavage
+    );
+    TRACE.mepris += pudiques.reduce(
+      (a, k) => a + (state.player.reputation[k] || 0), 0) / Math.max(1, pudiques.length);
+  }
+  {
+    // Ce que la partie a fait du joueur. Un titre qu'aucune partie ne décroche
+    // est un titre décoratif : la chronique doit se lire sur ce qui arrive.
+    const t = titreDe(state).nom;
+    TRACE.titres[t] = (TRACE.titres[t] || 0) + 1;
   }
   if (state.base.colonieId) TRACE.reconnus++;
   TRACE.popCamp += state.base.pop || 0;
@@ -1522,6 +1643,16 @@ console.log('Ordres de mission par type — '
       + `${a ? ` +${a} annulé${a > 1 ? 's' : ''}` : ''}`;
   }).join(' · '));
 console.log(`Prérogatives exercées : ${(TRACE.ordresDonnes / PARTIES).toFixed(1)} par partie`);
+TRACE.victoires = lignes.reduce((t, l) => t + Number(String(l.wl).split('/')[0]), 0);
+console.log(`  rafle : ${Math.round(TRACE.hPatrouille / PARTIES)} h de patrouille par partie, `
+  + `${(TRACE.victoires / PARTIES).toFixed(1)} victoires, `
+  + `${(TRACE.captures / Math.max(1, TRACE.victoires)).toFixed(2)} captif(s) par victoire`);
+console.log(`Marché aux hommes : ${(TRACE.marchesVus / PARTIES).toFixed(1)} ville(s) sur `
+  + `${(TRACE.villesVues / PARTIES).toFixed(0)} l'ouvrent en fin de partie — `
+  + `${(TRACE.vendus / PARTIES).toFixed(1)} vendu(s) par partie, `
+  + `${TRACE.sansMarche} tour(s) à ne savoir où les porter`);
+console.log(`Estime moyenne en fin de partie : ${(TRACE.mepris / Math.max(1, PARTIES)).toFixed(0)} `
+  + `sur les factions qui n'achètent pas d'hommes`);
 console.log(`Prisonniers : ${(TRACE.captures / PARTIES).toFixed(1)} pris par partie — `
   + `${(TRACE.disposes / PARTIES).toFixed(1)} livrés ou rançonnés pour `
   + `${Math.round(TRACE.gagneCaptifs / PARTIES)} cr, ${(TRACE.relaches / PARTIES).toFixed(1)} relâchés faute de gardiens`);
@@ -1538,6 +1669,8 @@ console.log(`Secteurs tenus : ${TRACE.secteurs} — état moyen `
   + `${(TRACE.etatSecteur / Math.max(1, TRACE.secteurs)).toFixed(2)} `
   + `(0 = sûr, 1 = infréquentable) sur ${Math.round(TRACE.bilans / Math.max(1, TRACE.secteurs))} relevés`);
 console.log(`Échelle atteinte : ${RANGS.map((r, i) => `${r.nom} ${TRACE.rangs[i]}`).join(' · ')}`);
+console.log('Chronique : ' + Object.entries(TRACE.titres).sort((a, b) => b[1] - a[1])
+  .map(([k, v]) => `${k} ${v}`).join(' · '));
 console.log(`Colporteurs reçus : ${(TRACE.marchands / PARTIES).toFixed(1)} par partie`);
 console.log(`Avant-postes écrits sur les cartes : ${TRACE.reconnus}/${PARTIES} — `
   + `${(TRACE.popCamp / PARTIES).toFixed(1)} habitants en moyenne`);
