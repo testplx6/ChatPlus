@@ -6,7 +6,7 @@ import { Rng } from './rng.js';
 import { FACTIONS, DIPLO_FACTIONS } from './data.js';
 import { genererMonde, decouvrir, colonieParId, nomRegion, distance } from './world.js';
 import { makeCharacter, idDepuisRng } from './characters.js';
-import { creerBase, tickBase } from './base.js';
+import { creerBase, tickBase, perdreAvantPoste } from './base.js';
 import {
   tickColonie, etalDe, effondrer, faireSecession, faireRevolte, emploisInitiaux,
 } from './economy.js';
@@ -232,6 +232,9 @@ export function tick(state) {
   }
   // Le banc peut geler la législation pour la mesurer par différence.
   if (state.sansLois) ctx.sansLois = true;
+  // Ce qu'il faut faire si une colonne prend l'avant-poste du joueur : le
+  // monde ne connaît que sa vitrine, il ne saurait pas démonter le camp.
+  ctx.perdreAvantPoste = () => perdreAvantPoste(state, log);
   const log = creerLogger(state);
 
   state.temps += 1;
@@ -282,6 +285,9 @@ export function tick(state) {
     // inventés pour rien dans chaque sauvegarde.
     if (present) bancDe(state, col, rng, state.temps);
     else if (col.banc) col.banc = null;
+    // La vitrine d'un avant-poste n'a pas d'économie propre : sa vérité est
+    // dans `state.base`, et la simuler ici la ferait vivre deux fois.
+    if (col.avantPoste) { col.vuA = state.temps; continue; }
     // La geôle : on nourrit les détenus, on relâche ceux qui ont fait leur
     // temps, et une geôle qui déborde fait gronder la ville.
     tickGeole(state, col, du);

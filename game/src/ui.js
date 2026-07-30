@@ -22,7 +22,7 @@ import {
   populationMax, mainDoeuvre, placesMetier, affectes, manoeuvres, affecter,
   rendementMetier,
   niveau as nivBat, niveauRech, coutBatiment, tempsBatiment, coutRecherche,
-  tempsRecherche, capaciteStock, totalStock, energie, lancerConstruction,
+  tempsRecherche, capaciteStock, totalStock, energie, lancerConstruction, POP_RECONNUE,
   lancerRecherche, annulerConstruction, fonderBase, deposer, retirer,
   COUT_FONDATION, tailleEscouadeMax,
 } from './base.js';
@@ -1630,6 +1630,17 @@ function ecranBase() {
     ${en.ratio < 1 ? `<div class="aide" style="color:var(--ambre)">Production réduite à ${(en.ratio * 100).toFixed(0)} % :
       ${(b.stock.carburant || 0) <= 0 ? 'plus de carburant.' : 'énergie insuffisante.'}</div>` : ''}
     <div class="sep"></div>
+    <div class="ligne"><span class="k">Habitants</span>
+      <span class="v">${n(Math.round(b.pop || 0))} / ${n(populationMax(b))}${b.colonieId
+    ? ' · <span class="ok">sur les cartes</span>' : ''}</span></div>
+    ${b.colonieId
+    ? `<div class="aide">${e(b.nom)} est écrite sur les cartes : elle tient ses routes
+        comme une ville, et l’on peut vouloir vous la prendre.</div>`
+    : `<div class="aide">À ${POP_RECONNUE} habitants et une halle, le monde cessera de
+        l’ignorer — pour le meilleur et pour le reste.</div>`}
+    <button class="act mini" data-a="autoemploi" style="margin-bottom:6px"
+      aria-pressed="${b.autoEmploi !== false}">[${b.autoEmploi !== false ? '×' : ' '}]
+      Les habitants se placent eux-mêmes</button>
     <div class="ligne"><span class="k">Entrepôt</span>
       <span class="v ${stock >= capa * 0.98 ? 'alerte' : ''}">${n(stock)} / ${n(capa)}</span></div>
     ${b.gaspille > 20 ? `<div class="aide alerte">L’entrepôt a déjà refusé
@@ -3108,6 +3119,11 @@ function surClic(ev) {
         ? (r.prix ? `C’est réglé. ${r.prix} cr.` : 'C’est réglé.')
         : r.motif, !r.ok);
       rafraichir(true);
+      break;
+    }
+
+    case 'autoemploi': {
+      ACTIONS.autoEmploi();
       break;
     }
 

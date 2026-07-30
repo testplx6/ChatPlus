@@ -682,6 +682,68 @@ On garde les pistes : elles font ce qu'on leur demandait. Mais le couplage est
 noté, et c'est lui le vrai défaut — un avant-poste ne devrait pas dépendre de
 ce que l'escouade ramasse en chemin pour exister.
 
+### Un camp qui devient un lieu
+
+La voie du colon n'avait pas de haut. On fondait un camp, on le développait, et
+il restait un camp : invisible sur la carte du monde, sans marché, sans place
+dans la politique, que personne ne convoitait jamais.
+
+Trois défauts empilés, trouvés en descendant la chaîne un chiffre après
+l'autre — et c'est cet enchaînement qui vaut d'être raconté, parce que chacun
+masquait le suivant.
+
+**Personne ne se mettait au travail.** Un avant-poste de trente-neuf habitants
+tournait avec `postes: {}` : personne affecté à rien, jamais, sauf si le joueur
+cliquait treize fois. Ce n'est pas une colonie, c'est un tableur. Les habitants
+se placent désormais eux-mêmes, dans l'ordre où les métiers comptent — on ne met
+personne à la fonderie tant qu'il manque un cultivateur, parce qu'on ne mange
+pas de l'alliage. Le joueur garde l'interrupteur.
+
+**La halle était punie de ne pas avoir de courant.** Elle passait par le même
+facteur que la fonderie, qui vaut 0,4 sans générateur — soit 0,07 ferraille par
+heure pour un camp de moins de mille heures. Or ramasser se fait avec des bras.
+Le courant aide encore ; il ne conditionne plus la récolte.
+
+**Et le baraquement n'était jamais bâti.** `populationMax` vaut neuf par
+baraquement et quatre par hydroponie : sans lui, le plafond est quatre. Le banc
+montrait des camps à trois cent trente-huit rations en réserve et quatre
+habitants, indéfiniment. Deux causes : le plan de bâtisse du bot était une liste
+plate où le premier bâtiment abordable gagnait toujours (il vise maintenant des
+niveaux), et surtout **la steppe ne produit pas de polymère** — tout ce qui en
+réclamait échouait en silence, et le camp bâtissait un générateur et un mur au
+lieu d'un dortoir. Ce que la région ne donne pas, il faut l'acheter.
+
+Enfin, on ne s'installe pas quelque part parce qu'on y a mangé une fois :
+l'arrivée suit désormais l'abondance — douze jours de réserve par tête, le
+moral, les lits — au lieu d'un dé plat conditionné par un seuil. Et l'on s'en va
+avant de mourir de faim.
+
+**Au-delà de dix-huit habitants et d'une halle, le monde cesse de vous
+ignorer.** L'avant-poste entre dans `world.colonies` comme n'importe quel bourg.
+Sa fiche est **une vitrine, pas une seconde source de vérité** : `state.base`
+reste le seul endroit où il existe vraiment, la vitrine en est recopiée une fois
+par jour, et le tick des colonies la saute — elle n'a ni économie propre, ni
+grenier, ni notables. Il se voit sur la carte, il tient ses routes comme une
+ville, les cases voisines cessent d'être libres à la fondation — et les conseils
+voisins le voient comme une place à prendre. Si une colonne l'emporte, le camp
+tombe avec : il reste l'escouade, et de la place ailleurs. La partie continue.
+
+    Habitants moyens          2,5  →  4,9
+    Avant-postes fondés     40/60  →  42/60
+    Écrits sur les cartes    0/60  →   4/60
+    Survivantes             57/60  →  59/60
+    Crédits moyens          2 148  →  1 022
+
+Les crédits paient la différence, et c'est juste : bâtir coûte, et le polymère
+s'achète. Le seuil de reconnaissance a lui aussi été corrigé par la mesure — à
+vingt-cinq habitants, deux parties sur soixante l'atteignaient, ce qui fait un
+mur et non un palier.
+
+Ce qui manque encore, et qui est la suite évidente : **une ville reconnue n'a
+toujours pas de marché à elle.** Elle achète par l'escouade, comme un camp. Tant
+qu'elle ne commerce pas seule, la voie du colon reste attachée aux jambes de
+quatre personnes.
+
 ### Ce que l'entrepôt refuse ne disparaît plus en silence
 
 Trouvé en cherchant pourquoi un test échouait, pas en jouant : un entrepôt plein

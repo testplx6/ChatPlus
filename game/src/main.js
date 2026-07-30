@@ -222,6 +222,15 @@ const API = {
     return r;
   },
 
+  /** Laisser les habitants se placer eux-mêmes, ou tenir le tableau soi-même. */
+  autoEmploi() {
+    state.base.autoEmploi = state.base.autoEmploi === false;
+    if (state.base.autoEmploi) state.base.majEmploi = -999;
+    sauver();
+    rafraichir(true);
+    return { ok: true };
+  },
+
   /** Comment on se bat. Vaut aussi pendant votre absence. */
   tactique(key) {
     if (!TACTIQUES[key]) return { ok: false, motif: 'Tactique inconnue.' };

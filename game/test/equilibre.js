@@ -89,7 +89,7 @@ const TRACE = {
   secteurs: 0, etatSecteur: 0, bilans: 0,
   revoltes: 0, matees: 0, libres: 0, renverses: 0, grogne: 0,
   disposes: 0, relaches: 0, gagneCaptifs: 0, captures: 0,
-  mortsCombat: 0, koSubis: 0, piste: 0, pisteVues: 0,
+  mortsCombat: 0, koSubis: 0, piste: 0, pisteVues: 0, reconnus: 0, popCamp: 0,
   // Ce que les conseils votent quand personne ne les tient.
   impots: {}, peines: {}, esclavagistes: 0, factionsVues: 0,
   rangs: [0, 0, 0, 0, 0],
@@ -283,13 +283,28 @@ function sEquiper(state, g, colIci) {
  * ne reçoit plus rien ; le baraquement, parce que sans habitants aucun métier
  * n'a de bras. Le reste suit l'utilité décroissante.
  */
+/**
+ * Le plan de bâtisse, en niveaux visés et non en liste plate.
+ *
+ * Écrit comme une simple suite de clés, le bot prenait le premier bâtiment
+ * abordable — donc toujours le premier de la liste, tant qu'il restait un
+ * niveau à lui ajouter. Résultat mesuré : entrepôt 2, cantine 2, hydroponie 1,
+ * et **jamais de baraquement**. Or `populationMax` vaut neuf par baraquement et
+ * quatre par hydroponie : tous les avant-postes du banc plafonnaient donc à
+ * quatre habitants, quelle que soit leur richesse. Un camp qui a trois cent
+ * trente-huit rations en réserve et personne pour les manger.
+ *
+ * On vise donc des niveaux, dans l'ordre où ils comptent : de quoi manger, de
+ * quoi dormir, de quoi ramasser, puis le reste.
+ */
 const PLAN_BATI = [
-  // La halle avant tout le reste, ou presque : c'est elle qui remplit les bacs
-  // de l'hydroponie. Sans elle, le camp attend qu'on lui apporte à manger, ce
-  // qui est exactement ce dont on voulait le sortir.
-  'entrepot', 'halle', 'hydroponie', 'baraquement', 'cantine', 'mur',
-  'generateur', 'halle', 'hydroponie', 'baraquement', 'entrepot', 'poste',
-  'fonderie', 'infirmerie', 'atelier', 'generateur', 'antenne', 'raffinerie',
+  ['entrepot', 1], ['halle', 1], ['hydroponie', 1], ['baraquement', 1],
+  ['cantine', 1], ['halle', 2], ['baraquement', 2], ['hydroponie', 2],
+  ['generateur', 1], ['mur', 1], ['entrepot', 2], ['baraquement', 3],
+  ['halle', 3], ['hydroponie', 3], ['poste', 1], ['infirmerie', 1],
+  ['cantine', 2], ['baraquement', 4], ['entrepot', 3], ['generateur', 2],
+  ['fonderie', 1], ['atelier', 1], ['antenne', 1], ['mur', 2],
+  ['baraquement', 5], ['halle', 4], ['hydroponie', 4], ['raffinerie', 1],
 ];
 
 /** Où l'on veut des bras en priorité, quand des places s'ouvrent. */
@@ -383,11 +398,10 @@ function tenirAvantPoste(state, g, memo) {
 
   // --- Chantiers. Un seul en file à la fois : empiler bloque les ressources.
   if (base.file.length === 0) {
-    for (const k of PLAN_BATI) {
-      const b = BUILDING_KEYS.includes(k) ? k : null;
-      if (!b) continue;
-      const r = lancerConstruction(state, b);
-      if (r.ok) break;
+    for (const [k, cible] of PLAN_BATI) {
+      if (!BUILDING_KEYS.includes(k)) continue;
+      if (nivBat(base, k) >= cible) continue;
+      if (lancerConstruction(state, k).ok) break;
     }
   }
 
@@ -734,6 +748,18 @@ function jouerPrincipal(state, g, memo) {
       if (S_base(state).fonde && p.credits > 500
           && (S_base(state).stock.carburant || 0) + (g.inventaire.carburant || 0) < 150) {
         acheter(state, colIci, 'carburant', 120, g);
+      }
+      // Ce que la région ne donne pas, on l'achète. La halle ramasse ce que le
+      // biome contient — de la biomasse et de la ferraille en steppe — et rien
+      // d'autre : sans polymère ni composant acheté en ville, tout ce qui en
+      // réclame échoue en silence, et le camp bâtit un générateur et un mur au
+      // lieu d'un baraquement. Mesuré : quatre habitants maximum, toujours.
+      if (S_base(state).fonde && p.credits > 400) {
+        for (const k of ['polymere', 'composant']) {
+          const stock = (S_base(state).stock[k] || 0) + (g.inventaire[k] || 0);
+          const veut = k === 'polymere' ? 120 : 40;
+          if (stock < veut) acheter(state, colIci, k, veut - stock, g);
+        }
       }
     }
 
@@ -1185,6 +1211,8 @@ for (let n = 0; n < PARTIES; n++) {
     TRACE.piste += vues.reduce((a, r) => a + (r.piste || 0), 0) / Math.max(1, vues.length);
     TRACE.pisteVues++;
   }
+  if (state.base.colonieId) TRACE.reconnus++;
+  TRACE.popCamp += state.base.pop || 0;
   {
     const v = state.world.colonies.filter((c) => !c.ruine);
     TRACE.libres += v.filter((c) => !c.faction).length;
@@ -1297,6 +1325,8 @@ console.log(`Secteurs tenus : ${TRACE.secteurs} — état moyen `
   + `${(TRACE.etatSecteur / Math.max(1, TRACE.secteurs)).toFixed(2)} `
   + `(0 = sûr, 1 = infréquentable) sur ${Math.round(TRACE.bilans / Math.max(1, TRACE.secteurs))} relevés`);
 console.log(`Échelle atteinte : ${RANGS.map((r, i) => `${r.nom} ${TRACE.rangs[i]}`).join(' · ')}`);
+console.log(`Avant-postes écrits sur les cartes : ${TRACE.reconnus}/${PARTIES} — `
+  + `${(TRACE.popCamp / PARTIES).toFixed(1)} habitants en moyenne`);
 console.log(`Pistes : ${(TRACE.piste / Math.max(1, TRACE.pisteVues)).toFixed(2)} de damage moyen `
   + `sur les cases connues (0 = friche vierge, 1 = route faite)`);
 console.log(`Combat : ${(TRACE.koSubis / PARTIES).toFixed(1)} des nôtres mis à terre par partie`);

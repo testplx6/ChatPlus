@@ -135,6 +135,12 @@ function dissoudre(world, armee) {
 }
 
 function capturer(world, armee, col, t, log, ctx) {
+  // L'avant-poste du joueur : sa vérité est dans `state.base`, pas ici. On
+  // prévient l'appelant, qui sait démonter le camp.
+  if (col.avantPoste) {
+    col.avantPoste = false;
+    if (ctx && ctx.perdreAvantPoste) ctx.perdreAvantPoste();
+  }
   const ancien = col.faction;
   const nouveau = armee.faction;
   if (ancien && world.factions[ancien]) {

@@ -156,6 +156,12 @@ export function normaliser(state) {
     if (b.moral === undefined) b.moral = 60;
     // Avant, un entrepôt plein jetait la production sans rien dire.
     if (b.gaspille === undefined) b.gaspille = 0;
+    // Avant, personne ne se mettait au travail sans qu'on le lui dise.
+    if (b.autoEmploi === undefined) b.autoEmploi = true;
+    // Avant, un avant-poste n'existait pas sur la carte du monde.
+    if (b.colonieId === undefined) b.colonieId = null;
+    if (b.majVitrine === undefined) b.majVitrine = -999;
+    if (b.majEmploi === undefined) b.majEmploi = -999;
     if (b.gaspilleJour === undefined) b.gaspilleJour = 0;
     if (b.dernierGaspillage === undefined) b.dernierGaspillage = -999;
     // Avant les métiers, les habitants étaient un multiplicateur anonyme : on

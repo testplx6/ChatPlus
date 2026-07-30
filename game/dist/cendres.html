@@ -2426,7 +2426,9 @@ const PISTE_GAIN = 0.34;
 function coutTraversee(world, i, mods = {}) {
   const r = world.regions[i];
   const base = BIOMES[r.biome].cout;
-  const piste = 1 - (r.piste || 0) * PISTE_GAIN;
+  // Témoin du banc : on annule le gain des pistes pour mesurer par différence
+  // ce qu'elles rapportent. Voir test/equilibre.js, SANS=pistes.
+  const piste = world.sansPistes ? 1 : 1 - (r.piste || 0) * PISTE_GAIN;
   return Math.max(1, base * piste * (1 - (mods.reductionVoyage || 0)));
 }
 
@@ -7221,6 +7223,12 @@ function dissoudre(world, armee) {
 }
 
 function capturer(world, armee, col, t, log, ctx) {
+  // L'avant-poste du joueur : sa vérité est dans `state.base`, pas ici. On
+  // prévient l'appelant, qui sait démonter le camp.
+  if (col.avantPoste) {
+    col.avantPoste = false;
+    if (ctx && ctx.perdreAvantPoste) ctx.perdreAvantPoste();
+  }
   const ancien = col.faction;
   const nouveau = armee.faction;
   if (ancien && world.factions[ancien]) {
@@ -9540,6 +9548,15 @@ function creerBase() {
     gaspille: 0,
     gaspilleJour: 0,
     dernierGaspillage: -999,
+    // Les habitants se placent eux-mêmes dans les métiers ouverts. Voir
+    // `embaucher` : sans ça, un avant-poste de quarante habitants tourne avec
+    // personne affecté à rien.
+    autoEmploi: true,
+    majEmploi: -999,
+    // L'entrée de `world.colonies` qui donne à ce camp une existence pour les
+    // autres, une fois qu'il compte. Voir `reconnaitreAvantPoste`.
+    colonieId: null,
+    majVitrine: -999,
     // Un avant-poste n'est pas un entrepôt avec des murs : des gens finissent
     // par s'y installer, y travailler, et y manger.
     pop: 0,
@@ -9659,6 +9676,57 @@ function affecter(state, key, n) {
   const vise = Math.max(0, Math.min(n, places, actuel + libre));
   base.postes[key] = vise;
   return { ok: true, affectes: vise };
+}
+
+/**
+ * Ce dont un avant-poste a besoin, dans l'ordre où il en a besoin.
+ *
+ * Manger d'abord — un cuisinier fait durer les vivres, un cultivateur en
+ * produit. Puis de quoi bâtir : le récoltant ramasse la région, le bâtisseur
+ * monte les chantiers. Puis se défendre. Puis transformer, ce qui suppose
+ * d'avoir déjà le reste.
+ */
+const ORDRE_EMBAUCHE = [
+  'cultivateur', 'cuisinier', 'recoltant', 'batisseur', 'magasinier',
+  'milicien', 'garde', 'mecanicien', 'fondeur', 'raffineur', 'machiniste',
+  'infirmier', 'operateur',
+];
+
+/**
+ * Les gens se placent eux-mêmes.
+ *
+ * Un avant-poste de trente-neuf habitants tournait avec `postes: {}` — personne
+ * affecté à rien, jamais, sauf si le joueur cliquait treize fois. Ce n'est pas
+ * une simulation de colonie, c'est un tableur : des gens qui vivent quelque
+ * part trouvent du travail sans qu'on le leur dise. Le joueur garde la main —
+ * l'interrupteur se coupe — mais par défaut la vie s'organise toute seule.
+ *
+ * L'ordre de priorité fait le reste : on ne met personne à la fonderie tant
+ * qu'il manque un cultivateur, parce qu'on ne mange pas de l'alliage.
+ */
+function embaucher(base) {
+  if (base.autoEmploi === false) return;
+  const postes = {};
+  let reste = Math.floor(base.pop || 0);
+  for (const k of ORDRE_EMBAUCHE) {
+    if (reste <= 0) break;
+    const places = placesMetier(base, k);
+    if (places <= 0) continue;
+    // On ne remplit pas un métier à fond avant de pourvoir le suivant : une
+    // colonie qui met tout le monde aux cultures ne bâtit plus rien. On y va
+    // par tiers, et l'on repasse.
+    const pris = Math.min(places, Math.max(1, Math.ceil(places / 2)), reste);
+    postes[k] = pris;
+    reste -= pris;
+  }
+  // Second passage : ce qui reste complète ce qui est ouvert, dans le même ordre.
+  for (const k of ORDRE_EMBAUCHE) {
+    if (reste <= 0) break;
+    const places = placesMetier(base, k);
+    const encore = Math.min(places - (postes[k] || 0), reste);
+    if (encore > 0) { postes[k] = (postes[k] || 0) + encore; reste -= encore; }
+  }
+  base.postes = postes;
 }
 
 /** Après une famine ou une démolition, les postes se réajustent tout seuls. */
@@ -9898,6 +9966,7 @@ function tickBase(state, log, ctx) {
   const base = state.base;
   if (!base.fonde) return null;
   const gaspilleAvant = base.gaspille || 0;
+  const t0 = state.temps;
   const rng = ctx.rng;
   const rech = base.recherche;
   // N'importe quel groupe présent fait avancer les chantiers. Test direct
@@ -9905,6 +9974,13 @@ function tickBase(state, log, ctx) {
   let surPlace = false;
   for (const g of state.player.groupes) if (g.regionId === base.regionId) { surPlace = true; break; }
 
+  // Les gens se placent eux-mêmes, une fois par jour de jeu : plus souvent
+  // serait du travail pour rien, et l'on ne change pas de métier toutes les
+  // heures.
+  if (base.autoEmploi !== false && t0 - (base.majEmploi || -999) >= 24) {
+    base.majEmploi = t0;
+    embaucher(base);
+  }
   // Postes tenus, contremaîtres compris. Calculé une fois pour tout le tick.
   reajusterPostes(base);
   const M = {};
@@ -9935,12 +10011,33 @@ function tickBase(state, log, ctx) {
     const satiete = besoinPop > 0 ? servi / besoinPop : 1;
     if (satiete < 0.75) {
       base.moral = Math.max(0, base.moral - 0.15);
-      if (rng.chance(0.03)) base.pop = Math.max(0, base.pop - 1);
+      // On s'en va avant de mourir de faim : un habitant qui part est un
+      // habitant qui reviendra peut-être, et un camp vidé par la disette n'est
+      // pas un charnier.
+      if (rng.chance(0.012)) base.pop = Math.max(0, base.pop - 1);
     } else {
       base.moral = Math.min(100, base.moral + 0.05 + (cant > 0 ? 0.03 * M.cuisinier : 0));
     }
   }
-  if (base.pop < maxPop && rationsDispo > (base.pop + 1) * 3 && rng.chance(0.012)) {
+  // Ce qui attire du monde : de quoi manger *en réserve*, un toit, et la paix.
+  //
+  // C'était un dé plat de 0,012 par heure, conditionné par un seuil de vivres
+  // franchi ou non. Un camp qui vivait au jour le jour ratait donc tous ses
+  // tirages, et le banc l'a chiffré : sur soixante parties, quarante
+  // avant-postes fondés, quatorze niveaux de bâtiment en moyenne — et deux
+  // habitants et demi. La voie du colon plafonnait à un hangar gardé par
+  // personne.
+  //
+  // Le taux suit maintenant l'abondance, parce que c'est elle qui se sait sur
+  // les pistes : une réserve de six jours par tête, un moral tenu, des lits.
+  // Douze jours de réserve par tête, pas six : mesuré à six, le camp attirait
+  // du monde sur une aisance de passage, puis les affamait au premier creux —
+  // cinq habitants, puis zéro, et le moral à trente-trois. On ne s'installe pas
+  // quelque part parce qu'on y a mangé une fois.
+  const reserve = Math.min(1, rationsDispo / Math.max(1, (base.pop + 1) * 12));
+  const attrait = reserve * (0.4 + 0.6 * (base.moral / 100))
+    * (1 + niveau(base, 'baraquement') * 0.2);
+  if (base.pop < maxPop && rng.chance(0.022 * attrait)) {
     base.pop += 1;
     if (base.pop === 1) {
       log({ type: 'base', texte: 'Quelqu’un s’installe à l’avant-poste. Ça commence comme ça.', regionId: base.regionId, important: true });
@@ -9993,7 +10090,19 @@ function tickBase(state, log, ctx) {
   if (halle > 0) {
     const regHalle = state.world.regions[base.regionId];
     const y = BIOMES[regHalle.biome].yields || {};
-    const taux = 0.5 * halle * aLaMain * mo * M.recoltant * regHalle.richesse
+    // Ramasser se fait avec des bras, et la halle en était pourtant punie :
+    // elle passait par `aLaMain`, qui vaut 0,4 sans courant. Un camp qui n'a
+    // pas encore de générateur — c'est-à-dire tout camp de moins de mille
+    // heures — récoltait donc à quarante pour cent, soit 0,07 ferraille par
+    // heure. Le banc a chiffré ce que ça donne : soixante parties, quarante
+    // avant-postes fondés, **aucun** assez développé pour que le monde le
+    // remarque. Un avant-poste ne peut pas dépendre de ce que l'escouade lui
+    // rapporte à dos d'homme ; sinon la voie du colon n'est qu'un dépôt.
+    //
+    // Le courant aide encore — un treuil vaut mieux qu'un dos — mais il ne
+    // conditionne plus la récolte.
+    const bras = 0.75 + 0.45 * r;
+    const taux = 1.1 * halle * bras * mo * M.recoltant * regHalle.richesse
       * (ctx.climat ? 1 + (ctx.climat.rendement('ferraille') - 1) * 0.6 : 1);
     for (const k of Object.keys(y)) ajouter(base, k, y[k] * taux);
   }
@@ -10115,7 +10224,142 @@ function tickBase(state, log, ctx) {
     }
   }
 
+  // Un camp qui compte finit par exister pour les autres, et sa vitrine se
+  // recopie une fois par jour.
+  reconnaitreAvantPoste(state, log);
+  if (base.colonieId && t - (base.majVitrine || -999) >= 24) {
+    base.majVitrine = t;
+    synchroniserVitrine(state);
+  }
+
   return { energie: e, gaspille: perdu };
+}
+
+// ---------------------------------------------------------------------------
+// Quand un camp devient un lieu
+// ---------------------------------------------------------------------------
+
+/**
+ * À partir de combien d'habitants le reste du monde cesse de vous ignorer.
+ *
+ * Vingt-cinq d'abord, et le banc a dit non : deux avant-postes sur soixante
+ * l'atteignaient en quatre mille heures. Un seuil que presque personne ne
+ * franchit n'est pas un palier, c'est un mur. Dix-huit, c'est déjà un vrai
+ * hameau — les bourgs de cette carte en comptent quatre-vingt-dix au plus bas
+ * — et c'est atteignable par une partie qui s'en donne la peine.
+ */
+const POP_RECONNUE = 18;
+
+/**
+ * Un avant-poste qui compte finit par exister pour les autres.
+ *
+ * Jusqu'ici la voie du colon n'avait pas de haut : on fondait un camp, on le
+ * développait, et il restait un camp — invisible sur la carte du monde, sans
+ * marché, sans place dans la politique, que personne ne convoitait jamais. On
+ * pouvait bâtir quarante habitants et douze niveaux de bâtiment sans que le
+ * monde s'en aperçoive.
+ *
+ * Au-delà de vingt-cinq habitants et d'une halle, il entre dans `world.colonies`
+ * comme n'importe quel bourg. **Sa fiche est une vitrine, pas une seconde
+ * source de vérité** : `state.base` reste le seul endroit où l'avant-poste
+ * existe vraiment, et la vitrine en est recopiée une fois par jour. Le tick des
+ * colonies la saute — elle n'a ni économie propre, ni notables, ni grenier.
+ *
+ * Ce que ça change : il se voit sur la carte, il tient ses abords comme une
+ * ville, les cases voisines cessent d'être libres à la fondation — et surtout,
+ * les conseils voisins le voient comme une place à prendre.
+ */
+function reconnaitreAvantPoste(state, log) {
+  const base = state.base;
+  if (!base.fonde || base.colonieId) return null;
+  if ((base.pop || 0) < POP_RECONNUE || niveau(base, 'halle') < 1) return null;
+  const w = state.world;
+  const r = w.regions[base.regionId];
+  if (r.colonie) return null;
+  w.prochaineColonieId = (w.prochaineColonieId || w.colonies.length) + 1;
+  const stock = {};
+  for (const k of COMMODITY_KEYS) stock[k] = 0;
+  const col = {
+    id: `s${w.prochaineColonieId}`,
+    nom: base.nom,
+    regionId: base.regionId,
+    faction: null,
+    factionOrigine: null,
+    taille: 1,
+    pop: Math.round(base.pop),
+    defense: Math.round(base.defense),
+    defenseMax: Math.round(base.defense),
+    murs: niveau(base, 'mur') * 3,
+    stock,
+    unrest: 0,
+    marche: 1,
+    prises: 0,
+    banc: null,
+    geole: null,
+    emplois: null,
+    notables: [],
+    declin: 0,
+    // Ce qui la distingue de toutes les autres : elle est à vous, et sa vérité
+    // est ailleurs.
+    avantPoste: true,
+  };
+  w.colonies.push(col);
+  r.colonie = col.id;
+  base.colonieId = col.id;
+  if (log) {
+    log({
+      type: 'base',
+      texte: `${base.nom} n’est plus un camp : on l’écrit sur les cartes. `
+        + `Ce qui veut dire aussi qu’on la convoitera.`,
+      regionId: base.regionId,
+      important: true,
+    });
+  }
+  return col;
+}
+
+/** Recopier l'avant-poste dans sa vitrine. Sens unique, une fois par jour. */
+function synchroniserVitrine(state) {
+  const base = state.base;
+  if (!base.colonieId) return;
+  const col = state.world.colonies.find((c) => c.id === base.colonieId);
+  if (!col) { base.colonieId = null; return; }
+  if (col.faction || col.ruine) return; // elle n'est plus à nous
+  col.pop = Math.round(base.pop || 0);
+  col.defense = Math.round(base.defense || 0);
+  col.defenseMax = Math.max(col.defense, Math.round(base.defense || 0));
+  col.murs = niveau(base, 'mur') * 3;
+  col.taille = col.pop >= 90 ? 3 : col.pop >= 45 ? 2 : 1;
+  col.nom = base.nom;
+}
+
+/**
+ * Quelqu'un a pris votre ville. On ne garnit pas un camp des friches : ils
+ * prennent ce qu'il y a et s'installent. Il vous reste votre escouade, et de
+ * quoi recommencer ailleurs — c'est très exactement ce que ce jeu raconte.
+ */
+function perdreAvantPoste(state, log) {
+  const base = state.base;
+  if (!base.fonde) return;
+  const nom = base.nom;
+  const reg = base.regionId;
+  base.fonde = false;
+  base.colonieId = null;
+  base.regionId = null;
+  base.batiments = {};
+  base.file = [];
+  base.postes = {};
+  base.pop = 0;
+  for (const k of COMMODITY_KEYS) base.stock[k] = 0;
+  if (log) {
+    log({
+      type: 'base',
+      texte: `${nom} est tombée. Ce qu’on y avait bâti est à eux, désormais. `
+        + `Il reste l’escouade, et de la place ailleurs.`,
+      regionId: reg,
+      important: true,
+    });
+  }
 }
 
 /** Ce que valent, l'arme à la main, les gens présents à l'avant-poste. */
@@ -12140,6 +12384,12 @@ function normaliser(state) {
     if (b.moral === undefined) b.moral = 60;
     // Avant, un entrepôt plein jetait la production sans rien dire.
     if (b.gaspille === undefined) b.gaspille = 0;
+    // Avant, personne ne se mettait au travail sans qu'on le lui dise.
+    if (b.autoEmploi === undefined) b.autoEmploi = true;
+    // Avant, un avant-poste n'existait pas sur la carte du monde.
+    if (b.colonieId === undefined) b.colonieId = null;
+    if (b.majVitrine === undefined) b.majVitrine = -999;
+    if (b.majEmploi === undefined) b.majEmploi = -999;
     if (b.gaspilleJour === undefined) b.gaspilleJour = 0;
     if (b.dernierGaspillage === undefined) b.dernierGaspillage = -999;
     // Avant les métiers, les habitants étaient un multiplicateur anonyme : on
@@ -12428,6 +12678,9 @@ function tick(state) {
   }
   // Le banc peut geler la législation pour la mesurer par différence.
   if (state.sansLois) ctx.sansLois = true;
+  // Ce qu'il faut faire si une colonne prend l'avant-poste du joueur : le
+  // monde ne connaît que sa vitrine, il ne saurait pas démonter le camp.
+  ctx.perdreAvantPoste = () => perdreAvantPoste(state, log);
   const log = creerLogger(state);
 
   state.temps += 1;
@@ -12478,6 +12731,9 @@ function tick(state) {
     // inventés pour rien dans chaque sauvegarde.
     if (present) bancDe(state, col, rng, state.temps);
     else if (col.banc) col.banc = null;
+    // La vitrine d'un avant-poste n'a pas d'économie propre : sa vérité est
+    // dans `state.base`, et la simuler ici la ferait vivre deux fois.
+    if (col.avantPoste) { col.vuA = state.temps; continue; }
     // La geôle : on nourrit les détenus, on relâche ceux qui ont fait leur
     // temps, et une geôle qui déborde fait gronder la ville.
     tickGeole(state, col, du);
@@ -14260,6 +14516,17 @@ function ecranBase() {
     ${en.ratio < 1 ? `<div class="aide" style="color:var(--ambre)">Production réduite à ${(en.ratio * 100).toFixed(0)} % :
       ${(b.stock.carburant || 0) <= 0 ? 'plus de carburant.' : 'énergie insuffisante.'}</div>` : ''}
     <div class="sep"></div>
+    <div class="ligne"><span class="k">Habitants</span>
+      <span class="v">${n(Math.round(b.pop || 0))} / ${n(populationMax(b))}${b.colonieId
+    ? ' · <span class="ok">sur les cartes</span>' : ''}</span></div>
+    ${b.colonieId
+    ? `<div class="aide">${e(b.nom)} est écrite sur les cartes : elle tient ses routes
+        comme une ville, et l’on peut vouloir vous la prendre.</div>`
+    : `<div class="aide">À ${POP_RECONNUE} habitants et une halle, le monde cessera de
+        l’ignorer — pour le meilleur et pour le reste.</div>`}
+    <button class="act mini" data-a="autoemploi" style="margin-bottom:6px"
+      aria-pressed="${b.autoEmploi !== false}">[${b.autoEmploi !== false ? '×' : ' '}]
+      Les habitants se placent eux-mêmes</button>
     <div class="ligne"><span class="k">Entrepôt</span>
       <span class="v ${stock >= capa * 0.98 ? 'alerte' : ''}">${n(stock)} / ${n(capa)}</span></div>
     ${b.gaspille > 20 ? `<div class="aide alerte">L’entrepôt a déjà refusé
@@ -15741,6 +16008,11 @@ function surClic(ev) {
       break;
     }
 
+    case 'autoemploi': {
+      ACTIONS.autoEmploi();
+      break;
+    }
+
     case 'tactique': {
       ACTIONS.tactique(el.dataset.k);
       break;
@@ -15995,6 +16267,15 @@ const API = {
     const r = disposer(state, groupeActif(state), captifId, quoi, creerLogger(state));
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
+  },
+
+  /** Laisser les habitants se placer eux-mêmes, ou tenir le tableau soi-même. */
+  autoEmploi() {
+    state.base.autoEmploi = state.base.autoEmploi === false;
+    if (state.base.autoEmploi) state.base.majEmploi = -999;
+    sauver();
+    rafraichir(true);
+    return { ok: true };
   },
 
   /** Comment on se bat. Vaut aussi pendant votre absence. */

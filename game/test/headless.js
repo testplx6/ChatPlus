@@ -21,7 +21,7 @@ import { classement, puissance } from '../src/factions.js';
 import { donnerOrdre, verifierExercice, COMPETENCES_EXERCICE } from '../src/squad.js';
 import {
   fonderBase, lancerConstruction, lancerRecherche, placesMetier, affectes,
-  abriDe, capaciteStock, totalStock, energie, COUT_FONDATION,
+  abriDe, capaciteStock, totalStock, energie, COUT_FONDATION, POP_RECONNUE,
   manoeuvres, affecter, rendementMetier, mainDoeuvre,
 } from '../src/base.js';
 import { METIER_KEYS, BIOMES, BUILDINGS, POSTURES } from '../src/data.js';
@@ -1149,6 +1149,8 @@ Object.assign(s9t.base.stock, { biomasse: 4000, minerai: 4000, rations: 400, car
 
 ok(placesMetier(s9t.base, 'cultivateur') === 6, 'un bâtiment ouvre des places', `${placesMetier(s9t.base, 'cultivateur')}`);
 ok(placesMetier(s9t.base, 'machiniste') === 0, 'sans atelier, pas de machiniste');
+s9t.base.autoEmploi = false;
+s9t.base.postes = {};
 ok(manoeuvres(s9t.base) === 10, 'au départ tout le monde est manœuvre');
 
 const aff = affecter(s9t, 'cultivateur', 6);
@@ -1175,6 +1177,12 @@ function rationsApres(specialise, heures) {
   Object.assign(st.base.batiments, { hydroponie: 3, generateur: 2, entrepot: 6 });
   st.base.pop = 9;
   Object.assign(st.base.stock, { biomasse: 3000, rations: 300, carburant: 400 });
+  // On coupe l'embauche automatique : ce qu'on compare ici, c'est ce que vaut
+  // une place tenue face à de la main-d'œuvre anonyme. Depuis que les habitants
+  // se placent eux-mêmes, les deux bras convergeaient vers la même affectation
+  // et le test mesurait deux fois la même chose.
+  st.base.autoEmploi = false;
+  st.base.postes = {};
   if (specialise) affecter(st, 'cultivateur', 9);
   const avant = st.base.stock.rations;
   avancer(st, heures);
@@ -2082,6 +2090,96 @@ large.base.stock.carburant = 60;
 avancer(large, 120);
 ok(!large.base.gaspille, 'un entrepôt à la bonne taille ne perd rien',
   `${large.base.gaspille}`);
+
+section('9 nonies undecies. Un camp qui devient un lieu');
+// La voie du colon n'avait pas de haut : on fondait un camp, on le développait,
+// et il restait un camp — invisible sur la carte, sans marché, que personne ne
+// convoitait. Quarante habitants et douze niveaux de bâtiment sans que le monde
+// s'en aperçoive.
+function campDeveloppe(graine = 2727) {
+  const t = nouvellePartie(graine, { maintenant: 0 });
+  const gt = groupeActif(t);
+  gt.regionId = t.world.regions.find((r) => !r.colonie).i;
+  Object.assign(gt.inventaire, { ferraille: 400, polymere: 200, composant: 40 });
+  fonderBase(t, () => {});
+  Object.assign(t.base.batiments, {
+    generateur: 3, baraquement: 3, hydroponie: 3, entrepot: 4, halle: 2, cantine: 2, mur: 2,
+  });
+  Object.assign(t.base.stock, { biomasse: 600, rations: 500, carburant: 400, ferraille: 200 });
+  return t;
+}
+
+// Les gens se placent eux-mêmes : un avant-poste de quarante habitants tournait
+// avec `postes: {}`, personne affecté à rien, jamais.
+const camp = campDeveloppe();
+camp.base.pop = 15;
+camp.base.postes = {};
+avancer(camp, 30);
+ok(Object.keys(camp.base.postes).length > 0,
+  'les habitants trouvent du travail sans qu’on le leur dise',
+  JSON.stringify(camp.base.postes));
+ok((camp.base.postes.cultivateur || 0) > 0,
+  'et ils commencent par ce qui se mange, pas par la fonderie');
+camp.base.autoEmploi = false;
+camp.base.postes = {};
+avancer(camp, 30);
+ok(Object.keys(camp.base.postes).length === 0,
+  'le joueur peut reprendre la main s’il le veut');
+camp.base.autoEmploi = true;
+
+// Au-delà d'un seuil, le monde cesse de l'ignorer.
+ok(!camp.base.colonieId, 'un camp de moins de vingt-cinq âmes n’intéresse personne');
+camp.base.pop = POP_RECONNUE + 6;
+avancer(camp, 30);
+ok(!!camp.base.colonieId, 'passé le seuil, on l’écrit sur les cartes');
+const vitrine = camp.world.colonies.find((c) => c.id === camp.base.colonieId);
+ok(!!vitrine && vitrine.avantPoste, 'elle est une colonie comme les autres, et marquée comme vôtre');
+ok(camp.world.regions[camp.base.regionId].colonie === vitrine.id,
+  'la case porte son nom');
+ok(!vitrine.faction, 'sans drapeau : elle n’est à aucune faction');
+
+// La vitrine est recopiée, pas simulée : sa vérité reste dans `state.base`.
+const popAvant = vitrine.pop;
+camp.base.batiments.baraquement = 8;
+camp.base.pop = 60;
+camp.base.majVitrine = -999;
+avancer(camp, 30);
+ok(vitrine.pop === camp.base.pop && vitrine.pop >= 55,
+  'ce que devient le camp se recopie dans sa fiche',
+  `${popAvant} → ${vitrine.pop}`);
+ok(vitrine.taille >= 2, 'et une ville de soixante âmes n’est plus un hameau',
+  `taille ${vitrine.taille} pour ${vitrine.pop} habitants`);
+const stockVitrine = COMMODITY_KEYS.reduce((a, k) => a + (vitrine.stock[k] || 0), 0);
+ok(stockVitrine === 0,
+  'elle n’a pas de grenier à elle : le tick des colonies la saute',
+  `${stockVitrine}`);
+
+// Elle tient ses abords comme n'importe quelle ville.
+const abord = camp.world.regions[camp.base.regionId];
+abord.insecurite = 0.9;
+for (let i = 0; i < 40; i++) { camp.temps += 24; tickInsecurite(camp); }
+ok(abord.insecurite < 0.9, 'une ville tient ses routes, celle-ci comme les autres',
+  `${abord.insecurite.toFixed(2)}`);
+
+// Et l'on peut vous la prendre. C'est le prix d'exister.
+const conquis = campDeveloppe(2828);
+conquis.base.pop = POP_RECONNUE + 10;
+avancer(conquis, 30);
+ok(!!conquis.base.colonieId, 'la ville est reconnue');
+const villeCible = conquis.world.colonies.find((c) => c.id === conquis.base.colonieId);
+const assaillant = DIPLO_FACTIONS.find(
+  (k) => conquis.world.colonies.some((c) => !c.ruine && c.faction === k)
+);
+conquis.world.armees.push({
+  id: 'a-test', faction: assaillant, regionId: villeCible.regionId, force: 400, forceMax: 400,
+  cible: villeCible.id, route: [], etape: 0, progres: 99, etat: 'marche', ravitaillement: 200,
+});
+for (let i = 0; i < 40 && conquis.base.fonde; i++) avancer(conquis, 1);
+ok(!conquis.base.fonde, 'une colonne peut prendre votre ville, et le camp tombe avec elle');
+ok(!conquis.base.colonieId && !conquis.base.pop,
+  'il ne reste rien du camp — l’escouade, et de la place ailleurs');
+ok(!conquis.fin, 'mais la partie continue : on n’a pas perdu ses gens');
+verifierCoherence(conquis, 'après la chute d’un avant-poste');
 
 section('9 nonies sexies. Qui accepte de partir, et pour combien');
 const rec = nouvellePartie(9494, { maintenant: 0 });
