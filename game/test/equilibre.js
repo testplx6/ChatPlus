@@ -1100,6 +1100,7 @@ for (let n = 0; n < PARTIES; n++) {
   }
   // Mémoire du bot : hors de l'état de jeu, donc rien à sérialiser.
   if (SANS.has('lois')) state.sansLois = true;
+  if (SANS.has('pistes')) state.world.sansPistes = true;
   const memo = { origine: new Map(), eclaireur: null, detachements: 0, courtisee: null, services: 0,
     promesse: null, viseFondation: false, fonde: null, routeFondation: null,
     prochaineCharge: 0, ordresDonnes: 0 };

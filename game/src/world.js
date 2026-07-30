@@ -385,7 +385,9 @@ export const PISTE_GAIN = 0.34;
 export function coutTraversee(world, i, mods = {}) {
   const r = world.regions[i];
   const base = BIOMES[r.biome].cout;
-  const piste = 1 - (r.piste || 0) * PISTE_GAIN;
+  // Témoin du banc : on annule le gain des pistes pour mesurer par différence
+  // ce qu'elles rapportent. Voir test/equilibre.js, SANS=pistes.
+  const piste = world.sansPistes ? 1 : 1 - (r.piste || 0) * PISTE_GAIN;
   return Math.max(1, base * piste * (1 - (mods.reductionVoyage || 0)));
 }
 

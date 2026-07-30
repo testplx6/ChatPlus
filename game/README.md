@@ -660,6 +660,28 @@ les deux.
     Départs par partie         45  →  38
     Survivantes             53/60  →  57/60
 
+**Ce que ça coûte, mesuré à cent vingt parties par bras.** Deux chiffres ne
+bougeaient pas dans le bon sens à soixante parties, et il fallait savoir si
+c'était du bruit. Ce n'en était pas :
+
+                          sans pistes   avec pistes
+    Survivantes             110/120       113/120
+    Temps en marche            49 %          45 %
+    Crédits moyens            3 244         2 841
+    Avant-postes fondés      95/120        83/120
+
+Moins de marche, plus de survie — et **douze avant-postes de moins sur cent
+vingt**, avec 12 % de crédits en moins. La cause n'est pas dans les pistes,
+elle est dans ce qu'elles révèlent : **dans ce jeu, marcher est ce qui rend
+riche.** Le butin, les rencontres, la ferraille qui paie un avant-poste, tout
+vient du temps passé sur les routes. Raccourcir le trajet coupe donc le
+robinet — et la voie du colon, qui a le plus besoin de matériaux, est celle qui
+en souffre le plus.
+
+On garde les pistes : elles font ce qu'on leur demandait. Mais le couplage est
+noté, et c'est lui le vrai défaut — un avant-poste ne devrait pas dépendre de
+ce que l'escouade ramasse en chemin pour exister.
+
 ### Ce que l'entrepôt refuse ne disparaît plus en silence
 
 Trouvé en cherchant pourquoi un test échouait, pas en jouant : un entrepôt plein
