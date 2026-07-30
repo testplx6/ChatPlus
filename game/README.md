@@ -472,8 +472,79 @@ tout le monde du même côté :
     Impôt                  Ordinaire 100 %   Lourd 45 · Ordinaire 38 · Léger 14 · Confiscatoire 3
     Justice                    Ferme 100 %   Ferme 53 · Expéditive 38 · Clémente 9
 
-Deux champs déclarés depuis le début et que rien ne lisait ont été branchés au
-passage — c'est le genre de dette qui ne se voit qu'en cherchant pourquoi une
+### Révoltes et renversements
+
+Une ville qui gronde à quatre-vingts pour cent n'avait aucune issue. Elle
+mijotait, indéfiniment : l'impôt confiscatoire et la justice expéditive ne
+coûtaient rien de plus qu'un chiffre qui montait. Le contre-pouvoir n'existait
+que pour les villes *occupées* — une sécession qui les rendait à leur maison
+d'origine — et pas du tout pour une ville maltraitée par ses propres maîtres.
+
+**La révolte, et c'est la garnison qui décide, pas un dé.** On compare la foule
+— la population, multipliée par sa colère — aux murs et aux hommes qui les
+tiennent. Une place tenue mate son émeute, au prix de morts, de murs ébréchés et
+d'une garnison réduite de moitié : la suivante sera plus difficile à contenir.
+Une garnison fondue par la guerre ne contient rien du tout. Le joueur qui a fait
+relever les murs de sa ville en Capitaine récolte le bénéfice exactement là où
+il l'attendait.
+
+Quand la foule l'emporte, une ville prise de force à quelqu'un rentre chez elle,
+et une ville qui n'a jamais connu que ses maîtres **devient libre — c'est-à-dire
+sans loi**. Plus de drapeau sur la carte, plus de prime pour un brigand livré,
+plus d'intendance, et l'on y vend ce qu'on veut. Ce n'est pas une récompense,
+c'est un état du monde. Dans tous les cas la geôle se vide : c'est la première
+porte qu'on enfonce.
+
+**Et le chef répond de l'humeur de son pays.** Au-delà de 40 % de grogne moyenne
+sa légitimité descend au lieu de monter, et à bout de course son propre conseil
+le renverse. Le successeur n'est alors pas tiré dans le même vivier selon ce
+qu'on reproche au sortant : après un chef qui a fait gronder le pays la maison
+cherche une main plus douce, après un chef qui a perdu des villes elle en
+cherche une plus dure. C'est ce qui fait qu'une faction **oscille au lieu de
+dériver toujours dans le même sens**.
+
+*Deux calibrages, toujours par mesure.* Réglée à 0,78 sans délai de carence,
+l'émeute remplissait **cent vingt lignes du journal sur quatre cents** — dans ce
+monde, la grogne moyenne est de 0,55 et une trentaine de villes campent en
+permanence au-dessus de 0,78. Une révolte qu'on lit trois fois par jour n'est
+plus un événement. Seuil à 0,86, carence de neuf cents heures, et une émeute
+matée loin de vous ne vous est même pas rapportée — c'est un fait divers local,
+pas une nouvelle, même règle que pour tout le reste de la carte. Et la foule
+était comptée à 0,045 par tête : onze hommes pour trois cents habitants
+furieux, contre soixante-quinze de garnison. Le peuple ne gagnait jamais.
+
+*La boucle se referme aussi côté conseils* : une révolte réussie laisse un bourg
+sans drapeau, et un conseil qui voit une place vacante à trois jours de marche y
+envoie du monde — en temps de paix seulement, et sans empressement. À 0,55 de
+chance par séance, plus une seule ville ne restait libre en fin de partie et
+l'état le plus intéressant du monde ne durait jamais assez pour qu'on aille y
+voir. À 0,16, il en reste une de temps en temps.
+
+Ce que ça donne, sur soixante parties de quatre mille heures — et c'est le
+meilleur chiffre de survie de tout le projet :
+
+                              avant      après
+    Survivantes               51/60      55/60
+    Avant-postes fondés       48/60      47/60
+    Grogne moyenne             0,72       0,53
+    Villes affranchies            —        0,5
+    Révoltes au journal           —        3,4
+    Renversements                 —        2,4
+
+La grogne moyenne des villes passe de 0,72 à 0,53 sur l'ensemble de ce travail
+politique, et **c'est de là que viennent les quatre escouades survivantes de
+plus** : des villes moins furieuses sont mieux approvisionnées, donc leurs
+marchés nourrissent le joueur pour moins cher. Le tick descend au passage de 116
+à 91 µs — un monde calme coûte moins à simuler qu'un monde qui s'effondre.
+
+Ce qui reste, et qui n'est pas un oubli : **les factions ne réagissent pas aux
+lois des autres.** Autoriser l'esclavage abîme votre réputation auprès de toutes
+celles qui l'ont interdit, mais leurs relations diplomatiques entre elles n'en
+tiennent aucun compte.
+
+### Deux champs morts
+
+Deux champs déclarés depuis le début et que rien ne lisait ont été branchés — c'est le genre de dette qui ne se voit qu'en cherchant pourquoi une
 mesure ne bouge pas. `PEINES[].routes` : une justice dure dissuade, et abaisse
 le niveau de repos des pistes autour de ses villes. `PEINES[].ordre` : elle se
 paie en rancune. Écrit comme une simple addition, ce second champ ajoutait 0,048

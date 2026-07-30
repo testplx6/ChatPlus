@@ -91,9 +91,21 @@ const PENCHANT = {
 /** En dessous, on ne tient plus : quelqu'un prend la place. */
 export const LEGITIMITE_CRITIQUE = 25;
 
-export function creerDirigeant(rng, key, t) {
+/**
+ * Ce vers quoi une maison se tourne après un échec, selon lequel. On ne succède
+ * pas de la même façon à quelqu'un qui a fait gronder le pays et à quelqu'un
+ * qui a perdu des villes : le premier appelle une main plus douce, le second
+ * une main plus dure. C'est ce qui fait qu'une faction oscille au lieu de
+ * dériver toujours dans le même sens.
+ */
+const APRES = {
+  grogne: ['conciliateur', 'prudent', 'batisseur', 'methodique'],
+  faiblesse: ['conquerant', 'rancunier', 'rapace', 'methodique'],
+};
+
+export function creerDirigeant(rng, key, t, apres) {
   const style = FACTIONS[key] ? FACTIONS[key].style : null;
-  const penchant = PENCHANT[style] || TEMPERAMENT_KEYS;
+  const penchant = APRES[apres] || PENCHANT[style] || TEMPERAMENT_KEYS;
   // Deux fois sur trois on prend quelqu'un dans la ligne de la maison ; sinon
   // n'importe qui, et c'est là que les factions se surprennent elles-mêmes.
   const temperament = rng.chance(0.68) ? rng.pick(penchant) : rng.pick(TEMPERAMENT_KEYS);
@@ -105,6 +117,9 @@ export function creerDirigeant(rng, key, t) {
     age: rng.irange(34, 64),
     depuis: t,
     legitimite: rng.irange(48, 72),
+    // Ce qu'on lui reproche : le désordre plutôt que la défaite. Sert à choisir
+    // dans quel vivier on prendra son successeur.
+    grogne: 0,
     guerres: 0,
     prises: 0,
     pertes: 0,
@@ -192,7 +207,7 @@ export function etatDuBut(world, guerre, key) {
  * qu'on a perdu trop de villes. Le successeur n'a pas forcément le même
  * tempérament : c'est ainsi qu'une faction pacifique se réveille conquérante.
  */
-export function tickDirigeant(world, key, rng, dt, t, log) {
+export function tickDirigeant(world, key, rng, dt, t, log, grogne = 0) {
   const f = world.factions[key];
   if (!f) return;
   if (!f.dirigeant) { f.dirigeant = creerDirigeant(rng, key, t); return; }
@@ -202,9 +217,17 @@ export function tickDirigeant(world, key, rng, dt, t, log) {
   // ne cédait jamais sa place, donc la politique ne changeait jamais de visage.
   d.age += dt / HEURES_PAR_AN;
 
-  // La légitimité remonte doucement en temps calme : gouverner sans catastrophe
-  // est déjà une forme de succès.
-  d.legitimite = Math.min(100, d.legitimite + 0.01 * dt);
+  // Gouverner sans catastrophe est déjà une forme de succès, et la légitimité
+  // remonte doucement en temps calme. Gouverner un pays qui gronde n'en est pas
+  // un : au-delà de quarante pour cent de grogne moyenne, elle se met à
+  // descendre, et un chef qui laisse pourrir son pays finit par le payer sans
+  // qu'aucune armée n'ait eu à entrer chez lui.
+  const usure = Math.max(0, grogne - 0.4) * 0.12;
+  d.legitimite = Math.max(0, Math.min(100, d.legitimite + (0.01 - usure) * dt));
+  // On garde ce qui l'a fait tomber : le successeur n'est pas tiré au hasard
+  // dans le même vivier selon qu'on lui reproche le désordre ou la défaite.
+  if (usure > 0) d.grogne = Math.min(1, (d.grogne || 0) + 0.002 * dt);
+  else d.grogne = Math.max(0, (d.grogne || 0) - 0.001 * dt);
 
   const vieux = Math.max(0, d.age - 60) / 25;
   const conteste = d.legitimite < LEGITIMITE_CRITIQUE ? 0.004 : 0;
@@ -212,8 +235,14 @@ export function tickDirigeant(world, key, rng, dt, t, log) {
   if (!rng.chance(dt === 1 ? q : 1 - Math.pow(1 - q, dt))) return;
 
   const sortant = d;
-  const cause = sortant.legitimite < LEGITIMITE_CRITIQUE ? 'écarté' : 'remplacé';
-  const neuf = creerDirigeant(rng, key, t);
+  const ecarte = sortant.legitimite < LEGITIMITE_CRITIQUE;
+  // Renversé par le pays ou par les défaites : ce n'est pas le même reproche,
+  // et ce n'est donc pas le même successeur.
+  const parLePays = ecarte && (sortant.grogne || 0) > 0.35;
+  const cause = parLePays ? 'renversé par son propre conseil'
+    : ecarte ? 'écarté' : 'remplacé';
+  const neuf = creerDirigeant(rng, key, t,
+    ecarte ? (parLePays ? 'grogne' : 'faiblesse') : null);
   f.dirigeant = neuf;
   if (log) {
     log({

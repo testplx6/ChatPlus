@@ -3352,9 +3352,21 @@ const PENCHANT = {
 /** En dessous, on ne tient plus : quelqu'un prend la place. */
 const LEGITIMITE_CRITIQUE = 25;
 
-function creerDirigeant(rng, key, t) {
+/**
+ * Ce vers quoi une maison se tourne après un échec, selon lequel. On ne succède
+ * pas de la même façon à quelqu'un qui a fait gronder le pays et à quelqu'un
+ * qui a perdu des villes : le premier appelle une main plus douce, le second
+ * une main plus dure. C'est ce qui fait qu'une faction oscille au lieu de
+ * dériver toujours dans le même sens.
+ */
+const APRES = {
+  grogne: ['conciliateur', 'prudent', 'batisseur', 'methodique'],
+  faiblesse: ['conquerant', 'rancunier', 'rapace', 'methodique'],
+};
+
+function creerDirigeant(rng, key, t, apres) {
   const style = FACTIONS[key] ? FACTIONS[key].style : null;
-  const penchant = PENCHANT[style] || TEMPERAMENT_KEYS;
+  const penchant = APRES[apres] || PENCHANT[style] || TEMPERAMENT_KEYS;
   // Deux fois sur trois on prend quelqu'un dans la ligne de la maison ; sinon
   // n'importe qui, et c'est là que les factions se surprennent elles-mêmes.
   const temperament = rng.chance(0.68) ? rng.pick(penchant) : rng.pick(TEMPERAMENT_KEYS);
@@ -3366,6 +3378,9 @@ function creerDirigeant(rng, key, t) {
     age: rng.irange(34, 64),
     depuis: t,
     legitimite: rng.irange(48, 72),
+    // Ce qu'on lui reproche : le désordre plutôt que la défaite. Sert à choisir
+    // dans quel vivier on prendra son successeur.
+    grogne: 0,
     guerres: 0,
     prises: 0,
     pertes: 0,
@@ -3453,7 +3468,7 @@ function etatDuBut(world, guerre, key) {
  * qu'on a perdu trop de villes. Le successeur n'a pas forcément le même
  * tempérament : c'est ainsi qu'une faction pacifique se réveille conquérante.
  */
-function tickDirigeant(world, key, rng, dt, t, log) {
+function tickDirigeant(world, key, rng, dt, t, log, grogne = 0) {
   const f = world.factions[key];
   if (!f) return;
   if (!f.dirigeant) { f.dirigeant = creerDirigeant(rng, key, t); return; }
@@ -3463,9 +3478,17 @@ function tickDirigeant(world, key, rng, dt, t, log) {
   // ne cédait jamais sa place, donc la politique ne changeait jamais de visage.
   d.age += dt / HEURES_PAR_AN;
 
-  // La légitimité remonte doucement en temps calme : gouverner sans catastrophe
-  // est déjà une forme de succès.
-  d.legitimite = Math.min(100, d.legitimite + 0.01 * dt);
+  // Gouverner sans catastrophe est déjà une forme de succès, et la légitimité
+  // remonte doucement en temps calme. Gouverner un pays qui gronde n'en est pas
+  // un : au-delà de quarante pour cent de grogne moyenne, elle se met à
+  // descendre, et un chef qui laisse pourrir son pays finit par le payer sans
+  // qu'aucune armée n'ait eu à entrer chez lui.
+  const usure = Math.max(0, grogne - 0.4) * 0.12;
+  d.legitimite = Math.max(0, Math.min(100, d.legitimite + (0.01 - usure) * dt));
+  // On garde ce qui l'a fait tomber : le successeur n'est pas tiré au hasard
+  // dans le même vivier selon qu'on lui reproche le désordre ou la défaite.
+  if (usure > 0) d.grogne = Math.min(1, (d.grogne || 0) + 0.002 * dt);
+  else d.grogne = Math.max(0, (d.grogne || 0) - 0.001 * dt);
 
   const vieux = Math.max(0, d.age - 60) / 25;
   const conteste = d.legitimite < LEGITIMITE_CRITIQUE ? 0.004 : 0;
@@ -3473,8 +3496,14 @@ function tickDirigeant(world, key, rng, dt, t, log) {
   if (!rng.chance(dt === 1 ? q : 1 - Math.pow(1 - q, dt))) return;
 
   const sortant = d;
-  const cause = sortant.legitimite < LEGITIMITE_CRITIQUE ? 'écarté' : 'remplacé';
-  const neuf = creerDirigeant(rng, key, t);
+  const ecarte = sortant.legitimite < LEGITIMITE_CRITIQUE;
+  // Renversé par le pays ou par les défaites : ce n'est pas le même reproche,
+  // et ce n'est donc pas le même successeur.
+  const parLePays = ecarte && (sortant.grogne || 0) > 0.35;
+  const cause = parLePays ? 'renversé par son propre conseil'
+    : ecarte ? 'écarté' : 'remplacé';
+  const neuf = creerDirigeant(rng, key, t,
+    ecarte ? (parLePays ? 'grogne' : 'faiblesse') : null);
   f.dirigeant = neuf;
   if (log) {
     log({
@@ -6239,6 +6268,23 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
     return { evenement: 'secession' };
   }
 
+  // Révolte. Une ville qui gronde à quatre-vingts pour cent n'avait aucune
+  // issue : elle mijotait indéfiniment, et l'impôt confiscatoire ou la justice
+  // expéditive ne coûtaient rien de plus qu'un chiffre qui montait. Au-delà de
+  // ce qu'une population supporte, elle se lève — et c'est la garnison qui
+  // décide de la suite, pas un dé.
+  //
+  // Le seuil et le délai sont hauts, et ce n'est pas de la prudence : dans ce
+  // monde, la grogne moyenne est de 0,57 et une trentaine de villes campent
+  // au-dessus de 0,78 en permanence. Réglée à 0,78 sans délai, l'émeute
+  // remplissait cent vingt lignes du journal sur quatre cents. Une révolte doit
+  // rester un événement ; celle qu'on lit trois fois par jour n'en est plus un.
+  if (col.faction && col.unrest > SEUIL_REVOLTE
+      && t - (col.derniereRevolte || -DELAI_REVOLTE) >= DELAI_REVOLTE
+      && rng.chance(surDt(0.0015 * (col.unrest - SEUIL_REVOLTE) / (1 - SEUIL_REVOLTE)))) {
+    return { evenement: 'revolte' };
+  }
+
   if (col.pop > col.taille * 620 && col.unrest < 0.3 && col.taille < 3) {
     col.taille += 1;
     col.murs += 2;
@@ -6260,6 +6306,70 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
     }
   }
   return null;
+}
+
+/** Au-delà, une ville ne se contente plus de gronder. */
+const SEUIL_REVOLTE = 0.86;
+
+/** Une ville qui vient de se soulever ne recommence pas le mois suivant. */
+const DELAI_REVOLTE = 900;
+
+/**
+ * La ville se lève. Ce qui décide, c'est le rapport de force — une garnison
+ * nombreuse derrière de bons murs mate une foule, une garnison fondue par la
+ * guerre ne mate rien du tout. On ne tire pas au sort le vainqueur : on
+ * compare, et le joueur qui a fait relever les murs de sa ville en récolte le
+ * bénéfice exactement là où il l'attendait.
+ */
+function faireRevolte(world, col, rng, t) {
+  col.derniereRevolte = t;
+  // Une foule, c'est du monde. Écrite d'abord à 0,045 par tête, elle valait
+  // onze hommes pour une ville de trois cents habitants furieux, contre une
+  // garnison de soixante-quinze : la garnison gagnait toujours, et l'émeute
+  // n'était qu'une ligne de journal. Trois cents personnes en colère, c'est
+  // une force réelle — que de bons murs et une garnison entière contiennent,
+  // et qu'une garnison fondue par la guerre ne contient pas.
+  const foule = col.pop * col.unrest * 0.35 * rng.range(0.8, 1.25);
+  const garnison = (col.defense || 0) + col.murs * 3;
+  // Une geôle pleine se vide toujours dans une émeute : c'est la première
+  // porte qu'on enfonce. (On efface le champ plutôt que d'importer justice.js,
+  // qui vient plus tard dans l'ordre des modules.)
+  const liberes = col.geole ? col.geole.detenus.length : 0;
+  col.geole = null;
+
+  if (garnison >= foule) {
+    // Matée. La ville se tait, mais elle se souvient — et elle a payé cher :
+    // des morts, des murs ébréchés, une garnison qui n'est plus ce qu'elle
+    // était. Une seconde révolte serait bien plus difficile à contenir.
+    col.unrest = 0.42;
+    col.pop = Math.max(40, Math.round(col.pop * 0.94));
+    col.defense = Math.round((col.defense || 0) * 0.45);
+    return { issue: 'matee', liberes };
+  }
+
+  // La foule l'emporte. Une ville prise de force à quelqu'un revient à sa
+  // maison ; une ville qui n'a jamais appartenu qu'à ses maîtres devient libre,
+  // c'est-à-dire sans loi. Ce n'est pas une récompense : plus de prime, plus
+  // d'intendance, et l'on y vend ce qu'on veut.
+  const ancienne = col.faction;
+  if (col.factionOrigine && col.factionOrigine !== ancienne
+      && world.factions[col.factionOrigine]) {
+    const r = faireSecession(world, col);
+    return { issue: 'secession', liberes, ...r };
+  }
+  const f = world.factions[ancienne];
+  if (f) {
+    f.colonies = f.colonies.filter((id) => id !== col.id);
+    if (f.capitale === col.id) f.capitale = f.colonies[0] || null;
+  }
+  col.faction = null;
+  col.factionOrigine = null;
+  col.contrats = [];
+  col.unrest = 0.5;
+  col.defense = Math.round(col.defenseMax * 0.2);
+  col.pop = Math.max(40, Math.round(col.pop * 0.9));
+  world.regions[col.regionId].controle = null;
+  return { issue: 'affranchie', liberes, ancienne };
 }
 
 /** Rend une colonie à sa faction d'origine, en la ressuscitant s'il le faut. */
@@ -7215,7 +7325,35 @@ function conseil(world, key, t, log, ctx) {
     }
   }
 
-  // 4) Fonder : une faction riche et en paix pousse un nouveau poste sur une
+  // 4) Reprendre une ville libre. Une révolte réussie laisse un bourg sans
+  //    drapeau ; si personne ne va le chercher, la carte se remplit lentement
+  //    de villes sans loi et le monde perd ses frontières. Un conseil qui voit
+  //    une place vacante à trois jours de marche y envoie du monde — c'est bien
+  //    moins cher que de fonder, et ça rapporte une ville faite.
+  const libres = world.colonies.filter(
+    (c) => !c.ruine && !c.faction
+      && mesColonies.some((m) => distance(m.regionId, c.regionId) <= 5)
+  );
+  if (libres.length && !world.armees.some((a) => a.faction === key && a.cible === libres[0].id)) {
+    const cible = libres.reduce((a, b) => {
+      const da = Math.min(...mesColonies.map((m) => distance(m.regionId, a.regionId)));
+      const db = Math.min(...mesColonies.map((m) => distance(m.regionId, b.regionId)));
+      return db < da ? b : a;
+    });
+    const depuis = mesColonies.reduce((a, b) => (
+      distance(b.regionId, cible.regionId) < distance(a.regionId, cible.regionId) ? b : a));
+    const force = Math.max(25, Math.round(cible.defense * 1.6 + 20));
+    // Pas pendant une guerre, et sans empressement : à 0,55 de chance par
+    // séance, plus une seule ville ne restait libre en fin de partie et l'état
+    // le plus intéressant du monde — un bourg sans drapeau ni loi — ne durait
+    // jamais assez pour qu'on aille y voir.
+    if (!guerresDe(world, key).length && f.tresor >= coutArmee(force) * 1.5
+        && rng.chance(0.16 * penchant(world, key, 'expansion'))) {
+      leverArmee(world, key, force, depuis.regionId, cible.id, log);
+    }
+  }
+
+  // 5) Fonder : une faction riche et en paix pousse un nouveau poste sur une
   //    case vide de son voisinage. La carte bouge autrement que par conquête.
   const enPaix = !guerresDe(world, key).length;
   // Le plafond suit la taille de la carte. Écrit en dur à sept, il valait
@@ -7477,7 +7615,12 @@ function tickFactions(world, t, log, ctx) {
   // Les chefs vieillissent une fois par jour de jeu, pas vingt-quatre : leur
   // usure se compte en années, pas en heures.
   if (t % 24 === 0) {
-    for (const key of DIPLO_FACTIONS) tickDirigeant(world, key, ctx.rng, 24, t, log);
+    for (const key of DIPLO_FACTIONS) {
+      // Un chef répond aussi de l'humeur de son pays, pas seulement de ses
+      // guerres : la grogne moyenne entre directement dans sa légitimité.
+      const pays = etatDuPays(world, key);
+      tickDirigeant(world, key, ctx.rng, 24, t, log, pays ? pays.grogne : 0);
+    }
   }
 
   for (const armee of world.armees.slice()) {
@@ -11960,6 +12103,49 @@ function tick(state) {
         regionId: col.regionId,
         important: true,
       });
+    } else if (ev.evenement === 'revolte') {
+      const ancienne = col.faction;
+      const r = faireRevolte(state.world, col, rng, state.temps);
+      // Une émeute laisse les pistes du coin dans un état déplorable : des
+      // gens armés qui n'ont plus rien à perdre, et personne pour les tenir.
+      const reg = state.world.regions[col.regionId];
+      reg.insecurite = Math.min(1, (reg.insecurite || 0) + 0.25);
+      if (r.issue === 'matee') {
+        // Une émeute matée à l'autre bout de la carte n'est pas une nouvelle :
+        // c'est un fait divers local. On ne l'apprend que si l'on a quelqu'un
+        // dans le secteur — même règle que pour tout le reste de la carte.
+        if (estSurveillee(state, col.regionId)) {
+          log({
+            type: 'revolte',
+            texte: `${col.nom} se soulève. La garnison tient la place`
+              + `${r.liberes ? `, mais la geôle s’est vidée (${r.liberes} évadés)` : ''}.`
+              + ` On comptera les morts demain.`,
+            regionId: col.regionId,
+            important: true,
+            factions: [ancienne].filter(Boolean),
+          });
+        }
+      } else if (r.issue === 'secession') {
+        crediterDirigeant(state.world, ancienne, 'perte');
+        log({
+          type: 'revolte',
+          texte: `${col.nom} se soulève et chasse ${FACTIONS[ancienne].nom}. `
+            + `La ville revient ${FACTIONS[r.rendue].datif}.`,
+          regionId: col.regionId,
+          important: true,
+          factions: [ancienne, r.rendue].filter(Boolean),
+        });
+      } else {
+        crediterDirigeant(state.world, ancienne, 'perte');
+        log({
+          type: 'revolte',
+          texte: `${col.nom} se soulève et se donne à personne. Plus de drapeau, `
+            + `plus de loi, et l’on y vendra bientôt n’importe quoi.`,
+          regionId: col.regionId,
+          important: true,
+          factions: [ancienne].filter(Boolean),
+        });
+      }
     } else if (ev.evenement === 'secession') {
       const r = faireSecession(state.world, col);
       log({

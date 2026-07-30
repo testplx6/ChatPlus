@@ -86,6 +86,7 @@ const TRACE = {
   // les couleurs de quelqu'un, ce qu'elles rapportent, et où l'échelle bloque.
   hEngage: 0, pointsFin: 0, manques: 0, ordresDonnes: 0,
   secteurs: 0, etatSecteur: 0, bilans: 0,
+  revoltes: 0, matees: 0, libres: 0, renverses: 0, grogne: 0,
   disposes: 0, relaches: 0, gagneCaptifs: 0, captures: 0,
   // Ce que les conseils votent quand personne ne les tient.
   impots: {}, peines: {}, esclavagistes: 0, factionsVues: 0,
@@ -1140,6 +1141,14 @@ for (let n = 0; n < PARTIES; n++) {
     ? Math.round(viv.reduce((s, c) => s + Math.max(comp(c, 'melee'), comp(c, 'tir')), 0) / viv.length)
     : 0;
   TRACE.ordresDonnes += memo.ordresDonnes;
+  {
+    const v = state.world.colonies.filter((c) => !c.ruine);
+    TRACE.libres += v.filter((c) => !c.faction).length;
+    TRACE.grogne += v.reduce((a, c) => a + (c.unrest || 0), 0) / Math.max(1, v.length);
+    TRACE.revoltes += state.journal.filter((x) => x.type === 'revolte').length;
+    TRACE.renverses += state.journal.filter(
+      (x) => x.type === 'dirigeant' && /renversé/.test(x.texte)).length;
+  }
   for (const k of Object.keys(state.world.factions)) {
     if (k === 'essaim') continue;
     if (!state.world.colonies.some((c) => !c.ruine && c.faction === k)) continue;
@@ -1236,6 +1245,10 @@ const part = (o) => Object.entries(o).sort((a, b) => b[1] - a[1])
 console.log(`Lois votées par les conseils — impôt : ${part(TRACE.impots)}`);
 console.log(`                              justice : ${part(TRACE.peines)}`
   + ` — esclavagistes : ${Math.round(100 * TRACE.esclavagistes / Math.max(1, TRACE.factionsVues))} %`);
+console.log(`Grogne moyenne des villes : ${(TRACE.grogne / PARTIES).toFixed(2)} — `
+  + `${(TRACE.libres / PARTIES).toFixed(1)} ville(s) affranchie(s) en fin de partie · `
+  + `${(TRACE.revoltes / PARTIES).toFixed(1)} révolte(s) et `
+  + `${(TRACE.renverses / PARTIES).toFixed(1)} renversement(s) encore au journal`);
 console.log(`Secteurs tenus : ${TRACE.secteurs} — état moyen `
   + `${(TRACE.etatSecteur / Math.max(1, TRACE.secteurs)).toFixed(2)} `
   + `(0 = sûr, 1 = infréquentable) sur ${Math.round(TRACE.bilans / Math.max(1, TRACE.secteurs))} relevés`);

@@ -490,7 +490,35 @@ function conseil(world, key, t, log, ctx) {
     }
   }
 
-  // 4) Fonder : une faction riche et en paix pousse un nouveau poste sur une
+  // 4) Reprendre une ville libre. Une révolte réussie laisse un bourg sans
+  //    drapeau ; si personne ne va le chercher, la carte se remplit lentement
+  //    de villes sans loi et le monde perd ses frontières. Un conseil qui voit
+  //    une place vacante à trois jours de marche y envoie du monde — c'est bien
+  //    moins cher que de fonder, et ça rapporte une ville faite.
+  const libres = world.colonies.filter(
+    (c) => !c.ruine && !c.faction
+      && mesColonies.some((m) => distance(m.regionId, c.regionId) <= 5)
+  );
+  if (libres.length && !world.armees.some((a) => a.faction === key && a.cible === libres[0].id)) {
+    const cible = libres.reduce((a, b) => {
+      const da = Math.min(...mesColonies.map((m) => distance(m.regionId, a.regionId)));
+      const db = Math.min(...mesColonies.map((m) => distance(m.regionId, b.regionId)));
+      return db < da ? b : a;
+    });
+    const depuis = mesColonies.reduce((a, b) => (
+      distance(b.regionId, cible.regionId) < distance(a.regionId, cible.regionId) ? b : a));
+    const force = Math.max(25, Math.round(cible.defense * 1.6 + 20));
+    // Pas pendant une guerre, et sans empressement : à 0,55 de chance par
+    // séance, plus une seule ville ne restait libre en fin de partie et l'état
+    // le plus intéressant du monde — un bourg sans drapeau ni loi — ne durait
+    // jamais assez pour qu'on aille y voir.
+    if (!guerresDe(world, key).length && f.tresor >= coutArmee(force) * 1.5
+        && rng.chance(0.16 * penchant(world, key, 'expansion'))) {
+      leverArmee(world, key, force, depuis.regionId, cible.id, log);
+    }
+  }
+
+  // 5) Fonder : une faction riche et en paix pousse un nouveau poste sur une
   //    case vide de son voisinage. La carte bouge autrement que par conquête.
   const enPaix = !guerresDe(world, key).length;
   // Le plafond suit la taille de la carte. Écrit en dur à sept, il valait
@@ -752,7 +780,12 @@ export function tickFactions(world, t, log, ctx) {
   // Les chefs vieillissent une fois par jour de jeu, pas vingt-quatre : leur
   // usure se compte en années, pas en heures.
   if (t % 24 === 0) {
-    for (const key of DIPLO_FACTIONS) tickDirigeant(world, key, ctx.rng, 24, t, log);
+    for (const key of DIPLO_FACTIONS) {
+      // Un chef répond aussi de l'humeur de son pays, pas seulement de ses
+      // guerres : la grogne moyenne entre directement dans sa légitimité.
+      const pays = etatDuPays(world, key);
+      tickDirigeant(world, key, ctx.rng, 24, t, log, pays ? pays.grogne : 0);
+    }
   }
 
   for (const armee of world.armees.slice()) {

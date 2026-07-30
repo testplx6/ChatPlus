@@ -391,6 +391,23 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
     return { evenement: 'secession' };
   }
 
+  // Révolte. Une ville qui gronde à quatre-vingts pour cent n'avait aucune
+  // issue : elle mijotait indéfiniment, et l'impôt confiscatoire ou la justice
+  // expéditive ne coûtaient rien de plus qu'un chiffre qui montait. Au-delà de
+  // ce qu'une population supporte, elle se lève — et c'est la garnison qui
+  // décide de la suite, pas un dé.
+  //
+  // Le seuil et le délai sont hauts, et ce n'est pas de la prudence : dans ce
+  // monde, la grogne moyenne est de 0,57 et une trentaine de villes campent
+  // au-dessus de 0,78 en permanence. Réglée à 0,78 sans délai, l'émeute
+  // remplissait cent vingt lignes du journal sur quatre cents. Une révolte doit
+  // rester un événement ; celle qu'on lit trois fois par jour n'en est plus un.
+  if (col.faction && col.unrest > SEUIL_REVOLTE
+      && t - (col.derniereRevolte || -DELAI_REVOLTE) >= DELAI_REVOLTE
+      && rng.chance(surDt(0.0015 * (col.unrest - SEUIL_REVOLTE) / (1 - SEUIL_REVOLTE)))) {
+    return { evenement: 'revolte' };
+  }
+
   if (col.pop > col.taille * 620 && col.unrest < 0.3 && col.taille < 3) {
     col.taille += 1;
     col.murs += 2;
@@ -412,6 +429,70 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
     }
   }
   return null;
+}
+
+/** Au-delà, une ville ne se contente plus de gronder. */
+export const SEUIL_REVOLTE = 0.86;
+
+/** Une ville qui vient de se soulever ne recommence pas le mois suivant. */
+export const DELAI_REVOLTE = 900;
+
+/**
+ * La ville se lève. Ce qui décide, c'est le rapport de force — une garnison
+ * nombreuse derrière de bons murs mate une foule, une garnison fondue par la
+ * guerre ne mate rien du tout. On ne tire pas au sort le vainqueur : on
+ * compare, et le joueur qui a fait relever les murs de sa ville en récolte le
+ * bénéfice exactement là où il l'attendait.
+ */
+export function faireRevolte(world, col, rng, t) {
+  col.derniereRevolte = t;
+  // Une foule, c'est du monde. Écrite d'abord à 0,045 par tête, elle valait
+  // onze hommes pour une ville de trois cents habitants furieux, contre une
+  // garnison de soixante-quinze : la garnison gagnait toujours, et l'émeute
+  // n'était qu'une ligne de journal. Trois cents personnes en colère, c'est
+  // une force réelle — que de bons murs et une garnison entière contiennent,
+  // et qu'une garnison fondue par la guerre ne contient pas.
+  const foule = col.pop * col.unrest * 0.35 * rng.range(0.8, 1.25);
+  const garnison = (col.defense || 0) + col.murs * 3;
+  // Une geôle pleine se vide toujours dans une émeute : c'est la première
+  // porte qu'on enfonce. (On efface le champ plutôt que d'importer justice.js,
+  // qui vient plus tard dans l'ordre des modules.)
+  const liberes = col.geole ? col.geole.detenus.length : 0;
+  col.geole = null;
+
+  if (garnison >= foule) {
+    // Matée. La ville se tait, mais elle se souvient — et elle a payé cher :
+    // des morts, des murs ébréchés, une garnison qui n'est plus ce qu'elle
+    // était. Une seconde révolte serait bien plus difficile à contenir.
+    col.unrest = 0.42;
+    col.pop = Math.max(40, Math.round(col.pop * 0.94));
+    col.defense = Math.round((col.defense || 0) * 0.45);
+    return { issue: 'matee', liberes };
+  }
+
+  // La foule l'emporte. Une ville prise de force à quelqu'un revient à sa
+  // maison ; une ville qui n'a jamais appartenu qu'à ses maîtres devient libre,
+  // c'est-à-dire sans loi. Ce n'est pas une récompense : plus de prime, plus
+  // d'intendance, et l'on y vend ce qu'on veut.
+  const ancienne = col.faction;
+  if (col.factionOrigine && col.factionOrigine !== ancienne
+      && world.factions[col.factionOrigine]) {
+    const r = faireSecession(world, col);
+    return { issue: 'secession', liberes, ...r };
+  }
+  const f = world.factions[ancienne];
+  if (f) {
+    f.colonies = f.colonies.filter((id) => id !== col.id);
+    if (f.capitale === col.id) f.capitale = f.colonies[0] || null;
+  }
+  col.faction = null;
+  col.factionOrigine = null;
+  col.contrats = [];
+  col.unrest = 0.5;
+  col.defense = Math.round(col.defenseMax * 0.2);
+  col.pop = Math.max(40, Math.round(col.pop * 0.9));
+  world.regions[col.regionId].controle = null;
+  return { issue: 'affranchie', liberes, ancienne };
 }
 
 /** Rend une colonie à sa faction d'origine, en la ressuscitant s'il le faut. */

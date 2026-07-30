@@ -9,6 +9,9 @@ import { Rng } from '../src/rng.js';
 import { serialiser, deserialiser } from '../src/save.js';
 import { COMMODITY_KEYS, DIPLO_FACTIONS } from '../src/data.js';
 import { genererBande } from '../src/combat.js';
+import { faireRevolte, SEUIL_REVOLTE } from '../src/economy.js';
+import { loiIci } from '../src/lois.js';
+import { primeLivraison } from '../src/justice.js';
 import { classement, puissance } from '../src/factions.js';
 import { donnerOrdre, verifierExercice, COMPETENCES_EXERCICE } from '../src/squad.js';
 import {
@@ -66,6 +69,7 @@ import {
 } from '../src/services.js';
 import {
   dirigeant, penchant, etatDuBut, crediterDirigeant, TEMPERAMENTS,
+  tickDirigeant, creerDirigeant,
 } from '../src/dirigeants.js';
 
 /** Petite aide locale : les villes encore tenues par une faction. */
@@ -1695,6 +1699,130 @@ ok(colOrdre.unrest <= 0.46,
   `${colOrdre.unrest.toFixed(2)}`);
 
 verifierCoherence(conseils, 'après 3000 h de politique intérieure');
+
+section('9 nonies septies senies. Révoltes et renversements');
+// Une ville qui gronde à quatre-vingts pour cent n'avait aucune issue : elle
+// mijotait indéfiniment, et l'impôt confiscatoire ne coûtait rien de plus qu'un
+// chiffre qui montait.
+const rev = nouvellePartie(6060, { maintenant: 0 });
+const colRev = rev.world.colonies.find((c) => !c.ruine && c.faction && c.faction !== 'essaim');
+
+// C'est la garnison qui décide, pas un dé : une place tenue mate sa foule.
+const tenue = JSON.parse(JSON.stringify(colRev));
+tenue.pop = 300;
+tenue.unrest = 0.95;
+tenue.defense = 900;
+tenue.murs = 40;
+ok(faireRevolte(rev.world, tenue, new Rng(1), 0).issue === 'matee',
+  'une garnison entière derrière de bons murs contient l’émeute');
+
+const creuse = JSON.parse(JSON.stringify(colRev));
+creuse.pop = 300;
+creuse.unrest = 0.95;
+creuse.defense = 0;
+creuse.murs = 1;
+ok(faireRevolte(rev.world, creuse, new Rng(1), 0).issue !== 'matee',
+  'une garnison fondue par la guerre ne contient rien du tout');
+
+// Matée, la ville paie : des morts, des murs ébréchés, et une garnison qui
+// n'est plus ce qu'elle était.
+const matee = JSON.parse(JSON.stringify(colRev));
+matee.pop = 300;
+matee.unrest = 0.95;
+matee.defense = 900;
+matee.murs = 40;
+matee.geole = { detenus: [{ nom: 'X', faction: null, sortie: 9999 }], majA: 0 };
+const rMatee = faireRevolte(rev.world, matee, new Rng(2), 100);
+ok(matee.unrest < 0.95 && matee.pop < 300 && matee.defense < 900,
+  'la mater coûte des morts, des murs et de la troupe',
+  `grogne ${matee.unrest}, pop ${matee.pop}, garnison ${matee.defense}`);
+ok(rMatee.liberes === 1 && !matee.geole,
+  'et la geôle se vide : c’est la première porte qu’on enfonce');
+ok(matee.derniereRevolte === 100,
+  'une ville qui vient de se soulever ne recommence pas le mois suivant');
+
+// La foule l'emporte : une ville sans passé sous un autre drapeau devient
+// libre, c'est-à-dire sans loi.
+const libre = rev.world.colonies.find(
+  (c) => !c.ruine && c.faction && c.faction !== 'essaim' && !c.factionOrigine
+) || colRev;
+libre.factionOrigine = null;
+const drapeau = libre.faction;
+libre.pop = 400;
+libre.unrest = 0.95;
+libre.defense = 0;
+libre.murs = 0;
+const rLibre = faireRevolte(rev.world, libre, new Rng(3), 200);
+ok(rLibre.issue === 'affranchie', 'la ville se donne à personne', rLibre.issue);
+ok(!libre.faction && rev.world.regions[libre.regionId].controle === null,
+  'plus de drapeau sur la carte');
+ok(!rev.world.factions[drapeau].colonies.includes(libre.id),
+  'et la faction ne la compte plus parmi les siennes');
+ok(loiIci(rev, libre).sansLoi && loiIci(rev, libre).esclavage,
+  'plus de loi non plus : on y vendra n’importe quoi',
+  JSON.stringify(loiIci(rev, libre)));
+ok(primeLivraison(rev, libre, { captif: { brigandage: true } }) === 0,
+  'et plus personne n’y délivre de prime');
+
+// Une ville prise de force à quelqu'un retourne chez elle plutôt que de
+// flotter : la révolte est le contre-pouvoir de la conquête.
+const reprise = rev.world.colonies.find(
+  (c) => !c.ruine && c.faction && c.faction !== 'essaim' && c.id !== libre.id
+);
+const maison = DIPLO_FACTIONS.find((k) => k !== reprise.faction);
+reprise.factionOrigine = maison;
+reprise.pop = 400;
+reprise.unrest = 0.95;
+reprise.defense = 0;
+reprise.murs = 0;
+const rSec = faireRevolte(rev.world, reprise, new Rng(4), 300);
+ok(rSec.issue === 'secession' && reprise.faction === maison,
+  'une ville occupée qui se soulève rentre chez elle', rSec.issue);
+
+// Le monde s'en sert : sur une longue partie, des villes changent de mains par
+// la rue et pas seulement par les armées — sans que le journal ne parle que de
+// ça.
+const monde = nouvellePartie(6161, { maintenant: 0 });
+avancer(monde, 8000);
+const lignesRevolte = monde.journal.filter((x) => x.type === 'revolte').length;
+ok(lignesRevolte > 0, 'des villes se soulèvent au cours d’une longue partie',
+  `${lignesRevolte} au journal`);
+ok(lignesRevolte < monde.journal.length * 0.15,
+  'mais l’émeute reste un événement, pas le bruit de fond du journal',
+  `${lignesRevolte}/${monde.journal.length}`);
+
+// Un chef répond de l'humeur de son pays, pas seulement de ses guerres.
+function legitimiteApres(grogne) {
+  const t = nouvellePartie(6262, { maintenant: 0 });
+  const d = dirigeant(t.world, 'cendre');
+  d.legitimite = 80;
+  for (let i = 0; i < 60; i++) tickDirigeant(t.world, 'cendre', new Rng(9), 24, i * 24, () => {}, grogne);
+  return dirigeant(t.world, 'cendre').legitimite;
+}
+ok(legitimiteApres(0.85) < legitimiteApres(0.2),
+  'gouverner un pays qui gronde ronge la légitimité',
+  `${legitimiteApres(0.85).toFixed(0)} vs ${legitimiteApres(0.2).toFixed(0)}`);
+ok(legitimiteApres(0.2) >= 80,
+  'et gouverner sans catastrophe reste une forme de succès');
+
+// Le successeur n'est pas tiré dans le même vivier selon ce qu'on reproche au
+// sortant : c'est ce qui fait qu'une faction oscille au lieu de dériver.
+const doux = new Set(['conciliateur', 'prudent', 'batisseur', 'methodique']);
+let apresGrogne = 0;
+for (let i = 0; i < 40; i++) {
+  const d = creerDirigeant(new Rng(700 + i), 'cendre', 0, 'grogne');
+  if (doux.has(d.temperament)) apresGrogne++;
+}
+let apresFaiblesse = 0;
+for (let i = 0; i < 40; i++) {
+  const d = creerDirigeant(new Rng(700 + i), 'cendre', 0, 'faiblesse');
+  if (doux.has(d.temperament)) apresFaiblesse++;
+}
+ok(apresGrogne > apresFaiblesse,
+  'après un chef qui a fait gronder le pays, la maison cherche une main plus douce',
+  `${apresGrogne}/40 vs ${apresFaiblesse}/40`);
+
+verifierCoherence(monde, 'après 8000 h de révoltes et de renversements');
 
 section('9 nonies sexies. Qui accepte de partir, et pour combien');
 const rec = nouvellePartie(9494, { maintenant: 0 });

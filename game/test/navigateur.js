@@ -528,16 +528,20 @@ const avantOrdre = await page.evaluate(() => {
     villes: s2.world.colonies.filter((c) => !c.ruine).length,
   };
 });
-// On déplie la première charge exerçable et on clique son premier ordre.
-await page.evaluate(() => {
-  const d = document.querySelector('details[data-id^="prero-"]');
-  if (d) d.open = true;
-});
-await page.waitForTimeout(200);
-const aOrdonne = await page.locator('[data-a="ordonner"]').count() > 0;
+// On déplie la première charge exerçable et on clique son premier ordre. On
+// clique le résumé plutôt que de forcer `open` : c'est l'événement `toggle`
+// qui inscrit le bloc dans les dépliés, et sans lui le prochain re-rendu le
+// referme sous le curseur.
+// On déplie une charge et on clique un ordre *de cette charge-là* : le premier
+// bouton de la page peut très bien appartenir à un bloc resté fermé.
+const charge = page.locator('details[data-id^="prero-"]')
+  .filter({ has: page.locator('[data-a="ordonner"]') }).first();
+await charge.locator('summary').click();
+await page.waitForTimeout(300);
+const aOrdonne = await charge.locator('[data-a="ordonner"]').count() > 0;
 ok(aOrdonne, 'au moins un ordre concret est proposé, pas une abstraction');
 if (aOrdonne) {
-  await page.locator('[data-a="ordonner"]').first().click();
+  await charge.locator('[data-a="ordonner"]').first().click();
   await page.waitForTimeout(600);
   const apresOrdre = await page.evaluate(() => {
     const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
@@ -614,11 +618,8 @@ await page.screenshot({ path: join(CAPTURES, '26-prisonniers.png'), fullPage: tr
 const crAvantCap = await page.evaluate(
   () => JSON.parse(localStorage.getItem('cendres.save.v1')).player.credits
 );
-await page.evaluate(() => {
-  const d = document.querySelector('details[data-id^="captif-"]');
-  if (d) d.open = true;
-});
-await page.waitForTimeout(200);
+await page.locator('details[data-id^="captif-"] > summary').first().click();
+await page.waitForTimeout(300);
 const livrable = page.locator('[data-a="captif"][data-k="livrer"]').first();
 if (await livrable.count()) {
   await livrable.click();
@@ -631,6 +632,40 @@ if (await livrable.count()) {
   ok(apresCap.cr > crAvantCap, 'livrer un brigand paie', `${crAvantCap} → ${apresCap.cr}`);
   ok(apresCap.geole > 0, 'et la geôle de la ville se remplit');
 }
+
+console.log('\n8 sexdecies bis. Camper dans une ville affranchie');
+// Une révolte réussie laisse un bourg vivant mais sans drapeau. C'est
+// exactement la forme de cas qui avait fait planter l'écran entier avec les
+// ruines : `faction` à null, lu sans se demander s'il existait. Une ville sans
+// loi doit s'afficher, se visiter, et proposer son étal.
+const affranchie = partieAvancee();
+const gAff = groupeActif(affranchie);
+const colAff = affranchie.world.colonies.find((c) => !c.ruine && c.faction && c.faction !== 'essaim');
+const drapeauPerdu = colAff.faction;
+const fAff = affranchie.world.factions[drapeauPerdu];
+fAff.colonies = fAff.colonies.filter((id) => id !== colAff.id);
+if (fAff.capitale === colAff.id) fAff.capitale = fAff.colonies[0] || null;
+colAff.faction = null;
+colAff.factionOrigine = null;
+colAff.contrats = [];
+affranchie.world.regions[colAff.regionId].controle = null;
+gAff.regionId = colAff.regionId;
+affranchie.dernierReel = Date.now();
+await page.reload({ waitUntil: 'networkidle' });
+await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(affranchie));
+await page.click('[data-a="continuer"]');
+await page.waitForSelector('#carte');
+const erreursAff = erreurs.length;
+for (const k of ['carte', 'escouade', 'monde', 'contrats', 'base']) {
+  await page.click(`[data-a="onglet"][data-k="${k}"]`);
+  await page.waitForTimeout(250);
+}
+ok(erreurs.length === erreursAff,
+  'une ville sans drapeau ne casse aucun écran',
+  erreurs.slice(erreursAff).join(' | '));
+const texteAff = await page.evaluate(() => document.querySelector('#ecran').textContent);
+ok(texteAff.trim().length > 60, 'et le jeu reste jouable dedans');
+await page.screenshot({ path: join(CAPTURES, '27-affranchie.png'), fullPage: true });
 
 console.log('\n8 quindecies. Camper sur une ville morte');
 // Une ville effondrée perd son drapeau : `faction` repasse à null. L'écran de

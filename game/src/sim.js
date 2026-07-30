@@ -8,7 +8,7 @@ import { genererMonde, decouvrir, colonieParId, nomRegion, distance } from './wo
 import { makeCharacter, idDepuisRng } from './characters.js';
 import { creerBase, tickBase } from './base.js';
 import {
-  tickColonie, etalDe, effondrer, faireSecession, emploisInitiaux,
+  tickColonie, etalDe, effondrer, faireSecession, faireRevolte, emploisInitiaux,
 } from './economy.js';
 import { tickClimat, conditions, saison } from './climat.js';
 import { tickCaravanes } from './caravanes.js';
@@ -17,9 +17,9 @@ import { tickSquad } from './squad.js';
 import { creerLogger } from './events.js';
 import { VERSION } from './save.js';
 import { groupeVide } from './groupes.js';
-import { creerConnaissance, observer } from './connaissance.js';
+import { creerConnaissance, observer, estSurveillee } from './connaissance.js';
 import { pourvoirCharges } from './notables.js';
-import { creerDirigeant } from './dirigeants.js';
+import { creerDirigeant, crediterDirigeant } from './dirigeants.js';
 import { tickFormation } from './formation.js';
 import { rafraichirPanneaux, tickContrats } from './contrats.js';
 import { bancDe } from './recrues.js';
@@ -292,6 +292,49 @@ export function tick(state) {
         regionId: col.regionId,
         important: true,
       });
+    } else if (ev.evenement === 'revolte') {
+      const ancienne = col.faction;
+      const r = faireRevolte(state.world, col, rng, state.temps);
+      // Une émeute laisse les pistes du coin dans un état déplorable : des
+      // gens armés qui n'ont plus rien à perdre, et personne pour les tenir.
+      const reg = state.world.regions[col.regionId];
+      reg.insecurite = Math.min(1, (reg.insecurite || 0) + 0.25);
+      if (r.issue === 'matee') {
+        // Une émeute matée à l'autre bout de la carte n'est pas une nouvelle :
+        // c'est un fait divers local. On ne l'apprend que si l'on a quelqu'un
+        // dans le secteur — même règle que pour tout le reste de la carte.
+        if (estSurveillee(state, col.regionId)) {
+          log({
+            type: 'revolte',
+            texte: `${col.nom} se soulève. La garnison tient la place`
+              + `${r.liberes ? `, mais la geôle s’est vidée (${r.liberes} évadés)` : ''}.`
+              + ` On comptera les morts demain.`,
+            regionId: col.regionId,
+            important: true,
+            factions: [ancienne].filter(Boolean),
+          });
+        }
+      } else if (r.issue === 'secession') {
+        crediterDirigeant(state.world, ancienne, 'perte');
+        log({
+          type: 'revolte',
+          texte: `${col.nom} se soulève et chasse ${FACTIONS[ancienne].nom}. `
+            + `La ville revient ${FACTIONS[r.rendue].datif}.`,
+          regionId: col.regionId,
+          important: true,
+          factions: [ancienne, r.rendue].filter(Boolean),
+        });
+      } else {
+        crediterDirigeant(state.world, ancienne, 'perte');
+        log({
+          type: 'revolte',
+          texte: `${col.nom} se soulève et se donne à personne. Plus de drapeau, `
+            + `plus de loi, et l’on y vendra bientôt n’importe quoi.`,
+          regionId: col.regionId,
+          important: true,
+          factions: [ancienne].filter(Boolean),
+        });
+      }
     } else if (ev.evenement === 'secession') {
       const r = faireSecession(state.world, col);
       log({
