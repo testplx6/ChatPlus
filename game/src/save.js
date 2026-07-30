@@ -85,6 +85,10 @@ export function normaliser(state) {
     if (!g.allegeance) continue;
     if (g.allegeance.intendance === undefined) g.allegeance.intendance = state.temps;
     if (g.allegeance.manques === undefined) g.allegeance.manques = 0;
+    // Avant les prérogatives, un gradé demandait ; il n'avait donc rien à
+    // assumer. Désormais il ordonne, et ce qu'il ordonne s'inscrit.
+    if (!g.allegeance.actes) g.allegeance.actes = [];
+    if (g.allegeance.fautes === undefined) g.allegeance.fautes = 0;
   }
   if (!state.memorial) state.memorial = [];
   if (!state.stats) state.stats = {};
@@ -97,8 +101,9 @@ export function normaliser(state) {
   // premier tick leur donne quelqu'un à leur tête.
   for (const k of Object.keys(w.factions || {})) {
     if (w.factions[k].dirigeant === undefined) w.factions[k].dirigeant = null;
-    // Avant l'influence, servir ne donnait pas voix au chapitre.
-    if (w.factions[k].consigne === undefined) w.factions[k].consigne = null;
+    // Les consignes portées au conseil ont disparu avec les requêtes : un
+    // gradé n'oriente plus une décision, il la prend.
+    if (w.factions[k].consigne !== undefined) delete w.factions[k].consigne;
   }
   if (!w.meteo) w.meteo = { type: 'couvert', restant: 4 };
   for (const c of w.colonies) {

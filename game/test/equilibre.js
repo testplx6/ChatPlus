@@ -40,7 +40,7 @@ import {
 } from '../src/economy.js';
 import { accepter, progres as progresContrat, MAX_CONTRATS } from '../src/contrats.js';
 import {
-  sEngager, peutSEngager, rangDe, avancementOrdre, droitIntendance, toucherRations,
+  sEngager, peutSEngager, rangDe, RANGS, avancementOrdre, droitIntendance, toucherRations,
 } from '../src/allegeance.js';
 import {
   fonderBase, lancerConstruction, deposer, retirer, affecter, niveau as nivBat,
@@ -54,6 +54,12 @@ import { saison } from '../src/climat.js';
 import { COMMODITY_KEYS, COMMODITIES, BIOMES } from '../src/data.js';
 import { vueColonie, PEREMPTION } from '../src/connaissance.js';
 import { demandesIci, honorer } from '../src/services.js';
+import { enGuerre } from '../src/factions.js';
+import {
+  peutExercer, colonnesDe, envoyerColonne, leverColonne, coutLevee,
+  fonderPoste, sitesFondation, COUT_POSTE, cibleGuerre, declarerGuerreA,
+  guerresArretables, signerPaixAvec,
+} from '../src/influence.js';
 
 const TRACE = {
   voyage: 0, repos: 0, travail: 0, defaites: 0, crPilles: 0,
@@ -68,6 +74,11 @@ const TRACE = {
   rationsTouchees: 0,
   betes: 0,
   recrues: 0,
+  // La carrière : sans ça, « le joueur peut devenir Commandeur » est une
+  // affirmation invérifiable. On mesure les heures effectivement passées sous
+  // les couleurs de quelqu'un, ce qu'elles rapportent, et où l'échelle bloque.
+  hEngage: 0, pointsFin: 0, manques: 0, ordresDonnes: 0,
+  rangs: [0, 0, 0, 0, 0],
 };
 const HEURES = Number(process.argv[2]) || 4000;
 // Trente parties par défaut, pas huit. À huit, l'écart-type sur un taux de
@@ -445,8 +456,93 @@ function servir(state, g, colIci, memo) {
  * Le groupe principal : celui qui commerce, s'équipe et prend le travail.
  * C'est lui qui porte la partie.
  */
+/**
+ * Ce qu'un officier fait de sa charge. Sans ça, le banc ne mesure jamais que la
+ * moitié basse de l'échelle : les prérogatives des grades supérieurs ne
+ * s'exercent que si quelqu'un les exerce, et leurs mérites sont précisément ce
+ * qui permet de monter jusqu'aux suivants.
+ */
+function exercerCharge(state, g, memo) {
+  const all = g.allegeance;
+  if (!all) return;
+  const f = all.faction;
+  // On ne passe pas ses journées au téléphone : une décision toutes les
+  // quarante heures, ce qui laisse le temps d'en voir l'issue.
+  if (state.temps < (memo.prochaineCharge || 0)) return;
+  memo.prochaineCharge = state.temps + 40;
+
+  // Envoyer : détourner une colonne vers la ville ennemie la plus proche des
+  // nôtres. C'est le geste de base d'un lieutenant.
+  if (peutExercer(state, f, 'envoyer').ok) {
+    const cible = villeAPrendre(state, f);
+    for (const a of colonnesDe(state, f)) {
+      if (!cible || a.cible === cible.id) continue;
+      if (envoyerColonne(state, f, a.id, cible.id, () => {}).ok) { memo.ordresDonnes++; return; }
+    }
+  }
+  // Lever : on n'arme que si le trésor peut se le permettre deux fois, sinon on
+  // laisse la faction sans réserve et c'est elle qui tombe.
+  if (peutExercer(state, f, 'lever').ok
+      && state.world.factions[f].tresor > coutLevee() * 2) {
+    const cible = villeAPrendre(state, f);
+    if (cible && leverColonne(state, f, null, cible.id, () => {}).ok) {
+      memo.ordresDonnes++;
+      return;
+    }
+  }
+  // Fonder : une ville de plus est un mérite durable, et de l'assiette.
+  if (peutExercer(state, f, 'fonder').ok
+      && state.world.factions[f].tresor > COUT_POSTE * 2) {
+    const sites = sitesFondation(state.world, f);
+    if (sites.length) {
+      const rng = new Rng(state.rngState);
+      const r = fonderPoste(state, f, sites[0].i, rng, () => {});
+      state.rngState = rng.save();
+      if (r.ok) { memo.ordresDonnes++; return; }
+    }
+  }
+  // Guerre et paix : on ne déclare que si l'on a de quoi la mener, et on signe
+  // dès qu'on a pris quelque chose. Un commandeur qui laisse traîner perd sa
+  // charge, et c'est bien le but du dispositif.
+  if (peutExercer(state, f, 'paix').ok) {
+    for (const { contre, guerre } of guerresArretables(state, f)) {
+      if (guerre.batailles < 2) continue;
+      if (signerPaixAvec(state, f, contre, () => {}).ok) { memo.ordresDonnes++; return; }
+    }
+  }
+  if (peutExercer(state, f, 'guerre').ok
+      && state.world.factions[f].tresor > coutLevee() * 4) {
+    const cibles = cibleGuerre(state, f);
+    if (cibles.length) {
+      const rng = new Rng(state.rngState);
+      const r = declarerGuerreA(state, f, cibles[0], rng, () => {});
+      state.rngState = rng.save();
+      if (r.ok) memo.ordresDonnes++;
+    }
+  }
+}
+
+/** La ville ennemie la plus proche des nôtres : ce qu'une colonne va prendre. */
+function villeAPrendre(state, faction) {
+  const w = state.world;
+  const miennes = w.colonies.filter((c) => !c.ruine && c.faction === faction);
+  if (!miennes.length) return null;
+  let best = null;
+  let d = Infinity;
+  for (const c of w.colonies) {
+    if (c.ruine || c.faction === faction) continue;
+    if (c.faction && !enGuerre(w, faction, c.faction)) continue;
+    for (const m of miennes) {
+      const dd = distance(m.regionId, c.regionId);
+      if (dd < d) { d = dd; best = c; }
+    }
+  }
+  return best;
+}
+
 function jouerPrincipal(state, g, memo) {
   const p = state.player;
+  if (!SANS.has('charge')) exercerCharge(state, g, memo);
   const cap = capacitePortage(state, g);
   const charge = poidsInventaire(g.inventaire) / Math.max(1, cap);
   const rations = g.inventaire.rations || 0;
@@ -917,7 +1013,8 @@ for (let n = 0; n < PARTIES; n++) {
   }
   // Mémoire du bot : hors de l'état de jeu, donc rien à sérialiser.
   const memo = { origine: new Map(), eclaireur: null, detachements: 0, courtisee: null, services: 0,
-    promesse: null, viseFondation: false, fonde: null, routeFondation: null };
+    promesse: null, viseFondation: false, fonde: null, routeFondation: null,
+    prochaineCharge: 0, ordresDonnes: 0 };
   for (const g of groupes(state)) {
     for (const c of g.membres) {
       memo.origine.set(c.id, {
@@ -941,6 +1038,7 @@ for (let n = 0; n < PARTIES; n++) {
       const t = gPrinc.ordre.type;
       TRACE[t === 'voyage' ? 'voyage' : t === 'repos' ? 'repos' : 'travail']++;
     }
+    for (const gg of groupes(state)) if (gg.allegeance) TRACE.hEngage++;
     const crAvant = state.player.credits;
     const defAvant = state.stats.defaites;
     tick(state);
@@ -982,6 +1080,13 @@ for (let n = 0; n < PARTIES; n++) {
   const skills = viv.length
     ? Math.round(viv.reduce((s, c) => s + Math.max(comp(c, 'melee'), comp(c, 'tir')), 0) / viv.length)
     : 0;
+  TRACE.ordresDonnes += memo.ordresDonnes;
+  for (const gg of groupes(state)) {
+    if (!gg.allegeance) continue;
+    TRACE.pointsFin += gg.allegeance.points;
+    TRACE.manques += gg.allegeance.manques || 0;
+    TRACE.rangs[rangDe(gg.allegeance).index]++;
+  }
   lignes.push({
     seed: 1000 + n * 7919,
     t: state.temps,
@@ -1044,6 +1149,11 @@ console.log(`Argent : +${Math.round(TRACE.gagneVente / PARTIES)} de ventes · `
   + `−${Math.round(TRACE.payeVivres / PARTIES)} de vivres · −${Math.round(TRACE.payeSoins / PARTIES)} de soins `
   + `· −${Math.round(TRACE.payeMateriel / PARTIES)} d'équipement `
   + `· −${Math.round(TRACE.crPilles / PARTIES)} pillés, par partie`);
+console.log(`Carrière : ${Math.round(TRACE.hEngage / PARTIES)} h sous les couleurs par partie · `
+  + `${Math.round(TRACE.pointsFin / Math.max(1, gradés))} points en fin de service · `
+  + `${(TRACE.manques / Math.max(1, gradés)).toFixed(1)} ordre(s) manqué(s) par engagé`);
+console.log(`Prérogatives exercées : ${(TRACE.ordresDonnes / PARTIES).toFixed(1)} par partie`);
+console.log(`Échelle atteinte : ${RANGS.map((r, i) => `${r.nom} ${TRACE.rangs[i]}`).join(' · ')}`);
 console.log(`Défaites : ${TRACE.defaites} pour ${TRACE.crPilles} cr pillés `
   + `(${TRACE.defaites ? Math.round(TRACE.crPilles / TRACE.defaites) : 0} cr par défaite)`);
 

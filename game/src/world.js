@@ -203,9 +203,6 @@ function attribuerFactions(rng, regions, colonies) {
       capitale: null,
       humeur: 0,
       prochainConseil: rng.irange(6, 40),
-      // Ce que le joueur a obtenu du conseil, s'il a le grade pour demander.
-      // Voir influence.js.
-      consigne: null,
     };
   }
   factions.essaim = {
@@ -218,7 +215,6 @@ function attribuerFactions(rng, regions, colonies) {
     capitale: null,
     humeur: 0,
     prochainConseil: rng.irange(12, 60),
-    consigne: null,
   };
 
   // Relations initiales, symétriques (−100 guerre ouverte, +100 alliance)

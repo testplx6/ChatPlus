@@ -464,17 +464,30 @@ ok(notables && notables.n >= 2 && notables.ok,
 await page.click('[data-a="fermer"]');
 await page.waitForTimeout(300);
 
-console.log('\n8 sexdecies. Servir par colonne, et peser au conseil');
+console.log('\n8 sexdecies. Un grade n’est pas une voix, c’est une charge');
 const carriere = partieAvancee();
 const gCar = groupeActif(carriere);
 const villeCar = carriere.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
 gCar.regionId = villeCar.regionId;
 carriere.player.reputation[villeCar.faction] = 60;
 gCar.allegeance = {
-  faction: villeCar.faction, points: 900, depuis: 0, ordre: null,
+  faction: villeCar.faction, points: 2400, depuis: 0, ordre: null,
   prochainOrdre: 99999, intendance: carriere.temps, manques: 0,
-  derniereSolde: carriere.temps,
+  derniereSolde: carriere.temps, actes: [], fautes: 0,
 };
+// Un Commandeur en paix n'a presque rien à ordonner : on lui donne une guerre
+// en cours et un trésor, sans quoi ses prérogatives s'affichent toutes à vide.
+carriere.world.factions[villeCar.faction].tresor = 12000;
+const adversaire = Object.keys(carriere.world.factions).find(
+  (k) => k !== villeCar.faction && k !== 'essaim'
+    && carriere.world.colonies.some((c) => !c.ruine && c.faction === k)
+);
+if (!carriere.world.guerres.some((w) => w.a === villeCar.faction || w.b === villeCar.faction)) {
+  carriere.world.guerres.push({
+    a: villeCar.faction, b: adversaire, depuis: 0, batailles: 1,
+    but: null, initiateur: villeCar.faction,
+  });
+}
 carriere.dernierReel = Date.now();
 await page.reload({ waitUntil: 'networkidle' });
 await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(carriere));
@@ -483,25 +496,60 @@ await page.waitForSelector('#carte');
 await page.click('[data-a="onglet"][data-k="contrats"]');
 await page.waitForTimeout(500);
 const texteCar = await page.evaluate(() => document.querySelector('#ecran').textContent);
-ok(/VOIX AU CONSEIL/i.test(texteCar), 'un gradé a voix au conseil');
-ok(/d’être écouté/.test(texteCar), 'et voit ses chances avant de demander');
-ok(await page.locator('[data-a="demander"]').count() >= 3,
-  'plusieurs requêtes lui sont ouvertes');
-await page.screenshot({ path: join(CAPTURES, '25-conseil.png'), fullPage: true });
+ok(/VOTRE CHARGE/i.test(texteCar), 'un gradé a une charge, pas une requête');
+ok(!/d’être écouté/.test(texteCar),
+  'et plus aucun pourcentage de convaincre : il ordonne');
+ok(/Crédit auprès/.test(texteCar), 'son crédit est affiché : c’est ce dont il répond');
+await page.screenshot({ path: join(CAPTURES, '25-charge.png'), fullPage: true });
 
-const avantDem = await page.evaluate(() => {
-  const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
-  return s2.player.groupes[0].allegeance.points;
+// Les prérogatives sont là, et celles qui dépassent le grade sont expliquées.
+const prerogs = await page.evaluate(() => {
+  const d = [...document.querySelectorAll('details[data-id^="prero-"]')];
+  const txt = document.querySelector('#ecran').textContent;
+  return { ouvrables: d.length, texte: txt };
 });
-await page.click('[data-a="demander"]:not([disabled])');
-await page.waitForTimeout(500);
-const apresDem = await page.evaluate(() => {
+ok(prerogs.ouvrables >= 2, 'plusieurs prérogatives lui sont ouvertes',
+  `${prerogs.ouvrables} dépliables`);
+
+// Ordonner : ça part, et ça ne coûte pas un point de service.
+const avantOrdre = await page.evaluate(() => {
   const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
-  const f = s2.world.factions[s2.player.groupes[0].allegeance.faction];
-  return { pts: s2.player.groupes[0].allegeance.points, consigne: !!f.consigne };
+  return {
+    pts: s2.player.groupes[0].allegeance.points,
+    armees: s2.world.armees.length,
+    villes: s2.world.colonies.filter((c) => !c.ruine).length,
+  };
 });
-ok(apresDem.pts < avantDem, 'porter une requête brûle du capital politique',
-  `${avantDem} → ${apresDem.pts}`);
+// On déplie la première charge exerçable et on clique son premier ordre.
+await page.evaluate(() => {
+  const d = document.querySelector('details[data-id^="prero-"]');
+  if (d) d.open = true;
+});
+await page.waitForTimeout(200);
+const aOrdonne = await page.locator('[data-a="ordonner"]').count() > 0;
+ok(aOrdonne, 'au moins un ordre concret est proposé, pas une abstraction');
+if (aOrdonne) {
+  await page.locator('[data-a="ordonner"]').first().click();
+  await page.waitForTimeout(600);
+  const apresOrdre = await page.evaluate(() => {
+    const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    return {
+      pts: s2.player.groupes[0].allegeance.points,
+      actes: (s2.player.groupes[0].allegeance.actes || []).length,
+      armees: s2.world.armees.length,
+      villes: s2.world.colonies.filter((c) => !c.ruine).length,
+      guerres: s2.world.guerres.length,
+    };
+  });
+  ok(apresOrdre.pts >= avantOrdre.pts,
+    'exercer sa charge ne brûle aucun capital politique',
+    `${avantOrdre.pts} → ${apresOrdre.pts}`);
+  ok(apresOrdre.actes > 0, 'mais l’acte est inscrit : on en répondra');
+  ok(apresOrdre.armees !== avantOrdre.armees
+    || apresOrdre.villes !== avantOrdre.villes
+    || apresOrdre.guerres > 0,
+    'et le monde a bougé sur-le-champ, sans délibération');
+}
 
 // L'engagement est bien sur la colonne, pas sur le joueur.
 const ouEstLEngagement = await page.evaluate(() => {

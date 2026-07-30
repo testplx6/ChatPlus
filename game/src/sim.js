@@ -24,6 +24,7 @@ import { tickFormation } from './formation.js';
 import { rafraichirPanneaux, tickContrats } from './contrats.js';
 import { bancDe } from './recrues.js';
 import { tickAllegeance, palierBonus } from './allegeance.js';
+import { jugerActes, tickCharges } from './influence.js';
 
 /** Durée réelle d'une heure de jeu, à vitesse ×1. */
 export const TICK_MS = 10000;
@@ -310,6 +311,10 @@ export function tick(state) {
   if (!state.fin) tickSquad(state, log, ctx);
   if (!state.fin) tickContrats(state, log, ctx);
   if (!state.fin) tickAllegeance(state, log, ctx);
+  // On rend des comptes de ce qu'on a ordonné : d'abord l'issue des actes, puis
+  // la charge elle-même, qu'on perd quand le crédit est épuisé.
+  if (!state.fin) jugerActes(state, log);
+  if (!state.fin) tickCharges(state, log);
   if (!state.fin) tickFormation(state, log);
 
   // En dernier : on relève ce qu'on a sous les yeux, après que tout a bougé.

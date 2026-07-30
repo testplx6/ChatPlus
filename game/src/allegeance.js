@@ -164,6 +164,10 @@ export function sEngager(state, faction, log, groupe) {
     intendance: state.temps,
     manques: 0,
     derniereSolde: state.temps,
+    // Ce dont on répond : les actes ordonnés qui attendent leur issue, et ce
+    // qu'on a déjà mis à votre charge.
+    actes: [],
+    fautes: 0,
   };
 
   // On ne choisit pas un camp sans que l'autre le remarque.

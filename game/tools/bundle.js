@@ -28,7 +28,6 @@ const MODULES = [
   'characters.js',
   'notables.js',
   'dirigeants.js',
-  'influence.js',
   'groupes.js',
   'betes.js',
   'recrues.js',
@@ -40,6 +39,9 @@ const MODULES = [
   'economy.js',
   'caravanes.js',
   'factions.js',
+  // Les prérogatives d'un gradé s'exercent sur ce que factions.js sait faire :
+  // lever, fonder, déclarer, signer. Elle vient donc après lui.
+  'influence.js',
   'base.js',
   'contrats.js',
   'events.js',

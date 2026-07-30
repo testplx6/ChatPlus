@@ -18,8 +18,10 @@ import {
 import { METIER_KEYS, BIOMES, BUILDINGS } from '../src/data.js';
 import { genererBanc, primeDe, tensionRecrutement, engager } from '../src/recrues.js';
 import {
-  REQUETES, peutDemander, demander, inscrireConsigne, pousseeConsigne,
-  poids as poidsInfluence, chances as chancesInfluence,
+  PREROGATIVES, peutExercer, credit as creditCharge, chargeAupres,
+  leverColonne, envoyerColonne, fonderPoste, declarerGuerreA, signerPaixAvec,
+  sitesFondation, cibleGuerre, jugerActes, tickCharges, porterFaute,
+  coutLevee, COUT_POSTE,
 } from '../src/influence.js';
 import {
   acheterBete, betesDe, lenteurAttelage, tickBetes, conduite, surnombre,
@@ -1180,64 +1182,127 @@ if (enGuerreAB) {
   ok(!multi.player.allegeance, 'et rien n’est resté accroché au joueur');
 }
 
-// Le grade donne voix au chapitre, pas avant.
+// Le grade n'est pas une voix qu'on porte : c'est une charge qu'on exerce.
 const pol = nouvellePartie(9898, { maintenant: 0 });
 const gPol = groupeActif(pol);
 const villePol = pol.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
 gPol.regionId = villePol.regionId;
 pol.player.reputation[villePol.faction] = 60;
 sEngager(pol, villePol.faction, () => {}, gPol);
-ok(!peutDemander(pol, villePol.faction, 'paix').ok,
-  'un affilié n’a rien à dire au conseil',
-  peutDemander(pol, villePol.faction, 'paix').motif);
+const fPol = villePol.faction;
+
+ok(!peutExercer(pol, fPol, 'envoyer').ok,
+  'un affilié ne commande rien du tout',
+  peutExercer(pol, fPol, 'envoyer').motif);
 
 gPol.allegeance.points = RANGS[2].points; // Lieutenant
-const voix = peutDemander(pol, villePol.faction, 'paix');
-ok(voix.ok, 'un lieutenant peut plaider la paix', voix.motif);
-ok(!peutDemander(pol, villePol.faction, 'guerre').ok,
-  'mais pas réclamer la guerre — on n’envoie pas des gens mourir à ce grade');
+ok(peutExercer(pol, fPol, 'envoyer').ok,
+  'un lieutenant dispose des colonnes déjà levées',
+  peutExercer(pol, fPol, 'envoyer').motif);
+ok(!peutExercer(pol, fPol, 'lever').ok,
+  'mais il n’ouvre pas le trésor pour en armer de nouvelles');
+ok(!peutExercer(pol, fPol, 'guerre').ok,
+  'et il ne déclare pas la guerre');
+
 gPol.allegeance.points = RANGS[3].points; // Capitaine
-ok(peutDemander(pol, villePol.faction, 'guerre').ok,
-  'un capitaine, si');
+ok(peutExercer(pol, fPol, 'lever').ok, 'un capitaine lève');
+ok(peutExercer(pol, fPol, 'fonder').ok, 'et fait fonder');
+ok(!peutExercer(pol, fPol, 'guerre').ok, 'la guerre reste au-dessus de lui');
 
-// Le poids monte avec le grade, plus vite que linéairement.
-gPol.allegeance.points = RANGS[2].points;
-const poidsLt = poidsInfluence(pol, villePol.faction);
+gPol.allegeance.points = RANGS[4].points; // Commandeur
+ok(peutExercer(pol, fPol, 'guerre').ok, 'un commandeur déclare la guerre');
+ok(chargeAupres(pol, fPol).index === 4, 'et la charge tenue est bien la sienne');
+
+// Exercer ne coûte aucun capital politique : c'est tout l'intérêt d'avoir le
+// grade. Ce qui coûte, c'est de rater ce qu'on a ordonné.
+const ptsAvantOrdre = gPol.allegeance.points;
+const ennemi = cibleGuerre(pol, fPol)[0];
+ok(!!ennemi, 'il reste quelqu’un à qui déclarer la guerre');
+const dg = declarerGuerreA(pol, fPol, ennemi, new Rng(5), () => {});
+ok(dg.ok, 'la guerre est déclarée sur-le-champ', dg.motif);
+ok(gPol.allegeance.points === ptsAvantOrdre,
+  'et ordonner ne brûle pas un point de service',
+  `${ptsAvantOrdre} → ${gPol.allegeance.points}`);
+ok(pol.world.guerres.some((w) => (w.a === fPol && w.b === ennemi) || (w.b === fPol && w.a === ennemi)),
+  'le monde en tient compte immédiatement, sans dé');
+ok(gPol.allegeance.actes.some((a) => a.type === 'guerre'),
+  'l’acte est inscrit au dossier : on en répondra');
+
+// Lever une colonne prend sur le trésor de la faction, pas sur la bourse du
+// joueur, et la colonne existe vraiment.
+pol.world.factions[fPol].tresor = 5000;
+const avantTresor = pol.world.factions[fPol].tresor;
+const avantCredits = pol.player.credits;
+const cibleLevee = pol.world.colonies.find((c) => !c.ruine && c.faction === ennemi);
+const lev = leverColonne(pol, fPol, null, cibleLevee.id, () => {});
+ok(lev.ok, 'la colonne est levée sans qu’on demande la permission', lev.motif);
+ok(pol.world.factions[fPol].tresor === avantTresor - coutLevee(),
+  'le trésor de la faction paie');
+ok(pol.player.credits === avantCredits, 'et pas la bourse du joueur');
+ok(pol.world.armees.some((a) => a.id === lev.armee.id && a.cible === cibleLevee.id),
+  'la colonne est sur les routes, avec sa cible');
+ok(lev.armee.route.length > 0 || lev.armee.regionId === cibleLevee.regionId,
+  'et avec un itinéraire, pas une route nulle qui ferait planter le tick');
+
+// Envoyer : un ordre détourne une colonne, immédiatement.
+const autreCible = pol.world.colonies.find(
+  (c) => !c.ruine && c.faction === ennemi && c.id !== cibleLevee.id
+);
+if (autreCible) {
+  const env = envoyerColonne(pol, fPol, lev.armee.id, autreCible.id, () => {});
+  ok(env.ok, 'on détourne une colonne d’un mot', env.motif);
+  ok(lev.armee.cible === autreCible.id, 'et elle marche désormais sur l’autre ville');
+}
+
+// Fonder : le poste existe, il appartient à la faction, il coûte au trésor.
+pol.world.factions[fPol].tresor = 9000;
+const sites = sitesFondation(pol.world, fPol);
+ok(sites.length > 0, 'il reste de la place où planter un poste');
+const avantVilles = pol.world.colonies.filter((c) => !c.ruine && c.faction === fPol).length;
+const postePol = fonderPoste(pol, fPol, sites[0].i, new Rng(7), () => {});
+ok(postePol.ok, 'un capitaine fait fonder sans consulter personne', postePol.motif);
+ok(pol.world.colonies.filter((c) => !c.ruine && c.faction === fPol).length === avantVilles + 1,
+  'la ville est bien là');
+ok(postePol.colonie.emplois && postePol.colonie.notables,
+  'et elle naît complète, avec des métiers et des notables');
+ok(!fonderPoste(pol, fPol, sites[0].i, new Rng(7), () => {}).ok,
+  'on ne fonde pas deux fois sur la même case');
+
+// La responsabilité : une colonne perdue se paie, et le crédit épuisé fait
+// tomber la charge. C'est ce qui remplace le dé.
+const creditPlein = creditCharge(pol, fPol);
+ok(creditPlein > 0, 'un officier neuf a du crédit');
+const perdue = pol.world.armees.find((a) => a.faction === fPol);
+if (perdue) {
+  gPol.allegeance.actes = [{ type: 'envoi', armee: perdue.id, cible: cibleLevee.id, t: pol.temps }];
+  pol.world.armees = pol.world.armees.filter((a) => a.id !== perdue.id);
+  jugerActes(pol, () => {});
+  ok(gPol.allegeance.fautes > 0, 'la colonne détruite est portée à votre charge');
+  ok(creditCharge(pol, fPol) < creditPlein, 'et elle entame le crédit',
+    `${creditPlein} → ${creditCharge(pol, fPol)}`);
+}
+
+// Un mérite, à l'inverse : la ville prise comme on l'avait ordonné.
+const villePrise = pol.world.colonies.find((c) => !c.ruine && c.faction === fPol);
+const ptsAvantPrise = gPol.allegeance.points;
+gPol.allegeance.actes = [{ type: 'envoi', armee: 'a-inexistante', cible: villePrise.id, t: pol.temps }];
+jugerActes(pol, () => {});
+ok(gPol.allegeance.points > ptsAvantPrise,
+  'la ville tombée comme prévu fait monter, elle',
+  `${ptsAvantPrise} → ${gPol.allegeance.points}`);
+ok(!gPol.allegeance.actes.length, 'et le dossier se solde');
+
+// À crédit épuisé, on est relevé de sa charge — un cran, pas toute l’échelle.
 gPol.allegeance.points = RANGS[4].points;
-const poidsCmd = poidsInfluence(pol, villePol.faction);
-ok(poidsCmd > poidsLt * 2, 'un commandeur pèse bien plus que deux lieutenants',
-  `${poidsLt} → ${poidsCmd}`);
-
-// Le tempérament du chef décide de ce qu'on peut obtenir de lui.
-const chefPol = dirigeant(pol.world, villePol.faction);
-chefPol.temperament = 'conquerant';
-chefPol.legitimite = 50;
-const guerreFacile = chancesInfluence(pol, villePol.faction, 'guerre');
-const paixDure = chancesInfluence(pol, villePol.faction, 'paix');
-chefPol.temperament = 'conciliateur';
-const guerreDure = chancesInfluence(pol, villePol.faction, 'guerre');
-const paixFacile = chancesInfluence(pol, villePol.faction, 'paix');
-ok(guerreFacile > guerreDure * 1.5 && paixFacile > paixDure * 1.5,
-  'on ne convainc pas un conciliateur de faire la guerre, ni l’inverse',
-  `guerre ${(guerreFacile * 100).toFixed(0)} % vs ${(guerreDure * 100).toFixed(0)} %`);
-
-// Une requête acceptée s'inscrit et pousse le conseil.
-inscrireConsigne(pol.world, villePol.faction, 'guerre', null, pol.temps);
-ok(pousseeConsigne(pol.world, villePol.faction, 'guerre', pol.temps) > 2,
-  'la consigne double le penchant du conseil sur cette décision');
-ok(pousseeConsigne(pol.world, villePol.faction, 'treve', pol.temps) === 1,
-  'et ne touche pas aux autres');
-ok(pousseeConsigne(pol.world, villePol.faction, 'guerre', pol.temps + 500) === 1,
-  'elle finit par expirer : on ne dirige pas une faction par procuration');
-
-// Demander coûte, qu'on obtienne ou non.
-gPol.allegeance.points = RANGS[4].points;
-const ptsAvantDem = gPol.allegeance.points;
-const reponse = demander(pol, villePol.faction, 'paix', null, new Rng(5), () => {});
-ok(reponse.ok, 'la requête est portée', reponse.motif);
-ok(gPol.allegeance.points < ptsAvantDem,
-  'et elle brûle du capital politique, écoutée ou non',
-  `${ptsAvantDem} → ${gPol.allegeance.points}`);
+porterFaute(pol, fPol, 'tout ce qu’on voudra', () => {}, 40);
+ok(creditCharge(pol, fPol) <= 0, 'assez de fautes finissent par tout manger');
+tickCharges(pol, () => {});
+ok(rangDe(gPol.allegeance).index === 3,
+  'on redescend d’un grade, pas de quatre',
+  RANGS[rangDe(gPol.allegeance).index].nom);
+ok(gPol.allegeance.fautes === 0, 'et l’ardoise repart à zéro : on n’est pas fini');
+ok(!peutExercer(pol, fPol, 'guerre').ok,
+  'la prérogative perdue avec le grade ne s’exerce plus');
 
 section('9 nonies sexies. Qui accepte de partir, et pour combien');
 const rec = nouvellePartie(9494, { maintenant: 0 });

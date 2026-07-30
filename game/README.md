@@ -277,33 +277,57 @@ elle. Une seule interdiction, et elle se justifie : on ne sert pas deux camps en
 guerre l'un contre l'autre, même avec deux colonnes différentes — ça se sait.
 
 Et puisqu'on monte en grade, monter doit finir par vouloir dire quelque chose.
-Servir rapportait de la solde, des rations et un toit : une carrière d'employé.
-**À partir de Lieutenant, on peut demander.** Pas ordonner — demander :
 
-    Plaider la paix               Lieutenant
-    Faire lever une colonne       Lieutenant
-    Faire fonder un poste         Lieutenant
-    Réclamer la guerre            Capitaine
+### Un grade n'est pas une voix, c'est une charge
 
-Chaque requête vise un levier que le conseil actionne déjà tout seul : on ne
-crée pas de pouvoir nouveau, on donne une voix dans des délibérations qui
-existent. Une requête acceptée devient une consigne qui double le penchant du
-conseil sur cette décision, et qui expire — on n'administre pas une faction par
-procuration.
+La première version de la politique était une aberration, et elle a été jetée.
+Le gradé « portait une requête », un dé décidait s'il était écouté, et
+**demander coûtait du capital politique qu'on ait été écouté ou non**. Deux
+erreurs dans la même ligne de code. Un Commandeur n'implore pas son propre
+conseil — il commande. Et faire payer une décision refusée, c'est punir le
+joueur pour avoir cliqué.
 
-Ce qu'on obtient dépend de trois choses, et le jeu les montre avant de
-demander :
+Ce qui remplace : **un grade est une charge**. Elle donne des prérogatives qu'on
+exerce directement — sans dé, sans coût, immédiatement, parce que c'est
+précisément ce que veut dire avoir de l'autorité :
 
-- **le grade**, au carré — un Commandeur pèse quatre fois un Lieutenant ;
-- **le crédit** — les ordres tenus comptent, ceux qu'on a laissés tomber se
-  retranchent ;
-- **le tempérament du chef**, qui multiplie tout le reste à la puissance 1,7.
-  On ne convainc pas un Conciliateur de déclarer la guerre. La première version
-  laissait un Commandeur l'obtenir deux fois sur trois : le grade écrasait le
-  caractère, ce qui vide les tempéraments de leur sens.
+    Agent        ravitaille les siens, et rien d'autre
+    Lieutenant   dispose des colonnes déjà levées : il les envoie où il veut
+    Capitaine    lève des colonnes sur le trésor, fait fonder des postes
+    Commandeur   déclare la guerre et signe la paix
 
-Demander brûle du capital politique, écouté ou non. Et un chef solidement assis
-écoute moins : il n'a besoin de personne.
+Ce qui borne le pouvoir, ce n'est pas le hasard : c'est l'étendue de la charge,
+et le fait qu'on en répond. Chaque ordre s'inscrit au dossier, et **son issue
+est jugée quand elle est connue, pas au moment de décider**. Une colonne qu'on a
+envoyée se faire détruire est une faute ; la ville qu'elle prend est un mérite
+qui vaut cent vingt points de service. Un poste fondé qui tient huit cents
+heures compte pour vous ; le même effondré compte contre vous. Une guerre
+déclarée se solde à la paix, sur la balance des villes.
+
+Les fautes rongent le **crédit** — cent points par colonne engagée, plus le
+service acquis, moins vingt-cinq par faute — et le crédit épuisé, on est
+rétrogradé d'un grade, l'ardoise remise à zéro. Le pouvoir n'est pas gratuit ;
+il est simplement réel, ce qui n'est pas la même chose.
+
+**Ce que le banc dit de cette échelle, et qui n'est pas flatteur.** Quarante-huit
+parties de quatre mille heures, avec un bot qui exerce ses prérogatives dès
+qu'il en a le droit :
+
+    Échelle atteinte   Affilié 15 · Agent 20 · Lieutenant 10 · Capitaine 1 · Commandeur 1
+    Carrière           3 662 h sous les couleurs · 452 points en fin de service
+    Prérogatives       1,6 exercée par partie
+
+Trois mille six cents heures au service de quelqu'un pour mourir Lieutenant.
+Le diagnostic est net : sur six cent une occasions où un Lieutenant pouvait
+exercer sa seule prérogative, **cinq cent treize fois sa faction n'avait aucune
+colonne sur les routes**, et quatre cent soixante-huit fois elle n'était en
+guerre avec personne. La charge de Lieutenant est vide neuf fois sur dix — elle
+ne s'exerce que si la faction fait la guerre, ce qu'elle décide sans lui.
+
+C'est un vrai trou de conception, et il n'est pas encore rebouché : un
+Lieutenant devrait avoir une responsabilité qu'il peut assumer tous les jours
+(tenir un secteur, escorter, garnir une ville), pas une qui attend que le monde
+veuille bien lui en donner l'occasion.
 
 ### Ni le nombre de colonnes, ni la prime d'engagement
 

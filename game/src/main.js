@@ -16,7 +16,10 @@ import { verifierExercice } from './squad.js';
 import { honorer as honorerService } from './services.js';
 import { acheterBete, vendreBete } from './betes.js';
 import { engager } from './recrues.js';
-import { demander as demanderA, inscrireConsigne } from './influence.js';
+import {
+  envoyerColonne as envoyerColonneA, leverColonne as leverColonneA,
+  fonderPoste as fonderPosteA, declarerGuerreA, signerPaixAvec,
+} from './influence.js';
 
 let state = null;
 let boucle = null;
@@ -146,15 +149,43 @@ const API = {
     return r;
   },
 
-  /**
-   * Porter une requête au conseil de la faction qu'on sert. Tirage : RNG de la
-   * partie — on demande, on n'ordonne pas.
-   */
-  demander(faction, key, cible) {
+  // Prérogatives. Aucune n'a de tirage : on a la charge, ou on ne l'a pas.
+
+  /** Détourner une colonne déjà levée vers la ville de son choix. */
+  envoyerColonne(faction, armeeId, cibleId) {
+    const r = envoyerColonneA(state, faction, armeeId, cibleId, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Lever une colonne sur le trésor de la faction, et la lancer. */
+  leverColonne(faction, depuisId, cibleId) {
+    const r = leverColonneA(state, faction, depuisId, cibleId, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Faire planter un poste sur une case libre. Tirage : RNG de la partie. */
+  fonderPoste(faction, regionIndex) {
     const rng = new Rng(state.rngState);
-    const r = demanderA(state, faction, key, cible ? Number(cible) : null, rng, creerLogger(state));
+    const r = fonderPosteA(state, faction, Number(regionIndex), rng, creerLogger(state));
     state.rngState = rng.save();
-    if (r.ok && r.ecoute) inscrireConsigne(state.world, faction, key, cible, state.temps);
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Déclarer la guerre. Le but est tiré du tempérament du chef. */
+  declarerGuerre(faction, contre) {
+    const rng = new Rng(state.rngState);
+    const r = declarerGuerreA(state, faction, contre, rng, creerLogger(state));
+    state.rngState = rng.save();
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Signer la paix, quoi qu'en pense le conseil. */
+  signerPaix(faction, contre) {
+    const r = signerPaixAvec(state, faction, contre, creerLogger(state));
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },

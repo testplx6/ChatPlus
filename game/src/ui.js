@@ -49,8 +49,9 @@ import { CHARGES, CARACTERES, margeMarchand, vocation } from './notables.js';
 import { demandesIci, souvenirs, faveurChef, SOINS_SEUIL, REGISTRES_SEUIL } from './services.js';
 import { primeDe, apercu, tensionRecrutement } from './recrues.js';
 import {
-  REQUETES, REQUETE_KEYS, peutDemander, consigneDe,
-  poids as poidsInfluence, chances as chancesInfluence,
+  PREROGATIVES, PREROGATIVE_KEYS, peutExercer, credit as creditInfluence,
+  colonnesDe, sitesFondation, cibleGuerre, guerresArretables, coutLevee,
+  COUT_POSTE, FORCE_LEVEE,
 } from './influence.js';
 import {
   BETES, BETE_KEYS, betesDe, prixBete, portageAttelage, lenteurAttelage,
@@ -1563,39 +1564,127 @@ function ligneContrat(c, enCours) {
  * la voie du service des deux autres : on n'achète pas à manger, on le touche.
  */
 /**
- * Ce qu'un grade permet de peser. On montre les chances avant de demander : une
- * décision politique n'est pas un tirage à l'aveugle, et savoir qu'on n'a que
- * huit pour cent de convaincre un Conciliateur de faire la guerre fait partie
- * de l'information qu'on achète en montant en grade.
+ * Ce que la charge permet d'ordonner. Il n'y a plus de pourcentage affiché :
+ * un officier n'a pas de « chances d'être écouté », il a une compétence. Ce
+ * qu'on montre à la place, c'est l'étendue de la charge, ce qu'elle coûte au
+ * trésor, et le crédit qui reste — celui qu'on perd en ratant ce qu'on a voulu.
  */
 function blocInfluence(faction) {
-  const p = poidsInfluence(S, faction);
   const d = dirigeant(S.world, faction);
   if (!d) return '';
-  const c = consigneDe(S.world, faction, S.temps);
-  const lignes = REQUETE_KEYS.map((k) => {
-    const def = REQUETES[k];
-    const v = peutDemander(S, faction, k);
-    const ch = chancesInfluence(S, faction, k);
-    return `<div style="border-bottom:1px solid #1b2029;padding:5px 0">
-      <div class="ligne"><span class="k">${e(def.nom)}</span>
-        <span class="v">${v.ok ? `${Math.round(ch * 100)} % d’être écouté` : '—'}</span></div>
-      <div class="aide">${e(def.desc)}</div>
-      <button class="act mini" data-a="demander" data-f="${e(faction)}" data-r="${k}"
-        style="margin-top:4px" ${v.ok ? '' : 'disabled'}>
-        ${v.ok ? 'Porter la requête' : e(v.motif)}</button>
-    </div>`;
-  }).join('');
+  const cr = creditInfluence(S, faction);
+  const lignes = PREROGATIVE_KEYS.map((k) => ligneCharge(faction, k)).join('');
 
   return `<div class="sep"></div>
-  <div class="titre">Voix au conseil</div>
-  <div class="ligne"><span class="k">Votre crédit auprès ${e(FACTIONS[faction].genitif)}</span>
-    <span class="v">${n(p)}</span></div>
+  <div class="titre">Votre charge</div>
+  <div class="ligne"><span class="k">Crédit auprès ${e(FACTIONS[faction].genitif)}</span>
+    <span class="v ${cr < 40 ? 'alerte' : ''}">${n(cr)}</span></div>
   <div class="aide">${e(d.titre)} ${e(d.nom)}, ${e(TEMPERAMENTS[d.temperament].nom.toLowerCase())}.
-    On ne convainc pas un conquérant de signer la paix.</div>
-  ${c ? `<div class="aide" style="border-left:2px solid #4fd0e3;padding-left:8px">
-    Le conseil suit votre demande : ${e(REQUETES[c.key] ? REQUETES[c.key].nom.toLowerCase() : c.key)}.</div>` : ''}
+    Vous n’avez rien à lui demander : ce que votre grade permet, vous l’ordonnez.
+    Mais chaque ordre s’inscrit, et son issue vous revient.</div>
   ${lignes}`;
+}
+
+/** Une prérogative : ce qu'elle permet, et sur quoi on peut l'exercer ici. */
+function ligneCharge(faction, k) {
+  const def = PREROGATIVES[k];
+  const v = peutExercer(S, faction, k);
+  if (!v.ok) {
+    return `<div style="border-bottom:1px solid #1b2029;padding:5px 0;opacity:.5">
+      <div class="ligne"><span class="k">${e(def.nom)}</span>
+        <span class="v">${e(v.motif)}</span></div>
+      <div class="aide">${e(def.desc)}</div>
+    </div>`;
+  }
+  const cibles = ciblesCharge(faction, k);
+  return `<details data-id="prero-${k}" ${ouverts.has(`prero-${k}`) ? 'open' : ''}
+    style="border-bottom:1px solid #1b2029;padding:5px 0">
+    <summary class="ligne"><span class="k">${e(def.nom)}</span>
+      <span class="v ambre">${cibles.length ? `${cibles.length} possible${cibles.length > 1 ? 's' : ''}` : '—'}</span></summary>
+    <div class="aide">${e(def.desc)} <span style="opacity:.7">${e(def.charge)}</span></div>
+    ${cibles.length
+    ? cibles.map((c) => `<button class="act mini" style="margin-top:4px"
+        data-a="ordonner" data-f="${e(faction)}" data-r="${k}" data-k="${e(c.val)}"
+        data-b="${e(c.val2 || '')}">${e(c.texte)}</button>`).join('')
+    : `<div class="aide">${e(cibleVide(k))}</div>`}
+  </details>`;
+}
+
+function cibleVide(k) {
+  return {
+    envoyer: 'Aucune colonne des vôtres n’est sur les routes.',
+    lever: 'Rien à prendre : aucune ville ennemie à portée.',
+    fonder: 'Pas une case libre assez près des vôtres, ni assez loin des autres.',
+    guerre: 'Vous êtes déjà en guerre avec tout le monde qui compte.',
+    paix: 'Vous n’êtes en guerre avec personne.',
+  }[k] || '—';
+}
+
+/** Ce sur quoi la prérogative peut s'exercer, ici et maintenant. */
+function ciblesCharge(faction, k) {
+  const w = S.world;
+  if (k === 'envoyer') {
+    const out = [];
+    for (const a of colonnesDe(S, faction)) {
+      const cible = colonieParId(w, a.cible);
+      for (const c of villesVisables(faction).slice(0, 4)) {
+        if (cible && c.id === cible.id) continue;
+        out.push({
+          val: a.id,
+          val2: c.id,
+          texte: `${a.force} h. ${cible ? `(sur ${cible.nom})` : ''} → ${c.nom}`,
+        });
+      }
+    }
+    return out.slice(0, 12);
+  }
+  if (k === 'lever') {
+    const cout = coutLevee();
+    const paye = w.factions[faction].tresor >= cout;
+    return villesVisables(faction).slice(0, 6).map((c) => ({
+      val: c.id,
+      texte: `${FORCE_LEVEE} hommes sur ${c.nom} — ${n(cout)} cr${paye ? '' : ' (trésor court)'}`,
+    }));
+  }
+  if (k === 'fonder') {
+    const sites = sitesFondation(w, faction);
+    const proche = (r) => Math.min(...w.colonies
+      .filter((c) => !c.ruine && c.faction === faction)
+      .map((c) => distance(c.regionId, r.i)));
+    sites.sort((a, b) => proche(a) - proche(b));
+    return sites.slice(0, 6).map((r) => ({
+      val: String(r.i),
+      texte: `Poste en ${nomRegion(w, r.i)} — ${n(COUT_POSTE)} cr`,
+    }));
+  }
+  if (k === 'guerre') {
+    return cibleGuerre(S, faction).map((f) => ({
+      val: f,
+      texte: `La guerre ${FACTIONS[f].datif}`,
+    }));
+  }
+  if (k === 'paix') {
+    return guerresArretables(S, faction).map((g) => ({
+      val: g.contre,
+      texte: `La paix ${FACTIONS[g.contre].datif} (${g.guerre.batailles} bataille${g.guerre.batailles > 1 ? 's' : ''})`,
+    }));
+  }
+  return [];
+}
+
+/** Les villes qu'une colonne de cette faction a une raison d'aller prendre. */
+function villesVisables(faction) {
+  const w = S.world;
+  const miennes = w.colonies.filter((c) => !c.ruine && c.faction === faction);
+  if (!miennes.length) return [];
+  return w.colonies
+    .filter((c) => !c.ruine && c.faction !== faction
+      && (!c.faction || enGuerre(w, faction, c.faction)))
+    .map((c) => ({
+      ...c,
+      d: Math.min(...miennes.map((m) => distance(m.regionId, c.regionId))),
+    }))
+    .sort((a, b) => a.d - b.d);
 }
 
 function blocIntendance() {
@@ -2760,11 +2849,21 @@ function surClic(ev) {
       break;
     }
 
-    case 'demander': {
-      const r = ACTIONS.demander(el.dataset.f, el.dataset.r, null);
-      toast(r.ok
-        ? (r.ecoute ? 'Le conseil vous suit.' : 'On vous a écouté poliment, et non.')
-        : r.motif, !r.ok || !r.ecoute);
+    // Exercer une prérogative. Pas de « peut-être » : ça part, ou ça ne part
+    // pas parce qu'on n'en a pas le droit — et alors on dit lequel.
+    case 'ordonner': {
+      const f = el.dataset.f;
+      const cible = el.dataset.k;
+      let r;
+      switch (el.dataset.r) {
+        case 'envoyer': r = ACTIONS.envoyerColonne(f, cible, el.dataset.b); break;
+        case 'lever': r = ACTIONS.leverColonne(f, null, cible); break;
+        case 'fonder': r = ACTIONS.fonderPoste(f, cible); break;
+        case 'guerre': r = ACTIONS.declarerGuerre(f, cible); break;
+        case 'paix': r = ACTIONS.signerPaix(f, cible); break;
+        default: r = { ok: false, motif: 'Ordre inconnu.' };
+      }
+      toast(r.ok ? 'C’est fait. On exécute.' : r.motif, !r.ok);
       rafraichir(true);
       break;
     }
