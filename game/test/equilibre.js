@@ -106,6 +106,23 @@ const SANS = new Set((process.env.SANS || '').split(',').filter(Boolean));
 // Mode témoin : le bot bouge autant qu'un joueur de contrats, mais sans en
 // prendre aucun. Il isole le coût du voyage lui-même du prix des contrats.
 const VAGABOND = process.env.VAGABOND === '1';
+/**
+ * Profil colon : le bot joue la voie du bâtisseur plutôt que celle de
+ * l'aventurier.
+ *
+ * Le bot par défaut court la carte, prend des contrats lointains et rentre au
+ * camp quand son sac est plein. C'est une façon de jouer, et c'est celle qui a
+ * servi à mesurer tout le reste — mais elle ne met presque jamais la voie du
+ * colon à l'épreuve. La moitié de ce qui a été écrit autour de l'avant-poste
+ * n'était donc vérifiée que par des tests unitaires et des mesures ponctuelles,
+ * pas par des parties entières.
+ *
+ * COLON=1 : on fonde dès qu'on peut, on ne s'éloigne pas de chez soi, et l'on
+ * se fait reconnaître dès que les murs tiennent.
+ */
+const COLON = process.env.COLON === '1';
+/** Jusqu'où un colon accepte de s'éloigner de son camp. */
+const RAYON_COLON = 5;
 
 /** Où trouver de quoi manger : on note les régions par rendement en nourriture. */
 function scoreNourriture(state, i) {
@@ -350,7 +367,9 @@ function tenirAvantPoste(state, g, memo) {
 
   // --- Fonder, une fois qu'on a de quoi et un endroit où.
   if (!base.fonde) {
-    if (state.temps < 300) return;             // on apprend le terrain d'abord
+    // Un colon ne passe pas trois cents heures à visiter : il plante son piquet
+    // dès qu'il a de quoi.
+    if (state.temps < (COLON ? 80 : 300)) return;
     if (!peutPayer(g.inventaire, COUT_FONDATION)) {
       memo.viseFondation = true;
       return;
@@ -1116,6 +1135,13 @@ function jouer(state, memo) {
 
 const MOTIFS = {};
 function partir(state, g, dest, motif) {
+  // Un colon ne va pas au bout du monde chercher un contrat : ce qu'il bâtit
+  // demande qu'on soit là. On l'autorise à s'éloigner de cinq cases, pas plus,
+  // sauf pour rentrer chez lui.
+  if (COLON && state.base.fonde && motif !== 'rentrer au camp'
+      && distance(dest, state.base.regionId) > RAYON_COLON) {
+    return partir(state, g, state.base.regionId, 'rentrer au camp');
+  }
   const r = donnerOrdre(state, { type: 'voyage', dest }, g);
   if (r.ok) MOTIFS[motif] = (MOTIFS[motif] || 0) + 1;
   return r;

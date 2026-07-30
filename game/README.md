@@ -889,6 +889,40 @@ sont des colons qui n'ont jamais tenu une arme, ils partent à quarante de moral
 et la ville les perd. Mais c'est votre ville, et elle continue. Sans avant-poste,
 ou avec moins de trois habitants, c'est fini comme avant.
 
+### Un bot qui joue en colon, et ce qu'il a révélé
+
+Le bot du banc court la carte : il prend des contrats lointains, ramasse, vend,
+et rentre au camp quand son sac est plein. C'est une façon de jouer, et c'est
+celle qui a servi à mesurer tout le reste — mais elle ne met presque jamais la
+voie du bâtisseur à l'épreuve. La moitié de ce qui a été écrit autour de
+l'avant-poste n'était donc vérifiée que par des tests unitaires et des mesures
+ponctuelles, jamais par des parties entières.
+
+`COLON=1` : on fonde dès quatre-vingts heures au lieu de trois cents, et l'on
+ne s'éloigne pas de plus de cinq cases de chez soi.
+
+Le premier résultat est contre-intuitif, et c'est ce qui le rend utile. Le colon
+passait **29 % de son temps en marche au lieu de 45 %, gagnait plus d'argent
+(2 131 contre 1 299) — et bâtissait moins** : neuf niveaux contre onze, sept
+habitants contre onze. Rester chez soi appauvrissait le camp.
+
+La cause n'était pas la présence ni l'argent, mais les matériaux : ce qu'il faut
+à un chantier ne se ramasse pas sur place, et **personne ne le lui apportait**.
+Les colporteurs, réglés à une visite toutes les quatre cent quatre-vingts
+heures, en faisaient **2,1 par partie** — autant dire que le mécanisme
+n'existait pas. Un hameau sur une piste faite en voit maintenant un tous les
+huit jours.
+
+                          avant   après
+    Colporteurs             2,1     6,1
+    Habitants (colon)         7      14
+    Habitants (aventurier)   11      15
+    Niveaux de bâtiment       9      11
+    Crédits (colon)       2 131   3 192
+
+Les deux profils y gagnent, et le colon rattrape l'aventurier : bâtir devient
+une façon de jouer plutôt qu'une occupation de bord de route.
+
 ### Ce que l'entrepôt refuse ne disparaît plus en silence
 
 Trouvé en cherchant pourquoi un test échouait, pas en jouant : un entrepôt plein

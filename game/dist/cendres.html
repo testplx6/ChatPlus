@@ -10558,7 +10558,14 @@ function visiteMarchand(state, rng, log) {
   // servait à rien : c'est le camp *avant* le seuil qui a besoin d'écouler son
   // surplus, puisque c'est comme ça qu'il devient une ville. Un hameau voit
   // passer un ferrailleur de temps en temps ; une ville en voit trois fois plus.
-  const cadence = 480 / (0.4 + (r.piste || 0) * 1.6) * (base.colonieId ? 1 : 2.4);
+  // Deux passages par partie : c'est ce que donnait une cadence de quatre cent
+  // quatre-vingts heures, et autant dire que le mécanisme n'existait pas. Le
+  // profil colon du banc l'a mis au jour — un bot qui reste chez lui bâtit
+  // *moins* qu'un bot qui court la carte, parce que ce qu'il faut à un chantier
+  // ne se ramasse pas sur place et que personne ne le lui apporte. Un hameau
+  // sur une piste faite voit un colporteur tous les huit jours, pas tous les
+  // quarante.
+  const cadence = 200 / (0.4 + (r.piste || 0) * 1.6) * (base.colonieId ? 1 : 1.6);
   if (state.temps - (base.dernierMarchand || -9999) < cadence) return null;
   base.dernierMarchand = state.temps;
 
