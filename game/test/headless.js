@@ -13,6 +13,7 @@ import {
   rendementTactique,
 } from '../src/combat.js';
 import { faireRevolte, SEUIL_REVOLTE } from '../src/economy.js';
+import { damer, coutTraversee, PISTE_GAIN } from '../src/world.js';
 import { distanceMorale } from '../src/factions.js';
 import { loiIci } from '../src/lois.js';
 import { primeLivraison } from '../src/justice.js';
@@ -20,7 +21,7 @@ import { classement, puissance } from '../src/factions.js';
 import { donnerOrdre, verifierExercice, COMPETENCES_EXERCICE } from '../src/squad.js';
 import {
   fonderBase, lancerConstruction, lancerRecherche, placesMetier, affectes,
-  abriDe, capaciteStock, energie, COUT_FONDATION,
+  abriDe, capaciteStock, totalStock, energie, COUT_FONDATION,
   manoeuvres, affecter, rendementMetier, mainDoeuvre,
 } from '../src/base.js';
 import { METIER_KEYS, BIOMES, BUILDINGS, POSTURES } from '../src/data.js';
@@ -1986,6 +1987,101 @@ ok(apercuTactique('feu', 'steppe', 1, 1).v > apercuTactique('feu', 'marais', 1, 
 ok(apercuTactique('encerclement', 'steppe', 2, 0.5).v
   > apercuTactique('encerclement', 'steppe', 0.6, 0.5).v,
   'et qu’elle dépend du nombre qu’on a en face');
+
+section('9 nonies septies nonies. Des routes qui se font en marchant');
+// Cinquante-deux pour cent du temps de jeu passait en marche, et sur quarante-
+// cinq départs, trente étaient de la logistique. Agrandir le sac ou raccourcir
+// la carte reviendrait à retirer le voyage du jeu ; ce qu'il faut, c'est que le
+// voyage s'améliore là où l'on passe.
+const rte = nouvellePartie(4141, { maintenant: 0 });
+const vierge = rte.world.regions.find(
+  (r) => !r.colonie && !r.piste && BIOMES[r.biome].cout >= 5
+);
+ok(!!vierge, 'il existe des friches que personne n’a jamais tassées');
+const coutVierge = coutTraversee(rte.world, vierge.i);
+for (let i = 0; i < 60; i++) damer(rte.world, vierge.i, 1);
+ok(rte.world.regions[vierge.i].piste === 1, 'à force d’y passer, la terre est faite');
+const coutRoute = coutTraversee(rte.world, vierge.i);
+ok(coutRoute < coutVierge * 0.75,
+  'et une route coûte nettement moins qu’une friche',
+  `${coutVierge.toFixed(1)} → ${coutRoute.toFixed(1)}`);
+
+// Un convoi lourd marque plus qu’un homme seul.
+const seul = rte.world.regions.find((r) => !r.colonie && !r.piste && r.i !== vierge.i);
+damer(rte.world, seul.i, 1);
+const traceSeul = seul.piste;
+seul.piste = 0;
+damer(rte.world, seul.i, 3);
+ok(seul.piste > traceSeul * 2, 'un convoi lourd marque plus qu’un homme seul',
+  `${seul.piste.toFixed(3)} vs ${traceSeul.toFixed(3)}`);
+
+// Les abords des villes sont tassés depuis longtemps : le monde n'a pas attendu.
+const bourg = rte.world.colonies.find((c) => !c.ruine);
+ok(rte.world.regions[bourg.regionId].piste > 0.4,
+  'les abords d’une ville sont damés dès le premier jour');
+
+// Et une piste que plus personne n'emprunte s'efface.
+const oubliee = rte.world.regions.find(
+  (r) => !r.colonie && r.piste > 0.25
+    && rte.world.colonies.every((c) => distance(c.regionId, r.i) > 2)
+) || seul;
+oubliee.piste = 0.8;
+const memoire = oubliee.piste;
+for (let i = 0; i < 200; i++) { rte.temps += 24; tickInsecurite(rte); }
+ok(oubliee.piste < memoire * 0.6, 'et ce que plus personne n’emprunte s’efface',
+  `${memoire} → ${oubliee.piste.toFixed(2)}`);
+
+// Le monde entretient ses propres routes : au bout d'une saison, les cases
+// entre villes sont plus tassées que le reste.
+const vivant = nouvellePartie(4242, { maintenant: 0 });
+avancer(vivant, 2500);
+const parcourues = vivant.world.regions.filter((r) => r.piste > 0.05).length;
+ok(parcourues > vivant.world.colonies.length,
+  'les colonnes et les caravanes tracent des chemins sans le joueur',
+  `${parcourues} cases marquées`);
+verifierCoherence(vivant, 'après une saison de circulation');
+
+section('9 nonies decies. Ce que l’entrepôt refuse ne disparaît plus en silence');
+// Trouvé en cherchant pourquoi un test échouait, pas en jouant : un entrepôt
+// plein jetait la production de l'hydroponie, de la fonderie et de la
+// raffinerie sans que rien ne l'indique nulle part. Un joueur aurait vu ses
+// cultures ne rien rendre sans jamais comprendre pourquoi.
+const plein = nouvellePartie(3131, { maintenant: 0 });
+const gPlein = groupeActif(plein);
+gPlein.regionId = plein.world.regions.find((r) => !r.colonie).i;
+Object.assign(gPlein.inventaire, { ferraille: 400, polymere: 200, composant: 40 });
+fonderBase(plein, () => {});
+Object.assign(plein.base.batiments, { generateur: 3, hydroponie: 3, entrepot: 1 });
+plein.base.pop = 4;
+// On remplit l'entrepôt à ras bord, en laissant de quoi produire.
+const capaPlein = capaciteStock(plein.base);
+plein.base.stock.biomasse = Math.round(capaPlein * 0.5);
+plein.base.stock.ferraille = Math.round(capaPlein * 0.5);
+plein.base.stock.carburant = 60;
+ok(totalStock(plein.base) >= capaciteStock(plein.base) * 0.95, 'l’entrepôt est plein');
+const perduAvant = plein.base.gaspille;
+avancer(plein, 120);
+ok(plein.base.gaspille > perduAvant,
+  'ce que l’entrepôt refuse est compté au lieu d’être jeté en silence',
+  `${Math.round(plein.base.gaspille)} unités perdues`);
+ok(plein.journal.some((x) => x.type === 'entrepot'),
+  'et le joueur en est averti');
+ok(plein.journal.filter((x) => x.type === 'entrepot').length <= 120 / 24 + 1,
+  'sans que l’avertissement devienne un bruit de fond',
+  `${plein.journal.filter((x) => x.type === 'entrepot').length} avertissements en 120 h`);
+
+const large = nouvellePartie(3131, { maintenant: 0 });
+const gLarge = groupeActif(large);
+gLarge.regionId = large.world.regions.find((r) => !r.colonie).i;
+Object.assign(gLarge.inventaire, { ferraille: 400, polymere: 200, composant: 40 });
+fonderBase(large, () => {});
+Object.assign(large.base.batiments, { generateur: 3, hydroponie: 3, entrepot: 5 });
+large.base.pop = 4;
+large.base.stock.biomasse = 300;
+large.base.stock.carburant = 60;
+avancer(large, 120);
+ok(!large.base.gaspille, 'un entrepôt à la bonne taille ne perd rien',
+  `${large.base.gaspille}`);
 
 section('9 nonies sexies. Qui accepte de partir, et pour combien');
 const rec = nouvellePartie(9494, { maintenant: 0 });

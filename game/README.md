@@ -635,6 +635,40 @@ prisonniers pris 7,8 → 10,3, livrés ou rançonnés pour 785 → 1 183 crédit
 compétence de combat 15 → 16, survivantes 55 → 53 (dans le bruit), et 8,1 des
 nôtres mis à terre par partie — là où le combat n'en couchait presque aucun.
 
+### Des routes qui se font en marchant
+
+Cinquante-deux pour cent du temps de jeu se passait en marche, et sur les
+quarante-cinq départs d'une partie, trente étaient de la logistique : rentrer au
+camp, chercher à manger, aller vendre. Agrandir le sac ou raccourcir la carte
+reviendrait à **retirer le voyage du jeu**. Ce qu'il fallait, c'est que le
+voyage s'améliore là où l'on passe.
+
+Chaque case garde ce que les passages y ont tassé. Un convoi lourd marque plus
+qu'un homme seul ; les colonnes des factions et les caravanes marquent aussi, et
+davantage — le monde n'a pas attendu le joueur pour se donner des chemins, et
+les abords des villes sont damés dès le premier jour. Une route rend jusqu'à
+**34 % du coût de traversée**, et ce que plus personne n'emprunte s'efface en
+un millier d'heures.
+
+Ce n'est pas un raccourci : c'est de la terre tassée par ceux qui sont passés
+avant, la vôtre comprise. Un circuit qu'on répète devient une route, ce qui
+récompense exactement la voie du colon — un camp, une ville, et le chemin entre
+les deux.
+
+    Temps en marche          52 %  →  43 %
+    Temps au travail         38 %  →  45 %
+    Départs par partie         45  →  38
+    Survivantes             53/60  →  57/60
+
+### Ce que l'entrepôt refuse ne disparaît plus en silence
+
+Trouvé en cherchant pourquoi un test échouait, pas en jouant : un entrepôt plein
+**jetait la production** de l'hydroponie, de la fonderie et de la raffinerie
+sans que rien ne l'indique nulle part. Un joueur aurait vu ses cultures ne rien
+rendre et cherché la cause du mauvais côté. Ce qui se perd est maintenant compté,
+affiché sur l'écran de l'avant-poste, et signalé au journal — une fois par jour
+de jeu au plus, et seulement quand la perte en vaut la peine.
+
 ### Deux champs morts
 
 Deux champs déclarés depuis le début et que rien ne lisait ont été branchés — c'est le genre de dette qui ne se voit qu'en cherchant pourquoi une

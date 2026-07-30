@@ -101,6 +101,8 @@ function genererBiomes(rng) {
         fouille: 0, // épuisement local par la fouille répétée
         // Ce que les routes sont devenues faute d'être tenues. Voir secteur.js.
         insecurite: 0,
+        // Ce que les passages ont tassé. Voir coutTraversee.
+        piste: 0,
       });
     }
   }
@@ -190,6 +192,11 @@ function genererColonies(rng, regions) {
     colonies.push(col);
     occupees.add(i);
     r.colonie = col.id;
+    // Les abords d'une ville sont tassés depuis longtemps : personne n'a
+    // attendu le joueur pour aller et venir. Sans ce socle, le monde commence
+    // sans la moindre route et il faut trois cents heures pour en voir une.
+    r.piste = 0.55;
+    for (const v of voisins(i)) regions[v].piste = Math.max(regions[v].piste, 0.3);
   }
   return colonies;
 }
@@ -362,10 +369,31 @@ export function colonieParId(world, id) {
 // banc a montré que ce n'était pas là qu'était le problème : le diviser par
 // deux ne fait passer le temps de marche que de 39 à 35 %, sans rien changer au
 // revenu. Voir le rapport dans README.
+/**
+ * Ce qu'une piste damée retire au coût d'un passage.
+ *
+ * Cinquante-deux pour cent du temps de jeu se passe en marche, et sur les
+ * quarante-cinq départs d'une partie, trente sont de la logistique : rentrer au
+ * camp, chercher à manger, aller vendre. Agrandir le sac ou raccourcir la carte
+ * reviendrait à retirer le voyage du jeu ; ce qu'il faut, c'est que le voyage
+ * *s'améliore*. Un monde où l'on passe finit par avoir des routes, et une route
+ * n'est pas un raccourci : c'est de la terre tassée par ceux qui sont passés
+ * avant, la vôtre comprise.
+ */
+export const PISTE_GAIN = 0.34;
+
 export function coutTraversee(world, i, mods = {}) {
   const r = world.regions[i];
   const base = BIOMES[r.biome].cout;
-  return Math.max(1, base * (1 - (mods.reductionVoyage || 0)));
+  const piste = 1 - (r.piste || 0) * PISTE_GAIN;
+  return Math.max(1, base * piste * (1 - (mods.reductionVoyage || 0)));
+}
+
+/** On tasse la terre en passant. Le gain est lent à venir et lent à s'en aller. */
+export function damer(world, i, force = 1) {
+  const r = world.regions[i];
+  if (!r) return;
+  r.piste = Math.min(1, (r.piste || 0) + 0.02 * force);
 }
 
 /**

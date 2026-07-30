@@ -262,6 +262,12 @@ export function tickInsecurite(state) {
   for (const a of w.armees) ajouter(a.regionId, 0.006);
 
   for (const r of w.regions) {
+    // Les pistes s'effacent quand plus personne ne passe. On le fait dans cette
+    // boucle-ci plutôt que dans la sienne : on paie déjà le parcours des quatre
+    // cent trente-deux cases une fois par jour de jeu, et une seconde boucle
+    // pour une multiplication serait du travail pour rien.
+    if (r.piste > 0.002) r.piste *= 1 - 0.0006 * dt;
+    else r.piste = 0;
     const d = dist[r.i];
     // Une ville qui gronde ne tient plus ses abords : son désordre déborde sur
     // les pistes, et c'est ce qui reliera un jour l'ordre public au secteur.

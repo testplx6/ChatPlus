@@ -4,7 +4,7 @@
 // donne au joueur autre chose à faire que ramasser des cailloux.
 
 import { COMMODITIES, COMMODITY_KEYS, FACTIONS } from './data.js';
-import { chemin, colonieParId, colonieDe, nomRegion, distance } from './world.js';
+import { chemin, colonieParId, colonieDe, nomRegion, distance, damer } from './world.js';
 import { groupeActif } from './groupes.js';
 import { cibleStock, prixUnitaire } from './economy.js';
 import { idDepuisRng } from './characters.js';
@@ -181,6 +181,8 @@ export function tickCaravanes(state, log, ctx) {
 
     if (car.etape >= car.route.length) { arriver(world, car, log); continue; }
     car.regionId = car.route[car.etape];
+    // Le commerce trace les routes mieux que personne : c'est lui qui passe.
+    damer(world, car.regionId, 1.6);
     car.etape++;
     if (car.etape >= car.route.length) arriver(world, car, log);
   }

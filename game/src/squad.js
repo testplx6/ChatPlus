@@ -5,7 +5,9 @@
 // paquet séparément — deux qui fouillent et un qui chasse, c'est deux récoltes.
 
 import { BIOMES, POSTURES, COMMODITIES, POI, SKILLS } from './data.js';
-import { chemin, coutTraversee, decouvrir, nomRegion, colonieDe, distance } from './world.js';
+import {
+  chemin, coutTraversee, decouvrir, nomRegion, colonieDe, distance, damer,
+} from './world.js';
 import {
   comp, gagnerXp, estDebout, estVivant, tickPerso, nourrir, pvTotal,
   tendreLien, lien, mods, XP_PRATIQUE,
@@ -22,7 +24,7 @@ import {
   plafondCohesion, rendementCohesion, joignable,
 } from './groupes.js';
 import { renfortSoin } from './services.js';
-import { tickBetes, lenteurAttelage } from './betes.js';
+import { tickBetes, lenteurAttelage, betesDe } from './betes.js';
 import { tickPrisonniers, lenteurPrisonniers } from './justice.js';
 import { garnison } from './allegeance.js';
 
@@ -407,6 +409,9 @@ function avancerVoyage(state, g, log, ctx) {
     o.progres = 0;
     g.regionId = prochaine;
     o.etape++;
+    // On tasse la terre en passant. Un convoi lourd marque plus qu'un homme
+    // seul, et c'est ce qui fait qu'un circuit qu'on répète devient une route.
+    damer(state.world, prochaine, 1 + (g.membres.length + betesDe(g).length) * 0.12);
     const rayon = 1 + (state.base.recherche.optique || 0);
     decouvrir(state.world, prochaine, rayon);
     for (const c of debout) gagnerXp(c, 'endurance', XP_PRATIQUE);

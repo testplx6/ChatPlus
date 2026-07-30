@@ -8,7 +8,7 @@ import {
 } from './dirigeants.js';
 import { effondrer, emploisInitiaux } from './economy.js';
 import { pourvoirCharges } from './notables.js';
-import { chemin, colonieParId, distance, voisins } from './world.js';
+import { chemin, colonieParId, distance, voisins, damer } from './world.js';
 import { loisDe, pressionFiscale, IMPOTS, PEINES } from './lois.js';
 
 // ---------------------------------------------------------------------------
@@ -290,6 +290,9 @@ function tickArmee(world, armee, t, log, ctx) {
       armee.progres = 0;
       armee.regionId = prochaine;
       armee.etape++;
+      // Une colonne en marche entretient la route qu'elle emprunte. Le monde
+      // n'attend pas le joueur pour se donner des chemins.
+      damer(world, prochaine, 2.5);
       // Rencontre avec une colonne ennemie sur la même case
       const autre = world.armees.find(
         (o) => o !== armee && o.regionId === armee.regionId && o.faction !== armee.faction

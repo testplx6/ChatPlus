@@ -22,6 +22,10 @@ export function creerBase() {
     stock,
     defense: 0,
     derniereAttaque: -999,
+    // Ce que l'entrepôt n'a pas pu prendre, cumulé. L'écrêtage était muet.
+    gaspille: 0,
+    gaspilleJour: 0,
+    dernierGaspillage: -999,
     // Un avant-poste n'est pas un entrepôt avec des murs : des gens finissent
     // par s'y installer, y travailler, et y manger.
     pop: 0,
@@ -350,11 +354,21 @@ export function fonderBase(state, log, groupe) {
 // Production horaire
 // ---------------------------------------------------------------------------
 
+/**
+ * Ranger une production dans l'entrepôt, et retenir ce qui n'y tient pas.
+ *
+ * L'écrêtage était silencieux : un entrepôt plein jetait la production de
+ * l'hydroponie, de la fonderie et de la raffinerie sans que rien ne l'indique
+ * nulle part. On l'a découvert en cherchant pourquoi un test échouait, pas en
+ * jouant — et un joueur, lui, aurait simplement vu ses cultures ne rien rendre
+ * sans jamais comprendre pourquoi. Ce qui se perd doit se dire.
+ */
 function ajouter(base, key, qte) {
   if (qte <= 0) return 0;
   const libre = capaciteStock(base) - totalStock(base);
   const reel = Math.max(0, Math.min(qte, libre));
   base.stock[key] = (base.stock[key] || 0) + reel;
+  if (qte - reel > 0.001) base.gaspille = (base.gaspille || 0) + (qte - reel);
   return reel;
 }
 
@@ -369,6 +383,7 @@ function consommer(base, key, qte) {
 export function tickBase(state, log, ctx) {
   const base = state.base;
   if (!base.fonde) return null;
+  const gaspilleAvant = base.gaspille || 0;
   const rng = ctx.rng;
   const rech = base.recherche;
   // N'importe quel groupe présent fait avancer les chantiers. Test direct
@@ -567,7 +582,26 @@ export function tickBase(state, log, ctx) {
     }
   }
 
-  return { energie: e };
+  // Ce que l'entrepôt n'a pas pu prendre. On ne le dit pas à chaque heure — ce
+  // serait insupportable — mais dès que la perte devient une vraie perte, et
+  // pas plus d'une fois par jour de jeu.
+  const perdu = (base.gaspille || 0) - gaspilleAvant;
+  if (perdu > 0.001) {
+    base.gaspilleJour = (base.gaspilleJour || 0) + perdu;
+    if (t - (base.dernierGaspillage || -999) >= 24 && base.gaspilleJour >= 8) {
+      base.dernierGaspillage = t;
+      log({
+        type: 'entrepot',
+        texte: `L’entrepôt déborde : ${Math.round(base.gaspilleJour)} unités produites `
+          + `n’ont nulle part où aller. Agrandissez, ou consommez.`,
+        regionId: base.regionId,
+        important: true,
+      });
+      base.gaspilleJour = 0;
+    }
+  }
+
+  return { energie: e, gaspille: perdu };
 }
 
 /** Ce que valent, l'arme à la main, les gens présents à l'avant-poste. */

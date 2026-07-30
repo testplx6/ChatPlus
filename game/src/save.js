@@ -117,6 +117,8 @@ export function normaliser(state) {
     // Les routes d'avant les secteurs : sûres par défaut, elles se dégraderont
     // toutes seules si personne ne les tient.
     if (r.insecurite === undefined) r.insecurite = 0;
+    // Avant les pistes, on traversait une friche vierge à chaque passage.
+    if (r.piste === undefined) r.piste = 0;
   }
   for (const c of w.colonies) {
     if (c.declin === undefined) c.declin = 0;
@@ -152,6 +154,10 @@ export function normaliser(state) {
   if (b) {
     if (b.pop === undefined) b.pop = 0;
     if (b.moral === undefined) b.moral = 60;
+    // Avant, un entrepôt plein jetait la production sans rien dire.
+    if (b.gaspille === undefined) b.gaspille = 0;
+    if (b.gaspilleJour === undefined) b.gaspilleJour = 0;
+    if (b.dernierGaspillage === undefined) b.dernierGaspillage = -999;
     // Avant les métiers, les habitants étaient un multiplicateur anonyme : on
     // les laisse manœuvres, le joueur les affectera s'il le veut.
     if (!b.postes) b.postes = {};

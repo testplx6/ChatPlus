@@ -2142,6 +2142,8 @@ function genererBiomes(rng) {
         fouille: 0, // épuisement local par la fouille répétée
         // Ce que les routes sont devenues faute d'être tenues. Voir secteur.js.
         insecurite: 0,
+        // Ce que les passages ont tassé. Voir coutTraversee.
+        piste: 0,
       });
     }
   }
@@ -2231,6 +2233,11 @@ function genererColonies(rng, regions) {
     colonies.push(col);
     occupees.add(i);
     r.colonie = col.id;
+    // Les abords d'une ville sont tassés depuis longtemps : personne n'a
+    // attendu le joueur pour aller et venir. Sans ce socle, le monde commence
+    // sans la moindre route et il faut trois cents heures pour en voir une.
+    r.piste = 0.55;
+    for (const v of voisins(i)) regions[v].piste = Math.max(regions[v].piste, 0.3);
   }
   return colonies;
 }
@@ -2403,10 +2410,31 @@ function colonieParId(world, id) {
 // banc a montré que ce n'était pas là qu'était le problème : le diviser par
 // deux ne fait passer le temps de marche que de 39 à 35 %, sans rien changer au
 // revenu. Voir le rapport dans README.
+/**
+ * Ce qu'une piste damée retire au coût d'un passage.
+ *
+ * Cinquante-deux pour cent du temps de jeu se passe en marche, et sur les
+ * quarante-cinq départs d'une partie, trente sont de la logistique : rentrer au
+ * camp, chercher à manger, aller vendre. Agrandir le sac ou raccourcir la carte
+ * reviendrait à retirer le voyage du jeu ; ce qu'il faut, c'est que le voyage
+ * *s'améliore*. Un monde où l'on passe finit par avoir des routes, et une route
+ * n'est pas un raccourci : c'est de la terre tassée par ceux qui sont passés
+ * avant, la vôtre comprise.
+ */
+const PISTE_GAIN = 0.34;
+
 function coutTraversee(world, i, mods = {}) {
   const r = world.regions[i];
   const base = BIOMES[r.biome].cout;
-  return Math.max(1, base * (1 - (mods.reductionVoyage || 0)));
+  const piste = 1 - (r.piste || 0) * PISTE_GAIN;
+  return Math.max(1, base * piste * (1 - (mods.reductionVoyage || 0)));
+}
+
+/** On tasse la terre en passant. Le gain est lent à venir et lent à s'en aller. */
+function damer(world, i, force = 1) {
+  const r = world.regions[i];
+  if (!r) return;
+  r.piste = Math.min(1, (r.piste || 0) + 0.02 * force);
 }
 
 /**
@@ -7001,6 +7029,8 @@ function tickCaravanes(state, log, ctx) {
 
     if (car.etape >= car.route.length) { arriver(world, car, log); continue; }
     car.regionId = car.route[car.etape];
+    // Le commerce trace les routes mieux que personne : c'est lui qui passe.
+    damer(world, car.regionId, 1.6);
     car.etape++;
     if (car.etape >= car.route.length) arriver(world, car, log);
   }
@@ -7346,6 +7376,9 @@ function tickArmee(world, armee, t, log, ctx) {
       armee.progres = 0;
       armee.regionId = prochaine;
       armee.etape++;
+      // Une colonne en marche entretient la route qu'elle emprunte. Le monde
+      // n'attend pas le joueur pour se donner des chemins.
+      damer(world, prochaine, 2.5);
       // Rencontre avec une colonne ennemie sur la même case
       const autre = world.armees.find(
         (o) => o !== armee && o.regionId === armee.regionId && o.faction !== armee.faction
@@ -9372,6 +9405,12 @@ function tickInsecurite(state) {
   for (const a of w.armees) ajouter(a.regionId, 0.006);
 
   for (const r of w.regions) {
+    // Les pistes s'effacent quand plus personne ne passe. On le fait dans cette
+    // boucle-ci plutôt que dans la sienne : on paie déjà le parcours des quatre
+    // cent trente-deux cases une fois par jour de jeu, et une seconde boucle
+    // pour une multiplication serait du travail pour rien.
+    if (r.piste > 0.002) r.piste *= 1 - 0.0006 * dt;
+    else r.piste = 0;
     const d = dist[r.i];
     // Une ville qui gronde ne tient plus ses abords : son désordre déborde sur
     // les pistes, et c'est ce qui reliera un jour l'ordre public au secteur.
@@ -9497,6 +9536,10 @@ function creerBase() {
     stock,
     defense: 0,
     derniereAttaque: -999,
+    // Ce que l'entrepôt n'a pas pu prendre, cumulé. L'écrêtage était muet.
+    gaspille: 0,
+    gaspilleJour: 0,
+    dernierGaspillage: -999,
     // Un avant-poste n'est pas un entrepôt avec des murs : des gens finissent
     // par s'y installer, y travailler, et y manger.
     pop: 0,
@@ -9825,11 +9868,21 @@ function fonderBase(state, log, groupe) {
 // Production horaire
 // ---------------------------------------------------------------------------
 
+/**
+ * Ranger une production dans l'entrepôt, et retenir ce qui n'y tient pas.
+ *
+ * L'écrêtage était silencieux : un entrepôt plein jetait la production de
+ * l'hydroponie, de la fonderie et de la raffinerie sans que rien ne l'indique
+ * nulle part. On l'a découvert en cherchant pourquoi un test échouait, pas en
+ * jouant — et un joueur, lui, aurait simplement vu ses cultures ne rien rendre
+ * sans jamais comprendre pourquoi. Ce qui se perd doit se dire.
+ */
 function ajouter(base, key, qte) {
   if (qte <= 0) return 0;
   const libre = capaciteStock(base) - totalStock(base);
   const reel = Math.max(0, Math.min(qte, libre));
   base.stock[key] = (base.stock[key] || 0) + reel;
+  if (qte - reel > 0.001) base.gaspille = (base.gaspille || 0) + (qte - reel);
   return reel;
 }
 
@@ -9844,6 +9897,7 @@ function consommer(base, key, qte) {
 function tickBase(state, log, ctx) {
   const base = state.base;
   if (!base.fonde) return null;
+  const gaspilleAvant = base.gaspille || 0;
   const rng = ctx.rng;
   const rech = base.recherche;
   // N'importe quel groupe présent fait avancer les chantiers. Test direct
@@ -10042,7 +10096,26 @@ function tickBase(state, log, ctx) {
     }
   }
 
-  return { energie: e };
+  // Ce que l'entrepôt n'a pas pu prendre. On ne le dit pas à chaque heure — ce
+  // serait insupportable — mais dès que la perte devient une vraie perte, et
+  // pas plus d'une fois par jour de jeu.
+  const perdu = (base.gaspille || 0) - gaspilleAvant;
+  if (perdu > 0.001) {
+    base.gaspilleJour = (base.gaspilleJour || 0) + perdu;
+    if (t - (base.dernierGaspillage || -999) >= 24 && base.gaspilleJour >= 8) {
+      base.dernierGaspillage = t;
+      log({
+        type: 'entrepot',
+        texte: `L’entrepôt déborde : ${Math.round(base.gaspilleJour)} unités produites `
+          + `n’ont nulle part où aller. Agrandissez, ou consommez.`,
+        regionId: base.regionId,
+        important: true,
+      });
+      base.gaspilleJour = 0;
+    }
+  }
+
+  return { energie: e, gaspille: perdu };
 }
 
 /** Ce que valent, l'arme à la main, les gens présents à l'avant-poste. */
@@ -11569,6 +11642,9 @@ function avancerVoyage(state, g, log, ctx) {
     o.progres = 0;
     g.regionId = prochaine;
     o.etape++;
+    // On tasse la terre en passant. Un convoi lourd marque plus qu'un homme
+    // seul, et c'est ce qui fait qu'un circuit qu'on répète devient une route.
+    damer(state.world, prochaine, 1 + (g.membres.length + betesDe(g).length) * 0.12);
     const rayon = 1 + (state.base.recherche.optique || 0);
     decouvrir(state.world, prochaine, rayon);
     for (const c of debout) gagnerXp(c, 'endurance', XP_PRATIQUE);
@@ -12025,6 +12101,8 @@ function normaliser(state) {
     // Les routes d'avant les secteurs : sûres par défaut, elles se dégraderont
     // toutes seules si personne ne les tient.
     if (r.insecurite === undefined) r.insecurite = 0;
+    // Avant les pistes, on traversait une friche vierge à chaque passage.
+    if (r.piste === undefined) r.piste = 0;
   }
   for (const c of w.colonies) {
     if (c.declin === undefined) c.declin = 0;
@@ -12060,6 +12138,10 @@ function normaliser(state) {
   if (b) {
     if (b.pop === undefined) b.pop = 0;
     if (b.moral === undefined) b.moral = 60;
+    // Avant, un entrepôt plein jetait la production sans rien dire.
+    if (b.gaspille === undefined) b.gaspille = 0;
+    if (b.gaspilleJour === undefined) b.gaspilleJour = 0;
+    if (b.dernierGaspillage === undefined) b.dernierGaspillage = -999;
     // Avant les métiers, les habitants étaient un multiplicateur anonyme : on
     // les laisse manœuvres, le joueur les affectera s'il le veut.
     if (!b.postes) b.postes = {};
@@ -13086,6 +13168,15 @@ function dessinerCarte(cv) {
       const py = y + Math.floor(bruit(r.i, k + 57) * (CELL - 2));
       g.fillStyle = b > 0.5 ? cols[1] : cols[2];
       g.fillRect(px, py, 2, 2);
+    }
+    // Les pistes tassées par ceux qui passent. Un trait clair au milieu de la
+    // case, d'autant plus net que la terre est damée : c'est ce qui fait qu'une
+    // carte parcourue ne ressemble pas à une carte vierge.
+    if (r.piste > 0.12) {
+      g.fillStyle = `rgba(196,180,148,${(0.12 + r.piste * 0.45).toFixed(2)})`;
+      const ep = r.piste > 0.6 ? 3 : r.piste > 0.35 ? 2 : 1;
+      g.fillRect(x, y + (CELL - ep) / 2, CELL, ep);
+      g.fillRect(x + (CELL - ep) / 2, y, ep, CELL);
     }
     // Territoire d'une faction : liseré dans sa couleur
     if (r.controle) {
@@ -14169,7 +14260,10 @@ function ecranBase() {
     ${en.ratio < 1 ? `<div class="aide" style="color:var(--ambre)">Production réduite à ${(en.ratio * 100).toFixed(0)} % :
       ${(b.stock.carburant || 0) <= 0 ? 'plus de carburant.' : 'énergie insuffisante.'}</div>` : ''}
     <div class="sep"></div>
-    <div class="ligne"><span class="k">Entrepôt</span><span class="v">${n(stock)} / ${n(capa)}</span></div>
+    <div class="ligne"><span class="k">Entrepôt</span>
+      <span class="v ${stock >= capa * 0.98 ? 'alerte' : ''}">${n(stock)} / ${n(capa)}</span></div>
+    ${b.gaspille > 20 ? `<div class="aide alerte">L’entrepôt a déjà refusé
+      ${n(Math.round(b.gaspille))} unités faute de place. Ce qui ne rentre pas est perdu.</div>` : ''}
     ${jauge(stock / capa, stock / capa > 0.95 ? 'rouge' : '')}
     <div class="sep"></div>
     <div class="ligne"><span class="k">Habitants</span>

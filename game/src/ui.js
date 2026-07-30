@@ -539,6 +539,15 @@ function dessinerCarte(cv) {
       g.fillStyle = b > 0.5 ? cols[1] : cols[2];
       g.fillRect(px, py, 2, 2);
     }
+    // Les pistes tassées par ceux qui passent. Un trait clair au milieu de la
+    // case, d'autant plus net que la terre est damée : c'est ce qui fait qu'une
+    // carte parcourue ne ressemble pas à une carte vierge.
+    if (r.piste > 0.12) {
+      g.fillStyle = `rgba(196,180,148,${(0.12 + r.piste * 0.45).toFixed(2)})`;
+      const ep = r.piste > 0.6 ? 3 : r.piste > 0.35 ? 2 : 1;
+      g.fillRect(x, y + (CELL - ep) / 2, CELL, ep);
+      g.fillRect(x + (CELL - ep) / 2, y, ep, CELL);
+    }
     // Territoire d'une faction : liseré dans sa couleur
     if (r.controle) {
       g.fillStyle = couleurFaction(r.controle);
@@ -1621,7 +1630,10 @@ function ecranBase() {
     ${en.ratio < 1 ? `<div class="aide" style="color:var(--ambre)">Production réduite à ${(en.ratio * 100).toFixed(0)} % :
       ${(b.stock.carburant || 0) <= 0 ? 'plus de carburant.' : 'énergie insuffisante.'}</div>` : ''}
     <div class="sep"></div>
-    <div class="ligne"><span class="k">Entrepôt</span><span class="v">${n(stock)} / ${n(capa)}</span></div>
+    <div class="ligne"><span class="k">Entrepôt</span>
+      <span class="v ${stock >= capa * 0.98 ? 'alerte' : ''}">${n(stock)} / ${n(capa)}</span></div>
+    ${b.gaspille > 20 ? `<div class="aide alerte">L’entrepôt a déjà refusé
+      ${n(Math.round(b.gaspille))} unités faute de place. Ce qui ne rentre pas est perdu.</div>` : ''}
     ${jauge(stock / capa, stock / capa > 0.95 ? 'rouge' : '')}
     <div class="sep"></div>
     <div class="ligne"><span class="k">Habitants</span>

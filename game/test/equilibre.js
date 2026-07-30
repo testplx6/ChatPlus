@@ -89,7 +89,7 @@ const TRACE = {
   secteurs: 0, etatSecteur: 0, bilans: 0,
   revoltes: 0, matees: 0, libres: 0, renverses: 0, grogne: 0,
   disposes: 0, relaches: 0, gagneCaptifs: 0, captures: 0,
-  mortsCombat: 0, koSubis: 0,
+  mortsCombat: 0, koSubis: 0, piste: 0, pisteVues: 0,
   // Ce que les conseils votent quand personne ne les tient.
   impots: {}, peines: {}, esclavagistes: 0, factionsVues: 0,
   rangs: [0, 0, 0, 0, 0],
@@ -1179,6 +1179,12 @@ for (let n = 0; n < PARTIES; n++) {
     : 0;
   TRACE.ordresDonnes += memo.ordresDonnes;
   {
+    // Les routes que la partie a fini par tracer, là où l'on est passé.
+    const vues = state.world.regions.filter((r) => r.decouvert);
+    TRACE.piste += vues.reduce((a, r) => a + (r.piste || 0), 0) / Math.max(1, vues.length);
+    TRACE.pisteVues++;
+  }
+  {
     const v = state.world.colonies.filter((c) => !c.ruine);
     TRACE.libres += v.filter((c) => !c.faction).length;
     TRACE.grogne += v.reduce((a, c) => a + (c.unrest || 0), 0) / Math.max(1, v.length);
@@ -1290,6 +1296,8 @@ console.log(`Secteurs tenus : ${TRACE.secteurs} — état moyen `
   + `${(TRACE.etatSecteur / Math.max(1, TRACE.secteurs)).toFixed(2)} `
   + `(0 = sûr, 1 = infréquentable) sur ${Math.round(TRACE.bilans / Math.max(1, TRACE.secteurs))} relevés`);
 console.log(`Échelle atteinte : ${RANGS.map((r, i) => `${r.nom} ${TRACE.rangs[i]}`).join(' · ')}`);
+console.log(`Pistes : ${(TRACE.piste / Math.max(1, TRACE.pisteVues)).toFixed(2)} de damage moyen `
+  + `sur les cases connues (0 = friche vierge, 1 = route faite)`);
 console.log(`Combat : ${(TRACE.koSubis / PARTIES).toFixed(1)} des nôtres mis à terre par partie`);
 console.log(`Défaites : ${TRACE.defaites} pour ${TRACE.crPilles} cr pillés `
   + `(${TRACE.defaites ? Math.round(TRACE.crPilles / TRACE.defaites) : 0} cr par défaite)`);
