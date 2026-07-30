@@ -28,6 +28,7 @@ import {
   COUT_FONDATION, tailleEscouadeMax,
 } from './base.js';
 import { classement, enGuerre } from './factions.js';
+import { titreDe, lignesDe } from './chronique.js';
 import { TACTIQUES, TACTIQUE_KEYS, apercuTactique } from './combat.js';
 import {
   donnerOrdre, ORDRES, rendementPrevu, COMPETENCES_EXERCICE, PAR_LA_PRATIQUE,
@@ -2251,6 +2252,7 @@ function ecranJournal() {
   }).join('') : '<div class="aide">Rien à signaler.</div>';
 
   return `
+  ${blocChronique()}
   <section class="panneau">
     <h2 class="titre">Journal de bord</h2>
     <div class="rangee">
@@ -2259,6 +2261,24 @@ function ecranJournal() {
     </div>
   </section>
   <section class="panneau">${html}</section>`;
+}
+
+/**
+ * Ce que la partie a fait de vous. Pas un score : une lecture. Le jeu a compté
+ * les combats, les prisonniers vendus, les lois promulguées et les gens
+ * enterrés — il peut bien dire ce que ça donne.
+ */
+function blocChronique() {
+  const t = titreDe(S);
+  const lignes = lignesDe(S);
+  return `<section class="panneau">
+    <h2 class="titre">Chronique <span class="droite ambre">${e(t.nom)}</span></h2>
+    <div class="aide" style="font-style:italic">${e(t.dit)}</div>
+    <div class="sep"></div>
+    <div class="pile">
+      ${lignes.map((l) => `<div class="aide">${e(l)}</div>`).join('')}
+    </div>
+  </section>`;
 }
 
 // ---------------------------------------------------------------------------

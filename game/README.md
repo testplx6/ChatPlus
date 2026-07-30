@@ -932,6 +932,48 @@ rendre et cherché la cause du mauvais côté. Ce qui se perd est maintenant com
 affiché sur l'écran de l'avant-poste, et signalé au journal — une fois par jour
 de jeu au plus, et seulement quand la perte en vaut la peine.
 
+### La chronique
+
+Le jeu n'a pas de condition de victoire et n'en aura pas : on ne gagne pas
+contre un désert. Mais il n'avait pas de miroir non plus — on jouait cent heures
+et rien ne disait ce qu'on était devenu, **alors qu'il avait tout compté**.
+
+Onze titres, du plus lourd au plus léger, chacun avec une condition tirée de
+l'état réel. On porte le premier qu'on a mérité :
+
+    Négrier              cinq hommes vendus. Ça passe avant tout le reste,
+                         et le reste ne le rachète pas.
+    Commandeur           le grade, et douze ordres donnés en son nom.
+    Fondateur            une ville sur les cartes qui n'y était pas avant vous.
+    Seigneur de guerre   quarante victoires et des gens qui savent se battre.
+    Chasseur de primes   quinze brigands livrés à la justice.
+    Bâtisseur            douze habitants sous un toit qu'on a monté.
+    Officier             des couleurs portées, des routes confiées.
+    Maison marchande     six mille crédits sans qu'on ait à vous craindre.
+    Bienfaiteur          douze services rendus à des gens qui s'en souviennent.
+    Ferrailleur          le désert retourné pour ce qu'il restait dedans.
+    Vagabond             traversé le monde sans y laisser de trace.
+
+Le vagabond n'est pas un défaut faute de mieux : c'est une façon d'y survivre,
+et elle est dite comme telle. La chronique ne récompense rien, ne débloque rien
+et ne classe personne. Elle liste **ce qui est arrivé** — jamais une rubrique
+vide, parce qu'une chronique qui énumère des zéros ne raconte rien.
+
+### Un garde-fou de performance qui ne tient plus tout à fait
+
+À signaler, parce que le taire reviendrait à truquer la mesure. Le même code de
+tick a été mesuré à **82 µs le matin et 128 µs le soir** sur cette machine, et
+l'étalon n'a vu son facteur passer que de 1,10 à 1,12. La raison est claire :
+l'étalon est de l'arithmétique pure, le tick alloue à chaque heure, et sur une
+machine partagée la contention mémoire frappe l'un et pas l'autre.
+
+Un étalon qui alloue suit nettement mieux — essayé, il monte à ×1,28 sur la même
+machine. Mais il faudrait le ré-ancrer au repos, et ajuster `ETALON_MS` sur un
+échantillon bruité reviendrait à ajuster le garde-fou pour qu'il passe. La
+limite est donc documentée dans le code plutôt que masquée : **une mesure
+au-dessus du budget sur une machine chargée ne prouve rien, c'est le plancher de
+plusieurs exécutions qui fait foi.**
+
 ### Deux champs morts
 
 Deux champs déclarés depuis le début et que rien ne lisait ont été branchés — c'est le genre de dette qui ne se voit qu'en cherchant pourquoi une

@@ -153,6 +153,14 @@ export function nouvellePartie(seed, opts = {}) {
       caravanesPillees: 0,
       servicesRendus: 0,
       ordresRemplis: 0,
+      // Ce qu'on relira à la fin pour dire qui l'on a été. Voir chronique.js :
+      // un compteur qui n'existe pas est un fait qu'on ne pourra pas raconter.
+      captifsPris: 0,
+      captifsLivres: 0,
+      captifsVendus: 0,
+      captifsRelaches: 0,
+      prerogatives: 0,
+      loisPromulguees: 0,
     },
     memorial: [],
     // Ce que le joueur sait du monde, par opposition à ce qui est.

@@ -12,6 +12,7 @@ import {
   genererBande, resoudreCombat, TACTIQUES, TACTIQUE_KEYS, apercuTactique,
   rendementTactique,
 } from '../src/combat.js';
+import { titreDe, lignesDe, faitsDe, RENOMMEES } from '../src/chronique.js';
 import { faireRevolte, SEUIL_REVOLTE } from '../src/economy.js';
 import { damer, coutTraversee, PISTE_GAIN } from '../src/world.js';
 import { distanceMorale } from '../src/factions.js';
@@ -148,8 +149,20 @@ const ETALON_MS = 25;
  */
 const BUDGET_US = 145;
 
-/** Mesure la vitesse de la machine. Le minimum de trois passes : le bruit du
- *  ramasse-miettes et de la compilation ne fait que ralentir, jamais accélérer. */
+/**
+ * Mesure la vitesse de la machine. Le minimum de trois passes : le bruit du
+ * ramasse-miettes et de la compilation ne fait que ralentir, jamais accélérer.
+ *
+ * Limite connue et non résolue : l'étalon est de l'arithmétique pure, le tick
+ * alloue à chaque heure. Sur une machine partagée, la contention mémoire frappe
+ * l'un et pas l'autre — un même code mesuré à 82 µs le matin et 128 µs le soir
+ * n'a vu son facteur passer que de 1,10 à 1,11. Un étalon qui alloue suit mieux
+ * la contention, mais il faudrait le ré-ancrer sur une machine au repos, et
+ * ajuster ETALON_MS sur un échantillon bruité reviendrait à truquer le
+ * garde-fou. En attendant, une mesure au-dessus du budget sur une machine
+ * chargée ne prouve rien : c'est la valeur plancher de plusieurs exécutions qui
+ * fait foi.
+ */
 function etalonnerMachine() {
   let best = Infinity;
   for (let p = 0; p < 3; p++) {
@@ -2416,6 +2429,72 @@ ok(monBourg.player.reputation[patron] < estimeAvant - 30,
 ok(!declarerIndependance(monBourg, () => {}).ok, 'deux fois, non');
 
 verifierCoherence(monBourg, 'après un changement de drapeau');
+
+section('9 nonies quindecies. Ce que la partie a fait de vous');
+// Le jeu n'a pas de condition de victoire et n'en aura pas — on ne gagne pas
+// contre un désert. Mais il n'avait pas non plus de miroir : on jouait cent
+// heures et rien ne disait ce qu'on était devenu, alors qu'il avait tout compté.
+const chro = nouvellePartie(1717, { maintenant: 0 });
+ok(titreDe(chro).key === 'vagabond',
+  'on commence vagabond, et ce n’est pas un titre par défaut faute de mieux',
+  titreDe(chro).key);
+ok(lignesDe(chro).length >= 2, 'et l’on a déjà deux ou trois choses à dire');
+// « Zéro jour » est un fait, pas un zéro décoratif : on vérifie qu'aucune
+// *rubrique* vide n'apparaît, pas qu'aucun zéro n'existe.
+chro.temps = 24 * 12;
+ok(!lignesDe(chro).some((l) => /0 (affrontements|contrats|services|caravanes|sites)/.test(l)),
+  'mais jamais une rubrique qui n’a rien à dire',
+  lignesDe(chro).join(' | '));
+
+// Chaque titre se mérite au sens littéral : une condition sur l'état réel.
+function titreAvec(modif) {
+  const t = nouvellePartie(1818, { maintenant: 0 });
+  modif(t);
+  return titreDe(t).key;
+}
+ok(titreAvec((t) => { t.stats.captifsVendus = 8; }) === 'negrier',
+  'vendre des hommes définit quelqu’un avant tout le reste');
+ok(titreAvec((t) => {
+  t.stats.captifsVendus = 8;
+  t.stats.combatsGagnes = 80;
+  t.stats.servicesRendus = 40;
+}) === 'negrier', 'et le reste ne le rachète pas');
+ok(titreAvec((t) => { t.stats.captifsLivres = 20; }) === 'geolier',
+  'livrer des brigands à la justice fait un chasseur de primes');
+ok(titreAvec((t) => { t.player.credits = 9000; }) === 'marchand',
+  'faire fortune sans se battre fait une maison marchande');
+ok(titreAvec((t) => {
+  t.player.credits = 9000;
+  t.stats.combatsGagnes = 60;
+  for (const c of groupeActif(t).membres) c.skills.melee = 60;
+}) === 'seigneur', 'la faire en se battant fait autre chose');
+ok(titreAvec((t) => { t.base.colonieId = 'sX'; }) === 'fondateur',
+  'écrire une ville sur les cartes fait un fondateur');
+ok(titreAvec((t) => {
+  const g = groupeActif(t);
+  g.allegeance = { faction: 'cendre', points: RANGS[4].points, actes: [], fautes: 0 };
+  t.stats.prerogatives = 12;
+}) === 'commandeur', 'et commander un pays fait un commandeur');
+
+// La chronique ne raconte que ce qui est arrivé.
+const raconte = nouvellePartie(1919, { maintenant: 0 });
+raconte.stats.captifsPris = 6;
+raconte.stats.captifsVendus = 2;
+raconte.stats.combats = 30;
+raconte.temps = 24 * 90;
+const dit = lignesDe(raconte).join(' | ');
+ok(/90 jours/.test(dit), 'elle compte les jours');
+ok(/6 hommes pris vivants/.test(dit), 'et ce qu’on a fait des gens');
+ok(!/caravanes pillées/.test(dit),
+  'elle ne mentionne pas ce qu’on n’a jamais fait', dit);
+
+// Elle survit à un monde abîmé : c'est un écran qu'on ouvre à tout moment.
+const abime = nouvellePartie(2020, { maintenant: 0 });
+groupeActif(abime).allegeance = {
+  faction: 'faction-qui-nexiste-pas', points: 900, actes: [], fautes: 0,
+};
+ok(Array.isArray(lignesDe(abime)) && !!titreDe(abime).nom,
+  'une faction disparue de la table ne casse pas la chronique');
 
 section('9 nonies sexies. Qui accepte de partir, et pour combien');
 const rec = nouvellePartie(9494, { maintenant: 0 });

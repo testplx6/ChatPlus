@@ -108,6 +108,7 @@ export function fairePrisonniers(state, g, bande, gens, log) {
     }
     g.prisonniers.push(c);
     pris.push(c);
+    state.stats.captifsPris = (state.stats.captifsPris || 0) + 1;
   }
   if (log && pris.length) {
     log({
@@ -285,6 +286,7 @@ export function disposer(state, g, captifId, quoi, log) {
 
   if (quoi === 'relacher') {
     retirerCaptif(g, c);
+    state.stats.captifsRelaches = (state.stats.captifsRelaches || 0) + 1;
     noterReputation(state, cap.faction, 4);
     if (log) {
       log({
@@ -322,6 +324,7 @@ export function disposer(state, g, captifId, quoi, log) {
     if (prime <= 0) return { ok: false, motif: 'La justice d’ici n’a rien à lui reprocher.' };
     retirerCaptif(g, c);
     state.player.credits += prime;
+    state.stats.captifsLivres = (state.stats.captifsLivres || 0) + 1;
     ecrouer(state, col, c, loi);
     noterReputation(state, col.faction, 2);
     noterReputation(state, cap.faction, -3);
@@ -368,6 +371,7 @@ export function disposer(state, g, captifId, quoi, log) {
     if (prix <= 0) return { ok: false, motif: 'On ne vend pas d’hommes ici.' };
     retirerCaptif(g, c);
     state.player.credits += prix;
+    state.stats.captifsVendus = (state.stats.captifsVendus || 0) + 1;
     // Ça se sait. Auprès des siens d'abord, et auprès de tous ceux qui l'ont
     // interdit chez eux — ce qui donne son poids à la loi d'en face.
     noterReputation(state, cap.faction, -14);

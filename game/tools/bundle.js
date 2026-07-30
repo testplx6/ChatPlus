@@ -53,6 +53,8 @@ const MODULES = [
   'contrats.js',
   'events.js',
   'squad.js',
+  // Ce que la partie a fait de vous : elle relit tout le reste.
+  'chronique.js',
   'save.js',
   'sim.js',
   'ui.js',

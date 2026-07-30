@@ -143,6 +143,10 @@ export function peutExercer(state, faction, key) {
  * de décider.
  */
 function inscrireActe(state, faction, acte) {
+  state.stats.prerogatives = (state.stats.prerogatives || 0) + 1;
+  if (acte.type === 'loi') {
+    state.stats.loisPromulguees = (state.stats.loisPromulguees || 0) + 1;
+  }
   for (const g of groupesEngages(state, faction)) {
     if (!g.allegeance.actes) g.allegeance.actes = [];
     g.allegeance.actes.push(acte);

@@ -97,7 +97,9 @@ export function normaliser(state) {
   }
   if (!state.memorial) state.memorial = [];
   if (!state.stats) state.stats = {};
-  for (const k of ['contratsRemplis', 'sitesFouilles', 'caravanesPillees', 'distanceParcourue', 'servicesRendus']) {
+  for (const k of ['contratsRemplis', 'sitesFouilles', 'caravanesPillees', 'distanceParcourue',
+    'servicesRendus', 'captifsPris', 'captifsLivres', 'captifsVendus', 'captifsRelaches',
+    'prerogatives', 'loisPromulguees']) {
     if (state.stats[k] === undefined) state.stats[k] = 0;
   }
   const w = state.world;

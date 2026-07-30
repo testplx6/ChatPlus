@@ -643,6 +643,16 @@ if (await livrable.count()) {
   ok(apresCap.geole > 0, 'et la geôle de la ville se remplit');
 }
 
+console.log('\n8 octodecies. La chronique');
+await page.click('[data-a="onglet"][data-k="journal"]');
+await page.waitForTimeout(400);
+const texteChro = await page.evaluate(() => document.querySelector('#ecran').textContent);
+ok(/CHRONIQUE/i.test(texteChro), 'le journal s’ouvre sur ce qu’on est devenu');
+ok(/(Vagabond|Ferrailleur|Officier|Bâtisseur|Fondateur|Négrier|Commandeur|Bienfaiteur|Maison marchande|Chasseur de primes|Seigneur de guerre)/
+  .test(texteChro), 'avec un titre qu’on porte');
+ok(/jours dans les cendres/.test(texteChro), 'et les faits qui le justifient');
+await page.screenshot({ path: join(CAPTURES, '29-chronique.png'), fullPage: true });
+
 console.log('\n8 septdecies. Une tactique qu’on choisit en sachant ce qu’elle vaut');
 await page.click('[data-a="onglet"][data-k="escouade"]');
 await page.waitForTimeout(400);
