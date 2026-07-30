@@ -103,6 +103,8 @@ export function normaliser(state) {
   // premier tick leur donne quelqu'un à leur tête.
   for (const k of Object.keys(w.factions || {})) {
     if (w.factions[k].dirigeant === undefined) w.factions[k].dirigeant = null;
+    // Avant les lois, une faction n'avait ni justice, ni impôt, ni interdit.
+    if (w.factions[k].lois === undefined) w.factions[k].lois = null;
     // Les consignes portées au conseil ont disparu avec les requêtes : un
     // gradé n'oriente plus une décision, il la prend.
     if (w.factions[k].consigne !== undefined) delete w.factions[k].consigne;
@@ -123,6 +125,8 @@ export function normaliser(state) {
     // Avant le banc de recrutement, on tirait un inconnu au sort en payant
     // d'avance. Le premier passage en ville en garnit un.
     if (c.banc === undefined) c.banc = null;
+    // Avant la justice, une ville n'enfermait personne.
+    if (c.geole === undefined) c.geole = null;
     // Avant les services, ces gens n'attendaient rien et ne retenaient rien.
     for (const p2 of c.notables) {
       if (p2.demande === undefined) p2.demande = null;
@@ -130,6 +134,8 @@ export function normaliser(state) {
     }
   }
   for (const g of p.groupes) {
+    // Avant la justice, on ne faisait pas de prisonniers.
+    if (!g.prisonniers) g.prisonniers = [];
     for (const c of g.membres) {
       if (!c.traits) c.traits = [];
       if (!c.liens) c.liens = {};

@@ -14,6 +14,7 @@ import {
 import { genererBande, resoudreCombat, butin } from './combat.js';
 import { perdreBete, visibiliteAttelage } from './betes.js';
 import { menace } from './secteur.js';
+import { capturables, fairePrisonniers } from './justice.js';
 import { rendementCohesion } from './groupes.js';
 import {
   comp, gagnerXp, estDebout, estVivant, makeCharacter, blesser, pvTotal,
@@ -193,7 +194,11 @@ export function combatContre(state, bande, log, ctx, groupe) {
       );
       if (enGuerreAvec) crediter(state, 28, log, 'Ennemi déclaré abattu');
     }
-    texte = `${bande.nom} mis en déroute à ${lieu} — ${ramasse} unités et ${b.credits} cr récupérés.`;
+    // Ceux qui sont à terre sans être morts. On ne les laisse plus s'évaporer :
+    // c'est la seule question du jeu à laquelle le butin ne répond pas.
+    const pris = fairePrisonniers(state, g, bande, capturables(g, bande), log);
+    texte = `${bande.nom} mis en déroute à ${lieu} — ${ramasse} unités et ${b.credits} cr récupérés`
+      + `${pris.length ? `, ${pris.length} prisonnier${pris.length > 1 ? 's' : ''}` : ''}.`;
   } else if (res.vainqueur === 'B') {
     texte = perdreCombat(state, bande, log, ctx, lieu, g);
   } else {

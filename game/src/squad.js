@@ -23,6 +23,7 @@ import {
 } from './groupes.js';
 import { renfortSoin } from './services.js';
 import { tickBetes, lenteurAttelage } from './betes.js';
+import { tickPrisonniers, lenteurPrisonniers } from './justice.js';
 import { garnison } from './allegeance.js';
 
 export const ORDRES = {
@@ -389,6 +390,9 @@ function avancerVoyage(state, g, log, ctx) {
   // Une bête suit le convoi ; une charrette le retient. C'est le prix du dos
   // qu'on s'est acheté.
   vitesse *= 1 - lenteurAttelage(g);
+  // Des hommes qu'on mène de force ne marchent pas au pas de ceux qui suivent
+  // de leur plein gré. C'est ce qui rend une capture coûteuse à ramener.
+  vitesse *= 1 - lenteurPrisonniers(g);
   vitesse = Math.max(0.15, vitesse);
 
   o.progres += vitesse;
@@ -485,6 +489,10 @@ function tickGroupe(state, g, log, ctx) {
   // L'attelage broute, maigrit, et finit parfois par rester sur le bord de la
   // piste. Il mange de la biomasse : celle que personne d'autre ne mange.
   tickBetes(g, rng, log);
+
+  // Les prisonniers mangent sur le sac, et ceux que personne ne regarde s'en
+  // vont. C'est ce qui borne leur nombre, à la place d'une règle qui l'interdit.
+  tickPrisonniers(state, g, rng, log);
 
   // --- Cohésion : un groupe au repos et bien nourri se ressoude, un groupe qui
   // enchaîne les défaites se délite. Le moral suit.

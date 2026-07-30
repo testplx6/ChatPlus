@@ -8,6 +8,7 @@ import {
 import { effondrer, emploisInitiaux } from './economy.js';
 import { pourvoirCharges } from './notables.js';
 import { chemin, colonieParId, distance, voisins } from './world.js';
+import { loisDe, pressionFiscale } from './lois.js';
 
 // ---------------------------------------------------------------------------
 // Mesures
@@ -409,9 +410,18 @@ function conseil(world, key, t, log, ctx) {
 
   f.prochainConseil = rng.irange(30, 90);
 
-  // Revenus : impôt sur les colonies
-  const revenu = mesColonies.reduce((s, c) => s + c.pop * 0.05 * (1 - c.unrest), 0);
+  // Revenus : l'impôt, au taux que la loi fixe. Ce n'est plus une constante —
+  // c'est la première décision d'un Commandeur qui se lit dans les comptes.
+  const taux = loisDe(world, key).impot;
+  const revenu = mesColonies.reduce((s, c) => s + c.pop * taux * (1 - c.unrest), 0);
   f.tresor += Math.round(revenu);
+  // Et ce qu'on prélève au-delà de l'ordinaire se paie en grogne.
+  const pression = pressionFiscale(world, key);
+  if (pression !== 0) {
+    for (const c of mesColonies) {
+      c.unrest = Math.max(0, Math.min(1, c.unrest + pression));
+    }
+  }
 
   const maPuissance = puissance(world, key);
   const mesGuerres = guerresDe(world, key);
@@ -553,6 +563,7 @@ export function fonderColonie(world, key, region, rng, t) {
     marche: 1.35,
     prises: 0,
     banc: null,
+    geole: null,
     declin: 0,
     fondeeA: t,
     factionOrigine: key,

@@ -684,6 +684,7 @@ const honorerService = honorer;
 const envoyerColonneA = envoyerColonne;
 const leverColonneA = leverColonne;
 const fonderPosteA = fonderPoste;
+const fixerLoiA = fixerLoi;
 
 // ===== src/data.js ===================================================
 // Données statiques du monde : marchandises, biomes, factions, bâtiments,
@@ -1943,6 +1944,104 @@ function resumeClimat(world, t) {
   };
 }
 
+// ===== src/lois.js ===================================================
+// Ce qu'une faction s'autorise, et ce que ça lui coûte.
+//
+// Module feuille, volontairement : les lois sont lues par le conseil
+// (factions.js) autant que par la justice (justice.js), et si elles vivaient
+// dans l'un des deux, l'autre créerait un cycle d'import. Elles ne dépendent
+// donc de rien — ce sont des chiffres et trois fonctions pures.
+//
+// Aucune loi n'est gratuite : chacune achète quelque chose et se paie ailleurs.
+// C'est tout l'intérêt d'avoir le grade qui les fixe.
+
+/**
+ * Ce qu'un Commandeur peut décider, et ce que ça fait. Aucune loi n'est
+ * gratuite : chacune achète quelque chose et se paie ailleurs. C'est tout
+ * l'intérêt d'avoir le grade qui les fixe.
+ */
+const PEINES = {
+  legere: {
+    nom: 'Clémente',
+    desc: 'On enferme peu et on relâche vite. Les geôles restent vides.',
+    prime: 0.6,
+    duree: 120,
+    // Ce que la sévérité fait à l'ordre public et aux pistes.
+    ordre: -0.02,
+    routes: 0.6,
+  },
+  ferme: {
+    nom: 'Ferme',
+    desc: 'On enferme, on juge, on garde. La règle par défaut.',
+    prime: 1,
+    duree: 400,
+    ordre: 0,
+    routes: 1,
+  },
+  expeditive: {
+    nom: 'Expéditive',
+    desc: 'On juge vite et on pend. Les routes sont sûres, la ville a peur.',
+    prime: 1.35,
+    duree: 60,
+    ordre: 0.05,
+    routes: 1.5,
+  },
+};
+
+const PEINE_KEYS = Object.keys(PEINES);
+
+/**
+ * Ce qu'on prélève. Le trésor d'une faction paie les colonnes, les murs et les
+ * greniers : le taux décide donc directement de ce qu'un officier pourra
+ * ordonner. Et il se paie en désordre, ce qui décide de ce qu'il aura à tenir.
+ */
+const IMPOTS = [
+  { key: 'leger', nom: 'Léger', taux: 0.03, desc: 'On prélève peu. Les villes respirent, le trésor maigrit.' },
+  { key: 'ordinaire', nom: 'Ordinaire', taux: 0.05, desc: 'Ce que tout le monde fait, et que personne n’aime.' },
+  { key: 'lourd', nom: 'Lourd', taux: 0.09, desc: 'Le trésor gonfle. Les villes s’en souviennent.' },
+  { key: 'confiscatoire', nom: 'Confiscatoire', taux: 0.15, desc: 'On prend tout. On tiendra ce qu’on pourra.' },
+];
+
+/** Le désordre qu'un taux d'impôt ajoute par heure à une ville. */
+function pressionFiscale(world, faction) {
+  const t = loisDe(world, faction).impot;
+  // En dessous d'ordinaire, l'impôt calme ; au-dessus, il pèse, et de plus en
+  // plus vite : doubler le taux fait bien plus que doubler la grogne.
+  return ((t - 0.05) ** 3) * 900;
+}
+
+/** Les lois d'une faction, avec leurs valeurs par défaut. */
+function loisDe(world, faction) {
+  const f = world.factions[faction];
+  if (!f) return { peine: 'ferme', esclavage: false, impot: 0.05 };
+  if (!f.lois) {
+    f.lois = {
+      peine: 'ferme',
+      // Aucune faction ne commence esclavagiste : c'est une décision qu'on
+      // prend, pas un état de fait qu'on subit.
+      esclavage: false,
+      impot: 0.05,
+    };
+  }
+  return f.lois;
+}
+
+/** Ce que la loi permet ici, sur la case où l'on se trouve. */
+function loiIci(state, col) {
+  if (!col || !col.faction) {
+    // Une ville sans drapeau ne connaît que la loi du plus fort. On y vend ce
+    // qu'on veut, et personne ne délivre de prime.
+    return { peine: PEINES.expeditive, esclavage: true, sansLoi: true, faction: null };
+  }
+  const l = loisDe(state.world, col.faction);
+  return {
+    peine: PEINES[l.peine] || PEINES.ferme,
+    esclavage: !!l.esclavage,
+    sansLoi: false,
+    faction: col.faction,
+  };
+}
+
 // ===== src/world.js ==================================================
 // Génération du monde et navigation.
 // Tout ce qui est ici appartient à `state.world` : c'est la moitié « partagée »
@@ -2122,6 +2221,8 @@ function genererColonies(rng, regions) {
       // voir recrues.js. La clé existe dès la création, sinon `normaliser`
       // l'ajoute au rechargement et l'aller-retour JSON n'est plus exact.
       banc: null,
+      // Qui la ville tient enfermé. Voir justice.js.
+      geole: null,
       marche: 1 + taille * 0.35,
       prises: 0,
     };
@@ -2147,6 +2248,8 @@ function attribuerFactions(rng, regions, colonies) {
       capitale: null,
       humeur: 0,
       prochainConseil: rng.irange(6, 40),
+      // Peine, esclavage, impôt : ce qu'un Commandeur peut fixer. Voir justice.js.
+      lois: null,
     };
   }
   factions.essaim = {
@@ -2159,6 +2262,7 @@ function attribuerFactions(rng, regions, colonies) {
     capitale: null,
     humeur: 0,
     prochainConseil: rng.irange(12, 60),
+    lois: null,
   };
 
   // Relations initiales, symétriques (−100 guerre ouverte, +100 alliance)
@@ -3464,6 +3568,8 @@ function groupeVide(id, nom, regionId, t = 0) {
     objets: [],
     // Ce qui porte à votre place. Voir betes.js.
     betes: [],
+    // Ceux qu'on mène de force. Voir justice.js.
+    prisonniers: [],
     // Au service de qui, avec quel grade et quels ordres. Voir allegeance.js :
     // c'est par colonne, pas par joueur.
     allegeance: null,
@@ -7016,9 +7122,18 @@ function conseil(world, key, t, log, ctx) {
 
   f.prochainConseil = rng.irange(30, 90);
 
-  // Revenus : impôt sur les colonies
-  const revenu = mesColonies.reduce((s, c) => s + c.pop * 0.05 * (1 - c.unrest), 0);
+  // Revenus : l'impôt, au taux que la loi fixe. Ce n'est plus une constante —
+  // c'est la première décision d'un Commandeur qui se lit dans les comptes.
+  const taux = loisDe(world, key).impot;
+  const revenu = mesColonies.reduce((s, c) => s + c.pop * taux * (1 - c.unrest), 0);
   f.tresor += Math.round(revenu);
+  // Et ce qu'on prélève au-delà de l'ordinaire se paie en grogne.
+  const pression = pressionFiscale(world, key);
+  if (pression !== 0) {
+    for (const c of mesColonies) {
+      c.unrest = Math.max(0, Math.min(1, c.unrest + pression));
+    }
+  }
 
   const maPuissance = puissance(world, key);
   const mesGuerres = guerresDe(world, key);
@@ -7160,6 +7275,7 @@ function fonderColonie(world, key, region, rng, t) {
     marche: 1.35,
     prises: 0,
     banc: null,
+    geole: null,
     declin: 0,
     fondeeA: t,
     factionOrigine: key,
@@ -7300,6 +7416,18 @@ const PREROGATIVES = {
     rang: 3,
     charge: 'Un poste qui s’effondre est un poste que vous avez voulu.',
   },
+  garnison: {
+    nom: 'Renforcer la garnison',
+    desc: 'Payer des hommes et des murs pour la ville dont vous répondez.',
+    rang: 3,
+    charge: 'Le trésor est celui de vos gens ; la ville est la vôtre.',
+  },
+  grenier: {
+    nom: 'Ouvrir les greniers',
+    desc: 'Faire acheter du grain pour votre ville. Une ville qui mange se tait.',
+    rang: 3,
+    charge: 'Nourrir aujourd’hui ce qu’on n’a pas produit hier se paie demain.',
+  },
   guerre: {
     nom: 'Déclarer la guerre',
     desc: 'Engager la faction contre une autre, sur-le-champ.',
@@ -7311,6 +7439,12 @@ const PREROGATIVES = {
     desc: 'Mettre fin aux hostilités, quoi qu’en pense le conseil.',
     rang: 4,
     charge: 'Une paix qui rend une ville se retient longtemps.',
+  },
+  loi: {
+    nom: 'Fixer la loi',
+    desc: 'La sévérité des peines, l’esclavage, l’impôt. Pour toute la faction.',
+    rang: 4,
+    charge: 'Une loi s’applique aussi à ceux qui l’ont votée.',
   },
 };
 
@@ -7697,6 +7831,134 @@ function etatGuerre(world, g, faction) {
 }
 
 // ---------------------------------------------------------------------------
+// La ville confiée
+// ---------------------------------------------------------------------------
+
+/** Ce que coûte un cran de garnison, et ce qu'il rapporte en défense. */
+const COUT_GARNISON = 700;
+const COUT_GRENIER = 500;
+
+/** La ville dont on répond : celle qui est au centre de son secteur. */
+function villeConfiee(state, faction) {
+  for (const g of groupesEngages(state, faction)) {
+    const s = g.allegeance.secteur;
+    if (s && s.ville) {
+      const col = colonieParId(state.world, s.ville);
+      if (col && !col.ruine && col.faction === faction) return col;
+    }
+  }
+  return null;
+}
+
+/**
+ * Renforcer la garnison. Un Capitaine ne demande pas des murs : il les fait
+ * payer. Ce qu'il ne peut pas faire, c'est les payer indéfiniment — le trésor
+ * est celui de ses gens, et le conseil relit les comptes.
+ */
+function renforcerGarnison(state, faction, log) {
+  const v = peutExercer(state, faction, 'garnison');
+  if (!v.ok) return v;
+  const col = villeConfiee(state, faction);
+  if (!col) return { ok: false, motif: 'Aucune ville ne vous est confiée.' };
+  const f = state.world.factions[faction];
+  if (f.tresor < COUT_GARNISON) {
+    return { ok: false, motif: `Le trésor ne suit pas : ${Math.round(f.tresor)} / ${COUT_GARNISON} cr.` };
+  }
+  f.tresor -= COUT_GARNISON;
+  col.murs += 2;
+  col.defenseMax = Math.round(col.pop * 0.09 + col.murs * 12);
+  col.defense = Math.min(col.defenseMax, col.defense + Math.round(col.defenseMax * 0.3));
+  if (log) {
+    log({
+      type: 'influence',
+      texte: `Sur votre ordre, on relève les murs de ${col.nom} (${COUT_GARNISON} cr).`,
+      important: true,
+      regionId: col.regionId,
+      factions: [faction],
+    });
+  }
+  return { ok: true, colonie: col };
+}
+
+/** Ouvrir les greniers : la ville mange, la ville se tait. Un temps. */
+function ouvrirGreniers(state, faction, log) {
+  const v = peutExercer(state, faction, 'grenier');
+  if (!v.ok) return v;
+  const col = villeConfiee(state, faction);
+  if (!col) return { ok: false, motif: 'Aucune ville ne vous est confiée.' };
+  const f = state.world.factions[faction];
+  if (f.tresor < COUT_GRENIER) {
+    return { ok: false, motif: `Le trésor ne suit pas : ${Math.round(f.tresor)} / ${COUT_GRENIER} cr.` };
+  }
+  f.tresor -= COUT_GRENIER;
+  col.stock.rations = (col.stock.rations || 0) + Math.round(col.pop * 0.9);
+  col.unrest = Math.max(0, (col.unrest || 0) - 0.18);
+  if (log) {
+    log({
+      type: 'influence',
+      texte: `Sur votre ordre, ${col.nom} distribue du grain (${COUT_GRENIER} cr). On se tait, pour l’instant.`,
+      important: true,
+      regionId: col.regionId,
+      factions: [faction],
+    });
+  }
+  return { ok: true, colonie: col };
+}
+
+// ---------------------------------------------------------------------------
+// La loi
+// ---------------------------------------------------------------------------
+
+/**
+ * Fixer la loi. Un Commandeur ne propose pas une réforme : il la promulgue.
+ * Ce qu'il ne contrôle pas, c'est ce que le pays en fait — l'impôt lourd
+ * remplit le trésor et fait gronder les villes, la peine expéditive tient les
+ * routes et fait peur, l'esclavage enrichit et fait de vous ce qu'on dit.
+ */
+function fixerLoi(state, faction, quoi, valeur, log) {
+  const v = peutExercer(state, faction, 'loi');
+  if (!v.ok) return v;
+  const lois = loisDe(state.world, faction);
+  let texte = null;
+  if (quoi === 'peine') {
+    if (!PEINES[valeur]) return { ok: false, motif: 'Cette peine n’existe pas.' };
+    if (lois.peine === valeur) return { ok: false, motif: 'C’est déjà la loi.' };
+    lois.peine = valeur;
+    texte = `Justice ${PEINES[valeur].nom.toLowerCase()} : ${PEINES[valeur].desc}`;
+  } else if (quoi === 'esclavage') {
+    const veut = !!valeur;
+    if (lois.esclavage === veut) return { ok: false, motif: 'C’est déjà la loi.' };
+    lois.esclavage = veut;
+    texte = veut
+      ? 'Le commerce d’hommes est autorisé. Les marchés s’ouvriront vite.'
+      : 'Le commerce d’hommes est interdit. Les marchés fermeront lentement.';
+    // Ce n'est pas une décision technique : on est jugé dessus, par les autres
+    // factions et par ses propres villes.
+    for (const col of coloniesDe(state.world, faction)) {
+      col.unrest = Math.max(0, Math.min(1, (col.unrest || 0) + (veut ? 0.06 : -0.03)));
+    }
+  } else if (quoi === 'impot') {
+    const taux = IMPOTS.find((x) => x.key === valeur);
+    if (!taux) return { ok: false, motif: 'Ce taux n’existe pas.' };
+    if (lois.impot === taux.taux) return { ok: false, motif: 'C’est déjà la loi.' };
+    lois.impot = taux.taux;
+    texte = `Impôt ${taux.nom.toLowerCase()} : ${taux.desc}`;
+  } else {
+    return { ok: false, motif: 'On ne légifère pas là-dessus.' };
+  }
+  inscrireActe(state, faction, { type: 'loi', quoi, t: state.temps });
+  if (log) {
+    log({
+      type: 'influence',
+      texte: `${FACTIONS[faction].nom} promulgue votre loi. ${texte}`,
+      important: true,
+      factions: [faction],
+    });
+  }
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
 // Jugement
 // ---------------------------------------------------------------------------
 
@@ -7750,6 +8012,21 @@ function juger(state, faction, acte, log) {
     return true;
   }
 
+  if (acte.type === 'loi') {
+    // Une loi se juge sur ce qu'elle a fait au pays, pas sur son intention.
+    if (!vieux) return false;
+    let trouble = 0;
+    const villes = coloniesDe(w, faction);
+    for (const c of villes) trouble += c.unrest || 0;
+    const moyen = villes.length ? trouble / villes.length : 0;
+    if (moyen > 0.55) {
+      porterFaute(state, faction, 'un pays qui gronde depuis vos lois', log);
+    } else if (moyen < 0.2) {
+      porterMerite(state, faction, 'Le pays est calme, et vos lois y sont pour quelque chose.', 70, log);
+    }
+    return true;
+  }
+
   if (acte.type === 'guerre') {
     if (enGuerre(w, faction, acte.contre)) return false; // elle dure : on attend
     const maintenant = coloniesDe(w, faction).length;
@@ -7763,6 +8040,453 @@ function juger(state, faction, acte, log) {
   }
 
   return true;
+}
+
+// ===== src/justice.js ================================================
+// Ce qu'on fait des gens qu'on n'a pas tués.
+//
+// Le combat produisait déjà des mises hors de combat — la moitié des pillards
+// d'une bande finissent à terre, vivants. Ils disparaissaient ensuite du modèle
+// sans qu'on y pense : on ramassait leurs affaires et on repartait. C'est une
+// perte sèche, parce que c'est précisément là que le jeu touche à la société.
+// Un homme à terre pose une question qu'aucun butin ne pose : qu'est-ce qu'on
+// en fait ?
+//
+// Cinq réponses, et chacune coûte quelque chose :
+//
+//   Livrer     à la justice de la ville. Prime, et une piste plus sûre.
+//   Rançonner  aux siens, s'ils sont de quelqu'un et qu'on n'est pas en guerre.
+//   Vendre     là où la loi le permet. C'est le plus rentable, et ça se sait.
+//   Enrôler    quelqu'un qui n'a pas choisi de vous suivre.
+//   Relâcher   pour rien, ce qui n'est jamais pour rien.
+//
+// Ce qui borne le nombre de prisonniers n'est écrit nulle part : il faut des
+// bras pour les garder, ils mangent, ils ralentissent, et ceux qu'on ne
+// surveille pas s'en vont — parfois en emportant quelque chose.
+
+
+/** Combien de prisonniers une paire de bras surveille sans y penser. */
+const PAR_GARDIEN = 1.5;
+
+/** Ce qu'un prisonnier mange par heure, comparé à un des vôtres. */
+const RATION_PRISONNIER = 0.6;
+
+// ---------------------------------------------------------------------------
+// Capturer
+// ---------------------------------------------------------------------------
+
+function prisonniersDe(g) {
+  return (g && g.prisonniers) || [];
+}
+
+/** Combien l'escouade sait en garder, d'après ceux qui tiennent debout. */
+function capaciteGarde(g) {
+  let bras = 0;
+  for (const c of g.membres || []) {
+    if (!estDebout(c)) continue;
+    if ((c.formation && c.formation.restant > 0) || c.enseigne) continue;
+    bras++;
+  }
+  return bras * PAR_GARDIEN;
+}
+
+/** Ce qui dépasse ce qu'on sait garder. Rien ne l'interdit ; ça se paie. */
+function surveillanceManquante(g) {
+  return Math.max(0, prisonniersDe(g).length - capaciteGarde(g));
+}
+
+/**
+ * Ce que traîner des prisonniers retire à la vitesse. Comme pour l'attelage,
+ * une courbe qui tend vers l'immobilité sans jamais l'atteindre : dix
+ * prisonniers ne vous figent pas, ils vous réduisent au pas.
+ */
+function lenteurPrisonniers(g) {
+  const n = prisonniersDe(g).length;
+  if (!n) return 0;
+  const l = n * 0.05 + surveillanceManquante(g) * 0.06;
+  return 1 - 1 / (1 + l);
+}
+
+/**
+ * Ce qu'on peut prendre après une victoire. On ne capture pas les morts, on ne
+ * capture pas ce qu'on ne saurait pas garder, et on ne capture jamais l'Essaim
+ * — on ne négocie pas avec ça, et personne n'en veut.
+ */
+function capturables(g, bande) {
+  if (!bande || bande.faction === 'essaim') return [];
+  const place = Math.floor(capaciteGarde(g) - prisonniersDe(g).length);
+  if (place <= 0) return [];
+  return (bande.membres || [])
+    .filter((c) => estVivant(c) && !estDebout(c))
+    .slice(0, place);
+}
+
+/**
+ * Faire des prisonniers. Retourne ceux qu'on a effectivement pris — l'appelant
+ * les retire de la bande, qui n'existe de toute façon plus après le combat.
+ */
+function fairePrisonniers(state, g, bande, gens, log) {
+  if (!gens || !gens.length) return [];
+  if (!g.prisonniers) g.prisonniers = [];
+  const pris = [];
+  for (const c of gens) {
+    // Un prisonnier n'est plus un combattant : on le remet debout pour qu'il
+    // marche, mais amoché, et on note d'où il vient. Sans ça, on ne saurait
+    // plus à qui le rendre ni pour quoi le juger.
+    c.captif = {
+      faction: bande.faction || null,
+      depuis: state.temps,
+      // Ce qu'il a sur la conscience, aux yeux de la loi : c'est ce qui fixe
+      // la prime, et ce qui fait qu'un pillard vaut plus qu'un soldat.
+      brigandage: !bande.faction || bande.faction === 'bandits',
+    };
+    c.etat = 'ok';
+    for (const part of Object.keys(c.corps)) {
+      const b = c.corps[part];
+      if (b.pv <= 0) b.pv = Math.max(1, Math.round(b.max * 0.15));
+    }
+    g.prisonniers.push(c);
+    pris.push(c);
+  }
+  if (log && pris.length) {
+    log({
+      type: 'prisonnier',
+      texte: pris.length === 1
+        ? `${pris[0].nom} est fait prisonnier. Reste à savoir ce qu’on en fait.`
+        : `${pris.length} prisonniers. Reste à savoir ce qu’on en fait.`,
+      important: true,
+      groupe: g.id,
+    });
+  }
+  return pris;
+}
+
+// ---------------------------------------------------------------------------
+// Ce qu'ils coûtent, heure par heure
+// ---------------------------------------------------------------------------
+
+/**
+ * Une heure de captivité. Ils mangent sur vos vivres, et ceux que personne ne
+ * regarde finissent par partir. C'est ce qui borne leur nombre sans qu'aucune
+ * règle ne l'interdise.
+ */
+function tickPrisonniers(state, g, rng, log) {
+  const gens = prisonniersDe(g);
+  if (!gens.length) return;
+
+  // On les nourrit sur le sac. Affamés, ils s'affaiblissent — et un prisonnier
+  // mort ne vaut rien du tout.
+  const veut = gens.length * RATION_PRISONNIER / 24;
+  const dispo = g.inventaire.rations || 0;
+  const servi = Math.min(dispo, veut);
+  g.inventaire.rations = dispo - servi;
+  const nourri = veut <= 0 || servi >= veut * 0.9;
+
+  const manque = surveillanceManquante(g);
+  const restants = [];
+  for (const c of gens) {
+    if (!nourri) {
+      const t = c.corps.torse;
+      t.pv = Math.max(0, t.pv - 0.12);
+      if (t.pv <= 0) {
+        c.etat = 'mort';
+        if (log) {
+          log({
+            type: 'prisonnier',
+            texte: `${c.nom} meurt de faim, les mains liées. On ne se vantera pas de celle-là.`,
+            important: true,
+            groupe: g.id,
+          });
+        }
+        continue;
+      }
+    }
+    // S'évader : d'autant plus facile que personne ne regarde, et qu'on est
+    // rapide. Un prisonnier bien gardé ne s'évade pas — c'est le sens de
+    // « bien gardé ».
+    if (manque > 0) {
+      const part = manque / gens.length;
+      const chance = 0.004 * part * (1 + comp(c, 'furtivite') / 90);
+      if (rng.chance(chance)) {
+        if (log) {
+          log({
+            type: 'prisonnier',
+            texte: `${c.nom} a profité de ce que personne ne le regardait. Envolé.`,
+            important: true,
+            groupe: g.id,
+          });
+        }
+        continue;
+      }
+    }
+    restants.push(c);
+  }
+  g.prisonniers = restants;
+}
+
+// ---------------------------------------------------------------------------
+// Ce qu'on peut en faire
+// ---------------------------------------------------------------------------
+
+/** Ce qu'un prisonnier vaut, avant qu'on décide de son sort. */
+function valeurCaptif(c) {
+  const forme = Math.max(comp(c, 'melee'), comp(c, 'tir'));
+  return Math.round(70 + forme * 8 + (c.diplomes || []).length * 90);
+}
+
+/** La prime que la justice d'ici verse pour un brigand livré. */
+function primeLivraison(state, col, c) {
+  const loi = loiIci(state, col);
+  if (loi.sansLoi) return 0;
+  const cap = c.captif || {};
+  // On paie pour les brigands, et pour les ennemis déclarés. Livrer le soldat
+  // d'une faction avec qui l'on est en paix n'intéresse personne.
+  if (!cap.brigandage && !(cap.faction && enGuerre(state.world, col.faction, cap.faction))) {
+    return 0;
+  }
+  return Math.round(valeurCaptif(c) * 0.55 * loi.peine.prime);
+}
+
+/** Ce que les siens paieraient pour le récupérer. */
+function rancon(state, col, c) {
+  const cap = c.captif || {};
+  if (!cap.faction || cap.faction === 'bandits' || cap.faction === 'essaim') return 0;
+  if (enGuerre(state.world, cap.faction, col && col.faction)) return 0;
+  const f = state.world.factions[cap.faction];
+  if (!f) return 0;
+  return Math.min(Math.round(f.tresor * 0.15), Math.round(valeurCaptif(c) * 1.1));
+}
+
+/** Ce qu'un négrier en donne. Beaucoup, et c'est bien le problème. */
+function prixEsclave(state, col, c) {
+  const loi = loiIci(state, col);
+  if (!loi.esclavage) return 0;
+  // Une ville sans loi paie moins : le marché y est moins organisé qu'ailleurs.
+  return Math.round(valeurCaptif(c) * (loi.sansLoi ? 1.4 : 1.9));
+}
+
+/** Ce qu'on peut faire de ce prisonnier, ici, avec les prix. */
+function optionsPour(state, col, g, c) {
+  const out = [];
+  const prime = col ? primeLivraison(state, col, c) : 0;
+  const ranc = col ? rancon(state, col, c) : 0;
+  const esc = col ? prixEsclave(state, col, c) : 0;
+  if (prime > 0) {
+    out.push({
+      key: 'livrer', nom: 'Livrer à la justice', prix: prime,
+      aide: 'La ville l’enferme. Une piste de moins où l’on se fait détrousser.',
+    });
+  }
+  if (ranc > 0) {
+    out.push({
+      key: 'rancon', nom: 'Rançonner les siens', prix: ranc,
+      aide: 'Ils paient et le reprennent. On ne les fâche pas plus que ça.',
+    });
+  }
+  if (esc > 0) {
+    out.push({
+      key: 'vendre', nom: 'Vendre', prix: esc,
+      aide: 'C’est légal ici. Ce n’est pas pour ça que ça s’oublie.',
+    });
+  }
+  out.push({
+    key: 'enroler', nom: 'Enrôler', prix: 0,
+    aide: 'Il n’a pas choisi de vous suivre. Ça se verra.',
+  });
+  out.push({
+    key: 'relacher', nom: 'Relâcher', prix: 0,
+    aide: 'Pour rien. Ce qui n’est jamais tout à fait pour rien.',
+  });
+  return out;
+}
+
+function retirerCaptif(g, c) {
+  const i = prisonniersDe(g).findIndex((x) => x.id === c.id);
+  if (i >= 0) g.prisonniers.splice(i, 1);
+}
+
+function noterReputation(state, faction, delta) {
+  if (!faction || !FACTIONS[faction] || faction === 'bandits') return;
+  state.player.reputation[faction] = Math.max(-100, Math.min(100,
+    (state.player.reputation[faction] || 0) + delta));
+}
+
+/**
+ * Disposer d'un prisonnier. Toutes les issues passent par ici, parce que toutes
+ * ont un effet sur autre chose que la bourse — c'est ce qui en fait des choix.
+ */
+function disposer(state, g, captifId, quoi, log) {
+  const col = colonieDe(state.world, g.regionId);
+  const c = prisonniersDe(g).find((x) => x.id === captifId);
+  if (!c) return { ok: false, motif: 'Il n’est plus là.' };
+  const cap = c.captif || {};
+  const loi = loiIci(state, col);
+
+  if (quoi === 'relacher') {
+    retirerCaptif(g, c);
+    noterReputation(state, cap.faction, 4);
+    if (log) {
+      log({
+        type: 'prisonnier',
+        texte: `${c.nom} est relâché. Il ne dira pas merci, mais il s’en souviendra.`,
+        groupe: g.id,
+      });
+    }
+    return { ok: true, prix: 0 };
+  }
+
+  if (quoi === 'enroler') {
+    retirerCaptif(g, c);
+    delete c.captif;
+    // On n'enrôle pas quelqu'un de force sans que ça se voie : il arrive usé,
+    // sans attachement, et il faudra faire avec.
+    c.moral = Math.min(c.moral !== undefined ? c.moral : 50, 25);
+    c.liens = {};
+    g.membres.push(c);
+    if (log) {
+      log({
+        type: 'prisonnier',
+        texte: `${c.nom} accepte de porter un sac plutôt que des chaînes. Pour l’instant.`,
+        important: true,
+        groupe: g.id,
+      });
+    }
+    return { ok: true, prix: 0, perso: c };
+  }
+
+  if (!col || col.ruine) return { ok: false, motif: 'Il faut être en ville.' };
+
+  if (quoi === 'livrer') {
+    const prime = primeLivraison(state, col, c);
+    if (prime <= 0) return { ok: false, motif: 'La justice d’ici n’a rien à lui reprocher.' };
+    retirerCaptif(g, c);
+    state.player.credits += prime;
+    ecrouer(state, col, c, loi);
+    noterReputation(state, col.faction, 2);
+    noterReputation(state, cap.faction, -3);
+    // Livrer un brigand à la faction qu'on sert, c'est du service rendu — et
+    // c'est ce qui relie la geôle à la carrière.
+    if (g.allegeance && g.allegeance.faction === col.faction) {
+      crediter(state, 14 + Math.round(prime / 25), log, 'Brigand livré à la justice', g);
+    }
+    if (log) {
+      log({
+        type: 'prisonnier',
+        texte: `${c.nom} est livré à la justice de ${col.nom} (${prime} cr, peine ${loi.peine.nom.toLowerCase()}).`,
+        important: true,
+        regionId: col.regionId,
+        groupe: g.id,
+      });
+    }
+    return { ok: true, prix: prime };
+  }
+
+  if (quoi === 'rancon') {
+    const prix = rancon(state, col, c);
+    if (prix <= 0) return { ok: false, motif: 'Personne ne paiera pour lui.' };
+    retirerCaptif(g, c);
+    state.world.factions[cap.faction].tresor -= prix;
+    state.player.credits += prix;
+    // On rend un homme : c'est mieux vu que de le vendre, moins bien que de
+    // l'avoir laissé tranquille.
+    noterReputation(state, cap.faction, 3);
+    if (log) {
+      log({
+        type: 'prisonnier',
+        texte: `${FACTIONS[cap.faction].nom} rachète ${c.nom} pour ${prix} cr.`,
+        important: true,
+        regionId: col.regionId,
+        groupe: g.id,
+      });
+    }
+    return { ok: true, prix };
+  }
+
+  if (quoi === 'vendre') {
+    const prix = prixEsclave(state, col, c);
+    if (prix <= 0) return { ok: false, motif: 'On ne vend pas d’hommes ici.' };
+    retirerCaptif(g, c);
+    state.player.credits += prix;
+    // Ça se sait. Auprès des siens d'abord, et auprès de tous ceux qui l'ont
+    // interdit chez eux — ce qui donne son poids à la loi d'en face.
+    noterReputation(state, cap.faction, -14);
+    for (const k of DIPLO_FACTIONS) {
+      if (k === col.faction || k === cap.faction) continue;
+      if (!loisDe(state.world, k).esclavage) noterReputation(state, k, -4);
+    }
+    col.unrest = Math.min(1, (col.unrest || 0) + 0.02);
+    if (log) {
+      log({
+        type: 'prisonnier',
+        texte: `${c.nom} est vendu à ${col.nom} pour ${prix} cr. On vous a vu.`,
+        important: true,
+        regionId: col.regionId,
+        groupe: g.id,
+      });
+    }
+    return { ok: true, prix };
+  }
+
+  return { ok: false, motif: 'On ne fait pas ça.' };
+}
+
+// ---------------------------------------------------------------------------
+// La geôle
+// ---------------------------------------------------------------------------
+
+/** Ce qu'une ville tient enfermé. */
+function geoleDe(col) {
+  if (!col.geole) col.geole = { detenus: [], majA: 0 };
+  return col.geole;
+}
+
+/** Écrouer quelqu'un : il quitte le modèle des personnages, il devient un chiffre. */
+function ecrouer(state, col, c, loi) {
+  const geole = geoleDe(col);
+  // On ne garde pas la fiche complète : un détenu n'est plus un personnage
+  // jouable, c'est une bouche à nourrir et une durée. Garder l'objet entier,
+  // ce serait faire grossir la sauvegarde d'une ville à chaque arrestation.
+  geole.detenus.push({
+    nom: c.nom,
+    faction: (c.captif && c.captif.faction) || null,
+    sortie: state.temps + loi.peine.duree,
+  });
+}
+
+/**
+ * Une geôle pleine coûte à la ville et finit par gronder — mais tant qu'elle
+ * tient, elle tient aussi les routes : ce sont autant de gens qui ne
+ * détroussent personne.
+ */
+function tickGeole(state, col, dt) {
+  if (!col.geole || !col.geole.detenus.length) return;
+  const geole = col.geole;
+  const restants = [];
+  for (const d of geole.detenus) {
+    if (state.temps >= d.sortie) continue;
+    restants.push(d);
+  }
+  geole.detenus = restants;
+  const n = restants.length;
+  if (!n) return;
+  // On les nourrit sur le grenier de la ville. Une geôle qu'on ne nourrit pas
+  // se révolte, et une révolte de geôle est une révolte de ville.
+  const veut = n * 0.02 * dt;
+  const dispo = col.stock.rations || 0;
+  col.stock.rations = Math.max(0, dispo - veut);
+  if (dispo < veut) col.unrest = Math.min(1, (col.unrest || 0) + 0.004 * dt);
+  // Au-delà de ce qu'une ville de cette taille peut tenir, la geôle déborde.
+  const capacite = 4 + col.taille * 6;
+  if (n > capacite) col.unrest = Math.min(1, (col.unrest || 0) + 0.0015 * (n - capacite) * dt);
+}
+
+/** Ce que les geôles de la faction retirent à l'insécurité des environs. */
+function apaisementGeole(col) {
+  const n = col.geole ? col.geole.detenus.length : 0;
+  if (!n) return 0;
+  // Chaque détenu est quelqu'un qui ne coupe plus les routes. L'effet sature :
+  // vider la steppe de ses pillards ne la rend pas sûre pour autant.
+  return Math.min(0.0025, n * 0.00025);
 }
 
 // ===== src/secteur.js ================================================
@@ -7833,10 +8557,11 @@ const RAPPEL = 0.004;
  * Écrit naïvement — chaque case cherchant à chaque heure la ville la plus
  * proche parmi quatre-vingt-six — ce seul calcul faisait passer le tick de
  * 130 à 589 µs, quatre fois le budget. L'insécurité dérive de moins d'un
- * millième par heure : la relever une fois par demi-journée donne exactement
- * la même courbe pour un trentième du travail.
+ * millième par heure et son temps de retour au repos se compte en centaines :
+ * la relever une fois par jour donne la même courbe pour un soixantième du
+ * travail.
  */
-const PAS_INSECURITE = 12;
+const PAS_INSECURITE = 24;
 
 // ---------------------------------------------------------------------------
 // Le secteur lui-même
@@ -8003,7 +8728,12 @@ function tickInsecurite(state) {
   const ajouter = (i, v) => tenu.set(i, (tenu.get(i) || 0) + v);
   for (const col of w.colonies) {
     if (col.ruine) continue;
-    ajouter(col.regionId, col.defense * 0.00006 * (1 - (col.unrest || 0)));
+    // Les murs tiennent la ville ; la geôle tient les routes. Chaque détenu
+    // est quelqu'un qui ne détrousse plus personne, et c'est ce qui relie la
+    // justice au secteur.
+    const tient = col.defense * 0.00006 * (1 - (col.unrest || 0)) + apaisementGeole(col);
+    ajouter(col.regionId, tient);
+    for (const v of voisins(col.regionId)) ajouter(v, apaisementGeole(col) * 0.5);
   }
   for (const a of w.armees) ajouter(a.regionId, 0.006);
 
@@ -9254,7 +9984,11 @@ function combatContre(state, bande, log, ctx, groupe) {
       );
       if (enGuerreAvec) crediter(state, 28, log, 'Ennemi déclaré abattu');
     }
-    texte = `${bande.nom} mis en déroute à ${lieu} — ${ramasse} unités et ${b.credits} cr récupérés.`;
+    // Ceux qui sont à terre sans être morts. On ne les laisse plus s'évaporer :
+    // c'est la seule question du jeu à laquelle le butin ne répond pas.
+    const pris = fairePrisonniers(state, g, bande, capturables(g, bande), log);
+    texte = `${bande.nom} mis en déroute à ${lieu} — ${ramasse} unités et ${b.credits} cr récupérés`
+      + `${pris.length ? `, ${pris.length} prisonnier${pris.length > 1 ? 's' : ''}` : ''}.`;
   } else if (res.vainqueur === 'B') {
     texte = perdreCombat(state, bande, log, ctx, lieu, g);
   } else {
@@ -10173,6 +10907,9 @@ function avancerVoyage(state, g, log, ctx) {
   // Une bête suit le convoi ; une charrette le retient. C'est le prix du dos
   // qu'on s'est acheté.
   vitesse *= 1 - lenteurAttelage(g);
+  // Des hommes qu'on mène de force ne marchent pas au pas de ceux qui suivent
+  // de leur plein gré. C'est ce qui rend une capture coûteuse à ramener.
+  vitesse *= 1 - lenteurPrisonniers(g);
   vitesse = Math.max(0.15, vitesse);
 
   o.progres += vitesse;
@@ -10269,6 +11006,10 @@ function tickGroupe(state, g, log, ctx) {
   // L'attelage broute, maigrit, et finit parfois par rester sur le bord de la
   // piste. Il mange de la biomasse : celle que personne d'autre ne mange.
   tickBetes(g, rng, log);
+
+  // Les prisonniers mangent sur le sac, et ceux que personne ne regarde s'en
+  // vont. C'est ce qui borne leur nombre, à la place d'une règle qui l'interdit.
+  tickPrisonniers(state, g, rng, log);
 
   // --- Cohésion : un groupe au repos et bien nourri se ressoude, un groupe qui
   // enchaîne les défaites se délite. Le moral suit.
@@ -10625,6 +11366,8 @@ function normaliser(state) {
   // premier tick leur donne quelqu'un à leur tête.
   for (const k of Object.keys(w.factions || {})) {
     if (w.factions[k].dirigeant === undefined) w.factions[k].dirigeant = null;
+    // Avant les lois, une faction n'avait ni justice, ni impôt, ni interdit.
+    if (w.factions[k].lois === undefined) w.factions[k].lois = null;
     // Les consignes portées au conseil ont disparu avec les requêtes : un
     // gradé n'oriente plus une décision, il la prend.
     if (w.factions[k].consigne !== undefined) delete w.factions[k].consigne;
@@ -10645,6 +11388,8 @@ function normaliser(state) {
     // Avant le banc de recrutement, on tirait un inconnu au sort en payant
     // d'avance. Le premier passage en ville en garnit un.
     if (c.banc === undefined) c.banc = null;
+    // Avant la justice, une ville n'enfermait personne.
+    if (c.geole === undefined) c.geole = null;
     // Avant les services, ces gens n'attendaient rien et ne retenaient rien.
     for (const p2 of c.notables) {
       if (p2.demande === undefined) p2.demande = null;
@@ -10652,6 +11397,8 @@ function normaliser(state) {
     }
   }
   for (const g of p.groupes) {
+    // Avant la justice, on ne faisait pas de prisonniers.
+    if (!g.prisonniers) g.prisonniers = [];
     for (const c of g.membres) {
       if (!c.traits) c.traits = [];
       if (!c.liens) c.liens = {};
@@ -10987,6 +11734,9 @@ function tick(state) {
     // inventés pour rien dans chaque sauvegarde.
     if (present) bancDe(state, col, rng, state.temps);
     else if (col.banc) col.banc = null;
+    // La geôle : on nourrit les détenus, on relâche ceux qui ont fait leur
+    // temps, et une geôle qui déborde fait gronder la ville.
+    tickGeole(state, col, du);
     const ev = tickColonie(state.world, col, rng, climat, du, rep, log, state.temps, present);
     if (!ev) continue;
     if (ev.evenement === 'croissance') {
@@ -12340,6 +13090,49 @@ function blocMemorial() {
   </section>`;
 }
 
+/**
+ * Les prisonniers. C'est le seul écran du jeu où l'on décide de ce qu'on est :
+ * les cinq issues rapportent des choses différentes et se paient auprès de
+ * gens différents, et aucune n'est neutre.
+ */
+function blocPrisonniers() {
+  const g = G();
+  const gens = prisonniersDe(g);
+  if (!gens.length) return '';
+  const col = colonieDe(S.world, g.regionId);
+  const garde = capaciteGarde(g);
+  const manque = surveillanceManquante(g);
+  const loi = loiIci(S, col);
+  const lenteur = lenteurPrisonniers(g);
+  return `<section class="panneau">
+    <h2 class="titre">Prisonniers <span class="droite ${manque ? 'alerte' : ''}">${gens.length} / ${Math.floor(garde)}</span></h2>
+    <div class="aide">${manque > 0
+    ? `Vous n’en surveillez pas ${Math.ceil(manque)}. Ceux-là s’en iront, et pas les mains vides.`
+    : 'Tous sont tenus. Ils mangent sur le sac et ralentissent la colonne.'}
+      ${lenteur > 0.01 ? ` Marche −${Math.round(lenteur * 100)} %.` : ''}</div>
+    ${col && !col.ruine
+    ? `<div class="aide">${e(col.nom)} : justice ${e(loi.peine.nom.toLowerCase())}${
+      loi.esclavage ? ', et le commerce d’hommes y est légal' : ''}.</div>`
+    : '<div class="aide">Hors ville : on ne peut ni les livrer, ni les vendre, ni les rançonner.</div>'}
+    <div class="sep"></div>
+    ${gens.map((c) => {
+    const opts = optionsPour(S, col, g, c);
+    const cap = c.captif || {};
+    return `<details data-id="captif-${e(c.id)}" ${ouverts.has(`captif-${c.id}`) ? 'open' : ''}
+        style="border-bottom:1px solid #1b2029;padding:5px 0">
+        <summary class="ligne"><span class="k">${e(c.nom)}</span>
+          <span class="v">${e(cap.brigandage ? 'brigand'
+      : cap.faction ? FACTIONS[cap.faction].nom : 'inconnu')}</span></summary>
+        <div class="aide">${e(c.archetypeNom || '')} · ${Math.round(pvTotal(c).pct * 100)} % · 
+          ${e(apercu(c).skill)} ${apercu(c).comp}</div>
+        ${opts.map((o) => `<button class="act mini" style="margin-top:4px;text-align:left"
+          data-a="captif" data-c="${e(c.id)}" data-k="${o.key}">${e(o.nom)}${
+  o.prix ? ` — ${n(o.prix)} cr` : ''}<br><span class="aide">${e(o.aide)}</span></button>`).join('')}
+      </details>`;
+  }).join('')}
+  </section>`;
+}
+
 function ecranEscouade() {
   const p = S.player;
   const pol = p.politique;
@@ -12370,6 +13163,8 @@ function ecranEscouade() {
     ? 'Au-delà du noyau, on se connaît moins. Rien ne l’interdit : ça coûte, simplement.'
     : 'Une bande de cette taille peut se souder complètement.'}</div>
   </section>
+
+  ${blocPrisonniers()}
 
   <section class="panneau">
     <h2 class="titre">Posture</h2>
@@ -12783,6 +13578,9 @@ function cibleVide(k) {
     envoyer: 'Aucune colonne des vôtres n’est sur les routes.',
     lever: 'Rien à prendre : aucune ville ennemie à portée.',
     fonder: 'Pas une case libre assez près des vôtres, ni assez loin des autres.',
+    garnison: 'Aucune ville ne vous est confiée — il faut un secteur.',
+    grenier: 'Aucune ville ne vous est confiée — il faut un secteur.',
+    loi: 'La loi est déjà celle que vous vouliez.',
     guerre: 'Vous êtes déjà en guerre avec tout le monde qui compte.',
     paix: 'Vous n’êtes en guerre avec personne.',
   }[k] || '—';
@@ -12824,6 +13622,33 @@ function ciblesCharge(faction, k) {
       val: String(r.i),
       texte: `Poste en ${nomRegion(w, r.i)} — ${n(COUT_POSTE)} cr`,
     }));
+  }
+  if (k === 'garnison' || k === 'grenier') {
+    const col = villeConfiee(S, faction);
+    if (!col) return [];
+    const cout = k === 'garnison' ? COUT_GARNISON : COUT_GRENIER;
+    return [{
+      val: col.id,
+      texte: k === 'garnison'
+        ? `Relever les murs de ${col.nom} (${col.murs} murs) — ${n(cout)} cr`
+        : `Nourrir ${col.nom} (grogne ${Math.round((col.unrest || 0) * 100)} %) — ${n(cout)} cr`,
+    }];
+  }
+  if (k === 'loi') {
+    const lois = loisDe(w, faction);
+    const out = [];
+    for (const key of PEINE_KEYS) {
+      if (lois.peine === key) continue;
+      out.push({ val: `peine:${key}`, texte: `Justice ${PEINES[key].nom.toLowerCase()} — ${PEINES[key].desc}` });
+    }
+    for (const imp of IMPOTS) {
+      if (lois.impot === imp.taux) continue;
+      out.push({ val: `impot:${imp.key}`, texte: `Impôt ${imp.nom.toLowerCase()} (${Math.round(imp.taux * 100)} %) — ${imp.desc}` });
+    }
+    out.push(lois.esclavage
+      ? { val: 'esclavage:non', texte: 'Interdire le commerce d’hommes' }
+      : { val: 'esclavage:oui', texte: 'Autoriser le commerce d’hommes' });
+    return out;
   }
   if (k === 'guerre') {
     return cibleGuerre(S, faction).map((f) => ({
@@ -14026,6 +14851,9 @@ function surClic(ev) {
       let r;
       switch (el.dataset.r) {
         case 'envoyer': r = ACTIONS.envoyerColonne(f, cible, el.dataset.b); break;
+        case 'garnison': r = ACTIONS.garnison(f); break;
+        case 'grenier': r = ACTIONS.grenier(f); break;
+        case 'loi': r = ACTIONS.fixerLoi(f, cible); break;
         case 'lever': r = ACTIONS.leverColonne(f, null, cible); break;
         case 'fonder': r = ACTIONS.fonderPoste(f, cible); break;
         case 'guerre': r = ACTIONS.declarerGuerre(f, cible); break;
@@ -14033,6 +14861,15 @@ function surClic(ev) {
         default: r = { ok: false, motif: 'Ordre inconnu.' };
       }
       toast(r.ok ? 'C’est fait. On exécute.' : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
+    case 'captif': {
+      const r = ACTIONS.disposerPrisonnier(el.dataset.c, el.dataset.k);
+      toast(r.ok
+        ? (r.prix ? `C’est réglé. ${r.prix} cr.` : 'C’est réglé.')
+        : r.motif, !r.ok);
       rafraichir(true);
       break;
     }
@@ -14254,6 +15091,36 @@ const API = {
   /** Signer la paix, quoi qu'en pense le conseil. */
   signerPaix(faction, contre) {
     const r = signerPaixAvec(state, faction, contre, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Relever les murs de la ville dont on répond. */
+  garnison(faction) {
+    const r = renforcerGarnison(state, faction, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Ouvrir les greniers de la ville dont on répond. */
+  grenier(faction) {
+    const r = ouvrirGreniers(state, faction, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Promulguer. Le paramètre porte « quoi:valeur » : peine:ferme, impot:lourd… */
+  fixerLoi(faction, spec) {
+    const [quoi, brut] = String(spec).split(':');
+    const valeur = quoi === 'esclavage' ? brut === 'oui' : brut;
+    const r = fixerLoiA(state, faction, quoi, valeur, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Décider du sort d'un prisonnier : livrer, rançonner, vendre, enrôler, relâcher. */
+  disposerPrisonnier(captifId, quoi) {
+    const r = disposer(state, groupeActif(state), captifId, quoi, creerLogger(state));
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },

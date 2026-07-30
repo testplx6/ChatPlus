@@ -26,6 +26,7 @@ import {
 import { rangDe } from './allegeance.js';
 import { porterFaute, porterMerite } from './influence.js';
 import { estVivant } from './characters.js';
+import { apaisementGeole } from './justice.js';
 
 /** Rayon du secteur confié. Treize cases : de quoi faire une tournée. */
 export const RAYON_SECTEUR = 2;
@@ -72,10 +73,11 @@ const RAPPEL = 0.004;
  * Écrit naïvement — chaque case cherchant à chaque heure la ville la plus
  * proche parmi quatre-vingt-six — ce seul calcul faisait passer le tick de
  * 130 à 589 µs, quatre fois le budget. L'insécurité dérive de moins d'un
- * millième par heure : la relever une fois par demi-journée donne exactement
- * la même courbe pour un trentième du travail.
+ * millième par heure et son temps de retour au repos se compte en centaines :
+ * la relever une fois par jour donne la même courbe pour un soixantième du
+ * travail.
  */
-const PAS_INSECURITE = 12;
+const PAS_INSECURITE = 24;
 
 // ---------------------------------------------------------------------------
 // Le secteur lui-même
@@ -242,7 +244,12 @@ export function tickInsecurite(state) {
   const ajouter = (i, v) => tenu.set(i, (tenu.get(i) || 0) + v);
   for (const col of w.colonies) {
     if (col.ruine) continue;
-    ajouter(col.regionId, col.defense * 0.00006 * (1 - (col.unrest || 0)));
+    // Les murs tiennent la ville ; la geôle tient les routes. Chaque détenu
+    // est quelqu'un qui ne détrousse plus personne, et c'est ce qui relie la
+    // justice au secteur.
+    const tient = col.defense * 0.00006 * (1 - (col.unrest || 0)) + apaisementGeole(col);
+    ajouter(col.regionId, tient);
+    for (const v of voisins(col.regionId)) ajouter(v, apaisementGeole(col) * 0.5);
   }
   for (const a of w.armees) ajouter(a.regionId, 0.006);
 

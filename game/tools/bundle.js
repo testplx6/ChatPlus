@@ -24,6 +24,8 @@ const MODULES = [
   'rng.js',
   'data.js',
   'climat.js',
+  // Feuille : lue par le conseil comme par la justice, elle ne dépend de rien.
+  'lois.js',
   'world.js',
   'characters.js',
   'notables.js',
@@ -42,8 +44,10 @@ const MODULES = [
   // Les prérogatives d'un gradé s'exercent sur ce que factions.js sait faire :
   // lever, fonder, déclarer, signer. Elle vient donc après lui.
   'influence.js',
-  // Ce dont un gradé répond tous les jours : il juge via influence.js, et
-  // events.js lit son insécurité pour peupler les pistes.
+  // Ce qu'on fait des gens qu'on n'a pas tués, et les lois qui l'encadrent.
+  'justice.js',
+  // Ce dont un gradé répond tous les jours : il juge via influence.js, lit les
+  // geôles de justice.js, et events.js lit son insécurité en retour.
   'secteur.js',
   'base.js',
   'contrats.js',

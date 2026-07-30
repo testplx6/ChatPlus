@@ -26,6 +26,7 @@ import { bancDe } from './recrues.js';
 import { tickAllegeance, palierBonus } from './allegeance.js';
 import { jugerActes, tickCharges } from './influence.js';
 import { tickSecteurs } from './secteur.js';
+import { tickGeole } from './justice.js';
 
 /** Durée réelle d'une heure de jeu, à vitesse ×1. */
 export const TICK_MS = 10000;
@@ -267,6 +268,9 @@ export function tick(state) {
     // inventés pour rien dans chaque sauvegarde.
     if (present) bancDe(state, col, rng, state.temps);
     else if (col.banc) col.banc = null;
+    // La geôle : on nourrit les détenus, on relâche ceux qui ont fait leur
+    // temps, et une geôle qui déborde fait gronder la ville.
+    tickGeole(state, col, du);
     const ev = tickColonie(state.world, col, rng, climat, du, rep, log, state.temps, present);
     if (!ev) continue;
     if (ev.evenement === 'croissance') {

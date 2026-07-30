@@ -370,9 +370,64 @@ Ce que ça donne, sur quarante-huit parties de quatre mille heures :
 
 Le carriériste existe enfin comme voie jouable, et il ne coûte rien aux deux
 autres — il les sert, même : des pistes tenues, ce sont des convois qui
-arrivent. Reste à faire, dans cet ordre : la ville confiée au Capitaine (ordre
-public, garnison, prison), la justice et l'esclavage comme lois qu'un Commandeur
-fixe, et l'impôt.
+arrivent.
+
+### Ce qu'on fait des gens qu'on n'a pas tués
+
+Le combat produisait déjà des mises hors de combat : la moitié des pillards
+d'une bande finissent à terre, vivants. Ils disparaissaient ensuite du modèle
+sans qu'on y pense. C'est une perte sèche, parce que c'est précisément là que le
+jeu touche à la société — un homme à terre pose une question qu'aucun butin ne
+pose.
+
+**Cinq réponses, et chacune coûte quelque chose.**
+
+    Livrer     à la justice de la ville. Prime, et une piste plus sûre.
+    Rançonner  aux siens, s'ils sont de quelqu'un et qu'on n'est pas en guerre.
+    Vendre     là où la loi le permet. C'est le plus rentable, et ça se sait.
+    Enrôler    quelqu'un qui n'a pas choisi de vous suivre — il arrive à 25 de moral.
+    Relâcher   pour rien, ce qui n'est jamais tout à fait pour rien.
+
+Rien ne limite le nombre de prisonniers, comme rien ne limite les bêtes ou
+l'effectif : il faut des bras pour les garder (un bras et demi par prisonnier),
+ils mangent sur le sac, ils ralentissent la colonne, et **ceux que personne ne
+surveille finissent par s'en aller**. Vendre un homme se retient auprès des
+siens (−14 de réputation) *et* auprès de toutes les factions qui l'ont interdit
+chez elles — ce qui donne son poids à la loi d'en face.
+
+Livré, il entre dans la geôle de la ville. Une geôle nourrit ses détenus sur le
+grenier, gronde quand elle déborde, et **tient les routes tant qu'elle tient**
+— chaque détenu est quelqu'un qui ne détrousse plus personne, et l'insécurité
+du secteur le sent. C'est ce qui relie la justice à la carrière : livrer un
+brigand à la faction qu'on sert est du service rendu.
+
+### La ville et la loi
+
+Le Capitaine répond de la ville au centre de son secteur : il en relève les murs
+et en ouvre les greniers sur le trésor de la faction. Le Commandeur, lui, fixe
+la loi — pour tout le pays, d'un trait de plume, comme le reste :
+
+- **la peine** — clémente, ferme ou expéditive. L'expéditive paie mieux les
+  chasseurs de primes et vide les geôles vite ; la clémente les garde vides
+  autrement ;
+- **l'esclavage** — autorisé ou non. Autoriser fait grimper la grogne des villes
+  de 6 points d'un coup, et ouvre un marché qui paie deux fois la justice ;
+- **l'impôt** — de 3 à 15 %. Il décide de ce que le trésor pourra payer, donc de
+  ce qu'un officier pourra ordonner. Au-delà de l'ordinaire il fait gronder, et
+  **en cube** : doubler le taux fait bien plus que doubler la grogne.
+
+Une loi se juge comme tout le reste : huit cents heures plus tard, sur ce
+qu'elle a fait au pays. Un pays calme est porté à votre crédit, un pays qui
+gronde à votre charge.
+
+Sur quarante-huit parties de quatre mille heures : **huit prisonniers pris,
+sept livrés ou rançonnés pour 767 crédits**, et les crédits moyens passent de
+2 006 à 2 530. Le bot ne vend personne — c'est un choix de jeu, pas une
+optimisation, et le banc doit mesurer la voie honnête avant l'autre.
+
+Ce qui manque encore : les factions ne légifèrent pas d'elles-mêmes. Seul le
+joueur devenu Commandeur écrit la loi ; les conseils s'en tiennent à la règle
+par défaut. C'est un trou connu, pas un oubli.
 
 ### Ni le nombre de colonnes, ni la prime d'engagement
 

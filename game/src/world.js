@@ -180,6 +180,8 @@ function genererColonies(rng, regions) {
       // voir recrues.js. La clé existe dès la création, sinon `normaliser`
       // l'ajoute au rechargement et l'aller-retour JSON n'est plus exact.
       banc: null,
+      // Qui la ville tient enfermé. Voir justice.js.
+      geole: null,
       marche: 1 + taille * 0.35,
       prises: 0,
     };
@@ -205,6 +207,8 @@ function attribuerFactions(rng, regions, colonies) {
       capitale: null,
       humeur: 0,
       prochainConseil: rng.irange(6, 40),
+      // Peine, esclavage, impôt : ce qu'un Commandeur peut fixer. Voir justice.js.
+      lois: null,
     };
   }
   factions.essaim = {
@@ -217,6 +221,7 @@ function attribuerFactions(rng, regions, colonies) {
     capitale: null,
     humeur: 0,
     prochainConseil: rng.irange(12, 60),
+    lois: null,
   };
 
   // Relations initiales, symétriques (−100 guerre ouverte, +100 alliance)

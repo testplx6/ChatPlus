@@ -49,13 +49,18 @@ import { CHARGES, CARACTERES, margeMarchand, vocation } from './notables.js';
 import { demandesIci, souvenirs, faveurChef, SOINS_SEUIL, REGISTRES_SEUIL } from './services.js';
 import { primeDe, apercu, tensionRecrutement } from './recrues.js';
 import {
+  prisonniersDe, capaciteGarde, surveillanceManquante, optionsPour,
+  lenteurPrisonniers, geoleDe,
+} from './justice.js';
+import { PEINES, PEINE_KEYS, IMPOTS, loisDe, loiIci } from './lois.js';
+import {
   resumeSecteur, casesDe, dansSonSecteur, motEtat, NIVEAU_ORDINAIRE,
   SEUIL_FAUTE, SEUIL_MERITE, RANG_SECTEUR,
 } from './secteur.js';
 import {
   PREROGATIVES, PREROGATIVE_KEYS, peutExercer, credit as creditInfluence,
   colonnesDe, sitesFondation, cibleGuerre, guerresArretables, coutLevee,
-  COUT_POSTE, FORCE_LEVEE,
+  COUT_POSTE, FORCE_LEVEE, COUT_GARNISON, COUT_GRENIER, villeConfiee,
 } from './influence.js';
 import {
   BETES, BETE_KEYS, betesDe, prixBete, portageAttelage, lenteurAttelage,
@@ -1243,6 +1248,49 @@ function blocMemorial() {
   </section>`;
 }
 
+/**
+ * Les prisonniers. C'est le seul écran du jeu où l'on décide de ce qu'on est :
+ * les cinq issues rapportent des choses différentes et se paient auprès de
+ * gens différents, et aucune n'est neutre.
+ */
+function blocPrisonniers() {
+  const g = G();
+  const gens = prisonniersDe(g);
+  if (!gens.length) return '';
+  const col = colonieDe(S.world, g.regionId);
+  const garde = capaciteGarde(g);
+  const manque = surveillanceManquante(g);
+  const loi = loiIci(S, col);
+  const lenteur = lenteurPrisonniers(g);
+  return `<section class="panneau">
+    <h2 class="titre">Prisonniers <span class="droite ${manque ? 'alerte' : ''}">${gens.length} / ${Math.floor(garde)}</span></h2>
+    <div class="aide">${manque > 0
+    ? `Vous n’en surveillez pas ${Math.ceil(manque)}. Ceux-là s’en iront, et pas les mains vides.`
+    : 'Tous sont tenus. Ils mangent sur le sac et ralentissent la colonne.'}
+      ${lenteur > 0.01 ? ` Marche −${Math.round(lenteur * 100)} %.` : ''}</div>
+    ${col && !col.ruine
+    ? `<div class="aide">${e(col.nom)} : justice ${e(loi.peine.nom.toLowerCase())}${
+      loi.esclavage ? ', et le commerce d’hommes y est légal' : ''}.</div>`
+    : '<div class="aide">Hors ville : on ne peut ni les livrer, ni les vendre, ni les rançonner.</div>'}
+    <div class="sep"></div>
+    ${gens.map((c) => {
+    const opts = optionsPour(S, col, g, c);
+    const cap = c.captif || {};
+    return `<details data-id="captif-${e(c.id)}" ${ouverts.has(`captif-${c.id}`) ? 'open' : ''}
+        style="border-bottom:1px solid #1b2029;padding:5px 0">
+        <summary class="ligne"><span class="k">${e(c.nom)}</span>
+          <span class="v">${e(cap.brigandage ? 'brigand'
+      : cap.faction ? FACTIONS[cap.faction].nom : 'inconnu')}</span></summary>
+        <div class="aide">${e(c.archetypeNom || '')} · ${Math.round(pvTotal(c).pct * 100)} % · 
+          ${e(apercu(c).skill)} ${apercu(c).comp}</div>
+        ${opts.map((o) => `<button class="act mini" style="margin-top:4px;text-align:left"
+          data-a="captif" data-c="${e(c.id)}" data-k="${o.key}">${e(o.nom)}${
+  o.prix ? ` — ${n(o.prix)} cr` : ''}<br><span class="aide">${e(o.aide)}</span></button>`).join('')}
+      </details>`;
+  }).join('')}
+  </section>`;
+}
+
 function ecranEscouade() {
   const p = S.player;
   const pol = p.politique;
@@ -1273,6 +1321,8 @@ function ecranEscouade() {
     ? 'Au-delà du noyau, on se connaît moins. Rien ne l’interdit : ça coûte, simplement.'
     : 'Une bande de cette taille peut se souder complètement.'}</div>
   </section>
+
+  ${blocPrisonniers()}
 
   <section class="panneau">
     <h2 class="titre">Posture</h2>
@@ -1686,6 +1736,9 @@ function cibleVide(k) {
     envoyer: 'Aucune colonne des vôtres n’est sur les routes.',
     lever: 'Rien à prendre : aucune ville ennemie à portée.',
     fonder: 'Pas une case libre assez près des vôtres, ni assez loin des autres.',
+    garnison: 'Aucune ville ne vous est confiée — il faut un secteur.',
+    grenier: 'Aucune ville ne vous est confiée — il faut un secteur.',
+    loi: 'La loi est déjà celle que vous vouliez.',
     guerre: 'Vous êtes déjà en guerre avec tout le monde qui compte.',
     paix: 'Vous n’êtes en guerre avec personne.',
   }[k] || '—';
@@ -1727,6 +1780,33 @@ function ciblesCharge(faction, k) {
       val: String(r.i),
       texte: `Poste en ${nomRegion(w, r.i)} — ${n(COUT_POSTE)} cr`,
     }));
+  }
+  if (k === 'garnison' || k === 'grenier') {
+    const col = villeConfiee(S, faction);
+    if (!col) return [];
+    const cout = k === 'garnison' ? COUT_GARNISON : COUT_GRENIER;
+    return [{
+      val: col.id,
+      texte: k === 'garnison'
+        ? `Relever les murs de ${col.nom} (${col.murs} murs) — ${n(cout)} cr`
+        : `Nourrir ${col.nom} (grogne ${Math.round((col.unrest || 0) * 100)} %) — ${n(cout)} cr`,
+    }];
+  }
+  if (k === 'loi') {
+    const lois = loisDe(w, faction);
+    const out = [];
+    for (const key of PEINE_KEYS) {
+      if (lois.peine === key) continue;
+      out.push({ val: `peine:${key}`, texte: `Justice ${PEINES[key].nom.toLowerCase()} — ${PEINES[key].desc}` });
+    }
+    for (const imp of IMPOTS) {
+      if (lois.impot === imp.taux) continue;
+      out.push({ val: `impot:${imp.key}`, texte: `Impôt ${imp.nom.toLowerCase()} (${Math.round(imp.taux * 100)} %) — ${imp.desc}` });
+    }
+    out.push(lois.esclavage
+      ? { val: 'esclavage:non', texte: 'Interdire le commerce d’hommes' }
+      : { val: 'esclavage:oui', texte: 'Autoriser le commerce d’hommes' });
+    return out;
   }
   if (k === 'guerre') {
     return cibleGuerre(S, faction).map((f) => ({
@@ -2929,6 +3009,9 @@ function surClic(ev) {
       let r;
       switch (el.dataset.r) {
         case 'envoyer': r = ACTIONS.envoyerColonne(f, cible, el.dataset.b); break;
+        case 'garnison': r = ACTIONS.garnison(f); break;
+        case 'grenier': r = ACTIONS.grenier(f); break;
+        case 'loi': r = ACTIONS.fixerLoi(f, cible); break;
         case 'lever': r = ACTIONS.leverColonne(f, null, cible); break;
         case 'fonder': r = ACTIONS.fonderPoste(f, cible); break;
         case 'guerre': r = ACTIONS.declarerGuerre(f, cible); break;
@@ -2936,6 +3019,15 @@ function surClic(ev) {
         default: r = { ok: false, motif: 'Ordre inconnu.' };
       }
       toast(r.ok ? 'C’est fait. On exécute.' : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
+    case 'captif': {
+      const r = ACTIONS.disposerPrisonnier(el.dataset.c, el.dataset.k);
+      toast(r.ok
+        ? (r.prix ? `C’est réglé. ${r.prix} cr.` : 'C’est réglé.')
+        : r.motif, !r.ok);
       rafraichir(true);
       break;
     }

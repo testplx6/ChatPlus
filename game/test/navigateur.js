@@ -17,6 +17,9 @@ import { serialiser } from '../src/save.js';
 import { groupeActif } from '../src/groupes.js';
 import { ecolesDe } from '../src/formation.js';
 import { confierSecteur } from '../src/secteur.js';
+import { capturables, fairePrisonniers } from '../src/justice.js';
+import { genererBande } from '../src/combat.js';
+import { Rng } from '../src/rng.js';
 
 const RACINE = resolve(new URL('..', import.meta.url).pathname);
 const CAPTURES = join(RACINE, 'captures');
@@ -577,6 +580,48 @@ const ouEstLEngagement = await page.evaluate(() => {
 ok(ouEstLEngagement.colonne && ouEstLEngagement.joueur,
   'l’engagement appartient à la colonne, plus au joueur',
   JSON.stringify(ouEstLEngagement));
+
+// Les prisonniers : le seul écran où l'on décide de ce qu'on est.
+const captifs = partieAvancee();
+const gCap = groupeActif(captifs);
+const villeCap = captifs.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
+gCap.regionId = villeCap.regionId;
+const bandeCap = genererBande(new Rng(4242), 'bandits', 3, 1);
+for (const c of bandeCap.membres) { c.etat = 'ko'; c.corps.torse.pv = 0; }
+fairePrisonniers(captifs, gCap, bandeCap, capturables(gCap, bandeCap), () => {});
+captifs.dernierReel = Date.now();
+await page.reload({ waitUntil: 'networkidle' });
+await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(captifs));
+await page.click('[data-a="continuer"]');
+await page.waitForSelector('#carte');
+await page.click('[data-a="onglet"][data-k="escouade"]');
+await page.waitForTimeout(500);
+const texteCap = await page.evaluate(() => document.querySelector('#ecran').textContent);
+ok(/PRISONNIERS/i.test(texteCap), 'les prisonniers ont leur panneau');
+ok(await page.locator('[data-a="captif"]').count() >= 2,
+  'et plusieurs sorties leur sont proposées, pas une seule');
+await page.screenshot({ path: join(CAPTURES, '26-prisonniers.png'), fullPage: true });
+
+const crAvantCap = await page.evaluate(
+  () => JSON.parse(localStorage.getItem('cendres.save.v1')).player.credits
+);
+await page.evaluate(() => {
+  const d = document.querySelector('details[data-id^="captif-"]');
+  if (d) d.open = true;
+});
+await page.waitForTimeout(200);
+const livrable = page.locator('[data-a="captif"][data-k="livrer"]').first();
+if (await livrable.count()) {
+  await livrable.click();
+  await page.waitForTimeout(500);
+  const apresCap = await page.evaluate(() => {
+    const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const col = s2.world.colonies.find((c) => c.geole && c.geole.detenus.length);
+    return { cr: s2.player.credits, geole: col ? col.geole.detenus.length : 0 };
+  });
+  ok(apresCap.cr > crAvantCap, 'livrer un brigand paie', `${crAvantCap} → ${apresCap.cr}`);
+  ok(apresCap.geole > 0, 'et la geôle de la ville se remplit');
+}
 
 console.log('\n8 quindecies. Camper sur une ville morte');
 // Une ville effondrée perd son drapeau : `faction` repasse à null. L'écran de

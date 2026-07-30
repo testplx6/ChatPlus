@@ -28,6 +28,7 @@ import {
   declarerGuerre, signerPaix, fonderColonie, guerresDe, enGuerre, coloniesDe,
 } from './factions.js';
 import { colonieParId, distance, chemin } from './world.js';
+import { loisDe, PEINES, IMPOTS } from './lois.js';
 
 /**
  * Ce que chaque charge permet. `rang` est l'indice minimal dans RANGS.
@@ -53,6 +54,18 @@ export const PREROGATIVES = {
     rang: 3,
     charge: 'Un poste qui s’effondre est un poste que vous avez voulu.',
   },
+  garnison: {
+    nom: 'Renforcer la garnison',
+    desc: 'Payer des hommes et des murs pour la ville dont vous répondez.',
+    rang: 3,
+    charge: 'Le trésor est celui de vos gens ; la ville est la vôtre.',
+  },
+  grenier: {
+    nom: 'Ouvrir les greniers',
+    desc: 'Faire acheter du grain pour votre ville. Une ville qui mange se tait.',
+    rang: 3,
+    charge: 'Nourrir aujourd’hui ce qu’on n’a pas produit hier se paie demain.',
+  },
   guerre: {
     nom: 'Déclarer la guerre',
     desc: 'Engager la faction contre une autre, sur-le-champ.',
@@ -64,6 +77,12 @@ export const PREROGATIVES = {
     desc: 'Mettre fin aux hostilités, quoi qu’en pense le conseil.',
     rang: 4,
     charge: 'Une paix qui rend une ville se retient longtemps.',
+  },
+  loi: {
+    nom: 'Fixer la loi',
+    desc: 'La sévérité des peines, l’esclavage, l’impôt. Pour toute la faction.',
+    rang: 4,
+    charge: 'Une loi s’applique aussi à ceux qui l’ont votée.',
   },
 };
 
@@ -450,6 +469,134 @@ function etatGuerre(world, g, faction) {
 }
 
 // ---------------------------------------------------------------------------
+// La ville confiée
+// ---------------------------------------------------------------------------
+
+/** Ce que coûte un cran de garnison, et ce qu'il rapporte en défense. */
+export const COUT_GARNISON = 700;
+export const COUT_GRENIER = 500;
+
+/** La ville dont on répond : celle qui est au centre de son secteur. */
+export function villeConfiee(state, faction) {
+  for (const g of groupesEngages(state, faction)) {
+    const s = g.allegeance.secteur;
+    if (s && s.ville) {
+      const col = colonieParId(state.world, s.ville);
+      if (col && !col.ruine && col.faction === faction) return col;
+    }
+  }
+  return null;
+}
+
+/**
+ * Renforcer la garnison. Un Capitaine ne demande pas des murs : il les fait
+ * payer. Ce qu'il ne peut pas faire, c'est les payer indéfiniment — le trésor
+ * est celui de ses gens, et le conseil relit les comptes.
+ */
+export function renforcerGarnison(state, faction, log) {
+  const v = peutExercer(state, faction, 'garnison');
+  if (!v.ok) return v;
+  const col = villeConfiee(state, faction);
+  if (!col) return { ok: false, motif: 'Aucune ville ne vous est confiée.' };
+  const f = state.world.factions[faction];
+  if (f.tresor < COUT_GARNISON) {
+    return { ok: false, motif: `Le trésor ne suit pas : ${Math.round(f.tresor)} / ${COUT_GARNISON} cr.` };
+  }
+  f.tresor -= COUT_GARNISON;
+  col.murs += 2;
+  col.defenseMax = Math.round(col.pop * 0.09 + col.murs * 12);
+  col.defense = Math.min(col.defenseMax, col.defense + Math.round(col.defenseMax * 0.3));
+  if (log) {
+    log({
+      type: 'influence',
+      texte: `Sur votre ordre, on relève les murs de ${col.nom} (${COUT_GARNISON} cr).`,
+      important: true,
+      regionId: col.regionId,
+      factions: [faction],
+    });
+  }
+  return { ok: true, colonie: col };
+}
+
+/** Ouvrir les greniers : la ville mange, la ville se tait. Un temps. */
+export function ouvrirGreniers(state, faction, log) {
+  const v = peutExercer(state, faction, 'grenier');
+  if (!v.ok) return v;
+  const col = villeConfiee(state, faction);
+  if (!col) return { ok: false, motif: 'Aucune ville ne vous est confiée.' };
+  const f = state.world.factions[faction];
+  if (f.tresor < COUT_GRENIER) {
+    return { ok: false, motif: `Le trésor ne suit pas : ${Math.round(f.tresor)} / ${COUT_GRENIER} cr.` };
+  }
+  f.tresor -= COUT_GRENIER;
+  col.stock.rations = (col.stock.rations || 0) + Math.round(col.pop * 0.9);
+  col.unrest = Math.max(0, (col.unrest || 0) - 0.18);
+  if (log) {
+    log({
+      type: 'influence',
+      texte: `Sur votre ordre, ${col.nom} distribue du grain (${COUT_GRENIER} cr). On se tait, pour l’instant.`,
+      important: true,
+      regionId: col.regionId,
+      factions: [faction],
+    });
+  }
+  return { ok: true, colonie: col };
+}
+
+// ---------------------------------------------------------------------------
+// La loi
+// ---------------------------------------------------------------------------
+
+/**
+ * Fixer la loi. Un Commandeur ne propose pas une réforme : il la promulgue.
+ * Ce qu'il ne contrôle pas, c'est ce que le pays en fait — l'impôt lourd
+ * remplit le trésor et fait gronder les villes, la peine expéditive tient les
+ * routes et fait peur, l'esclavage enrichit et fait de vous ce qu'on dit.
+ */
+export function fixerLoi(state, faction, quoi, valeur, log) {
+  const v = peutExercer(state, faction, 'loi');
+  if (!v.ok) return v;
+  const lois = loisDe(state.world, faction);
+  let texte = null;
+  if (quoi === 'peine') {
+    if (!PEINES[valeur]) return { ok: false, motif: 'Cette peine n’existe pas.' };
+    if (lois.peine === valeur) return { ok: false, motif: 'C’est déjà la loi.' };
+    lois.peine = valeur;
+    texte = `Justice ${PEINES[valeur].nom.toLowerCase()} : ${PEINES[valeur].desc}`;
+  } else if (quoi === 'esclavage') {
+    const veut = !!valeur;
+    if (lois.esclavage === veut) return { ok: false, motif: 'C’est déjà la loi.' };
+    lois.esclavage = veut;
+    texte = veut
+      ? 'Le commerce d’hommes est autorisé. Les marchés s’ouvriront vite.'
+      : 'Le commerce d’hommes est interdit. Les marchés fermeront lentement.';
+    // Ce n'est pas une décision technique : on est jugé dessus, par les autres
+    // factions et par ses propres villes.
+    for (const col of coloniesDe(state.world, faction)) {
+      col.unrest = Math.max(0, Math.min(1, (col.unrest || 0) + (veut ? 0.06 : -0.03)));
+    }
+  } else if (quoi === 'impot') {
+    const taux = IMPOTS.find((x) => x.key === valeur);
+    if (!taux) return { ok: false, motif: 'Ce taux n’existe pas.' };
+    if (lois.impot === taux.taux) return { ok: false, motif: 'C’est déjà la loi.' };
+    lois.impot = taux.taux;
+    texte = `Impôt ${taux.nom.toLowerCase()} : ${taux.desc}`;
+  } else {
+    return { ok: false, motif: 'On ne légifère pas là-dessus.' };
+  }
+  inscrireActe(state, faction, { type: 'loi', quoi, t: state.temps });
+  if (log) {
+    log({
+      type: 'influence',
+      texte: `${FACTIONS[faction].nom} promulgue votre loi. ${texte}`,
+      important: true,
+      factions: [faction],
+    });
+  }
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
 // Jugement
 // ---------------------------------------------------------------------------
 
@@ -500,6 +647,21 @@ function juger(state, faction, acte, log) {
     }
     if (!vieux) return false;
     porterMerite(state, faction, `${col.nom} tient, et c’est vous qui l’avez voulue.`, 80, log);
+    return true;
+  }
+
+  if (acte.type === 'loi') {
+    // Une loi se juge sur ce qu'elle a fait au pays, pas sur son intention.
+    if (!vieux) return false;
+    let trouble = 0;
+    const villes = coloniesDe(w, faction);
+    for (const c of villes) trouble += c.unrest || 0;
+    const moyen = villes.length ? trouble / villes.length : 0;
+    if (moyen > 0.55) {
+      porterFaute(state, faction, 'un pays qui gronde depuis vos lois', log);
+    } else if (moyen < 0.2) {
+      porterMerite(state, faction, 'Le pays est calme, et vos lois y sont pour quelque chose.', 70, log);
+    }
     return true;
   }
 

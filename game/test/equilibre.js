@@ -56,8 +56,12 @@ import { vueColonie, PEREMPTION } from '../src/connaissance.js';
 import { demandesIci, honorer } from '../src/services.js';
 import { enGuerre } from '../src/factions.js';
 import {
-  etatSecteur, pireCase, dansSonSecteur, SEUIL_MERITE, resumeSecteur,
+  etatSecteur, pireCase, dansSonSecteur, SEUIL_MERITE,
 } from '../src/secteur.js';
+import {
+  prisonniersDe, disposer, optionsPour, surveillanceManquante,
+} from '../src/justice.js';
+import { loisDe } from '../src/lois.js';
 import {
   peutExercer, colonnesDe, envoyerColonne, leverColonne, coutLevee,
   fonderPoste, sitesFondation, COUT_POSTE, cibleGuerre, declarerGuerreA,
@@ -82,6 +86,7 @@ const TRACE = {
   // les couleurs de quelqu'un, ce qu'elles rapportent, et où l'échelle bloque.
   hEngage: 0, pointsFin: 0, manques: 0, ordresDonnes: 0,
   secteurs: 0, etatSecteur: 0, bilans: 0,
+  disposes: 0, relaches: 0, gagneCaptifs: 0, captures: 0,
   rangs: [0, 0, 0, 0, 0],
 };
 const HEURES = Number(process.argv[2]) || 4000;
@@ -698,6 +703,20 @@ function jouerPrincipal(state, g, memo) {
       }
     }
 
+    // --- Ce qu'on fait des gens qu'on n'a pas tués. Un joueur qui a compris
+    // prend l'option la mieux payée qui ne le brûle pas partout : livrer et
+    // rançonner rapportent et ne fâchent personne, vendre rapporte plus et se
+    // paie en réputation. Le bot ne vend pas — c'est un choix de jeu, pas une
+    // optimisation, et le banc doit mesurer la voie honnête d'abord.
+    for (const c of prisonniersDe(g).slice()) {
+      const opts = optionsPour(state, colIci, g, c)
+        .filter((o) => o.key === 'livrer' || o.key === 'rancon');
+      if (!opts.length) continue;
+      opts.sort((a, b) => b.prix - a.prix);
+      const r = disposer(state, g, c.id, opts[0].key, () => {});
+      if (r.ok) { TRACE.disposes++; TRACE.gagneCaptifs += r.prix || 0; }
+    }
+
     // S'engager dès qu'une faction accepte : la solde, la remise et
     // l'intendance valent largement le prix de quelques ordres à honorer.
     if (!SANS.has('service') && !g.allegeance && peutSEngager(state, colIci.faction).ok) {
@@ -877,6 +896,15 @@ function jouerPrincipal(state, g, memo) {
       donnerOrdre(state, { type: 'entrainement', skill: 'melee' }, g);
     }
     return;
+  }
+
+  // Ce qu'on ne surveille pas s'en va de toute façon, et parfois en emportant
+  // quelque chose. Un joueur avisé relâche plutôt que de se le faire prendre.
+  while (surveillanceManquante(g) > 0) {
+    const gens = prisonniersDe(g);
+    if (!gens.length) break;
+    disposer(state, g, gens[gens.length - 1].id, 'relacher', () => {});
+    TRACE.relaches++;
   }
 
   // --- Tenir son secteur. Un gradé en répond tous les dix jours, guerre ou
@@ -1066,7 +1094,10 @@ for (let n = 0; n < PARTIES; n++) {
     for (const gg of groupes(state)) if (gg.allegeance) TRACE.hEngage++;
     const crAvant = state.player.credits;
     const defAvant = state.stats.defaites;
+    const captifsAvant = groupes(state).reduce((t, x) => t + prisonniersDe(x).length, 0);
     tick(state);
+    const captifsApres = groupes(state).reduce((t, x) => t + prisonniersDe(x).length, 0);
+    if (captifsApres > captifsAvant) TRACE.captures += captifsApres - captifsAvant;
     if (state.stats.defaites > defAvant) {
       TRACE.defaites += state.stats.defaites - defAvant;
       TRACE.crPilles += Math.max(0, crAvant - state.player.credits);
@@ -1184,6 +1215,9 @@ console.log(`Carrière : ${Math.round(TRACE.hEngage / PARTIES)} h sous les coule
   + `${Math.round(TRACE.pointsFin / Math.max(1, gradés))} points en fin de service · `
   + `${(TRACE.manques / Math.max(1, gradés)).toFixed(1)} ordre(s) manqué(s) par engagé`);
 console.log(`Prérogatives exercées : ${(TRACE.ordresDonnes / PARTIES).toFixed(1)} par partie`);
+console.log(`Prisonniers : ${(TRACE.captures / PARTIES).toFixed(1)} pris par partie — `
+  + `${(TRACE.disposes / PARTIES).toFixed(1)} livrés ou rançonnés pour `
+  + `${Math.round(TRACE.gagneCaptifs / PARTIES)} cr, ${(TRACE.relaches / PARTIES).toFixed(1)} relâchés faute de gardiens`);
 console.log(`Secteurs tenus : ${TRACE.secteurs} — état moyen `
   + `${(TRACE.etatSecteur / Math.max(1, TRACE.secteurs)).toFixed(2)} `
   + `(0 = sûr, 1 = infréquentable) sur ${Math.round(TRACE.bilans / Math.max(1, TRACE.secteurs))} relevés`);

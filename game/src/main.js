@@ -19,7 +19,9 @@ import { engager } from './recrues.js';
 import {
   envoyerColonne as envoyerColonneA, leverColonne as leverColonneA,
   fonderPoste as fonderPosteA, declarerGuerreA, signerPaixAvec,
+  renforcerGarnison, ouvrirGreniers, fixerLoi as fixerLoiA,
 } from './influence.js';
+import { disposer } from './justice.js';
 
 let state = null;
 let boucle = null;
@@ -186,6 +188,36 @@ const API = {
   /** Signer la paix, quoi qu'en pense le conseil. */
   signerPaix(faction, contre) {
     const r = signerPaixAvec(state, faction, contre, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Relever les murs de la ville dont on répond. */
+  garnison(faction) {
+    const r = renforcerGarnison(state, faction, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Ouvrir les greniers de la ville dont on répond. */
+  grenier(faction) {
+    const r = ouvrirGreniers(state, faction, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Promulguer. Le paramètre porte « quoi:valeur » : peine:ferme, impot:lourd… */
+  fixerLoi(faction, spec) {
+    const [quoi, brut] = String(spec).split(':');
+    const valeur = quoi === 'esclavage' ? brut === 'oui' : brut;
+    const r = fixerLoiA(state, faction, quoi, valeur, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Décider du sort d'un prisonnier : livrer, rançonner, vendre, enrôler, relâcher. */
+  disposerPrisonnier(captifId, quoi) {
+    const r = disposer(state, groupeActif(state), captifId, quoi, creerLogger(state));
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },

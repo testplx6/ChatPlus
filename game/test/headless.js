@@ -8,6 +8,7 @@ import {
 import { Rng } from '../src/rng.js';
 import { serialiser, deserialiser } from '../src/save.js';
 import { COMMODITY_KEYS, DIPLO_FACTIONS } from '../src/data.js';
+import { genererBande } from '../src/combat.js';
 import { classement, puissance } from '../src/factions.js';
 import { donnerOrdre, verifierExercice, COMPETENCES_EXERCICE } from '../src/squad.js';
 import {
@@ -18,6 +19,12 @@ import {
 import { METIER_KEYS, BIOMES, BUILDINGS } from '../src/data.js';
 import { genererBanc, primeDe, tensionRecrutement, engager } from '../src/recrues.js';
 import {
+  capturables, fairePrisonniers, prisonniersDe, capaciteGarde, disposer,
+  surveillanceManquante, lenteurPrisonniers, tickPrisonniers, tickGeole,
+  geoleDe, apaisementGeole,
+} from '../src/justice.js';
+import { loisDe, pressionFiscale, PEINES } from '../src/lois.js';
+import {
   tickSecteurs, tickInsecurite, effetPresence, casesDe, menace, motEtat,
   etatSecteur, resumeSecteur, dansSonSecteur,
 } from '../src/secteur.js';
@@ -25,7 +32,7 @@ import {
   PREROGATIVES, peutExercer, credit as creditCharge, chargeAupres,
   leverColonne, envoyerColonne, fonderPoste, declarerGuerreA, signerPaixAvec,
   sitesFondation, cibleGuerre, jugerActes, tickCharges, porterFaute,
-  coutLevee, COUT_POSTE,
+  coutLevee, COUT_POSTE, fixerLoi,
 } from '../src/influence.js';
 import {
   acheterBete, betesDe, lenteurAttelage, tickBetes, conduite, surnombre,
@@ -117,6 +124,10 @@ const ETALON_MS = 25;
  *          absorbé par le niveau de détail (PAS_LOIN), le tas binaire du
  *          Dijkstra, l'index des colonies et une distance sans allocation.
  *  116 µs  cantiniers et ouvriers dans les villes
+ *  120 µs  secteurs (insécurité des 432 cases, relevée une fois par jour de
+ *          jeu par un parcours en largeur depuis les villes), prisonniers et
+ *          geôles. Écrite naïvement — chaque case cherchant la ville la plus
+ *          proche à chaque heure — l'insécurité coûtait à elle seule 589 µs.
  *
  * 145 laisse 25 % de marge sur les 116 mesurés. La mesure est un minimum sur
  * deux passes, mais une machine chargée fait encore varier le résultat de
@@ -234,6 +245,19 @@ function verifierCoherence(state, label) {
       if (vusIds.has(c.id)) pb = pb || `${c.nom} dans deux groupes`;
       vusIds.add(c.id);
     }
+    // Un prisonnier n'est pas un membre : il ne travaille pas, ne compte pas
+    // dans la cohésion, et ne doit apparaître qu'une fois dans tout l'état.
+    for (const c of g.prisonniers || []) {
+      if (vusIds.has(c.id)) pb = pb || `${c.nom} à la fois membre et prisonnier`;
+      vusIds.add(c.id);
+      if (!c.captif) pb = pb || `${c.nom} prisonnier sans dossier`;
+      if (c.etat === 'mort') pb = pb || `${c.nom} prisonnier et mort`;
+    }
+  }
+  for (const col of w.colonies) {
+    for (const d of (col.geole ? col.geole.detenus : [])) {
+      if (!fini(d.sortie)) pb = pb || `détenu de ${col.nom} sans date de sortie`;
+    }
   }
   for (const c of tousLesMembres(state)) {
     for (const part of Object.keys(c.corps)) {
@@ -288,13 +312,15 @@ ok(serialiser(s3) === serialiser(s3b), 'la sim reprend à l’identique après r
 section('4. Simulation longue (3 000 h ≈ 125 jours)');
 // On tique directement : le monde doit continuer de tourner même si l'escouade
 // du joueur disparaît en route (c'est le cas limite qui casse les sims).
-// Deux passes, on garde la meilleure : même discipline que pour l'étalon. Le
+// Trois passes, on garde la meilleure : même discipline que pour l'étalon. Le
 // ramasse-miettes et la compilation ne font que ralentir, jamais accélérer, et
 // une mesure unique varie de 40 % d'une exécution à l'autre — assez pour faire
-// tomber un garde-fou sans qu'aucun code n'ait changé.
+// tomber un garde-fou sans qu'aucun code n'ait changé. Deux passes ont suffi
+// longtemps ; sur une machine partagée qui a rendu 128 puis 230 µs pour le même
+// code, elles ne suffisent plus.
 let ms = Infinity;
 let s4 = null;
-for (let passe = 0; passe < 2; passe++) {
+for (let passe = 0; passe < 3; passe++) {
   const st = nouvellePartie(777, { maintenant: 0 });
   const t0 = process.hrtime.bigint();
   for (let i = 0; i < 3000; i++) tick(st);
@@ -1428,6 +1454,145 @@ ok(gSec.allegeance.secteur && gSec.allegeance.secteur.centre !== ancienCentre,
 gSec.allegeance.points = 0;
 tickSecteurs(sec, () => {}, { rng: new Rng(7) });
 ok(!gSec.allegeance.secteur, 'perdre le grade, c’est rendre le secteur');
+
+section('9 nonies septies ter. Ce qu’on fait des gens qu’on n’a pas tués');
+const jus = nouvellePartie(7373, { maintenant: 0 });
+const gJus = groupeActif(jus);
+const villeJus = jus.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
+gJus.regionId = villeJus.regionId;
+
+// Une bande mise en déroute laisse des gens à terre, vivants.
+const bandeJus = genererBande(new Rng(11), 'bandits', 4, 1);
+for (const c of bandeJus.membres) { c.etat = 'ko'; c.corps.torse.pv = 0; }
+const capt = capturables(gJus, bandeJus);
+ok(capt.length > 0, 'les hommes à terre sont capturables', `${capt.length}`);
+ok(capt.length <= Math.floor(capaciteGarde(gJus)),
+  'et jamais plus que ce qu’on sait garder — la limite n’est écrite nulle part',
+  `${capt.length} pour ${capaciteGarde(gJus)} de garde`);
+const prisJus = fairePrisonniers(jus, gJus, bandeJus, capt, () => {});
+ok(prisonniersDe(gJus).length === prisJus.length, 'ils passent dans la colonne');
+ok(prisonniersDe(gJus).every((c) => c.etat !== 'ko'),
+  'debout et liés, pas portés : on ne traîne pas des corps');
+ok(!gJus.membres.some((m) => prisonniersDe(gJus).some((c) => c.id === m.id)),
+  'un prisonnier n’est pas un membre');
+
+// Ils coûtent : ils mangent, et ils ralentissent.
+ok(lenteurPrisonniers(gJus) > 0, 'ils ralentissent la colonne',
+  `−${Math.round(lenteurPrisonniers(gJus) * 100)} %`);
+gJus.inventaire.rations = 100;
+const rationsAvantJus = gJus.inventaire.rations;
+for (let i = 0; i < 24; i++) tickPrisonniers(jus, gJus, new Rng(12 + i), () => {});
+ok(gJus.inventaire.rations < rationsAvantJus, 'et ils mangent sur le sac',
+  `${rationsAvantJus} → ${gJus.inventaire.rations.toFixed(1)}`);
+
+// Ceux que personne ne surveille s'en vont. C'est ce qui borne leur nombre.
+const jusTrop = nouvellePartie(7474, { maintenant: 0 });
+const gT = groupeActif(jusTrop);
+gT.inventaire.rations = 500;
+const foule = genererBande(new Rng(13), 'bandits', 6, 1);
+for (const c of foule.membres) { c.etat = 'ko'; c.corps.torse.pv = 0; }
+gT.prisonniers = foule.membres.map((c) => {
+  c.etat = 'ok';
+  c.corps.torse.pv = 5;
+  c.captif = { faction: 'bandits', depuis: 0, brigandage: true };
+  return c;
+});
+ok(surveillanceManquante(gT) > 0, 'six prisonniers pour trois gardiens, ça déborde',
+  `${surveillanceManquante(gT).toFixed(1)} non surveillés`);
+let evades = 0;
+for (let i = 0; i < 900; i++) {
+  const avant = prisonniersDe(gT).length;
+  tickPrisonniers(jusTrop, gT, new Rng(500 + i), () => {});
+  evades += avant - prisonniersDe(gT).length;
+}
+ok(evades > 0, 'et ce qu’on ne surveille pas finit par s’en aller', `${evades} évasions`);
+
+// Livrer : une prime, une geôle qui se remplit, et des pistes plus sûres.
+const brigand = prisonniersDe(gJus)[0];
+const crAvantJus = jus.player.credits;
+const livr = disposer(jus, gJus, brigand.id, 'livrer', () => {});
+ok(livr.ok, 'on livre un brigand à la justice de la ville', livr.motif);
+ok(jus.player.credits > crAvantJus, 'la prime est versée',
+  `${crAvantJus} → ${jus.player.credits}`);
+ok(geoleDe(villeJus).detenus.length === 1, 'et la geôle se remplit');
+ok(apaisementGeole(villeJus) > 0,
+  'un détenu, c’est quelqu’un qui ne coupe plus les routes');
+
+// Vendre : la loi décide, et la réputation aussi.
+const encore = prisonniersDe(gJus)[0];
+ok(!!encore, 'il reste des prisonniers à disposer');
+ok(!disposer(jus, gJus, encore.id, 'vendre', () => {}).ok,
+  'on ne vend pas d’hommes là où c’est interdit');
+loisDe(jus.world, villeJus.faction).esclavage = true;
+const repuAvantVente = { ...jus.player.reputation };
+const vte = disposer(jus, gJus, encore.id, 'vendre', () => {});
+ok(vte.ok, 'là où la loi le permet, si', vte.motif);
+ok(vte.prix > 0, 'et ça rapporte plus que la justice', `${vte.prix} cr`);
+const vus = DIPLO_FACTIONS.filter(
+  (k) => (jus.player.reputation[k] || 0) < (repuAvantVente[k] || 0)
+);
+ok(vus.length > 0, 'ceux qui l’interdisent chez eux l’apprennent', `${vus.length} factions`);
+
+// Une geôle se vide toute seule quand la peine est purgée.
+const detenu = geoleDe(villeJus).detenus[0];
+jus.temps = detenu.sortie + 1;
+tickGeole(jus, villeJus, 1);
+ok(geoleDe(villeJus).detenus.length === 0, 'on sort quand on a fait son temps');
+
+section('9 nonies septies quater. Les lois d’un Commandeur');
+const loi = nouvellePartie(8484, { maintenant: 0 });
+const gLoi = groupeActif(loi);
+const villeLoi = loi.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
+gLoi.regionId = villeLoi.regionId;
+loi.player.reputation[villeLoi.faction] = 60;
+sEngager(loi, villeLoi.faction, () => {}, gLoi);
+const fLoi = villeLoi.faction;
+
+gLoi.allegeance.points = RANGS[3].points;
+ok(!peutExercer(loi, fLoi, 'loi').ok, 'un capitaine ne légifère pas');
+gLoi.allegeance.points = RANGS[4].points;
+ok(peutExercer(loi, fLoi, 'loi').ok, 'un commandeur, si');
+
+ok(loisDe(loi.world, fLoi).impot === 0.05, 'l’impôt ordinaire est la règle au départ');
+const rImp = fixerLoi(loi, fLoi, 'impot', 'lourd', () => {});
+ok(rImp.ok, 'on promulgue sans demander l’avis de personne', rImp.motif);
+ok(loisDe(loi.world, fLoi).impot === 0.09, 'et le taux change sur-le-champ');
+ok(pressionFiscale(loi.world, fLoi) > 0,
+  'un impôt lourd fait gronder, un impôt léger apaise',
+  `${pressionFiscale(loi.world, fLoi).toFixed(4)}`);
+fixerLoi(loi, fLoi, 'impot', 'leger', () => {});
+ok(pressionFiscale(loi.world, fLoi) < 0, 'et l’inverse est vrai aussi');
+
+// Le trésor suit la loi : c'est ce qui relie une décision politique aux moyens
+// qu'on aura de gouverner.
+function revenuSur(taux) {
+  const t = nouvellePartie(8585, { maintenant: 0 });
+  const k = t.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim').faction;
+  loisDe(t.world, k).impot = taux;
+  loisDe(t.world, k).peine = 'ferme';
+  const avant = t.world.factions[k].tresor;
+  avancer(t, 600);
+  return t.world.factions[k].tresor - avant;
+}
+ok(revenuSur(0.15) > revenuSur(0.03),
+  'confisquer rapporte plus que prélever peu — sur six cents heures au moins',
+  `${revenuSur(0.03)} vs ${revenuSur(0.15)}`);
+
+const rEsc = fixerLoi(loi, fLoi, 'esclavage', true, () => {});
+ok(rEsc.ok, 'on autorise le commerce d’hommes d’un trait de plume', rEsc.motif);
+ok(loisDe(loi.world, fLoi).esclavage, 'et c’est la loi');
+ok(!fixerLoi(loi, fLoi, 'esclavage', true, () => {}).ok, 'deux fois, non');
+ok(loi.world.colonies.filter((c) => c.faction === fLoi).every((c) => c.unrest > 0),
+  'les villes de la faction l’ont senti passer');
+
+ok(PEINES[loisDe(loi.world, fLoi).peine].prime === 1, 'la justice est ferme par défaut');
+fixerLoi(loi, fLoi, 'peine', 'expeditive', () => {});
+ok(PEINES[loisDe(loi.world, fLoi).peine].prime > 1,
+  'une justice expéditive paie mieux les chasseurs de primes');
+ok(PEINES.expeditive.duree < PEINES.ferme.duree,
+  'et garde moins longtemps : on ne nourrit pas ce qu’on pend');
+
+verifierCoherence(loi, 'après une saison de législation');
 
 section('9 nonies sexies. Qui accepte de partir, et pour combien');
 const rec = nouvellePartie(9494, { maintenant: 0 });
