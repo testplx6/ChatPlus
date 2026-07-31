@@ -1255,6 +1255,41 @@ pèse presque rien une fois le reste corrigé — 22 à 30 % de marge qu'on déc
 sur un relevé de deux heures ou de quatre cents, ce qui est dans le bruit.
 `FRAICHEUR=` et `PORTEE=` restent en place pour qui voudra rouvrir la question.
 
+### Onze titres sur onze
+
+Trois des onze titres de la chronique n'avaient jamais été décrochés par aucune
+façon de jouer. Le banc sait maintenant dire ce que la chronique relit, en
+distribution plutôt qu'en moyenne, et les trois cas se sont expliqués autrement
+que prévu.
+
+    sur 60 parties          victoires        captifs livrés     services
+    bot par défaut      méd 9 · p90 21      méd 6 · p90 25    méd 2 · p90 7
+    négrier            méd 14 · p90 41      méd 1 · p90 12    méd 1 · p90 4
+    carriériste        méd 11 · p90 27      méd 8 · p90 27    méd 3 · p90 9
+
+**Seigneur de guerre** demandait quarante victoires *et* vingt-cinq de
+compétence. Ce n'étaient pas les quarante victoires qui bloquaient — un négrier
+les atteint dans une partie sur dix — mais la compétence, parce qu'elle lisait
+la **moyenne de l'escouade**. Celle-ci est tirée vers le bas par les recrues
+fraîches qui remplacent les vétérans morts : le banc la mesure entre 15 et 18
+quelle que soit la voie, jamais 25. Les meilleurs bretteurs, eux, montent à 37
+ou 44. Un chef de guerre se juge à son arme, pas à la moyenne de ses hommes.
+
+**Chasseur de primes** demandait quinze brigands livrés, et tombait dans une
+partie sur quatre — quelle que soit la façon de jouer. Livrer est ce que tout le
+monde fait de ses prisonniers faute de mieux : le titre nommait une habitude, pas
+un choix, et il masquait des titres qu'on avait cherchés. Le seuil passe à
+vingt-cinq, le neuvième décile de ce qui arrive tout seul, et il descend sous le
+bienfaiteur.
+
+**Bienfaiteur** avait été traité la veille : remonté au-dessus du bâtisseur et de
+l'officier, seuil ramené de douze à six.
+
+Le résultat, sur sept profils × 60 parties : **les onze titres tombent au moins
+une fois, et aucun ne tombe par habitude.** Bâtisseur et Vagabond restent les
+plus fréquents, ce qui est juste — avoir un toit et avoir marché sont ce qu'on
+fait par défaut.
+
 ### Un garde-fou de performance qui ne tient plus tout à fait
 
 À signaler, parce que le taire reviendrait à truquer la mesure. Le même code de

@@ -2669,8 +2669,22 @@ ok(titreAvec((t) => {
   t.stats.combatsGagnes = 80;
   t.stats.servicesRendus = 40;
 }) === 'negrier', 'et le reste ne le rachète pas');
-ok(titreAvec((t) => { t.stats.captifsLivres = 20; }) === 'geolier',
+ok(titreAvec((t) => { t.stats.captifsLivres = 30; }) === 'geolier',
   'livrer des brigands à la justice fait un chasseur de primes');
+// Mais pas à la douzaine : c'est ce que tout le monde fait de ses prisonniers
+// faute de mieux, et à quinze le titre tombait dans une partie sur quatre quelle
+// que soit la façon de jouer.
+ok(titreAvec((t) => { t.stats.captifsLivres = 18; }) !== 'geolier',
+  'mais une poignée de brigands livrés ne fait pas un métier');
+// Un chef de guerre se juge à son arme, pas à la moyenne de ses hommes : celle-ci
+// est tirée vers le bas par les recrues fraîches et ne dépasse jamais 18.
+ok(titreAvec((t) => {
+  t.stats.combatsGagnes = 60;
+  const c = groupeActif(t).membres[0];
+  c.skills.melee = 40;
+}) === 'seigneur', 'quarante batailles et un bon bras font un seigneur de guerre');
+ok(titreAvec((t) => { t.stats.combatsGagnes = 60; }) !== 'seigneur',
+  'les batailles seules ne suffisent pas');
 ok(titreAvec((t) => { t.player.credits = 9000; }) === 'marchand',
   'faire fortune sans se battre fait une maison marchande');
 ok(titreAvec((t) => {

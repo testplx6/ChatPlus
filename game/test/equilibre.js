@@ -1982,6 +1982,13 @@ for (let n = 0; n < PARTIES; n++) {
     bati: state.base.fonde
       ? BUILDING_KEYS.reduce((t, k) => t + nivBat(state.base, k), 0) : 0,
     hab: state.base.fonde ? Math.round(state.base.pop || 0) : 0,
+    // Les grandeurs que la chronique relit, pour pouvoir calibrer ses seuils
+    // sur ce qui arrive vraiment plutôt que sur une intuition.
+    gagnes: state.stats.combatsGagnes || 0,
+    livres: state.stats.captifsLivres || 0,
+    vendus: state.stats.captifsVendus || 0,
+    servis: state.stats.servicesRendus || 0,
+    pilles: state.stats.caravanesPillees || 0,
     // Ce que l'estime a effectivement ouvert, à la fin de la partie.
     amis: state.world.colonies.reduce(
       (t, c) => t + (c.notables || []).filter((x) => (x.opinion || 0) >= 35).length, 0),
@@ -2092,6 +2099,19 @@ console.log(`Secteurs tenus : ${TRACE.secteurs} — état moyen `
   + `${(TRACE.etatSecteur / Math.max(1, TRACE.secteurs)).toFixed(2)} `
   + `(0 = sûr, 1 = infréquentable) sur ${Math.round(TRACE.bilans / Math.max(1, TRACE.secteurs))} relevés`);
 console.log(`Échelle atteinte : ${RANGS.map((r, i) => `${r.nom} ${TRACE.rangs[i]}`).join(' · ')}`);
+{
+  // Calibrer les seuils de la chronique sur ce qui arrive vraiment, plutôt que
+  // sur une intuition : c'est ce qui manquait quand « Bienfaiteur » demandait
+  // douze services pour une médiane de trois.
+  const q = (k) => {
+    const a = lignes.map((l) => l[k]).sort((x, y) => x - y);
+    const at = (f) => a[Math.min(a.length - 1, Math.floor(a.length * f))];
+    return `méd ${at(0.5)} · p90 ${at(0.9)} · max ${a[a.length - 1]}`;
+  };
+  console.log(`  ce que la chronique relit — victoires : ${q('gagnes')}`);
+  console.log(`      captifs livrés : ${q('livres')} · vendus : ${q('vendus')}`);
+  console.log(`      services : ${q('servis')} · caravanes pillées : ${q('pilles')}`);
+}
 console.log('Chronique : ' + Object.entries(TRACE.titres).sort((a, b) => b[1] - a[1])
   .map(([k, v]) => `${k} ${v}`).join(' · '));
 console.log(`Colporteurs reçus : ${(TRACE.marchands / PARTIES).toFixed(1)} par partie`);

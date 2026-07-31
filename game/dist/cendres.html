@@ -12756,13 +12756,14 @@ const RENOMMEES = [
     key: 'seigneur',
     nom: 'Seigneur de guerre',
     dit: 'On compte vos batailles plus facilement que vos années.',
-    quand: (f) => f.combatsGagnes >= 40 && f.combat >= 25,
-  },
-  {
-    key: 'geolier',
-    nom: 'Chasseur de primes',
-    dit: 'Les geôles de la région se sont remplies de ce que vous y avez mis.',
-    quand: (f) => f.captifsLivres >= 15,
+    // On regarde le meilleur bras de la colonne, pas la moyenne de la troupe.
+    //
+    // La moyenne était le blocage, pas les quarante victoires : elle est tirée
+    // vers le bas par les recrues fraîches qui remplacent les vétérans morts, et
+    // le banc la mesure entre 15 et 18 quelle que soit la façon de jouer — jamais
+    // 25. Les meilleurs bretteurs, eux, montent à 37 ou 44. Un chef de guerre se
+    // juge à son arme, pas à la moyenne de ses hommes.
+    quand: (f) => f.combatsGagnes >= 40 && f.meilleurCombat >= 25,
   },
   {
     key: 'bienfaiteur',
@@ -12782,6 +12783,19 @@ const RENOMMEES = [
     // c'était une partie sur soixante ; six, c'est une sur quatre, ce qui est le
     // taux des autres titres pour qui les vise.
     quand: (f) => f.services >= 6,
+  },
+  {
+    key: 'geolier',
+    nom: 'Chasseur de primes',
+    dit: 'Les geôles de la région se sont remplies de ce que vous y avez mis.',
+    // Vingt-cinq, pas quinze, et sous le bienfaiteur.
+    //
+    // Livrer un brigand est ce que tout le monde fait de ses prisonniers faute
+    // de mieux : à quinze, le titre tombait dans une partie sur quatre quelle
+    // que soit la façon de jouer — il nommait une habitude, pas un choix, et il
+    // masquait des titres qu'on avait cherchés. Vingt-cinq est le neuvième
+    // décile de ce qui arrive tout seul.
+    quand: (f) => f.captifsLivres >= 25,
   },
   {
     key: 'batisseur',
@@ -12832,10 +12846,13 @@ function faitsDe(state) {
   );
   let combat = 0;
   let compte = 0;
+  let meilleurCombat = 0;
   for (const g of groupes) {
     for (const c of g.membres) {
       if (!estVivant(c)) continue;
-      combat += Math.max(c.skills.melee || 0, c.skills.tir || 0);
+      const arme = Math.max(c.skills.melee || 0, c.skills.tir || 0);
+      combat += arme;
+      if (arme > meilleurCombat) meilleurCombat = arme;
       compte++;
     }
   }
@@ -12847,6 +12864,7 @@ function faitsDe(state) {
     vivants,
     morts: (state.memorial || []).length,
     combat: compte ? Math.round(combat / compte) : 0,
+    meilleurCombat,
     combats: st.combats || 0,
     combatsGagnes: st.combatsGagnes || 0,
     defaites: st.defaites || 0,
