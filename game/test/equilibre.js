@@ -106,7 +106,7 @@ const TRACE = {
   disposes: 0, relaches: 0, gagneCaptifs: 0, captures: 0, marchands: 0,
   vendus: 0, sansMarche: 0, marchesVus: 0, villesVues: 0, mepris: 0, raflees: 0,
   caravanesVues: 0, caravanesPrises: 0, caravanesRatees: 0, butinCaravanes: 0, hGuet: 0,
-  caravanesNees: 0, passagesGuet: 0,
+  caravanesNees: 0, passagesGuet: 0, butinLaisse: 0, butinPorte: 0,
   titres: {},
   hPatrouille: 0, victoires: 0,
   mortsCombat: 0, koSubis: 0, piste: 0, pisteVues: 0, reconnus: 0, popCamp: 0,
@@ -1067,7 +1067,12 @@ function jouerPrincipal(state, g, memo) {
       const rngA = new Rng(state.rngState);
       const r = attaquerCaravane(state, car, rngA, () => {}, combatContre, genererBande);
       state.rngState = rngA.save();
-      if (r.ok && r.gagne) { TRACE.caravanesPrises++; TRACE.butinCaravanes += valeur; }
+      if (r.ok && r.gagne) {
+        TRACE.caravanesPrises++;
+        TRACE.butinCaravanes += valeur;
+        TRACE.butinLaisse += r.laisse || 0;
+        TRACE.butinPorte += Object.values(r.pris || {}).reduce((a, b) => a + b, 0);
+      }
       else if (r.ok) TRACE.caravanesRatees++;
       return;
     }
@@ -1078,46 +1083,20 @@ function jouerPrincipal(state, g, memo) {
   // au-devant. Il ne poursuit pas — une caravane avance d'une case toutes les
   // deux heures et ne se rattrape pas — il l'attend à l'arrivée, qui est le seul
   // point de son trajet qu'on connaisse à coup sûr.
-  // On ne poursuit pas et on n'intercepte pas : une caravane franchit une région
-  // en deux heures là où une colonne en met quatorze. Elle est sept fois plus
-  // rapide que vous. La première version visait la ville d'arrivée de la
-  // caravane la plus proche et changeait d'avis à chaque tour, parce qu'une
-  // autre devenait la plus proche — cent vingt-sept départs par partie contre
-  // trente-cinq, pour trois caravanes croisées de plus. On choisit donc un
-  // carrefour, une fois, et on ne bouge plus.
-  if (PILLARD && rations > 60 && g.membres.filter(estDebout).length >= 2) {
-    let guet = memo.guet != null ? colonieParId(state.world, memo.guet) : null;
-    if (!guet || guet.ruine) {
-      // Le meilleur poste est la ville la mieux reliée : les caravanes partent
-      // et arrivent chez elle, et aucune route ne dépasse sept régions.
-      let best = null;
-      let bestSc = -1;
-      for (const c of state.world.colonies) {
-        if (c.ruine || !c.faction) continue;
-        const voisines = state.world.colonies.filter(
-          (o) => !o.ruine && o.faction && o.id !== c.id && distance(o.regionId, c.regionId) <= 7
-        ).length;
-        // À trafic égal, on préfère ce qui est près de chez nous : marcher vingt
-        // régions pour se poster coûte plus que ce que le poste rapportera.
-        const sc = voisines - distance(c.regionId, g.regionId) * 0.8;
-        if (sc > bestSc) { bestSc = sc; best = c; }
-      }
-      guet = best;
-      memo.guet = best ? best.id : null;
-    }
-    if (guet) {
-      if (guet.regionId !== g.regionId) {
-        if (!(g.ordre.type === 'voyage' && g.ordre.dest === guet.regionId)) {
-          partir(state, g, guet.regionId, 'gagner son carrefour');
-        }
-        return;
-      }
-      // On y est. On ne repart pas : on guette, et on s'entretient sur place.
-      TRACE.hGuet++;
-      if (g.ordre.type !== 'repos') donnerOrdre(state, { type: 'repos' }, g);
-      return;
-    }
-  }
+  // On ne poursuit pas, on n'intercepte pas, et on ne se poste pas.
+  //
+  // Une caravane franchit une région en deux heures là où une colonne en met
+  // quatorze : elle est sept fois plus rapide que vous. Poursuivre est exclu.
+  // Se poster l'est aussi, et c'est le résultat le plus net de cette mesure :
+  // trois cent quatre-vingts caravanes circulent par partie, mais il n'en passe
+  // que **onze heures-caravane sur une case donnée en quatre mille heures**, y
+  // compris sur la ville la mieux reliée de la carte. Un bot qui a guetté
+  // 3 150 heures — quatre-vingts pour cent de sa partie — en a croisé exactement
+  // autant qu'un bot qui vaquait à ses affaires, et il a fini à 444 crédits
+  // contre 4 128. Le trafic n'est pas rare, il est dilué sur 432 régions.
+  //
+  // Le pillage est donc une occasion, pas un métier. Le profil se réduit à ça :
+  // on vit normalement, et on prend ce qui passe.
 
   // Blessés ou épuisés : on se pose — mais pas au point de mourir de faim en
   // convalescence. Se reposer sans vivres est le meilleur moyen de ne jamais
@@ -1917,6 +1896,9 @@ console.log(`Caravanes : ${TRACE.caravanesVues} croisées sur la case — `
   + `— ${Math.round(TRACE.hGuet * 4 / PARTIES)} h de guet par partie`);
 console.log(`  circulation : ${Math.round(TRACE.caravanesNees / PARTIES)} caravanes par partie sur `
   + `la carte entière — ${(TRACE.passagesGuet / PARTIES).toFixed(1)} heures-caravane sur notre case`);
+console.log(`  butin : ${TRACE.butinPorte} unités emportées, ${TRACE.butinLaisse} laissées `
+  + `sur place faute de bras (${Math.round(100 * TRACE.butinLaisse
+    / Math.max(1, TRACE.butinPorte + TRACE.butinLaisse))} %)`);
 console.log(`Marché aux hommes : ${(TRACE.marchesVus / PARTIES).toFixed(1)} ville(s) sur `
   + `${(TRACE.villesVues / PARTIES).toFixed(0)} l'ouvrent en fin de partie — `
   + `${(TRACE.vendus / PARTIES).toFixed(1)} vendu(s) par partie, `

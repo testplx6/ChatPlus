@@ -15,6 +15,8 @@ import {
 import { titreDe, lignesDe, faitsDe, RENOMMEES } from '../src/chronique.js';
 import { faireRevolte, SEUIL_REVOLTE } from '../src/economy.js';
 import { BETES } from '../src/betes.js';
+import { attaquerCaravane } from '../src/caravanes.js';
+import { combatContre } from '../src/events.js';
 import { bandeLocale } from '../src/events.js';
 import { damer, coutTraversee, PISTE_GAIN } from '../src/world.js';
 import { distanceMorale } from '../src/factions.js';
@@ -70,7 +72,7 @@ import {
 } from '../src/groupes.js';
 import {
   acheter, vendre, prixJoueur, actifs, emploi, productionColonie, consommationColonie,
-  capacitePortage,
+  capacitePortage, poidsInventaire,
 } from '../src/economy.js';
 import { vocation, notable } from '../src/notables.js';
 import {
@@ -1704,6 +1706,78 @@ const detenu = geoleDe(villeJus).detenus[0];
 jus.temps = detenu.sortie + 1;
 tickGeole(jus, villeJus, 1);
 ok(geoleDe(villeJus).detenus.length === 0, 'on sort quand on a fait son temps');
+
+// --- Détrousser une caravane met la marchandise dans le sac.
+//
+// Elle n'y allait nulle part : `attaquerCaravane` calculait le butin, retirait
+// la caravane du monde, encaissait les vingt-deux points de réputation et la
+// rancune des deux villes concernées — puis retournait l'objet `pris` à
+// l'appelant. `main.js` le relayait, l'interface affichait « Caravane
+// détroussée » et le jetait. On gagnait l'embuscade et l'on repartait les mains
+// vides, sans qu'aucun compteur ne le dise.
+{
+  const pil = nouvellePartie(7676, { maintenant: 0 });
+  const gPil = groupeActif(pil);
+  // Une caravane sous la main, avec une cargaison connue.
+  const depart = pil.world.colonies.find((c) => !c.ruine && c.faction);
+  const arrivee = pil.world.colonies.find(
+    (c) => !c.ruine && c.faction && c.id !== depart.id);
+  const car = {
+    id: 'v-test', faction: depart.faction, deId: depart.id, versId: arrivee.id,
+    regionId: gPil.regionId, route: [gPil.regionId], etape: 0, progres: 0,
+    cargaison: { alliage: 20 }, escorte: 6, depuis: 0,
+  };
+  pil.world.caravanes.push(car);
+  gPil.regionId = car.regionId;
+  // On gagne à coup sûr : l'escorte est une seule personne et les nôtres sont
+  // en pleine forme et surarmés.
+  for (const m of gPil.membres) {
+    m.skills.melee = 90; m.skills.endurance = 90;
+    for (const part of Object.keys(m.corps)) m.corps[part].pv = m.corps[part].max;
+  }
+  const avant = gPil.inventaire.alliage || 0;
+  const repuAvant = pil.player.reputation[car.faction] || 0;
+  const r = attaquerCaravane(pil, car, new Rng(31), () => {},
+    combatContre, genererBande, gPil);
+  ok(r.ok, 'l’embuscade a lieu', r.motif);
+  if (r.gagne) {
+    ok((gPil.inventaire.alliage || 0) > avant,
+      'la cargaison finit dans le sac de ceux qui se sont battus',
+      `${avant} → ${gPil.inventaire.alliage}`);
+    ok(Object.values(r.pris).reduce((a, b) => a + b, 0) > 0,
+      'et le butin rendu n’est pas vide');
+    ok((pil.player.reputation[car.faction] || 0) < repuAvant,
+      'la faction n’oublie pas', `${repuAvant} → ${pil.player.reputation[car.faction]}`);
+    ok(pil.stats.caravanesPillees === 1, 'et ça se compte');
+  }
+}
+
+// Ce qu'on ne peut pas porter reste sur place.
+{
+  const lourd = nouvellePartie(7677, { maintenant: 0 });
+  const gL = groupeActif(lourd);
+  for (const m of gL.membres) {
+    m.skills.melee = 90; m.skills.endurance = 90;
+    for (const part of Object.keys(m.corps)) m.corps[part].pv = m.corps[part].max;
+  }
+  const dep = lourd.world.colonies.find((c) => !c.ruine && c.faction);
+  const arr = lourd.world.colonies.find((c) => !c.ruine && c.faction && c.id !== dep.id);
+  const gros = {
+    id: 'v-lourd', faction: dep.faction, deId: dep.id, versId: arr.id,
+    regionId: gL.regionId, route: [gL.regionId], etape: 0, progres: 0,
+    // Bien au-delà de ce que quatre personnes portent à dos d'homme.
+    cargaison: { alliage: 900 }, escorte: 6, depuis: 0,
+  };
+  lourd.world.caravanes.push(gros);
+  const r = attaquerCaravane(lourd, gros, new Rng(32), () => {},
+    combatContre, genererBande, gL);
+  if (r.ok && r.gagne) {
+    ok(r.laisse > 0, 'une colonne ne remporte pas neuf cents unités à dos d’homme',
+      `${r.laisse} laissées`);
+    ok(poidsInventaire(gL.inventaire) <= capacitePortage(lourd, gL) + 1,
+      'et elle ne dépasse pas sa capacité de portage');
+  }
+}
 
 section('9 nonies septies quater. Les lois d’un Commandeur');
 const loi = nouvellePartie(8484, { maintenant: 0 });

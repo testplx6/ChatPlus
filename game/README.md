@@ -74,6 +74,7 @@ VAGABOND=1 node test/equilibre.js             # témoin : voyager sans contrats
 COLON=1 node test/equilibre.js                # profil : bâtir plutôt que courir
 CARRIERE=1 node test/equilibre.js             # profil : servir, monter, ordonner
 NEGRIER=1 node test/equilibre.js              # profil : prendre vivant, vendre
+PILLARD=1 node test/equilibre.js              # profil : prendre ce qui passe
 BIENFAITEUR=1 node test/equilibre.js          # profil : tenir ce qu'on a promis
 
 npm install --no-save playwright-core
@@ -1172,6 +1173,43 @@ heure, sous condition de manque réel). Une paroisse en produit une douzaine en
 quatre mille heures. C'est une décision de rythme, pas un défaut — mais elle
 n'avait jamais été prise en connaissance de cause, et maintenant elle l'est.
 
+### Un bot qui pille, et le butin qui n'allait nulle part
+
+Zéro caravane pillée en trois cents parties : `attaquerCaravane` existait depuis
+toujours sans que rien ne l'appelle. `PILLARD=1` l'appelle.
+
+**Le butin n'était jamais ramassé.** La fonction calculait la cargaison,
+retirait la caravane du monde, encaissait les vingt-deux points de réputation et
+la rancune nommée des deux villes qui l'attendaient — puis retournait l'objet
+`pris` à l'appelant. `main.js` le relayait, l'interface affichait « Caravane
+détroussée » et le jetait. **On gagnait l'embuscade et l'on repartait les mains
+vides**, sans qu'aucun compteur ne le dise. La marchandise va maintenant dans le
+sac de ceux qui se sont battus, et ce qui n'y tient pas reste sur place — 34 %
+d'une cargaison, mesuré, ce qui donne enfin un usage à l'attelage.
+
+**Et pourtant ce n'est pas un métier.** Le reste de la mesure est net, et c'est
+de la géométrie, pas de l'économie :
+
+    381 caravanes circulent par partie sur la carte entière
+     10 heures-caravane passent sur une case donnée, en 4 000 heures
+      2 h pour qu'une caravane franchisse une région — 14 h pour une colonne
+
+Elles sont **sept fois plus rapides que vous** : ni poursuite ni interception.
+Et se poster ne sert à rien — un bot qui a guetté 3 150 heures au carrefour le
+mieux relié de la carte, quatre-vingts pour cent de sa partie, a croisé
+exactement autant de caravanes qu'un bot qui vaquait à ses affaires, et fini à
+444 crédits contre 4 128. Le trafic n'est pas rare, il est dilué sur 432 régions.
+
+Le profil se réduit donc à ce que la géométrie permet : vivre normalement et
+prendre ce qui passe. À n=60, ça donne 3 859 crédits contre 4 128 — trois
+caravanes par partie, 596 crédits de marchandise, et une réputation qui paie la
+différence. **C'est une occasion, pas une voie**, et le commentaire du fichier
+qui promettait « c'est rentable » a été corrigé pour dire ce que la mesure dit.
+
+Le titre de *Seigneur de guerre* reste donc le seul des onze qu'aucun profil ne
+décroche. Il demande quarante victoires ; on n'en compte qu'une quinzaine par
+partie, toutes voies confondues.
+
 ### Un garde-fou de performance qui ne tient plus tout à fait
 
 À signaler, parce que le taire reviendrait à truquer la mesure. Le même code de
@@ -1432,15 +1470,16 @@ la fois : c'est la seule façon d'attribuer un déséquilibre à sa cause plutô
 qu'à une intuition. Le mode vagabond — voyager autant, sans prendre un seul
 contrat — est le témoin qui a innocenté les contrats et accusé la route.
 
-Ses profils (`COLON=1`, `CARRIERE=1`, `NEGRIER=1`, `BIENFAITEUR=1`) font autre
-chose : ils font jouer une voie au lieu d'un système. Un bot unique mesure très
-bien ce qu'il fait et très mal ce qu'il ne fait pas — le colon a révélé que
-personne n'apportait de matériaux aux hameaux, le carriériste qu'un ordre de
-frappe sur trente était honorable, le négrier que le marché aux hommes ne
-s'ouvrait jamais, le bienfaiteur qu'on contractait une dette en traversant une
-ville — pour un remords qui n'avait pas lieu d'être. Aucun des quatre ne se voyait dans les chiffres du bot par défaut, et
-c'est la leçon la plus solide du banc : **ce qu'un bot ne joue pas, personne ne
-le mesure.**
+Ses profils (`COLON=1`, `CARRIERE=1`, `NEGRIER=1`, `BIENFAITEUR=1`, `PILLARD=1`)
+font autre chose : ils font jouer une voie au lieu d'un système. Un bot unique
+mesure très bien ce qu'il fait et très mal ce qu'il ne fait pas — le colon a
+révélé que personne n'apportait de matériaux aux hameaux, le carriériste qu'un
+ordre de frappe sur trente était honorable, le négrier que le marché aux hommes
+ne s'ouvrait jamais, le bienfaiteur qu'on contractait une dette en traversant
+une ville pour un remords qui n'avait pas lieu d'être, le pillard que le butin
+d'une embuscade gagnée n'allait nulle part. Aucun des cinq ne se voyait dans les
+chiffres du bot par défaut, et c'est la leçon la plus solide du banc : **ce
+qu'un bot ne joue pas, personne ne le mesure.**
 
 Corollaire appris à ses dépens : **un compteur qui compte des coups d'œil
 ment.** « 4 527 demandes croisées, 102 honorées » a servi de constat pendant des
