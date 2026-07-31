@@ -75,6 +75,7 @@ COLON=1 node test/equilibre.js                # profil : bâtir plutôt que cour
 CARRIERE=1 node test/equilibre.js             # profil : servir, monter, ordonner
 NEGRIER=1 node test/equilibre.js              # profil : prendre vivant, vendre
 PILLARD=1 node test/equilibre.js              # profil : prendre ce qui passe
+MARCHAND=1 node test/equilibre.js             # profil : acheter bas, vendre haut
 BIENFAITEUR=1 node test/equilibre.js          # profil : tenir ce qu'on a promis
 
 npm install --no-save playwright-core
@@ -1210,6 +1211,50 @@ Le titre de *Seigneur de guerre* reste donc le seul des onze qu'aucun profil ne
 décroche. Il demande quarante victoires ; on n'en compte qu'une quinzaine par
 partie, toutes voies confondues.
 
+### Un bot qui commerce, et le camp qui mangeait sa cargaison
+
+`MARCHAND=1` fait le geste du métier que personne ne faisait : acheter là où
+c'est abondant, porter, revendre là où ça manque. Le bot par défaut vend ce
+qu'il ramasse dans la première ville venue et n'achète que ce qu'il consomme.
+
+Trois erreurs de raisonnement, chacune corrigée par la mesure, et un vrai bug.
+
+**Le prix affiché est celui de la première unité.** Le cours bouge à chaque
+unité de la transaction : on le fait monter en achetant et on l'écrase en
+vendant. Un lot dimensionné sur le prix affiché part perdant — mesuré en
+chargeant le sac à ras bord : **3 098 crédits engagés pour 1 816 encaissés,
+41 % de perte**. On estime maintenant la recette au cours de mi-parcours, des
+deux côtés, et l'on essaie plusieurs tailles de lot : la plus grosse n'est
+presque jamais la meilleure.
+
+**Une ville factice n'a pas de notables.** Recalculer un prix d'achat sur un
+objet `{pop, stock, unrest}` faisait renvoyer NaN à `prixJoueur`, qui lit les
+notables pour la marge du marchand — et NaN passe silencieusement toutes les
+comparaisons, si bien que le bot choisissait n'importe quelle affaire. On met à
+l'échelle le vrai prix au lieu d'en fabriquer un.
+
+**Et le camp avalait la cargaison.** En passant chez soi, le bot vide son sac
+dans l'entrepôt. Il y rangeait donc la marchandise qu'il venait d'acheter, puis
+repartait la livrer les mains vides. Ça se lisait comme une erreur de prix — le
+marchand n'encaissait que la moitié de ce qu'il visait, **à toute distance et
+avec du renseignement frais**, ce qui ne pouvait pas être un effet du marché.
+Le même bug mangeait les lots promis du bienfaiteur : ses services honorés
+passent de 109 à 125, et le titre tombe désormais 8 fois sur 30.
+
+Une fois tout cela réparé, le négoce paie : **+21 % de marge** sur la mise, à
+n=60. Mais il ne nourrit pas son homme — 2 485 crédits en fin de partie contre
+4 128 pour le bot honnête, parce qu'il ne trouve que trois cargaisons par
+partie. La raison n'est pas la marge, c'est la concurrence : **381 caravanes
+circulent par partie et vont précisément combler les pénuries qui font monter
+les prix.** Le monde arbitre tout seul, sept fois plus vite que vous. Le
+marchand ramasse ce qui reste.
+
+C'est le premier profil dont la conclusion n'est pas « il y avait un défaut » :
+le commerce fonctionne, il est simplement d'appoint. Le renseignement, lui, ne
+pèse presque rien une fois le reste corrigé — 22 à 30 % de marge qu'on décide
+sur un relevé de deux heures ou de quatre cents, ce qui est dans le bruit.
+`FRAICHEUR=` et `PORTEE=` restent en place pour qui voudra rouvrir la question.
+
 ### Un garde-fou de performance qui ne tient plus tout à fait
 
 À signaler, parce que le taire reviendrait à truquer la mesure. Le même code de
@@ -1470,14 +1515,16 @@ la fois : c'est la seule façon d'attribuer un déséquilibre à sa cause plutô
 qu'à une intuition. Le mode vagabond — voyager autant, sans prendre un seul
 contrat — est le témoin qui a innocenté les contrats et accusé la route.
 
-Ses profils (`COLON=1`, `CARRIERE=1`, `NEGRIER=1`, `BIENFAITEUR=1`, `PILLARD=1`)
+Ses profils (`COLON=1`, `CARRIERE=1`, `NEGRIER=1`, `BIENFAITEUR=1`, `PILLARD=1`,
+`MARCHAND=1`)
 font autre chose : ils font jouer une voie au lieu d'un système. Un bot unique
 mesure très bien ce qu'il fait et très mal ce qu'il ne fait pas — le colon a
 révélé que personne n'apportait de matériaux aux hameaux, le carriériste qu'un
 ordre de frappe sur trente était honorable, le négrier que le marché aux hommes
 ne s'ouvrait jamais, le bienfaiteur qu'on contractait une dette en traversant
 une ville pour un remords qui n'avait pas lieu d'être, le pillard que le butin
-d'une embuscade gagnée n'allait nulle part. Aucun des cinq ne se voyait dans les
+d'une embuscade gagnée n'allait nulle part, le marchand que le camp avalait la
+cargaison qu'on venait d'acheter. Aucun des six ne se voyait dans les
 chiffres du bot par défaut, et c'est la leçon la plus solide du banc : **ce
 qu'un bot ne joue pas, personne ne le mesure.**
 

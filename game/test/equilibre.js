@@ -37,6 +37,7 @@ import { estVivant, estDebout, comp, pvTotal } from '../src/characters.js';
 import { colonieDe, colonieParId, distance } from '../src/world.js';
 import {
   acheter, vendre, poidsInventaire, capacitePortage, acheterItem, prixItem, prixJoueur,
+  prixUnitaire, cibleStock,
 } from '../src/economy.js';
 import { accepter, progres as progresContrat, MAX_CONTRATS } from '../src/contrats.js';
 import {
@@ -107,6 +108,8 @@ const TRACE = {
   vendus: 0, sansMarche: 0, marchesVus: 0, villesVues: 0, mepris: 0, raflees: 0,
   caravanesVues: 0, caravanesPrises: 0, caravanesRatees: 0, butinCaravanes: 0, hGuet: 0,
   caravanesNees: 0, passagesGuet: 0, butinLaisse: 0, butinPorte: 0,
+  affairesPrises: 0, affairesPerdues: 0, miseTotale: 0, recetteTotale: 0, recetteEsperee: 0,
+  ageReleve: 0, nReleve: 0,
   titres: {},
   hPatrouille: 0, victoires: 0,
   mortsCombat: 0, koSubis: 0, piste: 0, pisteVues: 0, reconnus: 0, popCamp: 0,
@@ -209,6 +212,110 @@ const RAYON_PAROISSE = 4;
  * caravane pillée. C'est le seul chemin vers le titre de Seigneur de guerre.
  */
 const PILLARD = process.env.PILLARD === '1';
+/**
+ * Profil marchand : acheter là où c'est abondant, revendre là où ça manque.
+ *
+ * C'est la seule voie du jeu qu'on peut suivre sans tuer personne, et la seule
+ * dont l'économie n'a jamais été mesurée : le bot par défaut vend tout ce qu'il
+ * ramasse dans la première ville venue et n'achète que ce qu'il consomme. Il ne
+ * fait jamais l'aller-retour qui est pourtant le geste du métier.
+ *
+ * Le renseignement en est le nerf : on ne connaît d'une ville lointaine que son
+ * dernier relevé, avec sa date. Un marchand décide sur une information périmée
+ * et découvre le vrai prix en arrivant — c'est exactement ce que
+ * `connaissance.js` modélise, et personne ne s'en servait pour décider.
+ */
+const MARCHAND = process.env.MARCHAND === '1';
+/** Au-delà, un relevé de prix ne vaut plus la peine qu'on marche dessus. */
+const FRAICHEUR = Number(process.env.FRAICHEUR || 400);
+/** Jusqu'où l'on porte une cargaison. */
+const PORTEE_NEGOCE = Number(process.env.PORTEE || 8);
+
+/**
+ * La meilleure affaire connue depuis ici : quoi charger, et où le porter.
+ *
+ * Le prix de vente est *estimé* sur le dernier relevé qu'on a de la ville
+ * visée — pop, stock et humeur suffisent à `prixUnitaire`. On retire une marge
+ * de marchand forfaitaire, parce qu'on ne sait pas qui tient l'étal là-bas.
+ */
+function meilleureAffaire(state, g, colIci) {
+  const p = state.player;
+  const vivantsIci = g.membres.filter(estVivant);
+  if (!vivantsIci.length) return null;
+  const negoc = vivantsIci.reduce((a, b) => (comp(b, 'commerce') > comp(a, 'commerce') ? b : a));
+  const hab = comp(negoc, 'commerce');
+  const cap = capacitePortage(state, g);
+  let best = null;
+  for (const k of COMMODITY_KEYS) {
+    if (k === 'rations' || k === 'medkit') continue; // ce qu'on garde pour vivre
+    const dispo = Math.floor((colIci.stock[k] || 0) * 0.6);
+    if (dispo < 8) continue;
+    const achatAffiche = prixJoueur(colIci, k, hab, p.reputation[colIci.faction] || 0).achat;
+    const poids = COMMODITIES[k].poids;
+    const portable = poids > 0 ? Math.floor(cap * 0.75 / poids) : dispo;
+    if (Math.min(dispo, portable) < 8) continue;
+    for (const c of state.world.colonies) {
+      if (c.ruine || c.id === colIci.id) continue;
+      const vue = vueColonie(state, c);
+      if (vue.inconnu || vue.ruine || !vue.pop) continue;
+      // On ne spécule pas sur un relevé de trois semaines.
+      //
+      // Le monde arbitre tout seul : trois cent quatre-vingts caravanes par
+      // partie vont précisément combler les pénuries qui font monter les prix.
+      // Décider sur un relevé vieux de 564 heures — la moyenne mesurée — c'est
+      // viser une rareté que quelqu'un a déjà comblée pendant qu'on marchait.
+      // Le renseignement frais est ce que le grade et les registres du
+      // contremaître vous donnent : c'est là qu'ils se paient.
+      if (!vue.frais && (vue.depuis || 0) > FRAICHEUR) continue;
+      TRACE.ageReleve += vue.depuis || 0;
+      TRACE.nReleve++;
+      const d = distance(c.regionId, colIci.regionId);
+      if (d > PORTEE_NEGOCE) continue;
+      // Le prix affiché est celui de la *première* unité.
+      //
+      // C'est toute la différence entre un marchand et un déménageur. Le cours
+      // bouge à chaque unité de la transaction : on le fait monter en achetant
+      // et on l'écrase en vendant. Un lot dimensionné sur le prix affiché
+      // rapporte donc une fraction de ce qu'on croyait — mesuré : **31 % du
+      // prix visé**, et vingt-quatre pour cent de perte sur la mise. On estime
+      // ici la recette au cours de mi-parcours, et l'on essaie plusieurs tailles
+      // de lot : la plus grosse n'est presque jamais la meilleure.
+      const manque = Math.max(0, cibleStock(vue, k) * 1.1 - (vue.stock[k] || 0));
+      if (manque < 8) continue;
+      for (const part of [0.3, 0.55, 1]) {
+        const qte = Math.floor(Math.min(dispo, portable, manque * part));
+        if (qte < 8) continue;
+        // Le cours qu'on obtiendra en moyenne : celui de la ville une fois la
+        // moitié du lot livrée.
+        const apres = { pop: vue.pop, unrest: vue.unrest, stock: { ...vue.stock } };
+        apres.stock[k] = (apres.stock[k] || 0) + qte / 2;
+        const vente = prixUnitaire(apres, k) * 0.8;
+        // Et symétriquement à l'achat : vider un étal de moitié fait monter le
+        // cours pendant qu'on charge. On paie le prix de mi-parcours, pas celui
+        // de la première unité — l'oublier d'un seul côté fausse toute la marge.
+        //
+        // On met à l'échelle le vrai prix plutôt que d'en recalculer un sur une
+        // ville factice : `prixJoueur` lit les notables pour la marge du
+        // marchand, et un objet sans notables renvoyait NaN — ce qui passait
+        // silencieusement toutes les comparaisons et faisait choisir n'importe
+        // quelle affaire.
+        const avant = { pop: colIci.pop, unrest: colIci.unrest, stock: { ...colIci.stock } };
+        avant.stock[k] = Math.max(0, (avant.stock[k] || 0) - qte / 2);
+        const ratio = prixUnitaire(avant, k) / Math.max(0.01, prixUnitaire(colIci, k));
+        const achat = achatAffiche * ratio;
+        const marge = vente - achat;
+        if (marge <= 0) continue;
+        // Le gain rapporté au trajet : une marge de dix crédits à huit régions
+        // vaut moins qu'une marge de quatre à une région.
+        const score = (marge * qte) / (1 + d * 0.9);
+        if (!best || score > best.score) {
+          best = { k, qte, destId: c.id, score, cout: achat * qte, espere: vente * qte };
+        }
+      }
+    }
+  }
+  return best && best.score > 30 ? best : null;
+}
 
 /** Une ville qui achète des hommes, d'après ce qu'on sait de sa loi. */
 function acheteDesHommes(state, col) {
@@ -500,9 +607,20 @@ function tenirAvantPoste(state, g, memo) {
   // --- Sur place : on vide le sac dans l'entrepôt, on lance ce qu'on peut.
   if (surPlace) {
     const libre = capaciteStock(base) - totalStock(base);
+    // Ce qu'on doit à quelqu'un ne va pas à l'entrepôt.
+    //
+    // Le camp avalait la cargaison d'un marchand et le lot promis à un notable :
+    // on payait la marchandise, on rentrait chez soi, on la rangeait, et l'on
+    // repartait la livrer les mains vides. Ça se lisait comme une erreur de prix
+    // — le marchand n'encaissait que la moitié de ce qu'il visait, à toute
+    // distance et avec du renseignement frais, ce qui ne pouvait pas être un
+    // effet du marché.
+    const promis = new Set();
+    if (memo.affaire) promis.add(memo.affaire.k);
+    if (memo.promesse) promis.add(memo.promesse.res);
     if (libre > 20) {
       for (const k of COMMODITY_KEYS) {
-        if (k === 'rations' || k === 'medkit') continue;
+        if (k === 'rations' || k === 'medkit' || promis.has(k)) continue;
         const q = Math.floor(g.inventaire[k] || 0);
         if (q > 0) deposer(state, k, q, g);
       }
@@ -811,6 +929,9 @@ function jouerPrincipal(state, g, memo) {
     const reserves = new Set(p.contrats.filter((c) => c.ressource).map((c) => c.ressource));
     // Ni ce qu'on a promis à quelqu'un.
     if (memo.promesse) reserves.add(memo.promesse.res);
+    // Ni la cargaison d'un marchand, tant qu'on n'est pas arrivé : la vendre à
+    // la première ville venue, c'est exactement ne pas faire le métier.
+    if (memo.affaire && memo.affaire.destId !== colIci.id) reserves.add(memo.affaire.k);
     // Ni de quoi fonder l'avant-poste : le bot vendait tout à chaque passage en
     // ville et n'accumulait donc jamais les cent vingt ferrailles qu'il faut.
     if (!SANS.has('base') && !state.base.fonde && state.temps > 300) {
@@ -829,8 +950,34 @@ function jouerPrincipal(state, g, memo) {
         const av = p.credits;
         vendre(state, colIci, k, q, g);
         TRACE.gagneVente += p.credits - av;
+        // Ce que la cargaison a réellement rapporté, arrivée sur place : c'est
+        // le seul chiffre qui dise si le métier paie, la marge visée au départ
+        // n'étant qu'une estimation sur un relevé daté.
+        if (MARCHAND && memo.affaire && memo.affaire.k === k
+          && memo.affaire.destId === colIci.id) {
+          TRACE.recetteTotale += p.credits - av;
+        }
       }
     }
+    // --- Charger. Un marchand n'achète qu'après avoir vendu, et il n'engage
+    // pas tout : rester solvable fait partie du métier.
+    if (MARCHAND) {
+      if (memo.affaire && memo.affaire.destId === colIci.id) memo.affaire = null;
+      if (!memo.affaire && p.credits > 600) {
+        const aff = meilleureAffaire(state, g, colIci);
+        if (aff && aff.cout < p.credits * 0.7) {
+          const r = acheter(state, colIci, aff.k, aff.qte, g);
+          if (r.ok && r.qte > 0) {
+            TRACE.payeMateriel += r.cout;
+            TRACE.affairesPrises++;
+            TRACE.miseTotale += r.cout;
+            TRACE.recetteEsperee += aff.espere * (r.qte / Math.max(1, aff.qte));
+            memo.affaire = { k: aff.k, destId: aff.destId, mise: r.cout, qte: r.qte };
+          }
+        }
+      }
+    }
+
     // Second passage : la cargaison est vendue, on a de l'argent en main.
     //
     // `servir` est appelé en tête de la visite, avant la vente — donc au moment
@@ -1282,6 +1429,21 @@ function jouerPrincipal(state, g, memo) {
     } else if (distance(par.regionId, g.regionId) > RAYON_PAROISSE) {
       if (!(g.ordre.type === 'voyage' && g.ordre.dest === par.regionId)) {
         partir(state, g, par.regionId, 'retourner voir ses gens');
+      }
+      return;
+    }
+  }
+
+  // --- Porter. Une cargaison qu'on promène ne rapporte rien : elle pèse, elle
+  // immobilise la mise, et le prix qu'on visait bouge pendant qu'on marche.
+  if (MARCHAND && memo.affaire && rations > 50) {
+    const dest = colonieParId(state.world, memo.affaire.destId);
+    if (!dest || dest.ruine) {
+      memo.affaire = null;
+      TRACE.affairesPerdues++;
+    } else if (dest.regionId !== g.regionId) {
+      if (!(g.ordre.type === 'voyage' && g.ordre.dest === dest.regionId)) {
+        partir(state, g, dest.regionId, 'porter la cargaison');
       }
       return;
     }
@@ -1890,6 +2052,15 @@ TRACE.victoires = lignes.reduce((t, l) => t + Number(String(l.wl).split('/')[0])
 console.log(`  rafle : ${Math.round(TRACE.hPatrouille / PARTIES)} h de patrouille par partie, `
   + `${(TRACE.victoires / PARTIES).toFixed(1)} victoires, `
   + `${(TRACE.captures / Math.max(1, TRACE.victoires)).toFixed(2)} captif(s) par victoire`);
+console.log(`Négoce : ${(TRACE.affairesPrises / PARTIES).toFixed(1)} cargaisons par partie — `
+  + `${Math.round(TRACE.miseTotale / PARTIES)} cr engagés pour `
+  + `${Math.round(TRACE.recetteTotale / PARTIES)} cr encaissés `
+  + `(${TRACE.miseTotale ? Math.round(100 * (TRACE.recetteTotale - TRACE.miseTotale) / TRACE.miseTotale) : 0} % de marge), `
+  + `${TRACE.affairesPerdues} villes mortes à l'arrivée`);
+console.log(`  prix visé au départ : ${Math.round(TRACE.recetteEsperee / PARTIES)} cr par partie — `
+  + `obtenu ${Math.round(TRACE.recetteTotale / PARTIES)} cr `
+  + `(${TRACE.recetteEsperee ? Math.round(100 * TRACE.recetteTotale / TRACE.recetteEsperee) : 0} % de ce qu'on croyait)`
+  + ` — relevés vieux de ${Math.round(TRACE.ageReleve / Math.max(1, TRACE.nReleve))} h en moyenne`);
 console.log(`Caravanes : ${TRACE.caravanesVues} croisées sur la case — `
   + `${TRACE.caravanesPrises} prises pour ${Math.round(TRACE.butinCaravanes / PARTIES)} cr `
   + `de marchandise par partie, ${TRACE.caravanesRatees} embuscades repoussées `
