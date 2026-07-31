@@ -64,7 +64,9 @@ import {
 } from '../src/justice.js';
 import { loisDe, IMPOTS } from '../src/lois.js';
 import { titreDe } from '../src/chronique.js';
-import { TACTIQUE_KEYS, rendementTactique } from '../src/combat.js';
+import { TACTIQUE_KEYS, rendementTactique, genererBande } from '../src/combat.js';
+import { combatContre } from '../src/events.js';
+import { attaquerCaravane, valeurCargaison } from '../src/caravanes.js';
 import {
   peutExercer, colonnesDe, envoyerColonne, leverColonne, coutLevee,
   fonderPoste, sitesFondation, COUT_POSTE, cibleGuerre, declarerGuerreA,
@@ -103,6 +105,8 @@ const TRACE = {
   revoltes: 0, matees: 0, libres: 0, renverses: 0, grogne: 0,
   disposes: 0, relaches: 0, gagneCaptifs: 0, captures: 0, marchands: 0,
   vendus: 0, sansMarche: 0, marchesVus: 0, villesVues: 0, mepris: 0, raflees: 0,
+  caravanesVues: 0, caravanesPrises: 0, caravanesRatees: 0, butinCaravanes: 0, hGuet: 0,
+  caravanesNees: 0, passagesGuet: 0,
   titres: {},
   hPatrouille: 0, victoires: 0,
   mortsCombat: 0, koSubis: 0, piste: 0, pisteVues: 0, reconnus: 0, popCamp: 0,
@@ -193,6 +197,18 @@ const RAYON_RAFLE = 3;
 const BIENFAITEUR = process.env.BIENFAITEUR === '1';
 /** L'étendue d'une paroisse : sa ville, et celles où l'on peut aller à pied. */
 const RAYON_PAROISSE = 4;
+/**
+ * Profil pillard : on vit de ce que les autres transportent.
+ *
+ * Sept caravanes circulent au maximum sur quatre cent trente-deux régions. Elles
+ * portent une cargaison, une escorte, et rapportent tout leur chargement à qui
+ * la prend — au prix de vingt-deux points de réputation et de la rancune nommée
+ * des deux villes qui l'attendaient. `attaquerCaravane` existe depuis toujours,
+ * l'écran Monde les affiche en direct, et le compteur `caravanesPillees` n'a
+ * jamais été incrémenté une seule fois par le banc : trois cents parties, zéro
+ * caravane pillée. C'est le seul chemin vers le titre de Seigneur de guerre.
+ */
+const PILLARD = process.env.PILLARD === '1';
 
 /** Une ville qui achète des hommes, d'après ce qu'on sait de sa loi. */
 function acheteDesHommes(state, col) {
@@ -1032,6 +1048,77 @@ function jouerPrincipal(state, g, memo) {
     }
   }
 
+  // --- L'embuscade. Une caravane sur la case ne reste pas : elle avance d'une
+  // région toutes les deux heures, et le bot ne joue qu'un tour sur quatre. Si
+  // on ne la prend pas maintenant, on ne la prendra pas.
+  if (PILLARD) {
+    const ici = (state.world.caravanes || []).filter((c) => c.regionId === g.regionId);
+    for (const car of ici) {
+      TRACE.caravanesVues++;
+      const debout = g.membres.filter(estDebout).length;
+      // On ne charge pas une escorte plus nombreuse que soi : le butin ne vaut
+      // rien si la colonne y reste.
+      const escorte = Math.max(1, Math.min(6, Math.round(car.escorte / 9)));
+      if (escorte > debout || debout < 2) continue;
+      const valeur = valeurCargaison(car);
+      // On emprunte le générateur du monde et on le rend tout de suite, comme le
+      // fait `main.js` pour toute action du joueur : une action qui tire sur un
+      // flux parallèle casse la rejouabilité de la partie.
+      const rngA = new Rng(state.rngState);
+      const r = attaquerCaravane(state, car, rngA, () => {}, combatContre, genererBande);
+      state.rngState = rngA.save();
+      if (r.ok && r.gagne) { TRACE.caravanesPrises++; TRACE.butinCaravanes += valeur; }
+      else if (r.ok) TRACE.caravanesRatees++;
+      return;
+    }
+  }
+
+  // --- Se poster. Sans chercher, on croise trois caravanes par partie : ce que
+  // le hasard met sur la route de quelqu'un qui fait autre chose. Un pillard va
+  // au-devant. Il ne poursuit pas — une caravane avance d'une case toutes les
+  // deux heures et ne se rattrape pas — il l'attend à l'arrivée, qui est le seul
+  // point de son trajet qu'on connaisse à coup sûr.
+  // On ne poursuit pas et on n'intercepte pas : une caravane franchit une région
+  // en deux heures là où une colonne en met quatorze. Elle est sept fois plus
+  // rapide que vous. La première version visait la ville d'arrivée de la
+  // caravane la plus proche et changeait d'avis à chaque tour, parce qu'une
+  // autre devenait la plus proche — cent vingt-sept départs par partie contre
+  // trente-cinq, pour trois caravanes croisées de plus. On choisit donc un
+  // carrefour, une fois, et on ne bouge plus.
+  if (PILLARD && rations > 60 && g.membres.filter(estDebout).length >= 2) {
+    let guet = memo.guet != null ? colonieParId(state.world, memo.guet) : null;
+    if (!guet || guet.ruine) {
+      // Le meilleur poste est la ville la mieux reliée : les caravanes partent
+      // et arrivent chez elle, et aucune route ne dépasse sept régions.
+      let best = null;
+      let bestSc = -1;
+      for (const c of state.world.colonies) {
+        if (c.ruine || !c.faction) continue;
+        const voisines = state.world.colonies.filter(
+          (o) => !o.ruine && o.faction && o.id !== c.id && distance(o.regionId, c.regionId) <= 7
+        ).length;
+        // À trafic égal, on préfère ce qui est près de chez nous : marcher vingt
+        // régions pour se poster coûte plus que ce que le poste rapportera.
+        const sc = voisines - distance(c.regionId, g.regionId) * 0.8;
+        if (sc > bestSc) { bestSc = sc; best = c; }
+      }
+      guet = best;
+      memo.guet = best ? best.id : null;
+    }
+    if (guet) {
+      if (guet.regionId !== g.regionId) {
+        if (!(g.ordre.type === 'voyage' && g.ordre.dest === guet.regionId)) {
+          partir(state, g, guet.regionId, 'gagner son carrefour');
+        }
+        return;
+      }
+      // On y est. On ne repart pas : on guette, et on s'entretient sur place.
+      TRACE.hGuet++;
+      if (g.ordre.type !== 'repos') donnerOrdre(state, { type: 'repos' }, g);
+      return;
+    }
+  }
+
   // Blessés ou épuisés : on se pose — mais pas au point de mourir de faim en
   // convalescence. Se reposer sans vivres est le meilleur moyen de ne jamais
   // se relever.
@@ -1587,6 +1674,17 @@ for (let n = 0; n < PARTIES; n++) {
         ordresAvant.set(gg.id, { o: gg.allegeance.ordre, m: gg.allegeance.manques || 0 });
       }
     }
+    // Le trafic réel, heure par heure : une caravane n'occupe une région que
+    // deux heures, et le bot ne joue qu'un tour sur quatre — il en manque la
+    // moitié par construction. On compte donc ici, pas dans `jouer`.
+    {
+      const vues = memo.carVues || (memo.carVues = new Set());
+      for (const car of state.world.caravanes || []) {
+        if (!vues.has(car.id)) { vues.add(car.id); TRACE.caravanesNees++; }
+        const gg = groupes(state)[0];
+        if (gg && car.regionId === gg.regionId) TRACE.passagesGuet++;
+      }
+    }
     const remplisAvant = state.stats.ordresRemplis || 0;
     tick(state);
     let credit = (state.stats.ordresRemplis || 0) - remplisAvant;
@@ -1813,6 +1911,12 @@ TRACE.victoires = lignes.reduce((t, l) => t + Number(String(l.wl).split('/')[0])
 console.log(`  rafle : ${Math.round(TRACE.hPatrouille / PARTIES)} h de patrouille par partie, `
   + `${(TRACE.victoires / PARTIES).toFixed(1)} victoires, `
   + `${(TRACE.captures / Math.max(1, TRACE.victoires)).toFixed(2)} captif(s) par victoire`);
+console.log(`Caravanes : ${TRACE.caravanesVues} croisées sur la case — `
+  + `${TRACE.caravanesPrises} prises pour ${Math.round(TRACE.butinCaravanes / PARTIES)} cr `
+  + `de marchandise par partie, ${TRACE.caravanesRatees} embuscades repoussées `
+  + `— ${Math.round(TRACE.hGuet * 4 / PARTIES)} h de guet par partie`);
+console.log(`  circulation : ${Math.round(TRACE.caravanesNees / PARTIES)} caravanes par partie sur `
+  + `la carte entière — ${(TRACE.passagesGuet / PARTIES).toFixed(1)} heures-caravane sur notre case`);
 console.log(`Marché aux hommes : ${(TRACE.marchesVus / PARTIES).toFixed(1)} ville(s) sur `
   + `${(TRACE.villesVues / PARTIES).toFixed(0)} l'ouvrent en fin de partie — `
   + `${(TRACE.vendus / PARTIES).toFixed(1)} vendu(s) par partie, `
