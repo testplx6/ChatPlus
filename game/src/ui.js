@@ -12,6 +12,7 @@ import {
 } from './world.js';
 import {
   comp, pvTotal, etatCourt, estVivant, estDebout, ratio, peutEquiper,
+  SEUIL_FAMINE, SEUIL_VENTRE_CREUX,
   relationsNotables, lien,
 } from './characters.js';
 import {
@@ -32,6 +33,7 @@ import { titreDe, lignesDe } from './chronique.js';
 import { TACTIQUES, TACTIQUE_KEYS, apercuTactique } from './combat.js';
 import {
   donnerOrdre, ORDRES, rendementPrevu, COMPETENCES_EXERCICE, PAR_LA_PRATIQUE,
+  consommationGroupe, autonomie,
 } from './squad.js';
 import {
   progres as progresContrat, lieuValidation, accepter, abandonner, MAX_CONTRATS,
@@ -1229,10 +1231,33 @@ function blocInventaire() {
     ? G().objets.map((o) => `<span class="puce">${e(ITEMS[o].nom)}</span>`).join(' ')
     : '<span class="aide">Aucun équipement en réserve.</span>';
 
+  // Où passent les rations, poste par poste.
+  //
+  // Elles disparaissaient sans explication : rien ne disait que l'entraînement
+  // en avale une par heure pour deux personnes — de très loin le premier poste —
+  // ni que les prisonniers mangent sur le sac. Une comptabilité muette est
+  // indiscernable d'un bug.
+  const c = consommationGroupe(S, G());
+  const jours = autonomie(S, G());
+  const poste = (nom, v) => (v > 0.05
+    ? `<div class="ligne"><span class="k">${nom}</span>
+        <span class="v">${n(v, 1)} / jour</span></div>` : '');
+  const alerte = jours < 3 ? 'rouge' : jours < 8 ? 'ambre' : '';
+
   return `<section class="panneau">
     <h2 class="titre">Sac <span class="droite">${n(poids)} / ${n(cap)} kg</span></h2>
     ${jauge(cap ? poids / cap : 1, poids / cap > 0.95 ? 'rouge' : poids / cap > 0.8 ? 'ambre' : '')}
     <div style="margin-top:7px">${lignes}</div>
+    <div class="sep"></div>
+    <div class="titre">Vivres
+      <span class="droite ${alerte}">${Number.isFinite(jours)
+    ? `${n(jours, 1)} jour${jours >= 2 ? 's' : ''} d’autonomie` : 'rien ne se consomme'}</span></div>
+    ${poste('L’escouade mange', c.escouade)}
+    ${poste('Les prisonniers mangent', c.prisonniers)}
+    ${poste('L’entraînement brûle', c.entrainement)}
+    ${c.biomasse > 0.05 ? `<div class="ligne"><span class="k">Les bêtes broutent</span>
+      <span class="v">${n(c.biomasse, 1)} de biomasse / jour</span></div>` : ''}
+    ${c.rations <= 0.05 ? '<div class="aide">Personne ne consomme rien pour l’instant.</div>' : ''}
     <div class="sep"></div>
     <div class="titre">Réserve d’équipement</div>
     <div>${objets}</div>
@@ -1370,6 +1395,56 @@ function blocPrisonniers() {
   </section>`;
 }
 
+/**
+ * Qui fait quoi, en une table.
+ *
+ * L'information existait déjà — chaque fiche montre la tâche de son occupant —
+ * mais éparpillée sur autant d'écrans que de personnes : on ne pouvait pas
+ * savoir d'un coup d'œil que trois membres s'entraînaient pendant que le
+ * quatrième portait tout. On y ajoute l'état, qui manquait partout : blessé,
+ * affamé, à l'école, en formation.
+ */
+function blocQuiFaitQuoi() {
+  const g = G();
+  const gens = g.membres.filter(estVivant);
+  if (!gens.length) return '';
+  const enMarche = g.ordre.type === 'voyage';
+  const perso = gens.filter((c) => c.tache && TACHES_INDIVIDUELLES.includes(c.tache.type)).length;
+
+  const lignes = gens.map((c) => {
+    const propre = c.tache && TACHES_INDIVIDUELLES.includes(c.tache.type);
+    const tache = enMarche ? 'voyage' : tacheDe(g, c).type;
+    const etats = [];
+    if (c.etat === 'ko') etats.push('<span class="rouge">à terre</span>');
+    if (c.formation && c.formation.restant > 0) {
+      etats.push(`<span class="cyan">école ${Math.ceil(c.formation.restant / 24)} j</span>`);
+    }
+    if (c.enseigne) etats.push('<span class="cyan">enseigne</span>');
+    if (c.faim >= SEUIL_FAMINE) etats.push('<span class="rouge">affamé</span>');
+    else if (c.faim >= SEUIL_VENTRE_CREUX) etats.push('<span class="ambre">ventre creux</span>');
+    const pv = pvTotal(c).pct;
+    if (pv < 0.6) etats.push(`<span class="${pv < 0.35 ? 'rouge' : 'ambre'}">${Math.round(pv * 100)} % de forme</span>`);
+    if (c.fatigue >= 90) etats.push('<span class="ambre">épuisé</span>');
+    return `<div class="ligne">
+      <span class="k">${e(c.nom)}</span>
+      <span class="v">${e(ORDRES[tache].nom)}${propre && !enMarche ? ' <span class="cyan">·</span>' : ''}
+        ${etats.length ? `<br><span class="aide">${etats.join(' · ')}</span>` : ''}</span></div>`;
+  }).join('');
+
+  return `<section class="panneau">
+    <h2 class="titre">Qui fait quoi
+      <span class="droite">${gens.length} debout sur ${g.membres.length}</span></h2>
+    ${lignes}
+    ${enMarche
+    ? '<div class="aide">En marche, tout le monde marche. Les tâches personnelles reprendront à l’arrivée.</div>'
+    : ''}
+    ${perso > 0
+    ? `<button class="act" data-a="tous-suivent" style="margin-top:6px">Tout le monde suit le groupe
+        <span class="aide">(${perso} tâche${perso > 1 ? 's' : ''} personnelle${perso > 1 ? 's' : ''})</span></button>`
+    : '<div class="aide">Personne n’a de tâche à soi : tout le monde suit l’ordre du groupe.</div>'}
+  </section>`;
+}
+
 function ecranEscouade() {
   const p = S.player;
   const pol = p.politique;
@@ -1382,6 +1457,7 @@ function ecranEscouade() {
 
   return `
   ${barreGroupes()}
+  ${blocQuiFaitQuoi()}
   <section class="panneau">
     <h2 class="titre">Cohésion de ${e(g.nom)}
       <span class="droite"><span class="puce ${cohCls}">${Math.round(g.cohesion ?? 55)} %</span></span></h2>
@@ -3038,6 +3114,14 @@ function surClic(ev) {
     case 'chercher': {
       const r = lancerRecherche(S, el.dataset.k);
       if (!r.ok) toast(r.motif, true);
+      rafraichir(true);
+      break;
+    }
+
+    case 'tous-suivent': {
+      let n = 0;
+      for (const c of G().membres) if (c.tache) { delete c.tache; n++; }
+      toast(n ? `${n} personne(s) reprennent l’ordre du groupe.` : 'Personne n’avait de tâche à soi.');
       rafraichir(true);
       break;
     }

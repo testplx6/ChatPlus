@@ -23,7 +23,9 @@ import { distanceMorale } from '../src/factions.js';
 import { loiIci } from '../src/lois.js';
 import { primeLivraison, prixEsclave } from '../src/justice.js';
 import { classement, puissance } from '../src/factions.js';
-import { donnerOrdre, verifierExercice, COMPETENCES_EXERCICE } from '../src/squad.js';
+import {
+  donnerOrdre, verifierExercice, COMPETENCES_EXERCICE, consommationGroupe, autonomie,
+} from '../src/squad.js';
 import {
   fonderBase, lancerConstruction, lancerRecherche, placesMetier, affectes,
   abriDe, capaciteStock, totalStock, energie, COUT_FONDATION, POP_RECONNUE,
@@ -421,6 +423,41 @@ ok(serialiser(s3) === serialiser(s3b), 'la sim reprend à l’identique après r
   const lot = simulerVente(m2, c2, 'ferraille', 60, g2).gain;
   ok(lot < un * 60, 'vendre un lot entier rapporte moins que soixante fois la première unité',
     `${lot} cr contre ${un * 60} cr`);
+}
+
+// --- Où passent les rations, poste par poste.
+//
+// Elles s'évaporaient sans explication. Le premier poste, de très loin, est
+// l'entraînement — une ration par heure pour deux personnes, soit quarante-huit
+// par jour pour une escouade de quatre — et rien nulle part ne le disait.
+{
+  const cons = nouvellePartie(3535, { maintenant: 0 });
+  const gc = groupeActif(cons);
+  const base = consommationGroupe(cons, gc);
+  ok(base.escouade > 0, 'une escouade vivante mange', `${base.escouade.toFixed(2)} / jour`);
+  ok(base.entrainement === 0, 'et ne s’entraîne pas par défaut');
+
+  donnerOrdre(cons, { type: 'entrainement', skill: 'melee' }, gc);
+  const enTrain = consommationGroupe(cons, gc);
+  ok(enTrain.entrainement > enTrain.escouade,
+    'l’entraînement coûte plus cher que les repas eux-mêmes',
+    `${enTrain.entrainement} contre ${enTrain.escouade.toFixed(1)}`);
+
+  // Les prisonniers mangent sur le sac, qu'on le veuille ou non.
+  donnerOrdre(cons, { type: 'repos' }, gc);
+  const bande = genererBande(new Rng(21), 'bandits', 3, 0);
+  for (const c of bande.membres) { c.etat = 'ko'; c.corps.torse.pv = 0; }
+  fairePrisonniers(cons, gc, bande, capturables(gc, bande), () => {});
+  ok(consommationGroupe(cons, gc).prisonniers > 0,
+    'les prisonniers mangent sur le sac', `${prisonniersDe(gc).length} bouches de plus`);
+
+  // Et l'autonomie suit ce que l'on porte.
+  gc.inventaire.rations = 0;
+  ok(autonomie(cons, gc) === 0, 'sans rations, zéro jour d’autonomie');
+  gc.inventaire.rations = 200;
+  const jours = autonomie(cons, gc);
+  ok(jours > 1 && Number.isFinite(jours), 'avec des rations, une autonomie chiffrée',
+    `${jours.toFixed(1)} jours`);
 }
 
 section('4. Simulation longue (3 000 h ≈ 125 jours)');

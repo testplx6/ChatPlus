@@ -24,8 +24,8 @@ import {
   plafondCohesion, rendementCohesion, joignable,
 } from './groupes.js';
 import { renfortSoin } from './services.js';
-import { tickBetes, lenteurAttelage, betesDe } from './betes.js';
-import { tickPrisonniers, lenteurPrisonniers } from './justice.js';
+import { tickBetes, lenteurAttelage, betesDe, appetitAttelage } from './betes.js';
+import { tickPrisonniers, lenteurPrisonniers, prisonniersDe, RATION_PRISONNIER } from './justice.js';
 import { garnison } from './allegeance.js';
 
 export const ORDRES = {
@@ -616,6 +616,10 @@ function tickGroupe(state, g, log, ctx) {
             log({
               type: 'ordre',
               texte: `${g.nom} : plus de rations, entraînement interrompu.`,
+              // Un ordre qui s'annule tout seul doit se voir : c'est le genre de
+              // chose qu'on découvre trois jours plus tard en se demandant
+              // pourquoi personne ne progresse.
+              important: true,
               regionId: g.regionId,
               groupe: g.id,
             });
@@ -795,4 +799,66 @@ export function tickSquad(state, log, ctx) {
     state.fin = 'extinction';
     log({ type: 'fin', texte: 'Plus personne. Fin de partie.', important: true });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Ce que la colonne consomme, et pourquoi
+// ---------------------------------------------------------------------------
+
+/**
+ * Le détail de ce qui vide le sac, par jour et par poste.
+ *
+ * Les rations s'évaporaient sans explication : rien nulle part ne disait que
+ * l'entraînement en avale une par heure pour deux personnes — quarante-huit par
+ * jour pour une escouade de quatre, de loin le premier poste — ni que chaque
+ * prisonnier mange, ni que les bêtes broutent de la biomasse. Une comptabilité
+ * muette est indiscernable d'un bug, et c'est bien ce qu'on nous a rapporté.
+ *
+ * Fonction pure : elle relit les mêmes règles que `tickGroupe` sans rien
+ * modifier. Tout est exprimé en unités par jour de jeu.
+ */
+export function consommationGroupe(state, g) {
+  const vivants = vivantsDe(g);
+  const debout = deboutDe(g);
+
+  // Manger : la faim monte à l'effort, et quarante-cinq points de faim valent
+  // une ration. La nuit ne compte pas comme du travail.
+  const type = (g.ordre && g.ordre.type) || 'repos';
+  const forcee = !!(g.ordre && g.ordre.forcee);
+  let faimParJour = 0;
+  for (const c of vivants) {
+    const eff = estDebout(c) ? effortDe(type, false, forcee) : 0;
+    const effNuit = estDebout(c) ? effortDe(type, true, forcee) : 0;
+    // Deux tiers de jour, un tiers de nuit : c'est le rythme du tick.
+    const parHeure = ((0.55 + 0.25 * eff) * 16 + (0.55 + 0.25 * effNuit) * 8) / 24;
+    faimParJour += parHeure * 24 * (mods(c).faim || 1);
+  }
+  const escouade = faimParJour / 45;
+
+  // Les prisonniers mangent sur le sac, qu'on les nourrisse ou non.
+  const prisonniers = prisonniersDe(g).length * RATION_PRISONNIER;
+
+  // L'entraînement : une ration par heure pour deux personnes. C'est le poste
+  // que personne ne voyait, et c'est le plus gros de tous.
+  const entraine = debout.filter(
+    (c) => (c.tache ? c.tache.type : type) === 'entrainement'
+  ).length;
+  const entrainement = entraine ? Math.ceil(entraine / 2) * 24 : 0;
+
+  return {
+    escouade,
+    prisonniers,
+    entrainement,
+    rations: escouade + prisonniers + entrainement,
+    // Les bêtes ne mangent pas de rations : elles broutent ce que personne ne
+    // mange. On le dit quand même, c'est un stock qui baisse.
+    biomasse: appetitAttelage(g) * 24,
+  };
+}
+
+/** Combien de jours la colonne tient sur ce qu'elle porte, au rythme actuel. */
+export function autonomie(state, g) {
+  const c = consommationGroupe(state, g);
+  if (c.rations <= 0) return Infinity;
+  return (g.inventaire.rations || 0) / c.rations;
 }

@@ -1076,13 +1076,17 @@ export function visiteMarchand(state, rng, log) {
 
   if (vendu || achete) base.marchands = (base.marchands || 0) + 1;
   if (log && (vendu || achete)) {
+    // Pas discret quand il emporte quelque chose : c'est la réponse à « mon
+    // entrepôt s'est vidé et je ne sais pas pourquoi ». Le colporteur prend le
+    // surplus au-delà de la réserve, et il le prenait en silence.
     log({
       type: 'marchand',
       texte: `Un colporteur s’arrête à ${base.nom}`
-        + `${vendu ? ` : il prend ${vendu} unités pour ${credits} cr` : ''}`
+        + `${vendu ? ` : il prend ${vendu} unités du surplus pour ${credits} cr` : ''}`
         + `${achete ? `${vendu ? ' et laisse' : ' : il laisse'} ${achete} unités` : ''}.`,
       regionId: base.regionId,
-      discret: true,
+      important: vendu >= 40,
+      discret: vendu === 0,
     });
   }
   return { vendu, achete, credits };

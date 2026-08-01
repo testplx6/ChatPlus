@@ -278,6 +278,20 @@ ok(!abordable || objetsApres > objetsAvant, 'un achat d’équipement arrive dan
 await page.click('[data-a="fermer"]');
 await page.waitForTimeout(300);
 
+// Écran d'escouade : qui fait quoi, et où passent les vivres.
+await page.click('[data-a="onglet"][data-k="escouade"]');
+await page.waitForTimeout(400);
+ok((await page.locator('.panneau').filter({ hasText: 'Qui fait quoi' }).count()) > 0,
+  'l’escouade affiche qui fait quoi en une table');
+await page.screenshot({ path: join(CAPTURES, '09c-escouade.png'), fullPage: true });
+{
+  const txt = await page.locator('#ecran').innerText();
+  // `innerText` rend le texte tel qu'il s'affiche, capitales du CSS comprises.
+  ok(/autonomie|vivres/i.test(txt), 'et le même écran dit où passent les vivres');
+}
+await page.click('[data-a="onglet"][data-k="carte"]');
+await page.waitForTimeout(300);
+
 // Marché : la quantité se choisit, et le montant est annoncé avant de cliquer.
 //
 // Il n'offrait que « +10 » et « tout », sans jamais dire ce que ça ferait — et
