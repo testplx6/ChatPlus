@@ -52,6 +52,8 @@ const MODULES = [
   // geôles de justice.js, et events.js lit son insécurité en retour.
   'secteur.js',
   'base.js',
+  // De la place en ville, qui ne marche pas avec vous.
+  'coffres.js',
   'contrats.js',
   'events.js',
   'squad.js',

@@ -260,6 +260,34 @@ await page.click('[data-a="nouvelle"]');
 await page.waitForSelector('#carte');
 await page.waitForTimeout(600);
 
+// Le coffre en ville : louer, y mettre, reprendre.
+await page.click('[data-a="modale"][data-m="coffre"]');
+await page.waitForTimeout(400);
+ok((await page.locator('[data-a="coffre-louer"]').count()) > 0,
+  'une ville propose un coffre à louer');
+await page.screenshot({ path: join(CAPTURES, '09e-coffre.png') });
+if ((await page.locator('[data-a="coffre-louer"]:not([disabled])').count()) > 0) {
+  await page.click('[data-a="coffre-louer"]');
+  await page.waitForTimeout(400);
+  ok((await page.locator('[data-a="coffre-deposer"]').count()) > 0,
+    'et une fois loué, on peut y déposer');
+  const dedansAvant = await page.evaluate(
+    () => Object.keys(JSON.parse(localStorage.getItem('cendres.save.v1')).player.coffres || {}).length);
+  ok(dedansAvant === 1, 'le coffre est bien enregistré', `${dedansAvant}`);
+  if ((await page.locator('[data-a="coffre-deposer"]:not([disabled])').count()) > 0) {
+    await page.click('[data-a="coffre-deposer"]:not([disabled])');
+    await page.waitForTimeout(400);
+    const contenu = await page.evaluate(() => {
+      const c = JSON.parse(localStorage.getItem('cendres.save.v1')).player.coffres;
+      const k = Object.keys(c)[0];
+      return Object.values(c[k].contenu).reduce((a, b) => a + b, 0);
+    });
+    ok(contenu > 0, 'et ce qu’on y met y reste', `${contenu} unités`);
+  }
+}
+await page.click('[data-a="fermer"]');
+await page.waitForTimeout(200);
+
 // Étal d'équipement : le catalogue existait, rien n'était achetable.
 await page.click('[data-a="modale"][data-m="etal"]');
 await page.waitForTimeout(400);

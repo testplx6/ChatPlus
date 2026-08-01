@@ -59,6 +59,10 @@ import {
   lenteurPrisonniers, geoleDe,
 } from './justice.js';
 import { depouillesDe, ritesPour, lenteurDepouilles } from './depouilles.js';
+import {
+  coffreDe, placeCoffre, peutLouer, peutAcheter,
+  LOYER, PRIX_COFFRE, CAPACITE_LOUEE, CAPACITE_ACHETEE, ESTIME_PROPRIETE,
+} from './coffres.js';
 import { PEINES, PEINE_KEYS, IMPOTS, loisDe, loiIci } from './lois.js';
 import { distanceMorale } from './factions.js';
 import {
@@ -969,6 +973,8 @@ function blocColonie(col) {
       <button class="act mini" data-a="modale" data-m="panneau">Contrats${col.contrats && col.contrats.length ? ` (${col.contrats.length})` : ''}</button>
       <button class="act mini" data-a="modale" data-m="recrutement">Recruter</button>
       <button class="act mini" data-a="modale" data-m="attelage">Attelage${betesDe(G()).length ? ` (${betesDe(G()).length})` : ''}</button>
+      <button class="act mini" data-a="modale" data-m="coffre">Coffre${coffreDe(S, col.id)
+    ? ` (${Math.round(placeCoffre(coffreDe(S, col.id)).pris)} kg)` : ''}</button>
       ${ecolesDe(S.world, col).length
     ? `<button class="act mini" style="grid-column:1/-1" data-a="modale" data-m="ecole">
         Écoles (${ecolesDe(S.world, col).length})</button>` : ''}
@@ -2545,6 +2551,7 @@ function contenuModale() {
     case 'ecole': return modaleEcole() + fermer;
     case 'ville': return modaleVille() + fermer;
     case 'attelage': return modaleAttelage() + fermer;
+    case 'coffre': return modaleCoffre() + fermer;
     case 'equipement': return modaleEquipement() + fermer;
     case 'entrainement': return modaleEntrainement() + fermer;
     case 'recrutement': return modaleRecrutement() + fermer;
@@ -2605,6 +2612,64 @@ function modaleMarche() {
     à chaque unité : les montants affichés tiennent compte de tout le lot.</div>
   <div class="taches" style="margin-top:6px">Quantité ${choix}</div>
   <div class="sep"></div>${lignes}`;
+}
+
+/**
+ * Le coffre : de la place qui ne marche pas avec vous.
+ *
+ * Entre le sac — borné par ce que les gens portent — et l'entrepôt de
+ * l'avant-poste, qui est à un seul endroit et qu'on n'a pas forcément, il n'y
+ * avait rien. Mesuré : 34 % de la cargaison d'une caravane détroussée reste sur
+ * place faute de bras.
+ */
+function modaleCoffre() {
+  const col = colonieDe(S.world, G().regionId);
+  if (!col || col.ruine) return '<div class="aide">Pas de coffre en pleine friche.</div>';
+  const coffre = coffreDe(S, col.id);
+  const vL = peutLouer(S, col);
+  const vA = peutAcheter(S, col);
+
+  if (!coffre) {
+    return `<h2 class="titre">Coffre à ${e(col.nom)}
+      <span class="droite">${n(S.player.credits)} cr</span></h2>
+    <div class="aide">De la place qui reste ici pendant que vous marchez.</div>
+    <div class="sep"></div>
+    <button class="act${vL.ok ? ' primaire' : ''}" data-a="coffre-louer" ${vL.ok ? '' : 'disabled'}>
+      Louer — ${LOYER} cr le mois, ${CAPACITE_LOUEE} kg
+      ${vL.ok ? '' : `<br><span class="aide">${e(vL.motif)}</span>`}</button>
+    <div style="height:6px"></div>
+    <button class="act" data-a="coffre-acheter" ${vA.ok ? '' : 'disabled'}>
+      Acheter — ${n(PRIX_COFFRE)} cr, ${CAPACITE_ACHETEE} kg, plus de loyer
+      ${vA.ok ? '' : `<br><span class="aide">${e(vA.motif)}</span>`}</button>
+    <div class="aide" style="margin-top:6px">${col.faction
+    ? `On ne vend des murs qu'à qui l'on estime : ${ESTIME_PROPRIETE} d'estime demandés.`
+    : 'Ville libre : personne n’est en position de vous interdire de posséder.'}</div>`;
+  }
+
+  const pl = placeCoffre(coffre);
+  const lignes = COMMODITY_KEYS.map((k) => {
+    const dedans = Math.floor(coffre.contenu[k] || 0);
+    const dans1sac = Math.floor(G().inventaire[k] || 0);
+    if (!dedans && !dans1sac) return '';
+    return `<div class="marche-l">
+      <span class="nm">${e(COMMODITIES[k].nom)}<br>
+        <span class="aide">coffre ${n(dedans)} · sac ${n(dans1sac)}</span></span>
+      <button class="act" data-a="coffre-deposer" data-k="${k}" ${dans1sac < 1 ? 'disabled' : ''}>y mettre</button>
+      <button class="act" data-a="coffre-retirer" data-k="${k}" ${dedans < 1 ? 'disabled' : ''}>reprendre</button>
+    </div>`;
+  }).join('');
+
+  return `<h2 class="titre">Coffre à ${e(col.nom)}
+    <span class="droite">${Math.round(pl.pris)} / ${pl.total} kg</span></h2>
+  ${jauge(pl.total ? pl.pris / pl.total : 0, pl.pris / pl.total > 0.95 ? 'rouge' : '')}
+  <div class="aide">${coffre.achete
+    ? 'À vous. Pas de loyer.'
+    : `Loué : prochain loyer de ${LOYER} cr dans ${dureeTexte(Math.max(0, coffre.jusqu - S.temps))}.
+       Sans quoi le bailleur se remboursera sur ce qu’il garde.`}</div>
+  ${!coffre.achete && vA.ok
+    ? `<div style="height:6px"></div><button class="act" data-a="coffre-acheter">
+        L’acheter — ${n(PRIX_COFFRE)} cr, ${CAPACITE_ACHETEE} kg</button>` : ''}
+  <div class="sep"></div>${lignes || '<div class="aide">Rien ici, rien dans le sac.</div>'}`;
 }
 
 function modaleEtal() {
@@ -3281,6 +3346,35 @@ function surClic(ev) {
     case 'chercher': {
       const r = lancerRecherche(S, el.dataset.k);
       if (!r.ok) toast(r.motif, true);
+      rafraichir(true);
+      break;
+    }
+
+    case 'coffre-louer': {
+      const col = colonieDe(S.world, G().regionId);
+      const r = ACTIONS.louerCoffre(col && col.id);
+      toast(r.ok ? 'Coffre loué.' : r.motif, !r.ok);
+      rendreModale();
+      rafraichir(true);
+      break;
+    }
+
+    case 'coffre-acheter': {
+      const col = colonieDe(S.world, G().regionId);
+      const r = ACTIONS.acheterCoffre(col && col.id);
+      toast(r.ok ? 'Le coffre est à vous.' : r.motif, !r.ok);
+      rendreModale();
+      rafraichir(true);
+      break;
+    }
+
+    case 'coffre-deposer':
+    case 'coffre-retirer': {
+      const col = colonieDe(S.world, G().regionId);
+      const depose = el.dataset.a === 'coffre-deposer';
+      const r = ACTIONS.coffre(col && col.id, el.dataset.k, depose);
+      if (!r.ok) toast(r.motif, true);
+      rendreModale();
       rafraichir(true);
       break;
     }

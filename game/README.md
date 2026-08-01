@@ -1323,6 +1323,34 @@ Le bot du banc enterre, après avoir repris l'équipement — la voie honnête,
 comme il livre ses prisonniers au lieu de les vendre. Une partie ordinaire y
 passe une fois, un négrier trois.
 
+### Un coffre en ville, et « posséder » qui veut dire quelque chose
+
+Tout ce qu'on possède tenait dans deux endroits : le sac, borné par ce que les
+gens portent, et l'entrepôt de l'avant-poste, qui est à un seul point du monde
+et qu'on n'a pas forcément. Entre les deux, rien — et le banc avait chiffré ce
+que ça coûte : **34 % de la cargaison d'une caravane détroussée reste sur place
+faute de bras**, un marchand ne charge que ce que son escouade tient, et l'on
+brade en ville ce qu'on aurait gardé.
+
+    Louer     70 cr le mois, 140 kg      partout où il y a une ville
+    Acheter   1 300 cr, 260 kg           là où l'on vous laisse posséder
+
+Le loyer se prélève tout seul. Qui ne peut plus payer voit le bailleur se
+servir dans le coffre, au prix du gros — mais **jamais plus de la moitié de ce
+qu'il garde** : un mois impayé ne vide pas un coffre, sinon la sanction est sans
+commune mesure avec la dette et l'on perd trois mois de butin pour soixante-dix
+crédits.
+
+Acheter, en revanche, dépend du régime de la ville, et c'est la première fois
+que la politique d'un lieu change ce qu'on peut y faire plutôt que la couleur de
+sa fiche : **une faction ne vend pas de murs à un inconnu** — il faut quarante
+d'estime — tandis qu'**une ville libre n'a personne en position d'interdire quoi
+que ce soit**. C'est le crochet auquel des régimes plus détaillés pourront
+s'accrocher, s'ils changent des choses aussi concrètes que celle-là.
+
+Le contenu appartient au joueur, pas au monde : il vit dans `state.player`,
+comme les crédits.
+
 ### Un garde-fou de performance qui ne tient plus tout à fait
 
 À signaler, parce que le taire reviendrait à truquer la mesure. Le même code de

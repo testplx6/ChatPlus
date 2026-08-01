@@ -45,6 +45,11 @@ import { loisDe, pressionFiscale, PEINES } from '../src/lois.js';
 import {
   depouillesDe, lenteurDepouilles, poidsMoral, disposerCorps, prixOrganes,
 } from '../src/depouilles.js';
+import {
+  coffreDe, peutLouer, peutAcheter, louerCoffre, acheterCoffre, capaciteCoffre,
+  deposerAuCoffre, retirerDuCoffre, tickCoffres,
+  LOYER, PRIX_COFFRE, CAPACITE_LOUEE, ESTIME_PROPRIETE, PERIODE_LOYER,
+} from '../src/coffres.js';
 import { DELAI_LOI } from '../src/factions.js';
 import {
   tickSecteurs, tickInsecurite, effetPresence, casesDe, menace, motEtat,
@@ -499,6 +504,80 @@ ok(serialiser(s3) === serialiser(s3b), 'la sim reprend à l’identique après r
   const remis = deserialiser(serialiser(vieux));
   ok(remis.player.groupes[0].membres.every((m) => m.skills0),
     'une sauvegarde d’avant se rattrape sans casser');
+}
+
+section('4 ter. Un coffre en ville');
+{
+  const cf = nouvellePartie(4546, { maintenant: 0 });
+  const gc = groupeActif(cf);
+  const ville = cf.world.colonies.find((c) => !c.ruine && c.faction && c.faction !== 'essaim');
+  gc.regionId = ville.regionId;
+  cf.player.credits = 5000;
+  cf.player.reputation[ville.faction] = 0;
+
+  ok(!coffreDe(cf, ville.id), 'on n’a pas de coffre au départ');
+  ok(!peutAcheter(cf, ville).ok,
+    'une faction ne vend pas de murs à un inconnu', peutAcheter(cf, ville).motif);
+  ok(peutLouer(cf, ville).ok, 'mais elle en loue à qui veut');
+
+  const crAvant = cf.player.credits;
+  ok(louerCoffre(cf, ville, () => {}).ok, 'on loue');
+  ok(cf.player.credits === crAvant - LOYER, 'le premier mois est payé d’avance');
+  const coffre = coffreDe(cf, ville.id);
+  ok(!!coffre && !coffre.achete, 'le coffre existe, et il est loué');
+
+  // On y met, on en reprend.
+  gc.inventaire.ferraille = 60;
+  const rD = deposerAuCoffre(cf, ville, 'ferraille', 40, gc);
+  ok(rD.ok && coffre.contenu.ferraille === 40, 'on y dépose', `${rD.qte}`);
+  ok(Math.floor(gc.inventaire.ferraille) === 20, 'et ça quitte le sac');
+  ok(retirerDuCoffre(cf, ville, 'ferraille', 15, gc).ok
+    && coffre.contenu.ferraille === 25, 'on en reprend');
+
+  // Loin de la ville, le coffre est hors d’atteinte : c’est tout son intérêt.
+  const ailleurs = cf.world.regions.find((r) => distance(r.i, ville.regionId) > 2);
+  gc.regionId = ailleurs.i;
+  ok(!deposerAuCoffre(cf, ville, 'ferraille', 5, gc).ok,
+    'on n’y accède pas depuis l’autre bout de la carte');
+  gc.regionId = ville.regionId;
+
+  // Le loyer court, et le bailleur se rembourse s'il le faut.
+  cf.player.credits = LOYER * 2;
+  cf.temps = coffre.jusqu;
+  tickCoffres(cf, () => {});
+  ok(cf.player.credits === LOYER, 'le loyer se prélève tout seul');
+  cf.player.credits = 0;
+  cf.temps = coffre.jusqu;
+  const avantSaisie = coffre.contenu.ferraille;
+  tickCoffres(cf, () => {});
+  ok(coffre.contenu.ferraille < avantSaisie,
+    'sans crédits, le bailleur se sert dans le coffre',
+    `${avantSaisie} → ${coffre.contenu.ferraille}`);
+  ok(coffre.contenu.ferraille > 0,
+    'mais il se rembourse, il ne confisque pas tout');
+
+  // Acheter : possible dès qu'on est estimé, et le loyer s'arrête.
+  cf.player.reputation[ville.faction] = ESTIME_PROPRIETE + 5;
+  cf.player.credits = PRIX_COFFRE + 10;
+  ok(peutAcheter(cf, ville).ok, 'estimé, on peut acheter');
+  ok(acheterCoffre(cf, ville, () => {}).ok, 'et l’on achète');
+  ok(coffreDe(cf, ville.id).achete, 'le coffre est à nous');
+  ok(coffreDe(cf, ville.id).contenu.ferraille > 0, 'et son contenu ne s’est pas évaporé');
+  ok(capaciteCoffre(coffreDe(cf, ville.id)) > CAPACITE_LOUEE, 'il tient davantage');
+  const crAv2 = cf.player.credits;
+  cf.temps += PERIODE_LOYER * 3;
+  tickCoffres(cf, () => {});
+  ok(cf.player.credits === crAv2, 'et plus aucun loyer ne court');
+
+  // Une ville libre n'a personne pour interdire de posséder.
+  const cf2 = nouvellePartie(4547, { maintenant: 0 });
+  const g2c = groupeActif(cf2);
+  const libre2 = cf2.world.colonies.find((c) => !c.ruine && c.faction && c.faction !== 'essaim');
+  libre2.faction = null;
+  g2c.regionId = libre2.regionId;
+  cf2.player.credits = PRIX_COFFRE + 10;
+  ok(peutAcheter(cf2, libre2).ok,
+    'une ville libre ne demande d’estime à personne', peutAcheter(cf2, libre2).motif);
 }
 
 section('4 bis. Ce qu’on fait de ses morts');

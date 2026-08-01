@@ -12,6 +12,7 @@ import {
 } from './economy.js';
 import { tickClimat, conditions, saison } from './climat.js';
 import { tickCaravanes } from './caravanes.js';
+import { tickCoffres } from './coffres.js';
 import { tickFactions } from './factions.js';
 import { tickSquad } from './squad.js';
 import { creerLogger } from './events.js';
@@ -392,6 +393,8 @@ export function tick(state) {
   }
   tickFactions(state.world, state.temps, log, ctx);
   tickCaravanes(state, log, ctx);
+  // Le loyer des coffres court, qu'on soit là ou non.
+  tickCoffres(state, log);
 
   // Panneaux d'affichage et étals se renouvellent de loin en loin.
   if (state.temps % 40 === 0) {

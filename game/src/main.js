@@ -19,6 +19,10 @@ import { verifierExercice } from './squad.js';
 import { honorer as honorerService } from './services.js';
 import { acheterBete, vendreBete } from './betes.js';
 import { disposerCorps } from './depouilles.js';
+import {
+  louerCoffre as louerCoffreA, acheterCoffre as acheterCoffreA,
+  deposerAuCoffre, retirerDuCoffre,
+} from './coffres.js';
 import { engager } from './recrues.js';
 import {
   envoyerColonne as envoyerColonneA, leverColonne as leverColonneA,
@@ -111,6 +115,31 @@ const API = {
 
   quitterService() {
     const r = quitter(state, creerLogger(state));
+    sauver();
+    return r;
+  },
+
+  /** Louer, acheter, remplir et vider un coffre en ville. Voir coffres.js. */
+  louerCoffre(colId) {
+    const col = state.world.colonies.find((c) => c.id === colId);
+    const r = louerCoffreA(state, col, creerLogger(state));
+    sauver();
+    return r;
+  },
+
+  acheterCoffre(colId) {
+    const col = state.world.colonies.find((c) => c.id === colId);
+    const r = acheterCoffreA(state, col, creerLogger(state));
+    sauver();
+    return r;
+  },
+
+  coffre(colId, key, depose) {
+    const col = state.world.colonies.find((c) => c.id === colId);
+    const g = groupeActif(state);
+    const r = depose
+      ? deposerAuCoffre(state, col, key, 9999, g)
+      : retirerDuCoffre(state, col, key, 9999, g);
     sauver();
     return r;
   },
