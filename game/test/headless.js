@@ -56,6 +56,7 @@ import {
 } from '../src/betes.js';
 import {
   estVivant, makeCharacter, accorderDiplome, apprentissage, tickPerso, resistanceLetale,
+  GAIN_DIPLOME, SEUIL_VENTRE_CREUX,
   comp as compPerso,
 } from '../src/characters.js';
 import { DIPLOMES } from '../src/data.js';
@@ -72,7 +73,7 @@ import {
 } from '../src/groupes.js';
 import {
   acheter, vendre, prixJoueur, actifs, emploi, productionColonie, consommationColonie,
-  capacitePortage, poidsInventaire,
+  capacitePortage, poidsInventaire, simulerAchat, simulerVente,
 } from '../src/economy.js';
 import { vocation, notable } from '../src/notables.js';
 import {
@@ -347,6 +348,80 @@ ok(serialiser(s3b) === txt, 'aller-retour JSON sans perte');
 avancer(s3, 200);
 avancer(s3b, 200);
 ok(serialiser(s3) === serialiser(s3b), 'la sim reprend à l’identique après rechargement');
+
+// --- On est prévenu avant de mourir de faim.
+//
+// Le jeu n'avait qu'un message sur ce chemin — « X est mort de faim » — et rien
+// avant : on perdait quelqu'un sans avoir rien vu venir, ce qui se lit comme un
+// bug alors que c'est une comptabilité qui tourne depuis des jours.
+{
+  const rngF = new Rng(4242);
+  const c = makeCharacter(rngF);
+  const dire = (t) => tickPerso(c, 0, rngF, { soin: 1, premiersSecours: false, abri: 1 });
+  c.faim = SEUIL_VENTRE_CREUX - 5;
+  ok(!dire().some((m) => m.type === 'faim'), 'le ventre plein ne dit rien');
+  c.faim = SEUIL_VENTRE_CREUX + 2;
+  const creux = dire();
+  ok(creux.some((m) => m.type === 'faim' && /ventre creux/.test(m.texte)),
+    'on annonce le ventre creux avant que ça n’entame');
+  ok(!dire().some((m) => m.type === 'faim'),
+    'et on ne le répète pas à chaque heure');
+  c.faim = 100;
+  ok(dire().some((m) => m.type === 'faim' && /s’affaiblit/.test(m.texte)),
+    'puis on annonce la famine, une fois');
+  ok(!dire().some((m) => m.type === 'faim'), 'sans se répéter non plus');
+  // Remanger remet le compteur : la prochaine disette se dira aussi.
+  c.faim = 10;
+  dire();
+  c.faim = SEUIL_VENTRE_CREUX + 2;
+  ok(dire().some((m) => m.type === 'faim'),
+    'après avoir remangé, la disette suivante se dit à nouveau');
+}
+
+// --- Le montant annoncé est le montant payé.
+//
+// L'interface ne pouvait afficher que des prix unitaires, alors que le cours
+// bouge à chaque unité échangée : « tout vendre » était un saut dans le noir. Le
+// chiffrage et la transaction partagent maintenant la même boucle, et ce test
+// existe pour qu'elles ne divergent plus jamais.
+{
+  const m = nouvellePartie(3131, { maintenant: 0 });
+  const gm = groupeActif(m);
+  const cm = m.world.colonies.find((c) => !c.ruine && (c.stock.ferraille || 0) > 30);
+  if (cm) {
+    gm.regionId = cm.regionId;
+    m.player.credits = 5000;
+    const simA = simulerAchat(m, cm, 'ferraille', 25, gm);
+    const crAvant = m.player.credits;
+    const ra = acheter(m, cm, 'ferraille', 25, gm);
+    ok(ra.qte === simA.qte && ra.cout === simA.cout,
+      'un achat coûte exactement ce qui était annoncé',
+      `annoncé ${simA.qte}/${simA.cout} cr, payé ${ra.qte}/${ra.cout} cr`);
+    ok(crAvant - m.player.credits === simA.cout, 'et la bourse bouge d’autant');
+
+    const simV = simulerVente(m, cm, 'ferraille', 9999, gm);
+    const rv = vendre(m, cm, 'ferraille', 9999, gm);
+    ok(rv.qte === simV.qte && rv.gain === simV.gain,
+      'une vente rapporte exactement ce qui était annoncé',
+      `annoncé ${simV.qte}/${simV.gain} cr, encaissé ${rv.qte}/${rv.gain} cr`);
+    // Et le chiffrage ne doit rien avoir touché au passage.
+    const stockAvant = cm.stock.ferraille;
+    simulerAchat(m, cm, 'ferraille', 40, gm);
+    simulerVente(m, cm, 'ferraille', 40, gm);
+    ok(cm.stock.ferraille === stockAvant, 'chiffrer ne modifie ni la ville ni le sac');
+  }
+  // Le cours est bien dégressif : vendre en un lot rapporte moins que le prix
+  // unitaire multiplié par la quantité. C'est ce que l'écran doit montrer.
+  const m2 = nouvellePartie(3132, { maintenant: 0 });
+  const g2 = groupeActif(m2);
+  const c2 = m2.world.colonies.find((c) => !c.ruine);
+  g2.regionId = c2.regionId;
+  g2.inventaire.ferraille = 60;
+  const un = simulerVente(m2, c2, 'ferraille', 1, g2).gain;
+  const lot = simulerVente(m2, c2, 'ferraille', 60, g2).gain;
+  ok(lot < un * 60, 'vendre un lot entier rapporte moins que soixante fois la première unité',
+    `${lot} cr contre ${un * 60} cr`);
+}
 
 section('4. Simulation longue (3 000 h ≈ 125 jours)');
 // On tique directement : le monde doit continuer de tourner même si l'escouade
@@ -1148,6 +1223,27 @@ ok(eleve.skills[skillOffre] >= DIPLOMES[offre].plancher,
 ok(apprentissage(eleve, skillOffre) > 1, 'le diplômé apprend ensuite plus vite',
   `×${apprentissage(eleve, skillOffre).toFixed(2)}`);
 ok(!inscrire(s9r, ville9r, eleve, offre, () => {}).ok, 'on ne repasse pas le même diplôme');
+
+// Un diplôme apporte quelque chose même à qui en savait déjà plus que l'école.
+//
+// Il se contentait d'un `max(compétence, plancher)` : trois semaines et neuf
+// cents crédits ne changeaient rien pour quelqu'un formé sur le tas, et l'école
+// refusait même de l'inscrire vingt-cinq points au-dessus du plancher. On n'y
+// allait donc jamais avec ses bons éléments.
+{
+  const fort = makeCharacter(new Rng(99), { niveau: 2, diplome: null });
+  const skill = DIPLOMES.medecine.skill;
+  fort.skills[skill] = DIPLOMES.medecine.plancher + 40;
+  const av = fort.skills[skill];
+  ok(accorderDiplome(fort, 'medecine'), 'un bon élément peut être diplômé');
+  ok(fort.skills[skill] === av + GAIN_DIPLOME,
+    'et il y gagne quand même de la compétence', `${av} → ${fort.skills[skill]}`);
+  const faible = makeCharacter(new Rng(98), { diplome: null });
+  faible.skills[skill] = 3;
+  accorderDiplome(faible, 'medecine');
+  ok(faible.skills[skill] === DIPLOMES.medecine.plancher,
+    'un débutant est monté au plancher, pas au-delà', `${faible.skills[skill]}`);
+}
 
 // Le diplôme accélère réellement la pratique, à situation égale.
 const dipl = nouvellePartie(1818, { maintenant: 0 });

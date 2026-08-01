@@ -16,7 +16,7 @@ import {
 } from './characters.js';
 import {
   prixJoueur, acheter, vendre, poidsInventaire, capacitePortage, meilleurCommercant,
-  prixItem, acheterItem, vendreItem, actifs, emploi,
+  prixItem, acheterItem, vendreItem, actifs, emploi, simulerAchat, simulerVente,
 } from './economy.js';
 import {
   populationMax, mainDoeuvre, placesMetier, affectes, manoeuvres, affecter,
@@ -2309,6 +2309,23 @@ function contenuModale() {
   }
 }
 
+/**
+ * Le marché.
+ *
+ * Il n'offrait que « +10 » et « tout », sans jamais dire ce que ça ferait. Or le
+ * prix est dégressif — chaque unité échangée déplace la suivante — donc « tout »
+ * était un saut dans le noir, et c'est précisément le geste qui ruine une
+ * cargaison : mesuré au banc, dimensionner un lot rapporte +21 % là où vider son
+ * sac d'un coup en coûte 41. La seule action proposée était la mauvaise.
+ *
+ * On choisit donc une quantité, et chaque ligne annonce le montant exact, calculé
+ * par le même code que la transaction (`simulerAchat` / `simulerVente`). Quand la
+ * quantité voulue ne passe pas — sac plein, étal vide, bourse courte — le bouton
+ * affiche ce qui passera réellement.
+ */
+const QUANTITES = [1, 10, 50, 9999];
+let qteMarche = 10;
+
 function modaleMarche() {
   const col = colonieDe(S.world, G().regionId);
   if (!col) return '<div class="aide">Il n’y a pas de marché ici.</div>';
@@ -2316,23 +2333,34 @@ function modaleMarche() {
   const hab = negoc ? comp(negoc, 'commerce') : 0;
   const repu = S.player.reputation[col.faction] || 0;
 
+  const choix = QUANTITES.map((q) => `<button class="act mini" data-a="qte-marche" data-q="${q}"
+    aria-pressed="${qteMarche === q}">${q === 9999 ? 'max' : `×${q}`}</button>`).join('');
+
   const lignes = COMMODITY_KEYS.map((k) => {
     const p = prixJoueur(col, k, hab, repu);
     const stock = Math.floor(col.stock[k] || 0);
-    const aMoi = G().inventaire[k] || 0;
+    const aMoi = Math.floor(G().inventaire[k] || 0);
+    const a = simulerAchat(S, col, k, qteMarche, G());
+    const v = simulerVente(S, col, k, qteMarche, G());
+    // Ce qui a borné l'achat, dit en clair plutôt que par un bouton grisé.
+    const gene = { 'sac plein': 'sac plein', 'étal vide': 'étal vide', credits: 'bourse' }[a.borne];
     return `<div class="marche-l">
       <span class="nm">${e(COMMODITIES[k].nom)}<br>
-        <span class="aide">ville ${n(stock)} · sac ${n(aMoi)}</span></span>
-      <span class="px">A ${n(p.achat, 1)}<br>V ${n(p.vente, 1)}</span>
-      <button class="act" data-a="acheter" data-k="${k}" data-q="10" ${stock < 1 ? 'disabled' : ''}>+10</button>
-      <button class="act" data-a="vendre" data-k="${k}" data-q="9999" ${aMoi < 1 ? 'disabled' : ''}>tout</button>
+        <span class="aide">ville ${n(stock)} · sac ${n(aMoi)} · ${n(p.achat, 1)} / ${n(p.vente, 1)}
+        ${gene ? `<span class="rouge">· ${gene}</span>` : ''}</span></span>
+      <button class="act" data-a="acheter" data-k="${k}" data-q="${qteMarche}" ${a.qte < 1 ? 'disabled' : ''}>
+        ${a.qte < 1 ? '—' : `+${n(a.qte)}<br><span class="aide">${n(a.cout)} cr</span>`}</button>
+      <button class="act" data-a="vendre" data-k="${k}" data-q="${qteMarche}" ${v.qte < 1 ? 'disabled' : ''}>
+        ${v.qte < 1 ? '—' : `−${n(v.qte)}<br><span class="aide">${n(v.gain)} cr</span>`}</button>
     </div>`;
   }).join('');
 
   return `<h2 class="titre">Marché de ${e(col.nom)}
     <span class="droite">${n(S.player.credits)} cr</span></h2>
   <div class="aide">Négociateur : ${negoc ? `${e(negoc.nom)} (commerce ${hab.toFixed(0)})` : 'aucun'}.
-    Une bonne réputation et un bon commerçant resserrent la marge.</div>
+    Une bonne réputation et un bon commerçant resserrent la marge. Le prix bouge
+    à chaque unité : les montants affichés tiennent compte de tout le lot.</div>
+  <div class="taches" style="margin-top:6px">Quantité ${choix}</div>
   <div class="sep"></div>${lignes}`;
 }
 
@@ -3013,6 +3041,11 @@ function surClic(ev) {
       rafraichir(true);
       break;
     }
+
+    case 'qte-marche':
+      qteMarche = Number(el.dataset.q);
+      rendreModale();
+      break;
 
     case 'acheter': {
       const col = colonieDe(S.world, G().regionId);

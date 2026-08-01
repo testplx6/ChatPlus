@@ -78,10 +78,17 @@ export function makeCharacter(rng, opts = {}) {
   return c;
 }
 
+/** Ce qu'une école apprend même à quelqu'un qui en savait déjà plus qu'elle. */
+export const GAIN_DIPLOME = 5;
+
+/** Le ventre crie ici, et la faim entame là. Voir `tickPerso`. */
+export const SEUIL_VENTRE_CREUX = 75;
+export const SEUIL_FAMINE = 100;
+
 /**
- * Remet le diplôme et ce qui va avec : un plancher de compétence — jamais
- * rabaissé, on n'oublie pas ce qu'on savait — et l'aptitude à progresser plus
- * vite ensuite, qui est le vrai apport d'une formation.
+ * Remet le diplôme et ce qui va avec : de la compétence — jamais rabaissée, on
+ * n'oublie pas ce qu'on savait — et l'aptitude à progresser plus vite ensuite,
+ * qui est le vrai apport d'une formation.
  */
 export function accorderDiplome(c, key) {
   const d = DIPLOMES[key];
@@ -89,7 +96,15 @@ export function accorderDiplome(c, key) {
   if (!c.diplomes) c.diplomes = [];
   if (c.diplomes.includes(key)) return false;
   c.diplomes.push(key);
-  c.skills[d.skill] = Math.max(c.skills[d.skill] || 0, d.plancher);
+  // Un diplôme monte au plancher qui n'y est pas encore, et ajoute toujours
+  // quelque chose à qui le dépasse déjà.
+  //
+  // Il se contentait de `max(compétence, plancher)` : trois semaines et neuf
+  // cents crédits ne changeaient donc strictement rien pour quelqu'un qui avait
+  // appris sur le tas, et l'école refusait carrément de l'inscrire au-delà de
+  // vingt-cinq points au-dessus du plancher. On n'y allait jamais avec ses bons
+  // éléments, c'est-à-dire jamais avec ceux à qui ça servirait.
+  c.skills[d.skill] = Math.max((c.skills[d.skill] || 0) + GAIN_DIPLOME, d.plancher);
   return true;
 }
 
@@ -426,12 +441,30 @@ export function tickPerso(c, effort, rng, ctx = {}) {
     c.sang = Math.max(0, c.sang - 2.2 - compression);
   }
 
-  // Famine
-  if (c.faim >= 100) {
+  // Famine.
+  //
+  // On prévient. Le jeu n'avait qu'un seul message sur ce chemin — « X est mort
+  // de faim » — et rien avant : on perdait quelqu'un sans avoir rien vu venir,
+  // ce qui se lit comme un bug alors que c'est une comptabilité qui tourne
+  // depuis des jours. Deux paliers, chacun annoncé une seule fois, et remis à
+  // zéro dès qu'on remange : le ventre creux, puis la faim qui entame.
+  if (c.faim >= SEUIL_FAMINE) {
+    // On compare le palier, pas un simple « déjà dit » : sans ça l'annonce du
+    // ventre creux avalait celle de la famine, et le second cran restait muet.
+    if (c.criFaim !== 2) {
+      c.criFaim = 2;
+      msgs.push({ type: 'faim', texte: `${c.nom} n’a plus rien mangé depuis trop longtemps. Il s’affaiblit.` });
+    }
     const r = blesser(c, 1.6, 'torse', rng);
     if (r.mort) msgs.push({ type: 'mort', texte: `${c.nom} est mort de faim.` });
     c.moral = Math.max(0, c.moral - 1.2);
+  } else if (c.faim >= SEUIL_VENTRE_CREUX) {
+    if (!c.criFaim) {
+      c.criFaim = 1;
+      msgs.push({ type: 'faim', texte: `${c.nom} a le ventre creux. Il faudrait des rations.` });
+    }
   } else if (c.faim < 40) {
+    if (c.criFaim) c.criFaim = 0;
     c.moral = Math.min(100, c.moral + 0.25);
   }
 

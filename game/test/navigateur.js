@@ -278,6 +278,37 @@ ok(!abordable || objetsApres > objetsAvant, 'un achat d’équipement arrive dan
 await page.click('[data-a="fermer"]');
 await page.waitForTimeout(300);
 
+// Marché : la quantité se choisit, et le montant est annoncé avant de cliquer.
+//
+// Il n'offrait que « +10 » et « tout », sans jamais dire ce que ça ferait — et
+// « tout » est précisément le geste qui ruine une cargaison, puisque le prix
+// baisse à chaque unité vendue.
+await page.click('[data-a="modale"][data-m="marche"]');
+await page.waitForTimeout(400);
+ok(await page.locator('[data-a="qte-marche"]').count() >= 3,
+  'le marché propose plusieurs quantités');
+await page.screenshot({ path: join(CAPTURES, '09b-marche.png') });
+{
+  const libelle = () => page.locator('[data-a="acheter"]:not([disabled])').first().innerText();
+  const avant = await libelle();
+  await page.click('[data-a="qte-marche"][data-q="50"]');
+  await page.waitForTimeout(300);
+  const apres = await libelle();
+  ok(avant !== apres, 'changer la quantité change ce qui est annoncé',
+    `${avant.replace(/\n/g, ' ')} → ${apres.replace(/\n/g, ' ')}`);
+  // Le montant affiché doit être celui qu'on paie réellement.
+  const promis = Number((apres.match(/([0-9]+)\s*cr/) || [])[1] || 0);
+  const crAvant = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).player.credits);
+  await page.click('[data-a="acheter"]:not([disabled])');
+  await page.waitForTimeout(500);
+  const crApres = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).player.credits);
+  ok(promis > 0 && Math.abs((crAvant - crApres) - promis) <= 1,
+    'et le prix annoncé est exactement le prix payé',
+    `annoncé ${promis}, payé ${crAvant - crApres}`);
+}
+await page.click('[data-a="fermer"]');
+await page.waitForTimeout(300);
+
 // Panneau de contrats
 await page.click('[data-a="modale"][data-m="panneau"]');
 await page.waitForTimeout(400);

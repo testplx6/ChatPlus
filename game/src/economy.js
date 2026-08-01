@@ -37,11 +37,17 @@ export function cibleStock(col, key) {
   }
 }
 
-/** Prix unitaire courant, tiré de la tension offre/demande. */
-export function prixUnitaire(col, key) {
+/**
+ * Prix unitaire courant, tiré de la tension offre/demande.
+ *
+ * `stockSimule` permet de demander « et si le stock valait ça ? » sans toucher à
+ * la ville. C'est ce qui permet de chiffrer une transaction avant de la faire,
+ * puisque chaque unité échangée déplace le prix de la suivante.
+ */
+export function prixUnitaire(col, key, stockSimule) {
   const base = COMMODITIES[key].prix;
   const cible = Math.max(1, cibleStock(col, key));
-  const stock = Math.max(0, col.stock[key] || 0);
+  const stock = Math.max(0, stockSimule === undefined ? (col.stock[key] || 0) : stockSimule);
   // Rapport stock/cible → facteur borné [0.45, 3.2]
   const tension = cible / (stock + cible * 0.35);
   const f = Math.max(0.45, Math.min(3.2, Math.pow(tension, 0.85)));
@@ -53,8 +59,8 @@ export function prixUnitaire(col, key) {
  * `habilete` : compétence de commerce du meilleur négociateur (0-100).
  * `repu`     : réputation avec la faction propriétaire (−100..100).
  */
-export function prixJoueur(col, key, habilete = 0, repu = 0, remise = 0) {
-  const p = prixUnitaire(col, key);
+export function prixJoueur(col, key, habilete = 0, repu = 0, remise = 0, stockSimule) {
+  const p = prixUnitaire(col, key, stockSimule);
   // La marge n'est pas une constante du monde : c'est celle d'un homme, avec
   // son caractère, son métier et ce qu'il pense de vous.
   const marge = Math.max(0.02,
@@ -561,60 +567,93 @@ export function poidsInventaire(inv) {
  * Le prix bouge au fur et à mesure de la transaction : acheter tout le stock
  * d'une petite ville coûte cher.
  */
-export function acheter(state, col, key, qte, groupe) {
+/**
+ * Ce que coûterait cet achat, sans le faire — et ce qui l'a borné.
+ *
+ * Même boucle que `acheter`, qui l'appelle : le chiffre annoncé à l'écran est
+ * donc exactement celui qu'on paiera, y compris quand le prix monte à mesure
+ * qu'on vide l'étal. Sans ça l'interface ne pouvait proposer que « +10 » et
+ * « tout », et un joueur n'avait aucun moyen de savoir ce que « tout » allait
+ * lui coûter sur un marché où chaque unité déplace la suivante.
+ */
+export function simulerAchat(state, col, key, qte, groupe) {
   const g = groupe || groupeActif(state);
   const negoc = meilleurCommercant(g.membres);
   const hab = negoc ? comp(negoc, 'commerce') : 0;
   const repu = state.player.reputation[col.faction] || 0;
+  const remise = remiseDe(state, col.faction);
   let restant = Math.floor(qte);
+  let stock = Math.floor(col.stock[key] || 0);
   let cout = 0;
   let achetes = 0;
+  let borne = null;
 
-  const capacite = capacitePortage(state, g);
-  const libre = capacite - poidsInventaire(g.inventaire);
+  const libre = capacitePortage(state, g) - poidsInventaire(g.inventaire);
   const poidsU = COMMODITIES[key].poids;
   const maxPoids = poidsU > 0 ? Math.floor(libre / poidsU) : restant;
-  if (maxPoids <= 0) return { ok: false, motif: 'Sac plein.', qte: 0, cout: 0 };
+  if (maxPoids <= 0) return { qte: 0, cout: 0, borne: 'sac plein' };
+  if (restant > maxPoids) borne = 'sac plein';
   restant = Math.min(restant, maxPoids);
 
   while (restant > 0) {
-    if ((col.stock[key] || 0) < 1) break;
-    const p = prixJoueur(col, key, hab, repu, remiseDe(state, col.faction)).achat;
-    if (state.player.credits - cout < p) break;
+    if (stock < 1) { borne = borne || 'étal vide'; break; }
+    const p = prixJoueur(col, key, hab, repu, remise, stock).achat;
+    if (state.player.credits - cout < p) { borne = borne || 'crédits'; break; }
     cout += p;
-    col.stock[key] -= 1;
+    stock -= 1;
     achetes += 1;
     restant -= 1;
   }
-  if (achetes === 0) return { ok: false, motif: 'Rien à acheter à ce prix.', qte: 0, cout: 0 };
-  cout = Math.round(cout);
-  state.player.credits -= cout;
-  g.inventaire[key] = (g.inventaire[key] || 0) + achetes;
-  if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.5 + achetes * 0.3);
-  return { ok: true, qte: achetes, cout };
+  return { qte: achetes, cout: Math.round(cout), borne };
+}
+
+/** Ce que rapporterait cette vente, sans la faire. Voir `simulerAchat`. */
+export function simulerVente(state, col, key, qte, groupe) {
+  const g = groupe || groupeActif(state);
+  const negoc = meilleurCommercant(g.membres);
+  const hab = negoc ? comp(negoc, 'commerce') : 0;
+  const repu = state.player.reputation[col.faction] || 0;
+  const remise = remiseDe(state, col.faction);
+  let restant = Math.min(Math.floor(qte), Math.floor(g.inventaire[key] || 0));
+  let stock = Math.floor(col.stock[key] || 0);
+  let gain = 0;
+  let vendus = 0;
+  while (restant > 0) {
+    gain += prixJoueur(col, key, hab, repu, remise, stock).vente;
+    stock += 1;
+    vendus += 1;
+    restant -= 1;
+  }
+  return { qte: vendus, gain: Math.round(gain) };
+}
+
+export function acheter(state, col, key, qte, groupe) {
+  const g = groupe || groupeActif(state);
+  // On chiffre d'abord, on encaisse ensuite, avec le même code : le prix affiché
+  // et le prix payé ne peuvent pas diverger.
+  const sim = simulerAchat(state, col, key, qte, g);
+  if (sim.qte === 0) {
+    const motifs = { 'sac plein': 'Sac plein.', 'étal vide': 'L’étal est vide.', credits: 'Pas assez de crédits.' };
+    return { ok: false, motif: motifs[sim.borne] || 'Rien à acheter à ce prix.', qte: 0, cout: 0 };
+  }
+  col.stock[key] = Math.max(0, (col.stock[key] || 0) - sim.qte);
+  state.player.credits -= sim.cout;
+  g.inventaire[key] = (g.inventaire[key] || 0) + sim.qte;
+  const negoc = meilleurCommercant(g.membres);
+  if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.5 + sim.qte * 0.3);
+  return { ok: true, qte: sim.qte, cout: sim.cout };
 }
 
 export function vendre(state, col, key, qte, groupe) {
   const g = groupe || groupeActif(state);
+  const sim = simulerVente(state, col, key, qte, g);
+  if (sim.qte === 0) return { ok: false, motif: 'Rien à vendre.', qte: 0, gain: 0 };
+  col.stock[key] = (col.stock[key] || 0) + sim.qte;
+  g.inventaire[key] -= sim.qte;
+  state.player.credits += sim.gain;
   const negoc = meilleurCommercant(g.membres);
-  const hab = negoc ? comp(negoc, 'commerce') : 0;
-  const repu = state.player.reputation[col.faction] || 0;
-  let restant = Math.min(Math.floor(qte), g.inventaire[key] || 0);
-  let gain = 0;
-  let vendus = 0;
-  while (restant > 0) {
-    const p = prixJoueur(col, key, hab, repu, remiseDe(state, col.faction)).vente;
-    gain += p;
-    col.stock[key] = (col.stock[key] || 0) + 1;
-    vendus += 1;
-    restant -= 1;
-  }
-  if (vendus === 0) return { ok: false, motif: 'Rien à vendre.', qte: 0, gain: 0 };
-  gain = Math.round(gain);
-  g.inventaire[key] -= vendus;
-  state.player.credits += gain;
-  if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.5 + vendus * 0.3);
-  return { ok: true, qte: vendus, gain };
+  if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.5 + sim.qte * 0.3);
+  return { ok: true, qte: sim.qte, gain: sim.gain };
 }
 
 /** Capacité de portage d'un groupe. Ce qu'il porte, il le porte lui-même. */

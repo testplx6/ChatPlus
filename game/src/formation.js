@@ -44,10 +44,6 @@ export function peutSInscrire(state, col, perso, key) {
   if ((perso.diplomes || []).includes(key)) {
     return { ok: false, motif: `${perso.nom} a déjà ce diplôme.` };
   }
-  // Une école ne reprend pas depuis le début quelqu'un qui la dépasse déjà.
-  if (perso.skills[d.skill] >= d.plancher + 25) {
-    return { ok: false, motif: `${perso.nom} en sait déjà plus que l’école.` };
-  }
   return { ok: true };
 }
 
@@ -205,9 +201,8 @@ export function peutApprendreChezSoi(state, perso, key) {
   if ((perso.diplomes || []).includes(key)) {
     return { ok: false, motif: `${perso.nom} a déjà ce diplôme.` };
   }
-  if (perso.skills[DIPLOMES[key].skill] >= DIPLOMES[key].plancher + 25) {
-    return { ok: false, motif: `${perso.nom} en sait déjà plus que le cours.` };
-  }
+  // On n'écarte plus les bons élèves : un diplôme ajoute toujours quelque chose
+  // à qui le dépasse déjà. Voir `accorderDiplome`.
   return { ok: true, instructeur: offre.instructeur };
 }
 
