@@ -459,10 +459,20 @@ export const FEUILLE_MAX = 14;
  * il est plafonné à quatre cents lignes. On sert une faction pendant six mois
  * de jeu et il n'en reste qu'un nombre.
  */
-export function noterFait(all, o, issue, t) {
+export function noterFait(all, o, issue, t, bilan) {
   if (!all) return;
   if (!all.faits) all.faits = [];
-  all.faits.push({ t, type: o.type, titre: o.titre, issue });
+  // Ce que ça a rapporté ou coûté, réellement : crédits, points de service,
+  // estime. Un dossier qui dit « honoré » sans dire combien ne sert qu'à
+  // moitié, et les valeurs annoncées par l'ordre ne sont pas toujours celles
+  // qu'on touche — le service passe par `crediter`, qui a ses propres règles.
+  const f = { t, type: o.type, titre: o.titre, issue };
+  if (bilan) {
+    if (bilan.cr) f.cr = Math.round(bilan.cr);
+    if (bilan.pts) f.pts = Math.round(bilan.pts);
+    if (bilan.rep) f.rep = Math.round(bilan.rep);
+  }
+  all.faits.push(f);
   if (all.faits.length > FEUILLE_MAX) all.faits.shift();
 }
 
@@ -604,14 +614,23 @@ function tickEngagement(state, g, log, ctx) {
         if (porteur) porteur.inventaire[o.ressource] -= o.quantite;
         if (col) col.stock[o.ressource] = (col.stock[o.ressource] || 0) + o.quantite;
       }
+      // On relève les compteurs avant et après : ce qu'on inscrit au dossier
+      // est ce qui s'est réellement passé, pas ce que l'ordre promettait.
+      const crAvant = state.player.credits;
+      const repAvant = state.player.reputation[all.faction] || 0;
+      const ptsAvant = all.points;
       state.player.credits += o.recompense;
-      state.player.reputation[all.faction] = Math.min(100, (state.player.reputation[all.faction] || 0) + 5);
+      state.player.reputation[all.faction] = Math.min(100, repAvant + 5);
       all.ordre = null;
       all.prochainOrdre = state.temps + rng.irange(120, 260);
       state.stats.ordresRemplis = (state.stats.ordresRemplis || 0) + 1;
       all.ordresHonores = (all.ordresHonores || 0) + 1;
-      noterFait(all, o, 'honore', state.temps);
       crediter(state, o.service, log, null, g);
+      noterFait(all, o, 'honore', state.temps, {
+        cr: state.player.credits - crAvant,
+        pts: all.points - ptsAvant,
+        rep: (state.player.reputation[all.faction] || 0) - repAvant,
+      });
       log({
         type: 'allegeance',
         texte: `Ordre exécuté : ${o.titre}. ${o.recompense} cr.`,
@@ -626,9 +645,12 @@ function tickEngagement(state, g, log, ctx) {
       // reculait de deux, et le banc l'a chiffré — quarante-quatre escouades sur
       // quarante-huit ne quittaient jamais le premier grade. Ce qu'on perd,
       // c'est l'estime, et elle finit par fermer l'intendance.
-      state.player.reputation[all.faction] = Math.max(-100, (state.player.reputation[all.faction] || 0) - 3);
+      const repAvantM = state.player.reputation[all.faction] || 0;
+      state.player.reputation[all.faction] = Math.max(-100, repAvantM - 3);
       all.manques = (all.manques || 0) + 1;
-      noterFait(all, o, 'manque', state.temps);
+      noterFait(all, o, 'manque', state.temps, {
+        rep: (state.player.reputation[all.faction] || 0) - repAvantM,
+      });
       log({
         type: 'allegeance',
         texte: `Ordre non exécuté : ${o.titre}. On le note.`,

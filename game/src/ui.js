@@ -1506,17 +1506,15 @@ function blocQuiFaitQuoi() {
       <span class="droite">${gens.length} debout sur ${g.membres.length}</span></h2>
     ${lignes}
     <div class="sep"></div>
-    <div class="grille2">
-      <div class="ligne"><span class="k">Ensemble, par jour</span>
-        <span class="v">${recolte || '<span class="aide">rien à récolter ainsi</span>'}</span></div>
-      <div class="ligne"><span class="k">Marche</span>
-        <span class="v">${Number.isFinite(ap.heuresParRegion)
-    ? `${n(ap.heuresParRegion, 1)} h par région d’ici` : '—'}</span></div>
-      <div class="ligne"><span class="k">Prisonniers gardés</span>
-        <span class="v">${ap.prisonniers} sur ${n(ap.garde, 1)}</span></div>
-      <div class="ligne"><span class="k">Attelage mené</span>
-        <span class="v">${ap.attelage} sur ${ap.conduite}</span></div>
-    </div>
+    <div class="ligne"><span class="k">Ensemble, par jour</span>
+      <span class="v">${recolte || '<span class="aide">rien à récolter ainsi</span>'}</span></div>
+    <div class="ligne"><span class="k">Marche</span>
+      <span class="v">${Number.isFinite(ap.heuresParRegion)
+    ? `${n(ap.heuresParRegion, 1)} h / région` : '—'}</span></div>
+    <div class="ligne"><span class="k">Prisonniers</span>
+      <span class="v">${ap.prisonniers} gardés sur ${n(ap.garde, 1)}</span></div>
+    <div class="ligne"><span class="k">Attelage</span>
+      <span class="v">${ap.attelage} mené${ap.attelage > 1 ? 's' : ''} sur ${ap.conduite}</span></div>
     <div class="aide">Le travail s’additionne : chacun apporte selon sa compétence,
       et la cohésion multiplie le tout.</div>
     ${enMarche
@@ -1548,9 +1546,7 @@ function ecranEscouade() {
     ${jauge((g.cohesion ?? 55) / 100, '', rend >= 1 ? '#4fd0e3' : undefined)}
     <div class="grille2">
       <div class="ligne"><span class="k">Effectif</span>
-        <span class="v">${nGens} pour un noyau de ${n(noy)}
-          <span class="aide">(4 + ${nivBat(S.base, 'baraquement')} baraquement
-          + ${placesSociables(g)} par les vôtres)</span></span></div>
+        <span class="v">${nGens} · noyau ${n(noy)}</span></div>
       <div class="ligne"><span class="k">Plafond atteignable</span>
         <span class="v">${Math.round(plafond)} %</span></div>
       <div class="ligne"><span class="k">Travail et combat</span>
@@ -1558,6 +1554,8 @@ function ecranEscouade() {
       <div class="ligne"><span class="k">Se voit de loin</span>
         <span class="v">+${(Math.max(0, nGens - 4) * 5)} % de rencontres</span></div>
     </div>
+    <div class="aide">Noyau : 4 + ${nivBat(S.base, 'baraquement')} de baraquement
+      + ${placesSociables(g)} que les vôtres tiennent ensemble.</div>
     <div class="aide">${nGens > noy
     ? 'Au-delà du noyau, on se connaît moins. Rien ne l’interdit : ça coûte, simplement — '
       + 'et un baraquement ou quelqu’un de sociable agrandit ce noyau.'
@@ -1913,6 +1911,7 @@ function ligneContrat(c, enCours) {
       <div class="aide">${e(p.texte)} · à rendre à ${e(lieuValidation(S, c))}
         · <span class="${reste < 48 ? 'alerte' : ''}">${dureeTexte(Math.max(0, reste))} restantes</span></div>`
     : `<div class="aide">Commanditaire : ${e(donneur ? donneur.nom : '—')} · ${dureeTexte(reste)} accordées</div>`}
+    ${blocCibleContrat(c, reste)}
     ${enCours
     ? `<button class="act mini danger" data-a="abandonner" data-k="${e(c.id)}">Abandonner</button>`
     : `<button class="act mini primaire" data-a="accepter" data-k="${e(c.id)}">Accepter</button>`}
@@ -2123,6 +2122,50 @@ function villesVisables(faction) {
 }
 
 /**
+ * Où aller pour honorer un contrat, et si le délai le permet.
+ *
+ * Même défaut que pour les ordres de mission, et même correction : le panneau
+ * d'affichage annonçait « Porter 40 medkits à Cité-Tréfonds » sans dire où est
+ * cette ville, ni à combien de régions, ni si le délai laissait le temps d'y
+ * aller. Une prime ne désignait qu'une faction. On accepte à l'aveugle, et
+ * abandonner coûte.
+ */
+function blocCibleContrat(c, reste) {
+  const g = G();
+  let cible = null;
+  if (c.type === 'livraison') {
+    const dest = colonieParId(S.world, c.destId);
+    if (dest && !dest.ruine) cible = { regionId: dest.regionId, quoi: `à porter à ${dest.nom}` };
+  } else if (c.type === 'reconnaissance') {
+    cible = { regionId: c.regionId, quoi: 'secteur à lever' };
+  } else if (c.type === 'prime' && c.cibleFaction) {
+    const chez = S.world.regions
+      .filter((r) => r.controle === c.cibleFaction && r.decouvert && !r.colonie)
+      .sort((a, b) => distance(a.i, g.regionId) - distance(b.i, g.regionId))[0];
+    if (chez) cible = { regionId: chez.i, quoi: 'on les croise chez eux' };
+    else {
+      return `<div class="aide">On ne connaît aucune terre ${e(FACTIONS[c.cibleFaction]
+        ? FACTIONS[c.cibleFaction].genitif : '')} par ici : il faudra les croiser en chemin.</div>`;
+    }
+  } else if (c.type === 'collecte') {
+    // Rien à situer : ça se ramasse partout. On dit au moins où le rendre.
+    return '';
+  }
+  if (!cible) return '';
+
+  const d = distance(cible.regionId, g.regionId);
+  if (d === 0) {
+    return `<div class="aide cyan">Vous y êtes : ${e(nomRegion(S.world, cible.regionId))}.</div>`;
+  }
+  const heures = apercuEscouade(S, g).heuresParRegion * d;
+  const tient = heures <= Math.max(0, reste);
+  return `<div class="aide">${e(cible.quoi)} : ${e(nomRegion(S.world, cible.regionId))},
+    à ${d} région${d > 1 ? 's' : ''} — ${Number.isFinite(heures) ? dureeTexte(Math.round(heures)) : '?'} de marche.
+    <span class="${tient ? 'cyan' : 'alerte'}">${tient
+  ? 'le délai le permet' : 'le délai ne le permet pas'}</span></div>`;
+}
+
+/**
  * Où aller pour honorer un ordre de mission, et si c'est seulement jouable.
  *
  * L'ordre n'annonçait qu'un titre : « Ravitailler Cité-Tréfonds : 60 rations ».
@@ -2191,16 +2234,34 @@ function blocFeuilleService(all) {
   };
   const lignes = faits.map((f) => {
     const [cls, txt] = mot[f.issue] || ['att', f.issue];
+    // Ce que ça a rapporté ou coûté. Un dossier qui dit « honoré » sans dire
+    // combien ne sert qu'à moitié.
+    const bilan = [
+      f.cr ? `${f.cr > 0 ? '+' : ''}${n(f.cr)} cr` : '',
+      f.pts ? `${f.pts > 0 ? '+' : ''}${n(f.pts)} pts` : '',
+      f.rep ? `${f.rep > 0 ? '+' : ''}${n(f.rep)} estime` : '',
+    ].filter(Boolean).join(' · ');
     return `<div class="ligne">
       <span class="k">${e(f.titre)}<br>
         <span class="aide">${dureeTexte(Math.max(0, S.temps - f.t))} plus tôt</span></span>
-      <span class="v"><span class="puce ${cls}">${txt}</span></span></div>`;
+      <span class="v"><span class="puce ${cls}">${txt}</span>${bilan
+    ? `<br><span class="aide ${f.issue === 'manque' ? 'alerte' : ''}">${bilan}</span>` : ''}</span></div>`;
   }).join('');
+  const total = faits.reduce((a, f) => ({
+    cr: a.cr + (f.cr || 0), pts: a.pts + (f.pts || 0), rep: a.rep + (f.rep || 0),
+  }), { cr: 0, pts: 0, rep: 0 });
+  const cumul = [
+    total.cr ? `${total.cr > 0 ? '+' : ''}${n(total.cr)} cr` : '',
+    total.pts ? `${total.pts > 0 ? '+' : ''}${n(total.pts)} points de service` : '',
+    total.rep ? `${total.rep > 0 ? '+' : ''}${n(total.rep)} d’estime` : '',
+  ].filter(Boolean).join(' · ');
+
   return `<div class="sep"></div>
     <div class="titre">Feuille de service
       <span class="droite">${b.honores} honoré${b.honores > 1 ? 's' : ''}
         · ${b.manques} manqué${b.manques > 1 ? 's' : ''}${b.annules
   ? ` · ${b.annules} annulé${b.annules > 1 ? 's' : ''}` : ''}</span></div>
+    ${cumul ? `<div class="aide">Sur ce qu’on garde en mémoire : ${cumul}.</div>` : ''}
     ${lignes || '<div class="aide">Le détail des plus anciens s’est perdu ; les totaux tiennent.</div>'}`;
 }
 

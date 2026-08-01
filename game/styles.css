@@ -199,6 +199,16 @@ body {
 /* Deux colonnes de couples clé/valeur : sans séparateur elles se lisent comme
    une seule phrase à rallonge. */
 .grille2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; }
+
+/* Sur un écran étroit, deux colonnes ne tiennent pas.
+   `.ligne .k` ne se coupe jamais — c'est voulu, une clé coupée en deux est
+   illisible — donc une clé un peu longue mange toute la cellule et il ne reste
+   qu'un caractère de large pour la valeur, qui se met à descendre lettre par
+   lettre. On repasse donc à une seule colonne : le panneau est plus haut, il
+   est lisible. */
+@media (max-width: 430px) {
+  .grille2 { grid-template-columns: 1fr; gap: 0; }
+}
 .grille2 > .ligne { border-bottom: 1px solid #1b2029; }
 .grille3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
 

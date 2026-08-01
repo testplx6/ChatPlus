@@ -260,6 +260,36 @@ await page.click('[data-a="nouvelle"]');
 await page.waitForSelector('#carte');
 await page.waitForTimeout(600);
 
+// Aucune valeur ne doit descendre lettre par lettre.
+//
+// `.ligne .k` ne se coupe jamais — une clé coupée en deux est illisible — donc
+// dans une grille à deux colonnes sur un écran de trois cent soixante pixels,
+// une clé un peu longue mange toute la cellule et la valeur se met à tomber
+// verticalement, un caractère par ligne. On l'a découvert sur une capture ;
+// désormais on le mesure : une valeur plus haute que large est en colonne.
+{
+  await page.click('[data-a="onglet"][data-k="escouade"]');
+  await page.waitForTimeout(400);
+  const verticales = await page.evaluate(() => {
+    const mauvais = [];
+    for (const v of document.querySelectorAll('.ligne .v')) {
+      const t = (v.innerText || '').trim();
+      if (t.length < 4) continue;
+      const r = v.getBoundingClientRect();
+      // Plus haut que large avec du texte dedans : il descend en colonne.
+      if (r.height > r.width * 1.6 && r.height > 40) {
+        mauvais.push(`${(v.previousElementSibling || {}).innerText || '?'} → ${t.slice(0, 24)}`);
+      }
+    }
+    return mauvais;
+  });
+  ok(verticales.length === 0, 'aucune valeur ne s’affiche en colonne sur mobile',
+    verticales.slice(0, 3).join(' | '));
+  // On rend l'onglet où la suite attend le panneau de la ville.
+  await page.click('[data-a="onglet"][data-k="carte"]');
+  await page.waitForTimeout(300);
+}
+
 // Le coffre en ville : louer, y mettre, reprendre.
 await page.click('[data-a="modale"][data-m="coffre"]');
 await page.waitForTimeout(400);
@@ -435,6 +465,14 @@ await page.click('[data-a="modale"][data-m="panneau"]');
 await page.waitForTimeout(400);
 const offres = await page.locator('[data-a="accepter"]').count();
 ok(offres > 0, 'la ville affiche des contrats', `${offres} offres`);
+{
+  // Un contrat qu'on ne sait pas situer ne s'accepte qu'à l'aveugle, et
+  // abandonner coûte. Livraisons, primes et reconnaissances ont une cible.
+  const txtP = await page.locator('#modale').innerText();
+  ok(/à \d+ région/.test(txtP) || !/Porter|Reconnaître|Chasser/.test(txtP),
+    'les contrats situables disent où aller et combien de marche',
+    txtP.slice(0, 220).replace(/\n+/g, ' | '));
+}
 await page.screenshot({ path: join(CAPTURES, '10-panneau.png') });
 if (offres) {
   await page.click('[data-a="accepter"]');
