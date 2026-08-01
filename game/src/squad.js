@@ -24,8 +24,12 @@ import {
   plafondCohesion, rendementCohesion, joignable,
 } from './groupes.js';
 import { renfortSoin } from './services.js';
-import { tickBetes, lenteurAttelage, betesDe, appetitAttelage } from './betes.js';
-import { tickPrisonniers, lenteurPrisonniers, prisonniersDe, RATION_PRISONNIER } from './justice.js';
+import {
+  tickBetes, lenteurAttelage, betesDe, appetitAttelage, conduite,
+} from './betes.js';
+import {
+  tickPrisonniers, lenteurPrisonniers, prisonniersDe, RATION_PRISONNIER, capaciteGarde,
+} from './justice.js';
 import { garnison } from './allegeance.js';
 
 export const ORDRES = {
@@ -861,4 +865,79 @@ export function autonomie(state, g) {
   const c = consommationGroupe(state, g);
   if (c.rations <= 0) return Infinity;
   return (g.inventaire.rations || 0) / c.rations;
+}
+
+/**
+ * Ce que cette colonne vaut, en chiffres agrégés.
+ *
+ * « Est-ce que plusieurs membres additionnent leur travail ? » n'avait aucune
+ * réponse à l'écran. Elle est oui — `recolter` somme la contribution de chacun —
+ * mais rien ne le montrait, et l'on ne pouvait pas juger si détacher deux
+ * personnes valait le coup.
+ *
+ * Les rendements sont recalculés ici plutôt que partagés avec `recolter` : cette
+ * boucle-là tire le hasard par personne et par marchandise, et la factoriser
+ * changerait l'ordre de tirage, donc toutes les parties déjà mesurées. On mime
+ * la même formule avec un aléa moyen de 1, et le commentaire est le contrat.
+ */
+export function apercuEscouade(state, g) {
+  const debout = deboutDe(g);
+  const type = (g.ordre && g.ordre.type) || 'repos';
+
+  // Récolte attendue pour l'ordre en cours, sur une journée de seize heures de
+  // clarté — la nuit, on ne travaille pas.
+  let parJour = 0;
+  const detail = {};
+  const filtre = FILTRES[type];
+  if (filtre !== undefined && debout.length) {
+    const r = state.world.regions[g.regionId];
+    const biome = BIOMES[r.biome];
+    const posture = POSTURES[state.player.posture] || POSTURES.neutre;
+    const skill = SKILL_ORDRE[type];
+    const climat = conditions(state.world, state.temps);
+    const coh = rendementCohesion(g);
+    const rendements = Object.assign({}, biome.yields);
+    if (type === 'chasse') {
+      rendements.biomasse = Math.max(rendements.biomasse || 0, r.biome === 'relais' ? 0.05 : 0.18);
+    }
+    for (const c of debout) {
+      const habilete = 0.45 + comp(c, skill) / 115;
+      for (const k of Object.keys(rendements)) {
+        if (filtre && !filtre.includes(k)) continue;
+        const q = rendements[k] * r.richesse * habilete * posture.rendement
+          * (1 - r.fouille) * climat.rendement(k) * coh;
+        detail[k] = (detail[k] || 0) + q * 16;
+        parJour += q * 16;
+      }
+    }
+  }
+
+  // Vitesse : celle du plus lent, alourdie par tout ce qu'on traîne.
+  let vitesse = Infinity;
+  for (const c of debout) vitesse = Math.min(vitesse, 0.5 + comp(c, 'endurance') / 90);
+  if (!Number.isFinite(vitesse)) vitesse = 0;
+  const cap = Math.max(1, capacitePortage(state, g));
+  const charge = poidsInventaire(g.inventaire) / cap;
+  vitesse *= 1 - Math.min(0.55, Math.max(0, charge - 0.6) * 0.9);
+  vitesse *= 1 - Math.min(0.5, g.membres.filter((c) => c.etat === 'ko').length * 0.18);
+  vitesse *= 1 - lenteurAttelage(g);
+  vitesse *= 1 - lenteurPrisonniers(g);
+  vitesse = Math.max(0.15, vitesse);
+  const coutIci = coutTraversee(state.world, g.regionId,
+    { reductionVoyage: (state.base.recherche.logistique || 0) * 0.06 });
+
+  return {
+    debout: debout.length,
+    vivants: vivantsDe(g).length,
+    recolteParJour: parJour,
+    recolteDetail: detail,
+    ordre: type,
+    // Combien d'heures pour franchir une région comparable à celle-ci.
+    heuresParRegion: vitesse > 0 ? coutIci / vitesse : Infinity,
+    charge,
+    garde: capaciteGarde(g),
+    prisonniers: prisonniersDe(g).length,
+    attelage: betesDe(g).length,
+    conduite: conduite(g),
+  };
 }

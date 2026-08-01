@@ -33,7 +33,7 @@ import { titreDe, lignesDe } from './chronique.js';
 import { TACTIQUES, TACTIQUE_KEYS, apercuTactique } from './combat.js';
 import {
   donnerOrdre, ORDRES, rendementPrevu, COMPETENCES_EXERCICE, PAR_LA_PRATIQUE,
-  consommationGroupe, autonomie,
+  consommationGroupe, autonomie, apercuEscouade,
 } from './squad.js';
 import {
   progres as progresContrat, lieuValidation, accepter, abandonner, MAX_CONTRATS,
@@ -1074,9 +1074,12 @@ function ficheMembre(c) {
   const comps = SKILL_KEYS.map((k) => {
     const v = c.skills[k];
     const eff = comp(c, k);
+    // Ce que l'entraînement, les coups et le métier ont fait depuis son arrivée.
+    const gagne = v - ((c.skills0 && c.skills0[k]) ?? v);
     return `<div class="comp-l"><span class="n">${e(SKILLS[k])}</span>
       <span class="j">${jauge(v / 100)}</span>
-      <span class="v" title="effectif ${eff.toFixed(0)}">${v}</span></div>`;
+      <span class="v" title="effectif ${eff.toFixed(0)}${gagne > 0 ? ` · +${gagne} depuis son arrivée` : ''}">${v}${
+  gagne > 0 ? `<span class="cyan" style="font-size:10px"> +${gagne}</span>` : ''}</span></div>`;
   }).join('');
 
   const arme = c.equip.arme ? ITEMS[c.equip.arme].nom : '—';
@@ -1431,10 +1434,33 @@ function blocQuiFaitQuoi() {
         ${etats.length ? `<br><span class="aide">${etats.join(' · ')}</span>` : ''}</span></div>`;
   }).join('');
 
+  // Ce que la colonne vaut, additionné. « Est-ce que plusieurs membres
+  // additionnent leur travail ? » n'avait aucune réponse à l'écran — elle est
+  // oui, et sans le chiffre on ne peut pas juger si détacher deux personnes vaut
+  // le coup.
+  const ap = apercuEscouade(S, g);
+  const recolte = Object.entries(ap.recolteDetail)
+    .filter(([, v]) => v > 0.2).sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `${n(v, 1)} ${COMMODITIES[k].nom.toLowerCase()}`).join(' · ');
+
   return `<section class="panneau">
     <h2 class="titre">Qui fait quoi
       <span class="droite">${gens.length} debout sur ${g.membres.length}</span></h2>
     ${lignes}
+    <div class="sep"></div>
+    <div class="grille2">
+      <div class="ligne"><span class="k">Ensemble, par jour</span>
+        <span class="v">${recolte || '<span class="aide">rien à récolter ainsi</span>'}</span></div>
+      <div class="ligne"><span class="k">Marche</span>
+        <span class="v">${Number.isFinite(ap.heuresParRegion)
+    ? `${n(ap.heuresParRegion, 1)} h par région d’ici` : '—'}</span></div>
+      <div class="ligne"><span class="k">Prisonniers gardés</span>
+        <span class="v">${ap.prisonniers} sur ${n(ap.garde, 1)}</span></div>
+      <div class="ligne"><span class="k">Attelage mené</span>
+        <span class="v">${ap.attelage} sur ${ap.conduite}</span></div>
+    </div>
+    <div class="aide">Le travail s’additionne : chacun apporte selon sa compétence,
+      et la cohésion multiplie le tout.</div>
     ${enMarche
     ? '<div class="aide">En marche, tout le monde marche. Les tâches personnelles reprendront à l’arrivée.</div>'
     : ''}

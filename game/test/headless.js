@@ -25,6 +25,7 @@ import { primeLivraison, prixEsclave } from '../src/justice.js';
 import { classement, puissance } from '../src/factions.js';
 import {
   donnerOrdre, verifierExercice, COMPETENCES_EXERCICE, consommationGroupe, autonomie,
+  apercuEscouade,
 } from '../src/squad.js';
 import {
   fonderBase, lancerConstruction, lancerRecherche, placesMetier, affectes,
@@ -458,6 +459,42 @@ ok(serialiser(s3) === serialiser(s3b), 'la sim reprend à l’identique après r
   const jours = autonomie(cons, gc);
   ok(jours > 1 && Number.isFinite(jours), 'avec des rations, une autonomie chiffrée',
     `${jours.toFixed(1)} jours`);
+}
+
+// --- Le travail s'additionne, et on peut le lire.
+{
+  const ap0 = nouvellePartie(3636, { maintenant: 0 });
+  const ga = groupeActif(ap0);
+  donnerOrdre(ap0, { type: 'fouille' }, ga);
+  const seul = ga.membres.slice(0, 1);
+  const tous = ga.membres.slice();
+  ga.membres = seul;
+  const un = apercuEscouade(ap0, ga).recolteParJour;
+  ga.membres = tous;
+  const plusieurs = apercuEscouade(ap0, ga).recolteParJour;
+  ok(plusieurs > un, 'plusieurs membres récoltent plus qu’un seul',
+    `${un.toFixed(1)} → ${plusieurs.toFixed(1)} par jour`);
+  ok(apercuEscouade(ap0, ga).heuresParRegion > 0, 'et la marche se chiffre en heures par région');
+  // Se reposer ne récolte rien : le chiffre doit le dire.
+  donnerOrdre(ap0, { type: 'repos' }, ga);
+  ok(apercuEscouade(ap0, ga).recolteParJour === 0, 'au repos, on ne récolte rien');
+}
+
+// --- On voit ce que l'entraînement et les coups ont fait.
+{
+  const pr = nouvellePartie(3737, { maintenant: 0 });
+  const c = groupeActif(pr).membres[0];
+  ok(c.skills0 && c.skills0.melee === c.skills.melee,
+    'chacun garde le souvenir de son niveau à l’arrivée');
+  c.skills.melee += 9;
+  ok(c.skills.melee - c.skills0.melee === 9,
+    'et l’écart se lit directement', `+${c.skills.melee - c.skills0.melee}`);
+  // Une partie d'avant la mesure ne perd pas la main : on part de l'état du jour.
+  const vieux = deserialiser(serialiser(pr));
+  for (const g of vieux.player.groupes) for (const m of g.membres) delete m.skills0;
+  const remis = deserialiser(serialiser(vieux));
+  ok(remis.player.groupes[0].membres.every((m) => m.skills0),
+    'une sauvegarde d’avant se rattrape sans casser');
 }
 
 section('4. Simulation longue (3 000 h ≈ 125 jours)');

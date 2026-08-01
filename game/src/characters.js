@@ -75,6 +75,10 @@ export function makeCharacter(rng, opts = {}) {
     const max = Math.round(BODY_PARTS[p].pv * (0.85 + c.skills.endurance / 220));
     c.corps[p] = { pv: max, max, perdu: false };
   }
+  // Où il en était en arrivant. Sans repère, « voir l'effet de l'entraînement »
+  // est impossible : le journal annonce bien chaque point gagné, mais en
+  // discret, et personne ne remonte deux cents lignes pour additionner.
+  c.skills0 = Object.assign({}, c.skills);
   return c;
 }
 

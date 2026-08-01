@@ -60,6 +60,9 @@ export function normaliser(state) {
     // dormait jamais en voyage. On rend leurs nuits aux parties en cours.
     if (g.ordre.type === 'voyage' && !g.ordre.allure) g.ordre.allure = 'normale';
     if (!g.membres) g.membres = [];
+    // Le point de départ des compétences est arrivé après coup : pour une partie
+    // déjà commencée, on prend l'état du jour. On ne peut pas inventer un passé.
+    for (const c of g.membres) if (!c.skills0) c.skills0 = Object.assign({}, c.skills);
   }
   if (!p.groupeActif || !p.groupes.some((g) => g.id === p.groupeActif)) {
     p.groupeActif = p.groupes.length ? p.groupes[0].id : null;

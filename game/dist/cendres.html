@@ -2615,6 +2615,10 @@ function makeCharacter(rng, opts = {}) {
     const max = Math.round(BODY_PARTS[p].pv * (0.85 + c.skills.endurance / 220));
     c.corps[p] = { pv: max, max, perdu: false };
   }
+  // Où il en était en arrivant. Sans repère, « voir l'effet de l'entraînement »
+  // est impossible : le journal annonce bien chaque point gagné, mais en
+  // discret, et personne ne remonte deux cents lignes pour additionner.
+  c.skills0 = Object.assign({}, c.skills);
   return c;
 }
 
@@ -12842,6 +12846,81 @@ function autonomie(state, g) {
   return (g.inventaire.rations || 0) / c.rations;
 }
 
+/**
+ * Ce que cette colonne vaut, en chiffres agrégés.
+ *
+ * « Est-ce que plusieurs membres additionnent leur travail ? » n'avait aucune
+ * réponse à l'écran. Elle est oui — `recolter` somme la contribution de chacun —
+ * mais rien ne le montrait, et l'on ne pouvait pas juger si détacher deux
+ * personnes valait le coup.
+ *
+ * Les rendements sont recalculés ici plutôt que partagés avec `recolter` : cette
+ * boucle-là tire le hasard par personne et par marchandise, et la factoriser
+ * changerait l'ordre de tirage, donc toutes les parties déjà mesurées. On mime
+ * la même formule avec un aléa moyen de 1, et le commentaire est le contrat.
+ */
+function apercuEscouade(state, g) {
+  const debout = deboutDe(g);
+  const type = (g.ordre && g.ordre.type) || 'repos';
+
+  // Récolte attendue pour l'ordre en cours, sur une journée de seize heures de
+  // clarté — la nuit, on ne travaille pas.
+  let parJour = 0;
+  const detail = {};
+  const filtre = FILTRES[type];
+  if (filtre !== undefined && debout.length) {
+    const r = state.world.regions[g.regionId];
+    const biome = BIOMES[r.biome];
+    const posture = POSTURES[state.player.posture] || POSTURES.neutre;
+    const skill = SKILL_ORDRE[type];
+    const climat = conditions(state.world, state.temps);
+    const coh = rendementCohesion(g);
+    const rendements = Object.assign({}, biome.yields);
+    if (type === 'chasse') {
+      rendements.biomasse = Math.max(rendements.biomasse || 0, r.biome === 'relais' ? 0.05 : 0.18);
+    }
+    for (const c of debout) {
+      const habilete = 0.45 + comp(c, skill) / 115;
+      for (const k of Object.keys(rendements)) {
+        if (filtre && !filtre.includes(k)) continue;
+        const q = rendements[k] * r.richesse * habilete * posture.rendement
+          * (1 - r.fouille) * climat.rendement(k) * coh;
+        detail[k] = (detail[k] || 0) + q * 16;
+        parJour += q * 16;
+      }
+    }
+  }
+
+  // Vitesse : celle du plus lent, alourdie par tout ce qu'on traîne.
+  let vitesse = Infinity;
+  for (const c of debout) vitesse = Math.min(vitesse, 0.5 + comp(c, 'endurance') / 90);
+  if (!Number.isFinite(vitesse)) vitesse = 0;
+  const cap = Math.max(1, capacitePortage(state, g));
+  const charge = poidsInventaire(g.inventaire) / cap;
+  vitesse *= 1 - Math.min(0.55, Math.max(0, charge - 0.6) * 0.9);
+  vitesse *= 1 - Math.min(0.5, g.membres.filter((c) => c.etat === 'ko').length * 0.18);
+  vitesse *= 1 - lenteurAttelage(g);
+  vitesse *= 1 - lenteurPrisonniers(g);
+  vitesse = Math.max(0.15, vitesse);
+  const coutIci = coutTraversee(state.world, g.regionId,
+    { reductionVoyage: (state.base.recherche.logistique || 0) * 0.06 });
+
+  return {
+    debout: debout.length,
+    vivants: vivantsDe(g).length,
+    recolteParJour: parJour,
+    recolteDetail: detail,
+    ordre: type,
+    // Combien d'heures pour franchir une région comparable à celle-ci.
+    heuresParRegion: vitesse > 0 ? coutIci / vitesse : Infinity,
+    charge,
+    garde: capaciteGarde(g),
+    prisonniers: prisonniersDe(g).length,
+    attelage: betesDe(g).length,
+    conduite: conduite(g),
+  };
+}
+
 // ===== src/chronique.js ==============================================
 // Ce que la partie a fait de vous.
 //
@@ -13131,6 +13210,9 @@ function normaliser(state) {
     // dormait jamais en voyage. On rend leurs nuits aux parties en cours.
     if (g.ordre.type === 'voyage' && !g.ordre.allure) g.ordre.allure = 'normale';
     if (!g.membres) g.membres = [];
+    // Le point de départ des compétences est arrivé après coup : pour une partie
+    // déjà commencée, on prend l'état du jour. On ne peut pas inventer un passé.
+    for (const c of g.membres) if (!c.skills0) c.skills0 = Object.assign({}, c.skills);
   }
   if (!p.groupeActif || !p.groupes.some((g) => g.id === p.groupeActif)) {
     p.groupeActif = p.groupes.length ? p.groupes[0].id : null;
@@ -14826,9 +14908,12 @@ function ficheMembre(c) {
   const comps = SKILL_KEYS.map((k) => {
     const v = c.skills[k];
     const eff = comp(c, k);
+    // Ce que l'entraînement, les coups et le métier ont fait depuis son arrivée.
+    const gagne = v - ((c.skills0 && c.skills0[k]) ?? v);
     return `<div class="comp-l"><span class="n">${e(SKILLS[k])}</span>
       <span class="j">${jauge(v / 100)}</span>
-      <span class="v" title="effectif ${eff.toFixed(0)}">${v}</span></div>`;
+      <span class="v" title="effectif ${eff.toFixed(0)}${gagne > 0 ? ` · +${gagne} depuis son arrivée` : ''}">${v}${
+  gagne > 0 ? `<span class="cyan" style="font-size:10px"> +${gagne}</span>` : ''}</span></div>`;
   }).join('');
 
   const arme = c.equip.arme ? ITEMS[c.equip.arme].nom : '—';
@@ -15183,10 +15268,33 @@ function blocQuiFaitQuoi() {
         ${etats.length ? `<br><span class="aide">${etats.join(' · ')}</span>` : ''}</span></div>`;
   }).join('');
 
+  // Ce que la colonne vaut, additionné. « Est-ce que plusieurs membres
+  // additionnent leur travail ? » n'avait aucune réponse à l'écran — elle est
+  // oui, et sans le chiffre on ne peut pas juger si détacher deux personnes vaut
+  // le coup.
+  const ap = apercuEscouade(S, g);
+  const recolte = Object.entries(ap.recolteDetail)
+    .filter(([, v]) => v > 0.2).sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `${n(v, 1)} ${COMMODITIES[k].nom.toLowerCase()}`).join(' · ');
+
   return `<section class="panneau">
     <h2 class="titre">Qui fait quoi
       <span class="droite">${gens.length} debout sur ${g.membres.length}</span></h2>
     ${lignes}
+    <div class="sep"></div>
+    <div class="grille2">
+      <div class="ligne"><span class="k">Ensemble, par jour</span>
+        <span class="v">${recolte || '<span class="aide">rien à récolter ainsi</span>'}</span></div>
+      <div class="ligne"><span class="k">Marche</span>
+        <span class="v">${Number.isFinite(ap.heuresParRegion)
+    ? `${n(ap.heuresParRegion, 1)} h par région d’ici` : '—'}</span></div>
+      <div class="ligne"><span class="k">Prisonniers gardés</span>
+        <span class="v">${ap.prisonniers} sur ${n(ap.garde, 1)}</span></div>
+      <div class="ligne"><span class="k">Attelage mené</span>
+        <span class="v">${ap.attelage} sur ${ap.conduite}</span></div>
+    </div>
+    <div class="aide">Le travail s’additionne : chacun apporte selon sa compétence,
+      et la cohésion multiplie le tout.</div>
     ${enMarche
     ? '<div class="aide">En marche, tout le monde marche. Les tâches personnelles reprendront à l’arrivée.</div>'
     : ''}
