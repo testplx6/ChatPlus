@@ -80,11 +80,18 @@ body {
   flex: 1 1 auto;
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 3px 7px;
   min-width: 0;
-  overflow: hidden;
+  /* Six indicateurs demandent 298 px et la boîte en fait 253 sur un écran de
+     390 : le sixième — les jours de vivres, c'est-à-dire le nombre qui décide
+     de la survie — sortait par la droite. On passe à la ligne plutôt que de
+     rogner. Un bandeau sur deux lignes coûte douze pixels de haut ; une
+     information cachée coûte une escouade. */
+  flex-wrap: wrap;
 }
-.hd-bloc { display: flex; align-items: baseline; gap: 4px; flex: 0 0 auto; }
+/* Un indicateur ne se coupe jamais entre son libellé et sa valeur : le bandeau
+   passe à la ligne entre deux blocs, pas au milieu de l'un d'eux. */
+.hd-bloc { display: flex; align-items: baseline; gap: 4px; flex: 0 0 auto; white-space: nowrap; }
 .hd-eti, .hd-val { flex: 0 0 auto; }
 /* La saison tient en un losange coloré : écrire « GRANDES PLUIES » dans une
    barre de 390 px coûte deux autres indicateurs. Le nom complet est dans
@@ -177,6 +184,10 @@ body {
   padding: 9px 10px;
   margin-bottom: 9px;
 }
+
+/* Un panneau qui réclame une décision maintenant. Le liseré suffit : le rouge
+   sur tout le cadre ferait clignoter la moitié de l'écran en fin de partie. */
+.panneau.urgent { border-left: 2px solid var(--rouge); }
 
 .titre {
   font-size: 10px;

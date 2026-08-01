@@ -180,7 +180,13 @@ ok(boutonsPetits === 0, 'toutes les cibles tactiles font au moins 28 px', `${bou
 const enTete = await page.evaluate(() => {
   const blocs = [...document.querySelectorAll('#barre-haut .hd-bloc')].map((b) => b.getBoundingClientRect());
   let chevauche = 0;
-  for (let i = 1; i < blocs.length; i++) if (blocs[i].left < blocs[i - 1].right - 0.5) chevauche++;
+  // Le bandeau passe à la ligne quand il est plein : deux blocs qui se suivent
+  // ne sont pas forcément sur la même ligne, et comparer leurs abscisses sans
+  // regarder leur ordonnée ferait crier la garde à chaque retour à la ligne.
+  for (let i = 1; i < blocs.length; i++) {
+    const memeLigne = Math.abs(blocs[i].top - blocs[i - 1].top) < 2;
+    if (memeLigne && blocs[i].left < blocs[i - 1].right - 0.5) chevauche++;
+  }
   const v = document.querySelector('#barre-haut .vitesse').getBoundingClientRect();
   const boite = document.querySelector('#barre-haut .hd-metriques').getBoundingClientRect();
   const rognes = blocs.filter((b) => b.right > boite.right + 0.5).length;
@@ -290,6 +296,15 @@ await page.waitForTimeout(600);
   await page.waitForTimeout(300);
 }
 
+// Ce que le bandeau doit dire sans qu'on aille le chercher : combien de jours
+// de vivres il reste. On mourait de faim en regardant un sac plein de ferraille.
+{
+  const bandeau = await page.locator('#barre-haut').innerText();
+  ok(/VIV\s+[\d.]+j/i.test(bandeau),
+    'le bandeau annonce les jours de vivres restants',
+    bandeau.replace(/\n+/g, ' | '));
+}
+
 // L'estime disait ce qu'elle valait, jamais ce qu'elle faisait.
 {
   const texteVille = await page.locator('#ecran').innerText();
@@ -306,6 +321,34 @@ await page.waitForTimeout(600);
   // On le replie : la suite de la section compte sur la fiche telle qu'elle est.
   await page.click('summary:has-text("estime change ici")');
   await page.waitForTimeout(200);
+}
+
+// Le point de situation : muet quand tout va bien, net quand ça presse.
+{
+  const affame = serialiser((() => {
+    const t = partieAvancee();
+    const g = t.player.groupes[0];
+    g.inventaire.rations = 1;
+    return t;
+  })());
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), affame);
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.waitForTimeout(400);
+  const vu = await page.locator('#ecran').innerText();
+  ok(/POINT DE SITUATION/i.test(vu),
+    'un point de situation s’affiche quand quelque chose presse',
+    vu.slice(0, 200).replace(/\n+/g, ' | '));
+  ok(/vivres|manger/i.test(vu),
+    'et il nomme la famine qui vient plutôt qu’un pourcentage');
+  await page.screenshot({ path: join(CAPTURES, '01b-situation.png') });
+  // On rend la ville que la suite attend.
+  await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.click('[data-a="nouvelle"]');
+  await page.waitForSelector('#carte');
+  await page.waitForTimeout(600);
 }
 
 // Le coffre en ville : louer, y mettre, reprendre.
@@ -1336,6 +1379,26 @@ await page.waitForSelector('.rattrapage', { state: 'detached', timeout: 120000 }
 await page.waitForSelector('#carte', { timeout: 60000 });
 const tApres = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).temps);
 ok(tApres - tAvant > 2000, 'le temps passé a bien été rejoué', `${tAvant} → ${tApres} h`);
+
+// Deux ans rejoués derrière une barre de progression, puis la main rendue sans
+// un mot : c'est ce qu'on reprochait au jeu. Le bilan doit s'imposer au retour,
+// et disparaître une fois lu.
+{
+  const rapport = await page.locator('#modale').innerText();
+  ok(/continué sans vous/i.test(rapport),
+    'un bilan s’impose au retour d’une longue absence',
+    rapport.slice(0, 160).replace(/\n+/g, ' | '));
+  ok(/jours?/i.test(rapport) && /Vos gens/i.test(rapport),
+    'il dit combien de temps a passé et ce qu’il reste de l’escouade');
+  await page.screenshot({ path: join(CAPTURES, '14b-rapport.png') });
+  await page.click('[data-a="rapport-vu"]');
+  await page.waitForTimeout(300);
+  ok(await page.locator('#modale').isHidden(), 'et il se referme quand on l’a lu');
+  const encore = await page.evaluate(
+    () => JSON.parse(localStorage.getItem('cendres.save.v1')).rapport);
+  ok(!encore, 'il ne revient pas au chargement suivant : on l’a lu une fois');
+}
+
 await page.click('[data-a="onglet"][data-k="monde"]');
 await page.waitForTimeout(300);
 ok((await page.evaluate(() => document.querySelector('#ecran').textContent.trim().length)) > 60,

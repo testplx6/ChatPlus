@@ -39,6 +39,7 @@ import {
   progres as progresContrat, lieuValidation, accepter, abandonner, MAX_CONTRATS,
 } from './contrats.js';
 import { horloge, VITESSES } from './sim.js';
+import { lireRapport } from './rapport.js';
 import { conditions, SAISONS, METEO } from './climat.js';
 import {
   RANGS, rangDe, estAuService, peutSEngager, avancementOrdre, REPUTATION_MINIMALE,
@@ -233,7 +234,9 @@ export function rafraichir(force) {
     if (cv.parentElement) lierGestesCarte(cv.parentElement);
     centrerCarte(cv);
   }
-  if (modale) rendreModale();
+  // `rendreModale` s'occupe aussi du rapport d'absence, qui s'ouvre de
+  // lui-même : on l'appelle donc même sans modale demandée.
+  if (modale || (S.rapport && S.rapport.apres)) rendreModale();
 }
 
 function rendreBarreHaut() {
@@ -245,6 +248,11 @@ function rendreBarreHaut() {
   const charge = cap > 0 ? poids / cap : 1;
   const vivants = g.membres.filter(estVivant).length;
   const debout = g.membres.filter(estDebout).length;
+
+  // Le nombre qui décide de la survie, et il n'était affiché nulle part : au
+  // rythme où l'on mange, combien de jours reste-t-il ? On mourait de faim en
+  // regardant un sac plein de ferraille.
+  const jours = autonomie(S, g);
 
   const cl = conditions(S.world, S.temps);
   // Les indicateurs vivent dans leur propre boîte, qui rogne par la droite si
@@ -265,6 +273,12 @@ function rendreBarreHaut() {
         <span class="hd-val ${charge > 0.95 ? 'rouge' : ''}">${n(poids)}/${n(cap)}</span></div>
       <div class="hd-bloc" title="${e(g.nom)}"><span class="hd-eti">${e(groupes(S).length > 1 ? g.nom.slice(0, 3) : 'esc')}</span>
         <span class="hd-val ${debout < vivants ? 'rouge' : ''}">${debout}/${vivants}</span></div>
+      <div class="hd-bloc" title="Jours de vivres au rythme actuel">
+        <span class="hd-eti">viv</span>
+        <span class="hd-val ${jours < 3 ? 'rouge' : jours < 8 ? 'ambre' : ''}">${
+  Number.isFinite(jours)
+    ? (jours < 10 ? `${jours.toFixed(1)}j` : jours < 100 ? `${Math.round(jours)}j` : '99+j')
+    : '—'}</span></div>
     </div>
     <div class="hd-pousse vitesse" role="group" aria-label="Vitesse">
       ${VITESSES.map((v) => `<button data-a="vitesse" data-v="${v}"
@@ -764,6 +778,75 @@ function blocFil() {
   </section>`;
 }
 
+/**
+ * Le point de situation : où l'on en est, en tête de l'écran principal.
+ *
+ * Le jeu affichait des rendements horaires, des stocks et des pourcentages, et
+ * jamais la seule phrase qui compte : est-ce que ça va, et sinon, quoi. On
+ * pouvait mourir de faim avec un sac plein de ferraille, parce que rien ne
+ * disait « il vous reste deux jours de vivres ».
+ *
+ * Trois registres, dans cet ordre — ce qui presse, ce qui vient, ce qu'on fait.
+ * Muet sur ce qui va bien : un panneau qui parle tout le temps ne se lit plus.
+ */
+function blocSituation() {
+  const g = G();
+  if (!g) return '';
+  const urgences = [];
+  const bientot = [];
+
+  const jours = autonomie(S, g);
+  const rations = Math.floor(g.inventaire.rations || 0);
+  if (!Number.isFinite(jours)) {
+    // Personne ne mange : tout le monde est mort ou l'escouade est vide.
+  } else if (jours < 1) {
+    urgences.push(`Plus rien à manger — ${rations} ration(s). On commence à mourir de faim.`);
+  } else if (jours < 3) {
+    urgences.push(`${jours.toFixed(1)} jour(s) de vivres. Il faut trouver à manger maintenant.`);
+  } else if (jours < 8) {
+    bientot.push(`${Math.round(jours)} jours de vivres`);
+  }
+
+  const vivants = g.membres.filter(estVivant);
+  const aTerre = vivants.filter((c) => !estDebout(c));
+  if (aTerre.length) {
+    urgences.push(`${aTerre.map((c) => c.nom).join(', ')} ${aTerre.length > 1 ? 'sont' : 'est'} `
+      + 'à terre. On ne les porte pas indéfiniment.');
+  }
+  const amoches = vivants.filter((c) => estDebout(c) && pvTotal(c).pct < 0.5);
+  if (amoches.length) bientot.push(`${amoches.length} blessé(s) sérieux`);
+
+  const cap = capacitePortage(S, g);
+  const poids = poidsInventaire(g.inventaire);
+  if (cap > 0 && poids > cap * 0.98) {
+    bientot.push('sac plein : on laisse du butin sur place');
+  }
+
+  // Les échéances : ce qui va se retourner contre vous si vous l'oubliez.
+  const all = g.allegeance;
+  if (all && all.ordre) {
+    const reste = all.ordre.echeance - S.temps;
+    const t = `ordre « ${all.ordre.titre} » — ${dureeTexte(Math.max(0, reste))}`;
+    if (reste < 72) urgences.push(`${t} avant l’échéance.`);
+    else bientot.push(t);
+  }
+  for (const c of S.player.contrats) {
+    const reste = c.echeance - S.temps;
+    const t = `contrat « ${c.titre} » — ${dureeTexte(Math.max(0, reste))}`;
+    if (reste < 48) urgences.push(`${t} avant l’échéance.`);
+    else bientot.push(t);
+  }
+
+  if (!urgences.length && !bientot.length) return '';
+  return `<section class="panneau ${urgences.length ? 'urgent' : ''}">
+    <h2 class="titre">Point de situation
+      <span class="droite ${urgences.length ? 'alerte' : ''}">${urgences.length
+    ? `${urgences.length} à régler` : 'rien de pressant'}</span></h2>
+    ${urgences.map((t) => `<div class="aide alerte">▲ ${e(t)}</div>`).join('')}
+    ${bientot.length ? `<div class="aide">${bientot.map(e).join(' · ')}</div>` : ''}
+  </section>`;
+}
+
 function blocSite() {
   const r = S.world.regions[G().regionId];
   if (!r.site || !r.site.connu) return '';
@@ -1140,6 +1223,7 @@ function ecranCarte() {
     `<span><i style="background:${f.couleur}"></i>${e(FACTIONS[f.key].court)}</span>`).join('')}
   </div>
   ${groupes(S).length > 1 ? barreGroupes() : ''}
+  ${blocSituation()}
   ${blocSelection()}
   ${blocRegionCourante()}
   ${blocCaravanes()}
@@ -2729,6 +2813,13 @@ function blocChronique() {
 
 function rendreModale() {
   const el = $('#modale');
+  // Le rapport d'absence passe avant tout le reste : c'est la première chose
+  // qu'on doit lire en rouvrant, et on ne la lit qu'une fois.
+  if (!modale && S.rapport && S.rapport.apres) {
+    el.hidden = false;
+    el.innerHTML = `<div class="boite">${modaleRapport()}</div>`;
+    return;
+  }
   if (!modale) { el.hidden = true; el.innerHTML = ''; return; }
   el.hidden = false;
   el.innerHTML = `<div class="boite">${contenuModale()}</div>`;
@@ -2750,6 +2841,73 @@ function contenuModale() {
     case 'recrutement': return modaleRecrutement() + fermer;
     default: return fermer;
   }
+}
+
+/**
+ * Ce qui s'est passé pendant votre absence.
+ *
+ * Le rattrapage rejouait jusqu'à deux ans de jeu derrière une barre de
+ * progression, puis rendait la main sans un mot. On revenait à une escouade
+ * amaigrie et à un stock entamé sans le moindre moyen de savoir pourquoi : le
+ * journal de bord est plafonné à quatre cents lignes, et trois cents jours
+ * d'absence en produisent des milliers — le mort et la ville tombée avaient
+ * défilé depuis longtemps.
+ *
+ * Ce n'est donc pas une relecture du journal, c'est un bilan : deux photos et
+ * ce qu'il y a entre les deux. Voir rapport.js.
+ */
+function modaleRapport() {
+  const r = lireRapport(S, S.rapport);
+  if (!r) return '<button class="act" data-a="rapport-vu">Continuer</button>';
+  const duree = r.jours >= 1
+    ? `${n(r.jours)} jour${r.jours > 1 ? 's' : ''}`
+    : `${n(r.heures)} h`;
+  const bloc = (titre, contenu) => (contenu
+    ? `<div class="sep"></div><div class="titre">${titre}</div>${contenu}` : '');
+  const ligne = (k, v, cls = '') => `<div class="ligne souple"><span class="k">${e(k)}</span>
+    <span class="v ${cls}">${v}</span></div>`;
+
+  const gens = r.pertes.length
+    ? r.pertes.map((t) => ligne('Vos gens', e(t), /plus là|à terre/.test(t) ? 'alerte' : '')).join('')
+    : ligne('Vos gens', 'tout le monde est là');
+
+  const argent = ligne('Crédits', `${r.argent > 0 ? '+' : ''}${n(r.argent)} cr`,
+    r.argent < 0 ? 'alerte' : '');
+
+  const marchandises = r.bouges.length
+    ? r.bouges.slice(0, 6).map((x) => ligne(COMMODITIES[x.key].nom,
+      `${x.delta > 0 ? '+' : ''}${n(x.delta)}`, x.delta < 0 ? 'alerte' : '')).join('')
+    : '<div class="aide">Les stocks n’ont pas bougé.</div>';
+
+  const estime = r.estime.length
+    ? r.estime.map((x) => ligne(FACTIONS[x.faction].nom,
+      `${x.delta > 0 ? '+' : ''}${n(x.delta)}`, x.delta < 0 ? 'alerte' : '')).join('')
+    : '';
+
+  const monde = r.monde.length
+    ? r.monde.map((t) => `<div class="aide">· ${e(t)}</div>`).join('') : '';
+
+  const faits = r.marquants.length
+    ? r.marquants.map((m) => `<div class="fil-l ${couleurLog(m.type)}">
+        <span class="fil-t">${horloge(m.t).texte}</span>
+        <span class="fil-x">${e(m.texte)}</span></div>`).join('')
+    : '';
+
+  return `<h2 class="titre">Le monde a continué sans vous
+    <span class="droite">${e(duree)}</span></h2>
+  ${r.calme
+    ? '<div class="aide">Rien de notable. Ça arrive, et c’est plutôt bon signe.</div>'
+    : '<div class="aide">Ce qui a changé pendant que cet onglet était fermé.</div>'}
+  <div class="sep"></div>
+  ${gens}
+  ${argent}
+  ${bloc('Marchandises', marchandises)}
+  ${bloc('Ce qu’on pense de vous', estime)}
+  ${bloc('Le monde', monde)}
+  ${bloc('Ce qui est arrivé', faits ? `<div class="fil">${faits}</div>${r.tus
+    ? `<div class="aide">…et ${n(r.tus)} autre(s) événement(s), au journal.</div>` : ''}` : '')}
+  <div class="sep"></div>
+  <button class="act primaire" data-a="rapport-vu">Reprendre les commandes</button>`;
 }
 
 /**
@@ -3454,6 +3612,14 @@ function surClic(ev) {
       break;
 
     case 'fermer':
+      modale = null;
+      rendreModale();
+      rafraichir(true);
+      break;
+    // Le rapport d'absence ne se lit qu'une fois : on l'efface de l'état, sinon
+    // il reviendrait à chaque chargement de la sauvegarde.
+    case 'rapport-vu':
+      delete S.rapport;
       modale = null;
       rendreModale();
       rafraichir(true);

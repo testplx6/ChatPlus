@@ -7,6 +7,7 @@ import {
 } from '../src/sim.js';
 import { Rng } from '../src/rng.js';
 import { mesurerTick, CHAUFFE, MESURE } from './perf.js';
+import { lireRapport, MARQUANTS_MAX } from '../src/rapport.js';
 import { serialiser, deserialiser } from '../src/save.js';
 import { COMMODITY_KEYS, DIPLO_FACTIONS } from '../src/data.js';
 import {
@@ -4009,6 +4010,52 @@ section('9 quaterdecies. Ce que l’estime change, et ce qu’une absence ne co�
   ok(sa.player.reputation[colA.faction] < repAvantPres,
     'aux commandes, en revanche, un ordre manqué coûte toujours',
     `${repAvantPres} → ${sa.player.reputation[colA.faction]}`);
+}
+
+section('9 quindecies. Le rapport d’absence');
+{
+  // Une longue absence produit des milliers de lignes de journal pour quatre
+  // cents places : ce qui comptait a défilé. Le rapport ne relit donc pas le
+  // journal, il compare deux photos et retient les faits marquants au passage.
+  const sr = nouvellePartie(8484, { maintenant: 0 });
+  sr.vitesse = 1;
+  sr.dernierReel = 1;
+  const creditsAvant = sr.player.credits;
+  sr.player.credits += 0; // repère explicite : on veut voir le delta, pas la valeur
+  rattraper(sr, 1 + TICK_MS * 1200);
+  ok(!!sr.rapport, 'une absence laisse un rapport derrière elle');
+  ok(!!sr.rapport.apres, 'et il est refermé : les deux photos sont prises');
+
+  const lu = lireRapport(sr, sr.rapport);
+  ok(!!lu && lu.heures >= 1000, 'il couvre bien la durée de l’absence',
+    lu ? `${lu.heures} h` : 'illisible');
+  ok(lu.jours === Math.floor(lu.heures / 24), 'et la dit en jours', `${lu.jours} j`);
+  ok(lu.argent === sr.player.credits - creditsAvant,
+    'le mouvement de la bourse est celui qu’on a réellement subi',
+    `${lu.argent} cr`);
+  ok(lu.marquants.length > 0, 'des faits marquants ont été retenus',
+    `${lu.marquants.length} retenus, ${lu.tus} tus`);
+  ok(lu.marquants.length <= MARQUANTS_MAX,
+    'jamais plus que ce qu’un écran peut porter', `${lu.marquants.length}`);
+  ok(lu.marquants.every((m) => m.texte && m.t >= 0),
+    'et chacun porte son heure et sa phrase');
+  ok(Object.keys(lu.comptes).length > 0,
+    'ce qui n’est pas retenu en toutes lettres est au moins compté',
+    Object.keys(lu.comptes).join(', '));
+
+  // Le rapport survit à une sauvegarde : la page peut se fermer pendant le
+  // rattrapage, on doit le retrouver au retour.
+  const relu = deserialiser(serialiser(sr));
+  ok(!!relu.rapport && !!relu.rapport.apres,
+    'il survit à un aller-retour par la sauvegarde');
+  ok(lireRapport(relu, relu.rapport).heures === lu.heures,
+    'et se relit à l’identique');
+
+  // Une partie jouée aux commandes n'en produit pas : ce serait un écran de
+  // plus à fermer toutes les trois minutes.
+  const sp = nouvellePartie(8585, { maintenant: 0 });
+  avancer(sp, 300);
+  ok(!sp.rapport, 'jouer aux commandes n’ouvre aucun rapport');
 }
 
 section('10. Rattrapage hors ligne');

@@ -82,11 +82,18 @@ body {
   flex: 1 1 auto;
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 3px 7px;
   min-width: 0;
-  overflow: hidden;
+  /* Six indicateurs demandent 298 px et la boîte en fait 253 sur un écran de
+     390 : le sixième — les jours de vivres, c'est-à-dire le nombre qui décide
+     de la survie — sortait par la droite. On passe à la ligne plutôt que de
+     rogner. Un bandeau sur deux lignes coûte douze pixels de haut ; une
+     information cachée coûte une escouade. */
+  flex-wrap: wrap;
 }
-.hd-bloc { display: flex; align-items: baseline; gap: 4px; flex: 0 0 auto; }
+/* Un indicateur ne se coupe jamais entre son libellé et sa valeur : le bandeau
+   passe à la ligne entre deux blocs, pas au milieu de l'un d'eux. */
+.hd-bloc { display: flex; align-items: baseline; gap: 4px; flex: 0 0 auto; white-space: nowrap; }
 .hd-eti, .hd-val { flex: 0 0 auto; }
 /* La saison tient en un losange coloré : écrire « GRANDES PLUIES » dans une
    barre de 390 px coûte deux autres indicateurs. Le nom complet est dans
@@ -179,6 +186,10 @@ body {
   padding: 9px 10px;
   margin-bottom: 9px;
 }
+
+/* Un panneau qui réclame une décision maintenant. Le liseré suffit : le rouge
+   sur tout le cadre ferait clignoter la moitié de l'écran en fin de partie. */
+.panneau.urgent { border-left: 2px solid var(--rouge); }
 
 .titre {
   font-size: 10px;
@@ -12216,6 +12227,220 @@ function lieuValidation(state, c) {
   return donneur ? donneur.nom : '—';
 }
 
+// ===== src/rapport.js ================================================
+// Ce qui s'est passé pendant que vous n'étiez pas là.
+//
+// Le jeu rejouait deux cents jours en silence, affichait une barre de
+// progression, puis rendait la main. Le joueur retrouvait une escouade amaigrie,
+// un stock vidé, une estime en baisse, et **aucun moyen de savoir pourquoi** :
+// le journal de bord est plafonné à quatre cents lignes, si bien qu'une longue
+// absence l'écrase entièrement avec des heures de récolte, et que la seule
+// chose qui comptait — le mort, la ville tombée, la guerre déclarée — a défilé
+// depuis longtemps.
+//
+// D'où ce module. Il ne s'appuie pas sur le journal, justement : il prend une
+// photo avant, une photo après, et compte les faits marquants au passage. Trois
+// cents jours d'absence tiennent alors dans un écran qu'on lit en dix secondes.
+//
+// Il sert deux fois :
+//
+//   pendant l'absence   ouvert par le rattrapage, fermé à son retour, montré
+//                       une fois puis effacé.
+//   pendant la partie   le même mécanisme, ouvert quand on quitte l'onglet du
+//                       journal, sert de « depuis la dernière fois ».
+//
+// Rien n'y est déduit d'un état vivant : ce sont des nombres figés à deux
+// instants et une liste de phrases. C'est ce qui permet de le sérialiser tel
+// quel, et de le retrouver intact si la page se ferme pendant le rattrapage.
+
+
+/** Combien de faits marquants on retient au plus. Au-delà, on compte. */
+const MARQUANTS_MAX = 14;
+
+/** Les types de journal qu'on retient toujours, quoi qu'il arrive. */
+const TOUJOURS = new Set([
+  'mort', 'combat', 'ville', 'guerre', 'loi', 'allegeance', 'contrat',
+  'famine', 'base', 'recrue', 'formation', 'coffre', 'prime_tete', 'revolte',
+]);
+
+/**
+ * L'état des choses à un instant, en nombres seulement.
+ *
+ * On y met ce à quoi un joueur pense en rouvrant : combien nous sommes, en
+ * quel état, ce qu'on a, ce qu'on vaut aux yeux des autres, et à quoi ressemble
+ * la carte.
+ */
+function photo(state) {
+  let vivants = 0;
+  let debout = 0;
+  let sac = 0;
+  const stock = {};
+  for (const g of groupes(state)) {
+    for (const c of g.membres) {
+      if (!estVivant(c)) continue;
+      vivants += 1;
+      if (estDebout(c)) debout += 1;
+    }
+    for (const k of COMMODITY_KEYS) {
+      const q = Math.floor(g.inventaire[k] || 0);
+      if (q > 0) { stock[k] = (stock[k] || 0) + q; sac += q; }
+    }
+  }
+  const base = state.base && state.base.fonde ? state.base : null;
+  if (base) {
+    for (const k of COMMODITY_KEYS) {
+      const q = Math.floor((base.stock && base.stock[k]) || 0);
+      if (q > 0) stock[k] = (stock[k] || 0) + q;
+    }
+  }
+  const reputation = {};
+  for (const k of Object.keys(state.player.reputation || {})) {
+    reputation[k] = Math.round(state.player.reputation[k] || 0);
+  }
+  return {
+    t: state.temps,
+    credits: Math.round(state.player.credits),
+    vivants,
+    debout,
+    sac,
+    stock,
+    reputation,
+    villes: state.world.colonies.filter((c) => !c.ruine).length,
+    guerres: state.world.guerres.length,
+    // L'avant-poste : ce qu'on retrouve en rentrant, ou ce qu'on ne retrouve pas.
+    poste: base ? { pop: Math.round(base.pop || 0), niveau: base.niveau || 0 } : null,
+  };
+}
+
+/** Ouvre un rapport : à partir de maintenant, on note. */
+function ouvrirRapport(state, motif) {
+  state.rapport = {
+    motif: motif || 'absence',
+    avant: photo(state),
+    marquants: [],
+    // Ce qui a été vu mais qu'on n'a pas gardé en toutes lettres.
+    comptes: {},
+    tus: 0,
+  };
+  return state.rapport;
+}
+
+/**
+ * Note une entrée de journal au rapport en cours, s'il y en a un.
+ *
+ * Appelé depuis le logger, donc sur le chemin chaud : on sort tout de suite
+ * quand aucun rapport n'est ouvert, ce qui est le cas normal.
+ */
+function noterAuRapport(state, e) {
+  const r = state.rapport;
+  if (!r) return;
+  if (!e.important && !TOUJOURS.has(e.type)) return;
+  r.comptes[e.type] = (r.comptes[e.type] || 0) + 1;
+  if (r.marquants.length < MARQUANTS_MAX) {
+    r.marquants.push({ t: e.t, type: e.type, texte: e.texte });
+  } else {
+    r.tus += 1;
+  }
+}
+
+/**
+ * En deçà, on ne dérange personne : fermer l'onglet deux minutes ne mérite pas
+ * un écran à congédier. À la vitesse ×60 une journée de jeu passe en quatre
+ * secondes réelles, d'où un seuil compté en heures de jeu *et* la condition
+ * qu'il se soit passé quelque chose.
+ */
+const SEUIL_RAPPORT = 24;
+
+/**
+ * Ferme le rapport : la photo d'après est prise, le reste est du calcul.
+ *
+ * Rend `null` et n'en laisse aucune trace quand il n'y avait rien à dire — un
+ * rapport vide est un clic de plus, et trois clics de plus font qu'on ne lit
+ * plus le quatrième.
+ */
+function fermerRapport(state) {
+  const r = state.rapport;
+  if (!r) return null;
+  r.apres = photo(state);
+  const lu = lireRapport(state, r);
+  if (!lu || lu.heures < SEUIL_RAPPORT || lu.calme) {
+    delete state.rapport;
+    return null;
+  }
+  return r;
+}
+
+/**
+ * De quoi écrire le rapport à l'écran, sans que l'interface ait à soustraire
+ * quoi que ce soit elle-même. Rendu en morceaux nommés plutôt qu'en phrases :
+ * c'est l'interface qui décide de la mise en forme, pas ce module.
+ */
+function lireRapport(state, r) {
+  if (!r || !r.apres) return null;
+  const a = r.avant;
+  const b = r.apres;
+  const heures = Math.max(0, b.t - a.t);
+
+  const pertes = [];
+  if (b.vivants < a.vivants) pertes.push(`${a.vivants - b.vivants} des vôtres ne sont plus là`);
+  else if (b.vivants > a.vivants) pertes.push(`${b.vivants - a.vivants} de plus qu’au départ`);
+  const couches = b.vivants - b.debout;
+  if (couches > 0) pertes.push(`${couches} à terre`);
+
+  const argent = b.credits - a.credits;
+
+  // Les marchandises : on ne liste que ce qui a bougé, et l'on dit dans quel
+  // sens. Un stock qui fond sans explication est la première chose qu'on nous
+  // ait reprochée.
+  const bouges = [];
+  for (const k of COMMODITY_KEYS) {
+    const d = (b.stock[k] || 0) - (a.stock[k] || 0);
+    if (d !== 0) bouges.push({ key: k, delta: d });
+  }
+  bouges.sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));
+
+  const estime = [];
+  for (const k of Object.keys(b.reputation)) {
+    const d = (b.reputation[k] || 0) - (a.reputation[k] || 0);
+    if (Math.abs(d) >= 1 && FACTIONS[k]) estime.push({ faction: k, delta: d });
+  }
+  estime.sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));
+
+  const monde = [];
+  if (b.villes !== a.villes) {
+    monde.push(b.villes < a.villes
+      ? `${a.villes - b.villes} ville(s) se sont éteintes`
+      : `${b.villes - a.villes} ville(s) ont été fondées`);
+  }
+  if (b.guerres !== a.guerres) {
+    monde.push(b.guerres > a.guerres
+      ? `${b.guerres - a.guerres} guerre(s) de plus`
+      : `${a.guerres - b.guerres} guerre(s) se sont terminées`);
+  }
+  if (a.poste && !b.poste) monde.push('votre avant-poste n’est plus');
+  else if (!a.poste && b.poste) monde.push('votre avant-poste est debout');
+  else if (a.poste && b.poste && b.poste.pop !== a.poste.pop) {
+    const d = b.poste.pop - a.poste.pop;
+    monde.push(`avant-poste : ${d > 0 ? '+' : ''}${d} habitant(s)`);
+  }
+
+  return {
+    heures,
+    jours: Math.floor(heures / 24),
+    pertes,
+    argent,
+    bouges,
+    estime,
+    monde,
+    marquants: r.marquants,
+    tus: r.tus,
+    comptes: r.comptes,
+    // Rien du tout : c'est une information, pas un écran vide.
+    calme: !pertes.length && !argent && !bouges.length && !estime.length
+      && !monde.length && !r.marquants.length,
+  };
+}
+
 // ===== src/events.js =================================================
 // Journal de bord et rencontres. Tout se résout automatiquement selon la
 // posture et les consignes de l'escouade : c'est ce qui permet à la simulation
@@ -12232,6 +12457,9 @@ function creerLogger(state) {
     if (e.regionId != null && e.vu === undefined) e.vu = estSurveillee(state, e.regionId);
     state.journal.push(e);
     if (state.journal.length > LOG_MAX) state.journal.splice(0, state.journal.length - LOG_MAX);
+    // Le journal oublie — quatre cents lignes, et une longue absence en produit
+    // des milliers. Le rapport, lui, retient. Voir rapport.js.
+    noterAuRapport(state, e);
     if (e.important) state.nonLus = (state.nonLus || 0) + 1;
     return e;
   };
@@ -14861,7 +15089,9 @@ function rattraper(state, maintenantMs) {
     return { ticks: 0, tronque: false };
   }
   const { ticks, tronque, pas } = rattrapageDu(state, maintenantMs);
+  ouvrirRapport(state, 'absence');
   const joues = enAbsence(state, () => avancer(state, ticks));
+  fermerRapport(state);
   // On garde le reste pour ne pas perdre les fractions d'heure
   state.dernierReel += ticks * pas;
   if (tronque) state.dernierReel = maintenantMs;
@@ -14886,7 +15116,12 @@ function rattrapageEtale(state, maintenantMs, tranche = 200) {
   let faits = 0;
   const finir = () => {
     if (plan.tronque) state.dernierReel = maintenantMs;
+    // Une seule fois, à la toute fin. Refermer le rapport à chaque tranche
+    // reviendrait à ne rapporter que les deux cents dernières heures d'une
+    // absence de deux ans — et, sous le seuil, à ne rien rapporter du tout.
+    fermerRapport(state);
   };
+  if (plan.ticks > 0) ouvrirRapport(state, 'absence');
   if (plan.ticks === 0) {
     return { total: 0, tronque: plan.tronque, faits: () => 0, pas: () => false };
   }
@@ -15089,7 +15324,9 @@ function rafraichir(force) {
     if (cv.parentElement) lierGestesCarte(cv.parentElement);
     centrerCarte(cv);
   }
-  if (modale) rendreModale();
+  // `rendreModale` s'occupe aussi du rapport d'absence, qui s'ouvre de
+  // lui-même : on l'appelle donc même sans modale demandée.
+  if (modale || (S.rapport && S.rapport.apres)) rendreModale();
 }
 
 function rendreBarreHaut() {
@@ -15101,6 +15338,11 @@ function rendreBarreHaut() {
   const charge = cap > 0 ? poids / cap : 1;
   const vivants = g.membres.filter(estVivant).length;
   const debout = g.membres.filter(estDebout).length;
+
+  // Le nombre qui décide de la survie, et il n'était affiché nulle part : au
+  // rythme où l'on mange, combien de jours reste-t-il ? On mourait de faim en
+  // regardant un sac plein de ferraille.
+  const jours = autonomie(S, g);
 
   const cl = conditions(S.world, S.temps);
   // Les indicateurs vivent dans leur propre boîte, qui rogne par la droite si
@@ -15121,6 +15363,12 @@ function rendreBarreHaut() {
         <span class="hd-val ${charge > 0.95 ? 'rouge' : ''}">${n(poids)}/${n(cap)}</span></div>
       <div class="hd-bloc" title="${e(g.nom)}"><span class="hd-eti">${e(groupes(S).length > 1 ? g.nom.slice(0, 3) : 'esc')}</span>
         <span class="hd-val ${debout < vivants ? 'rouge' : ''}">${debout}/${vivants}</span></div>
+      <div class="hd-bloc" title="Jours de vivres au rythme actuel">
+        <span class="hd-eti">viv</span>
+        <span class="hd-val ${jours < 3 ? 'rouge' : jours < 8 ? 'ambre' : ''}">${
+  Number.isFinite(jours)
+    ? (jours < 10 ? `${jours.toFixed(1)}j` : jours < 100 ? `${Math.round(jours)}j` : '99+j')
+    : '—'}</span></div>
     </div>
     <div class="hd-pousse vitesse" role="group" aria-label="Vitesse">
       ${VITESSES.map((v) => `<button data-a="vitesse" data-v="${v}"
@@ -15620,6 +15868,75 @@ function blocFil() {
   </section>`;
 }
 
+/**
+ * Le point de situation : où l'on en est, en tête de l'écran principal.
+ *
+ * Le jeu affichait des rendements horaires, des stocks et des pourcentages, et
+ * jamais la seule phrase qui compte : est-ce que ça va, et sinon, quoi. On
+ * pouvait mourir de faim avec un sac plein de ferraille, parce que rien ne
+ * disait « il vous reste deux jours de vivres ».
+ *
+ * Trois registres, dans cet ordre — ce qui presse, ce qui vient, ce qu'on fait.
+ * Muet sur ce qui va bien : un panneau qui parle tout le temps ne se lit plus.
+ */
+function blocSituation() {
+  const g = G();
+  if (!g) return '';
+  const urgences = [];
+  const bientot = [];
+
+  const jours = autonomie(S, g);
+  const rations = Math.floor(g.inventaire.rations || 0);
+  if (!Number.isFinite(jours)) {
+    // Personne ne mange : tout le monde est mort ou l'escouade est vide.
+  } else if (jours < 1) {
+    urgences.push(`Plus rien à manger — ${rations} ration(s). On commence à mourir de faim.`);
+  } else if (jours < 3) {
+    urgences.push(`${jours.toFixed(1)} jour(s) de vivres. Il faut trouver à manger maintenant.`);
+  } else if (jours < 8) {
+    bientot.push(`${Math.round(jours)} jours de vivres`);
+  }
+
+  const vivants = g.membres.filter(estVivant);
+  const aTerre = vivants.filter((c) => !estDebout(c));
+  if (aTerre.length) {
+    urgences.push(`${aTerre.map((c) => c.nom).join(', ')} ${aTerre.length > 1 ? 'sont' : 'est'} `
+      + 'à terre. On ne les porte pas indéfiniment.');
+  }
+  const amoches = vivants.filter((c) => estDebout(c) && pvTotal(c).pct < 0.5);
+  if (amoches.length) bientot.push(`${amoches.length} blessé(s) sérieux`);
+
+  const cap = capacitePortage(S, g);
+  const poids = poidsInventaire(g.inventaire);
+  if (cap > 0 && poids > cap * 0.98) {
+    bientot.push('sac plein : on laisse du butin sur place');
+  }
+
+  // Les échéances : ce qui va se retourner contre vous si vous l'oubliez.
+  const all = g.allegeance;
+  if (all && all.ordre) {
+    const reste = all.ordre.echeance - S.temps;
+    const t = `ordre « ${all.ordre.titre} » — ${dureeTexte(Math.max(0, reste))}`;
+    if (reste < 72) urgences.push(`${t} avant l’échéance.`);
+    else bientot.push(t);
+  }
+  for (const c of S.player.contrats) {
+    const reste = c.echeance - S.temps;
+    const t = `contrat « ${c.titre} » — ${dureeTexte(Math.max(0, reste))}`;
+    if (reste < 48) urgences.push(`${t} avant l’échéance.`);
+    else bientot.push(t);
+  }
+
+  if (!urgences.length && !bientot.length) return '';
+  return `<section class="panneau ${urgences.length ? 'urgent' : ''}">
+    <h2 class="titre">Point de situation
+      <span class="droite ${urgences.length ? 'alerte' : ''}">${urgences.length
+    ? `${urgences.length} à régler` : 'rien de pressant'}</span></h2>
+    ${urgences.map((t) => `<div class="aide alerte">▲ ${e(t)}</div>`).join('')}
+    ${bientot.length ? `<div class="aide">${bientot.map(e).join(' · ')}</div>` : ''}
+  </section>`;
+}
+
 function blocSite() {
   const r = S.world.regions[G().regionId];
   if (!r.site || !r.site.connu) return '';
@@ -15996,6 +16313,7 @@ function ecranCarte() {
     `<span><i style="background:${f.couleur}"></i>${e(FACTIONS[f.key].court)}</span>`).join('')}
   </div>
   ${groupes(S).length > 1 ? barreGroupes() : ''}
+  ${blocSituation()}
   ${blocSelection()}
   ${blocRegionCourante()}
   ${blocCaravanes()}
@@ -17585,6 +17903,13 @@ function blocChronique() {
 
 function rendreModale() {
   const el = $('#modale');
+  // Le rapport d'absence passe avant tout le reste : c'est la première chose
+  // qu'on doit lire en rouvrant, et on ne la lit qu'une fois.
+  if (!modale && S.rapport && S.rapport.apres) {
+    el.hidden = false;
+    el.innerHTML = `<div class="boite">${modaleRapport()}</div>`;
+    return;
+  }
   if (!modale) { el.hidden = true; el.innerHTML = ''; return; }
   el.hidden = false;
   el.innerHTML = `<div class="boite">${contenuModale()}</div>`;
@@ -17606,6 +17931,73 @@ function contenuModale() {
     case 'recrutement': return modaleRecrutement() + fermer;
     default: return fermer;
   }
+}
+
+/**
+ * Ce qui s'est passé pendant votre absence.
+ *
+ * Le rattrapage rejouait jusqu'à deux ans de jeu derrière une barre de
+ * progression, puis rendait la main sans un mot. On revenait à une escouade
+ * amaigrie et à un stock entamé sans le moindre moyen de savoir pourquoi : le
+ * journal de bord est plafonné à quatre cents lignes, et trois cents jours
+ * d'absence en produisent des milliers — le mort et la ville tombée avaient
+ * défilé depuis longtemps.
+ *
+ * Ce n'est donc pas une relecture du journal, c'est un bilan : deux photos et
+ * ce qu'il y a entre les deux. Voir rapport.js.
+ */
+function modaleRapport() {
+  const r = lireRapport(S, S.rapport);
+  if (!r) return '<button class="act" data-a="rapport-vu">Continuer</button>';
+  const duree = r.jours >= 1
+    ? `${n(r.jours)} jour${r.jours > 1 ? 's' : ''}`
+    : `${n(r.heures)} h`;
+  const bloc = (titre, contenu) => (contenu
+    ? `<div class="sep"></div><div class="titre">${titre}</div>${contenu}` : '');
+  const ligne = (k, v, cls = '') => `<div class="ligne souple"><span class="k">${e(k)}</span>
+    <span class="v ${cls}">${v}</span></div>`;
+
+  const gens = r.pertes.length
+    ? r.pertes.map((t) => ligne('Vos gens', e(t), /plus là|à terre/.test(t) ? 'alerte' : '')).join('')
+    : ligne('Vos gens', 'tout le monde est là');
+
+  const argent = ligne('Crédits', `${r.argent > 0 ? '+' : ''}${n(r.argent)} cr`,
+    r.argent < 0 ? 'alerte' : '');
+
+  const marchandises = r.bouges.length
+    ? r.bouges.slice(0, 6).map((x) => ligne(COMMODITIES[x.key].nom,
+      `${x.delta > 0 ? '+' : ''}${n(x.delta)}`, x.delta < 0 ? 'alerte' : '')).join('')
+    : '<div class="aide">Les stocks n’ont pas bougé.</div>';
+
+  const estime = r.estime.length
+    ? r.estime.map((x) => ligne(FACTIONS[x.faction].nom,
+      `${x.delta > 0 ? '+' : ''}${n(x.delta)}`, x.delta < 0 ? 'alerte' : '')).join('')
+    : '';
+
+  const monde = r.monde.length
+    ? r.monde.map((t) => `<div class="aide">· ${e(t)}</div>`).join('') : '';
+
+  const faits = r.marquants.length
+    ? r.marquants.map((m) => `<div class="fil-l ${couleurLog(m.type)}">
+        <span class="fil-t">${horloge(m.t).texte}</span>
+        <span class="fil-x">${e(m.texte)}</span></div>`).join('')
+    : '';
+
+  return `<h2 class="titre">Le monde a continué sans vous
+    <span class="droite">${e(duree)}</span></h2>
+  ${r.calme
+    ? '<div class="aide">Rien de notable. Ça arrive, et c’est plutôt bon signe.</div>'
+    : '<div class="aide">Ce qui a changé pendant que cet onglet était fermé.</div>'}
+  <div class="sep"></div>
+  ${gens}
+  ${argent}
+  ${bloc('Marchandises', marchandises)}
+  ${bloc('Ce qu’on pense de vous', estime)}
+  ${bloc('Le monde', monde)}
+  ${bloc('Ce qui est arrivé', faits ? `<div class="fil">${faits}</div>${r.tus
+    ? `<div class="aide">…et ${n(r.tus)} autre(s) événement(s), au journal.</div>` : ''}` : '')}
+  <div class="sep"></div>
+  <button class="act primaire" data-a="rapport-vu">Reprendre les commandes</button>`;
 }
 
 /**
@@ -18310,6 +18702,14 @@ function surClic(ev) {
       break;
 
     case 'fermer':
+      modale = null;
+      rendreModale();
+      rafraichir(true);
+      break;
+    // Le rapport d'absence ne se lit qu'une fois : on l'efface de l'état, sinon
+    // il reviendrait à chaque chargement de la sauvegarde.
+    case 'rapport-vu':
+      delete S.rapport;
       modale = null;
       rendreModale();
       rafraichir(true);

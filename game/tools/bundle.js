@@ -55,6 +55,9 @@ const MODULES = [
   // De la place en ville, qui ne marche pas avec vous.
   'coffres.js',
   'contrats.js',
+  // Ce qui s'est passé pendant qu'on ne regardait pas : lu par le logger, donc
+  // avant lui.
+  'rapport.js',
   'events.js',
   'squad.js',
   // Ce que la partie a fait de vous : elle relit tout le reste.

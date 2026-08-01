@@ -24,6 +24,7 @@ import { poidsInventaire, capacitePortage } from './economy.js';
 import { groupeActif, groupes, tousLesMembres, debout as deboutDe } from './groupes.js';
 import { estSurveillee } from './connaissance.js';
 import { occupeParEcole } from './formation.js';
+import { noterAuRapport } from './rapport.js';
 
 export const LOG_MAX = 400;
 
@@ -35,6 +36,9 @@ export function creerLogger(state) {
     if (e.regionId != null && e.vu === undefined) e.vu = estSurveillee(state, e.regionId);
     state.journal.push(e);
     if (state.journal.length > LOG_MAX) state.journal.splice(0, state.journal.length - LOG_MAX);
+    // Le journal oublie — quatre cents lignes, et une longue absence en produit
+    // des milliers. Le rapport, lui, retient. Voir rapport.js.
+    noterAuRapport(state, e);
     if (e.important) state.nonLus = (state.nonLus || 0) + 1;
     return e;
   };

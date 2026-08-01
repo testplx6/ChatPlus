@@ -28,6 +28,7 @@ import { tickAllegeance, palierBonus, rangDe } from './allegeance.js';
 import { jugerActes, tickCharges } from './influence.js';
 import { tickSecteurs } from './secteur.js';
 import { tickGeole, tickOrdrePublic } from './justice.js';
+import { ouvrirRapport, fermerRapport } from './rapport.js';
 
 /** Durée réelle d'une heure de jeu, à vitesse ×1. */
 export const TICK_MS = 10000;
@@ -486,7 +487,9 @@ export function rattraper(state, maintenantMs) {
     return { ticks: 0, tronque: false };
   }
   const { ticks, tronque, pas } = rattrapageDu(state, maintenantMs);
+  ouvrirRapport(state, 'absence');
   const joues = enAbsence(state, () => avancer(state, ticks));
+  fermerRapport(state);
   // On garde le reste pour ne pas perdre les fractions d'heure
   state.dernierReel += ticks * pas;
   if (tronque) state.dernierReel = maintenantMs;
@@ -511,7 +514,12 @@ export function rattrapageEtale(state, maintenantMs, tranche = 200) {
   let faits = 0;
   const finir = () => {
     if (plan.tronque) state.dernierReel = maintenantMs;
+    // Une seule fois, à la toute fin. Refermer le rapport à chaque tranche
+    // reviendrait à ne rapporter que les deux cents dernières heures d'une
+    // absence de deux ans — et, sous le seuil, à ne rien rapporter du tout.
+    fermerRapport(state);
   };
+  if (plan.ticks > 0) ouvrirRapport(state, 'absence');
   if (plan.ticks === 0) {
     return { total: 0, tronque: plan.tronque, faits: () => 0, pas: () => false };
   }
