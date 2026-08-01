@@ -15780,7 +15780,18 @@ function blocRegionCourante() {
     <div class="ligne"><span class="k">Ciel</span>
       <span class="v" style="color:${conditions(S.world, S.temps).meteo.couleur}">${e(conditions(S.world, S.temps).meteo.nom)}</span></div>
     ${r.controle ? `<div class="ligne"><span class="k">Territoire</span>
-      <span class="v" style="color:${couleurFaction(r.controle)}">${e(FACTIONS[r.controle].nom)}</span></div>` : ''}
+      <span class="v" style="color:${couleurFaction(r.controle)}">${e(FACTIONS[r.controle].nom)}</span></div>
+      ${(() => {
+    // Sur les terres de quelqu'un, ce qu'il pense de vous décide de ce qui
+    // sort du bois. C'est l'information la plus utile de tout le panneau, et
+    // elle n'était visible qu'en ville.
+    const ef = effetsEstime(S, r.controle);
+    const cls = ef.rep <= -20 ? 'mal' : ef.rep >= 25 ? 'ok' : 'att';
+    return `<div class="ligne"><span class="k">Ils vous voient</span>
+        <span class="v"><span class="puce ${cls}">${ef.rep > 0 ? '+' : ''}${n(ef.rep)}
+          ${e(ef.palier.nom.toLowerCase())}</span></span></div>
+      ${ef.perdu.length ? `<div class="aide alerte">${e(ef.perdu[0])}.</div>` : ''}`;
+  })()}` : ''}
   </section>
 
   ${blocSite()}
@@ -17310,6 +17321,47 @@ function ecranContrats() {
 // Écran MONDE
 // ---------------------------------------------------------------------------
 
+/**
+ * Où l'on en est avec chacun, en un coup d'œil, en tête de l'écran du monde.
+ *
+ * L'estime existait depuis toujours, elle commandait huit choses, et on ne
+ * pouvait la lire nulle part — sauf sur la fiche d'une ville où l'on se
+ * trouvait, et sous la forme d'un « RÉP 0 » perdu dans le rapport de puissance.
+ * Un joueur ne peut pas décider chez qui aller vendre, chez qui s'engager ni
+ * quelle route éviter s'il ne sait pas ce que chacun pense de lui.
+ *
+ * Trié du meilleur au pire : ce qui décide d'une partie, c'est autant l'ami
+ * qu'on a que l'ennemi qu'on s'est fait.
+ */
+function blocOuVousEnEtes() {
+  const rangs = DIPLO_FACTIONS
+    .filter((k) => S.world.colonies.some((c) => !c.ruine && c.faction === k))
+    .map((k) => ({ k, ef: effetsEstime(S, k) }))
+    .sort((a, b) => b.ef.rep - a.ef.rep);
+  if (!rangs.length) return '';
+  const lignes = rangs.map(({ k, ef }) => {
+    const cls = ef.rep <= -20 ? 'mal' : ef.rep >= 25 ? 'ok' : 'att';
+    // Ce qui compte le plus à ce niveau-ci : ce qu'on subit d'abord s'il y a
+    // quelque chose à subir, ce qu'on a gagné sinon.
+    const quoi = ef.perdu[0] || ef.acquis[ef.acquis.length - 1]
+      || 'on ne vous connaît pas encore';
+    return `<div class="ligne souple">
+      <span class="k" style="color:${couleurFaction(k)}">${e(FACTIONS[k].nom)}<br>
+        <span class="aide">${e(quoi)}</span></span>
+      <span class="v"><span class="puce ${cls}">${ef.rep > 0 ? '+' : ''}${n(ef.rep)}
+        ${e(ef.palier.nom.toLowerCase())}</span></span></div>`;
+  }).join('');
+  return `<section class="panneau">
+    <h2 class="titre">Ce qu’on pense de vous
+      <span class="droite">estime</span></h2>
+    <div class="aide">Elle décide du prix qu’on vous fait, de ce qu’on vous laisse
+      posséder, de qui vous enrôle, de ce que coûtent vos recrues, et de qui vous
+      cherche sur les routes. Elle monte en tenant parole, elle descend en la
+      manquant — et elle s’émousse d’elle-même avec le temps.</div>
+    <div class="sep"></div>
+    ${lignes}</section>`;
+}
+
 function ecranMonde() {
   const crypto = (S.base.recherche.cryptographie || 0) > 0;
   const cl = classement(S.world);
@@ -17318,10 +17370,14 @@ function ecranMonde() {
   const factionsHtml = cl.map((f) => {
     const repu = S.player.reputation[f.key] || 0;
     const cls = repu > 20 ? 'ok' : repu < -20 ? 'mal' : 'att';
+    // Un nombre nu ne dit rien : « rép 0 » ne se lit que si l'on sait déjà ce
+    // que zéro vaut. On accole le palier, qui est un mot.
+    const palier = palierEstime(repu);
     return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
       <div class="ligne">
         <span class="k" style="color:${f.couleur}">${e(f.nom)}</span>
-        <span class="v"><span class="puce ${cls}">rép ${repu > 0 ? '+' : ''}${n(repu)}</span></span>
+        <span class="v"><span class="puce ${cls}">${repu > 0 ? '+' : ''}${n(repu)}
+          ${e(palier.nom.toLowerCase())}</span></span>
       </div>
       ${jauge(f.puissance / max, '', f.couleur)}
       ${(() => {
@@ -17425,6 +17481,7 @@ function ecranMonde() {
   ).slice(-14).reverse();
 
   return `
+  ${blocOuVousEnEtes()}
   <section class="panneau">
     <h2 class="titre">Climat
       <span class="droite" style="color:${meteoNow.saison.def.couleur}">${e(meteoNow.saison.def.nom)} · jour ${meteoNow.saison.jour}/30 · an ${meteoNow.saison.annee}</span></h2>

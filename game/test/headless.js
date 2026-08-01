@@ -6,6 +6,7 @@ import {
   TICK_MS, RATTRAPAGE_MAX,
 } from '../src/sim.js';
 import { Rng } from '../src/rng.js';
+import { mesurerTick, CHAUFFE, MESURE } from './perf.js';
 import { serialiser, deserialiser } from '../src/save.js';
 import { COMMODITY_KEYS, DIPLO_FACTIONS } from '../src/data.js';
 import {
@@ -134,11 +135,10 @@ function fini(v) {
 
 // --- Budget de performance -------------------------------------------------
 // Un plafond en microsecondes sèches serait soit trop lâche pour attraper une
-// régression, soit capricieux selon la machine qui fait tourner les tests. On
-// mesure donc un étalon — un travail fixe, sans allocation — et on rapporte le
-// coût du tick à la vitesse de la machine. ETALON_MS est ce que cet étalon coûte
-// sur la machine de référence ; BUDGET_US le plafond du tick une fois normalisé.
-const ETALON_MS = 25;
+// régression, soit capricieux selon la machine. On rapporte donc le coût du
+// tick à la vitesse de la machine, mesurée par un étalon. La mécanique vit dans
+// `test/perf.js` — la chauffe, le minimum de cinq passes, et pourquoi les deux
+// sont nécessaires y sont expliqués et chiffrés.
 /**
  * Le plafond monte quand la simulation gagne du travail, pas quand elle se
  * dégrade — et il faut dire lequel, sinon relever le budget devient un moyen
@@ -158,42 +158,28 @@ const ETALON_MS = 25;
  *          jeu par un parcours en largeur depuis les villes), prisonniers et
  *          geôles. Écrite naïvement — chaque case cherchant la ville la plus
  *          proche à chaque heure — l'insécurité coûtait à elle seule 589 µs.
+ *   79 µs  chauffe et minimum de cinq passes. Rien n'a été optimisé ce jour-là :
+ *          la mesure a cessé d'inclure la compilation du moteur et les caprices
+ *          d'une machine partagée. Les chiffres au-dessus restent tels quels,
+ *          relevés avec l'ancienne méthode ; ils se comparent entre eux, pas
+ *          avec celui-ci.
  *
- * 145 laisse 25 % de marge sur les 116 mesurés. La mesure est un minimum sur
- * deux passes, mais une machine chargée fait encore varier le résultat de
- * quinze pour cent : à 130 le test échouait une fois sur trois sans qu'aucun
- * code n'ait changé, ce qui est la pire chose qu'un garde-fou puisse faire.
+ * 110 laisse un tiers de marge sur les 79 mesurés, et sur les 91 qu'on relève
+ * quand la machine travaille par ailleurs. L'ancien plafond de 145 était calé
+ * sur une mesure bruitée : il aurait laissé passer un tick qui double.
  */
-const BUDGET_US = 145;
+const BUDGET_US = 110;
 
-/**
- * Mesure la vitesse de la machine. Le minimum de trois passes : le bruit du
- * ramasse-miettes et de la compilation ne fait que ralentir, jamais accélérer.
- *
- * Limite connue et non résolue : l'étalon est de l'arithmétique pure, le tick
- * alloue à chaque heure. Sur une machine partagée, la contention mémoire frappe
- * l'un et pas l'autre — un même code mesuré à 82 µs le matin et 128 µs le soir
- * n'a vu son facteur passer que de 1,10 à 1,11. Un étalon qui alloue suit mieux
- * la contention, mais il faudrait le ré-ancrer sur une machine au repos, et
- * ajuster ETALON_MS sur un échantillon bruité reviendrait à truquer le
- * garde-fou. En attendant, une mesure au-dessus du budget sur une machine
- * chargée ne prouve rien : c'est la valeur plancher de plusieurs exécutions qui
- * fait foi.
- */
-function etalonnerMachine() {
-  let best = Infinity;
-  for (let p = 0; p < 3; p++) {
-    const t = process.hrtime.bigint();
-    const r = new Rng(1);
-    let acc = 0;
-    for (let i = 0; i < 3e6; i++) acc += r.f();
-    if (acc < 0) return 1; // inatteignable, mais empêche l'élimination de la boucle
-    best = Math.min(best, Number(process.hrtime.bigint() - t) / 1e6);
-  }
-  return best / ETALON_MS;
-}
-
-const facteurMachine = etalonnerMachine();
+// Mesuré tout de suite, avant la première assertion.
+//
+// L'endroit n'est pas indifférent, et c'est contre-intuitif : lancé à la fin de
+// la suite, l'étalon tourne **quatre fois plus vite** qu'au démarrage, parce
+// que huit cents assertions ont donné au compilateur toutes les occasions
+// d'optimiser `Rng.f()`. La machine paraît alors quatre fois plus rapide
+// qu'elle n'est, et le tick quatre fois plus lent. Étalon et tick doivent donc
+// être relevés au même moment, et ce moment doit être le même à chaque
+// exécution.
+const perf = mesurerTick(777);
 
 /** Parcourt l'état à la recherche de NaN / Infinity : le tueur silencieux des sims. */
 function chercherNaN(obj, chemin = '$', vus = new Set()) {
@@ -804,38 +790,24 @@ section('4 bis. Ce qu’on fait de ses morts');
     'mais pas s’il est à terre');
 }
 
-section('4. Simulation longue (3 000 h ≈ 125 jours)');
+section('4. Simulation longue (3 200 h ≈ 133 jours)');
 // On tique directement : le monde doit continuer de tourner même si l'escouade
 // du joueur disparaît en route (c'est le cas limite qui casse les sims).
-// Trois passes, on garde la meilleure : même discipline que pour l'étalon. Le
-// ramasse-miettes et la compilation ne font que ralentir, jamais accélérer, et
-// une mesure unique varie de 40 % d'une exécution à l'autre — assez pour faire
-// tomber un garde-fou sans qu'aucun code n'ait changé. Deux passes ont suffi
-// longtemps ; sur une machine partagée qui a rendu 128 puis 230 µs pour le même
-// code, elles ne suffisent plus.
-let ms = Infinity;
-let s4 = null;
-for (let passe = 0; passe < 3; passe++) {
-  const st = nouvellePartie(777, { maintenant: 0 });
-  const t0 = process.hrtime.bigint();
-  for (let i = 0; i < 3000; i++) tick(st);
-  ms = Math.min(ms, Number(process.hrtime.bigint() - t0) / 1e6);
-  s4 = st;
-}
-const us = (ms * 1000) / 3000;
+// La mesure et l'état joué viennent du même endroit — voir test/perf.js. Elle a
+// été prise en tête de fichier, pour la raison expliquée là-haut.
+const s4 = perf.etat;
+const usNorm = perf.usNorm;
 
-const usNorm = us / facteurMachine;
-
-console.log(`  → ${ms.toFixed(0)} ms pour 3 000 ticks (${us.toFixed(0)} µs/tick, ` +
-  `${usNorm.toFixed(0)} µs normalisés — machine ×${(1 / facteurMachine).toFixed(2)})`);
+console.log(`  → ${perf.ms.toFixed(0)} ms pour ${MESURE} ticks (${perf.us.toFixed(0)} µs/tick, `
+  + `${usNorm.toFixed(0)} µs normalisés — machine ×${(1 / perf.facteur).toFixed(2)})`);
 ok(usNorm < BUDGET_US, `tick sous ${BUDGET_US} µs (budget normalisé)`,
   `${usNorm.toFixed(0)} µs`);
 // Le rattrapage maximal est le pire cas réel : deux ans hors ligne, rejoués
 // d'un coup au chargement. Il doit rester de l'ordre de la seconde.
 ok(usNorm * RATTRAPAGE_MAX / 1e6 < 3, 'rattrapage maximal sous 3 s',
   `${(usNorm * RATTRAPAGE_MAX / 1e6).toFixed(2)} s`);
-verifierCoherence(s4, 'après 3 000 h');
-ok(s4.temps === 3000, 'horloge à 3 000 h', `reçu ${s4.temps}`);
+verifierCoherence(s4, `après ${CHAUFFE + MESURE} h`);
+ok(s4.temps === CHAUFFE + MESURE, `horloge à ${CHAUFFE + MESURE} h`, `reçu ${s4.temps}`);
 
 section('5. Le monde bouge tout seul');
 const s5 = nouvellePartie(20240607, { maintenant: 0 });

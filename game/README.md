@@ -96,11 +96,12 @@ simulation gagne du travail — jamais quand elle se dégrade —, et le fichier
 test dit à chaque fois ce que la hausse a payé : 60 µs au départ, 65 avec les
 groupes et la connaissance imparfaite, 88 avec les métiers des villes et leurs
 notables, 94 avec les demandes personnelles de ces notables, 114 avec la carte
-de 24×18 et ses 86 villes, 116 avec les cantiniers et les ouvriers. Le plafond
-lui-même est passé de 130 à 145 pour une raison qui n'a rien à voir avec le
-code : à 130 le test échouait une fois sur trois sur une machine chargée, et un
-garde-fou qui crie sans motif est pire qu'un garde-fou absent. Sans cette trace, relever le budget deviendrait un moyen commode de ne
-jamais voir une régression.
+de 24×18 et ses 86 villes, 116 avec les cantiniers et les ouvriers. Sans cette
+trace, relever le budget deviendrait un moyen commode de ne jamais voir une
+régression.
+
+Le plafond est ensuite **descendu** de 145 à 110, sans qu'une ligne de moteur
+change : c'est la mesure qui a cessé de mentir. Voir plus bas.
 
 ### Trois voies, trois façons de tenir
 
@@ -1351,20 +1352,39 @@ s'accrocher, s'ils changent des choses aussi concrètes que celle-là.
 Le contenu appartient au joueur, pas au monde : il vit dans `state.player`,
 comme les crédits.
 
-### Un garde-fou de performance qui ne tient plus tout à fait
+### Le garde-fou de performance mesurait surtout le bruit
 
-À signaler, parce que le taire reviendrait à truquer la mesure. Le même code de
-tick a été mesuré à **82 µs le matin et 128 µs le soir** sur cette machine, et
-l'étalon n'a vu son facteur passer que de 1,10 à 1,12. La raison est claire :
-l'étalon est de l'arithmétique pure, le tick alloue à chaque heure, et sur une
-machine partagée la contention mémoire frappe l'un et pas l'autre.
+Le même code de tick se lisait **82 µs le matin et 128 µs le soir** sur cette
+machine, et l'étalon ne bronchait pas. L'hypothèse qu'on traînait — l'étalon est
+de l'arithmétique pure, le tick alloue, donc un étalon qui alloue suivrait mieux
+la contention — a fini par être mesurée. **Elle est fausse.** Quatre cœurs,
+trois brûleurs mémoire en fond :
 
-Un étalon qui alloue suit nettement mieux — essayé, il monte à ×1,28 sur la même
-machine. Mais il faudrait le ré-ancrer au repos, et ajuster `ETALON_MS` sur un
-échantillon bruité reviendrait à ajuster le garde-fou pour qu'il passe. La
-limite est donc documentée dans le code plutôt que masquée : **une mesure
-au-dessus du budget sur une machine chargée ne prouve rien, c'est le plancher de
-plusieurs exécutions qui fait foi.**
+| | au repos | sous charge |
+|---|---|---|
+| étalon arithmétique | 23,6 ms | 24,4 ms (+3 %) |
+| étalon qui alloue | 9,1 ms | 9,3 ms (+2 %) |
+| tick, une seule passe | 104 µs | 220 µs (+112 %) |
+| tick, minimum de cinq passes | 78 µs | 81 µs (+4 %) |
+
+Aucun étalon ne rattrape une machine chargée. Ce qui l'absorbe, c'est de prendre
+le **minimum de plusieurs passes, chacune précédée d'une chauffe** : sans
+chauffe on chronomètre la compilation du moteur, sans le minimum on chronomètre
+l'ordonnanceur. Avec les deux, la même mesure rend 78 à 84 µs au repos comme
+sous trois brûleurs, et le plafond est descendu de 145 à 110 — l'ancien,
+calé sur du bruit, aurait laissé passer un tick qui double.
+
+L'endroit compte aussi, et c'est contre-intuitif : lancé en fin de suite,
+l'étalon tourne **quatre fois plus vite** qu'au démarrage, parce que huit cents
+assertions ont donné au compilateur toutes les occasions d'optimiser le
+générateur aléatoire. Étalon et tick sont donc relevés ensemble, en tête.
+
+Une erreur en cours de route, gardée ici parce qu'elle est instructive : la
+première mesure « propre » annonçait 41 µs, moitié moins. Elle appelait
+`avancer(state, 3000)` et divisait par 3 000 — or `avancer` s'arrête à
+l'extinction de l'escouade, qui survient à la 1 095ᵉ heure sur cette graine. Une
+mesure divise par le travail **fait**, pas par le travail demandé, et un chiffre
+deux fois trop beau mérite qu'on cherche pourquoi avant de le publier.
 
 ### Deux champs morts
 
