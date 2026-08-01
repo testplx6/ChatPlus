@@ -18,6 +18,7 @@ import { COMMODITIES } from './data.js';
 import { CHARGES, notable } from './notables.js';
 import { groupes } from './groupes.js';
 import { colonieDe } from './world.js';
+import { loiIci } from './lois.js';
 
 /**
  * Ce que chaque charge peut réclamer. `seuil` est le stock par habitant en
@@ -259,7 +260,12 @@ export function renfortSoin(state, regionId) {
   const col = colonieDe(state.world, regionId);
   if (!col || col.ruine) return 1;
   const p = notable(col, 'medecin');
-  if (!p || (p.opinion || 0) < SOINS_SEUIL) return 1;
+  if (!p) return 1;
+  // Une Commune soigne qui se présente : c'est ce qu'elle rend contre le
+  // huitième qu'elle retient sur vos ventes. Partout ailleurs, le médecin
+  // choisit ses patients — et il faut lui avoir donné une raison.
+  const pourTous = loiIci(state, col).regime.soins === 'tous';
+  if (!pourTous && (p.opinion || 0) < SOINS_SEUIL) return 1;
   return 1 + 0.35 + Math.min(0.4, p.comp / 250);
 }
 

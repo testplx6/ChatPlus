@@ -63,7 +63,9 @@ import {
   coffreDe, placeCoffre, peutLouer, peutAcheter,
   LOYER, PRIX_COFFRE, CAPACITE_LOUEE, CAPACITE_ACHETEE, ESTIME_PROPRIETE,
 } from './coffres.js';
-import { PEINES, PEINE_KEYS, IMPOTS, loisDe, loiIci } from './lois.js';
+import {
+  PEINES, PEINE_KEYS, IMPOTS, REGIMES, REGIME_KEYS, loisDe, loiIci,
+} from './lois.js';
 import { distanceMorale } from './factions.js';
 import {
   resumeSecteur, casesDe, dansSonSecteur, motEtat, NIVEAU_ORDINAIRE,
@@ -966,6 +968,7 @@ function blocColonie(col) {
         <span class="v">celle du plus fort</span></div>`
     : `<div class="ligne"><span class="k">Réputation</span><span class="v"><span class="puce ${cls}">${repu > 0 ? '+' : ''}${n(repu)}</span></span></div>`}
     </div>
+    ${blocRegime(col)}
     <div class="sep"></div>
     <div class="grille2" style="gap:5px">
       <button class="act mini primaire" data-a="modale" data-m="marche">Marché</button>
@@ -983,6 +986,31 @@ function blocColonie(col) {
     </div>
     ${blocEngagement(col)}
   </section>`;
+}
+
+/**
+ * Sous quel régime on se trouve, et ce que ça change concrètement.
+ *
+ * Un régime qui ne s'annonce pas est un piège : le joueur pousse le bouton
+ * « acheter un coffre », on lui répond non, et il ne sait pas si c'est sa
+ * réputation, sa bourse ou la loi du lieu. On dit donc les quatre choses qui
+ * changent — posséder, s'instruire, se faire soigner, ce qu'on retient sur les
+ * ventes — avant qu'il ne pousse le bouton.
+ */
+function blocRegime(col) {
+  const r = loiIci(S, col).regime;
+  const dit = [
+    r.propriete === null ? 'rien à posséder'
+      : `coffre dès ${r.propriete} d’estime`,
+    r.ecole === 'libre' ? 'école gratuite'
+      : r.ecole === 'maison' ? 'école réservée aux siens' : 'école payante',
+    r.soins === 'tous' ? 'médecin pour tous' : 'médecin sur estime',
+    r.preleve ? `${Math.round(r.preleve * 100)} % sur vos ventes` : 'rien sur vos ventes',
+    r.palier ? 'armurier généreux' : '',
+  ].filter(Boolean).join(' · ');
+  return `<div class="ligne souple"><span class="k">${e(r.nom)}</span>
+      <span class="v aide">${e(r.desc)}</span></div>
+    <div class="aide">${e(dit)}.</div>`;
 }
 
 function blocEngagement(col) {
@@ -2074,6 +2102,16 @@ function ciblesCharge(faction, k) {
       if (lois.impot === imp.taux) continue;
       out.push({ val: `impot:${imp.key}`, texte: `Impôt ${imp.nom.toLowerCase()} (${Math.round(imp.taux * 100)} %) — ${imp.desc}` });
     }
+    // Le régime : la seule loi qui vous concerne, vous, et pas seulement leurs
+    // sujets. On dit donc ce qu'elle changerait pour vous, en clair.
+    for (const key of REGIME_KEYS) {
+      if (lois.regime === key) continue;
+      const r = REGIMES[key];
+      out.push({
+        val: `regime:${key}`,
+        texte: `${r.nom} — ${r.desc} (retenue ${Math.round(r.preleve * 100)} % sur vos ventes)`,
+      });
+    }
     // On dit le prix avant la signature : combien de voisins l'interdisent chez
     // eux, et se le rappelleront. Une loi vaut aussi vers l'extérieur.
     const abolitionnistes = DIPLO_FACTIONS.filter(
@@ -2420,10 +2458,13 @@ function ecranMonde() {
     const facheurs = DIPLO_FACTIONS.filter(
       (k) => k !== f.key && distanceMorale(S.world, k, f.key) > 0.45
         && S.world.colonies.some((c) => !c.ruine && c.faction === k)).length;
-    return `<div class="aide">Chez eux : impôt ${e(imp.nom.toLowerCase())} (${Math.round(l.impot * 100)} %),
+    const reg = REGIMES[l.regime] || REGIMES.charte;
+    return `<div class="aide">Chez eux : ${e(reg.nom.toLowerCase())},
+      impôt ${e(imp.nom.toLowerCase())} (${Math.round(l.impot * 100)} %),
       justice ${e(PEINES[l.peine].nom.toLowerCase())}${l.esclavage
       ? ', <span class="alerte">et l’on y vend des hommes</span>' : ''}.${facheurs
-      ? ` <span class="alerte">${facheurs} faction(s) ne le supportent pas.</span>` : ''}</div>`;
+      ? ` <span class="alerte">${facheurs} faction(s) ne le supportent pas.</span>` : ''}
+      <br>Pour vous : ${e(reg.desc.toLowerCase())}</div>`;
   })()}
     </div>`;
   }).join('');
@@ -2666,11 +2707,18 @@ function modaleMarche() {
     </div>`;
   }).join('');
 
+  // La retenue du régime est déjà déduite des montants de vente affichés. Il
+  // faut le dire, sinon le joueur croit à une erreur de prix.
+  const reg = loiIci(S, col).regime;
   return `<h2 class="titre">Marché de ${e(col.nom)}
     <span class="droite">${n(S.player.credits)} cr</span></h2>
   <div class="aide">Négociateur : ${negoc ? `${e(negoc.nom)} (commerce ${hab.toFixed(0)})` : 'aucun'}.
     Une bonne réputation et un bon commerçant resserrent la marge. Le prix bouge
-    à chaque unité : les montants affichés tiennent compte de tout le lot.</div>
+    à chaque unité : les montants affichés tiennent compte de tout le lot.
+    ${reg.preleve
+    ? `<span class="retenue">${e(reg.nom)} : ${Math.round(reg.preleve * 100)} % retenus sur
+      chaque vente, déjà déduits de ce qui est affiché.</span>`
+    : `${e(reg.nom)} : on ne retient rien sur vos ventes ici.`}</div>
   <div class="taches" style="margin-top:6px">Quantité ${choix}</div>
   <div class="sep"></div>${lignes}`;
 }

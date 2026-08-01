@@ -18,6 +18,7 @@ import {
 } from './notables.js';
 import { tickServices } from './services.js';
 import { portageAttelage } from './betes.js';
+import { loiIci } from './lois.js';
 
 /** Stock « confortable » visé par une colonie pour une marchandise. */
 export function cibleStock(col, key) {
@@ -624,7 +625,17 @@ export function simulerVente(state, col, key, qte, groupe) {
     vendus += 1;
     restant -= 1;
   }
-  return { qte: vendus, gain: Math.round(gain) };
+  // Ce que le régime retient au passage. Une Commune instruit et soigne
+  // gratuitement, et se paie là ; une Franchise ne donne rien et ne prend
+  // presque rien ; une ville sans drapeau ne prend rien du tout, faute de
+  // quelqu'un pour le faire. C'est ce qui fait de « où j'écoule mon butin » une
+  // question, et pas seulement « où le prix est le meilleur ».
+  // Témoin du banc : on coupe la retenue pour chiffrer ce qu'elle prend
+  // vraiment au négoce. Voir test/equilibre.js, SANS=preleve.
+  const part = state.sansPreleve ? 0 : (loiIci(state, col).regime.preleve || 0);
+  const brut = Math.round(gain);
+  const taxe = Math.round(brut * part);
+  return { qte: vendus, gain: brut - taxe, brut, taxe, part };
 }
 
 export function acheter(state, col, key, qte, groupe) {
@@ -653,7 +664,7 @@ export function vendre(state, col, key, qte, groupe) {
   state.player.credits += sim.gain;
   const negoc = meilleurCommercant(g.membres);
   if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.5 + sim.qte * 0.3);
-  return { ok: true, qte: sim.qte, gain: sim.gain };
+  return { ok: true, qte: sim.qte, gain: sim.gain, taxe: sim.taxe, brut: sim.brut };
 }
 
 /** Capacité de portage d'un groupe. Ce qu'il porte, il le porte lui-même. */

@@ -543,6 +543,9 @@ button.act.ordre {
 button.act.ordre[aria-pressed="true"] .o-r { color: var(--cyan); }
 
 .alerte { color: var(--rouge); }
+/* Ni une alerte ni une information neutre : ce qui coûte quelque chose sans
+   être une faute — une retenue, un délai, un péage. */
+.retenue { color: var(--ambre); }
 
 /* ------------------------------------------------------------------ Sites, contrats, étal */
 

@@ -818,7 +818,10 @@ ok(ouEstLEngagement.colonne && ouEstLEngagement.joueur,
 await page.click('[data-a="onglet"][data-k="monde"]');
 await page.waitForTimeout(400);
 const texteLois = await page.evaluate(() => document.querySelector('#ecran').textContent);
-ok(/Chez eux : impôt/.test(texteLois), 'l’écran du monde dit comment chacun gouverne');
+ok(/Chez eux : (franchise|charte|commune|domaine),\s+impôt/.test(texteLois),
+  'l’écran du monde dit comment chacun gouverne, régime compris');
+ok(/Pour vous :/.test(texteLois),
+  'et ce que ce régime change pour le joueur, pas seulement pour leurs sujets');
 ok(/justice (clémente|ferme|expéditive)/.test(texteLois),
   'avec la sévérité de sa justice');
 // Un régime esclavagiste doit se voir arriver la guerre, pas la découvrir : la
@@ -1155,6 +1158,9 @@ const ecolier = nouvellePartie(1717, { maintenant: Date.now() });
 const gEc = groupeActif(ecolier);
 const villeEcole = ecolier.world.colonies.find((c) => ecolesDe(ecolier.world, c).length);
 gEc.regionId = villeEcole.regionId;
+// Un Domaine réserve son école à ceux qui servent la maison : on veut ici une
+// ville qui l'ouvre à tout le monde, sinon on teste le refus, pas l'écran.
+loisDe(ecolier.world, villeEcole.faction).regime = 'charte';
 ecolier.player.credits = 9000;
 avancer(ecolier, 3);
 ecolier.dernierReel = Date.now();

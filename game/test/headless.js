@@ -70,10 +70,10 @@ import {
   GAIN_DIPLOME, SEUIL_VENTRE_CREUX,
   comp as compPerso,
 } from '../src/characters.js';
-import { DIPLOMES } from '../src/data.js';
+import { DIPLOMES, DIPLOME_KEYS } from '../src/data.js';
 import {
   ecolesDe, inscrire, enFormation, ecolesAvantPoste, enseignerChezSoi,
-  occupeParEcole, MARGE_INSTRUCTEUR,
+  occupeParEcole, MARGE_INSTRUCTEUR, prixFormation, peutSInscrire,
 } from '../src/formation.js';
 import { colonieDe, colonieParId, nomRegion } from '../src/world.js';
 import {
@@ -104,7 +104,7 @@ import { METIER_VILLE_KEYS } from '../src/data.js';
 import {
   sEngager, rangDe, RANGS, peutSEngager, REPUTATION_MINIMALE,
   droitIntendance, toucherRations, garnison, RANG_GARNISON,
-  bilanService, noterFait, FEUILLE_MAX,
+  bilanService, noterFait, FEUILLE_MAX, palierBonus,
 } from '../src/allegeance.js';
 import {
   vueColonie, estSurveillee, ageTexte, nouvellesConnues, DELAI_NOUVELLE, observer,
@@ -1574,6 +1574,9 @@ const offre = ecolesDe(s9r.world, ville9r)[0];
 const eleve = g9r.membres[0];
 const skillOffre = DIPLOMES[offre].skill;
 s9r.player.credits = 5000;
+// Une Commune instruit gratuitement et un Domaine n'instruit que les siens : on
+// veut ici une ville qui vend son école, sinon le test ne mesure plus rien.
+loisDe(s9r.world, ville9r.faction).regime = 'charte';
 const creditsAvant = s9r.player.credits;
 const insc = inscrire(s9r, ville9r, eleve, offre, () => {});
 ok(insc.ok, 'on peut inscrire quelqu’un', insc.motif);
@@ -3871,6 +3874,90 @@ ok(s9bb.world.colonies.every((c) => (c.notables || []).every(
   (p) => !p.demande || p.demande.echeance > s9bb.temps - 30)),
   'aucune demande périmée ne s’installe');
 verifierCoherence(s9bb, 'après une année de vie sociale');
+
+section('9 terdecies. Les régimes : ce qu’on a le droit de faire chez eux');
+{
+  // Le monde ne commence pas uniforme. Un régime que personne ne pratique est
+  // une ligne de code que le joueur ne rencontrera jamais.
+  const sr = nouvellePartie(2929, { maintenant: 0 });
+  const pratiques = new Set(DIPLO_FACTIONS.map((f) => loisDe(sr.world, f).regime));
+  ok(pratiques.size >= 3, 'plusieurs régimes coexistent dès la première heure',
+    [...pratiques].join(', '));
+  ok(pratiques.has('franchise') && pratiques.has('commune') && pratiques.has('domaine'),
+    'et les régimes tranchés sont tous représentés quelque part');
+
+  const gr = groupeActif(sr);
+  const colR = sr.world.colonies.find((c) => c.faction && !c.ruine);
+  gr.regionId = colR.regionId;
+  const lois = loisDe(sr.world, colR.faction);
+
+  // Ce qu'on peut posséder : le régime décide, plus un seuil en dur.
+  lois.regime = 'commune';
+  sr.player.credits = 9000;
+  sr.player.reputation[colR.faction] = 100;
+  ok(!peutAcheter(sr, colR).ok, 'on ne possède rien dans une Commune, même adoré',
+    peutAcheter(sr, colR).motif);
+  lois.regime = 'charte';
+  ok(peutAcheter(sr, colR).ok, 'mais on achète sous une Charte quand on est connu');
+  sr.player.reputation[colR.faction] = 5;
+  ok(!peutAcheter(sr, colR).ok, 'et pas quand on ne l’est pas');
+
+  // Ce que l'école coûte.
+  lois.regime = 'commune';
+  ok(prixFormation(colR, DIPLOME_KEYS[0], 0, loiIci(sr, colR).regime) === 0,
+    'une Commune instruit gratuitement');
+  lois.regime = 'charte';
+  ok(prixFormation(colR, DIPLOME_KEYS[0], 0, loiIci(sr, colR).regime) > 0,
+    'une Charte fait payer son école');
+  lois.regime = 'domaine';
+  {
+    const v = peutSInscrire(sr, colR, gr.membres[0], ecolesDe(sr.world, colR)[0] || DIPLOME_KEYS[0]);
+    ok(!v.ok, 'un Domaine n’instruit que ceux qui servent la maison', v.motif);
+  }
+
+  // Ce que l'armurier sort de derrière : le privilège du Domaine, sans rien jurer.
+  ok(palierBonus(sr, colR.faction) === 1, 'et son armurier arme n’importe qui');
+  lois.regime = 'charte';
+  ok(palierBonus(sr, colR.faction) === 0, 'ailleurs il faut le grade');
+
+  // Le prélèvement sur les ventes : la seule part du régime qui touche la bourse.
+  gr.inventaire.ferraille = 400;
+  colR.stock.ferraille = 60;
+  lois.regime = 'franchise';
+  const vFranchise = simulerVente(sr, colR, 'ferraille', 40, gr);
+  lois.regime = 'commune';
+  const vCommune = simulerVente(sr, colR, 'ferraille', 40, gr);
+  ok(vFranchise.brut === vCommune.brut, 'le prix de la ferraille ne dépend pas du régime',
+    `${vFranchise.brut} / ${vCommune.brut}`);
+  ok(vCommune.gain < vFranchise.gain,
+    'mais on touche moins là où l’on prélève davantage',
+    `franchise ${vFranchise.gain} · commune ${vCommune.gain}`);
+  ok(vCommune.taxe > 0 && vFranchise.taxe > 0, 'et la retenue est chiffrée, pas cachée',
+    `${vFranchise.taxe} / ${vCommune.taxe}`);
+  {
+    // Une ville sans drapeau ne retient rien : il n'y a personne pour le faire.
+    const libre = sr.world.colonies.find((c) => !c.faction && !c.ruine);
+    if (libre) {
+      gr.regionId = libre.regionId;
+      libre.stock.ferraille = 60;
+      ok(simulerVente(sr, libre, 'ferraille', 40, gr).taxe === 0,
+        'une ville libre ne retient rien : personne n’est là pour le faire');
+      gr.regionId = colR.regionId;
+    }
+  }
+
+  // Le prélèvement est réellement encaissé, pas seulement affiché.
+  lois.regime = 'commune';
+  const avoirAvant = sr.player.credits;
+  const venteR = vendre(sr, colR, 'ferraille', 40, gr);
+  ok(sr.player.credits - avoirAvant === venteR.gain,
+    'on encaisse exactement ce qui était annoncé, retenue déduite',
+    `${venteR.brut} brut − ${venteR.taxe} = ${venteR.gain}`);
+
+  // Un Commandeur peut changer tout ça — c'est une loi comme les autres.
+  ok(!fixerLoi(sr, colR.faction, 'regime', 'nimportequoi', () => {}).ok,
+    'on ne promulgue pas un régime qui n’existe pas');
+}
 
 section('10. Rattrapage hors ligne');
 const s10 = nouvellePartie(1010, { maintenant: 1000000 });

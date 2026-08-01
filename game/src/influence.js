@@ -28,7 +28,9 @@ import {
   declarerGuerre, signerPaix, fonderColonie, guerresDe, enGuerre, coloniesDe,
 } from './factions.js';
 import { colonieParId, distance, chemin } from './world.js';
-import { loisDe, PEINES, IMPOTS } from './lois.js';
+import {
+  loisDe, PEINES, IMPOTS, REGIMES, REGIME_KEYS,
+} from './lois.js';
 
 /**
  * Ce que chaque charge permet. `rang` est l'indice minimal dans RANGS.
@@ -585,6 +587,17 @@ export function fixerLoi(state, faction, quoi, valeur, log) {
     if (lois.impot === taux.taux) return { ok: false, motif: 'C’est déjà la loi.' };
     lois.impot = taux.taux;
     texte = `Impôt ${taux.nom.toLowerCase()} : ${taux.desc}`;
+  } else if (quoi === 'regime') {
+    if (!REGIME_KEYS.includes(valeur)) return { ok: false, motif: 'Ce régime n’existe pas.' };
+    if (lois.regime === valeur) return { ok: false, motif: 'C’est déjà la loi.' };
+    lois.regime = valeur;
+    texte = `${REGIMES[valeur].nom} : ${REGIMES[valeur].desc}`;
+    // Changer de régime, c'est changer ce que les gens possèdent et ce qu'on
+    // leur rend. Personne n'y est indifférent, dans un sens ou dans l'autre.
+    const ecart = Math.abs((REGIMES[valeur].preleve || 0) - 0.05);
+    for (const col of coloniesDe(state.world, faction)) {
+      col.unrest = Math.max(0, Math.min(1, (col.unrest || 0) + ecart));
+    }
   } else {
     return { ok: false, motif: 'On ne légifère pas là-dessus.' };
   }

@@ -5,9 +5,12 @@
 // Deux interrupteurs servent à isoler un système à la fois, ce qui est la seule
 // façon d'attribuer un déséquilibre à sa cause plutôt qu'à une intuition :
 //
-//   SANS=detach,contrats,livraison,services,intel,base,service   coupe ces
-//        comportements. `service` interdit de s'engager : c'est le témoin du
-//        nomade pur, à comparer à `CAMP=1` pour le colon.
+//   SANS=detach,contrats,livraison,services,intel,base,service,lois,pistes,preleve
+//        coupe ces comportements. `service` interdit de s'engager : c'est le
+//        témoin du nomade pur, à comparer à `CAMP=1` pour le colon.
+//        `preleve` annule la retenue des régimes sur les ventes : c'est le
+//        témoin qui dit ce que le régime coûte au négoce, à comparer avec
+//        MARCHAND=1 qui, lui, vit du négoce.
 //   CAMP=1                           la partie démarre avec un campement fondé
 //
 // `CAMP=1` répond à une question que le reste ne sait pas poser : un
@@ -89,7 +92,7 @@ const TRACE = {
   coutLot: {}, primeLot: {}, nLot: {}, bourse: 0, nBourse: 0,
   // Où va l'argent. Sans ce détail, « le bot est pauvre » ne dit rien de ce
   // qu'il faut corriger.
-  gagneVente: 0, gagneContrat: 0, payeVivres: 0, payeSoins: 0, payeMateriel: 0,
+  gagneVente: 0, retenu: 0, gagneContrat: 0, payeVivres: 0, payeSoins: 0, payeMateriel: 0,
   // Ce que l'intendance donne : la voie du service se lit là.
   rationsTouchees: 0,
   betes: 0,
@@ -950,8 +953,12 @@ function jouerPrincipal(state, g, memo) {
       const q = g.inventaire[k] || 0;
       if (q > 0) {
         const av = p.credits;
-        vendre(state, colIci, k, q, g);
+        const vte = vendre(state, colIci, k, q, g);
         TRACE.gagneVente += p.credits - av;
+        // Ce que le régime a retenu au passage. Mesuré ici plutôt que déduit
+        // d'un A/B : deux parties dont l'une est 6 % plus riche ne prouvent
+        // rien quand une seule graine sur trente pèse dix fois la médiane.
+        TRACE.retenu += vte.taxe || 0;
         // Ce que la cargaison a réellement rapporté, arrivée sur place : c'est
         // le seul chiffre qui dise si le métier paie, la marge visée au départ
         // n'étant qu'une estimation sur un relevé daté.
@@ -1787,6 +1794,7 @@ for (let n = 0; n < PARTIES; n++) {
   }
   // Mémoire du bot : hors de l'état de jeu, donc rien à sérialiser.
   if (SANS.has('lois')) state.sansLois = true;
+  if (SANS.has('preleve')) state.sansPreleve = true;
   if (SANS.has('pistes')) state.world.sansPistes = true;
   const memo = { origine: new Map(), eclaireur: null, detachements: 0, courtisee: null, services: 0,
     promesse: null, viseFondation: false, fonde: null, routeFondation: null,
@@ -2055,6 +2063,9 @@ console.log(`Argent : +${Math.round(TRACE.gagneVente / PARTIES)} de ventes · `
   + `−${Math.round(TRACE.payeVivres / PARTIES)} de vivres · −${Math.round(TRACE.payeSoins / PARTIES)} de soins `
   + `· −${Math.round(TRACE.payeMateriel / PARTIES)} d'équipement `
   + `· −${Math.round(TRACE.crPilles / PARTIES)} pillés, par partie`);
+console.log(`Retenue des régimes : ${Math.round(TRACE.retenu / PARTIES)} cr par partie`
+  + ` — ${(100 * TRACE.retenu / Math.max(1, TRACE.gagneVente + TRACE.retenu)).toFixed(1)} %`
+  + ' de ce que les ventes auraient rapporté sans elle');
 console.log(`Carrière : ${Math.round(TRACE.hEngage / PARTIES)} h sous les couleurs par partie · `
   + `${Math.round(TRACE.pointsFin / Math.max(1, gradés))} points en fin de service · `
   + `${(TRACE.manques / Math.max(1, gradés)).toFixed(1)} ordre(s) manqué(s) par engagé`);

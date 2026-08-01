@@ -7,6 +7,12 @@
 //
 // Aucune loi n'est gratuite : chacune achète quelque chose et se paie ailleurs.
 // C'est tout l'intérêt d'avoir le grade qui les fixe.
+//
+// Seule entorse à la règle du module feuille : `data.js`, qui n'est que des
+// constantes et qui précède tout le monde. Il fallait bien savoir de quel
+// drapeau on parle pour dire sous quel régime il commence.
+
+import { FACTIONS } from './data.js';
 
 /**
  * Ce qu'un Commandeur peut décider, et ce que ça fait. Aucune loi n'est
@@ -70,10 +76,24 @@ export const IMPOTS = [
  *   palier       ce que l'armurier consent à sortir de derrière
  *
  * Ce qu'un régime donne, il le reprend ailleurs : la Commune soigne et instruit
- * gratuitement mais retient un huitième de vos ventes ; la Franchise ne donne
- * rien et ne prend presque rien. Le Domaine est le plus dur — on n'y possède
- * pas, l'école est réservée à ceux qui servent — mais c'est le seul endroit où
- * l'on sort les bonnes armes pour n'importe qui.
+ * gratuitement mais retient le plus sur vos ventes ; la Franchise ne donne rien
+ * et ne prend presque rien. Le Domaine est le plus dur — on n'y possède pas,
+ * l'école est réservée à ceux qui servent — mais c'est le seul endroit où l'on
+ * sort les bonnes armes pour n'importe qui.
+ *
+ * Les taux ont été divisés par deux après mesure, et c'est le banc qui l'a
+ * imposé. À 2 / 5 / 12 / 9 %, le bot ordinaire perdait 41 % de son patrimoine
+ * médian et **deux escouades sur trente mouraient** — une retenue de 8 % sur
+ * les ventes brutes suffisait à faire basculer une partie déjà tendue, parce
+ * que l'argent non gagné ne se contente pas de manquer : il ne devient ni
+ * matériel, ni bêtes, ni soins, et le retard compose. À 1 / 2 / 8 / 5 %, plus
+ * aucune extinction, et le régime retient 5,6 % de ce que les ventes auraient
+ * rapporté sans lui — assez pour que le choix de la ville compte, pas assez
+ * pour tuer.
+ *
+ * Ce que le banc ne mesure pas, et qu'il faut garder en tête : le bot ne va
+ * jamais à l'école et ne se fait pas soigner en ville. Il ne touche donc que le
+ * côté coûteux d'une Commune, jamais ce qu'elle rend.
  */
 export const REGIMES = {
   franchise: {
@@ -82,7 +102,7 @@ export const REGIMES = {
     propriete: 25,
     ecole: 'payante',
     soins: 'estime',
-    preleve: 0.02,
+    preleve: 0.01,
     palier: 0,
   },
   charte: {
@@ -91,7 +111,7 @@ export const REGIMES = {
     propriete: 40,
     ecole: 'payante',
     soins: 'estime',
-    preleve: 0.05,
+    preleve: 0.02,
     palier: 0,
   },
   commune: {
@@ -100,7 +120,7 @@ export const REGIMES = {
     propriete: null,
     ecole: 'libre',
     soins: 'tous',
-    preleve: 0.12,
+    preleve: 0.08,
     palier: 0,
   },
   domaine: {
@@ -109,7 +129,7 @@ export const REGIMES = {
     propriete: null,
     ecole: 'maison',
     soins: 'estime',
-    preleve: 0.09,
+    preleve: 0.05,
     palier: 1,
   },
   // Pas un vote : l'état d'une ville que personne ne tient. Voir `loiIci`.
@@ -125,6 +145,33 @@ export const REGIMES = {
 };
 
 export const REGIME_KEYS = ['franchise', 'charte', 'commune', 'domaine'];
+
+/**
+ * Le régime que chaque faction pratique en commençant.
+ *
+ * Un conseil peut en changer (voir `regimeVise` dans factions.js), mais il faut
+ * bien partir de quelque part, et tirer au sort donnerait un monde où l'on ne
+ * reconnaît rien. Ici chaque drapeau commence par ce que sa devise annonce :
+ * « Rien n'est interdit, tout est tarifé » ouvre une Franchise, « L'ordre, ou la
+ * cendre » tient un Domaine, et les Communes Libres n'ont pas volé leur nom.
+ *
+ * Effet de bord voulu : les quatre régimes existent dès la première heure de
+ * jeu. Un régime que personne ne pratique est une ligne de code que personne ne
+ * rencontre.
+ */
+export const REGIME_PAR_STYLE = {
+  corpo: 'franchise',
+  criminel: 'franchise',
+  nomade: 'charte',
+  fanatique: 'domaine',
+  militaire: 'domaine',
+  commune: 'commune',
+};
+
+export function regimeInitial(faction) {
+  const f = FACTIONS[faction];
+  return (f && REGIME_PAR_STYLE[f.style]) || 'charte';
+}
 
 /** Le désordre qu'un taux d'impôt ajoute par heure à une ville. */
 export function pressionFiscale(world, faction) {
@@ -145,12 +192,13 @@ export function loisDe(world, faction) {
       // prend, pas un état de fait qu'on subit.
       esclavage: false,
       impot: 0.05,
-      // Le régime ordinaire : on n'invente pas un monde de communes.
-      regime: 'charte',
+      // Le régime, lui, préexiste au joueur : une faction gouverne déjà d'une
+      // certaine manière le jour où il arrive.
+      regime: regimeInitial(faction),
     };
   }
-  // Les parties commencées avant les régimes n'en ont pas : on pose l'ordinaire.
-  if (!f.lois.regime) f.lois.regime = 'charte';
+  // Les parties commencées avant les régimes n'en ont pas.
+  if (!f.lois.regime) f.lois.regime = regimeInitial(faction);
   return f.lois;
 }
 

@@ -9,6 +9,7 @@ import { FACTIONS, DIPLO_FACTIONS, COMMODITIES } from './data.js';
 import { colonieParId, distance } from './world.js';
 import { idDepuisRng } from './characters.js';
 import { groupes, groupeActif } from './groupes.js';
+import { loisDe, REGIMES } from './lois.js';
 
 export const RANGS = [
   {
@@ -109,10 +110,21 @@ export function remiseDe(state, faction) {
   return r ? r.def.remise : 0;
 }
 
-/** Palier d'équipement supplémentaire débloqué chez les siens. */
+/**
+ * Palier d'équipement supplémentaire : ce que l'armurier sort de derrière.
+ *
+ * Deux façons de l'obtenir, et elles ne s'additionnent pas — c'est déjà le
+ * plafond de ce qu'une ville tient en réserve. Ou bien l'on a le grade chez eux,
+ * ou bien l'on est dans un Domaine, où le seigneur arme qui passe : on n'y
+ * possède rien, l'école y est réservée aux siens, mais c'est là qu'on trouve les
+ * bonnes armes sans avoir rien juré. C'est ce qui fait du Domaine une
+ * destination plutôt qu'un mur.
+ */
 export function palierBonus(state, faction) {
   const r = meilleurGrade(state, faction);
-  return r && r.index >= 2 ? 1 : 0;
+  if (r && r.index >= 2) return 1;
+  const reg = REGIMES[loisDe(state.world, faction).regime];
+  return reg && reg.palier ? reg.palier : 0;
 }
 
 // ---------------------------------------------------------------------------

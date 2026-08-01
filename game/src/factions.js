@@ -9,7 +9,7 @@ import {
 import { effondrer, emploisInitiaux } from './economy.js';
 import { pourvoirCharges } from './notables.js';
 import { chemin, colonieParId, distance, voisins, damer } from './world.js';
-import { loisDe, pressionFiscale, IMPOTS, PEINES } from './lois.js';
+import { loisDe, pressionFiscale, IMPOTS, PEINES, REGIMES } from './lois.js';
 
 // ---------------------------------------------------------------------------
 // Mesures
@@ -774,6 +774,43 @@ function impotVise(temp, pays) {
   return best;
 }
 
+/**
+ * Le régime que ce conseil voudrait, et pourquoi.
+ *
+ * Trois pressions, chacune vers un régime, et la Charte quand aucune ne
+ * l'emporte — c'est le régime ordinaire, celui qu'on garde faute de raison d'en
+ * changer.
+ *
+ *   autorite  un chef dur, un pays qui gronde, une guerre : on serre. Domaine.
+ *   partage   un chef humain, une caisse vide, du mécontentement à calmer :
+ *             on donne l'école et le médecin, et l'on se paie sur les ventes.
+ *   negoce    un chef à la main légère et un pays calme et riche : on ouvre.
+ *
+ * Le régime en place part avec une avance (`INERTIE_REGIME`). Sans elle, une
+ * faction dont deux pressions se tiennent à trois centièmes bascule à chaque
+ * séance, et le joueur ne peut plus rien apprendre de la carte : il trouverait
+ * une Commune le lundi et un Domaine le mardi, au même endroit, sans qu'il se
+ * soit rien passé.
+ */
+const INERTIE_REGIME = 0.3;
+
+function regimeVise(temp, pays, actuel) {
+  const scores = {
+    domaine: (temp.severite - 1) + (1 - temp.humain) + pays.grogne * 0.5
+      + (pays.enGuerre ? 0.2 : 0),
+    commune: (temp.humain - 1) * 1.4 + pays.grogne * 0.5
+      + (pays.caisse < 800 ? 0.2 : 0),
+    franchise: (1 - temp.fisc) * 1.2 + (pays.caisse > 2200 ? 0.25 : 0)
+      - pays.grogne * 0.4,
+    // La Charte ne se réclame de rien : elle gagne quand les autres échouent.
+    charte: 0.45,
+  };
+  scores[actuel] = (scores[actuel] || 0) + INERTIE_REGIME;
+  let best = 'charte';
+  for (const k of Object.keys(scores)) if (scores[k] > scores[best]) best = k;
+  return best;
+}
+
 /** La sévérité que ce conseil juge nécessaire. */
 function peineVisee(temp, pays) {
   // Des routes sûres ne réclament pas de corde ; un pays qui gronde, si — et un
@@ -818,6 +855,16 @@ function legiferer(world, key, t, log, ctx) {
     const monte = imp.taux > lois.impot;
     lois.impot = imp.taux;
     changements.push(`l’impôt ${monte ? 'passe à' : 'retombe à'} ${Math.round(imp.taux * 100)} %`);
+  }
+
+  // Le régime change ce que le joueur a le droit de faire chez eux : posséder,
+  // s'instruire, se faire soigner, ce qu'on retient sur ses ventes, ce que
+  // l'armurier consent à sortir. C'est donc une loi comme les autres — sauf
+  // qu'elle le regarde, lui, et pas seulement leurs sujets.
+  const reg = regimeVise(temp, pays, lois.regime);
+  if (reg !== lois.regime) {
+    lois.regime = reg;
+    changements.push(`le régime devient ${REGIMES[reg].nom.toLowerCase()}`);
   }
 
   const peine = peineVisee(temp, pays);

@@ -558,6 +558,9 @@ button.act.ordre {
 button.act.ordre[aria-pressed="true"] .o-r { color: var(--cyan); }
 
 .alerte { color: var(--rouge); }
+/* Ni une alerte ni une information neutre : ce qui coûte quelque chose sans
+   être une faute — une retenue, un délai, un péage. */
+.retenue { color: var(--ambre); }
 
 /* ------------------------------------------------------------------ Sites, contrats, étal */
 
@@ -1975,6 +1978,11 @@ function resumeClimat(world, t) {
 //
 // Aucune loi n'est gratuite : chacune achète quelque chose et se paie ailleurs.
 // C'est tout l'intérêt d'avoir le grade qui les fixe.
+//
+// Seule entorse à la règle du module feuille : `data.js`, qui n'est que des
+// constantes et qui précède tout le monde. Il fallait bien savoir de quel
+// drapeau on parle pour dire sous quel régime il commence.
+
 
 /**
  * Ce qu'un Commandeur peut décider, et ce que ça fait. Aucune loi n'est
@@ -2038,10 +2046,24 @@ const IMPOTS = [
  *   palier       ce que l'armurier consent à sortir de derrière
  *
  * Ce qu'un régime donne, il le reprend ailleurs : la Commune soigne et instruit
- * gratuitement mais retient un huitième de vos ventes ; la Franchise ne donne
- * rien et ne prend presque rien. Le Domaine est le plus dur — on n'y possède
- * pas, l'école est réservée à ceux qui servent — mais c'est le seul endroit où
- * l'on sort les bonnes armes pour n'importe qui.
+ * gratuitement mais retient le plus sur vos ventes ; la Franchise ne donne rien
+ * et ne prend presque rien. Le Domaine est le plus dur — on n'y possède pas,
+ * l'école est réservée à ceux qui servent — mais c'est le seul endroit où l'on
+ * sort les bonnes armes pour n'importe qui.
+ *
+ * Les taux ont été divisés par deux après mesure, et c'est le banc qui l'a
+ * imposé. À 2 / 5 / 12 / 9 %, le bot ordinaire perdait 41 % de son patrimoine
+ * médian et **deux escouades sur trente mouraient** — une retenue de 8 % sur
+ * les ventes brutes suffisait à faire basculer une partie déjà tendue, parce
+ * que l'argent non gagné ne se contente pas de manquer : il ne devient ni
+ * matériel, ni bêtes, ni soins, et le retard compose. À 1 / 2 / 8 / 5 %, plus
+ * aucune extinction, et le régime retient 5,6 % de ce que les ventes auraient
+ * rapporté sans lui — assez pour que le choix de la ville compte, pas assez
+ * pour tuer.
+ *
+ * Ce que le banc ne mesure pas, et qu'il faut garder en tête : le bot ne va
+ * jamais à l'école et ne se fait pas soigner en ville. Il ne touche donc que le
+ * côté coûteux d'une Commune, jamais ce qu'elle rend.
  */
 const REGIMES = {
   franchise: {
@@ -2050,7 +2072,7 @@ const REGIMES = {
     propriete: 25,
     ecole: 'payante',
     soins: 'estime',
-    preleve: 0.02,
+    preleve: 0.01,
     palier: 0,
   },
   charte: {
@@ -2059,7 +2081,7 @@ const REGIMES = {
     propriete: 40,
     ecole: 'payante',
     soins: 'estime',
-    preleve: 0.05,
+    preleve: 0.02,
     palier: 0,
   },
   commune: {
@@ -2068,7 +2090,7 @@ const REGIMES = {
     propriete: null,
     ecole: 'libre',
     soins: 'tous',
-    preleve: 0.12,
+    preleve: 0.08,
     palier: 0,
   },
   domaine: {
@@ -2077,7 +2099,7 @@ const REGIMES = {
     propriete: null,
     ecole: 'maison',
     soins: 'estime',
-    preleve: 0.09,
+    preleve: 0.05,
     palier: 1,
   },
   // Pas un vote : l'état d'une ville que personne ne tient. Voir `loiIci`.
@@ -2093,6 +2115,33 @@ const REGIMES = {
 };
 
 const REGIME_KEYS = ['franchise', 'charte', 'commune', 'domaine'];
+
+/**
+ * Le régime que chaque faction pratique en commençant.
+ *
+ * Un conseil peut en changer (voir `regimeVise` dans factions.js), mais il faut
+ * bien partir de quelque part, et tirer au sort donnerait un monde où l'on ne
+ * reconnaît rien. Ici chaque drapeau commence par ce que sa devise annonce :
+ * « Rien n'est interdit, tout est tarifé » ouvre une Franchise, « L'ordre, ou la
+ * cendre » tient un Domaine, et les Communes Libres n'ont pas volé leur nom.
+ *
+ * Effet de bord voulu : les quatre régimes existent dès la première heure de
+ * jeu. Un régime que personne ne pratique est une ligne de code que personne ne
+ * rencontre.
+ */
+const REGIME_PAR_STYLE = {
+  corpo: 'franchise',
+  criminel: 'franchise',
+  nomade: 'charte',
+  fanatique: 'domaine',
+  militaire: 'domaine',
+  commune: 'commune',
+};
+
+function regimeInitial(faction) {
+  const f = FACTIONS[faction];
+  return (f && REGIME_PAR_STYLE[f.style]) || 'charte';
+}
 
 /** Le désordre qu'un taux d'impôt ajoute par heure à une ville. */
 function pressionFiscale(world, faction) {
@@ -2113,12 +2162,13 @@ function loisDe(world, faction) {
       // prend, pas un état de fait qu'on subit.
       esclavage: false,
       impot: 0.05,
-      // Le régime ordinaire : on n'invente pas un monde de communes.
-      regime: 'charte',
+      // Le régime, lui, préexiste au joueur : une faction gouverne déjà d'une
+      // certaine manière le jour où il arrive.
+      regime: regimeInitial(faction),
     };
   }
-  // Les parties commencées avant les régimes n'en ont pas : on pose l'ordinaire.
-  if (!f.lois.regime) f.lois.regime = 'charte';
+  // Les parties commencées avant les régimes n'en ont pas.
+  if (!f.lois.regime) f.lois.regime = regimeInitial(faction);
   return f.lois;
 }
 
@@ -4742,7 +4792,12 @@ function renfortSoin(state, regionId) {
   const col = colonieDe(state.world, regionId);
   if (!col || col.ruine) return 1;
   const p = notable(col, 'medecin');
-  if (!p || (p.opinion || 0) < SOINS_SEUIL) return 1;
+  if (!p) return 1;
+  // Une Commune soigne qui se présente : c'est ce qu'elle rend contre le
+  // huitième qu'elle retient sur vos ventes. Partout ailleurs, le médecin
+  // choisit ses patients — et il faut lui avoir donné une raison.
+  const pourTous = loiIci(state, col).regime.soins === 'tous';
+  if (!pourTous && (p.opinion || 0) < SOINS_SEUIL) return 1;
   return 1 + 0.35 + Math.min(0.4, p.comp / 250);
 }
 
@@ -4868,10 +4923,21 @@ function remiseDe(state, faction) {
   return r ? r.def.remise : 0;
 }
 
-/** Palier d'équipement supplémentaire débloqué chez les siens. */
+/**
+ * Palier d'équipement supplémentaire : ce que l'armurier sort de derrière.
+ *
+ * Deux façons de l'obtenir, et elles ne s'additionnent pas — c'est déjà le
+ * plafond de ce qu'une ville tient en réserve. Ou bien l'on a le grade chez eux,
+ * ou bien l'on est dans un Domaine, où le seigneur arme qui passe : on n'y
+ * possède rien, l'école y est réservée aux siens, mais c'est là qu'on trouve les
+ * bonnes armes sans avoir rien juré. C'est ce qui fait du Domaine une
+ * destination plutôt qu'un mur.
+ */
 function palierBonus(state, faction) {
   const r = meilleurGrade(state, faction);
-  return r && r.index >= 2 ? 1 : 0;
+  if (r && r.index >= 2) return 1;
+  const reg = REGIMES[loisDe(state.world, faction).regime];
+  return reg && reg.palier ? reg.palier : 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -7014,7 +7080,17 @@ function simulerVente(state, col, key, qte, groupe) {
     vendus += 1;
     restant -= 1;
   }
-  return { qte: vendus, gain: Math.round(gain) };
+  // Ce que le régime retient au passage. Une Commune instruit et soigne
+  // gratuitement, et se paie là ; une Franchise ne donne rien et ne prend
+  // presque rien ; une ville sans drapeau ne prend rien du tout, faute de
+  // quelqu'un pour le faire. C'est ce qui fait de « où j'écoule mon butin » une
+  // question, et pas seulement « où le prix est le meilleur ».
+  // Témoin du banc : on coupe la retenue pour chiffrer ce qu'elle prend
+  // vraiment au négoce. Voir test/equilibre.js, SANS=preleve.
+  const part = state.sansPreleve ? 0 : (loiIci(state, col).regime.preleve || 0);
+  const brut = Math.round(gain);
+  const taxe = Math.round(brut * part);
+  return { qte: vendus, gain: brut - taxe, brut, taxe, part };
 }
 
 function acheter(state, col, key, qte, groupe) {
@@ -7043,7 +7119,7 @@ function vendre(state, col, key, qte, groupe) {
   state.player.credits += sim.gain;
   const negoc = meilleurCommercant(g.membres);
   if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.5 + sim.qte * 0.3);
-  return { ok: true, qte: sim.qte, gain: sim.gain };
+  return { ok: true, qte: sim.qte, gain: sim.gain, taxe: sim.taxe, brut: sim.brut };
 }
 
 /** Capacité de portage d'un groupe. Ce qu'il porte, il le porte lui-même. */
@@ -8216,6 +8292,43 @@ function impotVise(temp, pays) {
   return best;
 }
 
+/**
+ * Le régime que ce conseil voudrait, et pourquoi.
+ *
+ * Trois pressions, chacune vers un régime, et la Charte quand aucune ne
+ * l'emporte — c'est le régime ordinaire, celui qu'on garde faute de raison d'en
+ * changer.
+ *
+ *   autorite  un chef dur, un pays qui gronde, une guerre : on serre. Domaine.
+ *   partage   un chef humain, une caisse vide, du mécontentement à calmer :
+ *             on donne l'école et le médecin, et l'on se paie sur les ventes.
+ *   negoce    un chef à la main légère et un pays calme et riche : on ouvre.
+ *
+ * Le régime en place part avec une avance (`INERTIE_REGIME`). Sans elle, une
+ * faction dont deux pressions se tiennent à trois centièmes bascule à chaque
+ * séance, et le joueur ne peut plus rien apprendre de la carte : il trouverait
+ * une Commune le lundi et un Domaine le mardi, au même endroit, sans qu'il se
+ * soit rien passé.
+ */
+const INERTIE_REGIME = 0.3;
+
+function regimeVise(temp, pays, actuel) {
+  const scores = {
+    domaine: (temp.severite - 1) + (1 - temp.humain) + pays.grogne * 0.5
+      + (pays.enGuerre ? 0.2 : 0),
+    commune: (temp.humain - 1) * 1.4 + pays.grogne * 0.5
+      + (pays.caisse < 800 ? 0.2 : 0),
+    franchise: (1 - temp.fisc) * 1.2 + (pays.caisse > 2200 ? 0.25 : 0)
+      - pays.grogne * 0.4,
+    // La Charte ne se réclame de rien : elle gagne quand les autres échouent.
+    charte: 0.45,
+  };
+  scores[actuel] = (scores[actuel] || 0) + INERTIE_REGIME;
+  let best = 'charte';
+  for (const k of Object.keys(scores)) if (scores[k] > scores[best]) best = k;
+  return best;
+}
+
 /** La sévérité que ce conseil juge nécessaire. */
 function peineVisee(temp, pays) {
   // Des routes sûres ne réclament pas de corde ; un pays qui gronde, si — et un
@@ -8260,6 +8373,16 @@ function legiferer(world, key, t, log, ctx) {
     const monte = imp.taux > lois.impot;
     lois.impot = imp.taux;
     changements.push(`l’impôt ${monte ? 'passe à' : 'retombe à'} ${Math.round(imp.taux * 100)} %`);
+  }
+
+  // Le régime change ce que le joueur a le droit de faire chez eux : posséder,
+  // s'instruire, se faire soigner, ce qu'on retient sur ses ventes, ce que
+  // l'armurier consent à sortir. C'est donc une loi comme les autres — sauf
+  // qu'elle le regarde, lui, et pas seulement leurs sujets.
+  const reg = regimeVise(temp, pays, lois.regime);
+  if (reg !== lois.regime) {
+    lois.regime = reg;
+    changements.push(`le régime devient ${REGIMES[reg].nom.toLowerCase()}`);
   }
 
   const peine = peineVisee(temp, pays);
@@ -8970,6 +9093,17 @@ function fixerLoi(state, faction, quoi, valeur, log) {
     if (lois.impot === taux.taux) return { ok: false, motif: 'C’est déjà la loi.' };
     lois.impot = taux.taux;
     texte = `Impôt ${taux.nom.toLowerCase()} : ${taux.desc}`;
+  } else if (quoi === 'regime') {
+    if (!REGIME_KEYS.includes(valeur)) return { ok: false, motif: 'Ce régime n’existe pas.' };
+    if (lois.regime === valeur) return { ok: false, motif: 'C’est déjà la loi.' };
+    lois.regime = valeur;
+    texte = `${REGIMES[valeur].nom} : ${REGIMES[valeur].desc}`;
+    // Changer de régime, c'est changer ce que les gens possèdent et ce qu'on
+    // leur rend. Personne n'y est indifférent, dans un sens ou dans l'autre.
+    const ecart = Math.abs((REGIMES[valeur].preleve || 0) - 0.05);
+    for (const col of coloniesDe(state.world, faction)) {
+      col.unrest = Math.max(0, Math.min(1, (col.unrest || 0) + ecart));
+    }
   } else {
     return { ok: false, motif: 'On ne légifère pas là-dessus.' };
   }
@@ -15539,6 +15673,7 @@ function blocColonie(col) {
         <span class="v">celle du plus fort</span></div>`
     : `<div class="ligne"><span class="k">Réputation</span><span class="v"><span class="puce ${cls}">${repu > 0 ? '+' : ''}${n(repu)}</span></span></div>`}
     </div>
+    ${blocRegime(col)}
     <div class="sep"></div>
     <div class="grille2" style="gap:5px">
       <button class="act mini primaire" data-a="modale" data-m="marche">Marché</button>
@@ -15556,6 +15691,31 @@ function blocColonie(col) {
     </div>
     ${blocEngagement(col)}
   </section>`;
+}
+
+/**
+ * Sous quel régime on se trouve, et ce que ça change concrètement.
+ *
+ * Un régime qui ne s'annonce pas est un piège : le joueur pousse le bouton
+ * « acheter un coffre », on lui répond non, et il ne sait pas si c'est sa
+ * réputation, sa bourse ou la loi du lieu. On dit donc les quatre choses qui
+ * changent — posséder, s'instruire, se faire soigner, ce qu'on retient sur les
+ * ventes — avant qu'il ne pousse le bouton.
+ */
+function blocRegime(col) {
+  const r = loiIci(S, col).regime;
+  const dit = [
+    r.propriete === null ? 'rien à posséder'
+      : `coffre dès ${r.propriete} d’estime`,
+    r.ecole === 'libre' ? 'école gratuite'
+      : r.ecole === 'maison' ? 'école réservée aux siens' : 'école payante',
+    r.soins === 'tous' ? 'médecin pour tous' : 'médecin sur estime',
+    r.preleve ? `${Math.round(r.preleve * 100)} % sur vos ventes` : 'rien sur vos ventes',
+    r.palier ? 'armurier généreux' : '',
+  ].filter(Boolean).join(' · ');
+  return `<div class="ligne souple"><span class="k">${e(r.nom)}</span>
+      <span class="v aide">${e(r.desc)}</span></div>
+    <div class="aide">${e(dit)}.</div>`;
 }
 
 function blocEngagement(col) {
@@ -16647,6 +16807,16 @@ function ciblesCharge(faction, k) {
       if (lois.impot === imp.taux) continue;
       out.push({ val: `impot:${imp.key}`, texte: `Impôt ${imp.nom.toLowerCase()} (${Math.round(imp.taux * 100)} %) — ${imp.desc}` });
     }
+    // Le régime : la seule loi qui vous concerne, vous, et pas seulement leurs
+    // sujets. On dit donc ce qu'elle changerait pour vous, en clair.
+    for (const key of REGIME_KEYS) {
+      if (lois.regime === key) continue;
+      const r = REGIMES[key];
+      out.push({
+        val: `regime:${key}`,
+        texte: `${r.nom} — ${r.desc} (retenue ${Math.round(r.preleve * 100)} % sur vos ventes)`,
+      });
+    }
     // On dit le prix avant la signature : combien de voisins l'interdisent chez
     // eux, et se le rappelleront. Une loi vaut aussi vers l'extérieur.
     const abolitionnistes = DIPLO_FACTIONS.filter(
@@ -16993,10 +17163,13 @@ function ecranMonde() {
     const facheurs = DIPLO_FACTIONS.filter(
       (k) => k !== f.key && distanceMorale(S.world, k, f.key) > 0.45
         && S.world.colonies.some((c) => !c.ruine && c.faction === k)).length;
-    return `<div class="aide">Chez eux : impôt ${e(imp.nom.toLowerCase())} (${Math.round(l.impot * 100)} %),
+    const reg = REGIMES[l.regime] || REGIMES.charte;
+    return `<div class="aide">Chez eux : ${e(reg.nom.toLowerCase())},
+      impôt ${e(imp.nom.toLowerCase())} (${Math.round(l.impot * 100)} %),
       justice ${e(PEINES[l.peine].nom.toLowerCase())}${l.esclavage
       ? ', <span class="alerte">et l’on y vend des hommes</span>' : ''}.${facheurs
-      ? ` <span class="alerte">${facheurs} faction(s) ne le supportent pas.</span>` : ''}</div>`;
+      ? ` <span class="alerte">${facheurs} faction(s) ne le supportent pas.</span>` : ''}
+      <br>Pour vous : ${e(reg.desc.toLowerCase())}</div>`;
   })()}
     </div>`;
   }).join('');
@@ -17239,11 +17412,18 @@ function modaleMarche() {
     </div>`;
   }).join('');
 
+  // La retenue du régime est déjà déduite des montants de vente affichés. Il
+  // faut le dire, sinon le joueur croit à une erreur de prix.
+  const reg = loiIci(S, col).regime;
   return `<h2 class="titre">Marché de ${e(col.nom)}
     <span class="droite">${n(S.player.credits)} cr</span></h2>
   <div class="aide">Négociateur : ${negoc ? `${e(negoc.nom)} (commerce ${hab.toFixed(0)})` : 'aucun'}.
     Une bonne réputation et un bon commerçant resserrent la marge. Le prix bouge
-    à chaque unité : les montants affichés tiennent compte de tout le lot.</div>
+    à chaque unité : les montants affichés tiennent compte de tout le lot.
+    ${reg.preleve
+    ? `<span class="retenue">${e(reg.nom)} : ${Math.round(reg.preleve * 100)} % retenus sur
+      chaque vente, déjà déduits de ce qui est affiché.</span>`
+    : `${e(reg.nom)} : on ne retient rien sur vos ventes ici.`}</div>
   <div class="taches" style="margin-top:6px">Quantité ${choix}</div>
   <div class="sep"></div>${lignes}`;
 }
