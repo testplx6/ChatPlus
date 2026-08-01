@@ -14795,24 +14795,34 @@ function blocRegionCourante() {
  * Le panneau de la ville où l'on se trouve : forcément de première main.
  *
  * On n'appelle jamais ceci sur une ruine — une ville effondrée n'a plus de
- * drapeau (`faction` repasse à null), et l'affichage plantait sur ce cas dès
- * qu'une partie durait assez pour qu'une ville s'éteigne sous les pieds du
- * joueur. Le garde-fou est ici aussi, parce qu'un rendu ne doit jamais casser
- * l'écran entier.
+ * drapeau, et l'affichage plantait sur ce cas dès qu'une partie durait assez
+ * pour qu'une ville s'éteigne sous les pieds du joueur.
+ *
+ * Mais le garde-fou confondait « morte » et « sans drapeau », et faisait donc
+ * disparaître **tout le panneau — marché, recrutement, contrats, armurier —**
+ * dans une ville affranchie. Or une ville libre est bien vivante : elle a un
+ * étal, un banc de recrutement, et c'est même le seul endroit où certaines
+ * choses se négocient. On ne saute plus que sur les ruines, et l'absence de
+ * drapeau s'affiche au lieu de tout emporter.
  */
 function blocColonie(col) {
-  if (!col || col.ruine || !FACTIONS[col.faction]) return '';
-  const repu = S.player.reputation[col.faction] || 0;
+  if (!col || col.ruine) return '';
+  const libre = !FACTIONS[col.faction];
+  const repu = libre ? 0 : (S.player.reputation[col.faction] || 0);
   const cls = repu > 20 ? 'ok' : repu < -20 ? 'mal' : 'att';
   return `
   <section class="panneau">
     <h2 class="titre">${e(col.nom)}
-      <span class="droite" style="color:${couleurFaction(col.faction)}">${e(FACTIONS[col.faction].nom)}</span></h2>
+      <span class="droite" style="color:${couleurFaction(col.faction)}">${libre
+    ? 'ville libre' : e(FACTIONS[col.faction].nom)}</span></h2>
     <div class="grille2">
       <div class="ligne"><span class="k">Population</span><span class="v">${n(col.pop)}</span></div>
       <div class="ligne"><span class="k">Défense</span><span class="v">${n(col.defense)}</span></div>
       <div class="ligne"><span class="k">Agitation</span><span class="v">${(col.unrest * 100).toFixed(0)} %</span></div>
-      <div class="ligne"><span class="k">Réputation</span><span class="v"><span class="puce ${cls}">${repu > 0 ? '+' : ''}${n(repu)}</span></span></div>
+      ${libre
+    ? `<div class="ligne"><span class="k">Loi</span>
+        <span class="v">celle du plus fort</span></div>`
+    : `<div class="ligne"><span class="k">Réputation</span><span class="v"><span class="puce ${cls}">${repu > 0 ? '+' : ''}${n(repu)}</span></span></div>`}
     </div>
     <div class="sep"></div>
     <div class="grille2" style="gap:5px">
@@ -14840,6 +14850,11 @@ function blocEngagement(col) {
         <span class="v" style="color:${couleurFaction(col.faction)}">${e(rang.def.nom)}</span></div>`;
   }
   if (all) return '';
+  // Une ville libre ne recrute personne à son service : il n'y a pas de service.
+  if (!FACTIONS[col.faction]) {
+    return `<div class="sep"></div>
+      <div class="aide">Personne ne commande ici : il n’y a pas d’engagement à prendre.</div>`;
+  }
   const v = peutSEngager(S, col.faction);
   const rep = S.player.reputation[col.faction] || 0;
   return `<div class="sep"></div>
@@ -15926,6 +15941,52 @@ function villesVisables(faction) {
     .sort((a, b) => a.d - b.d);
 }
 
+/**
+ * Où aller pour honorer un ordre de mission, et si c'est seulement jouable.
+ *
+ * L'ordre n'annonçait qu'un titre : « Ravitailler Cité-Tréfonds : 60 rations ».
+ * Rien ne disait où est cette ville, à combien de régions, ni si l'échéance
+ * laissait le temps d'y aller. Un ordre de frappe ne désignait qu'une faction,
+ * sans dire où la trouver. On ne peut pas honorer ce qu'on ne sait pas situer,
+ * et rater coûte de l'estime.
+ */
+function blocCibleOrdre(o) {
+  const g = G();
+  let cible = null;
+  if (o.type === 'ravitaillement') {
+    const col = colonieParId(S.world, o.colonieId);
+    if (col && !col.ruine) cible = { regionId: col.regionId, quoi: `à livrer à ${col.nom}` };
+  } else if (o.type === 'reconnaissance') {
+    cible = { regionId: o.regionId, quoi: 'secteur à lever' };
+  } else if (o.type === 'frappe') {
+    // On ne croise les hommes d'une faction que sur les terres qu'elle tient.
+    // Autant le dire, plutôt que de laisser errer.
+    const chez = S.world.regions
+      .filter((r) => r.controle === o.cibleFaction && r.decouvert && !r.colonie)
+      .sort((a, b) => distance(a.i, g.regionId) - distance(b.i, g.regionId))[0];
+    if (chez) cible = { regionId: chez.i, quoi: `leurs terres les plus proches` };
+    else {
+      return `<div class="aide">On ne connaît aucune terre ${e(FACTIONS[o.cibleFaction].genitif)}
+        par ici. Il faudra les croiser en chemin, ou explorer.</div>`;
+    }
+  }
+  if (!cible) return '';
+
+  const d = distance(cible.regionId, g.regionId);
+  if (d === 0) {
+    return `<div class="aide cyan">Vous y êtes : ${e(nomRegion(S.world, cible.regionId))}.</div>`;
+  }
+  // Le temps que ça prend vraiment, à l'allure de cette colonne-ci.
+  const heures = apercuEscouade(S, g).heuresParRegion * d;
+  const reste = Math.max(0, o.echeance - S.temps);
+  const tient = heures <= reste;
+  return `<div class="aide">${e(cible.quoi)} : ${e(nomRegion(S.world, cible.regionId))},
+      à ${d} région${d > 1 ? 's' : ''} — ${Number.isFinite(heures) ? dureeTexte(Math.round(heures)) : '?'} de marche.
+      <span class="${tient ? 'cyan' : 'alerte'}">${tient
+  ? 'l’échéance le permet' : 'l’échéance ne le permet pas'}</span></div>
+    <button class="act" data-a="voyage" data-r="${cible.regionId}">S’y rendre</button>`;
+}
+
 function blocIntendance() {
   const g = G();
   if (!g) return '';
@@ -15991,7 +16052,8 @@ function blocAllegeance() {
       <div class="contrat-t">${e(o.titre)}</div>
       ${jauge(p && p.total ? p.fait / p.total : 0, p && p.pret ? 'vert' : '')}
       <div class="aide">${e(p ? p.texte : '')} · ${n(o.recompense)} cr ·
-        <span class="${o.echeance - S.temps < 48 ? 'alerte' : ''}">${dureeTexte(Math.max(0, o.echeance - S.temps))} restantes</span></div>`
+        <span class="${o.echeance - S.temps < 48 ? 'alerte' : ''}">${dureeTexte(Math.max(0, o.echeance - S.temps))} restantes</span></div>
+      ${blocCibleOrdre(o)}`
     : '<div class="aide">Aucun ordre en attente. Ils vous rappelleront.</div>'}
     ${blocInfluence(all.faction)}
     <div class="sep"></div>

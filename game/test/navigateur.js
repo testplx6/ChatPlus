@@ -278,6 +278,83 @@ ok(!abordable || objetsApres > objetsAvant, 'un achat d’équipement arrive dan
 await page.click('[data-a="fermer"]');
 await page.waitForTimeout(300);
 
+// Une ville affranchie garde son marché.
+//
+// Le panneau entier — marché, recrutement, contrats, armurier — disparaissait
+// dès qu'une ville perdait son drapeau, parce que le garde-fou anti-ruine
+// confondait « morte » et « sans drapeau ». Or une ville libre est bien vivante.
+{
+  const libre = serialiser((() => {
+    const t = partieAvancee();
+    const col = t.world.colonies.find((c) => !c.ruine && c.faction && c.faction !== 'essaim');
+    col.faction = null;
+    t.world.regions[col.regionId].controle = null;
+    t.player.groupes[0].regionId = col.regionId;
+    t.player.groupes[0].allegeance = null;
+    return t;
+  })());
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), libre);
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.waitForTimeout(500);
+  ok((await page.locator('[data-a="modale"][data-m="marche"]').count()) > 0,
+    'une ville sans drapeau garde son marché');
+  ok((await page.locator('[data-a="modale"][data-m="recrutement"]').count()) > 0,
+    'et son banc de recrutement');
+  await page.click('[data-a="modale"][data-m="marche"]');
+  await page.waitForTimeout(400);
+  ok((await page.locator('[data-a="acheter"]').count()) > 0,
+    'et l’on peut y commercer');
+  await page.click('[data-a="fermer"]');
+  await page.waitForTimeout(200);
+}
+
+// Un ordre de mission doit dire où aller : sans coordonnées, il est injouable.
+{
+  const avecOrdre = serialiser((() => {
+    const t = partieAvancee();
+    const g = t.player.groupes[0];
+    const col = t.world.colonies.find((c) => !c.ruine && c.faction && c.faction !== 'essaim');
+    const loin = t.world.colonies.find(
+      (c) => !c.ruine && c.faction === col.faction && c.id !== col.id) || col;
+    t.player.reputation[col.faction] = 60;
+    g.regionId = col.regionId;
+    g.allegeance = {
+      faction: col.faction, points: 40, depuis: 0, derniereSolde: 0, actes: [],
+      prochainOrdre: 99999, manques: 0,
+      ordre: {
+        id: 'o-test', type: 'ravitaillement', colonieId: loin.id, ressource: 'rations',
+        quantite: 20, titre: 'Ravitailler', recompense: 400, service: 60,
+        duree: 400, echeance: t.temps + 400,
+      },
+    };
+    return t;
+  })());
+  // On recharge d'abord, puis on injecte : la partie en cours sauvegarde sur
+  // `pagehide` et écraserait l'injection. Même piège que plus haut.
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), avecOrdre);
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.click('[data-a="onglet"][data-k="contrats"]');
+  await page.waitForTimeout(500);
+  const txtO = await page.locator('#ecran').innerText();
+  ok(/région/i.test(txtO) && /marche/i.test(txtO),
+    'un ordre de mission dit où aller et combien de marche ça représente',
+    txtO.slice(0, 300).replace(/\n+/g, ' | '));
+  ok((await page.locator('[data-a="voyage"]').count()) > 0,
+    'et propose de s’y rendre');
+  await page.screenshot({ path: join(CAPTURES, '09d-ordre.png'), fullPage: true });
+  // On rend la partie neuve posée en ville que la suite de la section attend :
+  // les vérifications du marché comptent sur son étal et sa bourse.
+  await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.click('[data-a="nouvelle"]');
+  await page.waitForSelector('#carte');
+  await page.waitForTimeout(600);
+}
+
 // Écran d'escouade : qui fait quoi, et où passent les vivres.
 await page.click('[data-a="onglet"][data-k="escouade"]');
 await page.waitForTimeout(400);

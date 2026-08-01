@@ -67,7 +67,7 @@ import {
   ecolesDe, inscrire, enFormation, ecolesAvantPoste, enseignerChezSoi,
   occupeParEcole, MARGE_INSTRUCTEUR,
 } from '../src/formation.js';
-import { colonieDe } from '../src/world.js';
+import { colonieDe, colonieParId, nomRegion } from '../src/world.js';
 import {
   groupeActif, groupes, tousLesMembres, scinder, fusionner, assignerTache,
   tacheDe, debout, noyau, plafondCohesion, rendementCohesion,
@@ -495,6 +495,40 @@ ok(serialiser(s3) === serialiser(s3b), 'la sim reprend à l’identique après r
   const remis = deserialiser(serialiser(vieux));
   ok(remis.player.groupes[0].membres.every((m) => m.skills0),
     'une sauvegarde d’avant se rattrape sans casser');
+}
+
+// --- Un ordre de mission dit où aller.
+//
+// Il n'annonçait qu'un titre — « Ravitailler Cité-Tréfonds : 60 rations » — sans
+// dire où est la ville, à combien de régions, ni si l'échéance laissait le temps
+// d'y aller. On ne peut pas honorer ce qu'on ne sait pas situer, et rater coûte
+// de l'estime. Le moteur a tout ce qu'il faut ; c'est l'écran qui le taisait.
+{
+  const ordre = nouvellePartie(3940, { maintenant: 0 });
+  const gO = groupeActif(ordre);
+  const colO = ordre.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
+  ordre.player.reputation[colO.faction] = 40;
+  gO.regionId = colO.regionId;
+  sEngager(ordre, colO.faction, () => {});
+  // On force un ordre de ravitaillement vers une ville qu'on peut situer.
+  const loin = ordre.world.colonies.find(
+    (c) => !c.ruine && c.faction === colO.faction && c.id !== colO.id
+  ) || colO;
+  gO.allegeance.ordre = {
+    type: 'ravitaillement', colonieId: loin.id, ressource: 'rations', quantite: 20,
+    titre: 'x', recompense: 100, service: 50, duree: 400, echeance: ordre.temps + 400,
+  };
+  const cible = colonieParId(ordre.world, gO.allegeance.ordre.colonieId);
+  ok(!!cible && cible.regionId != null,
+    'la cible d’un ravitaillement se retrouve par son identifiant');
+  ok(typeof nomRegion(ordre.world, cible.regionId) === 'string',
+    'et sa région porte un nom qu’on peut afficher',
+    nomRegion(ordre.world, cible.regionId));
+  // Et la marche se chiffre : c'est ce qui dit si l'échéance est tenable.
+  const h = apercuEscouade(ordre, gO).heuresParRegion
+    * distance(cible.regionId, gO.regionId);
+  ok(Number.isFinite(h) && h >= 0, 'le trajet se chiffre en heures',
+    `${Math.round(h)} h pour ${distance(cible.regionId, gO.regionId)} régions`);
 }
 
 // --- Grossir coûte, mais on peut y répondre.
