@@ -381,6 +381,20 @@ await page.waitForTimeout(300);
     g.allegeance = {
       faction: col.faction, points: 40, depuis: 0, derniereSolde: 0, actes: [],
       prochainOrdre: 99999, manques: 0,
+      // Des titres longs, écrits en dur : c'est sur eux que la feuille de
+      // service affichait la pastille en colonne, lettre par lettre. Un nom de
+      // ville tiré au sort aurait donné un titre court une fois sur deux, et la
+      // garde n'aurait rien vu.
+      faits: [
+        {
+          t: 10, type: 'ravitaillement', issue: 'manque', cr: 0, pts: -6, rep: -3,
+          titre: 'Ravitailler Poste-Quatre-Vents : 42 composants',
+        },
+        {
+          t: 200, type: 'reconnaissance', issue: 'honore', cr: 300, pts: 20, rep: 4,
+          titre: 'Reconnaître le secteur N13 pour le compte de la maison',
+        },
+      ],
       ordre: {
         id: 'o-test', type: 'ravitaillement', colonieId: loin.id, ressource: 'rations',
         quantite: 20, titre: 'Ravitailler', recompense: 400, service: 60,
@@ -405,6 +419,26 @@ await page.waitForTimeout(300);
     'et propose de s’y rendre');
   ok(/feuille de service/i.test(txtO),
     'et l’engagement montre ce qu’on a déjà fait pour eux');
+  // Le titre d'une mission est un texte libre, pas une étiquette : s'il reste
+  // insécable il déborde, il ne laisse qu'un caractère de large à la pastille,
+  // et « MANQUÉ · -3 estime » descend lettre par lettre hors de l'écran. On le
+  // mesure ici parce que la garde générale plus haut tourne sur une partie
+  // neuve, où le dossier est vide et où il n'y a donc rien à déborder.
+  const pastillesEnColonne = await page.evaluate(() => {
+    const mauvais = [];
+    for (const v of document.querySelectorAll('.ligne .v')) {
+      const t = (v.innerText || '').trim();
+      if (t.length < 4) continue;
+      const r = v.getBoundingClientRect();
+      if (r.height > r.width * 1.6 && r.height > 40) {
+        mauvais.push(`${(v.previousElementSibling || {}).innerText || '?'} → ${t.slice(0, 24)}`);
+      }
+    }
+    return mauvais;
+  });
+  ok(pastillesEnColonne.length === 0,
+    'un titre de mission à rallonge ne met pas son verdict en colonne',
+    pastillesEnColonne.slice(0, 3).join(' | '));
   await page.screenshot({ path: join(CAPTURES, '09d-ordre.png'), fullPage: true });
   // On rend la partie neuve posée en ville que la suite de la section attend :
   // les vérifications du marché comptent sur son étal et sa bourse.

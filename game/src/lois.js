@@ -55,6 +55,77 @@ export const IMPOTS = [
   { key: 'confiscatoire', nom: 'Confiscatoire', taux: 0.15, desc: 'On prend tout. On tiendra ce qu’on pourra.' },
 ];
 
+/**
+ * Le régime d'une faction : ce qu'on a le droit de faire chez elle.
+ *
+ * Les trois lois précédentes réglaient ce que la faction se fait à elle-même —
+ * ses geôles, sa caisse, ses esclaves. Celle-ci règle ce que *vous* pouvez y
+ * faire, et c'est la première qui vous concerne comme visiteur plutôt que comme
+ * sujet. Chaque régime touche des choses concrètes, et rien de décoratif :
+ *
+ *   propriete    l'estime qu'il faut pour posséder un coffre ; `null` = jamais
+ *   ecole        `libre` (gratuite), `payante`, ou `maison` (réservée aux siens)
+ *   soins        `tous` ou `estime` (le médecin ne soigne que qui il apprécie)
+ *   preleve      la part retenue sur ce que vous vendez dans leurs villes
+ *   palier       ce que l'armurier consent à sortir de derrière
+ *
+ * Ce qu'un régime donne, il le reprend ailleurs : la Commune soigne et instruit
+ * gratuitement mais retient un huitième de vos ventes ; la Franchise ne donne
+ * rien et ne prend presque rien. Le Domaine est le plus dur — on n'y possède
+ * pas, l'école est réservée à ceux qui servent — mais c'est le seul endroit où
+ * l'on sort les bonnes armes pour n'importe qui.
+ */
+export const REGIMES = {
+  franchise: {
+    nom: 'Franchise',
+    desc: 'On y achète tout, on n’y reçoit rien. Le négoce est presque libre.',
+    propriete: 25,
+    ecole: 'payante',
+    soins: 'estime',
+    preleve: 0.02,
+    palier: 0,
+  },
+  charte: {
+    nom: 'Charte',
+    desc: 'Le régime ordinaire : on possède si l’on est connu, on paie ses services.',
+    propriete: 40,
+    ecole: 'payante',
+    soins: 'estime',
+    preleve: 0.05,
+    palier: 0,
+  },
+  commune: {
+    nom: 'Commune',
+    desc: 'École et médecin pour tous, rien à posséder, et l’on prend sa part.',
+    propriete: null,
+    ecole: 'libre',
+    soins: 'tous',
+    preleve: 0.12,
+    palier: 0,
+  },
+  domaine: {
+    nom: 'Domaine',
+    desc: 'Tout est au seigneur. Mais son armurier sort ce qu’il garde derrière.',
+    propriete: null,
+    ecole: 'maison',
+    soins: 'estime',
+    preleve: 0.09,
+    palier: 1,
+  },
+  // Pas un vote : l'état d'une ville que personne ne tient. Voir `loiIci`.
+  libre: {
+    nom: 'Ville libre',
+    desc: 'Personne n’interdit rien, personne ne donne rien.',
+    propriete: 0,
+    ecole: 'payante',
+    soins: 'estime',
+    preleve: 0,
+    palier: 0,
+  },
+};
+
+export const REGIME_KEYS = ['franchise', 'charte', 'commune', 'domaine'];
+
 /** Le désordre qu'un taux d'impôt ajoute par heure à une ville. */
 export function pressionFiscale(world, faction) {
   const t = loisDe(world, faction).impot;
@@ -66,7 +137,7 @@ export function pressionFiscale(world, faction) {
 /** Les lois d'une faction, avec leurs valeurs par défaut. */
 export function loisDe(world, faction) {
   const f = world.factions[faction];
-  if (!f) return { peine: 'ferme', esclavage: false, impot: 0.05 };
+  if (!f) return { peine: 'ferme', esclavage: false, impot: 0.05, regime: 'charte' };
   if (!f.lois) {
     f.lois = {
       peine: 'ferme',
@@ -74,8 +145,12 @@ export function loisDe(world, faction) {
       // prend, pas un état de fait qu'on subit.
       esclavage: false,
       impot: 0.05,
+      // Le régime ordinaire : on n'invente pas un monde de communes.
+      regime: 'charte',
     };
   }
+  // Les parties commencées avant les régimes n'en ont pas : on pose l'ordinaire.
+  if (!f.lois.regime) f.lois.regime = 'charte';
   return f.lois;
 }
 
@@ -84,7 +159,10 @@ export function loiIci(state, col) {
   if (!col || !col.faction) {
     // Une ville sans drapeau ne connaît que la loi du plus fort. On y vend ce
     // qu'on veut, et personne ne délivre de prime.
-    return { peine: PEINES.expeditive, esclavage: true, sansLoi: true, faction: null };
+    return {
+      peine: PEINES.expeditive, esclavage: true, sansLoi: true, faction: null,
+      regime: REGIMES.libre,
+    };
   }
   const l = loisDe(state.world, col.faction);
   return {
@@ -92,6 +170,7 @@ export function loiIci(state, col) {
     esclavage: !!l.esclavage,
     sansLoi: false,
     faction: col.faction,
+    regime: REGIMES[l.regime] || REGIMES.charte,
   };
 }
 

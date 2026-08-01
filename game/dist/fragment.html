@@ -198,9 +198,28 @@ body {
 .ligne .k { color: var(--texte-2); flex: 0 0 auto; white-space: nowrap; }
 .ligne .v { font-variant-numeric: tabular-nums; text-align: right; flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 
+/* Une ligne dont la gauche n'est pas une étiquette mais un texte libre — le
+   titre d'une mission, le nom d'un contrat. La règle du dessus s'inverse alors :
+   une étiquette courte peut rester d'un bloc, un titre de quarante caractères
+   non, il déborde et il ne reste plus qu'un caractère de large pour la pastille
+   de droite, qui se met à descendre lettre par lettre. Ici c'est donc le titre
+   qui se coupe et cède du terrain, et la valeur qui ne se coupe jamais. */
+.ligne.souple .k { flex: 1 1 auto; white-space: normal; min-width: 0; overflow-wrap: anywhere; }
+.ligne.souple .v { flex: 0 0 auto; }
+
 /* Deux colonnes de couples clé/valeur : sans séparateur elles se lisent comme
    une seule phrase à rallonge. */
 .grille2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; }
+
+/* Sur un écran étroit, deux colonnes ne tiennent pas.
+   `.ligne .k` ne se coupe jamais — c'est voulu, une clé coupée en deux est
+   illisible — donc une clé un peu longue mange toute la cellule et il ne reste
+   qu'un caractère de large pour la valeur, qui se met à descendre lettre par
+   lettre. On repasse donc à une seule colonne : le panneau est plus haut, il
+   est lisible. */
+@media (max-width: 430px) {
+  .grille2 { grid-template-columns: 1fr; gap: 0; }
+}
 .grille2 > .ligne { border-bottom: 1px solid #1b2029; }
 .grille3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
 
@@ -666,6 +685,8 @@ const progresContrat = progres;
 const creditInfluence = credit;
 const toucherRationsA = toucherRations;
 const honorerService = honorer;
+const louerCoffreA = louerCoffre;
+const acheterCoffreA = acheterCoffre;
 const envoyerColonneA = envoyerColonne;
 const leverColonneA = leverColonne;
 const fonderPosteA = fonderPoste;
@@ -1987,6 +2008,77 @@ const IMPOTS = [
   { key: 'confiscatoire', nom: 'Confiscatoire', taux: 0.15, desc: 'On prend tout. On tiendra ce qu’on pourra.' },
 ];
 
+/**
+ * Le régime d'une faction : ce qu'on a le droit de faire chez elle.
+ *
+ * Les trois lois précédentes réglaient ce que la faction se fait à elle-même —
+ * ses geôles, sa caisse, ses esclaves. Celle-ci règle ce que *vous* pouvez y
+ * faire, et c'est la première qui vous concerne comme visiteur plutôt que comme
+ * sujet. Chaque régime touche des choses concrètes, et rien de décoratif :
+ *
+ *   propriete    l'estime qu'il faut pour posséder un coffre ; `null` = jamais
+ *   ecole        `libre` (gratuite), `payante`, ou `maison` (réservée aux siens)
+ *   soins        `tous` ou `estime` (le médecin ne soigne que qui il apprécie)
+ *   preleve      la part retenue sur ce que vous vendez dans leurs villes
+ *   palier       ce que l'armurier consent à sortir de derrière
+ *
+ * Ce qu'un régime donne, il le reprend ailleurs : la Commune soigne et instruit
+ * gratuitement mais retient un huitième de vos ventes ; la Franchise ne donne
+ * rien et ne prend presque rien. Le Domaine est le plus dur — on n'y possède
+ * pas, l'école est réservée à ceux qui servent — mais c'est le seul endroit où
+ * l'on sort les bonnes armes pour n'importe qui.
+ */
+const REGIMES = {
+  franchise: {
+    nom: 'Franchise',
+    desc: 'On y achète tout, on n’y reçoit rien. Le négoce est presque libre.',
+    propriete: 25,
+    ecole: 'payante',
+    soins: 'estime',
+    preleve: 0.02,
+    palier: 0,
+  },
+  charte: {
+    nom: 'Charte',
+    desc: 'Le régime ordinaire : on possède si l’on est connu, on paie ses services.',
+    propriete: 40,
+    ecole: 'payante',
+    soins: 'estime',
+    preleve: 0.05,
+    palier: 0,
+  },
+  commune: {
+    nom: 'Commune',
+    desc: 'École et médecin pour tous, rien à posséder, et l’on prend sa part.',
+    propriete: null,
+    ecole: 'libre',
+    soins: 'tous',
+    preleve: 0.12,
+    palier: 0,
+  },
+  domaine: {
+    nom: 'Domaine',
+    desc: 'Tout est au seigneur. Mais son armurier sort ce qu’il garde derrière.',
+    propriete: null,
+    ecole: 'maison',
+    soins: 'estime',
+    preleve: 0.09,
+    palier: 1,
+  },
+  // Pas un vote : l'état d'une ville que personne ne tient. Voir `loiIci`.
+  libre: {
+    nom: 'Ville libre',
+    desc: 'Personne n’interdit rien, personne ne donne rien.',
+    propriete: 0,
+    ecole: 'payante',
+    soins: 'estime',
+    preleve: 0,
+    palier: 0,
+  },
+};
+
+const REGIME_KEYS = ['franchise', 'charte', 'commune', 'domaine'];
+
 /** Le désordre qu'un taux d'impôt ajoute par heure à une ville. */
 function pressionFiscale(world, faction) {
   const t = loisDe(world, faction).impot;
@@ -1998,7 +2090,7 @@ function pressionFiscale(world, faction) {
 /** Les lois d'une faction, avec leurs valeurs par défaut. */
 function loisDe(world, faction) {
   const f = world.factions[faction];
-  if (!f) return { peine: 'ferme', esclavage: false, impot: 0.05 };
+  if (!f) return { peine: 'ferme', esclavage: false, impot: 0.05, regime: 'charte' };
   if (!f.lois) {
     f.lois = {
       peine: 'ferme',
@@ -2006,8 +2098,12 @@ function loisDe(world, faction) {
       // prend, pas un état de fait qu'on subit.
       esclavage: false,
       impot: 0.05,
+      // Le régime ordinaire : on n'invente pas un monde de communes.
+      regime: 'charte',
     };
   }
+  // Les parties commencées avant les régimes n'en ont pas : on pose l'ordinaire.
+  if (!f.lois.regime) f.lois.regime = 'charte';
   return f.lois;
 }
 
@@ -2016,7 +2112,10 @@ function loiIci(state, col) {
   if (!col || !col.faction) {
     // Une ville sans drapeau ne connaît que la loi du plus fort. On y vend ce
     // qu'on veut, et personne ne délivre de prime.
-    return { peine: PEINES.expeditive, esclavage: true, sansLoi: true, faction: null };
+    return {
+      peine: PEINES.expeditive, esclavage: true, sansLoi: true, faction: null,
+      regime: REGIMES.libre,
+    };
   }
   const l = loisDe(state.world, col.faction);
   return {
@@ -2024,6 +2123,7 @@ function loiIci(state, col) {
     esclavage: !!l.esclavage,
     sansLoi: false,
     faction: col.faction,
+    regime: REGIMES[l.regime] || REGIMES.charte,
   };
 }
 
@@ -2549,6 +2649,10 @@ const ARCHETYPES = {
   medic: { nom: 'Médic', bonus: { medecine: 20, ingenierie: 6 }, arme: 'barre' },
   courtier: { nom: 'Courtier', bonus: { commerce: 20, furtivite: 8 }, arme: 'clous' },
   eclaireur: { nom: 'Éclaireur', bonus: { furtivite: 16, endurance: 12, tir: 6 }, arme: 'machette' },
+  // Celui qui tient la troupe ensemble. Il ne se bat pas mieux que les autres et
+  // ne ramasse rien de plus : il fait que trente personnes restent une escouade
+  // au lieu de devenir une foule. Voir `plafondCohesion`.
+  barde: { nom: 'Barde', bonus: { commerce: 18, endurance: 8, furtivite: 6 }, arme: 'clous' },
 };
 
 const ARCHETYPE_KEYS = Object.keys(ARCHETYPES);
@@ -2600,13 +2704,24 @@ function makeCharacter(rng, opts = {}) {
     const max = Math.round(BODY_PARTS[p].pv * (0.85 + c.skills.endurance / 220));
     c.corps[p] = { pv: max, max, perdu: false };
   }
+  // Où il en était en arrivant. Sans repère, « voir l'effet de l'entraînement »
+  // est impossible : le journal annonce bien chaque point gagné, mais en
+  // discret, et personne ne remonte deux cents lignes pour additionner.
+  c.skills0 = Object.assign({}, c.skills);
   return c;
 }
 
+/** Ce qu'une école apprend même à quelqu'un qui en savait déjà plus qu'elle. */
+const GAIN_DIPLOME = 5;
+
+/** Le ventre crie ici, et la faim entame là. Voir `tickPerso`. */
+const SEUIL_VENTRE_CREUX = 75;
+const SEUIL_FAMINE = 100;
+
 /**
- * Remet le diplôme et ce qui va avec : un plancher de compétence — jamais
- * rabaissé, on n'oublie pas ce qu'on savait — et l'aptitude à progresser plus
- * vite ensuite, qui est le vrai apport d'une formation.
+ * Remet le diplôme et ce qui va avec : de la compétence — jamais rabaissée, on
+ * n'oublie pas ce qu'on savait — et l'aptitude à progresser plus vite ensuite,
+ * qui est le vrai apport d'une formation.
  */
 function accorderDiplome(c, key) {
   const d = DIPLOMES[key];
@@ -2614,7 +2729,15 @@ function accorderDiplome(c, key) {
   if (!c.diplomes) c.diplomes = [];
   if (c.diplomes.includes(key)) return false;
   c.diplomes.push(key);
-  c.skills[d.skill] = Math.max(c.skills[d.skill] || 0, d.plancher);
+  // Un diplôme monte au plancher qui n'y est pas encore, et ajoute toujours
+  // quelque chose à qui le dépasse déjà.
+  //
+  // Il se contentait de `max(compétence, plancher)` : trois semaines et neuf
+  // cents crédits ne changeaient donc strictement rien pour quelqu'un qui avait
+  // appris sur le tas, et l'école refusait carrément de l'inscrire au-delà de
+  // vingt-cinq points au-dessus du plancher. On n'y allait jamais avec ses bons
+  // éléments, c'est-à-dire jamais avec ceux à qui ça servirait.
+  c.skills[d.skill] = Math.max((c.skills[d.skill] || 0) + GAIN_DIPLOME, d.plancher);
   return true;
 }
 
@@ -2951,12 +3074,30 @@ function tickPerso(c, effort, rng, ctx = {}) {
     c.sang = Math.max(0, c.sang - 2.2 - compression);
   }
 
-  // Famine
-  if (c.faim >= 100) {
+  // Famine.
+  //
+  // On prévient. Le jeu n'avait qu'un seul message sur ce chemin — « X est mort
+  // de faim » — et rien avant : on perdait quelqu'un sans avoir rien vu venir,
+  // ce qui se lit comme un bug alors que c'est une comptabilité qui tourne
+  // depuis des jours. Deux paliers, chacun annoncé une seule fois, et remis à
+  // zéro dès qu'on remange : le ventre creux, puis la faim qui entame.
+  if (c.faim >= SEUIL_FAMINE) {
+    // On compare le palier, pas un simple « déjà dit » : sans ça l'annonce du
+    // ventre creux avalait celle de la famine, et le second cran restait muet.
+    if (c.criFaim !== 2) {
+      c.criFaim = 2;
+      msgs.push({ type: 'faim', texte: `${c.nom} n’a plus rien mangé depuis trop longtemps. Il s’affaiblit.` });
+    }
     const r = blesser(c, 1.6, 'torse', rng);
     if (r.mort) msgs.push({ type: 'mort', texte: `${c.nom} est mort de faim.` });
     c.moral = Math.max(0, c.moral - 1.2);
+  } else if (c.faim >= SEUIL_VENTRE_CREUX) {
+    if (!c.criFaim) {
+      c.criFaim = 1;
+      msgs.push({ type: 'faim', texte: `${c.nom} a le ventre creux. Il faudrait des rations.` });
+    }
   } else if (c.faim < 40) {
+    if (c.criFaim) c.criFaim = 0;
     c.moral = Math.min(100, c.moral + 0.25);
   }
 
@@ -3705,7 +3846,29 @@ function vivants(g) {
 function noyau(state, g) {
   const base = state && state.base;
   const abri = base && base.fonde ? (base.batiments.baraquement || 0) : 0;
-  return 4 + abri;
+  return 4 + abri + placesSociables(g);
+}
+
+/**
+ * Ce que quelqu'un de sociable ajoute au noyau qu'on sait tenir.
+ *
+ * Grossir coûtait sans qu'on puisse rien y faire : au-delà de quatre — plus un
+ * par baraquement — le plafond de cohésion descend, donc le rendement et le
+ * combat avec lui, et aucune décision du joueur n'y changeait rien. Une pénalité
+ * sans contre-jeu n'est pas un choix, c'est une punition, et c'est bien ainsi
+ * qu'elle se ressentait.
+ *
+ * On l'accroche à la sociabilité plutôt qu'à un titre : c'est une propriété des
+ * gens, pas une étiquette. Le barde est simplement l'archétype qui commence
+ * doué pour ça — un courtier chevronné rend le même service, et c'est très bien.
+ */
+function placesSociables(g) {
+  let meilleur = 0;
+  for (const c of (g && g.membres) || []) {
+    if (!estDebout(c)) continue;
+    meilleur = Math.max(meilleur, comp(c, 'commerce'));
+  }
+  return Math.floor(meilleur / 22);
 }
 
 /**
@@ -4312,7 +4475,10 @@ function apercu(c) {
 // Le panneau d'affichage d'une ville est anonyme : il paie en crédits, il bouge
 // la réputation d'une faction, et personne ne se souvient de vous. C'est un
 // distributeur. Ici c'est autre chose : quelqu'un a un problème, il vous le dit
-// en face, et il s'en souvient — bien ou mal.
+// en face, et il s'en souvient.
+//
+// Il ne vous en veut pas de ne pas l'avoir aidé — voir GAIN_OPINION. Ce système
+// n'a que du haut : ce qui le borne, c'est qu'on ne peut pas être partout.
 //
 // Le prix est volontairement médiocre. Ce qu'on achète en rendant un service,
 // c'est l'opinion d'une personne précise, et cette opinion a des effets qu'on
@@ -4348,10 +4514,24 @@ const BESOINS = {
 /** Une demande non honorée finit par ne plus être une demande. */
 const DUREE_DEMANDE = [260, 620];
 
-/** Ce qu'un service rapporte, et ce qu'un oubli coûte. */
+/**
+ * Ce qu'un service rapporte. Il n'y a pas de contrepartie négative, et c'est
+ * délibéré.
+ *
+ * Une demande non honorée a longtemps coûté de l'estime. L'idée était qu'un
+ * refus se paie — sauf qu'on n'a jamais rien promis : quelqu'un a un besoin,
+ * vous passez, vous ne le comblez pas. Ce n'est pas un manquement, c'est la vie
+ * ordinaire d'un désert où personne ne peut tout faire. La version qui punissait
+ * le simple passage était franchement mauvaise ; celle qui ne punissait plus que
+ * le refus les mains pleines l'était encore, parce que garder ses cent quarante
+ * rations quand on a soi-même six bouches à nourrir n'est pas un affront.
+ *
+ * Le choix tient debout sans culpabilité : la marchandise part, la prime la
+ * rembourse tout juste, et le vrai prix est le détour. On ne peut pas les servir
+ * tous — voilà la décision.
+ */
 const GAIN_OPINION = 24;
 const GAIN_TEMOINS = 6;
-const PERTE_OUBLI = 14;
 
 /** Combien d'actes on garde en tête. Au-delà, on ne retient que l'impression. */
 const MEMOIRE_MAX = 4;
@@ -4374,6 +4554,9 @@ const DIT = {
 
 const ACTES = {
   service: (r) => `Vous lui avez apporté ${(DIT[r] || [r])[0]} quand il en manquait.`,
+  // Plus produit depuis qu'une demande non honorée ne coûte rien. On garde la
+  // phrase : les sauvegardes d'avant en contiennent, et une mémoire qu'on ne
+  // sait plus lire vaut moins qu'un souvenir périmé.
   oubli: (r) => `Vous avez laissé passer ${(DIT[r] || [null, r])[1]} qu’il attendait.`,
   defense: () => 'Vous étiez là quand la ville a été attaquée.',
   pillage: () => 'Vous avez pillé une caravane des siens.',
@@ -4417,26 +4600,16 @@ function manque(col, besoin) {
  * rythme des colonies : on ne parle pas de quelques dizaines d'objets par heure
  * mais de quelques-uns par jour de jeu sur la carte entière.
  */
-function tickServices(col, rng, dt, t, present = false) {
+function tickServices(col, rng, dt, t) {
   if (!col.notables || !col.notables.length) return;
   const surDt = (p) => (dt === 1 ? p : 1 - Math.pow(1 - p, dt));
 
   for (const p of col.notables) {
     if (p.demande) {
-      // Une demande ne devient la vôtre qu'une fois que vous l'avez entendue.
-      if (present) p.demande.vu = true;
-      // On n'attend pas éternellement. Une demande qui s'éteint laisse une
-      // trace — mais seulement si vous étiez passé l'entendre. On ne tient
-      // rigueur à personne d'un besoin qu'il ignorait, sinon un joueur qui ne
-      // s'occupe pas de ce système se fait détester par une carte entière sans
-      // avoir jamais rien vu venir.
-      if (t >= p.demande.echeance) {
-        if (p.demande.vu) {
-          retenir(p, 'oubli', p.demande.res, t);
-          p.opinion = Math.max(-100, (p.opinion || 0) - PERTE_OUBLI);
-        }
-        p.demande = null;
-      }
+      // On n'attend pas éternellement, et l'on ne vous en veut pas : la demande
+      // s'éteint, simplement. Voir GAIN_OPINION pour pourquoi il n'y a rien à
+      // perdre ici.
+      if (t >= p.demande.echeance) p.demande = null;
       continue;
     }
     const besoin = BESOINS[p.charge];
@@ -4454,8 +4627,6 @@ function tickServices(col, rng, dt, t, present = false) {
       quantite: Math.max(4, q),
       echeance: t + rng.irange(DUREE_DEMANDE[0], DUREE_DEMANDE[1]),
       texte: besoin.texte(Math.max(4, q)),
-      // Vrai dès qu'on est passé l'entendre. Voir plus haut.
-      vu: present,
       // On rembourse la marchandise sans plus : le reste se paie en estime.
       prime: Math.round(COMMODITIES[besoin.res].prix * Math.max(4, q) * rng.range(0.9, 1.3)),
     };
@@ -4737,6 +4908,8 @@ function sEngager(state, faction, log, groupe) {
     intendance: state.temps,
     manques: 0,
     derniereSolde: state.temps,
+    // Ce qu'on a fait pour eux, dans l'ordre. Voir `noterFait`.
+    faits: [],
     // Ce dont on répond : les actes ordonnés qui attendent leur issue, et ce
     // qu'on a déjà mis à votre charge.
     actes: [],
@@ -5019,6 +5192,49 @@ function fabriquerOrdre(state, rng, g) {
   };
 }
 
+/** Combien d'ordres on garde en mémoire. Au-delà, seuls les totaux restent. */
+const FEUILLE_MAX = 14;
+
+/**
+ * La feuille de service : ce qu'on a fait pour eux, et ce qu'on a laissé filer.
+ *
+ * Le jeu comptait bien les ordres remplis, mais nulle part on ne pouvait
+ * relire ce qu'on avait fait : le journal les annonce puis les fait défiler, et
+ * il est plafonné à quatre cents lignes. On sert une faction pendant six mois
+ * de jeu et il n'en reste qu'un nombre.
+ */
+function noterFait(all, o, issue, t, bilan) {
+  if (!all) return;
+  if (!all.faits) all.faits = [];
+  // Ce que ça a rapporté ou coûté, réellement : crédits, points de service,
+  // estime. Un dossier qui dit « honoré » sans dire combien ne sert qu'à
+  // moitié, et les valeurs annoncées par l'ordre ne sont pas toujours celles
+  // qu'on touche — le service passe par `crediter`, qui a ses propres règles.
+  const f = { t, type: o.type, titre: o.titre, issue };
+  if (bilan) {
+    if (bilan.cr) f.cr = Math.round(bilan.cr);
+    if (bilan.pts) f.pts = Math.round(bilan.pts);
+    if (bilan.rep) f.rep = Math.round(bilan.rep);
+  }
+  all.faits.push(f);
+  if (all.faits.length > FEUILLE_MAX) all.faits.shift();
+}
+
+/** Les totaux de la feuille, tous ordres confondus depuis l'engagement. */
+function bilanService(all) {
+  const out = { honores: 0, manques: 0, annules: 0 };
+  if (!all) return out;
+  out.manques = all.manques || 0;
+  for (const f of all.faits || []) {
+    if (f.issue === 'honore') out.honores++;
+    else if (f.issue === 'annule') out.annules++;
+  }
+  // Les manques sont comptés depuis toujours, les faits seulement sur les
+  // quatorze derniers : on prend le plus grand des deux pour ne pas mentir.
+  out.honores = Math.max(out.honores, all.ordresHonores || 0);
+  return out;
+}
+
 function avancementOrdre(state, o, groupe) {
   if (!o) return null;
   switch (o.type) {
@@ -5107,6 +5323,30 @@ function tickEngagement(state, g, log, ctx) {
     });
   }
 
+  // Un ordre de frappe meurt avec sa guerre. Les traités se signent pendant que
+  // la colonne marche, et l'ordre lui survivait : on continuait de chasser des
+  // gens avec qui la paix venait d'être faite, sur des terres qui ne sortaient
+  // plus personne, et l'on perdait de l'estime pour ne pas y être arrivé.
+  // Mesuré au banc : 45 % des heures passées à honorer une frappe l'étaient
+  // contre une faction avec qui la guerre était déjà finie.
+  if (all.ordre && all.ordre.type === 'frappe') {
+    const cible = all.ordre.cibleFaction;
+    const encore = state.world.guerres.some(
+      (w) => (w.a === all.faction && w.b === cible) || (w.b === all.faction && w.a === cible)
+    );
+    if (!encore) {
+      const o = all.ordre;
+      all.ordre = null;
+      all.prochainOrdre = state.temps + rng.irange(60, 140);
+      noterFait(all, o, 'annule', state.temps);
+      log({
+        type: 'allegeance',
+        texte: `Ordre annulé : ${o.titre}. La paix est signée, on vous rappelle.`,
+        important: true,
+      });
+    }
+  }
+
   // Ordre en cours : validation, échéance.
   if (all.ordre) {
     const p = avancementOrdre(state, all.ordre, g);
@@ -5118,12 +5358,23 @@ function tickEngagement(state, g, log, ctx) {
         if (porteur) porteur.inventaire[o.ressource] -= o.quantite;
         if (col) col.stock[o.ressource] = (col.stock[o.ressource] || 0) + o.quantite;
       }
+      // On relève les compteurs avant et après : ce qu'on inscrit au dossier
+      // est ce qui s'est réellement passé, pas ce que l'ordre promettait.
+      const crAvant = state.player.credits;
+      const repAvant = state.player.reputation[all.faction] || 0;
+      const ptsAvant = all.points;
       state.player.credits += o.recompense;
-      state.player.reputation[all.faction] = Math.min(100, (state.player.reputation[all.faction] || 0) + 5);
+      state.player.reputation[all.faction] = Math.min(100, repAvant + 5);
       all.ordre = null;
       all.prochainOrdre = state.temps + rng.irange(120, 260);
       state.stats.ordresRemplis = (state.stats.ordresRemplis || 0) + 1;
+      all.ordresHonores = (all.ordresHonores || 0) + 1;
       crediter(state, o.service, log, null, g);
+      noterFait(all, o, 'honore', state.temps, {
+        cr: state.player.credits - crAvant,
+        pts: all.points - ptsAvant,
+        rep: (state.player.reputation[all.faction] || 0) - repAvant,
+      });
       log({
         type: 'allegeance',
         texte: `Ordre exécuté : ${o.titre}. ${o.recompense} cr.`,
@@ -5138,8 +5389,12 @@ function tickEngagement(state, g, log, ctx) {
       // reculait de deux, et le banc l'a chiffré — quarante-quatre escouades sur
       // quarante-huit ne quittaient jamais le premier grade. Ce qu'on perd,
       // c'est l'estime, et elle finit par fermer l'intendance.
-      state.player.reputation[all.faction] = Math.max(-100, (state.player.reputation[all.faction] || 0) - 3);
+      const repAvantM = state.player.reputation[all.faction] || 0;
+      state.player.reputation[all.faction] = Math.max(-100, repAvantM - 3);
       all.manques = (all.manques || 0) + 1;
+      noterFait(all, o, 'manque', state.temps, {
+        rep: (state.player.reputation[all.faction] || 0) - repAvantM,
+      });
       log({
         type: 'allegeance',
         texte: `Ordre non exécuté : ${o.titre}. On le note.`,
@@ -5455,16 +5710,28 @@ function ecolesDe(world, col) {
   });
 }
 
-/** Le prix demandé ici : une grande ville se paie plus cher qu'un poste. */
-function prixFormation(col, key, remise = 0) {
+/**
+ * Le prix demandé ici : une grande ville se paie plus cher qu'un poste — et le
+ * régime décide si l'on paie tout court.
+ *
+ * Une Commune instruit gratuitement, c'est ce qu'elle donne en échange de ce
+ * qu'elle prélève. Un Domaine réserve ses écoles à ceux qui servent la maison :
+ * le prix reste, mais `peutSInscrire` refuse les étrangers.
+ */
+function prixFormation(col, key, remise = 0, regime) {
   const d = DIPLOMES[key];
   if (!d) return 0;
+  if (regime && regime.ecole === 'libre') return 0;
   return Math.round(d.cout * (0.85 + col.taille * 0.09) * (1 - remise));
 }
 
 function peutSInscrire(state, col, perso, key) {
   const d = DIPLOMES[key];
   if (!d) return { ok: false, motif: 'Formation inconnue.' };
+  const reg = loiIci(state, col).regime;
+  if (reg.ecole === 'maison' && !estAuService(state, col.faction)) {
+    return { ok: false, motif: `${reg.nom} : l’école est réservée à ceux qui servent la maison.` };
+  }
   if (!ecolesDe(state.world, col).includes(key)) {
     return { ok: false, motif: 'On n’enseigne pas ça ici.' };
   }
@@ -5472,10 +5739,6 @@ function peutSInscrire(state, col, perso, key) {
   if (perso.formation) return { ok: false, motif: `${perso.nom} est déjà en formation.` };
   if ((perso.diplomes || []).includes(key)) {
     return { ok: false, motif: `${perso.nom} a déjà ce diplôme.` };
-  }
-  // Une école ne reprend pas depuis le début quelqu'un qui la dépasse déjà.
-  if (perso.skills[d.skill] >= d.plancher + 25) {
-    return { ok: false, motif: `${perso.nom} en sait déjà plus que l’école.` };
   }
   return { ok: true };
 }
@@ -5486,7 +5749,7 @@ function inscrire(state, col, perso, key, log) {
   // La remise d'une école va à qui sert la maison : n'importe laquelle de vos
   // colonnes engagée chez eux suffit à vous ouvrir le tarif.
   const remise = estAuService(state, col.faction) ? 0.15 : 0;
-  const prix = prixFormation(col, key, remise);
+  const prix = prixFormation(col, key, remise, loiIci(state, col).regime);
   if (state.player.credits < prix) {
     return { ok: false, motif: `Il manque ${prix - state.player.credits} cr.` };
   }
@@ -5634,9 +5897,8 @@ function peutApprendreChezSoi(state, perso, key) {
   if ((perso.diplomes || []).includes(key)) {
     return { ok: false, motif: `${perso.nom} a déjà ce diplôme.` };
   }
-  if (perso.skills[DIPLOMES[key].skill] >= DIPLOMES[key].plancher + 25) {
-    return { ok: false, motif: `${perso.nom} en sait déjà plus que le cours.` };
-  }
+  // On n'écarte plus les bons élèves : un diplôme ajoute toujours quelque chose
+  // à qui le dépasse déjà. Voir `accorderDiplome`.
   return { ok: true, instructeur: offre.instructeur };
 }
 
@@ -6150,11 +6412,17 @@ function cibleStock(col, key) {
   }
 }
 
-/** Prix unitaire courant, tiré de la tension offre/demande. */
-function prixUnitaire(col, key) {
+/**
+ * Prix unitaire courant, tiré de la tension offre/demande.
+ *
+ * `stockSimule` permet de demander « et si le stock valait ça ? » sans toucher à
+ * la ville. C'est ce qui permet de chiffrer une transaction avant de la faire,
+ * puisque chaque unité échangée déplace le prix de la suivante.
+ */
+function prixUnitaire(col, key, stockSimule) {
   const base = COMMODITIES[key].prix;
   const cible = Math.max(1, cibleStock(col, key));
-  const stock = Math.max(0, col.stock[key] || 0);
+  const stock = Math.max(0, stockSimule === undefined ? (col.stock[key] || 0) : stockSimule);
   // Rapport stock/cible → facteur borné [0.45, 3.2]
   const tension = cible / (stock + cible * 0.35);
   const f = Math.max(0.45, Math.min(3.2, Math.pow(tension, 0.85)));
@@ -6166,8 +6434,8 @@ function prixUnitaire(col, key) {
  * `habilete` : compétence de commerce du meilleur négociateur (0-100).
  * `repu`     : réputation avec la faction propriétaire (−100..100).
  */
-function prixJoueur(col, key, habilete = 0, repu = 0, remise = 0) {
-  const p = prixUnitaire(col, key);
+function prixJoueur(col, key, habilete = 0, repu = 0, remise = 0, stockSimule) {
+  const p = prixUnitaire(col, key, stockSimule);
   // La marge n'est pas une constante du monde : c'est celle d'un homme, avec
   // son caractère, son métier et ce qu'il pense de vous.
   const marge = Math.max(0.02,
@@ -6402,7 +6670,7 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
   ajusterEmplois(world, col, rng, dt);
   pourvoirCharges(col, rng, t);
   tickNotables(col, rng, dt, reputation, log, t);
-  tickServices(col, rng, dt, t, present);
+  tickServices(col, rng, dt, t);
   const prod = productionColonie(world, col);
   const cons = consommationColonie(col);
   // `dt` : nombre d'heures couvertes par cet appel. Une économie de colonie n'a
@@ -6674,60 +6942,93 @@ function poidsInventaire(inv) {
  * Le prix bouge au fur et à mesure de la transaction : acheter tout le stock
  * d'une petite ville coûte cher.
  */
-function acheter(state, col, key, qte, groupe) {
+/**
+ * Ce que coûterait cet achat, sans le faire — et ce qui l'a borné.
+ *
+ * Même boucle que `acheter`, qui l'appelle : le chiffre annoncé à l'écran est
+ * donc exactement celui qu'on paiera, y compris quand le prix monte à mesure
+ * qu'on vide l'étal. Sans ça l'interface ne pouvait proposer que « +10 » et
+ * « tout », et un joueur n'avait aucun moyen de savoir ce que « tout » allait
+ * lui coûter sur un marché où chaque unité déplace la suivante.
+ */
+function simulerAchat(state, col, key, qte, groupe) {
   const g = groupe || groupeActif(state);
   const negoc = meilleurCommercant(g.membres);
   const hab = negoc ? comp(negoc, 'commerce') : 0;
   const repu = state.player.reputation[col.faction] || 0;
+  const remise = remiseDe(state, col.faction);
   let restant = Math.floor(qte);
+  let stock = Math.floor(col.stock[key] || 0);
   let cout = 0;
   let achetes = 0;
+  let borne = null;
 
-  const capacite = capacitePortage(state, g);
-  const libre = capacite - poidsInventaire(g.inventaire);
+  const libre = capacitePortage(state, g) - poidsInventaire(g.inventaire);
   const poidsU = COMMODITIES[key].poids;
   const maxPoids = poidsU > 0 ? Math.floor(libre / poidsU) : restant;
-  if (maxPoids <= 0) return { ok: false, motif: 'Sac plein.', qte: 0, cout: 0 };
+  if (maxPoids <= 0) return { qte: 0, cout: 0, borne: 'sac plein' };
+  if (restant > maxPoids) borne = 'sac plein';
   restant = Math.min(restant, maxPoids);
 
   while (restant > 0) {
-    if ((col.stock[key] || 0) < 1) break;
-    const p = prixJoueur(col, key, hab, repu, remiseDe(state, col.faction)).achat;
-    if (state.player.credits - cout < p) break;
+    if (stock < 1) { borne = borne || 'étal vide'; break; }
+    const p = prixJoueur(col, key, hab, repu, remise, stock).achat;
+    if (state.player.credits - cout < p) { borne = borne || 'crédits'; break; }
     cout += p;
-    col.stock[key] -= 1;
+    stock -= 1;
     achetes += 1;
     restant -= 1;
   }
-  if (achetes === 0) return { ok: false, motif: 'Rien à acheter à ce prix.', qte: 0, cout: 0 };
-  cout = Math.round(cout);
-  state.player.credits -= cout;
-  g.inventaire[key] = (g.inventaire[key] || 0) + achetes;
-  if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.5 + achetes * 0.3);
-  return { ok: true, qte: achetes, cout };
+  return { qte: achetes, cout: Math.round(cout), borne };
+}
+
+/** Ce que rapporterait cette vente, sans la faire. Voir `simulerAchat`. */
+function simulerVente(state, col, key, qte, groupe) {
+  const g = groupe || groupeActif(state);
+  const negoc = meilleurCommercant(g.membres);
+  const hab = negoc ? comp(negoc, 'commerce') : 0;
+  const repu = state.player.reputation[col.faction] || 0;
+  const remise = remiseDe(state, col.faction);
+  let restant = Math.min(Math.floor(qte), Math.floor(g.inventaire[key] || 0));
+  let stock = Math.floor(col.stock[key] || 0);
+  let gain = 0;
+  let vendus = 0;
+  while (restant > 0) {
+    gain += prixJoueur(col, key, hab, repu, remise, stock).vente;
+    stock += 1;
+    vendus += 1;
+    restant -= 1;
+  }
+  return { qte: vendus, gain: Math.round(gain) };
+}
+
+function acheter(state, col, key, qte, groupe) {
+  const g = groupe || groupeActif(state);
+  // On chiffre d'abord, on encaisse ensuite, avec le même code : le prix affiché
+  // et le prix payé ne peuvent pas diverger.
+  const sim = simulerAchat(state, col, key, qte, g);
+  if (sim.qte === 0) {
+    const motifs = { 'sac plein': 'Sac plein.', 'étal vide': 'L’étal est vide.', credits: 'Pas assez de crédits.' };
+    return { ok: false, motif: motifs[sim.borne] || 'Rien à acheter à ce prix.', qte: 0, cout: 0 };
+  }
+  col.stock[key] = Math.max(0, (col.stock[key] || 0) - sim.qte);
+  state.player.credits -= sim.cout;
+  g.inventaire[key] = (g.inventaire[key] || 0) + sim.qte;
+  const negoc = meilleurCommercant(g.membres);
+  if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.5 + sim.qte * 0.3);
+  return { ok: true, qte: sim.qte, cout: sim.cout };
 }
 
 function vendre(state, col, key, qte, groupe) {
   const g = groupe || groupeActif(state);
+  const sim = simulerVente(state, col, key, qte, g);
+  if (sim.qte === 0) return { ok: false, motif: 'Rien à vendre.', qte: 0, gain: 0 };
+  col.stock[key] = (col.stock[key] || 0) + sim.qte;
+  g.inventaire[key] -= sim.qte;
+  state.player.credits += sim.gain;
   const negoc = meilleurCommercant(g.membres);
-  const hab = negoc ? comp(negoc, 'commerce') : 0;
-  const repu = state.player.reputation[col.faction] || 0;
-  let restant = Math.min(Math.floor(qte), g.inventaire[key] || 0);
-  let gain = 0;
-  let vendus = 0;
-  while (restant > 0) {
-    const p = prixJoueur(col, key, hab, repu, remiseDe(state, col.faction)).vente;
-    gain += p;
-    col.stock[key] = (col.stock[key] || 0) + 1;
-    vendus += 1;
-    restant -= 1;
-  }
-  if (vendus === 0) return { ok: false, motif: 'Rien à vendre.', qte: 0, gain: 0 };
-  gain = Math.round(gain);
-  g.inventaire[key] -= vendus;
-  state.player.credits += gain;
-  if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.5 + vendus * 0.3);
-  return { ok: true, qte: vendus, gain };
+  if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.5 + sim.qte * 0.3);
+  return { ok: true, qte: sim.qte, gain: sim.gain };
 }
 
 /** Capacité de portage d'un groupe. Ce qu'il porte, il le porte lui-même. */
@@ -7037,13 +7338,28 @@ function caravanesIci(state) {
 }
 
 /**
- * Détrousser une caravane. C'est rentable, c'est immédiat, et c'est la manière
- * la plus rapide de se faire haïr d'une faction — donc un vrai choix.
+ * Détrousser une caravane. C'est immédiat, et c'est la manière la plus rapide
+ * de se faire haïr d'une faction.
+ *
+ * Ce n'est pas rentable, et le commentaire l'a prétendu longtemps. Mesuré : une
+ * caravane porte une trentaine d'unités, quatre cent quarante crédits environ,
+ * et l'embuscade coûte vingt-deux points de réputation plus la rancune nommée
+ * des deux villes qui l'attendaient. Un bot qui prend tout ce qui croise sa
+ * route finit la partie à 3 957 crédits contre 5 246 pour le même bot qui
+ * laisse passer.
+ *
+ * Ce n'est pas un défaut : c'est une occasion, pas un métier. Ce qui l'empêche
+ * d'être un métier n'est pas le prix mais la géométrie — trois cent quatre-vingts
+ * caravanes circulent par partie, et il n'en passe que onze heures-caravane sur
+ * une case donnée en quatre mille heures, y compris sur la ville la mieux
+ * reliée. On ne peut pas non plus les suivre : elles franchissent une région en
+ * deux heures là où une colonne en met quatorze.
  */
-function attaquerCaravane(state, car, rng, log, combatContre, genererBande) {
+function attaquerCaravane(state, car, rng, log, combatContre, genererBande, groupe) {
   if (!state.world.caravanes.includes(car)) {
     return { ok: false, motif: 'La caravane est déjà loin.' };
   }
+  const g = groupe || groupeActif(state);
   const escorteTaille = Math.max(1, Math.min(6, Math.round(car.escorte / 9)));
   const bande = genererBande(rng, car.faction, escorteTaille, Math.min(2, Math.floor(state.temps / 2500)));
   bande.nom = `Escorte ${FACTIONS[car.faction].genitif}`;
@@ -7061,8 +7377,34 @@ function attaquerCaravane(state, car, rng, log, combatContre, genererBande) {
   }
 
   // Le butin, puis l'addition : la faction n'oubliera pas.
+  //
+  // On charge la marchandise ici, dans le sac de ceux qui viennent de se battre.
+  // Elle ne l'était nulle part : cette fonction se contentait de retourner
+  // `pris` à l'appelant, `main.js` relayait l'objet et l'interface affichait
+  // « Caravane détroussée » avant de le jeter. On gagnait l'embuscade, on
+  // encaissait les vingt-deux points de réputation et la rancune nommée des deux
+  // villes concernées — et l'on repartait les mains vides. Le pillage entier
+  // était une perte sèche, sans qu'aucun compteur ne le dise.
+  //
+  // Ce qu'on ne peut pas porter reste sur place : une colonne ne remporte pas
+  // cent unités d'alliage à dos d'homme, et c'est ce qui donne son prix à
+  // l'attelage.
   const pris = {};
-  for (const k of Object.keys(car.cargaison)) pris[k] = car.cargaison[k];
+  let laisse = 0;
+  const capacite = capacitePortage(state, g);
+  for (const k of Object.keys(car.cargaison)) {
+    const veut = car.cargaison[k] || 0;
+    if (veut <= 0) continue;
+    const libre = capacite - poidsInventaire(g.inventaire);
+    const poidsU = COMMODITIES[k].poids;
+    const max = poidsU > 0 ? Math.floor(libre / poidsU) : veut;
+    const q = Math.max(0, Math.min(veut, max));
+    if (q > 0) {
+      g.inventaire[k] = (g.inventaire[k] || 0) + q;
+      pris[k] = q;
+    }
+    laisse += veut - q;
+  }
   retirerCaravane(state.world, car);
 
   const rep = state.player.reputation;
@@ -7076,7 +7418,19 @@ function attaquerCaravane(state, car, rng, log, combatContre, genererBande) {
     }
   }
   state.stats.caravanesPillees = (state.stats.caravanesPillees || 0) + 1;
-  return { ok: true, gagne: true, pris };
+  if (log) {
+    const dit = Object.keys(pris).map(
+      (k) => `${pris[k]} ${COMMODITIES[k].nom.toLowerCase()}`).join(', ');
+    log({
+      type: 'caravane',
+      texte: dit
+        ? `Caravane détroussée : ${dit}${laisse > 0 ? ` — ${laisse} unités laissées sur place, faute de bras` : ''}.`
+        : 'Caravane détroussée, mais les sacs sont pleins : tout reste sur place.',
+      important: true,
+      regionId: car.regionId,
+    });
+  }
+  return { ok: true, gagne: true, pris, laisse };
 }
 
 // ===== src/factions.js ===============================================
@@ -7900,16 +8254,30 @@ function legiferer(world, key, t, log, ctx) {
   }
 
   // L'esclavage ne se vote pas par idéologie : on l'ouvre quand la caisse est
-  // vide et qu'on a un chef que ça n'empêche pas de dormir, on le referme
-  // quand le pays gronde ou qu'un autre chef arrive.
-  const veutOuvrir = !lois.esclavage && temp.humain < 0.85
-    && pays.caisse < 600 && pays.grogne < 0.4;
+  // vide et qu'on a un chef que ça n'empêche pas de dormir, on le referme quand
+  // un autre chef arrive, quand on n'en a plus besoin, ou quand ça coûte trop
+  // cher au-dehors.
+  //
+  // La première version exigeait en plus un pays calme — `grogne < 0.4` pour
+  // ouvrir, `grogne > 0.55` pour fermer. Mesuré sur soixante-douze factions en
+  // fin de partie : la caisse est vide dans 92 % des cas, le chef s'en accommode
+  // dans 31 %, et **le pays est calme dans 11 %** — grogne médiane 0,63. Les
+  // trois ensemble : 1 %, et zéro marché ouvert sur douze parties. La règle
+  // était contradictoire, puisqu'un pays gronde justement parce qu'il est
+  // ruiné : elle demandait la ruine et la sérénité en même temps. Tout ce qui
+  // pend à l'esclavage — le prix des captifs, l'estime qu'on y perd, les
+  // guerres d'abolition, le panneau de loi — n'était donc jamais atteignable.
+  //
+  // La grogne n'est plus une condition d'ouverture : elle en est la conséquence
+  // (+0,06 plus bas), ce qui était déjà son rôle. Elle ne referme le marché que
+  // lorsque le pays est réellement en train de se défaire.
+  const veutOuvrir = !lois.esclavage && temp.humain < 0.85 && pays.caisse < 600;
   // On ferme aussi le marché quand il coûte une guerre : c'est la façon la plus
   // nette dont la pression extérieure entre dans la politique intérieure.
   const attaquePourCa = guerresDe(world, key).some(
     (g) => g.but && g.but.type === 'abolition' && g.batailles >= 2);
   const veutFermer = lois.esclavage
-    && (temp.humain > 1.05 || pays.grogne > 0.55 || attaquePourCa);
+    && (temp.humain > 1.05 || pays.caisse > 2500 || pays.grogne > 0.8 || attaquePourCa);
   if (veutOuvrir || veutFermer) {
     lois.esclavage = veutOuvrir;
     changements.push(veutOuvrir
@@ -8755,17 +9123,25 @@ function lenteurPrisonniers(g) {
 }
 
 /**
- * Ce qu'on peut prendre après une victoire. On ne capture pas les morts, on ne
- * capture pas ce qu'on ne saurait pas garder, et on ne capture jamais l'Essaim
- * — on ne négocie pas avec ça, et personne n'en veut.
+ * Ce qu'on peut prendre après une victoire. On ne capture pas les morts, et l'on
+ * ne capture jamais l'Essaim — on ne négocie pas avec ça, et personne n'en veut.
+ *
+ * Rien n'interdit d'en prendre plus qu'on ne sait en garder. C'était le cas
+ * jusqu'ici — `capturables` refusait net au-delà de la capacité — et c'était une
+ * limite écrite, exactement ce que ce projet évite partout ailleurs : on peut
+ * acheter une dixième bête, bâtir un camp trop grand, porter trop lourd. Le
+ * modèle avait déjà le coût qui borne naturellement le nombre — ils mangent
+ * (`tickPrisonniers`), ils ralentissent (`lenteurPrisonniers`), et ceux que
+ * personne ne regarde s'évadent (`surveillanceManquante`) — mais on ne pouvait
+ * jamais entrer dans le régime où il s'applique.
+ *
+ * Conséquence mesurée : la voie du négrier n'avait aucun moyen de grandir. Une
+ * escouade de quatre gardait six captifs, pour toujours, quoi qu'elle achète ou
+ * apprenne. Toutes les autres voies montent en charge ; celle-là était plate.
  */
 function capturables(g, bande) {
   if (!bande || bande.faction === 'essaim') return [];
-  const place = Math.floor(capaciteGarde(g) - prisonniersDe(g).length);
-  if (place <= 0) return [];
-  return (bande.membres || [])
-    .filter((c) => estVivant(c) && !estDebout(c))
-    .slice(0, place);
+  return (bande.membres || []).filter((c) => estVivant(c) && !estDebout(c));
 }
 
 /**
@@ -8905,12 +9281,26 @@ function rancon(state, col, c) {
   return Math.min(Math.round(f.tresor * 0.15), Math.round(valeurCaptif(c) * 1.1));
 }
 
-/** Ce qu'un négrier en donne. Beaucoup, et c'est bien le problème. */
+/**
+ * Ce qu'un négrier en donne. Beaucoup, et c'est bien le problème.
+ *
+ * « Beaucoup » a longtemps été faux. À 1,9 fois la valeur, un homme se vendait
+ * 360 crédits — moins qu'une charrette à bras, trois fois moins qu'une brahmine.
+ * Mesuré au banc, la voie du négrier rapportait 4 750 crédits par partie et en
+ * coûtait près de 8 000 en travail non fait, en soins, en matériel perdu et en
+ * escouades éteintes : elle était strictement dominée par le travail honnête,
+ * ce qui n'est pas un choix moral, c'est un piège. Le coût dominant n'est pas
+ * l'estime perdue, c'est l'heure passée à chasser plutôt qu'à récolter.
+ *
+ * À 3,2, une prise paie mieux que l'heure qu'elle a coûtée — et le risque, les
+ * morts et le mépris redeviennent ce qui décide, au lieu d'être un supplément
+ * à une mauvaise affaire.
+ */
 function prixEsclave(state, col, c) {
   const loi = loiIci(state, col);
   if (!loi.esclavage) return 0;
   // Une ville sans loi paie moins : le marché y est moins organisé qu'ailleurs.
-  return Math.round(valeurCaptif(c) * (loi.sansLoi ? 1.4 : 1.9));
+  return Math.round(valeurCaptif(c) * (loi.sansLoi ? 2.3 : 3.2));
 }
 
 /** Ce qu'on peut faire de ce prisonnier, ici, avec les prix. */
@@ -9160,6 +9550,250 @@ function apaisementGeole(col) {
   // Chaque détenu est quelqu'un qui ne coupe plus les routes. L'effet sature :
   // vider la steppe de ses pillards ne la rend pas sûre pour autant.
   return Math.min(0.0025, n * 0.00025);
+}
+
+// ===== src/depouilles.js =============================================
+// Ce qu'on fait de ses morts.
+//
+// `justice.js` demande ce qu'on fait des gens qu'on n'a pas tués. Voici la
+// question jumelle, et elle est plus dure, parce qu'il s'agit des siens.
+//
+// Jusqu'ici un mort restait dans la colonne, avec la mention MORT à côté de son
+// nom, pour toujours. Il ne coûtait rien, ne pesait rien, ne posait aucune
+// question — alors que c'est le seul moment du jeu où l'escouade doit choisir
+// entre ce qui l'arrange et ce qu'elle se doit.
+//
+// Cinq réponses, et chacune se paie sur la cohésion, qui est l'âme de la bande
+// et qui commande son travail comme son combat :
+//
+//   Enterrer    on perd une journée et on ne gagne rien. La bande se resserre.
+//   Dépouiller  ses armes, son armure, ses greffes. Ça se fait, et ça se voit.
+//   Aux bêtes   de la biomasse. On ne le dira pas à sa famille.
+//   Manger      des rations. Il y a des hivers où la question se pose.
+//   Vendre      là où l'on achète déjà des hommes vivants, on prend les morts.
+//
+// Ce qui force la décision n'est écrit nulle part : un corps qu'on traîne
+// ralentit la colonne et pèse sur le moral de ceux qui le portent. On peut
+// garder ses morts trois semaines ; on n'en a simplement pas envie.
+
+
+/** Ce qu'un corps pèse sur la marche, et sur ceux qui le portent. */
+const LENTEUR_PAR_CORPS = 0.09;
+const MORAL_PAR_CORPS = 0.035;
+
+/** Ce que chaque issue fait à la cohésion de la bande. */
+const RITES = {
+  enterrer: { nom: 'Enterrer', cohesion: 4 },
+  depouiller: { nom: 'Dépouiller', cohesion: -3 },
+  betes: { nom: 'Donner aux bêtes', cohesion: -11 },
+  manger: { nom: 'Manger', cohesion: -24 },
+  organes: { nom: 'Vendre ce qui est encore bon', cohesion: -13 },
+};
+
+// ---------------------------------------------------------------------------
+// Les corps
+// ---------------------------------------------------------------------------
+
+/** Ceux qui sont morts et que la colonne porte encore. */
+function depouillesDe(g) {
+  return (g && g.membres ? g.membres : []).filter((c) => c.etat === 'mort');
+}
+
+/**
+ * Ce que traîner ses morts retire à la vitesse. Même courbe que l'attelage et
+ * les prisonniers : ça tend vers le pas sans jamais figer personne.
+ */
+function lenteurDepouilles(g) {
+  const n = depouillesDe(g).length;
+  if (!n) return 0;
+  const l = n * LENTEUR_PAR_CORPS;
+  return 1 - 1 / (1 + l);
+}
+
+/** Ce que leur présence retire au moral, par heure et par vivant. */
+function poidsMoral(g) {
+  return depouillesDe(g).length * MORAL_PAR_CORPS;
+}
+
+/** Ce qu'on récupère sur un corps : ses armes, son armure, ses greffes. */
+function effetsDe(c) {
+  const out = [];
+  if (c.equip) {
+    if (c.equip.arme) out.push(c.equip.arme);
+    if (c.equip.armure) out.push(c.equip.armure);
+    for (const m of Object.keys(c.equip.greffes || {})) out.push(c.equip.greffes[m]);
+  }
+  return out.filter((k) => ITEMS[k]);
+}
+
+/** Ce que le corps rend en biomasse. Un homme, c'est une soixantaine de kilos. */
+function biomasseDe() {
+  return 26;
+}
+
+/** Ce que le corps rend en rations, une fois qu'on a franchi le pas. */
+function rationsDe() {
+  return 18;
+}
+
+/**
+ * Ce qu'un trafiquant en donne. On ne vend pas des organes n'importe où : là où
+ * la loi permet d'acheter des hommes vivants, elle ne s'embarrasse pas des
+ * morts — et une ville sans drapeau ne demande rien à personne.
+ */
+function prixOrganes(state, col, c) {
+  if (!col || col.ruine) return 0;
+  const loi = loiIci(state, col);
+  if (!loi.esclavage) return 0;
+  // Un corps frais et entier vaut quelque chose ; un corps criblé, beaucoup
+  // moins. On lit ce qui lui reste de parties intactes.
+  let entier = 0;
+  let total = 0;
+  for (const k of Object.keys(c.corps || {})) {
+    total++;
+    if (!c.corps[k].perdu) entier++;
+  }
+  const etat = total ? entier / total : 0;
+  const greffes = Object.keys((c.equip && c.equip.greffes) || {}).length;
+  return Math.round((90 + greffes * 120) * etat * (loi.sansLoi ? 0.8 : 1));
+}
+
+/** Ce qu'on peut faire de ce corps, ici, avec ce qu'on a. */
+function ritesPour(state, g, c) {
+  const col = colonieDe(state.world, g.regionId);
+  const out = [];
+  out.push({
+    key: 'enterrer',
+    nom: 'Enterrer',
+    aide: 'Une journée de perdue, rien en échange. La bande se resserre.',
+    gain: 0,
+  });
+  const effets = effetsDe(c);
+  if (effets.length) {
+    out.push({
+      key: 'depouiller',
+      nom: 'Reprendre son équipement',
+      aide: `${effets.map((k) => ITEMS[k].nom).join(', ')}. Ça se fait. Ça se voit aussi.`,
+      gain: 0,
+    });
+  }
+  if ((g.betes || []).length) {
+    out.push({
+      key: 'betes',
+      nom: 'Donner aux bêtes',
+      aide: `${biomasseDe()} de biomasse. On ne le dira pas à sa famille.`,
+      gain: 0,
+    });
+  }
+  out.push({
+    key: 'manger',
+    nom: 'Manger',
+    aide: `${rationsDe()} rations. Il y a des hivers où la question se pose.`,
+    gain: 0,
+  });
+  const prix = col ? prixOrganes(state, col, c) : 0;
+  if (prix > 0) {
+    out.push({
+      key: 'organes',
+      nom: 'Vendre ce qui est encore bon',
+      aide: 'Ici, on achète des hommes vivants. Les morts ne posent pas de problème.',
+      gain: prix,
+    });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Décider
+// ---------------------------------------------------------------------------
+
+function retirerDuGroupe(g, c) {
+  const i = g.membres.findIndex((x) => x.id === c.id);
+  if (i >= 0) g.membres.splice(i, 1);
+}
+
+/**
+ * Disposer d'un corps. Toutes les issues passent par ici, parce que toutes
+ * coûtent quelque chose à ceux qui restent.
+ *
+ * `depouiller` est la seule qui ne referme rien : on reprend le matériel, le
+ * corps est toujours là, et il faudra bien en décider.
+ */
+function disposerCorps(state, g, id, quoi, log) {
+  const c = depouillesDe(g).find((x) => x.id === id);
+  if (!c) return { ok: false, motif: 'Il n’est plus là.' };
+  const rite = RITES[quoi];
+  if (!rite) return { ok: false, motif: 'On ne fait pas ça.' };
+  const col = colonieDe(state.world, g.regionId);
+  const dire = (texte, important = true) => {
+    if (log) {
+      log({
+        type: 'depouille', texte, important, regionId: g.regionId, groupe: g.id,
+      });
+    }
+  };
+  const coute = () => {
+    g.cohesion = Math.max(0, Math.min(100, (g.cohesion ?? 55) + rite.cohesion));
+  };
+
+  if (quoi === 'depouiller') {
+    const effets = effetsDe(c);
+    if (!effets.length) return { ok: false, motif: 'Il n’avait plus rien.' };
+    for (const k of effets) if (g.objets.length < 30) g.objets.push(k);
+    c.equip = { arme: null, armure: null, greffes: {} };
+    coute();
+    dire(`On reprend ce que portait ${c.nom} : ${effets.map((k) => ITEMS[k].nom).join(', ')}.`);
+    return { ok: true, effets };
+  }
+
+  if (quoi === 'betes') {
+    if (!(g.betes || []).length) return { ok: false, motif: 'Aucune bête à nourrir.' };
+    g.inventaire.biomasse = (g.inventaire.biomasse || 0) + biomasseDe();
+    retirerDuGroupe(g, c);
+    coute();
+    dire(`${c.nom} a fini dans les auges. Personne n’a rien dit.`);
+    return { ok: true, biomasse: biomasseDe() };
+  }
+
+  if (quoi === 'manger') {
+    g.inventaire.rations = (g.inventaire.rations || 0) + rationsDe();
+    retirerDuGroupe(g, c);
+    coute();
+    // Ce n'est pas une transaction : c'est quelque chose que la bande porte.
+    for (const autre of g.membres) {
+      if (autre.etat === 'mort') continue;
+      autre.moral = Math.max(0, (autre.moral ?? 50) - 12);
+    }
+    state.stats.mangesDesSiens = (state.stats.mangesDesSiens || 0) + 1;
+    dire(`On a mangé ${c.nom}. On n’en parlera plus jamais.`);
+    return { ok: true, rations: rationsDe() };
+  }
+
+  if (quoi === 'organes') {
+    if (!col || col.ruine) return { ok: false, motif: 'Il faut être en ville.' };
+    const prix = prixOrganes(state, col, c);
+    if (prix <= 0) return { ok: false, motif: 'On n’achète pas ça ici.' };
+    state.player.credits += prix;
+    retirerDuGroupe(g, c);
+    coute();
+    // Ça se sait, comme pour les vivants qu'on vend : auprès de tous ceux qui
+    // l'interdisent chez eux.
+    for (const k of DIPLO_FACTIONS) {
+      if (k === col.faction) continue;
+      if (loisDe(state.world, k).esclavage) continue;
+      state.player.reputation[k] = Math.max(-100, (state.player.reputation[k] || 0) - 5);
+    }
+    state.stats.organesVendus = (state.stats.organesVendus || 0) + 1;
+    dire(`Ce qui était encore bon chez ${c.nom} est parti à ${col.nom} pour ${prix} cr.`);
+    return { ok: true, prix };
+  }
+
+  // Enterrer.
+  retirerDuGroupe(g, c);
+  coute();
+  state.stats.enterres = (state.stats.enterres || 0) + 1;
+  dire(`${c.nom} est en terre${col ? `, près de ${col.nom}` : ''}. On a pris le temps qu’il fallait.`);
+  return { ok: true };
 }
 
 // ===== src/secteur.js ================================================
@@ -10599,13 +11233,17 @@ function visiteMarchand(state, rng, log) {
 
   if (vendu || achete) base.marchands = (base.marchands || 0) + 1;
   if (log && (vendu || achete)) {
+    // Pas discret quand il emporte quelque chose : c'est la réponse à « mon
+    // entrepôt s'est vidé et je ne sais pas pourquoi ». Le colporteur prend le
+    // surplus au-delà de la réserve, et il le prenait en silence.
     log({
       type: 'marchand',
       texte: `Un colporteur s’arrête à ${base.nom}`
-        + `${vendu ? ` : il prend ${vendu} unités pour ${credits} cr` : ''}`
+        + `${vendu ? ` : il prend ${vendu} unités du surplus pour ${credits} cr` : ''}`
         + `${achete ? `${vendu ? ' et laisse' : ' : il laisse'} ${achete} unités` : ''}.`,
       regionId: base.regionId,
-      discret: true,
+      important: vendu >= 40,
+      discret: vendu === 0,
     });
   }
   return { vendu, achete, credits };
@@ -10685,6 +11323,269 @@ function retirer(state, key, qte, capaciteLibre, groupe) {
   base.stock[key] -= n;
   g.inventaire[key] = (g.inventaire[key] || 0) + n;
   return { ok: true, qte: n };
+}
+
+// ===== src/coffres.js ================================================
+// Un coffre en ville : de la place qui ne marche pas avec vous.
+//
+// Tout ce qu'on possède tenait dans deux endroits : le sac, borné par ce que les
+// gens portent, et l'entrepôt de l'avant-poste, qui est à un seul endroit du
+// monde et qu'on n'a pas forcément. Entre les deux, rien — et le banc a chiffré
+// ce que ça coûte : **34 % de la cargaison d'une caravane détroussée reste sur
+// place faute de bras**, un marchand ne charge que ce que son escouade tient, et
+// l'on brade en ville ce qu'on aurait gardé.
+//
+// Deux régimes, et c'est là que « posséder » veut enfin dire quelque chose :
+//
+//   Louer    partout où il y a une ville. Un loyer tous les trente jours,
+//            prélevé tout seul. Qui ne peut plus payer voit le bailleur se
+//            servir dans le coffre — il ne jette rien, il se rembourse.
+//   Acheter  seulement là où l'on vous laisse posséder : chez une faction qui
+//            vous estime assez, ou dans une ville libre, où personne n'est en
+//            position d'interdire quoi que ce soit.
+//
+// Le contenu appartient au joueur, pas au monde : il vit dans `state.player`,
+// comme les crédits. Une ville qui tombe ne le fait pas disparaître pour autant
+// — voir `tickCoffres`, on ne prend pas les gens en traître.
+
+
+/** Ce qu'un coffre tient, en kilos. */
+const CAPACITE_LOUEE = 140;
+const CAPACITE_ACHETEE = 260;
+
+/** Le loyer, et sa période. */
+const LOYER = 70;
+const PERIODE_LOYER = 24 * 30;
+
+/** Ce que coûte un coffre qu'on achète. */
+const PRIX_COFFRE = 1300;
+
+/** L'estime qu'il faut pour qu'une faction vous laisse posséder chez elle. */
+const ESTIME_PROPRIETE = 40;
+
+// ---------------------------------------------------------------------------
+// Lecture
+// ---------------------------------------------------------------------------
+
+function tousLesCoffres(state) {
+  if (!state.player.coffres) state.player.coffres = {};
+  return state.player.coffres;
+}
+
+/** Le coffre qu'on tient dans cette ville, s'il y en a un. */
+function coffreDe(state, colId) {
+  return tousLesCoffres(state)[colId] || null;
+}
+
+function capaciteCoffre(coffre) {
+  if (!coffre) return 0;
+  return coffre.achete ? CAPACITE_ACHETEE : CAPACITE_LOUEE;
+}
+
+function placeCoffre(coffre) {
+  if (!coffre) return { pris: 0, total: 0, libre: 0 };
+  const pris = poidsInventaire(coffre.contenu);
+  const total = capaciteCoffre(coffre);
+  return { pris, total, libre: Math.max(0, total - pris) };
+}
+
+/** Tous les coffres, avec leur ville, pour l'affichage. */
+function coffresConnus(state) {
+  const out = [];
+  for (const id of Object.keys(tousLesCoffres(state))) {
+    const col = state.world.colonies.find((c) => c.id === id);
+    out.push({ colId: id, col, coffre: state.player.coffres[id] });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Ouvrir un coffre
+// ---------------------------------------------------------------------------
+
+function peutLouer(state, col) {
+  if (!col || col.ruine) return { ok: false, motif: 'Il faut une ville debout.' };
+  if (coffreDe(state, col.id)) return { ok: false, motif: 'Vous en avez déjà un ici.' };
+  // Un Domaine ne loue pas non plus : tout appartient au seigneur.
+  const reg = loiIci(state, col).regime;
+  if (reg.propriete === null && reg.ecole === 'maison') {
+    return { ok: false, motif: `${reg.nom} : on n’y loue rien à un étranger.` };
+  }
+  if (state.player.credits < LOYER) {
+    return { ok: false, motif: `Le premier mois se paie d’avance : ${LOYER} cr.` };
+  }
+  return { ok: true };
+}
+
+/**
+ * Là où l'on vous laisse posséder.
+ *
+ * Une ville libre ne demande rien à personne — il n'y a pas d'autorité pour
+ * refuser. Une faction, elle, ne vend pas de murs à un inconnu : il faut qu'elle
+ * vous estime. C'est la première fois qu'un régime politique change ce qu'on
+ * peut faire dans une ville plutôt que la couleur de sa fiche.
+ */
+function peutAcheter(state, col) {
+  if (!col || col.ruine) return { ok: false, motif: 'Il faut une ville debout.' };
+  const c = coffreDe(state, col.id);
+  if (c && c.achete) return { ok: false, motif: 'Celui-ci est déjà à vous.' };
+  // C'est le régime qui décide de ce qu'on peut posséder chez eux — pas un
+  // seuil en dur. Voir REGIMES dans lois.js.
+  const reg = loiIci(state, col).regime;
+  if (reg.propriete === null) {
+    return { ok: false, motif: `${reg.nom} : on ne possède rien ici. ${reg.desc}` };
+  }
+  if (col.faction) {
+    const repu = state.player.reputation[col.faction] || 0;
+    if (repu < reg.propriete) {
+      return {
+        ok: false,
+        motif: `On ne vend pas de murs à un inconnu : estime ${Math.round(repu)} / ${reg.propriete}.`,
+      };
+    }
+  }
+  if (state.player.credits < PRIX_COFFRE) {
+    return { ok: false, motif: `Il manque ${PRIX_COFFRE - state.player.credits} cr.` };
+  }
+  return { ok: true };
+}
+
+function creer(state, col, achete) {
+  const coffres = tousLesCoffres(state);
+  const existant = coffres[col.id];
+  coffres[col.id] = {
+    nom: col.nom,
+    regionId: col.regionId,
+    achete,
+    // Jusqu'à quand le loyer est payé. Sans objet pour un coffre acheté.
+    jusqu: achete ? null : state.temps + PERIODE_LOYER,
+    contenu: existant ? existant.contenu : {},
+  };
+  return coffres[col.id];
+}
+
+function louerCoffre(state, col, log) {
+  const v = peutLouer(state, col);
+  if (!v.ok) return v;
+  state.player.credits -= LOYER;
+  creer(state, col, false);
+  if (log) {
+    log({
+      type: 'coffre',
+      texte: `Un coffre loué à ${col.nom} : ${LOYER} cr le mois, ${CAPACITE_LOUEE} kg.`,
+      important: true,
+      regionId: col.regionId,
+    });
+  }
+  return { ok: true };
+}
+
+function acheterCoffre(state, col, log) {
+  const v = peutAcheter(state, col);
+  if (!v.ok) return v;
+  state.player.credits -= PRIX_COFFRE;
+  creer(state, col, true);
+  if (log) {
+    log({
+      type: 'coffre',
+      texte: `Vous êtes propriétaire à ${col.nom} : ${CAPACITE_ACHETEE} kg, et plus de loyer.`,
+      important: true,
+      regionId: col.regionId,
+    });
+  }
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Y mettre, en reprendre
+// ---------------------------------------------------------------------------
+
+function deposerAuCoffre(state, col, key, qte, groupe) {
+  const g = groupe || state.player.groupes[0];
+  const coffre = coffreDe(state, col && col.id);
+  if (!coffre) return { ok: false, motif: 'Aucun coffre ici.' };
+  if (g.regionId !== col.regionId) return { ok: false, motif: 'Il faut être sur place.' };
+  const dispo = Math.floor(g.inventaire[key] || 0);
+  const place = placeCoffre(coffre);
+  const poidsU = COMMODITIES[key].poids;
+  const tient = poidsU > 0 ? Math.floor(place.libre / poidsU) : dispo;
+  const n = Math.max(0, Math.min(Math.floor(qte), dispo, tient));
+  if (n <= 0) return { ok: false, motif: place.libre <= 0 ? 'Le coffre est plein.' : 'Rien à y mettre.' };
+  g.inventaire[key] -= n;
+  coffre.contenu[key] = (coffre.contenu[key] || 0) + n;
+  return { ok: true, qte: n };
+}
+
+function retirerDuCoffre(state, col, key, qte, groupe) {
+  const g = groupe || state.player.groupes[0];
+  const coffre = coffreDe(state, col && col.id);
+  if (!coffre) return { ok: false, motif: 'Aucun coffre ici.' };
+  if (g.regionId !== col.regionId) return { ok: false, motif: 'Il faut être sur place.' };
+  const dispo = Math.floor(coffre.contenu[key] || 0);
+  const n = Math.max(0, Math.min(Math.floor(qte), dispo));
+  if (n <= 0) return { ok: false, motif: 'Il n’y en a pas.' };
+  coffre.contenu[key] = dispo - n;
+  g.inventaire[key] = (g.inventaire[key] || 0) + n;
+  return { ok: true, qte: n };
+}
+
+// ---------------------------------------------------------------------------
+// Le loyer court
+// ---------------------------------------------------------------------------
+
+/**
+ * Le loyer tombe tout seul, et le bailleur se rembourse sur ce qu'il garde.
+ *
+ * Il ne jette rien et ne confisque pas tout : il prend de quoi couvrir le mois,
+ * au prix du gros, et l'on garde le reste. Un joueur parti trois saisons ne
+ * revient donc pas à un coffre vide sans savoir pourquoi — il revient à un
+ * coffre entamé, et le journal dit de combien.
+ */
+function tickCoffres(state, log) {
+  const coffres = tousLesCoffres(state);
+  for (const id of Object.keys(coffres)) {
+    const coffre = coffres[id];
+    if (coffre.achete) continue;
+    if (state.temps < coffre.jusqu) continue;
+    coffre.jusqu = state.temps + PERIODE_LOYER;
+    if (state.player.credits >= LOYER) {
+      state.player.credits -= LOYER;
+      if (log) {
+        log({
+          type: 'coffre',
+          texte: `Loyer du coffre de ${coffre.nom} : ${LOYER} cr.`,
+          discret: true,
+        });
+      }
+      continue;
+    }
+    // Pas de quoi payer : il se sert, au prix du gros — et jamais plus de la
+    // moitié de ce qu'il garde. Un mois impayé ne vide pas un coffre : sinon la
+    // sanction est sans commune mesure avec la dette, et l'on perd trois mois de
+    // butin pour soixante-dix crédits.
+    let du = LOYER;
+    let pris = 0;
+    for (const k of COMMODITY_KEYS) {
+      if (du <= 0) break;
+      const q = Math.floor(coffre.contenu[k] || 0);
+      if (q <= 0) continue;
+      const unite = COMMODITIES[k].prix * 0.5;
+      const n = Math.min(Math.floor(q / 2), Math.ceil(du / unite));
+      if (n <= 0) continue;
+      coffre.contenu[k] = q - n;
+      du -= n * unite;
+      pris += n;
+    }
+    if (log) {
+      log({
+        type: 'coffre',
+        texte: pris
+          ? `Loyer impayé à ${coffre.nom} : le bailleur a pris ${pris} unités dans le coffre.`
+          : `Loyer impayé à ${coffre.nom}, et il n’y avait rien à prendre. On vous attend.`,
+        important: true,
+      });
+    }
+  }
 }
 
 // ===== src/contrats.js ===============================================
@@ -11191,6 +12092,25 @@ function combatContre(state, bande, log, ctx, groupe) {
     viserChefs: !!state.player.politique.viserChefs,
   });
 
+  // On ne repart pas en marche avec un homme sur les bras.
+  //
+  // Une victoire ne touchait pas à l'ordre en cours : on gagnait le combat et la
+  // colonne reprenait sa route, blessés compris, jusqu'à la rencontre suivante —
+  // sans qu'on ait eu l'occasion de décider quoi que ce soit. Seule une défaite
+  // arrêtait la marche. C'est la moitié du problème que pose une route longue :
+  // on ne peut pas réagir à ce qui arrive dessus.
+  if (state.player.politique.halte && g.ordre && g.ordre.type === 'voyage'
+    && g.membres.some((c) => c.etat === 'ko')) {
+    g.ordre = { type: 'repos' };
+    log({
+      type: 'ordre',
+      texte: `${g.nom} : quelqu’un est à terre, la marche s’arrête ici.`,
+      important: true,
+      regionId: g.regionId,
+      groupe: g.id,
+    });
+  }
+
   const lieu = nomRegion(state.world, g.regionId);
   let texte;
   if (res.vainqueur === 'A') {
@@ -11366,6 +12286,22 @@ function bandeLocale(state, ctx, groupe) {
     state.player.contrats.filter((c) => c.type === 'prime').map((c) => c.cibleFaction)
   );
 
+  // Une guerre déclarée change ce qu'on croise. Sur les terres d'une faction en
+  // guerre contre celle qu'on sert, ce ne sont plus des pillards qui sortent du
+  // décor : ce sont ses hommes, et ils vous cherchent.
+  //
+  // Sans ça, l'ordre de frappe était une loterie truquée. Mesuré au banc : un
+  // bot qui laisse tout tomber pour aller camper en pays ennemi pendant toute
+  // la durée de l'ordre acquiert quatre victoires sur les cinquante-deux
+  // demandées — parce que même chez eux, trois rencontres hostiles sur quatre
+  // étaient des bandits. On ratait un ordre sur dix reçus, et rater coûte de
+  // l'estime : la guerre démolissait la carrière de ceux qui la faisaient.
+  const mienne = g.allegeance && g.allegeance.faction;
+  const guerreIci = !!(mienne && dominante && dominante !== mienne
+    && state.world.guerres.some(
+      (w) => (w.a === mienne && w.b === dominante) || (w.b === mienne && w.a === dominante)
+    ));
+
   let faction;
   if (dominante && repu < -25 && rng.chance(0.6)) faction = dominante;
   else {
@@ -11373,7 +12309,9 @@ function bandeLocale(state, ctx, groupe) {
       ['bandits', 3 + (vises.has('bandits') ? 3 : 0)],
       ['essaim', state.world.regions[regionId].biome === 'plastique' ? 2.2 : 1.1],
     ];
-    if (dominante) poids.push([dominante, 1.4 + (vises.has(dominante) ? 3 : 0)]);
+    if (dominante) {
+      poids.push([dominante, (guerreIci ? 7 : 1.4) + (vises.has(dominante) ? 3 : 0)]);
+    }
     // Une faction visée par contrat peut aussi croiser la route hors de chez elle.
     for (const v of vises) {
       if (v !== 'bandits' && v !== dominante && FACTIONS[v]) poids.push([v, 2.2]);
@@ -11547,10 +12485,14 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       return true;
     }
     case 'errant': {
-      const max = tailleEscouadeMax(state.base);
-      const vivants = tousLesMembres(state).filter(estVivant).length;
+      // On n'oppose plus de plafond au nombre : engager quelqu'un au banc d'une
+      // ville n'en avait jamais, et un errant qu'on paie n'est pas différent.
+      // Ce qui borne une escouade, c'est ce qu'elle mange, la cohésion qui
+      // s'étiole au-delà du noyau et le monde qui la remarque de plus loin —
+      // pas une règle qui refuse. Le baraquement et les gens sociables agrandis-
+      // sent ce noyau : c'est là qu'est la décision.
       const prix = rng.irange(120, 420);
-      if (!state.player.politique.recruter || vivants >= max || state.player.credits < prix) {
+      if (!state.player.politique.recruter || state.player.credits < prix) {
         log({
           type: 'rencontre',
           texte: `Un errant propose ses services (${prix} cr). Décliné.`,
@@ -12150,6 +13092,8 @@ function avancerVoyage(state, g, log, ctx) {
   // Des hommes qu'on mène de force ne marchent pas au pas de ceux qui suivent
   // de leur plein gré. C'est ce qui rend une capture coûteuse à ramener.
   vitesse *= 1 - lenteurPrisonniers(g);
+  // Ses morts, qu'on porte tant qu'on n'en a rien décidé.
+  vitesse *= 1 - lenteurDepouilles(g);
   vitesse = Math.max(0.15, vitesse);
 
   o.progres += vitesse;
@@ -12306,6 +13250,9 @@ function tickGroupe(state, g, log, ctx) {
     const social = n ? apport / n : -8; // seul : personne sur qui compter
     const cible = Math.max(0, Math.min(plafondCohesion(state, g), g.cohesion + social * 0.25));
     c.moral = Math.max(0, Math.min(100, c.moral + (cible - c.moral) * 0.012 * (mods(c).moral || 1)));
+    // Porter ses morts pèse, tant qu'on n'en a rien décidé. C'est ce qui force
+    // la question sans qu'aucune règle ne l'impose. Voir depouilles.js.
+    if (c.etat !== 'mort') c.moral = Math.max(0, c.moral - poidsMoral(g));
   }
 
   // --- Nourriture : on mange dès qu'on a faim et de quoi. Chaque groupe puise
@@ -12371,6 +13318,10 @@ function tickGroupe(state, g, log, ctx) {
             log({
               type: 'ordre',
               texte: `${g.nom} : plus de rations, entraînement interrompu.`,
+              // Un ordre qui s'annule tout seul doit se voir : c'est le genre de
+              // chose qu'on découvre trois jours plus tard en se demandant
+              // pourquoi personne ne progresse.
+              important: true,
               regionId: g.regionId,
               groupe: g.id,
             });
@@ -12552,6 +13503,145 @@ function tickSquad(state, log, ctx) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Ce que la colonne consomme, et pourquoi
+// ---------------------------------------------------------------------------
+
+/**
+ * Le détail de ce qui vide le sac, par jour et par poste.
+ *
+ * Les rations s'évaporaient sans explication : rien nulle part ne disait que
+ * l'entraînement en avale une par heure pour deux personnes — quarante-huit par
+ * jour pour une escouade de quatre, de loin le premier poste — ni que chaque
+ * prisonnier mange, ni que les bêtes broutent de la biomasse. Une comptabilité
+ * muette est indiscernable d'un bug, et c'est bien ce qu'on nous a rapporté.
+ *
+ * Fonction pure : elle relit les mêmes règles que `tickGroupe` sans rien
+ * modifier. Tout est exprimé en unités par jour de jeu.
+ */
+function consommationGroupe(state, g) {
+  const vivants = vivantsDe(g);
+  const debout = deboutDe(g);
+
+  // Manger : la faim monte à l'effort, et quarante-cinq points de faim valent
+  // une ration. La nuit ne compte pas comme du travail.
+  const type = (g.ordre && g.ordre.type) || 'repos';
+  const forcee = !!(g.ordre && g.ordre.forcee);
+  let faimParJour = 0;
+  for (const c of vivants) {
+    const eff = estDebout(c) ? effortDe(type, false, forcee) : 0;
+    const effNuit = estDebout(c) ? effortDe(type, true, forcee) : 0;
+    // Deux tiers de jour, un tiers de nuit : c'est le rythme du tick.
+    const parHeure = ((0.55 + 0.25 * eff) * 16 + (0.55 + 0.25 * effNuit) * 8) / 24;
+    faimParJour += parHeure * 24 * (mods(c).faim || 1);
+  }
+  const escouade = faimParJour / 45;
+
+  // Les prisonniers mangent sur le sac, qu'on les nourrisse ou non.
+  const prisonniers = prisonniersDe(g).length * RATION_PRISONNIER;
+
+  // L'entraînement : une ration par heure pour deux personnes. C'est le poste
+  // que personne ne voyait, et c'est le plus gros de tous.
+  const entraine = debout.filter(
+    (c) => (c.tache ? c.tache.type : type) === 'entrainement'
+  ).length;
+  const entrainement = entraine ? Math.ceil(entraine / 2) * 24 : 0;
+
+  return {
+    escouade,
+    prisonniers,
+    entrainement,
+    rations: escouade + prisonniers + entrainement,
+    // Les bêtes ne mangent pas de rations : elles broutent ce que personne ne
+    // mange. On le dit quand même, c'est un stock qui baisse.
+    biomasse: appetitAttelage(g) * 24,
+  };
+}
+
+/** Combien de jours la colonne tient sur ce qu'elle porte, au rythme actuel. */
+function autonomie(state, g) {
+  const c = consommationGroupe(state, g);
+  if (c.rations <= 0) return Infinity;
+  return (g.inventaire.rations || 0) / c.rations;
+}
+
+/**
+ * Ce que cette colonne vaut, en chiffres agrégés.
+ *
+ * « Est-ce que plusieurs membres additionnent leur travail ? » n'avait aucune
+ * réponse à l'écran. Elle est oui — `recolter` somme la contribution de chacun —
+ * mais rien ne le montrait, et l'on ne pouvait pas juger si détacher deux
+ * personnes valait le coup.
+ *
+ * Les rendements sont recalculés ici plutôt que partagés avec `recolter` : cette
+ * boucle-là tire le hasard par personne et par marchandise, et la factoriser
+ * changerait l'ordre de tirage, donc toutes les parties déjà mesurées. On mime
+ * la même formule avec un aléa moyen de 1, et le commentaire est le contrat.
+ */
+function apercuEscouade(state, g) {
+  const debout = deboutDe(g);
+  const type = (g.ordre && g.ordre.type) || 'repos';
+
+  // Récolte attendue pour l'ordre en cours, sur une journée de seize heures de
+  // clarté — la nuit, on ne travaille pas.
+  let parJour = 0;
+  const detail = {};
+  const filtre = FILTRES[type];
+  if (filtre !== undefined && debout.length) {
+    const r = state.world.regions[g.regionId];
+    const biome = BIOMES[r.biome];
+    const posture = POSTURES[state.player.posture] || POSTURES.neutre;
+    const skill = SKILL_ORDRE[type];
+    const climat = conditions(state.world, state.temps);
+    const coh = rendementCohesion(g);
+    const rendements = Object.assign({}, biome.yields);
+    if (type === 'chasse') {
+      rendements.biomasse = Math.max(rendements.biomasse || 0, r.biome === 'relais' ? 0.05 : 0.18);
+    }
+    for (const c of debout) {
+      const habilete = 0.45 + comp(c, skill) / 115;
+      for (const k of Object.keys(rendements)) {
+        if (filtre && !filtre.includes(k)) continue;
+        const q = rendements[k] * r.richesse * habilete * posture.rendement
+          * (1 - r.fouille) * climat.rendement(k) * coh;
+        detail[k] = (detail[k] || 0) + q * 16;
+        parJour += q * 16;
+      }
+    }
+  }
+
+  // Vitesse : celle du plus lent, alourdie par tout ce qu'on traîne.
+  let vitesse = Infinity;
+  for (const c of debout) vitesse = Math.min(vitesse, 0.5 + comp(c, 'endurance') / 90);
+  if (!Number.isFinite(vitesse)) vitesse = 0;
+  const cap = Math.max(1, capacitePortage(state, g));
+  const charge = poidsInventaire(g.inventaire) / cap;
+  vitesse *= 1 - Math.min(0.55, Math.max(0, charge - 0.6) * 0.9);
+  vitesse *= 1 - Math.min(0.5, g.membres.filter((c) => c.etat === 'ko').length * 0.18);
+  vitesse *= 1 - lenteurAttelage(g);
+  vitesse *= 1 - lenteurPrisonniers(g);
+  // Ses morts, qu'on porte tant qu'on n'en a rien décidé.
+  vitesse *= 1 - lenteurDepouilles(g);
+  vitesse = Math.max(0.15, vitesse);
+  const coutIci = coutTraversee(state.world, g.regionId,
+    { reductionVoyage: (state.base.recherche.logistique || 0) * 0.06 });
+
+  return {
+    debout: debout.length,
+    vivants: vivantsDe(g).length,
+    recolteParJour: parJour,
+    recolteDetail: detail,
+    ordre: type,
+    // Combien d'heures pour franchir une région comparable à celle-ci.
+    heuresParRegion: vitesse > 0 ? coutIci / vitesse : Infinity,
+    charge,
+    garde: capaciteGarde(g),
+    prisonniers: prisonniersDe(g).length,
+    attelage: betesDe(g).length,
+    conduite: conduite(g),
+  };
+}
+
 // ===== src/chronique.js ==============================================
 // Ce que la partie a fait de vous.
 //
@@ -12603,13 +13693,46 @@ const RENOMMEES = [
     key: 'seigneur',
     nom: 'Seigneur de guerre',
     dit: 'On compte vos batailles plus facilement que vos années.',
-    quand: (f) => f.combatsGagnes >= 40 && f.combat >= 25,
+    // On regarde le meilleur bras de la colonne, pas la moyenne de la troupe.
+    //
+    // La moyenne était le blocage, pas les quarante victoires : elle est tirée
+    // vers le bas par les recrues fraîches qui remplacent les vétérans morts, et
+    // le banc la mesure entre 15 et 18 quelle que soit la façon de jouer — jamais
+    // 25. Les meilleurs bretteurs, eux, montent à 37 ou 44. Un chef de guerre se
+    // juge à son arme, pas à la moyenne de ses hommes.
+    quand: (f) => f.combatsGagnes >= 40 && f.meilleurCombat >= 25,
+  },
+  {
+    key: 'bienfaiteur',
+    nom: 'Bienfaiteur',
+    dit: 'Des gens vous doivent quelque chose, et s’en souviennent.',
+    // Au-dessus du bâtisseur et de l'officier, et ce n'est pas de la morale :
+    // c'est de la fréquence. Mesuré sur cent vingt parties, quatre façons de
+    // jouer, un camp de douze habitants arrive dans deux parties sur cinq et un
+    // grade d'officier dans une sur trois — les deux presque sans le vouloir.
+    // Six personnes qui se souviennent de vous, une partie sur quatre pour qui
+    // en fait son métier. Un titre qui se mérite ne doit pas être masqué par un
+    // titre qui s'attrape.
+    //
+    // Le seuil était à douze, posé sans mesure — rien n'avait jamais joué cette
+    // voie. Mesurée enfin, sur soixante parties d'un bot qui ne fait que ça :
+    // médiane trois services, neuvième décile sept, record quatorze. Douze,
+    // c'était une partie sur soixante ; six, c'est une sur quatre, ce qui est le
+    // taux des autres titres pour qui les vise.
+    quand: (f) => f.services >= 6,
   },
   {
     key: 'geolier',
     nom: 'Chasseur de primes',
     dit: 'Les geôles de la région se sont remplies de ce que vous y avez mis.',
-    quand: (f) => f.captifsLivres >= 15,
+    // Vingt-cinq, pas quinze, et sous le bienfaiteur.
+    //
+    // Livrer un brigand est ce que tout le monde fait de ses prisonniers faute
+    // de mieux : à quinze, le titre tombait dans une partie sur quatre quelle
+    // que soit la façon de jouer — il nommait une habitude, pas un choix, et il
+    // masquait des titres qu'on avait cherchés. Vingt-cinq est le neuvième
+    // décile de ce qui arrive tout seul.
+    quand: (f) => f.captifsLivres >= 25,
   },
   {
     key: 'batisseur',
@@ -12628,12 +13751,6 @@ const RENOMMEES = [
     nom: 'Maison marchande',
     dit: 'Vous avez fait fortune sans qu’on ait à vous craindre.',
     quand: (f) => f.credits >= 6000 && f.combatsGagnes < 25,
-  },
-  {
-    key: 'bienfaiteur',
-    nom: 'Bienfaiteur',
-    dit: 'Des gens vous doivent quelque chose, et s’en souviennent.',
-    quand: (f) => f.services >= 12,
   },
   {
     key: 'ferrailleur',
@@ -12666,10 +13783,13 @@ function faitsDe(state) {
   );
   let combat = 0;
   let compte = 0;
+  let meilleurCombat = 0;
   for (const g of groupes) {
     for (const c of g.membres) {
       if (!estVivant(c)) continue;
-      combat += Math.max(c.skills.melee || 0, c.skills.tir || 0);
+      const arme = Math.max(c.skills.melee || 0, c.skills.tir || 0);
+      combat += arme;
+      if (arme > meilleurCombat) meilleurCombat = arme;
       compte++;
     }
   }
@@ -12681,6 +13801,7 @@ function faitsDe(state) {
     vivants,
     morts: (state.memorial || []).length,
     combat: compte ? Math.round(combat / compte) : 0,
+    meilleurCombat,
     combats: st.combats || 0,
     combatsGagnes: st.combatsGagnes || 0,
     defaites: st.defaites || 0,
@@ -12810,6 +13931,12 @@ function normaliser(state) {
     // dormait jamais en voyage. On rend leurs nuits aux parties en cours.
     if (g.ordre.type === 'voyage' && !g.ordre.allure) g.ordre.allure = 'normale';
     if (!g.membres) g.membres = [];
+    // Le point de départ des compétences est arrivé après coup : pour une partie
+    // déjà commencée, on prend l'état du jour. On ne peut pas inventer un passé.
+    for (const c of g.membres) if (!c.skills0) c.skills0 = Object.assign({}, c.skills);
+    // La feuille de service est arrivée après coup : on ne peut pas reconstituer
+    // ce qui a été fait avant, seulement ne plus rien perdre à partir d'ici.
+    if (g.allegeance && !g.allegeance.faits) g.allegeance.faits = [];
   }
   if (!p.groupeActif || !p.groupes.some((g) => g.id === p.groupeActif)) {
     p.groupeActif = p.groupes.length ? p.groupes[0].id : null;
@@ -12823,6 +13950,7 @@ function normaliser(state) {
   // Avant les tactiques, on subissait le combat sans rien en décider.
   if (!p.tactique) p.tactique = 'ligne';
   if (p.politique && p.politique.viserChefs === undefined) p.politique.viserChefs = false;
+  if (p.politique && p.politique.halte === undefined) p.politique.halte = true;
   if (!p.contrats) p.contrats = [];
   if (!p.primes) p.primes = {};
   // Avant, l'engagement appartenait au joueur : un seul pour toute la partie.
@@ -13107,6 +14235,9 @@ function nouvellePartie(seed, opts = {}) {
         payerPeage: true,
         achever: false,
         viserChefs: false,
+        // On s'arrête quand quelqu'un tombe, plutôt que de continuer la route
+        // avec un homme sur les bras.
+        halte: true,
       },
       contrats: [],
       primes: {},
@@ -13270,11 +14401,10 @@ function tick(state) {
     col.vuA = state.temps;
     // La réputation locale infléchit ce que les gens d'ici pensent de vous.
     const rep = (col.faction && state.player.reputation[col.faction]) || 0;
-    // Être là change ce qu'on entend : une demande qu'on n'a pas entendue ne
-    // peut pas se retourner contre nous. Voir tickServices.
-    // `yeux` contient aussi la région de l'avant-poste, mais on ne fonde jamais
-    // un avant-poste sur une ville : pour une colonie, c'est bien « un groupe
-    // est ici ».
+    // Être là change ce qui vit : le banc de recrutement ne se garnit que sous
+    // nos yeux. `yeux` contient aussi la région de l'avant-poste, mais on ne
+    // fonde jamais un avant-poste sur une ville : pour une colonie, c'est bien
+    // « un groupe est ici ».
     const present = yeux.includes(col.regionId);
     // Le banc de recrutement ne se garnit que là où l'on est. Le tenir à jour
     // dans les quatre-vingt-six villes, ce serait deux cents personnages
@@ -13364,6 +14494,8 @@ function tick(state) {
   }
   tickFactions(state.world, state.temps, log, ctx);
   tickCaravanes(state, log, ctx);
+  // Le loyer des coffres court, qu'on soit là ou non.
+  tickCoffres(state, log);
 
   // Panneaux d'affichage et étals se renouvellent de loin en loin.
   if (state.temps % 40 === 0) {
@@ -14245,7 +15377,7 @@ function blocContratsActifs() {
     const p = progresContrat(S, c);
     const reste = c.echeance - S.temps;
     return `<div style="padding:4px 0">
-        <div class="ligne"><span class="k">${e(c.titre)}</span>
+        <div class="ligne souple"><span class="k">${e(c.titre)}</span>
           <span class="v ${reste < 48 ? 'alerte' : ''}">${dureeTexte(Math.max(0, reste))}</span></div>
         ${jauge(p.total ? p.fait / p.total : 0, p.pret ? 'vert' : '')}
         <div class="aide">${e(p.texte)} · à rendre à ${e(lieuValidation(S, c))}</div>
@@ -14363,24 +15495,34 @@ function blocRegionCourante() {
  * Le panneau de la ville où l'on se trouve : forcément de première main.
  *
  * On n'appelle jamais ceci sur une ruine — une ville effondrée n'a plus de
- * drapeau (`faction` repasse à null), et l'affichage plantait sur ce cas dès
- * qu'une partie durait assez pour qu'une ville s'éteigne sous les pieds du
- * joueur. Le garde-fou est ici aussi, parce qu'un rendu ne doit jamais casser
- * l'écran entier.
+ * drapeau, et l'affichage plantait sur ce cas dès qu'une partie durait assez
+ * pour qu'une ville s'éteigne sous les pieds du joueur.
+ *
+ * Mais le garde-fou confondait « morte » et « sans drapeau », et faisait donc
+ * disparaître **tout le panneau — marché, recrutement, contrats, armurier —**
+ * dans une ville affranchie. Or une ville libre est bien vivante : elle a un
+ * étal, un banc de recrutement, et c'est même le seul endroit où certaines
+ * choses se négocient. On ne saute plus que sur les ruines, et l'absence de
+ * drapeau s'affiche au lieu de tout emporter.
  */
 function blocColonie(col) {
-  if (!col || col.ruine || !FACTIONS[col.faction]) return '';
-  const repu = S.player.reputation[col.faction] || 0;
+  if (!col || col.ruine) return '';
+  const libre = !FACTIONS[col.faction];
+  const repu = libre ? 0 : (S.player.reputation[col.faction] || 0);
   const cls = repu > 20 ? 'ok' : repu < -20 ? 'mal' : 'att';
   return `
   <section class="panneau">
     <h2 class="titre">${e(col.nom)}
-      <span class="droite" style="color:${couleurFaction(col.faction)}">${e(FACTIONS[col.faction].nom)}</span></h2>
+      <span class="droite" style="color:${couleurFaction(col.faction)}">${libre
+    ? 'ville libre' : e(FACTIONS[col.faction].nom)}</span></h2>
     <div class="grille2">
       <div class="ligne"><span class="k">Population</span><span class="v">${n(col.pop)}</span></div>
       <div class="ligne"><span class="k">Défense</span><span class="v">${n(col.defense)}</span></div>
       <div class="ligne"><span class="k">Agitation</span><span class="v">${(col.unrest * 100).toFixed(0)} %</span></div>
-      <div class="ligne"><span class="k">Réputation</span><span class="v"><span class="puce ${cls}">${repu > 0 ? '+' : ''}${n(repu)}</span></span></div>
+      ${libre
+    ? `<div class="ligne"><span class="k">Loi</span>
+        <span class="v">celle du plus fort</span></div>`
+    : `<div class="ligne"><span class="k">Réputation</span><span class="v"><span class="puce ${cls}">${repu > 0 ? '+' : ''}${n(repu)}</span></span></div>`}
     </div>
     <div class="sep"></div>
     <div class="grille2" style="gap:5px">
@@ -14389,6 +15531,8 @@ function blocColonie(col) {
       <button class="act mini" data-a="modale" data-m="panneau">Contrats${col.contrats && col.contrats.length ? ` (${col.contrats.length})` : ''}</button>
       <button class="act mini" data-a="modale" data-m="recrutement">Recruter</button>
       <button class="act mini" data-a="modale" data-m="attelage">Attelage${betesDe(G()).length ? ` (${betesDe(G()).length})` : ''}</button>
+      <button class="act mini" data-a="modale" data-m="coffre">Coffre${coffreDe(S, col.id)
+    ? ` (${Math.round(placeCoffre(coffreDe(S, col.id)).pris)} kg)` : ''}</button>
       ${ecolesDe(S.world, col).length
     ? `<button class="act mini" style="grid-column:1/-1" data-a="modale" data-m="ecole">
         Écoles (${ecolesDe(S.world, col).length})</button>` : ''}
@@ -14408,6 +15552,11 @@ function blocEngagement(col) {
         <span class="v" style="color:${couleurFaction(col.faction)}">${e(rang.def.nom)}</span></div>`;
   }
   if (all) return '';
+  // Une ville libre ne recrute personne à son service : il n'y a pas de service.
+  if (!FACTIONS[col.faction]) {
+    return `<div class="sep"></div>
+      <div class="aide">Personne ne commande ici : il n’y a pas d’engagement à prendre.</div>`;
+  }
   const v = peutSEngager(S, col.faction);
   const rep = S.player.reputation[col.faction] || 0;
   return `<div class="sep"></div>
@@ -14506,9 +15655,12 @@ function ficheMembre(c) {
   const comps = SKILL_KEYS.map((k) => {
     const v = c.skills[k];
     const eff = comp(c, k);
+    // Ce que l'entraînement, les coups et le métier ont fait depuis son arrivée.
+    const gagne = v - ((c.skills0 && c.skills0[k]) ?? v);
     return `<div class="comp-l"><span class="n">${e(SKILLS[k])}</span>
       <span class="j">${jauge(v / 100)}</span>
-      <span class="v" title="effectif ${eff.toFixed(0)}">${v}</span></div>`;
+      <span class="v" title="effectif ${eff.toFixed(0)}${gagne > 0 ? ` · +${gagne} depuis son arrivée` : ''}">${v}${
+  gagne > 0 ? `<span class="cyan" style="font-size:10px"> +${gagne}</span>` : ''}</span></div>`;
   }).join('');
 
   const arme = c.equip.arme ? ITEMS[c.equip.arme].nom : '—';
@@ -14663,10 +15815,33 @@ function blocInventaire() {
     ? G().objets.map((o) => `<span class="puce">${e(ITEMS[o].nom)}</span>`).join(' ')
     : '<span class="aide">Aucun équipement en réserve.</span>';
 
+  // Où passent les rations, poste par poste.
+  //
+  // Elles disparaissaient sans explication : rien ne disait que l'entraînement
+  // en avale une par heure pour deux personnes — de très loin le premier poste —
+  // ni que les prisonniers mangent sur le sac. Une comptabilité muette est
+  // indiscernable d'un bug.
+  const c = consommationGroupe(S, G());
+  const jours = autonomie(S, G());
+  const poste = (nom, v) => (v > 0.05
+    ? `<div class="ligne"><span class="k">${nom}</span>
+        <span class="v">${n(v, 1)} / jour</span></div>` : '');
+  const alerte = jours < 3 ? 'rouge' : jours < 8 ? 'ambre' : '';
+
   return `<section class="panneau">
     <h2 class="titre">Sac <span class="droite">${n(poids)} / ${n(cap)} kg</span></h2>
     ${jauge(cap ? poids / cap : 1, poids / cap > 0.95 ? 'rouge' : poids / cap > 0.8 ? 'ambre' : '')}
     <div style="margin-top:7px">${lignes}</div>
+    <div class="sep"></div>
+    <div class="titre">Vivres
+      <span class="droite ${alerte}">${Number.isFinite(jours)
+    ? `${n(jours, 1)} jour${jours >= 2 ? 's' : ''} d’autonomie` : 'rien ne se consomme'}</span></div>
+    ${poste('L’escouade mange', c.escouade)}
+    ${poste('Les prisonniers mangent', c.prisonniers)}
+    ${poste('L’entraînement brûle', c.entrainement)}
+    ${c.biomasse > 0.05 ? `<div class="ligne"><span class="k">Les bêtes broutent</span>
+      <span class="v">${n(c.biomasse, 1)} de biomasse / jour</span></div>` : ''}
+    ${c.rations <= 0.05 ? '<div class="aide">Personne ne consomme rien pour l’instant.</div>' : ''}
     <div class="sep"></div>
     <div class="titre">Réserve d’équipement</div>
     <div>${objets}</div>
@@ -14804,6 +15979,112 @@ function blocPrisonniers() {
   </section>`;
 }
 
+/**
+ * Ce qu'on fait de ses morts. Pendant exact du panneau des prisonniers.
+ *
+ * Un mort restait dans la colonne, avec la mention MORT à côté de son nom, pour
+ * toujours : il ne coûtait rien, ne pesait rien, ne posait aucune question. Il
+ * pèse maintenant sur la marche et sur le moral tant qu'on n'a rien décidé —
+ * c'est ce qui force le choix sans qu'aucune règle ne l'impose.
+ */
+function blocDepouilles() {
+  const g = G();
+  const corps = depouillesDe(g);
+  if (!corps.length) return '';
+  const col = colonieDe(S.world, g.regionId);
+  const lenteur = lenteurDepouilles(g);
+  return `<section class="panneau">
+    <h2 class="titre">Nos morts <span class="droite alerte">${corps.length}</span></h2>
+    <div class="aide">On les porte tant qu'on n'en a rien décidé.
+      ${lenteur > 0.01 ? `Marche −${Math.round(lenteur * 100)} %.` : ''}
+      Le moral s'en ressent, un peu plus chaque heure.</div>
+    <div class="sep"></div>
+    ${corps.map((c) => {
+    const rites = ritesPour(S, g, c);
+    return `<details data-id="corps-${e(c.id)}" ${ouverts.has(`corps-${c.id}`) ? 'open' : ''}
+        style="border-bottom:1px solid #1b2029;padding:5px 0">
+        <summary class="ligne"><span class="k">${e(c.nom)}</span>
+          <span class="v aide">${e(c.archetypeNom || '')}</span></summary>
+        ${rites.map((o) => `<button class="act mini" style="margin-top:4px;text-align:left"
+          data-a="corps" data-c="${e(c.id)}" data-k="${o.key}">${e(o.nom)}${
+  o.gain ? ` — ${n(o.gain)} cr` : ''}<br><span class="aide">${e(o.aide)}</span></button>`).join('')}
+      </details>`;
+  }).join('')}
+    ${col && !col.ruine ? '' : '<div class="aide">Hors ville : le trafic d’organes attendra.</div>'}
+  </section>`;
+}
+
+/**
+ * Qui fait quoi, en une table.
+ *
+ * L'information existait déjà — chaque fiche montre la tâche de son occupant —
+ * mais éparpillée sur autant d'écrans que de personnes : on ne pouvait pas
+ * savoir d'un coup d'œil que trois membres s'entraînaient pendant que le
+ * quatrième portait tout. On y ajoute l'état, qui manquait partout : blessé,
+ * affamé, à l'école, en formation.
+ */
+function blocQuiFaitQuoi() {
+  const g = G();
+  const gens = g.membres.filter(estVivant);
+  if (!gens.length) return '';
+  const enMarche = g.ordre.type === 'voyage';
+  const perso = gens.filter((c) => c.tache && TACHES_INDIVIDUELLES.includes(c.tache.type)).length;
+
+  const lignes = gens.map((c) => {
+    const propre = c.tache && TACHES_INDIVIDUELLES.includes(c.tache.type);
+    const tache = enMarche ? 'voyage' : tacheDe(g, c).type;
+    const etats = [];
+    if (c.etat === 'ko') etats.push('<span class="rouge">à terre</span>');
+    if (c.formation && c.formation.restant > 0) {
+      etats.push(`<span class="cyan">école ${Math.ceil(c.formation.restant / 24)} j</span>`);
+    }
+    if (c.enseigne) etats.push('<span class="cyan">enseigne</span>');
+    if (c.faim >= SEUIL_FAMINE) etats.push('<span class="rouge">affamé</span>');
+    else if (c.faim >= SEUIL_VENTRE_CREUX) etats.push('<span class="ambre">ventre creux</span>');
+    const pv = pvTotal(c).pct;
+    if (pv < 0.6) etats.push(`<span class="${pv < 0.35 ? 'rouge' : 'ambre'}">${Math.round(pv * 100)} % de forme</span>`);
+    if (c.fatigue >= 90) etats.push('<span class="ambre">épuisé</span>');
+    return `<div class="ligne">
+      <span class="k">${e(c.nom)}</span>
+      <span class="v">${e(ORDRES[tache].nom)}${propre && !enMarche ? ' <span class="cyan">·</span>' : ''}
+        ${etats.length ? `<br><span class="aide">${etats.join(' · ')}</span>` : ''}</span></div>`;
+  }).join('');
+
+  // Ce que la colonne vaut, additionné. « Est-ce que plusieurs membres
+  // additionnent leur travail ? » n'avait aucune réponse à l'écran — elle est
+  // oui, et sans le chiffre on ne peut pas juger si détacher deux personnes vaut
+  // le coup.
+  const ap = apercuEscouade(S, g);
+  const recolte = Object.entries(ap.recolteDetail)
+    .filter(([, v]) => v > 0.2).sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `${n(v, 1)} ${COMMODITIES[k].nom.toLowerCase()}`).join(' · ');
+
+  return `<section class="panneau">
+    <h2 class="titre">Qui fait quoi
+      <span class="droite">${gens.length} debout sur ${g.membres.length}</span></h2>
+    ${lignes}
+    <div class="sep"></div>
+    <div class="ligne"><span class="k">Ensemble, par jour</span>
+      <span class="v">${recolte || '<span class="aide">rien à récolter ainsi</span>'}</span></div>
+    <div class="ligne"><span class="k">Marche</span>
+      <span class="v">${Number.isFinite(ap.heuresParRegion)
+    ? `${n(ap.heuresParRegion, 1)} h / région` : '—'}</span></div>
+    <div class="ligne"><span class="k">Prisonniers</span>
+      <span class="v">${ap.prisonniers} gardés sur ${n(ap.garde, 1)}</span></div>
+    <div class="ligne"><span class="k">Attelage</span>
+      <span class="v">${ap.attelage} mené${ap.attelage > 1 ? 's' : ''} sur ${ap.conduite}</span></div>
+    <div class="aide">Le travail s’additionne : chacun apporte selon sa compétence,
+      et la cohésion multiplie le tout.</div>
+    ${enMarche
+    ? '<div class="aide">En marche, tout le monde marche. Les tâches personnelles reprendront à l’arrivée.</div>'
+    : ''}
+    ${perso > 0
+    ? `<button class="act" data-a="tous-suivent" style="margin-top:6px">Tout le monde suit le groupe
+        <span class="aide">(${perso} tâche${perso > 1 ? 's' : ''} personnelle${perso > 1 ? 's' : ''})</span></button>`
+    : '<div class="aide">Personne n’a de tâche à soi : tout le monde suit l’ordre du groupe.</div>'}
+  </section>`;
+}
+
 function ecranEscouade() {
   const p = S.player;
   const pol = p.politique;
@@ -14816,13 +16097,14 @@ function ecranEscouade() {
 
   return `
   ${barreGroupes()}
+  ${blocQuiFaitQuoi()}
   <section class="panneau">
     <h2 class="titre">Cohésion de ${e(g.nom)}
       <span class="droite"><span class="puce ${cohCls}">${Math.round(g.cohesion ?? 55)} %</span></span></h2>
     ${jauge((g.cohesion ?? 55) / 100, '', rend >= 1 ? '#4fd0e3' : undefined)}
     <div class="grille2">
       <div class="ligne"><span class="k">Effectif</span>
-        <span class="v">${nGens} pour un noyau de ${n(noy)}</span></div>
+        <span class="v">${nGens} · noyau ${n(noy)}</span></div>
       <div class="ligne"><span class="k">Plafond atteignable</span>
         <span class="v">${Math.round(plafond)} %</span></div>
       <div class="ligne"><span class="k">Travail et combat</span>
@@ -14830,12 +16112,16 @@ function ecranEscouade() {
       <div class="ligne"><span class="k">Se voit de loin</span>
         <span class="v">+${(Math.max(0, nGens - 4) * 5)} % de rencontres</span></div>
     </div>
+    <div class="aide">Noyau : 4 + ${nivBat(S.base, 'baraquement')} de baraquement
+      + ${placesSociables(g)} que les vôtres tiennent ensemble.</div>
     <div class="aide">${nGens > noy
-    ? 'Au-delà du noyau, on se connaît moins. Rien ne l’interdit : ça coûte, simplement.'
+    ? 'Au-delà du noyau, on se connaît moins. Rien ne l’interdit : ça coûte, simplement — '
+      + 'et un baraquement ou quelqu’un de sociable agrandit ce noyau.'
     : 'Une bande de cette taille peut se souder complètement.'}</div>
   </section>
 
   ${blocPrisonniers()}
+  ${blocDepouilles()}
 
   <section class="panneau">
     <h2 class="titre">Posture</h2>
@@ -14857,6 +16143,7 @@ function ecranEscouade() {
     ['payerPeage', 'Payer les péages plutôt que se battre'],
     ['achever', 'Achever les ennemis à terre'],
     ['viserChefs', 'Viser les plus dangereux d’abord'],
+    ['halte', 'Interrompre la route quand quelqu’un tombe'],
   ].map(([k, l]) => `<button class="act mini" style="text-align:left" data-a="politique" data-k="${k}"
         aria-pressed="${!!pol[k]}">[${pol[k] ? '×' : ' '}] ${e(l)}</button>`).join('')}
     </div>
@@ -15182,6 +16469,7 @@ function ligneContrat(c, enCours) {
       <div class="aide">${e(p.texte)} · à rendre à ${e(lieuValidation(S, c))}
         · <span class="${reste < 48 ? 'alerte' : ''}">${dureeTexte(Math.max(0, reste))} restantes</span></div>`
     : `<div class="aide">Commanditaire : ${e(donneur ? donneur.nom : '—')} · ${dureeTexte(reste)} accordées</div>`}
+    ${blocCibleContrat(c, reste)}
     ${enCours
     ? `<button class="act mini danger" data-a="abandonner" data-k="${e(c.id)}">Abandonner</button>`
     : `<button class="act mini primaire" data-a="accepter" data-k="${e(c.id)}">Accepter</button>`}
@@ -15391,6 +16679,150 @@ function villesVisables(faction) {
     .sort((a, b) => a.d - b.d);
 }
 
+/**
+ * Où aller pour honorer un contrat, et si le délai le permet.
+ *
+ * Même défaut que pour les ordres de mission, et même correction : le panneau
+ * d'affichage annonçait « Porter 40 medkits à Cité-Tréfonds » sans dire où est
+ * cette ville, ni à combien de régions, ni si le délai laissait le temps d'y
+ * aller. Une prime ne désignait qu'une faction. On accepte à l'aveugle, et
+ * abandonner coûte.
+ */
+function blocCibleContrat(c, reste) {
+  const g = G();
+  let cible = null;
+  if (c.type === 'livraison') {
+    const dest = colonieParId(S.world, c.destId);
+    if (dest && !dest.ruine) cible = { regionId: dest.regionId, quoi: `à porter à ${dest.nom}` };
+  } else if (c.type === 'reconnaissance') {
+    cible = { regionId: c.regionId, quoi: 'secteur à lever' };
+  } else if (c.type === 'prime' && c.cibleFaction) {
+    const chez = S.world.regions
+      .filter((r) => r.controle === c.cibleFaction && r.decouvert && !r.colonie)
+      .sort((a, b) => distance(a.i, g.regionId) - distance(b.i, g.regionId))[0];
+    if (chez) cible = { regionId: chez.i, quoi: 'on les croise chez eux' };
+    else {
+      return `<div class="aide">On ne connaît aucune terre ${e(FACTIONS[c.cibleFaction]
+        ? FACTIONS[c.cibleFaction].genitif : '')} par ici : il faudra les croiser en chemin.</div>`;
+    }
+  } else if (c.type === 'collecte') {
+    // Rien à situer : ça se ramasse partout. On dit au moins où le rendre.
+    return '';
+  }
+  if (!cible) return '';
+
+  const d = distance(cible.regionId, g.regionId);
+  if (d === 0) {
+    return `<div class="aide cyan">Vous y êtes : ${e(nomRegion(S.world, cible.regionId))}.</div>`;
+  }
+  const heures = apercuEscouade(S, g).heuresParRegion * d;
+  const tient = heures <= Math.max(0, reste);
+  return `<div class="aide">${e(cible.quoi)} : ${e(nomRegion(S.world, cible.regionId))},
+    à ${d} région${d > 1 ? 's' : ''} — ${Number.isFinite(heures) ? dureeTexte(Math.round(heures)) : '?'} de marche.
+    <span class="${tient ? 'cyan' : 'alerte'}">${tient
+  ? 'le délai le permet' : 'le délai ne le permet pas'}</span></div>`;
+}
+
+/**
+ * Où aller pour honorer un ordre de mission, et si c'est seulement jouable.
+ *
+ * L'ordre n'annonçait qu'un titre : « Ravitailler Cité-Tréfonds : 60 rations ».
+ * Rien ne disait où est cette ville, à combien de régions, ni si l'échéance
+ * laissait le temps d'y aller. Un ordre de frappe ne désignait qu'une faction,
+ * sans dire où la trouver. On ne peut pas honorer ce qu'on ne sait pas situer,
+ * et rater coûte de l'estime.
+ */
+function blocCibleOrdre(o) {
+  const g = G();
+  let cible = null;
+  if (o.type === 'ravitaillement') {
+    const col = colonieParId(S.world, o.colonieId);
+    if (col && !col.ruine) cible = { regionId: col.regionId, quoi: `à livrer à ${col.nom}` };
+  } else if (o.type === 'reconnaissance') {
+    cible = { regionId: o.regionId, quoi: 'secteur à lever' };
+  } else if (o.type === 'frappe') {
+    // On ne croise les hommes d'une faction que sur les terres qu'elle tient.
+    // Autant le dire, plutôt que de laisser errer.
+    const chez = S.world.regions
+      .filter((r) => r.controle === o.cibleFaction && r.decouvert && !r.colonie)
+      .sort((a, b) => distance(a.i, g.regionId) - distance(b.i, g.regionId))[0];
+    if (chez) cible = { regionId: chez.i, quoi: `leurs terres les plus proches` };
+    else {
+      return `<div class="aide">On ne connaît aucune terre ${e(FACTIONS[o.cibleFaction].genitif)}
+        par ici. Il faudra les croiser en chemin, ou explorer.</div>`;
+    }
+  }
+  if (!cible) return '';
+
+  const d = distance(cible.regionId, g.regionId);
+  if (d === 0) {
+    return `<div class="aide cyan">Vous y êtes : ${e(nomRegion(S.world, cible.regionId))}.</div>`;
+  }
+  // Le temps que ça prend vraiment, à l'allure de cette colonne-ci.
+  const heures = apercuEscouade(S, g).heuresParRegion * d;
+  const reste = Math.max(0, o.echeance - S.temps);
+  const tient = heures <= reste;
+  return `<div class="aide">${e(cible.quoi)} : ${e(nomRegion(S.world, cible.regionId))},
+      à ${d} région${d > 1 ? 's' : ''} — ${Number.isFinite(heures) ? dureeTexte(Math.round(heures)) : '?'} de marche.
+      <span class="${tient ? 'cyan' : 'alerte'}">${tient
+  ? 'l’échéance le permet' : 'l’échéance ne le permet pas'}</span></div>
+    <button class="act" data-a="voyage" data-r="${cible.regionId}">S’y rendre</button>`;
+}
+
+/**
+ * La feuille de service : ce qu'on a fait pour eux, et ce qu'on a laissé filer.
+ *
+ * Les ordres remplis étaient comptés, jamais relus. Le journal les annonce puis
+ * les fait défiler, et il est plafonné à quatre cents lignes : on sert une
+ * faction six mois durant et il n'en reste qu'un nombre. On garde les quatorze
+ * derniers, avec leur issue et leur date.
+ */
+function blocFeuilleService(all) {
+  const faits = (all.faits || []).slice().reverse();
+  const b = bilanService(all);
+  if (!faits.length && !b.manques) {
+    return `<div class="sep"></div>
+      <div class="titre">Feuille de service</div>
+      <div class="aide">Rien encore à votre dossier.</div>`;
+  }
+  const mot = {
+    honore: ['ok', 'honoré'],
+    manque: ['mal', 'manqué'],
+    annule: ['att', 'annulé'],
+  };
+  const lignes = faits.map((f) => {
+    const [cls, txt] = mot[f.issue] || ['att', f.issue];
+    // Ce que ça a rapporté ou coûté. Un dossier qui dit « honoré » sans dire
+    // combien ne sert qu'à moitié.
+    const bilan = [
+      f.cr ? `${f.cr > 0 ? '+' : ''}${n(f.cr)} cr` : '',
+      f.pts ? `${f.pts > 0 ? '+' : ''}${n(f.pts)} pts` : '',
+      f.rep ? `${f.rep > 0 ? '+' : ''}${n(f.rep)} estime` : '',
+    ].filter(Boolean).join(' · ');
+    return `<div class="ligne souple">
+      <span class="k">${e(f.titre)}<br>
+        <span class="aide">${dureeTexte(Math.max(0, S.temps - f.t))} plus tôt</span></span>
+      <span class="v"><span class="puce ${cls}">${txt}</span>${bilan
+    ? `<br><span class="aide ${f.issue === 'manque' ? 'alerte' : ''}">${bilan}</span>` : ''}</span></div>`;
+  }).join('');
+  const total = faits.reduce((a, f) => ({
+    cr: a.cr + (f.cr || 0), pts: a.pts + (f.pts || 0), rep: a.rep + (f.rep || 0),
+  }), { cr: 0, pts: 0, rep: 0 });
+  const cumul = [
+    total.cr ? `${total.cr > 0 ? '+' : ''}${n(total.cr)} cr` : '',
+    total.pts ? `${total.pts > 0 ? '+' : ''}${n(total.pts)} points de service` : '',
+    total.rep ? `${total.rep > 0 ? '+' : ''}${n(total.rep)} d’estime` : '',
+  ].filter(Boolean).join(' · ');
+
+  return `<div class="sep"></div>
+    <div class="titre">Feuille de service
+      <span class="droite">${b.honores} honoré${b.honores > 1 ? 's' : ''}
+        · ${b.manques} manqué${b.manques > 1 ? 's' : ''}${b.annules
+  ? ` · ${b.annules} annulé${b.annules > 1 ? 's' : ''}` : ''}</span></div>
+    ${cumul ? `<div class="aide">Sur ce qu’on garde en mémoire : ${cumul}.</div>` : ''}
+    ${lignes || '<div class="aide">Le détail des plus anciens s’est perdu ; les totaux tiennent.</div>'}`;
+}
+
 function blocIntendance() {
   const g = G();
   if (!g) return '';
@@ -15456,8 +16888,10 @@ function blocAllegeance() {
       <div class="contrat-t">${e(o.titre)}</div>
       ${jauge(p && p.total ? p.fait / p.total : 0, p && p.pret ? 'vert' : '')}
       <div class="aide">${e(p ? p.texte : '')} · ${n(o.recompense)} cr ·
-        <span class="${o.echeance - S.temps < 48 ? 'alerte' : ''}">${dureeTexte(Math.max(0, o.echeance - S.temps))} restantes</span></div>`
+        <span class="${o.echeance - S.temps < 48 ? 'alerte' : ''}">${dureeTexte(Math.max(0, o.echeance - S.temps))} restantes</span></div>
+      ${blocCibleOrdre(o)}`
     : '<div class="aide">Aucun ordre en attente. Ils vous rappelleront.</div>'}
+    ${blocFeuilleService(all)}
     ${blocInfluence(all.faction)}
     <div class="sep"></div>
     <button class="act mini danger" data-a="quitter-service">Rompre l’engagement</button>
@@ -15736,12 +17170,30 @@ function contenuModale() {
     case 'ecole': return modaleEcole() + fermer;
     case 'ville': return modaleVille() + fermer;
     case 'attelage': return modaleAttelage() + fermer;
+    case 'coffre': return modaleCoffre() + fermer;
     case 'equipement': return modaleEquipement() + fermer;
     case 'entrainement': return modaleEntrainement() + fermer;
     case 'recrutement': return modaleRecrutement() + fermer;
     default: return fermer;
   }
 }
+
+/**
+ * Le marché.
+ *
+ * Il n'offrait que « +10 » et « tout », sans jamais dire ce que ça ferait. Or le
+ * prix est dégressif — chaque unité échangée déplace la suivante — donc « tout »
+ * était un saut dans le noir, et c'est précisément le geste qui ruine une
+ * cargaison : mesuré au banc, dimensionner un lot rapporte +21 % là où vider son
+ * sac d'un coup en coûte 41. La seule action proposée était la mauvaise.
+ *
+ * On choisit donc une quantité, et chaque ligne annonce le montant exact, calculé
+ * par le même code que la transaction (`simulerAchat` / `simulerVente`). Quand la
+ * quantité voulue ne passe pas — sac plein, étal vide, bourse courte — le bouton
+ * affiche ce qui passera réellement.
+ */
+const QUANTITES = [1, 10, 50, 9999];
+let qteMarche = 10;
 
 function modaleMarche() {
   const col = colonieDe(S.world, G().regionId);
@@ -15750,24 +17202,93 @@ function modaleMarche() {
   const hab = negoc ? comp(negoc, 'commerce') : 0;
   const repu = S.player.reputation[col.faction] || 0;
 
+  const choix = QUANTITES.map((q) => `<button class="act mini" data-a="qte-marche" data-q="${q}"
+    aria-pressed="${qteMarche === q}">${q === 9999 ? 'max' : `×${q}`}</button>`).join('');
+
   const lignes = COMMODITY_KEYS.map((k) => {
     const p = prixJoueur(col, k, hab, repu);
     const stock = Math.floor(col.stock[k] || 0);
-    const aMoi = G().inventaire[k] || 0;
+    const aMoi = Math.floor(G().inventaire[k] || 0);
+    const a = simulerAchat(S, col, k, qteMarche, G());
+    const v = simulerVente(S, col, k, qteMarche, G());
+    // Ce qui a borné l'achat, dit en clair plutôt que par un bouton grisé.
+    const gene = { 'sac plein': 'sac plein', 'étal vide': 'étal vide', credits: 'bourse' }[a.borne];
     return `<div class="marche-l">
       <span class="nm">${e(COMMODITIES[k].nom)}<br>
-        <span class="aide">ville ${n(stock)} · sac ${n(aMoi)}</span></span>
-      <span class="px">A ${n(p.achat, 1)}<br>V ${n(p.vente, 1)}</span>
-      <button class="act" data-a="acheter" data-k="${k}" data-q="10" ${stock < 1 ? 'disabled' : ''}>+10</button>
-      <button class="act" data-a="vendre" data-k="${k}" data-q="9999" ${aMoi < 1 ? 'disabled' : ''}>tout</button>
+        <span class="aide">ville ${n(stock)} · sac ${n(aMoi)} · ${n(p.achat, 1)} / ${n(p.vente, 1)}
+        ${gene ? `<span class="rouge">· ${gene}</span>` : ''}</span></span>
+      <button class="act" data-a="acheter" data-k="${k}" data-q="${qteMarche}" ${a.qte < 1 ? 'disabled' : ''}>
+        ${a.qte < 1 ? '—' : `+${n(a.qte)}<br><span class="aide">${n(a.cout)} cr</span>`}</button>
+      <button class="act" data-a="vendre" data-k="${k}" data-q="${qteMarche}" ${v.qte < 1 ? 'disabled' : ''}>
+        ${v.qte < 1 ? '—' : `−${n(v.qte)}<br><span class="aide">${n(v.gain)} cr</span>`}</button>
     </div>`;
   }).join('');
 
   return `<h2 class="titre">Marché de ${e(col.nom)}
     <span class="droite">${n(S.player.credits)} cr</span></h2>
   <div class="aide">Négociateur : ${negoc ? `${e(negoc.nom)} (commerce ${hab.toFixed(0)})` : 'aucun'}.
-    Une bonne réputation et un bon commerçant resserrent la marge.</div>
+    Une bonne réputation et un bon commerçant resserrent la marge. Le prix bouge
+    à chaque unité : les montants affichés tiennent compte de tout le lot.</div>
+  <div class="taches" style="margin-top:6px">Quantité ${choix}</div>
   <div class="sep"></div>${lignes}`;
+}
+
+/**
+ * Le coffre : de la place qui ne marche pas avec vous.
+ *
+ * Entre le sac — borné par ce que les gens portent — et l'entrepôt de
+ * l'avant-poste, qui est à un seul endroit et qu'on n'a pas forcément, il n'y
+ * avait rien. Mesuré : 34 % de la cargaison d'une caravane détroussée reste sur
+ * place faute de bras.
+ */
+function modaleCoffre() {
+  const col = colonieDe(S.world, G().regionId);
+  if (!col || col.ruine) return '<div class="aide">Pas de coffre en pleine friche.</div>';
+  const coffre = coffreDe(S, col.id);
+  const vL = peutLouer(S, col);
+  const vA = peutAcheter(S, col);
+
+  if (!coffre) {
+    return `<h2 class="titre">Coffre à ${e(col.nom)}
+      <span class="droite">${n(S.player.credits)} cr</span></h2>
+    <div class="aide">De la place qui reste ici pendant que vous marchez.</div>
+    <div class="sep"></div>
+    <button class="act${vL.ok ? ' primaire' : ''}" data-a="coffre-louer" ${vL.ok ? '' : 'disabled'}>
+      Louer — ${LOYER} cr le mois, ${CAPACITE_LOUEE} kg
+      ${vL.ok ? '' : `<br><span class="aide">${e(vL.motif)}</span>`}</button>
+    <div style="height:6px"></div>
+    <button class="act" data-a="coffre-acheter" ${vA.ok ? '' : 'disabled'}>
+      Acheter — ${n(PRIX_COFFRE)} cr, ${CAPACITE_ACHETEE} kg, plus de loyer
+      ${vA.ok ? '' : `<br><span class="aide">${e(vA.motif)}</span>`}</button>
+    <div class="aide" style="margin-top:6px">${col.faction
+    ? `On ne vend des murs qu'à qui l'on estime : ${ESTIME_PROPRIETE} d'estime demandés.`
+    : 'Ville libre : personne n’est en position de vous interdire de posséder.'}</div>`;
+  }
+
+  const pl = placeCoffre(coffre);
+  const lignes = COMMODITY_KEYS.map((k) => {
+    const dedans = Math.floor(coffre.contenu[k] || 0);
+    const dans1sac = Math.floor(G().inventaire[k] || 0);
+    if (!dedans && !dans1sac) return '';
+    return `<div class="marche-l">
+      <span class="nm">${e(COMMODITIES[k].nom)}<br>
+        <span class="aide">coffre ${n(dedans)} · sac ${n(dans1sac)}</span></span>
+      <button class="act" data-a="coffre-deposer" data-k="${k}" ${dans1sac < 1 ? 'disabled' : ''}>y mettre</button>
+      <button class="act" data-a="coffre-retirer" data-k="${k}" ${dedans < 1 ? 'disabled' : ''}>reprendre</button>
+    </div>`;
+  }).join('');
+
+  return `<h2 class="titre">Coffre à ${e(col.nom)}
+    <span class="droite">${Math.round(pl.pris)} / ${pl.total} kg</span></h2>
+  ${jauge(pl.total ? pl.pris / pl.total : 0, pl.pris / pl.total > 0.95 ? 'rouge' : '')}
+  <div class="aide">${coffre.achete
+    ? 'À vous. Pas de loyer.'
+    : `Loué : prochain loyer de ${LOYER} cr dans ${dureeTexte(Math.max(0, coffre.jusqu - S.temps))}.
+       Sans quoi le bailleur se remboursera sur ce qu’il garde.`}</div>
+  ${!coffre.achete && vA.ok
+    ? `<div style="height:6px"></div><button class="act" data-a="coffre-acheter">
+        L’acheter — ${n(PRIX_COFFRE)} cr, ${CAPACITE_ACHETEE} kg</button>` : ''}
+  <div class="sep"></div>${lignes || '<div class="aide">Rien ici, rien dans le sac.</div>'}`;
 }
 
 function modaleEtal() {
@@ -15944,6 +17465,7 @@ function modaleEcole() {
   if (!offres.length) return '<div class="aide">On n’enseigne rien ici.</div>';
   const g = G();
   const remise = estAuService(S, col.faction) ? 0.15 : 0;
+  const regime = loiIci(S, col).regime;
 
   const enCours = g.membres.filter((c) => c.formation).map((c) => {
     const d = DIPLOMES[c.formation.key];
@@ -15960,7 +17482,7 @@ function modaleEcole() {
 
   const lignes = offres.map((k) => {
     const d = DIPLOMES[k];
-    const prix = prixFormation(col, k, remise);
+    const prix = prixFormation(col, k, remise, regime);
     const candidats = g.membres.filter((c) => estVivant(c) && peutSInscrire(S, col, c, k).ok);
     return `<div class="contrat">
       <div class="contrat-t">${e(d.nom)}</div>
@@ -15972,7 +17494,9 @@ function modaleEcole() {
       <div class="ligne"><span class="k">Durée sur place</span>
         <span class="v">${dureeTexte(d.heures)}</span></div>
       <div class="ligne"><span class="k">Prix</span>
-        <span class="v ${S.player.credits >= prix ? '' : 'alerte'}">${n(prix)} cr${remise ? ' (remise)' : ''}</span></div>
+        <span class="v ${S.player.credits >= prix ? '' : 'alerte'}">${prix
+    ? `${n(prix)} cr${remise ? ' (remise)' : ''}`
+    : `gratuit — ${e(regime.nom)}`}</span></div>
       ${candidats.length
     ? `<div class="taches">${candidats.map((c) => `<button class="act mini"
         data-a="inscrire" data-k="${k}" data-c="${e(c.id)}"
@@ -16448,6 +17972,58 @@ function surClic(ev) {
       break;
     }
 
+    case 'coffre-louer': {
+      const col = colonieDe(S.world, G().regionId);
+      const r = ACTIONS.louerCoffre(col && col.id);
+      toast(r.ok ? 'Coffre loué.' : r.motif, !r.ok);
+      rendreModale();
+      rafraichir(true);
+      break;
+    }
+
+    case 'coffre-acheter': {
+      const col = colonieDe(S.world, G().regionId);
+      const r = ACTIONS.acheterCoffre(col && col.id);
+      toast(r.ok ? 'Le coffre est à vous.' : r.motif, !r.ok);
+      rendreModale();
+      rafraichir(true);
+      break;
+    }
+
+    case 'coffre-deposer':
+    case 'coffre-retirer': {
+      const col = colonieDe(S.world, G().regionId);
+      const depose = el.dataset.a === 'coffre-deposer';
+      const r = ACTIONS.coffre(col && col.id, el.dataset.k, depose);
+      if (!r.ok) toast(r.motif, true);
+      rendreModale();
+      rafraichir(true);
+      break;
+    }
+
+    case 'corps': {
+      const r = ACTIONS.disposerCorps(el.dataset.c, el.dataset.k);
+      toast(r.ok
+        ? (r.prix ? `${r.prix} cr.` : r.rations ? `${r.rations} rations.`
+          : r.biomasse ? `${r.biomasse} de biomasse.` : 'C’est fait.')
+        : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
+    case 'tous-suivent': {
+      let n = 0;
+      for (const c of G().membres) if (c.tache) { delete c.tache; n++; }
+      toast(n ? `${n} personne(s) reprennent l’ordre du groupe.` : 'Personne n’avait de tâche à soi.');
+      rafraichir(true);
+      break;
+    }
+
+    case 'qte-marche':
+      qteMarche = Number(el.dataset.q);
+      rendreModale();
+      break;
+
     case 'acheter': {
       const col = colonieDe(S.world, G().regionId);
       const r = acheter(S, col, el.dataset.k, Number(el.dataset.q));
@@ -16788,6 +18364,38 @@ const API = {
 
   quitterService() {
     const r = quitter(state, creerLogger(state));
+    sauver();
+    return r;
+  },
+
+  /** Louer, acheter, remplir et vider un coffre en ville. Voir coffres.js. */
+  louerCoffre(colId) {
+    const col = state.world.colonies.find((c) => c.id === colId);
+    const r = louerCoffreA(state, col, creerLogger(state));
+    sauver();
+    return r;
+  },
+
+  acheterCoffre(colId) {
+    const col = state.world.colonies.find((c) => c.id === colId);
+    const r = acheterCoffreA(state, col, creerLogger(state));
+    sauver();
+    return r;
+  },
+
+  coffre(colId, key, depose) {
+    const col = state.world.colonies.find((c) => c.id === colId);
+    const g = groupeActif(state);
+    const r = depose
+      ? deposerAuCoffre(state, col, key, 9999, g)
+      : retirerDuCoffre(state, col, key, 9999, g);
+    sauver();
+    return r;
+  },
+
+  /** Ce qu'on fait d'un des siens qui est tombé. Voir depouilles.js. */
+  disposerCorps(id, quoi) {
+    const r = disposerCorps(state, groupeActif(state), id, quoi, creerLogger(state));
     sauver();
     return r;
   },

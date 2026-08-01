@@ -819,7 +819,7 @@ function blocContratsActifs() {
     const p = progresContrat(S, c);
     const reste = c.echeance - S.temps;
     return `<div style="padding:4px 0">
-        <div class="ligne"><span class="k">${e(c.titre)}</span>
+        <div class="ligne souple"><span class="k">${e(c.titre)}</span>
           <span class="v ${reste < 48 ? 'alerte' : ''}">${dureeTexte(Math.max(0, reste))}</span></div>
         ${jauge(p.total ? p.fait / p.total : 0, p.pret ? 'vert' : '')}
         <div class="aide">${e(p.texte)} · à rendre à ${e(lieuValidation(S, c))}</div>
@@ -2241,7 +2241,7 @@ function blocFeuilleService(all) {
       f.pts ? `${f.pts > 0 ? '+' : ''}${n(f.pts)} pts` : '',
       f.rep ? `${f.rep > 0 ? '+' : ''}${n(f.rep)} estime` : '',
     ].filter(Boolean).join(' · ');
-    return `<div class="ligne">
+    return `<div class="ligne souple">
       <span class="k">${e(f.titre)}<br>
         <span class="aide">${dureeTexte(Math.max(0, S.temps - f.t))} plus tôt</span></span>
       <span class="v"><span class="puce ${cls}">${txt}</span>${bilan
@@ -2907,6 +2907,7 @@ function modaleEcole() {
   if (!offres.length) return '<div class="aide">On n’enseigne rien ici.</div>';
   const g = G();
   const remise = estAuService(S, col.faction) ? 0.15 : 0;
+  const regime = loiIci(S, col).regime;
 
   const enCours = g.membres.filter((c) => c.formation).map((c) => {
     const d = DIPLOMES[c.formation.key];
@@ -2923,7 +2924,7 @@ function modaleEcole() {
 
   const lignes = offres.map((k) => {
     const d = DIPLOMES[k];
-    const prix = prixFormation(col, k, remise);
+    const prix = prixFormation(col, k, remise, regime);
     const candidats = g.membres.filter((c) => estVivant(c) && peutSInscrire(S, col, c, k).ok);
     return `<div class="contrat">
       <div class="contrat-t">${e(d.nom)}</div>
@@ -2935,7 +2936,9 @@ function modaleEcole() {
       <div class="ligne"><span class="k">Durée sur place</span>
         <span class="v">${dureeTexte(d.heures)}</span></div>
       <div class="ligne"><span class="k">Prix</span>
-        <span class="v ${S.player.credits >= prix ? '' : 'alerte'}">${n(prix)} cr${remise ? ' (remise)' : ''}</span></div>
+        <span class="v ${S.player.credits >= prix ? '' : 'alerte'}">${prix
+    ? `${n(prix)} cr${remise ? ' (remise)' : ''}`
+    : `gratuit — ${e(regime.nom)}`}</span></div>
       ${candidats.length
     ? `<div class="taches">${candidats.map((c) => `<button class="act mini"
         data-a="inscrire" data-k="${k}" data-c="${e(c.id)}"

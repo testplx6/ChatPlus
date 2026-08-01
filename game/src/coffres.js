@@ -22,6 +22,7 @@
 
 import { COMMODITIES, COMMODITY_KEYS } from './data.js';
 import { poidsInventaire } from './economy.js';
+import { loiIci } from './lois.js';
 
 /** Ce qu'un coffre tient, en kilos. */
 export const CAPACITE_LOUEE = 140;
@@ -80,6 +81,11 @@ export function coffresConnus(state) {
 export function peutLouer(state, col) {
   if (!col || col.ruine) return { ok: false, motif: 'Il faut une ville debout.' };
   if (coffreDe(state, col.id)) return { ok: false, motif: 'Vous en avez déjà un ici.' };
+  // Un Domaine ne loue pas non plus : tout appartient au seigneur.
+  const reg = loiIci(state, col).regime;
+  if (reg.propriete === null && reg.ecole === 'maison') {
+    return { ok: false, motif: `${reg.nom} : on n’y loue rien à un étranger.` };
+  }
   if (state.player.credits < LOYER) {
     return { ok: false, motif: `Le premier mois se paie d’avance : ${LOYER} cr.` };
   }
@@ -98,12 +104,18 @@ export function peutAcheter(state, col) {
   if (!col || col.ruine) return { ok: false, motif: 'Il faut une ville debout.' };
   const c = coffreDe(state, col.id);
   if (c && c.achete) return { ok: false, motif: 'Celui-ci est déjà à vous.' };
+  // C'est le régime qui décide de ce qu'on peut posséder chez eux — pas un
+  // seuil en dur. Voir REGIMES dans lois.js.
+  const reg = loiIci(state, col).regime;
+  if (reg.propriete === null) {
+    return { ok: false, motif: `${reg.nom} : on ne possède rien ici. ${reg.desc}` };
+  }
   if (col.faction) {
     const repu = state.player.reputation[col.faction] || 0;
-    if (repu < ESTIME_PROPRIETE) {
+    if (repu < reg.propriete) {
       return {
         ok: false,
-        motif: `On ne vend pas de murs à un inconnu : estime ${Math.round(repu)} / ${ESTIME_PROPRIETE}.`,
+        motif: `On ne vend pas de murs à un inconnu : estime ${Math.round(repu)} / ${reg.propriete}.`,
       };
     }
   }

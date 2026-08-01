@@ -211,6 +211,15 @@ body {
 .ligne .k { color: var(--texte-2); flex: 0 0 auto; white-space: nowrap; }
 .ligne .v { font-variant-numeric: tabular-nums; text-align: right; flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 
+/* Une ligne dont la gauche n'est pas une étiquette mais un texte libre — le
+   titre d'une mission, le nom d'un contrat. La règle du dessus s'inverse alors :
+   une étiquette courte peut rester d'un bloc, un titre de quarante caractères
+   non, il déborde et il ne reste plus qu'un caractère de large pour la pastille
+   de droite, qui se met à descendre lettre par lettre. Ici c'est donc le titre
+   qui se coupe et cède du terrain, et la valeur qui ne se coupe jamais. */
+.ligne.souple .k { flex: 1 1 auto; white-space: normal; min-width: 0; overflow-wrap: anywhere; }
+.ligne.souple .v { flex: 0 0 auto; }
+
 /* Deux colonnes de couples clé/valeur : sans séparateur elles se lisent comme
    une seule phrase à rallonge. */
 .grille2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; }
@@ -2014,6 +2023,77 @@ const IMPOTS = [
   { key: 'confiscatoire', nom: 'Confiscatoire', taux: 0.15, desc: 'On prend tout. On tiendra ce qu’on pourra.' },
 ];
 
+/**
+ * Le régime d'une faction : ce qu'on a le droit de faire chez elle.
+ *
+ * Les trois lois précédentes réglaient ce que la faction se fait à elle-même —
+ * ses geôles, sa caisse, ses esclaves. Celle-ci règle ce que *vous* pouvez y
+ * faire, et c'est la première qui vous concerne comme visiteur plutôt que comme
+ * sujet. Chaque régime touche des choses concrètes, et rien de décoratif :
+ *
+ *   propriete    l'estime qu'il faut pour posséder un coffre ; `null` = jamais
+ *   ecole        `libre` (gratuite), `payante`, ou `maison` (réservée aux siens)
+ *   soins        `tous` ou `estime` (le médecin ne soigne que qui il apprécie)
+ *   preleve      la part retenue sur ce que vous vendez dans leurs villes
+ *   palier       ce que l'armurier consent à sortir de derrière
+ *
+ * Ce qu'un régime donne, il le reprend ailleurs : la Commune soigne et instruit
+ * gratuitement mais retient un huitième de vos ventes ; la Franchise ne donne
+ * rien et ne prend presque rien. Le Domaine est le plus dur — on n'y possède
+ * pas, l'école est réservée à ceux qui servent — mais c'est le seul endroit où
+ * l'on sort les bonnes armes pour n'importe qui.
+ */
+const REGIMES = {
+  franchise: {
+    nom: 'Franchise',
+    desc: 'On y achète tout, on n’y reçoit rien. Le négoce est presque libre.',
+    propriete: 25,
+    ecole: 'payante',
+    soins: 'estime',
+    preleve: 0.02,
+    palier: 0,
+  },
+  charte: {
+    nom: 'Charte',
+    desc: 'Le régime ordinaire : on possède si l’on est connu, on paie ses services.',
+    propriete: 40,
+    ecole: 'payante',
+    soins: 'estime',
+    preleve: 0.05,
+    palier: 0,
+  },
+  commune: {
+    nom: 'Commune',
+    desc: 'École et médecin pour tous, rien à posséder, et l’on prend sa part.',
+    propriete: null,
+    ecole: 'libre',
+    soins: 'tous',
+    preleve: 0.12,
+    palier: 0,
+  },
+  domaine: {
+    nom: 'Domaine',
+    desc: 'Tout est au seigneur. Mais son armurier sort ce qu’il garde derrière.',
+    propriete: null,
+    ecole: 'maison',
+    soins: 'estime',
+    preleve: 0.09,
+    palier: 1,
+  },
+  // Pas un vote : l'état d'une ville que personne ne tient. Voir `loiIci`.
+  libre: {
+    nom: 'Ville libre',
+    desc: 'Personne n’interdit rien, personne ne donne rien.',
+    propriete: 0,
+    ecole: 'payante',
+    soins: 'estime',
+    preleve: 0,
+    palier: 0,
+  },
+};
+
+const REGIME_KEYS = ['franchise', 'charte', 'commune', 'domaine'];
+
 /** Le désordre qu'un taux d'impôt ajoute par heure à une ville. */
 function pressionFiscale(world, faction) {
   const t = loisDe(world, faction).impot;
@@ -2025,7 +2105,7 @@ function pressionFiscale(world, faction) {
 /** Les lois d'une faction, avec leurs valeurs par défaut. */
 function loisDe(world, faction) {
   const f = world.factions[faction];
-  if (!f) return { peine: 'ferme', esclavage: false, impot: 0.05 };
+  if (!f) return { peine: 'ferme', esclavage: false, impot: 0.05, regime: 'charte' };
   if (!f.lois) {
     f.lois = {
       peine: 'ferme',
@@ -2033,8 +2113,12 @@ function loisDe(world, faction) {
       // prend, pas un état de fait qu'on subit.
       esclavage: false,
       impot: 0.05,
+      // Le régime ordinaire : on n'invente pas un monde de communes.
+      regime: 'charte',
     };
   }
+  // Les parties commencées avant les régimes n'en ont pas : on pose l'ordinaire.
+  if (!f.lois.regime) f.lois.regime = 'charte';
   return f.lois;
 }
 
@@ -2043,7 +2127,10 @@ function loiIci(state, col) {
   if (!col || !col.faction) {
     // Une ville sans drapeau ne connaît que la loi du plus fort. On y vend ce
     // qu'on veut, et personne ne délivre de prime.
-    return { peine: PEINES.expeditive, esclavage: true, sansLoi: true, faction: null };
+    return {
+      peine: PEINES.expeditive, esclavage: true, sansLoi: true, faction: null,
+      regime: REGIMES.libre,
+    };
   }
   const l = loisDe(state.world, col.faction);
   return {
@@ -2051,6 +2138,7 @@ function loiIci(state, col) {
     esclavage: !!l.esclavage,
     sansLoi: false,
     faction: col.faction,
+    regime: REGIMES[l.regime] || REGIMES.charte,
   };
 }
 
@@ -5637,16 +5725,28 @@ function ecolesDe(world, col) {
   });
 }
 
-/** Le prix demandé ici : une grande ville se paie plus cher qu'un poste. */
-function prixFormation(col, key, remise = 0) {
+/**
+ * Le prix demandé ici : une grande ville se paie plus cher qu'un poste — et le
+ * régime décide si l'on paie tout court.
+ *
+ * Une Commune instruit gratuitement, c'est ce qu'elle donne en échange de ce
+ * qu'elle prélève. Un Domaine réserve ses écoles à ceux qui servent la maison :
+ * le prix reste, mais `peutSInscrire` refuse les étrangers.
+ */
+function prixFormation(col, key, remise = 0, regime) {
   const d = DIPLOMES[key];
   if (!d) return 0;
+  if (regime && regime.ecole === 'libre') return 0;
   return Math.round(d.cout * (0.85 + col.taille * 0.09) * (1 - remise));
 }
 
 function peutSInscrire(state, col, perso, key) {
   const d = DIPLOMES[key];
   if (!d) return { ok: false, motif: 'Formation inconnue.' };
+  const reg = loiIci(state, col).regime;
+  if (reg.ecole === 'maison' && !estAuService(state, col.faction)) {
+    return { ok: false, motif: `${reg.nom} : l’école est réservée à ceux qui servent la maison.` };
+  }
   if (!ecolesDe(state.world, col).includes(key)) {
     return { ok: false, motif: 'On n’enseigne pas ça ici.' };
   }
@@ -5664,7 +5764,7 @@ function inscrire(state, col, perso, key, log) {
   // La remise d'une école va à qui sert la maison : n'importe laquelle de vos
   // colonnes engagée chez eux suffit à vous ouvrir le tarif.
   const remise = estAuService(state, col.faction) ? 0.15 : 0;
-  const prix = prixFormation(col, key, remise);
+  const prix = prixFormation(col, key, remise, loiIci(state, col).regime);
   if (state.player.credits < prix) {
     return { ok: false, motif: `Il manque ${prix - state.player.credits} cr.` };
   }
@@ -11321,6 +11421,11 @@ function coffresConnus(state) {
 function peutLouer(state, col) {
   if (!col || col.ruine) return { ok: false, motif: 'Il faut une ville debout.' };
   if (coffreDe(state, col.id)) return { ok: false, motif: 'Vous en avez déjà un ici.' };
+  // Un Domaine ne loue pas non plus : tout appartient au seigneur.
+  const reg = loiIci(state, col).regime;
+  if (reg.propriete === null && reg.ecole === 'maison') {
+    return { ok: false, motif: `${reg.nom} : on n’y loue rien à un étranger.` };
+  }
   if (state.player.credits < LOYER) {
     return { ok: false, motif: `Le premier mois se paie d’avance : ${LOYER} cr.` };
   }
@@ -11339,12 +11444,18 @@ function peutAcheter(state, col) {
   if (!col || col.ruine) return { ok: false, motif: 'Il faut une ville debout.' };
   const c = coffreDe(state, col.id);
   if (c && c.achete) return { ok: false, motif: 'Celui-ci est déjà à vous.' };
+  // C'est le régime qui décide de ce qu'on peut posséder chez eux — pas un
+  // seuil en dur. Voir REGIMES dans lois.js.
+  const reg = loiIci(state, col).regime;
+  if (reg.propriete === null) {
+    return { ok: false, motif: `${reg.nom} : on ne possède rien ici. ${reg.desc}` };
+  }
   if (col.faction) {
     const repu = state.player.reputation[col.faction] || 0;
-    if (repu < ESTIME_PROPRIETE) {
+    if (repu < reg.propriete) {
       return {
         ok: false,
-        motif: `On ne vend pas de murs à un inconnu : estime ${Math.round(repu)} / ${ESTIME_PROPRIETE}.`,
+        motif: `On ne vend pas de murs à un inconnu : estime ${Math.round(repu)} / ${reg.propriete}.`,
       };
     }
   }
@@ -15281,7 +15392,7 @@ function blocContratsActifs() {
     const p = progresContrat(S, c);
     const reste = c.echeance - S.temps;
     return `<div style="padding:4px 0">
-        <div class="ligne"><span class="k">${e(c.titre)}</span>
+        <div class="ligne souple"><span class="k">${e(c.titre)}</span>
           <span class="v ${reste < 48 ? 'alerte' : ''}">${dureeTexte(Math.max(0, reste))}</span></div>
         ${jauge(p.total ? p.fait / p.total : 0, p.pret ? 'vert' : '')}
         <div class="aide">${e(p.texte)} · à rendre à ${e(lieuValidation(S, c))}</div>
@@ -16703,7 +16814,7 @@ function blocFeuilleService(all) {
       f.pts ? `${f.pts > 0 ? '+' : ''}${n(f.pts)} pts` : '',
       f.rep ? `${f.rep > 0 ? '+' : ''}${n(f.rep)} estime` : '',
     ].filter(Boolean).join(' · ');
-    return `<div class="ligne">
+    return `<div class="ligne souple">
       <span class="k">${e(f.titre)}<br>
         <span class="aide">${dureeTexte(Math.max(0, S.temps - f.t))} plus tôt</span></span>
       <span class="v"><span class="puce ${cls}">${txt}</span>${bilan
@@ -17369,6 +17480,7 @@ function modaleEcole() {
   if (!offres.length) return '<div class="aide">On n’enseigne rien ici.</div>';
   const g = G();
   const remise = estAuService(S, col.faction) ? 0.15 : 0;
+  const regime = loiIci(S, col).regime;
 
   const enCours = g.membres.filter((c) => c.formation).map((c) => {
     const d = DIPLOMES[c.formation.key];
@@ -17385,7 +17497,7 @@ function modaleEcole() {
 
   const lignes = offres.map((k) => {
     const d = DIPLOMES[k];
-    const prix = prixFormation(col, k, remise);
+    const prix = prixFormation(col, k, remise, regime);
     const candidats = g.membres.filter((c) => estVivant(c) && peutSInscrire(S, col, c, k).ok);
     return `<div class="contrat">
       <div class="contrat-t">${e(d.nom)}</div>
@@ -17397,7 +17509,9 @@ function modaleEcole() {
       <div class="ligne"><span class="k">Durée sur place</span>
         <span class="v">${dureeTexte(d.heures)}</span></div>
       <div class="ligne"><span class="k">Prix</span>
-        <span class="v ${S.player.credits >= prix ? '' : 'alerte'}">${n(prix)} cr${remise ? ' (remise)' : ''}</span></div>
+        <span class="v ${S.player.credits >= prix ? '' : 'alerte'}">${prix
+    ? `${n(prix)} cr${remise ? ' (remise)' : ''}`
+    : `gratuit — ${e(regime.nom)}`}</span></div>
       ${candidats.length
     ? `<div class="taches">${candidats.map((c) => `<button class="act mini"
         data-a="inscrire" data-k="${k}" data-c="${e(c.id)}"

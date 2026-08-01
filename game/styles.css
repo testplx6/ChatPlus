@@ -196,6 +196,15 @@ body {
 .ligne .k { color: var(--texte-2); flex: 0 0 auto; white-space: nowrap; }
 .ligne .v { font-variant-numeric: tabular-nums; text-align: right; flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 
+/* Une ligne dont la gauche n'est pas une étiquette mais un texte libre — le
+   titre d'une mission, le nom d'un contrat. La règle du dessus s'inverse alors :
+   une étiquette courte peut rester d'un bloc, un titre de quarante caractères
+   non, il déborde et il ne reste plus qu'un caractère de large pour la pastille
+   de droite, qui se met à descendre lettre par lettre. Ici c'est donc le titre
+   qui se coupe et cède du terrain, et la valeur qui ne se coupe jamais. */
+.ligne.souple .k { flex: 1 1 auto; white-space: normal; min-width: 0; overflow-wrap: anywhere; }
+.ligne.souple .v { flex: 0 0 auto; }
+
 /* Deux colonnes de couples clé/valeur : sans séparateur elles se lisent comme
    une seule phrase à rallonge. */
 .grille2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; }

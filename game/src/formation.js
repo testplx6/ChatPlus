@@ -14,6 +14,7 @@ import { DIPLOMES, DIPLOME_KEYS, FACTIONS, SKILLS } from './data.js';
 import { accorderDiplome, estVivant, comp, gagnerXp, XP_PRATIQUE } from './characters.js';
 import { groupes } from './groupes.js';
 import { estAuService } from './allegeance.js';
+import { loiIci } from './lois.js';
 
 /** Ce qu'une ville enseigne, d'après qui la tient et ce qu'elle pèse. */
 export function ecolesDe(world, col) {
@@ -26,16 +27,28 @@ export function ecolesDe(world, col) {
   });
 }
 
-/** Le prix demandé ici : une grande ville se paie plus cher qu'un poste. */
-export function prixFormation(col, key, remise = 0) {
+/**
+ * Le prix demandé ici : une grande ville se paie plus cher qu'un poste — et le
+ * régime décide si l'on paie tout court.
+ *
+ * Une Commune instruit gratuitement, c'est ce qu'elle donne en échange de ce
+ * qu'elle prélève. Un Domaine réserve ses écoles à ceux qui servent la maison :
+ * le prix reste, mais `peutSInscrire` refuse les étrangers.
+ */
+export function prixFormation(col, key, remise = 0, regime) {
   const d = DIPLOMES[key];
   if (!d) return 0;
+  if (regime && regime.ecole === 'libre') return 0;
   return Math.round(d.cout * (0.85 + col.taille * 0.09) * (1 - remise));
 }
 
 export function peutSInscrire(state, col, perso, key) {
   const d = DIPLOMES[key];
   if (!d) return { ok: false, motif: 'Formation inconnue.' };
+  const reg = loiIci(state, col).regime;
+  if (reg.ecole === 'maison' && !estAuService(state, col.faction)) {
+    return { ok: false, motif: `${reg.nom} : l’école est réservée à ceux qui servent la maison.` };
+  }
   if (!ecolesDe(state.world, col).includes(key)) {
     return { ok: false, motif: 'On n’enseigne pas ça ici.' };
   }
@@ -53,7 +66,7 @@ export function inscrire(state, col, perso, key, log) {
   // La remise d'une école va à qui sert la maison : n'importe laquelle de vos
   // colonnes engagée chez eux suffit à vous ouvrir le tarif.
   const remise = estAuService(state, col.faction) ? 0.15 : 0;
-  const prix = prixFormation(col, key, remise);
+  const prix = prixFormation(col, key, remise, loiIci(state, col).regime);
   if (state.player.credits < prix) {
     return { ok: false, motif: `Il manque ${prix - state.player.credits} cr.` };
   }
