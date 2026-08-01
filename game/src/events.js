@@ -21,7 +21,6 @@ import {
   ajusterLien, XP_PRATIQUE,
 } from './characters.js';
 import { poidsInventaire, capacitePortage } from './economy.js';
-import { tailleEscouadeMax } from './base.js';
 import { groupeActif, groupes, tousLesMembres, debout as deboutDe } from './groupes.js';
 import { estSurveillee } from './connaissance.js';
 import { occupeParEcole } from './formation.js';
@@ -544,10 +543,14 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       return true;
     }
     case 'errant': {
-      const max = tailleEscouadeMax(state.base);
-      const vivants = tousLesMembres(state).filter(estVivant).length;
+      // On n'oppose plus de plafond au nombre : engager quelqu'un au banc d'une
+      // ville n'en avait jamais, et un errant qu'on paie n'est pas différent.
+      // Ce qui borne une escouade, c'est ce qu'elle mange, la cohésion qui
+      // s'étiole au-delà du noyau et le monde qui la remarque de plus loin —
+      // pas une règle qui refuse. Le baraquement et les gens sociables agrandis-
+      // sent ce noyau : c'est là qu'est la décision.
       const prix = rng.irange(120, 420);
-      if (!state.player.politique.recruter || vivants >= max || state.player.credits < prix) {
+      if (!state.player.politique.recruter || state.player.credits < prix) {
         log({
           type: 'rencontre',
           texte: `Un errant propose ses services (${prix} cr). Décliné.`,

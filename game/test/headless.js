@@ -72,7 +72,7 @@ import {
   groupeActif, groupes, tousLesMembres, scinder, fusionner, assignerTache,
   tacheDe, debout, noyau, plafondCohesion, rendementCohesion,
   porteeOrdres, joignable, PORTEE_COUREUR, PORTEE_PAR_ANTENNE,
-  vivants as vivantsGroupe,
+  vivants as vivantsGroupe, placesSociables,
 } from '../src/groupes.js';
 import {
   acheter, vendre, prixJoueur, actifs, emploi, productionColonie, consommationColonie,
@@ -495,6 +495,48 @@ ok(serialiser(s3) === serialiser(s3b), 'la sim reprend à l’identique après r
   const remis = deserialiser(serialiser(vieux));
   ok(remis.player.groupes[0].membres.every((m) => m.skills0),
     'une sauvegarde d’avant se rattrape sans casser');
+}
+
+// --- Grossir coûte, mais on peut y répondre.
+//
+// Au-delà du noyau — quatre, plus un par baraquement — le plafond de cohésion
+// descend, donc le rendement et le combat avec lui. C'était une pénalité sans
+// contre-jeu : aucune décision du joueur n'y changeait rien, ce qui n'est pas un
+// choix mais une punition. Quelqu'un de sociable agrandit maintenant ce noyau.
+{
+  const gr = nouvellePartie(3838, { maintenant: 0 });
+  const gg = groupeActif(gr);
+  for (const c of gg.membres) c.skills.commerce = 5;
+  const sans = noyau(gr, gg);
+  ok(placesSociables(gg) === 0, 'des taiseux n’agrandissent rien');
+  // On fait entrer un barde. Rien d'autre ne change.
+  const barde = makeCharacter(new Rng(51), { archetype: 'barde', niveau: 2 });
+  barde.skills.commerce = 66;
+  gg.membres.push(barde);
+  // On compte sur la compétence *effective* : un barde affamé tient moins bien
+  // sa troupe qu'un barde reposé, et c'est voulu.
+  ok(placesSociables(gg) === Math.floor(compPerso(barde, 'commerce') / 22)
+    && placesSociables(gg) >= 2,
+  'un barde ouvre plusieurs places de plus au noyau',
+  `${placesSociables(gg)} places pour ${compPerso(barde, 'commerce').toFixed(0)} de commerce`);
+  ok(noyau(gr, gg) > sans, 'le noyau s’agrandit', `${sans} → ${noyau(gr, gg)}`);
+
+  // Et l'effet doit se voir sur le plafond, à effectif franchement au-dessus.
+  const foule = nouvellePartie(3839, { maintenant: 0 });
+  const gf = groupeActif(foule);
+  for (const c of gf.membres) c.skills.commerce = 5;
+  while (gf.membres.length < 12) gf.membres.push(makeCharacter(new Rng(52 + gf.membres.length)));
+  for (const c of gf.membres) c.skills.commerce = 5;
+  const plafondSeul = plafondCohesion(foule, gf);
+  gf.membres[0].skills.commerce = 88;
+  ok(plafondCohesion(foule, gf) > plafondSeul,
+    'à douze, quelqu’un de sociable relève le plafond de cohésion',
+    `${plafondSeul.toFixed(0)} % → ${plafondCohesion(foule, gf).toFixed(0)} %`);
+
+  // Un mort ou un homme à terre ne tient plus personne ensemble.
+  gf.membres[0].etat = 'ko';
+  ok(plafondCohesion(foule, gf) === plafondSeul,
+    'mais pas s’il est à terre');
 }
 
 section('4. Simulation longue (3 000 h ≈ 125 jours)');

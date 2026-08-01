@@ -12,7 +12,7 @@ import { sEngager, quitter, toucherRations as toucherRationsA } from './allegean
 import { genererBande, TACTIQUES } from './combat.js';
 import { groupeActif, tousLesMembres, scinder, fusionner, choisirGroupe, assignerTache } from './groupes.js';
 import {
-  tailleEscouadeMax, reconnaitreAvantPoste, peutReconnaitre, rattacherVille,
+  reconnaitreAvantPoste, peutReconnaitre, rattacherVille,
   declarerIndependance,
 } from './base.js';
 import { verifierExercice } from './squad.js';

@@ -2564,6 +2564,10 @@ const ARCHETYPES = {
   medic: { nom: 'Médic', bonus: { medecine: 20, ingenierie: 6 }, arme: 'barre' },
   courtier: { nom: 'Courtier', bonus: { commerce: 20, furtivite: 8 }, arme: 'clous' },
   eclaireur: { nom: 'Éclaireur', bonus: { furtivite: 16, endurance: 12, tir: 6 }, arme: 'machette' },
+  // Celui qui tient la troupe ensemble. Il ne se bat pas mieux que les autres et
+  // ne ramasse rien de plus : il fait que trente personnes restent une escouade
+  // au lieu de devenir une foule. Voir `plafondCohesion`.
+  barde: { nom: 'Barde', bonus: { commerce: 18, endurance: 8, furtivite: 6 }, arme: 'clous' },
 };
 
 const ARCHETYPE_KEYS = Object.keys(ARCHETYPES);
@@ -3757,7 +3761,29 @@ function vivants(g) {
 function noyau(state, g) {
   const base = state && state.base;
   const abri = base && base.fonde ? (base.batiments.baraquement || 0) : 0;
-  return 4 + abri;
+  return 4 + abri + placesSociables(g);
+}
+
+/**
+ * Ce que quelqu'un de sociable ajoute au noyau qu'on sait tenir.
+ *
+ * Grossir coûtait sans qu'on puisse rien y faire : au-delà de quatre — plus un
+ * par baraquement — le plafond de cohésion descend, donc le rendement et le
+ * combat avec lui, et aucune décision du joueur n'y changeait rien. Une pénalité
+ * sans contre-jeu n'est pas un choix, c'est une punition, et c'est bien ainsi
+ * qu'elle se ressentait.
+ *
+ * On l'accroche à la sociabilité plutôt qu'à un titre : c'est une propriété des
+ * gens, pas une étiquette. Le barde est simplement l'archétype qui commence
+ * doué pour ça — un courtier chevronné rend le même service, et c'est très bien.
+ */
+function placesSociables(g) {
+  let meilleur = 0;
+  for (const c of (g && g.membres) || []) {
+    if (!estDebout(c)) continue;
+    meilleur = Math.max(meilleur, comp(c, 'commerce'));
+  }
+  return Math.floor(meilleur / 22);
 }
 
 /**
@@ -11775,10 +11801,14 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       return true;
     }
     case 'errant': {
-      const max = tailleEscouadeMax(state.base);
-      const vivants = tousLesMembres(state).filter(estVivant).length;
+      // On n'oppose plus de plafond au nombre : engager quelqu'un au banc d'une
+      // ville n'en avait jamais, et un errant qu'on paie n'est pas différent.
+      // Ce qui borne une escouade, c'est ce qu'elle mange, la cohésion qui
+      // s'étiole au-delà du noyau et le monde qui la remarque de plus loin —
+      // pas une règle qui refuse. Le baraquement et les gens sociables agrandis-
+      // sent ce noyau : c'est là qu'est la décision.
       const prix = rng.irange(120, 420);
-      if (!state.player.politique.recruter || vivants >= max || state.player.credits < prix) {
+      if (!state.player.politique.recruter || state.player.credits < prix) {
         log({
           type: 'rencontre',
           texte: `Un errant propose ses services (${prix} cr). Décliné.`,
@@ -15324,7 +15354,9 @@ function ecranEscouade() {
     ${jauge((g.cohesion ?? 55) / 100, '', rend >= 1 ? '#4fd0e3' : undefined)}
     <div class="grille2">
       <div class="ligne"><span class="k">Effectif</span>
-        <span class="v">${nGens} pour un noyau de ${n(noy)}</span></div>
+        <span class="v">${nGens} pour un noyau de ${n(noy)}
+          <span class="aide">(4 + ${nivBat(S.base, 'baraquement')} baraquement
+          + ${placesSociables(g)} par les vôtres)</span></span></div>
       <div class="ligne"><span class="k">Plafond atteignable</span>
         <span class="v">${Math.round(plafond)} %</span></div>
       <div class="ligne"><span class="k">Travail et combat</span>
@@ -15333,7 +15365,8 @@ function ecranEscouade() {
         <span class="v">+${(Math.max(0, nGens - 4) * 5)} % de rencontres</span></div>
     </div>
     <div class="aide">${nGens > noy
-    ? 'Au-delà du noyau, on se connaît moins. Rien ne l’interdit : ça coûte, simplement.'
+    ? 'Au-delà du noyau, on se connaît moins. Rien ne l’interdit : ça coûte, simplement — '
+      + 'et un baraquement ou quelqu’un de sociable agrandit ce noyau.'
     : 'Une bande de cette taille peut se souder complètement.'}</div>
   </section>
 

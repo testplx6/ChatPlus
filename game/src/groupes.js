@@ -10,7 +10,7 @@
 // synchroniser deux listes et garde l'état sérialisable tel quel.
 
 import { COMMODITY_KEYS } from './data.js';
-import { estVivant, estDebout, idDepuisRng } from './characters.js';
+import { estVivant, estDebout, idDepuisRng, comp } from './characters.js';
 import { distance } from './world.js';
 
 /** Tâches qu'un membre peut prendre seul, en marge de l'ordre du groupe. */
@@ -162,7 +162,29 @@ export function vivants(g) {
 export function noyau(state, g) {
   const base = state && state.base;
   const abri = base && base.fonde ? (base.batiments.baraquement || 0) : 0;
-  return 4 + abri;
+  return 4 + abri + placesSociables(g);
+}
+
+/**
+ * Ce que quelqu'un de sociable ajoute au noyau qu'on sait tenir.
+ *
+ * Grossir coûtait sans qu'on puisse rien y faire : au-delà de quatre — plus un
+ * par baraquement — le plafond de cohésion descend, donc le rendement et le
+ * combat avec lui, et aucune décision du joueur n'y changeait rien. Une pénalité
+ * sans contre-jeu n'est pas un choix, c'est une punition, et c'est bien ainsi
+ * qu'elle se ressentait.
+ *
+ * On l'accroche à la sociabilité plutôt qu'à un titre : c'est une propriété des
+ * gens, pas une étiquette. Le barde est simplement l'archétype qui commence
+ * doué pour ça — un courtier chevronné rend le même service, et c'est très bien.
+ */
+export function placesSociables(g) {
+  let meilleur = 0;
+  for (const c of (g && g.membres) || []) {
+    if (!estDebout(c)) continue;
+    meilleur = Math.max(meilleur, comp(c, 'commerce'));
+  }
+  return Math.floor(meilleur / 22);
 }
 
 /**

@@ -26,7 +26,7 @@ import {
   tempsRecherche, capaciteStock, totalStock, energie, lancerConstruction, POP_RECONNUE,
   peutReconnaitre, peutRattacher,
   lancerRecherche, annulerConstruction, fonderBase, deposer, retirer,
-  COUT_FONDATION, tailleEscouadeMax,
+  COUT_FONDATION,
 } from './base.js';
 import { classement, enGuerre } from './factions.js';
 import { titreDe, lignesDe } from './chronique.js';
@@ -77,7 +77,7 @@ import { vueColonie, vueRegion, estSurveillee, ageTexte, nouvellesConnues } from
 import {
   groupeActif, groupes, groupeParId, choisirGroupe, tousLesMembres, tacheDe,
   assignerTache, scinder, fusionner, fusionnablesAvec, porteeOrdres, joignable, repartition,
-  TACHES_INDIVIDUELLES, noyau, plafondCohesion, rendementCohesion,
+  TACHES_INDIVIDUELLES, noyau, plafondCohesion, rendementCohesion, placesSociables,
   vivants as vivantsDe,
 } from './groupes.js';
 
@@ -1490,7 +1490,9 @@ function ecranEscouade() {
     ${jauge((g.cohesion ?? 55) / 100, '', rend >= 1 ? '#4fd0e3' : undefined)}
     <div class="grille2">
       <div class="ligne"><span class="k">Effectif</span>
-        <span class="v">${nGens} pour un noyau de ${n(noy)}</span></div>
+        <span class="v">${nGens} pour un noyau de ${n(noy)}
+          <span class="aide">(4 + ${nivBat(S.base, 'baraquement')} baraquement
+          + ${placesSociables(g)} par les vôtres)</span></span></div>
       <div class="ligne"><span class="k">Plafond atteignable</span>
         <span class="v">${Math.round(plafond)} %</span></div>
       <div class="ligne"><span class="k">Travail et combat</span>
@@ -1499,7 +1501,8 @@ function ecranEscouade() {
         <span class="v">+${(Math.max(0, nGens - 4) * 5)} % de rencontres</span></div>
     </div>
     <div class="aide">${nGens > noy
-    ? 'Au-delà du noyau, on se connaît moins. Rien ne l’interdit : ça coûte, simplement.'
+    ? 'Au-delà du noyau, on se connaît moins. Rien ne l’interdit : ça coûte, simplement — '
+      + 'et un baraquement ou quelqu’un de sociable agrandit ce noyau.'
     : 'Une bande de cette taille peut se souder complètement.'}</div>
   </section>
 

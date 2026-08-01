@@ -24,6 +24,10 @@ const ARCHETYPES = {
   medic: { nom: 'Médic', bonus: { medecine: 20, ingenierie: 6 }, arme: 'barre' },
   courtier: { nom: 'Courtier', bonus: { commerce: 20, furtivite: 8 }, arme: 'clous' },
   eclaireur: { nom: 'Éclaireur', bonus: { furtivite: 16, endurance: 12, tir: 6 }, arme: 'machette' },
+  // Celui qui tient la troupe ensemble. Il ne se bat pas mieux que les autres et
+  // ne ramasse rien de plus : il fait que trente personnes restent une escouade
+  // au lieu de devenir une foule. Voir `plafondCohesion`.
+  barde: { nom: 'Barde', bonus: { commerce: 18, endurance: 8, furtivite: 6 }, arme: 'clous' },
 };
 
 export const ARCHETYPE_KEYS = Object.keys(ARCHETYPES);
