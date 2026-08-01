@@ -164,6 +164,8 @@ export function sEngager(state, faction, log, groupe) {
     intendance: state.temps,
     manques: 0,
     derniereSolde: state.temps,
+    // Ce qu'on a fait pour eux, dans l'ordre. Voir `noterFait`.
+    faits: [],
     // Ce dont on répond : les actes ordonnés qui attendent leur issue, et ce
     // qu'on a déjà mis à votre charge.
     actes: [],
@@ -446,6 +448,39 @@ function fabriquerOrdre(state, rng, g) {
   };
 }
 
+/** Combien d'ordres on garde en mémoire. Au-delà, seuls les totaux restent. */
+export const FEUILLE_MAX = 14;
+
+/**
+ * La feuille de service : ce qu'on a fait pour eux, et ce qu'on a laissé filer.
+ *
+ * Le jeu comptait bien les ordres remplis, mais nulle part on ne pouvait
+ * relire ce qu'on avait fait : le journal les annonce puis les fait défiler, et
+ * il est plafonné à quatre cents lignes. On sert une faction pendant six mois
+ * de jeu et il n'en reste qu'un nombre.
+ */
+export function noterFait(all, o, issue, t) {
+  if (!all) return;
+  if (!all.faits) all.faits = [];
+  all.faits.push({ t, type: o.type, titre: o.titre, issue });
+  if (all.faits.length > FEUILLE_MAX) all.faits.shift();
+}
+
+/** Les totaux de la feuille, tous ordres confondus depuis l'engagement. */
+export function bilanService(all) {
+  const out = { honores: 0, manques: 0, annules: 0 };
+  if (!all) return out;
+  out.manques = all.manques || 0;
+  for (const f of all.faits || []) {
+    if (f.issue === 'honore') out.honores++;
+    else if (f.issue === 'annule') out.annules++;
+  }
+  // Les manques sont comptés depuis toujours, les faits seulement sur les
+  // quatorze derniers : on prend le plus grand des deux pour ne pas mentir.
+  out.honores = Math.max(out.honores, all.ordresHonores || 0);
+  return out;
+}
+
 export function avancementOrdre(state, o, groupe) {
   if (!o) return null;
   switch (o.type) {
@@ -549,6 +584,7 @@ function tickEngagement(state, g, log, ctx) {
       const o = all.ordre;
       all.ordre = null;
       all.prochainOrdre = state.temps + rng.irange(60, 140);
+      noterFait(all, o, 'annule', state.temps);
       log({
         type: 'allegeance',
         texte: `Ordre annulé : ${o.titre}. La paix est signée, on vous rappelle.`,
@@ -573,6 +609,8 @@ function tickEngagement(state, g, log, ctx) {
       all.ordre = null;
       all.prochainOrdre = state.temps + rng.irange(120, 260);
       state.stats.ordresRemplis = (state.stats.ordresRemplis || 0) + 1;
+      all.ordresHonores = (all.ordresHonores || 0) + 1;
+      noterFait(all, o, 'honore', state.temps);
       crediter(state, o.service, log, null, g);
       log({
         type: 'allegeance',
@@ -590,6 +628,7 @@ function tickEngagement(state, g, log, ctx) {
       // c'est l'estime, et elle finit par fermer l'intendance.
       state.player.reputation[all.faction] = Math.max(-100, (state.player.reputation[all.faction] || 0) - 3);
       all.manques = (all.manques || 0) + 1;
+      noterFait(all, o, 'manque', state.temps);
       log({
         type: 'allegeance',
         texte: `Ordre non exécuté : ${o.titre}. On le note.`,

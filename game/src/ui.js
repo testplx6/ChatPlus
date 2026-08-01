@@ -42,6 +42,7 @@ import { horloge, VITESSES } from './sim.js';
 import { conditions, SAISONS, METEO } from './climat.js';
 import {
   RANGS, rangDe, estAuService, peutSEngager, avancementOrdre, REPUTATION_MINIMALE,
+  bilanService,
   droitIntendance, garnison, RANG_GARNISON,
 } from './allegeance.js';
 import { caravanesIci, valeurCargaison } from './caravanes.js';
@@ -2123,6 +2124,42 @@ function blocCibleOrdre(o) {
     <button class="act" data-a="voyage" data-r="${cible.regionId}">S’y rendre</button>`;
 }
 
+/**
+ * La feuille de service : ce qu'on a fait pour eux, et ce qu'on a laissé filer.
+ *
+ * Les ordres remplis étaient comptés, jamais relus. Le journal les annonce puis
+ * les fait défiler, et il est plafonné à quatre cents lignes : on sert une
+ * faction six mois durant et il n'en reste qu'un nombre. On garde les quatorze
+ * derniers, avec leur issue et leur date.
+ */
+function blocFeuilleService(all) {
+  const faits = (all.faits || []).slice().reverse();
+  const b = bilanService(all);
+  if (!faits.length && !b.manques) {
+    return `<div class="sep"></div>
+      <div class="titre">Feuille de service</div>
+      <div class="aide">Rien encore à votre dossier.</div>`;
+  }
+  const mot = {
+    honore: ['ok', 'honoré'],
+    manque: ['mal', 'manqué'],
+    annule: ['att', 'annulé'],
+  };
+  const lignes = faits.map((f) => {
+    const [cls, txt] = mot[f.issue] || ['att', f.issue];
+    return `<div class="ligne">
+      <span class="k">${e(f.titre)}<br>
+        <span class="aide">${dureeTexte(Math.max(0, S.temps - f.t))} plus tôt</span></span>
+      <span class="v"><span class="puce ${cls}">${txt}</span></span></div>`;
+  }).join('');
+  return `<div class="sep"></div>
+    <div class="titre">Feuille de service
+      <span class="droite">${b.honores} honoré${b.honores > 1 ? 's' : ''}
+        · ${b.manques} manqué${b.manques > 1 ? 's' : ''}${b.annules
+  ? ` · ${b.annules} annulé${b.annules > 1 ? 's' : ''}` : ''}</span></div>
+    ${lignes || '<div class="aide">Le détail des plus anciens s’est perdu ; les totaux tiennent.</div>'}`;
+}
+
 function blocIntendance() {
   const g = G();
   if (!g) return '';
@@ -2191,6 +2228,7 @@ function blocAllegeance() {
         <span class="${o.echeance - S.temps < 48 ? 'alerte' : ''}">${dureeTexte(Math.max(0, o.echeance - S.temps))} restantes</span></div>
       ${blocCibleOrdre(o)}`
     : '<div class="aide">Aucun ordre en attente. Ils vous rappelleront.</div>'}
+    ${blocFeuilleService(all)}
     ${blocInfluence(all.faction)}
     <div class="sep"></div>
     <button class="act mini danger" data-a="quitter-service">Rompre l’engagement</button>

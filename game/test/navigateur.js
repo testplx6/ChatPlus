@@ -345,6 +345,8 @@ await page.waitForTimeout(300);
     txtO.slice(0, 300).replace(/\n+/g, ' | '));
   ok((await page.locator('[data-a="voyage"]').count()) > 0,
     'et propose de s’y rendre');
+  ok(/feuille de service/i.test(txtO),
+    'et l’engagement montre ce qu’on a déjà fait pour eux');
   await page.screenshot({ path: join(CAPTURES, '09d-ordre.png'), fullPage: true });
   // On rend la partie neuve posée en ville que la suite de la section attend :
   // les vérifications du marché comptent sur son étal et sa bourse.

@@ -4823,6 +4823,8 @@ function sEngager(state, faction, log, groupe) {
     intendance: state.temps,
     manques: 0,
     derniereSolde: state.temps,
+    // Ce qu'on a fait pour eux, dans l'ordre. Voir `noterFait`.
+    faits: [],
     // Ce dont on répond : les actes ordonnés qui attendent leur issue, et ce
     // qu'on a déjà mis à votre charge.
     actes: [],
@@ -5105,6 +5107,39 @@ function fabriquerOrdre(state, rng, g) {
   };
 }
 
+/** Combien d'ordres on garde en mémoire. Au-delà, seuls les totaux restent. */
+const FEUILLE_MAX = 14;
+
+/**
+ * La feuille de service : ce qu'on a fait pour eux, et ce qu'on a laissé filer.
+ *
+ * Le jeu comptait bien les ordres remplis, mais nulle part on ne pouvait
+ * relire ce qu'on avait fait : le journal les annonce puis les fait défiler, et
+ * il est plafonné à quatre cents lignes. On sert une faction pendant six mois
+ * de jeu et il n'en reste qu'un nombre.
+ */
+function noterFait(all, o, issue, t) {
+  if (!all) return;
+  if (!all.faits) all.faits = [];
+  all.faits.push({ t, type: o.type, titre: o.titre, issue });
+  if (all.faits.length > FEUILLE_MAX) all.faits.shift();
+}
+
+/** Les totaux de la feuille, tous ordres confondus depuis l'engagement. */
+function bilanService(all) {
+  const out = { honores: 0, manques: 0, annules: 0 };
+  if (!all) return out;
+  out.manques = all.manques || 0;
+  for (const f of all.faits || []) {
+    if (f.issue === 'honore') out.honores++;
+    else if (f.issue === 'annule') out.annules++;
+  }
+  // Les manques sont comptés depuis toujours, les faits seulement sur les
+  // quatorze derniers : on prend le plus grand des deux pour ne pas mentir.
+  out.honores = Math.max(out.honores, all.ordresHonores || 0);
+  return out;
+}
+
 function avancementOrdre(state, o, groupe) {
   if (!o) return null;
   switch (o.type) {
@@ -5208,6 +5243,7 @@ function tickEngagement(state, g, log, ctx) {
       const o = all.ordre;
       all.ordre = null;
       all.prochainOrdre = state.temps + rng.irange(60, 140);
+      noterFait(all, o, 'annule', state.temps);
       log({
         type: 'allegeance',
         texte: `Ordre annulé : ${o.titre}. La paix est signée, on vous rappelle.`,
@@ -5232,6 +5268,8 @@ function tickEngagement(state, g, log, ctx) {
       all.ordre = null;
       all.prochainOrdre = state.temps + rng.irange(120, 260);
       state.stats.ordresRemplis = (state.stats.ordresRemplis || 0) + 1;
+      all.ordresHonores = (all.ordresHonores || 0) + 1;
+      noterFait(all, o, 'honore', state.temps);
       crediter(state, o.service, log, null, g);
       log({
         type: 'allegeance',
@@ -5249,6 +5287,7 @@ function tickEngagement(state, g, log, ctx) {
       // c'est l'estime, et elle finit par fermer l'intendance.
       state.player.reputation[all.faction] = Math.max(-100, (state.player.reputation[all.faction] || 0) - 3);
       all.manques = (all.manques || 0) + 1;
+      noterFait(all, o, 'manque', state.temps);
       log({
         type: 'allegeance',
         texte: `Ordre non exécuté : ${o.titre}. On le note.`,
@@ -13243,6 +13282,9 @@ function normaliser(state) {
     // Le point de départ des compétences est arrivé après coup : pour une partie
     // déjà commencée, on prend l'état du jour. On ne peut pas inventer un passé.
     for (const c of g.membres) if (!c.skills0) c.skills0 = Object.assign({}, c.skills);
+    // La feuille de service est arrivée après coup : on ne peut pas reconstituer
+    // ce qui a été fait avant, seulement ne plus rien perdre à partir d'ici.
+    if (g.allegeance && !g.allegeance.faits) g.allegeance.faits = [];
   }
   if (!p.groupeActif || !p.groupes.some((g) => g.id === p.groupeActif)) {
     p.groupeActif = p.groupes.length ? p.groupes[0].id : null;
@@ -15987,6 +16029,42 @@ function blocCibleOrdre(o) {
     <button class="act" data-a="voyage" data-r="${cible.regionId}">S’y rendre</button>`;
 }
 
+/**
+ * La feuille de service : ce qu'on a fait pour eux, et ce qu'on a laissé filer.
+ *
+ * Les ordres remplis étaient comptés, jamais relus. Le journal les annonce puis
+ * les fait défiler, et il est plafonné à quatre cents lignes : on sert une
+ * faction six mois durant et il n'en reste qu'un nombre. On garde les quatorze
+ * derniers, avec leur issue et leur date.
+ */
+function blocFeuilleService(all) {
+  const faits = (all.faits || []).slice().reverse();
+  const b = bilanService(all);
+  if (!faits.length && !b.manques) {
+    return `<div class="sep"></div>
+      <div class="titre">Feuille de service</div>
+      <div class="aide">Rien encore à votre dossier.</div>`;
+  }
+  const mot = {
+    honore: ['ok', 'honoré'],
+    manque: ['mal', 'manqué'],
+    annule: ['att', 'annulé'],
+  };
+  const lignes = faits.map((f) => {
+    const [cls, txt] = mot[f.issue] || ['att', f.issue];
+    return `<div class="ligne">
+      <span class="k">${e(f.titre)}<br>
+        <span class="aide">${dureeTexte(Math.max(0, S.temps - f.t))} plus tôt</span></span>
+      <span class="v"><span class="puce ${cls}">${txt}</span></span></div>`;
+  }).join('');
+  return `<div class="sep"></div>
+    <div class="titre">Feuille de service
+      <span class="droite">${b.honores} honoré${b.honores > 1 ? 's' : ''}
+        · ${b.manques} manqué${b.manques > 1 ? 's' : ''}${b.annules
+  ? ` · ${b.annules} annulé${b.annules > 1 ? 's' : ''}` : ''}</span></div>
+    ${lignes || '<div class="aide">Le détail des plus anciens s’est perdu ; les totaux tiennent.</div>'}`;
+}
+
 function blocIntendance() {
   const g = G();
   if (!g) return '';
@@ -16055,6 +16133,7 @@ function blocAllegeance() {
         <span class="${o.echeance - S.temps < 48 ? 'alerte' : ''}">${dureeTexte(Math.max(0, o.echeance - S.temps))} restantes</span></div>
       ${blocCibleOrdre(o)}`
     : '<div class="aide">Aucun ordre en attente. Ils vous rappelleront.</div>'}
+    ${blocFeuilleService(all)}
     ${blocInfluence(all.faction)}
     <div class="sep"></div>
     <button class="act mini danger" data-a="quitter-service">Rompre l’engagement</button>

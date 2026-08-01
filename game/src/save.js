@@ -63,6 +63,9 @@ export function normaliser(state) {
     // Le point de départ des compétences est arrivé après coup : pour une partie
     // déjà commencée, on prend l'état du jour. On ne peut pas inventer un passé.
     for (const c of g.membres) if (!c.skills0) c.skills0 = Object.assign({}, c.skills);
+    // La feuille de service est arrivée après coup : on ne peut pas reconstituer
+    // ce qui a été fait avant, seulement ne plus rien perdre à partir d'ici.
+    if (g.allegeance && !g.allegeance.faits) g.allegeance.faits = [];
   }
   if (!p.groupeActif || !p.groupes.some((g) => g.id === p.groupeActif)) {
     p.groupeActif = p.groupes.length ? p.groupes[0].id : null;

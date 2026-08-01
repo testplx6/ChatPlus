@@ -96,6 +96,7 @@ import { METIER_VILLE_KEYS } from '../src/data.js';
 import {
   sEngager, rangDe, RANGS, peutSEngager, REPUTATION_MINIMALE,
   droitIntendance, toucherRations, garnison, RANG_GARNISON,
+  bilanService, noterFait, FEUILLE_MAX,
 } from '../src/allegeance.js';
 import {
   vueColonie, estSurveillee, ageTexte, nouvellesConnues, DELAI_NOUVELLE, observer,
@@ -495,6 +496,60 @@ ok(serialiser(s3) === serialiser(s3b), 'la sim reprend à l’identique après r
   const remis = deserialiser(serialiser(vieux));
   ok(remis.player.groupes[0].membres.every((m) => m.skills0),
     'une sauvegarde d’avant se rattrape sans casser');
+}
+
+// --- La feuille de service : on relit ce qu'on a fait pour eux.
+//
+// Les ordres remplis étaient comptés, jamais relus : le journal les annonce puis
+// les fait défiler, et il est plafonné à quatre cents lignes. On sert une
+// faction six mois durant et il n'en reste qu'un nombre.
+{
+  const fs = nouvellePartie(4041, { maintenant: 0 });
+  const gf = groupeActif(fs);
+  const cf = fs.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
+  fs.player.reputation[cf.faction] = 40;
+  gf.regionId = cf.regionId;
+  sEngager(fs, cf.faction, () => {});
+  const af = gf.allegeance;
+  ok(Array.isArray(af.faits) && af.faits.length === 0, 'on démarre avec un dossier vide');
+  ok(bilanService(af).honores === 0, 'et un bilan à zéro');
+
+  // Un ordre honoré : reconnaissance d'un secteur qu'on découvre.
+  af.ordre = {
+    type: 'reconnaissance', regionId: fs.world.regions.findIndex((r) => !r.decouvert),
+    titre: 'Reconnaître X', recompense: 100, service: 60, duree: 600,
+    echeance: fs.temps + 600,
+  };
+  fs.world.regions[af.ordre.regionId].decouvert = true;
+  avancer(fs, 3);
+  ok(af.faits.some((f) => f.issue === 'honore'), 'un ordre honoré entre au dossier');
+  ok(bilanService(af).honores === 1, 'et le bilan le compte');
+
+  // Un ordre manqué : on laisse filer l'échéance.
+  af.ordre = {
+    type: 'reconnaissance', regionId: fs.world.regions.findIndex((r) => !r.decouvert),
+    titre: 'Reconnaître Y', recompense: 100, service: 60, duree: 4,
+    echeance: fs.temps + 4,
+  };
+  avancer(fs, 12);
+  ok(af.faits.some((f) => f.issue === 'manque'), 'un ordre manqué aussi');
+  ok(bilanService(af).manques >= 1, 'et il compte comme manqué',
+    `${bilanService(af).manques}`);
+  ok(af.faits.length === 2, 'le dossier tient les deux dans l’ordre');
+
+  // Le dossier ne grossit pas sans fin.
+  for (let i = 0; i < FEUILLE_MAX + 6; i++) {
+    noterFait(af, { type: 'frappe', titre: `essai ${i}` }, 'honore', fs.temps);
+  }
+  ok(af.faits.length === FEUILLE_MAX, 'et il est plafonné',
+    `${af.faits.length} lignes`);
+
+  // Une partie d'avant la feuille se rattrape sans casser.
+  const vieille = deserialiser(serialiser(fs));
+  delete vieille.player.groupes[0].allegeance.faits;
+  const remise = deserialiser(serialiser(vieille));
+  ok(Array.isArray(remise.player.groupes[0].allegeance.faits),
+    'une sauvegarde d’avant repart avec un dossier vide plutôt qu’un plantage');
 }
 
 // --- Un ordre de mission dit où aller.
