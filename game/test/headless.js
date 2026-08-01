@@ -498,6 +498,40 @@ ok(serialiser(s3) === serialiser(s3b), 'la sim reprend à l’identique après r
     'une sauvegarde d’avant se rattrape sans casser');
 }
 
+// --- On ne repart pas en marche avec un homme sur les bras.
+//
+// Une victoire ne touchait pas à l'ordre en cours : on gagnait le combat et la
+// colonne reprenait sa route, blessés compris, jusqu'à la rencontre suivante.
+// Seule une défaite arrêtait la marche.
+{
+  const h = nouvellePartie(4142, { maintenant: 0 });
+  const gh = groupeActif(h);
+  const loin = h.world.regions.find((r) => distance(r.i, gh.regionId) > 3);
+  for (const c of gh.membres) { c.skills.melee = 95; c.skills.endurance = 90; }
+  donnerOrdre(h, { type: 'voyage', dest: loin.i }, gh);
+  ok(gh.ordre.type === 'voyage', 'la colonne est en route');
+  // Un combat gagné sans casse : on continue.
+  const faible = genererBande(new Rng(61), 'bandits', 1, 0);
+  for (const m of faible.membres) { m.skills.melee = 1; m.corps.torse.pv = 1; }
+  combatContre(h, faible, () => {}, { rng: new Rng(62) }, gh);
+  ok(gh.ordre.type === 'voyage', 'une escarmouche sans blessé ne l’arrête pas');
+  // Quelqu'un tombe : on s'arrête.
+  gh.membres[0].etat = 'ko';
+  const faible2 = genererBande(new Rng(63), 'bandits', 1, 0);
+  for (const m of faible2.membres) { m.skills.melee = 1; m.corps.torse.pv = 1; }
+  combatContre(h, faible2, () => {}, { rng: new Rng(64) }, gh);
+  ok(gh.ordre.type === 'repos', 'un homme à terre arrête la marche');
+
+  // Et c'est une consigne, pas une fatalité.
+  h.player.politique.halte = false;
+  donnerOrdre(h, { type: 'voyage', dest: loin.i }, gh);
+  gh.membres[0].etat = 'ko';
+  const faible3 = genererBande(new Rng(65), 'bandits', 1, 0);
+  for (const m of faible3.membres) { m.skills.melee = 1; m.corps.torse.pv = 1; }
+  combatContre(h, faible3, () => {}, { rng: new Rng(66) }, gh);
+  ok(gh.ordre.type === 'voyage', 'consigne coupée, on continue quand même');
+}
+
 // --- La feuille de service : on relit ce qu'on a fait pour eux.
 //
 // Les ordres remplis étaient comptés, jamais relus : le journal les annonce puis

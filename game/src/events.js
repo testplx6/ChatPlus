@@ -169,6 +169,25 @@ export function combatContre(state, bande, log, ctx, groupe) {
     viserChefs: !!state.player.politique.viserChefs,
   });
 
+  // On ne repart pas en marche avec un homme sur les bras.
+  //
+  // Une victoire ne touchait pas à l'ordre en cours : on gagnait le combat et la
+  // colonne reprenait sa route, blessés compris, jusqu'à la rencontre suivante —
+  // sans qu'on ait eu l'occasion de décider quoi que ce soit. Seule une défaite
+  // arrêtait la marche. C'est la moitié du problème que pose une route longue :
+  // on ne peut pas réagir à ce qui arrive dessus.
+  if (state.player.politique.halte && g.ordre && g.ordre.type === 'voyage'
+    && g.membres.some((c) => c.etat === 'ko')) {
+    g.ordre = { type: 'repos' };
+    log({
+      type: 'ordre',
+      texte: `${g.nom} : quelqu’un est à terre, la marche s’arrête ici.`,
+      important: true,
+      regionId: g.regionId,
+      groupe: g.id,
+    });
+  }
+
   const lieu = nomRegion(state.world, g.regionId);
   let texte;
   if (res.vainqueur === 'A') {

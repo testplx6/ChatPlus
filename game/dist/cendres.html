@@ -11466,6 +11466,25 @@ function combatContre(state, bande, log, ctx, groupe) {
     viserChefs: !!state.player.politique.viserChefs,
   });
 
+  // On ne repart pas en marche avec un homme sur les bras.
+  //
+  // Une victoire ne touchait pas à l'ordre en cours : on gagnait le combat et la
+  // colonne reprenait sa route, blessés compris, jusqu'à la rencontre suivante —
+  // sans qu'on ait eu l'occasion de décider quoi que ce soit. Seule une défaite
+  // arrêtait la marche. C'est la moitié du problème que pose une route longue :
+  // on ne peut pas réagir à ce qui arrive dessus.
+  if (state.player.politique.halte && g.ordre && g.ordre.type === 'voyage'
+    && g.membres.some((c) => c.etat === 'ko')) {
+    g.ordre = { type: 'repos' };
+    log({
+      type: 'ordre',
+      texte: `${g.nom} : quelqu’un est à terre, la marche s’arrête ici.`,
+      important: true,
+      regionId: g.regionId,
+      groupe: g.id,
+    });
+  }
+
   const lieu = nomRegion(state.world, g.regionId);
   let texte;
   if (res.vainqueur === 'A') {
@@ -13298,6 +13317,7 @@ function normaliser(state) {
   // Avant les tactiques, on subissait le combat sans rien en décider.
   if (!p.tactique) p.tactique = 'ligne';
   if (p.politique && p.politique.viserChefs === undefined) p.politique.viserChefs = false;
+  if (p.politique && p.politique.halte === undefined) p.politique.halte = true;
   if (!p.contrats) p.contrats = [];
   if (!p.primes) p.primes = {};
   // Avant, l'engagement appartenait au joueur : un seul pour toute la partie.
@@ -13582,6 +13602,9 @@ function nouvellePartie(seed, opts = {}) {
         payerPeage: true,
         achever: false,
         viserChefs: false,
+        // On s'arrête quand quelqu'un tombe, plutôt que de continuer la route
+        // avec un homme sur les bras.
+        halte: true,
       },
       contrats: [],
       primes: {},
@@ -15449,6 +15472,7 @@ function ecranEscouade() {
     ['payerPeage', 'Payer les péages plutôt que se battre'],
     ['achever', 'Achever les ennemis à terre'],
     ['viserChefs', 'Viser les plus dangereux d’abord'],
+    ['halte', 'Interrompre la route quand quelqu’un tombe'],
   ].map(([k, l]) => `<button class="act mini" style="text-align:left" data-a="politique" data-k="${k}"
         aria-pressed="${!!pol[k]}">[${pol[k] ? '×' : ' '}] ${e(l)}</button>`).join('')}
     </div>

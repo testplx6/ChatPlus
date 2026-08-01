@@ -1544,6 +1544,7 @@ function ecranEscouade() {
     ['payerPeage', 'Payer les péages plutôt que se battre'],
     ['achever', 'Achever les ennemis à terre'],
     ['viserChefs', 'Viser les plus dangereux d’abord'],
+    ['halte', 'Interrompre la route quand quelqu’un tombe'],
   ].map(([k, l]) => `<button class="act mini" style="text-align:left" data-a="politique" data-k="${k}"
         aria-pressed="${!!pol[k]}">[${pol[k] ? '×' : ' '}] ${e(l)}</button>`).join('')}
     </div>

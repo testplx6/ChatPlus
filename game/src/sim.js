@@ -133,6 +133,9 @@ export function nouvellePartie(seed, opts = {}) {
         payerPeage: true,
         achever: false,
         viserChefs: false,
+        // On s'arrête quand quelqu'un tombe, plutôt que de continuer la route
+        // avec un homme sur les bras.
+        halte: true,
       },
       contrats: [],
       primes: {},

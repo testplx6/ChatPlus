@@ -79,6 +79,7 @@ export function normaliser(state) {
   // Avant les tactiques, on subissait le combat sans rien en décider.
   if (!p.tactique) p.tactique = 'ligne';
   if (p.politique && p.politique.viserChefs === undefined) p.politique.viserChefs = false;
+  if (p.politique && p.politique.halte === undefined) p.politique.halte = true;
   if (!p.contrats) p.contrats = [];
   if (!p.primes) p.primes = {};
   // Avant, l'engagement appartenait au joueur : un seul pour toute la partie.
