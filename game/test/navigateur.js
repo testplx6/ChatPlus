@@ -290,6 +290,24 @@ await page.waitForTimeout(600);
   await page.waitForTimeout(300);
 }
 
+// L'estime disait ce qu'elle valait, jamais ce qu'elle faisait.
+{
+  const texteVille = await page.locator('#ecran').innerText();
+  ok(/estime change ici/i.test(texteVille),
+    'la fiche de ville dit à quoi sert l’estime qu’on y a',
+    texteVille.slice(0, 200).replace(/\n+/g, ' | '));
+  await page.click('summary:has-text("estime change ici")');
+  await page.waitForTimeout(250);
+  const deplie = await page.locator('#ecran').innerText();
+  ok(/intendance|engagement|coffre|prix|prime/i.test(deplie),
+    'et déplié, il énumère des conséquences concrètes');
+  ok(/À [+−-]\d/.test(deplie),
+    'avec la distance au palier suivant, en points');
+  // On le replie : la suite de la section compte sur la fiche telle qu'elle est.
+  await page.click('summary:has-text("estime change ici")');
+  await page.waitForTimeout(200);
+}
+
 // Le coffre en ville : louer, y mettre, reprendre.
 await page.click('[data-a="modale"][data-m="coffre"]');
 await page.waitForTimeout(400);

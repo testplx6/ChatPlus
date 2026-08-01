@@ -42,7 +42,7 @@ import { horloge, VITESSES } from './sim.js';
 import { conditions, SAISONS, METEO } from './climat.js';
 import {
   RANGS, rangDe, estAuService, peutSEngager, avancementOrdre, REPUTATION_MINIMALE,
-  bilanService,
+  bilanService, effetsEstime,
   droitIntendance, garnison, RANG_GARNISON,
 } from './allegeance.js';
 import { caravanesIci, valeurCargaison } from './caravanes.js';
@@ -968,6 +968,7 @@ function blocColonie(col) {
         <span class="v">celle du plus fort</span></div>`
     : `<div class="ligne"><span class="k">Réputation</span><span class="v"><span class="puce ${cls}">${repu > 0 ? '+' : ''}${n(repu)}</span></span></div>`}
     </div>
+    ${libre ? '' : blocEstime(col)}
     ${blocRegime(col)}
     <div class="sep"></div>
     <div class="grille2" style="gap:5px">
@@ -986,6 +987,39 @@ function blocColonie(col) {
     </div>
     ${blocEngagement(col)}
   </section>`;
+}
+
+/**
+ * À quoi sert l'estime, écrit là où elle s'affiche.
+ *
+ * Le chiffre existait depuis le début, il commandait huit choses, et rien ne le
+ * disait nulle part — on le voyait descendre après un ordre manqué sans savoir
+ * ce qu'on venait de perdre. Replié par défaut : c'est une explication, pas une
+ * alarme. Sauf quand on est en territoire hostile, où c'en est une.
+ */
+function blocEstime(col) {
+  const ef = effetsEstime(S, col.faction);
+  const grave = ef.rep < 0;
+  const cle = `estime-${col.faction}`;
+  const ligne = (t) => `<div class="aide">· ${e(t)}</div>`;
+  return `<details data-id="${cle}" ${ouverts.has(cle) || grave ? 'open' : ''}>
+    <summary class="ligne souple">
+      <span class="k">Ce que votre estime change ici</span>
+      <span class="v"><span class="puce ${grave ? 'mal' : ef.rep >= 25 ? 'ok' : 'att'}">${e(ef.palier.nom)}</span></span>
+    </summary>
+    ${ef.perdu.length
+    ? `<div class="aide alerte">Ce que ça vous coûte :</div>${ef.perdu.map(ligne).join('')}`
+    : ''}
+    ${ef.acquis.length
+    ? `<div class="aide">Ce que ça vous ouvre :</div>${ef.acquis.map(ligne).join('')}`
+    : (ef.perdu.length ? '' : '<div class="aide">Rien, pour l’instant : on ne vous connaît pas.</div>')}
+    ${ef.suivant
+    ? `<div class="aide cyan">À +${n(ef.suivant.manque)} — ${e(ef.suivant.nom)} :
+        ${e(ef.suivant.faits[0])}.</div>` : ''}
+    ${ef.menace
+    ? `<div class="aide alerte">À −${n(ef.menace.marge)} — ${e(ef.menace.nom)} :
+        on vous cherchera.</div>` : ''}
+  </details>`;
 }
 
 /**

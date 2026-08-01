@@ -244,6 +244,10 @@ export function tick(state) {
   }
   // Le banc peut geler la législation pour la mesurer par différence.
   if (state.sansLois) ctx.sansLois = true;
+  // Ces heures-ci sont rattrapées, pas jouées : le joueur n'était pas là. Ce
+  // qui exige une décision de sa part ne doit pas lui être compté pendant ce
+  // temps — voir `tickEngagement` dans allegeance.js.
+  if (state.absent) ctx.absent = true;
   // Ce qu'il faut faire si une colonne prend l'avant-poste du joueur : le
   // monde ne connaît que sa vitrine, il ne saurait pas démonter le camp.
   ctx.perdreAvantPoste = () => perdreAvantPoste(state, log);
@@ -437,6 +441,28 @@ export function avancer(state, n) {
 }
 
 /**
+ * Jouer des heures que le joueur n'a pas vécues.
+ *
+ * Le monde tourne pareil — la faim, les bêtes, les guerres, tout est joué. Ce
+ * qui change, c'est qu'on ne peut rien reprocher à quelqu'un qui n'était pas
+ * là : un ordre de mission ne lui est pas remis pendant ce temps, et celui
+ * qu'il avait déjà lui est retiré plutôt que compté comme un manquement. Voir
+ * `tickEngagement`.
+ *
+ * Le drapeau est posé sur l'état plutôt que passé en paramètre parce que
+ * `avancer` est aussi ce qui fait tourner la partie en cours : la distinction
+ * n'est pas « quelle fonction » mais « pour quelle raison ».
+ */
+function enAbsence(state, faire) {
+  state.absent = true;
+  try {
+    return faire();
+  } finally {
+    delete state.absent;
+  }
+}
+
+/**
  * Ce que le temps réel écoulé nous doit, sans rien appliquer.
  * Retourne { ticks, tronque, pas } — `tronque` si on a tapé le plafond.
  */
@@ -460,7 +486,7 @@ export function rattraper(state, maintenantMs) {
     return { ticks: 0, tronque: false };
   }
   const { ticks, tronque, pas } = rattrapageDu(state, maintenantMs);
-  const joues = avancer(state, ticks);
+  const joues = enAbsence(state, () => avancer(state, ticks));
   // On garde le reste pour ne pas perdre les fractions d'heure
   state.dernierReel += ticks * pas;
   if (tronque) state.dernierReel = maintenantMs;
@@ -496,7 +522,7 @@ export function rattrapageEtale(state, maintenantMs, tranche = 200) {
     /** Joue la tranche suivante. Retourne true tant qu'il reste du travail. */
     pas(n = tranche) {
       const voulu = Math.min(Math.max(1, n | 0), plan.ticks - faits);
-      const joues = avancer(state, voulu);
+      const joues = enAbsence(state, () => avancer(state, voulu));
       faits += joues;
       state.dernierReel += joues * plan.pas;
       // `joues < voulu` : la partie s'est terminée en route, plus rien à jouer.

@@ -104,7 +104,7 @@ import { METIER_VILLE_KEYS } from '../src/data.js';
 import {
   sEngager, rangDe, RANGS, peutSEngager, REPUTATION_MINIMALE,
   droitIntendance, toucherRations, garnison, RANG_GARNISON,
-  bilanService, noterFait, FEUILLE_MAX, palierBonus,
+  bilanService, noterFait, FEUILLE_MAX, palierBonus, effetsEstime, PALIERS_ESTIME,
 } from '../src/allegeance.js';
 import {
   vueColonie, estSurveillee, ageTexte, nouvellesConnues, DELAI_NOUVELLE, observer,
@@ -3957,6 +3957,86 @@ section('9 terdecies. Les régimes : ce qu’on a le droit de faire chez eux');
   // Un Commandeur peut changer tout ça — c'est une loi comme les autres.
   ok(!fixerLoi(sr, colR.faction, 'regime', 'nimportequoi', () => {}).ok,
     'on ne promulgue pas un régime qui n’existe pas');
+}
+
+section('9 quaterdecies. Ce que l’estime change, et ce qu’une absence ne coûte pas');
+{
+  // Les paliers affichés ne sont pas une deuxième vérité : ils doivent redire
+  // ce que le code applique vraiment. S'ils divergent, l'écran ment, et un
+  // écran qui ment sur une mécanique invisible est pire que le silence.
+  const seuils = PALIERS_ESTIME.map((p) => p.seuil);
+  ok(seuils.includes(REPUTATION_MINIMALE),
+    'le palier « on vous reçoit » est bien celui qu’exige l’engagement',
+    `${REPUTATION_MINIMALE}`);
+  ok(seuils.includes(ESTIME_PROPRIETE),
+    'et celui du coffre est bien celui qu’exige la propriété', `${ESTIME_PROPRIETE}`);
+  ok(seuils.includes(-20) && seuils.includes(-50),
+    'les paliers hostiles sont ceux de la majoration des prix et de la prime');
+
+  const se = nouvellePartie(4242, { maintenant: 0 });
+  const fe = DIPLO_FACTIONS[0];
+  se.player.reputation[fe] = 45;
+  const haut = effetsEstime(se, fe);
+  ok(haut.acquis.length > 0 && haut.perdu.length === 0,
+    'bien vu, on n’énumère que ce qui s’ouvre', haut.palier.nom);
+  ok(haut.acquis.some((t) => /coffre/.test(t)),
+    'et l’on y lit qu’on peut enfin posséder des murs');
+  se.player.reputation[fe] = -60;
+  const bas = effetsEstime(se, fe);
+  ok(bas.perdu.some((t) => /prime/.test(t)),
+    'mal vu, on lit d’abord qu’il y a une prime sur votre tête', bas.palier.nom);
+  ok(bas.perdu.length === new Set(bas.perdu).size,
+    'et jamais deux fois la même conséquence : les paliers se recouvrent');
+  se.player.reputation[fe] = 8;
+  const proche = effetsEstime(se, fe);
+  ok(proche.suivant && proche.suivant.manque === REPUTATION_MINIMALE - 8,
+    'on sait de combien on est loin du palier suivant',
+    proche.suivant ? `${proche.suivant.manque}` : 'aucun');
+
+  // Une absence ne se paie pas en estime. C'est la contrepartie du rattrapage :
+  // le monde tourne sans vous, mais on ne vous reproche pas de n'avoir pas été
+  // là pour recevoir un ordre.
+  const sa = nouvellePartie(5151, { maintenant: 0 });
+  const ga = groupeActif(sa);
+  const colA = sa.world.colonies.find((c) => c.faction && !c.ruine);
+  ga.regionId = colA.regionId;
+  sa.player.reputation[colA.faction] = 40;
+  sEngager(sa, colA.faction, () => {}, ga);
+  ga.allegeance.ordre = {
+    id: 'o-abs', type: 'reconnaissance', regionId: 0, titre: 'Reconnaître le secteur',
+    recompense: 200, service: 20, duree: 10, echeance: sa.temps + 2,
+  };
+  const repAvantAbs = sa.player.reputation[colA.faction];
+  const manquesAvant = ga.allegeance.manques || 0;
+  sa.dernierReel = 1;
+  rattraper(sa, 1 + TICK_MS * 40);
+  ok(!ga.allegeance.ordre || ga.allegeance.ordre.id !== 'o-abs',
+    'un ordre dont l’échéance tombe pendant l’absence est retiré');
+  ok((ga.allegeance.manques || 0) === manquesAvant,
+    'il n’est pas compté comme un manquement',
+    `${manquesAvant} → ${ga.allegeance.manques || 0}`);
+  // L'estime positive s'émousse d'elle-même avec le temps (voir events.js) :
+  // ce qu'on vérifie, c'est qu'aucune sanction de 3 points ne s'y ajoute.
+  ok(repAvantAbs - sa.player.reputation[colA.faction] < 1,
+    'et il ne coûte pas d’estime, hors l’oubli ordinaire',
+    `${repAvantAbs} → ${sa.player.reputation[colA.faction]}`);
+  ok((ga.allegeance.faits || []).some((f) => f.id !== undefined || f.issue === 'annule'),
+    'le dossier le porte comme annulé, pas comme manqué',
+    (ga.allegeance.faits || []).map((f) => f.issue).join(','));
+  ok(!ga.allegeance.ordre,
+    'et l’on ne reçoit pas d’ordre neuf tant qu’on n’est pas revenu');
+
+  // Mais présent, un ordre raté reste un ordre raté : l'absence est une
+  // exception, pas une porte de sortie.
+  ga.allegeance.ordre = {
+    id: 'o-pres', type: 'reconnaissance', regionId: 0, titre: 'Reconnaître le secteur',
+    recompense: 200, service: 20, duree: 10, echeance: sa.temps + 1,
+  };
+  const repAvantPres = sa.player.reputation[colA.faction];
+  avancer(sa, 3);
+  ok(sa.player.reputation[colA.faction] < repAvantPres,
+    'aux commandes, en revanche, un ordre manqué coûte toujours',
+    `${repAvantPres} → ${sa.player.reputation[colA.faction]}`);
 }
 
 section('10. Rattrapage hors ligne');

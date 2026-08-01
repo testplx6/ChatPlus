@@ -50,6 +50,124 @@ export const RANGS = [
  */
 export const REPUTATION_MINIMALE = 10;
 
+// ---------------------------------------------------------------------------
+// Ce que l'estime fait, dit en clair
+// ---------------------------------------------------------------------------
+//
+// L'estime décidait déjà de huit choses — le prix qu'on vous fait, ce qu'on
+// vous laisse posséder, si l'on vous enrôle, si l'intendance vous nourrit, si
+// vos recrues coûtent cher, si leurs hommes vous cherchent sur les routes, si
+// l'on vient prendre votre avant-poste, et s'il y a une prime sur votre tête —
+// et le jeu n'en disait pas un mot. Un nombre qui monte et descend sans qu'on
+// sache ce qu'il commande n'est pas une mécanique, c'est une décoration
+// inquiétante.
+//
+// Ces bornes ne sont pas déclarées ici, elles y sont *relues* : chacune renvoie
+// à l'endroit qui décide vraiment. Si l'un des deux bouge, l'autre ment — d'où
+// le test qui les compare (voir headless, section « ce que l'estime change »).
+
+/**
+ * Les paliers d'estime, du pire au meilleur, avec ce que chacun entraîne.
+ * `seuil` est la valeur à partir de laquelle la ligne s'applique.
+ */
+export const PALIERS_ESTIME = [
+  {
+    seuil: -100,
+    nom: 'Traqué',
+    faits: [
+      'prime doublée sur votre tête : on vous cherche activement',
+      'leurs hommes sortent du bois là où ils tiennent le terrain',
+      'ils viendront prendre votre avant-poste',
+      'prix majorés de moitié, à l’achat comme à l’embauche',
+    ],
+  },
+  {
+    seuil: -50,
+    nom: 'Recherché',
+    faits: [
+      'prime sur votre tête',
+      'leurs hommes sortent du bois là où ils tiennent le terrain',
+      'ils viendront prendre votre avant-poste',
+      'prix majorés',
+    ],
+  },
+  {
+    seuil: -20,
+    nom: 'Hostile',
+    faits: [
+      'prix majorés à l’achat, recrues plus chères',
+      'leurs hommes sortent du bois là où ils tiennent le terrain',
+      'ils viendront prendre votre avant-poste',
+    ],
+  },
+  {
+    seuil: 0,
+    nom: 'Inconnu',
+    faits: ['on vous vend au prix, sans plus'],
+  },
+  {
+    seuil: REPUTATION_MINIMALE,
+    nom: 'Reçu',
+    faits: [
+      'on accepte votre engagement',
+      'l’intendance vous nourrit tant que vous servez',
+      'recrues un peu moins chères',
+    ],
+  },
+  {
+    seuil: 25,
+    nom: 'Estimé',
+    faits: ['marge resserrée : on achète moins cher et l’on vend mieux'],
+  },
+  {
+    seuil: 40,
+    nom: 'Des leurs',
+    faits: [
+      'on vous vend des murs : coffre en propriété là où le régime l’autorise',
+      'une de leurs villes peut se rattacher à votre avant-poste',
+    ],
+  },
+];
+
+/** Le palier où l'on se trouve auprès de cette faction. */
+export function palierEstime(rep) {
+  let p = PALIERS_ESTIME[0];
+  for (const x of PALIERS_ESTIME) if (rep >= x.seuil) p = x;
+  return p;
+}
+
+/**
+ * Ce que votre estime change chez eux, maintenant, et ce qui vient ensuite.
+ *
+ * Rendu tel quel par l'interface : `acquis` est ce dont on jouit déjà, `perdu`
+ * ce qu'on subit, `suivant` le prochain palier avec ce qu'il manque pour y
+ * arriver. Les deux directions comptent — savoir qu'on est à quatre points de
+ * refermer l'intendance vaut autant que savoir qu'on est à six d'un coffre.
+ */
+export function effetsEstime(state, faction) {
+  const rep = Math.round(state.player.reputation[faction] || 0);
+  const ici = palierEstime(rep);
+  const acquis = [];
+  const perdu = [];
+  for (const p of PALIERS_ESTIME) {
+    if (p.seuil > 0 && rep >= p.seuil) acquis.push(...p.faits);
+    if (p.seuil < 0 && rep <= p.seuil) perdu.push(...p.faits);
+  }
+  const suivant = PALIERS_ESTIME.find((p) => p.seuil > rep) || null;
+  const dessous = [...PALIERS_ESTIME].reverse().find((p) => p.seuil < rep && p.seuil <= -20) || null;
+  return {
+    rep,
+    palier: ici,
+    // Doublons supprimés : les paliers hostiles se recouvrent volontairement,
+    // et lire deux fois « ils viendront prendre votre avant-poste » donne
+    // l'impression d'un bégaiement plutôt que d'une aggravation.
+    acquis: [...new Set(acquis)],
+    perdu: [...new Set(perdu)],
+    suivant: suivant ? { nom: suivant.nom, seuil: suivant.seuil, manque: suivant.seuil - rep, faits: suivant.faits } : null,
+    menace: dessous ? { nom: dessous.nom, seuil: dessous.seuil, marge: rep - dessous.seuil } : null,
+  };
+}
+
 /** Le premier groupe en `regionId` qui porte assez de `key`. */
 function porteurA(state, regionId, key, quantite) {
   return groupes(state).find(
@@ -652,24 +770,46 @@ function tickEngagement(state, g, log, ctx) {
       const o = all.ordre;
       all.ordre = null;
       all.prochainOrdre = state.temps + rng.irange(180, 320);
-      // Rater est neutre, réussir paie. On ne retire plus les points acquis :
-      // à −80 % du service par ordre manqué, on avançait de trois pas et on en
-      // reculait de deux, et le banc l'a chiffré — quarante-quatre escouades sur
-      // quarante-huit ne quittaient jamais le premier grade. Ce qu'on perd,
-      // c'est l'estime, et elle finit par fermer l'intendance.
-      const repAvantM = state.player.reputation[all.faction] || 0;
-      state.player.reputation[all.faction] = Math.max(-100, repAvantM - 3);
-      all.manques = (all.manques || 0) + 1;
-      noterFait(all, o, 'manque', state.temps, {
-        rep: (state.player.reputation[all.faction] || 0) - repAvantM,
-      });
-      log({
-        type: 'allegeance',
-        texte: `Ordre non exécuté : ${o.titre}. On le note.`,
-        important: true,
-      });
+      // Une mission tombée pendant que le joueur n'était pas là n'est pas un
+      // manquement : on ne peut pas reprocher un silence à quelqu'un qui
+      // n'était pas aux commandes. La faction la confie à un autre, on l'inscrit
+      // comme annulée, et l'estime ne bouge pas.
+      //
+      // Sans ça, revenir après trois jours d'absence coûtait une dizaine de
+      // points d'estime pour des ordres qu'on n'a jamais vus passer — et
+      // l'estime, elle, ferme l'intendance, majore les prix et finit par mettre
+      // une prime sur votre tête. Un jeu qu'on ouvre cinq minutes par jour ne
+      // peut pas punir les heures où l'on ne l'ouvre pas.
+      if (ctx && ctx.absent) {
+        noterFait(all, o, 'annule', state.temps);
+        log({
+          type: 'allegeance',
+          texte: `Sans nouvelles de vous, ${FACTIONS[all.faction].nom} a confié `
+            + `« ${o.titre} » à quelqu’un d’autre. Rien à votre dossier.`,
+          important: true,
+        });
+      } else {
+        // Rater est neutre, réussir paie. On ne retire plus les points acquis :
+        // à −80 % du service par ordre manqué, on avançait de trois pas et on en
+        // reculait de deux, et le banc l'a chiffré — quarante-quatre escouades
+        // sur quarante-huit ne quittaient jamais le premier grade. Ce qu'on
+        // perd, c'est l'estime, et elle finit par fermer l'intendance.
+        const repAvantM = state.player.reputation[all.faction] || 0;
+        state.player.reputation[all.faction] = Math.max(-100, repAvantM - 3);
+        all.manques = (all.manques || 0) + 1;
+        noterFait(all, o, 'manque', state.temps, {
+          rep: (state.player.reputation[all.faction] || 0) - repAvantM,
+        });
+        log({
+          type: 'allegeance',
+          texte: `Ordre non exécuté : ${o.titre}. On le note.`,
+          important: true,
+        });
+      }
     }
-  } else if (state.temps >= all.prochainOrdre) {
+    // On ne remet pas d'ordre à quelqu'un qui n'est pas aux commandes : il le
+    // trouverait déjà entamé, ou déjà expiré. Il l'aura à son retour.
+  } else if (state.temps >= all.prochainOrdre && !(ctx && ctx.absent)) {
     const o = fabriquerOrdre(state, rng, g);
     if (o) {
       o.echeance = state.temps + o.duree;
