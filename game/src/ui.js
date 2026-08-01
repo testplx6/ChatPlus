@@ -58,6 +58,7 @@ import {
   prisonniersDe, capaciteGarde, surveillanceManquante, optionsPour,
   lenteurPrisonniers, geoleDe,
 } from './justice.js';
+import { depouillesDe, ritesPour, lenteurDepouilles } from './depouilles.js';
 import { PEINES, PEINE_KEYS, IMPOTS, loisDe, loiIci } from './lois.js';
 import { distanceMorale } from './factions.js';
 import {
@@ -1415,6 +1416,41 @@ function blocPrisonniers() {
 }
 
 /**
+ * Ce qu'on fait de ses morts. Pendant exact du panneau des prisonniers.
+ *
+ * Un mort restait dans la colonne, avec la mention MORT à côté de son nom, pour
+ * toujours : il ne coûtait rien, ne pesait rien, ne posait aucune question. Il
+ * pèse maintenant sur la marche et sur le moral tant qu'on n'a rien décidé —
+ * c'est ce qui force le choix sans qu'aucune règle ne l'impose.
+ */
+function blocDepouilles() {
+  const g = G();
+  const corps = depouillesDe(g);
+  if (!corps.length) return '';
+  const col = colonieDe(S.world, g.regionId);
+  const lenteur = lenteurDepouilles(g);
+  return `<section class="panneau">
+    <h2 class="titre">Nos morts <span class="droite alerte">${corps.length}</span></h2>
+    <div class="aide">On les porte tant qu'on n'en a rien décidé.
+      ${lenteur > 0.01 ? `Marche −${Math.round(lenteur * 100)} %.` : ''}
+      Le moral s'en ressent, un peu plus chaque heure.</div>
+    <div class="sep"></div>
+    ${corps.map((c) => {
+    const rites = ritesPour(S, g, c);
+    return `<details data-id="corps-${e(c.id)}" ${ouverts.has(`corps-${c.id}`) ? 'open' : ''}
+        style="border-bottom:1px solid #1b2029;padding:5px 0">
+        <summary class="ligne"><span class="k">${e(c.nom)}</span>
+          <span class="v aide">${e(c.archetypeNom || '')}</span></summary>
+        ${rites.map((o) => `<button class="act mini" style="margin-top:4px;text-align:left"
+          data-a="corps" data-c="${e(c.id)}" data-k="${o.key}">${e(o.nom)}${
+  o.gain ? ` — ${n(o.gain)} cr` : ''}<br><span class="aide">${e(o.aide)}</span></button>`).join('')}
+      </details>`;
+  }).join('')}
+    ${col && !col.ruine ? '' : '<div class="aide">Hors ville : le trafic d’organes attendra.</div>'}
+  </section>`;
+}
+
+/**
  * Qui fait quoi, en une table.
  *
  * L'information existait déjà — chaque fiche montre la tâche de son occupant —
@@ -1523,6 +1559,7 @@ function ecranEscouade() {
   </section>
 
   ${blocPrisonniers()}
+  ${blocDepouilles()}
 
   <section class="panneau">
     <h2 class="titre">Posture</h2>
@@ -3244,6 +3281,16 @@ function surClic(ev) {
     case 'chercher': {
       const r = lancerRecherche(S, el.dataset.k);
       if (!r.ok) toast(r.motif, true);
+      rafraichir(true);
+      break;
+    }
+
+    case 'corps': {
+      const r = ACTIONS.disposerCorps(el.dataset.c, el.dataset.k);
+      toast(r.ok
+        ? (r.prix ? `${r.prix} cr.` : r.rations ? `${r.rations} rations.`
+          : r.biomasse ? `${r.biomasse} de biomasse.` : 'C’est fait.')
+        : r.motif, !r.ok);
       rafraichir(true);
       break;
     }

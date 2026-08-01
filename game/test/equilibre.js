@@ -64,6 +64,7 @@ import {
   prisonniersDe, disposer, optionsPour, surveillanceManquante, capaciteGarde,
 } from '../src/justice.js';
 import { loisDe, IMPOTS } from '../src/lois.js';
+import { depouillesDe, effetsDe, disposerCorps } from '../src/depouilles.js';
 import { titreDe } from '../src/chronique.js';
 import { TACTIQUE_KEYS, rendementTactique, genererBande } from '../src/combat.js';
 import { combatContre } from '../src/events.js';
@@ -106,6 +107,7 @@ const TRACE = {
   revoltes: 0, matees: 0, libres: 0, renverses: 0, grogne: 0,
   disposes: 0, relaches: 0, gagneCaptifs: 0, captures: 0, marchands: 0,
   vendus: 0, sansMarche: 0, marchesVus: 0, villesVues: 0, mepris: 0, raflees: 0,
+  enterres: 0, depouilles: 0,
   caravanesVues: 0, caravanesPrises: 0, caravanesRatees: 0, butinCaravanes: 0, hGuet: 0,
   caravanesNees: 0, passagesGuet: 0, butinLaisse: 0, butinPorte: 0,
   affairesPrises: 0, affairesPerdues: 0, miseTotale: 0, recetteTotale: 0, recetteEsperee: 0,
@@ -1114,6 +1116,17 @@ function jouerPrincipal(state, g, memo) {
       }
     }
 
+    // --- Ce qu'on fait des siens qui sont tombés. Le bot enterre : c'est le
+    // geste qui resserre la bande, et le banc doit mesurer la voie honnête
+    // d'abord — comme il livre ses prisonniers plutôt que de les vendre.
+    for (const mort of depouillesDe(g).slice()) {
+      if (effetsDe(mort).length) {
+        disposerCorps(state, g, mort.id, 'depouiller', () => {});
+        TRACE.depouilles++;
+      }
+      if (disposerCorps(state, g, mort.id, 'enterrer', () => {}).ok) TRACE.enterres++;
+    }
+
     // --- Ce qu'on fait des gens qu'on n'a pas tués. Un joueur qui a compris
     // prend l'option la mieux payée qui ne le brûle pas partout : livrer et
     // rançonner rapportent et ne fâchent personne, vendre rapporte plus et se
@@ -2083,6 +2096,8 @@ console.log(`Marché aux hommes : ${(TRACE.marchesVus / PARTIES).toFixed(1)} vil
   + `${TRACE.sansMarche} tour(s) à ne savoir où les porter`);
 console.log(`Estime moyenne en fin de partie : ${(TRACE.mepris / Math.max(1, PARTIES)).toFixed(0)} `
   + `sur les factions qui n'achètent pas d'hommes`);
+console.log(`Nos morts : ${(TRACE.enterres / PARTIES).toFixed(1)} enterrés par partie, `
+  + `${(TRACE.depouilles / PARTIES).toFixed(1)} dépouillés d'abord`);
 console.log(`Prisonniers : ${(TRACE.captures / PARTIES).toFixed(1)} pris par partie — `
   + `${(TRACE.disposes / PARTIES).toFixed(1)} livrés ou rançonnés pour `
   + `${Math.round(TRACE.gagneCaptifs / PARTIES)} cr, ${(TRACE.relaches / PARTIES).toFixed(1)} relâchés faute de gardiens`);

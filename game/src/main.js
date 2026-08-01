@@ -18,6 +18,7 @@ import {
 import { verifierExercice } from './squad.js';
 import { honorer as honorerService } from './services.js';
 import { acheterBete, vendreBete } from './betes.js';
+import { disposerCorps } from './depouilles.js';
 import { engager } from './recrues.js';
 import {
   envoyerColonne as envoyerColonneA, leverColonne as leverColonneA,
@@ -110,6 +111,13 @@ const API = {
 
   quitterService() {
     const r = quitter(state, creerLogger(state));
+    sauver();
+    return r;
+  },
+
+  /** Ce qu'on fait d'un des siens qui est tombé. Voir depouilles.js. */
+  disposerCorps(id, quoi) {
+    const r = disposerCorps(state, groupeActif(state), id, quoi, creerLogger(state));
     sauver();
     return r;
   },

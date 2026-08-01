@@ -42,6 +42,9 @@ import {
   geoleDe, apaisementGeole, tickOrdrePublic,
 } from '../src/justice.js';
 import { loisDe, pressionFiscale, PEINES } from '../src/lois.js';
+import {
+  depouillesDe, lenteurDepouilles, poidsMoral, disposerCorps, prixOrganes,
+} from '../src/depouilles.js';
 import { DELAI_LOI } from '../src/factions.js';
 import {
   tickSecteurs, tickInsecurite, effetPresence, casesDe, menace, motEtat,
@@ -496,6 +499,66 @@ ok(serialiser(s3) === serialiser(s3b), 'la sim reprend à l’identique après r
   const remis = deserialiser(serialiser(vieux));
   ok(remis.player.groupes[0].membres.every((m) => m.skills0),
     'une sauvegarde d’avant se rattrape sans casser');
+}
+
+section('4 bis. Ce qu’on fait de ses morts');
+{
+  const d = nouvellePartie(4344, { maintenant: 0 });
+  const gd = groupeActif(d);
+  const mort = gd.membres[0];
+  mort.etat = 'mort';
+  mort.equip.arme = 'machette';
+  mort.equip.armure = 'plaque';
+  ok(depouillesDe(gd).length === 1, 'un mort reste avec la colonne tant qu’on n’a rien décidé');
+  ok(lenteurDepouilles(gd) > 0, 'et il la ralentit', `−${Math.round(lenteurDepouilles(gd) * 100)} %`);
+  ok(poidsMoral(gd) > 0, 'et pèse sur le moral de ceux qui le portent');
+
+  // Reprendre son matériel ne referme rien : le corps est toujours là.
+  const objetsAvant = gd.objets.length;
+  const rD = disposerCorps(d, gd, mort.id, 'depouiller', () => {});
+  ok(rD.ok && gd.objets.length > objetsAvant, 'on récupère ce qu’il portait',
+    `${objetsAvant} → ${gd.objets.length}`);
+  ok(depouillesDe(gd).length === 1, 'mais le corps est toujours là');
+  ok(!disposerCorps(d, gd, mort.id, 'depouiller', () => {}).ok,
+    'et on ne le dépouille pas deux fois');
+
+  // Enterrer resserre la bande ; les autres issues la défont.
+  const cohAvant = gd.cohesion;
+  const rE = disposerCorps(d, gd, mort.id, 'enterrer', () => {});
+  ok(rE.ok && depouillesDe(gd).length === 0, 'enterrer referme la question');
+  ok(gd.cohesion > cohAvant, 'et resserre la bande',
+    `${Math.round(cohAvant)} → ${Math.round(gd.cohesion)}`);
+
+  // Manger : des rations, et la bande ne s'en remet pas tout de suite.
+  const d2 = nouvellePartie(4345, { maintenant: 0 });
+  const g2 = groupeActif(d2);
+  g2.cohesion = 80;
+  g2.membres[0].etat = 'mort';
+  const rationsAvant = g2.inventaire.rations || 0;
+  const moralAvant = g2.membres[1].moral;
+  const rM = disposerCorps(d2, g2, g2.membres[0].id, 'manger', () => {});
+  ok(rM.ok && (g2.inventaire.rations || 0) > rationsAvant, 'manger rend des rations',
+    `+${((g2.inventaire.rations || 0) - rationsAvant).toFixed(0)}`);
+  ok(g2.cohesion < 80 - 20, 'et coûte très cher en cohésion',
+    `80 → ${Math.round(g2.cohesion)}`);
+  ok(g2.membres[0].moral < moralAvant, 'ceux qui restent le portent aussi');
+  ok(d2.stats.mangesDesSiens === 1, 'et le jeu le compte : ça ne s’oublie pas');
+
+  // Le trafic d'organes : seulement là où l'on achète déjà des hommes vivants.
+  const d3 = nouvellePartie(4346, { maintenant: 0 });
+  const g3 = groupeActif(d3);
+  const col3 = d3.world.colonies.find((c) => !c.ruine && c.faction && c.faction !== 'essaim');
+  g3.regionId = col3.regionId;
+  g3.membres[0].etat = 'mort';
+  const corps3 = g3.membres[0];
+  ok(prixOrganes(d3, col3, corps3) === 0, 'on ne vend pas d’organes là où c’est interdit');
+  loisDe(d3.world, col3.faction).esclavage = true;
+  ok(prixOrganes(d3, col3, corps3) > 0, 'là où l’on achète des vivants, on prend les morts',
+    `${prixOrganes(d3, col3, corps3)} cr`);
+  const crAvant3 = d3.player.credits;
+  const rO = disposerCorps(d3, g3, corps3.id, 'organes', () => {});
+  ok(rO.ok && d3.player.credits > crAvant3, 'et ça paie', `+${d3.player.credits - crAvant3} cr`);
+  ok(depouillesDe(g3).length === 0, 'le corps ne revient pas');
 }
 
 // --- On ne repart pas en marche avec un homme sur les bras.

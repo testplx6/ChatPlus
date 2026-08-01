@@ -1290,6 +1290,39 @@ une fois, et aucun ne tombe par habitude.** Bâtisseur et Vagabond restent les
 plus fréquents, ce qui est juste — avoir un toit et avoir marché sont ce qu'on
 fait par défaut.
 
+### Ce qu'on fait de ses morts
+
+`justice.js` demandait ce qu'on fait des gens qu'on n'a pas tués. Voici la
+question jumelle, et elle est plus dure, parce qu'il s'agit des siens.
+
+Jusqu'ici un mort restait dans la colonne, la mention MORT à côté de son nom,
+pour toujours. Il ne coûtait rien, ne pesait rien, ne posait aucune question —
+alors que c'est le seul moment du jeu où l'escouade doit choisir entre ce qui
+l'arrange et ce qu'elle se doit.
+
+    Enterrer     rien en échange. La bande se resserre.        +4 cohésion
+    Dépouiller   ses armes, son armure, ses greffes            −3
+    Aux bêtes    26 de biomasse, s'il y a un attelage         −11
+    Manger       18 rations, et le moral de tous descend      −24
+    Vendre       ses organes, là où l'on achète des vivants   −13, et ça se sait
+
+Le trafic d'organes suit la loi sur l'esclavage : là où l'on achète des hommes
+vivants, on ne s'embarrasse pas des morts. Le prix dépend de ce qu'il reste
+d'intact et des greffes qu'il portait. Les factions qui l'interdisent chez elles
+l'apprennent, comme pour les vivants qu'on vend.
+
+Ce qui force la décision n'est écrit nulle part, et c'est le point : **un corps
+qu'on traîne ralentit la colonne et pèse sur le moral de ceux qui le portent**,
+un peu plus à chaque heure. Rien n'oblige à trancher ; on peut garder ses morts
+trois semaines. On n'en a simplement pas envie.
+
+Dépouiller est la seule issue qui ne referme rien : on reprend le matériel, le
+corps est toujours là, et il faudra bien en décider.
+
+Le bot du banc enterre, après avoir repris l'équipement — la voie honnête,
+comme il livre ses prisonniers au lieu de les vendre. Une partie ordinaire y
+passe une fois, un négrier trois.
+
 ### Un garde-fou de performance qui ne tient plus tout à fait
 
 À signaler, parce que le taire reviendrait à truquer la mesure. Le même code de

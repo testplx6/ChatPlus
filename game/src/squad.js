@@ -30,6 +30,7 @@ import {
 import {
   tickPrisonniers, lenteurPrisonniers, prisonniersDe, RATION_PRISONNIER, capaciteGarde,
 } from './justice.js';
+import { lenteurDepouilles, poidsMoral, depouillesDe } from './depouilles.js';
 import { garnison } from './allegeance.js';
 
 export const ORDRES = {
@@ -399,6 +400,8 @@ function avancerVoyage(state, g, log, ctx) {
   // Des hommes qu'on mène de force ne marchent pas au pas de ceux qui suivent
   // de leur plein gré. C'est ce qui rend une capture coûteuse à ramener.
   vitesse *= 1 - lenteurPrisonniers(g);
+  // Ses morts, qu'on porte tant qu'on n'en a rien décidé.
+  vitesse *= 1 - lenteurDepouilles(g);
   vitesse = Math.max(0.15, vitesse);
 
   o.progres += vitesse;
@@ -555,6 +558,9 @@ function tickGroupe(state, g, log, ctx) {
     const social = n ? apport / n : -8; // seul : personne sur qui compter
     const cible = Math.max(0, Math.min(plafondCohesion(state, g), g.cohesion + social * 0.25));
     c.moral = Math.max(0, Math.min(100, c.moral + (cible - c.moral) * 0.012 * (mods(c).moral || 1)));
+    // Porter ses morts pèse, tant qu'on n'en a rien décidé. C'est ce qui force
+    // la question sans qu'aucune règle ne l'impose. Voir depouilles.js.
+    if (c.etat !== 'mort') c.moral = Math.max(0, c.moral - poidsMoral(g));
   }
 
   // --- Nourriture : on mange dès qu'on a faim et de quoi. Chaque groupe puise
@@ -922,6 +928,8 @@ export function apercuEscouade(state, g) {
   vitesse *= 1 - Math.min(0.5, g.membres.filter((c) => c.etat === 'ko').length * 0.18);
   vitesse *= 1 - lenteurAttelage(g);
   vitesse *= 1 - lenteurPrisonniers(g);
+  // Ses morts, qu'on porte tant qu'on n'en a rien décidé.
+  vitesse *= 1 - lenteurDepouilles(g);
   vitesse = Math.max(0.15, vitesse);
   const coutIci = coutTraversee(state.world, g.regionId,
     { reductionVoyage: (state.base.recherche.logistique || 0) * 0.06 });

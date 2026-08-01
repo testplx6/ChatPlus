@@ -46,6 +46,8 @@ const MODULES = [
   'influence.js',
   // Ce qu'on fait des gens qu'on n'a pas tués, et les lois qui l'encadrent.
   'justice.js',
+  // Et la question jumelle : ce qu'on fait de ses morts.
+  'depouilles.js',
   // Ce dont un gradé répond tous les jours : il juge via influence.js, lit les
   // geôles de justice.js, et events.js lit son insécurité en retour.
   'secteur.js',
