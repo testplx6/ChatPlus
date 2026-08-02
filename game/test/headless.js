@@ -78,7 +78,9 @@ import {
   ecolesDe, inscrire, enFormation, ecolesAvantPoste, enseignerChezSoi,
   occupeParEcole, MARGE_INSTRUCTEUR, prixFormation, peutSInscrire,
 } from '../src/formation.js';
-import { colonieDe, colonieParId, nomRegion } from '../src/world.js';
+import {
+  colonieDe, colonieParId, nomRegion, lieuAvecCoord, coordonnee,
+} from '../src/world.js';
 import {
   groupeActif, groupes, tousLesMembres, scinder, fusionner, assignerTache,
   tacheDe, debout, noyau, plafondCohesion, rendementCohesion,
@@ -4187,6 +4189,39 @@ section('9 sexdecies. Un camp neuf dit ce qu’il lui manque');
   avancer(sb, 900);
   ok((sb.base.pop || 0) > 0, 'et des gens finissent par s’y installer',
     `${sb.base.pop} habitant(s)`);
+}
+
+section('9 septdecies. Une destination porte toujours sa case');
+{
+  // Signalé trois fois, « corrigé » deux fois du mauvais côté. La cause :
+  // `nomRegion` rend le nom de la ville quand il y en a une, et ne tombe sur la
+  // case que pour les régions vides. Or un ravitaillement vise une ville — il
+  // n'affichait donc jamais de coordonnées, quoi qu'on fasse aux régions vides.
+  const sc = nouvellePartie(606, { maintenant: 0 });
+  const villeC = sc.world.colonies.find((c) => !c.ruine);
+  const videC = sc.world.regions.find(
+    (r) => !sc.world.colonies.some((c) => c.regionId === r.i));
+
+  ok(!/\(/.test(nomRegion(sc.world, villeC.regionId)),
+    'nomRegion garde le nom nu d’une ville : c’est son rôle',
+    nomRegion(sc.world, villeC.regionId));
+  ok(/\([A-Z]\d+\)$/.test(lieuAvecCoord(sc.world, villeC.regionId)),
+    'mais une destination porte sa case, ville comprise',
+    lieuAvecCoord(sc.world, villeC.regionId));
+  ok(/[A-Z]\d+/.test(lieuAvecCoord(sc.world, videC.i)),
+    'et une région vide la porte aussi', lieuAvecCoord(sc.world, videC.i));
+  ok(coordonnee(sc.world, villeC.regionId)
+    === `${String.fromCharCode(65 + sc.world.regions[villeC.regionId].x)}${
+      sc.world.regions[villeC.regionId].y + 1}`,
+    'la case est bien celle qu’on lit sur la grille');
+
+  // Les titres, qui sont la ligne qu'on lit en premier.
+  avancer(sc, 60);
+  const titres = sc.world.colonies.flatMap((c) => (c.contrats || []).map((x) => x.titre));
+  const livraisons = titres.filter((t) => /^Porter /.test(t));
+  ok(livraisons.length === 0 || livraisons.every((t) => /\([A-Z]\d+\)/.test(t)),
+    'un contrat de livraison nomme la case de sa destination',
+    livraisons.slice(0, 2).join(' | ') || 'aucun contrat de livraison tiré');
 }
 
 section('10. Rattrapage hors ligne');

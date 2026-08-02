@@ -8,7 +8,7 @@ import {
   METIERS_VILLE, METIER_VILLE_KEYS,
 } from './data.js';
 import {
-  nomRegion, colonieDe, colonieParId, coord, chemin, coutTraversee, distance,
+  nomRegion, lieuAvecCoord, colonieDe, colonieParId, coord, chemin, coutTraversee, distance,
 } from './world.js';
 import {
   comp, pvTotal, etatCourt, estVivant, estDebout, ratio, peutEquiper,
@@ -980,7 +980,7 @@ function blocRegionCourante() {
     const eta = etaVoyage(o.dest);
     enTete = `${o.allure === 'forcee' ? 'Marche forcée' : 'En route'} — ${restant} région${restant > 1 ? 's' : ''}`;
     progression = `${jauge(o.route.length ? o.etape / o.route.length : 0, 'cyan')}
-      <div class="aide">Vers ${e(nomRegion(S.world, o.dest))}${eta ? ` · encore ${dureeTexte(eta.heures)}` : ''}
+      <div class="aide">Vers ${e(lieuAvecCoord(S.world, o.dest))}${eta ? ` · encore ${dureeTexte(eta.heures)}` : ''}
         · ${o.allure === 'forcee' ? 'on ne dort pas' : 'camp la nuit'}</div>`;
   }
 
@@ -999,7 +999,7 @@ function blocRegionCourante() {
   </section>
 
   <section class="panneau">
-    <h2 class="titre">Position <span class="droite">${e(nomRegion(S.world, rid))}</span></h2>
+    <h2 class="titre">Position <span class="droite">${e(lieuAvecCoord(S.world, rid))}</span></h2>
     <div class="ligne"><span class="k">Biome</span><span class="v">${e(b.nom)}</span></div>
     <div class="ligne"><span class="k">Richesse</span><span class="v">×${r.richesse.toFixed(2)}</span></div>
     <div class="ligne"><span class="k">Épuisement</span><span class="v">${(r.fouille * 100).toFixed(0)} %</span></div>
@@ -1365,8 +1365,8 @@ function barreGroupes() {
     const viv = g.membres.filter(estVivant).length;
     const deb = g.membres.filter(estDebout).length;
     const ici = g.ordre.type === 'voyage'
-      ? `→ ${e(nomRegion(S.world, g.ordre.dest))}`
-      : e(nomRegion(S.world, g.regionId));
+      ? `→ ${e(lieuAvecCoord(S.world, g.ordre.dest))}`
+      : e(lieuAvecCoord(S.world, g.regionId));
     return `<button class="grp ${g.id === actif.id ? 'on' : ''}" data-a="groupe" data-k="${e(g.id)}">
       <span class="grp-n">${e(g.nom)}</span>
       <span class="grp-d">${deb < viv ? `<b class="rouge">${deb}</b>` : deb}/${viv} · ${ici}</span>
@@ -1953,7 +1953,7 @@ function ecranBase() {
       et la recherche. Il faut le bâtir hors d’une ville existante, et il pourra être attaqué.</div>
       <div class="sep"></div>
       <div class="ligne"><span class="k">Coût</span><span class="v">${e(coutTexte(COUT_FONDATION))}</span></div>
-      <div class="ligne"><span class="k">Emplacement</span><span class="v">${e(nomRegion(S.world, G().regionId))}</span></div>
+      <div class="ligne"><span class="k">Emplacement</span><span class="v">${e(lieuAvecCoord(S.world, G().regionId))}</span></div>
       ${manque.length ? `<div class="aide" style="color:var(--rouge)">Manque : ${e(manque.join(', '))}</div>` : ''}
       ${enVille ? '<div class="aide" style="color:var(--rouge)">Impossible ici : une ville occupe déjà la région.</div>' : ''}
       <div class="sep"></div>
@@ -2030,7 +2030,7 @@ function ecranBase() {
 
   return `
   <section class="panneau">
-    <h2 class="titre">${e(b.nom)} <span class="droite">${e(nomRegion(S.world, b.regionId))}</span></h2>
+    <h2 class="titre">${e(b.nom)} <span class="droite">${e(lieuAvecCoord(S.world, b.regionId))}</span></h2>
     <div class="grille2">
       <div class="ligne"><span class="k">Énergie</span>
         <span class="v ${en.ratio < 1 ? '' : ''}">${n(en.prod)} / ${n(en.conso)}</span></div>
@@ -2263,7 +2263,7 @@ function ciblesCharge(faction, k) {
     sites.sort((a, b) => proche(a) - proche(b));
     return sites.slice(0, 6).map((r) => ({
       val: String(r.i),
-      texte: `Poste en ${nomRegion(w, r.i)} — ${n(COUT_POSTE)} cr`,
+      texte: `Poste en ${lieuAvecCoord(w, r.i)} — ${n(COUT_POSTE)} cr`,
     }));
   }
   if (k === 'garnison' || k === 'grenier') {
@@ -2379,11 +2379,11 @@ function blocCibleContrat(c, reste) {
 
   const d = distance(cible.regionId, g.regionId);
   if (d === 0) {
-    return `<div class="aide cyan">Vous y êtes : ${e(nomRegion(S.world, cible.regionId))}.</div>`;
+    return `<div class="aide cyan">Vous y êtes : ${e(lieuAvecCoord(S.world, cible.regionId))}.</div>`;
   }
   const heures = apercuEscouade(S, g).heuresParRegion * d;
   const tient = heures <= Math.max(0, reste);
-  return `<div class="aide">${e(cible.quoi)} : ${e(nomRegion(S.world, cible.regionId))},
+  return `<div class="aide">${e(cible.quoi)} : ${e(lieuAvecCoord(S.world, cible.regionId))},
     à ${d} région${d > 1 ? 's' : ''} — ${Number.isFinite(heures) ? dureeTexte(Math.round(heures)) : '?'} de marche.
     <span class="${tient ? 'cyan' : 'alerte'}">${tient
   ? 'le délai le permet' : 'le délai ne le permet pas'}</span></div>`;
@@ -2422,13 +2422,13 @@ function blocCibleOrdre(o) {
 
   const d = distance(cible.regionId, g.regionId);
   if (d === 0) {
-    return `<div class="aide cyan">Vous y êtes : ${e(nomRegion(S.world, cible.regionId))}.</div>`;
+    return `<div class="aide cyan">Vous y êtes : ${e(lieuAvecCoord(S.world, cible.regionId))}.</div>`;
   }
   // Le temps que ça prend vraiment, à l'allure de cette colonne-ci.
   const heures = apercuEscouade(S, g).heuresParRegion * d;
   const reste = Math.max(0, o.echeance - S.temps);
   const tient = heures <= reste;
-  return `<div class="aide">${e(cible.quoi)} : ${e(nomRegion(S.world, cible.regionId))},
+  return `<div class="aide">${e(cible.quoi)} : ${e(lieuAvecCoord(S.world, cible.regionId))},
       à ${d} région${d > 1 ? 's' : ''} — ${Number.isFinite(heures) ? dureeTexte(Math.round(heures)) : '?'} de marche.
       <span class="${tient ? 'cyan' : 'alerte'}">${tient
   ? 'l’échéance le permet' : 'l’échéance ne le permet pas'}</span></div>

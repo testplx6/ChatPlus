@@ -6,7 +6,7 @@
 // un contrat continue d'avancer pendant que le joueur est hors ligne.
 
 import { COMMODITIES, COMMODITY_KEYS, FACTIONS, DIPLO_FACTIONS } from './data.js';
-import { colonieParId, distance, nomRegion } from './world.js';
+import { colonieParId, distance, nomRegion, coordonnee } from './world.js';
 import { idDepuisRng } from './characters.js';
 import { crediter, estAuService } from './allegeance.js';
 import { groupes, groupeActif } from './groupes.js';
@@ -67,7 +67,8 @@ function contratLivraison(rng, state, col, t) {
     recompense: Math.round((80 + d * 55 + poids * 6) * rng.range(0.9, 1.4)),
     reputation: rng.irange(4, 9),
     duree: Math.round(d * rng.range(14, 24)),
-    titre: `Porter ${quantite} ${COMMODITIES[ressource].nom.toLowerCase()} à ${dest.nom}`,
+    titre: `Porter ${quantite} ${COMMODITIES[ressource].nom.toLowerCase()} `
+      + `à ${dest.nom} (${coordonnee(state.world, dest.regionId)})`,
   };
 }
 

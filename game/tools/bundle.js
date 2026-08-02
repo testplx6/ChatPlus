@@ -111,6 +111,36 @@ function retirerExports(source) {
   return source.replace(/^export\s+(?=(?:default\s+)?(?:function|const|let|var|class)\b)/gm, '');
 }
 
+/**
+ * Tout ce qu'un module nomme lui-même : déclarations, paramètres, méthodes
+ * abrégées d'objet littéral.
+ *
+ * Sert au contrôle « utilisé sans être importé ». Un nom qui vient d'ailleurs
+ * mais qu'on redéclare ici — `attaquerCaravane(state, car, rng, log,
+ * combatContre, genererBande)` reçoit ses fonctions en paramètres, et
+ * `ACTIONS = { garnison(faction) {…} }` nomme une méthode — n'est pas un oubli
+ * d'import. Approximation assumée : mieux vaut rater un oubli que crier sur du
+ * code correct, parce qu'un garde-fou qui crie pour rien finit désactivé.
+ */
+function nomsLocaux(source) {
+  const noms = new Set();
+  const decl = /(?:^|[\s;{(])(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)/g;
+  let m;
+  while ((m = decl.exec(source)) !== null) noms.add(m[1]);
+  // Paramètres : tout ce qui tient entre les parenthèses d'une signature.
+  const sign = /(?:function\s*[A-Za-z_$\w]*|^\s+[A-Za-z_$][\w$]*)\s*\(([^)]*)\)\s*(?:=>|\{)/gm;
+  while ((m = sign.exec(source)) !== null) {
+    for (const p of m[1].split(',')) {
+      const nom = p.trim().replace(/[={[\].].*$/, '').replace(/^\.\.\./, '').trim();
+      if (/^[A-Za-z_$][\w$]*$/.test(nom)) noms.add(nom);
+    }
+  }
+  // Méthode abrégée d'un objet littéral : `  garnison(faction) {`.
+  const meth = /^\s+([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{/gm;
+  while ((m = meth.exec(source)) !== null) noms.add(m[1]);
+  return noms;
+}
+
 /** Noms déclarés au premier niveau (colonne 0), pour détecter les collisions. */
 function nomsGlobaux(source) {
   const noms = [];
@@ -121,6 +151,7 @@ function nomsGlobaux(source) {
 }
 
 const morceaux = [];
+const sourcesParModule = [];
 const vus = new Map();
 const aliasTous = [];
 const requisTous = new Map(); // nom importé → module qui le réclame
@@ -129,6 +160,16 @@ let collisions = 0;
 for (const nom of MODULES) {
   const brut = await readFile(join(RACINE, 'src', nom), 'utf8');
   const { code, alias, requis } = retirerImports(brut);
+  sourcesParModule.push({
+    nom,
+    brut,
+    code,
+    importes: new Set([...requis, ...alias.map(([nouveau]) => nouveau)]),
+    // Tout ce que ce module déclare lui-même, à n'importe quelle indentation :
+    // une fonction locale homonyme d'un export d'ailleurs est parfaitement
+    // légitime, et c'est fréquent (`retirer`, `manque`, `conseil`…).
+    locaux: nomsLocaux(brut),
+  });
   for (const r of requis) if (!requisTous.has(r)) requisTous.set(r, nom);
   const propre = retirerExports(code);
   // Un même nom importé deux fois dans le *même* fichier casse la page servie
@@ -173,6 +214,52 @@ if (manquants.length) {
   for (const [nom, mod] of manquants) console.error(`  « ${nom} » réclamé par src/${mod}`);
   console.error('\nUn module manque probablement dans MODULES. Abandon.');
   process.exit(1);
+}
+
+// L'inverse du contrôle précédent, et il a coûté une page blanche : un symbole
+// **utilisé sans être importé**.
+//
+// Dans le fichier unique tout partage la même portée, donc `lieuAvecCoord`
+// appelé depuis ui.js sans figurer dans ses imports fonctionne parfaitement. En
+// modules ES — c'est-à-dire en développement, et c'est ce que sert `serve.js` —
+// c'est une ReferenceError au chargement. Le bundle annonçait « 0 collision »
+// sur un jeu qui ne démarrait pas.
+//
+// On ne fait pas d'analyse de portée ici : on cherche l'usage d'un nom exporté
+// par un *autre* module, absent des imports de celui-ci et de ses propres
+// déclarations. Assez pour attraper l'oubli, sans prétendre à un compilateur.
+{
+  const exportes = new Map(); // nom exporté → module qui l'exporte
+  for (const { nom, brut } of sourcesParModule) {
+    const re = /^export\s+(?:function|const|let|var|class)\s+([A-Za-z_$][\w$]*)/gm;
+    let m;
+    while ((m = re.exec(brut)) !== null) if (!exportes.has(m[1])) exportes.set(m[1], nom);
+  }
+  const oublis = [];
+  for (const { nom, code, importes, locaux } of sourcesParModule) {
+    // Ce fichier commente beaucoup, et cite volontiers des fonctions d'ailleurs
+    // pour expliquer pourquoi il ne les emploie pas. On lit le code seul.
+    const sansCommentaires = code
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+    for (const [sym, source] of exportes) {
+      if (source === nom || importes.has(sym) || locaux.has(sym)) continue;
+      // Un appel, mot entier, pas derrière un point : `x.distance` n'est pas
+      // `distance`. On se limite aux appels — une variable homonyme passée en
+      // paramètre est courante, une *fonction* homonyme appelée sans import ne
+      // l'est pas.
+      const re = new RegExp(`(^|[^.\\w$])${sym}\\s*\\(`);
+      if (re.test(sansCommentaires)) {
+        oublis.push(`  « ${sym} » utilisé par src/${nom}, exporté par src/${source}`);
+      }
+    }
+  }
+  if (oublis.length) {
+    console.error('Symboles utilisés sans être importés (le bundle passerait, pas les modules) :');
+    for (const l of oublis) console.error(l);
+    console.error('\nAjoutez l’import. Abandon.');
+    process.exit(1);
+  }
 }
 
 // Les imports aliasés (`niveau as nivBat`) deviennent de simples constantes.

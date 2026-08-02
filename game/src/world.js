@@ -497,5 +497,28 @@ export function nomRegion(world, i) {
   const r = world.regions[i];
   const col = colonieDe(world, i);
   if (col) return col.nom;
-  return `${BIOMES[r.biome].court} ${String.fromCharCode(65 + r.x)}${r.y + 1}`;
+  return `${BIOMES[r.biome].court} ${coordonnee(world, i)}`;
+}
+
+/** La case sur la carte : « K5 ». Ce qu'on lit sur la grille, rien d'autre. */
+export function coordonnee(world, i) {
+  const r = world.regions[i];
+  if (!r) return '?';
+  return `${String.fromCharCode(65 + r.x)}${r.y + 1}`;
+}
+
+/**
+ * Un lieu avec ses coordonnées, toujours.
+ *
+ * `nomRegion` rend le nom de la ville quand il y en a une — « Poste-Ambre » —
+ * et ne tombe sur la case que pour les régions vides. Un ordre de ravitaillement
+ * vise justement une ville : il n'a donc **jamais** affiché de coordonnées, ce
+ * qui a été signalé trois fois, et que j'ai « corrigé » deux fois en travaillant
+ * sur le mauvais bout. Ici le nom et la case vont ensemble, pour tout ce qui est
+ * une destination : « Poste-Ambre (K5) ».
+ */
+export function lieuAvecCoord(world, i) {
+  const col = colonieDe(world, i);
+  const c = coordonnee(world, i);
+  return col ? `${col.nom} (${c})` : nomRegion(world, i);
 }

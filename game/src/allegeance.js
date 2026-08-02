@@ -6,7 +6,7 @@
 // est une position dans le monde.
 
 import { FACTIONS, DIPLO_FACTIONS, COMMODITIES } from './data.js';
-import { colonieParId, distance } from './world.js';
+import { colonieParId, distance, coordonnee } from './world.js';
 import { idDepuisRng } from './characters.js';
 import { groupes, groupeActif } from './groupes.js';
 import { loisDe, REGIMES } from './lois.js';
@@ -572,7 +572,10 @@ function fabriquerOrdre(state, rng, g) {
     colonieId: pire.id,
     ressource,
     quantite,
-    titre: `Ravitailler ${pire.nom} : ${quantite} ${COMMODITIES[ressource].nom.toLowerCase()}`,
+    // La case dans le titre : c'est la ligne qu'on lit, et « Poste-Ambre » seul
+    // n'apprend rien à qui ne connaît pas encore la carte.
+    titre: `Ravitailler ${pire.nom} (${coordonnee(state.world, pire.regionId)}) : `
+      + `${quantite} ${COMMODITIES[ressource].nom.toLowerCase()}`,
     recompense: Math.round(COMMODITIES[ressource].prix * quantite * rng.range(1.8, 2.6)),
     service: Math.round(quantite * 1.5 + 30),
     duree: delai(distance(pire.regionId, ici), rng, 220),

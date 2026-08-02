@@ -622,6 +622,12 @@ await page.waitForTimeout(300);
   ok(/région/i.test(txtO) && /marche/i.test(txtO),
     'un ordre de mission dit où aller et combien de marche ça représente',
     txtO.slice(0, 300).replace(/\n+/g, ' | '));
+  // Et il donne la case, y compris quand la destination est une ville : c'est
+  // le cas qui n'avait jamais marché, parce que le nom de la ville remplaçait
+  // les coordonnées au lieu de s'y ajouter.
+  ok(/\([A-Z]\d+\)/.test(txtO),
+    'et il donne la case de la destination, ville comprise',
+    txtO.slice(0, 300).replace(/\n+/g, ' | '));
   ok((await page.locator('[data-a="voyage"]').count()) > 0,
     'et propose de s’y rendre');
   ok(/feuille de service/i.test(txtO),
