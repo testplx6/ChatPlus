@@ -44,7 +44,7 @@ import {
   surveillanceManquante, lenteurPrisonniers, tickPrisonniers, tickGeole,
   geoleDe, apaisementGeole, tickOrdrePublic,
 } from '../src/justice.js';
-import { loisDe, pressionFiscale, PEINES } from '../src/lois.js';
+import { loisDe, pressionFiscale, PEINES, REGIMES } from '../src/lois.js';
 import {
   depouillesDe, lenteurDepouilles, poidsMoral, disposerCorps, prixOrganes,
 } from '../src/depouilles.js';
@@ -3944,6 +3944,12 @@ section('9 quaterdecies. Ce que l’estime change, et ce qu’une absence ne co�
     `${REPUTATION_MINIMALE}`);
   ok(seuils.includes(ESTIME_PROPRIETE),
     'et celui du coffre est bien celui qu’exige la propriété', `${ESTIME_PROPRIETE}`);
+  // Le seuil affiché doit être celui du régime, pas une constante parallèle :
+  // une aide qui promet quarante d'estime là où la Franchise en demande
+  // vingt-cinq est un mensonge que le joueur croira.
+  ok(ESTIME_PROPRIETE === REGIMES.charte.propriete,
+    'et il relit le régime plutôt que de le redéclarer',
+    `${ESTIME_PROPRIETE} / ${REGIMES.charte.propriete}`);
   ok(seuils.includes(-20) && seuils.includes(-50),
     'les paliers hostiles sont ceux de la majoration des prix et de la prime');
 

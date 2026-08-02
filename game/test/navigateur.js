@@ -466,6 +466,18 @@ await page.click('[data-a="modale"][data-m="coffre"]');
 await page.waitForTimeout(400);
 ok((await page.locator('[data-a="coffre-louer"]').count()) > 0,
   'une ville propose un coffre à louer');
+// L'aide annonçait un seuil d'estime écrit en dur, d'avant les régimes : elle
+// promettait quarante là où une Franchise en demande vingt-cinq. Elle doit citer
+// le régime du lieu et l'estime qu'on y a réellement.
+{
+  const aide = await page.locator('#modale').innerText();
+  ok(/(franchise|charte|commune|domaine|ville libre)/i.test(aide),
+    'et l’aide du coffre nomme le régime qui décide de la propriété',
+    aide.slice(0, 220).replace(/\n+/g, ' | '));
+  ok(/vous en avez -?\d+/i.test(aide) || /on ne possède rien ici/i.test(aide)
+    || /personne n’est en position/i.test(aide),
+    'avec l’estime qu’on y a, plutôt qu’un seuil abstrait');
+}
 await page.screenshot({ path: join(CAPTURES, '09e-coffre.png') });
 if ((await page.locator('[data-a="coffre-louer"]:not([disabled])').count()) > 0) {
   await page.click('[data-a="coffre-louer"]');

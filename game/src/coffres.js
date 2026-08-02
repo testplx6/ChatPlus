@@ -22,7 +22,7 @@
 
 import { COMMODITIES, COMMODITY_KEYS } from './data.js';
 import { poidsInventaire } from './economy.js';
-import { loiIci } from './lois.js';
+import { loiIci, REGIMES } from './lois.js';
 import { noterArgent } from './rapport.js';
 
 /** Ce qu'un coffre tient, en kilos. */
@@ -36,8 +36,17 @@ export const PERIODE_LOYER = 24 * 30;
 /** Ce que coûte un coffre qu'on achète. */
 export const PRIX_COFFRE = 1300;
 
-/** L'estime qu'il faut pour qu'une faction vous laisse posséder chez elle. */
-export const ESTIME_PROPRIETE = 40;
+/**
+ * L'estime qu'il faut pour posséder chez une faction ordinaire.
+ *
+ * Ce n'est plus ce module qui en décide : depuis les régimes, c'est
+ * `REGIMES[…].propriete`, et il vaut 25 en Franchise, 40 sous une Charte, et
+ * jamais dans une Commune ou un Domaine. La constante ne survit ici que comme
+ * raccourci de lecture, et elle **relit** la valeur de la Charte plutôt que de
+ * la redéclarer : deux nombres écrits séparément finissent toujours par diverger,
+ * et c'est l'écran d'aide qui ment alors au joueur.
+ */
+export const ESTIME_PROPRIETE = REGIMES.charte.propriete;
 
 // ---------------------------------------------------------------------------
 // Lecture

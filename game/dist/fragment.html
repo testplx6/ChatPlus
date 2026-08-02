@@ -12044,8 +12044,17 @@ const PERIODE_LOYER = 24 * 30;
 /** Ce que coûte un coffre qu'on achète. */
 const PRIX_COFFRE = 1300;
 
-/** L'estime qu'il faut pour qu'une faction vous laisse posséder chez elle. */
-const ESTIME_PROPRIETE = 40;
+/**
+ * L'estime qu'il faut pour posséder chez une faction ordinaire.
+ *
+ * Ce n'est plus ce module qui en décide : depuis les régimes, c'est
+ * `REGIMES[…].propriete`, et il vaut 25 en Franchise, 40 sous une Charte, et
+ * jamais dans une Commune ou un Domaine. La constante ne survit ici que comme
+ * raccourci de lecture, et elle **relit** la valeur de la Charte plutôt que de
+ * la redéclarer : deux nombres écrits séparément finissent toujours par diverger,
+ * et c'est l'écran d'aide qui ment alors au joueur.
+ */
+const ESTIME_PROPRIETE = REGIMES.charte.propriete;
 
 // ---------------------------------------------------------------------------
 // Lecture
@@ -16149,7 +16158,8 @@ function blocSite() {
       <span class="v ${bloque ? 'alerte' : ''}">${def.reqIngenierie} (vous : ${Math.round(ing)})</span></div>` : ''}
     <div class="sep"></div>
     <button class="act primaire" data-a="fouiller-site" ${bloque || !debout.length ? 'disabled' : ''}>
-      ${bloque ? 'Hors de portée' : 'Fouiller le site'}</button>
+      ${bloque ? 'Hors de portée'
+    : !debout.length ? 'Personne ne tient debout' : 'Fouiller le site'}</button>
   </section>`;
 }
 
@@ -16678,7 +16688,9 @@ function blocDetachement() {
     : `<div class="aide">Les vivres et le matériel suivent au prorata. Choisissez qui part.</div>
        <div class="taches">${cases}</div>
        <button class="act" data-a="detacher" ${possible ? '' : 'disabled'}>
-         Détacher ${choisis || ''} ${choisis > 1 ? 'membres' : 'membre'}</button>
+         ${choisis === 0 ? 'Choisissez qui part'
+    : choisis >= dispo.length ? 'Il faut laisser quelqu’un ici'
+      : `Détacher ${choisis} ${choisis > 1 ? 'membres' : 'membre'}`}</button>
        ${place ? '' : '<div class="aide">Plus de quoi coordonner un groupe de plus — montez l’antenne de l’avant-poste.</div>'}`}
     ${voisins.length ? `<div class="sep"></div>
       <div class="titre">Regrouper</div>
@@ -18360,9 +18372,20 @@ function modaleCoffre() {
     <button class="act" data-a="coffre-acheter" ${vA.ok ? '' : 'disabled'}>
       Acheter — ${n(PRIX_COFFRE)} cr, ${CAPACITE_ACHETEE} kg, plus de loyer
       ${vA.ok ? '' : `<br><span class="aide">${e(vA.motif)}</span>`}</button>
-    <div class="aide" style="margin-top:6px">${col.faction
-    ? `On ne vend des murs qu'à qui l'on estime : ${ESTIME_PROPRIETE} d'estime demandés.`
-    : 'Ville libre : personne n’est en position de vous interdire de posséder.'}</div>`;
+    <div class="aide" style="margin-top:6px">${(() => {
+    // Ce texte annonçait un seuil en dur, écrit avant les régimes : il promettait
+    // quarante d'estime là où une Franchise en demande vingt-cinq et où une
+    // Commune ne vend rien du tout. Une phrase d'aide fausse coûte plus cher que
+    // pas de phrase du tout — c'est elle qu'on croit.
+    if (!col.faction) return 'Ville libre : personne n’est en position de vous interdire de posséder.';
+    const reg = loiIci(S, col).regime;
+    if (reg.propriete === null) {
+      return `${reg.nom} : on ne possède rien ici, quelle que soit votre estime.`;
+    }
+    const repu = Math.round(S.player.reputation[col.faction] || 0);
+    return `${reg.nom} : on ne vend des murs qu’à qui l’on estime — `
+      + `${reg.propriete} demandés, vous en avez ${repu}.`;
+  })()}</div>`;
   }
 
   const pl = placeCoffre(coffre);
