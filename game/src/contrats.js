@@ -146,6 +146,32 @@ function contratReconnaissance(rng, state, col, t) {
   };
 }
 
+/**
+ * Le temps qu'il faut vraiment pour ce contrat-ci, largement compté.
+ *
+ * Vingt-six heures par région : l'allure réelle d'une colonne tourne autour de
+ * quatre à huit, donc c'est trois à six fois la marge. On ne cherche pas à
+ * serrer, on cherche à ce qu'aucune offre ne soit impossible en la lisant.
+ */
+const HEURES_PAR_REGION_LARGE = 26;
+
+function dureeMinimale(state, col, c) {
+  let cases = 0;
+  if (c.type === 'livraison') {
+    const dest = colonieParId(state.world, c.destId);
+    // On se valide sur place : l'aller seul.
+    cases = dest ? distance(col.regionId, dest.regionId) : 0;
+  } else if (c.type === 'reconnaissance') {
+    // Le relevé se rend au panneau qui l'a affiché : aller et retour.
+    cases = distance(col.regionId, c.regionId) * 2;
+  } else {
+    // Collecte et prime : rien à situer, mais il faut courir et revenir. Une
+    // dizaine de régions de battue est un ordre de grandeur honnête.
+    cases = 10;
+  }
+  return Math.round(cases * HEURES_PAR_REGION_LARGE) + 120;
+}
+
 const FABRIQUES = {
   collecte: contratCollecte,
   livraison: contratLivraison,
@@ -179,8 +205,23 @@ export function genererContrats(state, col, rng, t) {
     // qu'on veut poser au joueur est « est-ce que je cours ? », pas « est-ce
     // que je signe ? ».
     c.urgent = rng.chance(PART_URGENTE);
-    if (!c.urgent) c.duree = null;
-    else c.recompense = Math.round(c.recompense * PRIME_URGENCE);
+    if (!c.urgent) {
+      c.duree = null;
+    } else {
+      c.recompense = Math.round(c.recompense * PRIME_URGENCE);
+      // Un délai qu'on sait d'avance intenable n'a rien à faire sur le panneau.
+      //
+      // Chaque type calculait le sien dans son coin, sur des bases différentes,
+      // et l'affichage se contentait d'annoncer « l'échéance ne le permet pas ».
+      // Proposer un travail impossible et le signaler comme tel, c'est occuper
+      // une des cinq places du joueur avec un piège.
+      //
+      // Le plancher part de ce que le contrat demande *réellement* : l'aller,
+      // le retour quand il faut rendre le travail là où on l'a pris, et une
+      // marge de vingt-six heures par région — trois à six fois l'allure d'une
+      // colonne, de quoi encaisser une embuscade et un détour.
+      c.duree = Math.max(c.duree || 0, dureeMinimale(state, col, c));
+    }
     // Une ville agitée paie mal, une ville prospère paie bien.
     c.recompense = Math.max(50, Math.round(c.recompense * (1 - col.unrest * 0.3)));
     liste.push(c);

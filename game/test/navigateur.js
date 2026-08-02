@@ -15,7 +15,7 @@ import {
   fonderBase, lancerConstruction, lancerRecherche, COUT_FONDATION,
 } from '../src/base.js';
 import { donnerOrdre } from '../src/squad.js';
-import { serialiser } from '../src/save.js';
+import { serialiser, deserialiser } from '../src/save.js';
 import { groupeActif } from '../src/groupes.js';
 import { ecolesDe } from '../src/formation.js';
 import { confierSecteur } from '../src/secteur.js';
@@ -787,6 +787,40 @@ await page.waitForTimeout(300);
     'un titre de mission à rallonge ne met pas son verdict en colonne',
     pastillesEnColonne.slice(0, 3).join(' | '));
   await page.screenshot({ path: join(CAPTURES, '09d-ordre.png'), fullPage: true });
+
+  // Le même ordre, sans échéance — c'est désormais le cas courant. Trois
+  // endroits soustrayaient `echeance` sans vérifier qu'elle existe : la page
+  // annonçait « NaN restantes » et « l'échéance ne le permet pas » sur une
+  // mission qu'aucune horloge ne pressait. On rejoue la même injection avec
+  // `duree: null` : rien ne doit compter le temps qui reste.
+  const sansEcheance = serialiser((() => {
+    const t = deserialiser(avecOrdre);
+    t.player.groupes[0].allegeance.ordre.duree = null;
+    t.player.groupes[0].allegeance.ordre.echeance = null;
+    return t;
+  })());
+  await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), sansEcheance);
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.click('[data-a="onglet"][data-k="contrats"]');
+  await page.waitForTimeout(500);
+  const txtSD = await page.locator('#ecran').innerText();
+  ok(!/NaN/.test(txtSD), 'un ordre sans échéance n’affiche pas « NaN »',
+    (txtSD.match(/.{0,60}NaN.{0,40}/) || [''])[0]);
+  ok(/sans délai/i.test(txtSD), 'il annonce « sans délai » au lieu d’un compte à rebours',
+    txtSD.slice(0, 300).replace(/\n+/g, ' | '));
+  ok(!/ne le permet pas/i.test(txtSD),
+    'et il ne prétend pas qu’une échéance inexistante interdit le voyage',
+    (txtSD.match(/.{0,80}ne le permet pas/) || [''])[0]);
+  // Le point de situation ne doit pas non plus l'inscrire parmi les urgences.
+  await page.click('[data-a="onglet"][data-k="carte"]');
+  await page.waitForTimeout(300);
+  const txtSit = await page.locator('#ecran').innerText();
+  ok(!/NaN/.test(txtSit), 'et le point de situation reste net de « NaN »',
+    (txtSit.match(/.{0,60}NaN.{0,40}/) || [''])[0]);
+
   // On rend la partie posée en ville que la suite de la section attend : les
   // vérifications du marché comptent sur son étal et sa bourse. Une partie
   // neuve, elle, démarre maintenant dans le désert.

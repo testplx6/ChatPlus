@@ -5658,8 +5658,27 @@ function positionJoueur(state) {
  * vingtaine reçus. Comme les points de service ne viennent que de là, personne
  * ne dépassait jamais le premier grade.
  */
+/**
+ * Le délai d'un ordre — quand il y en a un, et il n'y en a presque jamais.
+ *
+ * Tous les ordres de mission en avaient un, et c'est la même erreur que sur le
+ * panneau d'affichage : quand échouer est la norme, on cesse de signer. Le
+ * reproche a été fait plusieurs fois, et je n'avais corrigé que les contrats.
+ *
+ * Désormais un ordre sur quatre presse — il le dit et il paie moitié plus. Les
+ * autres attendent qu'on les fasse. Ce qui borne, c'est qu'on n'en reçoit qu'un
+ * à la fois : tant qu'on traîne celui-ci, le suivant ne vient pas.
+ *
+ * Et quand il y en a un, il est *tenable* : le calcul part du double de la
+ * distance — aller et revenir — à vingt-six heures par région, soit trois à six
+ * fois l'allure réelle d'une colonne. Un délai qu'on sait d'avance intenable n'a
+ * rien à faire dans le jeu.
+ */
+const PART_URGENTE_ORDRE = 0.25;
+const PRIME_URGENCE_ORDRE = 1.5;
+
 function delai(d, rng, base = 200) {
-  return Math.round((base + d * 26) * rng.range(0.95, 1.35));
+  return Math.round((base + d * 2 * 26) * rng.range(1, 1.4));
 }
 
 function fabriquerOrdre(state, rng, g) {
@@ -5952,7 +5971,7 @@ function tickEngagement(state, g, log, ctx) {
         texte: `Ordre exécuté : ${o.titre}. ${o.recompense} cr.`,
         important: true,
       });
-    } else if (state.temps > all.ordre.echeance) {
+    } else if (all.ordre.echeance && state.temps > all.ordre.echeance) {
       const o = all.ordre;
       all.ordre = null;
       all.prochainOrdre = state.temps + rng.irange(180, 320);
@@ -5998,7 +6017,11 @@ function tickEngagement(state, g, log, ctx) {
   } else if (state.temps >= all.prochainOrdre && !(ctx && ctx.absent)) {
     const o = fabriquerOrdre(state, rng, g);
     if (o) {
-      o.echeance = state.temps + o.duree;
+      // Le délai est l'exception, et il se paie. Voir `delai` au-dessus.
+      o.urgent = rng.chance(PART_URGENTE_ORDRE);
+      if (o.urgent) o.recompense = Math.round(o.recompense * PRIME_URGENCE_ORDRE);
+      else o.duree = null;
+      o.echeance = o.duree ? state.temps + o.duree : null;
       all.ordre = o;
       log({
         type: 'allegeance',
@@ -12554,6 +12577,32 @@ function contratReconnaissance(rng, state, col, t) {
   };
 }
 
+/**
+ * Le temps qu'il faut vraiment pour ce contrat-ci, largement compté.
+ *
+ * Vingt-six heures par région : l'allure réelle d'une colonne tourne autour de
+ * quatre à huit, donc c'est trois à six fois la marge. On ne cherche pas à
+ * serrer, on cherche à ce qu'aucune offre ne soit impossible en la lisant.
+ */
+const HEURES_PAR_REGION_LARGE = 26;
+
+function dureeMinimale(state, col, c) {
+  let cases = 0;
+  if (c.type === 'livraison') {
+    const dest = colonieParId(state.world, c.destId);
+    // On se valide sur place : l'aller seul.
+    cases = dest ? distance(col.regionId, dest.regionId) : 0;
+  } else if (c.type === 'reconnaissance') {
+    // Le relevé se rend au panneau qui l'a affiché : aller et retour.
+    cases = distance(col.regionId, c.regionId) * 2;
+  } else {
+    // Collecte et prime : rien à situer, mais il faut courir et revenir. Une
+    // dizaine de régions de battue est un ordre de grandeur honnête.
+    cases = 10;
+  }
+  return Math.round(cases * HEURES_PAR_REGION_LARGE) + 120;
+}
+
 const FABRIQUES = {
   collecte: contratCollecte,
   livraison: contratLivraison,
@@ -12587,8 +12636,23 @@ function genererContrats(state, col, rng, t) {
     // qu'on veut poser au joueur est « est-ce que je cours ? », pas « est-ce
     // que je signe ? ».
     c.urgent = rng.chance(PART_URGENTE);
-    if (!c.urgent) c.duree = null;
-    else c.recompense = Math.round(c.recompense * PRIME_URGENCE);
+    if (!c.urgent) {
+      c.duree = null;
+    } else {
+      c.recompense = Math.round(c.recompense * PRIME_URGENCE);
+      // Un délai qu'on sait d'avance intenable n'a rien à faire sur le panneau.
+      //
+      // Chaque type calculait le sien dans son coin, sur des bases différentes,
+      // et l'affichage se contentait d'annoncer « l'échéance ne le permet pas ».
+      // Proposer un travail impossible et le signaler comme tel, c'est occuper
+      // une des cinq places du joueur avec un piège.
+      //
+      // Le plancher part de ce que le contrat demande *réellement* : l'aller,
+      // le retour quand il faut rendre le travail là où on l'a pris, et une
+      // marge de vingt-six heures par région — trois à six fois l'allure d'une
+      // colonne, de quoi encaisser une embuscade et un détour.
+      c.duree = Math.max(c.duree || 0, dureeMinimale(state, col, c));
+    }
     // Une ville agitée paie mal, une ville prospère paie bien.
     c.recompense = Math.max(50, Math.round(c.recompense * (1 - col.unrest * 0.3)));
     liste.push(c);
@@ -16556,7 +16620,7 @@ function blocSituation() {
 
   // Les échéances : ce qui va se retourner contre vous si vous l'oubliez.
   const all = g.allegeance;
-  if (all && all.ordre) {
+  if (all && all.ordre && all.ordre.echeance) { // sans délai : rien qui presse
     const reste = all.ordre.echeance - S.temps;
     const t = `ordre « ${all.ordre.titre} » — ${dureeTexte(Math.max(0, reste))}`;
     if (reste < 72) urgences.push(`${t} avant l’échéance.`);
@@ -17870,7 +17934,10 @@ function ligneContrat(c, enCours) {
   // restant ne s'affichent que pour celles qui en ont une, sinon on cherche une
   // pendule là où il n'y en a pas.
   const presse = enCours ? !!c.echeance : !!c.duree;
-  const reste = enCours ? (c.echeance || 0) - S.temps : c.duree;
+  // `null` et non zéro : le bloc de cible doit pouvoir distinguer « il reste
+  // zéro heure » de « il n'y a pas d'heure à compter ». Avec zéro, un contrat
+  // sans délai s'affichait « le délai ne le permet pas ».
+  const reste = presse ? (enCours ? c.echeance - S.temps : c.duree) : null;
   const donneur = colonieParId(S.world, c.colonieId);
   return `<div class="contrat">
     <div class="ligne">
@@ -18167,8 +18234,9 @@ function blocCibleContrat(c, reste) {
   return `<div class="aide">${e(cible.quoi)} : ${e(lieuAvecCoord(S.world, cible.regionId))},
     à ${d} région${d > 1 ? 's' : ''} — ${Number.isFinite(heures) ? dureeTexte(Math.round(heures)) : '?'}
     ${retour > 0 ? 'aller-retour, le relevé se rend au panneau' : 'de marche'}.
-    <span class="${tient ? 'cyan' : 'alerte'}">${tient
-  ? 'le délai le permet' : 'le délai ne le permet pas'}</span></div>`;
+    ${reste == null ? '<span class="cyan">aucun délai</span>'
+    : `<span class="${tient ? 'cyan' : 'alerte'}">${tient
+      ? 'le délai le permet' : 'le délai ne le permet pas'}</span>`}</div>`;
 }
 
 /**
@@ -18208,12 +18276,15 @@ function blocCibleOrdre(o) {
   }
   // Le temps que ça prend vraiment, à l'allure de cette colonne-ci.
   const heures = apercuEscouade(S, g).heuresParRegion * d;
-  const reste = Math.max(0, o.echeance - S.temps);
-  const tient = heures <= reste;
+  // La plupart des ordres n'ont plus d'échéance. Sans ce garde-fou, la
+  // soustraction donnait NaN et le verdict tombait toujours du mauvais côté.
+  const reste = o.echeance ? Math.max(0, o.echeance - S.temps) : null;
+  const tient = reste == null || heures <= reste;
   return `<div class="aide">${e(cible.quoi)} : ${e(lieuAvecCoord(S.world, cible.regionId))},
       à ${d} région${d > 1 ? 's' : ''} — ${Number.isFinite(heures) ? dureeTexte(Math.round(heures)) : '?'} de marche.
-      <span class="${tient ? 'cyan' : 'alerte'}">${tient
-  ? 'l’échéance le permet' : 'l’échéance ne le permet pas'}</span></div>
+      ${reste == null ? '<span class="cyan">aucune échéance</span>'
+    : `<span class="${tient ? 'cyan' : 'alerte'}">${tient
+      ? 'l’échéance le permet' : 'l’échéance ne le permet pas'}</span>`}</div>
     <button class="act" data-a="voyage" data-r="${cible.regionId}">S’y rendre</button>`;
 }
 
@@ -18338,7 +18409,10 @@ function blocAllegeance() {
       <div class="contrat-t">${e(o.titre)}</div>
       ${jauge(p && p.total ? p.fait / p.total : 0, p && p.pret ? 'vert' : '')}
       <div class="aide">${e(p ? p.texte : '')} · ${n(o.recompense)} cr ·
-        <span class="${o.echeance - S.temps < 48 ? 'alerte' : ''}">${dureeTexte(Math.max(0, o.echeance - S.temps))} restantes</span></div>
+        ${o.echeance
+    ? `<span class="${o.echeance - S.temps < 48 ? 'alerte' : ''}">${
+      dureeTexte(Math.max(0, o.echeance - S.temps))} restantes</span>`
+    : '<span class="cyan">sans délai</span>'}</div>
       ${blocCibleOrdre(o)}`
     : '<div class="aide">Aucun ordre en attente. Ils vous rappelleront.</div>'}
     ${blocFeuilleService(all)}

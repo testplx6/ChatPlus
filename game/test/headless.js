@@ -2469,9 +2469,21 @@ ok(loisDe(regne.world, fRegne).impot === 0.15
 // se contentait de lire le taux — elle passait ou non selon le tempérament tiré
 // pour ce chef-là, ce qui n'était pas ce qu'on voulait vérifier.
 gRegne.allegeance = null;
+// On pose la prémisse au lieu de l'espérer : « un pays qui gronde ». Le test
+// l'affirmait dans son intitulé sans jamais s'en assurer, et passait tant que
+// le tirage donnait un chef sévère — un conciliateur dans un pays calme garde
+// très légitimement sa justice clémente.
+const gronder = () => {
+  for (const c of regne.world.colonies) {
+    if (c.faction === fRegne && !c.ruine) c.unrest = 0.9;
+  }
+};
+gronder();
 const legiferaA = loisDe(regne.world, fRegne).depuis || 0;
 const tLibre = regne.temps;
-nourrir(1600);
+// On entretient la grogne pendant la mesure : elle retombe d'elle-même, et sur
+// seize cents heures le conseil se réunissait devant un pays déjà calmé.
+for (let i = 0; i < 32; i++) { gronder(); nourrir(50); }
 ok((loisDe(regne.world, fRegne).depuis || 0) > Math.max(legiferaA, tLibre),
   'la charge perdue, le conseil repasse derrière vous',
   `légiféré à ${loisDe(regne.world, fRegne).depuis} (libre depuis ${tLibre})`);
@@ -4344,6 +4356,31 @@ section('9 octodecies. Un contrat qu’on peut tenir, et dont il reste une trace
       .map((x) => ({ col: c, x })));
   ok(recos.length > 0, 'des contrats de reconnaissance sont affichés', `${recos.length}`);
 
+  // Aucune offre pressée n'est intenable. Un délai qu'on sait d'avance
+  // impossible n'a rien à faire sur un panneau : le signaler par « l'échéance
+  // ne le permet pas » ne rachète rien, ça occupe une des cinq places du joueur
+  // avec un piège.
+  {
+    const large = 26; // heures par région, trois à six fois l'allure réelle
+    const intenables = [];
+    for (const col of sk.world.colonies) {
+      for (const x of (col.contrats || [])) {
+        if (!x.duree) continue;
+        let besoin = 10 * large;
+        if (x.type === 'livraison') {
+          const dest = sk.world.colonies.find((c) => c.id === x.destId);
+          besoin = dest ? distance(col.regionId, dest.regionId) * large : 0;
+        } else if (x.type === 'reconnaissance') {
+          besoin = distance(col.regionId, x.regionId) * 2 * large;
+        }
+        if (x.duree < besoin) intenables.push(`${x.titre} : ${x.duree} h pour ${besoin}`);
+      }
+    }
+    ok(intenables.length === 0,
+      'aucune offre pressée ne demande plus de temps qu’elle n’en laisse',
+      intenables.slice(0, 3).join(' | '));
+  }
+
   // Le délai est l'exception, et il se paie. C'était l'inverse, et le banc l'a
   // chiffré : vingt-cinq contrats pris par partie, vingt manqués. Un panneau
   // dont quatre offres sur cinq finissent en échec ne se lit plus.
@@ -4640,6 +4677,56 @@ section('9 tervicies. Ce qu’on tire d’un site se voit');
   ok(vu && vu.reg.site.butin === vu.res.resume,
     'la trace reste sur le site : on la relit en repassant devant, des jours plus tard',
     vu ? String(vu.reg.site.butin) : '—');
+}
+
+section('9 quattuorvicies. Les ordres de mission aussi : le délai est l’exception');
+{
+  // Corrigé pour les contrats, oublié pour les ordres — et c'est la même erreur.
+  // Un ordre sur quatre presse et paie moitié plus ; les autres attendent qu'on
+  // les fasse. Ce qui borne, c'est qu'on n'en reçoit qu'un à la fois.
+  const so = nouvellePartie(5678, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const go = groupeActif(so);
+  const colO = so.world.colonies.find((c) => c.faction && !c.ruine);
+  go.regionId = colO.regionId;
+  so.player.reputation[colO.faction] = 60;
+  sEngager(so, colO.faction, () => {}, go);
+
+  const vus = [];
+  for (let i = 0; i < 60 && vus.length < 12; i++) {
+    go.allegeance.prochainOrdre = so.temps;
+    avancer(so, 30);
+    const o = go.allegeance.ordre;
+    if (o && !vus.some((x) => x.id === o.id)) {
+      vus.push({
+        id: o.id, type: o.type, duree: o.duree, urgent: !!o.urgent, recompense: o.recompense,
+      });
+      // On s'en débarrasse pour en recevoir un autre.
+      go.allegeance.ordre = null;
+    }
+  }
+  ok(vus.length >= 6, 'on reçoit des ordres', `${vus.length}`);
+  const presses = vus.filter((o) => o.duree);
+  ok(presses.length < vus.length,
+    'et tous n’ont pas de délai : la plupart attendent',
+    `${presses.length} pressés sur ${vus.length}`);
+  ok(presses.every((o) => o.urgent) && vus.filter((o) => o.urgent).every((o) => o.duree),
+    'ceux qui pressent le disent, et eux seuls');
+  {
+    // À type égal, et à type égal seulement : une frappe paie plusieurs fois ce
+    // que paie une reconnaissance, si bien qu'une moyenne tous types confondus
+    // mesure le tirage des types, pas la prime d'urgence.
+    const moy = (a) => a.reduce((t, o) => t + o.recompense, 0) / Math.max(1, a.length);
+    const types = [...new Set(vus.map((o) => o.type))];
+    const comparables = types.filter((t) => vus.some((o) => o.type === t && o.duree)
+      && vus.some((o) => o.type === t && !o.duree));
+    const mieux = comparables.filter((t) => moy(vus.filter((o) => o.type === t && o.duree))
+      > moy(vus.filter((o) => o.type === t && !o.duree)));
+    ok(comparables.length === 0 || mieux.length === comparables.length,
+      'et l’urgence paie mieux, à type égal',
+      comparables.map((t) => `${t} ${Math.round(moy(vus.filter((o) => o.type === t && !o.duree)))}`
+        + ` → ${Math.round(moy(vus.filter((o) => o.type === t && o.duree)))}`).join(' · ')
+        || 'aucun type tiré dans les deux formes');
+  }
 }
 
 section('10. Rattrapage hors ligne');

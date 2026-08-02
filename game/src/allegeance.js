@@ -544,8 +544,27 @@ function positionJoueur(state) {
  * vingtaine reçus. Comme les points de service ne viennent que de là, personne
  * ne dépassait jamais le premier grade.
  */
+/**
+ * Le délai d'un ordre — quand il y en a un, et il n'y en a presque jamais.
+ *
+ * Tous les ordres de mission en avaient un, et c'est la même erreur que sur le
+ * panneau d'affichage : quand échouer est la norme, on cesse de signer. Le
+ * reproche a été fait plusieurs fois, et je n'avais corrigé que les contrats.
+ *
+ * Désormais un ordre sur quatre presse — il le dit et il paie moitié plus. Les
+ * autres attendent qu'on les fasse. Ce qui borne, c'est qu'on n'en reçoit qu'un
+ * à la fois : tant qu'on traîne celui-ci, le suivant ne vient pas.
+ *
+ * Et quand il y en a un, il est *tenable* : le calcul part du double de la
+ * distance — aller et revenir — à vingt-six heures par région, soit trois à six
+ * fois l'allure réelle d'une colonne. Un délai qu'on sait d'avance intenable n'a
+ * rien à faire dans le jeu.
+ */
+export const PART_URGENTE_ORDRE = 0.25;
+export const PRIME_URGENCE_ORDRE = 1.5;
+
 function delai(d, rng, base = 200) {
-  return Math.round((base + d * 26) * rng.range(0.95, 1.35));
+  return Math.round((base + d * 2 * 26) * rng.range(1, 1.4));
 }
 
 function fabriquerOrdre(state, rng, g) {
@@ -838,7 +857,7 @@ function tickEngagement(state, g, log, ctx) {
         texte: `Ordre exécuté : ${o.titre}. ${o.recompense} cr.`,
         important: true,
       });
-    } else if (state.temps > all.ordre.echeance) {
+    } else if (all.ordre.echeance && state.temps > all.ordre.echeance) {
       const o = all.ordre;
       all.ordre = null;
       all.prochainOrdre = state.temps + rng.irange(180, 320);
@@ -884,7 +903,11 @@ function tickEngagement(state, g, log, ctx) {
   } else if (state.temps >= all.prochainOrdre && !(ctx && ctx.absent)) {
     const o = fabriquerOrdre(state, rng, g);
     if (o) {
-      o.echeance = state.temps + o.duree;
+      // Le délai est l'exception, et il se paie. Voir `delai` au-dessus.
+      o.urgent = rng.chance(PART_URGENTE_ORDRE);
+      if (o.urgent) o.recompense = Math.round(o.recompense * PRIME_URGENCE_ORDRE);
+      else o.duree = null;
+      o.echeance = o.duree ? state.temps + o.duree : null;
       all.ordre = o;
       log({
         type: 'allegeance',

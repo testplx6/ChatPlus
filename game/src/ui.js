@@ -838,7 +838,7 @@ function blocSituation() {
 
   // Les échéances : ce qui va se retourner contre vous si vous l'oubliez.
   const all = g.allegeance;
-  if (all && all.ordre) {
+  if (all && all.ordre && all.ordre.echeance) { // sans délai : rien qui presse
     const reste = all.ordre.echeance - S.temps;
     const t = `ordre « ${all.ordre.titre} » — ${dureeTexte(Math.max(0, reste))}`;
     if (reste < 72) urgences.push(`${t} avant l’échéance.`);
@@ -2152,7 +2152,10 @@ function ligneContrat(c, enCours) {
   // restant ne s'affichent que pour celles qui en ont une, sinon on cherche une
   // pendule là où il n'y en a pas.
   const presse = enCours ? !!c.echeance : !!c.duree;
-  const reste = enCours ? (c.echeance || 0) - S.temps : c.duree;
+  // `null` et non zéro : le bloc de cible doit pouvoir distinguer « il reste
+  // zéro heure » de « il n'y a pas d'heure à compter ». Avec zéro, un contrat
+  // sans délai s'affichait « le délai ne le permet pas ».
+  const reste = presse ? (enCours ? c.echeance - S.temps : c.duree) : null;
   const donneur = colonieParId(S.world, c.colonieId);
   return `<div class="contrat">
     <div class="ligne">
@@ -2449,8 +2452,9 @@ function blocCibleContrat(c, reste) {
   return `<div class="aide">${e(cible.quoi)} : ${e(lieuAvecCoord(S.world, cible.regionId))},
     à ${d} région${d > 1 ? 's' : ''} — ${Number.isFinite(heures) ? dureeTexte(Math.round(heures)) : '?'}
     ${retour > 0 ? 'aller-retour, le relevé se rend au panneau' : 'de marche'}.
-    <span class="${tient ? 'cyan' : 'alerte'}">${tient
-  ? 'le délai le permet' : 'le délai ne le permet pas'}</span></div>`;
+    ${reste == null ? '<span class="cyan">aucun délai</span>'
+    : `<span class="${tient ? 'cyan' : 'alerte'}">${tient
+      ? 'le délai le permet' : 'le délai ne le permet pas'}</span>`}</div>`;
 }
 
 /**
@@ -2490,12 +2494,15 @@ function blocCibleOrdre(o) {
   }
   // Le temps que ça prend vraiment, à l'allure de cette colonne-ci.
   const heures = apercuEscouade(S, g).heuresParRegion * d;
-  const reste = Math.max(0, o.echeance - S.temps);
-  const tient = heures <= reste;
+  // La plupart des ordres n'ont plus d'échéance. Sans ce garde-fou, la
+  // soustraction donnait NaN et le verdict tombait toujours du mauvais côté.
+  const reste = o.echeance ? Math.max(0, o.echeance - S.temps) : null;
+  const tient = reste == null || heures <= reste;
   return `<div class="aide">${e(cible.quoi)} : ${e(lieuAvecCoord(S.world, cible.regionId))},
       à ${d} région${d > 1 ? 's' : ''} — ${Number.isFinite(heures) ? dureeTexte(Math.round(heures)) : '?'} de marche.
-      <span class="${tient ? 'cyan' : 'alerte'}">${tient
-  ? 'l’échéance le permet' : 'l’échéance ne le permet pas'}</span></div>
+      ${reste == null ? '<span class="cyan">aucune échéance</span>'
+    : `<span class="${tient ? 'cyan' : 'alerte'}">${tient
+      ? 'l’échéance le permet' : 'l’échéance ne le permet pas'}</span>`}</div>
     <button class="act" data-a="voyage" data-r="${cible.regionId}">S’y rendre</button>`;
 }
 
@@ -2620,7 +2627,10 @@ function blocAllegeance() {
       <div class="contrat-t">${e(o.titre)}</div>
       ${jauge(p && p.total ? p.fait / p.total : 0, p && p.pret ? 'vert' : '')}
       <div class="aide">${e(p ? p.texte : '')} · ${n(o.recompense)} cr ·
-        <span class="${o.echeance - S.temps < 48 ? 'alerte' : ''}">${dureeTexte(Math.max(0, o.echeance - S.temps))} restantes</span></div>
+        ${o.echeance
+    ? `<span class="${o.echeance - S.temps < 48 ? 'alerte' : ''}">${
+      dureeTexte(Math.max(0, o.echeance - S.temps))} restantes</span>`
+    : '<span class="cyan">sans délai</span>'}</div>
       ${blocCibleOrdre(o)}`
     : '<div class="aide">Aucun ordre en attente. Ils vous rappelleront.</div>'}
     ${blocFeuilleService(all)}
