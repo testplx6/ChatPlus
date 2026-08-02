@@ -12647,30 +12647,65 @@ function accepter(state, col, id, log, groupe) {
   return { ok: true };
 }
 
-function abandonner(state, id, log) {
+/**
+ * Peut-on rendre la marchandise d'une livraison, et où ?
+ *
+ * `c.charge` était posé à l'acceptation et n'était **jamais retiré** : abandonner
+ * une livraison coûtait douze d'estime pour vol, y compris debout dans la ville
+ * qui vous avait confié le colis, celui-ci intact dans le sac. On punissait un
+ * vol qu'aucune action ne permettait d'éviter.
+ *
+ * Rendre exige d'être là où on l'a pris, avec ce qu'on a pris. C'est la seule
+ * lecture qui tienne : le colis appartient à quelqu'un, il ne se dématérialise
+ * pas parce qu'on renonce.
+ */
+function peutRendre(state, c, groupe) {
+  if (c.type !== 'livraison' || !c.charge) return { ok: true, rien: true };
+  const col = colonieParId(state.world, c.colonieId);
+  const g = groupe || groupeActif(state);
+  if (!col || col.ruine) return { ok: true, rien: true, motif: 'Il n’y a plus personne à qui rendre.' };
+  if (!g || g.regionId !== col.regionId) {
+    return { ok: false, motif: `La marchandise se rend à ${col.nom}, où on vous l’a confiée.` };
+  }
+  if (Math.floor(g.inventaire[c.ressource] || 0) < c.quantite) {
+    return {
+      ok: false,
+      motif: `Il vous manque ${c.quantite - Math.floor(g.inventaire[c.ressource] || 0)} `
+        + `${COMMODITIES[c.ressource].nom.toLowerCase()} pour rendre le colis entier.`,
+    };
+  }
+  return { ok: true };
+}
+
+function abandonner(state, id, log, groupe) {
   const i = state.player.contrats.findIndex((c) => c.id === id);
   if (i < 0) return { ok: false, motif: 'Contrat introuvable.' };
   const c = state.player.contrats[i];
+  const g = groupe || groupeActif(state);
+  const rendu = peutRendre(state, c, g);
   state.player.contrats.splice(i, 1);
   const repAvant = state.player.reputation[c.faction] || 0;
-  const col = colonieParId(state.world, c.colonieId);
-  if (c.type === 'livraison' && c.charge) {
-    // Garder la marchandise, ça s'appelle du vol : là, l'estime paie. C'est la
+
+  if (c.type === 'livraison' && c.charge && rendu.ok && !rendu.rien) {
+    // On rend le colis : il quitte le sac, et il ne s'est rien passé.
+    g.inventaire[c.ressource] = Math.max(0, (g.inventaire[c.ressource] || 0) - c.quantite);
+  } else if (c.type === 'livraison' && c.charge && !rendu.ok) {
+    // On garde la marchandise, ça s'appelle du vol : là, l'estime paie. C'est la
     // distinction qui tient tout le reste — on ne juge pas un homme sur un délai
     // manqué, on le juge sur ce qu'il a pris.
     state.player.reputation[c.faction] = Math.max(-100, repAvant - 12);
-  } else {
-    // Rendre le contrat avant l'échéance est la sortie honorable : elle coûte
-    // moins cher que de le laisser pourrir, et rien du tout en estime.
   }
+
   const perduAb = (state.player.reputation[c.faction] || 0) - repAvant;
-  noterContrat(state, c, 'abandonne', { rep: perduAb });
+  noterContrat(state, c, perduAb ? 'vole' : 'abandonne', { rep: perduAb });
   log({
     type: 'contrat',
-    texte: `Contrat rendu : ${c.titre}.${perduAb ? ` Estime ${Math.round(perduAb)} — vous gardiez la marchandise.` : ''}`,
+    texte: perduAb
+      ? `Contrat rompu : ${c.titre}. Vous gardez le colis — estime ${Math.round(perduAb)}.`
+      : `Contrat rendu : ${c.titre}.${c.charge ? ' Le colis est retourné.' : ''}`,
     important: true,
   });
-  return { ok: true };
+  return { ok: true, rendu: !perduAb };
 }
 
 // ---------------------------------------------------------------------------
@@ -17699,8 +17734,19 @@ function ligneContrat(c, enCours) {
       ? `<span class="alerte">${dureeTexte(reste)} accordées</span>, et l’urgence se paie`
       : 'aucun délai : ils attendront'}</div>`}
     ${blocCibleContrat(c, reste)}
-    ${enCours
-    ? `<button class="act mini danger" data-a="abandonner" data-k="${e(c.id)}">Abandonner</button>`
+    ${enCours ? (() => {
+    // Le bouton dit ce qui va se passer. Rendre un colis et le voler sont deux
+    // gestes différents, et le second se payait sans qu'on ait été prévenu.
+    const r = peutRendre(S, c);
+    if (r.ok) {
+      return `<button class="act mini" data-a="abandonner" data-k="${e(c.id)}">${
+        r.rien ? 'Renoncer au contrat' : 'Rendre le colis et renoncer'}
+        <br><span class="aide">sans conséquence</span></button>`;
+    }
+    return `<button class="act mini danger" data-a="abandonner" data-k="${e(c.id)}">
+        Renoncer en gardant le colis
+        <br><span class="aide">−12 d’estime : ${e(r.motif)}</span></button>`;
+  })()
     : `<button class="act mini primaire" data-a="accepter" data-k="${e(c.id)}">Accepter</button>`}
   </div>`;
 }

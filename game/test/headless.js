@@ -39,7 +39,8 @@ import {
 } from '../src/base.js';
 import { METIER_KEYS, BIOMES, BUILDINGS, POSTURES, COMMODITIES } from '../src/data.js';
 import {
-  accepter, progres as progresContrat, OPINION_ECHU, OPINION_RENDU, POIDS_COLLECTE_MAX,
+  accepter, abandonner, peutRendre, progres as progresContrat,
+  OPINION_ECHU, OPINION_RENDU, POIDS_COLLECTE_MAX,
 } from '../src/contrats.js';
 import { genererBanc, primeDe, tensionRecrutement, engager } from '../src/recrues.js';
 import {
@@ -4424,6 +4425,57 @@ section('9 novodecies. Tous les drapeaux n’enrôlent pas au même prix');
   ok(ef.perdu.some((t) => /enrôlent/.test(t)),
     'et la fiche d’estime dit ce qu’il manque pour être enrôlé ici',
     ef.perdu.join(' | '));
+}
+
+section('9 vicies. On peut rendre un colis qu’on ne livrera pas');
+{
+  // `c.charge` était posé à l'acceptation et jamais retiré : renoncer à une
+  // livraison coûtait douze d'estime pour vol, y compris debout dans la ville
+  // qui vous avait confié le colis, celui-ci intact dans le sac. On punissait un
+  // vol qu'aucune action ne permettait d'éviter.
+  const sv = nouvellePartie(1357, { maintenant: 0 });
+  avancer(sv, 40);
+  const gv = groupeActif(sv);
+  const trouve = sv.world.colonies
+    .map((c) => ({ col: c, ct: (c.contrats || []).find((x) => x.type === 'livraison') }))
+    .find((x) => x.ct);
+  ok(!!trouve, 'une ville propose une livraison');
+  const { col: colV, ct } = trouve;
+  gv.regionId = colV.regionId;
+  gv.inventaire.rations = 400; // de la place et de quoi vivre
+  accepter(sv, colV, ct.id, () => {}, gv);
+  const pris = sv.player.contrats[sv.player.contrats.length - 1];
+  ok(Math.floor(gv.inventaire[pris.ressource] || 0) >= pris.quantite,
+    'accepter une livraison met le colis dans le sac');
+
+  // Sur place, avec le colis : on rend, et il ne s'est rien passé.
+  const repAvantV = sv.player.reputation[pris.faction] || 0;
+  const avantColis = Math.floor(gv.inventaire[pris.ressource] || 0);
+  ok(peutRendre(sv, pris, gv).ok, 'et l’on peut le rendre là où on l’a pris');
+  abandonner(sv, pris.id, () => {}, gv);
+  ok(Math.abs((sv.player.reputation[pris.faction] || 0) - repAvantV) < 0.01,
+    'rendre le colis ne coûte rien',
+    `${repAvantV} → ${sv.player.reputation[pris.faction]}`);
+  ok(Math.floor(gv.inventaire[pris.ressource] || 0) === avantColis - pris.quantite,
+    'et le colis quitte bien le sac : on ne le rend pas en le gardant',
+    `${avantColis} → ${Math.floor(gv.inventaire[pris.ressource] || 0)}`);
+
+  // Ailleurs, ou sans le colis : c'est du vol, et le refus le dit avant.
+  const ct2 = (colV.contrats || []).find((x) => x.type === 'livraison');
+  if (ct2) {
+    accepter(sv, colV, ct2.id, () => {}, gv);
+    const pris2 = sv.player.contrats[sv.player.contrats.length - 1];
+    gv.regionId = sv.world.colonies.find((c) => c.id !== colV.id).regionId;
+    const v = peutRendre(sv, pris2, gv);
+    ok(!v.ok && /rend à/.test(v.motif),
+      'loin de la ville, on ne peut pas rendre — et l’on dit où',
+      v.motif);
+    const repAvant2 = sv.player.reputation[pris2.faction] || 0;
+    abandonner(sv, pris2.id, () => {}, gv);
+    ok(sv.player.reputation[pris2.faction] < repAvant2,
+      'partir avec le colis reste du vol, et se paie',
+      `${repAvant2} → ${sv.player.reputation[pris2.faction]}`);
+  }
 }
 
 section('10. Rattrapage hors ligne');

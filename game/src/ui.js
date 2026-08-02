@@ -36,7 +36,7 @@ import {
   consommationGroupe, autonomie, apercuEscouade,
 } from './squad.js';
 import {
-  progres as progresContrat, lieuValidation, accepter, abandonner, MAX_CONTRATS,
+  progres as progresContrat, lieuValidation, accepter, abandonner, peutRendre, MAX_CONTRATS,
 } from './contrats.js';
 import { horloge, VITESSES } from './sim.js';
 import { lireRapport } from './rapport.js';
@@ -2153,8 +2153,19 @@ function ligneContrat(c, enCours) {
       ? `<span class="alerte">${dureeTexte(reste)} accordées</span>, et l’urgence se paie`
       : 'aucun délai : ils attendront'}</div>`}
     ${blocCibleContrat(c, reste)}
-    ${enCours
-    ? `<button class="act mini danger" data-a="abandonner" data-k="${e(c.id)}">Abandonner</button>`
+    ${enCours ? (() => {
+    // Le bouton dit ce qui va se passer. Rendre un colis et le voler sont deux
+    // gestes différents, et le second se payait sans qu'on ait été prévenu.
+    const r = peutRendre(S, c);
+    if (r.ok) {
+      return `<button class="act mini" data-a="abandonner" data-k="${e(c.id)}">${
+        r.rien ? 'Renoncer au contrat' : 'Rendre le colis et renoncer'}
+        <br><span class="aide">sans conséquence</span></button>`;
+    }
+    return `<button class="act mini danger" data-a="abandonner" data-k="${e(c.id)}">
+        Renoncer en gardant le colis
+        <br><span class="aide">−12 d’estime : ${e(r.motif)}</span></button>`;
+  })()
     : `<button class="act mini primaire" data-a="accepter" data-k="${e(c.id)}">Accepter</button>`}
   </div>`;
 }
