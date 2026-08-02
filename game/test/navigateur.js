@@ -325,6 +325,32 @@ console.log('\n8 bis. Contenu de jeu : contrats, étal, sites');
     premierEcran.slice(0, 160).replace(/\n+/g, ' | '));
   ok(/ORDRE DE|POSITION/i.test(premierEcran),
     'mais l’escouade a bien un ordre et une position : on n’est pas nulle part');
+  // Et surtout : on ne dit **pas** où sont les villes. J'avais ajouté « ville la
+  // plus proche, à deux régions, s'y rendre » en croyant aider ; c'est
+  // exactement ce que le départ dans le désert vient supprimer. Ne pas savoir
+  // est le sujet, pas un défaut à corriger.
+  ok(!/plus proche/i.test(premierEcran),
+    'et l’écran ne dit pas où sont les villes : les trouver est le premier jeu',
+    premierEcran.slice(0, 200).replace(/\n+/g, ' | '));
+  // Seul, et les mains vides.
+  const debut = await page.evaluate(() => {
+    const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const g = s2.player.groupes[0];
+    return {
+      gens: g.membres.length,
+      armes: g.membres.filter((c) => c.arme).length,
+      objets: (g.objets || []).length,
+      cr: s2.player.credits,
+      rations: Math.floor(g.inventaire.rations || 0),
+    };
+  });
+  ok(debut.gens === 1 && debut.armes === 0 && debut.objets === 0,
+    'on commence seul et désarmé', JSON.stringify(debut));
+  ok(debut.cr < 100 && debut.rations < 20,
+    'avec de quoi tenir quelques jours, pas davantage', JSON.stringify(debut));
+  ok(/1\/1/.test(await page.locator('#barre-haut').innerText()),
+    'et le bandeau le dit sans détour',
+    (await page.locator('#barre-haut').innerText()).replace(/\n+/g, ' | '));
   await page.screenshot({ path: join(CAPTURES, '00b-depart.png'), fullPage: true });
   const rep = await page.evaluate(
     () => JSON.parse(localStorage.getItem('cendres.save.v1')).player.reputation);

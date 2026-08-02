@@ -15211,19 +15211,56 @@ function nouvellePartie(seed, opts = {}) {
     if (autour.length) regionDepart = rng.pick(autour).i;
   }
 
-  // On part équipé : sans armure, la première bande de pillards venue
-  // liquide l'escouade avant qu'elle ait appris quoi que ce soit.
+  // On part avec rien.
+  //
+  // L'escouade démarrait armée, cuirassée, avec quarante-cinq rations, vingt
+  // ferrailles, deux medkits et quatre cent cinquante crédits — au motif
+  // qu'« une bande de pillards liquide une escouade sans armure avant qu'elle
+  // ait appris quoi que ce soit ». C'est vrai, et c'est précisément le sujet :
+  // ou l'on meurt vite et l'on recommence, ou l'on s'en sort et l'on garde ce
+  // qu'on a arraché. Un début confortable rend les cent premières heures sans
+  // enjeu, et le reste de la partie n'a plus rien à raconter d'elles.
+  //
+  // Un peu d'aléa, aussi : trois parties qui commencent au caractère près, ce
+  // n'est pas un monde, c'est un niveau.
+  //
+  // Et l'on commence **seul**. Une escouade de trois, c'est déjà une compagnie :
+  // on encaisse une embuscade, on porte quelqu'un, on se répartit les métiers.
+  // Seul, chaque décision compte double et le premier compagnon qu'on recrute
+  // est un événement. Le mot « escouade » se mérite.
   const premier = groupeVide(idDepuisRng(rng, 'g'), 'Convoi', regionDepart, 0);
-  const depart2 = [
-    { archetype: 'ferrailleur', arme: 'machette', armure: 'cuir' },
-    { archetype: 'chasseur', arme: 'clous', armure: 'cuir' },
-    { archetype: 'medic', arme: 'barre', armure: 'cuir' },
-  ];
-  for (const d of depart2) premier.membres.push(makeCharacter(rng, d));
-  premier.inventaire.rations = 45;
-  premier.inventaire.ferraille = 20;
-  premier.inventaire.medkit = 2;
-  premier.objets = ['machette', 'cuir'];
+  // Le métier est tiré : on ne choisit pas qui l'on est en se réveillant.
+  //
+  // `opts.equipe` sert au harnais, qui vérifie des mécaniques de groupe — porter
+  // un blessé, répartir les tâches, manger ses morts — et qui aurait besoin de
+  // recruter trois personnes avant chaque test sans ça.
+  // Un départ en ville est un départ *installé* : l'ancien paquetage complet,
+  // armes et armures comprises. C'est ce dont vivent le banc et le harnais, qui
+  // ne jouent pas la partie — ils la font tourner. Une escouade désarmée et sans
+  // vivres que personne ne dirige meurt en six cents heures, et l'on mesurerait
+  // alors la famine plutôt que ce qu'on cherche.
+  const combien = Math.max(1, opts.equipe || (enVille ? 3 : 1));
+  if (enVille) {
+    const paquetage = [
+      { archetype: 'ferrailleur', arme: 'machette', armure: 'cuir' },
+      { archetype: 'chasseur', arme: 'clous', armure: 'cuir' },
+      { archetype: 'medic', arme: 'barre', armure: 'cuir' },
+    ];
+    for (let i = 0; i < combien; i++) {
+      premier.membres.push(makeCharacter(rng, paquetage[i % paquetage.length]));
+    }
+    premier.inventaire.rations = 45;
+    premier.inventaire.ferraille = 20;
+    premier.inventaire.medkit = 2;
+    premier.objets = ['machette', 'cuir'];
+  } else {
+    for (let i = 0; i < combien; i++) {
+      premier.membres.push(makeCharacter(rng, { archetype: rng.pick(ARCHETYPE_KEYS) }));
+    }
+    premier.inventaire.rations = rng.irange(6, 14);
+    premier.inventaire.ferraille = rng.irange(0, 6);
+    premier.objets = [];
+  }
 
   const reputation = {};
   for (const k of DIPLO_FACTIONS) reputation[k] = 0;
@@ -15241,7 +15278,7 @@ function nouvellePartie(seed, opts = {}) {
     nom: opts.nom || 'Convoi sans nom',
     world,
     player: {
-      credits: 450,
+      credits: enVille ? 450 : rng.irange(20, 70),
       // Les gens et ce qu'ils portent vivent dans les groupes ; le reste, ici.
       groupes: [premier],
       groupeActif: premier.id,
