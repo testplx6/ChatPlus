@@ -9,6 +9,7 @@ import { loisDe } from './lois.js';
 import { comp, gagnerXp, estDebout, XP_PRATIQUE } from './characters.js';
 import { groupes, groupeActif } from './groupes.js';
 import { garnison } from './allegeance.js';
+import { noterArgent } from './rapport.js';
 
 export function creerBase() {
   const stock = {};
@@ -1074,6 +1075,7 @@ export function preleverImpot(state, log) {
   // pour une garnison.
   const enCredits = Math.min(state.player.credits, du);
   state.player.credits -= enCredits;
+  noterArgent(state, 'impôt sur l’avant-poste', -enCredits);
   let reste = du - enCredits;
   if (reste > 0) {
     const rations = Math.min(base.stock.rations || 0, reste / 9);
@@ -1164,6 +1166,7 @@ export function visiteMarchand(state, rng, log) {
     vendu += qte;
   }
   state.player.credits += credits;
+  noterArgent(state, 'colporteurs (ventes)', credits);
 
   for (const k of Object.keys(ACHATS)) {
     const manque = ACHATS[k] - (base.stock[k] || 0);
@@ -1173,6 +1176,7 @@ export function visiteMarchand(state, rng, log) {
     const qte = Math.min(manque, peut, Math.round(manque * rng.range(0.4, 0.9)));
     if (qte < 5) continue;
     state.player.credits -= Math.round(qte * prix);
+    noterArgent(state, 'colporteurs (achats pour le camp)', -Math.round(qte * prix));
     ajouter(base, k, qte);
     achete += qte;
   }

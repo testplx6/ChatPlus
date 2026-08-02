@@ -31,6 +31,11 @@ const MODULES = [
   'notables.js',
   'dirigeants.js',
   'groupes.js',
+  // Ce qui s'est passé pendant qu'on ne regardait pas. Placé tôt parce que tout
+  // le monde lui déclare ses mouvements d'argent — le camp, les coffres, les
+  // péages —, et qu'un module ne cite que ceux qui le précèdent. Il ne dépend
+  // lui-même que des données, des personnages et des groupes.
+  'rapport.js',
   'betes.js',
   'recrues.js',
   'services.js',
@@ -55,9 +60,6 @@ const MODULES = [
   // De la place en ville, qui ne marche pas avec vous.
   'coffres.js',
   'contrats.js',
-  // Ce qui s'est passé pendant qu'on ne regardait pas : lu par le logger, donc
-  // avant lui.
-  'rapport.js',
   'events.js',
   'squad.js',
   // Ce que la partie a fait de vous : elle relit tout le reste.

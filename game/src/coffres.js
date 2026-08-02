@@ -23,6 +23,7 @@
 import { COMMODITIES, COMMODITY_KEYS } from './data.js';
 import { poidsInventaire } from './economy.js';
 import { loiIci } from './lois.js';
+import { noterArgent } from './rapport.js';
 
 /** Ce qu'un coffre tient, en kilos. */
 export const CAPACITE_LOUEE = 140;
@@ -225,6 +226,7 @@ export function tickCoffres(state, log) {
     coffre.jusqu = state.temps + PERIODE_LOYER;
     if (state.player.credits >= LOYER) {
       state.player.credits -= LOYER;
+      noterArgent(state, 'loyers de coffre', -LOYER);
       if (log) {
         log({
           type: 'coffre',

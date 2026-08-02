@@ -1136,7 +1136,12 @@ function blocRegime(col) {
     r.preleve ? `${Math.round(r.preleve * 100)} % sur vos ventes` : 'rien sur vos ventes',
     r.palier ? 'armurier généreux' : '',
   ].filter(Boolean).join(' · ');
-  return `<div class="ligne souple"><span class="k">${e(r.nom)}</span>
+  // Ligne ordinaire, et non `souple` : ici l'étiquette est courte (« Domaine »)
+  // et c'est la valeur qui est longue. `souple` fait l'inverse — elle empêche la
+  // valeur de céder, ce qui écrase l'étiquette à un caractère de large et fait
+  // tomber « Domaine » lettre par lettre. La classe s'emploie quand le texte
+  // libre est à gauche, jamais quand il est à droite.
+  return `<div class="ligne"><span class="k">${e(r.nom)}</span>
       <span class="v aide">${e(r.desc)}</span></div>
     <div class="aide">${e(dit)}.</div>`;
 }
@@ -2911,15 +2916,25 @@ function modaleRapport() {
     : `${n(r.heures)} h`;
   const bloc = (titre, contenu) => (contenu
     ? `<div class="sep"></div><div class="titre">${titre}</div>${contenu}` : '');
-  const ligne = (k, v, cls = '') => `<div class="ligne souple"><span class="k">${e(k)}</span>
+  // Étiquette courte à gauche, phrase à droite : la ligne ordinaire, celle où
+  // c'est la valeur qui se coupe. `souple` ferait tomber « Vos gens » en
+  // colonne dès que la phrase dépasse la largeur de l'écran.
+  const ligne = (k, v, cls = '') => `<div class="ligne"><span class="k">${e(k)}</span>
     <span class="v ${cls}">${v}</span></div>`;
 
   const gens = r.pertes.length
     ? r.pertes.map((t) => ligne('Vos gens', e(t), /plus là|à terre/.test(t) ? 'alerte' : '')).join('')
     : ligne('Vos gens', 'tout le monde est là');
 
+  // Le solde, puis d'où il vient. « −2 877 cr » sans rien d'autre est une
+  // accusation sans dossier : on ne sait pas si l'on s'est fait détrousser, si
+  // le camp a acheté du carburant, ou si un impôt a couru trois cents jours.
   const argent = ligne('Crédits', `${r.argent > 0 ? '+' : ''}${n(r.argent)} cr`,
-    r.argent < 0 ? 'alerte' : '');
+    r.argent < 0 ? 'alerte' : '')
+    + (r.causes.length
+      ? `<div class="aide">${r.causes.map((c) => `<span class="${c.delta < 0 ? 'alerte' : 'cyan'}">${
+        c.delta > 0 ? '+' : ''}${n(c.delta)}</span> ${e(c.cause)}`).join(' · ')}</div>`
+      : '');
 
   const marchandises = r.bouges.length
     ? r.bouges.slice(0, 6).map((x) => ligne(COMMODITIES[x.key].nom,

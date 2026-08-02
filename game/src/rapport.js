@@ -117,6 +117,26 @@ export function noterAuRapport(state, e) {
 }
 
 /**
+ * Note un mouvement d'argent et sa cause.
+ *
+ * « Crédits −2 877 » sans rien d'autre est une accusation sans dossier : on ne
+ * sait pas si l'on s'est fait détrousser, si le camp a acheté du carburant, ou
+ * si l'impôt d'une faction a couru pendant trois cents jours. Le solde se
+ * calcule très bien par différence entre deux photos — c'est la *cause* qui ne
+ * se retrouve nulle part après coup.
+ *
+ * On n'instrumente que ce qui bouge sans que le joueur clique : c'est
+ * exactement l'argent qu'il n'a pas vu partir. Ce qu'il dépense lui-même, il
+ * l'a vu passer, et le reliquat s'affiche sous « divers ».
+ */
+export function noterArgent(state, cause, delta) {
+  const r = state.rapport;
+  if (!r || !delta) return;
+  if (!r.argent) r.argent = {};
+  r.argent[cause] = (r.argent[cause] || 0) + Math.round(delta);
+}
+
+/**
  * En deçà, on ne dérange personne : fermer l'onglet deux minutes ne mérite pas
  * un écran à congédier. À la vitesse ×60 une journée de jeu passe en quatre
  * secondes réelles, d'où un seuil compté en heures de jeu *et* la condition
@@ -197,11 +217,23 @@ export function lireRapport(state, r) {
     monde.push(`avant-poste : ${d > 0 ? '+' : ''}${d} habitant(s)`);
   }
 
+  // Le détail de l'argent : les causes relevées, plus le reliquat. Ce reliquat
+  // est ce que le joueur a dépensé lui-même — il l'a vu passer — et l'on ne
+  // prétend pas l'expliquer.
+  const causes = Object.keys(r.argent || {})
+    .map((cause) => ({ cause, delta: r.argent[cause] }))
+    .filter((x) => x.delta)
+    .sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));
+  const explique = causes.reduce((n2, x) => n2 + x.delta, 0);
+  const divers = argent - explique;
+  if (Math.abs(divers) >= 1) causes.push({ cause: 'divers', delta: divers });
+
   return {
     heures,
     jours: Math.floor(heures / 24),
     pertes,
     argent,
+    causes,
     bouges,
     estime,
     monde,

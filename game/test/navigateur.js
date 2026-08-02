@@ -268,29 +268,37 @@ await page.click('[data-a="nouvelle"]');
 await page.waitForSelector('#carte');
 await page.waitForTimeout(600);
 
-// Aucune valeur ne doit descendre lettre par lettre.
+// Rien ne doit descendre lettre par lettre — ni à droite, ni à gauche.
 //
-// `.ligne .k` ne se coupe jamais — une clé coupée en deux est illisible — donc
-// dans une grille à deux colonnes sur un écran de trois cent soixante pixels,
-// une clé un peu longue mange toute la cellule et la valeur se met à tomber
-// verticalement, un caractère par ligne. On l'a découvert sur une capture ;
-// désormais on le mesure : une valeur plus haute que large est en colonne.
+// Une `.ligne` a deux cellules et l'une des deux ne cède jamais : dans le cas
+// ordinaire c'est l'étiquette de gauche, dans le cas `.souple` c'est la valeur
+// de droite. Si le texte de l'autre côté est trop long, la cellule qui reste
+// tombe à un caractère de large et son contenu descend en colonne.
+//
+// La garde ne mesurait que la droite. Elle a donc laissé passer exactement le
+// même bug par la gauche, sur la fiche de régime d'une ville, où « Domaine »
+// est descendu lettre par lettre pendant qu'elle affichait tout vert. Une garde
+// qui ne surveille qu'un des deux côtés d'une symétrie n'en surveille aucun.
+// Défini côté Node plutôt que posé sur `window` : chaque `reload` effacerait la
+// fonction, et la garde suivante planterait au lieu de mesurer.
+const colonnes = (p) => p.evaluate(() => {
+  const mauvais = [];
+  for (const cel of document.querySelectorAll('.ligne .v, .ligne .k')) {
+    const t = (cel.innerText || '').trim();
+    if (t.length < 4) continue;
+    const r = cel.getBoundingClientRect();
+    // Plus haut que large avec du texte dedans : il descend en colonne.
+    if (r.height > r.width * 1.6 && r.height > 40) {
+      const voisin = cel.parentElement ? cel.parentElement.innerText : '?';
+      mauvais.push(`${voisin.slice(0, 30).replace(/\n+/g, ' ')} → ${t.slice(0, 24)}`);
+    }
+  }
+  return mauvais;
+});
 {
   await page.click('[data-a="onglet"][data-k="escouade"]');
   await page.waitForTimeout(400);
-  const verticales = await page.evaluate(() => {
-    const mauvais = [];
-    for (const v of document.querySelectorAll('.ligne .v')) {
-      const t = (v.innerText || '').trim();
-      if (t.length < 4) continue;
-      const r = v.getBoundingClientRect();
-      // Plus haut que large avec du texte dedans : il descend en colonne.
-      if (r.height > r.width * 1.6 && r.height > 40) {
-        mauvais.push(`${(v.previousElementSibling || {}).innerText || '?'} → ${t.slice(0, 24)}`);
-      }
-    }
-    return mauvais;
-  });
+  const verticales = await colonnes(page);
   ok(verticales.length === 0, 'aucune valeur ne s’affiche en colonne sur mobile',
     verticales.slice(0, 3).join(' | '));
   // On rend l'onglet où la suite attend le panneau de la ville.
@@ -323,6 +331,13 @@ await page.waitForTimeout(600);
   // On le replie : la suite de la section compte sur la fiche telle qu'elle est.
   await page.click('summary:has-text("estime change ici")');
   await page.waitForTimeout(200);
+  // La fiche de ville porte le régime, dont la description est un texte libre à
+  // *droite* d'une étiquette courte — le cas inverse de la feuille de service,
+  // et celui qui a fait tomber « Domaine » lettre par lettre.
+  const colVille = await colonnes(page);
+  ok(colVille.length === 0,
+    'rien ne descend en colonne sur la fiche d’une ville',
+    colVille.slice(0, 3).join(' | '));
 }
 
 // L'avant-poste doit dire ce qu'il lui manque, sinon on croit qu'il n'y a rien.
@@ -529,18 +544,7 @@ await page.waitForTimeout(300);
   // et « MANQUÉ · -3 estime » descend lettre par lettre hors de l'écran. On le
   // mesure ici parce que la garde générale plus haut tourne sur une partie
   // neuve, où le dossier est vide et où il n'y a donc rien à déborder.
-  const pastillesEnColonne = await page.evaluate(() => {
-    const mauvais = [];
-    for (const v of document.querySelectorAll('.ligne .v')) {
-      const t = (v.innerText || '').trim();
-      if (t.length < 4) continue;
-      const r = v.getBoundingClientRect();
-      if (r.height > r.width * 1.6 && r.height > 40) {
-        mauvais.push(`${(v.previousElementSibling || {}).innerText || '?'} → ${t.slice(0, 24)}`);
-      }
-    }
-    return mauvais;
-  });
+  const pastillesEnColonne = await colonnes(page);
   ok(pastillesEnColonne.length === 0,
     'un titre de mission à rallonge ne met pas son verdict en colonne',
     pastillesEnColonne.slice(0, 3).join(' | '));

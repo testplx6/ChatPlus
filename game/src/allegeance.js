@@ -10,6 +10,7 @@ import { colonieParId, distance } from './world.js';
 import { idDepuisRng } from './characters.js';
 import { groupes, groupeActif } from './groupes.js';
 import { loisDe, REGIMES } from './lois.js';
+import { noterArgent } from './rapport.js';
 
 export const RANGS = [
   {
@@ -702,6 +703,7 @@ function tickEngagement(state, g, log, ctx) {
   if (rang.def.solde > 0 && state.temps - all.derniereSolde >= 24) {
     all.derniereSolde = state.temps;
     state.player.credits += rang.def.solde;
+    noterArgent(state, 'solde', rang.def.solde);
     log({
       type: 'solde',
       texte: `Solde ${FACTIONS[all.faction].genitif} : ${rang.def.solde} cr.`,
@@ -750,6 +752,7 @@ function tickEngagement(state, g, log, ctx) {
       const repAvant = state.player.reputation[all.faction] || 0;
       const ptsAvant = all.points;
       state.player.credits += o.recompense;
+      noterArgent(state, 'missions honorées', o.recompense);
       state.player.reputation[all.faction] = Math.min(100, repAvant + 5);
       all.ordre = null;
       all.prochainOrdre = state.temps + rng.irange(120, 260);

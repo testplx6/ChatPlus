@@ -25,6 +25,7 @@ import { groupeActif, groupes, tousLesMembres, debout as deboutDe } from './grou
 import { estSurveillee } from './connaissance.js';
 import { occupeParEcole } from './formation.js';
 import { noterAuRapport } from './rapport.js';
+import { noterArgent } from './rapport.js';
 
 export const LOG_MAX = 400;
 
@@ -199,6 +200,7 @@ export function combatContre(state, bande, log, ctx, groupe) {
     let ramasse = 0;
     for (const k of Object.keys(b.loot)) ramasse += ajouterAuSac(state, k, b.loot[k], g);
     state.player.credits += b.credits;
+    noterArgent(state, 'butin', b.credits);
     for (const o of b.objets) {
       if (g.objets.length < 30) g.objets.push(o);
     }
@@ -328,6 +330,7 @@ function perdreCombat(state, bande, log, ctx, lieu, g) {
   // définitivement de s'équiper, donc de cesser de perdre.
   const cr = Math.round(state.player.credits * rng.range(0.25, 0.55));
   state.player.credits -= cr;
+  noterArgent(state, 'détroussé après une défaite', -cr);
   if (g.objets.length && rng.chance(0.6)) {
     g.objets.splice(rng.int(g.objets.length), 1);
   }
@@ -584,6 +587,7 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       }
       const c = makeCharacter(rng, { niveau: rng.irange(0, 1) });
       state.player.credits -= prix;
+      noterArgent(state, 'recrues engagées en route', -prix);
       g.membres.push(c);
       log({
         type: 'recrue',
@@ -638,6 +642,7 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       const agressif = state.player.posture === 'agressif';
       if (!agressif && state.player.credits >= taxe && state.player.politique.payerPeage) {
         state.player.credits -= taxe;
+        noterArgent(state, 'péages', -taxe);
         reputation(state, f, 1);
         log({
           type: 'peage',

@@ -4019,6 +4019,17 @@ section('9 quindecies. Le rapport d’absence');
   // cents places : ce qui comptait a défilé. Le rapport ne relit donc pas le
   // journal, il compare deux photos et retient les faits marquants au passage.
   const sr = nouvellePartie(8484, { maintenant: 0 });
+  // On entre au service de quelqu'un : la solde tombe toute seule pendant
+  // l'absence, ce qui donne au moins un mouvement d'argent à ventiler. Sans
+  // ça, le test passerait sur une partie où rien ne bouge — et ne mesurerait
+  // que sa propre indulgence.
+  {
+    const gr = groupeActif(sr);
+    const colr = sr.world.colonies.find((c) => c.faction && !c.ruine);
+    gr.regionId = colr.regionId;
+    sr.player.reputation[colr.faction] = 40;
+    sEngager(sr, colr.faction, () => {}, gr);
+  }
   sr.vitesse = 1;
   sr.dernierReel = 1;
   const creditsAvant = sr.player.credits;
@@ -4043,6 +4054,17 @@ section('9 quindecies. Le rapport d’absence');
   ok(Object.keys(lu.comptes).length > 0,
     'ce qui n’est pas retenu en toutes lettres est au moins compté',
     Object.keys(lu.comptes).join(', '));
+
+  // « Crédits −2 877 » sans rien d'autre est une accusation sans dossier : ce
+  // qu'on veut savoir, c'est d'où l'argent est parti pendant qu'on ne
+  // regardait pas.
+  ok(lu.causes.length > 0, 'le mouvement d’argent est ventilé par cause',
+    lu.causes.map((c) => `${c.cause} ${c.delta}`).join(' · '));
+  ok(lu.causes.reduce((t, c) => t + c.delta, 0) === lu.argent,
+    'et les causes rendent exactement le solde, divers compris',
+    `${lu.causes.reduce((t, c) => t + c.delta, 0)} vs ${lu.argent}`);
+  ok(lu.causes.every((c) => c.delta !== 0),
+    'aucune cause à zéro : une ligne qui ne dit rien encombre');
 
   // Le rapport survit à une sauvegarde : la page peut se fermer pendant le
   // rattrapage, on doit le retrouver au retour.

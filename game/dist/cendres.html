@@ -4107,6 +4107,252 @@ function fusionnablesAvec(state, g) {
   return groupes(state).filter((o) => o.id !== g.id && o.regionId === g.regionId);
 }
 
+// ===== src/rapport.js ================================================
+// Ce qui s'est passé pendant que vous n'étiez pas là.
+//
+// Le jeu rejouait deux cents jours en silence, affichait une barre de
+// progression, puis rendait la main. Le joueur retrouvait une escouade amaigrie,
+// un stock vidé, une estime en baisse, et **aucun moyen de savoir pourquoi** :
+// le journal de bord est plafonné à quatre cents lignes, si bien qu'une longue
+// absence l'écrase entièrement avec des heures de récolte, et que la seule
+// chose qui comptait — le mort, la ville tombée, la guerre déclarée — a défilé
+// depuis longtemps.
+//
+// D'où ce module. Il ne s'appuie pas sur le journal, justement : il prend une
+// photo avant, une photo après, et compte les faits marquants au passage. Trois
+// cents jours d'absence tiennent alors dans un écran qu'on lit en dix secondes.
+//
+// Il sert deux fois :
+//
+//   pendant l'absence   ouvert par le rattrapage, fermé à son retour, montré
+//                       une fois puis effacé.
+//   pendant la partie   le même mécanisme, ouvert quand on quitte l'onglet du
+//                       journal, sert de « depuis la dernière fois ».
+//
+// Rien n'y est déduit d'un état vivant : ce sont des nombres figés à deux
+// instants et une liste de phrases. C'est ce qui permet de le sérialiser tel
+// quel, et de le retrouver intact si la page se ferme pendant le rattrapage.
+
+
+/** Combien de faits marquants on retient au plus. Au-delà, on compte. */
+const MARQUANTS_MAX = 14;
+
+/** Les types de journal qu'on retient toujours, quoi qu'il arrive. */
+const TOUJOURS = new Set([
+  'mort', 'combat', 'ville', 'guerre', 'loi', 'allegeance', 'contrat',
+  'famine', 'base', 'recrue', 'formation', 'coffre', 'prime_tete', 'revolte',
+]);
+
+/**
+ * L'état des choses à un instant, en nombres seulement.
+ *
+ * On y met ce à quoi un joueur pense en rouvrant : combien nous sommes, en
+ * quel état, ce qu'on a, ce qu'on vaut aux yeux des autres, et à quoi ressemble
+ * la carte.
+ */
+function photo(state) {
+  let vivants = 0;
+  let debout = 0;
+  let sac = 0;
+  const stock = {};
+  for (const g of groupes(state)) {
+    for (const c of g.membres) {
+      if (!estVivant(c)) continue;
+      vivants += 1;
+      if (estDebout(c)) debout += 1;
+    }
+    for (const k of COMMODITY_KEYS) {
+      const q = Math.floor(g.inventaire[k] || 0);
+      if (q > 0) { stock[k] = (stock[k] || 0) + q; sac += q; }
+    }
+  }
+  const base = state.base && state.base.fonde ? state.base : null;
+  if (base) {
+    for (const k of COMMODITY_KEYS) {
+      const q = Math.floor((base.stock && base.stock[k]) || 0);
+      if (q > 0) stock[k] = (stock[k] || 0) + q;
+    }
+  }
+  const reputation = {};
+  for (const k of Object.keys(state.player.reputation || {})) {
+    reputation[k] = Math.round(state.player.reputation[k] || 0);
+  }
+  return {
+    t: state.temps,
+    credits: Math.round(state.player.credits),
+    vivants,
+    debout,
+    sac,
+    stock,
+    reputation,
+    villes: state.world.colonies.filter((c) => !c.ruine).length,
+    guerres: state.world.guerres.length,
+    // L'avant-poste : ce qu'on retrouve en rentrant, ou ce qu'on ne retrouve pas.
+    poste: base ? { pop: Math.round(base.pop || 0), niveau: base.niveau || 0 } : null,
+  };
+}
+
+/** Ouvre un rapport : à partir de maintenant, on note. */
+function ouvrirRapport(state, motif) {
+  state.rapport = {
+    motif: motif || 'absence',
+    avant: photo(state),
+    marquants: [],
+    // Ce qui a été vu mais qu'on n'a pas gardé en toutes lettres.
+    comptes: {},
+    tus: 0,
+  };
+  return state.rapport;
+}
+
+/**
+ * Note une entrée de journal au rapport en cours, s'il y en a un.
+ *
+ * Appelé depuis le logger, donc sur le chemin chaud : on sort tout de suite
+ * quand aucun rapport n'est ouvert, ce qui est le cas normal.
+ */
+function noterAuRapport(state, e) {
+  const r = state.rapport;
+  if (!r) return;
+  if (!e.important && !TOUJOURS.has(e.type)) return;
+  r.comptes[e.type] = (r.comptes[e.type] || 0) + 1;
+  if (r.marquants.length < MARQUANTS_MAX) {
+    r.marquants.push({ t: e.t, type: e.type, texte: e.texte });
+  } else {
+    r.tus += 1;
+  }
+}
+
+/**
+ * Note un mouvement d'argent et sa cause.
+ *
+ * « Crédits −2 877 » sans rien d'autre est une accusation sans dossier : on ne
+ * sait pas si l'on s'est fait détrousser, si le camp a acheté du carburant, ou
+ * si l'impôt d'une faction a couru pendant trois cents jours. Le solde se
+ * calcule très bien par différence entre deux photos — c'est la *cause* qui ne
+ * se retrouve nulle part après coup.
+ *
+ * On n'instrumente que ce qui bouge sans que le joueur clique : c'est
+ * exactement l'argent qu'il n'a pas vu partir. Ce qu'il dépense lui-même, il
+ * l'a vu passer, et le reliquat s'affiche sous « divers ».
+ */
+function noterArgent(state, cause, delta) {
+  const r = state.rapport;
+  if (!r || !delta) return;
+  if (!r.argent) r.argent = {};
+  r.argent[cause] = (r.argent[cause] || 0) + Math.round(delta);
+}
+
+/**
+ * En deçà, on ne dérange personne : fermer l'onglet deux minutes ne mérite pas
+ * un écran à congédier. À la vitesse ×60 une journée de jeu passe en quatre
+ * secondes réelles, d'où un seuil compté en heures de jeu *et* la condition
+ * qu'il se soit passé quelque chose.
+ */
+const SEUIL_RAPPORT = 24;
+
+/**
+ * Ferme le rapport : la photo d'après est prise, le reste est du calcul.
+ *
+ * Rend `null` et n'en laisse aucune trace quand il n'y avait rien à dire — un
+ * rapport vide est un clic de plus, et trois clics de plus font qu'on ne lit
+ * plus le quatrième.
+ */
+function fermerRapport(state) {
+  const r = state.rapport;
+  if (!r) return null;
+  r.apres = photo(state);
+  const lu = lireRapport(state, r);
+  if (!lu || lu.heures < SEUIL_RAPPORT || lu.calme) {
+    delete state.rapport;
+    return null;
+  }
+  return r;
+}
+
+/**
+ * De quoi écrire le rapport à l'écran, sans que l'interface ait à soustraire
+ * quoi que ce soit elle-même. Rendu en morceaux nommés plutôt qu'en phrases :
+ * c'est l'interface qui décide de la mise en forme, pas ce module.
+ */
+function lireRapport(state, r) {
+  if (!r || !r.apres) return null;
+  const a = r.avant;
+  const b = r.apres;
+  const heures = Math.max(0, b.t - a.t);
+
+  const pertes = [];
+  if (b.vivants < a.vivants) pertes.push(`${a.vivants - b.vivants} des vôtres ne sont plus là`);
+  else if (b.vivants > a.vivants) pertes.push(`${b.vivants - a.vivants} de plus qu’au départ`);
+  const couches = b.vivants - b.debout;
+  if (couches > 0) pertes.push(`${couches} à terre`);
+
+  const argent = b.credits - a.credits;
+
+  // Les marchandises : on ne liste que ce qui a bougé, et l'on dit dans quel
+  // sens. Un stock qui fond sans explication est la première chose qu'on nous
+  // ait reprochée.
+  const bouges = [];
+  for (const k of COMMODITY_KEYS) {
+    const d = (b.stock[k] || 0) - (a.stock[k] || 0);
+    if (d !== 0) bouges.push({ key: k, delta: d });
+  }
+  bouges.sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));
+
+  const estime = [];
+  for (const k of Object.keys(b.reputation)) {
+    const d = (b.reputation[k] || 0) - (a.reputation[k] || 0);
+    if (Math.abs(d) >= 1 && FACTIONS[k]) estime.push({ faction: k, delta: d });
+  }
+  estime.sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));
+
+  const monde = [];
+  if (b.villes !== a.villes) {
+    monde.push(b.villes < a.villes
+      ? `${a.villes - b.villes} ville(s) se sont éteintes`
+      : `${b.villes - a.villes} ville(s) ont été fondées`);
+  }
+  if (b.guerres !== a.guerres) {
+    monde.push(b.guerres > a.guerres
+      ? `${b.guerres - a.guerres} guerre(s) de plus`
+      : `${a.guerres - b.guerres} guerre(s) se sont terminées`);
+  }
+  if (a.poste && !b.poste) monde.push('votre avant-poste n’est plus');
+  else if (!a.poste && b.poste) monde.push('votre avant-poste est debout');
+  else if (a.poste && b.poste && b.poste.pop !== a.poste.pop) {
+    const d = b.poste.pop - a.poste.pop;
+    monde.push(`avant-poste : ${d > 0 ? '+' : ''}${d} habitant(s)`);
+  }
+
+  // Le détail de l'argent : les causes relevées, plus le reliquat. Ce reliquat
+  // est ce que le joueur a dépensé lui-même — il l'a vu passer — et l'on ne
+  // prétend pas l'expliquer.
+  const causes = Object.keys(r.argent || {})
+    .map((cause) => ({ cause, delta: r.argent[cause] }))
+    .filter((x) => x.delta)
+    .sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));
+  const explique = causes.reduce((n2, x) => n2 + x.delta, 0);
+  const divers = argent - explique;
+  if (Math.abs(divers) >= 1) causes.push({ cause: 'divers', delta: divers });
+
+  return {
+    heures,
+    jours: Math.floor(heures / 24),
+    pertes,
+    argent,
+    causes,
+    bouges,
+    estime,
+    monde,
+    marquants: r.marquants,
+    tus: r.tus,
+    comptes: r.comptes,
+    // Rien du tout : c'est une information, pas un écran vide.
+    calme: !pertes.length && !argent && !bouges.length && !estime.length
+      && !monde.length && !r.marquants.length,
+  };
+}
+
 // ===== src/betes.js ==================================================
 // Ce qui porte à votre place.
 //
@@ -5526,6 +5772,7 @@ function tickEngagement(state, g, log, ctx) {
   if (rang.def.solde > 0 && state.temps - all.derniereSolde >= 24) {
     all.derniereSolde = state.temps;
     state.player.credits += rang.def.solde;
+    noterArgent(state, 'solde', rang.def.solde);
     log({
       type: 'solde',
       texte: `Solde ${FACTIONS[all.faction].genitif} : ${rang.def.solde} cr.`,
@@ -5574,6 +5821,7 @@ function tickEngagement(state, g, log, ctx) {
       const repAvant = state.player.reputation[all.faction] || 0;
       const ptsAvant = all.points;
       state.player.credits += o.recompense;
+      noterArgent(state, 'missions honorées', o.recompense);
       state.player.reputation[all.faction] = Math.min(100, repAvant + 5);
       all.ordre = null;
       all.prochainOrdre = state.temps + rng.irange(120, 260);
@@ -11531,6 +11779,7 @@ function preleverImpot(state, log) {
   // pour une garnison.
   const enCredits = Math.min(state.player.credits, du);
   state.player.credits -= enCredits;
+  noterArgent(state, 'impôt sur l’avant-poste', -enCredits);
   let reste = du - enCredits;
   if (reste > 0) {
     const rations = Math.min(base.stock.rations || 0, reste / 9);
@@ -11621,6 +11870,7 @@ function visiteMarchand(state, rng, log) {
     vendu += qte;
   }
   state.player.credits += credits;
+  noterArgent(state, 'colporteurs (ventes)', credits);
 
   for (const k of Object.keys(ACHATS)) {
     const manque = ACHATS[k] - (base.stock[k] || 0);
@@ -11630,6 +11880,7 @@ function visiteMarchand(state, rng, log) {
     const qte = Math.min(manque, peut, Math.round(manque * rng.range(0.4, 0.9)));
     if (qte < 5) continue;
     state.player.credits -= Math.round(qte * prix);
+    noterArgent(state, 'colporteurs (achats pour le camp)', -Math.round(qte * prix));
     ajouter(base, k, qte);
     achete += qte;
   }
@@ -11953,6 +12204,7 @@ function tickCoffres(state, log) {
     coffre.jusqu = state.temps + PERIODE_LOYER;
     if (state.player.credits >= LOYER) {
       state.player.credits -= LOYER;
+      noterArgent(state, 'loyers de coffre', -LOYER);
       if (log) {
         log({
           type: 'coffre',
@@ -12345,220 +12597,6 @@ function lieuValidation(state, c) {
   return donneur ? donneur.nom : '—';
 }
 
-// ===== src/rapport.js ================================================
-// Ce qui s'est passé pendant que vous n'étiez pas là.
-//
-// Le jeu rejouait deux cents jours en silence, affichait une barre de
-// progression, puis rendait la main. Le joueur retrouvait une escouade amaigrie,
-// un stock vidé, une estime en baisse, et **aucun moyen de savoir pourquoi** :
-// le journal de bord est plafonné à quatre cents lignes, si bien qu'une longue
-// absence l'écrase entièrement avec des heures de récolte, et que la seule
-// chose qui comptait — le mort, la ville tombée, la guerre déclarée — a défilé
-// depuis longtemps.
-//
-// D'où ce module. Il ne s'appuie pas sur le journal, justement : il prend une
-// photo avant, une photo après, et compte les faits marquants au passage. Trois
-// cents jours d'absence tiennent alors dans un écran qu'on lit en dix secondes.
-//
-// Il sert deux fois :
-//
-//   pendant l'absence   ouvert par le rattrapage, fermé à son retour, montré
-//                       une fois puis effacé.
-//   pendant la partie   le même mécanisme, ouvert quand on quitte l'onglet du
-//                       journal, sert de « depuis la dernière fois ».
-//
-// Rien n'y est déduit d'un état vivant : ce sont des nombres figés à deux
-// instants et une liste de phrases. C'est ce qui permet de le sérialiser tel
-// quel, et de le retrouver intact si la page se ferme pendant le rattrapage.
-
-
-/** Combien de faits marquants on retient au plus. Au-delà, on compte. */
-const MARQUANTS_MAX = 14;
-
-/** Les types de journal qu'on retient toujours, quoi qu'il arrive. */
-const TOUJOURS = new Set([
-  'mort', 'combat', 'ville', 'guerre', 'loi', 'allegeance', 'contrat',
-  'famine', 'base', 'recrue', 'formation', 'coffre', 'prime_tete', 'revolte',
-]);
-
-/**
- * L'état des choses à un instant, en nombres seulement.
- *
- * On y met ce à quoi un joueur pense en rouvrant : combien nous sommes, en
- * quel état, ce qu'on a, ce qu'on vaut aux yeux des autres, et à quoi ressemble
- * la carte.
- */
-function photo(state) {
-  let vivants = 0;
-  let debout = 0;
-  let sac = 0;
-  const stock = {};
-  for (const g of groupes(state)) {
-    for (const c of g.membres) {
-      if (!estVivant(c)) continue;
-      vivants += 1;
-      if (estDebout(c)) debout += 1;
-    }
-    for (const k of COMMODITY_KEYS) {
-      const q = Math.floor(g.inventaire[k] || 0);
-      if (q > 0) { stock[k] = (stock[k] || 0) + q; sac += q; }
-    }
-  }
-  const base = state.base && state.base.fonde ? state.base : null;
-  if (base) {
-    for (const k of COMMODITY_KEYS) {
-      const q = Math.floor((base.stock && base.stock[k]) || 0);
-      if (q > 0) stock[k] = (stock[k] || 0) + q;
-    }
-  }
-  const reputation = {};
-  for (const k of Object.keys(state.player.reputation || {})) {
-    reputation[k] = Math.round(state.player.reputation[k] || 0);
-  }
-  return {
-    t: state.temps,
-    credits: Math.round(state.player.credits),
-    vivants,
-    debout,
-    sac,
-    stock,
-    reputation,
-    villes: state.world.colonies.filter((c) => !c.ruine).length,
-    guerres: state.world.guerres.length,
-    // L'avant-poste : ce qu'on retrouve en rentrant, ou ce qu'on ne retrouve pas.
-    poste: base ? { pop: Math.round(base.pop || 0), niveau: base.niveau || 0 } : null,
-  };
-}
-
-/** Ouvre un rapport : à partir de maintenant, on note. */
-function ouvrirRapport(state, motif) {
-  state.rapport = {
-    motif: motif || 'absence',
-    avant: photo(state),
-    marquants: [],
-    // Ce qui a été vu mais qu'on n'a pas gardé en toutes lettres.
-    comptes: {},
-    tus: 0,
-  };
-  return state.rapport;
-}
-
-/**
- * Note une entrée de journal au rapport en cours, s'il y en a un.
- *
- * Appelé depuis le logger, donc sur le chemin chaud : on sort tout de suite
- * quand aucun rapport n'est ouvert, ce qui est le cas normal.
- */
-function noterAuRapport(state, e) {
-  const r = state.rapport;
-  if (!r) return;
-  if (!e.important && !TOUJOURS.has(e.type)) return;
-  r.comptes[e.type] = (r.comptes[e.type] || 0) + 1;
-  if (r.marquants.length < MARQUANTS_MAX) {
-    r.marquants.push({ t: e.t, type: e.type, texte: e.texte });
-  } else {
-    r.tus += 1;
-  }
-}
-
-/**
- * En deçà, on ne dérange personne : fermer l'onglet deux minutes ne mérite pas
- * un écran à congédier. À la vitesse ×60 une journée de jeu passe en quatre
- * secondes réelles, d'où un seuil compté en heures de jeu *et* la condition
- * qu'il se soit passé quelque chose.
- */
-const SEUIL_RAPPORT = 24;
-
-/**
- * Ferme le rapport : la photo d'après est prise, le reste est du calcul.
- *
- * Rend `null` et n'en laisse aucune trace quand il n'y avait rien à dire — un
- * rapport vide est un clic de plus, et trois clics de plus font qu'on ne lit
- * plus le quatrième.
- */
-function fermerRapport(state) {
-  const r = state.rapport;
-  if (!r) return null;
-  r.apres = photo(state);
-  const lu = lireRapport(state, r);
-  if (!lu || lu.heures < SEUIL_RAPPORT || lu.calme) {
-    delete state.rapport;
-    return null;
-  }
-  return r;
-}
-
-/**
- * De quoi écrire le rapport à l'écran, sans que l'interface ait à soustraire
- * quoi que ce soit elle-même. Rendu en morceaux nommés plutôt qu'en phrases :
- * c'est l'interface qui décide de la mise en forme, pas ce module.
- */
-function lireRapport(state, r) {
-  if (!r || !r.apres) return null;
-  const a = r.avant;
-  const b = r.apres;
-  const heures = Math.max(0, b.t - a.t);
-
-  const pertes = [];
-  if (b.vivants < a.vivants) pertes.push(`${a.vivants - b.vivants} des vôtres ne sont plus là`);
-  else if (b.vivants > a.vivants) pertes.push(`${b.vivants - a.vivants} de plus qu’au départ`);
-  const couches = b.vivants - b.debout;
-  if (couches > 0) pertes.push(`${couches} à terre`);
-
-  const argent = b.credits - a.credits;
-
-  // Les marchandises : on ne liste que ce qui a bougé, et l'on dit dans quel
-  // sens. Un stock qui fond sans explication est la première chose qu'on nous
-  // ait reprochée.
-  const bouges = [];
-  for (const k of COMMODITY_KEYS) {
-    const d = (b.stock[k] || 0) - (a.stock[k] || 0);
-    if (d !== 0) bouges.push({ key: k, delta: d });
-  }
-  bouges.sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));
-
-  const estime = [];
-  for (const k of Object.keys(b.reputation)) {
-    const d = (b.reputation[k] || 0) - (a.reputation[k] || 0);
-    if (Math.abs(d) >= 1 && FACTIONS[k]) estime.push({ faction: k, delta: d });
-  }
-  estime.sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));
-
-  const monde = [];
-  if (b.villes !== a.villes) {
-    monde.push(b.villes < a.villes
-      ? `${a.villes - b.villes} ville(s) se sont éteintes`
-      : `${b.villes - a.villes} ville(s) ont été fondées`);
-  }
-  if (b.guerres !== a.guerres) {
-    monde.push(b.guerres > a.guerres
-      ? `${b.guerres - a.guerres} guerre(s) de plus`
-      : `${a.guerres - b.guerres} guerre(s) se sont terminées`);
-  }
-  if (a.poste && !b.poste) monde.push('votre avant-poste n’est plus');
-  else if (!a.poste && b.poste) monde.push('votre avant-poste est debout');
-  else if (a.poste && b.poste && b.poste.pop !== a.poste.pop) {
-    const d = b.poste.pop - a.poste.pop;
-    monde.push(`avant-poste : ${d > 0 ? '+' : ''}${d} habitant(s)`);
-  }
-
-  return {
-    heures,
-    jours: Math.floor(heures / 24),
-    pertes,
-    argent,
-    bouges,
-    estime,
-    monde,
-    marquants: r.marquants,
-    tus: r.tus,
-    comptes: r.comptes,
-    // Rien du tout : c'est une information, pas un écran vide.
-    calme: !pertes.length && !argent && !bouges.length && !estime.length
-      && !monde.length && !r.marquants.length,
-  };
-}
-
 // ===== src/events.js =================================================
 // Journal de bord et rencontres. Tout se résout automatiquement selon la
 // posture et les consignes de l'escouade : c'est ce qui permet à la simulation
@@ -12738,6 +12776,7 @@ function combatContre(state, bande, log, ctx, groupe) {
     let ramasse = 0;
     for (const k of Object.keys(b.loot)) ramasse += ajouterAuSac(state, k, b.loot[k], g);
     state.player.credits += b.credits;
+    noterArgent(state, 'butin', b.credits);
     for (const o of b.objets) {
       if (g.objets.length < 30) g.objets.push(o);
     }
@@ -12867,6 +12906,7 @@ function perdreCombat(state, bande, log, ctx, lieu, g) {
   // définitivement de s'équiper, donc de cesser de perdre.
   const cr = Math.round(state.player.credits * rng.range(0.25, 0.55));
   state.player.credits -= cr;
+  noterArgent(state, 'détroussé après une défaite', -cr);
   if (g.objets.length && rng.chance(0.6)) {
     g.objets.splice(rng.int(g.objets.length), 1);
   }
@@ -13123,6 +13163,7 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       }
       const c = makeCharacter(rng, { niveau: rng.irange(0, 1) });
       state.player.credits -= prix;
+      noterArgent(state, 'recrues engagées en route', -prix);
       g.membres.push(c);
       log({
         type: 'recrue',
@@ -13177,6 +13218,7 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       const agressif = state.player.posture === 'agressif';
       if (!agressif && state.player.credits >= taxe && state.player.politique.payerPeage) {
         state.player.credits -= taxe;
+        noterArgent(state, 'péages', -taxe);
         reputation(state, f, 1);
         log({
           type: 'peage',
@@ -16344,7 +16386,12 @@ function blocRegime(col) {
     r.preleve ? `${Math.round(r.preleve * 100)} % sur vos ventes` : 'rien sur vos ventes',
     r.palier ? 'armurier généreux' : '',
   ].filter(Boolean).join(' · ');
-  return `<div class="ligne souple"><span class="k">${e(r.nom)}</span>
+  // Ligne ordinaire, et non `souple` : ici l'étiquette est courte (« Domaine »)
+  // et c'est la valeur qui est longue. `souple` fait l'inverse — elle empêche la
+  // valeur de céder, ce qui écrase l'étiquette à un caractère de large et fait
+  // tomber « Domaine » lettre par lettre. La classe s'emploie quand le texte
+  // libre est à gauche, jamais quand il est à droite.
+  return `<div class="ligne"><span class="k">${e(r.nom)}</span>
       <span class="v aide">${e(r.desc)}</span></div>
     <div class="aide">${e(dit)}.</div>`;
 }
@@ -18119,15 +18166,25 @@ function modaleRapport() {
     : `${n(r.heures)} h`;
   const bloc = (titre, contenu) => (contenu
     ? `<div class="sep"></div><div class="titre">${titre}</div>${contenu}` : '');
-  const ligne = (k, v, cls = '') => `<div class="ligne souple"><span class="k">${e(k)}</span>
+  // Étiquette courte à gauche, phrase à droite : la ligne ordinaire, celle où
+  // c'est la valeur qui se coupe. `souple` ferait tomber « Vos gens » en
+  // colonne dès que la phrase dépasse la largeur de l'écran.
+  const ligne = (k, v, cls = '') => `<div class="ligne"><span class="k">${e(k)}</span>
     <span class="v ${cls}">${v}</span></div>`;
 
   const gens = r.pertes.length
     ? r.pertes.map((t) => ligne('Vos gens', e(t), /plus là|à terre/.test(t) ? 'alerte' : '')).join('')
     : ligne('Vos gens', 'tout le monde est là');
 
+  // Le solde, puis d'où il vient. « −2 877 cr » sans rien d'autre est une
+  // accusation sans dossier : on ne sait pas si l'on s'est fait détrousser, si
+  // le camp a acheté du carburant, ou si un impôt a couru trois cents jours.
   const argent = ligne('Crédits', `${r.argent > 0 ? '+' : ''}${n(r.argent)} cr`,
-    r.argent < 0 ? 'alerte' : '');
+    r.argent < 0 ? 'alerte' : '')
+    + (r.causes.length
+      ? `<div class="aide">${r.causes.map((c) => `<span class="${c.delta < 0 ? 'alerte' : 'cyan'}">${
+        c.delta > 0 ? '+' : ''}${n(c.delta)}</span> ${e(c.cause)}`).join(' · ')}</div>`
+      : '');
 
   const marchandises = r.bouges.length
     ? r.bouges.slice(0, 6).map((x) => ligne(COMMODITIES[x.key].nom,
