@@ -51,6 +51,57 @@ export const RANGS = [
  */
 export const REPUTATION_MINIMALE = 10;
 
+/**
+ * Ce que chaque drapeau exige avant de vous enrôler.
+ *
+ * Un seuil unique pour tout le monde faisait de « qui servir » un tirage entre
+ * six couleurs : on s'engageait chez le premier venu, et le plus souvent dès la
+ * première heure, puisqu'on démarre à douze d'estime chez ses hôtes. Or ces
+ * gens-là n'ont rien en commun.
+ *
+ * Une Commune enrôle qui se présente — c'est une commune, elle n'a pas de
+ * bureau du recrutement. Les nomades demandent qu'on se soit montré. Un
+ * consortium et un syndicat veulent un dossier : ils traitent par contrat, et un
+ * contrat se signe avec quelqu'un qu'on a déjà vu à l'œuvre. Une milice veut
+ * qu'on ait fait ses preuves. Une église ne prend que les siens.
+ *
+ * L'effet de jeu est le point : partir chez les Communes Libres, c'est pouvoir
+ * s'engager tout de suite et progresser lentement ; viser la Milice, c'est
+ * travailler d'abord et entrer plus haut. La première décision de la partie
+ * cesse d'être arbitraire.
+ */
+export const ESTIME_ENGAGEMENT = {
+  // Dix, et pas davantage — essayé, mesuré, annulé.
+  //
+  // On démarre à douze chez ses hôtes : à dix, l'engagement est donc ouvert dès
+  // la première heure, ce qu'on peut trouver trop facile. Porté à quinze, pour
+  // exiger « un tout petit peu » de travail d'abord, le banc a rendu un verdict
+  // sans appel : trente parties engagées deviennent sept, les heures sous les
+  // couleurs tombent de 3 894 à 659, et le patrimoine moyen de 4 616 à 1 769.
+  //
+  // La raison n'est pas le seuil, c'est l'érosion : l'estime positive se perd
+  // d'un dixième par jour, si bien que les douze points du départ retombent à
+  // sept en deux mois de jeu sans qu'on ait rien fait de mal. Demander trois
+  // points de plus, c'est demander de courir plus vite qu'une pente. La voie du
+  // service s'évapore, exactement comme au temps où le seuil unique valait
+  // vingt.
+  //
+  // Si l'ouverture doit se mériter un jour, le levier n'est pas ici : c'est
+  // l'érosion du début de partie, ou un premier gain garanti chez ses hôtes.
+  commune: 10,
+  nomade: 18,
+  corpo: 26,
+  criminel: 26,
+  militaire: 34,
+  fanatique: 40,
+};
+
+/** Ce que cette faction-ci demande avant de vous enrôler. */
+export function estimeEngagement(faction) {
+  const f = FACTIONS[faction];
+  return (f && ESTIME_ENGAGEMENT[f.style]) || REPUTATION_MINIMALE;
+}
+
 // ---------------------------------------------------------------------------
 // Ce que l'estime fait, dit en clair
 // ---------------------------------------------------------------------------
@@ -110,7 +161,9 @@ export const PALIERS_ESTIME = [
     seuil: REPUTATION_MINIMALE,
     nom: 'Reçu',
     faits: [
-      'on accepte votre engagement',
+      // Plus « on accepte votre engagement » : ce n'est plus vrai partout. Le
+      // seuil d'enrôlement dépend du drapeau (voir ESTIME_ENGAGEMENT), et
+      // `effetsEstime` ajoute la ligne juste pour la faction qu'on regarde.
       'l’intendance vous nourrit tant que vous servez',
       'recrues un peu moins chères',
     ],
@@ -154,6 +207,11 @@ export function effetsEstime(state, faction) {
     if (p.seuil > 0 && rep >= p.seuil) acquis.push(...p.faits);
     if (p.seuil < 0 && rep <= p.seuil) perdu.push(...p.faits);
   }
+  // L'enrôlement n'est pas un palier universel : chaque drapeau a le sien. On
+  // l'ajoute là où il tombe, avec le nom de ceux qui le demandent.
+  const exige = estimeEngagement(faction);
+  if (rep >= exige) acquis.push('on accepte votre engagement');
+  else perdu.push(`ils n’enrôlent qu’à partir de ${exige} d’estime`);
   const suivant = PALIERS_ESTIME.find((p) => p.seuil > rep) || null;
   const dessous = [...PALIERS_ESTIME].reverse().find((p) => p.seuil < rep && p.seuil <= -20) || null;
   return {
@@ -273,8 +331,12 @@ export function peutSEngager(state, faction, groupe) {
     }
   }
   const rep = state.player.reputation[faction] || 0;
-  if (rep < REPUTATION_MINIMALE) {
-    return { ok: false, motif: `Réputation insuffisante : ${Math.round(rep)} / ${REPUTATION_MINIMALE}.` };
+  const exige = estimeEngagement(faction);
+  if (rep < exige) {
+    return {
+      ok: false,
+      motif: `${FACTIONS[faction].nom} demande ${exige} d’estime — vous en avez ${Math.round(rep)}.`,
+    };
   }
   return { ok: true };
 }
@@ -389,6 +451,10 @@ export function droitIntendance(state, col, groupe) {
     return { ok: false, motif: 'Ce n’est pas une ville des vôtres.' };
   }
   const rep = state.player.reputation[all.faction] || 0;
+  // On reste servi tant qu'on n'est pas devenu infréquentable : c'est un seuil
+  // plus bas que celui de l'enrôlement, et le même pour tous. Entrer chez eux
+  // se mérite ; y être nourri, une fois entré, ne se remérite pas tous les
+  // matins.
   if (rep < REPUTATION_MINIMALE) {
     return { ok: false, motif: `On ne vous sert plus : réputation ${Math.round(rep)}.` };
   }

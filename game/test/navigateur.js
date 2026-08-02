@@ -737,6 +737,11 @@ ok(offres > 0, 'la ville affiche des contrats', `${offres} offres`);
   ok(/à \d+ région/.test(txtP) || !/Porter|Reconnaître|Chasser/.test(txtP),
     'les contrats situables disent où aller et combien de marche',
     txtP.slice(0, 220).replace(/\n+/g, ' | '));
+  // Le délai est devenu l'exception : le panneau doit dire lesquelles pressent,
+  // sinon le choix qu'on vient d'ouvrir reste invisible.
+  ok(/aucun délai/i.test(txtP) || /urgent/i.test(txtP),
+    'et le panneau distingue les offres qui pressent de celles qui attendent',
+    txtP.slice(0, 260).replace(/\n+/g, ' | '));
 }
 await page.screenshot({ path: join(CAPTURES, '10-panneau.png') });
 if (offres) {

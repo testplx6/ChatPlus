@@ -43,7 +43,7 @@ import { lireRapport } from './rapport.js';
 import { conditions, SAISONS, METEO } from './climat.js';
 import {
   RANGS, rangDe, estAuService, peutSEngager, avancementOrdre, REPUTATION_MINIMALE,
-  bilanService, effetsEstime, palierEstime,
+  bilanService, effetsEstime, palierEstime, estimeEngagement, ESTIME_ENGAGEMENT,
   droitIntendance, garnison, RANG_GARNISON,
 } from './allegeance.js';
 import { caravanesIci, valeurCargaison } from './caravanes.js';
@@ -831,6 +831,7 @@ function blocSituation() {
     else bientot.push(t);
   }
   for (const c of S.player.contrats) {
+    if (!c.echeance) continue; // sans délai : rien qui presse
     const reste = c.echeance - S.temps;
     const t = `contrat « ${c.titre} » — ${dureeTexte(Math.max(0, reste))}`;
     if (reste < 48) urgences.push(`${t} avant l’échéance.`);
@@ -903,10 +904,11 @@ function blocContratsActifs() {
     <h2 class="titre">Contrats en cours <span class="droite">${liste.length}/${MAX_CONTRATS}</span></h2>
     ${liste.map((c) => {
     const p = progresContrat(S, c);
-    const reste = c.echeance - S.temps;
+    const reste = (c.echeance || 0) - S.temps;
     return `<div style="padding:4px 0">
         <div class="ligne souple"><span class="k">${e(c.titre)}</span>
-          <span class="v ${reste < 48 ? 'alerte' : ''}">${dureeTexte(Math.max(0, reste))}</span></div>
+          <span class="v ${c.echeance && reste < 48 ? 'alerte' : ''}">${c.echeance
+    ? dureeTexte(Math.max(0, reste)) : 'sans délai'}</span></div>
         ${jauge(p.total ? p.fait / p.total : 0, p.pret ? 'vert' : '')}
         <div class="aide">${e(p.texte)} · à rendre à ${e(lieuValidation(S, c))}</div>
       </div>`;
@@ -1182,7 +1184,7 @@ function blocEngagement(col) {
   return `<div class="sep"></div>
     <button class="act mini" data-a="engager" data-k="${e(col.faction)}" ${v.ok ? '' : 'disabled'}>
       ${v.ok ? `Entrer au service ${e(FACTIONS[col.faction].genitif)}`
-    : `Engagement refusé — réputation ${Math.round(rep)}/${REPUTATION_MINIMALE}`}</button>`;
+    : `Engagement refusé — estime ${Math.round(rep)}/${estimeEngagement(col.faction)}`}</button>`;
 }
 
 function blocSelection() {
@@ -2129,18 +2131,27 @@ function ecranBase() {
 
 function ligneContrat(c, enCours) {
   const p = enCours ? progresContrat(S, c) : null;
-  const reste = enCours ? c.echeance - S.temps : c.duree;
+  // La plupart des offres n'ont pas de délai : le mot « urgent » et le temps
+  // restant ne s'affichent que pour celles qui en ont une, sinon on cherche une
+  // pendule là où il n'y en a pas.
+  const presse = enCours ? !!c.echeance : !!c.duree;
+  const reste = enCours ? (c.echeance || 0) - S.temps : c.duree;
   const donneur = colonieParId(S.world, c.colonieId);
   return `<div class="contrat">
     <div class="ligne">
-      <span class="k"><span class="puce" style="border-color:${couleurFaction(c.faction)};color:${couleurFaction(c.faction)}">${e(CONTRATS[c.type].nom)}</span></span>
+      <span class="k"><span class="puce" style="border-color:${couleurFaction(c.faction)};color:${couleurFaction(c.faction)}">${e(CONTRATS[c.type].nom)}</span>${
+  presse ? ' <span class="puce mal">urgent</span>' : ''}</span>
       <span class="v ambre">${n(c.recompense)} cr · rép +${c.reputation}</span>
     </div>
     <div class="contrat-t">${e(c.titre)}</div>
     ${p ? `${jauge(p.total ? p.fait / p.total : 0, p.pret ? 'vert' : '')}
       <div class="aide">${e(p.texte)} · à rendre à ${e(lieuValidation(S, c))}
-        · <span class="${reste < 48 ? 'alerte' : ''}">${dureeTexte(Math.max(0, reste))} restantes</span></div>`
-    : `<div class="aide">Commanditaire : ${e(donneur ? donneur.nom : '—')} · ${dureeTexte(reste)} accordées</div>`}
+        · ${presse
+    ? `<span class="${reste < 48 ? 'alerte' : ''}">${dureeTexte(Math.max(0, reste))} restantes</span>`
+    : '<span class="cyan">sans délai</span>'}</div>`
+    : `<div class="aide">Commanditaire : ${e(donneur ? donneur.nom : '—')} · ${presse
+      ? `<span class="alerte">${dureeTexte(reste)} accordées</span>, et l’urgence se paie`
+      : 'aucun délai : ils attendront'}</div>`}
     ${blocCibleContrat(c, reste)}
     ${enCours
     ? `<button class="act mini danger" data-a="abandonner" data-k="${e(c.id)}">Abandonner</button>`
@@ -2537,7 +2548,9 @@ function blocAllegeance() {
     return `<section class="panneau">
       <h2 class="titre">Allégeance <span class="droite">indépendant</span></h2>
       <div class="aide">Vous ne servez personne. Entrer au service d’une faction demande
-        ${REPUTATION_MINIMALE} de réputation ; cela donne une remise chez elle, une solde,
+        de l’estime — de ${Math.min(...Object.values(ESTIME_ENGAGEMENT))} chez une commune à
+        ${Math.max(...Object.values(ESTIME_ENGAGEMENT))} chez une église, ils ne demandent pas
+        tous la même chose ; cela donne une remise chez elle, une solde,
         le passage libre à ses barrages, l’accès à son bon matériel — et des ordres de
         mission qu’on ne refuse pas sans conséquence.</div>
       <div class="sep"></div>

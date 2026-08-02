@@ -9,7 +9,6 @@ import { COMMODITIES, COMMODITY_KEYS, FACTIONS, DIPLO_FACTIONS } from './data.js
 import { colonieParId, distance, nomRegion, coordonnee } from './world.js';
 import { idDepuisRng } from './characters.js';
 import { crediter, estAuService } from './allegeance.js';
-import { retenirDe } from './services.js';
 import { groupes, groupeActif } from './groupes.js';
 import { faveurChef } from './services.js';
 
@@ -21,6 +20,17 @@ const RESSOURCES_DEMANDEES = ['ferraille', 'minerai', 'polymere', 'biomasse', 'a
 // ---------------------------------------------------------------------------
 // Génération
 // ---------------------------------------------------------------------------
+
+/**
+ * La part des offres qui pressent, et ce que l'urgence paie.
+ *
+ * Une sur quatre : assez pour qu'on en croise, assez rare pour que ce soit une
+ * occasion plutôt qu'une norme. Et le supplément doit être visible, sinon
+ * personne ne prend le risque : la moitié en plus, avant même la correction
+ * d'agitation de la ville.
+ */
+export const PART_URGENTE = 0.25;
+export const PRIME_URGENCE = 1.5;
 
 /** Ce qu'une collecte peut demander au plus, en kilos. Voir `contratCollecte`. */
 export const POIDS_COLLECTE_MAX = 80;
@@ -157,6 +167,20 @@ export function genererContrats(state, col, rng, t) {
     c.id = idDepuisRng(rng, 'k');
     c.colonieId = col.id;
     c.faction = col.faction;
+    // Le délai devient l'exception, et il se paie.
+    //
+    // Tous les contrats avaient une échéance, et le banc a chiffré ce que ça
+    // donne : vingt-cinq contrats pris par partie, vingt manqués. Un panneau
+    // dont quatre offres sur cinq finissent en échec n'est pas un contenu,
+    // c'est une machine à décevoir — et l'on finit par ne plus rien signer.
+    //
+    // La règle s'inverse : par défaut on prend son temps, la ville attend. Une
+    // minorité d'offres presse, l'annonce, et paie nettement plus. Le choix
+    // qu'on veut poser au joueur est « est-ce que je cours ? », pas « est-ce
+    // que je signe ? ».
+    c.urgent = rng.chance(PART_URGENTE);
+    if (!c.urgent) c.duree = null;
+    else c.recompense = Math.round(c.recompense * PRIME_URGENCE);
     // Une ville agitée paie mal, une ville prospère paie bien.
     c.recompense = Math.max(50, Math.round(c.recompense * (1 - col.unrest * 0.3)));
     liste.push(c);
@@ -210,7 +234,8 @@ export function accepter(state, col, id, log, groupe) {
 
   col.contrats.splice(i, 1);
   c.accepteA = state.temps;
-  c.echeance = state.temps + c.duree;
+  // Sans durée, pas d'échéance : le contrat attend qu'on le fasse.
+  c.echeance = c.duree ? state.temps + c.duree : null;
   state.player.contrats.push(c);
   log({
     type: 'contrat',
@@ -236,7 +261,6 @@ export function abandonner(state, id, log) {
   } else {
     // Rendre le contrat avant l'échéance est la sortie honorable : elle coûte
     // moins cher que de le laisser pourrir, et rien du tout en estime.
-    retenirDe(col, 'chef', 'contrat rendu', state.temps, -OPINION_RENDU);
   }
   const perduAb = (state.player.reputation[c.faction] || 0) - repAvant;
   noterContrat(state, c, 'abandonne', { rep: perduAb });
@@ -322,13 +346,15 @@ export function compterVictoire(state, factionBande) {
 export const DOSSIER_MAX = 14;
 
 /**
- * Ce qu'un chef retient d'une parole non tenue, et d'une parole rendue à temps.
+ * Rendre un contrat avant l'échéance : la sortie honorable.
  *
- * Rendre doit rester strictement meilleur que laisser pourrir, sinon on
- * n'annule jamais rien et l'on encombre ses cinq places de contrats morts.
+ * Elle ne coûte rien non plus. `OPINION_ECHU` a existé, valait 14, et n'est
+ * plus : voir le commentaire de `tickContrats` sur pourquoi rater ne se punit
+ * pas. Le zéro est écrit ici plutôt que supprimé, pour que la question ne se
+ * repose pas dans six mois comme si elle n'avait jamais été tranchée.
  */
-export const OPINION_ECHU = 14;
-export const OPINION_RENDU = 5;
+export const OPINION_ECHU = 0;
+export const OPINION_RENDU = 0;
 
 export function noterContrat(state, c, issue, bilan) {
   if (!state.player.dossier) state.player.dossier = [];
@@ -418,27 +444,27 @@ export function tickContrats(state, log, ctx) {
     }
 
     // Échéance dépassée
-    if (state.temps > c.echeance) {
-      // Rater ne coûte plus d'estime, et c'est un choix de conception, pas un
-      // adoucissement.
+    if (c.echeance && state.temps > c.echeance) {
+      // Rater ne coûte **rien**. Ni estime, ni considération locale.
       //
-      // Une faction jugeait tout son rapport à vous sur un délai manqué : −6
-      // d'estime par contrat échu, c'est-à-dire la moitié de ce qu'on gagne à
-      // en réussir un. Or on ne peut jamais être certain de tenir un délai — une
-      // embuscade, un blessé, une ville tombée en route — donc **ne rien signer
-      // devenait strictement meilleur que d'essayer**. Un panneau d'affichage
-      // qu'on a intérêt à ignorer n'est pas un contenu, c'est un piège.
+      // C'est une décision de conception, prise après trois versions et deux
+      // séries de mesures. La première retirait 6 d'estime : ne rien signer
+      // devenait strictement meilleur que d'essayer, puisqu'on ne peut jamais
+      // garantir un délai. La deuxième déplaçait la sanction sur le chef qui
+      // avait affiché l'offre — plus juste, mais le banc a montré qu'elle ne
+      // mordait jamais en jeu réel (0,00 % des jours-ville, un manquement tous
+      // les deux cent trente-cinq heures pour un pardon en deux cent
+      // cinquante) : elle ne punissait donc que le joueur assez malchanceux
+      // pour rater trois fois de suite au même endroit.
       //
-      // Ce qu'on perd désormais, c'est la considération du chef qui avait
-      // affiché l'offre. C'est local, ça se répare, et ça a des dents : sous
-      // PANNEAU_FERME il ne vous confie plus rien, et au-dessus de
-      // PANNEAU_OUVERT il vous gardait les contrats qui paient. On répond de sa
-      // parole devant celui à qui on l'a donnée.
+      // Une sanction qui ne mord que sur la malchance n'a rien à faire là.
+      // Ce que coûte un contrat manqué, c'est la récompense qu'on n'a pas et le
+      // voyage qu'on a fait pour rien — c'est déjà cher, et c'est déjà juste.
+      // Ce qui reste puni, c'est ce qu'on prend : garder la marchandise d'une
+      // livraison abandonnée coûte toujours 12 d'estime.
       //
-      // L'estime, elle, reste pour ce qui la mérite : voler la marchandise d'une
-      // livraison, piller leurs caravanes, vendre des hommes.
-      retenirDe(colonieParId(state.world, c.colonieId), 'chef', 'contrat manqué',
-        state.temps, -OPINION_ECHU);
+      // Ce qui empêche d'encombrer le panneau, c'est le nombre de places : cinq
+      // contrats en cours, pas un de plus.
       noterContrat(state, c, 'echu', {});
       state.stats.echusParType = state.stats.echusParType || {};
       state.stats.echusParType[c.type] = (state.stats.echusParType[c.type] || 0) + 1;
@@ -446,8 +472,7 @@ export function tickContrats(state, log, ctx) {
       state.stats.echusParVille[c.colonieId] = (state.stats.echusParVille[c.colonieId] || 0) + 1;
       log({
         type: 'contrat',
-        texte: `Contrat échu : ${c.titre}. ${donneur ? `On s’en souvient à ${donneur.nom}` : 'On s’en souvient'}`
-          + ' — le chef vous confiera moins.',
+        texte: `Contrat échu : ${c.titre}. Le voyage était pour rien, et c’est tout.`,
         important: true,
       });
       continue;

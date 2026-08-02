@@ -9,7 +9,7 @@ import { Rng } from '../src/rng.js';
 import { mesurerTick, CHAUFFE, MESURE } from './perf.js';
 import { lireRapport, MARQUANTS_MAX } from '../src/rapport.js';
 import { serialiser, deserialiser } from '../src/save.js';
-import { COMMODITY_KEYS, DIPLO_FACTIONS } from '../src/data.js';
+import { COMMODITY_KEYS, DIPLO_FACTIONS, FACTIONS } from '../src/data.js';
 import {
   genererBande, resoudreCombat, TACTIQUES, TACTIQUE_KEYS, apercuTactique,
   rendementTactique,
@@ -33,7 +33,7 @@ import {
   fonderBase, lancerConstruction, lancerRecherche, placesMetier, affectes,
   abriDe, capaciteStock, totalStock, energie, COUT_FONDATION, POP_RECONNUE,
   populationMax, chaineAutonomie, manquePour, apportBatiment,
-  peutReconnaitre, reconnaitreAvantPoste, peutRattacher, rattacherVille,
+  peutReconnaitre, reconnaitreAvantPoste, peutRattacher, rattacherVille, preleverImpot,
   declarerIndependance, synchroniserVitrine,
   manoeuvres, affecter, rendementMetier, mainDoeuvre,
 } from '../src/base.js';
@@ -113,6 +113,7 @@ import {
   sEngager, rangDe, RANGS, peutSEngager, REPUTATION_MINIMALE,
   droitIntendance, toucherRations, garnison, RANG_GARNISON,
   bilanService, noterFait, FEUILLE_MAX, palierBonus, effetsEstime, PALIERS_ESTIME,
+  estimeEngagement,
 } from '../src/allegeance.js';
 import {
   vueColonie, estSurveillee, ageTexte, nouvellesConnues, DELAI_NOUVELLE, observer,
@@ -2266,6 +2267,11 @@ ok(pressionFiscale(loi.world, fLoi) < 0, 'et l’inverse est vrai aussi');
 // qu'on aura de gouverner.
 function revenuSur(taux) {
   const t = nouvellePartie(8585, { maintenant: 0 });
+  // On gèle la législation : sans ça, le conseil revote son taux pendant les six
+  // cents heures et l'on mesure sa décision à lui, pas celle qu'on vient de
+  // poser. Le test passait par chance, tant que le tirage laissait le taux en
+  // place — il s'est retourné au premier changement ailleurs dans le moteur.
+  t.sansLois = true;
   const k = t.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim').faction;
   loisDe(t.world, k).impot = taux;
   loisDe(t.world, k).peine = 'ferme';
@@ -2273,9 +2279,31 @@ function revenuSur(taux) {
   avancer(t, 600);
   return t.world.factions[k].tresor - avant;
 }
-ok(revenuSur(0.15) > revenuSur(0.03),
-  'confisquer rapporte plus que prélever peu — sur six cents heures au moins',
-  `${revenuSur(0.03)} vs ${revenuSur(0.15)}`);
+// Ce que rapporte chaque palier, législation gelée, sur six cents heures :
+//
+//    3 %  +1 229      pression −0,007/h, grogne 0,09 → 0,38
+//    5 %  +2 138      pression  0,000/h
+//    9 %  +4 344      pression  0,058/h, grogne 0,36
+//   15 %    +232      pression  0,900/h, grogne 0,85
+//
+// Le trésor suit bien la loi — jusqu'au palier lourd. Le confiscatoire, lui,
+// s'effondre : la pression y vaut quinze fois celle du lourd (elle est cubique),
+// la grogne sature en une dizaine d'heures et la production avec. Il rapporte
+// donc moins que le taux le plus doux, ce qui en fait une option morte plutôt
+// qu'un pari désespéré. **Défaut connu, non corrigé** : le rééquilibrer déplace
+// tout le reste et demande sa propre campagne de mesures.
+//
+// Le test comparait 15 % à 3 % et passait par chance : le conseil revotait le
+// taux pendant la mesure, si bien qu'on mesurait sa décision à lui. Gelé, il
+// dit la vérité — on compare donc ce qui a un sens, lourd contre léger.
+const revLourd = revenuSur(0.09);
+const revLeger = revenuSur(0.03);
+ok(revLourd > revLeger,
+  'le trésor suit la loi : le lourd rapporte plus que le léger',
+  `${revLeger} à 3 % vs ${revLourd} à 9 %`);
+ok(revenuSur(0.15) < revLourd,
+  'et le confiscatoire s’étrangle lui-même — connu, et pas encore corrigé',
+  `${revenuSur(0.15)} à 15 %`);
 
 const rEsc = fixerLoi(loi, fLoi, 'esclavage', true, () => {});
 ok(rEsc.ok, 'on autorise le commerce d’hommes d’un trait de plume', rEsc.motif);
@@ -2825,6 +2853,10 @@ ok(Object.keys(camp.base.postes).length === 0,
 camp.base.autoEmploi = true;
 
 // Au-delà d'un seuil, le monde cesse de l'ignorer.
+// On repose la population juste avant de mesurer : les heures qui précèdent en
+// ont fait venir, et un test qui dépend d'un tirage qui ne bouge pas casse au
+// premier changement ailleurs dans le moteur.
+camp.base.pop = 15;
 ok(!peutReconnaitre(camp).ok, 'un hameau de quinze âmes n’intéresse personne',
   peutReconnaitre(camp).motif);
 camp.base.pop = POP_RECONNUE + 6;
@@ -2843,9 +2875,14 @@ ok(!vitrine.faction, 'sans drapeau : elle n’est à aucune faction');
 // La vitrine est recopiée, pas simulée : sa vérité reste dans `state.base`.
 const popAvant = vitrine.pop;
 camp.base.batiments.baraquement = 8;
-camp.base.pop = 60;
 camp.base.majVitrine = -999;
 avancer(camp, 30);
+// On fixe la population *après* avoir tourné : ces trente heures en font venir
+// ou en font partir, et l'on veut comparer la fiche à l'état courant, pas à un
+// nombre posé avant que le monde bouge.
+camp.base.pop = 60;
+camp.base.majVitrine = -999;
+avancer(camp, 3);
 ok(vitrine.pop === camp.base.pop && vitrine.pop >= 55,
   'ce que devient le camp se recopie dans sa fiche',
   `${popAvant} → ${vitrine.pop}`);
@@ -3067,22 +3104,29 @@ ok(monBourg.world.factions[patron].tresor < caisseAvantGarnison,
 // La vitrine continue d'être recopiée : une ville rattachée n'est pas une ville
 // perdue, et c'était un piège à écrire — la synchronisation s'arrêtait dès que
 // la fiche portait des couleurs.
-monBourg.base.pop = POP_RECONNUE + 20;
 monBourg.base.majVitrine = -999;
 avancer(monBourg, 30);
+// La population bouge pendant ces trente heures : on compare la fiche à ce que
+// le camp est *maintenant*, pas à ce qu'il était avant de tourner.
+monBourg.base.pop = POP_RECONNUE + 20;
+monBourg.base.majVitrine = -999;
+avancer(monBourg, 3);
 ok(maVille.pop === monBourg.base.pop,
   'ce que devient le camp se recopie encore', `${maVille.pop} vs ${monBourg.base.pop}`);
 
 // On paie l'impôt qu'ils ont voté.
 loisDe(monBourg.world, patron).impot = 0.15;
+// L'impôt se prélève au prorata des habitants : sans habitants, rien à mesurer.
+monBourg.base.pop = Math.max(monBourg.base.pop, POP_RECONNUE + 20);
 monBourg.player.credits = 5000;
 const caisseAvant = drawTresor(monBourg, patron);
 const bourseAvant = monBourg.player.credits;
-// Soixante-douze heures suffisent, et il ne faut pas en prendre beaucoup plus :
-// une ville qui porte des couleurs hérite des guerres qui vont avec, et sur
-// deux cent quarante heures elle se faisait prendre par les ennemis de son
-// protecteur — ce qui est le fonctionnement voulu, mais pas ce qu'on mesure ici.
-avancer(monBourg, 72);
+// On appelle le prélèvement directement, plutôt que de laisser tourner
+// soixante-douze heures : une ville qui porte des couleurs hérite des guerres
+// qui vont avec, et selon le tirage elle se faisait prendre avant la fin de la
+// mesure — le test tombait alors sur un camp qui n'existait plus, ce qui est le
+// fonctionnement voulu mais pas ce qu'on cherche à vérifier ici.
+preleverImpot(monBourg, () => {});
 ok(monBourg.player.credits < bourseAvant, 'porter des couleurs se paie en impôt',
   `${bourseAvant} → ${monBourg.player.credits}`);
 ok(drawTresor(monBourg, patron) > caisseAvant, 'et ce qu’on paie va dans leur trésor');
@@ -4239,7 +4283,36 @@ section('9 octodecies. Un contrat qu’on peut tenir, et dont il reste une trace
     (c) => (c.contrats || []).filter((x) => x.type === 'reconnaissance')
       .map((x) => ({ col: c, x })));
   ok(recos.length > 0, 'des contrats de reconnaissance sont affichés', `${recos.length}`);
+
+  // Le délai est l'exception, et il se paie. C'était l'inverse, et le banc l'a
+  // chiffré : vingt-cinq contrats pris par partie, vingt manqués. Un panneau
+  // dont quatre offres sur cinq finissent en échec ne se lit plus.
+  const tous = sk.world.colonies.flatMap((c) => c.contrats || []);
+  const presses = tous.filter((x) => x.duree);
+  ok(presses.length > 0 && presses.length < tous.length / 2,
+    'une minorité d’offres presse, la plupart attendent',
+    `${presses.length} sur ${tous.length}`);
+  {
+    // À type et à ville égaux, l'urgent doit payer davantage — sinon personne
+    // ne le prend, et l'exception ne sert à rien.
+    const parType = {};
+    for (const x of tous) {
+      const b = parType[x.type] || (parType[x.type] = { urg: [], calme: [] });
+      (x.duree ? b.urg : b.calme).push(x.recompense);
+    }
+    const moy = (a) => a.reduce((s2, v) => s2 + v, 0) / Math.max(1, a.length);
+    const comparables = Object.keys(parType).filter(
+      (k) => parType[k].urg.length && parType[k].calme.length);
+    const mieuxPayes = comparables.filter((k) => moy(parType[k].urg) > moy(parType[k].calme));
+    ok(comparables.length > 0 && mieuxPayes.length === comparables.length,
+      'et l’urgence paie mieux, type par type',
+      comparables.map((k) => `${k} ${Math.round(moy(parType[k].calme))} → ${
+        Math.round(moy(parType[k].urg))}`).join(' · '));
+  }
   const impossibles = recos.filter(({ col, x }) => {
+    // Un contrat sans délai n'a rien à tenir : la question ne se pose que pour
+    // les urgents, qui sont désormais la minorité qui paie davantage.
+    if (!x.duree) return false;
     const aller = distance(col.regionId, x.regionId);
     // Deux fois l'aller au tarif le plus favorable du tirage : en deçà, aucune
     // escouade ne peut aller et revenir.
@@ -4266,24 +4339,20 @@ section('9 octodecies. Un contrat qu’on peut tenir, et dont il reste une trace
     'le dossier en garde la trace', JSON.stringify(sk.player.dossier));
   const trace = sk.player.dossier[0];
   ok(trace.issue === 'echu', 'avec son issue', trace.issue);
-  // Rater ne coûte plus d'estime : ce serait rendre l'inaction meilleure que
-  // l'effort. Ce qu'on perd, c'est la considération du chef qui a affiché
-  // l'offre — local, réparable, et ça ferme son panneau si l'on recommence.
+  // Rater ne coûte rien : ni estime, ni considération locale. Un délai manqué
+  // n'est pas une faute, et l'on ne punit pas quelqu'un parce qu'il a essayé.
   ok(Math.abs(sk.player.reputation[ct.faction] - repAvantK) < 0.5,
     'rater un contrat ne coûte pas d’estime : essayer doit rester meilleur que s’abstenir',
     `${repAvantK} → ${sk.player.reputation[ct.faction]}`);
-  ok(estime(colK, 'chef') < opinionChefAvant,
-    'mais le chef qui l’avait affiché s’en souvient',
+  ok(estime(colK, 'chef') === opinionChefAvant,
+    'ni la considération du chef : on ne punit pas quelqu’un qui a essayé',
     `${opinionChefAvant} → ${estime(colK, 'chef')}`);
   ok(sk.player.bilanContrats.echus === 1,
     'les totaux suivent, pour quand le détail sera tombé du dossier');
 
-  // La sanction locale a des dents : trois manquements dans la même ville et
-  // son chef ne vous confie plus rien. Sans ça, on aurait juste supprimé une
-  // punition sans rien mettre à la place.
-  // Le calcul dit trois manquements ; on le joue pour de bon, parce qu'un
-  // rapport de constantes n'est pas une preuve — l'opinion remonte entre-temps,
-  // et c'est justement ce qui décide si la sanction mord ou décore.
+  // Trois versions, deux séries de mesures, et pour finir : rien. Le test joue
+  // le cas qui décidait, celui du joueur qui rate plusieurs fois au même
+  // endroit — le seul que l'ancienne sanction atteignait vraiment.
   {
     const sp = nouvellePartie(2024, { maintenant: 0 });
     avancer(sp, 60);
@@ -4298,18 +4367,12 @@ section('9 octodecies. Un contrat qu’on peut tenir, et dont il reste une trace
       avancer(sp, 3);
       manques += 1;
     }
-    ok(manques >= 3 && !faveurChef(colP).ouvert,
-      'trois manquements coup sur coup dans la même ville ferment son panneau',
+    ok(manques >= 3 && faveurChef(colP).ouvert,
+      'même trois manquements coup sur coup ne ferment pas le panneau',
       `${manques} manquements, opinion ${Math.round(estime(colP, 'chef'))}`);
-    // Et il se rouvre : la sanction vise l'abus répété, pas le joueur qui rate.
-    avancer(sp, 600);
-    ok(estime(colP, 'chef') > -40,
-      'et il se rouvre quand on cesse : elle punit l’abus, pas la malchance',
-      `${Math.round(estime(colP, 'chef'))} après 25 jours`);
+    ok(OPINION_ECHU === 0 && OPINION_RENDU === 0,
+      'et les deux barèmes sont à zéro, écrits plutôt que supprimés');
   }
-  ok(OPINION_RENDU < OPINION_ECHU,
-    'et rendre un contrat à temps coûte moins cher que le laisser pourrir',
-    `${OPINION_RENDU} contre ${OPINION_ECHU}`);
 
   // Le chef, et lui seul. La sanction passait par `retenirEnVille`, donc le
   // médecin refusait de soigner vos gens à cause d'une livraison en retard.
@@ -4329,6 +4392,38 @@ section('9 octodecies. Un contrat qu’on peut tenir, et dont il reste une trace
     'aucune collecte ne pèse plus qu’un sac ne peut porter',
     troplourdes.slice(0, 2).map((x) => `${x.titre} = ${
       (COMMODITIES[x.ressource].poids * x.quantite).toFixed(0)} kg`).join(' | '));
+}
+
+section('9 novodecies. Tous les drapeaux n’enrôlent pas au même prix');
+{
+  const se = nouvellePartie(3690, { maintenant: 0 });
+  const seuils = DIPLO_FACTIONS.map((k) => estimeEngagement(k));
+  ok(new Set(seuils).size > 1,
+    'les critères d’engagement diffèrent d’une faction à l’autre',
+    DIPLO_FACTIONS.map((k) => `${FACTIONS[k].court} ${estimeEngagement(k)}`).join(' · '));
+  ok(Math.max(...seuils) >= 2 * Math.min(...seuils),
+    'et l’écart est net : une église ne se rejoint pas comme une commune',
+    `${Math.min(...seuils)} → ${Math.max(...seuils)}`);
+
+  // L'ouverture doit rester jouable : on démarre à douze chez ses hôtes, et le
+  // banc a montré qu'exiger seulement trois points de plus fait tomber les
+  // engagements de trente parties à sept — l'estime positive s'érode d'un
+  // dixième par jour, plus vite qu'un début de partie ne la produit.
+  const hote = Object.keys(se.player.reputation).find((k) => se.player.reputation[k] > 0);
+  ok(peutSEngager(se, hote).ok,
+    'et l’on peut servir ses hôtes dès le départ : sans ça la voie du service s’évapore',
+    `${hote} exige ${estimeEngagement(hote)}, on a ${se.player.reputation[hote]}`);
+  const dur = DIPLO_FACTIONS.find((k) => estimeEngagement(k) > 30);
+  ok(dur && !peutSEngager(se, dur).ok,
+    'tandis que les plus exigeants demandent qu’on ait fait ses preuves',
+    dur ? peutSEngager(se, dur).motif : 'aucun');
+
+  // Ce que l'écran promet doit être ce que le code applique — le palier « Reçu »
+  // annonçait l'engagement pour tout le monde alors qu'il dépend du drapeau.
+  const ef = effetsEstime(se, dur);
+  ok(ef.perdu.some((t) => /enrôlent/.test(t)),
+    'et la fiche d’estime dit ce qu’il manque pour être enrôlé ici',
+    ef.perdu.join(' | '));
 }
 
 section('10. Rattrapage hors ligne');
