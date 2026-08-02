@@ -134,12 +134,12 @@ const API = {
     return r;
   },
 
-  coffre(colId, key, depose) {
+  coffre(colId, key, depose, qte = 9999) {
     const col = state.world.colonies.find((c) => c.id === colId);
     const g = groupeActif(state);
     const r = depose
-      ? deposerAuCoffre(state, col, key, 9999, g)
-      : retirerDuCoffre(state, col, key, 9999, g);
+      ? deposerAuCoffre(state, col, key, qte, g)
+      : retirerDuCoffre(state, col, key, qte, g);
     sauver();
     return r;
   },

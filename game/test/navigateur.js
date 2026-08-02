@@ -248,6 +248,57 @@ if (constructibles > 0) {
 }
 ok(await page.locator('[data-a="annuler"]').count() > filesAvant, 'un chantier se met en file au clic');
 
+// Ravitailler le camp sans y vider son sac : c'est le geste normal, et il
+// demandait de tout déposer puis d'en reprendre les trois quarts.
+{
+  await page.click('[data-a="onglet"][data-k="carte"]');
+  await page.waitForTimeout(300);
+  // La sauvegarde de référence a fait marcher l'escouade depuis : on la remet au
+  // camp, faute de quoi le bouton de transfert n'existe pas — il n'a pas à
+  // exister quand on est ailleurs.
+  // On recharge d'abord, puis on injecte : la partie en cours sauvegarde sur
+  // `pagehide` et écraserait la modification. Même piège que partout ailleurs
+  // dans ce fichier, et je viens d'y retomber.
+  const auCamp = await page.evaluate(() => {
+    const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    s2.player.groupes[0].regionId = s2.base.regionId;
+    s2.player.groupes[0].ordre = { type: 'repos' };
+    return JSON.stringify(s2);
+  });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), auCamp);
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.waitForTimeout(400);
+  if (await page.locator('[data-a="modale"][data-m="transfert"]').count()) {
+    await page.click('[data-a="modale"][data-m="transfert"]');
+    await page.waitForTimeout(350);
+    ok((await page.locator('[data-a="qte-transfert"]').count()) > 0,
+      'le transfert avec l’avant-poste propose une quantité');
+    await page.click('[data-a="qte-transfert"][data-q="1"]');
+    await page.waitForTimeout(250);
+    const dep = page.locator('[data-a="deposer"]:not([disabled])').first();
+    if (await dep.count()) {
+      const cle = await dep.getAttribute('data-k');
+      const lire = (k) => page.evaluate((x) => {
+        const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+        return Math.floor(s2.player.groupes[0].inventaire[x] || 0);
+      }, k);
+      const avant = await lire(cle);
+      await dep.click();
+      await page.waitForTimeout(350);
+      ok(avant - (await lire(cle)) === 1,
+        'à ×1, on ne dépose qu’une unité à l’avant-poste',
+        `${avant} → ${await lire(cle)}`);
+    }
+    await page.screenshot({ path: join(CAPTURES, '07c-transfert.png') });
+    await page.click('[data-a="fermer"]');
+    await page.waitForTimeout(200);
+  }
+  await page.click('[data-a="onglet"][data-k="base"]');
+  await page.waitForTimeout(250);
+}
+
 console.log('\n8. Écran large');
 const large = await navigateur.newPage({ viewport: { width: 1280, height: 900 } });
 await large.goto(`http://localhost:${PORT}/`, { waitUntil: 'networkidle' });
@@ -433,6 +484,30 @@ if ((await page.locator('[data-a="coffre-louer"]:not([disabled])').count()) > 0)
       return Object.values(c[k].contenu).reduce((a, b) => a + b, 0);
     });
     ok(contenu > 0, 'et ce qu’on y met y reste', `${contenu} unités`);
+  }
+  // Une partie, et non tout ou rien : le bouton vidait le sac d'un coup, si
+  // bien que ravitailler un camp en gardant de quoi rentrer demandait de tout
+  // déposer puis d'en reprendre les trois quarts.
+  ok((await page.locator('[data-a="qte-transfert"]').count()) > 0,
+    'le coffre propose de choisir la quantité');
+  await page.click('[data-a="qte-transfert"][data-q="1"]');
+  await page.waitForTimeout(250);
+  const cible1 = page.locator('[data-a="coffre-deposer"]:not([disabled])').first();
+  if (await cible1.count()) {
+    const cle1 = await cible1.getAttribute('data-k');
+    const sacAvant = await page.evaluate((k) => {
+      const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+      return Math.floor(s2.player.groupes[0].inventaire[k] || 0);
+    }, cle1);
+    await cible1.click();
+    await page.waitForTimeout(350);
+    const sacApres = await page.evaluate((k) => {
+      const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+      return Math.floor(s2.player.groupes[0].inventaire[k] || 0);
+    }, cle1);
+    ok(sacAvant - sacApres === 1,
+      'à ×1 on ne dépose qu’une unité, et le sac garde le reste',
+      `${sacAvant} → ${sacApres}`);
   }
 }
 await page.click('[data-a="fermer"]');

@@ -18286,6 +18286,23 @@ function modaleRapport() {
 const QUANTITES = [1, 10, 50, 9999];
 let qteMarche = 10;
 
+/**
+ * La quantité pour tout ce qui se déplace d'un contenant à l'autre : entrepôt,
+ * coffre. Le marché garde la sienne — on n'achète pas par lots de la même
+ * taille qu'on range.
+ *
+ * C'était tout ou rien : un bouton « ↓ » qui vidait le sac. Déposer soixante
+ * rations sur cent quatre-vingts, c'est-à-dire le geste normal quand on ravitaille
+ * un camp en gardant de quoi rentrer, demandait de déposer les cent quatre-vingts
+ * puis d'en reprendre cent vingt.
+ */
+let qteTransfert = 10;
+
+function choixQuantite(action, courante) {
+  return QUANTITES.map((q) => `<button class="act mini" data-a="${action}" data-q="${q}"
+    aria-pressed="${courante === q}">${q === 9999 ? 'tout' : `×${q}`}</button>`).join('');
+}
+
 function modaleMarche() {
   const col = colonieDe(S.world, G().regionId);
   if (!col) return '<div class="aide">Il n’y a pas de marché ici.</div>';
@@ -18368,11 +18385,16 @@ function modaleCoffre() {
     const dedans = Math.floor(coffre.contenu[k] || 0);
     const dans1sac = Math.floor(G().inventaire[k] || 0);
     if (!dedans && !dans1sac) return '';
+    const met = Math.min(qteTransfert, dans1sac,
+      Math.floor(pl.libre / Math.max(0.01, COMMODITIES[k].poids)));
+    const reprend = Math.min(qteTransfert, dedans);
     return `<div class="marche-l">
       <span class="nm">${e(COMMODITIES[k].nom)}<br>
         <span class="aide">coffre ${n(dedans)} · sac ${n(dans1sac)}</span></span>
-      <button class="act" data-a="coffre-deposer" data-k="${k}" ${dans1sac < 1 ? 'disabled' : ''}>y mettre</button>
-      <button class="act" data-a="coffre-retirer" data-k="${k}" ${dedans < 1 ? 'disabled' : ''}>reprendre</button>
+      <button class="act" data-a="coffre-deposer" data-k="${k}" ${met < 1 ? 'disabled' : ''}>
+        y mettre${met > 0 ? `<br><span class="aide">${n(met)}</span>` : ''}</button>
+      <button class="act" data-a="coffre-retirer" data-k="${k}" ${reprend < 1 ? 'disabled' : ''}>
+        reprendre${reprend > 0 ? `<br><span class="aide">${n(reprend)}</span>` : ''}</button>
     </div>`;
   }).join('');
 
@@ -18386,6 +18408,7 @@ function modaleCoffre() {
   ${!coffre.achete && vA.ok
     ? `<div style="height:6px"></div><button class="act" data-a="coffre-acheter">
         L’acheter — ${n(PRIX_COFFRE)} cr, ${CAPACITE_ACHETEE} kg</button>` : ''}
+  <div class="taches" style="margin-top:6px">Quantité ${choixQuantite('qte-transfert', qteTransfert)}</div>
   <div class="sep"></div>${lignes || '<div class="aide">Rien ici, rien dans le sac.</div>'}`;
 }
 
@@ -18463,20 +18486,30 @@ function modaleTransfert() {
     return '<div class="aide">Il faut être à l’avant-poste.</div>';
   }
   const lignes = COMMODITY_KEYS.map((k) => {
-    const sac = G().inventaire[k] || 0;
-    const ent = b.stock[k] || 0;
+    const sac = Math.floor(G().inventaire[k] || 0);
+    const ent = Math.floor(b.stock[k] || 0);
+    if (!sac && !ent) return '';
+    // Ce qui partira vraiment, borné par ce qu'on a et par la place restante :
+    // le bouton annonce le nombre plutôt qu'une flèche.
+    const versBas = Math.min(qteTransfert, sac, Math.max(0, capaciteStock(b) - totalStock(b)));
+    const place = capacitePortage(S, G()) - poidsInventaire(G().inventaire);
+    const versHaut = Math.min(qteTransfert, ent,
+      Math.floor(place / Math.max(0.01, COMMODITIES[k].poids)));
     return `<div class="marche-l">
       <span class="nm">${e(COMMODITIES[k].nom)}<br>
         <span class="aide">sac ${n(sac)} · entrepôt ${n(ent)}</span></span>
-      <span class="px"></span>
-      <button class="act" data-a="deposer" data-k="${k}" ${sac < 1 ? 'disabled' : ''}>↓</button>
-      <button class="act" data-a="retirer" data-k="${k}" ${ent < 1 ? 'disabled' : ''}>↑</button>
+      <button class="act" data-a="deposer" data-k="${k}" ${versBas < 1 ? 'disabled' : ''}>
+        ↓ ${versBas > 0 ? n(versBas) : '—'}</button>
+      <button class="act" data-a="retirer" data-k="${k}" ${versHaut < 1 ? 'disabled' : ''}>
+        ↑ ${versHaut > 0 ? n(versHaut) : '—'}</button>
     </div>`;
   }).join('');
   return `<h2 class="titre">Transfert
     <span class="droite">${n(totalStock(b))}/${n(capaciteStock(b))}</span></h2>
-  <div class="aide">↓ dépose tout dans l’entrepôt · ↑ reprend ce que le sac peut porter.</div>
-  <div class="sep"></div>${lignes}`;
+  <div class="aide">↓ vers l’entrepôt · ↑ vers le sac. Les boutons annoncent ce qui
+    passera vraiment : ce qu’on a, ce que l’entrepôt peut prendre, ce que le sac peut porter.</div>
+  <div class="taches" style="margin-top:6px">Quantité ${choixQuantite('qte-transfert', qteTransfert)}</div>
+  <div class="sep"></div>${lignes || '<div class="aide">Rien à déplacer.</div>'}`;
 }
 
 function modaleEquipement() {
@@ -19100,7 +19133,7 @@ function surClic(ev) {
     case 'coffre-retirer': {
       const col = colonieDe(S.world, G().regionId);
       const depose = el.dataset.a === 'coffre-deposer';
-      const r = ACTIONS.coffre(col && col.id, el.dataset.k, depose);
+      const r = ACTIONS.coffre(col && col.id, el.dataset.k, depose, qteTransfert);
       if (!r.ok) toast(r.motif, true);
       rendreModale();
       rafraichir(true);
@@ -19148,9 +19181,14 @@ function surClic(ev) {
       break;
     }
 
+    case 'qte-transfert':
+      qteTransfert = Number(el.dataset.q);
+      rendreModale();
+      break;
+
     case 'deposer': {
       const k = el.dataset.k;
-      const r = deposer(S, k, G().inventaire[k] || 0);
+      const r = deposer(S, k, Math.min(qteTransfert, G().inventaire[k] || 0));
       if (!r.ok) toast(r.motif, true);
       rendreModale();
       rafraichir(true);
@@ -19160,8 +19198,8 @@ function surClic(ev) {
     case 'retirer': {
       const k = el.dataset.k;
       const libre = capacitePortage(S, G()) - poidsInventaire(G().inventaire);
-      const qte = Math.floor(libre / Math.max(0.01, COMMODITIES[k].poids));
-      const r = retirer(S, k, qte, qte);
+      const tient = Math.floor(libre / Math.max(0.01, COMMODITIES[k].poids));
+      const r = retirer(S, k, Math.min(qteTransfert, tient), tient);
       if (!r.ok) toast(r.motif, true);
       rendreModale();
       rafraichir(true);
@@ -19489,12 +19527,12 @@ const API = {
     return r;
   },
 
-  coffre(colId, key, depose) {
+  coffre(colId, key, depose, qte = 9999) {
     const col = state.world.colonies.find((c) => c.id === colId);
     const g = groupeActif(state);
     const r = depose
-      ? deposerAuCoffre(state, col, key, 9999, g)
-      : retirerDuCoffre(state, col, key, 9999, g);
+      ? deposerAuCoffre(state, col, key, qte, g)
+      : retirerDuCoffre(state, col, key, qte, g);
     sauver();
     return r;
   },
