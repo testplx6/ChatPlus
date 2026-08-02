@@ -26,7 +26,7 @@ import {
   tempsRecherche, capaciteStock, totalStock, energie, lancerConstruction, POP_RECONNUE,
   peutReconnaitre, peutRattacher,
   lancerRecherche, annulerConstruction, fonderBase, deposer, retirer,
-  COUT_FONDATION,
+  COUT_FONDATION, manquePour, apportBatiment, chaineAutonomie,
 } from './base.js';
 import { classement, enGuerre } from './factions.js';
 import { titreDe, lignesDe } from './chronique.js';
@@ -1781,6 +1781,37 @@ function ecranEscouade() {
  * ils aident partout un peu. Affectés, ils rendent beaucoup plus — mais sur une
  * seule chaîne. C'est le choix de spécialisation qui fait l'avant-poste.
  */
+/**
+ * La chaîne de l'autonomie : ramasser, manger, loger, alimenter.
+ *
+ * Un avant-poste neuf présentait douze bâtiments dans l'ordre du fichier de
+ * données, aucun accessible, et pas une ligne pour dire lesquels forment la
+ * boucle qui rend un camp vivable. On en concluait qu'il n'y avait rien pour
+ * récolter ni pour vivre en autonomie — alors que la halle et l'hydroponie sont
+ * exactement ça, noyées entre une fonderie et une raffinerie.
+ *
+ * Le maillon manquant est nommé, et le bouton mène droit au bâtiment.
+ */
+function blocChaine() {
+  const etapes = chaineAutonomie(S);
+  if (!etapes.length) return '';
+  const faits = etapes.filter((x) => x.fait).length;
+  return `<section class="panneau ${faits === 0 ? 'urgent' : ''}">
+    <h2 class="titre">Chaîne de l’autonomie
+      <span class="droite ${faits === etapes.length ? '' : 'alerte'}">${faits}/${etapes.length}</span></h2>
+    <div class="aide">Un camp se tient tout seul quand les quatre sont en place :
+      il ramasse ce qu’il y a autour, il en fait à manger, il loge ceux qui viennent,
+      et le courant accélère le tout.</div>
+    <div class="sep"></div>
+    ${etapes.map((x) => `<div class="ligne souple">
+      <span class="k">${x.fait ? '✓' : '·'} ${e(x.titre)}<br>
+        <span class="aide">${e(x.etat)}</span></span>
+      <span class="v">${x.fait
+    ? '<span class="puce ok">en place</span>'
+    : `<span class="puce mal">${e(BUILDINGS[x.key].nom.toLowerCase())}</span>`}</span></div>`).join('')}
+  </section>`;
+}
+
 function blocMetiers() {
   const b = S.base;
   const libres = manoeuvres(b);
@@ -1934,22 +1965,37 @@ function ecranBase() {
       <button class="act mini" data-a="annuler" data-i="${i}" style="margin-top:4px">Annuler (70 % remboursé)</button>
     </div>`).join('') : '<div class="aide">Rien en construction.</div>';
 
-  const batHtml = BUILDING_KEYS.map((k) => {
+  // Les bâtiments par ce qu'ils font, et non dans l'ordre du fichier de
+  // données. Le baraquement y arrivait en dernier alors que c'est lui qui
+  // décide si quelqu'un peut vivre là ; la halle et l'hydroponie — récolter et
+  // manger — étaient noyées entre la fonderie et la raffinerie.
+  const FAMILLES = [
+    { nom: 'Tenir sur place', clefs: ['baraquement', 'halle', 'hydroponie', 'cantine'] },
+    { nom: 'Produire', clefs: ['generateur', 'entrepot', 'fonderie', 'raffinerie', 'atelier'] },
+    { nom: 'Se défendre et soigner', clefs: ['mur', 'poste', 'infirmerie'] },
+    { nom: 'Savoir', clefs: ['antenne'] },
+  ];
+  const carteBat = (k) => {
     const bd = BUILDINGS[k];
     const niv = nivBat(b, k);
     const enFile = b.file.filter((x) => x.key === k).length;
     const cout = coutBatiment(b, k);
-    const dispo = Object.keys(cout).every((c) => (b.stock[c] || 0) >= cout[c]);
+    const manque = manquePour(b, k);
     const plein = niv + enFile >= bd.max;
     return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
-      <div class="ligne"><span class="k">${e(bd.nom)} <span class="puce">niv ${niv}${enFile ? `+${enFile}` : ''}</span></span>
+      <div class="ligne souple"><span class="k">${e(bd.nom)} <span class="puce">niv ${niv}${enFile ? `+${enFile}` : ''}</span></span>
         <span class="v">${bd.energie > 0 ? `+${bd.energie * (niv + 1)}` : bd.energie < 0 ? `${bd.energie * (niv + 1)}` : '—'} én.</span></div>
-      <div class="aide">${e(bd.desc)}</div>
+      <div class="aide">${e(apportBatiment(b, k))}</div>
       <div class="aide">Coût : ${e(coutTexte(cout))} · ${dureeTexte(tempsBatiment(b, k))}</div>
-      <button class="act mini" data-a="construire" data-k="${k}" ${plein || !dispo ? 'disabled' : ''}
-        style="margin-top:4px">${plein ? 'Niveau maximum' : `Construire niv. ${niv + enFile + 1}`}</button>
+      <button class="act mini" data-a="construire" data-k="${k}" ${plein || manque.length ? 'disabled' : ''}
+        style="margin-top:4px">${plein ? 'Niveau maximum'
+    : manque.length
+      ? `Il manque ${e(manque.map((m) => `${n(m.qte)} ${COMMODITIES[m.key].nom.toLowerCase()}`).join(' et '))}`
+      : `Construire niv. ${niv + enFile + 1}`}</button>
     </div>`;
-  }).join('');
+  };
+  const batHtml = FAMILLES.map((f) => `<div class="titre" style="margin-top:8px">${e(f.nom)}</div>
+    ${f.clefs.filter((k) => BUILDINGS[k]).map(carteBat).join('')}`).join('');
 
   const rechHtml = RESEARCH_KEYS.map((k) => {
     const rd = RESEARCH[k];
@@ -2019,6 +2065,7 @@ function ecranBase() {
     : `Main-d’œuvre ×${mainDoeuvre(b).toFixed(2)} sur les chaînes · +${n(Math.round((b.pop || 0) * 2.5))} de défense · ${n((b.pop || 0) * 0.014 * 24, 1)} rations/jour consommées`}</div>
   </section>
 
+  ${blocChaine()}
   ${blocMetiers()}
   ${blocEcoleBase()}
 

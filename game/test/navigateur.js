@@ -11,7 +11,9 @@ import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
 import { nouvellePartie, avancer } from '../src/sim.js';
-import { fonderBase, lancerConstruction, lancerRecherche } from '../src/base.js';
+import {
+  fonderBase, lancerConstruction, lancerRecherche, COUT_FONDATION,
+} from '../src/base.js';
 import { donnerOrdre } from '../src/squad.js';
 import { serialiser } from '../src/save.js';
 import { groupeActif } from '../src/groupes.js';
@@ -321,6 +323,48 @@ await page.waitForTimeout(600);
   // On le replie : la suite de la section compte sur la fiche telle qu'elle est.
   await page.click('summary:has-text("estime change ici")');
   await page.waitForTimeout(200);
+}
+
+// L'avant-poste doit dire ce qu'il lui manque, sinon on croit qu'il n'y a rien.
+{
+  const camp = serialiser((() => {
+    const t = partieAvancee();
+    const g = t.player.groupes[0];
+    const vide = t.world.regions.find(
+      (r) => !t.world.colonies.some((c) => c.regionId === r.i));
+    g.regionId = vide.i;
+    for (const k of Object.keys(COUT_FONDATION)) {
+      g.inventaire[k] = (g.inventaire[k] || 0) + COUT_FONDATION[k];
+    }
+    fonderBase(t, () => {}, g);
+    // `partieAvancee` fournit déjà un camp bien garni : on le vide, parce que
+    // c'est le camp démuni qui pose le problème qu'on veut voir corrigé.
+    for (const k of Object.keys(t.base.stock)) t.base.stock[k] = 0;
+    t.base.batiments = {};
+    return t;
+  })());
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), camp);
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.click('[data-a="onglet"][data-k="base"]');
+  await page.waitForTimeout(400);
+  const vuBase = await page.locator('#ecran').innerText();
+  ok(/CHAÎNE DE L’AUTONOMIE/i.test(vuBase),
+    'un camp neuf montre la chaîne de l’autonomie',
+    vuBase.slice(0, 200).replace(/\n+/g, ' | '));
+  ok(/Ramasser/i.test(vuBase) && /Loger/i.test(vuBase),
+    'récolter et loger y sont nommés, pas noyés dans le catalogue');
+  ok(/Il manque \d+ \w+/i.test(vuBase),
+    'et un bâtiment hors de portée dit de quoi il manque');
+  ok(/TENIR SUR PLACE/i.test(vuBase),
+    'les bâtiments sont groupés par ce qu’ils font');
+  await page.screenshot({ path: join(CAPTURES, '07b-camp-neuf.png'), fullPage: true });
+  await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.click('[data-a="nouvelle"]');
+  await page.waitForSelector('#carte');
+  await page.waitForTimeout(600);
 }
 
 // Le point de situation : muet quand tout va bien, net quand ça presse.

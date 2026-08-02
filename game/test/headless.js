@@ -32,6 +32,7 @@ import {
 import {
   fonderBase, lancerConstruction, lancerRecherche, placesMetier, affectes,
   abriDe, capaciteStock, totalStock, energie, COUT_FONDATION, POP_RECONNUE,
+  populationMax, chaineAutonomie, manquePour, apportBatiment,
   peutReconnaitre, reconnaitreAvantPoste, peutRattacher, rattacherVille,
   declarerIndependance, synchroniserVitrine,
   manoeuvres, affecter, rendementMetier, mainDoeuvre,
@@ -4056,6 +4057,64 @@ section('9 quindecies. Le rapport d’absence');
   const sp = nouvellePartie(8585, { maintenant: 0 });
   avancer(sp, 300);
   ok(!sp.rapport, 'jouer aux commandes n’ouvre aucun rapport');
+}
+
+section('9 sexdecies. Un camp neuf dit ce qu’il lui manque');
+{
+  // Le reproche, mot pour mot : « pourquoi j'ai personne dans ma base, les
+  // constructions c'est bidon, y a rien pour récolter, y a rien pour de
+  // l'autonomie ». Les trois tiennent au même défaut : `populationMax` vaut
+  // zéro sans baraquement, la halle et l'hydroponie existent mais sont noyées
+  // dans douze bâtiments listés dans l'ordre du fichier de données, et un
+  // bouton grisé ne dit pas de quoi il manque.
+  const sb = nouvellePartie(1234, { maintenant: 0 });
+  const gb = groupeActif(sb);
+  const videB = sb.world.regions.find(
+    (r) => !sb.world.colonies.some((c) => c.regionId === r.i));
+  gb.regionId = videB.i;
+  for (const k of Object.keys(COUT_FONDATION)) {
+    gb.inventaire[k] = (gb.inventaire[k] || 0) + COUT_FONDATION[k];
+  }
+  fonderBase(sb, () => {}, gb);
+
+  ok(populationMax(sb.base) === 0,
+    'un camp neuf ne peut loger personne — c’est le fait, il faut le dire');
+  const ch = chaineAutonomie(sb);
+  ok(ch.length === 4, 'la chaîne de l’autonomie a quatre maillons',
+    ch.map((x) => x.titre).join(' → '));
+  ok(ch.every((x) => !x.fait), 'et aucun n’est en place au premier jour');
+  ok(ch.some((x) => x.key === 'halle') && ch.some((x) => x.key === 'hydroponie'),
+    'récolter et se nourrir y figurent nommément');
+  ok(ch.find((x) => x.key === 'baraquement').etat.includes('personne'),
+    'et l’on y lit pourquoi personne ne s’installe',
+    ch.find((x) => x.key === 'baraquement').etat);
+
+  const manque = manquePour(sb.base, 'baraquement');
+  ok(manque.length > 0 && manque.every((m) => m.qte > 0),
+    'ce qui manque pour bâtir est chiffré, pas seulement grisé',
+    manque.map((m) => `${m.qte} ${m.key}`).join(', '));
+  sb.base.stock.ferraille = 9999;
+  sb.base.stock.polymere = 9999;
+  ok(manquePour(sb.base, 'baraquement').length === 0,
+    'et il ne manque plus rien une fois les matériaux là');
+
+  ok(/9/.test(apportBatiment(sb.base, 'baraquement')),
+    'un bâtiment annonce ce qu’il change, en chiffres',
+    apportBatiment(sb.base, 'baraquement'));
+  ok(/hydroponie/i.test(apportBatiment(sb.base, 'halle')),
+    'et la halle dit à quoi elle sert dans la chaîne',
+    apportBatiment(sb.base, 'halle'));
+
+  // Une fois logé, quelqu'un finit par venir : le maillon manquant était bien
+  // celui-là, et non un dé qui ne tombe jamais.
+  lancerConstruction(sb, 'baraquement', () => {});
+  avancer(sb, 40);
+  ok(populationMax(sb.base) >= 9, 'le baraquement ouvre des places',
+    `${populationMax(sb.base)}`);
+  sb.base.stock.rations = 400;
+  avancer(sb, 900);
+  ok((sb.base.pop || 0) > 0, 'et des gens finissent par s’y installer',
+    `${sb.base.pop} habitant(s)`);
 }
 
 section('10. Rattrapage hors ligne');

@@ -277,6 +277,109 @@ export function coutBatiment(base, key) {
   return scale(b.cout, b.coutMul, niveau(base, key));
 }
 
+/**
+ * Ce qui manque pour bâtir, marchandise par marchandise.
+ *
+ * Le bouton était grisé et disait quand même « Construire niv. 1 » : on
+ * regardait douze bâtiments inaccessibles sans savoir lequel était à portée ni
+ * de quoi. Un refus qui ne dit pas ce qui manque n'apprend rien.
+ */
+export function manquePour(base, key) {
+  const cout = coutBatiment(base, key);
+  const out = [];
+  for (const k of Object.keys(cout)) {
+    const d = cout[k] - (base.stock[k] || 0);
+    if (d > 0) out.push({ key: k, qte: Math.ceil(d) });
+  }
+  return out;
+}
+
+/**
+ * Ce qu'un niveau de plus rapporte, en clair et en chiffres du moteur.
+ *
+ * La description d'un bâtiment dit ce qu'il est (« bacs, treuils, brouettes »),
+ * jamais ce qu'il change. Or c'est la seule question du joueur : est-ce que ça
+ * me nourrit, est-ce que ça me loge, est-ce que ça me fait récolter ? Les
+ * facteurs viennent des mêmes constantes que `tickBase` — si la production
+ * change, cette phrase change avec.
+ */
+export function apportBatiment(base, key) {
+  const n = niveau(base, key) + 1;
+  switch (key) {
+    case 'baraquement':
+      return `Loge 9 habitants de plus (${populationMax(base)} → ${populationMax(base) + 9}).`;
+    case 'hydroponie':
+      return `Transforme la biomasse en vivres, ~${(1.25 * n * 0.9).toFixed(1)} rations/h à plein régime, `
+        + 'et loge 4 personnes de plus.';
+    case 'halle':
+      return 'Ramasse la région toute seule, sans l’escouade et sans épuiser la case. '
+        + 'C’est ce qui alimente l’hydroponie.';
+    case 'generateur':
+      return `+${BUILDINGS.generateur.energie * n} d’énergie. Sans courant, les chaînes tournent au ralenti.`;
+    case 'entrepot':
+      return 'Plus de place. Ce qui ne rentre pas dans l’entrepôt est perdu pour de bon.';
+    case 'cantine':
+      return 'Jusqu’à un tiers de vivres en moins pour les mêmes bouches, et du moral.';
+    case 'fonderie': return 'Minerai → alliage, la première pièce de tout ce qui se fabrique.';
+    case 'raffinerie': return 'Polymère → carburant, ce que brûle le générateur.';
+    case 'atelier': return 'Alliage + polymère → composants, qu’on ne trouve presque nulle part.';
+    case 'infirmerie': return 'Soigne les vôtres au repos et fabrique des medkits.';
+    case 'antenne': return 'Ouvre la recherche, l’école maison, et voit plus loin.';
+    case 'mur': return `+${Math.round(22 * n)} de défense contre les raids.`;
+    case 'poste': return 'Prévenu à temps d’un raid, plutôt que réveillé par lui.';
+    default: return BUILDINGS[key].desc;
+  }
+}
+
+/**
+ * La chaîne de l'autonomie, étape par étape, avec où l'on en est.
+ *
+ * Un avant-poste tout neuf montre douze bâtiments dans l'ordre du fichier de
+ * données, et rien ne dit lesquels forment la boucle qui rend un camp vivable.
+ * On en concluait — à raison — qu'il n'y avait « rien pour récolter, rien pour
+ * l'autonomie », alors que les deux existent et sont juste noyés.
+ */
+export function chaineAutonomie(state) {
+  const base = state.base;
+  if (!base || !base.fonde) return [];
+  const bio = Math.floor(base.stock.biomasse || 0);
+  const rations = Math.floor(base.stock.rations || 0);
+  return [
+    {
+      key: 'halle',
+      titre: 'Ramasser',
+      fait: niveau(base, 'halle') > 0,
+      etat: niveau(base, 'halle') > 0
+        ? `halle niv. ${niveau(base, 'halle')} · ${bio} biomasse en réserve`
+        : 'le camp ne ramasse rien : tout doit être porté à dos d’homme',
+    },
+    {
+      key: 'hydroponie',
+      titre: 'Manger',
+      fait: niveau(base, 'hydroponie') > 0,
+      etat: niveau(base, 'hydroponie') > 0
+        ? `hydroponie niv. ${niveau(base, 'hydroponie')} · ${rations} rations en réserve`
+        : 'la biomasse ne devient pas de la nourriture',
+    },
+    {
+      key: 'baraquement',
+      titre: 'Loger',
+      fait: niveau(base, 'baraquement') > 0,
+      etat: populationMax(base) > 0
+        ? `${Math.round(base.pop || 0)} habitant(s) sur ${populationMax(base)} places`
+        : 'aucune place pour dormir : personne ne s’installera jamais',
+    },
+    {
+      key: 'generateur',
+      titre: 'Alimenter',
+      fait: niveau(base, 'generateur') > 0,
+      etat: niveau(base, 'generateur') > 0
+        ? `${Math.round(energie(base).prod)} produits pour ${Math.round(energie(base).conso)} consommés`
+        : 'sans courant, les chaînes tournent au ralenti (elles tournent quand même)',
+    },
+  ];
+}
+
 export function tempsBatiment(base, key) {
   const b = BUILDINGS[key];
   const brut = b.heures * Math.pow(b.tempsMul, niveau(base, key));
