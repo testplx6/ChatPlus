@@ -12776,6 +12776,8 @@ function tickContrats(state, log, ctx) {
       noterContrat(state, c, 'echu', {});
       state.stats.echusParType = state.stats.echusParType || {};
       state.stats.echusParType[c.type] = (state.stats.echusParType[c.type] || 0) + 1;
+      state.stats.echusParVille = state.stats.echusParVille || {};
+      state.stats.echusParVille[c.colonieId] = (state.stats.echusParVille[c.colonieId] || 0) + 1;
       log({
         type: 'contrat',
         texte: `Contrat échu : ${c.titre}. ${donneur ? `On s’en souvient à ${donneur.nom}` : 'On s’en souvient'}`

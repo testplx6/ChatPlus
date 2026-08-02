@@ -4281,9 +4281,32 @@ section('9 octodecies. Un contrat qu’on peut tenir, et dont il reste une trace
   // La sanction locale a des dents : trois manquements dans la même ville et
   // son chef ne vous confie plus rien. Sans ça, on aurait juste supprimé une
   // punition sans rien mettre à la place.
-  ok(Math.ceil(Math.abs(PANNEAU_FERME) / OPINION_ECHU) <= 4,
-    'trois ou quatre manquements dans la même ville ferment son panneau',
-    `${OPINION_ECHU} par échec, fermeture à ${PANNEAU_FERME}`);
+  // Le calcul dit trois manquements ; on le joue pour de bon, parce qu'un
+  // rapport de constantes n'est pas une preuve — l'opinion remonte entre-temps,
+  // et c'est justement ce qui décide si la sanction mord ou décore.
+  {
+    const sp = nouvellePartie(2024, { maintenant: 0 });
+    avancer(sp, 60);
+    const gp = groupeActif(sp);
+    const colP = sp.world.colonies.find((c) => (c.contrats || []).length);
+    gp.regionId = colP.regionId;
+    let manques = 0;
+    for (let i = 0; i < 4 && colP.contrats.length; i++) {
+      const r = accepter(sp, colP, colP.contrats[0].id, () => {}, gp);
+      if (!r.ok) break;
+      sp.player.contrats[sp.player.contrats.length - 1].echeance = sp.temps + 1;
+      avancer(sp, 3);
+      manques += 1;
+    }
+    ok(manques >= 3 && !faveurChef(colP).ouvert,
+      'trois manquements coup sur coup dans la même ville ferment son panneau',
+      `${manques} manquements, opinion ${Math.round(estime(colP, 'chef'))}`);
+    // Et il se rouvre : la sanction vise l'abus répété, pas le joueur qui rate.
+    avancer(sp, 600);
+    ok(estime(colP, 'chef') > -40,
+      'et il se rouvre quand on cesse : elle punit l’abus, pas la malchance',
+      `${Math.round(estime(colP, 'chef'))} après 25 jours`);
+  }
   ok(OPINION_RENDU < OPINION_ECHU,
     'et rendre un contrat à temps coûte moins cher que le laisser pourrir',
     `${OPINION_RENDU} contre ${OPINION_ECHU}`);

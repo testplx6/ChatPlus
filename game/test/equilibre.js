@@ -42,7 +42,9 @@ import {
   acheter, vendre, poidsInventaire, capacitePortage, acheterItem, prixItem, prixJoueur,
   prixUnitaire, cibleStock,
 } from '../src/economy.js';
-import { accepter, progres as progresContrat, MAX_CONTRATS } from '../src/contrats.js';
+import {
+  accepter, progres as progresContrat, MAX_CONTRATS, OPINION_ECHU,
+} from '../src/contrats.js';
 import {
   sEngager, peutSEngager, rangDe, RANGS, avancementOrdre, droitIntendance, toucherRations,
 } from '../src/allegeance.js';
@@ -92,7 +94,7 @@ const TRACE = {
   coutLot: {}, primeLot: {}, nLot: {}, bourse: 0, nBourse: 0,
   // Où va l'argent. Sans ce détail, « le bot est pauvre » ne dit rien de ce
   // qu'il faut corriger.
-  gagneVente: 0, retenu: 0, villesFin: [], echusParType: {}, contratsPris: 0, contratsEchus: 0, contratsRemplis: 0, gagneContrat: 0, payeVivres: 0, payeSoins: 0, payeMateriel: 0,
+  gagneVente: 0, retenu: 0, villesFin: [], echusParType: {}, echusParVille: new Map(), joursPanneau: 0, joursPanneauFerme: 0, contratsPris: 0, contratsEchus: 0, contratsRemplis: 0, gagneContrat: 0, payeVivres: 0, payeSoins: 0, payeMateriel: 0,
   // Ce que l'intendance donne : la voie du service se lit là.
   rationsTouchees: 0,
   betes: 0,
@@ -1852,6 +1854,15 @@ for (let n = 0; n < PARTIES; n++) {
     }
     const remplisAvant = state.stats.ordresRemplis || 0;
     tick(state);
+    // Un panneau fermé se rouvre : le compter en fin de partie ne mesure que
+    // l'oubli, pas la sanction. On échantillonne une fois par jour de jeu.
+    if (state.temps % 24 === 0) {
+      for (const c of state.world.colonies) {
+        if (c.ruine) continue;
+        TRACE.joursPanneau += 1;
+        if (!faveurChef(c).ouvert) TRACE.joursPanneauFerme += 1;
+      }
+    }
     let credit = (state.stats.ordresRemplis || 0) - remplisAvant;
     for (const gg of groupes(state)) {
       if (!gg.allegeance) continue;
@@ -1944,6 +1955,9 @@ for (let n = 0; n < PARTIES; n++) {
     }
     for (const k of Object.keys(state.stats.echusParType || {})) {
       TRACE.echusParType[k] = (TRACE.echusParType[k] || 0) + state.stats.echusParType[k];
+    }
+    for (const k of Object.keys(state.stats.echusParVille || {})) {
+      TRACE.echusParVille.set(`${state.seed}:${k}`, state.stats.echusParVille[k]);
     }
     TRACE.mepris += pudiques.reduce(
       (a, k) => a + (state.player.reputation[k] || 0), 0) / Math.max(1, pudiques.length);
@@ -2092,6 +2106,10 @@ console.log(`Argent : +${Math.round(TRACE.gagneVente / PARTIES)} de ventes · `
     pire = Math.min(pire, col.opinion);
   }
   const tot = Math.max(1, fermes + ouverts);
+  // Compté en fin de partie, ce chiffre ne mesure que l'oubli : un panneau
+  // fermé se rouvre en une dizaine de jours. Le vrai instrument est la ligne
+  // suivante, échantillonnée chaque jour. On garde les deux : leur écart est
+  // précisément ce qu'on avait pris pour une absence de sanction.
   console.log(`Panneaux d'affichage en fin de partie : ${fermes} fermés sur ${tot}`
     + ` (${Math.round(100 * fermes / tot)} %) — chef le plus fâché : ${Math.round(pire)}`);
   // Sans savoir combien de contrats le bot rate, le chiffre du dessus ne prouve
@@ -2104,6 +2122,17 @@ console.log(`Argent : +${Math.round(TRACE.gagneVente / PARTIES)} de ventes · `
     (a, b) => TRACE.echusParType[b] - TRACE.echusParType[a]);
   console.log(`  échus par type : ${parType.map(
     (k) => `${k} ${(TRACE.echusParType[k] / PARTIES).toFixed(1)}`).join(' · ') || 'aucun'}`);
+  // 80 % d'échec et zéro panneau fermé : l'un des deux chiffres ment. Ou les
+  // manquements se dispersent entre villes, ou la sanction s'efface plus vite
+  // qu'on ne la reçoit. On regarde les deux.
+  const parVille = [...TRACE.echusParVille.values()].sort((a, b) => b - a);
+  console.log(`  panneaux fermés au fil du temps : ${
+    (100 * TRACE.joursPanneauFerme / Math.max(1, TRACE.joursPanneau)).toFixed(2)
+  } % des jours-ville — mesuré chaque jour, pas seulement à la fin`);
+  console.log(`  manquements dans la même ville : pire ${parVille[0] || 0}`
+    + ` · médiane ${parVille[Math.floor(parVille.length / 2)] || 0}`
+    + ` · villes touchées ${parVille.length}`
+    + ` · il en faut ${Math.ceil(40 / OPINION_ECHU)} pour fermer un panneau`);
 }
 console.log(`Retenue des régimes : ${Math.round(TRACE.retenu / PARTIES)} cr par partie`
   + ` — ${(100 * TRACE.retenu / Math.max(1, TRACE.gagneVente + TRACE.retenu)).toFixed(1)} %`
