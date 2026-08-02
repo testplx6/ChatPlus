@@ -38,6 +38,9 @@ import {
   manoeuvres, affecter, rendementMetier, mainDoeuvre,
 } from '../src/base.js';
 import { METIER_KEYS, BIOMES, BUILDINGS, POSTURES } from '../src/data.js';
+import {
+  accepter, progres as progresContrat, OPINION_ECHU, OPINION_RENDU,
+} from '../src/contrats.js';
 import { genererBanc, primeDe, tensionRecrutement, engager } from '../src/recrues.js';
 import {
   capturables, fairePrisonniers, prisonniersDe, capaciteGarde, disposer,
@@ -4222,6 +4225,68 @@ section('9 septdecies. Une destination porte toujours sa case');
   ok(livraisons.length === 0 || livraisons.every((t) => /\([A-Z]\d+\)/.test(t)),
     'un contrat de livraison nomme la case de sa destination',
     livraisons.slice(0, 2).join(' | ') || 'aucun contrat de livraison tiré');
+}
+
+section('9 octodecies. Un contrat qu’on peut tenir, et dont il reste une trace');
+{
+  // Signalé en jouant : « destination atteinte » à midi, « contrat échu » à
+  // treize heures. Un relevé se rend au panneau qui l'a affiché, mais la durée
+  // ne payait que l'aller — le contrat était impossible par construction, et
+  // l'écran annonçait pourtant « l'échéance le permet ».
+  const sk = nouvellePartie(9182, { maintenant: 0 });
+  avancer(sk, 40);
+  const recos = sk.world.colonies.flatMap(
+    (c) => (c.contrats || []).filter((x) => x.type === 'reconnaissance')
+      .map((x) => ({ col: c, x })));
+  ok(recos.length > 0, 'des contrats de reconnaissance sont affichés', `${recos.length}`);
+  const impossibles = recos.filter(({ col, x }) => {
+    const aller = distance(col.regionId, x.regionId);
+    // Deux fois l'aller au tarif le plus favorable du tirage : en deçà, aucune
+    // escouade ne peut aller et revenir.
+    return x.duree < aller * 2 * 16;
+  });
+  ok(impossibles.length === 0,
+    'aucun ne demande plus que le temps qu’il accorde, retour compris',
+    impossibles.slice(0, 2).map(({ x }) => `${x.titre} : ${x.duree} h`).join(' | '));
+
+  // Le dossier : ce qu'on a signé et comment ça s'est terminé.
+  const gk = groupeActif(sk);
+  const colK = sk.world.colonies.find((c) => (c.contrats || []).length);
+  gk.regionId = colK.regionId;
+  const ct = colK.contrats[0];
+  accepter(sk, colK, ct.id, () => {}, gk);
+  ok(sk.player.contrats.length === 1, 'un contrat est pris');
+  // On le laisse expirer.
+  sk.player.contrats[0].echeance = sk.temps + 1;
+  const repAvantK = sk.player.reputation[ct.faction] || 0;
+  const opinionChefAvant = estime(colK, 'chef');
+  avancer(sk, 4);
+  ok(sk.player.contrats.length === 0, 'et il finit par échoir');
+  ok((sk.player.dossier || []).length === 1,
+    'le dossier en garde la trace', JSON.stringify(sk.player.dossier));
+  const trace = sk.player.dossier[0];
+  ok(trace.issue === 'echu', 'avec son issue', trace.issue);
+  // Rater ne coûte plus d'estime : ce serait rendre l'inaction meilleure que
+  // l'effort. Ce qu'on perd, c'est la considération du chef qui a affiché
+  // l'offre — local, réparable, et ça ferme son panneau si l'on recommence.
+  ok(Math.abs(sk.player.reputation[ct.faction] - repAvantK) < 0.5,
+    'rater un contrat ne coûte pas d’estime : essayer doit rester meilleur que s’abstenir',
+    `${repAvantK} → ${sk.player.reputation[ct.faction]}`);
+  ok(estime(colK, 'chef') < opinionChefAvant,
+    'mais le chef qui l’avait affiché s’en souvient',
+    `${opinionChefAvant} → ${estime(colK, 'chef')}`);
+  ok(sk.player.bilanContrats.echus === 1,
+    'les totaux suivent, pour quand le détail sera tombé du dossier');
+
+  // La sanction locale a des dents : trois manquements dans la même ville et
+  // son chef ne vous confie plus rien. Sans ça, on aurait juste supprimé une
+  // punition sans rien mettre à la place.
+  ok(Math.ceil(Math.abs(PANNEAU_FERME) / OPINION_ECHU) <= 4,
+    'trois ou quatre manquements dans la même ville ferment son panneau',
+    `${OPINION_ECHU} par échec, fermeture à ${PANNEAU_FERME}`);
+  ok(OPINION_RENDU < OPINION_ECHU,
+    'et rendre un contrat à temps coûte moins cher que le laisser pourrir',
+    `${OPINION_RENDU} contre ${OPINION_ECHU}`);
 }
 
 section('10. Rattrapage hors ligne');

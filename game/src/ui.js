@@ -1014,7 +1014,7 @@ function blocRegionCourante() {
     // sort du bois. C'est l'information la plus utile de tout le panneau, et
     // elle n'était visible qu'en ville.
     const ef = effetsEstime(S, r.controle);
-    const cls = ef.rep <= -20 ? 'mal' : ef.rep >= 25 ? 'ok' : 'att';
+    const cls = couleurEstime(ef.rep);
     return `<div class="ligne"><span class="k">Ils vous voient</span>
         <span class="v"><span class="puce ${cls}">${ef.rep > 0 ? '+' : ''}${n(ef.rep)}
           ${e(ef.palier.nom.toLowerCase())}</span></span></div>
@@ -1048,7 +1048,7 @@ function blocColonie(col) {
   if (!col || col.ruine) return '';
   const libre = !FACTIONS[col.faction];
   const repu = libre ? 0 : (S.player.reputation[col.faction] || 0);
-  const cls = repu > 20 ? 'ok' : repu < -20 ? 'mal' : 'att';
+  const cls = couleurEstime(repu);
   return `
   <section class="panneau">
     <h2 class="titre">${e(col.nom)}
@@ -1092,6 +1092,22 @@ function blocColonie(col) {
  * ce qu'on venait de perdre. Replié par défaut : c'est une explication, pas une
  * alarme. Sauf quand on est en territoire hostile, où c'en est une.
  */
+/**
+ * La couleur d'une estime, tirée de son palier et non de seuils recopiés.
+ *
+ * Cinq endroits coloraient le même chiffre, avec trois bornes différentes :
+ * vert au-dessus de 20 ici, de 25 là, rouge sous −20 partout sauf à un endroit
+ * où c'était sous 0. Le joueur voyait donc « +22 » en vert sur un écran et en
+ * ambre sur l'autre, pour la même faction, à la même seconde. Les paliers
+ * existent, ils portent déjà ces bornes : on les relit.
+ */
+function couleurEstime(rep) {
+  const p = palierEstime(rep);
+  if (p.seuil <= -20) return 'mal';
+  if (p.seuil >= 25) return 'ok';
+  return 'att';
+}
+
 function blocEstime(col) {
   const ef = effetsEstime(S, col.faction);
   const grave = ef.rep < 0;
@@ -1100,7 +1116,7 @@ function blocEstime(col) {
   return `<details data-id="${cle}" ${ouverts.has(cle) || grave ? 'open' : ''}>
     <summary class="ligne souple">
       <span class="k">Ce que votre estime change ici</span>
-      <span class="v"><span class="puce ${grave ? 'mal' : ef.rep >= 25 ? 'ok' : 'att'}">${e(ef.palier.nom)}</span></span>
+      <span class="v"><span class="puce ${couleurEstime(ef.rep)}">${e(ef.palier.nom)}</span></span>
     </summary>
     ${ef.perdu.length
     ? `<div class="aide alerte">Ce que ça vous coûte :</div>${ef.perdu.map(ligne).join('')}`
@@ -2381,10 +2397,19 @@ function blocCibleContrat(c, reste) {
   if (d === 0) {
     return `<div class="aide cyan">Vous y êtes : ${e(lieuAvecCoord(S.world, cible.regionId))}.</div>`;
   }
-  const heures = apercuEscouade(S, g).heuresParRegion * d;
+  // Aller, et revenir quand il faut rendre le travail ailleurs. L'estimation ne
+  // comptait que l'aller : elle annonçait « l'échéance le permet » sur un
+  // contrat de reconnaissance qu'aucune escouade ne pouvait honorer, puisqu'il
+  // se rend au panneau qui l'a affiché.
+  const allure = apercuEscouade(S, g).heuresParRegion;
+  const donneur = colonieParId(S.world, c.colonieId);
+  const retour = c.type === 'livraison' || !donneur
+    ? 0 : distance(cible.regionId, donneur.regionId) * allure;
+  const heures = allure * d + retour;
   const tient = heures <= Math.max(0, reste);
   return `<div class="aide">${e(cible.quoi)} : ${e(lieuAvecCoord(S.world, cible.regionId))},
-    à ${d} région${d > 1 ? 's' : ''} — ${Number.isFinite(heures) ? dureeTexte(Math.round(heures)) : '?'} de marche.
+    à ${d} région${d > 1 ? 's' : ''} — ${Number.isFinite(heures) ? dureeTexte(Math.round(heures)) : '?'}
+    ${retour > 0 ? 'aller-retour, le relevé se rend au panneau' : 'de marche'}.
     <span class="${tient ? 'cyan' : 'alerte'}">${tient
   ? 'le délai le permet' : 'le délai ne le permet pas'}</span></div>`;
 }
@@ -2564,6 +2589,57 @@ function blocAllegeance() {
   </section>`;
 }
 
+/**
+ * Le dossier des contrats : ce qu'on a signé, et comment ça s'est terminé.
+ *
+ * Les ordres d'une faction avaient leur feuille de service depuis longtemps ;
+ * le panneau d'affichage n'avait rien. Un contrat échouait, l'estime baissait
+ * de six, et il n'en restait qu'une ligne de journal qu'un millier d'autres
+ * effacent. Impossible de savoir combien on en avait manqué, ni ce que ça avait
+ * coûté — alors que c'est précisément la question qu'on se pose en voyant son
+ * estime descendre.
+ */
+function blocDossierContrats() {
+  const dossier = (S.player.dossier || []).slice().reverse();
+  const b = S.player.bilanContrats;
+  if (!dossier.length && !b) return '';
+  const mot = {
+    honore: ['ok', 'honoré'],
+    echu: ['mal', 'échu'],
+    abandonne: ['mal', 'abandonné'],
+    caduc: ['att', 'caduc'],
+  };
+  const lignes = dossier.map((f) => {
+    const [cls, txt] = mot[f.issue] || ['att', f.issue];
+    const bilan = [
+      f.cr ? `${f.cr > 0 ? '+' : ''}${n(f.cr)} cr` : '',
+      f.rep ? `${f.rep > 0 ? '+' : ''}${n(f.rep)} d’estime` : '',
+    ].filter(Boolean).join(' · ');
+    return `<div class="ligne souple">
+      <span class="k">${e(f.titre)}<br>
+        <span class="aide">${dureeTexte(Math.max(0, S.temps - f.t))} plus tôt${f.faction
+  && FACTIONS[f.faction] ? ` · ${e(FACTIONS[f.faction].nom)}` : ''}</span></span>
+      <span class="v"><span class="puce ${cls}">${txt}</span>${bilan
+    ? `<br><span class="aide ${f.rep < 0 ? 'alerte' : ''}">${bilan}</span>` : ''}</span></div>`;
+  }).join('');
+  const total = b
+    ? [
+      `${b.honores} honoré${b.honores > 1 ? 's' : ''}`,
+      `${b.echus} échu${b.echus > 1 ? 's' : ''}`,
+      b.caducs ? `${b.caducs} caduc${b.caducs > 1 ? 's' : ''}` : '',
+    ].filter(Boolean).join(' · ')
+    : '';
+  const cumul = b && (b.cr || b.rep)
+    ? [b.cr ? `${b.cr > 0 ? '+' : ''}${n(b.cr)} cr` : '',
+      b.rep ? `${b.rep > 0 ? '+' : ''}${n(b.rep)} d’estime` : ''].filter(Boolean).join(' · ')
+    : '';
+  return `<section class="panneau">
+    <h2 class="titre">Dossier des contrats <span class="droite">${e(total)}</span></h2>
+    ${cumul ? `<div class="aide">Au total : ${e(cumul)}.</div>` : ''}
+    ${lignes || '<div class="aide">Rien encore.</div>'}
+  </section>`;
+}
+
 function ecranContrats() {
   const enCours = S.player.contrats;
   const col = colonieDe(S.world, G().regionId);
@@ -2571,6 +2647,7 @@ function ecranContrats() {
 
   return `
   ${blocAllegeance()}
+  ${blocDossierContrats()}
   <section class="panneau">
     <h2 class="titre">En cours <span class="droite">${enCours.length} / ${MAX_CONTRATS}</span></h2>
     ${enCours.length
@@ -2625,7 +2702,7 @@ function blocOuVousEnEtes() {
     .sort((a, b) => b.ef.rep - a.ef.rep);
   if (!rangs.length) return '';
   const lignes = rangs.map(({ k, ef }) => {
-    const cls = ef.rep <= -20 ? 'mal' : ef.rep >= 25 ? 'ok' : 'att';
+    const cls = couleurEstime(ef.rep);
     // Ce qui compte le plus à ce niveau-ci : ce qu'on subit d'abord s'il y a
     // quelque chose à subir, ce qu'on a gagné sinon.
     const quoi = ef.perdu[0] || ef.acquis[ef.acquis.length - 1]
@@ -2654,7 +2731,7 @@ function ecranMonde() {
 
   const factionsHtml = cl.map((f) => {
     const repu = S.player.reputation[f.key] || 0;
-    const cls = repu > 20 ? 'ok' : repu < -20 ? 'mal' : 'att';
+    const cls = couleurEstime(repu);
     // Un nombre nu ne dit rien : « rép 0 » ne se lit que si l'on sait déjà ce
     // que zéro vaut. On accole le palier, qui est un mot.
     const palier = palierEstime(repu);
@@ -3378,7 +3455,11 @@ function acquisHtml(col) {
   const lignes = [];
   const chef = faveurChef(col);
   if (!chef.ouvert) lignes.push('Le chef vous a fermé son panneau d’affichage.');
-  else if (chef.prime !== 1) lignes.push('Le chef vous garde les contrats qui paient (+20 %).');
+  else if (chef.prime !== 1) {
+    // Le taux vient de `faveurChef`, il n'est pas réécrit ici : c'était « +20 % »
+    // en dur à côté d'un `prime: 1.2` qui peut bouger sans que la phrase suive.
+    lignes.push(`Le chef vous garde les contrats qui paient (+${Math.round((chef.prime - 1) * 100)} %).`);
+  }
   const med = (col.notables || []).find((p) => p.charge === 'medecin');
   if (med && (med.opinion || 0) >= SOINS_SEUIL) lignes.push('Le médecin passe voir vos blessés quand vous campez ici.');
   const cm = (col.notables || []).find((p) => p.charge === 'contremaitre');

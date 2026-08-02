@@ -9,6 +9,7 @@ import { COMMODITIES, COMMODITY_KEYS, FACTIONS, DIPLO_FACTIONS } from './data.js
 import { colonieParId, distance, nomRegion, coordonnee } from './world.js';
 import { idDepuisRng } from './characters.js';
 import { crediter, estAuService } from './allegeance.js';
+import { retenirEnVille } from './services.js';
 import { groupes, groupeActif } from './groupes.js';
 import { faveurChef } from './services.js';
 
@@ -108,7 +109,13 @@ function contratReconnaissance(rng, state, col, t) {
     regionId: r.i,
     recompense: Math.round((70 + d * 45) * rng.range(0.9, 1.3)),
     reputation: rng.irange(2, 6),
-    duree: Math.round(d * rng.range(16, 28)),
+    // Aller **et** revenir : un relevé se rend au panneau qui l'a affiché, et
+    // la durée ne payait que l'aller. Une escouade arrivée sur la case à midi
+    // voyait donc le contrat échoir à treize heures, à trois régions de la ville
+    // où le rendre — impossible par construction, et signalé en jeu comme tel.
+    // Les autres types n'ont pas ce défaut : la livraison se valide sur place,
+    // la collecte et la prime ont une durée forfaitaire large.
+    duree: Math.round(d * 2 * rng.range(16, 28)),
     titre: `Reconnaître le secteur ${String.fromCharCode(65 + r.x)}${r.y + 1}`,
   };
 }
@@ -203,13 +210,25 @@ export function abandonner(state, id, log) {
   if (i < 0) return { ok: false, motif: 'Contrat introuvable.' };
   const c = state.player.contrats[i];
   state.player.contrats.splice(i, 1);
+  const repAvant = state.player.reputation[c.faction] || 0;
+  const col = colonieParId(state.world, c.colonieId);
   if (c.type === 'livraison' && c.charge) {
-    // On garde la marchandise : ça s'appelle du vol, et ça se paie.
-    state.player.reputation[c.faction] = Math.max(-100, (state.player.reputation[c.faction] || 0) - 12);
+    // Garder la marchandise, ça s'appelle du vol : là, l'estime paie. C'est la
+    // distinction qui tient tout le reste — on ne juge pas un homme sur un délai
+    // manqué, on le juge sur ce qu'il a pris.
+    state.player.reputation[c.faction] = Math.max(-100, repAvant - 12);
   } else {
-    state.player.reputation[c.faction] = Math.max(-100, (state.player.reputation[c.faction] || 0) - 4);
+    // Rendre le contrat avant l'échéance est la sortie honorable : elle coûte
+    // moins cher que de le laisser pourrir, et rien du tout en estime.
+    retenirEnVille(col, 'contrat rendu', state.temps, -OPINION_RENDU);
   }
-  log({ type: 'contrat', texte: `Contrat abandonné : ${c.titre}.`, important: true });
+  const perduAb = (state.player.reputation[c.faction] || 0) - repAvant;
+  noterContrat(state, c, 'abandonne', { rep: perduAb });
+  log({
+    type: 'contrat',
+    texte: `Contrat rendu : ${c.titre}.${perduAb ? ` Estime ${Math.round(perduAb)} — vous gardiez la marchandise.` : ''}`,
+    important: true,
+  });
   return { ok: true };
 }
 
@@ -274,7 +293,51 @@ export function compterVictoire(state, factionBande) {
   }
 }
 
+/**
+ * Le dossier des contrats : ce qu'on a signé, et comment ça s'est terminé.
+ *
+ * Les ordres d'une faction avaient leur feuille de service ; le panneau
+ * d'affichage n'avait rien. Un contrat échouait, la réputation baissait, et il
+ * n'en restait qu'une ligne de journal que quatre cents entrées effacent. On ne
+ * pouvait ni savoir combien on en avait manqué, ni ce que ça avait coûté.
+ *
+ * Quatorze, comme la feuille de service : au-delà on garde les totaux.
+ */
+export const DOSSIER_MAX = 14;
+
+/**
+ * Ce qu'un chef retient d'une parole non tenue, et d'une parole rendue à temps.
+ *
+ * Rendre doit rester strictement meilleur que laisser pourrir, sinon on
+ * n'annule jamais rien et l'on encombre ses cinq places de contrats morts.
+ */
+export const OPINION_ECHU = 14;
+export const OPINION_RENDU = 5;
+
+export function noterContrat(state, c, issue, bilan) {
+  if (!state.player.dossier) state.player.dossier = [];
+  state.player.dossier.push({
+    t: state.temps,
+    titre: c.titre,
+    type: c.type,
+    faction: c.faction,
+    issue,
+    cr: (bilan && bilan.cr) || 0,
+    rep: (bilan && bilan.rep) || 0,
+  });
+  if (state.player.dossier.length > DOSSIER_MAX) state.player.dossier.shift();
+  const b = state.player.bilanContrats || { honores: 0, echus: 0, caducs: 0, cr: 0, rep: 0 };
+  if (issue === 'honore') b.honores += 1;
+  else if (issue === 'echu') b.echus += 1;
+  else b.caducs += 1;
+  b.cr += (bilan && bilan.cr) || 0;
+  b.rep += (bilan && bilan.rep) || 0;
+  state.player.bilanContrats = b;
+}
+
 function recompenser(state, c, log) {
+  const crAvant = state.player.credits;
+  const repAvant = state.player.reputation[c.faction] || 0;
   state.player.credits += c.recompense;
   // Un contrat rempli pour les siens compte double : il paie et il fait monter.
   if (estAuService(state, c.faction)) {
@@ -282,6 +345,10 @@ function recompenser(state, c, log) {
   }
   state.player.reputation[c.faction] = Math.min(100, (state.player.reputation[c.faction] || 0) + c.reputation);
   state.stats.contratsRemplis = (state.stats.contratsRemplis || 0) + 1;
+  noterContrat(state, c, 'honore', {
+    cr: state.player.credits - crAvant,
+    rep: (state.player.reputation[c.faction] || 0) - repAvant,
+  });
   log({
     type: 'contrat',
     texte: `Contrat rempli : ${c.titre}. ${c.recompense} cr, réputation +${c.reputation}.`,
@@ -329,16 +396,38 @@ export function tickContrats(state, log, ctx) {
         return !d || d.ruine;
       })());
     if (mort) {
+      noterContrat(state, c, 'caduc');
       log({ type: 'contrat', texte: `Contrat caduc : ${c.titre}. La ville n’existe plus.`, important: true });
       continue;
     }
 
     // Échéance dépassée
     if (state.temps > c.echeance) {
-      state.player.reputation[c.faction] = Math.max(-100, (state.player.reputation[c.faction] || 0) - 6);
+      // Rater ne coûte plus d'estime, et c'est un choix de conception, pas un
+      // adoucissement.
+      //
+      // Une faction jugeait tout son rapport à vous sur un délai manqué : −6
+      // d'estime par contrat échu, c'est-à-dire la moitié de ce qu'on gagne à
+      // en réussir un. Or on ne peut jamais être certain de tenir un délai — une
+      // embuscade, un blessé, une ville tombée en route — donc **ne rien signer
+      // devenait strictement meilleur que d'essayer**. Un panneau d'affichage
+      // qu'on a intérêt à ignorer n'est pas un contenu, c'est un piège.
+      //
+      // Ce qu'on perd désormais, c'est la considération du chef qui avait
+      // affiché l'offre. C'est local, ça se répare, et ça a des dents : sous
+      // PANNEAU_FERME il ne vous confie plus rien, et au-dessus de
+      // PANNEAU_OUVERT il vous gardait les contrats qui paient. On répond de sa
+      // parole devant celui à qui on l'a donnée.
+      //
+      // L'estime, elle, reste pour ce qui la mérite : voler la marchandise d'une
+      // livraison, piller leurs caravanes, vendre des hommes.
+      retenirEnVille(colonieParId(state.world, c.colonieId), 'contrat manqué',
+        state.temps, -OPINION_ECHU);
+      noterContrat(state, c, 'echu', {});
       log({
         type: 'contrat',
-        texte: `Contrat échu : ${c.titre}. Réputation entamée.`,
+        texte: `Contrat échu : ${c.titre}. ${donneur ? `On s’en souvient à ${donneur.nom}` : 'On s’en souvient'}`
+          + ' — le chef vous confiera moins.',
         important: true,
       });
       continue;

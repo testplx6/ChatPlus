@@ -575,6 +575,35 @@ await page.waitForTimeout(300);
   await page.waitForTimeout(200);
 }
 
+// Le dossier des contrats : on doit pouvoir relire ce qu'on a signé.
+{
+  const avecDossier = serialiser((() => {
+    const t = partieAvancee();
+    t.player.dossier = [
+      { t: 10, titre: 'Reconnaître le secteur W5', type: 'reconnaissance',
+        faction: 'libres', issue: 'echu', cr: 0, rep: 0 },
+      { t: 200, titre: 'Porter 12 medkit à Cité-Vesper (D4)', type: 'livraison',
+        faction: 'libres', issue: 'honore', cr: 640, rep: 6 },
+    ];
+    t.player.bilanContrats = { honores: 1, echus: 1, caducs: 0, cr: 640, rep: 6 };
+    return t;
+  })());
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), avecDossier);
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.click('[data-a="onglet"][data-k="contrats"]');
+  await page.waitForTimeout(400);
+  const vuD = await page.locator('#ecran').innerText();
+  ok(/DOSSIER DES CONTRATS/i.test(vuD),
+    'les contrats passés ont leur dossier, comme les ordres ont leur feuille',
+    vuD.slice(0, 200).replace(/\n+/g, ' | '));
+  ok(/honoré/i.test(vuD) && /échu/i.test(vuD),
+    'avec l’issue de chacun');
+  ok(/640 cr/.test(vuD), 'et ce que chacun a rapporté');
+  await page.screenshot({ path: join(CAPTURES, '11b-dossier.png'), fullPage: true });
+}
+
 // Un ordre de mission doit dire où aller : sans coordonnées, il est injouable.
 {
   const avecOrdre = serialiser((() => {
@@ -916,6 +945,11 @@ const adversaire = Object.keys(carriere.world.factions).find(
 // Un voisin esclavagiste : de quoi vérifier que l'écran du monde le signale, et
 // qu'il annonce combien de factions ne le supportent pas.
 loisDe(carriere.world, adversaire).esclavage = true;
+// Une estime posée entre 21 et 24, exprès : c'est la fenêtre où les anciennes
+// règles de couleur se contredisaient (vert au-dessus de 20 sur un panneau, au
+// -dessus de 25 sur l'autre). Sans une valeur dans cet intervalle, la garde
+// tourne sur des zéros et ne prouve rien — vérifié en réintroduisant le bug.
+carriere.player.reputation[adversaire] = 22;
 if (!carriere.world.guerres.some((w) => w.a === villeCar.faction || w.b === villeCar.faction)) {
   carriere.world.guerres.push({
     a: villeCar.faction, b: adversaire, depuis: 0, batailles: 1,
@@ -1019,6 +1053,30 @@ ok(ouEstLEngagement.colonne && ouEstLEngagement.joueur,
 // choix informé plutôt qu'un tirage entre six drapeaux de couleurs.
 await page.click('[data-a="onglet"][data-k="monde"]');
 await page.waitForTimeout(400);
+// Le même chiffre, la même couleur, partout. Cinq endroits coloraient l'estime
+// avec trois bornes différentes : « +22 » était vert sur un panneau et ambre sur
+// l'autre, pour la même faction, à la même seconde.
+{
+  const desaccords = await page.evaluate(() => {
+    const vus = new Map();
+    const mauvais = [];
+    for (const p of document.querySelectorAll('#ecran .puce')) {
+      const t = (p.innerText || '').trim();
+      const m = t.match(/^([+-]?\d+)\s/);
+      if (!m) continue;
+      const cls = [...p.classList].filter((c) => c !== 'puce').sort().join(' ');
+      const clef = m[1];
+      if (vus.has(clef) && vus.get(clef) !== cls) {
+        mauvais.push(`${t} → ${vus.get(clef)} puis ${cls}`);
+      } else vus.set(clef, cls);
+    }
+    return mauvais;
+  });
+  ok(desaccords.length === 0,
+    'une même estime porte la même couleur d’un panneau à l’autre',
+    desaccords.slice(0, 3).join(' | '));
+}
+
 const texteLois = await page.evaluate(() => document.querySelector('#ecran').textContent);
 ok(/Chez eux : (franchise|charte|commune|domaine),\s+impôt/.test(texteLois),
   'l’écran du monde dit comment chacun gouverne, régime compris');
