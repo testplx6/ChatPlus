@@ -38,7 +38,9 @@ import {
 import {
   progres as progresContrat, lieuValidation, accepter, abandonner, peutRendre, MAX_CONTRATS,
 } from './contrats.js';
-import { horloge, VITESSES } from './sim.js';
+import {
+  horloge, VITESSES, DEPARTS, DEPART_KEYS, DEPART_DEFAUT,
+} from './sim.js';
 import { lireRapport } from './rapport.js';
 import { conditions, SAISONS, METEO } from './climat.js';
 import {
@@ -3699,7 +3701,18 @@ function modaleRecrutement() {
 // Accueil
 // ---------------------------------------------------------------------------
 
+/**
+ * Le départ choisi à l'accueil. Hors de l'état de jeu : c'est une préférence
+ * d'écran, pas une donnée de partie — une fois lancée, la partie n'a plus à
+ * savoir de quel scénario elle vient.
+ */
+let departChoisi = DEPART_DEFAUT;
+let derniereSauvegarde = false;
+let dernierePerimee = false;
+
 export function rendreAccueil(aSauvegarde, perimee = false) {
+  derniereSauvegarde = aSauvegarde;
+  dernierePerimee = perimee;
   $('#barre-haut').innerHTML = '';
   $('#barre-nav').innerHTML = '';
   $('#ecran').innerHTML = `
@@ -3724,6 +3737,16 @@ export function rendreAccueil(aSauvegarde, perimee = false) {
     </div>` : ''}
     <div class="panneau">
       <div class="titre">Nouvelle partie</div>
+      <div class="aide">Par où l’on commence. Ce n’est pas un niveau de difficulté :
+        c’est une situation, et chacune se joue autrement.</div>
+      <div style="height:6px"></div>
+      ${DEPART_KEYS.map((k) => `<button class="act depart" data-a="choisir-depart" data-k="${k}"
+        aria-pressed="${departChoisi === k}">
+        <span class="depart-n">${e(DEPARTS[k].nom)}</span>
+        <span class="aide">${e(DEPARTS[k].resume)}</span>
+      </button>`).join('')}
+      <div class="aide" style="margin-top:6px">${e(DEPARTS[departChoisi].detail)}</div>
+      <div class="sep"></div>
       <label class="aide" for="graine">Graine (facultatif — même graine, même monde)</label>
       <input id="graine" type="text" inputmode="text" placeholder="au hasard" autocomplete="off">
       <div style="height:8px"></div>
@@ -4228,9 +4251,21 @@ function surClic(ev) {
       break;
     }
 
+    case 'choisir-depart': {
+      departChoisi = el.dataset.k;
+      // On garde la graine déjà tapée : changer d'avis sur le scénario ne doit
+      // pas effacer le monde qu'on avait choisi.
+      const champ = document.getElementById('graine');
+      const graine = champ ? champ.value : '';
+      rendreAccueil(derniereSauvegarde, dernierePerimee);
+      const apres = document.getElementById('graine');
+      if (apres) apres.value = graine;
+      break;
+    }
+
     case 'nouvelle': {
       const champ = document.getElementById('graine');
-      ACTIONS.nouvelle(champ ? champ.value.trim() : '');
+      ACTIONS.nouvelle(champ ? champ.value.trim() : '', departChoisi);
       break;
     }
 

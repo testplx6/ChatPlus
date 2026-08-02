@@ -553,6 +553,13 @@ button.act.ordre {
 .o-r { font-size: 10px; color: var(--texte-3); font-variant-numeric: tabular-nums; }
 button.act.ordre[aria-pressed="true"] .o-r { color: var(--cyan); }
 
+/* Les scénarios de départ : un bouton par situation, texte à gauche, aligné,
+   parce qu'on les compare en les lisant l'un sous l'autre. */
+.act.depart { display: block; width: 100%; text-align: left; margin-bottom: 5px; }
+.act.depart[aria-pressed="true"] { border-color: var(--cyan); }
+.act.depart .depart-n { display: block; font-size: 13px; color: var(--texte); }
+.act.depart[aria-pressed="true"] .depart-n { color: var(--cyan); }
+
 .alerte { color: var(--rouge); }
 /* Ni une alerte ni une information neutre : ce qui coûte quelque chose sans
    être une faute — une retenue, un délai, un péage. */

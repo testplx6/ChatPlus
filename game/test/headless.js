@@ -3,7 +3,7 @@
 
 import {
   nouvellePartie, avancer, tick, rattraper, rattrapageEtale,
-  TICK_MS, RATTRAPAGE_MAX,
+  TICK_MS, RATTRAPAGE_MAX, DEPARTS, DEPART_KEYS,
 } from '../src/sim.js';
 import { Rng } from '../src/rng.js';
 import { mesurerTick, CHAUFFE, MESURE } from './perf.js';
@@ -4578,6 +4578,41 @@ section('9 unvicies. On se réveille dans la poussière');
   ok(!!hote2 && peutSEngager(sv2, hote2).ok,
     'et le départ en ville, lui, ouvre le service chez ses hôtes quel que soit leur drapeau',
     hote2 ? `${hote2} : ${sv2.player.reputation[hote2]} pour ${estimeEngagement(hote2)} exigés` : 'aucun');
+}
+
+section('9 duovicies. Chaque départ installe ce qu’il annonce');
+{
+  // Quatre situations, et pas quatre niveaux de difficulté. Ce qui compte, c'est
+  // que la fiche affichée à l'accueil dise vrai : un joueur choisit sur ces
+  // lignes-là, et une promesse fausse est pire qu'un choix absent.
+  ok(DEPART_KEYS.length >= 3, 'il y a de quoi choisir', DEPART_KEYS.join(', '));
+  for (const k of DEPART_KEYS) {
+    const d = DEPARTS[k];
+    ok(!!d.nom && !!d.resume && !!d.detail, `${k} se présente en toutes lettres`);
+    const sd = nouvellePartie(2026, { maintenant: 0, depart: k });
+    const g = sd.player.groupes[0];
+    const vivants = g.membres.filter((c) => c.etat !== 'mort');
+    const morts = depouillesDe(g);
+    const dansVille = !!sd.world.colonies.find((c) => c.regionId === g.regionId);
+    ok(vivants.length === d.gens, `${k} : ${d.gens} vivant(s) comme annoncé`,
+      `${vivants.length}`);
+    ok(morts.length === (d.mort ? 1 : 0), `${k} : le mort promis, ni plus ni moins`,
+      `${morts.length}`);
+    ok(dansVille === d.ville, `${k} : ${d.ville ? 'en ville' : 'dehors'} comme annoncé`);
+    const arme = vivants.some((c) => c.equip.arme);
+    ok(arme === !!d.equipe, `${k} : ${d.equipe ? 'équipé' : 'désarmé'} comme annoncé`);
+    if (d.accueil !== null && d.accueil < 0) {
+      ok(Math.min(...Object.values(sd.player.reputation)) <= d.accueil + 1,
+        `${k} : on y est mal vu, comme annoncé`,
+        `${Math.min(...Object.values(sd.player.reputation))}`);
+    }
+  }
+
+  // L'ancien nom reste accepté : le banc et le harnais l'emploient partout.
+  const alias = nouvellePartie(2026, { maintenant: 0, depart: 'ville' });
+  const aliasG = alias.player.groupes[0];
+  ok(aliasG.membres.length === 3 && !!aliasG.membres[0].equip.arme,
+    '« ville » reste un alias du convoi : deux cents fixtures en dépendent');
 }
 
 section('10. Rattrapage hors ligne');

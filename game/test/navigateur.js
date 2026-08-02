@@ -316,6 +316,17 @@ console.log('\n8 bis. Contenu de jeu : contrats, étal, sites');
 {
   await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
   await page.reload({ waitUntil: 'networkidle' });
+  // L'accueil propose plusieurs départs : ce n'est pas une difficulté, c'est
+  // une situation, et le joueur doit pouvoir lire ce qu'il choisit.
+  const choix = await page.locator('[data-a="choisir-depart"]').count();
+  ok(choix >= 3, 'l’accueil propose plusieurs départs', `${choix}`);
+  const texteAccueil = await page.locator('#ecran').innerText();
+  ok(/survivant/i.test(texteAccueil) && /convoi/i.test(texteAccueil),
+    'et chacun se lit avant d’être choisi',
+    texteAccueil.slice(0, 240).replace(/\n+/g, ' | '));
+  // On choisit le départ le plus nu, et l'on vérifie qu'il est bien appliqué.
+  await page.click('[data-a="choisir-depart"][data-k="survivant"]');
+  await page.waitForTimeout(200);
   await page.click('[data-a="nouvelle"]');
   await page.waitForSelector('#carte');
   await page.waitForTimeout(600);

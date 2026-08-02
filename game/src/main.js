@@ -69,13 +69,13 @@ function sauver() {
 const API = {
   sauver,
 
-  nouvelle(graineTexte) {
+  nouvelle(graineTexte, depart) {
     let graine;
     if (!graineTexte) graine = (Math.random() * 4294967296) >>> 0;
     else if (/^\d+$/.test(graineTexte)) graine = Number(graineTexte) >>> 0;
     else graine = seedFromString(graineTexte);
 
-    state = nouvellePartie(graine, { maintenant: Date.now() });
+    state = nouvellePartie(graine, { maintenant: Date.now(), depart });
     attacherEtat(state);
     ouvrirOnglet('carte');
     sauver();

@@ -555,6 +555,13 @@ button.act.ordre {
 .o-r { font-size: 10px; color: var(--texte-3); font-variant-numeric: tabular-nums; }
 button.act.ordre[aria-pressed="true"] .o-r { color: var(--cyan); }
 
+/* Les scénarios de départ : un bouton par situation, texte à gauche, aligné,
+   parce qu'on les compare en les lisant l'un sous l'autre. */
+.act.depart { display: block; width: 100%; text-align: left; margin-bottom: 5px; }
+.act.depart[aria-pressed="true"] { border-color: var(--cyan); }
+.act.depart .depart-n { display: block; font-size: 13px; color: var(--texte); }
+.act.depart[aria-pressed="true"] .depart-n { color: var(--cyan); }
+
 .alerte { color: var(--rouge); }
 /* Ni une alerte ni une information neutre : ce qui coûte quelque chose sans
    être une faute — une retenue, un délai, un péage. */
@@ -15159,35 +15166,90 @@ const VITESSE_DEFAUT = 4;
 // Création
 // ---------------------------------------------------------------------------
 
+/**
+ * Les départs possibles, et ce qu'ils changent.
+ *
+ * Un seul début imposé, c'était une constante du jeu : même drapeau, même
+ * paquetage, même première heure, à chaque partie. Et le réveil auprès d'un mort
+ * — bonne scène la première fois — devient une formalité à la cinquième.
+ *
+ * Chaque entrée dit ce qu'elle installe, en clair, pour que le choix se fasse
+ * les yeux ouverts plutôt qu'au titre :
+ *
+ *   ville      où l'on ouvre les yeux : dans une ville, ou sur une case vide
+ *   gens       combien de vivants
+ *   mort       un compagnon mort à côté, armé, dont il faut décider
+ *   equipe     armes, armures, vivres, crédits
+ *   accueil    l'estime que la faction hôte vous accorde d'emblée
+ */
+const DEPARTS = {
+  survivant: {
+    nom: 'Le survivant',
+    resume: 'Seul, désarmé, dans la poussière — et un mort à côté de vous.',
+    detail: 'Celui avec qui vous voyagiez n’a pas passé la nuit. Il a une arme et '
+      + 'une armure ; la colonne le porte tant que vous n’avez rien décidé. '
+      + 'Enterrer, ou dépouiller : c’est la première chose que vous ferez.',
+    ville: false,
+    gens: 1,
+    mort: true,
+    equipe: false,
+    accueil: 0,
+  },
+  poussiere: {
+    nom: 'Rien du tout',
+    resume: 'Seul, désarmé, sans rien ni personne. Le plus nu.',
+    detail: 'Pas de nom, pas de passé, pas d’arme. Une trentaine de crédits et de '
+      + 'quoi manger quelques jours. Tout le reste est à prendre.',
+    ville: false,
+    gens: 1,
+    mort: false,
+    equipe: false,
+    accueil: 0,
+  },
+  fuyards: {
+    nom: 'Les fuyards',
+    resume: 'À deux, sans rien, et mal vus de ceux qui tiennent le coin.',
+    detail: 'Vous n’êtes pas seul, et c’est déjà beaucoup. Mais vous avez laissé un '
+      + 'mauvais souvenir aux gens d’ici : leurs hommes vous chercheront, et leurs '
+      + 'marchands vous feront payer. Il faudra partir, ou se faire pardonner.',
+    ville: false,
+    gens: 2,
+    mort: false,
+    equipe: false,
+    accueil: -35,
+  },
+  convoi: {
+    nom: 'Le convoi',
+    resume: 'À trois, équipés, dans une ville qui vous connaît. L’ancien départ.',
+    detail: 'Machettes, cuir, quarante-cinq rations, quatre cent cinquante crédits, '
+      + 'et des hôtes qui vous prendraient à leur service dès aujourd’hui. On '
+      + 'commence la partie au deuxième chapitre.',
+    ville: true,
+    gens: 3,
+    mort: false,
+    equipe: true,
+    accueil: null, // le seuil d'enrôlement du drapeau, plus deux
+  },
+};
+
+const DEPART_KEYS = Object.keys(DEPARTS);
+/** Ce qu'on joue quand rien n'est demandé. */
+const DEPART_DEFAUT = 'survivant';
+
 function nouvellePartie(seed, opts = {}) {
   const rng = new Rng(seed);
   const world = genererMonde(rng);
 
-  // Où l'on ouvre les yeux.
-  //
-  // Le jeu commençait dans une ville, et toujours la même faction — quarante
-  // parties sur quarante chez les Communes Libres, au motif qu'elles sont les
-  // moins hostiles. L'ouverture était donc une constante : même drapeau, même
-  // régime, mêmes voisins, et les cinq autres factions n'étaient qu'un décor
-  // qu'on découvrait plus tard.
-  //
-  //   `depart: 'sauvage'` (défaut)  on se réveille dans la poussière, à une ou
-  //       deux régions d'une ville. Personne ne vous connaît, personne ne vous
-  //       doit rien, et le premier choix de la partie est d'aller voir qui tient
-  //       le coin.
-  //   `depart: 'ville'`             on démarre chez quelqu'un, qui vous connaît
-  //       juste assez pour vous prendre à son service. Le banc s'en sert : il
-  //       mesure des trajectoires sur trente parties, et une ouverture stable
-  //       lui évite de confondre un changement de règle avec un mauvais tirage.
-  //
-  // Dans les deux cas, l'estime d'accueil suit le seuil d'enrôlement du drapeau
-  // plutôt qu'un nombre fixe : c'est ce qui permet de naître chez une église qui
-  // en demande quarante sans que la voie du service se referme d'emblée.
+  // Le scénario d'ouverture, choisi à l'accueil. Voir DEPARTS juste au-dessus.
+  // `'ville'` reste accepté : le banc et le harnais l'emploient partout, et
+  // renommer une clé dans deux cents fixtures ne vaut pas une ligne d'alias.
+  const clef = opts.depart === 'ville' ? 'convoi' : (opts.depart || DEPART_DEFAUT);
+  const scen = DEPARTS[clef] || DEPARTS[DEPART_DEFAUT];
+
   const accueillantes = world.colonies.filter((c) => c.faction && c.faction !== 'essaim');
-  const enVille = opts.depart === 'ville';
   const hote = accueillantes.length ? rng.pick(accueillantes) : rng.pick(world.colonies);
   let regionDepart = hote.regionId;
-  if (!enVille) {
+  if (!scen.ville) {
     // Une case vide à portée de marche : assez près pour trouver du monde en
     // cherchant, assez loin pour que personne ne vous ait vu arriver.
     const autour = world.regions.filter(
@@ -15196,36 +15258,13 @@ function nouvellePartie(seed, opts = {}) {
     if (autour.length) regionDepart = rng.pick(autour).i;
   }
 
-  // On part avec rien.
-  //
-  // L'escouade démarrait armée, cuirassée, avec quarante-cinq rations, vingt
-  // ferrailles, deux medkits et quatre cent cinquante crédits — au motif
-  // qu'« une bande de pillards liquide une escouade sans armure avant qu'elle
-  // ait appris quoi que ce soit ». C'est vrai, et c'est précisément le sujet :
-  // ou l'on meurt vite et l'on recommence, ou l'on s'en sort et l'on garde ce
-  // qu'on a arraché. Un début confortable rend les cent premières heures sans
-  // enjeu, et le reste de la partie n'a plus rien à raconter d'elles.
-  //
-  // Un peu d'aléa, aussi : trois parties qui commencent au caractère près, ce
-  // n'est pas un monde, c'est un niveau.
-  //
-  // Et l'on commence **seul**. Une escouade de trois, c'est déjà une compagnie :
-  // on encaisse une embuscade, on porte quelqu'un, on se répartit les métiers.
-  // Seul, chaque décision compte double et le premier compagnon qu'on recrute
-  // est un événement. Le mot « escouade » se mérite.
   const premier = groupeVide(idDepuisRng(rng, 'g'), 'Convoi', regionDepart, 0);
-  // Le métier est tiré : on ne choisit pas qui l'on est en se réveillant.
-  //
-  // `opts.equipe` sert au harnais, qui vérifie des mécaniques de groupe — porter
-  // un blessé, répartir les tâches, manger ses morts — et qui aurait besoin de
-  // recruter trois personnes avant chaque test sans ça.
-  // Un départ en ville est un départ *installé* : l'ancien paquetage complet,
-  // armes et armures comprises. C'est ce dont vivent le banc et le harnais, qui
-  // ne jouent pas la partie — ils la font tourner. Une escouade désarmée et sans
-  // vivres que personne ne dirige meurt en six cents heures, et l'on mesurerait
-  // alors la famine plutôt que ce qu'on cherche.
-  const combien = Math.max(1, opts.equipe || (enVille ? 3 : 1));
-  if (enVille) {
+  // `opts.equipe` force l'effectif : le harnais teste des mécaniques de groupe —
+  // porter un blessé, répartir les tâches, manger ses morts — et devrait sans
+  // cela recruter trois personnes avant chaque test.
+  const combien = Math.max(1, opts.equipe || scen.gens);
+
+  if (scen.equipe) {
     const paquetage = [
       { archetype: 'ferrailleur', arme: 'machette', armure: 'cuir' },
       { archetype: 'chasseur', arme: 'clous', armure: 'cuir' },
@@ -15240,12 +15279,11 @@ function nouvellePartie(seed, opts = {}) {
     premier.objets = ['machette', 'cuir'];
   } else {
     for (let i = 0; i < combien; i++) {
+      // Le métier est tiré : on ne choisit pas qui l'on est en se réveillant.
       const c = makeCharacter(rng, { archetype: rng.pick(ARCHETYPE_KEYS) });
       // `makeCharacter` arme d'office selon le métier (`opts.arme || def.arme`),
       // et l'on ne peut pas le lui refuser par un `null` — il retomberait sur la
-      // valeur du métier. On désarme donc après coup, explicitement : celui qui
-      // se réveille dans la poussière n'a rien, pas même ce que son ancien
-      // travail lui aurait laissé entre les mains.
+      // valeur du métier. On désarme donc après coup, explicitement.
       c.equip.arme = null;
       c.equip.armure = null;
       premier.membres.push(c);
@@ -15253,21 +15291,12 @@ function nouvellePartie(seed, opts = {}) {
     premier.inventaire.rations = rng.irange(6, 14);
     premier.inventaire.ferraille = rng.irange(0, 6);
     premier.objets = [];
+  }
 
-    // Et l'on n'était pas seul en arrivant.
-    //
-    // Testé en jouant : le départ sauvage n'est pas dur, il est *lent*. On
-    // ramasse tranquillement pendant deux jours avant que quoi que ce soit
-    // arrive, et rien ne demande de décision. Ce n'est pas de la difficulté qui
-    // manque, c'est une situation.
-    //
-    // Alors on se réveille à côté de celui avec qui on voyageait. Il est mort,
-    // il a une arme et une armure, et la colonne le porte tant qu'on n'a rien
-    // décidé — ce qui ralentit la marche et pèse sur le moral (voir
-    // depouilles.js). La première décision de la partie tombe donc avant le
-    // premier pas, elle n'est pas confortable, et elle est déjà un peu de ce
-    // qu'on va devenir : l'enterrer et repartir les mains vides, ou le
-    // dépouiller et marcher armé.
+  if (scen.mort) {
+    // Celui avec qui on voyageait. Il est armé, la colonne le porte tant qu'on
+    // n'a rien décidé — marche ralentie, moral qui pèse (voir depouilles.js) —
+    // et la première décision de la partie tombe avant le premier pas.
     const compagnon = makeCharacter(rng, {
       archetype: rng.pick(ARCHETYPE_KEYS),
       arme: rng.pick(['machette', 'barre', 'clous']),
@@ -15280,9 +15309,13 @@ function nouvellePartie(seed, opts = {}) {
 
   const reputation = {};
   for (const k of DIPLO_FACTIONS) reputation[k] = 0;
-  // Chez soi, on est connu juste assez pour être pris à leur service. Dans le
-  // désert, personne ne vous connaît : c'est tout le sel du départ sauvage.
-  if (enVille && hote.faction) reputation[hote.faction] = estimeEngagement(hote.faction) + 2;
+  // Ce que la faction du coin pense de vous en ouvrant les yeux. `null` veut
+  // dire « juste assez pour entrer à leur service », quel que soit leur seuil ;
+  // un nombre négatif, qu'on a déjà laissé un mauvais souvenir ici.
+  if (hote.faction) {
+    reputation[hote.faction] = scen.accueil === null
+      ? estimeEngagement(hote.faction) + 2 : scen.accueil;
+  }
 
   const state = {
     version: VERSION,
@@ -15294,7 +15327,7 @@ function nouvellePartie(seed, opts = {}) {
     nom: opts.nom || 'Convoi sans nom',
     world,
     player: {
-      credits: enVille ? 450 : rng.irange(20, 70),
+      credits: scen.equipe ? 450 : rng.irange(20, 70),
       // Les gens et ce qu'ils portent vivent dans les groupes ; le reste, ici.
       groupes: [premier],
       groupeActif: premier.id,
@@ -15373,11 +15406,9 @@ function nouvellePartie(seed, opts = {}) {
   const log = creerLogger(state);
   log({
     type: 'debut',
-    texte: enVille
-      ? `Le convoi s’arrête à ${hote.nom}. Trois bouches à nourrir, 450 crédits, et un monde `
-        + 'qui ne demande rien à personne.'
-      : `Le convoi s’arrête en ${nomRegion(world, regionDepart)}. Trois bouches à nourrir, `
-        + '450 crédits, et pas un nom que quiconque connaisse ici.',
+    texte: scen.ville
+      ? `Le convoi s’arrête à ${hote.nom}. ${scen.resume}`
+      : `On rouvre les yeux en ${nomRegion(world, regionDepart)}. ${scen.resume}`,
     important: true,
     regionId: regionDepart,
   });
@@ -19366,7 +19397,18 @@ function modaleRecrutement() {
 // Accueil
 // ---------------------------------------------------------------------------
 
+/**
+ * Le départ choisi à l'accueil. Hors de l'état de jeu : c'est une préférence
+ * d'écran, pas une donnée de partie — une fois lancée, la partie n'a plus à
+ * savoir de quel scénario elle vient.
+ */
+let departChoisi = DEPART_DEFAUT;
+let derniereSauvegarde = false;
+let dernierePerimee = false;
+
 function rendreAccueil(aSauvegarde, perimee = false) {
+  derniereSauvegarde = aSauvegarde;
+  dernierePerimee = perimee;
   $('#barre-haut').innerHTML = '';
   $('#barre-nav').innerHTML = '';
   $('#ecran').innerHTML = `
@@ -19391,6 +19433,16 @@ function rendreAccueil(aSauvegarde, perimee = false) {
     </div>` : ''}
     <div class="panneau">
       <div class="titre">Nouvelle partie</div>
+      <div class="aide">Par où l’on commence. Ce n’est pas un niveau de difficulté :
+        c’est une situation, et chacune se joue autrement.</div>
+      <div style="height:6px"></div>
+      ${DEPART_KEYS.map((k) => `<button class="act depart" data-a="choisir-depart" data-k="${k}"
+        aria-pressed="${departChoisi === k}">
+        <span class="depart-n">${e(DEPARTS[k].nom)}</span>
+        <span class="aide">${e(DEPARTS[k].resume)}</span>
+      </button>`).join('')}
+      <div class="aide" style="margin-top:6px">${e(DEPARTS[departChoisi].detail)}</div>
+      <div class="sep"></div>
       <label class="aide" for="graine">Graine (facultatif — même graine, même monde)</label>
       <input id="graine" type="text" inputmode="text" placeholder="au hasard" autocomplete="off">
       <div style="height:8px"></div>
@@ -19895,9 +19947,21 @@ function surClic(ev) {
       break;
     }
 
+    case 'choisir-depart': {
+      departChoisi = el.dataset.k;
+      // On garde la graine déjà tapée : changer d'avis sur le scénario ne doit
+      // pas effacer le monde qu'on avait choisi.
+      const champ = document.getElementById('graine');
+      const graine = champ ? champ.value : '';
+      rendreAccueil(derniereSauvegarde, dernierePerimee);
+      const apres = document.getElementById('graine');
+      if (apres) apres.value = graine;
+      break;
+    }
+
     case 'nouvelle': {
       const champ = document.getElementById('graine');
-      ACTIONS.nouvelle(champ ? champ.value.trim() : '');
+      ACTIONS.nouvelle(champ ? champ.value.trim() : '', departChoisi);
       break;
     }
 
@@ -19965,13 +20029,13 @@ function sauver() {
 const API = {
   sauver,
 
-  nouvelle(graineTexte) {
+  nouvelle(graineTexte, depart) {
     let graine;
     if (!graineTexte) graine = (Math.random() * 4294967296) >>> 0;
     else if (/^\d+$/.test(graineTexte)) graine = Number(graineTexte) >>> 0;
     else graine = seedFromString(graineTexte);
 
-    state = nouvellePartie(graine, { maintenant: Date.now() });
+    state = nouvellePartie(graine, { maintenant: Date.now(), depart });
     attacherEtat(state);
     ouvrirOnglet('carte');
     sauver();
