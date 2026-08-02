@@ -18,7 +18,7 @@ import { titreDe, lignesDe, faitsDe, RENOMMEES } from '../src/chronique.js';
 import { faireRevolte, SEUIL_REVOLTE } from '../src/economy.js';
 import { BETES } from '../src/betes.js';
 import { attaquerCaravane } from '../src/caravanes.js';
-import { combatContre } from '../src/events.js';
+import { combatContre, fouillerSite } from '../src/events.js';
 import { bandeLocale } from '../src/events.js';
 import { damer, coutTraversee, PISTE_GAIN } from '../src/world.js';
 import { distanceMorale } from '../src/factions.js';
@@ -4613,6 +4613,33 @@ section('9 duovicies. Chaque départ installe ce qu’il annonce');
   const aliasG = alias.player.groupes[0];
   ok(aliasG.membres.length === 3 && !!aliasG.membres[0].equip.arme,
     '« ville » reste un alias du convoi : deux cents fixtures en dépendent');
+}
+
+section('9 tervicies. Ce qu’on tire d’un site se voit');
+{
+  // Le résumé du butin partait au journal, et le bouton répondait « Site
+  // fouillé. » : on venait de vider une ville morte sans savoir ce qu'on avait
+  // ramassé, et il fallait aller le chercher dans un fil de quatre cents lignes.
+  let vu = null;
+  for (const graine of [1, 3, 11, 23, 47]) {
+    const sf = nouvellePartie(4242, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const gf = groupeActif(sf);
+    const reg = sf.world.regions.find((r) => r.site && !r.site.fouille);
+    if (!reg) break;
+    reg.site.connu = true;
+    gf.regionId = reg.i;
+    const res = fouillerSite(sf, new Rng(graine), () => {}, gf);
+    // Un site peut être gardé : on retente avec un autre tirage jusqu'à en
+    // fouiller un pour de bon, sinon le test mesure la chance.
+    if (res.ok && res.resume) { vu = { res, reg }; break; }
+  }
+  ok(!!vu, 'un site finit par se laisser fouiller');
+  ok(vu && typeof vu.res.resume === 'string' && vu.res.resume.length > 0,
+    'et il rend ce qu’on en a tiré, en toutes lettres',
+    vu ? vu.res.resume : '—');
+  ok(vu && vu.reg.site.butin === vu.res.resume,
+    'la trace reste sur le site : on la relit en repassant devant, des jours plus tard',
+    vu ? String(vu.reg.site.butin) : '—');
 }
 
 section('10. Rattrapage hors ligne');

@@ -462,6 +462,48 @@ const colonnes = (p) => p.evaluate(() => {
     colVille.slice(0, 3).join(' | '));
 }
 
+// Fouiller un site : on doit voir ce qu'on en a tiré, tout de suite et après.
+{
+  const surSite = serialiser((() => {
+    const t = partieAvancee();
+    const g = t.player.groupes[0];
+    const reg = t.world.regions.find((r) => r.site && !r.site.fouille);
+    if (reg) { reg.site.connu = true; g.regionId = reg.i; }
+    // De quoi ne pas mourir si le site est gardé, et de quoi ouvrir les portes.
+    for (const c of g.membres) c.skills.ingenierie = Math.max(c.skills.ingenierie || 0, 70);
+    return t;
+  })());
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), surSite);
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.waitForTimeout(400);
+  if (await page.locator('[data-a="fouiller-site"]:not([disabled])').count()) {
+    await page.click('[data-a="fouiller-site"]:not([disabled])');
+    await page.waitForTimeout(600);
+    const bulle = await page.locator('.toast').count()
+      ? await page.locator('.toast').innerText() : '';
+    const ecranSite = await page.locator('#ecran').innerText();
+    // Ou le site était gardé — c'est un résultat aussi —, ou l'on doit lire ce
+    // qu'on a ramassé, dans la bulle comme sur le site une fois vidé.
+    const garde = /gardé/i.test(bulle);
+    ok(garde || /Fouillé\s*:/i.test(bulle),
+      'la bulle dit ce qu’on a tiré du site, pas seulement qu’on l’a fouillé',
+      bulle.replace(/\n+/g, ' | '));
+    ok(garde || /On en a tiré/i.test(ecranSite),
+      'et le site vidé garde la trace de ce qu’il a rendu',
+      ecranSite.slice(0, 240).replace(/\n+/g, ' | '));
+    await page.screenshot({ path: join(CAPTURES, '01c-site.png') });
+  }
+  await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt),
+    serialiser(nouvellePartie(20260729, { maintenant: Date.now(), depart: 'ville' })));
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.waitForTimeout(500);
+}
+
 // L'avant-poste doit dire ce qu'il lui manque, sinon on croit qu'il n'y a rien.
 {
   const camp = serialiser((() => {

@@ -869,7 +869,10 @@ function blocSite() {
   if (r.site.fouille) {
     return `<section class="panneau">
       <h2 class="titre">${e(def.nom)} <span class="droite">vidé</span></h2>
-      <div class="aide">Il n\u2019y a plus rien à en tirer.</div>
+      ${r.site.butin
+    ? `<div class="aide">On en a tiré : ${e(r.site.butin)}.</div>`
+    : ''}
+      <div class="aide">Il n’y a plus rien à en tirer.</div>
     </section>`;
   }
   const debout = G().membres.filter(estDebout);
@@ -3903,7 +3906,9 @@ function surClic(ev) {
       const r = ACTIONS.fouillerSite();
       if (!r.ok) toast(r.motif, true);
       else if (r.combat && !r.gagne) toast('Le site était gardé. Repli.', true);
-      else toast('Site fouillé.');
+      // Ce qu'on a ramassé, tout de suite et en toutes lettres : « Site
+      // fouillé. » ne disait rien de ce qu'on venait de gagner.
+      else toast(`Fouillé : ${r.resume}`);
       rafraichir(true);
       break;
     }

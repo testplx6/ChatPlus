@@ -793,6 +793,13 @@ export function fouillerSite(state, rng, log, groupe) {
 
   const resume = [pris.join(', '), cr ? `${cr} cr` : null, objets.length ? objets.join(', ') : null]
     .filter(Boolean).join(' · ') || 'rien d’exploitable';
+  // On garde ce qu'on en a tiré sur le site lui-même.
+  //
+  // Le résumé partait au journal et le bouton répondait « Site fouillé. » — on
+  // venait de vider une ville morte sans savoir ce qu'on avait ramassé, et il
+  // fallait aller le chercher dans un fil de quatre cents lignes. Écrit ici, il
+  // reste lisible sur place, des jours plus tard, en repassant devant.
+  r.site.butin = resume;
   log({
     type: 'trouvaille',
     texte: `${def.nom} fouillé : ${resume}.`,
@@ -800,5 +807,5 @@ export function fouillerSite(state, rng, log, groupe) {
     regionId: r.i,
     detail: [def.texte],
   });
-  return { ok: true, resume };
+  return { ok: true, resume, cr, pris, objets };
 }

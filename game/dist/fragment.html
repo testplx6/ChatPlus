@@ -13692,6 +13692,13 @@ function fouillerSite(state, rng, log, groupe) {
 
   const resume = [pris.join(', '), cr ? `${cr} cr` : null, objets.length ? objets.join(', ') : null]
     .filter(Boolean).join(' · ') || 'rien d’exploitable';
+  // On garde ce qu'on en a tiré sur le site lui-même.
+  //
+  // Le résumé partait au journal et le bouton répondait « Site fouillé. » — on
+  // venait de vider une ville morte sans savoir ce qu'on avait ramassé, et il
+  // fallait aller le chercher dans un fil de quatre cents lignes. Écrit ici, il
+  // reste lisible sur place, des jours plus tard, en repassant devant.
+  r.site.butin = resume;
   log({
     type: 'trouvaille',
     texte: `${def.nom} fouillé : ${resume}.`,
@@ -13699,7 +13706,7 @@ function fouillerSite(state, rng, log, groupe) {
     regionId: r.i,
     detail: [def.texte],
   });
-  return { ok: true, resume };
+  return { ok: true, resume, cr, pris, objets };
 }
 
 // ===== src/squad.js ==================================================
@@ -16565,7 +16572,10 @@ function blocSite() {
   if (r.site.fouille) {
     return `<section class="panneau">
       <h2 class="titre">${e(def.nom)} <span class="droite">vidé</span></h2>
-      <div class="aide">Il n\u2019y a plus rien à en tirer.</div>
+      ${r.site.butin
+    ? `<div class="aide">On en a tiré : ${e(r.site.butin)}.</div>`
+    : ''}
+      <div class="aide">Il n’y a plus rien à en tirer.</div>
     </section>`;
   }
   const debout = G().membres.filter(estDebout);
@@ -19599,7 +19609,9 @@ function surClic(ev) {
       const r = ACTIONS.fouillerSite();
       if (!r.ok) toast(r.motif, true);
       else if (r.combat && !r.gagne) toast('Le site était gardé. Repli.', true);
-      else toast('Site fouillé.');
+      // Ce qu'on a ramassé, tout de suite et en toutes lettres : « Site
+      // fouillé. » ne disait rien de ce qu'on venait de gagner.
+      else toast(`Fouillé : ${r.resume}`);
       rafraichir(true);
       break;
     }
