@@ -5,7 +5,7 @@
 // Deux interrupteurs servent à isoler un système à la fois, ce qui est la seule
 // façon d'attribuer un déséquilibre à sa cause plutôt qu'à une intuition :
 //
-//   SANS=detach,contrats,livraison,services,intel,base,service,lois,pistes,preleve
+//   SANS=detach,contrats,livraison,services,intel,base,service,lois,pistes,preleve,erosion
 //        coupe ces comportements. `service` interdit de s'engager : c'est le
 //        témoin du nomade pur, à comparer à `CAMP=1` pour le colon.
 //        `preleve` annule la retenue des régimes sur les ventes : c'est le
@@ -47,7 +47,9 @@ import {
 } from '../src/contrats.js';
 import {
   sEngager, peutSEngager, rangDe, RANGS, avancementOrdre, droitIntendance, toucherRations,
+  estimeEngagement,
 } from '../src/allegeance.js';
+import { FACTIONS, DIPLO_FACTIONS } from '../src/data.js';
 import {
   fonderBase, lancerConstruction, deposer, retirer, affecter, niveau as nivBat,
   peutReconnaitre, reconnaitreAvantPoste,
@@ -123,6 +125,12 @@ const TRACE = {
   // Ce que les conseils votent quand personne ne les tient.
   impots: {}, peines: {}, esclavagistes: 0, factionsVues: 0,
   rangs: [0, 0, 0, 0, 0],
+  // Qui l'on courtise, qui l'on finit par servir, et jusqu'où l'estime monte.
+  // Les trois séparément : viser l'Église et servir la Commune faute de mieux
+  // n'est pas la même partie que viser la Commune, et une moyenne des deux ne
+  // décrit ni l'une ni l'autre.
+  vises: {}, servis: {}, replis: 0, jamais: 0,
+  estimeVisee: {}, nVisee: {},
 };
 const HEURES = Number(process.argv[2]) || 4000;
 // Trente parties par défaut, pas huit. À huit, l'écart-type sur un taux de
@@ -171,6 +179,30 @@ const RAYON_COLON = 5;
  * concurrence pas une carrière, il la loge.
  */
 const CARRIERE = process.env.CARRIERE === '1';
+/**
+ * Quel drapeau le bot courtise.
+ *
+ * Jusqu'ici il s'engageait chez celui dont il foulait les pavés au moment où
+ * l'estime suffisait — et comme le départ du banc pose l'estime de l'hôte à
+ * `estimeEngagement(hôte) + 2`, il s'engageait toujours chez son voisin, le
+ * premier jour, quel que soit le drapeau. Trente parties donnaient donc trente
+ * mesures d'une seule chose : « servir quelqu'un ». La question « lequel »
+ * n'était pas posée, et aucun chiffre sur les six drapeaux n'aurait rien voulu
+ * dire.
+ *
+ * Désormais il en vise un, tiré à part au début de la partie, et il le
+ * courtise : il prend ses contrats de préférence, il va dans ses villes quand
+ * rien d'autre ne presse, et il n'entre au service de personne d'autre — sauf
+ * s'il n'y arrive pas. Un joueur qui a passé la moitié d'une partie à courtiser
+ * l'Église sans jamais atteindre quarante finit par signer ailleurs ; le bot
+ * aussi, et c'est ce repli qu'on compte.
+ *
+ * VISE=militaire (ou un nom de faction) force la cible : c'est ce qui permet de
+ * mesurer un profil à la fois plutôt qu'une moyenne de six.
+ */
+const VISE = process.env.VISE || '';
+/** Au bout de combien d'heures on renonce à celui qu'on courtisait. */
+const REPLI_H = 2000;
 /**
  * Profil négrier : on prend les gens vivants et on les vend.
  *
@@ -1183,10 +1215,19 @@ function jouerPrincipal(state, g, memo) {
       }
     }
 
-    // S'engager dès qu'une faction accepte : la solde, la remise et
-    // l'intendance valent largement le prix de quelques ordres à honorer.
+    // S'engager : la solde, la remise et l'intendance valent largement le prix
+    // de quelques ordres à honorer. Mais chez celui qu'on courtise, pas chez le
+    // premier qui ouvre sa porte — sinon on ne mesure jamais que le drapeau le
+    // moins exigeant du voisinage. Au bout de REPLI_H heures sans y arriver, on
+    // signe où l'on peut : un joueur ne courtise pas une église toute sa vie.
     if (!SANS.has('service') && !g.allegeance && peutSEngager(state, colIci.faction).ok) {
-      sEngager(state, colIci.faction, () => {});
+      const repli = state.temps >= REPLI_H;
+      if (colIci.faction === memo.visee || repli) {
+        sEngager(state, colIci.faction, () => {});
+        const st = FACTIONS[colIci.faction].style;
+        TRACE.servis[st] = (TRACE.servis[st] || 0) + 1;
+        if (colIci.faction !== memo.visee) TRACE.replis += 1;
+      }
     }
     // Passer à l'intendance : c'est gratuit, c'est de la nourriture, et c'est
     // toute la différence entre servir et ne pas servir.
@@ -1478,6 +1519,38 @@ function jouerPrincipal(state, g, memo) {
   if (rations > 60) {
     const dest = destinationContrat(state, g);
     if (dest != null) { partir(state, g, dest, 'honorer un contrat'); return; }
+  }
+
+  // Courtiser. Tant qu'on n'est au service de personne, on va chez celui qu'on
+  // vise : c'est là qu'on trouve ses contrats, ses gens à obliger, et son
+  // bureau de recrutement. Sans ce déplacement, « courtiser » se réduisait à
+  // trier les contrats du panneau où l'on se trouvait déjà — c'est-à-dire à
+  // rien, puisqu'une ville n'affiche presque que les siens.
+  if (!SANS.has('service') && memo.visee && !g.allegeance && rations > 60
+      && state.temps < REPLI_H) {
+    // Une ville, choisie une fois pour toutes, et l'on travaille autour.
+    //
+    // La première version repartait vers « la ville des siens la plus proche »
+    // à chaque fois qu'elle n'avait rien de mieux à faire : le bot passait sa
+    // partie sur les routes, remplissait deux contrats au lieu de trois et
+    // s'engageait moins souvent qu'avant qu'on lui apprenne à choisir. On
+    // courtise un endroit, pas un drapeau en général.
+    //
+    // Villes non découvertes comprises : c'est de l'omniscience, et elle est
+    // assumée. Sans elle, courtiser dépend de la loterie de l'exploration — un
+    // drapeau dont aucune ville n'est levée n'est jamais approché, et l'on
+    // mesure l'exploration en croyant mesurer l'allégeance.
+    if (memo.chezEux === undefined) {
+      const sienne = state.world.colonies
+        .filter((c) => !c.ruine && c.faction === memo.visee)
+        .sort((a, b) => distance(a.regionId, g.regionId) - distance(b.regionId, g.regionId))[0];
+      memo.chezEux = sienne ? sienne.regionId : null;
+    }
+    if (memo.chezEux != null && distance(memo.chezEux, g.regionId) > 3
+        && !(g.ordre.type === 'voyage' && g.ordre.dest === memo.chezEux)) {
+      partir(state, g, memo.chezEux, 'courtiser un drapeau');
+      return;
+    }
   }
 
   // Une promesse tenue en main se livre : on ne garde pas dans son sac ce que
@@ -1807,9 +1880,17 @@ for (let n = 0; n < PARTIES; n++) {
   if (SANS.has('lois')) state.sansLois = true;
   if (SANS.has('preleve')) state.sansPreleve = true;
   if (SANS.has('pistes')) state.world.sansPistes = true;
-  const memo = { origine: new Map(), eclaireur: null, detachements: 0, courtisee: null, services: 0,
+  if (SANS.has('erosion')) state.sansErosion = true;
+  // Le drapeau qu'on courtise cette partie-ci. Tiré sur un générateur à part,
+  // pas sur celui du monde : sinon changer le tirage décalerait toute la
+  // simulation et l'on comparerait deux mondes différents en croyant comparer
+  // deux stratégies.
+  const rngVise = new Rng(4242 + n * 131);
+  const visee = VISE || rngVise.pick(DIPLO_FACTIONS);
+  TRACE.vises[visee] = (TRACE.vises[visee] || 0) + 1;
+  const memo = { origine: new Map(), eclaireur: null, detachements: 0, courtisee: visee, services: 0,
     promesse: null, viseFondation: false, fonde: null, routeFondation: null,
-    prochaineCharge: 0, ordresDonnes: 0 };
+    prochaineCharge: 0, ordresDonnes: 0, visee, estimeVisee: 0 };
   for (const g of groupes(state)) {
     for (const c of g.membres) {
       memo.origine.set(c.id, {
@@ -1860,6 +1941,11 @@ for (let n = 0; n < PARTIES; n++) {
     }
     const remplisAvant = state.stats.ordresRemplis || 0;
     tick(state);
+    // Le sommet de l'estime chez celui qu'on courtise, pas sa valeur finale :
+    // l'érosion rabote tout, et lire le chiffre du dernier jour dirait « 9 »
+    // d'une partie où l'on est monté à 38. Ce qu'on veut savoir, c'est si le
+    // seuil a été touché, une fois, à un moment.
+    memo.estimeVisee = Math.max(memo.estimeVisee, state.player.reputation[memo.visee] || 0);
     // Un panneau fermé se rouvre : le compter en fin de partie ne mesure que
     // l'oubli, pas la sanction. On échantillonne une fois par jour de jeu.
     if (state.temps % 24 === 0) {
@@ -2021,6 +2107,15 @@ for (let n = 0; n < PARTIES; n++) {
     TRACE.pointsFin += gg.allegeance.points;
     TRACE.manques += gg.allegeance.manques || 0;
     TRACE.rangs[rangDe(gg.allegeance).index]++;
+  }
+  // Jusqu'où l'on est monté chez celui qu'on visait, et si personne n'a fini
+  // par nous prendre. Un drapeau visé trente fois et servi zéro fois est un
+  // drapeau qui n'existe pas, quels que soient ses avantages sur le papier.
+  {
+    const st = FACTIONS[memo.visee].style;
+    TRACE.estimeVisee[st] = (TRACE.estimeVisee[st] || 0) + memo.estimeVisee;
+    TRACE.nVisee[st] = (TRACE.nVisee[st] || 0) + 1;
+    if (!groupes(state).some((gg) => gg.allegeance)) TRACE.jamais += 1;
   }
   lignes.push({
     seed: 1000 + n * 7919,
@@ -2202,6 +2297,27 @@ console.log(`Secteurs tenus : ${TRACE.secteurs} — état moyen `
   + `${(TRACE.etatSecteur / Math.max(1, TRACE.secteurs)).toFixed(2)} `
   + `(0 = sûr, 1 = infréquentable) sur ${Math.round(TRACE.bilans / Math.max(1, TRACE.secteurs))} relevés`);
 console.log(`Échelle atteinte : ${RANGS.map((r, i) => `${r.nom} ${TRACE.rangs[i]}`).join(' · ')}`);
+{
+  // Ce que vaut chaque drapeau, drapeau par drapeau. Trois colonnes et pas
+  // une : combien de fois on l'a visé, combien de fois on a fini par le
+  // servir, et jusqu'où l'estime est montée chez lui. Un seuil qu'on n'atteint
+  // jamais ne se voit que dans la troisième.
+  const styles = DIPLO_FACTIONS.map((k) => [k, FACTIONS[k]]);
+  console.log('Les drapeaux — courtisé / servi (visé ou par repli) / sommet de l’estime :');
+  for (const [k, f] of styles) {
+    const vus = TRACE.vises[k] || 0;
+    if (!vus) continue;
+    const st = f.style;
+    const n = TRACE.nVisee[st] || 0;
+    const moy = n ? (TRACE.estimeVisee[st] || 0) / n : 0;
+    const seuil = estimeEngagement(k);
+    console.log(`  ${f.court.padEnd(6)} seuil ${String(seuil).padStart(2)} · `
+      + `visé ${String(vus).padStart(2)} · servi ${String(TRACE.servis[st] || 0).padStart(2)} · `
+      + `estime max ${moy.toFixed(0).padStart(3)}${moy >= seuil ? '' : '  ← hors d’atteinte'}`);
+  }
+  console.log(`  replis sur un autre drapeau : ${TRACE.replis} · `
+    + `parties sans aucun engagement : ${TRACE.jamais}/${PARTIES}`);
+}
 {
   // Calibrer les seuils de la chronique sur ce qui arrive vraiment, plutôt que
   // sur une intuition : c'est ce qui manquait quand « Bienfaiteur » demandait

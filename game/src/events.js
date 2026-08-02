@@ -428,13 +428,20 @@ export function tenterChasseurs(state, log, ctx) {
   // Les rancunes s'émoussent. Sans cet oubli, la réputation n'est qu'un
   // cliquet qui descend : dix accrochages suffisent à se rendre le monde
   // définitivement hostile, et plus rien ne peut réparer ça.
-  if (state.temps % 24 === 0) {
+  // Témoin du banc : on coupe l'oubli pour savoir ce qu'il coûte vraiment à
+  // l'estime, plutôt que de le deviner. Voir test/equilibre.js, SANS=erosion.
+  if (state.temps % 24 === 0 && !state.sansErosion) {
     for (const k of Object.keys(state.player.reputation)) {
       const v = state.player.reputation[k];
       if (v === 0) continue;
       // Asymétrique à dessein : une rancune s'émousse vite, un service rendu
       // reste longtemps. Sinon on ne peut ni sortir de l'hostilité, ni
       // accumuler assez d'estime pour être reçu quelque part.
+      //
+      // Et l'on n'oublie pas celui qu'on a sous les yeux : tant qu'une colonne
+      // sert ce drapeau, rien ne s'efface chez lui. C'était la seule façon de
+      // perdre du terrain en servant tous les jours.
+      if (v > 0 && estAuService(state, k)) continue;
       const pas = v > 0 ? Math.min(v, 0.1) : Math.min(-v, 0.45);
       state.player.reputation[k] = v > 0 ? v - pas : v + pas;
     }
