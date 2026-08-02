@@ -109,6 +109,21 @@ export function souvenirs(p) {
   return p.memoire.map((m) => (ACTES[m.quoi] ? ACTES[m.quoi](m.detail) : '')).filter(Boolean);
 }
 
+/**
+ * Un fait qui ne regarde qu'une personne : celle à qui l'on avait affaire.
+ *
+ * Un contrat manqué se réglait avec `retenirEnVille`, c'est-à-dire en fâchant
+ * le médecin, le contremaître et l'armurier avec vous pour un délai dépassé qui
+ * ne les concernait pas. On répond de sa parole devant celui à qui on l'a
+ * donnée, pas devant la ville entière.
+ */
+export function retenirDe(col, charge, quoi, t, delta) {
+  const p = notable(col, charge);
+  if (!p) return;
+  retenir(p, quoi, null, t);
+  if (delta) p.opinion = Math.max(-100, Math.min(100, (p.opinion || 0) + delta));
+}
+
 /** Un fait qui concerne toute la ville se retient par tout le monde. */
 export function retenirEnVille(col, quoi, t, delta) {
   if (!col || !col.notables) return;

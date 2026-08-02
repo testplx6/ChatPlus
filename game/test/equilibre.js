@@ -58,7 +58,7 @@ import { makeCharacter } from '../src/characters.js';
 import { saison } from '../src/climat.js';
 import { COMMODITY_KEYS, COMMODITIES, BIOMES } from '../src/data.js';
 import { vueColonie, PEREMPTION } from '../src/connaissance.js';
-import { demandesIci, honorer } from '../src/services.js';
+import { demandesIci, honorer, faveurChef, estime } from '../src/services.js';
 import { enGuerre } from '../src/factions.js';
 import {
   etatSecteur, pireCase, dansSonSecteur, SEUIL_MERITE,
@@ -92,7 +92,7 @@ const TRACE = {
   coutLot: {}, primeLot: {}, nLot: {}, bourse: 0, nBourse: 0,
   // Où va l'argent. Sans ce détail, « le bot est pauvre » ne dit rien de ce
   // qu'il faut corriger.
-  gagneVente: 0, retenu: 0, gagneContrat: 0, payeVivres: 0, payeSoins: 0, payeMateriel: 0,
+  gagneVente: 0, retenu: 0, villesFin: [], echusParType: {}, contratsPris: 0, contratsEchus: 0, contratsRemplis: 0, gagneContrat: 0, payeVivres: 0, payeSoins: 0, payeMateriel: 0,
   // Ce que l'intendance donne : la voie du service se lit là.
   rationsTouchees: 0,
   betes: 0,
@@ -1211,7 +1211,10 @@ function jouerPrincipal(state, g, memo) {
       // On préfère toujours ce qui fait monter chez celle qu'on courtise.
       faisables.sort((a, b) => (b.faction === courtisee ? 1 : 0) - (a.faction === courtisee ? 1 : 0)
         || (b.reputation || 0) - (a.reputation || 0));
-      if (faisables.length) accepter(state, colIci, faisables[0].id, () => {}, g);
+      if (faisables.length) {
+        const pris = accepter(state, colIci, faisables[0].id, () => {}, g);
+        if (pris && pris.ok !== false) TRACE.contratsPris += 1;
+      }
     }
   }
 
@@ -1933,8 +1936,23 @@ for (let n = 0; n < PARTIES; n++) {
     const pudiques = Object.keys(state.world.factions).filter(
       (k) => k !== 'essaim' && !loisDe(state.world, k).esclavage
     );
+    // Le dossier tient les comptes : on les relit plutôt que de compter à côté.
+    const b = state.player.bilanContrats;
+    if (b) {
+      TRACE.contratsEchus += b.echus || 0;
+      TRACE.contratsRemplis += b.honores || 0;
+    }
+    for (const k of Object.keys(state.stats.echusParType || {})) {
+      TRACE.echusParType[k] = (TRACE.echusParType[k] || 0) + state.stats.echusParType[k];
+    }
     TRACE.mepris += pudiques.reduce(
       (a, k) => a + (state.player.reputation[k] || 0), 0) / Math.max(1, pudiques.length);
+    // Un contrat manqué fâche le chef qui l'avait affiché. On a soupçonné cette
+    // sanction de fermer tous les panneaux de la carte : on compte, plutôt que
+    // d'en débattre.
+    for (const c of vivantes) {
+      TRACE.villesFin.push({ ouvert: faveurChef(c).ouvert, opinion: estime(c, 'chef') });
+    }
   }
   {
     // Ce que la partie a fait du joueur. Un titre qu'aucune partie ne décroche
@@ -2063,6 +2081,30 @@ console.log(`Argent : +${Math.round(TRACE.gagneVente / PARTIES)} de ventes · `
   + `−${Math.round(TRACE.payeVivres / PARTIES)} de vivres · −${Math.round(TRACE.payeSoins / PARTIES)} de soins `
   + `· −${Math.round(TRACE.payeMateriel / PARTIES)} d'équipement `
   + `· −${Math.round(TRACE.crPilles / PARTIES)} pillés, par partie`);
+// Ce qu'une parole non tenue ferme réellement. On l'a soupçonné de tout fermer :
+// on compte, plutôt que d'en débattre.
+{
+  let fermes = 0;
+  let ouverts = 0;
+  let pire = 0;
+  for (const col of TRACE.villesFin) {
+    if (col.ouvert) ouverts += 1; else fermes += 1;
+    pire = Math.min(pire, col.opinion);
+  }
+  const tot = Math.max(1, fermes + ouverts);
+  console.log(`Panneaux d'affichage en fin de partie : ${fermes} fermés sur ${tot}`
+    + ` (${Math.round(100 * fermes / tot)} %) — chef le plus fâché : ${Math.round(pire)}`);
+  // Sans savoir combien de contrats le bot rate, le chiffre du dessus ne prouve
+  // rien : zéro panneau fermé par un bot qui n'échoue jamais ne dit rien de la
+  // sanction. « Ce qu'un bot ne joue pas, personne ne le mesure. »
+  console.log(`  contrats pris : ${(TRACE.contratsPris / PARTIES).toFixed(1)} par partie —`
+    + ` ${(TRACE.contratsEchus / PARTIES).toFixed(1)} échus,`
+    + ` ${(TRACE.contratsRemplis / PARTIES).toFixed(1)} remplis`);
+  const parType = Object.keys(TRACE.echusParType).sort(
+    (a, b) => TRACE.echusParType[b] - TRACE.echusParType[a]);
+  console.log(`  échus par type : ${parType.map(
+    (k) => `${k} ${(TRACE.echusParType[k] / PARTIES).toFixed(1)}`).join(' · ') || 'aucun'}`);
+}
 console.log(`Retenue des régimes : ${Math.round(TRACE.retenu / PARTIES)} cr par partie`
   + ` — ${(100 * TRACE.retenu / Math.max(1, TRACE.gagneVente + TRACE.retenu)).toFixed(1)} %`
   + ' de ce que les ventes auraient rapporté sans elle');

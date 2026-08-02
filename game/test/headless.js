@@ -37,9 +37,9 @@ import {
   declarerIndependance, synchroniserVitrine,
   manoeuvres, affecter, rendementMetier, mainDoeuvre,
 } from '../src/base.js';
-import { METIER_KEYS, BIOMES, BUILDINGS, POSTURES } from '../src/data.js';
+import { METIER_KEYS, BIOMES, BUILDINGS, POSTURES, COMMODITIES } from '../src/data.js';
 import {
-  accepter, progres as progresContrat, OPINION_ECHU, OPINION_RENDU,
+  accepter, progres as progresContrat, OPINION_ECHU, OPINION_RENDU, POIDS_COLLECTE_MAX,
 } from '../src/contrats.js';
 import { genererBanc, primeDe, tensionRecrutement, engager } from '../src/recrues.js';
 import {
@@ -4287,6 +4287,25 @@ section('9 octodecies. Un contrat qu’on peut tenir, et dont il reste une trace
   ok(OPINION_RENDU < OPINION_ECHU,
     'et rendre un contrat à temps coûte moins cher que le laisser pourrir',
     `${OPINION_RENDU} contre ${OPINION_ECHU}`);
+
+  // Le chef, et lui seul. La sanction passait par `retenirEnVille`, donc le
+  // médecin refusait de soigner vos gens à cause d'une livraison en retard.
+  ok(estime(colK, 'medecin') >= 0 || estime(colK, 'medecin') > estime(colK, 'chef'),
+    'le médecin de la ville n’a pas à s’en mêler',
+    `chef ${Math.round(estime(colK, 'chef'))} · médecin ${Math.round(estime(colK, 'medecin'))}`);
+
+  // Une collecte doit tenir dans un sac : la validation exige un seul groupe
+  // portant le lot entier, donc un lot plus lourd que la capacité de portage est
+  // impossible quoi qu'on fasse. Mesuré avant correctif : 18 des 77 collectes
+  // affichées d'une partie étaient dans ce cas.
+  const collectes = sk.world.colonies.flatMap(
+    (c) => (c.contrats || []).filter((x) => x.type === 'collecte'));
+  const troplourdes = collectes.filter(
+    (x) => COMMODITIES[x.ressource].poids * x.quantite > POIDS_COLLECTE_MAX + 0.01);
+  ok(troplourdes.length === 0,
+    'aucune collecte ne pèse plus qu’un sac ne peut porter',
+    troplourdes.slice(0, 2).map((x) => `${x.titre} = ${
+      (COMMODITIES[x.ressource].poids * x.quantite).toFixed(0)} kg`).join(' | '));
 }
 
 section('10. Rattrapage hors ligne');

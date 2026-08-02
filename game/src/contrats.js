@@ -9,7 +9,7 @@ import { COMMODITIES, COMMODITY_KEYS, FACTIONS, DIPLO_FACTIONS } from './data.js
 import { colonieParId, distance, nomRegion, coordonnee } from './world.js';
 import { idDepuisRng } from './characters.js';
 import { crediter, estAuService } from './allegeance.js';
-import { retenirEnVille } from './services.js';
+import { retenirDe } from './services.js';
 import { groupes, groupeActif } from './groupes.js';
 import { faveurChef } from './services.js';
 
@@ -22,6 +22,9 @@ const RESSOURCES_DEMANDEES = ['ferraille', 'minerai', 'polymere', 'biomasse', 'a
 // Génération
 // ---------------------------------------------------------------------------
 
+/** Ce qu'une collecte peut demander au plus, en kilos. Voir `contratCollecte`. */
+export const POIDS_COLLECTE_MAX = 80;
+
 function contratCollecte(rng, state, col, t) {
   // Une ville demande ce qui lui manque vraiment.
   const manques = RESSOURCES_DEMANDEES
@@ -31,7 +34,20 @@ function contratCollecte(rng, state, col, t) {
   // On raisonne en valeur, pas en nombre : sinon une ville réclame quarante
   // isotopes comme elle réclamerait quarante ferrailles.
   const cible = rng.range(160, 520) * (1 + col.taille * 0.35);
-  const quantite = Math.max(8, Math.min(140, Math.round(cible / COMMODITIES[ressource].prix)));
+  // Plafonné au poids, pas seulement au nombre.
+  //
+  // « Rassembler 140 ferraille » pèse cent quarante kilos ; une escouade de
+  // départ en porte cent quatre. Et la validation exige **un seul groupe**
+  // portant le lot entier — on ne peut donc pas s'y mettre à deux. Mesuré sur
+  // une partie : dix-huit des soixante-dix-sept collectes affichées étaient
+  // hors de portée d'un sac, c'est-à-dire impossibles quoi qu'on fasse.
+  //
+  // Quatre-vingts kilos : un peu moins que ce que portent quatre personnes
+  // équipées, donc faisable dès le premier jour, et sans objet plus tard quand
+  // on a des bêtes.
+  const parPoids = Math.floor(POIDS_COLLECTE_MAX / COMMODITIES[ressource].poids);
+  const quantite = Math.max(8, Math.min(140, parPoids,
+    Math.round(cible / COMMODITIES[ressource].prix)));
   const valeur = COMMODITIES[ressource].prix * quantite;
   // On remet la marchandise en même temps qu'on encaisse : à 1,5× la valeur
   // marchande, le contrat ne rapportait qu'une demi-vente de plus que d'aller
@@ -220,7 +236,7 @@ export function abandonner(state, id, log) {
   } else {
     // Rendre le contrat avant l'échéance est la sortie honorable : elle coûte
     // moins cher que de le laisser pourrir, et rien du tout en estime.
-    retenirEnVille(col, 'contrat rendu', state.temps, -OPINION_RENDU);
+    retenirDe(col, 'chef', 'contrat rendu', state.temps, -OPINION_RENDU);
   }
   const perduAb = (state.player.reputation[c.faction] || 0) - repAvant;
   noterContrat(state, c, 'abandonne', { rep: perduAb });
@@ -421,9 +437,11 @@ export function tickContrats(state, log, ctx) {
       //
       // L'estime, elle, reste pour ce qui la mérite : voler la marchandise d'une
       // livraison, piller leurs caravanes, vendre des hommes.
-      retenirEnVille(colonieParId(state.world, c.colonieId), 'contrat manqué',
+      retenirDe(colonieParId(state.world, c.colonieId), 'chef', 'contrat manqué',
         state.temps, -OPINION_ECHU);
       noterContrat(state, c, 'echu', {});
+      state.stats.echusParType = state.stats.echusParType || {};
+      state.stats.echusParType[c.type] = (state.stats.echusParType[c.type] || 0) + 1;
       log({
         type: 'contrat',
         texte: `Contrat échu : ${c.titre}. ${donneur ? `On s’en souvient à ${donneur.nom}` : 'On s’en souvient'}`
