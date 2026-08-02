@@ -337,8 +337,8 @@ console.log('\n8 bis. Contenu de jeu : contrats, étal, sites');
     const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
     const g = s2.player.groupes[0];
     return {
-      gens: g.membres.length,
-      armes: g.membres.filter((c) => c.arme).length,
+      gens: g.membres.filter((c) => c.etat !== 'mort').length,
+      armes: g.membres.filter((c) => c.etat !== 'mort' && c.equip && c.equip.arme).length,
       objets: (g.objets || []).length,
       cr: s2.player.credits,
       rations: Math.floor(g.inventaire.rations || 0),
@@ -346,6 +346,11 @@ console.log('\n8 bis. Contenu de jeu : contrats, étal, sites');
   });
   ok(debut.gens === 1 && debut.armes === 0 && debut.objets === 0,
     'on commence seul et désarmé', JSON.stringify(debut));
+  // Une situation, pas seulement un dénuement : le corps de celui avec qui on
+  // voyageait est là, et il faut en décider avant de faire un pas.
+  ok(/POINT DE SITUATION/i.test(premierEcran) && /enterrer|dépouiller/i.test(premierEcran),
+    'et l’on se réveille devant un mort dont il faut décider',
+    premierEcran.slice(0, 340).replace(/\n+/g, ' | '));
   ok(debut.cr < 100 && debut.rations < 20,
     'avec de quoi tenir quelques jours, pas davantage', JSON.stringify(debut));
   ok(/1\/1/.test(await page.locator('#barre-haut').innerText()),

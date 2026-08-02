@@ -816,6 +816,18 @@ function blocSituation() {
   const amoches = vivants.filter((c) => estDebout(c) && pvTotal(c).pct < 0.5);
   if (amoches.length) bientot.push(`${amoches.length} blessé(s) sérieux`);
 
+  // Les morts qu'on porte encore. Le panneau qui permet d'en décider vit sur
+  // l'écran d'escouade, et rien ne renvoyait vers lui : on pouvait traîner un
+  // corps des jours durant — marche ralentie, moral qui pèse — sans savoir que
+  // c'était une décision en attente. C'est aussi la toute première du jeu,
+  // depuis qu'on se réveille à côté de celui avec qui on voyageait.
+  const corps = depouillesDe(g);
+  if (corps.length) {
+    urgences.push(`${corps.map((c) => c.nom).join(', ')} ${corps.length > 1 ? 'sont morts' : 'est mort'}`
+      + ' et la colonne le porte encore — à régler sur l’écran d’escouade :'
+      + ' enterrer, ou dépouiller.');
+  }
+
   const cap = capacitePortage(S, g);
   const poids = poidsInventaire(g.inventaire);
   if (cap > 0 && poids > cap * 0.98) {

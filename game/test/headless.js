@@ -51,6 +51,7 @@ import {
 import { loisDe, pressionFiscale, PEINES, REGIMES } from '../src/lois.js';
 import {
   depouillesDe, lenteurDepouilles, poidsMoral, disposerCorps, prixOrganes,
+  effetsDe, ritesPour,
 } from '../src/depouilles.js';
 import {
   coffreDe, peutLouer, peutAcheter, louerCoffre, acheterCoffre, capaciteCoffre,
@@ -341,10 +342,24 @@ ok(s1.world.colonies.every((c) => c.faction), 'toute colonie a un propriétaire'
   // mains vides.
   const nu = nouvellePartie(123456, { maintenant: 0 });
   const gn = groupeActif(nu);
-  ok(gn.membres.length === 1, 'une partie ordinaire commence seul',
-    `${gn.membres.length}`);
-  ok(gn.membres.every((c) => !c.arme && !c.armure),
+  const debout = gn.membres.filter((c) => c.etat !== 'mort');
+  const corps = depouillesDe(gn);
+  ok(debout.length === 1, 'une partie ordinaire commence seul', `${debout.length}`);
+  ok(debout.every((c) => !c.equip.arme && !c.equip.armure),
     'et sans une arme ni une plaque d’armure');
+  // Mais pas sans passé : on se réveille à côté de celui avec qui on voyageait.
+  // C'est ce qui donne une décision à prendre avant le premier pas — l'enterrer
+  // et repartir les mains vides, ou le dépouiller et marcher armé.
+  ok(corps.length === 1, 'on se réveille à côté d’un mort', `${corps.length}`);
+  ok(effetsDe(corps[0]).length >= 2,
+    'et il a de quoi armer qui le dépouillera',
+    effetsDe(corps[0]).join(', '));
+  ok(ritesPour(nu, gn, corps[0]).some((r) => r.key === 'enterrer')
+    && ritesPour(nu, gn, corps[0]).some((r) => r.key === 'depouiller'),
+    'les deux gestes sont offerts d’emblée');
+  ok(lenteurDepouilles(gn) > 0,
+    'et le porter coûte quelque chose tant qu’on n’a rien décidé',
+    `${Math.round(lenteurDepouilles(gn) * 100)} % de marche en moins`);
   ok(gn.objets.length === 0, 'rien en réserve non plus');
   ok(nu.player.credits < 100 && (gn.inventaire.rations || 0) < 20,
     'de quoi tenir quelques jours, pas davantage',

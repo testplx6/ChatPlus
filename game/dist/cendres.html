@@ -15255,11 +15255,42 @@ function nouvellePartie(seed, opts = {}) {
     premier.objets = ['machette', 'cuir'];
   } else {
     for (let i = 0; i < combien; i++) {
-      premier.membres.push(makeCharacter(rng, { archetype: rng.pick(ARCHETYPE_KEYS) }));
+      const c = makeCharacter(rng, { archetype: rng.pick(ARCHETYPE_KEYS) });
+      // `makeCharacter` arme d'office selon le métier (`opts.arme || def.arme`),
+      // et l'on ne peut pas le lui refuser par un `null` — il retomberait sur la
+      // valeur du métier. On désarme donc après coup, explicitement : celui qui
+      // se réveille dans la poussière n'a rien, pas même ce que son ancien
+      // travail lui aurait laissé entre les mains.
+      c.equip.arme = null;
+      c.equip.armure = null;
+      premier.membres.push(c);
     }
     premier.inventaire.rations = rng.irange(6, 14);
     premier.inventaire.ferraille = rng.irange(0, 6);
     premier.objets = [];
+
+    // Et l'on n'était pas seul en arrivant.
+    //
+    // Testé en jouant : le départ sauvage n'est pas dur, il est *lent*. On
+    // ramasse tranquillement pendant deux jours avant que quoi que ce soit
+    // arrive, et rien ne demande de décision. Ce n'est pas de la difficulté qui
+    // manque, c'est une situation.
+    //
+    // Alors on se réveille à côté de celui avec qui on voyageait. Il est mort,
+    // il a une arme et une armure, et la colonne le porte tant qu'on n'a rien
+    // décidé — ce qui ralentit la marche et pèse sur le moral (voir
+    // depouilles.js). La première décision de la partie tombe donc avant le
+    // premier pas, elle n'est pas confortable, et elle est déjà un peu de ce
+    // qu'on va devenir : l'enterrer et repartir les mains vides, ou le
+    // dépouiller et marcher armé.
+    const compagnon = makeCharacter(rng, {
+      archetype: rng.pick(ARCHETYPE_KEYS),
+      arme: rng.pick(['machette', 'barre', 'clous']),
+      armure: 'cuir',
+    });
+    compagnon.etat = 'mort';
+    compagnon.pv = 0;
+    premier.membres.push(compagnon);
   }
 
   const reputation = {};
@@ -16466,6 +16497,18 @@ function blocSituation() {
   }
   const amoches = vivants.filter((c) => estDebout(c) && pvTotal(c).pct < 0.5);
   if (amoches.length) bientot.push(`${amoches.length} blessé(s) sérieux`);
+
+  // Les morts qu'on porte encore. Le panneau qui permet d'en décider vit sur
+  // l'écran d'escouade, et rien ne renvoyait vers lui : on pouvait traîner un
+  // corps des jours durant — marche ralentie, moral qui pèse — sans savoir que
+  // c'était une décision en attente. C'est aussi la toute première du jeu,
+  // depuis qu'on se réveille à côté de celui avec qui on voyageait.
+  const corps = depouillesDe(g);
+  if (corps.length) {
+    urgences.push(`${corps.map((c) => c.nom).join(', ')} ${corps.length > 1 ? 'sont morts' : 'est mort'}`
+      + ' et la colonne le porte encore — à régler sur l’écran d’escouade :'
+      + ' enterrer, ou dépouiller.');
+  }
 
   const cap = capacitePortage(S, g);
   const poids = poidsInventaire(g.inventaire);
