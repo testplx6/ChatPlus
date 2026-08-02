@@ -327,7 +327,7 @@ function verifierCoherence(state, label) {
 console.log('CENDRES & PROTOCOLE — tests moteur\n' + '='.repeat(42));
 
 section('1. Génération du monde');
-const s1 = nouvellePartie(123456, { maintenant: 0 });
+const s1 = nouvellePartie(123456, { maintenant: 0, depart: 'ville' });
 ok(s1.world.regions.length === 24 * 18, 'carte 24×18 = 432 régions', `reçu ${s1.world.regions.length}`);
 ok(s1.world.colonies.length >= 12, 'au moins 12 colonies', `reçu ${s1.world.colonies.length}`);
 ok(s1.world.colonies.every((c) => c.faction), 'toute colonie a un propriétaire');
@@ -337,17 +337,17 @@ ok(Object.keys(s1.world.factions).length === 7, '7 factions');
 verifierCoherence(s1, 'à la génération');
 
 section('2. Déterminisme');
-const a = nouvellePartie(987, { maintenant: 0 });
-const b = nouvellePartie(987, { maintenant: 0 });
+const a = nouvellePartie(987, { maintenant: 0, depart: 'ville' });
+const b = nouvellePartie(987, { maintenant: 0, depart: 'ville' });
 avancer(a, 500);
 avancer(b, 500);
 ok(serialiser(a) === serialiser(b), 'même graine → état identique après 500 h');
-const c = nouvellePartie(988, { maintenant: 0 });
+const c = nouvellePartie(988, { maintenant: 0, depart: 'ville' });
 avancer(c, 500);
 ok(serialiser(a) !== serialiser(c), 'graine différente → monde différent');
 
 section('3. Sauvegarde / rechargement');
-const s3 = nouvellePartie(4242, { maintenant: 0 });
+const s3 = nouvellePartie(4242, { maintenant: 0, depart: 'ville' });
 avancer(s3, 300);
 const txt = serialiser(s3);
 const s3b = deserialiser(txt);
@@ -392,7 +392,7 @@ ok(serialiser(s3) === serialiser(s3b), 'la sim reprend à l’identique après r
 // chiffrage et la transaction partagent maintenant la même boucle, et ce test
 // existe pour qu'elles ne divergent plus jamais.
 {
-  const m = nouvellePartie(3131, { maintenant: 0 });
+  const m = nouvellePartie(3131, { maintenant: 0, depart: 'ville' });
   const gm = groupeActif(m);
   const cm = m.world.colonies.find((c) => !c.ruine && (c.stock.ferraille || 0) > 30);
   if (cm) {
@@ -419,7 +419,7 @@ ok(serialiser(s3) === serialiser(s3b), 'la sim reprend à l’identique après r
   }
   // Le cours est bien dégressif : vendre en un lot rapporte moins que le prix
   // unitaire multiplié par la quantité. C'est ce que l'écran doit montrer.
-  const m2 = nouvellePartie(3132, { maintenant: 0 });
+  const m2 = nouvellePartie(3132, { maintenant: 0, depart: 'ville' });
   const g2 = groupeActif(m2);
   const c2 = m2.world.colonies.find((c) => !c.ruine);
   g2.regionId = c2.regionId;
@@ -436,7 +436,7 @@ ok(serialiser(s3) === serialiser(s3b), 'la sim reprend à l’identique après r
 // l'entraînement — une ration par heure pour deux personnes, soit quarante-huit
 // par jour pour une escouade de quatre — et rien nulle part ne le disait.
 {
-  const cons = nouvellePartie(3535, { maintenant: 0 });
+  const cons = nouvellePartie(3535, { maintenant: 0, depart: 'ville' });
   const gc = groupeActif(cons);
   const base = consommationGroupe(cons, gc);
   ok(base.escouade > 0, 'une escouade vivante mange', `${base.escouade.toFixed(2)} / jour`);
@@ -467,7 +467,7 @@ ok(serialiser(s3) === serialiser(s3b), 'la sim reprend à l’identique après r
 
 // --- Le travail s'additionne, et on peut le lire.
 {
-  const ap0 = nouvellePartie(3636, { maintenant: 0 });
+  const ap0 = nouvellePartie(3636, { maintenant: 0, depart: 'ville' });
   const ga = groupeActif(ap0);
   donnerOrdre(ap0, { type: 'fouille' }, ga);
   const seul = ga.membres.slice(0, 1);
@@ -486,7 +486,7 @@ ok(serialiser(s3) === serialiser(s3b), 'la sim reprend à l’identique après r
 
 // --- On voit ce que l'entraînement et les coups ont fait.
 {
-  const pr = nouvellePartie(3737, { maintenant: 0 });
+  const pr = nouvellePartie(3737, { maintenant: 0, depart: 'ville' });
   const c = groupeActif(pr).membres[0];
   ok(c.skills0 && c.skills0.melee === c.skills.melee,
     'chacun garde le souvenir de son niveau à l’arrivée');
@@ -503,7 +503,7 @@ ok(serialiser(s3) === serialiser(s3b), 'la sim reprend à l’identique après r
 
 section('4 ter. Un coffre en ville');
 {
-  const cf = nouvellePartie(4546, { maintenant: 0 });
+  const cf = nouvellePartie(4546, { maintenant: 0, depart: 'ville' });
   const gc = groupeActif(cf);
   const ville = cf.world.colonies.find((c) => !c.ruine && c.faction && c.faction !== 'essaim');
   gc.regionId = ville.regionId;
@@ -565,7 +565,7 @@ section('4 ter. Un coffre en ville');
   ok(cf.player.credits === crAv2, 'et plus aucun loyer ne court');
 
   // Une ville libre n'a personne pour interdire de posséder.
-  const cf2 = nouvellePartie(4547, { maintenant: 0 });
+  const cf2 = nouvellePartie(4547, { maintenant: 0, depart: 'ville' });
   const g2c = groupeActif(cf2);
   const libre2 = cf2.world.colonies.find((c) => !c.ruine && c.faction && c.faction !== 'essaim');
   libre2.faction = null;
@@ -577,7 +577,7 @@ section('4 ter. Un coffre en ville');
 
 section('4 bis. Ce qu’on fait de ses morts');
 {
-  const d = nouvellePartie(4344, { maintenant: 0 });
+  const d = nouvellePartie(4344, { maintenant: 0, depart: 'ville' });
   const gd = groupeActif(d);
   const mort = gd.membres[0];
   mort.etat = 'mort';
@@ -604,7 +604,7 @@ section('4 bis. Ce qu’on fait de ses morts');
     `${Math.round(cohAvant)} → ${Math.round(gd.cohesion)}`);
 
   // Manger : des rations, et la bande ne s'en remet pas tout de suite.
-  const d2 = nouvellePartie(4345, { maintenant: 0 });
+  const d2 = nouvellePartie(4345, { maintenant: 0, depart: 'ville' });
   const g2 = groupeActif(d2);
   g2.cohesion = 80;
   g2.membres[0].etat = 'mort';
@@ -619,7 +619,7 @@ section('4 bis. Ce qu’on fait de ses morts');
   ok(d2.stats.mangesDesSiens === 1, 'et le jeu le compte : ça ne s’oublie pas');
 
   // Le trafic d'organes : seulement là où l'on achète déjà des hommes vivants.
-  const d3 = nouvellePartie(4346, { maintenant: 0 });
+  const d3 = nouvellePartie(4346, { maintenant: 0, depart: 'ville' });
   const g3 = groupeActif(d3);
   const col3 = d3.world.colonies.find((c) => !c.ruine && c.faction && c.faction !== 'essaim');
   g3.regionId = col3.regionId;
@@ -641,7 +641,7 @@ section('4 bis. Ce qu’on fait de ses morts');
 // colonne reprenait sa route, blessés compris, jusqu'à la rencontre suivante.
 // Seule une défaite arrêtait la marche.
 {
-  const h = nouvellePartie(4142, { maintenant: 0 });
+  const h = nouvellePartie(4142, { maintenant: 0, depart: 'ville' });
   const gh = groupeActif(h);
   const loin = h.world.regions.find((r) => distance(r.i, gh.regionId) > 3);
   for (const c of gh.membres) { c.skills.melee = 95; c.skills.endurance = 90; }
@@ -675,7 +675,7 @@ section('4 bis. Ce qu’on fait de ses morts');
 // les fait défiler, et il est plafonné à quatre cents lignes. On sert une
 // faction six mois durant et il n'en reste qu'un nombre.
 {
-  const fs = nouvellePartie(4041, { maintenant: 0 });
+  const fs = nouvellePartie(4041, { maintenant: 0, depart: 'ville' });
   const gf = groupeActif(fs);
   const cf = fs.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
   fs.player.reputation[cf.faction] = 40;
@@ -730,7 +730,7 @@ section('4 bis. Ce qu’on fait de ses morts');
 // d'y aller. On ne peut pas honorer ce qu'on ne sait pas situer, et rater coûte
 // de l'estime. Le moteur a tout ce qu'il faut ; c'est l'écran qui le taisait.
 {
-  const ordre = nouvellePartie(3940, { maintenant: 0 });
+  const ordre = nouvellePartie(3940, { maintenant: 0, depart: 'ville' });
   const gO = groupeActif(ordre);
   const colO = ordre.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
   ordre.player.reputation[colO.faction] = 40;
@@ -764,7 +764,7 @@ section('4 bis. Ce qu’on fait de ses morts');
 // contre-jeu : aucune décision du joueur n'y changeait rien, ce qui n'est pas un
 // choix mais une punition. Quelqu'un de sociable agrandit maintenant ce noyau.
 {
-  const gr = nouvellePartie(3838, { maintenant: 0 });
+  const gr = nouvellePartie(3838, { maintenant: 0, depart: 'ville' });
   const gg = groupeActif(gr);
   for (const c of gg.membres) c.skills.commerce = 5;
   const sans = noyau(gr, gg);
@@ -782,7 +782,7 @@ section('4 bis. Ce qu’on fait de ses morts');
   ok(noyau(gr, gg) > sans, 'le noyau s’agrandit', `${sans} → ${noyau(gr, gg)}`);
 
   // Et l'effet doit se voir sur le plafond, à effectif franchement au-dessus.
-  const foule = nouvellePartie(3839, { maintenant: 0 });
+  const foule = nouvellePartie(3839, { maintenant: 0, depart: 'ville' });
   const gf = groupeActif(foule);
   for (const c of gf.membres) c.skills.commerce = 5;
   while (gf.membres.length < 12) gf.membres.push(makeCharacter(new Rng(52 + gf.membres.length)));
@@ -819,7 +819,7 @@ verifierCoherence(s4, `après ${CHAUFFE + MESURE} h`);
 ok(s4.temps === CHAUFFE + MESURE, `horloge à ${CHAUFFE + MESURE} h`, `reçu ${s4.temps}`);
 
 section('5. Le monde bouge tout seul');
-const s5 = nouvellePartie(20240607, { maintenant: 0 });
+const s5 = nouvellePartie(20240607, { maintenant: 0, depart: 'ville' });
 const proprioDepart = s5.world.colonies.map((c) => c.faction).join(',');
 const guerresVues = new Set();
 let armeesVues = 0;
@@ -840,7 +840,7 @@ console.log(`  → dominante : ${classe[0].nom} (${classe[0].colonies} colonies,
 verifierCoherence(s5, 'après 4 000 h de guerre');
 
 section('6. Économie');
-const s6 = nouvellePartie(31337, { maintenant: 0 });
+const s6 = nouvellePartie(31337, { maintenant: 0, depart: 'ville' });
 avancer(s6, 120);
 const col6 = s6.world.colonies[0];
 const avant = prixJoueur(col6, 'rations', 0, 0);
@@ -858,7 +858,7 @@ const ven = vendre(s6, col6, 'ferraille', ach.qte);
 ok(ven.ok && ven.gain > 0 && ven.gain < ach.cout, 'revente à perte immédiate (marge)');
 
 section('7. Escouade et ordres');
-const s7 = nouvellePartie(5150, { maintenant: 0 });
+const s7 = nouvellePartie(5150, { maintenant: 0, depart: 'ville' });
 s7.player.posture = 'prudent';
 donnerOrdre(s7, { type: 'fouille' });
 avancer(s7, 40);
@@ -866,7 +866,7 @@ avancer(s7, 40);
 // route vide le sac et ferait échouer un test qui n'a rien à voir.
 ok(s7.stats.recolte > 0, 'fouiller rapporte des ressources', `${s7.stats.recolte} unités`);
 
-const s7b = nouvellePartie(5151, { maintenant: 0 });
+const s7b = nouvellePartie(5151, { maintenant: 0, depart: 'ville' });
 const depart = groupeActif(s7b).regionId;
 // La ville voisine, pas la première de la liste : sur une carte de 24×18 la
 // première venue peut être à trente régions, et le test mesurerait la patience.
@@ -876,11 +876,22 @@ const cible = s7b.world.colonies
 const r = donnerOrdre(s7b, { type: 'voyage', dest: cible.regionId });
 ok(r.ok, 'un itinéraire est calculable');
 let bornes = 0;
-while (groupeActif(s7b).regionId !== cible.regionId && bornes < 900) { tick(s7b); bornes++; }
-ok(groupeActif(s7b).regionId === cible.regionId, 'le voyage aboutit', `${bornes} h`);
+while (groupeActif(s7b).regionId !== cible.regionId && bornes < 900 && !s7b.fin) {
+  // On relance l'ordre quand il tombe : une embuscade interrompt la marche et
+  // la colonne se met au repos — c'est le fonctionnement voulu (voir la
+  // politique `halte`), mais un joueur repart, lui. Sans ça le test mesure la
+  // chance qu'on n'ait croisé personne, pas le fait que le trajet aboutisse.
+  if (groupeActif(s7b).ordre.type !== 'voyage') {
+    donnerOrdre(s7b, { type: 'voyage', dest: cible.regionId });
+  }
+  tick(s7b);
+  bornes++;
+}
+ok(groupeActif(s7b).regionId === cible.regionId, 'le voyage aboutit',
+  `${bornes} h${s7b.fin ? ` (partie finie : ${s7b.fin})` : ''}`);
 ok(s7b.world.regions[cible.regionId].decouvert, 'la région d’arrivée est découverte');
 
-const s7c = nouvellePartie(5152, { maintenant: 0 });
+const s7c = nouvellePartie(5152, { maintenant: 0, depart: 'ville' });
 const skillAvant = groupeActif(s7c).membres[0].skills.melee;
 groupeActif(s7c).inventaire.rations = 500;
 donnerOrdre(s7c, { type: 'entrainement', skill: 'melee' });
@@ -889,7 +900,7 @@ ok(groupeActif(s7c).membres[0].skills.melee > skillAvant, 'les compétences mont
   `${skillAvant} → ${groupeActif(s7c).membres[0].skills.melee}`);
 
 section('8. Avant-poste : construction et recherche');
-const s8 = nouvellePartie(60606, { maintenant: 0 });
+const s8 = nouvellePartie(60606, { maintenant: 0, depart: 'ville' });
 // On se place sur une région vide adjacente
 const vide = s8.world.regions.find((rg) => !rg.colonie);
 groupeActif(s8).regionId = vide.i;
@@ -940,7 +951,7 @@ ok((s8.base.recherche.logistique || 0) >= 1, 'recherche terminée');
 verifierCoherence(s8, 'avant-poste développé');
 
 section('9. Combat et blessures');
-const s9 = nouvellePartie(90909, { maintenant: 0 });
+const s9 = nouvellePartie(90909, { maintenant: 0, depart: 'ville' });
 s9.player.posture = 'agressif';
 donnerOrdre(s9, { type: 'patrouille' });
 // On va chercher la bagarre dans une région dangereuse
@@ -963,7 +974,7 @@ ok(groupeActif(s9).membres.every((ch) => ['ok', 'ko', 'mort'].includes(ch.etat))
 verifierCoherence(s9, 'après 400 h de patrouille agressive');
 
 section('9 bis. Monde vivant sur la durée');
-const s9b = nouvellePartie(31415, { maintenant: 0 });
+const s9b = nouvellePartie(31415, { maintenant: 0, depart: 'ville' });
 s9b.player.posture = 'agressif';
 donnerOrdre(s9b, { type: 'patrouille' });
 for (let i = 0; i < 8000; i++) tick(s9b);
@@ -987,7 +998,10 @@ section('9 ter. Allégeance et pluralité du monde');
 // quarante-huit. À dix, on démarre déjà au-dessus du seuil chez la faction qui
 // vous accueille, donc s'engager est une décision d'ouverture. Résultat mesuré
 // au banc : 48 parties sur 48.
-const ouvre = nouvellePartie(5757, { maintenant: 0 });
+// Départ en ville : c'est le cas qu'on mesure ici. Le jeu commence désormais
+// dans le désert, sans que personne vous connaisse — l'ouverture chez ses hôtes
+// reste une propriété du départ en ville, et le banc s'en sert.
+const ouvre = nouvellePartie(5757, { maintenant: 0, depart: 'ville' });
 const factionDepart = Object.keys(ouvre.player.reputation)
   .find((k) => ouvre.player.reputation[k] >= REPUTATION_MINIMALE);
 ok(!!factionDepart, 'la faction qui vous accueille vous reçoit dès le premier jour',
@@ -999,7 +1013,7 @@ ok(RANGS[0].solde > 0, 'le premier grade défraie : servir ne doit pas coûter d
   `${RANGS[0].solde} cr par jour`);
 
 // --- L'intendance : on ne vous paie pas pour acheter à manger, on vous nourrit.
-const serv = nouvellePartie(5858, { maintenant: 0 });
+const serv = nouvellePartie(5858, { maintenant: 0, depart: 'ville' });
 const gServ = groupeActif(serv);
 const colServ = serv.world.colonies.find((c) => !c.ruine);
 serv.player.reputation[colServ.faction] = 40;
@@ -1030,7 +1044,7 @@ if (autreVille) {
 }
 
 // --- Rater un ordre ne fait plus reculer.
-const rate = nouvellePartie(5959, { maintenant: 0 });
+const rate = nouvellePartie(5959, { maintenant: 0, depart: 'ville' });
 const colRate = rate.world.colonies.find((c) => !c.ruine);
 rate.player.reputation[colRate.faction] = 40;
 sEngager(rate, colRate.faction, () => {});
@@ -1051,7 +1065,7 @@ ok(rate.player.reputation[colRate.faction] < repAvantOrdre,
 
 // --- Un ordre de frappe meurt avec sa guerre.
 {
-  const paix = nouvellePartie(5960, { maintenant: 0 });
+  const paix = nouvellePartie(5960, { maintenant: 0, depart: 'ville' });
   const colPaix = paix.world.colonies.find((c) => !c.ruine);
   const adverse = paix.world.colonies.find((c) => !c.ruine && c.faction !== colPaix.faction);
   paix.player.reputation[colPaix.faction] = 40;
@@ -1086,7 +1100,7 @@ ok(rate.player.reputation[colRate.faction] < repAvantOrdre,
 
 // --- En guerre, ce sont les hommes de l'ennemi qu'on croise chez lui.
 {
-  const gu = nouvellePartie(5961, { maintenant: 0 });
+  const gu = nouvellePartie(5961, { maintenant: 0, depart: 'ville' });
   const mienne = gu.world.colonies.find((c) => !c.ruine);
   const leur = gu.world.colonies.find((c) => !c.ruine && c.faction !== mienne.faction);
   gu.player.reputation[mienne.faction] = 40;
@@ -1113,7 +1127,7 @@ ok(rate.player.reputation[colRate.faction] < repAvantOrdre,
   ok(enGuerreLa > 0.5, 'en guerre, ce sont ses hommes qui sortent',
     `${Math.round(enGuerreLa * 100)} %`);
   // Le même terrain, mais la guerre est celle d'un autre : rien ne change.
-  const neutre = nouvellePartie(5961, { maintenant: 0 });
+  const neutre = nouvellePartie(5961, { maintenant: 0, depart: 'ville' });
   neutre.player.reputation[leur.faction] = 0;
   groupeActif(neutre).regionId = chezEux;
   neutre.world.guerres.push({ a: mienne.faction, b: leur.faction, depuis: neutre.temps });
@@ -1127,7 +1141,7 @@ ok(rate.player.reputation[colRate.faction] < repAvantOrdre,
 }
 
 // --- La garnison : à partir de Lieutenant, les villes des siens vous logent.
-const garn = nouvellePartie(6060, { maintenant: 0 });
+const garn = nouvellePartie(6060, { maintenant: 0, depart: 'ville' });
 const colGarn = garn.world.colonies.find((c) => !c.ruine);
 garn.player.reputation[colGarn.faction] = 40;
 groupeActif(garn).regionId = colGarn.regionId;
@@ -1143,7 +1157,7 @@ if (villeEtrangere) {
   ok(!garnison(garn, villeEtrangere.regionId), 'mais pas chez les autres');
 }
 
-const s9c = nouvellePartie(4242, { maintenant: 0 });
+const s9c = nouvellePartie(4242, { maintenant: 0, depart: 'ville' });
 s9c.player.reputation.hexa = 40;
 const eng = sEngager(s9c, 'hexa', () => {});
 ok(eng.ok, 'on peut entrer au service d’une faction', eng.motif);
@@ -1160,7 +1174,7 @@ ok(liens9c.length === 0 || Math.max(...liens9c) < 100,
 verifierCoherence(s9c, 'après 8 000 h au service d’une faction');
 
 section('9 quater. Groupes, tâches individuelles, détachement');
-const s9d = nouvellePartie(31415, { maintenant: 0 });
+const s9d = nouvellePartie(31415, { maintenant: 0, depart: 'ville' });
 avancer(s9d, 60);
 const g9 = groupeActif(s9d);
 ok(groupes(s9d).length === 1, 'une partie démarre avec un seul groupe');
@@ -1221,7 +1235,7 @@ if (encoreDeux) {
 }
 
 // Une partie d'avant les groupes doit se rouvrir sans rien perdre.
-const s9f = nouvellePartie(999, { maintenant: 0 });
+const s9f = nouvellePartie(999, { maintenant: 0, depart: 'ville' });
 avancer(s9f, 80);
 const gAvant = groupeActif(s9f);
 const ancienne = JSON.parse(serialiser(s9f));
@@ -1241,7 +1255,7 @@ avancer(migree, 200);
 ok(migree.temps === 280, 'et la partie repart', `t=${migree.temps}`);
 
 // Il n'y a plus de plafond de groupes : c'est la portée des ordres qui décide.
-const s9e = nouvellePartie(2718, { maintenant: 0 });
+const s9e = nouvellePartie(2718, { maintenant: 0, depart: 'ville' });
 ok(porteeOrdres(s9e) === PORTEE_COUREUR,
   'sans antenne, on commande à portée de coureur', `${porteeOrdres(s9e)} secteurs`);
 s9e.base.fonde = true;
@@ -1251,7 +1265,7 @@ ok(porteeOrdres(s9e) === PORTEE_COUREUR + 4 * PORTEE_PAR_ANTENNE,
   'chaque antenne allonge la portée', `${porteeOrdres(s9e)} secteurs`);
 
 // On peut détacher autant de colonnes qu'on veut — mais il faut les joindre.
-const s9e2 = nouvellePartie(2718, { maintenant: 0 });
+const s9e2 = nouvellePartie(2718, { maintenant: 0, depart: 'ville' });
 const gE = groupeActif(s9e2);
 const rngE = new Rng(77);
 for (let i = 0; i < 6; i++) gE.membres.push(makeCharacter(rngE, {}));
@@ -1291,13 +1305,13 @@ ok(joignable(s9e2, gLoin).ok, 'une antenne assez haute la rattrape',
   `portée ${porteeOrdres(s9e2)}`);
 
 section('9 quinquies. Information imparfaite');
-const s9g = nouvellePartie(60606, { maintenant: 0 });
+const s9g = nouvellePartie(60606, { maintenant: 0, depart: 'ville' });
 avancer(s9g, 40);
 const gVue = groupeActif(s9g);
 const colIci = s9g.world.colonies.find((c) => c.regionId === gVue.regionId);
 const colLoin = s9g.world.colonies.find((c) => c.regionId !== gVue.regionId);
 
-ok(!!colIci, 'on démarre dans une ville');
+ok(!!colIci, 'un départ en ville pose bien l’escouade dans une ville');
 const vueIci = vueColonie(s9g, colIci);
 ok(vueIci.frais && vueIci.depuis === 0, 'la ville où l’on se trouve est vue en temps réel');
 ok(vueIci.pop === Math.round(colIci.pop), 'et ses chiffres sont les vrais', `${vueIci.pop} vs ${Math.round(colIci.pop)}`);
@@ -1351,7 +1365,7 @@ ok(parGuetteur.frais, 'un membre posté sur place rétablit le temps réel');
 ok(parGuetteur.faction === autreFaction, 'et l’on apprend enfin qui tient la ville');
 
 // L'optique porte le regard un cran plus loin.
-const s9h = nouvellePartie(70707, { maintenant: 0 });
+const s9h = nouvellePartie(70707, { maintenant: 0, depart: 'ville' });
 const gOpt = groupeActif(s9h);
 const voisine = s9h.world.regions.find((r) => distance(r.i, gOpt.regionId) === 1);
 ok(!estSurveillee(s9h, voisine.i), 'sans optique, on ne voit que sous ses pieds');
@@ -1359,7 +1373,7 @@ s9h.base.recherche.optique = 1;
 ok(estSurveillee(s9h, voisine.i), 'l’optique porte le regard d’une case');
 
 // Servir une faction, c'est recevoir ses rapports.
-const s9i = nouvellePartie(80808, { maintenant: 0 });
+const s9i = nouvellePartie(80808, { maintenant: 0, depart: 'ville' });
 const colService = s9i.world.colonies.find((c) => c.regionId === groupeActif(s9i).regionId);
 s9i.player.reputation[colService.faction] = 60;
 sEngager(s9i, colService.faction, () => {});
@@ -1375,7 +1389,7 @@ if (sienne) {
 
 // Les nouvelles voyagent : ce qui vient d'arriver à l'autre bout de la carte
 // n'est pas encore parvenu, ce dont on a été témoin l'est immédiatement.
-const s9j = nouvellePartie(90909, { maintenant: 0 });
+const s9j = nouvellePartie(90909, { maintenant: 0, depart: 'ville' });
 avancer(s9j, 10);
 const loinDeTout = s9j.world.regions.find((r) => !estSurveillee(s9j, r.i));
 const journal9j = [
@@ -1402,7 +1416,7 @@ ok(prise && prise.rapporte === true, 'donnée pour ce qu’elle est : un rapport
 verifierCoherence(s9g, 'après manipulation de la connaissance');
 
 section('9 sexies. Entraînement');
-const s9k = nouvellePartie(555, { maintenant: 0 });
+const s9k = nouvellePartie(555, { maintenant: 0, depart: 'ville' });
 const g9k = groupeActif(s9k);
 g9k.inventaire.rations = 20000;
 // Niveau de départ fixé : la courbe ralentit avec le niveau, et ce que la
@@ -1433,7 +1447,7 @@ ok(rationsEntrainement - g9k.inventaire.rations > 50, 'et coûtent des vivres',
 console.log(`     entraînement interrompu ${interruptions} fois par les rencontres`);
 
 // Sans vivres, l'entraînement s'interrompt de lui-même plutôt que d'affamer.
-const s9l = nouvellePartie(556, { maintenant: 0 });
+const s9l = nouvellePartie(556, { maintenant: 0, depart: 'ville' });
 const g9l = groupeActif(s9l);
 g9l.inventaire.rations = 2;
 donnerOrdre(s9l, { type: 'entrainement', skill: 'tir' }, g9l);
@@ -1441,12 +1455,12 @@ avancer(s9l, 30);
 ok(g9l.ordre.type !== 'entrainement', 'sans rations, l’entraînement s’arrête');
 
 // L'instructeur : un écart de niveau accélère l'élève.
-const s9m = nouvellePartie(557, { maintenant: 0 });
+const s9m = nouvellePartie(557, { maintenant: 0, depart: 'ville' });
 const g9m = groupeActif(s9m);
 g9m.inventaire.rations = 20000;
 g9m.membres[0].skills.melee = 70;   // le vétéran
 g9m.membres[1].skills.melee = 5;    // l'élève encadré
-const s9n = nouvellePartie(557, { maintenant: 0 });
+const s9n = nouvellePartie(557, { maintenant: 0, depart: 'ville' });
 const g9n = groupeActif(s9n);
 g9n.inventaire.rations = 20000;
 g9n.membres[0].skills.melee = 5;    // personne pour encadrer
@@ -1461,7 +1475,7 @@ ok(g9m.membres[1].skills.melee > g9n.membres[1].skills.melee,
   `${g9m.membres[1].skills.melee} contre ${g9n.membres[1].skills.melee}`);
 
 // Une tâche personnelle d'entraînement porte bien sa compétence.
-const s9o = nouvellePartie(558, { maintenant: 0 });
+const s9o = nouvellePartie(558, { maintenant: 0, depart: 'ville' });
 const g9o = groupeActif(s9o);
 g9o.inventaire.rations = 20000;
 donnerOrdre(s9o, { type: 'fouille' }, g9o);
@@ -1485,7 +1499,7 @@ for (const k of ['ingenierie', 'medecine', 'commerce', 'furtivite']) {
   const v = verifierExercice(k);
   ok(!v.ok && /pratique|vient|exercice/.test(v.motif), `${k} ne s’exerce pas, et on dit pourquoi`, v.motif);
 }
-const s9p = nouvellePartie(559, { maintenant: 0 });
+const s9p = nouvellePartie(559, { maintenant: 0, depart: 'ville' });
 ok(!donnerOrdre(s9p, { type: 'entrainement', skill: 'commerce' }).ok,
   'l’ordre d’entraînement au commerce est refusé, pas rabattu sur la mêlée');
 ok(!assignerTache(s9p, groupeActif(s9p).membres[0], { type: 'entrainement', skill: 'ingenierie' }, verifierExercice).ok,
@@ -1500,7 +1514,7 @@ const metiers = [
   ['exploration', 'furtivite'],
 ];
 for (const [ordre, skill] of metiers) {
-  const st = nouvellePartie(4321, { maintenant: 0 });
+  const st = nouvellePartie(4321, { maintenant: 0, depart: 'ville' });
   const gt = groupeActif(st);
   // Point de départ fixé : la courbe d'expérience ralentit avec le niveau, donc
   // partir de ce que la génération a tiré rendrait l'assertion capricieuse.
@@ -1525,7 +1539,7 @@ for (const [ordre, skill] of metiers) {
     `${av} → ${ap.toFixed(1)}`);
 }
 // Le commerce et la médecine se pratiquent aussi, à leur rythme.
-const s9q = nouvellePartie(4322, { maintenant: 0 });
+const s9q = nouvellePartie(4322, { maintenant: 0, depart: 'ville' });
 const g9q = groupeActif(s9q);
 const colVente = colonieDe(s9q.world, g9q.regionId);
 const comAvant = g9q.membres.reduce((m, c) => Math.max(m, c.skills.commerce), 0);
@@ -1539,7 +1553,7 @@ const comApres = g9q.membres.reduce((m, c) => Math.max(m, c.skills.commerce), 0)
 ok(comApres > comAvant, 'négocier fait monter le commerce', `${comAvant} → ${comApres}`);
 
 section('9 octies. Diplômes et écoles');
-const s9r = nouvellePartie(1717, { maintenant: 0 });
+const s9r = nouvellePartie(1717, { maintenant: 0, depart: 'ville' });
 const g9r = groupeActif(s9r);
 const colEcole = s9r.world.colonies.find((c) => c.regionId === g9r.regionId);
 // On se place dans une ville qui enseigne quelque chose.
@@ -1611,9 +1625,9 @@ ok(!inscrire(s9r, ville9r, eleve, offre, () => {}).ok, 'on ne repasse pas le mê
 }
 
 // Le diplôme accélère réellement la pratique, à situation égale.
-const dipl = nouvellePartie(1818, { maintenant: 0 });
+const dipl = nouvellePartie(1818, { maintenant: 0, depart: 'ville' });
 const gd = groupeActif(dipl);
-const sans = nouvellePartie(1818, { maintenant: 0 });
+const sans = nouvellePartie(1818, { maintenant: 0, depart: 'ville' });
 const gs = groupeActif(sans);
 accorderDiplome(gd.membres[0], 'ingenierie');
 gs.membres[0].skills.ingenierie = gd.membres[0].skills.ingenierie; // même point de départ
@@ -1641,7 +1655,7 @@ ok((debutant.diplomes || []).length === 0, 'un débutant n’a rien qu’un titr
 verifierCoherence(s9r, 'après formations');
 
 // L'avant-poste transmet : un vétéran forme les suivants, sans passer par une ville.
-const s9s = nouvellePartie(2626, { maintenant: 0 });
+const s9s = nouvellePartie(2626, { maintenant: 0, depart: 'ville' });
 const g9s = groupeActif(s9s);
 const videS = s9s.world.regions.find((r) => !r.colonie);
 g9s.regionId = videS.i;
@@ -1704,7 +1718,7 @@ ok(!occupeParEcole(maitre), 'et le maître est rendu à ses occupations');
 verifierCoherence(s9s, 'après transmission à l’avant-poste');
 
 section('9 nonies. Métiers de l’avant-poste');
-const s9t = nouvellePartie(3131, { maintenant: 0 });
+const s9t = nouvellePartie(3131, { maintenant: 0, depart: 'ville' });
 const g9t = groupeActif(s9t);
 const videT = s9t.world.regions.find((r) => !r.colonie);
 g9t.regionId = videT.i;
@@ -1734,7 +1748,7 @@ ok(rendementMetier(s9t, 'cultivateur').mult > mainDoeuvre(s9t.base),
 
 // À bâtiments et habitants égaux, spécialiser produit davantage.
 function rationsApres(specialise, heures) {
-  const st = nouvellePartie(3131, { maintenant: 0 });
+  const st = nouvellePartie(3131, { maintenant: 0, depart: 'ville' });
   const gt = groupeActif(st);
   gt.regionId = st.world.regions.find((r) => !r.colonie).i;
   Object.assign(gt.inventaire, { ferraille: 200, polymere: 60, composant: 10 });
@@ -1784,7 +1798,7 @@ ok(totalPostes <= s9t.base.pop, 'les postes se dégarnissent si la population to
 verifierCoherence(s9t, 'après affectation des métiers');
 
 section('9 nonies septies. Servir par colonne, et peser au conseil');
-const multi = nouvellePartie(9797, { maintenant: 0 });
+const multi = nouvellePartie(9797, { maintenant: 0, depart: 'ville' });
 const gA = groupeActif(multi);
 const rngM = new Rng(21);
 for (let i = 0; i < 4; i++) gA.membres.push(makeCharacter(rngM, {}));
@@ -1816,7 +1830,7 @@ if (enGuerreAB) {
 }
 
 // Le grade n'est pas une voix qu'on porte : c'est une charge qu'on exerce.
-const pol = nouvellePartie(9898, { maintenant: 0 });
+const pol = nouvellePartie(9898, { maintenant: 0, depart: 'ville' });
 const gPol = groupeActif(pol);
 const villePol = pol.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
 gPol.regionId = villePol.regionId;
@@ -1941,7 +1955,7 @@ section('9 nonies septies bis. Ce dont un gradé répond tous les jours');
 // Le trou que le banc avait chiffré : la charge de Lieutenant n'avait de
 // contenu que si la faction faisait la guerre. Elle a maintenant un secteur,
 // et un secteur se tient qu'il se passe quelque chose ou non.
-const sec = nouvellePartie(5151, { maintenant: 0 });
+const sec = nouvellePartie(5151, { maintenant: 0, depart: 'ville' });
 const gSec = groupeActif(sec);
 const villeSec = sec.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
 gSec.regionId = villeSec.regionId;
@@ -2042,7 +2056,7 @@ tickSecteurs(sec, () => {}, { rng: new Rng(7) });
 ok(!gSec.allegeance.secteur, 'perdre le grade, c’est rendre le secteur');
 
 section('9 nonies septies ter. Ce qu’on fait des gens qu’on n’a pas tués');
-const jus = nouvellePartie(7373, { maintenant: 0 });
+const jus = nouvellePartie(7373, { maintenant: 0, depart: 'ville' });
 const gJus = groupeActif(jus);
 const villeJus = jus.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
 gJus.regionId = villeJus.regionId;
@@ -2073,7 +2087,7 @@ ok(gJus.inventaire.rations < rationsAvantJus, 'et ils mangent sur le sac',
   `${rationsAvantJus} → ${gJus.inventaire.rations.toFixed(1)}`);
 
 // Ceux que personne ne surveille s'en vont. C'est ce qui borne leur nombre.
-const jusTrop = nouvellePartie(7474, { maintenant: 0 });
+const jusTrop = nouvellePartie(7474, { maintenant: 0, depart: 'ville' });
 const gT = groupeActif(jusTrop);
 gT.inventaire.rations = 500;
 const foule = genererBande(new Rng(13), 'bandits', 6, 1);
@@ -2135,7 +2149,7 @@ ok(vus.length > 0, 'ceux qui l’interdisent chez eux l’apprennent', `${vus.le
 // --- Le marché aux hommes doit pouvoir s'ouvrir. Aucune faction ne démarre
 // esclavagiste : si le conseil ne l'ouvre jamais, tout ce qui en dépend est mort.
 {
-  const marche = nouvellePartie(7575, { maintenant: 0 });
+  const marche = nouvellePartie(7575, { maintenant: 0, depart: 'ville' });
   const kM = DIPLO_FACTIONS.find(
     (k) => marche.world.colonies.some((c) => !c.ruine && c.faction === k)
   );
@@ -2177,7 +2191,7 @@ ok(geoleDe(villeJus).detenus.length === 0, 'on sort quand on a fait son temps');
 // détroussée » et le jetait. On gagnait l'embuscade et l'on repartait les mains
 // vides, sans qu'aucun compteur ne le dise.
 {
-  const pil = nouvellePartie(7676, { maintenant: 0 });
+  const pil = nouvellePartie(7676, { maintenant: 0, depart: 'ville' });
   const gPil = groupeActif(pil);
   // Une caravane sous la main, avec une cargaison connue.
   const depart = pil.world.colonies.find((c) => !c.ruine && c.faction);
@@ -2215,7 +2229,7 @@ ok(geoleDe(villeJus).detenus.length === 0, 'on sort quand on a fait son temps');
 
 // Ce qu'on ne peut pas porter reste sur place.
 {
-  const lourd = nouvellePartie(7677, { maintenant: 0 });
+  const lourd = nouvellePartie(7677, { maintenant: 0, depart: 'ville' });
   const gL = groupeActif(lourd);
   for (const m of gL.membres) {
     m.skills.melee = 90; m.skills.endurance = 90;
@@ -2241,7 +2255,7 @@ ok(geoleDe(villeJus).detenus.length === 0, 'on sort quand on a fait son temps');
 }
 
 section('9 nonies septies quater. Les lois d’un Commandeur');
-const loi = nouvellePartie(8484, { maintenant: 0 });
+const loi = nouvellePartie(8484, { maintenant: 0, depart: 'ville' });
 const gLoi = groupeActif(loi);
 const villeLoi = loi.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
 gLoi.regionId = villeLoi.regionId;
@@ -2266,8 +2280,8 @@ ok(pressionFiscale(loi.world, fLoi) < 0, 'et l’inverse est vrai aussi');
 
 // Le trésor suit la loi : c'est ce qui relie une décision politique aux moyens
 // qu'on aura de gouverner.
-function revenuSur(taux) {
-  const t = nouvellePartie(8585, { maintenant: 0 });
+function revenuSur(taux, graine) {
+  const t = nouvellePartie(graine, { maintenant: 0, depart: 'ville' });
   // On gèle la législation : sans ça, le conseil revote son taux pendant les six
   // cents heures et l'on mesure sa décision à lui, pas celle qu'on vient de
   // poser. Le test passait par chance, tant que le tirage laissait le taux en
@@ -2280,31 +2294,30 @@ function revenuSur(taux) {
   avancer(t, 600);
   return t.world.factions[k].tresor - avant;
 }
-// Ce que rapporte chaque palier, législation gelée, sur six cents heures :
-//
-//    3 %  +1 229      pression −0,007/h, grogne 0,09 → 0,38
-//    5 %  +2 138      pression  0,000/h
-//    9 %  +4 344      pression  0,058/h, grogne 0,36
-//   15 %    +232      pression  0,900/h, grogne 0,85
-//
-// Le trésor suit bien la loi — jusqu'au palier lourd. Le confiscatoire, lui,
-// s'effondre : la pression y vaut quinze fois celle du lourd (elle est cubique),
-// la grogne sature en une dizaine d'heures et la production avec. Il rapporte
-// donc moins que le taux le plus doux, ce qui en fait une option morte plutôt
-// qu'un pari désespéré. **Défaut connu, non corrigé** : le rééquilibrer déplace
-// tout le reste et demande sa propre campagne de mesures.
-//
-// Le test comparait 15 % à 3 % et passait par chance : le conseil revotait le
-// taux pendant la mesure, si bien qu'on mesurait sa décision à lui. Gelé, il
-// dit la vérité — on compare donc ce qui a un sens, lourd contre léger.
-const revLourd = revenuSur(0.09);
-const revLeger = revenuSur(0.03);
-ok(revLourd > revLeger,
-  'le trésor suit la loi : le lourd rapporte plus que le léger',
-  `${revLeger} à 3 % vs ${revLourd} à 9 %`);
-ok(revenuSur(0.15) < revLourd,
-  'et le confiscatoire s’étrangle lui-même — connu, et pas encore corrigé',
-  `${revenuSur(0.15)} à 15 %`);
+
+/**
+ * Sur plusieurs mondes, parce qu'un seul ne dit rien.
+ *
+ * Mesuré sur la graine 8585 uniquement, le taux confiscatoire rendait 232 quand
+ * le taux le plus doux rendait 1 229, et j'en ai conclu — publiquement — que
+ * l'impôt à 15 % était une option morte qui s'étrangle elle-même. C'était faux.
+ * Sur cinq mondes, le trésor d'une faction sur six cents heures va de −3 548 à
+ * +3 970 **au même taux** : il est dominé par ses guerres et ses villes perdues,
+ * pas par sa fiscalité. Une graine ne mesure rien du tout ici.
+ */
+const GRAINES_FISC = [8585, 1234, 4242, 777, 31415];
+function revenuMoyen(taux) {
+  return GRAINES_FISC.reduce((a, g) => a + revenuSur(taux, g), 0) / GRAINES_FISC.length;
+}
+const fiscLeger = revenuMoyen(0.03);
+const fiscLourd = revenuMoyen(0.09);
+const fiscTout = revenuMoyen(0.15);
+ok(fiscLourd > fiscLeger,
+  'le trésor suit la loi : prélever davantage rapporte davantage, en moyenne',
+  `${Math.round(fiscLeger)} à 3 % · ${Math.round(fiscLourd)} à 9 % · ${Math.round(fiscTout)} à 15 %`);
+ok(fiscTout > fiscLeger,
+  'et le confiscatoire n’est pas l’option morte que j’avais annoncée sur une seule graine',
+  `${Math.round(fiscTout)} contre ${Math.round(fiscLeger)}`);
 
 const rEsc = fixerLoi(loi, fLoi, 'esclavage', true, () => {});
 ok(rEsc.ok, 'on autorise le commerce d’hommes d’un trait de plume', rEsc.motif);
@@ -2326,7 +2339,7 @@ section('9 nonies septies quinquies. Des conseils qui votent leurs propres lois'
 // Sans ça, le monde n'avait de politique intérieure que là où le joueur en
 // faisait : six factions à l'impôt ordinaire et à la justice ferme, pour
 // toujours, quel que soit le caractère de leurs chefs.
-const conseils = nouvellePartie(9191, { maintenant: 0 });
+const conseils = nouvellePartie(9191, { maintenant: 0, depart: 'ville' });
 const avantLois = DIPLO_FACTIONS.map((k) => ({ ...loisDe(conseils.world, k) }));
 avancer(conseils, 3000);
 const apresLois = DIPLO_FACTIONS.map((k) => loisDe(conseils.world, k));
@@ -2341,7 +2354,7 @@ ok(taux.size > 1, 'et ils ne votent pas tous la même chose',
 // Le caractère du chef décide de la ligne. C'est ce qui donne un sens à un
 // tempérament ailleurs que sur un champ de bataille.
 function impotSous(temperament) {
-  const t = nouvellePartie(9292, { maintenant: 0 });
+  const t = nouvellePartie(9292, { maintenant: 0, depart: 'ville' });
   for (const k of DIPLO_FACTIONS) {
     const d = dirigeant(t.world, k);
     if (d) d.temperament = temperament;
@@ -2360,7 +2373,7 @@ ok(impotRapace > impotConciliateur,
 
 // Une loi ne se change pas tous les quatre matins : un conseil qui légifère à
 // chaque séance n'est pas un gouvernement, c'est du bruit.
-const bruit = nouvellePartie(9393, { maintenant: 0 });
+const bruit = nouvellePartie(9393, { maintenant: 0, depart: 'ville' });
 let votes = 0;
 let avantVote = DIPLO_FACTIONS.map((k) => JSON.stringify(loisDe(bruit.world, k)));
 for (let i = 0; i < 3000; i++) {
@@ -2375,7 +2388,7 @@ ok(votes <= Math.ceil(3000 / DELAI_LOI) * DIPLO_FACTIONS.length,
 
 // Le joueur Commandeur légifère seul : le conseil s'efface tant qu'il tient la
 // charge. C'est tout le sens du grade.
-const regne = nouvellePartie(9494, { maintenant: 0 });
+const regne = nouvellePartie(9494, { maintenant: 0, depart: 'ville' });
 const gRegne = groupeActif(regne);
 const villeRegne = regne.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
 gRegne.regionId = villeRegne.regionId;
@@ -2424,7 +2437,7 @@ ok(loisDe(regne.world, fRegne).peine !== 'legere',
 // grogne — les deux champs existaient sans que rien ne les lise.
 ok(PEINES.expeditive.routes > PEINES.legere.routes,
   'une justice dure dissuade plus qu’une justice clémente');
-const ordre = nouvellePartie(9595, { maintenant: 0 });
+const ordre = nouvellePartie(9595, { maintenant: 0, depart: 'ville' });
 const colOrdre = ordre.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
 loisDe(ordre.world, colOrdre.faction).peine = 'expeditive';
 colOrdre.unrest = 0.1;
@@ -2441,7 +2454,7 @@ section('9 nonies septies senies. Révoltes et renversements');
 // Une ville qui gronde à quatre-vingts pour cent n'avait aucune issue : elle
 // mijotait indéfiniment, et l'impôt confiscatoire ne coûtait rien de plus qu'un
 // chiffre qui montait.
-const rev = nouvellePartie(6060, { maintenant: 0 });
+const rev = nouvellePartie(6060, { maintenant: 0, depart: 'ville' });
 const colRev = rev.world.colonies.find((c) => !c.ruine && c.faction && c.faction !== 'essaim');
 
 // C'est la garnison qui décide, pas un dé : une place tenue mate sa foule.
@@ -2519,7 +2532,7 @@ ok(rSec.issue === 'secession' && reprise.faction === maison,
 // Le monde s'en sert : sur une longue partie, des villes changent de mains par
 // la rue et pas seulement par les armées — sans que le journal ne parle que de
 // ça.
-const monde = nouvellePartie(6161, { maintenant: 0 });
+const monde = nouvellePartie(6161, { maintenant: 0, depart: 'ville' });
 avancer(monde, 8000);
 const lignesRevolte = monde.journal.filter((x) => x.type === 'revolte').length;
 ok(lignesRevolte > 0, 'des villes se soulèvent au cours d’une longue partie',
@@ -2530,7 +2543,7 @@ ok(lignesRevolte < monde.journal.length * 0.15,
 
 // Un chef répond de l'humeur de son pays, pas seulement de ses guerres.
 function legitimiteApres(grogne) {
-  const t = nouvellePartie(6262, { maintenant: 0 });
+  const t = nouvellePartie(6262, { maintenant: 0, depart: 'ville' });
   const d = dirigeant(t.world, 'cendre');
   d.legitimite = 80;
   for (let i = 0; i < 60; i++) tickDirigeant(t.world, 'cendre', new Rng(9), 24, i * 24, () => {}, grogne);
@@ -2565,7 +2578,7 @@ section('9 nonies septies septies. Ce qu’on pense du régime d’en face');
 // Les lois n'existaient que vers l'intérieur : un pays esclavagiste ne se
 // faisait aucun ennemi, alors que c'est le casus belli le plus évident qu'un
 // monde puisse produire.
-const dip = nouvellePartie(7070, { maintenant: 0 });
+const dip = nouvellePartie(7070, { maintenant: 0, depart: 'ville' });
 const juge = DIPLO_FACTIONS[0];
 const mis = DIPLO_FACTIONS[1];
 ok(distanceMorale(dip.world, juge, mis) < 0.05,
@@ -2590,7 +2603,7 @@ ok(indigne > indifferent * 1.8,
   `${indigne.toFixed(2)} vs ${indifferent.toFixed(2)}`);
 
 // Sur la durée, ça se voit dans les relations, puis dans les guerres.
-const moral = nouvellePartie(7171, { maintenant: 0 });
+const moral = nouvellePartie(7171, { maintenant: 0, depart: 'ville' });
 const negrier = DIPLO_FACTIONS[0];
 loisDe(moral.world, negrier).esclavage = true;
 for (const k of DIPLO_FACTIONS) if (k !== negrier) dirigeant(moral.world, k).temperament = 'conciliateur';
@@ -2725,7 +2738,7 @@ section('9 nonies septies nonies. Des routes qui se font en marchant');
 // cinq départs, trente étaient de la logistique. Agrandir le sac ou raccourcir
 // la carte reviendrait à retirer le voyage du jeu ; ce qu'il faut, c'est que le
 // voyage s'améliore là où l'on passe.
-const rte = nouvellePartie(4141, { maintenant: 0 });
+const rte = nouvellePartie(4141, { maintenant: 0, depart: 'ville' });
 const vierge = rte.world.regions.find(
   (r) => !r.colonie && !r.piste && BIOMES[r.biome].cout >= 5
 );
@@ -2765,7 +2778,7 @@ ok(oubliee.piste < memoire * 0.6, 'et ce que plus personne n’emprunte s’effa
 
 // Le monde entretient ses propres routes : au bout d'une saison, les cases
 // entre villes sont plus tassées que le reste.
-const vivant = nouvellePartie(4242, { maintenant: 0 });
+const vivant = nouvellePartie(4242, { maintenant: 0, depart: 'ville' });
 avancer(vivant, 2500);
 const parcourues = vivant.world.regions.filter((r) => r.piste > 0.05).length;
 ok(parcourues > vivant.world.colonies.length,
@@ -2778,7 +2791,7 @@ section('9 nonies decies. Ce que l’entrepôt refuse ne disparaît plus en sile
 // plein jetait la production de l'hydroponie, de la fonderie et de la
 // raffinerie sans que rien ne l'indique nulle part. Un joueur aurait vu ses
 // cultures ne rien rendre sans jamais comprendre pourquoi.
-const plein = nouvellePartie(3131, { maintenant: 0 });
+const plein = nouvellePartie(3131, { maintenant: 0, depart: 'ville' });
 const gPlein = groupeActif(plein);
 gPlein.regionId = plein.world.regions.find((r) => !r.colonie).i;
 Object.assign(gPlein.inventaire, { ferraille: 400, polymere: 200, composant: 40 });
@@ -2802,7 +2815,7 @@ ok(plein.journal.filter((x) => x.type === 'entrepot').length <= 120 / 24 + 1,
   'sans que l’avertissement devienne un bruit de fond',
   `${plein.journal.filter((x) => x.type === 'entrepot').length} avertissements en 120 h`);
 
-const large = nouvellePartie(3131, { maintenant: 0 });
+const large = nouvellePartie(3131, { maintenant: 0, depart: 'ville' });
 const gLarge = groupeActif(large);
 gLarge.regionId = large.world.regions.find((r) => !r.colonie).i;
 Object.assign(gLarge.inventaire, { ferraille: 400, polymere: 200, composant: 40 });
@@ -2821,7 +2834,7 @@ section('9 nonies undecies. Un camp qui devient un lieu');
 // convoitait. Quarante habitants et douze niveaux de bâtiment sans que le monde
 // s'en aperçoive.
 function campDeveloppe(graine = 2727) {
-  const t = nouvellePartie(graine, { maintenant: 0 });
+  const t = nouvellePartie(graine, { maintenant: 0, depart: 'ville' });
   const gt = groupeActif(t);
   gt.regionId = t.world.regions.find((r) => !r.colonie).i;
   Object.assign(gt.inventaire, { ferraille: 400, polymere: 200, composant: 40 });
@@ -2969,7 +2982,7 @@ section('9 nonies duodecies. Des marchands qui s’arrêtent');
 // quatre personnes. On ne lui donne pas un étal — ce serait une seconde source
 // de vérité — on lui donne des visiteurs.
 function campMarchand(piste) {
-  const t = nouvellePartie(3838, { maintenant: 0 });
+  const t = nouvellePartie(3838, { maintenant: 0, depart: 'ville' });
   const gt = groupeActif(t);
   gt.regionId = t.world.regions.find((r) => !r.colonie).i;
   Object.assign(gt.inventaire, { ferraille: 400, polymere: 200, composant: 40 });
@@ -3024,7 +3037,7 @@ section('9 nonies terdecies. La relève');
 // Le dernier des vôtres tombe et la partie s'arrête — même avec dix-huit
 // habitants, une halle, des murs et un nom sur les cartes. C'était le dernier
 // endroit où bâtir ne servait à rien.
-const succession = nouvellePartie(9090, { maintenant: 0 });
+const succession = nouvellePartie(9090, { maintenant: 0, depart: 'ville' });
 const gRel = groupeActif(succession);
 gRel.regionId = succession.world.regions.find((r) => !r.colonie).i;
 Object.assign(gRel.inventaire, { ferraille: 400, polymere: 200, composant: 40 });
@@ -3043,11 +3056,11 @@ ok(gRel.regionId === succession.base.regionId, 'ils partent de chez eux');
 ok((gRel.inventaire.rations || 0) > 0, 'avec de quoi tenir la première semaine');
 
 // Sans ville, ou sans personne dedans, c'est fini comme avant.
-const seulAuMonde = nouvellePartie(9191, { maintenant: 0 });
+const seulAuMonde = nouvellePartie(9191, { maintenant: 0, depart: 'ville' });
 for (const c of groupeActif(seulAuMonde).membres) c.etat = 'mort';
 avancer(seulAuMonde, 2);
 ok(seulAuMonde.fin === 'extinction', 'sans rien derrière soi, c’est fini');
-const campVide = nouvellePartie(9292, { maintenant: 0 });
+const campVide = nouvellePartie(9292, { maintenant: 0, depart: 'ville' });
 const gVide = groupeActif(campVide);
 gVide.regionId = campVide.world.regions.find((r) => !r.colonie).i;
 Object.assign(gVide.inventaire, { ferraille: 400, polymere: 200, composant: 40 });
@@ -3148,7 +3161,7 @@ section('9 nonies quindecies. Ce que la partie a fait de vous');
 // Le jeu n'a pas de condition de victoire et n'en aura pas — on ne gagne pas
 // contre un désert. Mais il n'avait pas non plus de miroir : on jouait cent
 // heures et rien ne disait ce qu'on était devenu, alors qu'il avait tout compté.
-const chro = nouvellePartie(1717, { maintenant: 0 });
+const chro = nouvellePartie(1717, { maintenant: 0, depart: 'ville' });
 ok(titreDe(chro).key === 'vagabond',
   'on commence vagabond, et ce n’est pas un titre par défaut faute de mieux',
   titreDe(chro).key);
@@ -3162,7 +3175,7 @@ ok(!lignesDe(chro).some((l) => /0 (affrontements|contrats|services|caravanes|sit
 
 // Chaque titre se mérite au sens littéral : une condition sur l'état réel.
 function titreAvec(modif) {
-  const t = nouvellePartie(1818, { maintenant: 0 });
+  const t = nouvellePartie(1818, { maintenant: 0, depart: 'ville' });
   modif(t);
   return titreDe(t).key;
 }
@@ -3205,7 +3218,7 @@ ok(titreAvec((t) => {
 }) === 'commandeur', 'et commander un pays fait un commandeur');
 
 // La chronique ne raconte que ce qui est arrivé.
-const raconte = nouvellePartie(1919, { maintenant: 0 });
+const raconte = nouvellePartie(1919, { maintenant: 0, depart: 'ville' });
 raconte.stats.captifsPris = 6;
 raconte.stats.captifsVendus = 2;
 raconte.stats.combats = 30;
@@ -3217,7 +3230,7 @@ ok(!/caravanes pillées/.test(dit),
   'elle ne mentionne pas ce qu’on n’a jamais fait', dit);
 
 // Elle survit à un monde abîmé : c'est un écran qu'on ouvre à tout moment.
-const abime = nouvellePartie(2020, { maintenant: 0 });
+const abime = nouvellePartie(2020, { maintenant: 0, depart: 'ville' });
 groupeActif(abime).allegeance = {
   faction: 'faction-qui-nexiste-pas', points: 900, actes: [], fautes: 0,
 };
@@ -3225,7 +3238,7 @@ ok(Array.isArray(lignesDe(abime)) && !!titreDe(abime).nom,
   'une faction disparue de la table ne casse pas la chronique');
 
 section('9 nonies sexies. Qui accepte de partir, et pour combien');
-const rec = nouvellePartie(9494, { maintenant: 0 });
+const rec = nouvellePartie(9494, { maintenant: 0, depart: 'ville' });
 const colRec = rec.world.colonies.find((c) => !c.ruine);
 const gRec = groupeActif(rec);
 gRec.regionId = colRec.regionId;
@@ -3271,7 +3284,7 @@ ok(gRec.membres.length === avantRec + 1
 ok(!colRec.banc.gens.some((x) => x.id === choisi.id), 'il ne figure plus au banc');
 
 section('9 nonies quinquies. Une escouade n’a pas de plafond, elle a un noyau');
-const coh = nouvellePartie(8686, { maintenant: 0 });
+const coh = nouvellePartie(8686, { maintenant: 0, depart: 'ville' });
 const gCoh = groupeActif(coh);
 const colCoh = coh.world.colonies.find((c) => !c.ruine);
 gCoh.regionId = colCoh.regionId;
@@ -3304,14 +3317,14 @@ ok(rendementCohesion(gCoh) < 0.95,
   `×${rendementCohesion(gCoh).toFixed(2)}`);
 
 // Une bande soudée, elle, dépasse la simple addition des gens.
-const petit = nouvellePartie(8787, { maintenant: 0 });
+const petit = nouvellePartie(8787, { maintenant: 0, depart: 'ville' });
 const gPetit = groupeActif(petit);
 gPetit.cohesion = 100;
 ok(rendementCohesion(gPetit) > 1.1, 'une bande soudée rend plus que la somme des bras',
   `×${rendementCohesion(gPetit).toFixed(2)}`);
 
 // Un baraquement élargit le noyau au lieu d'ouvrir des places.
-const bar = nouvellePartie(8888, { maintenant: 0 });
+const bar = nouvellePartie(8888, { maintenant: 0, depart: 'ville' });
 const gBar = groupeActif(bar);
 const noyAvant = noyau(bar, gBar);
 gBar.regionId = bar.world.regions.find((r) => !r.colonie).i;
@@ -3323,7 +3336,7 @@ ok(noyau(bar, gBar) === noyAvant + 4,
   `${noyAvant} → ${noyau(bar, gBar)}`);
 
 section('9 nonies quater. L’attelage porte à votre place');
-const att = nouvellePartie(8181, { maintenant: 0 });
+const att = nouvellePartie(8181, { maintenant: 0, depart: 'ville' });
 const gAtt = groupeActif(att);
 const colAtt = att.world.colonies.find((c) => !c.ruine);
 gAtt.regionId = colAtt.regionId;
@@ -3354,7 +3367,7 @@ ok(betesDe(gAtt).length === 0 || capacitePortage(att, gAtt) < capPleine,
   betesDe(gAtt).length ? `${capacitePortage(att, gAtt)} kg` : 'restée sur la piste');
 
 // Nourrie, elle tient.
-const att2 = nouvellePartie(8282, { maintenant: 0 });
+const att2 = nouvellePartie(8282, { maintenant: 0, depart: 'ville' });
 const gAtt2 = groupeActif(att2);
 gAtt2.regionId = att2.world.colonies.find((c) => !c.ruine).regionId;
 att2.player.credits = 5000;
@@ -3368,7 +3381,7 @@ ok((gAtt2.inventaire.biomasse || 0) < 900, 'et elle a bien mangé la biomasse',
   `${Math.round(gAtt2.inventaire.biomasse)} restants`);
 
 // Rien n'interdit d'en prendre trop — c'est juste une mauvaise affaire.
-const tropS = nouvellePartie(8383, { maintenant: 0 });
+const tropS = nouvellePartie(8383, { maintenant: 0, depart: 'ville' });
 const gTrop = groupeActif(tropS);
 const colTrop = tropS.world.colonies.find((c) => !c.ruine);
 gTrop.regionId = colTrop.regionId;
@@ -3412,7 +3425,7 @@ ok(JSON.parse(serialiser(att2)).player.groupes[0].betes.length === 1,
   'l’attelage survit à l’aller-retour JSON');
 
 section('9 nonies bis bis. On campe la nuit, sauf ordre contraire');
-const nuitS = nouvellePartie(7777, { maintenant: 0 });
+const nuitS = nouvellePartie(7777, { maintenant: 0, depart: 'ville' });
 const gNuit = groupeActif(nuitS);
 gNuit.inventaire.rations = 4000;
 const loin = nuitS.world.regions.find((r) => distance(r.i, gNuit.regionId) >= 6);
@@ -3433,7 +3446,7 @@ ok(gNuit.membres.every((c) => c.fatigue < 60), 'et la fatigue redescend',
   gNuit.membres.map((c) => Math.round(c.fatigue)).join('/'));
 
 // Marche forcée : on avance, et on le paie.
-const forceS = nouvellePartie(7777, { maintenant: 0 });
+const forceS = nouvellePartie(7777, { maintenant: 0, depart: 'ville' });
 const gForce = groupeActif(forceS);
 gForce.inventaire.rations = 4000;
 donnerOrdre(forceS, { type: 'voyage', dest: loin.i, allure: 'forcee' }, gForce);
@@ -3468,7 +3481,7 @@ ok(resistanceLetale(dur) >= 0.55, 'sans jamais rendre personne invulnérable',
   `×${resistanceLetale(dur).toFixed(2)}`);
 
 section('9 nonies ter. Le campement paie dès le premier piquet');
-const camp1 = nouvellePartie(9191, { maintenant: 0 });
+const camp1 = nouvellePartie(9191, { maintenant: 0, depart: 'ville' });
 const gCamp1 = groupeActif(camp1);
 const videCamp1 = camp1.world.regions.find((r) => !r.colonie);
 gCamp1.regionId = videCamp1.i;
@@ -3494,7 +3507,7 @@ ok(chezSoi.fatigue < dehors.fatigue - 8, 'huit heures de repos sous un toit vale
   `${dehors.fatigue.toFixed(0)} dehors contre ${chezSoi.fatigue.toFixed(0)} au camp`);
 
 // Hydroponie et halle marchent sans courant — lentement, mais elles marchent.
-const camp2 = nouvellePartie(9292, { maintenant: 0 });
+const camp2 = nouvellePartie(9292, { maintenant: 0, depart: 'ville' });
 const gCamp2 = groupeActif(camp2);
 gCamp2.regionId = camp2.world.regions.find((r) => !r.colonie).i;
 Object.assign(gCamp2.inventaire, { ferraille: 300, polymere: 100 });
@@ -3512,7 +3525,7 @@ ok(!BUILDINGS.halle.cout.composant,
   'et la halle ne demande aucun composant : elle nourrit, elle ne développe pas');
 
 section('9 nonies bis. Cantine, halle et poste de garde');
-const s9n2 = nouvellePartie(8484, { maintenant: 0 });
+const s9n2 = nouvellePartie(8484, { maintenant: 0, depart: 'ville' });
 const g9n2 = groupeActif(s9n2);
 const vide9n = s9n2.world.regions.find((r) => !r.colonie);
 g9n2.regionId = vide9n.i;
@@ -3530,7 +3543,7 @@ b9n.stock.carburant = 400;
 // — un combat de plus, deux blessés à soigner au camp, et le résultat basculait
 // pour une raison qui n'avait rien à voir avec la cantine.
 function consommationCamp(avecCantine) {
-  const t = nouvellePartie(8484, { maintenant: 0 });
+  const t = nouvellePartie(8484, { maintenant: 0, depart: 'ville' });
   const gt = groupeActif(t);
   gt.regionId = t.world.regions.find((r) => !r.colonie).i;
   Object.assign(gt.inventaire, { ferraille: 400, polymere: 200, composant: 30 });
@@ -3558,7 +3571,7 @@ ok(placesMetier(b9n, 'cuisinier') === 8, 'quatre cantines ouvrent huit postes de
   `${placesMetier(b9n, 'cuisinier')}`);
 
 // La halle récolte la région, sans l'épuiser.
-const s9n3 = nouvellePartie(8585, { maintenant: 0 });
+const s9n3 = nouvellePartie(8585, { maintenant: 0, depart: 'ville' });
 const g9n3 = groupeActif(s9n3);
 const vide9n3 = s9n3.world.regions.find((r) => !r.colonie && BIOMES[r.biome].yields
   && Object.keys(BIOMES[r.biome].yields).length);
@@ -3583,7 +3596,7 @@ ok(s9n3.world.regions[vide9n3.i].fouille === fouilleAvant,
   'et c’est une exploitation, pas une fouille : la case ne s’épuise pas');
 
 // Le poste de garde protège les stocks quand le raid passe quand même.
-const s9n4 = nouvellePartie(8686, { maintenant: 0 });
+const s9n4 = nouvellePartie(8686, { maintenant: 0, depart: 'ville' });
 const g9n4 = groupeActif(s9n4);
 g9n4.regionId = s9n4.world.regions.find((r) => !r.colonie).i;
 Object.assign(g9n4.inventaire, { ferraille: 400, polymere: 200, composant: 30 });
@@ -3594,7 +3607,7 @@ ok(placesMetier(s9n4.base, 'garde') === 8, 'quatre postes ouvrent huit places de
   `${placesMetier(s9n4.base, 'garde')}`);
 
 // Les métiers de ville nouveaux existent et servent à quelque chose.
-const s9n5 = nouvellePartie(8787, { maintenant: 0 });
+const s9n5 = nouvellePartie(8787, { maintenant: 0, depart: 'ville' });
 const colCant = s9n5.world.colonies[0];
 colCant.emplois.cantinier = 0;
 const consSansCantinier = consommationColonie(colCant).rations;
@@ -3616,7 +3629,7 @@ ok(colOuv.murs > mursSansOuvriers, 'des ouvriers remontent les murs d’une vill
   `${mursSansOuvriers.toFixed(2)} → ${colOuv.murs.toFixed(2)}`);
 
 section('9 decies. Métiers et gens des villes');
-const s9u = nouvellePartie(5151, { maintenant: 0 });
+const s9u = nouvellePartie(5151, { maintenant: 0, depart: 'ville' });
 avancer(s9u, 60);
 const villes = s9u.world.colonies.filter((c) => !c.ruine);
 
@@ -3646,7 +3659,7 @@ ok(villes.every((c) => actifs(c) < c.pop), 'tout le monde ne travaille pas');
 // paysans. On mesure sur un monde neuf, pas après trois mille heures : la faim
 // reconvertit les mineurs en paysans, ce qui est le comportement voulu et
 // noierait la règle qu'on veut vérifier ici.
-const mondeNeuf = nouvellePartie(3939, { maintenant: 0 });
+const mondeNeuf = nouvellePartie(3939, { maintenant: 0, depart: 'ville' });
 const parBiome = {};
 for (const c of mondeNeuf.world.colonies) {
   const b = mondeNeuf.world.regions[c.regionId].biome;
@@ -3700,7 +3713,7 @@ ok(prixAvare > prixDroit * 1.1,
   `${prixAvare.toFixed(2)} contre ${prixDroit.toFixed(2)}`);
 
 // Ils vieillissent et finissent par être remplacés.
-const s9v = nouvellePartie(5252, { maintenant: 0 });
+const s9v = nouvellePartie(5252, { maintenant: 0, depart: 'ville' });
 const suivi = s9v.world.colonies[0];
 avancer(s9v, 5);
 const nomsAvant = (suivi.notables || []).map((p) => p.nom).join('|');
@@ -3715,7 +3728,7 @@ ok((suivi.notables || []).length > 0, 'et les charges restent pourvues');
 verifierCoherence(s9u, 'après une année avec métiers et notables');
 
 section('9 undecies. Dirigeants et buts de guerre');
-const s9w = nouvellePartie(6161, { maintenant: 0 });
+const s9w = nouvellePartie(6161, { maintenant: 0, depart: 'ville' });
 // Chaque faction a quelqu'un à sa tête dès le premier jour, sauf l'Essaim.
 const mene = DIPLO_FACTIONS.filter((k) => dirigeant(s9w.world, k));
 ok(mene.length === DIPLO_FACTIONS.length, 'toute faction a un dirigeant',
@@ -3756,7 +3769,7 @@ if (ville9w) {
 }
 
 // Perdre des villes ronge la légitimité ; en prendre l'assoit.
-const s9x = nouvellePartie(6262, { maintenant: 0 });
+const s9x = nouvellePartie(6262, { maintenant: 0, depart: 'ville' });
 const dx = dirigeant(s9x.world, 'cendre');
 const legDepart = dx.legitimite;
 crediterDirigeant(s9x.world, 'cendre', 'perte', 2);
@@ -3765,7 +3778,7 @@ crediterDirigeant(s9x.world, 'cendre', 'prise', 3);
 ok(dx.legitimite > legDepart, 'en prendre la regagne');
 
 // Sur une année, les têtes changent et les guerres se closent sur leur objet.
-const s9y = nouvellePartie(6363, { maintenant: 0 });
+const s9y = nouvellePartie(6363, { maintenant: 0, depart: 'ville' });
 avancer(s9y, 8000);
 const changements = s9y.journal.filter((x) => x.type === 'dirigeant').length;
 const closes = s9y.journal.filter((x) => x.type === 'paix' && /affaire est réglée/.test(x.texte)).length;
@@ -3777,7 +3790,7 @@ ok(DIPLO_FACTIONS.every((k) => !coloniesVivantes(s9y, k).length || dirigeant(s9y
 verifierCoherence(s9y, 'après une année de politique incarnée');
 
 section('9 duodecies. Ce que les gens attendent de vous');
-const s9z = nouvellePartie(7171, { maintenant: 0 });
+const s9z = nouvellePartie(7171, { maintenant: 0, depart: 'ville' });
 const colZ = s9z.world.colonies.find((c) => c.notables && c.notables.length >= 2);
 ok(!!colZ, 'une ville a des gens qui comptent');
 ok(colZ.notables.every((p) => p.demande === null && Array.isArray(p.memoire)),
@@ -3855,7 +3868,7 @@ ok(medZ.opinion === opZ, 'et ne coûte rien, même si l’on avait de quoi',
 ok(souvenirs(medZ).length === memZ, 'personne ne vous reproche de n’avoir pas tout fait');
 
 // L'estime a des effets qu'on ne peut pas acheter autrement.
-const s9aa = nouvellePartie(7272, { maintenant: 0 });
+const s9aa = nouvellePartie(7272, { maintenant: 0, depart: 'ville' });
 const colA = s9aa.world.colonies.find((c) => notable(c, 'chef'));
 notable(colA, 'chef').opinion = PANNEAU_FERME - 5;
 ok(!faveurChef(colA).ouvert, 'un chef qui vous déteste ferme son panneau');
@@ -3886,7 +3899,7 @@ if (colCm) {
 }
 
 // Sur une année de jeu, des demandes naissent d'elles-mêmes et personne ne casse.
-const s9bb = nouvellePartie(7373, { maintenant: 0 });
+const s9bb = nouvellePartie(7373, { maintenant: 0, depart: 'ville' });
 avancer(s9bb, 6000);
 const demandes9 = s9bb.world.colonies.reduce(
   (n, c) => n + (c.notables || []).filter((p) => p.demande).length, 0);
@@ -3903,7 +3916,7 @@ section('9 terdecies. Les régimes : ce qu’on a le droit de faire chez eux');
 {
   // Le monde ne commence pas uniforme. Un régime que personne ne pratique est
   // une ligne de code que le joueur ne rencontrera jamais.
-  const sr = nouvellePartie(2929, { maintenant: 0 });
+  const sr = nouvellePartie(2929, { maintenant: 0, depart: 'ville' });
   const pratiques = new Set(DIPLO_FACTIONS.map((f) => loisDe(sr.world, f).regime));
   ok(pratiques.size >= 3, 'plusieurs régimes coexistent dès la première heure',
     [...pratiques].join(', '));
@@ -4003,7 +4016,7 @@ section('9 quaterdecies. Ce que l’estime change, et ce qu’une absence ne co�
   ok(seuils.includes(-20) && seuils.includes(-50),
     'les paliers hostiles sont ceux de la majoration des prix et de la prime');
 
-  const se = nouvellePartie(4242, { maintenant: 0 });
+  const se = nouvellePartie(4242, { maintenant: 0, depart: 'ville' });
   const fe = DIPLO_FACTIONS[0];
   se.player.reputation[fe] = 45;
   const haut = effetsEstime(se, fe);
@@ -4026,7 +4039,7 @@ section('9 quaterdecies. Ce que l’estime change, et ce qu’une absence ne co�
   // Une absence ne se paie pas en estime. C'est la contrepartie du rattrapage :
   // le monde tourne sans vous, mais on ne vous reproche pas de n'avoir pas été
   // là pour recevoir un ordre.
-  const sa = nouvellePartie(5151, { maintenant: 0 });
+  const sa = nouvellePartie(5151, { maintenant: 0, depart: 'ville' });
   const ga = groupeActif(sa);
   const colA = sa.world.colonies.find((c) => c.faction && !c.ruine);
   ga.regionId = colA.regionId;
@@ -4074,7 +4087,7 @@ section('9 quindecies. Le rapport d’absence');
   // Une longue absence produit des milliers de lignes de journal pour quatre
   // cents places : ce qui comptait a défilé. Le rapport ne relit donc pas le
   // journal, il compare deux photos et retient les faits marquants au passage.
-  const sr = nouvellePartie(8484, { maintenant: 0 });
+  const sr = nouvellePartie(8484, { maintenant: 0, depart: 'ville' });
   // On entre au service de quelqu'un : la solde tombe toute seule pendant
   // l'absence, ce qui donne au moins un mouvement d'argent à ventiler. Sans
   // ça, le test passerait sur une partie où rien ne bouge — et ne mesurerait
@@ -4132,7 +4145,7 @@ section('9 quindecies. Le rapport d’absence');
 
   // Une partie jouée aux commandes n'en produit pas : ce serait un écran de
   // plus à fermer toutes les trois minutes.
-  const sp = nouvellePartie(8585, { maintenant: 0 });
+  const sp = nouvellePartie(8585, { maintenant: 0, depart: 'ville' });
   avancer(sp, 300);
   ok(!sp.rapport, 'jouer aux commandes n’ouvre aucun rapport');
 }
@@ -4145,7 +4158,7 @@ section('9 sexdecies. Un camp neuf dit ce qu’il lui manque');
   // zéro sans baraquement, la halle et l'hydroponie existent mais sont noyées
   // dans douze bâtiments listés dans l'ordre du fichier de données, et un
   // bouton grisé ne dit pas de quoi il manque.
-  const sb = nouvellePartie(1234, { maintenant: 0 });
+  const sb = nouvellePartie(1234, { maintenant: 0, depart: 'ville' });
   const gb = groupeActif(sb);
   const videB = sb.world.regions.find(
     (r) => !sb.world.colonies.some((c) => c.regionId === r.i));
@@ -4189,7 +4202,7 @@ section('9 sexdecies. Un camp neuf dit ce qu’il lui manque');
   // aucun moyen de comprendre. Un tableau de bord qui coche des cases sans
   // regarder les flux ment mieux que le silence.
   {
-    const sf = nouvellePartie(31415, { maintenant: 0 });
+    const sf = nouvellePartie(31415, { maintenant: 0, depart: 'ville' });
     const gf = groupeActif(sf);
     const friche = sf.world.regions.find(
       (r) => r.biome === 'friche' && !sf.world.colonies.some((c) => c.regionId === r.i));
@@ -4245,7 +4258,7 @@ section('9 septdecies. Une destination porte toujours sa case');
   // `nomRegion` rend le nom de la ville quand il y en a une, et ne tombe sur la
   // case que pour les régions vides. Or un ravitaillement vise une ville — il
   // n'affichait donc jamais de coordonnées, quoi qu'on fasse aux régions vides.
-  const sc = nouvellePartie(606, { maintenant: 0 });
+  const sc = nouvellePartie(606, { maintenant: 0, depart: 'ville' });
   const villeC = sc.world.colonies.find((c) => !c.ruine);
   const videC = sc.world.regions.find(
     (r) => !sc.world.colonies.some((c) => c.regionId === r.i));
@@ -4278,7 +4291,7 @@ section('9 octodecies. Un contrat qu’on peut tenir, et dont il reste une trace
   // treize heures. Un relevé se rend au panneau qui l'a affiché, mais la durée
   // ne payait que l'aller — le contrat était impossible par construction, et
   // l'écran annonçait pourtant « l'échéance le permet ».
-  const sk = nouvellePartie(9182, { maintenant: 0 });
+  const sk = nouvellePartie(9182, { maintenant: 0, depart: 'ville' });
   avancer(sk, 40);
   const recos = sk.world.colonies.flatMap(
     (c) => (c.contrats || []).filter((x) => x.type === 'reconnaissance')
@@ -4355,7 +4368,7 @@ section('9 octodecies. Un contrat qu’on peut tenir, et dont il reste une trace
   // le cas qui décidait, celui du joueur qui rate plusieurs fois au même
   // endroit — le seul que l'ancienne sanction atteignait vraiment.
   {
-    const sp = nouvellePartie(2024, { maintenant: 0 });
+    const sp = nouvellePartie(2024, { maintenant: 0, depart: 'ville' });
     avancer(sp, 60);
     const gp = groupeActif(sp);
     const colP = sp.world.colonies.find((c) => (c.contrats || []).length);
@@ -4397,7 +4410,7 @@ section('9 octodecies. Un contrat qu’on peut tenir, et dont il reste une trace
 
 section('9 novodecies. Tous les drapeaux n’enrôlent pas au même prix');
 {
-  const se = nouvellePartie(3690, { maintenant: 0 });
+  const se = nouvellePartie(3690, { maintenant: 0, depart: 'ville' });
   const seuils = DIPLO_FACTIONS.map((k) => estimeEngagement(k));
   ok(new Set(seuils).size > 1,
     'les critères d’engagement diffèrent d’une faction à l’autre',
@@ -4414,7 +4427,11 @@ section('9 novodecies. Tous les drapeaux n’enrôlent pas au même prix');
   ok(peutSEngager(se, hote).ok,
     'et l’on peut servir ses hôtes dès le départ : sans ça la voie du service s’évapore',
     `${hote} exige ${estimeEngagement(hote)}, on a ${se.player.reputation[hote]}`);
-  const dur = DIPLO_FACTIONS.find((k) => estimeEngagement(k) > 30);
+  // Un exigeant qui ne soit pas notre hôte : depuis qu'on peut naître sous
+  // n'importe quel drapeau, l'église peut être celle qui nous accueille — et
+  // l'on est alors reçu chez elle, ce qui est le fonctionnement voulu.
+  const dur = DIPLO_FACTIONS.find(
+    (k) => estimeEngagement(k) > 30 && (se.player.reputation[k] || 0) <= 0);
   ok(dur && !peutSEngager(se, dur).ok,
     'tandis que les plus exigeants demandent qu’on ait fait ses preuves',
     dur ? peutSEngager(se, dur).motif : 'aucun');
@@ -4433,7 +4450,7 @@ section('9 vicies. On peut rendre un colis qu’on ne livrera pas');
   // livraison coûtait douze d'estime pour vol, y compris debout dans la ville
   // qui vous avait confié le colis, celui-ci intact dans le sac. On punissait un
   // vol qu'aucune action ne permettait d'éviter.
-  const sv = nouvellePartie(1357, { maintenant: 0 });
+  const sv = nouvellePartie(1357, { maintenant: 0, depart: 'ville' });
   avancer(sv, 40);
   const gv = groupeActif(sv);
   const trouve = sv.world.colonies
@@ -4478,8 +4495,47 @@ section('9 vicies. On peut rendre un colis qu’on ne livrera pas');
   }
 }
 
+section('9 unvicies. On se réveille dans la poussière');
+{
+  // Le jeu commençait dans une ville, et toujours chez les mêmes — quarante
+  // parties sur quarante chez les Communes Libres. Même drapeau, même régime,
+  // mêmes voisins : l'ouverture était une constante du jeu plutôt qu'une
+  // variable de partie.
+  //
+  // Le reste de ce fichier démarre en ville (`depart: 'ville'`) parce qu'il
+  // teste des mécaniques — un marché, un panneau, une école — et qu'une escouade
+  // posée dans le désert n'en a aucune sous la main. Le départ réel, lui, se
+  // vérifie ici.
+  const villes = [];
+  const inconnus = [];
+  const distances = [];
+  for (let i = 0; i < 12; i++) {
+    const sd = nouvellePartie(400 + i * 613, { maintenant: 0 });
+    const g = sd.player.groupes[0];
+    villes.push(!!sd.world.colonies.find((c) => c.regionId === g.regionId));
+    inconnus.push(Math.max(0, ...Object.values(sd.player.reputation)));
+    const proche = sd.world.colonies
+      .filter((c) => c.faction && c.faction !== 'essaim')
+      .reduce((a, c) => Math.min(a, distance(g.regionId, c.regionId)), 99);
+    distances.push(proche);
+  }
+  ok(villes.every((v) => !v), 'on ne démarre plus dans une ville',
+    `${villes.filter(Boolean).length} sur 12 y étaient encore`);
+  ok(inconnus.every((r) => r === 0), 'et personne ne vous connaît : toute estime à zéro',
+    `max ${Math.max(...inconnus)}`);
+  ok(distances.every((d) => d <= 2), 'mais on n’est pas perdu : une ville à deux régions au plus',
+    distances.join(', '));
+
+  // Le départ en ville reste disponible, et il donne de quoi servir ses hôtes.
+  const sv2 = nouvellePartie(400, { maintenant: 0, depart: 'ville' });
+  const hote2 = Object.keys(sv2.player.reputation).find((k) => sv2.player.reputation[k] > 0);
+  ok(!!hote2 && peutSEngager(sv2, hote2).ok,
+    'et le départ en ville, lui, ouvre le service chez ses hôtes quel que soit leur drapeau',
+    hote2 ? `${hote2} : ${sv2.player.reputation[hote2]} pour ${estimeEngagement(hote2)} exigés` : 'aucun');
+}
+
 section('10. Rattrapage hors ligne');
-const s10 = nouvellePartie(1010, { maintenant: 1000000 });
+const s10 = nouvellePartie(1010, { maintenant: 1000000, depart: 'ville' });
 s10.vitesse = 1; // le rattrapage dépend de la vitesse choisie
 const res10 = rattraper(s10, 1000000 + TICK_MS * 100);
 ok(res10.ticks === 100, '100 heures rattrapées après 100 pas de temps réel', `reçu ${res10.ticks}`);
@@ -4490,10 +4546,10 @@ ok(s10.temps <= 100 + RATTRAPAGE_MAX, 'plafond respecté', `t=${s10.temps}`);
 
 // Le rattrapage étalé sert l'interface : il doit produire exactement le même
 // monde que le rattrapage d'un bloc, quel que soit le découpage.
-const bloc = nouvellePartie(2020, { maintenant: 500 });
+const bloc = nouvellePartie(2020, { maintenant: 500, depart: 'ville' });
 bloc.vitesse = 1;
 rattraper(bloc, 500 + TICK_MS * 600);
-const etale = nouvellePartie(2020, { maintenant: 500 });
+const etale = nouvellePartie(2020, { maintenant: 500, depart: 'ville' });
 etale.vitesse = 1;
 const pas10 = rattrapageEtale(etale, 500 + TICK_MS * 600, 37);
 let tranches = 0;
@@ -4504,7 +4560,7 @@ ok(serialiser(etale) === serialiser(bloc), 'étalé et d’un bloc donnent le m�
 
 // Fermer la page en cours de rattrapage ne doit ni perdre ni rejouer le temps
 // déjà passé : ce qui reste dû se retrouve au chargement suivant.
-const coupe = nouvellePartie(2020, { maintenant: 500 });
+const coupe = nouvellePartie(2020, { maintenant: 500, depart: 'ville' });
 coupe.vitesse = 1;
 const pas10b = rattrapageEtale(coupe, 500 + TICK_MS * 600, 37);
 pas10b.pas();
@@ -4514,14 +4570,14 @@ ok(coupe.temps === 600, 'reprise après coupure : ni perte ni doublon', `t=${cou
 ok(reste.ticks === 600 - 74, 'le reste dû est exactement ce qui manquait', `reçu ${reste.ticks}`);
 
 section('11. Robustesse : escouade décimée');
-const s11 = nouvellePartie(1111, { maintenant: 0 });
+const s11 = nouvellePartie(1111, { maintenant: 0, depart: 'ville' });
 for (const ch of groupeActif(s11).membres) ch.etat = 'mort';
 avancer(s11, 50);
 ok(s11.fin === 'extinction', 'fin de partie détectée');
 ok(s11.temps <= 51, 'la sim s’arrête après la fin', `t=${s11.temps}`);
 
 section('12. Robustesse : sac plein et famine');
-const s12 = nouvellePartie(1212, { maintenant: 0 });
+const s12 = nouvellePartie(1212, { maintenant: 0, depart: 'ville' });
 groupeActif(s12).inventaire.rations = 0;
 donnerOrdre(s12, { type: 'fouille' });
 avancer(s12, 300);

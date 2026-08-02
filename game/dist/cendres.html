@@ -15178,15 +15178,42 @@ function nouvellePartie(seed, opts = {}) {
   const rng = new Rng(seed);
   const world = genererMonde(rng);
 
-  // On démarre chez les Communes Libres si elles existent : le moins hostile.
-  let depart = null;
-  const libres = world.colonies.filter((c) => c.faction === 'libres');
-  if (libres.length) depart = rng.pick(libres);
-  else depart = rng.pick(world.colonies);
+  // Où l'on ouvre les yeux.
+  //
+  // Le jeu commençait dans une ville, et toujours la même faction — quarante
+  // parties sur quarante chez les Communes Libres, au motif qu'elles sont les
+  // moins hostiles. L'ouverture était donc une constante : même drapeau, même
+  // régime, mêmes voisins, et les cinq autres factions n'étaient qu'un décor
+  // qu'on découvrait plus tard.
+  //
+  //   `depart: 'sauvage'` (défaut)  on se réveille dans la poussière, à une ou
+  //       deux régions d'une ville. Personne ne vous connaît, personne ne vous
+  //       doit rien, et le premier choix de la partie est d'aller voir qui tient
+  //       le coin.
+  //   `depart: 'ville'`             on démarre chez quelqu'un, qui vous connaît
+  //       juste assez pour vous prendre à son service. Le banc s'en sert : il
+  //       mesure des trajectoires sur trente parties, et une ouverture stable
+  //       lui évite de confondre un changement de règle avec un mauvais tirage.
+  //
+  // Dans les deux cas, l'estime d'accueil suit le seuil d'enrôlement du drapeau
+  // plutôt qu'un nombre fixe : c'est ce qui permet de naître chez une église qui
+  // en demande quarante sans que la voie du service se referme d'emblée.
+  const accueillantes = world.colonies.filter((c) => c.faction && c.faction !== 'essaim');
+  const enVille = opts.depart === 'ville';
+  const hote = accueillantes.length ? rng.pick(accueillantes) : rng.pick(world.colonies);
+  let regionDepart = hote.regionId;
+  if (!enVille) {
+    // Une case vide à portée de marche : assez près pour trouver du monde en
+    // cherchant, assez loin pour que personne ne vous ait vu arriver.
+    const autour = world.regions.filter(
+      (r) => !world.colonies.some((c) => c.regionId === r.i)
+        && distance(r.i, hote.regionId) >= 1 && distance(r.i, hote.regionId) <= 2);
+    if (autour.length) regionDepart = rng.pick(autour).i;
+  }
 
   // On part équipé : sans armure, la première bande de pillards venue
   // liquide l'escouade avant qu'elle ait appris quoi que ce soit.
-  const premier = groupeVide(idDepuisRng(rng, 'g'), 'Convoi', depart.regionId, 0);
+  const premier = groupeVide(idDepuisRng(rng, 'g'), 'Convoi', regionDepart, 0);
   const depart2 = [
     { archetype: 'ferrailleur', arme: 'machette', armure: 'cuir' },
     { archetype: 'chasseur', arme: 'clous', armure: 'cuir' },
@@ -15200,7 +15227,9 @@ function nouvellePartie(seed, opts = {}) {
 
   const reputation = {};
   for (const k of DIPLO_FACTIONS) reputation[k] = 0;
-  reputation[depart.faction] = 12;
+  // Chez soi, on est connu juste assez pour être pris à leur service. Dans le
+  // désert, personne ne vous connaît : c'est tout le sel du départ sauvage.
+  if (enVille && hote.faction) reputation[hote.faction] = estimeEngagement(hote.faction) + 2;
 
   const state = {
     version: VERSION,
@@ -15282,7 +15311,7 @@ function nouvellePartie(seed, opts = {}) {
     world.factions[k].dirigeant = k === 'essaim' ? null : creerDirigeant(rng, k, 0);
   }
 
-  decouvrir(world, depart.regionId, 2);
+  decouvrir(world, regionDepart, 2);
   observer(state);
   tickClimat(world, 0, rng);
   rafraichirPanneaux(state, rng, 0);
@@ -15291,9 +15320,13 @@ function nouvellePartie(seed, opts = {}) {
   const log = creerLogger(state);
   log({
     type: 'debut',
-    texte: `Le convoi s’arrête à ${depart.nom}. Trois bouches à nourrir, 450 crédits, et un monde qui ne demande rien à personne.`,
+    texte: enVille
+      ? `Le convoi s’arrête à ${hote.nom}. Trois bouches à nourrir, 450 crédits, et un monde `
+        + 'qui ne demande rien à personne.'
+      : `Le convoi s’arrête en ${nomRegion(world, regionDepart)}. Trois bouches à nourrir, `
+        + '450 crédits, et pas un nom que quiconque connaisse ici.',
     important: true,
-    regionId: depart.regionId,
+    regionId: regionDepart,
   });
   return state;
 }

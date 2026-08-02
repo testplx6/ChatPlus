@@ -1779,7 +1779,13 @@ console.log(`Banc d'équilibrage — ${PARTIES} parties × ${HEURES} h\n${'='.re
 let survivants = 0;
 const lignes = [];
 for (let n = 0; n < PARTIES; n++) {
-  const state = nouvellePartie(1000 + n * 7919, { maintenant: 0 });
+  // Départ en ville, contrairement au jeu, qui commence désormais dans le
+  // désert sans que personne vous connaisse. Le banc mesure des trajectoires sur
+  // trente parties et compare des règles entre elles : une ouverture stable lui
+  // évite de confondre un changement de règle avec un mauvais tirage de départ.
+  // La contrepartie est connue et assumée — il ne mesure pas les premières
+  // heures telles que le joueur les vit.
+  const state = nouvellePartie(1000 + n * 7919, { maintenant: 0, depart: 'ville' });
   state.player.posture = 'neutre';
   if (process.env.CAMP === '1') {
     // On plante le camp sur la première case vide à portée, avec de quoi le

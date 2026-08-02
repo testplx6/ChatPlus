@@ -79,7 +79,7 @@ await mkdir(CAPTURES, { recursive: true });
 // --------------------------------------------------------------------------
 
 function partieAvancee() {
-  const s = nouvellePartie(20260729, { maintenant: Date.now() });
+  const s = nouvellePartie(20260729, { maintenant: Date.now(), depart: 'ville' });
   const vide = s.world.regions.find((r) => !r.colonie && r.decouvert)
     || s.world.regions.find((r) => !r.colonie);
   groupeActif(s).regionId = vide.i;
@@ -312,12 +312,41 @@ ok(!(await large.evaluate(() => document.documentElement.scrollWidth > window.in
   'pas de débordement en écran large');
 
 console.log('\n8 bis. Contenu de jeu : contrats, étal, sites');
-// On repart d'une partie neuve, posée dans une ville.
-await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
-await page.reload({ waitUntil: 'networkidle' });
-await page.click('[data-a="nouvelle"]');
-await page.waitForSelector('#carte');
-await page.waitForTimeout(600);
+// Le vrai premier écran : une partie neuve, celle qu'un joueur lance.
+{
+  await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.click('[data-a="nouvelle"]');
+  await page.waitForSelector('#carte');
+  await page.waitForTimeout(600);
+  const premierEcran = await page.locator('#ecran').innerText();
+  ok(!/MARCHÉ|RECRUTER/i.test(premierEcran),
+    'une partie neuve ne commence plus dans une ville',
+    premierEcran.slice(0, 160).replace(/\n+/g, ' | '));
+  ok(/ORDRE DE|POSITION/i.test(premierEcran),
+    'mais l’escouade a bien un ordre et une position : on n’est pas nulle part');
+  await page.screenshot({ path: join(CAPTURES, '00b-depart.png'), fullPage: true });
+  const rep = await page.evaluate(
+    () => JSON.parse(localStorage.getItem('cendres.save.v1')).player.reputation);
+  ok(Object.values(rep).every((v) => v === 0),
+    'et personne ne vous connaît encore', JSON.stringify(rep));
+}
+
+// On repart d'une partie neuve, mais posée dans une ville : le jeu commence
+// désormais dans le désert, et les vérifications qui suivent ont besoin d'un
+// marché, d'un panneau et d'un armurier sous la main. Le départ sauvage a sa
+// propre section (voir plus bas) — ici on teste des écrans, pas l'ouverture.
+{
+  const enVille = serialiser(nouvellePartie(20260729, {
+    maintenant: Date.now(), depart: 'ville',
+  }));
+  await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), enVille);
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.waitForTimeout(600);
+}
 
 // Rien ne doit descendre lettre par lettre — ni à droite, ni à gauche.
 //
@@ -453,10 +482,13 @@ const colonnes = (p) => p.evaluate(() => {
   ok(/vivres|manger/i.test(vu),
     'et il nomme la famine qui vient plutôt qu’un pourcentage');
   await page.screenshot({ path: join(CAPTURES, '01b-situation.png') });
-  // On rend la ville que la suite attend.
+  // On rend la ville que la suite attend. Une partie neuve démarre désormais
+  // dans le désert : on injecte donc explicitement un départ en ville.
   await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
   await page.reload({ waitUntil: 'networkidle' });
-  await page.click('[data-a="nouvelle"]');
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt),
+    serialiser(nouvellePartie(20260729, { maintenant: Date.now(), depart: 'ville' })));
+  await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await page.waitForTimeout(600);
 }
@@ -671,11 +703,14 @@ await page.waitForTimeout(300);
     'un titre de mission à rallonge ne met pas son verdict en colonne',
     pastillesEnColonne.slice(0, 3).join(' | '));
   await page.screenshot({ path: join(CAPTURES, '09d-ordre.png'), fullPage: true });
-  // On rend la partie neuve posée en ville que la suite de la section attend :
-  // les vérifications du marché comptent sur son étal et sa bourse.
+  // On rend la partie posée en ville que la suite de la section attend : les
+  // vérifications du marché comptent sur son étal et sa bourse. Une partie
+  // neuve, elle, démarre maintenant dans le désert.
   await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
   await page.reload({ waitUntil: 'networkidle' });
-  await page.click('[data-a="nouvelle"]');
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt),
+    serialiser(nouvellePartie(20260729, { maintenant: Date.now(), depart: 'ville' })));
+  await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await page.waitForTimeout(600);
 }
@@ -871,7 +906,7 @@ ok(refusion.n === avantGroupes, 'les groupes sont réunis', `${refusion.n}`);
 ok(refusion.membres === 3, 'tout le monde est rassemblé', `${refusion.membres}`);
 
 console.log('\n8 duodecies. Une politique qui a un visage');
-const politique = nouvellePartie(6363, { maintenant: Date.now() });
+const politique = nouvellePartie(6363, { maintenant: Date.now(), depart: 'ville' });
 avancer(politique, 3000);
 politique.world.regions.forEach((r) => { r.decouvert = true; });
 politique.base.recherche.cryptographie = 1;
@@ -902,9 +937,13 @@ if (guerresAffichees.n > 0) {
 }
 
 console.log('\n8 undecies. Métiers et gens d’une ville');
+// Départ en ville explicite : le jeu commence dans le désert, et il faut bien
+// une ville pour regarder qui y vit.
 await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
 await page.reload({ waitUntil: 'networkidle' });
-await page.click('[data-a="nouvelle"]');
+await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt),
+  serialiser(nouvellePartie(20260729, { maintenant: Date.now(), depart: 'ville' })));
+await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte');
 await page.waitForTimeout(600);
 ok(await page.locator('[data-a="modale"][data-m="ville"]').count() > 0,
@@ -1419,7 +1458,7 @@ if (await former.count() > 0) {
 
 console.log('\n8 septies. Écoles et diplômes');
 // On se pose dans une ville qui enseigne, avec de quoi payer.
-const ecolier = nouvellePartie(1717, { maintenant: Date.now() });
+const ecolier = nouvellePartie(1717, { maintenant: Date.now(), depart: 'ville' });
 const gEc = groupeActif(ecolier);
 const villeEcole = ecolier.world.colonies.find((c) => ecolesDe(ecolier.world, c).length);
 gEc.regionId = villeEcole.regionId;
@@ -1471,7 +1510,7 @@ ok(/À L’ÉCOLE|Indisponible/i.test(await page.evaluate(() => document.querySe
 
 console.log('\n8 sexies. Information imparfaite');
 // On fabrique une partie où l'escouade a vu une ville, puis s'en est allée.
-const espion = nouvellePartie(31337, { maintenant: Date.now() });
+const espion = nouvellePartie(31337, { maintenant: Date.now(), depart: 'ville' });
 const gEsp = groupeActif(espion);
 const villeVue = espion.world.colonies.find((c) => c.regionId === gEsp.regionId);
 const villeLoin = espion.world.colonies.find((c) => c.id !== villeVue.id);
@@ -1537,7 +1576,7 @@ console.log('\n8 quater. Retour après une longue absence');
 // au chargement. Ça doit se voir à l'écran et rendre la main, pas figer l'onglet.
 // Une escouade bien approvisionnée, pour que le rattrapage aille loin plutôt
 // que de s'arrêter sur une fin de partie au bout de quelques centaines d'heures.
-const veille = nouvellePartie(20260729, { maintenant: Date.now() });
+const veille = nouvellePartie(20260729, { maintenant: Date.now(), depart: 'ville' });
 groupeActif(veille).inventaire.rations = 200000;
 groupeActif(veille).inventaire.medkit = 500;
 const veilleTxt = serialiser(veille);
