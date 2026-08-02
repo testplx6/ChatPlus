@@ -304,7 +304,7 @@ export function manquePour(base, key) {
  * facteurs viennent des mêmes constantes que `tickBase` — si la production
  * change, cette phrase change avec.
  */
-export function apportBatiment(base, key) {
+export function apportBatiment(base, key, state) {
   const n = niveau(base, key) + 1;
   switch (key) {
     case 'baraquement':
@@ -312,9 +312,18 @@ export function apportBatiment(base, key) {
     case 'hydroponie':
       return `Transforme la biomasse en vivres, ~${(1.25 * n * 0.9).toFixed(1)} rations/h à plein régime, `
         + 'et loge 4 personnes de plus.';
-    case 'halle':
-      return 'Ramasse la région toute seule, sans l’escouade et sans épuiser la case. '
-        + 'C’est ce qui alimente l’hydroponie.';
+    case 'halle': {
+      // Ce que *cette* région donne, avant de dépenser soixante-cinq ferrailles
+      // pour découvrir qu'elle ne donne pas de biomasse. Une friche se ramasse
+      // très bien, mais on n'y mange pas.
+      const reg = state && state.world.regions[base.regionId];
+      const y = (reg && BIOMES[reg.biome] && BIOMES[reg.biome].yields) || null;
+      const liste = y ? Object.keys(y).map((k) => COMMODITIES[k].nom.toLowerCase()).join(', ') : null;
+      return 'Ramasse la région toute seule, sans l’escouade et sans épuiser la case.'
+        + (liste ? ` Ici : ${liste}.` : '')
+        + (y && !y.biomasse ? ' Pas de biomasse ici : l’hydroponie n’aura rien à transformer.'
+          : ' C’est ce qui alimente l’hydroponie.');
+    }
     case 'generateur':
       return `+${BUILDINGS.generateur.energie * n} d’énergie. Sans courant, les chaînes tournent au ralenti.`;
     case 'entrepot':
@@ -345,38 +354,74 @@ export function chaineAutonomie(state) {
   if (!base || !base.fonde) return [];
   const bio = Math.floor(base.stock.biomasse || 0);
   const rations = Math.floor(base.stock.rations || 0);
+  const carburant = Math.floor(base.stock.carburant || 0);
+  const reg = state.world.regions[base.regionId];
+  const rend = (reg && BIOMES[reg.biome] && BIOMES[reg.biome].yields) || {};
+  const donne = Object.keys(rend);
+  const donneBiomasse = (rend.biomasse || 0) > 0;
+  const halle = niveau(base, 'halle');
+  const hyd = niveau(base, 'hydroponie');
+  const places = populationMax(base);
+
+  // Un maillon n'est pas « en place » parce que le bâtiment est monté : il l'est
+  // quand il *produit*. La première version comptait des bâtiments, et affichait
+  // 4/4 en vert sur un camp planté dans une friche — qui ne donne ni biomasse ni
+  // rations, donc n'attire personne, à jamais. Un tableau de bord qui coche des
+  // cases sans regarder les flux ment mieux que le silence.
   return [
     {
       key: 'halle',
       titre: 'Ramasser',
-      fait: niveau(base, 'halle') > 0,
-      etat: niveau(base, 'halle') > 0
-        ? `halle niv. ${niveau(base, 'halle')} · ${bio} biomasse en réserve`
-        : 'le camp ne ramasse rien : tout doit être porté à dos d’homme',
+      fait: halle > 0 && donne.length > 0,
+      etat: halle === 0
+        ? 'le camp ne ramasse rien : tout doit être porté à dos d’homme'
+        : `halle niv. ${halle} · ici on ramasse ${donne.map(
+          (k) => COMMODITIES[k].nom.toLowerCase()).join(', ')}`,
+      // Ce que le biome refuse de donner est la chose la plus utile à savoir, et
+      // elle n'apparaissait nulle part.
+      alerte: halle > 0 && !donneBiomasse
+        ? `${BIOMES[reg.biome].nom} ne donne pas de biomasse : l’hydroponie n’aura rien à `
+          + 'transformer tant que vous n’en apporterez pas vous-même.'
+        : null,
     },
     {
       key: 'hydroponie',
       titre: 'Manger',
-      fait: niveau(base, 'hydroponie') > 0,
-      etat: niveau(base, 'hydroponie') > 0
-        ? `hydroponie niv. ${niveau(base, 'hydroponie')} · ${rations} rations en réserve`
-        : 'la biomasse ne devient pas de la nourriture',
+      fait: hyd > 0 && (bio > 0 || rations > 0),
+      etat: hyd === 0
+        ? 'la biomasse ne devient pas de la nourriture'
+        : `hydroponie niv. ${hyd} · ${bio} biomasse, ${rations} rations en réserve`,
+      alerte: hyd > 0 && bio === 0 && rations === 0
+        ? 'les bacs tournent à vide : sans biomasse, aucune ration ne sort.'
+        : null,
     },
     {
       key: 'baraquement',
       titre: 'Loger',
-      fait: niveau(base, 'baraquement') > 0,
-      etat: populationMax(base) > 0
-        ? `${Math.round(base.pop || 0)} habitant(s) sur ${populationMax(base)} places`
-        : 'aucune place pour dormir : personne ne s’installera jamais',
+      // Des lits ne suffisent pas : personne ne s'installe dans un camp sans
+      // réserve de vivres. Voir `tickBase`, où l'attrait est proportionnel à la
+      // réserve — à zéro ration, le tirage ne tombe jamais, quel que soit le
+      // nombre de places.
+      fait: places > 0 && rations > 0,
+      etat: places === 0
+        ? 'aucune place pour dormir : personne ne s’installera jamais'
+        : `${Math.round(base.pop || 0)} habitant(s) sur ${places} places`,
+      alerte: places > 0 && rations === 0
+        ? 'des lits, mais pas un vivre en réserve : on ne s’installe pas dans un camp '
+          + 'où l’on ne mange pas. Déposez-y des rations, ou faites-en pousser.'
+        : null,
     },
     {
       key: 'generateur',
       titre: 'Alimenter',
-      fait: niveau(base, 'generateur') > 0,
+      fait: niveau(base, 'generateur') > 0 && carburant > 0,
       etat: niveau(base, 'generateur') > 0
         ? `${Math.round(energie(base).prod)} produits pour ${Math.round(energie(base).conso)} consommés`
         : 'sans courant, les chaînes tournent au ralenti (elles tournent quand même)',
+      alerte: niveau(base, 'generateur') > 0 && carburant === 0
+        ? 'plus de carburant : le générateur est à l’arrêt. Il s’en raffine à partir du '
+          + 'polymère, ou s’en achète en ville.'
+        : null,
     },
   ];
 }

@@ -1801,7 +1801,8 @@ function blocChaine() {
   const etapes = chaineAutonomie(S);
   if (!etapes.length) return '';
   const faits = etapes.filter((x) => x.fait).length;
-  return `<section class="panneau ${faits === 0 ? 'urgent' : ''}">
+  const bloque = etapes.some((x) => x.alerte);
+  return `<section class="panneau ${faits === 0 || bloque ? 'urgent' : ''}">
     <h2 class="titre">Chaîne de l’autonomie
       <span class="droite ${faits === etapes.length ? '' : 'alerte'}">${faits}/${etapes.length}</span></h2>
     <div class="aide">Un camp se tient tout seul quand les quatre sont en place :
@@ -1812,8 +1813,9 @@ function blocChaine() {
       <span class="k">${x.fait ? '✓' : '·'} ${e(x.titre)}<br>
         <span class="aide">${e(x.etat)}</span></span>
       <span class="v">${x.fait
-    ? '<span class="puce ok">en place</span>'
-    : `<span class="puce mal">${e(BUILDINGS[x.key].nom.toLowerCase())}</span>`}</span></div>`).join('')}
+    ? '<span class="puce ok">tourne</span>'
+    : `<span class="puce mal">${e(BUILDINGS[x.key].nom.toLowerCase())}</span>`}</span></div>
+      ${x.alerte ? `<div class="aide alerte">▲ ${e(x.alerte)}</div>` : ''}`).join('')}
   </section>`;
 }
 
@@ -1990,7 +1992,7 @@ function ecranBase() {
     return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
       <div class="ligne souple"><span class="k">${e(bd.nom)} <span class="puce">niv ${niv}${enFile ? `+${enFile}` : ''}</span></span>
         <span class="v">${bd.energie > 0 ? `+${bd.energie * (niv + 1)}` : bd.energie < 0 ? `${bd.energie * (niv + 1)}` : '—'} én.</span></div>
-      <div class="aide">${e(apportBatiment(b, k))}</div>
+      <div class="aide">${e(apportBatiment(b, k, S))}</div>
       <div class="aide">Coût : ${e(coutTexte(cout))} · ${dureeTexte(tempsBatiment(b, k))}</div>
       <button class="act mini" data-a="construire" data-k="${k}" ${plein || manque.length ? 'disabled' : ''}
         style="margin-top:4px">${plein ? 'Niveau maximum'

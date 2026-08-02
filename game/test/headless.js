@@ -4127,6 +4127,50 @@ section('9 sexdecies. Un camp neuf dit ce qu’il lui manque');
     'et la halle dit à quoi elle sert dans la chaîne',
     apportBatiment(sb.base, 'halle'));
 
+  // Un maillon n'est « en place » que s'il produit. Le camp planté dans une
+  // friche — qui donne de l'isotope et de la ferraille, pas de biomasse —
+  // affichait quatre bâtiments cochés en vert, zéro ration, zéro habitant, et
+  // aucun moyen de comprendre. Un tableau de bord qui coche des cases sans
+  // regarder les flux ment mieux que le silence.
+  {
+    const sf = nouvellePartie(31415, { maintenant: 0 });
+    const gf = groupeActif(sf);
+    const friche = sf.world.regions.find(
+      (r) => r.biome === 'friche' && !sf.world.colonies.some((c) => c.regionId === r.i));
+    gf.regionId = friche.i;
+    for (const k of Object.keys(COUT_FONDATION)) {
+      gf.inventaire[k] = (gf.inventaire[k] || 0) + COUT_FONDATION[k];
+    }
+    fonderBase(sf, () => {}, gf);
+    Object.assign(sf.base.batiments,
+      { halle: 1, hydroponie: 1, baraquement: 1, generateur: 1 });
+    avancer(sf, 400);
+
+    const cf = chaineAutonomie(sf);
+    ok(cf.filter((x) => x.fait).length < 4,
+      'quatre bâtiments montés ne font pas quatre maillons qui tournent',
+      cf.map((x) => `${x.titre}:${x.fait ? 'oui' : 'non'}`).join(' '));
+    ok(cf.find((x) => x.key === 'halle').alerte,
+      'la halle dit que cette friche ne donne pas de biomasse',
+      cf.find((x) => x.key === 'halle').alerte);
+    ok(cf.find((x) => x.key === 'baraquement').alerte,
+      'et l’on apprend pourquoi personne ne s’installe malgré les lits',
+      cf.find((x) => x.key === 'baraquement').alerte);
+    ok((sf.base.pop || 0) === 0, 'le camp est effectivement resté vide',
+      `${sf.base.pop}`);
+    ok(/friche/i.test(apportBatiment(sf.base, 'halle', sf))
+      || /isotope/i.test(apportBatiment(sf.base, 'halle', sf)),
+      'la fiche de la halle nomme ce que la région donne, avant de la bâtir',
+      apportBatiment(sf.base, 'halle', sf));
+
+    // Et le conseil donné est le bon : c'est la réserve de vivres qui manquait.
+    sf.base.stock.rations = 200;
+    avancer(sf, 900);
+    ok((sf.base.pop || 0) > 0,
+      'des rations déposées suffisent à peupler le camp, comme annoncé',
+      `${sf.base.pop} habitant(s)`);
+  }
+
   // Une fois logé, quelqu'un finit par venir : le maillon manquant était bien
   // celui-là, et non un dé qui ne tombe jamais.
   lancerConstruction(sb, 'baraquement', () => {});
