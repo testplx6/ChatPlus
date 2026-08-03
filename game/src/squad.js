@@ -578,8 +578,28 @@ function tickGroupe(state, g, log, ctx) {
 
   // --- Nourriture : on mange dès qu'on a faim et de quoi. Chaque groupe puise
   // dans ce qu'il porte : c'est tout l'enjeu d'un détachement.
+  //
+  // Sauf aux travaux : on mange à la cantine du camp, pas dans son paquetage.
+  // Des gens qui passent leurs journées sur les chaînes de l'avant-poste et qui
+  // entament leurs vivres de route pendant ce temps-là, ça n'a aucun sens — et
+  // ça punissait le seul ordre censé aider le camp. Le réfectoire sert d'abord ;
+  // le sac ne s'ouvre que s'il n'y a rien dans les réserves.
+  //
+  // La cantine compte pour eux comme pour les habitants : la même ration
+  // nourrit mieux quand on mange assis, à heure fixe.
+  const auCamp = ordre.type === 'travaux' && state.base.fonde
+    && state.base.regionId === g.regionId;
+  const rabais = auCamp
+    ? 1 - Math.min(0.33, nivBat(state.base, 'cantine') * 0.055) : 1;
   for (const c of vivants) {
     if (c.faim > 42) {
+      if (auCamp && (state.base.stock.rations || 0) > 0) {
+        const mange = nourrir(c, state.base.stock.rations);
+        if (mange > 0) {
+          state.base.stock.rations = Math.max(0, state.base.stock.rations - mange * rabais);
+          continue;
+        }
+      }
       const dispo = g.inventaire.rations || 0;
       const mange = nourrir(c, dispo);
       if (mange > 0) g.inventaire.rations -= mange;

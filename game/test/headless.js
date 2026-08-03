@@ -117,7 +117,7 @@ function coloniesVivantes(state, key) {
 import { METIER_VILLE_KEYS } from '../src/data.js';
 import {
   sEngager, rangDe, RANGS, peutSEngager, REPUTATION_MINIMALE,
-  droitIntendance, toucherRations, garnison, RANG_GARNISON,
+  droitIntendance, toucherRations, garnison, RANG_GARNISON, JOURS_INTENDANCE,
   bilanService, noterFait, FEUILLE_MAX, palierBonus, effetsEstime, PALIERS_ESTIME,
   estimeEngagement,
 } from '../src/allegeance.js';
@@ -5143,6 +5143,105 @@ section('9 quinvicies septies. On donne des consignes aux chaînes');
     'on ne règle pas une consigne qu’on n’a pas cherchée');
   ok(reglerRecette(neuf, 'raffinerie', 'arret').ok,
     'mais on a toujours le droit de dire non');
+}
+
+section('9 quinvicies nonies. Aux travaux, on mange à la cantine');
+{
+  // Des gens qui passent leurs journées sur les chaînes de l'avant-poste et qui
+  // entament leurs vivres de route pendant ce temps-là, ça n'a aucun sens — et
+  // ça punissait le seul ordre censé aider le camp.
+  const camp = (auTravail, reservesDuCamp = 2000, sac = 0) => {
+    const s = nouvellePartie(7373, { maintenant: 0, depart: 'ville', equipe: 5 });
+    const g = groupeActif(s);
+    g.regionId = s.world.regions.find(
+      (r) => !s.world.colonies.some((c) => c.regionId === r.i)).i;
+    for (const k of Object.keys(COUT_FONDATION)) {
+      g.inventaire[k] = (g.inventaire[k] || 0) + COUT_FONDATION[k];
+    }
+    fonderBase(s, () => {}, g);
+    Object.assign(s.base.batiments, { entrepot: 6, solaire: 4, eolienne: 4 });
+    s.base.stock.rations = reservesDuCamp;
+    s.base.commerce = false;
+    s.player.credits = 0;
+    // Pas une ration dans les sacs : c'est la mesure décisive. Comparer la
+    // consommation du paquetage entre les deux ordres ne dit rien — « travaux »
+    // demande un effort et creuse davantage l'appétit, si bien que la
+    // différence se noie dans le bruit. Ici la question est nette : sans rien
+    // sur soi, mange-t-on, oui ou non ?
+    g.inventaire.rations = sac;
+    const voulu = auTravail ? 'travaux' : 'repos';
+    donnerOrdre(s, { type: voulu }, g);
+    for (let i = 0; i < 300; i++) {
+      tick(s);
+      if (g.ordre.type !== voulu) donnerOrdre(s, { type: voulu }, g);
+    }
+    return {
+      camp: Math.round(s.base.stock.rations || 0),
+      sac: Math.round(g.inventaire.rations || 0),
+    };
+  };
+
+  // Rien ne produit ni ne consomme de rations dans ce camp — pas d'habitant,
+  // pas d'hydroponie, pas de colporteur. Toute baisse de la réserve est donc
+  // l'escouade, et rien d'autre.
+  const repos = camp(false);
+  const nourri = camp(true);
+  ok(repos.camp === 2000, 'au repos, l’escouade ne touche pas aux réserves du camp',
+    `${repos.camp}`);
+  ok(nourri.camp < 2000, 'aux travaux, elle mange au réfectoire',
+    `${2000 - nourri.camp} rations prises au camp`);
+
+  // Et le sac reste le recours, pas la règle : camp plein, on n'y touche pas ;
+  // camp vide, on l'ouvre plutôt que de laisser les gens avoir faim.
+  // Le paquetage, lui, ne se mesure pas ici, et c'est délibéré. Trois cents
+  // heures de jeu réel y font entrer et sortir des choses qui n'ont rien à voir
+  // avec les repas : un prisonnier capturé en chemin mange 0,02 ration par
+  // heure sur le sac, un sac trop lourd perd son excédent par terre. J'ai
+  // d'abord pris ces cinquante-trois rations-là pour des repas et cherché une
+  // fuite qui n'existait pas. Ce qui est attribuable, c'est la réserve du camp :
+  // rien ne la touche au repos, elle baisse aux travaux, et il n'y a personne
+  // d'autre pour y puiser.
+  const campVide = camp(true, 0, 60);
+  ok(campVide.camp === 0, 'un camp sans réserve reste à sec : rien n’est inventé',
+    `${campVide.camp}`);
+
+  // On ne mange à la cantine que chez soi : ailleurs, il n'y a pas de cantine.
+  const ailleurs = nouvellePartie(7474, { maintenant: 0, depart: 'ville', equipe: 3 });
+  ok(donnerOrdre(ailleurs, { type: 'travaux' }).ok === false,
+    'et l’ordre lui-même n’existe qu’à l’avant-poste');
+}
+
+section('9 quinvicies decies. L’intendance dit son plafond');
+{
+  // Cinq jours d'arriéré au plus : c'est une règle du jeu, ce qui empêche
+  // l'intendance d'être un robinet et donne une raison de repasser chez soi.
+  // Elle était invisible — on constatait que l'arriéré cessait de monter, sans
+  // savoir pourquoi ni depuis quand. Une règle qu'on subit sans la connaître
+  // n'est pas une règle, c'est une panne.
+  const si = nouvellePartie(8585, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const gi = groupeActif(si);
+  const coli = si.world.colonies.find((c) => c.faction && !c.ruine);
+  gi.regionId = coli.regionId;
+  si.player.reputation[coli.faction] = 60;
+  sEngager(si, coli.faction, () => {}, gi);
+  gi.allegeance.intendance = si.temps;
+
+  si.temps += 24 * 2;
+  const deuxJours = droitIntendance(si, coli, gi);
+  ok(deuxJours.ok && !deuxJours.plafonne,
+    'à deux jours, rien n’est perdu', JSON.stringify(deuxJours.quantite));
+
+  si.temps += 24 * 8;
+  const dixJours = droitIntendance(si, coli, gi);
+  ok(dixJours.ok && dixJours.plafonne,
+    'à dix jours, le plafond est atteint et l’on le dit',
+    JSON.stringify({ jours: dixJours.jours, perdu: dixJours.perdu }));
+  ok(dixJours.perdu > 0, 'avec le nombre de rations déjà perdues',
+    `${dixJours.perdu}`);
+  ok(dixJours.quantite === deuxJours.quantite * (JOURS_INTENDANCE / 2)
+    || dixJours.quantite > deuxJours.quantite,
+  'et l’arriéré vaut bien cinq jours, pas dix',
+  `${deuxJours.quantite} à deux jours, ${dixJours.quantite} à dix`);
 }
 
 section('9 quinvicies octies. Un plancher qu’aucune chaîne n’entame');

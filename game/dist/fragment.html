@@ -5879,12 +5879,22 @@ function droitIntendance(state, col, groupe) {
     return { ok: false, motif: `On ne vous sert plus : réputation ${Math.round(rep)}.` };
   }
   const rang = rangDe(all);
-  const jours = Math.min(
-    JOURS_INTENDANCE,
-    (state.temps - (all.intendance ?? all.depuis ?? 0)) / 24
-  );
+  const brut = (state.temps - (all.intendance ?? all.depuis ?? 0)) / 24;
+  const jours = Math.min(JOURS_INTENDANCE, brut);
   const du = Math.floor(jours * (rang.def.ration || 0));
-  if (du < 1) return { ok: false, motif: 'Rien à toucher pour l’instant.' };
+  if (du < 1) {
+    // Combien d'heures avant que ça vaille le déplacement : « rien pour
+    // l'instant » sans dire quand est une réponse qui n'aide personne.
+    const parJour = rang.def.ration || 0;
+    const heures = parJour > 0 ? Math.ceil((1 / parJour) * 24 - (state.temps
+      - (all.intendance ?? all.depuis ?? 0))) : 0;
+    return {
+      ok: false,
+      motif: heures > 0
+        ? `Rien à toucher avant ${heures} h : on compte ${parJour} ration(s) par jour.`
+        : 'Rien à toucher pour l’instant.',
+    };
+  }
   // On ne puise pas dans le grenier du village : une faction nourrit ses gens
   // sur ses propres deniers. C'est la différence entre une réquisition et une
   // intendance — et c'est aussi ce qui rend la chose possible, les villes ne
@@ -5895,7 +5905,17 @@ function droitIntendance(state, col, groupe) {
   if (!f || f.tresor < cout) {
     return { ok: false, motif: `${FACTIONS[all.faction].nom} n’a pas de quoi vous ravitailler.` };
   }
-  return { ok: true, quantite: du, cout, rang };
+  // Le plafond est une règle, pas un accident : on le dit à celui qui le
+  // touche, plutôt que de le laisser constater que son arriéré ne monte plus.
+  return {
+    ok: true,
+    quantite: du,
+    cout,
+    rang,
+    plafonne: brut > JOURS_INTENDANCE,
+    jours: Math.round(brut * 10) / 10,
+    perdu: Math.floor((brut - JOURS_INTENDANCE) * (rang.def.ration || 0)),
+  };
 }
 
 function toucherRations(state, col, log, groupe) {
@@ -15243,8 +15263,28 @@ function tickGroupe(state, g, log, ctx) {
 
   // --- Nourriture : on mange dès qu'on a faim et de quoi. Chaque groupe puise
   // dans ce qu'il porte : c'est tout l'enjeu d'un détachement.
+  //
+  // Sauf aux travaux : on mange à la cantine du camp, pas dans son paquetage.
+  // Des gens qui passent leurs journées sur les chaînes de l'avant-poste et qui
+  // entament leurs vivres de route pendant ce temps-là, ça n'a aucun sens — et
+  // ça punissait le seul ordre censé aider le camp. Le réfectoire sert d'abord ;
+  // le sac ne s'ouvre que s'il n'y a rien dans les réserves.
+  //
+  // La cantine compte pour eux comme pour les habitants : la même ration
+  // nourrit mieux quand on mange assis, à heure fixe.
+  const auCamp = ordre.type === 'travaux' && state.base.fonde
+    && state.base.regionId === g.regionId;
+  const rabais = auCamp
+    ? 1 - Math.min(0.33, nivBat(state.base, 'cantine') * 0.055) : 1;
   for (const c of vivants) {
     if (c.faim > 42) {
+      if (auCamp && (state.base.stock.rations || 0) > 0) {
+        const mange = nourrir(c, state.base.stock.rations);
+        if (mange > 0) {
+          state.base.stock.rations = Math.max(0, state.base.stock.rations - mange * rabais);
+          continue;
+        }
+      }
       const dispo = g.inventaire.rations || 0;
       const mange = nourrir(c, dispo);
       if (mange > 0) g.inventaire.rations -= mange;
@@ -19801,9 +19841,19 @@ function blocIntendance() {
   if (!d.ok) {
     return `<div class="sep"></div><div class="aide">Intendance de ${e(col.nom)} : ${e(d.motif)}</div>${abri}`;
   }
+  // Le plafond de cinq jours est une règle du jeu — l'intendance n'est pas un
+  // compte en banque, et c'est ce qui donne une raison de repasser chez soi.
+  // Elle était invisible : on constatait que l'arriéré ne montait plus, sans
+  // savoir pourquoi ni depuis quand. Une règle qu'on subit sans la connaître
+  // n'est pas une règle, c'est une panne.
   return `<div class="sep"></div>${abri}
     <button class="act primaire" data-a="intendance">Toucher ${n(d.quantite)} rations
-      à l’intendance de ${e(col.nom)}</button>`;
+      à l’intendance de ${e(col.nom)}</button>
+    <div class="aide ${d.plafonne ? 'ambre' : ''}">${d.plafonne
+    ? `${n(d.jours)} jours sans passer, mais l’intendance ne garde que ${JOURS_INTENDANCE} jours `
+      + `d’arriéré : ${n(d.perdu)} ration(s) sont déjà perdues. Repassez plus souvent.`
+    : `${n(d.rang.def.ration)} rations par jour à votre grade, cumulables `
+      + `${JOURS_INTENDANCE} jours au plus. Au-delà, l’arriéré cesse de monter.`}</div>`;
 }
 
 function blocAllegeance() {

@@ -52,7 +52,7 @@ import { conditions, SAISONS, METEO } from './climat.js';
 import {
   RANGS, rangDe, estAuService, peutSEngager, avancementOrdre, REPUTATION_MINIMALE,
   bilanService, effetsEstime, palierEstime, estimeEngagement, ESTIME_ENGAGEMENT,
-  droitIntendance, garnison, RANG_GARNISON,
+  droitIntendance, garnison, RANG_GARNISON, JOURS_INTENDANCE,
 } from './allegeance.js';
 import { caravanesIci, valeurCargaison } from './caravanes.js';
 import { couleurLog, creerLogger } from './events.js';
@@ -2883,9 +2883,19 @@ function blocIntendance() {
   if (!d.ok) {
     return `<div class="sep"></div><div class="aide">Intendance de ${e(col.nom)} : ${e(d.motif)}</div>${abri}`;
   }
+  // Le plafond de cinq jours est une règle du jeu — l'intendance n'est pas un
+  // compte en banque, et c'est ce qui donne une raison de repasser chez soi.
+  // Elle était invisible : on constatait que l'arriéré ne montait plus, sans
+  // savoir pourquoi ni depuis quand. Une règle qu'on subit sans la connaître
+  // n'est pas une règle, c'est une panne.
   return `<div class="sep"></div>${abri}
     <button class="act primaire" data-a="intendance">Toucher ${n(d.quantite)} rations
-      à l’intendance de ${e(col.nom)}</button>`;
+      à l’intendance de ${e(col.nom)}</button>
+    <div class="aide ${d.plafonne ? 'ambre' : ''}">${d.plafonne
+    ? `${n(d.jours)} jours sans passer, mais l’intendance ne garde que ${JOURS_INTENDANCE} jours `
+      + `d’arriéré : ${n(d.perdu)} ration(s) sont déjà perdues. Repassez plus souvent.`
+    : `${n(d.rang.def.ration)} rations par jour à votre grade, cumulables `
+      + `${JOURS_INTENDANCE} jours au plus. Au-delà, l’arriéré cesse de monter.`}</div>`;
 }
 
 function blocAllegeance() {

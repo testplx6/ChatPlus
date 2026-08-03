@@ -459,12 +459,22 @@ export function droitIntendance(state, col, groupe) {
     return { ok: false, motif: `On ne vous sert plus : réputation ${Math.round(rep)}.` };
   }
   const rang = rangDe(all);
-  const jours = Math.min(
-    JOURS_INTENDANCE,
-    (state.temps - (all.intendance ?? all.depuis ?? 0)) / 24
-  );
+  const brut = (state.temps - (all.intendance ?? all.depuis ?? 0)) / 24;
+  const jours = Math.min(JOURS_INTENDANCE, brut);
   const du = Math.floor(jours * (rang.def.ration || 0));
-  if (du < 1) return { ok: false, motif: 'Rien à toucher pour l’instant.' };
+  if (du < 1) {
+    // Combien d'heures avant que ça vaille le déplacement : « rien pour
+    // l'instant » sans dire quand est une réponse qui n'aide personne.
+    const parJour = rang.def.ration || 0;
+    const heures = parJour > 0 ? Math.ceil((1 / parJour) * 24 - (state.temps
+      - (all.intendance ?? all.depuis ?? 0))) : 0;
+    return {
+      ok: false,
+      motif: heures > 0
+        ? `Rien à toucher avant ${heures} h : on compte ${parJour} ration(s) par jour.`
+        : 'Rien à toucher pour l’instant.',
+    };
+  }
   // On ne puise pas dans le grenier du village : une faction nourrit ses gens
   // sur ses propres deniers. C'est la différence entre une réquisition et une
   // intendance — et c'est aussi ce qui rend la chose possible, les villes ne
@@ -475,7 +485,17 @@ export function droitIntendance(state, col, groupe) {
   if (!f || f.tresor < cout) {
     return { ok: false, motif: `${FACTIONS[all.faction].nom} n’a pas de quoi vous ravitailler.` };
   }
-  return { ok: true, quantite: du, cout, rang };
+  // Le plafond est une règle, pas un accident : on le dit à celui qui le
+  // touche, plutôt que de le laisser constater que son arriéré ne monte plus.
+  return {
+    ok: true,
+    quantite: du,
+    cout,
+    rang,
+    plafonne: brut > JOURS_INTENDANCE,
+    jours: Math.round(brut * 10) / 10,
+    perdu: Math.floor((brut - JOURS_INTENDANCE) * (rang.def.ration || 0)),
+  };
 }
 
 export function toucherRations(state, col, log, groupe) {
