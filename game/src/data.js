@@ -35,6 +35,8 @@ export const BIOMES = {
   steppe: {
     nom: 'Steppe de Cendre',
     court: 'STEPPE',
+    // Ce que le terrain offre à qui capte : voir `rendementLibre`.
+    soleil: 1.0, vent: 1.2,
     couleurs: ['#33323a', '#3d3c46', '#2b2a32'],
     danger: 0.014,
     cout: 3,
@@ -44,6 +46,8 @@ export const BIOMES = {
   dalles: {
     nom: 'Dalles Urbaines',
     court: 'DALLES',
+    // Ce que le terrain offre à qui capte : voir `rendementLibre`.
+    soleil: 0.8, vent: 0.7,
     couleurs: ['#2a2f3a', '#39404f', '#222732'],
     danger: 0.032,
     cout: 3,
@@ -53,6 +57,8 @@ export const BIOMES = {
   friche: {
     nom: 'Friche Radio',
     court: 'FRICHE',
+    // Ce que le terrain offre à qui capte : voir `rendementLibre`.
+    soleil: 0.7, vent: 0.8,
     couleurs: ['#3a3320', '#4a4128', '#2f2a1a'],
     danger: 0.028,
     cout: 4,
@@ -62,6 +68,8 @@ export const BIOMES = {
   desert: {
     nom: 'Désert Acide',
     court: 'DÉSERT',
+    // Ce que le terrain offre à qui capte : voir `rendementLibre`.
+    soleil: 1.35, vent: 1.1,
     couleurs: ['#5a4a2a', '#6b5a33', '#4a3d22'],
     danger: 0.022,
     cout: 5,
@@ -71,6 +79,8 @@ export const BIOMES = {
   canyons: {
     nom: 'Canyons de Fer',
     court: 'CANYONS',
+    // Ce que le terrain offre à qui capte : voir `rendementLibre`.
+    soleil: 0.85, vent: 1.15,
     couleurs: ['#4a2f2a', '#5a3a32', '#3c2622'],
     danger: 0.036,
     cout: 6,
@@ -80,6 +90,8 @@ export const BIOMES = {
   marais: {
     nom: 'Marais Néon',
     court: 'MARAIS',
+    // Ce que le terrain offre à qui capte : voir `rendementLibre`.
+    soleil: 0.55, vent: 0.5,
     couleurs: ['#16342c', '#1d4438', '#122a24'],
     danger: 0.04,
     cout: 6,
@@ -89,6 +101,8 @@ export const BIOMES = {
   plastique: {
     nom: 'Mer de Plastique',
     court: 'PLASTIQUE',
+    // Ce que le terrain offre à qui capte : voir `rendementLibre`.
+    soleil: 0.9, vent: 0.6,
     couleurs: ['#2b2438', '#392f4a', '#231d2e'],
     danger: 0.03,
     cout: 7,
@@ -98,6 +112,8 @@ export const BIOMES = {
   brulees: {
     nom: 'Terres Brûlées',
     court: 'BRÛLÉES',
+    // Ce que le terrain offre à qui capte : voir `rendementLibre`.
+    soleil: 1.2, vent: 1.0,
     couleurs: ['#4a2420', '#5c2e28', '#3a1c19'],
     danger: 0.052,
     cout: 5,
@@ -107,6 +123,8 @@ export const BIOMES = {
   relais: {
     nom: 'Relais Orbital',
     court: 'RELAIS',
+    // Ce que le terrain offre à qui capte : voir `rendementLibre`.
+    soleil: 0.95, vent: 0.9,
     couleurs: ['#1d3a4a', '#26506a', '#152c39'],
     danger: 0.075,
     cout: 6,
@@ -246,6 +264,33 @@ export const BUILDINGS = {
     tempsMul: 1.45,
     energie: 0,
     max: 10,
+  },
+  solaire: {
+    nom: 'Capteurs solaires',
+    desc: 'Du courant sans rien brûler, tant que le ciel le veut bien.',
+    cout: { ferraille: 40, polymere: 30, composant: 6 },
+    coutMul: 1.6,
+    heures: 8,
+    tempsMul: 1.5,
+    // Le rendement ne tient pas dans une constante : il dépend du biome et du
+    // ciel. Voir `rendementLibre` dans base.js. Ce chiffre est le nominal, celui
+    // d'un désert par temps clair.
+    energie: 8,
+    libre: 'soleil',
+    max: 10,
+    recherche: 'renouvelable',
+  },
+  eolienne: {
+    nom: 'Éoliennes',
+    desc: 'Ce que le vent donne. Il donne le plus quand le soleil donne le moins.',
+    cout: { ferraille: 55, alliage: 12, composant: 5 },
+    coutMul: 1.6,
+    heures: 9,
+    tempsMul: 1.5,
+    energie: 9,
+    libre: 'vent',
+    max: 10,
+    recherche: 'renouvelable',
   },
   bassins: {
     nom: 'Bassins de culture',
@@ -413,6 +458,33 @@ export const RESEARCH = {
     cout: { composant: 10, credits: 180 },
     coutMul: 1.8,
     heures: 9,
+    tempsMul: 1.7,
+    max: 5,
+  },
+  pyrolyse: {
+    nom: 'Pyrolyse',
+    desc: 'La raffinerie tire aussi du carburant de la biomasse. +10 % de rendement par niveau.',
+    // Le pendant des bassins, du côté de l'énergie. La raffinerie ne savait
+    // faire du carburant qu'à partir de polymère, qu'on ne ramasse que dans
+    // trois biomes sur neuf : un camp planté ailleurs achetait son carburant en
+    // ville jusqu'à la fin de la partie, ou son générateur restait éteint.
+    // Avec la pyrolyse, la chaîne se referme : bassins → biomasse → carburant.
+    cout: { composant: 12, credits: 220 },
+    coutMul: 1.8,
+    heures: 10,
+    tempsMul: 1.7,
+    max: 5,
+  },
+  renouvelable: {
+    nom: 'Captation libre',
+    desc: 'Débloque capteurs solaires et éoliennes, puis +12 % de leur rendement par niveau.',
+    // Le générateur brûlait, et c'était la seule façon d'avoir du courant : un
+    // avant-poste sans accès au carburant tournait à quarante pour cent pour
+    // toujours. Ce qu'on capte ne se transporte pas et ne s'achète pas — ça
+    // dépend d'où l'on s'est installé, et du temps qu'il fait.
+    cout: { composant: 16, alliage: 10, credits: 300 },
+    coutMul: 1.85,
+    heures: 13,
     tempsMul: 1.7,
     max: 5,
   },

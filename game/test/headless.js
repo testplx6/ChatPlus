@@ -36,7 +36,7 @@ import {
   peutReconnaitre, reconnaitreAvantPoste, peutRattacher, rattacherVille, preleverImpot,
   declarerIndependance, synchroniserVitrine,
   manoeuvres, affecter, rendementMetier, mainDoeuvre, niveauRech,
-  perdreAvantPoste, saccagerAvantPoste, menacesSurLaBase,
+  perdreAvantPoste, saccagerAvantPoste, menacesSurLaBase, rendementLibre,
 } from '../src/base.js';
 import {
   METIER_KEYS, METIERS, SKILLS, BIOMES, BUILDINGS, RESEARCH, POSTURES, COMMODITIES,
@@ -4868,6 +4868,136 @@ section('9 quinvicies bis. Les tables de données se pointent les unes les autre
   ok(rechFausse.length === 0,
     'un bâtiment verrouillé nomme une recherche qui existe',
     rechFausse.join(', ') || 'toutes bonnes');
+}
+
+section('9 quinvicies ter. Le courant qu’on ne brûle pas, et le carburant qu’on fait pousser');
+{
+  // Le générateur était la seule source de courant, et `energie()` annulait
+  // toute la production dès que le carburant manquait : des panneaux solaires
+  // en plein désert se seraient éteints faute de gazole. Et le carburant ne se
+  // raffinait que depuis le polymère, qu'on ne ramasse que dans trois biomes
+  // sur neuf — un camp planté ailleurs achetait son courant en ville jusqu'à
+  // la fin de la partie.
+  const se = nouvellePartie(1717, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const ge = groupeActif(se);
+  const des = se.world.regions.find(
+    (r) => r.biome === 'desert' && !se.world.colonies.some((c) => c.regionId === r.i));
+  ge.regionId = des.i;
+  for (const k of Object.keys(COUT_FONDATION)) {
+    ge.inventaire[k] = (ge.inventaire[k] || 0) + COUT_FONDATION[k];
+  }
+  fonderBase(se, () => {}, ge);
+
+  se.base.stock.ferraille = 500;
+  se.base.stock.polymere = 300;
+  se.base.stock.alliage = 100;
+  se.base.stock.composant = 60;
+  se.player.credits = 5000;
+  ok(!lancerConstruction(se, 'solaire').ok, 'on ne capte pas ce qu’on n’a pas inventé');
+  se.base.batiments.antenne = 1;
+  ok(lancerRecherche(se, 'renouvelable').ok, 'la Captation libre s’ouvre avec une antenne');
+  avancer(se, 400);
+  ok(niveauRech(se.base, 'renouvelable') >= 1, 'et elle aboutit',
+    `${niveauRech(se.base, 'renouvelable')}`);
+  ok(lancerConstruction(se, 'solaire').ok, 'les capteurs deviennent constructibles');
+
+  // Le terrain décide, et il décide beaucoup : c'est ce qui donne un sens au
+  // choix de l'endroit où l'on plante le camp.
+  se.world.meteo = { type: 'clair' };
+  const auDesert = rendementLibre(se.base, se, 'soleil');
+  se.base.regionId = se.world.regions.find(
+    (r) => r.biome === 'marais' && !se.world.colonies.some((c) => c.regionId === r.i)).i;
+  const auMarais = rendementLibre(se.base, se, 'soleil');
+  ok(auDesert > auMarais * 2, 'un désert capte plus du double d’un marais',
+    `${auDesert.toFixed(2)} contre ${auMarais.toFixed(2)}`);
+  se.base.regionId = des.i;
+
+  // Et les deux sources ne tombent pas ensemble : c'est ce qui fait qu'on veut
+  // les deux plutôt que deux fois la meilleure.
+  se.world.meteo = { type: 'vent_cendre' };
+  const solCendre = rendementLibre(se.base, se, 'soleil');
+  const ventCendre = rendementLibre(se.base, se, 'vent');
+  se.world.meteo = { type: 'canicule' };
+  const solChaud = rendementLibre(se.base, se, 'soleil');
+  const ventChaud = rendementLibre(se.base, se, 'vent');
+  ok(solCendre < solChaud && ventCendre > ventChaud,
+    'un vent de cendre éteint les panneaux et fait tourner les pales, la canicule l’inverse',
+    `cendre ${solCendre.toFixed(2)}/${ventCendre.toFixed(2)} · `
+      + `canicule ${solChaud.toFixed(2)}/${ventChaud.toFixed(2)}`);
+
+  // Le point de toute l'affaire : plus une goutte de carburant, et le camp
+  // tourne quand même.
+  se.world.meteo = { type: 'couvert' };
+  Object.assign(se.base.batiments, { solaire: 2, eolienne: 2, hydroponie: 2, entrepot: 1 });
+  se.base.stock.carburant = 0;
+  const en = energie(se.base, se);
+  ok(en.fossile === 0, 'sans carburant, rien ne brûle', `${en.fossile}`);
+  ok(en.libre > 0 && en.prod === en.libre,
+    'mais ce qu’on capte continue de venir', JSON.stringify(en));
+  ok(en.ratio >= 0.999, 'et il y en a assez pour tout faire tourner',
+    `${en.prod} pour ${en.conso}`);
+
+  // La pyrolyse : la biomasse finit dans le réservoir, sans vider le garde-manger.
+  const sp = nouvellePartie(1818, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const gp = groupeActif(sp);
+  gp.regionId = sp.world.regions.find(
+    (r) => r.biome === 'steppe' && !sp.world.colonies.some((c) => c.regionId === r.i)).i;
+  for (const k of Object.keys(COUT_FONDATION)) {
+    gp.inventaire[k] = (gp.inventaire[k] || 0) + COUT_FONDATION[k];
+  }
+  fonderBase(sp, () => {}, gp);
+  // Avec du courant : raffiner demande de l'énergie, comme fondre et assembler.
+  // Un camp tombé à sec ne peut pas se relancer seul — c'est la règle du jeu,
+  // et la chaîne de l'autonomie le dit maintenant en toutes lettres.
+  Object.assign(sp.base.batiments,
+    { raffinerie: 1, hydroponie: 1, entrepot: 3, generateur: 2, baraquement: 1 });
+  sp.base.stock.biomasse = 400;
+  sp.base.stock.carburant = 300;
+  sp.base.stock.polymere = 0;
+  const carbDepart = sp.base.stock.carburant;
+  avancer(sp, 200);
+  ok((sp.base.stock.carburant || 0) < carbDepart,
+    'sans la recherche, une raffinerie ne fait rien d’une réserve de biomasse : '
+    + 'le carburant ne fait que baisser',
+    `${carbDepart} → ${Math.round(sp.base.stock.carburant || 0)}`);
+  const sansPyro = sp.base.stock.carburant;
+  sp.base.recherche.pyrolyse = 1;
+  sp.base.stock.biomasse = 400;
+  avancer(sp, 200);
+  ok((sp.base.stock.carburant || 0) > sansPyro - (carbDepart - sansPyro),
+    'avec la Pyrolyse, la biomasse ralentit la chute ou la renverse',
+    `${Math.round(sansPyro)} → ${Math.round(sp.base.stock.carburant || 0)}`);
+  ok((sp.base.stock.biomasse || 0) > 0,
+    'et elle ne racle pas le garde-manger jusqu’au fond',
+    `${Math.round(sp.base.stock.biomasse || 0)} biomasse restante`);
+}
+
+section('9 quinvicies quater. La pyrolyse, isolée de tout le reste');
+{
+  // Mesure directe plutôt qu'une partie entière : la recherche ajoute-t-elle du
+  // carburant, oui ou non ? Deux camps identiques, même graine, même stock, et
+  // l'on compare. C'est la seule façon d'attribuer la différence à la pyrolyse
+  // plutôt qu'au générateur qui brûle en même temps.
+  const camp = (avecPyro) => {
+    const s = nouvellePartie(1919, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(s);
+    g.regionId = s.world.regions.find(
+      (r) => r.biome === 'steppe' && !s.world.colonies.some((c) => c.regionId === r.i)).i;
+    for (const k of Object.keys(COUT_FONDATION)) {
+      g.inventaire[k] = (g.inventaire[k] || 0) + COUT_FONDATION[k];
+    }
+    fonderBase(s, () => {}, g);
+    Object.assign(s.base.batiments, { raffinerie: 2, entrepot: 4, generateur: 2 });
+    s.base.stock.biomasse = 600;
+    s.base.stock.carburant = 400;
+    if (avecPyro) s.base.recherche.pyrolyse = 1;
+    avancer(s, 400);
+    return Math.round(s.base.stock.carburant || 0);
+  };
+  const sans = camp(false);
+  const avec = camp(true);
+  ok(avec > sans, 'la pyrolyse produit bien du carburant, toutes choses égales',
+    `${sans} sans, ${avec} avec — soit +${avec - sans}`);
 }
 
 section('9 sexvicies. L’Essaim saccage, il ne prend pas');

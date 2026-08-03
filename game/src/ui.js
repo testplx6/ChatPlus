@@ -2048,7 +2048,7 @@ function ecranBase() {
     </section>`;
   }
 
-  const en = energie(b);
+  const en = energie(b, S);
   const stock = totalStock(b);
   const capa = capaciteStock(b);
 
@@ -2120,7 +2120,8 @@ function ecranBase() {
   // manger — étaient noyées entre la fonderie et la raffinerie.
   const FAMILLES = [
     { nom: 'Tenir sur place', clefs: ['baraquement', 'halle', 'bassins', 'hydroponie', 'cantine'] },
-    { nom: 'Produire', clefs: ['generateur', 'entrepot', 'fonderie', 'raffinerie', 'atelier'] },
+    { nom: 'Alimenter', clefs: ['generateur', 'solaire', 'eolienne'] },
+    { nom: 'Produire', clefs: ['entrepot', 'fonderie', 'raffinerie', 'atelier'] },
     { nom: 'Se défendre et soigner', clefs: ['mur', 'poste', 'infirmerie'] },
     { nom: 'Savoir', clefs: ['antenne'] },
   ];

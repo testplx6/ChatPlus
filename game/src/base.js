@@ -5,6 +5,7 @@ import {
   BUILDINGS, RESEARCH, COMMODITY_KEYS, COMMODITIES, METIERS, METIER_KEYS, BIOMES,
   FACTIONS,
 } from './data.js';
+import { METEO } from './climat.js';
 import { loisDe } from './lois.js';
 import { comp, gagnerXp, estDebout, XP_PRATIQUE } from './characters.js';
 import { groupes, groupeActif } from './groupes.js';
@@ -333,7 +334,21 @@ export function apportBatiment(base, key, state) {
           : ' C’est ce qui alimente l’hydroponie.');
     }
     case 'generateur':
-      return `+${BUILDINGS.generateur.energie * n} d’énergie. Sans courant, les chaînes tournent au ralenti.`;
+      return `+${BUILDINGS.generateur.energie * n} d’énergie, tant qu’il y a du carburant à brûler.`;
+    case 'solaire':
+    case 'eolienne': {
+      // Le nominal ne dit rien : ce qui compte est ce que ça rend *ici*, et
+      // combien ça bouge avec le ciel. On donne les deux.
+      const def = BUILDINGS[key];
+      const reg = state && state.world.regions[base.regionId];
+      const terrain = (reg && BIOMES[reg.biome] && BIOMES[reg.biome][def.libre]) || 1;
+      const ici = def.energie * n * rendementLibre(base, state, def.libre);
+      const mot = def.libre === 'soleil' ? 'ensoleillé' : 'venté';
+      const juge = terrain >= 1.1 ? `bien ${mot}` : terrain >= 0.85 ? `moyennement ${mot}` : `mal ${mot}`;
+      return `+${ici.toFixed(1)} d’énergie par le temps qu’il fait, sans rien brûler. `
+        + `${reg ? `${BIOMES[reg.biome].nom} : ${juge} (×${terrain.toFixed(2)}).` : ''} `
+        + 'Le ciel fait le reste, et il change.';
+    }
     case 'entrepot':
       return 'Plus de place. Ce qui ne rentre pas dans l’entrepôt est perdu pour de bon.';
     case 'cantine':
@@ -450,18 +465,38 @@ export function chaineAutonomie(state) {
           + 'où l’on ne mange pas. Déposez-y des rations, ou faites-en pousser.'
         : null,
     },
-    {
-      key: 'generateur',
-      titre: 'Alimenter',
-      fait: niveau(base, 'generateur') > 0 && carburant > 0,
-      etat: niveau(base, 'generateur') > 0
-        ? `${Math.round(energie(base).prod)} produits pour ${Math.round(energie(base).conso)} consommés`
-        : 'sans courant, les chaînes tournent au ralenti (elles tournent quand même)',
-      alerte: niveau(base, 'generateur') > 0 && carburant === 0
-        ? 'plus de carburant : le générateur est à l’arrêt. Il s’en raffine à partir du '
-          + 'polymère, ou s’en achète en ville.'
-        : null,
-    },
+    (() => {
+      // Deux façons d'avoir du courant, et le maillon ne tient plus au seul
+      // générateur : un camp qui capte assez n'a besoin d'aucun carburant, et
+      // lui reprocher son réservoir vide serait faux.
+      const en = energie(base, state);
+      const capte = niveau(base, 'solaire') + niveau(base, 'eolienne');
+      const gen = niveau(base, 'generateur');
+      return {
+        key: capte > 0 && gen === 0 ? 'solaire' : 'generateur',
+        titre: 'Alimenter',
+        fait: en.prod > 0 && en.ratio >= 0.999,
+        etat: gen === 0 && capte === 0
+          ? 'sans courant, les chaînes tournent au ralenti (elles tournent quand même)'
+          : `${Math.round(en.prod)} produits pour ${Math.round(en.conso)} consommés`
+            + (capte > 0 ? ` · dont ${en.libre.toFixed(1)} captés` : ''),
+        // Le piège du réservoir vide : fondre, assembler et raffiner demandent
+        // du courant, et le courant demandait du carburant. Un camp tombé à sec
+        // ne pouvait donc plus en fabriquer — jamais — et rien ne le disait. On
+        // le dit, et l'on nomme les deux sorties.
+        alerte: gen > 0 && carburant === 0 && capte === 0
+          ? 'plus de carburant, donc plus de courant — et sans courant la raffinerie ne '
+            + 'peut plus en faire. Le camp ne s’en sortira pas seul : portez-lui du '
+            + 'carburant, ou montez de quoi en capter (Captation libre).'
+          : gen > 0 && carburant === 0
+            ? 'plus de carburant : le générateur est à l’arrêt, il ne reste que ce qu’on '
+              + 'capte. Il s’en raffine à partir du polymère, ou de la biomasse avec la Pyrolyse.'
+            : en.prod > 0 && en.ratio < 0.999
+            ? `il manque ${Math.round(en.conso - en.prod)} d’énergie : tout tourne à `
+              + `${Math.round(en.ratio * 100)} %.`
+            : null,
+      };
+    })(),
   ];
 }
 
@@ -510,19 +545,58 @@ export function tailleEscouadeMax(base) {
 }
 
 /** Bilan énergétique : { prod, conso, ratio } */
-export function energie(base) {
-  let prod = 0;
+/**
+ * Ce que rend un capteur, ici et maintenant.
+ *
+ * Deux facteurs, et aucun n'est à vous : le terrain où vous avez planté le
+ * camp, et le ciel du jour. Un désert rend le tiers en plus qu'un marais au
+ * soleil, et l'inverse est vrai du vent — un vent de cendre éteint les panneaux
+ * et fait tourner les pales. Avoir les deux, c'est se couvrir ; n'avoir que le
+ * bon des deux pour son biome, c'est parier sur la météo.
+ *
+ * `state` peut manquer (fiches d'interface hors partie, tests unitaires) : on
+ * rend alors le nominal, ciel neutre.
+ */
+export function rendementLibre(base, state, source) {
+  const reg = state && base.regionId != null ? state.world.regions[base.regionId] : null;
+  const terrain = (reg && BIOMES[reg.biome] && BIOMES[reg.biome][source]) || 1;
+  const ciel = state && state.world.meteo && METEO[state.world.meteo.type]
+    ? (METEO[state.world.meteo.type][source] || 1) : 1;
+  const rech = 1 + (base.recherche.renouvelable || 0) * 0.12;
+  return terrain * ciel * rech;
+}
+
+/**
+ * Le bilan électrique. Deux sources, et elles ne tombent pas ensemble.
+ *
+ * La première version mettait tout dans un seul nombre et l'annulait
+ * entièrement dès que le carburant manquait : `if (carburant <= 0) prod = 0`.
+ * Des panneaux solaires en plein désert se seraient donc éteints faute de
+ * gazole. On sépare ce qui brûle de ce qui capte ; seul le premier s'arrête.
+ */
+export function energie(base, state) {
+  let fossile = 0;
+  let libre = 0;
   let conso = 0;
   for (const key of Object.keys(base.batiments)) {
     const n = base.batiments[key];
     if (!n) continue;
-    const e = BUILDINGS[key].energie * n;
-    if (e > 0) prod += e;
+    const def = BUILDINGS[key];
+    const e = def.energie * n;
+    if (def.libre) libre += e * rendementLibre(base, state, def.libre);
+    else if (e > 0) fossile += e;
     else conso -= e;
   }
-  // Un générateur sans carburant ne produit rien
-  if ((base.stock.carburant || 0) <= 0) prod = 0;
-  return { prod, conso, ratio: conso > 0 ? Math.min(1, prod / conso) : 1 };
+  // Un générateur sans carburant ne produit rien. Ce qu'on capte, si.
+  if ((base.stock.carburant || 0) <= 0) fossile = 0;
+  const prod = Math.round((fossile + libre) * 10) / 10;
+  return {
+    prod,
+    fossile: Math.round(fossile * 10) / 10,
+    libre: Math.round(libre * 10) / 10,
+    conso,
+    ratio: conso > 0 ? Math.min(1, prod / conso) : 1,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -684,7 +758,7 @@ export function tickBase(state, log, ctx) {
   // --- Énergie. Un mécanicien règle les générateurs : ils brûlent moins.
   const gen = niveau(base, 'generateur');
   if (gen > 0) consommer(base, 'carburant', (0.55 * gen) / M.mecanicien);
-  const e = energie(base);
+  const e = energie(base, state);
   const r = e.ratio;
 
   // --- Population : elle s'installe si on peut la loger et la nourrir, elle
@@ -771,6 +845,21 @@ export function tickBase(state, log, ctx) {
   if (raf > 0) {
     const pol = consommer(base, 'polymere', 0.9 * raf * r * mo * M.raffineur);
     ajouter(base, 'carburant', pol * 0.55);
+    // La pyrolyse : ce qui a poussé finit aussi dans le réservoir. Moins bien
+    // que le polymère — on brûle de l'eau et des tiges — mais le polymère ne se
+    // ramasse que dans trois biomes sur neuf, et la biomasse se cultive
+    // n'importe où depuis les bassins. C'est ce qui referme la chaîne.
+    const pyr = niveauRech(base, 'pyrolyse');
+    if (pyr > 0) {
+      // On ne mange pas le grain qui reste : la pyrolyse ne prend que ce qui
+      // dépasse de quoi tenir l'hydroponie une bonne journée. Sans ce garde,
+      // un camp avec raffinerie mourait de faim en faisant du carburant.
+      const garde = 12 * niveau(base, 'hydroponie');
+      const dispo = Math.max(0, (base.stock.biomasse || 0) - garde);
+      const veut = 0.7 * raf * r * mo * M.raffineur;
+      const bio = consommer(base, 'biomasse', Math.min(veut, dispo));
+      ajouter(base, 'carburant', bio * 0.3 * (1 + (pyr - 1) * 0.1));
+    }
   }
   const atl = niveau(base, 'atelier');
   if (atl > 0) {
