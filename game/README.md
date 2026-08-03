@@ -1866,6 +1866,29 @@ quelques secondes plus tard. Mesuré avant correction : 400 px, puis 0, puis 0 �
 chacun des dix relevés suivants. **Corriger un conteneur qui défile sans
 regarder les autres, c'est corriger la moitié d'un défaut.**
 
+### Un bâtiment qu'on ne pouvait pas construire
+
+Le comptoir était déclaré dans la table des bâtiments, chiffré, testé côté
+moteur — la chaîne antenne → Cryptographie → Cotation → comptoir fonctionnait, et
+chaque refus se nommait. Il n'était dans aucune des six familles de l'écran
+BASE, qui est ce qui décide de son affichage. Il n'apparaissait donc nulle part,
+et personne ne pouvait le bâtir. La question du joueur : « je suis pas censé
+créer un bâtiment ? »
+
+C'est mot pour mot le défaut de la liste d'embauche qui oubliait quatre métiers,
+à quelques jours d'écart : **une liste qu'il faut penser à compléter finit par
+être incomplète.** Le remède est donc le même, mais pris un cran plus haut — on
+ne vérifie plus la liste, on vérifie l'écran : le test ouvre l'onglet BASE et
+compare les cartes affichées à `BUILDINGS`. Un bâtiment ajouté demain sans sa
+famille fera rougir la suite en le nommant.
+
+Deuxième trouvaille du même coup de sonde : cinq recherches en exigent une autre
+— Cotation demande la Cryptographie, Terraformation demande l'Insémination — et
+rien ne le disait. Le bouton annonçait « Lancer », le clic échouait, et il
+fallait attraper un message fugace pour comprendre. **Une condition se lit avant
+d'agir, pas après.** La carte le dit, le bouton porte le nom de ce qu'il faut
+d'abord, et un test vérifie les deux.
+
 ### Décider du commerce, selon son grade
 
 Le grade est une charge, et elle donnait déjà beaucoup : un Lieutenant dispose

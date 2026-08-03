@@ -25,7 +25,7 @@ import { genererBande } from '../src/combat.js';
 import { Rng } from '../src/rng.js';
 import { makeCharacter } from '../src/characters.js';
 import { ouvrirBourse, tickBourses, signerAccord } from '../src/bourse.js';
-import { DIPLO_FACTIONS } from '../src/data.js';
+import { DIPLO_FACTIONS, BUILDINGS, RESEARCH } from '../src/data.js';
 
 const RACINE = resolve(new URL('..', import.meta.url).pathname);
 const CAPTURES = join(RACINE, 'captures');
@@ -1560,6 +1560,76 @@ const texteApres = await page.evaluate(() => document.querySelector('#modale').t
 ok(/apporté des medkits/.test(texteApres), 'et il s’en souvient à l’écran');
 await page.click('[data-a="fermer"]');
 await page.waitForTimeout(300);
+
+console.log('\n8 vicies quater. Tout bâtiment se voit et se bâtit');
+{
+  // « Je suis pas censé créer un bâtiment ? » Si. Le comptoir était déclaré,
+  // chiffré, testé côté moteur — et absent de toutes les familles de l'écran,
+  // donc affiché nulle part. On ne pouvait ni le voir ni le construire.
+  //
+  // Même défaut que la liste d'embauche qui oubliait quatre métiers : **une
+  // liste qu'il faut penser à compléter finit par être incomplète.** On ne
+  // vérifie donc plus la liste, on vérifie l'écran.
+  const bat = partieAvancee();
+  bat.base.batiments.antenne = Math.max(1, bat.base.batiments.antenne || 0);
+  for (const k of Object.keys(bat.base.recherche)) bat.base.recherche[k] = 1;
+  Object.assign(bat.base.stock, {
+    ferraille: 9000, polymere: 9000, composant: 9000, alliage: 9000,
+    isotope: 9000, minerai: 9000, carburant: 9000, biomasse: 9000,
+  });
+  bat.player.credits = 999999;
+  bat.dernierReel = Date.now();
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((t) => localStorage.setItem('cendres.save.v1', t), serialiser(bat));
+  await page.evaluate(() => localStorage.removeItem('cendres.replis.v1'));
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.click('[data-a="onglet"][data-k="base"]');
+  await page.waitForTimeout(600);
+
+  const affiches = await page.evaluate(
+    () => [...document.querySelectorAll('[data-a="construire"]')].map((b) => b.dataset.k));
+  const attendus = Object.keys(BUILDINGS);
+  const absents = attendus.filter((k) => !affiches.includes(k));
+  ok(absents.length === 0,
+    'chaque bâtiment du jeu a sa carte sur l’écran BASE',
+    absents.length ? `jamais affiché(s) : ${absents.join(', ')}` : `${affiches.length} affichés`);
+
+  // Et le comptoir en particulier, puisque c'est celui qui manquait.
+  const texteBat = await page.evaluate(() => document.querySelector('#ecran').textContent);
+  ok(/Comptoir/.test(texteBat), 'le comptoir est de ceux-là');
+
+  // Les recherches à prérequis le disent avant le clic, pas après.
+  const gates = Object.keys(RESEARCH).filter((k) => RESEARCH[k].exige);
+  ok(gates.length > 0, 'des recherches en exigent d’autres', gates.join(', '));
+  const neuf = nouvellePartie(20260729, { maintenant: Date.now(), depart: 'ville' });
+  const gN = groupeActif(neuf);
+  gN.regionId = neuf.world.regions.find((r) => !r.colonie).i;
+  Object.assign(gN.inventaire, { ferraille: 400 });
+  fonderBase(neuf, () => {});
+  neuf.base.batiments.antenne = 1;
+  Object.assign(neuf.base.stock, { composant: 9000, isotope: 9000, ferraille: 9000 });
+  neuf.player.credits = 999999;
+  neuf.dernierReel = Date.now();
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((t) => localStorage.setItem('cendres.save.v1', t), serialiser(neuf));
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.click('[data-a="onglet"][data-k="base"]');
+  await page.waitForTimeout(600);
+  const bloques = await page.evaluate((liste) => liste.map((k) => {
+    const b = document.querySelector(`[data-a="chercher"][data-k="${k}"]`);
+    return { k, vu: !!b, off: b ? b.disabled : null, txt: b ? b.textContent.trim() : '' };
+  }), gates);
+  ok(bloques.every((x) => x.vu), 'toutes les recherches ont leur carte',
+    bloques.filter((x) => !x.vu).map((x) => x.k).join(', '));
+  ok(bloques.every((x) => x.off),
+    'et celles qui en exigent une autre ne se lancent pas',
+    bloques.filter((x) => !x.off).map((x) => x.k).join(', '));
+  ok(bloques.every((x) => /d’abord/.test(x.txt)),
+    'leur bouton nomme ce qu’il faut avant',
+    bloques.map((x) => `${x.k}: ${x.txt}`).join(' · '));
+}
 
 console.log('\n8 vicies ter. Les bourses du monde, enfin visibles');
 {

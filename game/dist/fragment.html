@@ -21356,8 +21356,18 @@ function ecranBase() {
     { nom: 'Alimenter', clefs: ['generateur', 'solaire', 'eolienne'] },
     { nom: 'Produire', clefs: ['entrepot', 'fonderie', 'raffinerie', 'atelier'] },
     { nom: 'Se défendre et soigner', clefs: ['mur', 'poste', 'infirmerie'] },
-    { nom: 'Savoir', clefs: ['antenne'] },
+    { nom: 'Savoir et commercer', clefs: ['antenne', 'comptoir'] },
   ];
+  // Un bâtiment absent de ces listes n'existe pour personne : il ne s'affiche
+  // nulle part, donc il ne se construit pas. Le comptoir est resté invisible
+  // ainsi — déclaré, chiffré, testé côté moteur, et introuvable à l'écran.
+  // C'est le même défaut que la liste d'embauche qui oubliait quatre métiers :
+  // **une liste qu'il faut penser à compléter finit par être incomplète.** Un
+  // test la compare maintenant à BUILDINGS ; ce garde-ci n'est là que pour le
+  // cas où l'on jouerait une version non testée.
+  const orphelins = Object.keys(BUILDINGS).filter(
+    (k) => !FAMILLES.some((f) => f.clefs.includes(k)));
+  if (orphelins.length) FAMILLES.push({ nom: 'Divers', clefs: orphelins });
   const carteBat = (k) => {
     const bd = BUILDINGS[k];
     const niv = nivBat(b, k);
@@ -21393,13 +21403,21 @@ function ecranBase() {
     const dispo = Object.keys(cout).every((c) => (c === 'credits' ? S.player.credits : (b.stock[c] || 0)) >= cout[c]);
     const plein = niv + enFile >= rd.max;
     const sansAntenne = nivBat(b, 'antenne') < 1;
+    // Cinq recherches en exigent une autre, et rien ne le disait : le bouton
+    // annonçait « Lancer », le clic échouait, et il fallait lire le message
+    // fugace pour comprendre. Une condition se lit avant d'agir, pas après.
+    const amont = rd.exige && niveauRech(b, rd.exige) < 1 ? RESEARCH[rd.exige] : null;
     return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
       <div class="ligne"><span class="k">${e(rd.nom)}</span><span class="v"><span class="puce">niv ${niv}/${rd.max}</span></span></div>
       <div class="aide">${e(rd.desc)}</div>
+      ${rd.exige ? `<div class="aide ${amont ? 'ambre' : ''}">${amont
+    ? `Demande d’abord la recherche ${e(amont.nom)}.`
+    : `Ouverte par la recherche ${e(RESEARCH[rd.exige].nom)}.`}</div>` : ''}
       <div class="aide">Coût : ${e(coutTexte(cout))} · ${dureeTexte(tempsRecherche(b, k, S))}</div>
       <button class="act mini" data-a="chercher" data-k="${k}"
-        ${plein || !dispo || sansAntenne ? 'disabled' : ''} style="margin-top:4px">
-        ${plein ? 'Terminé' : sansAntenne ? 'Antenne requise' : 'Lancer'}</button>
+        ${plein || !dispo || sansAntenne || amont ? 'disabled' : ''} style="margin-top:4px">
+        ${plein ? 'Terminé' : sansAntenne ? 'Antenne requise'
+    : amont ? `${e(amont.nom)} d’abord` : 'Lancer'}</button>
     </div>`;
   }).join('');
 
