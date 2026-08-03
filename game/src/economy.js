@@ -9,6 +9,7 @@ import {
 import { comp, gagnerXp, portage, XP_PRATIQUE } from './characters.js';
 import { remiseDe, palierBonus } from './allegeance.js';
 import { distance as distanceCases, rendementRegion } from './world.js';
+import { prixAvecBourse } from './bourse.js';
 import { groupeActif } from './groupes.js';
 import {
   METIERS_VILLE, METIER_VILLE_KEYS, PART_ACTIVE, VOCATION_BIOME, VOCATION_STYLE, POIDS_BASE,
@@ -60,8 +61,13 @@ export function prixUnitaire(col, key, stockSimule) {
  * `habilete` : compétence de commerce du meilleur négociateur (0-100).
  * `repu`     : réputation avec la faction propriétaire (−100..100).
  */
-export function prixJoueur(col, key, habilete = 0, repu = 0, remise = 0, stockSimule) {
-  const p = prixUnitaire(col, key, stockSimule);
+export function prixJoueur(col, key, habilete = 0, repu = 0, remise = 0, stockSimule, world) {
+  // Une ville branchée sur une bourse ne fait plus tout à fait ses prix : elle
+  // les fait à moitié. `world` est facultatif — sans lui on rend le prix local,
+  // ce qui était le comportement d'avant.
+  const p = world
+    ? prixAvecBourse(world, col, key, prixUnitaire(col, key, stockSimule))
+    : prixUnitaire(col, key, stockSimule);
   // La marge n'est pas une constante du monde : c'est celle d'un homme, avec
   // son caractère, son métier et ce qu'il pense de vous.
   const marge = Math.max(0.02,
@@ -599,7 +605,7 @@ export function simulerAchat(state, col, key, qte, groupe) {
 
   while (restant > 0) {
     if (stock < 1) { borne = borne || 'étal vide'; break; }
-    const p = prixJoueur(col, key, hab, repu, remise, stock).achat;
+    const p = prixJoueur(col, key, hab, repu, remise, stock, state.world).achat;
     if (state.player.credits - cout < p) { borne = borne || 'crédits'; break; }
     cout += p;
     stock -= 1;
@@ -621,7 +627,7 @@ export function simulerVente(state, col, key, qte, groupe) {
   let gain = 0;
   let vendus = 0;
   while (restant > 0) {
-    gain += prixJoueur(col, key, hab, repu, remise, stock).vente;
+    gain += prixJoueur(col, key, hab, repu, remise, stock, state.world).vente;
     stock += 1;
     vendus += 1;
     restant -= 1;

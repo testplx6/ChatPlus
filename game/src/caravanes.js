@@ -5,6 +5,12 @@
 
 import { COMMODITIES, COMMODITY_KEYS, FACTIONS } from './data.js';
 import { chemin, colonieParId, colonieDe, nomRegion, distance, damer } from './world.js';
+import { reseauDe, reseaux, idReseau, villesDuReseau } from './bourse.js';
+
+/** Sept, plus ce que les bourses financent. */
+export function plafondCaravanes(world) {
+  return MAX_CARAVANES + reseaux(world).length * CARAVANES_PAR_RESEAU;
+}
 import { groupeActif } from './groupes.js';
 import { cibleStock, prixUnitaire, capacitePortage, poidsInventaire } from './economy.js';
 import { idDepuisRng } from './characters.js';
@@ -12,6 +18,21 @@ import { retenirEnVille } from './services.js';
 
 /** Au-delà, la carte devient un embouteillage illisible. */
 export const MAX_CARAVANES = 7;
+
+/**
+ * Ce qu'une bourse ajoute de convois en propre.
+ *
+ * Première version : un réseau ne faisait que *choisir* mieux ses trajets —
+ * plus loin, pour moins cher. Mesuré contre un témoin à bourses coupées, même
+ * graine, mêmes villes : 49 % de vivres contre 50 %, et 58 % contre 62 %.
+ * Aucun effet. La raison est arithmétique : sept caravanes pour cinquante-cinq
+ * villes, c'est le nombre de convois qui borne tout, pas leur destination.
+ * Mieux viser sans partir plus souvent revient à déshabiller Pierre.
+ *
+ * Une bourse paie donc des convois. C'est ce qu'on achète avec les deux mille
+ * cinq cents crédits de l'amorce, et c'est ce qui se voit.
+ */
+export const CARAVANES_PAR_RESEAU = 4;
 const HEURES_PAR_CASE = 2;
 
 // ---------------------------------------------------------------------------
@@ -47,12 +68,22 @@ function vivante(col) {
  */
 export function tenterDepart(state, rng, log) {
   const world = state.world;
-  if (world.caravanes.length >= MAX_CARAVANES) return null;
+  if (world.caravanes.length >= plafondCaravanes(world)) return null;
 
   const vendeurs = world.colonies.filter((c) => vivante(c) && surplus(c).length);
   if (!vendeurs.length) return null;
   const de = rng.pick(vendeurs);
   const dispo = surplus(de);
+
+  // Le réseau du vendeur, s'il en a un : à l'intérieur, on va plus loin et pour
+  // moins cher. C'est toute la différence entre un commerce qui tient du hasard
+  // — une paire tirée au sort, un écart de prix qui doit payer le trajet — et
+  // une économie organisée, où un manque se comble parce que quelqu'un s'en
+  // occupe. Une famine à huit régions d'un grenier plein durait des mois faute
+  // d'avoir été tirée.
+  const reseau = new Set(reseauDe(world, de.faction));
+  const dedans = (col) => col.faction && reseau.has(col.faction);
+  const chezSoi = dedans(de);
 
   let meilleur = null;
   for (const [k, qteDispo] of dispo) {
@@ -60,13 +91,14 @@ export function tenterDepart(state, rng, log) {
       if (!vivante(vers) || vers.id === de.id) continue;
       const manque = besoin(vers, k);
       if (manque < 12) continue;
+      const lie = chezSoi && dedans(vers);
       const d = distance(de.regionId, vers.regionId);
-      if (d > 7) continue;
+      if (d > (lie ? 12 : 7)) continue;
       // Le gain vaut-il le trajet ? Écart de prix contre distance.
       const gain = (prixUnitaire(vers, k) - prixUnitaire(de, k)) * Math.min(qteDispo, manque);
-      const score = gain / (1 + d * 0.6);
+      const score = gain / (1 + d * 0.6) * (lie ? 2.2 : 1);
       if (score > 12 && (!meilleur || score > meilleur.score)) {
-        meilleur = { k, de, vers, qte: Math.min(qteDispo, manque), score };
+        meilleur = { k, de, vers, qte: Math.min(qteDispo, manque), score, lie };
       }
     }
   }
@@ -97,6 +129,75 @@ export function tenterDepart(state, rng, log) {
   // et le journal est plafonné — elles chasseraient les guerres et les morts
   // de la mémoire du monde. L'écran Monde les montre en direct.
   return car;
+}
+
+/**
+ * Les départs qu'un réseau organise, par opposition à ceux que le hasard tire.
+ *
+ * On cherche le pire manque du réseau et le meilleur surplus capable d'y
+ * répondre, et l'on envoie — sans exiger que l'écart de prix paie le trajet,
+ * parce qu'un réseau ne cherche pas la marge : il cherche à ne pas laisser une
+ * de ses villes crever pendant qu'une autre déborde. C'est ce que financent les
+ * deux mille cinq cents crédits de l'amorce, et le convoi coûte sa course à la
+ * caisse commune.
+ */
+export function departsDuReseau(state, rng, log) {
+  const world = state.world;
+  for (const membres of reseaux(world)) {
+    const enCours = world.caravanes.filter(
+      (c) => c.reseau === idReseau(membres)).length;
+    if (enCours >= CARAVANES_PAR_RESEAU) continue;
+
+    const villes = villesDuReseau(world, membres).filter(vivante);
+    if (villes.length < 2) continue;
+
+    // Le pire manque, toutes matières confondues, pondéré par ce que ça pèse :
+    // une ville sans vivres passe avant une ville sans isotope.
+    let pire = null;
+    for (const col of villes) {
+      for (const k of COMMODITY_KEYS) {
+        const manque = besoin(col, k);
+        if (manque < 12) continue;
+        const urgence = manque * (k === 'rations' ? 3 : 1);
+        if (!pire || urgence > pire.urgence) pire = { col, k, manque, urgence };
+      }
+    }
+    if (!pire) continue;
+
+    let source = null;
+    for (const col of villes) {
+      if (col.id === pire.col.id) continue;
+      const dispo = (col.stock[pire.k] || 0) - cibleStock(col, pire.k) * 1.1;
+      if (dispo < 12) continue;
+      const d = distance(col.regionId, pire.col.regionId);
+      const score = Math.min(dispo, pire.manque) / (1 + d * 0.5);
+      if (!source || score > source.score) source = { col, dispo, d, score };
+    }
+    if (!source) continue;
+
+    const route = chemin(world, source.col.regionId, pire.col.regionId);
+    if (!route || !route.length) continue;
+
+    const qte = Math.max(12, Math.round(Math.min(source.dispo, pire.manque) * 0.8));
+    source.col.stock[pire.k] = Math.max(0, (source.col.stock[pire.k] || 0) - qte);
+    const f = world.factions[source.col.faction];
+    if (f) f.tresor = Math.max(0, f.tresor - Math.round(qte * 0.4));
+    world.caravanes.push({
+      id: idDepuisRng(rng, 'v'),
+      faction: source.col.faction,
+      reseau: idReseau(membres),
+      deId: source.col.id,
+      versId: pire.col.id,
+      regionId: source.col.regionId,
+      route,
+      etape: 0,
+      progres: 0,
+      cargaison: { [pire.k]: qte },
+      // Un convoi de bourse voyage escorté : c'est un service, pas une aventure.
+      escorte: Math.round(14 + qte * 0.3),
+      depuis: state.temps,
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -189,6 +290,12 @@ export function tickCaravanes(state, log, ctx) {
 
   // Nouveau départ de temps en temps
   if (state.temps % 9 === 0) tenterDepart(state, rng, log);
+  // Et les réseaux, eux, ne tirent pas au sort : ils regardent où ça manque et
+  // ils envoient. C'est très exactement ce qu'une bourse achète — pas de
+  // meilleures routes, des départs décidés. Mesuré avant : 0,8 caravane en
+  // circulation en moyenne sur toute la carte, pic à trois. Le plafond de sept
+  // n'a jamais été la contrainte ; c'était le tirage.
+  if (state.temps % 3 === 0) departsDuReseau(state, rng, log);
 }
 
 // ---------------------------------------------------------------------------

@@ -43,6 +43,7 @@ const MODULES = [
   'connaissance.js',
   'formation.js',
   'combat.js',
+  'bourse.js',
   'economy.js',
   'caravanes.js',
   'factions.js',

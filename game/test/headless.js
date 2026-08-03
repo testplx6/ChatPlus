@@ -21,6 +21,10 @@ import { attaquerCaravane } from '../src/caravanes.js';
 import { combatContre, fouillerSite } from '../src/events.js';
 import { bandeLocale } from '../src/events.js';
 import { damer, coutTraversee, PISTE_GAIN, rendementRegion } from '../src/world.js';
+import {
+  aUneBourse, reseauDe, idReseau, veutOuvrirBourse, ouvrirBourse, signerAccord,
+  rompreAccords, coursDe, tickBourses, prixAvecBourse,
+} from '../src/bourse.js';
 import { distanceMorale } from '../src/factions.js';
 import { loiIci } from '../src/lois.js';
 import { primeLivraison, prixEsclave } from '../src/justice.js';
@@ -5615,6 +5619,79 @@ section('9 septvicies. Refonder, c’est repartir de rien');
     postes: Object.keys(sr.base.postes).length, rech: sr.base.fileRech.length,
     gaspille: sr.base.gaspille,
   }));
+}
+
+section('9 sexvicies ter. La bourse des matières premières');
+{
+  // Le monde avait du commerce, mais opportuniste : une paire de villes tirée
+  // au sort toutes les neuf heures, et un départ seulement si l'écart de prix
+  // payait le trajet. Mesuré : 0,8 caravane en circulation sur cinquante-cinq
+  // villes. Une famine à huit régions d'un grenier plein durait des mois faute
+  // d'avoir été tirée.
+  const w = nouvellePartie(1212, { maintenant: 0, depart: 'ville', equipe: 3 }).world;
+  const fk = DIPLO_FACTIONS[0];
+  const autre = DIPLO_FACTIONS[1];
+
+  ok(!aUneBourse(w, fk), 'aucune faction ne commence avec une bourse');
+  ok(reseauDe(w, fk).length === 0, 'ni avec un réseau');
+
+  w.factions[fk].colonies = ['x1', 'x2', 'x3', 'x4'];
+  w.factions[fk].tresor = 9000;
+  ok(veutOuvrirBourse(w, fk, 'guerrier') === false,
+    'un chef qui ne pense qu\u2019\u00e0 la guerre n\u2019ouvre pas de march\u00e9');
+  ok(veutOuvrirBourse(w, fk, 'marchand'), 'un marchand, si');
+  w.factions[fk].colonies = ['x1', 'x2'];
+  ok(!veutOuvrirBourse(w, fk, 'marchand'), 'et il faut des villes \u00e0 relier');
+  w.factions[fk].colonies = ['x1', 'x2', 'x3', 'x4'];
+
+  const avant = w.factions[fk].tresor;
+  ok(ouvrirBourse(w, fk, 100), 'la bourse s\u2019ouvre');
+  ok(w.factions[fk].tresor < avant, 'et elle co\u00fbte : une bourse s\u2019amorce',
+    `${avant} \u2192 ${w.factions[fk].tresor}`);
+  ok(reseauDe(w, fk).join() === fk, 'son r\u00e9seau, c\u2019est elle seule pour l\u2019instant');
+
+  // Les accords, et la transitivité : c'est ce qui fait qu'un accord vaut plus
+  // que la somme de ses deux signataires.
+  w.factions[autre].colonies = ['y1', 'y2', 'y3', 'y4'];
+  w.factions[autre].tresor = 9000;
+  ouvrirBourse(w, autre, 100);
+  const tiers = DIPLO_FACTIONS[2];
+  w.factions[tiers].colonies = ['z1', 'z2', 'z3', 'z4'];
+  w.factions[tiers].tresor = 9000;
+  ouvrirBourse(w, tiers, 100);
+
+  signerAccord(w, fk, autre, 100);
+  signerAccord(w, autre, tiers, 100);
+  ok(reseauDe(w, fk).length === 3,
+    'A s\u2019accorde avec B, B avec C : A et C partagent le m\u00eame cours',
+    reseauDe(w, fk).join('+'));
+  ok(idReseau(reseauDe(w, fk)) === idReseau(reseauDe(w, tiers)),
+    'et c\u2019est bien le m\u00eame r\u00e9seau des deux c\u00f4t\u00e9s');
+
+  // La guerre débranche, et elle débranche au-delà des deux belligérants.
+  rompreAccords(w, autre, tiers);
+  ok(reseauDe(w, fk).length === 2 && reseauDe(w, tiers).length === 1,
+    'rompre l\u2019accord du milieu s\u00e9pare le r\u00e9seau en deux',
+    `${reseauDe(w, fk).join('+')} et ${reseauDe(w, tiers).join('+')}`);
+
+  // Le cours se publie, et il ne se recalcule pas à chaque regard.
+  ok(coursDe(w, fk) === null, 'tant que rien n\u2019est publi\u00e9, il n\u2019y a pas de cours');
+  const vraiMonde = nouvellePartie(1313, { maintenant: 0, depart: 'ville', equipe: 3 }).world;
+  const riche = DIPLO_FACTIONS.find((k) => vraiMonde.factions[k].colonies.length >= 4);
+  vraiMonde.factions[riche].tresor = 9000;
+  ouvrirBourse(vraiMonde, riche, 0);
+  tickBourses(vraiMonde, 0);
+  const cours = coursDe(vraiMonde, riche);
+  ok(cours && cours.rations > 0, 'une fois publi\u00e9, chaque mati\u00e8re a son cours',
+    cours ? `rations \u00e0 ${cours.rations.toFixed(1)}` : 'aucun');
+
+  // Et une ville branchée ne fait plus tout à fait ses prix.
+  const col = vraiMonde.colonies.find((c) => c.faction === riche && !c.ruine);
+  const brut = 100;
+  const avecB = prixAvecBourse(vraiMonde, col, 'rations', brut);
+  ok(avecB < brut && avecB > cours.rations,
+    'son prix est ramen\u00e9 vers le cours, sans s\u2019y confondre',
+    `${brut} \u2192 ${avecB.toFixed(1)}, cours ${cours.rations.toFixed(1)}`);
 }
 
 section('10. Rattrapage hors ligne');

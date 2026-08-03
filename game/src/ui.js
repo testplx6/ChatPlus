@@ -3615,7 +3615,7 @@ function modaleMarche() {
     aria-pressed="${qteMarche === q}">${q === 9999 ? 'max' : `×${q}`}</button>`).join('');
 
   const lignes = COMMODITY_KEYS.map((k) => {
-    const p = prixJoueur(col, k, hab, repu);
+    const p = prixJoueur(col, k, hab, repu, 0, undefined, S.world);
     const stock = Math.floor(col.stock[k] || 0);
     const aMoi = Math.floor(G().inventaire[k] || 0);
     const a = simulerAchat(S, col, k, qteMarche, G());

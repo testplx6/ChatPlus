@@ -1,0 +1,290 @@
+// La bourse des matières premières : ce qu'une faction fait de son économie
+// quand elle cesse de la laisser au hasard des caravanes.
+//
+// Le monde avait déjà du commerce, mais opportuniste : une ville en surplus
+// livrait une ville en manque à moins de sept régions, si le hasard tirait la
+// bonne paire et si l'écart de prix payait le trajet. Cela suffit à faire vivre
+// une carte ; cela ne fait pas une économie. Une famine à huit régions d'un
+// grenier plein durait des mois parce que personne ne l'avait tirée au sort.
+//
+// Une bourse, c'est trois choses, et elles se tiennent :
+//
+//   — un réseau  : les villes qui en font partie s'approvisionnent entre elles
+//                  en priorité, plus loin et pour moins cher qu'au hasard ;
+//   — un cours   : un prix publié, commun à tout le réseau, contre lequel les
+//                  prix locaux sont ramenés ;
+//   — des accords: deux factions branchent leurs réseaux l'un sur l'autre, et
+//                  la guerre les débranche.
+//
+// Tout vit dans `world` — c'est la moitié partagée de l'état, celle qui
+// tournerait côté serveur en multijoueur. Rien ici ne connaît le joueur.
+
+import { COMMODITY_KEYS, COMMODITIES, FACTIONS, DIPLO_FACTIONS } from './data.js';
+import { prixUnitaire } from './economy.js';
+
+/** Ce qu'il faut tenir pour ouvrir une bourse : ça ne se décrète pas à trois. */
+export const VILLES_BOURSE = 4;
+/** Et ce qu'il faut en caisse : une bourse s'amorce, elle ne se souhaite pas. */
+export const TRESOR_BOURSE = 2500;
+/**
+ * Au-dessous de cette estime mutuelle, on ne branche pas ses cours sur les
+ * leurs. Zéro : il suffit de ne pas se détester.
+ *
+ * Trente-cinq d'abord, choisi au jugé, et le monde l'a démenti : sur six mille
+ * heures, les factions qui ouvrent une bourse s'estiment 0, −53, −79, −89, −96.
+ * Pas un accord signé, jamais. Douze ensuite : toujours rien, les meilleures
+ * paires plafonnant exactement à zéro. Ce monde ne produit pas d'amitié entre
+ * puissances, seulement des indifférences et des haines — et une constante
+ * choisie au jugé tuait la moitié du système sans que rien ne le signale.
+ *
+ * On n'est déjà pas en guerre, c'est vérifié à part ; une haine franche reste
+ * rédhibitoire. L'indifférence, elle, suffit à commercer — c'est même de cela
+ * que le commerce est fait.
+ */
+export const RELATION_ACCORD = 0;
+/** Toutes les combien d'heures le cours est republié. */
+export const PAS_COTATION = 24;
+
+export function aUneBourse(world, key) {
+  // Témoin du banc et des essais : on coupe les bourses pour savoir ce
+  // qu'elles font vraiment, plutôt que de comparer les factions qui en ouvrent
+  // à celles qui n'en ouvrent pas — les premières sont les plus riches, et
+  // l'on mesurerait la richesse en croyant mesurer la bourse.
+  if (world.sansBourse) return false;
+  return !!(world.factions[key] && world.factions[key].bourse);
+}
+
+/**
+ * Le réseau d'une faction : elle, plus toutes celles à qui ses accords la
+ * relient, directement ou de proche en proche.
+ *
+ * De proche en proche, et c'est le point : si A s'accorde avec B et B avec C,
+ * A et C partagent le même cours sans s'être jamais parlé. C'est ce qui fait
+ * qu'un accord vaut plus que la somme de ses deux signataires — et ce qui rend
+ * une guerre coûteuse bien au-delà des deux belligérants.
+ */
+export function reseauDe(world, key) {
+  if (!aUneBourse(world, key)) return [];
+  const vus = new Set([key]);
+  const pile = [key];
+  while (pile.length) {
+    const k = pile.pop();
+    for (const a of world.accords || []) {
+      const autre = a.a === k ? a.b : a.b === k ? a.a : null;
+      if (!autre || vus.has(autre) || !aUneBourse(world, autre)) continue;
+      vus.add(autre);
+      pile.push(autre);
+    }
+  }
+  return [...vus].sort();
+}
+
+/**
+ * L'identité d'un réseau, stable et lisible : les drapeaux qui le composent,
+ * dans l'ordre. C'est la clé sous laquelle son cours est publié.
+ */
+export function idReseau(membres) {
+  return membres.join('+');
+}
+
+/** Les villes vivantes d'un réseau. */
+export function villesDuReseau(world, membres) {
+  const dedans = new Set(membres);
+  return world.colonies.filter((c) => !c.ruine && dedans.has(c.faction));
+}
+
+/**
+ * Le cours publié pour ce réseau, ou `null` s'il n'y en a pas.
+ *
+ * On ne recalcule pas une moyenne sur cinquante villes à chaque consultation
+ * d'un prix : une bourse *publie* un cours, à intervalle régulier, et tout le
+ * monde traite contre ce qui est affiché. Ce n'est donc pas un cache — c'est le
+ * mécanisme, et le décalage entre le cours et la réalité du jour fait partie du
+ * jeu.
+ */
+export function coursDe(world, key) {
+  const membres = reseauDe(world, key);
+  if (!membres.length) return null;
+  const c = (world.cotations || {})[idReseau(membres)];
+  return c ? c.prix : null;
+}
+
+/**
+ * Republier les cours de tous les réseaux. Appelé une fois par jour de jeu.
+ *
+ * Le cours d'une matière est la moyenne de ce qu'elle vaut dans les villes du
+ * réseau, pondérée par leur taille : une capitale pèse plus qu'un hameau, comme
+ * dans la vraie vie d'un marché.
+ */
+export function tickBourses(world, t) {
+  if (!world.cotations) world.cotations = {};
+  if (t % PAS_COTATION !== 0) return;
+
+  const faits = new Set();
+  const restants = {};
+  for (const key of DIPLO_FACTIONS) {
+    if (!aUneBourse(world, key)) continue;
+    const membres = reseauDe(world, key);
+    const id = idReseau(membres);
+    if (faits.has(id)) continue;
+    faits.add(id);
+
+    const villes = villesDuReseau(world, membres);
+    if (!villes.length) continue;
+    const prix = {};
+    for (const k of COMMODITY_KEYS) {
+      let somme = 0;
+      let poids = 0;
+      for (const col of villes) {
+        const p = Math.max(1, col.pop || 1);
+        somme += prixUnitaire(col, k) * p;
+        poids += p;
+      }
+      prix[k] = Number((somme / Math.max(1, poids)).toFixed(3));
+    }
+    restants[id] = { prix, maj: t, villes: villes.length, membres };
+  }
+  world.cotations = restants;
+}
+
+/**
+ * Ce qu'une marchandise vaut dans cette ville-ci, une fois la bourse passée par
+ * là.
+ *
+ * Une ville branchée sur un réseau ne fait plus tout à fait ses prix : elle les
+ * fait à moitié. C'est ce qui rend une bourse visible sans la rendre magique —
+ * une pénurie locale coûte encore cher, simplement moins cher qu'ailleurs, et
+ * un surplus se brade moins.
+ */
+export const POIDS_COURS = 0.5;
+
+export function prixAvecBourse(world, col, key, brut) {
+  if (!col.faction || !aUneBourse(world, col.faction)) return brut;
+  const cours = coursDe(world, col.faction);
+  if (!cours || !(cours[key] > 0)) return brut;
+  return brut * (1 - POIDS_COURS) + cours[key] * POIDS_COURS;
+}
+
+// ---------------------------------------------------------------------------
+// Ce que décident les conseils
+// ---------------------------------------------------------------------------
+
+/**
+ * Une faction ouvre-t-elle sa bourse ?
+ *
+ * Il faut des villes à relier, de quoi payer l'amorce, et quelqu'un que ça
+ * intéresse. Un dirigeant qui ne pense qu'à la guerre n'ouvre pas de marché :
+ * c'est le bâtisseur et le marchand qui y viennent, et le prudent quand la
+ * caisse déborde.
+ */
+export function veutOuvrirBourse(world, key, temperament) {
+  const f = world.factions[key];
+  if (!f || f.bourse) return false;
+  if ((f.colonies || []).length < VILLES_BOURSE) return false;
+  if (f.tresor < TRESOR_BOURSE) return false;
+  return temperament === 'batisseur' || temperament === 'marchand'
+    || (temperament === 'prudent' && f.tresor > TRESOR_BOURSE * 2);
+}
+
+export function ouvrirBourse(world, key, t) {
+  const f = world.factions[key];
+  if (!f || f.bourse) return false;
+  f.bourse = { depuis: t };
+  f.tresor = Math.max(0, f.tresor - TRESOR_BOURSE);
+  return true;
+}
+
+/** Y a-t-il déjà un accord entre ces deux-là ? */
+export function accordEntre(world, a, b) {
+  return (world.accords || []).some(
+    (x) => (x.a === a && x.b === b) || (x.a === b && x.b === a)
+  );
+}
+
+/**
+ * Avec qui cette faction signerait-elle ? Celle qui a une bourse, qu'on estime
+ * assez, avec qui l'on n'est pas en guerre, et à qui l'on n'est pas déjà lié.
+ */
+export function partenairePossible(world, key) {
+  if (!aUneBourse(world, key)) return null;
+  const f = world.factions[key];
+  let best = null;
+  for (const autre of DIPLO_FACTIONS) {
+    if (autre === key || !aUneBourse(world, autre)) continue;
+    if (accordEntre(world, key, autre)) continue;
+    if ((world.guerres || []).some(
+      (g) => (g.a === key && g.b === autre) || (g.a === autre && g.b === key))) continue;
+    const rel = f.relations[autre] ?? 0;
+    if (rel < RELATION_ACCORD) continue;
+    if (!best || rel > best.rel) best = { key: autre, rel };
+  }
+  return best;
+}
+
+export function signerAccord(world, a, b, t) {
+  if (accordEntre(world, a, b)) return false;
+  if (!world.accords) world.accords = [];
+  world.accords.push({ a, b, depuis: t });
+  return true;
+}
+
+/**
+ * La guerre débranche les cours.
+ *
+ * Deux marchés reliés par un accord ne le restent pas quand les colonnes
+ * partent : c'est ce qui donne à une déclaration de guerre un prix économique,
+ * payé par les deux camps et par tous ceux que l'accord reliait à travers eux.
+ */
+export function rompreAccords(world, a, b) {
+  if (!world.accords) return 0;
+  const avant = world.accords.length;
+  world.accords = world.accords.filter(
+    (x) => !((x.a === a && x.b === b) || (x.a === b && x.b === a))
+  );
+  return avant - world.accords.length;
+}
+
+/** Les réseaux distincts du monde, chacun une fois. */
+export function reseaux(world) {
+  const faits = new Set();
+  const out = [];
+  for (const key of DIPLO_FACTIONS) {
+    if (!aUneBourse(world, key)) continue;
+    const membres = reseauDe(world, key);
+    const id = idReseau(membres);
+    if (faits.has(id)) continue;
+    faits.add(id);
+    out.push(membres);
+  }
+  return out;
+}
+
+/** De quoi le dire à l'écran sans recalculer un réseau à chaque ligne. */
+export function resumeBourses(world) {
+  const out = [];
+  const faits = new Set();
+  for (const key of DIPLO_FACTIONS) {
+    if (!aUneBourse(world, key)) continue;
+    const membres = reseauDe(world, key);
+    const id = idReseau(membres);
+    if (faits.has(id)) continue;
+    faits.add(id);
+    const cot = (world.cotations || {})[id];
+    out.push({
+      id,
+      membres,
+      noms: membres.map((k) => FACTIONS[k].nom),
+      villes: cot ? cot.villes : villesDuReseau(world, membres).length,
+      maj: cot ? cot.maj : null,
+      prix: cot ? cot.prix : null,
+    });
+  }
+  return out;
+}
+
+/** Le cours d'une matière, tel qu'on l'affiche : valeur et écart au prix de base. */
+export function ligneCours(prix, key) {
+  const base = COMMODITIES[key].prix;
+  const v = prix[key];
+  return { key, valeur: v, ecart: base > 0 ? (v - base) / base : 0 };
+}

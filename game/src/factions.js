@@ -3,6 +3,10 @@
 
 import { FACTIONS, DIPLO_FACTIONS, COMMODITY_KEYS } from './data.js';
 import {
+  veutOuvrirBourse, ouvrirBourse, aUneBourse, partenairePossible, signerAccord,
+  rompreAccords, tickBourses,
+} from './bourse.js';
+import {
   dirigeant, penchant, crediterDirigeant, butDeGuerre, etatDuBut, tickDirigeant,
   TEMPERAMENTS,
 } from './dirigeants.js';
@@ -59,6 +63,19 @@ function majRelation(world, a, b, delta) {
 
 export function declarerGuerre(world, a, b, t, log, but) {
   if (enGuerre(world, a, b)) return;
+  // Deux marchés reliés par un accord ne le restent pas quand les colonnes
+  // partent. C'est ce qui donne à une déclaration de guerre un prix
+  // économique, payé par les deux camps — et par tous ceux que l'accord
+  // reliait à travers eux.
+  if (rompreAccords(world, a, b) && log) {
+    log({
+      type: 'bourse',
+      texte: `L’accord commercial entre ${FACTIONS[a].nom} et ${FACTIONS[b].nom} `
+        + `est rompu : les cours se débranchent.`,
+      factions: [a, b],
+      important: true,
+    });
+  }
   world.guerres.push({ a, b, depuis: t, batailles: 0, but: but || null, initiateur: a });
   majRelation(world, a, b, -60);
   crediterDirigeant(world, a, 'guerre');
@@ -911,6 +928,20 @@ function legiferer(world, key, t, log, ctx) {
     changements.push(`le régime devient ${REGIMES[reg].nom.toLowerCase()}`);
   }
 
+  // La bourse : une faction qui tient assez de villes et dont la caisse suit
+  // finit par organiser son économie au lieu de la laisser au hasard des
+  // caravanes. C'est une décision de conseil comme les autres, et elle change
+  // le monde bien au-delà de ses propres murs.
+  if (veutOuvrirBourse(world, key, d.temperament) && ouvrirBourse(world, key, t)) {
+    changements.push('une bourse des matières premières est ouverte');
+  }
+  if (aUneBourse(world, key)) {
+    const part = partenairePossible(world, key);
+    if (part && signerAccord(world, key, part.key, t)) {
+      changements.push(`les cours sont branchés sur ceux ${FACTIONS[part.key].genitif}`);
+    }
+  }
+
   const peine = peineVisee(temp, pays);
   if (peine !== lois.peine) {
     lois.peine = peine;
@@ -967,6 +998,9 @@ function legiferer(world, key, t, log, ctx) {
 // ---------------------------------------------------------------------------
 
 export function tickFactions(world, t, log, ctx) {
+  // Les cours se republient une fois par jour : une bourse affiche un prix,
+  // elle ne le recalcule pas à chaque regard.
+  tickBourses(world, t);
   for (const key of Object.keys(world.factions)) {
     const f = world.factions[key];
     f.prochainConseil -= 1;
