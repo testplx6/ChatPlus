@@ -356,7 +356,17 @@ function tickArmee(world, armee, t, log, ctx) {
       && world.factions[col.faction].colonies.length <= 1;
     const acharnement = (estCapitale ? 1.8 : 1) * (derniere ? 1.6 : 1);
     const assaut = armee.force * rng.range(0.5, 1.1);
-    const tenue = (col.defense * rng.range(0.6, 1.15) + col.murs * 2) * acharnement;
+    // Ce que vaut l'escouade restée sur place, quand c'est le camp du joueur.
+    //
+    // Elle comptait déjà contre les pillards (`tickBase`) et pas du tout contre
+    // une colonne : on pouvait poster ses six meilleurs hommes derrière ses
+    // propres murs et regarder la place tomber sans qu'ils changent un chiffre.
+    // On la lit à l'instant du choc plutôt qu'à la synchronisation de la
+    // vitrine, qui n'a lieu que toutes les vingt-quatre heures — un renfort qui
+    // arrive pendant le siège doit compter tout de suite.
+    const renfort = col.avantPoste && ctx && ctx.renfortAvantPoste
+      ? ctx.renfortAvantPoste() : 0;
+    const tenue = ((col.defense + renfort) * rng.range(0.6, 1.15) + col.murs * 2) * acharnement;
     if (assaut > tenue) {
       col.defense = Math.max(0, col.defense - assaut * 0.12);
       armee.force -= Math.max(0, Math.round(tenue * 0.02));

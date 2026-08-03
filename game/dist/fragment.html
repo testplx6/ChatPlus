@@ -8436,7 +8436,17 @@ function tickArmee(world, armee, t, log, ctx) {
       && world.factions[col.faction].colonies.length <= 1;
     const acharnement = (estCapitale ? 1.8 : 1) * (derniere ? 1.6 : 1);
     const assaut = armee.force * rng.range(0.5, 1.1);
-    const tenue = (col.defense * rng.range(0.6, 1.15) + col.murs * 2) * acharnement;
+    // Ce que vaut l'escouade restée sur place, quand c'est le camp du joueur.
+    //
+    // Elle comptait déjà contre les pillards (`tickBase`) et pas du tout contre
+    // une colonne : on pouvait poster ses six meilleurs hommes derrière ses
+    // propres murs et regarder la place tomber sans qu'ils changent un chiffre.
+    // On la lit à l'instant du choc plutôt qu'à la synchronisation de la
+    // vitrine, qui n'a lieu que toutes les vingt-quatre heures — un renfort qui
+    // arrive pendant le siège doit compter tout de suite.
+    const renfort = col.avantPoste && ctx && ctx.renfortAvantPoste
+      ? ctx.renfortAvantPoste() : 0;
+    const tenue = ((col.defense + renfort) * rng.range(0.6, 1.15) + col.murs * 2) * acharnement;
     if (assaut > tenue) {
       col.defense = Math.max(0, col.defense - assaut * 0.12);
       armee.force -= Math.max(0, Math.round(tenue * 0.02));
@@ -15802,6 +15812,7 @@ function tick(state) {
   // monde ne connaît que sa vitrine, il ne saurait pas démonter le camp.
   ctx.perdreAvantPoste = (motif) => perdreAvantPoste(state, log, motif);
   ctx.saccagerAvantPoste = (force) => saccagerAvantPoste(state, log, force);
+  ctx.renfortAvantPoste = () => forceEscouade(state);
   // Qui a une raison de venir prendre votre ville : ceux qui vous détestent, et
   // ceux à qui vous faites la guerre en portant d'autres couleurs. Les autres
   // savent qu'elle a un propriétaire et regardent ailleurs.
@@ -18107,8 +18118,33 @@ function ecranBase() {
       style="color:${couleurFaction(m.faction)}">${e(FACTIONS[m.faction].nom)}</span>
       <span class="v ${m.cases <= 3 ? 'alerte' : ''}">${n(m.force)} hommes · ${
   m.cases <= 0 ? 'ils y sont' : `${m.cases} région${m.cases > 1 ? 's' : ''}`}</span></div>`).join('')}
-    <div class="aide">Votre défense tient à ${n(Math.round(b.defense))}. Un mur, des habitants,
-      et l’escouade sur place comptent ; ce qui est ailleurs ne compte pas.</div>
+    ${(() => {
+    // Les nombres qui décident, et rien d'autre. « Renforcez votre défense » ne
+    // dit pas si l'on tient ; « 137 + 22 contre 200 » le dit. On reprend les
+    // termes exacts du siège (voir `capturer` dans factions.js), à leur valeur
+    // moyenne : le sort tire entre 0,6 et 1,15 sur la tenue, entre 0,5 et 1,1
+    // sur l'assaut, et rien ici ne peut donc être promis.
+    const col = S.world.colonies.find((c) => c.id === b.colonieId);
+    const place = col ? Math.round(col.defense) : Math.round(b.defense);
+    const escouade = Math.round(forceEscouade(S));
+    const murs = (col ? col.murs : nivBat(b, 'mur') * 3) * 2;
+    const tenue = (place + escouade) * 0.875 + murs;
+    const pire = Math.max(...menaces.map((m) => m.force));
+    return `<div class="sep"></div>
+      <div class="ligne"><span class="k">Place et garnison</span>
+        <span class="v">${n(place)}</span></div>
+      <div class="ligne"><span class="k">Murs</span><span class="v">+${n(murs)}</span></div>
+      <div class="ligne"><span class="k">Escouade sur place</span>
+        <span class="v ${escouade > 0 ? 'ok' : 'alerte'}">${escouade > 0
+  ? `+${n(escouade)}` : 'personne'}</span></div>
+      <div class="ligne"><span class="k">Ce qu’ils envoient</span>
+        <span class="v alerte">${n(pire)}</span></div>
+      <div class="aide">${tenue >= pire * 0.8
+    ? 'À vue de nez, la place tient. Le sort s’en mêle des deux côtés.'
+    : 'À vue de nez, la place tombe. Ce qui pèse, dans l’ordre : les habitants '
+      + '(2,5 chacun), un niveau de mur de plus, des miliciens affectés, et '
+      + 'l’escouade ici plutôt qu’ailleurs — elle vaut ce que valent ses gens au combat.'}</div>`;
+  })()}
   </section>` : '';
 
   const fileHtml = b.file.length ? b.file.map((it, i) => `

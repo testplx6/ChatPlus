@@ -6,7 +6,9 @@ import { Rng } from './rng.js';
 import { FACTIONS, DIPLO_FACTIONS } from './data.js';
 import { genererMonde, decouvrir, colonieParId, nomRegion, distance } from './world.js';
 import { makeCharacter, idDepuisRng, ARCHETYPE_KEYS } from './characters.js';
-import { creerBase, tickBase, perdreAvantPoste, saccagerAvantPoste } from './base.js';
+import {
+  creerBase, tickBase, perdreAvantPoste, saccagerAvantPoste, forceEscouade,
+} from './base.js';
 import {
   tickColonie, etalDe, effondrer, faireSecession, faireRevolte, emploisInitiaux,
 } from './economy.js';
@@ -380,6 +382,7 @@ export function tick(state) {
   // monde ne connaît que sa vitrine, il ne saurait pas démonter le camp.
   ctx.perdreAvantPoste = (motif) => perdreAvantPoste(state, log, motif);
   ctx.saccagerAvantPoste = (force) => saccagerAvantPoste(state, log, force);
+  ctx.renfortAvantPoste = () => forceEscouade(state);
   // Qui a une raison de venir prendre votre ville : ceux qui vous détestent, et
   // ceux à qui vous faites la guerre en portant d'autres couleurs. Les autres
   // savent qu'elle a un propriétaire et regardent ailleurs.

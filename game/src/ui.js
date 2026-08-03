@@ -27,6 +27,7 @@ import {
   peutReconnaitre, peutRattacher,
   lancerRecherche, annulerConstruction, fonderBase, deposer, retirer,
   COUT_FONDATION, manquePour, apportBatiment, chaineAutonomie, menacesSurLaBase,
+  forceEscouade,
 } from './base.js';
 import { classement, enGuerre } from './factions.js';
 import { titreDe, lignesDe } from './chronique.js';
@@ -2059,8 +2060,33 @@ function ecranBase() {
       style="color:${couleurFaction(m.faction)}">${e(FACTIONS[m.faction].nom)}</span>
       <span class="v ${m.cases <= 3 ? 'alerte' : ''}">${n(m.force)} hommes · ${
   m.cases <= 0 ? 'ils y sont' : `${m.cases} région${m.cases > 1 ? 's' : ''}`}</span></div>`).join('')}
-    <div class="aide">Votre défense tient à ${n(Math.round(b.defense))}. Un mur, des habitants,
-      et l’escouade sur place comptent ; ce qui est ailleurs ne compte pas.</div>
+    ${(() => {
+    // Les nombres qui décident, et rien d'autre. « Renforcez votre défense » ne
+    // dit pas si l'on tient ; « 137 + 22 contre 200 » le dit. On reprend les
+    // termes exacts du siège (voir `capturer` dans factions.js), à leur valeur
+    // moyenne : le sort tire entre 0,6 et 1,15 sur la tenue, entre 0,5 et 1,1
+    // sur l'assaut, et rien ici ne peut donc être promis.
+    const col = S.world.colonies.find((c) => c.id === b.colonieId);
+    const place = col ? Math.round(col.defense) : Math.round(b.defense);
+    const escouade = Math.round(forceEscouade(S));
+    const murs = (col ? col.murs : nivBat(b, 'mur') * 3) * 2;
+    const tenue = (place + escouade) * 0.875 + murs;
+    const pire = Math.max(...menaces.map((m) => m.force));
+    return `<div class="sep"></div>
+      <div class="ligne"><span class="k">Place et garnison</span>
+        <span class="v">${n(place)}</span></div>
+      <div class="ligne"><span class="k">Murs</span><span class="v">+${n(murs)}</span></div>
+      <div class="ligne"><span class="k">Escouade sur place</span>
+        <span class="v ${escouade > 0 ? 'ok' : 'alerte'}">${escouade > 0
+  ? `+${n(escouade)}` : 'personne'}</span></div>
+      <div class="ligne"><span class="k">Ce qu’ils envoient</span>
+        <span class="v alerte">${n(pire)}</span></div>
+      <div class="aide">${tenue >= pire * 0.8
+    ? 'À vue de nez, la place tient. Le sort s’en mêle des deux côtés.'
+    : 'À vue de nez, la place tombe. Ce qui pèse, dans l’ordre : les habitants '
+      + '(2,5 chacun), un niveau de mur de plus, des miliciens affectés, et '
+      + 'l’escouade ici plutôt qu’ailleurs — elle vaut ce que valent ses gens au combat.'}</div>`;
+  })()}
   </section>` : '';
 
   const fileHtml = b.file.length ? b.file.map((it, i) => `
