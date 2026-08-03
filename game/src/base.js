@@ -312,6 +312,13 @@ export function apportBatiment(base, key, state) {
     case 'hydroponie':
       return `Transforme la biomasse en vivres, ~${(1.25 * n * 0.9).toFixed(1)} rations/h à plein régime, `
         + 'et loge 4 personnes de plus.';
+    case 'bassins': {
+      const gain = 1 + niveauRech(base, 'cultures') * 0.18;
+      const reg = state && state.world.regions[base.regionId];
+      const y = (reg && BIOMES[reg.biome] && BIOMES[reg.biome].yields) || {};
+      return `~${(0.55 * n * gain).toFixed(2)} biomasse/h à plein régime, où que soit le camp.`
+        + (y.biomasse ? '' : ' Ici, c’est la seule source possible.');
+    }
     case 'halle': {
       // Ce que *cette* région donne, avant de dépenser soixante-cinq ferrailles
       // pour découvrir qu'elle ne donne pas de biomasse. Une friche se ramasse
@@ -342,6 +349,26 @@ export function apportBatiment(base, key, state) {
 }
 
 /**
+ * Ce qu'il reste à faire, exactement, pour produire sa biomasse sur place.
+ *
+ * Trois portes en enfilade — l'antenne, la recherche, les bassins — et une
+ * seule intéresse le joueur : la prochaine. Nommer la dernière quand il manque
+ * la première, c'est envoyer quelqu'un chercher un livre dans une bibliothèque
+ * qu'il n'a pas encore bâtie.
+ */
+function prochainPasBassins(base) {
+  if (niveau(base, 'antenne') < 1) {
+    return 'Pour en faire pousser ici il faut chercher les Cultures closes, '
+      + 'et l’on ne cherche rien sans antenne : montez-la d’abord.';
+  }
+  if (niveauRech(base, 'cultures') < 1) {
+    return 'Lancez la recherche Cultures closes : elle ouvre les bassins, '
+      + 'qui donnent de la biomasse n’importe où.';
+  }
+  return 'Montez des bassins de culture : ils en produisent quoi qu’en dise le terrain.';
+}
+
+/**
  * La chaîne de l'autonomie, étape par étape, avec où l'on en est.
  *
  * Un avant-poste tout neuf montre douze bâtiments dans l'ordre du fichier de
@@ -361,7 +388,13 @@ export function chaineAutonomie(state) {
   const donneBiomasse = (rend.biomasse || 0) > 0;
   const halle = niveau(base, 'halle');
   const hyd = niveau(base, 'hydroponie');
+  const bassins = niveau(base, 'bassins');
   const places = populationMax(base);
+  // Deux façons d'avoir de la biomasse : la région en donne, ou l'on en fait
+  // pousser. Tant qu'il n'y avait que la première, l'alerte d'un camp planté
+  // dans une friche était un constat sans issue — « vous n'en aurez jamais » —
+  // ce qui est la pire chose qu'un tableau de bord puisse dire.
+  const source = donneBiomasse || bassins > 0;
 
   // Un maillon n'est pas « en place » parce que le bâtiment est monté : il l'est
   // quand il *produit*. La première version comptait des bâtiments, et affichait
@@ -372,17 +405,21 @@ export function chaineAutonomie(state) {
     {
       key: 'halle',
       titre: 'Ramasser',
-      fait: halle > 0 && donne.length > 0,
-      etat: halle === 0
+      fait: (halle > 0 && donne.length > 0) || bassins > 0,
+      etat: halle === 0 && bassins === 0
         ? 'le camp ne ramasse rien : tout doit être porté à dos d’homme'
-        : `halle niv. ${halle} · ici on ramasse ${donne.map(
-          (k) => COMMODITIES[k].nom.toLowerCase()).join(', ')}`,
+        : [
+          halle > 0 ? `halle niv. ${halle} · ici on ramasse ${donne.map(
+            (k) => COMMODITIES[k].nom.toLowerCase()).join(', ')}` : null,
+          bassins > 0 ? `bassins niv. ${bassins} · de la biomasse quoi qu’en dise le terrain` : null,
+        ].filter(Boolean).join(' · '),
       // Ce que le biome refuse de donner est la chose la plus utile à savoir, et
-      // elle n'apparaissait nulle part.
-      alerte: halle > 0 && !donneBiomasse
-        ? `${BIOMES[reg.biome].nom} ne donne pas de biomasse : l’hydroponie n’aura rien à `
-          + 'transformer tant que vous n’en apporterez pas vous-même.'
-        : null,
+      // elle n'apparaissait nulle part. On dit maintenant quoi y faire — et la
+      // seule étape suivante, pas le programme complet : « cherchez les
+      // Cultures closes » était un faux conseil tant qu'il manquait l'antenne
+      // sans laquelle on ne cherche rien.
+      alerte: source ? null
+        : `${BIOMES[reg.biome].nom} ne donne pas de biomasse. ${prochainPasBassins(base)}`,
     },
     {
       key: 'hydroponie',
@@ -392,7 +429,8 @@ export function chaineAutonomie(state) {
         ? 'la biomasse ne devient pas de la nourriture'
         : `hydroponie niv. ${hyd} · ${bio} biomasse, ${rations} rations en réserve`,
       alerte: hyd > 0 && bio === 0 && rations === 0
-        ? 'les bacs tournent à vide : sans biomasse, aucune ration ne sort.'
+        ? `les bacs tournent à vide : sans biomasse, aucune ration ne sort.${
+          source ? '' : ' Ni le terrain ni aucun bassin n’en produit ici.'}`
         : null,
     },
     {
@@ -508,6 +546,10 @@ export function lancerConstruction(state, key) {
   if (!b) return { ok: false, motif: 'Bâtiment inconnu.' };
   const enFile = base.file.filter((x) => x.key === key).length;
   if (niveau(base, key) + enFile >= b.max) return { ok: false, motif: 'Niveau maximum atteint.' };
+  // Certains bâtiments s'inventent avant de se bâtir.
+  if (b.recherche && niveauRech(base, b.recherche) < 1) {
+    return { ok: false, motif: `Il faut d’abord la recherche ${RESEARCH[b.recherche].nom}.` };
+  }
   if (base.file.length >= 5) return { ok: false, motif: 'File pleine (5).' };
   const cout = coutBatiment(base, key);
   if (!peutPayer(base.stock, cout)) return { ok: false, motif: 'Ressources insuffisantes.' };
@@ -743,6 +785,18 @@ export function tickBase(state, log, ctx) {
     const taux = 1.1 * halle * bras * mo * M.recoltant * regHalle.richesse
       * (ctx.climat ? 1 + (ctx.climat.rendement('ferraille') - 1) * 0.6 : 1);
     for (const k of Object.keys(y)) ajouter(base, k, y[k] * taux);
+  }
+
+  // Les bassins : de la biomasse qui ne demande rien au terrain.
+  //
+  // Volontairement plus maigre qu'un bon biome — un marais rend une biomasse
+  // par heure à la halle — parce que l'intérêt des bassins n'est pas le
+  // rendement, c'est qu'ils marchent partout. Ils tiennent au courant plus que
+  // la halle : une pompe et des lampes ne se remplacent pas par des bras.
+  const bas = niveau(base, 'bassins');
+  if (bas > 0) {
+    const gain = 1 + niveauRech(base, 'cultures') * 0.18;
+    ajouter(base, 'biomasse', 0.55 * bas * (0.4 + 0.6 * r) * mo * M.bassinier * gain);
   }
 
   const inf = niveau(base, 'infirmerie');

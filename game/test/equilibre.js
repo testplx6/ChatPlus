@@ -51,7 +51,7 @@ import {
 } from '../src/allegeance.js';
 import { FACTIONS, DIPLO_FACTIONS } from '../src/data.js';
 import {
-  fonderBase, lancerConstruction, deposer, retirer, affecter, niveau as nivBat,
+  fonderBase, lancerConstruction, lancerRecherche, deposer, retirer, affecter, niveau as nivBat,
   peutReconnaitre, reconnaitreAvantPoste,
   placesMetier, affectes, coutBatiment, peutPayer, capaciteStock, totalStock,
   COUT_FONDATION,
@@ -583,9 +583,26 @@ const PLAN_BATI = [
   ['baraquement', 5], ['halle', 4], ['hydroponie', 4], ['raffinerie', 1],
 ];
 
+/**
+ * Le plan de celui qui s'est installé là où rien ne pousse.
+ *
+ * Le plan ordinaire ne monte l'antenne qu'en vingt-troisième position : pour un
+ * camp dont la région ne donne pas de biomasse, c'est mille heures après sa
+ * mort. Celui-ci fait l'inverse — antenne, recherche, bassins — parce que rien
+ * d'autre ne compte tant qu'on ne mange pas.
+ */
+const PLAN_SEC = [
+  ['entrepot', 1], ['antenne', 1], ['bassins', 1], ['hydroponie', 1],
+  ['baraquement', 1], ['generateur', 1], ['bassins', 2], ['cantine', 1],
+  ['baraquement', 2], ['hydroponie', 2], ['halle', 1], ['bassins', 3],
+  ['mur', 1], ['baraquement', 3], ['hydroponie', 3], ['entrepot', 2],
+  ['generateur', 2], ['poste', 1], ['infirmerie', 1], ['mur', 2],
+  ['baraquement', 4], ['bassins', 4], ['halle', 2], ['fonderie', 1],
+];
+
 /** Où l'on veut des bras en priorité, quand des places s'ouvrent. */
 const PLAN_POSTES = [
-  'cultivateur', 'cuisinier', 'recoltant', 'magasinier', 'batisseur',
+  'cultivateur', 'bassinier', 'cuisinier', 'recoltant', 'magasinier', 'batisseur',
   'milicien', 'garde', 'fondeur', 'infirmier', 'mecanicien', 'machiniste',
   'operateur', 'raffineur',
 ];
@@ -704,9 +721,18 @@ function tenirAvantPoste(state, g, memo) {
   // bâtiment cher : six niveaux au lieu de dix, et trois habitants au lieu de
   // cinq. On économise pour ce qui vient, sans s'interdire ce qui est juste
   // derrière.
+  // Deux biomes sur neuf donnent de la biomasse : planté ailleurs, le camp ne
+  // vit que de ce qu'on lui porte, et le banc l'a montré en creux pendant
+  // longtemps — des avant-postes à cinq habitants qui ne décollent jamais. Il
+  // existe une parade, elle passe par la recherche, on la joue.
+  const sec = !((BIOMES_BAT[state.world.regions[base.regionId].biome].yields || {}).biomasse);
+  if (sec && nivBat(base, 'antenne') >= 1 && !base.fileRech.length
+      && (base.recherche.cultures || 0) < 1) {
+    lancerRecherche(state, 'cultures');
+  }
   if (base.file.length === 0) {
     let fenetre = 0;
-    for (const [k, cible] of PLAN_BATI) {
+    for (const [k, cible] of (sec ? PLAN_SEC : PLAN_BATI)) {
       if (!BUILDING_KEYS.includes(k)) continue;
       if (nivBat(base, k) >= cible) continue;
       if (lancerConstruction(state, k).ok) break;

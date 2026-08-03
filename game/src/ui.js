@@ -2016,7 +2016,7 @@ function ecranBase() {
   // décide si quelqu'un peut vivre là ; la halle et l'hydroponie — récolter et
   // manger — étaient noyées entre la fonderie et la raffinerie.
   const FAMILLES = [
-    { nom: 'Tenir sur place', clefs: ['baraquement', 'halle', 'hydroponie', 'cantine'] },
+    { nom: 'Tenir sur place', clefs: ['baraquement', 'halle', 'bassins', 'hydroponie', 'cantine'] },
     { nom: 'Produire', clefs: ['generateur', 'entrepot', 'fonderie', 'raffinerie', 'atelier'] },
     { nom: 'Se défendre et soigner', clefs: ['mur', 'poste', 'infirmerie'] },
     { nom: 'Savoir', clefs: ['antenne'] },
@@ -2028,16 +2028,21 @@ function ecranBase() {
     const cout = coutBatiment(b, k);
     const manque = manquePour(b, k);
     const plein = niv + enFile >= bd.max;
+    // Un bâtiment qui s'invente avant de se bâtir le dit sur son bouton, sinon
+    // le joueur clique sur « Construire » et il ne se passe rien.
+    const verrou = bd.recherche && niveauRech(b, bd.recherche) < 1
+      ? RESEARCH[bd.recherche].nom : null;
     return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
       <div class="ligne souple"><span class="k">${e(bd.nom)} <span class="puce">niv ${niv}${enFile ? `+${enFile}` : ''}</span></span>
         <span class="v">${bd.energie > 0 ? `+${bd.energie * (niv + 1)}` : bd.energie < 0 ? `${bd.energie * (niv + 1)}` : '—'} én.</span></div>
       <div class="aide">${e(apportBatiment(b, k, S))}</div>
       <div class="aide">Coût : ${e(coutTexte(cout))} · ${dureeTexte(tempsBatiment(b, k))}</div>
-      <button class="act mini" data-a="construire" data-k="${k}" ${plein || manque.length ? 'disabled' : ''}
+      <button class="act mini" data-a="construire" data-k="${k}" ${plein || verrou || manque.length ? 'disabled' : ''}
         style="margin-top:4px">${plein ? 'Niveau maximum'
-    : manque.length
-      ? `Il manque ${e(manque.map((m) => `${n(m.qte)} ${COMMODITIES[m.key].nom.toLowerCase()}`).join(' et '))}`
-      : `Construire niv. ${niv + enFile + 1}`}</button>
+    : verrou ? `Recherche « ${e(verrou)} » d’abord`
+      : manque.length
+        ? `Il manque ${e(manque.map((m) => `${n(m.qte)} ${COMMODITIES[m.key].nom.toLowerCase()}`).join(' et '))}`
+        : `Construire niv. ${niv + enFile + 1}`}</button>
     </div>`;
   };
   const batHtml = FAMILLES.map((f) => `<div class="titre" style="margin-top:8px">${e(f.nom)}</div>

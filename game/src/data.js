@@ -247,6 +247,30 @@ export const BUILDINGS = {
     energie: 0,
     max: 10,
   },
+  bassins: {
+    nom: 'Bassins de culture',
+    desc: 'Algues et lentilles d’eau. De la biomasse qui ne doit rien au terrain.',
+    // Le bâtiment qui sauve les camps plantés au mauvais endroit.
+    //
+    // Deux biomes sur neuf donnent de la biomasse. Fonder ailleurs — une friche,
+    // des dalles, un canyon — c'était planter un camp qui ne pourrait jamais se
+    // nourrir : la halle ramasse ce que la région a, l'hydroponie transforme ce
+    // que la halle ramasse, et si la région n'a rien la chaîne est morte à la
+    // source. Le joueur n'avait aucun moyen de le savoir avant d'avoir payé.
+    //
+    // Les bassins ferment cette boucle sur eux-mêmes : de l'eau, de la lumière,
+    // et ce qui pousse dedans. Moins généreux qu'un marais, mais partout.
+    // Derrière une recherche, parce que ça ne doit pas être le premier réflexe :
+    // on s'installe là où la terre donne, et on invente les bassins quand on ne
+    // peut pas.
+    cout: { ferraille: 50, polymere: 45 },
+    coutMul: 1.6,
+    heures: 7,
+    tempsMul: 1.5,
+    energie: -5,
+    max: 8,
+    recherche: 'cultures',
+  },
   hydroponie: {
     nom: 'Hydroponie',
     desc: 'Transforme la biomasse en rations comestibles.',
@@ -389,6 +413,18 @@ export const RESEARCH = {
     cout: { composant: 10, credits: 180 },
     coutMul: 1.8,
     heures: 9,
+    tempsMul: 1.7,
+    max: 5,
+  },
+  cultures: {
+    nom: 'Cultures closes',
+    desc: 'Débloque les bassins de culture, puis +18 % de biomasse par niveau.',
+    // Bon marché et rapide au premier niveau : c'est une recherche de survie,
+    // pas de confort. Un camp qui découvre que son biome ne nourrit personne
+    // doit pouvoir se rattraper dans la semaine, pas dans le mois.
+    cout: { composant: 8, credits: 150 },
+    coutMul: 1.8,
+    heures: 8,
     tempsMul: 1.7,
     max: 5,
   },
@@ -877,6 +913,11 @@ export const METIERS = {
     nom: 'Cultivateur', batiment: 'hydroponie', parNiveau: 3, apport: 0.14,
     skill: 'ingenierie', effet: 'Rations produites par l’hydroponie',
     texte: 'Repiquer, tailler, écarter ce qui pourrit avant que ça contamine le bac.',
+  },
+  bassinier: {
+    nom: 'Bassinier', batiment: 'bassins', parNiveau: 3, apport: 0.14,
+    skill: 'survie', effet: 'Biomasse tirée des bassins',
+    texte: 'Écumer, brasser, retirer ce qui vire. Une eau qu’on laisse tranquille meurt.',
   },
   fondeur: {
     nom: 'Fondeur', batiment: 'fonderie', parNiveau: 3, apport: 0.14,

@@ -35,7 +35,7 @@ import {
   populationMax, chaineAutonomie, manquePour, apportBatiment,
   peutReconnaitre, reconnaitreAvantPoste, peutRattacher, rattacherVille, preleverImpot,
   declarerIndependance, synchroniserVitrine,
-  manoeuvres, affecter, rendementMetier, mainDoeuvre,
+  manoeuvres, affecter, rendementMetier, mainDoeuvre, niveauRech,
 } from '../src/base.js';
 import { METIER_KEYS, BIOMES, BUILDINGS, POSTURES, COMMODITIES } from '../src/data.js';
 import {
@@ -4290,12 +4290,76 @@ section('9 sexdecies. Un camp neuf dit ce qu’il lui manque');
       'la fiche de la halle nomme ce que la région donne, avant de la bâtir',
       apportBatiment(sf.base, 'halle', sf));
 
+    // Le conseil doit rester vrai à chaque étape. Sans antenne, on ne cherche
+    // rien : dire « cherchez les Cultures closes » à quelqu'un qui n'a pas de
+    // quoi chercher est un faux conseil, et un faux conseil coûte plus cher que
+    // pas de conseil du tout.
+    ok(/antenne/i.test(cf.find((x) => x.key === 'halle').alerte),
+      'sans antenne, on est renvoyé à l’antenne et pas à la recherche',
+      cf.find((x) => x.key === 'halle').alerte);
+    sf.base.batiments.antenne = 1;
+    const cf2 = chaineAutonomie(sf).find((x) => x.key === 'halle').alerte;
+    ok(/cultures closes/i.test(cf2) && !/antenne/i.test(cf2),
+      'l’antenne montée, on est renvoyé à la recherche',
+      cf2);
+
     // Et le conseil donné est le bon : c'est la réserve de vivres qui manquait.
     sf.base.stock.rations = 200;
     avancer(sf, 900);
     ok((sf.base.pop || 0) > 0,
       'des rations déposées suffisent à peupler le camp, comme annoncé',
       `${sf.base.pop} habitant(s)`);
+  }
+
+  // Les bassins : la friche cesse d'être une condamnation.
+  //
+  // Deux biomes sur neuf donnent de la biomasse. Fonder ailleurs, c'était
+  // planter un camp qui ne pourrait jamais se nourrir de lui-même, quoi qu'on
+  // bâtisse — la halle ramasse ce que la région a, l'hydroponie transforme ce
+  // que la halle ramasse, et une région sans biomasse tue la chaîne à la
+  // source. On peut désormais faire pousser dedans.
+  {
+    const sc = nouvellePartie(2718, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const gc = groupeActif(sc);
+    const fr = sc.world.regions.find(
+      (r) => r.biome === 'friche' && !sc.world.colonies.some((c) => c.regionId === r.i));
+    gc.regionId = fr.i;
+    for (const k of Object.keys(COUT_FONDATION)) {
+      gc.inventaire[k] = (gc.inventaire[k] || 0) + COUT_FONDATION[k];
+    }
+    fonderBase(sc, () => {}, gc);
+
+    sc.base.stock.ferraille = 400;
+    sc.base.stock.polymere = 300;
+    sc.base.stock.composant = 40;
+    sc.player.credits = 5000;
+    ok(lancerConstruction(sc, 'bassins').ok === false,
+      'on ne bâtit pas des bassins qu’on n’a pas inventés');
+    sc.base.batiments.antenne = 1;
+    ok(lancerRecherche(sc, 'cultures').ok, 'la recherche s’ouvre avec une antenne');
+    avancer(sc, 300);
+    ok(niveauRech(sc.base, 'cultures') >= 1, 'et elle aboutit',
+      `${niveauRech(sc.base, 'cultures')}`);
+    ok(lancerConstruction(sc, 'bassins').ok, 'les bassins deviennent constructibles');
+
+    // On les monte, et l'on vérifie le flux plutôt que le stock : l'hydroponie
+    // consomme la biomasse aussi vite qu'elle sort, si bien qu'un camp qui
+    // marche affiche zéro biomasse en réserve. Ce qu'on regarde, ce sont les
+    // rations et les gens.
+    Object.assign(sc.base.batiments,
+      { bassins: 1, hydroponie: 1, baraquement: 1, generateur: 1, entrepot: 2 });
+    sc.base.stock.carburant = 900;
+    avancer(sc, 1200);
+    ok((sc.base.stock.rations || 0) > 20,
+      'un camp en friche produit enfin sa nourriture',
+      `${Math.round(sc.base.stock.rations || 0)} rations`);
+    ok((sc.base.pop || 0) > 0, 'et il se peuple sans qu’on lui porte rien',
+      `${Math.round(sc.base.pop || 0)} habitant(s)`);
+    const cb = chaineAutonomie(sc).find((x) => x.key === 'halle');
+    ok(cb.fait && !cb.alerte,
+      'la chaîne ne se plaint plus du terrain : la biomasse vient d’ailleurs',
+      `${cb.etat}${cb.alerte ? ` · ${cb.alerte}` : ''}`);
+    ok(/bassins/i.test(cb.etat), 'et elle nomme d’où elle vient', cb.etat);
   }
 
   // Une fois logé, quelqu'un finit par venir : le maillon manquant était bien

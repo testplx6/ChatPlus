@@ -963,6 +963,30 @@ const BUILDINGS = {
     energie: 0,
     max: 10,
   },
+  bassins: {
+    nom: 'Bassins de culture',
+    desc: 'Algues et lentilles d’eau. De la biomasse qui ne doit rien au terrain.',
+    // Le bâtiment qui sauve les camps plantés au mauvais endroit.
+    //
+    // Deux biomes sur neuf donnent de la biomasse. Fonder ailleurs — une friche,
+    // des dalles, un canyon — c'était planter un camp qui ne pourrait jamais se
+    // nourrir : la halle ramasse ce que la région a, l'hydroponie transforme ce
+    // que la halle ramasse, et si la région n'a rien la chaîne est morte à la
+    // source. Le joueur n'avait aucun moyen de le savoir avant d'avoir payé.
+    //
+    // Les bassins ferment cette boucle sur eux-mêmes : de l'eau, de la lumière,
+    // et ce qui pousse dedans. Moins généreux qu'un marais, mais partout.
+    // Derrière une recherche, parce que ça ne doit pas être le premier réflexe :
+    // on s'installe là où la terre donne, et on invente les bassins quand on ne
+    // peut pas.
+    cout: { ferraille: 50, polymere: 45 },
+    coutMul: 1.6,
+    heures: 7,
+    tempsMul: 1.5,
+    energie: -5,
+    max: 8,
+    recherche: 'cultures',
+  },
   hydroponie: {
     nom: 'Hydroponie',
     desc: 'Transforme la biomasse en rations comestibles.',
@@ -1105,6 +1129,18 @@ const RESEARCH = {
     cout: { composant: 10, credits: 180 },
     coutMul: 1.8,
     heures: 9,
+    tempsMul: 1.7,
+    max: 5,
+  },
+  cultures: {
+    nom: 'Cultures closes',
+    desc: 'Débloque les bassins de culture, puis +18 % de biomasse par niveau.',
+    // Bon marché et rapide au premier niveau : c'est une recherche de survie,
+    // pas de confort. Un camp qui découvre que son biome ne nourrit personne
+    // doit pouvoir se rattraper dans la semaine, pas dans le mois.
+    cout: { composant: 8, credits: 150 },
+    coutMul: 1.8,
+    heures: 8,
     tempsMul: 1.7,
     max: 5,
   },
@@ -1593,6 +1629,11 @@ const METIERS = {
     nom: 'Cultivateur', batiment: 'hydroponie', parNiveau: 3, apport: 0.14,
     skill: 'ingenierie', effet: 'Rations produites par l’hydroponie',
     texte: 'Repiquer, tailler, écarter ce qui pourrit avant que ça contamine le bac.',
+  },
+  bassinier: {
+    nom: 'Bassinier', batiment: 'bassins', parNiveau: 3, apport: 0.14,
+    skill: 'survie', effet: 'Biomasse tirée des bassins',
+    texte: 'Écumer, brasser, retirer ce qui vire. Une eau qu’on laisse tranquille meurt.',
   },
   fondeur: {
     nom: 'Fondeur', batiment: 'fonderie', parNiveau: 3, apport: 0.14,
@@ -11138,6 +11179,13 @@ function apportBatiment(base, key, state) {
     case 'hydroponie':
       return `Transforme la biomasse en vivres, ~${(1.25 * n * 0.9).toFixed(1)} rations/h à plein régime, `
         + 'et loge 4 personnes de plus.';
+    case 'bassins': {
+      const gain = 1 + niveauRech(base, 'cultures') * 0.18;
+      const reg = state && state.world.regions[base.regionId];
+      const y = (reg && BIOMES[reg.biome] && BIOMES[reg.biome].yields) || {};
+      return `~${(0.55 * n * gain).toFixed(2)} biomasse/h à plein régime, où que soit le camp.`
+        + (y.biomasse ? '' : ' Ici, c’est la seule source possible.');
+    }
     case 'halle': {
       // Ce que *cette* région donne, avant de dépenser soixante-cinq ferrailles
       // pour découvrir qu'elle ne donne pas de biomasse. Une friche se ramasse
@@ -11168,6 +11216,26 @@ function apportBatiment(base, key, state) {
 }
 
 /**
+ * Ce qu'il reste à faire, exactement, pour produire sa biomasse sur place.
+ *
+ * Trois portes en enfilade — l'antenne, la recherche, les bassins — et une
+ * seule intéresse le joueur : la prochaine. Nommer la dernière quand il manque
+ * la première, c'est envoyer quelqu'un chercher un livre dans une bibliothèque
+ * qu'il n'a pas encore bâtie.
+ */
+function prochainPasBassins(base) {
+  if (niveau(base, 'antenne') < 1) {
+    return 'Pour en faire pousser ici il faut chercher les Cultures closes, '
+      + 'et l’on ne cherche rien sans antenne : montez-la d’abord.';
+  }
+  if (niveauRech(base, 'cultures') < 1) {
+    return 'Lancez la recherche Cultures closes : elle ouvre les bassins, '
+      + 'qui donnent de la biomasse n’importe où.';
+  }
+  return 'Montez des bassins de culture : ils en produisent quoi qu’en dise le terrain.';
+}
+
+/**
  * La chaîne de l'autonomie, étape par étape, avec où l'on en est.
  *
  * Un avant-poste tout neuf montre douze bâtiments dans l'ordre du fichier de
@@ -11187,7 +11255,13 @@ function chaineAutonomie(state) {
   const donneBiomasse = (rend.biomasse || 0) > 0;
   const halle = niveau(base, 'halle');
   const hyd = niveau(base, 'hydroponie');
+  const bassins = niveau(base, 'bassins');
   const places = populationMax(base);
+  // Deux façons d'avoir de la biomasse : la région en donne, ou l'on en fait
+  // pousser. Tant qu'il n'y avait que la première, l'alerte d'un camp planté
+  // dans une friche était un constat sans issue — « vous n'en aurez jamais » —
+  // ce qui est la pire chose qu'un tableau de bord puisse dire.
+  const source = donneBiomasse || bassins > 0;
 
   // Un maillon n'est pas « en place » parce que le bâtiment est monté : il l'est
   // quand il *produit*. La première version comptait des bâtiments, et affichait
@@ -11198,17 +11272,21 @@ function chaineAutonomie(state) {
     {
       key: 'halle',
       titre: 'Ramasser',
-      fait: halle > 0 && donne.length > 0,
-      etat: halle === 0
+      fait: (halle > 0 && donne.length > 0) || bassins > 0,
+      etat: halle === 0 && bassins === 0
         ? 'le camp ne ramasse rien : tout doit être porté à dos d’homme'
-        : `halle niv. ${halle} · ici on ramasse ${donne.map(
-          (k) => COMMODITIES[k].nom.toLowerCase()).join(', ')}`,
+        : [
+          halle > 0 ? `halle niv. ${halle} · ici on ramasse ${donne.map(
+            (k) => COMMODITIES[k].nom.toLowerCase()).join(', ')}` : null,
+          bassins > 0 ? `bassins niv. ${bassins} · de la biomasse quoi qu’en dise le terrain` : null,
+        ].filter(Boolean).join(' · '),
       // Ce que le biome refuse de donner est la chose la plus utile à savoir, et
-      // elle n'apparaissait nulle part.
-      alerte: halle > 0 && !donneBiomasse
-        ? `${BIOMES[reg.biome].nom} ne donne pas de biomasse : l’hydroponie n’aura rien à `
-          + 'transformer tant que vous n’en apporterez pas vous-même.'
-        : null,
+      // elle n'apparaissait nulle part. On dit maintenant quoi y faire — et la
+      // seule étape suivante, pas le programme complet : « cherchez les
+      // Cultures closes » était un faux conseil tant qu'il manquait l'antenne
+      // sans laquelle on ne cherche rien.
+      alerte: source ? null
+        : `${BIOMES[reg.biome].nom} ne donne pas de biomasse. ${prochainPasBassins(base)}`,
     },
     {
       key: 'hydroponie',
@@ -11218,7 +11296,8 @@ function chaineAutonomie(state) {
         ? 'la biomasse ne devient pas de la nourriture'
         : `hydroponie niv. ${hyd} · ${bio} biomasse, ${rations} rations en réserve`,
       alerte: hyd > 0 && bio === 0 && rations === 0
-        ? 'les bacs tournent à vide : sans biomasse, aucune ration ne sort.'
+        ? `les bacs tournent à vide : sans biomasse, aucune ration ne sort.${
+          source ? '' : ' Ni le terrain ni aucun bassin n’en produit ici.'}`
         : null,
     },
     {
@@ -11334,6 +11413,10 @@ function lancerConstruction(state, key) {
   if (!b) return { ok: false, motif: 'Bâtiment inconnu.' };
   const enFile = base.file.filter((x) => x.key === key).length;
   if (niveau(base, key) + enFile >= b.max) return { ok: false, motif: 'Niveau maximum atteint.' };
+  // Certains bâtiments s'inventent avant de se bâtir.
+  if (b.recherche && niveauRech(base, b.recherche) < 1) {
+    return { ok: false, motif: `Il faut d’abord la recherche ${RESEARCH[b.recherche].nom}.` };
+  }
   if (base.file.length >= 5) return { ok: false, motif: 'File pleine (5).' };
   const cout = coutBatiment(base, key);
   if (!peutPayer(base.stock, cout)) return { ok: false, motif: 'Ressources insuffisantes.' };
@@ -11569,6 +11652,18 @@ function tickBase(state, log, ctx) {
     const taux = 1.1 * halle * bras * mo * M.recoltant * regHalle.richesse
       * (ctx.climat ? 1 + (ctx.climat.rendement('ferraille') - 1) * 0.6 : 1);
     for (const k of Object.keys(y)) ajouter(base, k, y[k] * taux);
+  }
+
+  // Les bassins : de la biomasse qui ne demande rien au terrain.
+  //
+  // Volontairement plus maigre qu'un bon biome — un marais rend une biomasse
+  // par heure à la halle — parce que l'intérêt des bassins n'est pas le
+  // rendement, c'est qu'ils marchent partout. Ils tiennent au courant plus que
+  // la halle : une pompe et des lampes ne se remplacent pas par des bras.
+  const bas = niveau(base, 'bassins');
+  if (bas > 0) {
+    const gain = 1 + niveauRech(base, 'cultures') * 0.18;
+    ajouter(base, 'biomasse', 0.55 * bas * (0.4 + 0.6 * r) * mo * M.bassinier * gain);
   }
 
   const inf = niveau(base, 'infirmerie');
@@ -17830,7 +17925,7 @@ function ecranBase() {
   // décide si quelqu'un peut vivre là ; la halle et l'hydroponie — récolter et
   // manger — étaient noyées entre la fonderie et la raffinerie.
   const FAMILLES = [
-    { nom: 'Tenir sur place', clefs: ['baraquement', 'halle', 'hydroponie', 'cantine'] },
+    { nom: 'Tenir sur place', clefs: ['baraquement', 'halle', 'bassins', 'hydroponie', 'cantine'] },
     { nom: 'Produire', clefs: ['generateur', 'entrepot', 'fonderie', 'raffinerie', 'atelier'] },
     { nom: 'Se défendre et soigner', clefs: ['mur', 'poste', 'infirmerie'] },
     { nom: 'Savoir', clefs: ['antenne'] },
@@ -17842,16 +17937,21 @@ function ecranBase() {
     const cout = coutBatiment(b, k);
     const manque = manquePour(b, k);
     const plein = niv + enFile >= bd.max;
+    // Un bâtiment qui s'invente avant de se bâtir le dit sur son bouton, sinon
+    // le joueur clique sur « Construire » et il ne se passe rien.
+    const verrou = bd.recherche && niveauRech(b, bd.recherche) < 1
+      ? RESEARCH[bd.recherche].nom : null;
     return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
       <div class="ligne souple"><span class="k">${e(bd.nom)} <span class="puce">niv ${niv}${enFile ? `+${enFile}` : ''}</span></span>
         <span class="v">${bd.energie > 0 ? `+${bd.energie * (niv + 1)}` : bd.energie < 0 ? `${bd.energie * (niv + 1)}` : '—'} én.</span></div>
       <div class="aide">${e(apportBatiment(b, k, S))}</div>
       <div class="aide">Coût : ${e(coutTexte(cout))} · ${dureeTexte(tempsBatiment(b, k))}</div>
-      <button class="act mini" data-a="construire" data-k="${k}" ${plein || manque.length ? 'disabled' : ''}
+      <button class="act mini" data-a="construire" data-k="${k}" ${plein || verrou || manque.length ? 'disabled' : ''}
         style="margin-top:4px">${plein ? 'Niveau maximum'
-    : manque.length
-      ? `Il manque ${e(manque.map((m) => `${n(m.qte)} ${COMMODITIES[m.key].nom.toLowerCase()}`).join(' et '))}`
-      : `Construire niv. ${niv + enFile + 1}`}</button>
+    : verrou ? `Recherche « ${e(verrou)} » d’abord`
+      : manque.length
+        ? `Il manque ${e(manque.map((m) => `${n(m.qte)} ${COMMODITIES[m.key].nom.toLowerCase()}`).join(' et '))}`
+        : `Construire niv. ${niv + enFile + 1}`}</button>
     </div>`;
   };
   const batHtml = FAMILLES.map((f) => `<div class="titre" style="margin-top:8px">${e(f.nom)}</div>
