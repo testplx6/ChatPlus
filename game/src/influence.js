@@ -31,6 +31,10 @@ import { colonieParId, distance, chemin } from './world.js';
 import {
   loisDe, PEINES, IMPOTS, REGIMES, REGIME_KEYS,
 } from './lois.js';
+import {
+  aUneBourse, ouvrirBourse, signerAccord, rompreAccords, partenairePossible,
+  VILLES_BOURSE, TRESOR_BOURSE,
+} from './bourse.js';
 
 /**
  * Ce que chaque charge permet. `rang` est l'indice minimal dans RANGS.
@@ -67,6 +71,26 @@ export const PREROGATIVES = {
     desc: 'Faire acheter du grain pour votre ville. Une ville qui mange se tait.',
     rang: 3,
     charge: 'Nourrir aujourd’hui ce qu’on n’a pas produit hier se paie demain.',
+  },
+  bourse: {
+    nom: 'Ouvrir une bourse',
+    desc: 'Faire de vos villes un marché commun : un cours publié, et des convois '
+      + 'qui vont où ça manque plutôt qu’où le hasard les envoie.',
+    rang: 3, // Capitaine
+    charge: 'Ça s’amorce sur le trésor, et une bourse ne se referme pas.',
+  },
+  accord: {
+    nom: 'Signer un accord commercial',
+    desc: 'Brancher votre bourse sur celle d’une autre faction. Leurs cours deviennent '
+      + 'les vôtres, et leurs greniers aussi.',
+    rang: 4, // Commandeur
+    charge: 'On vous saura lié à eux — y compris quand ils tomberont.',
+  },
+  rompre: {
+    nom: 'Rompre un accord',
+    desc: 'Débrancher votre bourse de la leur, sans attendre une guerre pour ça.',
+    rang: 4,
+    charge: 'Une parole reprise se retient plus longtemps qu’une parole donnée.',
   },
   guerre: {
     nom: 'Déclarer la guerre',
@@ -412,6 +436,108 @@ export function declarerGuerreA(state, faction, contre, rng, log) {
     villes: coloniesDe(state.world, faction).length,
     t: state.temps,
   });
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Le commerce, décidé plutôt que subi
+// ---------------------------------------------------------------------------
+//
+// Les bourses s'ouvraient et les accords se signaient au conseil, selon le
+// tempérament du chef et l'état du trésor — c'est-à-dire sans le joueur, même
+// quand il était Commandeur et qu'il pouvait déclarer une guerre d'un trait de
+// plume. Un officier qui décide de la guerre et pas du commerce, c'est une
+// charge à moitié écrite.
+
+/** Ce qui empêche d'ouvrir une bourse ici, dit en clair. */
+export function peutOuvrirBourse(state, faction) {
+  const v = peutExercer(state, faction, 'bourse');
+  if (!v.ok) return v;
+  const w = state.world;
+  if (aUneBourse(w, faction)) return { ok: false, motif: 'Ils en ont déjà une.' };
+  const villes = coloniesDe(w, faction).length;
+  if (villes < VILLES_BOURSE) {
+    return { ok: false, motif: `Il faut ${VILLES_BOURSE} villes à relier, ils en tiennent ${villes}.` };
+  }
+  const f = w.factions[faction];
+  if (f.tresor < TRESOR_BOURSE) {
+    return { ok: false, motif: `Il faut ${TRESOR_BOURSE} cr en caisse, il y en a ${Math.round(f.tresor)}.` };
+  }
+  return { ok: true };
+}
+
+export function ouvrirBourseA(state, faction, log) {
+  const v = peutOuvrirBourse(state, faction);
+  if (!v.ok) return v;
+  if (!ouvrirBourse(state.world, faction, state.temps)) {
+    return { ok: false, motif: 'Le conseil n’a pas pu l’amorcer.' };
+  }
+  if (log) {
+    log({
+      type: 'bourse',
+      texte: `Sur votre ordre, ${FACTIONS[faction].nom} ouvre sa bourse : ses villes `
+        + 'traiteront désormais contre un cours commun.',
+      important: true,
+      factions: [faction],
+    });
+  }
+  inscrireActe(state, faction, { type: 'bourse', t: state.temps });
+  return { ok: true };
+}
+
+/** Les factions avec qui l'on peut brancher nos cours. */
+export function accordsPossibles(state, faction) {
+  if (!aUneBourse(state.world, faction)) return [];
+  return DIPLO_FACTIONS.filter((k) => k !== faction && partenairePossible(state.world, faction, k));
+}
+
+export function signerAccordAvec(state, faction, contre, log) {
+  const v = peutExercer(state, faction, 'accord');
+  if (!v.ok) return v;
+  if (!accordsPossibles(state, faction).includes(contre)) {
+    return { ok: false, motif: 'Pas avec ceux-là : il leur faut une bourse, et pas de guerre entre vous.' };
+  }
+  if (!signerAccord(state.world, faction, contre, state.temps)) {
+    return { ok: false, motif: 'L’accord n’a pas pu être signé.' };
+  }
+  if (log) {
+    log({
+      type: 'bourse',
+      texte: `Sur votre ordre, ${FACTIONS[faction].nom} et ${FACTIONS[contre].nom} branchent `
+        + 'leurs bourses l’une sur l’autre.',
+      important: true,
+      factions: [faction, contre],
+    });
+  }
+  inscrireActe(state, faction, { type: 'accord', contre, t: state.temps });
+  return { ok: true };
+}
+
+/** Les accords qu'on peut défaire. */
+export function accordsRompables(state, faction) {
+  return (state.world.accords || [])
+    .filter((a) => a.a === faction || a.b === faction)
+    .map((a) => (a.a === faction ? a.b : a.a));
+}
+
+export function rompreAccordAvec(state, faction, contre, log) {
+  const v = peutExercer(state, faction, 'rompre');
+  if (!v.ok) return v;
+  if (!accordsRompables(state, faction).includes(contre)) {
+    return { ok: false, motif: 'Aucun accord avec eux.' };
+  }
+  rompreAccords(state.world, faction, contre);
+  if (log) {
+    log({
+      type: 'bourse',
+      texte: `Sur votre ordre, ${FACTIONS[faction].nom} rompt son accord commercial avec `
+        + `${FACTIONS[contre].nom}.`,
+      important: true,
+      factions: [faction, contre],
+    });
+  }
+  // Rompre est un acte qu'on assume : ça se retient.
+  inscrireActe(state, faction, { type: 'rompre', contre, t: state.temps });
   return { ok: true };
 }
 

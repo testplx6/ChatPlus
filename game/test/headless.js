@@ -83,6 +83,8 @@ import {
   leverColonne, envoyerColonne, fonderPoste, declarerGuerreA, signerPaixAvec,
   sitesFondation, cibleGuerre, jugerActes, tickCharges, porterFaute,
   coutLevee, COUT_POSTE, fixerLoi,
+  peutOuvrirBourse, ouvrirBourseA, accordsPossibles, signerAccordAvec,
+  accordsRompables, rompreAccordAvec,
 } from '../src/influence.js';
 import {
   acheterBete, betesDe, lenteurAttelage, tickBetes, conduite, surnombre,
@@ -2309,6 +2311,60 @@ ok(!peutExercer(pol, fPol, 'lever').ok,
   'mais il n’ouvre pas le trésor pour en armer de nouvelles');
 ok(!peutExercer(pol, fPol, 'guerre').ok,
   'et il ne déclare pas la guerre');
+
+{
+  // Le commerce se décide aussi, et selon le grade. Les bourses s'ouvraient et
+  // les accords se signaient au conseil, selon le tempérament du chef — sans le
+  // joueur, même Commandeur, alors qu'il pouvait déclarer une guerre d'un trait
+  // de plume. Un officier qui décide de la guerre et pas du commerce, c'est une
+  // charge à moitié écrite.
+  ok(!peutExercer(pol, fPol, 'bourse').ok,
+    'un lieutenant n’ouvre pas de bourse', peutExercer(pol, fPol, 'bourse').motif);
+  ok(!peutExercer(pol, fPol, 'accord').ok, 'ni ne signe d’accord commercial');
+
+  gPol.allegeance.points = RANGS[3].points; // Capitaine
+  ok(peutExercer(pol, fPol, 'bourse').ok,
+    'un capitaine, si : c’est un acte de trésorerie',
+    peutExercer(pol, fPol, 'bourse').motif);
+  ok(!peutExercer(pol, fPol, 'accord').ok,
+    'mais lier son pays à un autre reste au-dessus de lui');
+
+  // Ce qui borne : des villes à relier, et de quoi amorcer.
+  pol.world.factions[fPol].tresor = 0;
+  ok(!peutOuvrirBourse(pol, fPol).ok, 'et il faut de quoi l’amorcer',
+    peutOuvrirBourse(pol, fPol).motif);
+  pol.world.factions[fPol].tresor = 9000;
+  const avant = pol.world.factions[fPol].tresor;
+  const r = ouvrirBourseA(pol, fPol, () => {});
+  ok(r.ok, 'la bourse s’ouvre sur son ordre', r.motif || '');
+  ok(aUneBourse(pol.world, fPol), 'et elle existe pour de bon dans le monde');
+  ok(pol.world.factions[fPol].tresor < avant, 'aux frais de la caisse commune',
+    `${avant} → ${pol.world.factions[fPol].tresor}`);
+  ok(!ouvrirBourseA(pol, fPol, () => {}).ok, 'on ne l’ouvre pas deux fois');
+
+  // L'accord, et son refus quand on n'a pas le grade.
+  const autre = DIPLO_FACTIONS.find((k) => k !== fPol && pol.world.factions[k].colonies.length >= 4);
+  pol.world.factions[autre].tresor = 9000;
+  ouvrirBourse(pol.world, autre, pol.temps);
+  ok(!signerAccordAvec(pol, fPol, autre, () => {}).ok,
+    'un capitaine ne signe toujours pas d’accord');
+
+  gPol.allegeance.points = RANGS[4].points; // Commandeur
+  ok(accordsPossibles(pol, fPol).includes(autre),
+    'le commandeur voit avec qui brancher ses cours',
+    accordsPossibles(pol, fPol).join(' '));
+  ok(signerAccordAvec(pol, fPol, autre, () => {}).ok, 'et il signe');
+  ok(reseauDe(pol.world, fPol).length === 2,
+    'les deux bourses n’en font plus qu’une', reseauDe(pol.world, fPol).join('+'));
+
+  // Et l'on peut défaire ce qu'on a fait, sans attendre une guerre.
+  ok(accordsRompables(pol, fPol).includes(autre), 'l’accord se retrouve pour être rompu');
+  ok(rompreAccordAvec(pol, fPol, autre, () => {}).ok, 'et il se rompt');
+  ok(reseauDe(pol.world, fPol).length === 1, 'les cours se séparent de nouveau',
+    reseauDe(pol.world, fPol).join('+'));
+  ok(!rompreAccordAvec(pol, fPol, autre, () => {}).ok,
+    'on ne rompt pas un accord qui n’existe plus');
+}
 
 gPol.allegeance.points = RANGS[3].points; // Capitaine
 ok(peutExercer(pol, fPol, 'lever').ok, 'un capitaine lève');

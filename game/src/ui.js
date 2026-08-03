@@ -13,7 +13,9 @@ import {
   rendementRegion, amendementRegion,
 } from './world.js';
 import { resumeSauvegarde, EMPLACEMENTS_MAX } from './save.js';
-import { ligneCours, resumeBourses, comptoirActif } from './bourse.js';
+import {
+  ligneCours, resumeBourses, comptoirActif, TRESOR_BOURSE,
+} from './bourse.js';
 import {
   comp, pvTotal, etatCourt, estVivant, estDebout, ratio, peutEquiper,
   SEUIL_FAMINE, SEUIL_VENTRE_CREUX,
@@ -85,6 +87,7 @@ import {
 } from './secteur.js';
 import {
   PREROGATIVES, PREROGATIVE_KEYS, peutExercer, credit as creditInfluence,
+  peutOuvrirBourse, accordsPossibles, accordsRompables,
   colonnesDe, sitesFondation, cibleGuerre, guerresArretables, coutLevee,
   COUT_POSTE, FORCE_LEVEE, COUT_GARNISON, COUT_GRENIER, villeConfiee,
 } from './influence.js';
@@ -3185,8 +3188,15 @@ function ligneCharge(faction, k) {
   </details>`;
 }
 
+function villesDeFaction(key) {
+  return S.world.colonies.filter((c) => !c.ruine && c.faction === key).length;
+}
+
 function cibleVide(k) {
   return {
+    bourse: 'Rien à ouvrir : il leur faut quatre villes, de quoi l’amorcer, et pas de bourse déjà.',
+    accord: 'Personne à brancher : il leur faut une bourse ouverte, et pas de guerre entre vous.',
+    rompre: 'Aucun accord commercial en cours.',
     envoyer: 'Aucune colonne des vôtres n’est sur les routes.',
     lever: 'Rien à prendre : aucune ville ennemie à portée.',
     fonder: 'Pas une case libre assez près des vôtres, ni assez loin des autres.',
@@ -3233,6 +3243,27 @@ function ciblesCharge(faction, k) {
     return sites.slice(0, 6).map((r) => ({
       val: String(r.i),
       texte: `Poste en ${lieuAvecCoord(w, r.i)} — ${n(COUT_POSTE)} cr`,
+    }));
+  }
+  if (k === 'bourse') {
+    const v = peutOuvrirBourse(S, faction);
+    if (!v.ok) return [];
+    return [{
+      val: faction,
+      texte: `Ouvrir la bourse ${e(FACTIONS[faction].genitif)} — ${n(TRESOR_BOURSE)} cr d’amorce`,
+    }];
+  }
+  if (k === 'accord') {
+    return accordsPossibles(S, faction).map((autre) => ({
+      val: autre,
+      texte: `Brancher nos cours sur ceux ${FACTIONS[autre].genitif} (${
+        villesDeFaction(autre)} villes)`,
+    }));
+  }
+  if (k === 'rompre') {
+    return accordsRompables(S, faction).map((autre) => ({
+      val: autre,
+      texte: `Débrancher nos cours de ceux ${FACTIONS[autre].genitif}`,
     }));
   }
   if (k === 'garnison' || k === 'grenier') {
@@ -5421,6 +5452,9 @@ function surClic(ev) {
         case 'fonder': r = ACTIONS.fonderPoste(f, cible); break;
         case 'guerre': r = ACTIONS.declarerGuerre(f, cible); break;
         case 'paix': r = ACTIONS.signerPaix(f, cible); break;
+        case 'bourse': r = ACTIONS.ouvrirBourse(f); break;
+        case 'accord': r = ACTIONS.signerAccord(f, cible); break;
+        case 'rompre': r = ACTIONS.rompreAccord(f, cible); break;
         default: r = { ok: false, motif: 'Ordre inconnu.' };
       }
       toast(r.ok ? 'C’est fait. On exécute.' : r.motif, !r.ok);

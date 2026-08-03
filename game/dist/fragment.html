@@ -10645,6 +10645,26 @@ const PREROGATIVES = {
     rang: 3,
     charge: 'Nourrir aujourd’hui ce qu’on n’a pas produit hier se paie demain.',
   },
+  bourse: {
+    nom: 'Ouvrir une bourse',
+    desc: 'Faire de vos villes un marché commun : un cours publié, et des convois '
+      + 'qui vont où ça manque plutôt qu’où le hasard les envoie.',
+    rang: 3, // Capitaine
+    charge: 'Ça s’amorce sur le trésor, et une bourse ne se referme pas.',
+  },
+  accord: {
+    nom: 'Signer un accord commercial',
+    desc: 'Brancher votre bourse sur celle d’une autre faction. Leurs cours deviennent '
+      + 'les vôtres, et leurs greniers aussi.',
+    rang: 4, // Commandeur
+    charge: 'On vous saura lié à eux — y compris quand ils tomberont.',
+  },
+  rompre: {
+    nom: 'Rompre un accord',
+    desc: 'Débrancher votre bourse de la leur, sans attendre une guerre pour ça.',
+    rang: 4,
+    charge: 'Une parole reprise se retient plus longtemps qu’une parole donnée.',
+  },
   guerre: {
     nom: 'Déclarer la guerre',
     desc: 'Engager la faction contre une autre, sur-le-champ.',
@@ -10989,6 +11009,108 @@ function declarerGuerreA(state, faction, contre, rng, log) {
     villes: coloniesDe(state.world, faction).length,
     t: state.temps,
   });
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Le commerce, décidé plutôt que subi
+// ---------------------------------------------------------------------------
+//
+// Les bourses s'ouvraient et les accords se signaient au conseil, selon le
+// tempérament du chef et l'état du trésor — c'est-à-dire sans le joueur, même
+// quand il était Commandeur et qu'il pouvait déclarer une guerre d'un trait de
+// plume. Un officier qui décide de la guerre et pas du commerce, c'est une
+// charge à moitié écrite.
+
+/** Ce qui empêche d'ouvrir une bourse ici, dit en clair. */
+function peutOuvrirBourse(state, faction) {
+  const v = peutExercer(state, faction, 'bourse');
+  if (!v.ok) return v;
+  const w = state.world;
+  if (aUneBourse(w, faction)) return { ok: false, motif: 'Ils en ont déjà une.' };
+  const villes = coloniesDe(w, faction).length;
+  if (villes < VILLES_BOURSE) {
+    return { ok: false, motif: `Il faut ${VILLES_BOURSE} villes à relier, ils en tiennent ${villes}.` };
+  }
+  const f = w.factions[faction];
+  if (f.tresor < TRESOR_BOURSE) {
+    return { ok: false, motif: `Il faut ${TRESOR_BOURSE} cr en caisse, il y en a ${Math.round(f.tresor)}.` };
+  }
+  return { ok: true };
+}
+
+function ouvrirBourseA(state, faction, log) {
+  const v = peutOuvrirBourse(state, faction);
+  if (!v.ok) return v;
+  if (!ouvrirBourse(state.world, faction, state.temps)) {
+    return { ok: false, motif: 'Le conseil n’a pas pu l’amorcer.' };
+  }
+  if (log) {
+    log({
+      type: 'bourse',
+      texte: `Sur votre ordre, ${FACTIONS[faction].nom} ouvre sa bourse : ses villes `
+        + 'traiteront désormais contre un cours commun.',
+      important: true,
+      factions: [faction],
+    });
+  }
+  inscrireActe(state, faction, { type: 'bourse', t: state.temps });
+  return { ok: true };
+}
+
+/** Les factions avec qui l'on peut brancher nos cours. */
+function accordsPossibles(state, faction) {
+  if (!aUneBourse(state.world, faction)) return [];
+  return DIPLO_FACTIONS.filter((k) => k !== faction && partenairePossible(state.world, faction, k));
+}
+
+function signerAccordAvec(state, faction, contre, log) {
+  const v = peutExercer(state, faction, 'accord');
+  if (!v.ok) return v;
+  if (!accordsPossibles(state, faction).includes(contre)) {
+    return { ok: false, motif: 'Pas avec ceux-là : il leur faut une bourse, et pas de guerre entre vous.' };
+  }
+  if (!signerAccord(state.world, faction, contre, state.temps)) {
+    return { ok: false, motif: 'L’accord n’a pas pu être signé.' };
+  }
+  if (log) {
+    log({
+      type: 'bourse',
+      texte: `Sur votre ordre, ${FACTIONS[faction].nom} et ${FACTIONS[contre].nom} branchent `
+        + 'leurs bourses l’une sur l’autre.',
+      important: true,
+      factions: [faction, contre],
+    });
+  }
+  inscrireActe(state, faction, { type: 'accord', contre, t: state.temps });
+  return { ok: true };
+}
+
+/** Les accords qu'on peut défaire. */
+function accordsRompables(state, faction) {
+  return (state.world.accords || [])
+    .filter((a) => a.a === faction || a.b === faction)
+    .map((a) => (a.a === faction ? a.b : a.a));
+}
+
+function rompreAccordAvec(state, faction, contre, log) {
+  const v = peutExercer(state, faction, 'rompre');
+  if (!v.ok) return v;
+  if (!accordsRompables(state, faction).includes(contre)) {
+    return { ok: false, motif: 'Aucun accord avec eux.' };
+  }
+  rompreAccords(state.world, faction, contre);
+  if (log) {
+    log({
+      type: 'bourse',
+      texte: `Sur votre ordre, ${FACTIONS[faction].nom} rompt son accord commercial avec `
+        + `${FACTIONS[contre].nom}.`,
+      important: true,
+      factions: [faction, contre],
+    });
+  }
+  // Rompre est un acte qu'on assume : ça se retient.
+  inscrireActe(state, faction, { type: 'rompre', contre, t: state.temps });
   return { ok: true };
 }
 
@@ -21520,8 +21642,15 @@ function ligneCharge(faction, k) {
   </details>`;
 }
 
+function villesDeFaction(key) {
+  return S.world.colonies.filter((c) => !c.ruine && c.faction === key).length;
+}
+
 function cibleVide(k) {
   return {
+    bourse: 'Rien à ouvrir : il leur faut quatre villes, de quoi l’amorcer, et pas de bourse déjà.',
+    accord: 'Personne à brancher : il leur faut une bourse ouverte, et pas de guerre entre vous.',
+    rompre: 'Aucun accord commercial en cours.',
     envoyer: 'Aucune colonne des vôtres n’est sur les routes.',
     lever: 'Rien à prendre : aucune ville ennemie à portée.',
     fonder: 'Pas une case libre assez près des vôtres, ni assez loin des autres.',
@@ -21568,6 +21697,27 @@ function ciblesCharge(faction, k) {
     return sites.slice(0, 6).map((r) => ({
       val: String(r.i),
       texte: `Poste en ${lieuAvecCoord(w, r.i)} — ${n(COUT_POSTE)} cr`,
+    }));
+  }
+  if (k === 'bourse') {
+    const v = peutOuvrirBourse(S, faction);
+    if (!v.ok) return [];
+    return [{
+      val: faction,
+      texte: `Ouvrir la bourse ${e(FACTIONS[faction].genitif)} — ${n(TRESOR_BOURSE)} cr d’amorce`,
+    }];
+  }
+  if (k === 'accord') {
+    return accordsPossibles(S, faction).map((autre) => ({
+      val: autre,
+      texte: `Brancher nos cours sur ceux ${FACTIONS[autre].genitif} (${
+        villesDeFaction(autre)} villes)`,
+    }));
+  }
+  if (k === 'rompre') {
+    return accordsRompables(S, faction).map((autre) => ({
+      val: autre,
+      texte: `Débrancher nos cours de ceux ${FACTIONS[autre].genitif}`,
     }));
   }
   if (k === 'garnison' || k === 'grenier') {
@@ -23756,6 +23906,9 @@ function surClic(ev) {
         case 'fonder': r = ACTIONS.fonderPoste(f, cible); break;
         case 'guerre': r = ACTIONS.declarerGuerre(f, cible); break;
         case 'paix': r = ACTIONS.signerPaix(f, cible); break;
+        case 'bourse': r = ACTIONS.ouvrirBourse(f); break;
+        case 'accord': r = ACTIONS.signerAccord(f, cible); break;
+        case 'rompre': r = ACTIONS.rompreAccord(f, cible); break;
         default: r = { ok: false, motif: 'Ordre inconnu.' };
       }
       toast(r.ok ? 'C’est fait. On exécute.' : r.motif, !r.ok);
@@ -24412,6 +24565,31 @@ const API = {
   /** Signer la paix, quoi qu'en pense le conseil. */
   signerPaix(faction, contre) {
     const r = signerPaixAvec(state, faction, contre, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  // -------------------------------------------------------------------------
+  // Le commerce, décidé plutôt que subi
+  // -------------------------------------------------------------------------
+
+  /** Faire de leurs villes un marché commun. Capitaine. */
+  ouvrirBourse(faction) {
+    const r = ouvrirBourseA(state, faction, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Brancher leur bourse sur celle d'une autre faction. Commandeur. */
+  signerAccord(faction, contre) {
+    const r = signerAccordAvec(state, faction, contre, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Et la débrancher, sans attendre une guerre pour ça. */
+  rompreAccord(faction, contre) {
+    const r = rompreAccordAvec(state, faction, contre, creerLogger(state));
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },

@@ -36,6 +36,7 @@ import {
   envoyerColonne as envoyerColonneA, leverColonne as leverColonneA,
   fonderPoste as fonderPosteA, declarerGuerreA, signerPaixAvec,
   renforcerGarnison, ouvrirGreniers, fixerLoi as fixerLoiA,
+  ouvrirBourseA, signerAccordAvec, rompreAccordAvec,
 } from './influence.js';
 import { disposer } from './justice.js';
 
@@ -406,6 +407,31 @@ const API = {
   /** Signer la paix, quoi qu'en pense le conseil. */
   signerPaix(faction, contre) {
     const r = signerPaixAvec(state, faction, contre, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  // -------------------------------------------------------------------------
+  // Le commerce, décidé plutôt que subi
+  // -------------------------------------------------------------------------
+
+  /** Faire de leurs villes un marché commun. Capitaine. */
+  ouvrirBourse(faction) {
+    const r = ouvrirBourseA(state, faction, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Brancher leur bourse sur celle d'une autre faction. Commandeur. */
+  signerAccord(faction, contre) {
+    const r = signerAccordAvec(state, faction, contre, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Et la débrancher, sans attendre une guerre pour ça. */
+  rompreAccord(faction, contre) {
+    const r = rompreAccordAvec(state, faction, contre, creerLogger(state));
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },

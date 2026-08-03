@@ -1866,6 +1866,30 @@ quelques secondes plus tard. Mesuré avant correction : 400 px, puis 0, puis 0 �
 chacun des dix relevés suivants. **Corriger un conteneur qui défile sans
 regarder les autres, c'est corriger la moitié d'un défaut.**
 
+### Décider du commerce, selon son grade
+
+Le grade est une charge, et elle donnait déjà beaucoup : un Lieutenant dispose
+des colonnes levées, un Capitaine lève et fait fonder, un Commandeur déclare la
+guerre et signe la paix. Mais les bourses s'ouvraient et les accords se signaient
+au conseil, selon le tempérament du chef et l'état du trésor — c'est-à-dire sans
+le joueur, même Commandeur, même quand il pouvait déclarer une guerre d'un trait
+de plume. **Un officier qui décide de la guerre et pas du commerce, c'est une
+charge à moitié écrite.**
+
+Trois prérogatives de plus, dosées par ce qu'elles engagent :
+
+| Prérogative | Grade | Ce qu'on engage |
+|---|---|---|
+| Ouvrir une bourse | Capitaine | le trésor, et une bourse ne se referme pas |
+| Signer un accord commercial | Commandeur | on vous saura lié à eux, y compris quand ils tomberont |
+| Rompre un accord | Commandeur | une parole reprise se retient plus longtemps qu'une parole donnée |
+
+Le dosage suit la règle du reste du système : ouvrir un marché est un acte de
+trésorerie, comme ouvrir les greniers — Capitaine. Lier son pays à un autre est
+de la diplomatie, comme la guerre et la paix — Commandeur. Et chaque acte est
+inscrit au dossier : on en répond, comme d'une colonne envoyée se faire
+détruire.
+
 ### Une bourse qu'on ne voyait pas
 
 La couche des bourses tournait entièrement en coulisse : des factions ouvraient
