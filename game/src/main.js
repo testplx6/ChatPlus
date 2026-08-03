@@ -187,6 +187,18 @@ const API = {
     }
   },
 
+  /**
+   * La partie, en texte, pour la zone de copie.
+   *
+   * Un téléchargement se fait ignorer sans un mot dans une page isolée ; du
+   * texte qu'on sélectionne marche partout, y compris sur un téléphone.
+   */
+  texteExport() {
+    if (!state) return '';
+    sauver();
+    return serialiser(state);
+  },
+
   /** Relire un fichier, et le poser directement comme partie en cours. */
   importer(txt) {
     const r = importerTexte(txt);

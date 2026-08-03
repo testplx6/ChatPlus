@@ -3363,6 +3363,12 @@ function modaleSauvegardes() {
     if (d < 86400000) return `il y a ${Math.round(d / 3600000)} h`;
     return `il y a ${Math.round(d / 86400000)} j`;
   };
+  const deuxTemps = (act, id, texte, cls) => {
+    const cle = `${act}:${id}`;
+    const pret = arme === cle;
+    return `<button class="act mini ${pret ? 'danger' : (cls || '')}"
+      data-a="${act}" data-k="${e(id)}">${pret ? 'Confirmer' : texte}</button>`;
+  };
   const ligne = (x) => {
     const r = x.resume || {};
     return `<div style="border-bottom:1px solid #1b2029;padding:7px 0">
@@ -3372,9 +3378,9 @@ function modaleSauvegardes() {
         ${n(r.credits || 0)} cr${r.base ? ` · ${e(r.nomBase || 'un camp')}` : ' · sans camp'}
         · graine ${e(String(r.seed ?? '?'))}</div>
       <div class="taches" style="margin-top:5px">
-        <button class="act mini primaire" data-a="charger-emp" data-k="${e(x.id)}">Charger</button>
-        <button class="act mini" data-a="ecraser-emp" data-k="${e(x.id)}">Écraser</button>
-        <button class="act mini danger" data-a="suppr-emp" data-k="${e(x.id)}">Supprimer</button>
+        ${deuxTemps('charger-emp', x.id, 'Charger', 'primaire')}
+        ${deuxTemps('ecraser-emp', x.id, 'Écraser')}
+        ${deuxTemps('suppr-emp', x.id, 'Supprimer', 'danger')}
       </div>
     </div>`;
   };
@@ -3402,22 +3408,35 @@ function modaleSauvegardes() {
   ${r ? `<div class="sep"></div>
     <div class="ligne"><span class="k">Partie en cours</span>
       <span class="v">Jour ${n(r.jour)} · ${n(r.gens)} vivant(s) · ${n(r.credits)} cr</span></div>
-    <button class="act primaire" data-a="enregistrer-emp" style="margin-top:6px"
+    <label class="aide" for="nom-sauvegarde">Nom de la copie (facultatif)</label>
+    <input id="nom-sauvegarde" type="text" autocomplete="off"
+      placeholder="Jour ${n(r.jour)}" value="">
+    <div style="height:6px"></div>
+    <button class="act primaire" data-a="enregistrer-emp"
       ${liste.length >= EMPLACEMENTS_MAX ? 'disabled' : ''}>
       ${liste.length >= EMPLACEMENTS_MAX
     ? 'Plus de place — écrasez-en une' : 'Enregistrer dans un nouvel emplacement'}</button>` : ''}
+  ${messageSauvegardes ? `<div class="aide ambre">${e(messageSauvegardes)}</div>` : ''}
   <div class="sep"></div>
   ${liste.length ? liste.map(ligne).join('')
     : '<div class="aide">Aucune copie gardée pour l’instant.</div>'}
   <div class="sep"></div>
-  <div class="titre">Fichiers</div>
-  <div class="aide">Une partie exportée est un fichier : on peut la garder ailleurs que
-    dans ce navigateur, la passer sur un autre appareil, ou l’envoyer à quelqu’un pour
-    qu’il voie exactement ce que vous voyez.</div>
+  <div class="titre">Fichiers et texte</div>
+  <div class="aide">Une partie exportée se garde ailleurs que dans ce navigateur, se passe
+    d’un appareil à l’autre, et s’envoie. Le téléchargement ne marche pas partout — une
+    page isolée le refuse — d’où la zone de texte, qui marche toujours.</div>
   <div class="taches" style="margin-top:6px">
     ${S ? '<button class="act mini" data-a="exporter-partie">Exporter la partie</button>' : ''}
-    <button class="act mini" data-a="importer-partie">Charger un fichier</button>
+    <button class="act mini" data-a="importer-partie">Ouvrir un fichier</button>
+    <button class="act mini" data-a="zone-partie">${texteExport === null
+    ? 'Coller une partie' : 'Fermer la zone'}</button>
   </div>
+  ${texteExport === null ? '' : `<div style="height:6px"></div>
+    <textarea id="texte-partie" rows="6" spellcheck="false"
+      style="width:100%;font-family:inherit;font-size:11px"
+      placeholder="Collez ici le texte d’une partie exportée">${e(texteExport)}</textarea>
+    <div style="height:6px"></div>
+    <button class="act mini primaire" data-a="coller-partie">Charger ce texte</button>`}
   <div class="aide" style="margin-top:6px">Place occupée : ${e(mo(poids.octets))}
     sur les cinq mégaoctets environ qu’un navigateur accorde.</div>`;
 }
@@ -3480,6 +3499,18 @@ function etatSauvegarde() {
     return { ok: true, motif: null, quand: 0, taille: 0, echecs: 0 };
   }
 }
+
+/**
+ * Ce que le panneau des sauvegardes doit retenir entre deux rendus.
+ *
+ * Hors de l'état de jeu : ça décrit une conversation en cours avec l'écran, pas
+ * la partie. `arme` porte l'action qu'un premier clic a armée — on remplace
+ * `confirm` par deux temps, parce qu'une page en bac à sable ignore `confirm`
+ * et le fait répondre « non » sans rien afficher.
+ */
+let arme = null;
+let messageSauvegardes = null;
+let texteExport = null;
 
 function fermerModale() {
   modale = null;
@@ -4733,53 +4764,84 @@ function surClic(ev) {
     }
 
     case 'enregistrer-emp': {
-      const nom = prompt('Nom de la sauvegarde ?',
-        S ? `Jour ${Math.floor(S.temps / 24) + 1}` : 'Sauvegarde');
-      if (nom === null) break;
-      const r = ACTIONS.enregistrer(nom);
-      if (!r.ok) alert(r.motif);
+      // Le nom se lit dans le champ de la modale, pas dans un `prompt` : dans
+      // une page en bac à sable — c'est le cas d'un Artifact — le navigateur
+      // ignore purement et simplement l'appel, rend `null`, et le bouton ne
+      // fait rien. Sans message, sans erreur, sans rien.
+      const champ = $('#nom-sauvegarde');
+      const r = ACTIONS.enregistrer(champ ? champ.value : '');
+      if (!r.ok) { messageSauvegardes = r.motif; } else { messageSauvegardes = null; }
+      if (champ) champ.value = '';
       rafraichir(true);
       break;
     }
 
-    case 'ecraser-emp': {
-      const dej = ACTIONS.emplacements().find((x) => x.id === el.dataset.k);
-      if (!confirm(`Écraser « ${dej ? dej.nom : el.dataset.k} » par la partie en cours ?`)) break;
-      const r = ACTIONS.enregistrer(dej ? dej.nom : '', el.dataset.k);
-      if (!r.ok) alert(r.motif);
-      rafraichir(true);
-      break;
-    }
-
+    case 'ecraser-emp':
+    case 'suppr-emp':
     case 'charger-emp': {
-      const dej = ACTIONS.emplacements().find((x) => x.id === el.dataset.k);
-      // On prévient : charger remplace la partie en cours, et c'est irréversible
-      // pour elle. Le dire une fois vaut mieux qu'un regret.
-      if (!confirm(`Charger « ${dej ? dej.nom : el.dataset.k} » ? `
-        + 'La partie en cours sera remplacée.')) break;
-      const r = ACTIONS.chargerEmplacement(el.dataset.k);
-      if (!r.ok) { alert(r.motif); break; }
-      fermerModale();
-      break;
-    }
-
-    case 'suppr-emp': {
-      const dej = ACTIONS.emplacements().find((x) => x.id === el.dataset.k);
-      if (!confirm(`Supprimer « ${dej ? dej.nom : el.dataset.k} » ? C’est définitif.`)) break;
-      ACTIONS.supprimerEmplacement(el.dataset.k);
+      // Deux temps au lieu d'un `confirm` : le premier clic arme, le second
+      // fait. Même raison — `confirm` rend `false` dans une page en bac à
+      // sable, donc « Charger » et « Supprimer » ne faisaient rien du tout.
+      const cle = `${a}:${el.dataset.k}`;
+      if (arme !== cle) {
+        arme = cle;
+        rafraichir(true);
+        break;
+      }
+      arme = null;
+      if (a === 'suppr-emp') {
+        ACTIONS.supprimerEmplacement(el.dataset.k);
+      } else if (a === 'ecraser-emp') {
+        const dej = ACTIONS.emplacements().find((x) => x.id === el.dataset.k);
+        const r = ACTIONS.enregistrer(dej ? dej.nom : '', el.dataset.k);
+        messageSauvegardes = r.ok ? null : r.motif;
+      } else {
+        const r = ACTIONS.chargerEmplacement(el.dataset.k);
+        if (!r.ok) { messageSauvegardes = r.motif; break; }
+        fermerModale();
+        break;
+      }
       rafraichir(true);
       break;
     }
 
     case 'exporter-partie': {
+      // On tente le téléchargement — il marche en page pleine — et l'on affiche
+      // de toute façon le texte de la partie : dans un bac à sable, le clic sur
+      // un lien de téléchargement est ignoré comme le reste.
       const r = ACTIONS.exporter();
-      if (!r.ok) alert(r.motif);
+      texteExport = ACTIONS.texteExport();
+      messageSauvegardes = r.ok
+        ? 'Fichier téléchargé. S’il ne l’a pas été, le texte ci-dessous est la partie entière : sélectionnez-le et copiez-le.'
+        : 'Le navigateur a refusé le téléchargement. Le texte ci-dessous est la partie entière : sélectionnez-le et copiez-le.';
+      rafraichir(true);
+      break;
+    }
+
+    case 'coller-partie': {
+      const zone = $('#texte-partie');
+      const txt = zone ? zone.value.trim() : '';
+      if (!txt) { messageSauvegardes = 'Collez d’abord le texte d’une partie.'; rafraichir(true); break; }
+      const r = ACTIONS.importer(txt);
+      if (!r.ok) { messageSauvegardes = r.motif; rafraichir(true); break; }
+      texteExport = null;
+      messageSauvegardes = null;
+      fermerModale();
+      break;
+    }
+
+    case 'zone-partie': {
+      texteExport = texteExport === null ? '' : null;
+      messageSauvegardes = null;
+      rafraichir(true);
       break;
     }
 
     case 'importer-partie': {
       // Un `<input type=file>` créé à la volée : pas de champ caché à maintenir
-      // dans le squelette, et la lecture reste dans la même fonction.
+      // dans le squelette, et la lecture reste dans la même fonction. Le
+      // sélecteur de fichier peut lui aussi être refusé en bac à sable — d'où
+      // la zone de texte, qui elle marche partout.
       const inp = document.createElement('input');
       inp.type = 'file';
       inp.accept = '.json,application/json';
@@ -4789,27 +4851,13 @@ function surClic(ev) {
         const fr = new FileReader();
         fr.onload = () => {
           const r = ACTIONS.importer(String(fr.result));
-          if (!r.ok) { alert(r.motif); return; }
+          if (!r.ok) { messageSauvegardes = r.motif; rafraichir(true); return; }
           fermerModale();
         };
-        fr.onerror = () => alert('Fichier illisible.');
+        fr.onerror = () => { messageSauvegardes = 'Fichier illisible.'; rafraichir(true); };
         fr.readAsText(f);
       });
       inp.click();
-      break;
-    }
-
-    case 'reserve': {
-      const r = ACTIONS.reglerReserve(el.dataset.k, Number(el.dataset.n));
-      if (!r.ok) alert(r.motif);
-      rafraichir(true);
-      break;
-    }
-
-    case 'recette': {
-      const r = ACTIONS.reglerRecette(el.dataset.k, el.dataset.r);
-      if (!r.ok) alert(r.motif);
-      rafraichir(true);
       break;
     }
 
@@ -4870,7 +4918,9 @@ function surClic(ev) {
       break;
 
     case 'effacer':
-      if (confirm('Effacer définitivement la sauvegarde ?')) ACTIONS.effacer();
+      if (arme !== 'effacer') { arme = 'effacer'; rendreAccueil(derniereSauvegarde, dernierePerimee); break; }
+      arme = null;
+      ACTIONS.effacer();
       break;
 
     default:

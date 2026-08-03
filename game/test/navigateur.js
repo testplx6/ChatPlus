@@ -1812,8 +1812,10 @@ console.log('\n8 septies. Sauvegardes : plusieurs parties côte à côte');
     vide.slice(0, 120).replace(/\n+/g, ' | '));
   ok(/Aucune copie/i.test(vide), 'et il est vide au départ');
 
-  // `prompt` et `confirm` bloquent une page sans pilote : on répond d'avance.
-  page.on('dialog', (d) => d.accept('Essai'));
+  // Plus aucun `prompt` : le nom se lit dans le champ du panneau. C'est ce qui
+  // rend la chose utilisable dans une page isolée, où le navigateur ignore les
+  // boîtes natives — voir la section « page isolée » plus bas.
+  await page.fill('#nom-sauvegarde', 'Essai');
   await page.click('[data-a="enregistrer-emp"]');
   await page.waitForTimeout(400);
   const apres = await page.locator('#modale').innerText();
@@ -1845,8 +1847,12 @@ console.log('\n8 septies. Sauvegardes : plusieurs parties côte à côte');
 
   await page.click('[data-a="modale"][data-m="sauvegardes"]');
   await page.waitForTimeout(300);
+  // Deux temps : le premier clic arme, le second fait. C'est ce qui remplace
+  // `confirm`, lequel répond « non » sans rien afficher dans une page isolée.
   await page.click('[data-a="charger-emp"]');
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(250);
+  await page.click('[data-a="charger-emp"]');
+  await page.waitForTimeout(700);
   const tRevenu = await page.evaluate(() => JSON.parse(
     localStorage.getItem('cendres.save.v1')).temps);
   ok(Math.abs(tRevenu - tCopie) < 60,
@@ -1911,6 +1917,73 @@ console.log('\n8 octies. Une sauvegarde qui échoue le dit');
 
   // On rend l'écriture, et l'on repart d'une partie saine pour la suite.
   await page.reload({ waitUntil: 'networkidle' });
+}
+
+console.log('\n8 undecies bis. Le jeu enfermé dans une page isolée');
+{
+  // Le vrai environnement du jeu n'est pas une page pleine : c'est une iframe
+  // en bac à sable, et le navigateur y **ignore** `prompt` et `confirm` — le
+  // premier rend `null`, le second `false`, sans exception ni message. Nos
+  // gestionnaires abandonnaient donc en silence : « enregistrer sur un nouvel
+  // emplacement » et « exporter » ne faisaient rien du tout, et toute la suite
+  // de tests, qui tourne en page pleine, passait au vert.
+  //
+  // Toute cette section tourne donc dans le bac à sable, sur le fichier unique.
+  const { existsSync: existe2, writeFileSync } = await import('node:fs');
+  const seul2 = join(RACINE, 'dist', 'cendres.html');
+  if (!existe2(seul2)) {
+    console.log('  — dist/cendres.html absent, section ignorée');
+  } else {
+    writeFileSync(join(RACINE, 'dist', 'cadre.html'),
+      '<!doctype html><meta charset="utf-8"><title>bac à sable</title>'
+      + '<iframe id="f" sandbox="allow-scripts allow-same-origin" src="cendres.html"'
+      + ' style="width:390px;height:844px;border:0"></iframe>');
+    const bac = await navigateur.newPage({ viewport: { width: 420, height: 900 } });
+    const errBac = [];
+    bac.on('pageerror', (err) => errBac.push(err.message));
+    await bac.goto(`file://${join(RACINE, 'dist', 'cadre.html')}`, { waitUntil: 'networkidle' });
+    const f = bac.frameLocator('#f');
+    const dedans = () => bac.frames().find((x) => x.url().includes('cendres.html'));
+    await f.locator('[data-a="nouvelle"]').click();
+    await f.locator('#carte').waitFor();
+    await bac.waitForTimeout(1200);
+
+    // Le bac à sable est bien un bac à sable : sans ça, la section ne
+    // vérifierait rien du tout.
+    const bloque = await dedans().evaluate(() => window.prompt('x', 'y'));
+    ok(bloque === null, 'la page isolée ignore bien `prompt` : le décor est le bon',
+      JSON.stringify(bloque));
+
+    await f.locator('[data-a="modale"][data-m="sauvegardes"]').click();
+    await bac.waitForTimeout(300);
+    await f.locator('#nom-sauvegarde').fill('Ma partie');
+    await f.locator('[data-a="enregistrer-emp"]').click();
+    await bac.waitForTimeout(500);
+    const liste = await dedans().evaluate(
+      () => JSON.parse(localStorage.getItem('cendres.emplacements.v1') || '[]'));
+    ok(liste.length === 1 && liste[0].nom === 'Ma partie',
+      'enregistrer une copie marche, et le nom vient du champ',
+      JSON.stringify(liste.map((x) => x.nom)));
+
+    await f.locator('[data-a="exporter-partie"]').click();
+    await bac.waitForTimeout(600);
+    const txt = await f.locator('#texte-partie').inputValue().catch(() => '');
+    ok(txt.length > 50000, 'exporter donne le texte de la partie, téléchargement ou non',
+      `${(txt.length / 1024).toFixed(0)} Ko`);
+
+    await f.locator('[data-a="suppr-emp"]').first().click();
+    await bac.waitForTimeout(300);
+    const arme = (await f.locator('[data-a="suppr-emp"]').first().innerText()).trim();
+    ok(arme === 'Confirmer', 'supprimer demande confirmation sur le bouton lui-même', arme);
+    await f.locator('[data-a="suppr-emp"]').first().click();
+    await bac.waitForTimeout(400);
+    const reste = await dedans().evaluate(
+      () => JSON.parse(localStorage.getItem('cendres.emplacements.v1') || '[]').length);
+    ok(reste === 0, 'et le second clic supprime pour de bon', `${reste} restant(s)`);
+
+    ok(errBac.length === 0, 'aucune erreur dans la page isolée', errBac.join(' | '));
+    await bac.close();
+  }
 }
 
 console.log('\n9. Fichier unique ouvert en file://');
