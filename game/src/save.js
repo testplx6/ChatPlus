@@ -234,12 +234,31 @@ function stockage() {
 
 export function sauvegarder(state) {
   const s = stockage();
-  if (!s) return { ok: false, motif: 'Stockage local indisponible.' };
+  if (!s) {
+    return {
+      ok: false,
+      motif: 'Ce navigateur refuse le stockage local : navigation privée, page '
+        + 'isolée, ou réglage de confidentialité. La partie tourne, mais rien '
+        + 'n’est écrit et tout sera perdu en fermant l’onglet.',
+    };
+  }
+  const txt = serialiser(state);
   try {
-    s.setItem(CLE, serialiser(state));
-    return { ok: true };
+    s.setItem(CLE, txt);
+    return { ok: true, taille: txt.length };
   } catch (e) {
-    return { ok: false, motif: 'Écriture impossible (quota ?).' };
+    // Le quota est la panne la plus probable, et elle a une issue : supprimer
+    // des emplacements. Le dire vaut mieux qu'un point d'interrogation.
+    const p = poidsEmplacements();
+    return {
+      ok: false,
+      taille: txt.length,
+      motif: p.n
+        ? `Écriture refusée : le stockage est plein. Vos ${p.n} sauvegarde(s) `
+          + `gardées occupent ${(p.octets / 1048576).toFixed(1)} Mo — en supprimer `
+          + 'une libérera la place.'
+        : 'Écriture refusée : le stockage du navigateur est plein.',
+    };
   }
 }
 

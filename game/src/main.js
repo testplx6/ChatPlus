@@ -63,8 +63,30 @@ function arreterBoucle() {
   sauvegardeTimer = null;
 }
 
+/**
+ * L'état de la dernière écriture. Hors de l'état de jeu : ça décrit le
+ * navigateur, pas la partie.
+ *
+ * Une sauvegarde qui échoue le faisait en silence — `sauvegarder` rend pourtant
+ * un motif depuis toujours, et personne ne le lisait. Un joueur pouvait donc
+ * jouer des heures sur un stockage refusé, fermer l'onglet, et tout perdre sans
+ * avoir vu passer le moindre signe. C'est la pire panne possible : celle qui ne
+ * se manifeste qu'au moment où il est trop tard.
+ */
+export const ETAT_SAUVEGARDE = { ok: true, motif: null, quand: 0, taille: 0, echecs: 0 };
+
 function sauver() {
-  if (state) sauvegarder(state);
+  if (!state) return;
+  const r = sauvegarder(state);
+  ETAT_SAUVEGARDE.ok = !!r.ok;
+  ETAT_SAUVEGARDE.motif = r.ok ? null : (r.motif || 'Écriture refusée.');
+  if (r.ok) {
+    ETAT_SAUVEGARDE.quand = Date.now();
+    ETAT_SAUVEGARDE.echecs = 0;
+    ETAT_SAUVEGARDE.taille = r.taille || ETAT_SAUVEGARDE.taille;
+  } else {
+    ETAT_SAUVEGARDE.echecs += 1;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -97,6 +119,7 @@ const API = {
   // --- Emplacements de sauvegarde. La partie en cours continue de s'écrire
   // toutes les cinq secondes sous sa propre clé ; ce sont des copies prises
   // exprès, à côté, qu'on nomme et qu'on relit quand on veut.
+  etatSauvegarde: () => ETAT_SAUVEGARDE,
   emplacements: () => listerEmplacements(),
   poidsSauvegardes: () => poidsEmplacements(),
 

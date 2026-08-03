@@ -1867,6 +1867,52 @@ console.log('\n8 septies. Sauvegardes : plusieurs parties côte à côte');
     'et propose d’ouvrir un fichier sans partie en cours');
 }
 
+console.log('\n8 octies. Une sauvegarde qui échoue le dit');
+{
+  // La pire panne possible est celle qui ne se manifeste qu'au moment où il est
+  // trop tard. `sauvegarder` rendait un motif d'échec depuis toujours et
+  // personne ne le lisait : on pouvait jouer des heures sur un stockage refusé,
+  // fermer l'onglet, et tout perdre sans avoir vu passer le moindre signe.
+  await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.click('[data-a="nouvelle"]');
+  await page.waitForSelector('#carte');
+  await page.waitForTimeout(6500);
+
+  await page.click('[data-a="modale"][data-m="sauvegardes"]');
+  await page.waitForTimeout(400);
+  ok(/s’écrit normalement/i.test(await page.locator('#modale').innerText()),
+    'quand tout va bien, le panneau dit que la partie s’écrit');
+  await page.click('[data-a="fermer"]');
+
+  // On sabote l'écriture comme le ferait un stockage plein. Une garde qu'on n'a
+  // jamais vue se déclencher ne prouve rien.
+  await page.evaluate(() => {
+    const vrai = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (k, v) {
+      if (String(k).startsWith('cendres.save')) {
+        const err = new Error('plein');
+        err.name = 'QuotaExceededError';
+        throw err;
+      }
+      return vrai.call(this, k, v);
+    };
+  });
+  await page.waitForTimeout(6500);
+  ok((await page.locator('[data-a="modale"][data-m="sauvegardes"]').innerText()).trim() === '⚠',
+    'l’écriture refusée se voit dans la barre du haut, sans rien ouvrir');
+  await page.click('[data-a="modale"][data-m="sauvegardes"]');
+  await page.waitForTimeout(400);
+  const casse = await page.locator('#modale').innerText();
+  ok(/ne passe pas/i.test(casse), 'et le panneau nomme la panne',
+    casse.slice(0, 140).replace(/\n+/g, ' | '));
+  ok(/exportez/i.test(casse), 'et dit quoi faire tant que la partie est ouverte');
+  await page.screenshot({ path: join(CAPTURES, '16-sauvegarde-en-echec.png'), fullPage: true });
+
+  // On rend l'écriture, et l'on repart d'une partie saine pour la suite.
+  await page.reload({ waitUntil: 'networkidle' });
+}
+
 console.log('\n9. Fichier unique ouvert en file://');
 const { existsSync } = await import('node:fs');
 const chemin = join(RACINE, 'dist', 'cendres.html');

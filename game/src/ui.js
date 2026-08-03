@@ -328,8 +328,11 @@ function rendreBarreHaut() {
     <div class="hd-pousse vitesse" role="group" aria-label="Vitesse">
       ${VITESSES.map((v) => `<button data-a="vitesse" data-v="${v}"
         aria-pressed="${S.vitesse === v}">×${v}</button>`).join('')}
-      <button data-a="modale" data-m="sauvegardes" aria-label="Sauvegardes"
-        title="Sauvegardes">⛁</button>
+      <button data-a="modale" data-m="sauvegardes"
+        aria-label="Sauvegardes${etatSauvegarde().ok ? '' : ' — écriture en échec'}"
+        class="${etatSauvegarde().ok ? '' : 'alerte'}"
+        title="${etatSauvegarde().ok ? 'Sauvegardes' : 'La sauvegarde échoue'}">${
+  etatSauvegarde().ok ? '⛁' : '⚠'}</button>
     </div>`;
 }
 
@@ -3377,7 +3380,21 @@ function modaleSauvegardes() {
   };
 
   const r = S ? resumeSauvegarde(S) : null;
-  return `<h2 class="titre">Sauvegardes
+  const et = etatSauvegarde();
+  // Ce qui manquait le plus : savoir si la partie s'écrit vraiment. Une
+  // sauvegarde qui échoue le faisait en silence — on jouait des heures sur un
+  // stockage refusé, on fermait l'onglet, et tout était perdu sans qu'un signe
+  // soit passé.
+  const sante = et.ok
+    ? `<div class="aide ok">La partie s’écrit normalement${et.quand
+      ? ` — dernière écriture il y a ${Math.max(0, Math.round((Date.now() - et.quand) / 1000))} s` : ''}${
+      et.taille ? `, ${(et.taille / 1024).toFixed(0)} Ko` : ''}.</div>`
+    : `<div class="panneau urgent"><div class="titre alerte">La sauvegarde ne passe pas</div>
+        <div class="aide">${e(et.motif || '')}</div>
+        <div class="aide">${n(et.echecs)} tentative(s) en échec. Exportez la partie en
+          fichier tant qu’elle est ouverte : c’est le seul moyen de ne pas la perdre.</div></div>`;
+  return `${sante}
+  <h2 class="titre">Sauvegardes
     <span class="droite aide">${liste.length}/${EMPLACEMENTS_MAX}</span></h2>
   <div class="aide">La partie en cours s’écrit toute seule en continu. Ce sont des copies
     qu’on garde à côté : on peut en charger une à tout moment, et la partie en cours
@@ -3452,6 +3469,16 @@ function blocAccueilSauvegardes() {
     <div style="height:8px"></div>
     <button class="act mini" data-a="importer-partie">Charger un fichier de partie</button>
   </div>`;
+}
+
+/** L'état de la dernière écriture, sans supposer que l'API l'expose. */
+function etatSauvegarde() {
+  try {
+    return (ACTIONS && ACTIONS.etatSauvegarde && ACTIONS.etatSauvegarde())
+      || { ok: true, motif: null, quand: 0, taille: 0, echecs: 0 };
+  } catch (err) {
+    return { ok: true, motif: null, quand: 0, taille: 0, echecs: 0 };
+  }
 }
 
 function fermerModale() {
