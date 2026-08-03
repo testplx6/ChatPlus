@@ -13,6 +13,7 @@ import {
   rendementRegion, amendementRegion,
 } from './world.js';
 import { resumeSauvegarde, EMPLACEMENTS_MAX } from './save.js';
+import { ligneCours } from './bourse.js';
 import {
   comp, pvTotal, etatCourt, estVivant, estDebout, ratio, peutEquiper,
   SEUIL_FAMINE, SEUIL_VENTRE_CREUX,
@@ -24,6 +25,7 @@ import {
 } from './economy.js';
 import {
   populationMax, mainDoeuvre, placesMetier, affectes, manoeuvres, affecter,
+  voulus, brasDisponibles, postesDegarnis,
   rendementMetier,
   niveau as nivBat, niveauRech, coutBatiment, tempsBatiment, coutRecherche,
   tempsRecherche, capaciteStock, totalStock, energie, lancerConstruction, POP_RECONNUE,
@@ -1989,11 +1991,17 @@ function blocMetiers() {
   const lignes = ouverts.map((k) => {
     const m = METIERS[k];
     const places = placesMetier(b, k);
-    const n0 = affectes(b, k);
+    const veut = voulus(b, k);
+    const n0 = affectes(b, k, S);
     const rd = rendementMetier(S, k);
+    // Deux nombres différents, et il faut les deux : ce qu'on a réglé, et ce
+    // qui est tenu aujourd'hui. Les confondre était tout le problème.
+    const puce = n0 === veut
+      ? `<span class="puce">${veut}/${places}</span>`
+      : `<span class="puce att">${n0} tenu(s) sur ${veut}</span>`;
     return `<div style="border-bottom:1px solid #1b2029;padding:7px 0">
       <div class="ligne">
-        <span class="k">${e(m.nom)} <span class="puce">${n0}/${places}</span></span>
+        <span class="k">${e(m.nom)} ${puce}</span>
         <span class="v ${n0 ? 'ambre' : ''}">${n0 ? `×${rd.mult.toFixed(2)}` : '—'}</span>
       </div>
       <div class="aide">${e(m.effet)}. ${e(m.texte)}</div>
@@ -2001,19 +2009,33 @@ function blocMetiers() {
     ? `Contremaître ${e(rd.contremaitre.nom)} — ${e(nomComp(m.skill))} ${Math.round(comp(rd.contremaitre, m.skill))}`
     : `Sans contremaître (${e(nomComp(m.skill))})`}</div>
       <div class="taches" style="margin-top:5px">
-        <button class="act mini" data-a="poste" data-k="${k}" data-n="-1" ${n0 <= 0 ? 'disabled' : ''}>−</button>
+        <button class="act mini" data-a="poste" data-k="${k}" data-n="-1" ${veut <= 0 ? 'disabled' : ''}>−</button>
         <button class="act mini" data-a="poste" data-k="${k}" data-n="1"
-          ${n0 >= places || libres <= 0 ? 'disabled' : ''}>+</button>
+          ${veut >= places ? 'disabled' : ''}>+</button>
         <button class="act mini" data-a="poste" data-k="${k}" data-n="max"
-          ${n0 >= places || libres <= 0 ? 'disabled' : ''}>Au complet</button>
-        <button class="act mini" data-a="poste" data-k="${k}" data-n="0" ${n0 <= 0 ? 'disabled' : ''}>Vider</button>
+          ${veut >= places ? 'disabled' : ''}>Au complet</button>
+        <button class="act mini" data-a="poste" data-k="${k}" data-n="0" ${veut <= 0 ? 'disabled' : ''}>Vider</button>
       </div>
     </div>`;
   }).join('');
 
+  // Ce qui manque, dit avant qu'on s'en aperçoive par soi-même. C'était la
+  // moitié du problème : le réglage se défaisait, et rien à l'écran ne disait
+  // ni que ça arrivait, ni pourquoi.
+  const degarnis = postesDegarnis(b, S);
+  const total = brasDisponibles(b, S);
+  const alerte = degarnis > 0 ? `<div class="aide ambre">${n(degarnis)} poste(s) réglé(s)
+    que personne ne tient : il n’y a que ${n(total)} bras ici. Le réglage est gardé —
+    les gens reprennent leur place dès qu’il y a du monde. Le manque se répartit sur
+    tous les métiers, aucun n’est vidé au profit d’un autre.</div>` : '';
+
   return `<section class="panneau">
     <h2 class="titre">Métiers
-      <span class="droite">${n(libres)} manœuvre(s) sur ${n(b.pop)}</span></h2>
+      <span class="droite">${n(libres)} manœuvre(s) sur ${n(total)}</span></h2>
+    <div class="aide">${n(total)} bras en tout : ${n(Math.floor(b.pop || 0))} habitant(s)${bras
+    ? ` et ${n(bras)} des vôtres aux travaux — ceux-là repartent avec l’escouade`
+    : ', et personne de l’escouade (il faut lui donner l’ordre « Travaux », ici)'}.</div>
+    ${alerte}
     <div class="aide">Un habitant sans poste aide partout un peu (×${mainDoeuvre(b, S).toFixed(2)}
       sur l’ensemble). Affecté, il rend bien davantage — mais sur sa chaîne seulement.
       Un des vôtres présent à l’avant-poste encadre l’équipe et vaut plusieurs bras.</div>
@@ -2101,6 +2123,82 @@ function blocEcoleBase() {
  * On n'affiche que les bâtiments montés : une liste de consignes pour des
  * ateliers qui n'existent pas est du bruit.
  */
+/**
+ * Ce que cette chaîne mange, ce qu'il en reste, et ce qui la bloque.
+ *
+ * « On voit pas toujours ce qui a besoin de quoi, qui produit quoi. » Le nom de
+ * la recette dit bien « Biomasse → rations », mais il ne dit pas s'il reste de
+ * la biomasse, ni pourquoi rien ne sort ce matin. Un atelier à l'arrêt, un
+ * atelier sans courant et un atelier sans matière se ressemblaient tous les
+ * trois : ils ne faisaient rien.
+ *
+ * On ne nomme qu'un seul empêchement — trois alertes empilées, c'est un mur
+ * qu'on ne lit pas —, et c'est l'arrêt franc qui passe devant le ralentissement.
+ * Un bac vide ne produit rien du tout ; un camp à quatre-vingts pour cent de
+ * courant produit à quatre-vingts pour cent. Annoncer le second quand c'est le
+ * premier qui bloque, c'est envoyer le joueur réparer ce qui marche.
+ */
+function ligneEntrees(b, k, recette) {
+  const entrees = ENTREES[k] || [];
+  // La raffinerie change d'entrée avec sa consigne : c'est justement le genre
+  // de chose qu'on ne devine pas.
+  const vraies = k === 'raffinerie'
+    ? (recette === 'carburant' ? ['polymere'] : [])
+    : entrees;
+  const dechets = k === 'raffinerie' && recette !== 'carburant';
+  // Le générateur brûle du carburant sans passer par `ENTREES` — cette table-là
+  // sert aussi à proposer des réserves, et une réserve de carburant serait un
+  // mensonge : le générateur passe outre, exprès.
+  const brulot = k === 'generateur';
+  // Et il ne subit pas la panne de courant : c'est lui qui la produit. Il
+  // s'annonçait « tourne à 80 % » à cause de sa propre pénurie, ce qui invitait
+  // à réparer la chose qui manquait avec la chose qui manquait.
+  const subitLeCourant = (BUILDINGS[k].energie || 0) < 0;
+
+  const stocks = vraies.map((m) => {
+    const q = Math.floor(b.stock[m] || 0);
+    const res = reserveDe(b, m);
+    const bloque = q <= res;
+    return `<span class="${bloque ? 'alerte' : ''}">${e(COMMODITIES[m].nom.toLowerCase())} ${n(q)}${
+      res ? ` <span class="aide">(réserve ${n(res)})</span>` : ''}</span>`;
+  }).join(' · ');
+
+  if (recette === ARRET) {
+    return `<div class="aide">Rien n’entre, rien ne sort : vous l’avez arrêtée.</div>`;
+  }
+
+  const en = energie(b, S);
+  // D'abord ce qui arrête net.
+  const vide = vraies.find((m) => Math.floor(b.stock[m] || 0) <= 0);
+  const sousReserve = vraies.find((m) => Math.floor(b.stock[m] || 0) <= reserveDe(b, m));
+  let empeche = null;
+  if (brulot) {
+    if (Math.floor(b.stock.carburant || 0) <= 0) {
+      empeche = 'Plus de carburant : il ne produit plus rien.';
+    }
+  } else if (dechets && (b.dechets || 0) <= 0) {
+    empeche = 'Le tas de déchets est vide — il se remplit tout seul en produisant.';
+  } else if (vide) {
+    empeche = `Plus de ${COMMODITIES[vide].nom.toLowerCase()} : elle tourne à vide.`;
+  } else if (sousReserve) {
+    empeche = `La réserve de ${COMMODITIES[sousReserve].nom.toLowerCase()} l’arrête `
+      + '— c’est vous qui l’avez posée.';
+  } else if (subitLeCourant && en.ratio < 0.999) {
+    // Et seulement ensuite ce qui ralentit.
+    empeche = `Le courant manque : elle tourne à ${Math.round(en.ratio * 100)} %.`;
+  }
+
+  const carb = Math.floor(b.stock.carburant || 0);
+  const quoi = brulot
+    ? `<span class="${carb > 0 ? '' : 'alerte'}">carburant ${n(carb)}</span>`
+      + ' <span class="aide">(il passe outre les réserves)</span>'
+    : dechets
+      ? `<span class="${(b.dechets || 0) > 0 ? '' : 'alerte'}">déchets ${n(Math.floor(b.dechets || 0))}</span>`
+      : (stocks || '<span class="aide">rien — elle produit à partir de la région</span>');
+  return `<div class="aide">Consomme : ${quoi}</div>`
+    + (empeche ? `<div class="aide alerte">▲ ${e(empeche)}</div>` : '');
+}
+
 function blocConsignes() {
   const b = S.base;
   if (!b.fonde) return '';
@@ -2123,6 +2221,7 @@ function blocConsignes() {
         <span class="v ${actuelle === ARRET ? 'alerte' : 'ok'}">${
   actuelle === ARRET ? 'à l’arrêt' : 'en marche'}</span></div>
       <div class="aide">${def ? e(def.aide || def.nom) : 'Rien ne tourne ici.'}</div>
+      ${ligneEntrees(b, k, actuelle)}
       <div class="taches" style="margin-top:5px">${boutons}</div>
     </div>`;
   }).join('');
@@ -2216,6 +2315,161 @@ function blocTerre() {
   </section>`;
 }
 
+// L'état du formulaire du comptoir. Il ne va pas dans la partie : c'est ce
+// qu'on est en train de taper, pas ce qui est arrivé au monde.
+let ordreSens = 'achat';
+let ordreKey = 'rations';
+let ordreQte = 50;
+let ordreEscorte = 'aucune';
+let ordreEscouade = false;
+let messageComptoir = null;
+
+const QTES_ORDRE = [10, 50, 200, 1000];
+
+/**
+ * Le comptoir : passer des ordres à une bourse sans bouger de chez soi.
+ *
+ * Tout le reste du commerce du jeu demande d'y aller — de charger, de marcher,
+ * de revenir. Le comptoir est ce qui met fin à ça, et c'est pour cette raison
+ * qu'il coûte une recherche, un bâtiment, et soit les couleurs d'une faction
+ * soit son estime. Ce n'est pas un raccourci offert : c'est l'aboutissement
+ * d'une branche entière.
+ *
+ * Ce qui n'est jamais offert, en revanche, c'est la sécurité du convoi. Voir
+ * `ESCORTES` : un convoi qu'on ne peut pas perdre annulerait la carte.
+ */
+function blocComptoir() {
+  const b = S.base;
+  if (!b.fonde) return '';
+  const niv = nivBat(b, 'comptoir');
+  const c = ACTIONS.comptoir();
+  if (!c) return '';
+  // Rien de monté et rien en route : le panneau n'aurait rien à dire.
+  if (!niv && !c.ordres.length) return '';
+
+  const enRoute = c.ordres.map((o) => {
+    const quoi = Object.keys(o.cargaison).map(
+      (k) => `${n(Math.round(o.cargaison[k]))} ${COMMODITIES[k].nom.toLowerCase()}`).join(', ');
+    return `<div class="ligne souple">
+      <span class="k">${o.sens === 'achat' ? '↓' : '↑'} ${e(quoi)}
+        <span class="aide">${e(nomRegion(S.world, o.regionId))} · garde ${n(o.escorte)}${
+  o.escorteGroupe ? ' + escouade' : ''}</span></span>
+      <span class="v">${o.reste} case${o.reste > 1 ? 's' : ''}${o.sens === 'vente'
+    ? `<br><span class="aide">${n(o.paiement)} cr à l’arrivée</span>` : ''}</span>
+    </div>`;
+  }).join('');
+  const suivi = c.ordres.length ? `<div class="sep"></div>
+    <div class="titre">En route <span class="droite">${c.ordres.length}</span></div>
+    <div class="aide">Un convoi traverse une région toutes les deux heures, et il peut
+      être pillé sur le trajet. Tant qu’il roule, la marchandise n’est nulle part.</div>
+    ${enRoute}` : '';
+
+  if (!c.ok) {
+    return `<section class="panneau">
+      <h2 class="titre">Comptoir <span class="droite alerte">fermé</span></h2>
+      <div class="aide">${e(c.motif || 'Indisponible.')}</div>
+      ${suivi}
+    </section>`;
+  }
+
+  const act = c.actif;
+  const cours = act.prix || {};
+  // Le choix du réseau ne se montre que s'il y a un choix à faire.
+  const choixReseau = c.reseaux.length > 1 ? `<div class="taches" style="margin-top:5px">
+    ${c.reseaux.map((r) => `<button class="act mini ${r.id === act.id ? 'primaire' : ''}"
+      data-a="comptoir-reseau" data-r="${e(r.id)}">${e(r.membres.map(
+    (k) => FACTIONS[k].nom).join(' + '))}</button>`).join('')}
+  </div>` : '';
+
+  const lignesCours = COMMODITY_KEYS.filter((k) => cours[k] > 0).map((k) => {
+    const l = ligneCours(cours, k);
+    // Le cours passe à la ligne — et il faut l'envelopper pour ça. Ces boutons
+    // sont des conteneurs flex (`.taches .act.mini`), où un `<br>` nu ne fait
+    // rien du tout : on lisait « Ferraille6,0 cr ». Un seul enfant, et la mise
+    // en page redevient celle d'un texte ordinaire.
+    return `<button class="act mini ${ordreKey === k ? 'primaire' : ''}"
+      data-a="ordre-k" data-k="${k}"><span>${e(COMMODITIES[k].nom)}<br>
+      <span class="aide">${n(cours[k], 1)} cr${l && l.ecart
+  ? ` <span class="${l.ecart > 0 ? 'alerte' : 'ok'}">${l.ecart > 0 ? '+' : ''}${
+    Math.round(l.ecart * 100)} %</span>` : ''}</span></span></button>`;
+  }).join('');
+
+  const devis = ACTIONS.chiffrerOrdre(ordreSens, ordreKey, ordreQte);
+  const esc = c.escortes.find((x) => x.id === ordreEscorte) || c.escortes[0];
+  const fraisEsc = devis.ok ? Math.round(devis.brut * esc.cout) : 0;
+  const du = devis.ok
+    ? (ordreSens === 'achat' ? devis.total + fraisEsc : devis.total - fraisEsc) : 0;
+  const stockIci = Math.floor(b.stock[ordreKey] || 0);
+
+  const g = G();
+  const escouadeIci = !!(g && g.regionId === b.regionId);
+
+  return `<section class="panneau">
+    <h2 class="titre">Comptoir
+      <span class="droite">${e(act.membres.map((k) => FACTIONS[k].nom).join(' + '))}</span></h2>
+    <div class="aide">${act.sien
+    ? 'Vous portez leurs couleurs : la commission est celle des leurs.'
+    : `Vous n’êtes pas des leurs — ${act.estime} d’estime, et ${Math.round(
+      act.commission * 100)} % de commission au lieu de ${Math.round(
+      (act.commission - 0.08) * 100)} %.`}
+      ${nivBat(b, 'comptoir') ? '' : '<span class="alerte">Aucun comptoir monté.</span>'}</div>
+    ${choixReseau}
+    <div class="sep"></div>
+
+    <div class="taches">
+      <button class="act mini ${ordreSens === 'achat' ? 'primaire' : ''}"
+        data-a="ordre-sens" data-r="achat">Acheter</button>
+      <button class="act mini ${ordreSens === 'vente' ? 'primaire' : ''}"
+        data-a="ordre-sens" data-r="vente">Vendre</button>
+    </div>
+    <div class="taches" style="margin-top:5px">${lignesCours}</div>
+    <div class="taches" style="margin-top:5px">Quantité
+      ${QTES_ORDRE.map((q) => `<button class="act mini ${ordreQte === q ? 'primaire' : ''}"
+    data-a="ordre-q" data-q="${q}">${q}</button>`).join('')}</div>
+
+    <div class="sep"></div>
+    <div class="titre">Garde du convoi</div>
+    <div class="taches" style="margin-top:5px">
+      ${c.escortes.map((x) => `<button class="act mini ${ordreEscorte === x.id ? 'primaire' : ''}"
+    data-a="ordre-escorte" data-r="${e(x.id)}"><span>${e(x.nom)}<br>
+    <span class="aide">${x.cout ? `+${Math.round(x.cout * 100)} %` : 'gratuit'}</span></span></button>`).join('')}
+    </div>
+    <div class="aide">${e(esc.aide)}</div>
+    <button class="act mini ${ordreEscouade ? 'primaire' : ''}" style="margin-top:5px"
+      data-a="ordre-escouade" ${escouadeIci ? '' : 'disabled'}>
+      ${ordreEscouade ? '✓ ' : ''}Escorter avec ${e(g ? g.nom : 'l’escouade')}</button>
+    <div class="aide">${escouadeIci
+    ? 'Elle ne protège le convoi que tant qu’elle est sur la même case que lui : '
+      + 'il faut vraiment faire la route avec.'
+    : 'L’escouade n’est pas au camp — elle ne peut pas partir avec le convoi d’ici.'}</div>
+
+    <div class="sep"></div>
+    ${devis.ok ? `<div class="ligne"><span class="k">${ordreSens === 'achat'
+    ? 'Cours à l’achat' : 'Cours à la vente'}</span>
+      <span class="v">${n(devis.unite, 1)} cr l’unité</span></div>
+    <div class="ligne"><span class="k">Lot</span>
+      <span class="v">${n(devis.qte)} ${e(COMMODITIES[ordreKey].nom.toLowerCase())}
+        · ${n(devis.brut)} cr</span></div>
+    <div class="ligne"><span class="k">Commission</span>
+      <span class="v">${n(devis.frais)} cr <span class="aide">(${
+  Math.round(devis.part * 100)} %)</span></span></div>
+    ${fraisEsc ? `<div class="ligne"><span class="k">Escorte</span>
+      <span class="v">${n(fraisEsc)} cr</span></div>` : ''}
+    <div class="ligne"><span class="k">${ordreSens === 'achat' ? 'À payer' : 'Vous touchez'}</span>
+      <span class="v ${ordreSens === 'achat' ? 'alerte' : 'ok'}">${n(du)} cr</span></div>
+    <div class="aide">${ordreSens === 'achat'
+    ? 'Débité maintenant, livré à l’entrepôt quand le convoi arrive.'
+    : `Sorti de l’entrepôt maintenant (${n(stockIci)} en stock), payé à l’arrivée. `
+      + 'Un convoi pillé ne paie pas.'}</div>
+    <button class="act primaire" style="margin-top:6px" data-a="passer-ordre"
+      ${niv ? '' : 'disabled'}>Passer l’ordre</button>`
+    : `<div class="aide alerte">${e(devis.motif || '')}</div>`}
+    ${messageComptoir ? `<div class="aide ${messageComptoir.ok ? 'ok' : 'alerte'}"
+      style="margin-top:6px">${e(messageComptoir.texte)}</div>` : ''}
+    ${suivi}
+  </section>`;
+}
+
 function ecranBase() {
   const b = S.base;
   if (!b.fonde) {
@@ -2242,7 +2496,7 @@ function ecranBase() {
 
   const en = energie(b, S);
   const stock = totalStock(b);
-  const capa = capaciteStock(b);
+  const capa = capaciteStock(b, S);
 
   // Ce qui marche sur vous, en tête d'écran et pas au fond du journal.
   const menaces = menacesSurLaBase(S);
@@ -2424,6 +2678,7 @@ function ecranBase() {
 
   ${blocChaine()}
   ${blocConsignes()}
+  ${blocComptoir()}
   ${blocTerre()}
   ${blocMetiers()}
   ${blocEcoleBase()}
@@ -3861,7 +4116,7 @@ function modaleTransfert() {
     if (!sac && !ent) return '';
     // Ce qui partira vraiment, borné par ce qu'on a et par la place restante :
     // le bouton annonce le nombre plutôt qu'une flèche.
-    const versBas = Math.min(qteTransfert, sac, Math.max(0, capaciteStock(b) - totalStock(b)));
+    const versBas = Math.min(qteTransfert, sac, Math.max(0, capaciteStock(b, S) - totalStock(b)));
     const place = capacitePortage(S, G()) - poidsInventaire(G().inventaire);
     const versHaut = Math.min(qteTransfert, ent,
       Math.floor(place / Math.max(0.01, COMMODITIES[k].poids)));
@@ -3875,7 +4130,7 @@ function modaleTransfert() {
     </div>`;
   }).join('');
   return `<h2 class="titre">Transfert
-    <span class="droite">${n(totalStock(b))}/${n(capaciteStock(b))}</span></h2>
+    <span class="droite">${n(totalStock(b))}/${n(capaciteStock(b, S))}</span></h2>
   <div class="aide">↓ vers l’entrepôt · ↑ vers le sac. Les boutons annoncent ce qui
     passera vraiment : ce qu’on a, ce que l’entrepôt peut prendre, ce que le sac peut porter.</div>
   <div class="taches" style="margin-top:6px">Quantité ${choixQuantite('qte-transfert', qteTransfert)}</div>
@@ -4643,12 +4898,13 @@ function surClic(ev) {
 
     case 'poste': {
       const k = el.dataset.k;
-      const actuel = affectes(S.base, k);
+      const actuel = voulus(S.base, k);
       const cible = el.dataset.n === 'max'
         ? placesMetier(S.base, k)
         : el.dataset.n === '0' ? 0 : actuel + Number(el.dataset.n);
       const r = affecter(S, k, cible);
       if (!r.ok) toast(r.motif, true);
+      else if (r.reprise) toast('Vous prenez la main : les habitants ne se placent plus seuls.');
       ACTIONS.sauver();
       rafraichir(true);
       break;
@@ -4871,6 +5127,54 @@ function surClic(ev) {
     case 'reserve': {
       const r = ACTIONS.reglerReserve(el.dataset.k, Number(el.dataset.n));
       if (!r.ok) messageSauvegardes = r.motif;
+      rafraichir(true);
+      break;
+    }
+
+    // --- Le comptoir. Tout ce qui suit ne fait que remplir le bon de commande ;
+    // seul `passer-ordre` touche à la partie.
+    case 'comptoir-reseau':
+      ACTIONS.choisirComptoir(el.dataset.r);
+      messageComptoir = null;
+      rafraichir(true);
+      break;
+
+    case 'ordre-sens':
+      ordreSens = el.dataset.r;
+      messageComptoir = null;
+      rafraichir(true);
+      break;
+
+    case 'ordre-k':
+      ordreKey = el.dataset.k;
+      messageComptoir = null;
+      rafraichir(true);
+      break;
+
+    case 'ordre-q':
+      ordreQte = Number(el.dataset.q);
+      messageComptoir = null;
+      rafraichir(true);
+      break;
+
+    case 'ordre-escorte':
+      ordreEscorte = el.dataset.r;
+      messageComptoir = null;
+      rafraichir(true);
+      break;
+
+    case 'ordre-escouade':
+      ordreEscouade = !ordreEscouade;
+      rafraichir(true);
+      break;
+
+    case 'passer-ordre': {
+      const g = G();
+      const r = ACTIONS.passerOrdre(ordreSens, ordreKey, ordreQte, ordreEscorte,
+        ordreEscouade && g ? g.id : null);
+      messageComptoir = r.ok
+        ? { ok: true, texte: `Le convoi part de ${r.place.nom}.` }
+        : { ok: false, texte: r.motif };
       rafraichir(true);
       break;
     }

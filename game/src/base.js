@@ -112,10 +112,62 @@ export function placesMetier(base, key) {
   return niveau(base, m.batiment) * m.parNiveau;
 }
 
-/** Habitants effectivement à ce poste — jamais plus que de places. */
-export function affectes(base, key) {
+/**
+ * Ce que le joueur a demandé pour ce poste — jamais plus que de places.
+ *
+ * C'est une *consigne*, pas un état : elle survit à une escouade qui s'en va, à
+ * une famine, à une mauvaise saison. `base.postes` ne contient plus que ça.
+ */
+export function voulus(base, key) {
   const n = (base.postes && base.postes[key]) || 0;
   return Math.max(0, Math.min(n, placesMetier(base, key)));
+}
+
+/**
+ * Et ce qui est réellement tenu, une fois les bras comptés.
+ *
+ * Les deux se confondaient, et c'est ce qui rendait l'écran incompréhensible :
+ * chaque heure, le moteur *réécrivait la consigne du joueur* pour la ramener au
+ * nombre de bras présents, en dégarnissant du dernier métier de la liste vers
+ * le premier. Une escouade qui passait des travaux au repos vidait dix-huit
+ * postes d'un coup, et le bassinier tombait à 0/9 pendant que son voisin restait
+ * plein — sans que rien, nulle part, ne dise pourquoi. Le joueur remplissait, ça
+ * se revidait, il remplissait encore.
+ *
+ * Maintenant la consigne ne bouge pas et le manque se répartit *au prorata* :
+ * personne ne tombe à zéro tant que son voisin est plein, et l'on retrouve son
+ * réglage intact dès que les bras reviennent. On distribue au plus fort reste,
+ * pour que la somme tombe juste.
+ */
+export function tenus(base, state) {
+  const out = {};
+  let demande = 0;
+  for (const k of METIER_KEYS) {
+    out[k] = voulus(base, k);
+    demande += out[k];
+  }
+  const bras = brasDisponibles(base, state);
+  if (demande <= bras) return out;
+  if (bras <= 0) {
+    for (const k of METIER_KEYS) out[k] = 0;
+    return out;
+  }
+  const restes = [];
+  let place = 0;
+  for (const k of METIER_KEYS) {
+    const exact = (out[k] * bras) / demande;
+    out[k] = Math.floor(exact);
+    place += out[k];
+    restes.push([k, exact - out[k]]);
+  }
+  restes.sort((a, b) => b[1] - a[1]);
+  for (let i = 0; i < restes.length && place < bras; i++, place++) out[restes[i][0]] += 1;
+  return out;
+}
+
+/** Habitants effectivement à ce poste. */
+export function affectes(base, key, state) {
+  return tenus(base, state)[key] || 0;
 }
 
 /**
@@ -145,15 +197,40 @@ export function brasEscouade(state) {
 }
 
 /**
- * Ceux qui n'ont pas de poste : ils aident partout, sans rien faire de précis.
+ * Combien de bras l'avant-poste a, en tout. **Un seul endroit le dit.**
+ *
+ * Il y en avait deux, et ils n'étaient pas d'accord : `manoeuvres` arrondissait
+ * `pop`, `reajusterPostes` la tronquait. À douze habitants et six dixièmes, le
+ * premier annonçait une main libre, le joueur la plaçait, et le second la
+ * renvoyait chez elle l'heure suivante. On remplissait un poste, il se vidait
+ * tout seul, indéfiniment — et rien dans l'écran ne pouvait l'expliquer,
+ * puisque les deux comptes étaient justes chacun de son côté.
+ *
+ * **Deux nombres écrits séparément finissent toujours par diverger.** Celui-ci
+ * est écrit une fois : on tronque, parce qu'on n'emploie pas six dixièmes
+ * d'homme.
  *
  * `state` est facultatif — sans lui on ne compte que les habitants, ce qui
  * était le comportement d'avant. Avec, on compte aussi l'escouade aux travaux.
  */
+export function brasDisponibles(base, state) {
+  return Math.floor(base.pop || 0) + brasEscouade(state);
+}
+
+/** Ceux qui n'ont pas de poste : ils aident partout, sans rien faire de précis. */
 export function manoeuvres(base, state) {
+  const t = tenus(base, state);
   let pris = 0;
-  for (const k of METIER_KEYS) pris += affectes(base, k);
-  return Math.max(0, Math.round((base.pop || 0) + brasEscouade(state) - pris));
+  for (const k of METIER_KEYS) pris += t[k] || 0;
+  return Math.max(0, brasDisponibles(base, state) - pris);
+}
+
+/** Ce que le joueur a réglé et que personne ne tient, faute de bras. */
+export function postesDegarnis(base, state) {
+  const t = tenus(base, state);
+  let manque = 0;
+  for (const k of METIER_KEYS) manque += voulus(base, k) - (t[k] || 0);
+  return manque;
 }
 
 /**
@@ -171,7 +248,7 @@ export function mainDoeuvre(base, state) {
  */
 export function rendementMetier(state, key) {
   const base = state.base;
-  const n = affectes(base, key);
+  const n = affectes(base, key, state);
   if (!n) return { ouvriers: 0, mult: 1, contremaitre: null };
   const m = METIERS[key];
   const chef = contremaitre(state, key);
@@ -196,18 +273,34 @@ export function contremaitre(state, key) {
   return best && comp(best, m.skill) >= 20 ? best : null;
 }
 
-/** Affecte `n` habitants à un poste. Retourne ce qui a réellement été fait. */
+/**
+ * Règle la consigne d'un poste. Retourne ce qui a été enregistré.
+ *
+ * On ne borne plus par les bras présents. C'était le geste qui rendait tout
+ * incohérent : le joueur ne pouvait régler que ce qu'il pouvait tenir *à cet
+ * instant*, si bien qu'un réglage fait pendant que l'escouade travaillait
+ * devenait un réglage impossible dès qu'elle s'arrêtait — et le moteur le
+ * défaisait. Une consigne se règle une fois ; c'est `tenus` qui dit combien de
+ * gens la servent aujourd'hui.
+ *
+ * Et toucher un poste, c'est prendre la barre. L'embauche automatique récrivait
+ * `base.postes` de fond en comble toutes les vingt-quatre heures : on réglait,
+ * on regardait ailleurs, et le lendemain tout était revenu comme avant. Il
+ * existait bien un interrupteur pour la couper, mais il fallait savoir qu'elle
+ * existait pour aller le chercher — c'est-à-dire avoir déjà compris le
+ * problème. On la coupe donc au premier réglage, et l'écran le dit.
+ */
 export function affecter(state, key, n) {
   const base = state.base;
   if (!METIERS[key]) return { ok: false, motif: 'Métier inconnu.' };
   if (!base.postes) base.postes = {};
   const places = placesMetier(base, key);
   if (places <= 0) return { ok: false, motif: `Il faut bâtir ${BUILDINGS[METIERS[key].batiment].nom.toLowerCase()}.` };
-  const actuel = affectes(base, key);
-  const libre = manoeuvres(base, state);
-  const vise = Math.max(0, Math.min(n, places, actuel + libre));
+  const vise = Math.max(0, Math.min(Math.floor(n), places));
   base.postes[key] = vise;
-  return { ok: true, affectes: vise };
+  const reprise = base.autoEmploi !== false;
+  base.autoEmploi = false;
+  return { ok: true, affectes: vise, tenus: tenus(base, state)[key] || 0, reprise };
 }
 
 /**
@@ -217,11 +310,27 @@ export function affecter(state, key, n) {
  * produit. Puis de quoi bâtir : le récoltant ramasse la région, le bâtisseur
  * monte les chantiers. Puis se défendre. Puis transformer, ce qui suppose
  * d'avoir déjà le reste.
+ *
+ * **Cette liste doit contenir tous les métiers.** Elle en oubliait quatre — le
+ * bassinier, le semeur, le terraformier, le courtier, c'est-à-dire les quatre
+ * plus récents. Un métier absent d'ici n'est jamais pourvu par personne : les
+ * bassins de culture affichaient 0/9 pour toujours, et le seul moyen d'y mettre
+ * quelqu'un était de couper l'embauche automatique — ce que rien n'indiquait.
+ * `test/headless.js` vérifie maintenant que la liste est complète, parce qu'un
+ * oubli de ce genre ne se voit pas : ça ne plante pas, ça ne fait rien.
  */
-const ORDRE_EMBAUCHE = [
-  'cultivateur', 'cuisinier', 'recoltant', 'batisseur', 'magasinier',
-  'milicien', 'garde', 'mecanicien', 'fondeur', 'raffineur', 'machiniste',
-  'infirmier', 'operateur',
+export const ORDRE_EMBAUCHE = [
+  // Manger d'abord.
+  'cultivateur', 'bassinier', 'cuisinier',
+  // Puis bâtir et ranger.
+  'recoltant', 'batisseur', 'magasinier',
+  // Puis tenir la place.
+  'milicien', 'garde', 'mecanicien',
+  // Puis transformer.
+  'fondeur', 'raffineur', 'machiniste',
+  // Puis le reste : soigner, transmettre, commercer, et travailler la terre
+  // pour plus tard.
+  'infirmier', 'operateur', 'courtier', 'semeur', 'terraformier',
 ];
 
 /**
@@ -265,26 +374,24 @@ export function embaucher(base, state) {
   base.postes = postes;
 }
 
-/** Après une famine ou une démolition, les postes se réajustent tout seuls. */
-export function reajusterPostes(base, state) {
+/**
+ * Une démolition ferme les places : la consigne se rabote d'autant.
+ *
+ * Et **elle ne se rabote que pour ça**. Cette fonction retirait aussi des
+ * postes quand il manquait des bras, en dégarnissant du dernier métier de la
+ * liste vers le premier — c'est-à-dire en réécrivant chaque heure ce que le
+ * joueur venait de régler, dans un ordre interne qu'il ne pouvait pas deviner.
+ * Une escouade qui passait des travaux au repos vidait dix-huit postes d'un
+ * coup et le bassinier tombait à 0/9 pendant que son voisin restait plein.
+ *
+ * Un manque de bras est un état, pas une décision : il se lit dans `tenus` et
+ * il s'affiche. Il n'efface rien.
+ */
+export function reajusterPostes(base) {
   if (!base.postes) { base.postes = {}; return; }
   for (const k of METIER_KEYS) {
     const max = placesMetier(base, k);
     if ((base.postes[k] || 0) > max) base.postes[k] = max;
-  }
-  let total = 0;
-  for (const k of METIER_KEYS) total += base.postes[k] || 0;
-  // Trop de postes pour trop peu de monde : on dégarnit du dernier au premier.
-  //
-  // « Trop peu de monde » comptait les seuls habitants, si bien que cette
-  // fonction défaisait chaque heure ce que l'embauche venait de faire : une
-  // escouade aux travaux ne tenait jamais un poste, quoi qu'on règle.
-  const bras = Math.floor((base.pop || 0) + brasEscouade(state));
-  for (let i = METIER_KEYS.length - 1; i >= 0 && total > bras; i--) {
-    const k = METIER_KEYS[i];
-    const retire = Math.min(base.postes[k] || 0, total - bras);
-    base.postes[k] = (base.postes[k] || 0) - retire;
-    total -= retire;
   }
 }
 
@@ -621,9 +728,12 @@ export function tempsRecherche(base, key) {
   return Math.max(1, Math.round(brut / (1 + antenne * 0.25)));
 }
 
-export function capaciteStock(base) {
-  // Un magasinier gagne de la place : ranger, c'est du volume.
-  const m = 1 + affectes(base, 'magasinier') * METIERS.magasinier.apport;
+export function capaciteStock(base, state) {
+  // Un magasinier gagne de la place : ranger, c'est du volume. Ce sont les
+  // magasiniers vraiment à leur poste qui comptent — mais sans `state` on ne
+  // sait rien de l'escouade, et l'on retombe alors sur les seuls habitants,
+  // c'est-à-dire sur le comportement d'avant.
+  const m = 1 + affectes(base, 'magasinier', state) * METIERS.magasinier.apport;
   return Math.round((800 + niveau(base, 'entrepot') * 800) * m);
 }
 
@@ -909,7 +1019,7 @@ export function tickBase(state, log, ctx) {
     embaucher(base, state);
   }
   // Postes tenus, contremaîtres compris. Calculé une fois pour tout le tick.
-  reajusterPostes(base, state);
+  reajusterPostes(base);
   const M = {};
   for (const k of METIER_KEYS) M[k] = rendementMetier(state, k).mult;
 

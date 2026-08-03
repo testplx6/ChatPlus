@@ -8,7 +8,7 @@ import {
 } from './data.js';
 import { comp, gagnerXp, portage, XP_PRATIQUE } from './characters.js';
 import { remiseDe, palierBonus } from './allegeance.js';
-import { distance as distanceCases, rendementRegion } from './world.js';
+import { distance as distanceCases, rendementRegion, colonieParId } from './world.js';
 import { prixAvecBourse } from './bourse.js';
 import { groupeActif } from './groupes.js';
 import {
@@ -20,6 +20,42 @@ import {
 import { tickServices } from './services.js';
 import { portageAttelage } from './betes.js';
 import { loiIci } from './lois.js';
+
+/**
+ * Ce que coûte de tenir un empire trop grand et trop étalé.
+ *
+ * La forme d'abord : la tension est un *produit*, pas une somme. Une ville
+ * lointaine d'une petite faction ne paie rien — elle est loin de sa capitale
+ * parce que le pays est ce qu'il est, ce n'est pas de la surextension. Ce sont
+ * les villes en trop qui coûtent, et elles coûtent d'autant plus qu'elles sont
+ * loin. La somme punissait tout le monde, y compris les petits, et c'est ce qui
+ * vidait la carte.
+ *
+ * Les chiffres ensuite, sur six graines et trois mille deux cents heures :
+ *
+ *   frein coupé              77 villes debout · plus gros empire 24 · agitation 0,55
+ *   0,00016 + 0,00035        56 villes debout · plus gros empire 17 · agitation 0,87
+ *   ci-dessous               72 villes debout · plus gros empire 22 · agitation 0,60
+ *
+ * La deuxième ligne, ce sont les constantes d'origine — celles qui n'avaient
+ * jamais tourné. Elles emportaient un quart des villes du monde.
+ *
+ * Il faut dire aussi ce que le frein *n'a pas* à faire, parce qu'on a cru
+ * longtemps le contraire : le commentaire d'origine en faisait « ce qui empêche
+ * un vainqueur d'avaler la carte entière ». Mesuré frein coupé, sur dix-huit
+ * mille heures, le plus gros empire plafonne entre 27 et 44 % des villes et le
+ * monde se stabilise vers cinquante-huit. Personne n'avale rien. Le frein
+ * infléchit, il ne sauve pas la partie — et un frein qu'on croit vital, on le
+ * serre trop fort.
+ */
+export const SUREXTENSION = {
+  /** En dessous, on tient son pays sans y penser. */
+  seuil: 8,
+  /** Par ville au-delà du seuil, et par heure. */
+  parVille: 0.00005,
+  /** Et ce que chaque case d'éloignement ajoute à cette ville-là. */
+  parCase: 0.00001,
+};
 
 /** Stock « confortable » visé par une colonie pour une marchandise. */
 export function cibleStock(col, key) {
@@ -334,14 +370,29 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
   const satiete = besoin > 0 ? servi / besoin : 1;
 
   // Surextension : une faction qui tient trop de villes, trop loin de sa
-  // capitale, les tient mal. C'est le frein qui empêche un vainqueur d'avaler
-  // la carte entière.
+  // capitale, les tient mal.
+  //
+  // Ce frein n'a jamais freiné quoi que ce soit. `distance` prend deux cases ;
+  // on lui en passait trois, le monde en tête — elle rendait `NaN`, et le
+  // `tension > 0` juste en dessous l'avalait sans un mot. Un garde qu'on ne
+  // voit jamais échouer ne prouve rien : celui-ci a caché un mécanisme mort
+  // depuis le jour de son écriture. Il est bordé maintenant, et il crie.
+  //
+  // Le rebrancher tel quel coûtait un quart du monde — quatre cent soixante-trois
+  // villes debout sur six graines, trois cent trente-sept avec. Les deux
+  // constantes avaient été choisies à vue contre un mécanisme qui ne tournait
+  // pas, et personne ne pouvait le savoir. Elles ont donc été remesurées, et la
+  // forme avec : voir SUREXTENSION.
   if (col.faction && world.factions[col.faction]) {
     const f = world.factions[col.faction];
-    const cap = f.capitale && world.colonies.find((c) => c.id === f.capitale);
-    const eloignement = cap ? distanceCases(world, cap.regionId, col.regionId) : 0;
-    const surcharge = Math.max(0, f.colonies.length - 3);
-    const tension = (eloignement * 0.00016 + surcharge * 0.00035) * dt;
+    const cap = f.capitale && colonieParId(world, f.capitale);
+    const eloignement = cap ? distanceCases(cap.regionId, col.regionId) : 0;
+    const surcharge = Math.max(0, f.colonies.length - SUREXTENSION.seuil);
+    const tension = surcharge
+      * (SUREXTENSION.parVille + eloignement * SUREXTENSION.parCase) * dt;
+    // Le garde qui manquait. `NaN > 0` est faux : sans ce cri, toute erreur de
+    // calcul ici redevient un mécanisme mort et silencieux.
+    if (!(tension >= 0)) throw new Error(`tension de surextension incalculable pour ${col.id}`);
     if (tension > 0) col.unrest = Math.min(1, col.unrest + tension);
   }
 

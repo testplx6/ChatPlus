@@ -544,6 +544,40 @@ plus** : des villes moins furieuses sont mieux approvisionnées, donc leurs
 marchés nourrissent le joueur pour moins cher. Le tick descend au passage de 116
 à 91 µs — un monde calme coûte moins à simuler qu'un monde qui s'effondre.
 
+### Un frein qui n'a jamais freiné
+
+La surextension — une faction qui tient trop de villes, trop loin de sa
+capitale, les tient mal — était écrite, commentée, et morte depuis le premier
+jour. `distance` prend deux cases ; on lui en passait trois, le monde en tête.
+Elle rendait `NaN`, et la ligne suivante était :
+
+    if (tension > 0) col.unrest = Math.min(1, col.unrest + tension);
+
+`NaN > 0` est faux. Le mécanisme ne s'est jamais exécuté, aucun test n'a jamais
+rougi, et le garde qui aurait dû le trahir est précisément ce qui l'a caché.
+**Un garde qu'on ne voit jamais échouer ne prouve rien.**
+
+Le rebrancher tel quel emportait un quart du monde :
+
+                            villes debout   plus gros empire   agitation
+    frein coupé                    77              24             0,55
+    constantes d'origine           56              17             0,87
+    constantes remesurées          72              22             0,60
+
+Les deux constantes d'origine avaient été choisies à vue contre un mécanisme qui
+ne tournait pas — personne ne pouvait savoir qu'elles étaient trois fois trop
+fortes. La forme aussi était fausse : la tension était une *somme*, si bien
+qu'une ville lointaine d'une petite faction payait pour une géographie dont elle
+n'était pas responsable. C'est un *produit* maintenant : ce sont les villes en
+trop qui coûtent, et elles coûtent d'autant plus qu'elles sont loin.
+
+Reste ce que le frein n'a pas à faire. Le commentaire d'origine en faisait « ce
+qui empêche un vainqueur d'avaler la carte entière ». Mesuré frein coupé, sur
+dix-huit mille heures, le plus gros empire plafonne entre 27 et 44 % des villes
+et le monde se stabilise vers cinquante-huit. Personne n'avale rien : autre
+chose faisait déjà ce travail. **Un frein qu'on croit vital, on le serre trop
+fort.**
+
 ### Une loi vaut aussi vers l'extérieur
 
 Les lois n'existaient que vers l'intérieur. Autoriser le commerce d'hommes
@@ -1648,6 +1682,79 @@ Corollaire appris à ses dépens : **un compteur qui compte des coups d'œil
 ment.** « 4 527 demandes croisées, 102 honorées » a servi de constat pendant des
 mois ; en demandes distinctes c'était 397 pour 102, soit un quart et non deux
 pour cent. Un instrument se vérifie avant de conclure avec.
+
+### Le comptoir, et le convoi qui n'arrivait jamais
+
+Le comptoir met fin à une règle qui tenait depuis le premier jour : tout le
+commerce du jeu demandait d'y aller. Il coûte donc cher — la recherche
+*Cotation*, qui exige la Cryptographie, un bâtiment au camp, et l'une des deux
+portes : porter les couleurs d'une faction qui a ouvert sa bourse, ou valoir
+quarante d'estime à ses yeux. La seconde existe pour que la commune autonome ne
+soit pas condamnée à tout porter à dos d'homme ; elle se paie huit points de
+commission de plus.
+
+Ce qui ne s'achète jamais, en revanche, c'est la certitude qu'un convoi arrive.
+Un convoi qu'on ne peut pas perdre serait un téléporteur, et toute la géographie
+du jeu s'annulerait avec lui. On paie donc pour réduire le risque : sur
+vingt-quatre livraisons traversant des régions à 0,25 de danger,
+
+    sans escorte     5 arrivées sur 24
+    escorte armée   19 arrivées sur 24
+
+et jamais 24. On peut aussi embarquer une escouade, qui ne compte que tant
+qu'elle est sur la même case que le convoi — il faut vraiment faire la route
+avec.
+
+Deux défauts trouvés par ces mesures, et aucun des deux n'aurait rougi tout
+seul. Le premier : `vivante()` exige un drapeau, ce qui est juste pour une ville
+et faux pour un camp indépendant — **tout convoi adressé au joueur disparaissait
+au premier tour**, sans livraison, sans paiement, sans une ligne au journal. Le
+second : `arriver()` prenait `state` en dernier argument facultatif, et l'un des
+deux appels l'avait oublié ; la cargaison partait alors dans le stock d'une
+ville au lieu de l'entrepôt. `state` est le premier paramètre maintenant. **Un
+paramètre qu'on peut omettre finit par l'être.**
+
+### « Pourquoi ça se revide tout seul ? »
+
+Un joueur remplit les postes de son avant-poste ; l'heure suivante, ils sont
+vides. Il recommence. Trois causes, sans rapport les unes avec les autres, et
+aucune n'était visible :
+
+**Un.** Deux fonctions comptaient les bras disponibles, et pas de la même façon.
+`manoeuvres` arrondissait la population, `reajusterPostes` la tronquait. À douze
+habitants et six dixièmes, la première annonçait une main libre, le joueur la
+plaçait, la seconde la renvoyait chez elle. Indéfiniment. Les deux comptes
+étaient justes chacun de son côté — c'est bien le problème. **Deux nombres
+écrits séparément finissent toujours par diverger** ; il n'y en a plus qu'un,
+`brasDisponibles`.
+
+**Deux.** L'embauche automatique récrivait `base.postes` de fond en comble
+toutes les vingt-quatre heures. On réglait, on regardait ailleurs, et le
+lendemain tout était revenu comme avant. Un interrupteur existait pour la
+couper, mais il fallait avoir déjà compris le problème pour aller le chercher.
+Toucher un poste coupe désormais l'automatique, et l'écran le dit.
+
+**Trois.** `ORDRE_EMBAUCHE`, la liste que suit cette embauche automatique,
+oubliait quatre métiers — bassinier, semeur, terraformier, courtier, c'est-à-dire
+les quatre plus récents. Un métier absent de cette liste n'est jamais pourvu par
+personne : les bassins de culture affichaient `0/9` à perpétuité. Ça ne plantait
+pas, ça ne faisait rien. Un test vérifie maintenant que la liste est complète,
+parce que le prochain métier ajouté aurait connu le même sort.
+
+Restait à séparer deux idées qu'on avait confondues. `base.postes` est
+maintenant une **consigne** — ce que le joueur a demandé — et rien ne la réécrit
+sauf une démolition. Ce qui est réellement tenu se calcule à la lecture, et le
+manque de bras se répartit **au prorata** : personne ne tombe à zéro pendant que
+son voisin reste plein, et le réglage se retrouve intact dès que les bras
+reviennent. L'écran affiche les deux nombres, et nomme la différence.
+
+Même travail sur les chaînes, pour la même raison — « on voit pas toujours ce
+qui a besoin de quoi, qui produit quoi ». Chacune affiche ce qu'elle consomme et
+ce qu'il en reste, et nomme *un* empêchement quand elle ne tourne pas. Un seul :
+trois alertes empilées, c'est un mur qu'on ne lit pas. Et c'est l'arrêt franc
+qui passe devant le ralentissement — un bac vide ne produit rien, un camp à
+80 % de courant produit à 80 %. Annoncer le second quand c'est le premier qui
+bloque envoie le joueur réparer ce qui marche.
 
 ## Ce que la simulation fait
 

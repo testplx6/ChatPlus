@@ -23,6 +23,8 @@ import { capturables, fairePrisonniers } from '../src/justice.js';
 import { loisDe } from '../src/lois.js';
 import { genererBande } from '../src/combat.js';
 import { Rng } from '../src/rng.js';
+import { ouvrirBourse, tickBourses } from '../src/bourse.js';
+import { DIPLO_FACTIONS } from '../src/data.js';
 
 const RACINE = resolve(new URL('..', import.meta.url).pathname);
 const CAPTURES = join(RACINE, 'captures');
@@ -1501,6 +1503,95 @@ ok(/apporté des medkits/.test(texteApres), 'et il s’en souvient à l’écran
 await page.click('[data-a="fermer"]');
 await page.waitForTimeout(300);
 
+console.log('\n8 nonies quater. Le comptoir, à l’écran');
+{
+  // Le panneau qui manquait : le moteur savait passer des ordres, personne ne
+  // pouvait le lui demander. Et un panneau qui plante ne se voit pas comme un
+  // plantage — il se voit comme un panneau absent, ce qui est bien pire à
+  // diagnostiquer. D'où la vérification explicite du bandeau d'erreur.
+  const cp = partieAvancee();
+  const riche = DIPLO_FACTIONS.find((k) => cp.world.factions[k].colonies.length >= 4);
+  cp.world.factions[riche].tresor = 9000;
+  ouvrirBourse(cp.world, riche, 0);
+  tickBourses(cp.world, 0);
+  cp.player.reputation[riche] = 80;
+  cp.player.credits = 30000;
+  cp.base.batiments.comptoir = 1;
+  cp.base.colonieId = 'poste-joueur';
+  cp.world.colonies.push({
+    id: 'poste-joueur', nom: 'Votre camp', regionId: cp.base.regionId,
+    faction: null, pop: 40, taille: 1, stock: {}, unrest: 0, murs: 0,
+    defense: 0, defenseMax: 0, contrats: [], notables: [], ruine: false,
+  });
+  Object.assign(cp.base.stock, { ferraille: 500 });
+  cp.dernierReel = Date.now();
+
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(cp));
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.click('[data-a="onglet"][data-k="base"]');
+  await page.waitForTimeout(500);
+
+  const texteCp = await page.evaluate(() => document.querySelector('#ecran').textContent);
+  ok(!/n’a pas pu s’afficher/.test(texteCp),
+    'l’onglet Base s’affiche sans bandeau d’erreur',
+    texteCp.slice(0, 200));
+  ok(/COMPTOIR/i.test(texteCp), 'le comptoir a son panneau');
+  ok(/Commission/i.test(texteCp), 'et il annonce ce qu’il retient');
+
+  // Le panneau est bas dans l'écran : on l'amène sous les yeux avant la
+  // capture, sinon la vignette montre l'entrepôt et rien du comptoir.
+  await page.evaluate(() => {
+    const b = document.querySelector('[data-a="ordre-sens"]');
+    if (b) b.scrollIntoView({ block: 'center' });
+  });
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: join(CAPTURES, '24-comptoir.png') });
+
+  // Le bon de commande : on choisit le sens, la matière, la quantité, la garde.
+  await page.click('[data-a="ordre-sens"][data-r="vente"]');
+  await page.waitForTimeout(200);
+  await page.click('[data-a="ordre-k"][data-k="ferraille"]');
+  await page.waitForTimeout(200);
+  await page.click('[data-a="ordre-q"][data-q="200"]');
+  await page.waitForTimeout(200);
+  await page.click('[data-a="ordre-escorte"][data-r="lourde"]');
+  await page.waitForTimeout(200);
+
+  await page.evaluate(() => {
+    const b = document.querySelector('[data-a="passer-ordre"]');
+    if (b) b.scrollIntoView({ block: 'center' });
+  });
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: join(CAPTURES, '25-comptoir-devis.png') });
+
+  const devis = await page.evaluate(() => document.querySelector('#ecran').textContent);
+  ok(/Vous touchez/.test(devis), 'le montant est annoncé avant de cliquer');
+  ok(/Escorte/.test(devis), 'et ce que la garde coûte aussi');
+
+  const crAvant = await page.evaluate(
+    () => JSON.parse(localStorage.getItem('cendres.save.v1')).player.credits);
+  await page.click('[data-a="passer-ordre"]');
+  await page.waitForTimeout(600);
+  const apresOrdre = await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    return {
+      credits: s.player.credits,
+      ferraille: Math.round(s.base.stock.ferraille || 0),
+      convois: (s.world.caravanes || []).filter((c) => c.pour === 'joueur').length,
+      texte: document.querySelector('#ecran').textContent,
+    };
+  });
+  ok(apresOrdre.convois === 1, 'l’ordre part : un convoi à vous sur la carte',
+    JSON.stringify(apresOrdre).slice(0, 160));
+  ok(apresOrdre.ferraille === 300, 'la marchandise a quitté l’entrepôt',
+    `${apresOrdre.ferraille}`);
+  ok(apresOrdre.credits < crAvant, 'et la garde est payée d’avance',
+    `${crAvant} → ${apresOrdre.credits}`);
+  ok(/En route/.test(apresOrdre.texte), 'le convoi se suit à l’écran');
+}
+
 console.log('\n8 decies. Métiers de l’avant-poste');
 const bourg = partieAvancee();
 Object.assign(bourg.base.batiments, { hydroponie: 2, entrepot: 3, mur: 2, baraquement: 1 });
@@ -1517,7 +1608,56 @@ await page.waitForTimeout(500);
 const texteMetiers = await page.evaluate(() => document.querySelector('#ecran').textContent);
 ok(/MÉTIERS/i.test(texteMetiers), 'l’avant-poste affiche ses métiers');
 ok(/manœuvre/i.test(texteMetiers), 'et compte les habitants sans poste');
-await page.screenshot({ path: join(CAPTURES, '20-metiers.png'), fullPage: true });
+ok(/bras en tout/i.test(texteMetiers), 'et dit d’où viennent les bras qu’il compte');
+// « On voit pas toujours ce qui a besoin de quoi, qui produit quoi. » Le nom de
+// la recette dit la transformation ; il fallait aussi dire l'état du garde-manger.
+ok(/Consomme\s*:/i.test(texteMetiers), 'chaque chaîne dit ce qu’elle consomme');
+ok(/biomasse\s*\d/i.test(texteMetiers), 'avec ce qu’il en reste, pas seulement son nom');
+await page.evaluate(() => {
+  const b = document.querySelector('[data-a="recette"]');
+  if (b) b.scrollIntoView({ block: 'center' });
+});
+await page.waitForTimeout(200);
+await page.screenshot({ path: join(CAPTURES, '20b-consignes.png') });
+{
+  // Et quand elle ne tourne pas, elle dit pourquoi. On coupe la biomasse : c'est
+  // ce que l'hydroponie mange.
+  //
+  // On recharge la page *avant* d'écrire : tant que le jeu tourne, il se
+  // sauvegarde par-dessus, et l'on relisait sagement les neuf cents biomasses
+  // qu'on croyait avoir mises à zéro.
+  const seche = partieAvancee();
+  Object.assign(seche.base.batiments, { hydroponie: 2, entrepot: 3 });
+  seche.base.pop = 8;
+  Object.assign(seche.base.stock, { biomasse: 0, rations: 400, carburant: 200 });
+  groupeActif(seche).regionId = seche.base.regionId;
+  seche.dernierReel = Date.now();
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(seche));
+  const sec = true;
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.click('[data-a="onglet"][data-k="base"]');
+  await page.waitForTimeout(400);
+  const etatSec = await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    return {
+      bio: s.base.stock.biomasse,
+      recette: (s.base.recettes || {}).hydroponie,
+      niv: s.base.batiments.hydroponie,
+      texte: document.querySelector('#ecran').textContent,
+    };
+  });
+  ok(sec && /tourne à vide/i.test(etatSec.texte),
+    'et une chaîne sans matière le dit, au lieu de ne rien faire en silence',
+    `biomasse ${etatSec.bio} · hydroponie niv ${etatSec.niv} · consigne ${etatSec.recette}`);
+}
+await page.evaluate(() => {
+  const b = document.querySelector('[data-a="poste"]');
+  if (b) b.scrollIntoView({ block: 'center' });
+});
+await page.waitForTimeout(200);
+await page.screenshot({ path: join(CAPTURES, '20-metiers.png') });
 
 const plus = page.locator('[data-a="poste"][data-n="max"]:not([disabled])');
 ok(await plus.count() > 0, 'des postes sont ouverts et pourvoyables', `${await plus.count()}`);
@@ -1526,10 +1666,36 @@ await page.waitForTimeout(500);
 const apresPostes = await page.evaluate(() => {
   const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
   const p = s.base.postes || {};
-  return { total: Object.values(p).reduce((a, b) => a + b, 0), pop: s.base.pop };
+  return { total: Object.values(p).reduce((a, b) => a + b, 0), pop: s.base.pop, auto: s.base.autoEmploi };
 });
 ok(apresPostes.total > 0, 'l’affectation est enregistrée', JSON.stringify(apresPostes));
-ok(apresPostes.total <= apresPostes.pop, 'et ne dépasse jamais la population');
+ok(apresPostes.auto === false, 'et régler un poste prend la main sur l’embauche automatique',
+  JSON.stringify(apresPostes));
+
+{
+  // Le défaut rapporté à l'écran : « pourquoi à chaque fois que je remplis ces
+  // postes ça se revide tout seul ? » Trois causes, dont deux invisibles ;
+  // celles-ci vérifient qu'aucune ne revient, et que l'écran explique la
+  // troisième au lieu de la subir.
+  const survit = await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    return JSON.parse(JSON.stringify(s.base.postes));
+  });
+  // Deux jours de jeu, à la vitesse la plus rapide.
+  await page.click('[data-a="vitesse"][data-v="60"]');
+  await page.waitForTimeout(3000);
+  await page.click('[data-a="onglet"][data-k="base"]');
+  await page.waitForTimeout(400);
+  const apres = await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    return { postes: s.base.postes, temps: s.temps, texte: document.querySelector('#ecran').textContent };
+  });
+  const identique = Object.keys(survit).every((k) => apres.postes[k] === survit[k]);
+  ok(apres.temps > 40, 'le temps a bien passé', `t=${apres.temps}`);
+  ok(identique, 'et le réglage des postes n’a pas bougé tout seul',
+    `${JSON.stringify(survit)} → ${JSON.stringify(apres.postes)}`);
+  await page.click('[data-a="vitesse"][data-v="1"]');
+}
 
 console.log('\n8 nonies. Transmission à l’avant-poste');
 const transmet = partieAvancee();

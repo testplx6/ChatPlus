@@ -5,7 +5,9 @@
 
 import { COMMODITIES, COMMODITY_KEYS, FACTIONS } from './data.js';
 import { chemin, colonieParId, colonieDe, nomRegion, distance, damer } from './world.js';
-import { reseauDe, reseaux, idReseau, villesDuReseau } from './bourse.js';
+import {
+  reseauDe, reseaux, idReseau, villesDuReseau, peutTraiter, chiffrerOrdre,
+} from './bourse.js';
 
 /** Sept, plus ce que les bourses financent. */
 export function plafondCaravanes(world) {
@@ -13,7 +15,7 @@ export function plafondCaravanes(world) {
 }
 import { groupeActif } from './groupes.js';
 import { cibleStock, prixUnitaire, capacitePortage, poidsInventaire } from './economy.js';
-import { idDepuisRng } from './characters.js';
+import { idDepuisRng, estDebout, comp } from './characters.js';
 import { retenirEnVille } from './services.js';
 
 /** Au-delà, la carte devient un embouteillage illisible. */
@@ -85,20 +87,32 @@ export function tenterDepart(state, rng, log) {
   const dedans = (col) => col.faction && reseau.has(col.faction);
   const chezSoi = dedans(de);
 
+  // Les villes à portée, calculées une fois. La version précédente rebalayait
+  // les cinquante-cinq colonies pour chacune des matières en surplus, et
+  // recalculait la même distance à chaque tour : le tri par portée ne dépend pas
+  // de la marchandise, seul le manque en dépend.
+  const portee = [];
+  for (const vers of world.colonies) {
+    if (!vivante(vers) || vers.id === de.id) continue;
+    const lie = chezSoi && dedans(vers);
+    const d = distance(de.regionId, vers.regionId);
+    if (d > (lie ? 12 : 7)) continue;
+    portee.push({ vers, d, lie });
+  }
+  if (!portee.length) return null;
+
   let meilleur = null;
   for (const [k, qteDispo] of dispo) {
-    for (const vers of world.colonies) {
-      if (!vivante(vers) || vers.id === de.id) continue;
-      const manque = besoin(vers, k);
+    const prixIci = prixUnitaire(de, k);
+    for (const p of portee) {
+      const manque = besoin(p.vers, k);
       if (manque < 12) continue;
-      const lie = chezSoi && dedans(vers);
-      const d = distance(de.regionId, vers.regionId);
-      if (d > (lie ? 12 : 7)) continue;
       // Le gain vaut-il le trajet ? Écart de prix contre distance.
-      const gain = (prixUnitaire(vers, k) - prixUnitaire(de, k)) * Math.min(qteDispo, manque);
-      const score = gain / (1 + d * 0.6) * (lie ? 2.2 : 1);
+      const qte = Math.min(qteDispo, manque);
+      const gain = (prixUnitaire(p.vers, k) - prixIci) * qte;
+      const score = gain / (1 + p.d * 0.6) * (p.lie ? 2.2 : 1);
       if (score > 12 && (!meilleur || score > meilleur.score)) {
-        meilleur = { k, de, vers, qte: Math.min(qteDispo, manque), score, lie };
+        meilleur = { k, de, vers: p.vers, qte, score, lie: p.lie };
       }
     }
   }
@@ -200,6 +214,116 @@ export function departsDuReseau(state, rng, log) {
   }
 }
 
+/**
+ * Les niveaux d'escorte qu'on peut payer, et ce qu'ils valent.
+ *
+ * Un convoi qu'on ne peut pas perdre serait un téléporteur, et toute la
+ * géographie du jeu s'annulerait — les distances, les régions dangereuses, le
+ * fait qu'un camp isolé soit isolé. On paie donc pour réduire le risque, pas
+ * pour le supprimer : au mieux, un convoi bien gardé traverse une région
+ * tranquille presque à coup sûr, et une friche reste une friche.
+ */
+export const ESCORTES = [
+  { id: 'aucune', nom: 'Aucune', force: 0, cout: 0, aide: 'On charge et on prie.' },
+  { id: 'legere', nom: 'Deux gardes', force: 22, cout: 0.06, aide: 'De quoi décourager un maraudeur.' },
+  { id: 'lourde', nom: 'Escorte armée', force: 55, cout: 0.16, aide: 'Ce que le réseau fait de mieux.' },
+];
+
+/**
+ * Passer un ordre : les marchandises partent ou viennent, par la route.
+ *
+ * Une vente sort le lot de l'entrepôt tout de suite et paie à l'arrivée ; un
+ * achat débite tout de suite et livre à l'arrivée. Dans les deux cas c'est un
+ * convoi comme les autres : il traverse des régions, il peut être pillé, et
+ * l'on peut le faire escorter.
+ */
+export function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEscorte) {
+  const v = peutTraiter(state);
+  if (!v.ok) return v;
+  const devis = chiffrerOrdre(state, sens, key, qte);
+  if (!devis.ok) return devis;
+  const base = state.base;
+  const world = state.world;
+
+  // La ville du réseau la plus proche : c'est de là que part le convoi, ou
+  // c'est là qu'il va.
+  const villes = villesDuReseau(world, devis.comptoir.membres).filter(vivante);
+  if (!villes.length) return { ok: false, motif: 'Aucune ville du réseau n’est joignable.' };
+  const place = villes.reduce((a, b) => (distance(b.regionId, base.regionId)
+    < distance(a.regionId, base.regionId) ? b : a));
+
+  const esc = ESCORTES.find((x) => x.id === escorteId) || ESCORTES[0];
+  const fraisEscorte = Math.round(devis.brut * esc.cout);
+
+  if (sens === 'achat') {
+    const du = devis.total + fraisEscorte;
+    if (state.player.credits < du) {
+      return { ok: false, motif: `Il manque ${du - state.player.credits} cr.` };
+    }
+    state.player.credits -= du;
+  } else {
+    const dispo = Math.floor(base.stock[key] || 0);
+    if (dispo < devis.qte) {
+      return { ok: false, motif: `L’entrepôt n’a que ${dispo} ${COMMODITIES[key].nom.toLowerCase()}.` };
+    }
+    if (state.player.credits < fraisEscorte) {
+      return { ok: false, motif: `L’escorte coûte ${fraisEscorte} cr d’avance.` };
+    }
+    state.player.credits -= fraisEscorte;
+    base.stock[key] = dispo - devis.qte;
+  }
+
+  const de = sens === 'achat' ? place.regionId : base.regionId;
+  const vers = sens === 'achat' ? base.regionId : place.regionId;
+  const route = chemin(world, de, vers);
+  if (!route || !route.length) {
+    // On rend ce qu'on a pris : un ordre qu'on ne peut pas honorer ne se paie pas.
+    if (sens === 'achat') state.player.credits += devis.total + fraisEscorte;
+    else { base.stock[key] = (base.stock[key] || 0) + devis.qte; state.player.credits += fraisEscorte; }
+    return { ok: false, motif: 'Aucune route entre votre camp et le réseau.' };
+  }
+
+  const car = {
+    id: idDepuisRng(rng, 'o'),
+    faction: place.faction,
+    reseau: devis.comptoir.id,
+    // Ce qui distingue ce convoi de tous les autres : il est à vous.
+    pour: 'joueur',
+    sens,
+    versBase: sens === 'achat',
+    paiement: sens === 'vente' ? devis.total : 0,
+    deId: sens === 'achat' ? place.id : base.colonieId,
+    versId: sens === 'achat' ? base.colonieId : place.id,
+    regionId: de,
+    route,
+    etape: 0,
+    progres: 0,
+    cargaison: { [key]: devis.qte },
+    escorte: esc.force,
+    escorteGroupe: groupeEscorte || null,
+    depuis: state.temps,
+  };
+  world.caravanes.push(car);
+  if (log) {
+    log({
+      type: 'bourse',
+      texte: sens === 'achat'
+        ? `Ordre passé : ${devis.qte} ${COMMODITIES[key].nom.toLowerCase()} depuis ${place.nom}, `
+          + `${devis.total + fraisEscorte} cr. Le convoi est en route.`
+        : `Ordre passé : ${devis.qte} ${COMMODITIES[key].nom.toLowerCase()} vers ${place.nom}, `
+          + `${devis.total} cr à l’arrivée. Le convoi part.`,
+      regionId: base.regionId,
+      important: true,
+    });
+  }
+  return { ok: true, caravane: car, devis, escorte: esc, frais: fraisEscorte, place };
+}
+
+/** Vos convois en cours, pour les suivre. */
+export function ordresEnCours(state) {
+  return (state.world.caravanes || []).filter((c) => c.pour === 'joueur');
+}
+
 // ---------------------------------------------------------------------------
 // Route
 // ---------------------------------------------------------------------------
@@ -217,7 +341,43 @@ export function valeurCargaison(car) {
   return Math.round(v);
 }
 
-function arriver(world, car, log) {
+// `state` d'abord, et pas en dernier argument facultatif : c'est lui qui dit si
+// ce convoi est celui du joueur. Il l'était, et un des deux appels l'a oublié —
+// la cargaison partait alors dans le stock d'une ville, sans un crédit versé et
+// sans rien dans le journal. Un paramètre qu'on peut omettre finit par l'être.
+function arriver(state, car, log) {
+  const world = state.world;
+  // Un convoi du joueur ne se range pas dans le stock d'une ville : il rentre
+  // dans son entrepôt, ou il rapporte ce qu'on lui devait.
+  if (car.pour === 'joueur') {
+    if (car.versBase) {
+      for (const k of Object.keys(car.cargaison)) {
+        state.base.stock[k] = (state.base.stock[k] || 0) + car.cargaison[k];
+      }
+      if (log) {
+        log({
+          type: 'bourse',
+          texte: `Le convoi arrive : ${Object.keys(car.cargaison).map(
+            (k) => `${Math.round(car.cargaison[k])} ${COMMODITIES[k].nom.toLowerCase()}`
+          ).join(', ')} dans l’entrepôt.`,
+          regionId: car.regionId,
+          important: true,
+        });
+      }
+    } else {
+      state.player.credits += car.paiement || 0;
+      if (log) {
+        log({
+          type: 'bourse',
+          texte: `Livraison honorée : ${car.paiement || 0} cr encaissés.`,
+          regionId: car.regionId,
+          important: true,
+        });
+      }
+    }
+    retirerCaravane(world, car);
+    return;
+  }
   const vers = colonieParId(world, car.versId);
   if (vivante(vers)) {
     for (const k of Object.keys(car.cargaison)) {
@@ -232,7 +392,21 @@ function arriver(world, car, log) {
   retirerCaravane(world, car);
 }
 
-function pillee(world, car, par, log) {
+function pillee(state, car, par, log) {
+  const world = state.world;
+  // La perte d'un convoi à soi doit se lire autrement qu'une nouvelle du monde :
+  // c'est votre marchandise ou votre argent qui vient de disparaître.
+  if (car.pour === 'joueur') {
+    log({
+      type: 'bourse',
+      texte: `Votre convoi est pillé en ${nomRegion(world, car.regionId)}${par ? ` par ${par}` : ''}. `
+        + `${car.versBase ? 'La cargaison ne viendra pas.' : 'Elle ne sera jamais livrée, et personne ne paiera.'}`,
+      regionId: car.regionId,
+      important: true,
+    });
+    retirerCaravane(world, car);
+    return;
+  }
   log({
     type: 'caravane',
     texte: `Une caravane ${FACTIONS[car.faction].genitif} est pillée en ${nomRegion(world, car.regionId)}${par ? ` par ${par}` : ''}.`,
@@ -240,6 +414,41 @@ function pillee(world, car, par, log) {
     important: true,
   });
   retirerCaravane(world, car);
+}
+
+/**
+ * Ce que vaut l'escouade qui accompagne ce convoi, ici et maintenant.
+ *
+ * Elle ne compte que si elle est sur la même case : une escorte à trois régions
+ * de là n'escorte rien. C'est ce qui distingue « embarquer une escouade » d'une
+ * case à cocher — il faut vraiment faire la route avec.
+ *
+ * Et le lien s'arrête là : escorter un convoi ne donne pas d'ordre à l'escouade
+ * et ne lui en retire pas. Une première version la remettait au repos quand le
+ * convoi arrivait, ce qui annulait sans prévenir ce que le joueur lui avait
+ * demandé entre-temps. Le convoi disparaît, le lien avec lui ; l'escouade
+ * continue ce qu'elle faisait.
+ */
+function forceEscorte(state, car) {
+  if (!car.escorteGroupe || !state) return 0;
+  const g = (state.player.groupes || []).find((x) => x.id === car.escorteGroupe);
+  if (!g || g.regionId !== car.regionId) return 0;
+  let f = 0;
+  for (const c of g.membres) {
+    if (!estDebout(c)) continue;
+    f += comp(c, 'melee') * 0.4 + comp(c, 'tir') * 0.4 + comp(c, 'endurance') * 0.2;
+  }
+  return f;
+}
+
+/** Le convoi a-t-il encore quelque part où aller ? */
+function destinationTenable(state, car) {
+  if (car.pour === 'joueur') {
+    return car.versBase
+      ? !!(state.base && state.base.fonde)
+      : vivante(colonieParId(state.world, car.versId));
+  }
+  return vivante(colonieParId(state.world, car.versId));
 }
 
 /** Une heure de route pour toutes les caravanes. */
@@ -251,8 +460,12 @@ export function tickCaravanes(state, log, ctx) {
   for (const car of world.caravanes.slice()) {
     if (!world.caravanes.includes(car)) continue;
 
-    const vers = colonieParId(world, car.versId);
-    if (!vivante(vers)) { retirerCaravane(world, car); continue; }
+    // La destination existe-t-elle encore ? `vivante` exige un drapeau, et
+    // c'est juste pour une ville — mais le camp du joueur n'en a pas quand il
+    // est indépendant, et tout convoi qui lui était adressé disparaissait au
+    // premier tour, sans livraison, sans paiement, sans une ligne au journal.
+    // Un camp existe parce qu'il est fondé, pas parce qu'il porte des couleurs.
+    if (!destinationTenable(state, car)) { retirerCaravane(world, car); continue; }
 
     // Une colonne ennemie sur la case, et la caravane disparaît.
     const armee = world.armees.find(
@@ -260,16 +473,17 @@ export function tickCaravanes(state, log, ctx) {
     );
     if (armee && rng.chance(0.5)) {
       world.factions[armee.faction].tresor += Math.round(valeurCargaison(car) * 0.5);
-      pillee(world, car, FACTIONS[armee.faction].nom, log);
+      pillee(state, car, FACTIONS[armee.faction].nom, log);
       continue;
     }
 
     // Les routes ne sont pas sûres : le danger de la région s'applique.
     const r = world.regions[car.regionId];
-    const risque = r.danger * 1.6 * (1 - Math.min(0.7, car.escorte / 60));
+    const garde = car.escorte + forceEscorte(state, car);
+    const risque = r.danger * 1.6 * (1 - Math.min(0.85, garde / 60));
     if (rng.chance(risque)) {
       if (rng.chance(0.55)) {
-        pillee(world, car, 'des pillards', log);
+        pillee(state, car, 'des pillards', log);
         continue;
       }
       // Attaque repoussée, mais l'escorte fond.
@@ -280,12 +494,12 @@ export function tickCaravanes(state, log, ctx) {
     if (car.progres < HEURES_PAR_CASE) continue;
     car.progres = 0;
 
-    if (car.etape >= car.route.length) { arriver(world, car, log); continue; }
+    if (car.etape >= car.route.length) { arriver(state, car, log); continue; }
     car.regionId = car.route[car.etape];
     // Le commerce trace les routes mieux que personne : c'est lui qui passe.
     damer(world, car.regionId, 1.6);
     car.etape++;
-    if (car.etape >= car.route.length) arriver(world, car, log);
+    if (car.etape >= car.route.length) arriver(state, car, log);
   }
 
   // Nouveau départ de temps en temps
@@ -295,7 +509,11 @@ export function tickCaravanes(state, log, ctx) {
   // meilleures routes, des départs décidés. Mesuré avant : 0,8 caravane en
   // circulation en moyenne sur toute la carte, pic à trois. Le plafond de sept
   // n'a jamais été la contrainte ; c'était le tirage.
-  if (state.temps % 3 === 0) departsDuReseau(state, rng, log);
+  // Toutes les douze heures, pas toutes les trois : ce passage examine chaque
+  // ville du réseau pour chacune des dix matières, et à trois il coûtait à lui
+  // seul la moitié du budget d'un tick. Un convoi met des dizaines d'heures à
+  // arriver ; décider quatre fois moins souvent ne se voit pas.
+  if (!state.world.sansDeparts && state.temps % 12 === 0) departsDuReseau(state, rng, log);
 }
 
 // ---------------------------------------------------------------------------

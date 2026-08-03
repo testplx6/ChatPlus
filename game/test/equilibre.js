@@ -53,7 +53,7 @@ import { FACTIONS, DIPLO_FACTIONS } from '../src/data.js';
 import {
   fonderBase, lancerConstruction, lancerRecherche, deposer, retirer, affecter, niveau as nivBat,
   peutReconnaitre, reconnaitreAvantPoste,
-  placesMetier, affectes, coutBatiment, peutPayer, capaciteStock, totalStock,
+  placesMetier, affectes, voulus, coutBatiment, peutPayer, capaciteStock, totalStock,
   COUT_FONDATION,
 } from '../src/base.js';
 import { ITEMS, BUILDING_KEYS, METIER_KEYS, METIERS, BIOMES as BIOMES_BAT } from '../src/data.js';
@@ -745,7 +745,7 @@ function tenirAvantPoste(state, g, memo) {
   for (const k of PLAN_POSTES) {
     const places = placesMetier(base, k);
     if (places <= 0) continue;
-    const tenu = affectes(base, k);
+    const tenu = voulus(base, k);
     if (tenu >= places) continue;
     if (affecter(state, k, tenu + 1).ok) break;
   }

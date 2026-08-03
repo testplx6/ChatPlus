@@ -103,9 +103,17 @@ export function villesDuReseau(world, membres) {
  * jeu.
  */
 export function coursDe(world, key) {
-  const membres = reseauDe(world, key);
-  if (!membres.length) return null;
-  const c = (world.cotations || {})[idReseau(membres)];
+  // On passe par la table publiée, pas par un parcours des accords.
+  //
+  // `prixJoueur` appelle ceci une fois par unité achetée — une transaction de
+  // deux cents rations, c'est deux cents parcours du graphe des accords. Le
+  // tick est passé de 69 à 132 µs sur ce seul chemin. La bourse publie donc
+  // aussi, avec ses cours, la table qui dit quel drapeau appartient à quel
+  // réseau : c'est la même publication, et c'est une lecture au lieu d'une
+  // marche.
+  if (!aUneBourse(world, key)) return null;
+  const id = (world.reseauParFaction || {})[key];
+  const c = id && (world.cotations || {})[id];
   return c ? c.prix : null;
 }
 
@@ -145,6 +153,12 @@ export function tickBourses(world, t) {
     restants[id] = { prix, maj: t, villes: villes.length, membres };
   }
   world.cotations = restants;
+  // La table de correspondance, publiée avec les cours : voir `coursDe`.
+  const par = {};
+  for (const id of Object.keys(restants)) {
+    for (const k of restants[id].membres) par[k] = id;
+  }
+  world.reseauParFaction = par;
 }
 
 /**
@@ -280,6 +294,127 @@ export function resumeBourses(world) {
     });
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Le comptoir du joueur
+// ---------------------------------------------------------------------------
+
+/** L'estime qui ouvre un comptoir à qui ne porte aucune couleur. */
+export const ESTIME_COMPTOIR = 40;
+/** Ce que le réseau retient sur chaque ordre, avant courtier et estime. */
+export const COMMISSION = 0.12;
+/** Et le supplément qu'on paie quand on n'est pas des leurs. */
+export const COMMISSION_ETRANGER = 0.08;
+
+/**
+ * Avec quel réseau ce camp peut-il traiter, et à quelles conditions ?
+ *
+ * Deux portes, et c'était le choix à trancher : porter leurs couleurs, ou
+ * valoir quarante d'estime à leurs yeux. La seconde existe pour que la commune
+ * autonome ne soit pas condamnée à tout porter à dos d'homme — on peut
+ * commercer avec des gens sans leur appartenir, c'est même l'ordinaire du
+ * commerce. Elle se paie : la commission est plus lourde pour un étranger.
+ */
+export function comptoirsPossibles(state) {
+  const base = state.base;
+  if (!base || !base.fonde || !base.colonieId) return [];
+  const world = state.world;
+  const col = world.colonies.find((c) => c.id === base.colonieId);
+  const out = [];
+  const faits = new Set();
+  for (const key of DIPLO_FACTIONS) {
+    if (!aUneBourse(world, key)) continue;
+    const membres = reseauDe(world, key);
+    const id = idReseau(membres);
+    if (faits.has(id)) continue;
+    // Nos couleurs, ou l'estime de l'un des membres du réseau.
+    const sien = !!(col && col.faction && membres.includes(col.faction));
+    const estime = Math.max(...membres.map((k) => state.player.reputation[k] || 0));
+    if (!sien && estime < ESTIME_COMPTOIR) continue;
+    faits.add(id);
+    out.push({
+      id,
+      membres,
+      sien,
+      estime: Math.round(estime),
+      commission: COMMISSION + (sien ? 0 : COMMISSION_ETRANGER),
+      prix: (world.cotations || {})[id] ? world.cotations[id].prix : null,
+    });
+  }
+  return out;
+}
+
+/** Le réseau avec lequel on traite : celui qu'on a choisi, ou le premier venu. */
+export function comptoirActif(state) {
+  const liste = comptoirsPossibles(state);
+  if (!liste.length) return null;
+  const choisi = state.base.comptoir;
+  return liste.find((x) => x.id === choisi) || liste[0];
+}
+
+/** Ce qui empêche de passer un ordre, dit en clair. */
+export function peutTraiter(state) {
+  const base = state.base;
+  if (!base || !base.fonde) return { ok: false, motif: 'Il faut un avant-poste.' };
+  if (!niveauComptoir(base)) {
+    return { ok: false, motif: 'Il faut un comptoir : recherche Cotation, puis le bâtiment.' };
+  }
+  if (!base.colonieId) {
+    return {
+      ok: false,
+      motif: 'Il faut une place inscrite sur les cartes : personne n’envoie de convoi '
+        + 'à un camp qui n’existe pour personne.',
+    };
+  }
+  const c = comptoirActif(state);
+  if (!c) {
+    return {
+      ok: false,
+      motif: `Aucun réseau ne traite avec vous : il faut porter les couleurs d’une `
+        + `faction qui a ouvert sa bourse, ou valoir ${ESTIME_COMPTOIR} d’estime à ses yeux.`,
+    };
+  }
+  if (!c.prix) return { ok: false, motif: 'Le réseau n’a pas encore publié de cours.' };
+  return { ok: true, comptoir: c };
+}
+
+function niveauComptoir(base) {
+  return (base.batiments && base.batiments.comptoir) || 0;
+}
+
+/**
+ * Ce qu'un ordre rapporte ou coûte, sans le passer.
+ *
+ * On chiffre avant de cliquer : c'est la règle de tout le reste du jeu, et un
+ * ordre de bourse est précisément le genre de chose dont on ne voit le prix
+ * qu'après si personne ne l'affiche.
+ */
+export function chiffrerOrdre(state, sens, key, qte) {
+  const v = peutTraiter(state);
+  if (!v.ok) return { ok: false, motif: v.motif };
+  const c = v.comptoir;
+  const unite = c.prix[key];
+  if (!(unite > 0)) return { ok: false, motif: 'Cette matière n’est pas cotée.' };
+  const n = Math.max(0, Math.floor(qte));
+  if (n <= 0) return { ok: false, motif: 'Quantité nulle.' };
+
+  // Le courtier vit de sa connaissance du marché : il rogne la commission.
+  const courtier = 1 - Math.min(0.5, (state.base.postes && state.base.postes.courtier
+    ? state.base.postes.courtier : 0) * 0.08);
+  const part = c.commission * courtier;
+  const brut = unite * n;
+  const frais = Math.round(brut * part);
+  return {
+    ok: true,
+    comptoir: c,
+    unite,
+    qte: n,
+    brut: Math.round(brut),
+    frais,
+    total: sens === 'achat' ? Math.round(brut) + frais : Math.round(brut) - frais,
+    part,
+  };
 }
 
 /** Le cours d'une matière, tel qu'on l'affiche : valeur et écart au prix de base. */

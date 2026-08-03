@@ -1022,6 +1022,20 @@ const BUILDINGS = {
     max: 5,
     recherche: 'terraformation',
   },
+  comptoir: {
+    nom: 'Comptoir',
+    desc: 'On y passe des ordres à la bourse, et les convois viennent jusqu’ici.',
+    // Le camp cesse d'être un dépôt qu'il faut vider à dos d'homme. Ça ne
+    // s'obtient pas seulement en payant : il faut une place inscrite sur les
+    // cartes, et un réseau qui accepte de traiter avec vous.
+    cout: { ferraille: 90, polymere: 50, composant: 30, alliage: 20 },
+    coutMul: 1.7,
+    heures: 18,
+    tempsMul: 1.55,
+    energie: -6,
+    max: 5,
+    recherche: 'cotation',
+  },
   solaire: {
     nom: 'Capteurs solaires',
     desc: 'Du courant sans rien brûler, tant que le ciel le veut bien.',
@@ -1218,6 +1232,19 @@ const RESEARCH = {
     tempsMul: 1.7,
     max: 5,
   },
+  cotation: {
+    nom: 'Cotation',
+    desc: 'Débloque le comptoir : lire les cours d’une bourse et traiter avec elle sans bouger.',
+    // On ne lit pas les cours d'un marché sans lire ses transmissions : la
+    // Cryptographie d'abord. C'est aussi ce qui fait de cette branche-là un
+    // vrai investissement, et pas une case à cocher.
+    exige: 'cryptographie',
+    cout: { composant: 35, isotope: 18, credits: 800 },
+    coutMul: 1.9,
+    heures: 22,
+    tempsMul: 1.75,
+    max: 5,
+  },
   refonte: {
     nom: 'Refonte',
     desc: 'La fonderie sait aussi tirer de l’alliage de la ferraille, deux fois moins bien.',
@@ -1410,6 +1437,7 @@ const ARRET = 'arret';
 
 const RECETTES = {
   generateur: [{ id: 'marche', nom: 'Brûler du carburant', aide: 'Du courant tant qu’il y a de quoi brûler. Un camp qui capte assez peut l’éteindre.' }],
+  comptoir: [{ id: 'marche', nom: 'Tenir le comptoir ouvert', aide: 'On passe des ordres, les convois viennent.' }],
   halle: [{ id: 'marche', nom: 'Ramasser la région', aide: 'Ce que le terrain donne, sans épuiser la case.' }],
   bassins: [{ id: 'marche', nom: 'Cultiver de la biomasse', aide: 'Algues et lentilles d’eau, où qu’on soit.' }],
   hydroponie: [{ id: 'marche', nom: 'Biomasse → rations', aide: 'De quoi manger.' }],
@@ -1875,6 +1903,11 @@ const METIERS = {
     nom: 'Cultivateur', batiment: 'hydroponie', parNiveau: 3, apport: 0.14,
     skill: 'ingenierie', effet: 'Rations produites par l’hydroponie',
     texte: 'Repiquer, tailler, écarter ce qui pourrit avant que ça contamine le bac.',
+  },
+  courtier: {
+    nom: 'Courtier', batiment: 'comptoir', parNiveau: 2, apport: 0.16,
+    skill: 'commerce', effet: 'Commission retenue sur vos ordres',
+    texte: 'Il connaît le cours d’hier, celui d’aujourd’hui, et ce que ça veut dire.',
   },
   semeur: {
     nom: 'Semeur', batiment: 'semoir', parNiveau: 2, apport: 0.15,
@@ -2896,6 +2929,34 @@ function damer(world, i, force = 1) {
   r.piste = Math.min(1, (r.piste || 0) + 0.02 * force);
 }
 
+// Les cinq tableaux de travail du Dijkstra, alloués une fois pour toutes.
+//
+// Ils étaient créés à chaque appel. Tant que les routes ne se calculaient qu'au
+// moment de donner un ordre, personne ne s'en apercevait ; depuis que les
+// réseaux de bourse envoient des convois d'eux-mêmes, `chemin` tourne plusieurs
+// fois par minute de jeu et ces cinq tableaux de quatre cent trente-deux cases
+// — plus un objet et un tableau par case visitée, dans `voisins` — étaient
+// devenus le premier fournisseur du ramasse-miettes.
+//
+// Aucun risque de collision : le moteur est synchrone et `chemin` ne s'appelle
+// pas lui-même. `ardoise` les redimensionne si la carte grandit.
+let ardoiseN = 0;
+let ardoiseDist = null;
+let ardoisePrev = null;
+let ardoiseVus = null;
+let ardoiseTasN = null;
+let ardoiseTasD = null;
+
+function ardoise(n) {
+  if (n <= ardoiseN) return;
+  ardoiseN = n;
+  ardoiseDist = new Float64Array(n);
+  ardoisePrev = new Int32Array(n);
+  ardoiseVus = new Uint8Array(n);
+  ardoiseTasN = new Int32Array(n + 1);
+  ardoiseTasD = new Float64Array(n + 1);
+}
+
 /**
  * Dijkstra sur la grille, avec un tas binaire. Retourne la liste des régions de
  * `from` (exclu) à `to`.
@@ -2908,14 +2969,18 @@ function damer(world, i, force = 1) {
 function chemin(world, from, to, mods = {}) {
   if (from === to) return [];
   const n = world.regions.length;
-  const dist = new Array(n).fill(Infinity);
-  const prev = new Array(n).fill(-1);
-  const vus = new Array(n).fill(false);
+  ardoise(n);
+  const dist = ardoiseDist;
+  const prev = ardoisePrev;
+  const vus = ardoiseVus;
+  dist.fill(Infinity, 0, n);
+  prev.fill(-1, 0, n);
+  vus.fill(0, 0, n);
   dist[from] = 0;
 
   // Tas binaire minimal : deux tableaux plats, pas d'objets alloués par nœud.
-  const tasN = new Int32Array(n + 1);
-  const tasD = new Float64Array(n + 1);
+  const tasN = ardoiseTasN;
+  const tasD = ardoiseTasD;
   let taille = 0;
   const pousser = (node, d) => {
     let i = ++taille;
@@ -2954,10 +3019,19 @@ function chemin(world, from, to, mods = {}) {
     const u = tirer();
     if (vus[u]) continue; // doublon laissé par une amélioration ultérieure
     if (u === to) break;
-    vus[u] = true;
-    for (const v of voisins(u)) {
+    vus[u] = 1;
+    // Les quatre voisins à la main : `voisins()` alloue un objet et un tableau,
+    // et cette boucle-ci tourne une fois par case de la carte.
+    const ux = u % LARGEUR;
+    const uy = (u / LARGEUR) | 0;
+    const du = dist[u];
+    for (let d = 0; d < 4; d++) {
+      const vx = ux + (d === 0 ? -1 : d === 1 ? 1 : 0);
+      const vy = uy + (d === 2 ? -1 : d === 3 ? 1 : 0);
+      if (vx < 0 || vy < 0 || vx >= LARGEUR || vy >= HAUTEUR) continue;
+      const v = vy * LARGEUR + vx;
       if (vus[v]) continue;
-      const nd = dist[u] + coutTraversee(world, v, mods);
+      const nd = du + coutTraversee(world, v, mods);
       if (nd < dist[v]) { dist[v] = nd; prev[v] = u; pousser(v, nd); }
     }
   }
@@ -7450,9 +7524,17 @@ function villesDuReseau(world, membres) {
  * jeu.
  */
 function coursDe(world, key) {
-  const membres = reseauDe(world, key);
-  if (!membres.length) return null;
-  const c = (world.cotations || {})[idReseau(membres)];
+  // On passe par la table publiée, pas par un parcours des accords.
+  //
+  // `prixJoueur` appelle ceci une fois par unité achetée — une transaction de
+  // deux cents rations, c'est deux cents parcours du graphe des accords. Le
+  // tick est passé de 69 à 132 µs sur ce seul chemin. La bourse publie donc
+  // aussi, avec ses cours, la table qui dit quel drapeau appartient à quel
+  // réseau : c'est la même publication, et c'est une lecture au lieu d'une
+  // marche.
+  if (!aUneBourse(world, key)) return null;
+  const id = (world.reseauParFaction || {})[key];
+  const c = id && (world.cotations || {})[id];
   return c ? c.prix : null;
 }
 
@@ -7492,6 +7574,12 @@ function tickBourses(world, t) {
     restants[id] = { prix, maj: t, villes: villes.length, membres };
   }
   world.cotations = restants;
+  // La table de correspondance, publiée avec les cours : voir `coursDe`.
+  const par = {};
+  for (const id of Object.keys(restants)) {
+    for (const k of restants[id].membres) par[k] = id;
+  }
+  world.reseauParFaction = par;
 }
 
 /**
@@ -7629,6 +7717,127 @@ function resumeBourses(world) {
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// Le comptoir du joueur
+// ---------------------------------------------------------------------------
+
+/** L'estime qui ouvre un comptoir à qui ne porte aucune couleur. */
+const ESTIME_COMPTOIR = 40;
+/** Ce que le réseau retient sur chaque ordre, avant courtier et estime. */
+const COMMISSION = 0.12;
+/** Et le supplément qu'on paie quand on n'est pas des leurs. */
+const COMMISSION_ETRANGER = 0.08;
+
+/**
+ * Avec quel réseau ce camp peut-il traiter, et à quelles conditions ?
+ *
+ * Deux portes, et c'était le choix à trancher : porter leurs couleurs, ou
+ * valoir quarante d'estime à leurs yeux. La seconde existe pour que la commune
+ * autonome ne soit pas condamnée à tout porter à dos d'homme — on peut
+ * commercer avec des gens sans leur appartenir, c'est même l'ordinaire du
+ * commerce. Elle se paie : la commission est plus lourde pour un étranger.
+ */
+function comptoirsPossibles(state) {
+  const base = state.base;
+  if (!base || !base.fonde || !base.colonieId) return [];
+  const world = state.world;
+  const col = world.colonies.find((c) => c.id === base.colonieId);
+  const out = [];
+  const faits = new Set();
+  for (const key of DIPLO_FACTIONS) {
+    if (!aUneBourse(world, key)) continue;
+    const membres = reseauDe(world, key);
+    const id = idReseau(membres);
+    if (faits.has(id)) continue;
+    // Nos couleurs, ou l'estime de l'un des membres du réseau.
+    const sien = !!(col && col.faction && membres.includes(col.faction));
+    const estime = Math.max(...membres.map((k) => state.player.reputation[k] || 0));
+    if (!sien && estime < ESTIME_COMPTOIR) continue;
+    faits.add(id);
+    out.push({
+      id,
+      membres,
+      sien,
+      estime: Math.round(estime),
+      commission: COMMISSION + (sien ? 0 : COMMISSION_ETRANGER),
+      prix: (world.cotations || {})[id] ? world.cotations[id].prix : null,
+    });
+  }
+  return out;
+}
+
+/** Le réseau avec lequel on traite : celui qu'on a choisi, ou le premier venu. */
+function comptoirActif(state) {
+  const liste = comptoirsPossibles(state);
+  if (!liste.length) return null;
+  const choisi = state.base.comptoir;
+  return liste.find((x) => x.id === choisi) || liste[0];
+}
+
+/** Ce qui empêche de passer un ordre, dit en clair. */
+function peutTraiter(state) {
+  const base = state.base;
+  if (!base || !base.fonde) return { ok: false, motif: 'Il faut un avant-poste.' };
+  if (!niveauComptoir(base)) {
+    return { ok: false, motif: 'Il faut un comptoir : recherche Cotation, puis le bâtiment.' };
+  }
+  if (!base.colonieId) {
+    return {
+      ok: false,
+      motif: 'Il faut une place inscrite sur les cartes : personne n’envoie de convoi '
+        + 'à un camp qui n’existe pour personne.',
+    };
+  }
+  const c = comptoirActif(state);
+  if (!c) {
+    return {
+      ok: false,
+      motif: `Aucun réseau ne traite avec vous : il faut porter les couleurs d’une `
+        + `faction qui a ouvert sa bourse, ou valoir ${ESTIME_COMPTOIR} d’estime à ses yeux.`,
+    };
+  }
+  if (!c.prix) return { ok: false, motif: 'Le réseau n’a pas encore publié de cours.' };
+  return { ok: true, comptoir: c };
+}
+
+function niveauComptoir(base) {
+  return (base.batiments && base.batiments.comptoir) || 0;
+}
+
+/**
+ * Ce qu'un ordre rapporte ou coûte, sans le passer.
+ *
+ * On chiffre avant de cliquer : c'est la règle de tout le reste du jeu, et un
+ * ordre de bourse est précisément le genre de chose dont on ne voit le prix
+ * qu'après si personne ne l'affiche.
+ */
+function chiffrerOrdre(state, sens, key, qte) {
+  const v = peutTraiter(state);
+  if (!v.ok) return { ok: false, motif: v.motif };
+  const c = v.comptoir;
+  const unite = c.prix[key];
+  if (!(unite > 0)) return { ok: false, motif: 'Cette matière n’est pas cotée.' };
+  const n = Math.max(0, Math.floor(qte));
+  if (n <= 0) return { ok: false, motif: 'Quantité nulle.' };
+
+  // Le courtier vit de sa connaissance du marché : il rogne la commission.
+  const courtier = 1 - Math.min(0.5, (state.base.postes && state.base.postes.courtier
+    ? state.base.postes.courtier : 0) * 0.08);
+  const part = c.commission * courtier;
+  const brut = unite * n;
+  const frais = Math.round(brut * part);
+  return {
+    ok: true,
+    comptoir: c,
+    unite,
+    qte: n,
+    brut: Math.round(brut),
+    frais,
+    total: sens === 'achat' ? Math.round(brut) + frais : Math.round(brut) - frais,
+    part,
+  };
+}
+
 /** Le cours d'une matière, tel qu'on l'affiche : valeur et écart au prix de base. */
 function ligneCours(prix, key) {
   const base = COMMODITIES[key].prix;
@@ -7641,6 +7850,42 @@ function ligneCours(prix, key) {
 // de son propre stock. Une ville affamée paie les rations au prix fort ; une
 // ville assise sur une mine brade son minerai.
 
+
+/**
+ * Ce que coûte de tenir un empire trop grand et trop étalé.
+ *
+ * La forme d'abord : la tension est un *produit*, pas une somme. Une ville
+ * lointaine d'une petite faction ne paie rien — elle est loin de sa capitale
+ * parce que le pays est ce qu'il est, ce n'est pas de la surextension. Ce sont
+ * les villes en trop qui coûtent, et elles coûtent d'autant plus qu'elles sont
+ * loin. La somme punissait tout le monde, y compris les petits, et c'est ce qui
+ * vidait la carte.
+ *
+ * Les chiffres ensuite, sur six graines et trois mille deux cents heures :
+ *
+ *   frein coupé              77 villes debout · plus gros empire 24 · agitation 0,55
+ *   0,00016 + 0,00035        56 villes debout · plus gros empire 17 · agitation 0,87
+ *   ci-dessous               72 villes debout · plus gros empire 22 · agitation 0,60
+ *
+ * La deuxième ligne, ce sont les constantes d'origine — celles qui n'avaient
+ * jamais tourné. Elles emportaient un quart des villes du monde.
+ *
+ * Il faut dire aussi ce que le frein *n'a pas* à faire, parce qu'on a cru
+ * longtemps le contraire : le commentaire d'origine en faisait « ce qui empêche
+ * un vainqueur d'avaler la carte entière ». Mesuré frein coupé, sur dix-huit
+ * mille heures, le plus gros empire plafonne entre 27 et 44 % des villes et le
+ * monde se stabilise vers cinquante-huit. Personne n'avale rien. Le frein
+ * infléchit, il ne sauve pas la partie — et un frein qu'on croit vital, on le
+ * serre trop fort.
+ */
+const SUREXTENSION = {
+  /** En dessous, on tient son pays sans y penser. */
+  seuil: 8,
+  /** Par ville au-delà du seuil, et par heure. */
+  parVille: 0.00005,
+  /** Et ce que chaque case d'éloignement ajoute à cette ville-là. */
+  parCase: 0.00001,
+};
 
 /** Stock « confortable » visé par une colonie pour une marchandise. */
 function cibleStock(col, key) {
@@ -7955,14 +8200,29 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
   const satiete = besoin > 0 ? servi / besoin : 1;
 
   // Surextension : une faction qui tient trop de villes, trop loin de sa
-  // capitale, les tient mal. C'est le frein qui empêche un vainqueur d'avaler
-  // la carte entière.
+  // capitale, les tient mal.
+  //
+  // Ce frein n'a jamais freiné quoi que ce soit. `distance` prend deux cases ;
+  // on lui en passait trois, le monde en tête — elle rendait `NaN`, et le
+  // `tension > 0` juste en dessous l'avalait sans un mot. Un garde qu'on ne
+  // voit jamais échouer ne prouve rien : celui-ci a caché un mécanisme mort
+  // depuis le jour de son écriture. Il est bordé maintenant, et il crie.
+  //
+  // Le rebrancher tel quel coûtait un quart du monde — quatre cent soixante-trois
+  // villes debout sur six graines, trois cent trente-sept avec. Les deux
+  // constantes avaient été choisies à vue contre un mécanisme qui ne tournait
+  // pas, et personne ne pouvait le savoir. Elles ont donc été remesurées, et la
+  // forme avec : voir SUREXTENSION.
   if (col.faction && world.factions[col.faction]) {
     const f = world.factions[col.faction];
-    const cap = f.capitale && world.colonies.find((c) => c.id === f.capitale);
-    const eloignement = cap ? distanceCases(world, cap.regionId, col.regionId) : 0;
-    const surcharge = Math.max(0, f.colonies.length - 3);
-    const tension = (eloignement * 0.00016 + surcharge * 0.00035) * dt;
+    const cap = f.capitale && colonieParId(world, f.capitale);
+    const eloignement = cap ? distanceCases(cap.regionId, col.regionId) : 0;
+    const surcharge = Math.max(0, f.colonies.length - SUREXTENSION.seuil);
+    const tension = surcharge
+      * (SUREXTENSION.parVille + eloignement * SUREXTENSION.parCase) * dt;
+    // Le garde qui manquait. `NaN > 0` est faux : sans ce cri, toute erreur de
+    // calcul ici redevient un mécanisme mort et silencieux.
+    if (!(tension >= 0)) throw new Error(`tension de surextension incalculable pour ${col.id}`);
     if (tension > 0) col.unrest = Math.min(1, col.unrest + tension);
   }
 
@@ -8484,20 +8744,32 @@ function tenterDepart(state, rng, log) {
   const dedans = (col) => col.faction && reseau.has(col.faction);
   const chezSoi = dedans(de);
 
+  // Les villes à portée, calculées une fois. La version précédente rebalayait
+  // les cinquante-cinq colonies pour chacune des matières en surplus, et
+  // recalculait la même distance à chaque tour : le tri par portée ne dépend pas
+  // de la marchandise, seul le manque en dépend.
+  const portee = [];
+  for (const vers of world.colonies) {
+    if (!vivante(vers) || vers.id === de.id) continue;
+    const lie = chezSoi && dedans(vers);
+    const d = distance(de.regionId, vers.regionId);
+    if (d > (lie ? 12 : 7)) continue;
+    portee.push({ vers, d, lie });
+  }
+  if (!portee.length) return null;
+
   let meilleur = null;
   for (const [k, qteDispo] of dispo) {
-    for (const vers of world.colonies) {
-      if (!vivante(vers) || vers.id === de.id) continue;
-      const manque = besoin(vers, k);
+    const prixIci = prixUnitaire(de, k);
+    for (const p of portee) {
+      const manque = besoin(p.vers, k);
       if (manque < 12) continue;
-      const lie = chezSoi && dedans(vers);
-      const d = distance(de.regionId, vers.regionId);
-      if (d > (lie ? 12 : 7)) continue;
       // Le gain vaut-il le trajet ? Écart de prix contre distance.
-      const gain = (prixUnitaire(vers, k) - prixUnitaire(de, k)) * Math.min(qteDispo, manque);
-      const score = gain / (1 + d * 0.6) * (lie ? 2.2 : 1);
+      const qte = Math.min(qteDispo, manque);
+      const gain = (prixUnitaire(p.vers, k) - prixIci) * qte;
+      const score = gain / (1 + p.d * 0.6) * (p.lie ? 2.2 : 1);
       if (score > 12 && (!meilleur || score > meilleur.score)) {
-        meilleur = { k, de, vers, qte: Math.min(qteDispo, manque), score, lie };
+        meilleur = { k, de, vers: p.vers, qte, score, lie: p.lie };
       }
     }
   }
@@ -8599,6 +8871,116 @@ function departsDuReseau(state, rng, log) {
   }
 }
 
+/**
+ * Les niveaux d'escorte qu'on peut payer, et ce qu'ils valent.
+ *
+ * Un convoi qu'on ne peut pas perdre serait un téléporteur, et toute la
+ * géographie du jeu s'annulerait — les distances, les régions dangereuses, le
+ * fait qu'un camp isolé soit isolé. On paie donc pour réduire le risque, pas
+ * pour le supprimer : au mieux, un convoi bien gardé traverse une région
+ * tranquille presque à coup sûr, et une friche reste une friche.
+ */
+const ESCORTES = [
+  { id: 'aucune', nom: 'Aucune', force: 0, cout: 0, aide: 'On charge et on prie.' },
+  { id: 'legere', nom: 'Deux gardes', force: 22, cout: 0.06, aide: 'De quoi décourager un maraudeur.' },
+  { id: 'lourde', nom: 'Escorte armée', force: 55, cout: 0.16, aide: 'Ce que le réseau fait de mieux.' },
+];
+
+/**
+ * Passer un ordre : les marchandises partent ou viennent, par la route.
+ *
+ * Une vente sort le lot de l'entrepôt tout de suite et paie à l'arrivée ; un
+ * achat débite tout de suite et livre à l'arrivée. Dans les deux cas c'est un
+ * convoi comme les autres : il traverse des régions, il peut être pillé, et
+ * l'on peut le faire escorter.
+ */
+function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEscorte) {
+  const v = peutTraiter(state);
+  if (!v.ok) return v;
+  const devis = chiffrerOrdre(state, sens, key, qte);
+  if (!devis.ok) return devis;
+  const base = state.base;
+  const world = state.world;
+
+  // La ville du réseau la plus proche : c'est de là que part le convoi, ou
+  // c'est là qu'il va.
+  const villes = villesDuReseau(world, devis.comptoir.membres).filter(vivante);
+  if (!villes.length) return { ok: false, motif: 'Aucune ville du réseau n’est joignable.' };
+  const place = villes.reduce((a, b) => (distance(b.regionId, base.regionId)
+    < distance(a.regionId, base.regionId) ? b : a));
+
+  const esc = ESCORTES.find((x) => x.id === escorteId) || ESCORTES[0];
+  const fraisEscorte = Math.round(devis.brut * esc.cout);
+
+  if (sens === 'achat') {
+    const du = devis.total + fraisEscorte;
+    if (state.player.credits < du) {
+      return { ok: false, motif: `Il manque ${du - state.player.credits} cr.` };
+    }
+    state.player.credits -= du;
+  } else {
+    const dispo = Math.floor(base.stock[key] || 0);
+    if (dispo < devis.qte) {
+      return { ok: false, motif: `L’entrepôt n’a que ${dispo} ${COMMODITIES[key].nom.toLowerCase()}.` };
+    }
+    if (state.player.credits < fraisEscorte) {
+      return { ok: false, motif: `L’escorte coûte ${fraisEscorte} cr d’avance.` };
+    }
+    state.player.credits -= fraisEscorte;
+    base.stock[key] = dispo - devis.qte;
+  }
+
+  const de = sens === 'achat' ? place.regionId : base.regionId;
+  const vers = sens === 'achat' ? base.regionId : place.regionId;
+  const route = chemin(world, de, vers);
+  if (!route || !route.length) {
+    // On rend ce qu'on a pris : un ordre qu'on ne peut pas honorer ne se paie pas.
+    if (sens === 'achat') state.player.credits += devis.total + fraisEscorte;
+    else { base.stock[key] = (base.stock[key] || 0) + devis.qte; state.player.credits += fraisEscorte; }
+    return { ok: false, motif: 'Aucune route entre votre camp et le réseau.' };
+  }
+
+  const car = {
+    id: idDepuisRng(rng, 'o'),
+    faction: place.faction,
+    reseau: devis.comptoir.id,
+    // Ce qui distingue ce convoi de tous les autres : il est à vous.
+    pour: 'joueur',
+    sens,
+    versBase: sens === 'achat',
+    paiement: sens === 'vente' ? devis.total : 0,
+    deId: sens === 'achat' ? place.id : base.colonieId,
+    versId: sens === 'achat' ? base.colonieId : place.id,
+    regionId: de,
+    route,
+    etape: 0,
+    progres: 0,
+    cargaison: { [key]: devis.qte },
+    escorte: esc.force,
+    escorteGroupe: groupeEscorte || null,
+    depuis: state.temps,
+  };
+  world.caravanes.push(car);
+  if (log) {
+    log({
+      type: 'bourse',
+      texte: sens === 'achat'
+        ? `Ordre passé : ${devis.qte} ${COMMODITIES[key].nom.toLowerCase()} depuis ${place.nom}, `
+          + `${devis.total + fraisEscorte} cr. Le convoi est en route.`
+        : `Ordre passé : ${devis.qte} ${COMMODITIES[key].nom.toLowerCase()} vers ${place.nom}, `
+          + `${devis.total} cr à l’arrivée. Le convoi part.`,
+      regionId: base.regionId,
+      important: true,
+    });
+  }
+  return { ok: true, caravane: car, devis, escorte: esc, frais: fraisEscorte, place };
+}
+
+/** Vos convois en cours, pour les suivre. */
+function ordresEnCours(state) {
+  return (state.world.caravanes || []).filter((c) => c.pour === 'joueur');
+}
+
 // ---------------------------------------------------------------------------
 // Route
 // ---------------------------------------------------------------------------
@@ -8616,7 +8998,43 @@ function valeurCargaison(car) {
   return Math.round(v);
 }
 
-function arriver(world, car, log) {
+// `state` d'abord, et pas en dernier argument facultatif : c'est lui qui dit si
+// ce convoi est celui du joueur. Il l'était, et un des deux appels l'a oublié —
+// la cargaison partait alors dans le stock d'une ville, sans un crédit versé et
+// sans rien dans le journal. Un paramètre qu'on peut omettre finit par l'être.
+function arriver(state, car, log) {
+  const world = state.world;
+  // Un convoi du joueur ne se range pas dans le stock d'une ville : il rentre
+  // dans son entrepôt, ou il rapporte ce qu'on lui devait.
+  if (car.pour === 'joueur') {
+    if (car.versBase) {
+      for (const k of Object.keys(car.cargaison)) {
+        state.base.stock[k] = (state.base.stock[k] || 0) + car.cargaison[k];
+      }
+      if (log) {
+        log({
+          type: 'bourse',
+          texte: `Le convoi arrive : ${Object.keys(car.cargaison).map(
+            (k) => `${Math.round(car.cargaison[k])} ${COMMODITIES[k].nom.toLowerCase()}`
+          ).join(', ')} dans l’entrepôt.`,
+          regionId: car.regionId,
+          important: true,
+        });
+      }
+    } else {
+      state.player.credits += car.paiement || 0;
+      if (log) {
+        log({
+          type: 'bourse',
+          texte: `Livraison honorée : ${car.paiement || 0} cr encaissés.`,
+          regionId: car.regionId,
+          important: true,
+        });
+      }
+    }
+    retirerCaravane(world, car);
+    return;
+  }
   const vers = colonieParId(world, car.versId);
   if (vivante(vers)) {
     for (const k of Object.keys(car.cargaison)) {
@@ -8631,7 +9049,21 @@ function arriver(world, car, log) {
   retirerCaravane(world, car);
 }
 
-function pillee(world, car, par, log) {
+function pillee(state, car, par, log) {
+  const world = state.world;
+  // La perte d'un convoi à soi doit se lire autrement qu'une nouvelle du monde :
+  // c'est votre marchandise ou votre argent qui vient de disparaître.
+  if (car.pour === 'joueur') {
+    log({
+      type: 'bourse',
+      texte: `Votre convoi est pillé en ${nomRegion(world, car.regionId)}${par ? ` par ${par}` : ''}. `
+        + `${car.versBase ? 'La cargaison ne viendra pas.' : 'Elle ne sera jamais livrée, et personne ne paiera.'}`,
+      regionId: car.regionId,
+      important: true,
+    });
+    retirerCaravane(world, car);
+    return;
+  }
   log({
     type: 'caravane',
     texte: `Une caravane ${FACTIONS[car.faction].genitif} est pillée en ${nomRegion(world, car.regionId)}${par ? ` par ${par}` : ''}.`,
@@ -8639,6 +9071,41 @@ function pillee(world, car, par, log) {
     important: true,
   });
   retirerCaravane(world, car);
+}
+
+/**
+ * Ce que vaut l'escouade qui accompagne ce convoi, ici et maintenant.
+ *
+ * Elle ne compte que si elle est sur la même case : une escorte à trois régions
+ * de là n'escorte rien. C'est ce qui distingue « embarquer une escouade » d'une
+ * case à cocher — il faut vraiment faire la route avec.
+ *
+ * Et le lien s'arrête là : escorter un convoi ne donne pas d'ordre à l'escouade
+ * et ne lui en retire pas. Une première version la remettait au repos quand le
+ * convoi arrivait, ce qui annulait sans prévenir ce que le joueur lui avait
+ * demandé entre-temps. Le convoi disparaît, le lien avec lui ; l'escouade
+ * continue ce qu'elle faisait.
+ */
+function forceEscorte(state, car) {
+  if (!car.escorteGroupe || !state) return 0;
+  const g = (state.player.groupes || []).find((x) => x.id === car.escorteGroupe);
+  if (!g || g.regionId !== car.regionId) return 0;
+  let f = 0;
+  for (const c of g.membres) {
+    if (!estDebout(c)) continue;
+    f += comp(c, 'melee') * 0.4 + comp(c, 'tir') * 0.4 + comp(c, 'endurance') * 0.2;
+  }
+  return f;
+}
+
+/** Le convoi a-t-il encore quelque part où aller ? */
+function destinationTenable(state, car) {
+  if (car.pour === 'joueur') {
+    return car.versBase
+      ? !!(state.base && state.base.fonde)
+      : vivante(colonieParId(state.world, car.versId));
+  }
+  return vivante(colonieParId(state.world, car.versId));
 }
 
 /** Une heure de route pour toutes les caravanes. */
@@ -8650,8 +9117,12 @@ function tickCaravanes(state, log, ctx) {
   for (const car of world.caravanes.slice()) {
     if (!world.caravanes.includes(car)) continue;
 
-    const vers = colonieParId(world, car.versId);
-    if (!vivante(vers)) { retirerCaravane(world, car); continue; }
+    // La destination existe-t-elle encore ? `vivante` exige un drapeau, et
+    // c'est juste pour une ville — mais le camp du joueur n'en a pas quand il
+    // est indépendant, et tout convoi qui lui était adressé disparaissait au
+    // premier tour, sans livraison, sans paiement, sans une ligne au journal.
+    // Un camp existe parce qu'il est fondé, pas parce qu'il porte des couleurs.
+    if (!destinationTenable(state, car)) { retirerCaravane(world, car); continue; }
 
     // Une colonne ennemie sur la case, et la caravane disparaît.
     const armee = world.armees.find(
@@ -8659,16 +9130,17 @@ function tickCaravanes(state, log, ctx) {
     );
     if (armee && rng.chance(0.5)) {
       world.factions[armee.faction].tresor += Math.round(valeurCargaison(car) * 0.5);
-      pillee(world, car, FACTIONS[armee.faction].nom, log);
+      pillee(state, car, FACTIONS[armee.faction].nom, log);
       continue;
     }
 
     // Les routes ne sont pas sûres : le danger de la région s'applique.
     const r = world.regions[car.regionId];
-    const risque = r.danger * 1.6 * (1 - Math.min(0.7, car.escorte / 60));
+    const garde = car.escorte + forceEscorte(state, car);
+    const risque = r.danger * 1.6 * (1 - Math.min(0.85, garde / 60));
     if (rng.chance(risque)) {
       if (rng.chance(0.55)) {
-        pillee(world, car, 'des pillards', log);
+        pillee(state, car, 'des pillards', log);
         continue;
       }
       // Attaque repoussée, mais l'escorte fond.
@@ -8679,12 +9151,12 @@ function tickCaravanes(state, log, ctx) {
     if (car.progres < HEURES_PAR_CASE) continue;
     car.progres = 0;
 
-    if (car.etape >= car.route.length) { arriver(world, car, log); continue; }
+    if (car.etape >= car.route.length) { arriver(state, car, log); continue; }
     car.regionId = car.route[car.etape];
     // Le commerce trace les routes mieux que personne : c'est lui qui passe.
     damer(world, car.regionId, 1.6);
     car.etape++;
-    if (car.etape >= car.route.length) arriver(world, car, log);
+    if (car.etape >= car.route.length) arriver(state, car, log);
   }
 
   // Nouveau départ de temps en temps
@@ -8694,7 +9166,11 @@ function tickCaravanes(state, log, ctx) {
   // meilleures routes, des départs décidés. Mesuré avant : 0,8 caravane en
   // circulation en moyenne sur toute la carte, pic à trois. Le plafond de sept
   // n'a jamais été la contrainte ; c'était le tirage.
-  if (state.temps % 3 === 0) departsDuReseau(state, rng, log);
+  // Toutes les douze heures, pas toutes les trois : ce passage examine chaque
+  // ville du réseau pour chacune des dix matières, et à trois il coûtait à lui
+  // seul la moitié du budget d'un tick. Un convoi met des dizaines d'heures à
+  // arriver ; décider quatre fois moins souvent ne se voit pas.
+  if (!state.world.sansDeparts && state.temps % 12 === 0) departsDuReseau(state, rng, log);
 }
 
 // ---------------------------------------------------------------------------
@@ -11767,10 +12243,62 @@ function placesMetier(base, key) {
   return niveau(base, m.batiment) * m.parNiveau;
 }
 
-/** Habitants effectivement à ce poste — jamais plus que de places. */
-function affectes(base, key) {
+/**
+ * Ce que le joueur a demandé pour ce poste — jamais plus que de places.
+ *
+ * C'est une *consigne*, pas un état : elle survit à une escouade qui s'en va, à
+ * une famine, à une mauvaise saison. `base.postes` ne contient plus que ça.
+ */
+function voulus(base, key) {
   const n = (base.postes && base.postes[key]) || 0;
   return Math.max(0, Math.min(n, placesMetier(base, key)));
+}
+
+/**
+ * Et ce qui est réellement tenu, une fois les bras comptés.
+ *
+ * Les deux se confondaient, et c'est ce qui rendait l'écran incompréhensible :
+ * chaque heure, le moteur *réécrivait la consigne du joueur* pour la ramener au
+ * nombre de bras présents, en dégarnissant du dernier métier de la liste vers
+ * le premier. Une escouade qui passait des travaux au repos vidait dix-huit
+ * postes d'un coup, et le bassinier tombait à 0/9 pendant que son voisin restait
+ * plein — sans que rien, nulle part, ne dise pourquoi. Le joueur remplissait, ça
+ * se revidait, il remplissait encore.
+ *
+ * Maintenant la consigne ne bouge pas et le manque se répartit *au prorata* :
+ * personne ne tombe à zéro tant que son voisin est plein, et l'on retrouve son
+ * réglage intact dès que les bras reviennent. On distribue au plus fort reste,
+ * pour que la somme tombe juste.
+ */
+function tenus(base, state) {
+  const out = {};
+  let demande = 0;
+  for (const k of METIER_KEYS) {
+    out[k] = voulus(base, k);
+    demande += out[k];
+  }
+  const bras = brasDisponibles(base, state);
+  if (demande <= bras) return out;
+  if (bras <= 0) {
+    for (const k of METIER_KEYS) out[k] = 0;
+    return out;
+  }
+  const restes = [];
+  let place = 0;
+  for (const k of METIER_KEYS) {
+    const exact = (out[k] * bras) / demande;
+    out[k] = Math.floor(exact);
+    place += out[k];
+    restes.push([k, exact - out[k]]);
+  }
+  restes.sort((a, b) => b[1] - a[1]);
+  for (let i = 0; i < restes.length && place < bras; i++, place++) out[restes[i][0]] += 1;
+  return out;
+}
+
+/** Habitants effectivement à ce poste. */
+function affectes(base, key, state) {
+  return tenus(base, state)[key] || 0;
 }
 
 /**
@@ -11800,15 +12328,40 @@ function brasEscouade(state) {
 }
 
 /**
- * Ceux qui n'ont pas de poste : ils aident partout, sans rien faire de précis.
+ * Combien de bras l'avant-poste a, en tout. **Un seul endroit le dit.**
+ *
+ * Il y en avait deux, et ils n'étaient pas d'accord : `manoeuvres` arrondissait
+ * `pop`, `reajusterPostes` la tronquait. À douze habitants et six dixièmes, le
+ * premier annonçait une main libre, le joueur la plaçait, et le second la
+ * renvoyait chez elle l'heure suivante. On remplissait un poste, il se vidait
+ * tout seul, indéfiniment — et rien dans l'écran ne pouvait l'expliquer,
+ * puisque les deux comptes étaient justes chacun de son côté.
+ *
+ * **Deux nombres écrits séparément finissent toujours par diverger.** Celui-ci
+ * est écrit une fois : on tronque, parce qu'on n'emploie pas six dixièmes
+ * d'homme.
  *
  * `state` est facultatif — sans lui on ne compte que les habitants, ce qui
  * était le comportement d'avant. Avec, on compte aussi l'escouade aux travaux.
  */
+function brasDisponibles(base, state) {
+  return Math.floor(base.pop || 0) + brasEscouade(state);
+}
+
+/** Ceux qui n'ont pas de poste : ils aident partout, sans rien faire de précis. */
 function manoeuvres(base, state) {
+  const t = tenus(base, state);
   let pris = 0;
-  for (const k of METIER_KEYS) pris += affectes(base, k);
-  return Math.max(0, Math.round((base.pop || 0) + brasEscouade(state) - pris));
+  for (const k of METIER_KEYS) pris += t[k] || 0;
+  return Math.max(0, brasDisponibles(base, state) - pris);
+}
+
+/** Ce que le joueur a réglé et que personne ne tient, faute de bras. */
+function postesDegarnis(base, state) {
+  const t = tenus(base, state);
+  let manque = 0;
+  for (const k of METIER_KEYS) manque += voulus(base, k) - (t[k] || 0);
+  return manque;
 }
 
 /**
@@ -11826,7 +12379,7 @@ function mainDoeuvre(base, state) {
  */
 function rendementMetier(state, key) {
   const base = state.base;
-  const n = affectes(base, key);
+  const n = affectes(base, key, state);
   if (!n) return { ouvriers: 0, mult: 1, contremaitre: null };
   const m = METIERS[key];
   const chef = contremaitre(state, key);
@@ -11851,18 +12404,34 @@ function contremaitre(state, key) {
   return best && comp(best, m.skill) >= 20 ? best : null;
 }
 
-/** Affecte `n` habitants à un poste. Retourne ce qui a réellement été fait. */
+/**
+ * Règle la consigne d'un poste. Retourne ce qui a été enregistré.
+ *
+ * On ne borne plus par les bras présents. C'était le geste qui rendait tout
+ * incohérent : le joueur ne pouvait régler que ce qu'il pouvait tenir *à cet
+ * instant*, si bien qu'un réglage fait pendant que l'escouade travaillait
+ * devenait un réglage impossible dès qu'elle s'arrêtait — et le moteur le
+ * défaisait. Une consigne se règle une fois ; c'est `tenus` qui dit combien de
+ * gens la servent aujourd'hui.
+ *
+ * Et toucher un poste, c'est prendre la barre. L'embauche automatique récrivait
+ * `base.postes` de fond en comble toutes les vingt-quatre heures : on réglait,
+ * on regardait ailleurs, et le lendemain tout était revenu comme avant. Il
+ * existait bien un interrupteur pour la couper, mais il fallait savoir qu'elle
+ * existait pour aller le chercher — c'est-à-dire avoir déjà compris le
+ * problème. On la coupe donc au premier réglage, et l'écran le dit.
+ */
 function affecter(state, key, n) {
   const base = state.base;
   if (!METIERS[key]) return { ok: false, motif: 'Métier inconnu.' };
   if (!base.postes) base.postes = {};
   const places = placesMetier(base, key);
   if (places <= 0) return { ok: false, motif: `Il faut bâtir ${BUILDINGS[METIERS[key].batiment].nom.toLowerCase()}.` };
-  const actuel = affectes(base, key);
-  const libre = manoeuvres(base, state);
-  const vise = Math.max(0, Math.min(n, places, actuel + libre));
+  const vise = Math.max(0, Math.min(Math.floor(n), places));
   base.postes[key] = vise;
-  return { ok: true, affectes: vise };
+  const reprise = base.autoEmploi !== false;
+  base.autoEmploi = false;
+  return { ok: true, affectes: vise, tenus: tenus(base, state)[key] || 0, reprise };
 }
 
 /**
@@ -11872,11 +12441,27 @@ function affecter(state, key, n) {
  * produit. Puis de quoi bâtir : le récoltant ramasse la région, le bâtisseur
  * monte les chantiers. Puis se défendre. Puis transformer, ce qui suppose
  * d'avoir déjà le reste.
+ *
+ * **Cette liste doit contenir tous les métiers.** Elle en oubliait quatre — le
+ * bassinier, le semeur, le terraformier, le courtier, c'est-à-dire les quatre
+ * plus récents. Un métier absent d'ici n'est jamais pourvu par personne : les
+ * bassins de culture affichaient 0/9 pour toujours, et le seul moyen d'y mettre
+ * quelqu'un était de couper l'embauche automatique — ce que rien n'indiquait.
+ * `test/headless.js` vérifie maintenant que la liste est complète, parce qu'un
+ * oubli de ce genre ne se voit pas : ça ne plante pas, ça ne fait rien.
  */
 const ORDRE_EMBAUCHE = [
-  'cultivateur', 'cuisinier', 'recoltant', 'batisseur', 'magasinier',
-  'milicien', 'garde', 'mecanicien', 'fondeur', 'raffineur', 'machiniste',
-  'infirmier', 'operateur',
+  // Manger d'abord.
+  'cultivateur', 'bassinier', 'cuisinier',
+  // Puis bâtir et ranger.
+  'recoltant', 'batisseur', 'magasinier',
+  // Puis tenir la place.
+  'milicien', 'garde', 'mecanicien',
+  // Puis transformer.
+  'fondeur', 'raffineur', 'machiniste',
+  // Puis le reste : soigner, transmettre, commercer, et travailler la terre
+  // pour plus tard.
+  'infirmier', 'operateur', 'courtier', 'semeur', 'terraformier',
 ];
 
 /**
@@ -11920,26 +12505,24 @@ function embaucher(base, state) {
   base.postes = postes;
 }
 
-/** Après une famine ou une démolition, les postes se réajustent tout seuls. */
-function reajusterPostes(base, state) {
+/**
+ * Une démolition ferme les places : la consigne se rabote d'autant.
+ *
+ * Et **elle ne se rabote que pour ça**. Cette fonction retirait aussi des
+ * postes quand il manquait des bras, en dégarnissant du dernier métier de la
+ * liste vers le premier — c'est-à-dire en réécrivant chaque heure ce que le
+ * joueur venait de régler, dans un ordre interne qu'il ne pouvait pas deviner.
+ * Une escouade qui passait des travaux au repos vidait dix-huit postes d'un
+ * coup et le bassinier tombait à 0/9 pendant que son voisin restait plein.
+ *
+ * Un manque de bras est un état, pas une décision : il se lit dans `tenus` et
+ * il s'affiche. Il n'efface rien.
+ */
+function reajusterPostes(base) {
   if (!base.postes) { base.postes = {}; return; }
   for (const k of METIER_KEYS) {
     const max = placesMetier(base, k);
     if ((base.postes[k] || 0) > max) base.postes[k] = max;
-  }
-  let total = 0;
-  for (const k of METIER_KEYS) total += base.postes[k] || 0;
-  // Trop de postes pour trop peu de monde : on dégarnit du dernier au premier.
-  //
-  // « Trop peu de monde » comptait les seuls habitants, si bien que cette
-  // fonction défaisait chaque heure ce que l'embauche venait de faire : une
-  // escouade aux travaux ne tenait jamais un poste, quoi qu'on règle.
-  const bras = Math.floor((base.pop || 0) + brasEscouade(state));
-  for (let i = METIER_KEYS.length - 1; i >= 0 && total > bras; i--) {
-    const k = METIER_KEYS[i];
-    const retire = Math.min(base.postes[k] || 0, total - bras);
-    base.postes[k] = (base.postes[k] || 0) - retire;
-    total -= retire;
   }
 }
 
@@ -12276,9 +12859,12 @@ function tempsRecherche(base, key) {
   return Math.max(1, Math.round(brut / (1 + antenne * 0.25)));
 }
 
-function capaciteStock(base) {
-  // Un magasinier gagne de la place : ranger, c'est du volume.
-  const m = 1 + affectes(base, 'magasinier') * METIERS.magasinier.apport;
+function capaciteStock(base, state) {
+  // Un magasinier gagne de la place : ranger, c'est du volume. Ce sont les
+  // magasiniers vraiment à leur poste qui comptent — mais sans `state` on ne
+  // sait rien de l'escouade, et l'on retombe alors sur les seuls habitants,
+  // c'est-à-dire sur le comportement d'avant.
+  const m = 1 + affectes(base, 'magasinier', state) * METIERS.magasinier.apport;
   return Math.round((800 + niveau(base, 'entrepot') * 800) * m);
 }
 
@@ -12564,7 +13150,7 @@ function tickBase(state, log, ctx) {
     embaucher(base, state);
   }
   // Postes tenus, contremaîtres compris. Calculé une fois pour tout le tick.
-  reajusterPostes(base, state);
+  reajusterPostes(base);
   const M = {};
   for (const k of METIER_KEYS) M[k] = rendementMetier(state, k).mult;
 
@@ -19412,11 +19998,17 @@ function blocMetiers() {
   const lignes = ouverts.map((k) => {
     const m = METIERS[k];
     const places = placesMetier(b, k);
-    const n0 = affectes(b, k);
+    const veut = voulus(b, k);
+    const n0 = affectes(b, k, S);
     const rd = rendementMetier(S, k);
+    // Deux nombres différents, et il faut les deux : ce qu'on a réglé, et ce
+    // qui est tenu aujourd'hui. Les confondre était tout le problème.
+    const puce = n0 === veut
+      ? `<span class="puce">${veut}/${places}</span>`
+      : `<span class="puce att">${n0} tenu(s) sur ${veut}</span>`;
     return `<div style="border-bottom:1px solid #1b2029;padding:7px 0">
       <div class="ligne">
-        <span class="k">${e(m.nom)} <span class="puce">${n0}/${places}</span></span>
+        <span class="k">${e(m.nom)} ${puce}</span>
         <span class="v ${n0 ? 'ambre' : ''}">${n0 ? `×${rd.mult.toFixed(2)}` : '—'}</span>
       </div>
       <div class="aide">${e(m.effet)}. ${e(m.texte)}</div>
@@ -19424,19 +20016,33 @@ function blocMetiers() {
     ? `Contremaître ${e(rd.contremaitre.nom)} — ${e(nomComp(m.skill))} ${Math.round(comp(rd.contremaitre, m.skill))}`
     : `Sans contremaître (${e(nomComp(m.skill))})`}</div>
       <div class="taches" style="margin-top:5px">
-        <button class="act mini" data-a="poste" data-k="${k}" data-n="-1" ${n0 <= 0 ? 'disabled' : ''}>−</button>
+        <button class="act mini" data-a="poste" data-k="${k}" data-n="-1" ${veut <= 0 ? 'disabled' : ''}>−</button>
         <button class="act mini" data-a="poste" data-k="${k}" data-n="1"
-          ${n0 >= places || libres <= 0 ? 'disabled' : ''}>+</button>
+          ${veut >= places ? 'disabled' : ''}>+</button>
         <button class="act mini" data-a="poste" data-k="${k}" data-n="max"
-          ${n0 >= places || libres <= 0 ? 'disabled' : ''}>Au complet</button>
-        <button class="act mini" data-a="poste" data-k="${k}" data-n="0" ${n0 <= 0 ? 'disabled' : ''}>Vider</button>
+          ${veut >= places ? 'disabled' : ''}>Au complet</button>
+        <button class="act mini" data-a="poste" data-k="${k}" data-n="0" ${veut <= 0 ? 'disabled' : ''}>Vider</button>
       </div>
     </div>`;
   }).join('');
 
+  // Ce qui manque, dit avant qu'on s'en aperçoive par soi-même. C'était la
+  // moitié du problème : le réglage se défaisait, et rien à l'écran ne disait
+  // ni que ça arrivait, ni pourquoi.
+  const degarnis = postesDegarnis(b, S);
+  const total = brasDisponibles(b, S);
+  const alerte = degarnis > 0 ? `<div class="aide ambre">${n(degarnis)} poste(s) réglé(s)
+    que personne ne tient : il n’y a que ${n(total)} bras ici. Le réglage est gardé —
+    les gens reprennent leur place dès qu’il y a du monde. Le manque se répartit sur
+    tous les métiers, aucun n’est vidé au profit d’un autre.</div>` : '';
+
   return `<section class="panneau">
     <h2 class="titre">Métiers
-      <span class="droite">${n(libres)} manœuvre(s) sur ${n(b.pop)}</span></h2>
+      <span class="droite">${n(libres)} manœuvre(s) sur ${n(total)}</span></h2>
+    <div class="aide">${n(total)} bras en tout : ${n(Math.floor(b.pop || 0))} habitant(s)${bras
+    ? ` et ${n(bras)} des vôtres aux travaux — ceux-là repartent avec l’escouade`
+    : ', et personne de l’escouade (il faut lui donner l’ordre « Travaux », ici)'}.</div>
+    ${alerte}
     <div class="aide">Un habitant sans poste aide partout un peu (×${mainDoeuvre(b, S).toFixed(2)}
       sur l’ensemble). Affecté, il rend bien davantage — mais sur sa chaîne seulement.
       Un des vôtres présent à l’avant-poste encadre l’équipe et vaut plusieurs bras.</div>
@@ -19524,6 +20130,82 @@ function blocEcoleBase() {
  * On n'affiche que les bâtiments montés : une liste de consignes pour des
  * ateliers qui n'existent pas est du bruit.
  */
+/**
+ * Ce que cette chaîne mange, ce qu'il en reste, et ce qui la bloque.
+ *
+ * « On voit pas toujours ce qui a besoin de quoi, qui produit quoi. » Le nom de
+ * la recette dit bien « Biomasse → rations », mais il ne dit pas s'il reste de
+ * la biomasse, ni pourquoi rien ne sort ce matin. Un atelier à l'arrêt, un
+ * atelier sans courant et un atelier sans matière se ressemblaient tous les
+ * trois : ils ne faisaient rien.
+ *
+ * On ne nomme qu'un seul empêchement — trois alertes empilées, c'est un mur
+ * qu'on ne lit pas —, et c'est l'arrêt franc qui passe devant le ralentissement.
+ * Un bac vide ne produit rien du tout ; un camp à quatre-vingts pour cent de
+ * courant produit à quatre-vingts pour cent. Annoncer le second quand c'est le
+ * premier qui bloque, c'est envoyer le joueur réparer ce qui marche.
+ */
+function ligneEntrees(b, k, recette) {
+  const entrees = ENTREES[k] || [];
+  // La raffinerie change d'entrée avec sa consigne : c'est justement le genre
+  // de chose qu'on ne devine pas.
+  const vraies = k === 'raffinerie'
+    ? (recette === 'carburant' ? ['polymere'] : [])
+    : entrees;
+  const dechets = k === 'raffinerie' && recette !== 'carburant';
+  // Le générateur brûle du carburant sans passer par `ENTREES` — cette table-là
+  // sert aussi à proposer des réserves, et une réserve de carburant serait un
+  // mensonge : le générateur passe outre, exprès.
+  const brulot = k === 'generateur';
+  // Et il ne subit pas la panne de courant : c'est lui qui la produit. Il
+  // s'annonçait « tourne à 80 % » à cause de sa propre pénurie, ce qui invitait
+  // à réparer la chose qui manquait avec la chose qui manquait.
+  const subitLeCourant = (BUILDINGS[k].energie || 0) < 0;
+
+  const stocks = vraies.map((m) => {
+    const q = Math.floor(b.stock[m] || 0);
+    const res = reserveDe(b, m);
+    const bloque = q <= res;
+    return `<span class="${bloque ? 'alerte' : ''}">${e(COMMODITIES[m].nom.toLowerCase())} ${n(q)}${
+      res ? ` <span class="aide">(réserve ${n(res)})</span>` : ''}</span>`;
+  }).join(' · ');
+
+  if (recette === ARRET) {
+    return `<div class="aide">Rien n’entre, rien ne sort : vous l’avez arrêtée.</div>`;
+  }
+
+  const en = energie(b, S);
+  // D'abord ce qui arrête net.
+  const vide = vraies.find((m) => Math.floor(b.stock[m] || 0) <= 0);
+  const sousReserve = vraies.find((m) => Math.floor(b.stock[m] || 0) <= reserveDe(b, m));
+  let empeche = null;
+  if (brulot) {
+    if (Math.floor(b.stock.carburant || 0) <= 0) {
+      empeche = 'Plus de carburant : il ne produit plus rien.';
+    }
+  } else if (dechets && (b.dechets || 0) <= 0) {
+    empeche = 'Le tas de déchets est vide — il se remplit tout seul en produisant.';
+  } else if (vide) {
+    empeche = `Plus de ${COMMODITIES[vide].nom.toLowerCase()} : elle tourne à vide.`;
+  } else if (sousReserve) {
+    empeche = `La réserve de ${COMMODITIES[sousReserve].nom.toLowerCase()} l’arrête `
+      + '— c’est vous qui l’avez posée.';
+  } else if (subitLeCourant && en.ratio < 0.999) {
+    // Et seulement ensuite ce qui ralentit.
+    empeche = `Le courant manque : elle tourne à ${Math.round(en.ratio * 100)} %.`;
+  }
+
+  const carb = Math.floor(b.stock.carburant || 0);
+  const quoi = brulot
+    ? `<span class="${carb > 0 ? '' : 'alerte'}">carburant ${n(carb)}</span>`
+      + ' <span class="aide">(il passe outre les réserves)</span>'
+    : dechets
+      ? `<span class="${(b.dechets || 0) > 0 ? '' : 'alerte'}">déchets ${n(Math.floor(b.dechets || 0))}</span>`
+      : (stocks || '<span class="aide">rien — elle produit à partir de la région</span>');
+  return `<div class="aide">Consomme : ${quoi}</div>`
+    + (empeche ? `<div class="aide alerte">▲ ${e(empeche)}</div>` : '');
+}
+
 function blocConsignes() {
   const b = S.base;
   if (!b.fonde) return '';
@@ -19546,6 +20228,7 @@ function blocConsignes() {
         <span class="v ${actuelle === ARRET ? 'alerte' : 'ok'}">${
   actuelle === ARRET ? 'à l’arrêt' : 'en marche'}</span></div>
       <div class="aide">${def ? e(def.aide || def.nom) : 'Rien ne tourne ici.'}</div>
+      ${ligneEntrees(b, k, actuelle)}
       <div class="taches" style="margin-top:5px">${boutons}</div>
     </div>`;
   }).join('');
@@ -19639,6 +20322,161 @@ function blocTerre() {
   </section>`;
 }
 
+// L'état du formulaire du comptoir. Il ne va pas dans la partie : c'est ce
+// qu'on est en train de taper, pas ce qui est arrivé au monde.
+let ordreSens = 'achat';
+let ordreKey = 'rations';
+let ordreQte = 50;
+let ordreEscorte = 'aucune';
+let ordreEscouade = false;
+let messageComptoir = null;
+
+const QTES_ORDRE = [10, 50, 200, 1000];
+
+/**
+ * Le comptoir : passer des ordres à une bourse sans bouger de chez soi.
+ *
+ * Tout le reste du commerce du jeu demande d'y aller — de charger, de marcher,
+ * de revenir. Le comptoir est ce qui met fin à ça, et c'est pour cette raison
+ * qu'il coûte une recherche, un bâtiment, et soit les couleurs d'une faction
+ * soit son estime. Ce n'est pas un raccourci offert : c'est l'aboutissement
+ * d'une branche entière.
+ *
+ * Ce qui n'est jamais offert, en revanche, c'est la sécurité du convoi. Voir
+ * `ESCORTES` : un convoi qu'on ne peut pas perdre annulerait la carte.
+ */
+function blocComptoir() {
+  const b = S.base;
+  if (!b.fonde) return '';
+  const niv = nivBat(b, 'comptoir');
+  const c = ACTIONS.comptoir();
+  if (!c) return '';
+  // Rien de monté et rien en route : le panneau n'aurait rien à dire.
+  if (!niv && !c.ordres.length) return '';
+
+  const enRoute = c.ordres.map((o) => {
+    const quoi = Object.keys(o.cargaison).map(
+      (k) => `${n(Math.round(o.cargaison[k]))} ${COMMODITIES[k].nom.toLowerCase()}`).join(', ');
+    return `<div class="ligne souple">
+      <span class="k">${o.sens === 'achat' ? '↓' : '↑'} ${e(quoi)}
+        <span class="aide">${e(nomRegion(S.world, o.regionId))} · garde ${n(o.escorte)}${
+  o.escorteGroupe ? ' + escouade' : ''}</span></span>
+      <span class="v">${o.reste} case${o.reste > 1 ? 's' : ''}${o.sens === 'vente'
+    ? `<br><span class="aide">${n(o.paiement)} cr à l’arrivée</span>` : ''}</span>
+    </div>`;
+  }).join('');
+  const suivi = c.ordres.length ? `<div class="sep"></div>
+    <div class="titre">En route <span class="droite">${c.ordres.length}</span></div>
+    <div class="aide">Un convoi traverse une région toutes les deux heures, et il peut
+      être pillé sur le trajet. Tant qu’il roule, la marchandise n’est nulle part.</div>
+    ${enRoute}` : '';
+
+  if (!c.ok) {
+    return `<section class="panneau">
+      <h2 class="titre">Comptoir <span class="droite alerte">fermé</span></h2>
+      <div class="aide">${e(c.motif || 'Indisponible.')}</div>
+      ${suivi}
+    </section>`;
+  }
+
+  const act = c.actif;
+  const cours = act.prix || {};
+  // Le choix du réseau ne se montre que s'il y a un choix à faire.
+  const choixReseau = c.reseaux.length > 1 ? `<div class="taches" style="margin-top:5px">
+    ${c.reseaux.map((r) => `<button class="act mini ${r.id === act.id ? 'primaire' : ''}"
+      data-a="comptoir-reseau" data-r="${e(r.id)}">${e(r.membres.map(
+    (k) => FACTIONS[k].nom).join(' + '))}</button>`).join('')}
+  </div>` : '';
+
+  const lignesCours = COMMODITY_KEYS.filter((k) => cours[k] > 0).map((k) => {
+    const l = ligneCours(cours, k);
+    // Le cours passe à la ligne — et il faut l'envelopper pour ça. Ces boutons
+    // sont des conteneurs flex (`.taches .act.mini`), où un `<br>` nu ne fait
+    // rien du tout : on lisait « Ferraille6,0 cr ». Un seul enfant, et la mise
+    // en page redevient celle d'un texte ordinaire.
+    return `<button class="act mini ${ordreKey === k ? 'primaire' : ''}"
+      data-a="ordre-k" data-k="${k}"><span>${e(COMMODITIES[k].nom)}<br>
+      <span class="aide">${n(cours[k], 1)} cr${l && l.ecart
+  ? ` <span class="${l.ecart > 0 ? 'alerte' : 'ok'}">${l.ecart > 0 ? '+' : ''}${
+    Math.round(l.ecart * 100)} %</span>` : ''}</span></span></button>`;
+  }).join('');
+
+  const devis = ACTIONS.chiffrerOrdre(ordreSens, ordreKey, ordreQte);
+  const esc = c.escortes.find((x) => x.id === ordreEscorte) || c.escortes[0];
+  const fraisEsc = devis.ok ? Math.round(devis.brut * esc.cout) : 0;
+  const du = devis.ok
+    ? (ordreSens === 'achat' ? devis.total + fraisEsc : devis.total - fraisEsc) : 0;
+  const stockIci = Math.floor(b.stock[ordreKey] || 0);
+
+  const g = G();
+  const escouadeIci = !!(g && g.regionId === b.regionId);
+
+  return `<section class="panneau">
+    <h2 class="titre">Comptoir
+      <span class="droite">${e(act.membres.map((k) => FACTIONS[k].nom).join(' + '))}</span></h2>
+    <div class="aide">${act.sien
+    ? 'Vous portez leurs couleurs : la commission est celle des leurs.'
+    : `Vous n’êtes pas des leurs — ${act.estime} d’estime, et ${Math.round(
+      act.commission * 100)} % de commission au lieu de ${Math.round(
+      (act.commission - 0.08) * 100)} %.`}
+      ${nivBat(b, 'comptoir') ? '' : '<span class="alerte">Aucun comptoir monté.</span>'}</div>
+    ${choixReseau}
+    <div class="sep"></div>
+
+    <div class="taches">
+      <button class="act mini ${ordreSens === 'achat' ? 'primaire' : ''}"
+        data-a="ordre-sens" data-r="achat">Acheter</button>
+      <button class="act mini ${ordreSens === 'vente' ? 'primaire' : ''}"
+        data-a="ordre-sens" data-r="vente">Vendre</button>
+    </div>
+    <div class="taches" style="margin-top:5px">${lignesCours}</div>
+    <div class="taches" style="margin-top:5px">Quantité
+      ${QTES_ORDRE.map((q) => `<button class="act mini ${ordreQte === q ? 'primaire' : ''}"
+    data-a="ordre-q" data-q="${q}">${q}</button>`).join('')}</div>
+
+    <div class="sep"></div>
+    <div class="titre">Garde du convoi</div>
+    <div class="taches" style="margin-top:5px">
+      ${c.escortes.map((x) => `<button class="act mini ${ordreEscorte === x.id ? 'primaire' : ''}"
+    data-a="ordre-escorte" data-r="${e(x.id)}"><span>${e(x.nom)}<br>
+    <span class="aide">${x.cout ? `+${Math.round(x.cout * 100)} %` : 'gratuit'}</span></span></button>`).join('')}
+    </div>
+    <div class="aide">${e(esc.aide)}</div>
+    <button class="act mini ${ordreEscouade ? 'primaire' : ''}" style="margin-top:5px"
+      data-a="ordre-escouade" ${escouadeIci ? '' : 'disabled'}>
+      ${ordreEscouade ? '✓ ' : ''}Escorter avec ${e(g ? g.nom : 'l’escouade')}</button>
+    <div class="aide">${escouadeIci
+    ? 'Elle ne protège le convoi que tant qu’elle est sur la même case que lui : '
+      + 'il faut vraiment faire la route avec.'
+    : 'L’escouade n’est pas au camp — elle ne peut pas partir avec le convoi d’ici.'}</div>
+
+    <div class="sep"></div>
+    ${devis.ok ? `<div class="ligne"><span class="k">${ordreSens === 'achat'
+    ? 'Cours à l’achat' : 'Cours à la vente'}</span>
+      <span class="v">${n(devis.unite, 1)} cr l’unité</span></div>
+    <div class="ligne"><span class="k">Lot</span>
+      <span class="v">${n(devis.qte)} ${e(COMMODITIES[ordreKey].nom.toLowerCase())}
+        · ${n(devis.brut)} cr</span></div>
+    <div class="ligne"><span class="k">Commission</span>
+      <span class="v">${n(devis.frais)} cr <span class="aide">(${
+  Math.round(devis.part * 100)} %)</span></span></div>
+    ${fraisEsc ? `<div class="ligne"><span class="k">Escorte</span>
+      <span class="v">${n(fraisEsc)} cr</span></div>` : ''}
+    <div class="ligne"><span class="k">${ordreSens === 'achat' ? 'À payer' : 'Vous touchez'}</span>
+      <span class="v ${ordreSens === 'achat' ? 'alerte' : 'ok'}">${n(du)} cr</span></div>
+    <div class="aide">${ordreSens === 'achat'
+    ? 'Débité maintenant, livré à l’entrepôt quand le convoi arrive.'
+    : `Sorti de l’entrepôt maintenant (${n(stockIci)} en stock), payé à l’arrivée. `
+      + 'Un convoi pillé ne paie pas.'}</div>
+    <button class="act primaire" style="margin-top:6px" data-a="passer-ordre"
+      ${niv ? '' : 'disabled'}>Passer l’ordre</button>`
+    : `<div class="aide alerte">${e(devis.motif || '')}</div>`}
+    ${messageComptoir ? `<div class="aide ${messageComptoir.ok ? 'ok' : 'alerte'}"
+      style="margin-top:6px">${e(messageComptoir.texte)}</div>` : ''}
+    ${suivi}
+  </section>`;
+}
+
 function ecranBase() {
   const b = S.base;
   if (!b.fonde) {
@@ -19665,7 +20503,7 @@ function ecranBase() {
 
   const en = energie(b, S);
   const stock = totalStock(b);
-  const capa = capaciteStock(b);
+  const capa = capaciteStock(b, S);
 
   // Ce qui marche sur vous, en tête d'écran et pas au fond du journal.
   const menaces = menacesSurLaBase(S);
@@ -19847,6 +20685,7 @@ function ecranBase() {
 
   ${blocChaine()}
   ${blocConsignes()}
+  ${blocComptoir()}
   ${blocTerre()}
   ${blocMetiers()}
   ${blocEcoleBase()}
@@ -21284,7 +22123,7 @@ function modaleTransfert() {
     if (!sac && !ent) return '';
     // Ce qui partira vraiment, borné par ce qu'on a et par la place restante :
     // le bouton annonce le nombre plutôt qu'une flèche.
-    const versBas = Math.min(qteTransfert, sac, Math.max(0, capaciteStock(b) - totalStock(b)));
+    const versBas = Math.min(qteTransfert, sac, Math.max(0, capaciteStock(b, S) - totalStock(b)));
     const place = capacitePortage(S, G()) - poidsInventaire(G().inventaire);
     const versHaut = Math.min(qteTransfert, ent,
       Math.floor(place / Math.max(0.01, COMMODITIES[k].poids)));
@@ -21298,7 +22137,7 @@ function modaleTransfert() {
     </div>`;
   }).join('');
   return `<h2 class="titre">Transfert
-    <span class="droite">${n(totalStock(b))}/${n(capaciteStock(b))}</span></h2>
+    <span class="droite">${n(totalStock(b))}/${n(capaciteStock(b, S))}</span></h2>
   <div class="aide">↓ vers l’entrepôt · ↑ vers le sac. Les boutons annoncent ce qui
     passera vraiment : ce qu’on a, ce que l’entrepôt peut prendre, ce que le sac peut porter.</div>
   <div class="taches" style="margin-top:6px">Quantité ${choixQuantite('qte-transfert', qteTransfert)}</div>
@@ -22066,12 +22905,13 @@ function surClic(ev) {
 
     case 'poste': {
       const k = el.dataset.k;
-      const actuel = affectes(S.base, k);
+      const actuel = voulus(S.base, k);
       const cible = el.dataset.n === 'max'
         ? placesMetier(S.base, k)
         : el.dataset.n === '0' ? 0 : actuel + Number(el.dataset.n);
       const r = affecter(S, k, cible);
       if (!r.ok) toast(r.motif, true);
+      else if (r.reprise) toast('Vous prenez la main : les habitants ne se placent plus seuls.');
       ACTIONS.sauver();
       rafraichir(true);
       break;
@@ -22294,6 +23134,54 @@ function surClic(ev) {
     case 'reserve': {
       const r = ACTIONS.reglerReserve(el.dataset.k, Number(el.dataset.n));
       if (!r.ok) messageSauvegardes = r.motif;
+      rafraichir(true);
+      break;
+    }
+
+    // --- Le comptoir. Tout ce qui suit ne fait que remplir le bon de commande ;
+    // seul `passer-ordre` touche à la partie.
+    case 'comptoir-reseau':
+      ACTIONS.choisirComptoir(el.dataset.r);
+      messageComptoir = null;
+      rafraichir(true);
+      break;
+
+    case 'ordre-sens':
+      ordreSens = el.dataset.r;
+      messageComptoir = null;
+      rafraichir(true);
+      break;
+
+    case 'ordre-k':
+      ordreKey = el.dataset.k;
+      messageComptoir = null;
+      rafraichir(true);
+      break;
+
+    case 'ordre-q':
+      ordreQte = Number(el.dataset.q);
+      messageComptoir = null;
+      rafraichir(true);
+      break;
+
+    case 'ordre-escorte':
+      ordreEscorte = el.dataset.r;
+      messageComptoir = null;
+      rafraichir(true);
+      break;
+
+    case 'ordre-escouade':
+      ordreEscouade = !ordreEscouade;
+      rafraichir(true);
+      break;
+
+    case 'passer-ordre': {
+      const g = G();
+      const r = ACTIONS.passerOrdre(ordreSens, ordreKey, ordreQte, ordreEscorte,
+        ordreEscouade && g ? g.id : null);
+      messageComptoir = r.ok
+        ? { ok: true, texte: `Le convoi part de ${r.place.nom}.` }
+        : { ok: false, texte: r.motif };
       rafraichir(true);
       break;
     }
@@ -22609,6 +23497,62 @@ const API = {
   disposerCorps(id, quoi) {
     const r = disposerCorps(state, groupeActif(state), id, quoi, creerLogger(state));
     sauver();
+    return r;
+  },
+
+  // -------------------------------------------------------------------------
+  // Le comptoir
+  // -------------------------------------------------------------------------
+
+  /** Tout ce que l'écran du comptoir a besoin de savoir, en un appel. */
+  comptoir() {
+    if (!state) return null;
+    const v = peutTraiter(state);
+    return {
+      ok: v.ok,
+      motif: v.motif || null,
+      reseaux: comptoirsPossibles(state),
+      actif: comptoirActif(state),
+      escortes: ESCORTES,
+      ordres: ordresEnCours(state).map((c) => ({
+        id: c.id,
+        sens: c.sens,
+        cargaison: c.cargaison,
+        paiement: c.paiement || 0,
+        regionId: c.regionId,
+        reste: Math.max(0, c.route.length - c.etape),
+        escorte: Math.round(c.escorte),
+        escorteGroupe: c.escorteGroupe || null,
+        depuis: c.depuis,
+      })),
+    };
+  },
+
+  /** Le réseau avec lequel on veut traiter, quand il y en a plusieurs. */
+  choisirComptoir(id) {
+    if (!state || !state.base) return { ok: false, motif: 'Aucune partie en cours.' };
+    if (!comptoirsPossibles(state).some((x) => x.id === id)) {
+      return { ok: false, motif: 'Ce réseau ne traite pas avec vous.' };
+    }
+    state.base.comptoir = id;
+    sauver();
+    return { ok: true };
+  },
+
+  /** Le prix d'un ordre, avant de le passer. */
+  chiffrerOrdre(sens, key, qte) {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    return chiffrerOrdre(state, sens, key, Number(qte));
+  },
+
+  /** Et l'ordre lui-même : le convoi part, avec ce qu'on a payé pour le garder. */
+  passerOrdre(sens, key, qte, escorte, groupe) {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    const rng = new Rng(state.rngState);
+    const r = passerOrdre(
+      state, sens, key, Number(qte), escorte, rng, creerLogger(state), groupe || null);
+    state.rngState = rng.save();
+    if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },
 

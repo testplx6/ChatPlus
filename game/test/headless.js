@@ -15,15 +15,18 @@ import {
   rendementTactique,
 } from '../src/combat.js';
 import { titreDe, lignesDe, faitsDe, RENOMMEES } from '../src/chronique.js';
-import { faireRevolte, SEUIL_REVOLTE } from '../src/economy.js';
+import { faireRevolte, SEUIL_REVOLTE, SUREXTENSION } from '../src/economy.js';
 import { BETES } from '../src/betes.js';
-import { attaquerCaravane } from '../src/caravanes.js';
+import {
+  attaquerCaravane, passerOrdre, ordresEnCours, ESCORTES,
+} from '../src/caravanes.js';
 import { combatContre, fouillerSite } from '../src/events.js';
 import { bandeLocale } from '../src/events.js';
 import { damer, coutTraversee, PISTE_GAIN, rendementRegion } from '../src/world.js';
 import {
   aUneBourse, reseauDe, idReseau, veutOuvrirBourse, ouvrirBourse, signerAccord,
   rompreAccords, coursDe, tickBourses, prixAvecBourse,
+  peutTraiter, chiffrerOrdre, ESTIME_COMPTOIR,
 } from '../src/bourse.js';
 import { distanceMorale } from '../src/factions.js';
 import { loiIci } from '../src/lois.js';
@@ -42,6 +45,7 @@ import {
   manoeuvres, affecter, rendementMetier, mainDoeuvre, niveauRech,
   perdreAvantPoste, saccagerAvantPoste, menacesSurLaBase, rendementLibre, AMENDEMENT_MAX,
   recetteDe, recettesDe, reglerRecette, reglerReserve, brasEscouade,
+  voulus, tenus, postesDegarnis, brasDisponibles, ORDRE_EMBAUCHE,
 } from '../src/base.js';
 import {
   METIER_KEYS, METIERS, SKILLS, BIOMES, BUILDINGS, RESEARCH, POSTURES, COMMODITIES,
@@ -910,6 +914,48 @@ const ach = acheter(s6, col6, 'ferraille', 30);
 ok(ach.ok && ach.qte > 0 && s6.player.credits < 5000, 'achat débité et livré');
 const ven = vendre(s6, col6, 'ferraille', ach.qte);
 ok(ven.ok && ven.gain > 0 && ven.gain < ach.cout, 'revente à perte immédiate (marge)');
+
+section('6 bis. Tenir un empire trop grand se paie');
+{
+  // Ce frein est resté mort depuis le jour où il a été écrit : `distance` prend
+  // deux cases, on lui en passait trois, elle rendait `NaN`, et le `tension > 0`
+  // qui suivait l'avalait en silence. Rien ne l'a jamais vu, parce que rien ne
+  // regardait. Ces lignes-ci regardent — deux mondes identiques à ceci près
+  // qu'une faction a le double de villes, et la différence doit se lire dans
+  // l'agitation.
+  const sx = nouvellePartie(4242, { maintenant: 0 });
+  const drapeau = Object.keys(sx.world.factions).find(
+    (k) => sx.world.factions[k].colonies.length >= 2);
+  const f = sx.world.factions[drapeau];
+  const cap = sx.world.colonies.find((c) => c.id === f.capitale);
+  const sienne = sx.world.colonies.find(
+    (c) => c.faction === drapeau && c.id !== f.capitale && !c.ruine);
+
+  ok(!!cap && !!sienne, 'une faction avec sa capitale et une autre ville',
+    `${drapeau} : ${f.colonies.length} villes`);
+
+  const agiter = (villes) => {
+    const st = nouvellePartie(4242, { maintenant: 0 });
+    const g = st.world.factions[drapeau];
+    // On ne lui donne pas de villes en vrai — on lui en fait croire, ce qui est
+    // exactement ce que le calcul lit.
+    g.colonies = Array.from({ length: villes }, (_, i) => g.colonies[i % g.colonies.length]);
+    const cible = st.world.colonies.find((c) => c.id === sienne.id);
+    cible.unrest = 0.2;
+    for (let i = 0; i < 400; i++) tick(st);
+    return cible.unrest;
+  };
+
+  const petit = agiter(SUREXTENSION.seuil);
+  const grand = agiter(SUREXTENSION.seuil + 12);
+  ok(grand > petit, 'douze villes de trop, et la ville tient moins bien',
+    `${petit.toFixed(3)} → ${grand.toFixed(3)}`);
+
+  // Et le NaN, nommément : c'est lui qu'on n'a pas vu pendant tout ce temps.
+  const eloigne = distance(cap.regionId, sienne.regionId);
+  ok(Number.isFinite(eloigne) && eloigne > 0,
+    'l’éloignement à la capitale est un nombre, pas un NaN', `${eloigne} cases`);
+}
 
 section('7. Escouade et ordres');
 const s7 = nouvellePartie(5150, { maintenant: 0, depart: 'ville', equipe: 3 });
@@ -1791,8 +1837,21 @@ ok(manoeuvres(s9t.base) === 10, 'au départ tout le monde est manœuvre');
 const aff = affecter(s9t, 'cultivateur', 6);
 ok(aff.ok && aff.affectes === 6, 'on affecte des habitants à un poste', JSON.stringify(aff));
 ok(manoeuvres(s9t.base) === 4, 'les manœuvres diminuent d’autant', `${manoeuvres(s9t.base)}`);
-ok(affecter(s9t, 'fondeur', 6).affectes === 4, 'on ne peut pas affecter plus de monde qu’on en a',
-  `${affectes(s9t.base, 'fondeur')}`);
+// On règle ce qu'on veut : une consigne n'est pas un état. Ce qui est borné,
+// c'est le nombre de gens qui travaillent réellement — et c'est un compte, pas
+// une interdiction. Avant, `affecter` refusait par avance, si bien qu'un
+// réglage fait pendant que l'escouade prêtait la main devenait illégal dès
+// qu'elle s'en allait, et le moteur le défaisait sans le dire.
+ok(affecter(s9t, 'fondeur', 6).affectes === 6,
+  'on peut régler un poste au-delà des bras du jour',
+  `${voulus(s9t.base, 'fondeur')}`);
+{
+  let tenusTotal = 0;
+  for (const k of METIER_KEYS) tenusTotal += affectes(s9t.base, k, s9t);
+  ok(tenusTotal === 10, 'mais il ne travaille jamais plus de gens qu’il n’y en a',
+    `${tenusTotal} pour ${brasDisponibles(s9t.base, s9t)} bras`);
+}
+affecter(s9t, 'fondeur', 4);
 ok(affecter(s9t, 'machiniste', 3).ok === false, 'ni ouvrir un poste sans son bâtiment');
 
 // Le rendement du poste dépasse celui de la main-d'œuvre anonyme.
@@ -1842,14 +1901,67 @@ ok(avecChef.mult > sansChef.mult, 'et son absence se voit sur le rendement',
   `${avecChef.mult.toFixed(2)} → ${sansChef.mult.toFixed(2)}`);
 g9t.regionId = videT.i;
 
-// Les postes se réajustent quand la population tombe ou qu'un mur est rasé.
+// Les postes se dégarnissent quand la population tombe ou qu'un mur est rasé.
 s9t.base.pop = 3;
 avancer(s9t, 2);
 let totalPostes = 0;
-for (const k of METIER_KEYS) totalPostes += affectes(s9t.base, k);
+for (const k of METIER_KEYS) totalPostes += affectes(s9t.base, k, s9t);
 ok(totalPostes <= s9t.base.pop, 'les postes se dégarnissent si la population tombe',
   `${totalPostes} pour ${s9t.base.pop} habitants`);
 verifierCoherence(s9t, 'après affectation des métiers');
+
+{
+  // Un métier absent de l'ordre d'embauche n'est jamais pourvu par personne, et
+  // ça ne plante pas : ça ne fait rien. Le bassinier, le semeur, le
+  // terraformier et le courtier sont restés à 0 pendant tout leur premier âge
+  // pour cette seule raison — l'écran affichait « 0/9 » sans rien d'autre à en
+  // dire. Une liste qu'il faut penser à compléter finit par être incomplète.
+  const oublies = METIER_KEYS.filter((k) => !ORDRE_EMBAUCHE.includes(k));
+  ok(oublies.length === 0,
+    'l’embauche automatique connaît tous les métiers',
+    oublies.length ? `jamais pourvu(s) : ${oublies.join(', ')}` : '');
+
+  // Et le réglage du joueur survit à l'embauche automatique — c'était l'autre
+  // moitié du défaut : on réglait, et vingt-quatre heures plus tard le moteur
+  // avait tout récrit.
+  const sp = nouvellePartie(6161, { maintenant: 0, depart: 'ville', equipe: 3 });
+  sp.base.fonde = true;
+  sp.base.regionId = groupeActif(sp).regionId;
+  sp.base.batiments = { hydroponie: 3, bassins: 3, entrepot: 3 };
+  sp.base.pop = 14;
+  Object.assign(sp.base.stock, { biomasse: 3000, rations: 3000 });
+  const rBass = affecter(sp, 'bassinier', 6);
+  ok(rBass.ok && voulus(sp.base, 'bassinier') === 6,
+    'on peut mettre six personnes aux bassins', `${voulus(sp.base, 'bassinier')}`);
+  ok(rBass.reprise === true, 'et régler un poste coupe l’embauche automatique');
+  avancer(sp, 72);
+  ok(voulus(sp.base, 'bassinier') === 6,
+    'trois jours plus tard, le réglage est toujours là',
+    `${voulus(sp.base, 'bassinier')}`);
+
+  // Le manque de bras se répartit, il n'efface pas — et il ne vide pas un
+  // métier au profit de son voisin.
+  const sq = nouvellePartie(6161, { maintenant: 0, depart: 'ville', equipe: 3 });
+  sq.base.fonde = true;
+  sq.base.regionId = groupeActif(sq).regionId;
+  sq.base.batiments = { hydroponie: 3, bassins: 3, entrepot: 3 };
+  sq.base.pop = 4;
+  Object.assign(sq.base.stock, { biomasse: 3000, rations: 3000 });
+  affecter(sq, 'cultivateur', 6);
+  affecter(sq, 'bassinier', 6);
+  const t = tenus(sq.base, sq);
+  ok(t.cultivateur > 0 && t.bassinier > 0,
+    'à court de bras, aucun métier ne tombe à zéro pendant que l’autre est plein',
+    `cultivateur ${t.cultivateur} · bassinier ${t.bassinier}`);
+  ok(t.cultivateur + t.bassinier === 4, 'et la somme tombe juste sur les bras présents',
+    `${t.cultivateur + t.bassinier} pour 4`);
+  ok(postesDegarnis(sq.base, sq) === 8, 'ce qui manque est chiffré, pas effacé',
+    `${postesDegarnis(sq.base, sq)}`);
+  avancer(sq, 48);
+  ok(voulus(sq.base, 'bassinier') === 6,
+    'et deux jours de disette n’ont pas touché à la consigne',
+    `${voulus(sq.base, 'bassinier')}`);
+}
 
 section('9 nonies septies. Servir par colonne, et peser au conseil');
 const multi = nouvellePartie(9797, { maintenant: 0, depart: 'ville', equipe: 3 });
@@ -4756,24 +4868,33 @@ section('9 quattuorvicies. Les ordres de mission aussi : le délai est l’excep
   // Corrigé pour les contrats, oublié pour les ordres — et c'est la même erreur.
   // Un ordre sur quatre presse et paie moitié plus ; les autres attendent qu'on
   // les fasse. Ce qui borne, c'est qu'on n'en reçoit qu'un à la fois.
-  const so = nouvellePartie(5678, { maintenant: 0, depart: 'ville', equipe: 3 });
-  const go = groupeActif(so);
-  const colO = so.world.colonies.find((c) => c.faction && !c.ruine);
-  go.regionId = colO.regionId;
-  so.player.reputation[colO.faction] = 60;
-  sEngager(so, colO.faction, () => {}, go);
-
+  // Sur plusieurs graines, et c'est le sujet de la dernière vérification de ce
+  // bloc : une douzaine d'ordres tirés d'une seule partie laissait un ou deux
+  // exemplaires par case, si bien que la comparaison mesurait la ville visée et
+  // la distance à parcourir, pas la prime d'urgence. Elle basculait au moindre
+  // déplacement du tirage — elle a passé et échoué sans qu'aucune des deux fois
+  // le mécanisme n'ait bougé, ce qui est la définition d'une mesure qui ne
+  // mesure rien.
   const vus = [];
-  for (let i = 0; i < 60 && vus.length < 12; i++) {
-    go.allegeance.prochainOrdre = so.temps;
-    avancer(so, 30);
-    const o = go.allegeance.ordre;
-    if (o && !vus.some((x) => x.id === o.id)) {
-      vus.push({
-        id: o.id, type: o.type, duree: o.duree, urgent: !!o.urgent, recompense: o.recompense,
-      });
-      // On s'en débarrasse pour en recevoir un autre.
-      go.allegeance.ordre = null;
+  for (const graine of [5678, 777, 4242, 31337, 99]) {
+    const so = nouvellePartie(graine, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const go = groupeActif(so);
+    const colO = so.world.colonies.find((c) => c.faction && !c.ruine);
+    go.regionId = colO.regionId;
+    so.player.reputation[colO.faction] = 60;
+    sEngager(so, colO.faction, () => {}, go);
+
+    for (let i = 0; i < 60; i++) {
+      go.allegeance.prochainOrdre = so.temps;
+      avancer(so, 30);
+      const o = go.allegeance.ordre;
+      if (o && !vus.some((x) => x.id === o.id)) {
+        vus.push({
+          id: o.id, type: o.type, duree: o.duree, urgent: !!o.urgent, recompense: o.recompense,
+        });
+        // On s'en débarrasse pour en recevoir un autre.
+        go.allegeance.ordre = null;
+      }
     }
   }
   ok(vus.length >= 6, 'on reçoit des ordres', `${vus.length}`);
@@ -4788,16 +4909,26 @@ section('9 quattuorvicies. Les ordres de mission aussi : le délai est l’excep
     // que paie une reconnaissance, si bien qu'une moyenne tous types confondus
     // mesure le tirage des types, pas la prime d'urgence.
     const moy = (a) => a.reduce((t, o) => t + o.recompense, 0) / Math.max(1, a.length);
+    const bucket = (t, presse) => vus.filter((o) => o.type === t && !!o.duree === presse);
+    // Quatre de chaque côté au minimum. En dessous, la moyenne d'une case est
+    // un tirage unique et l'écart qu'on lit est celui des villes, pas celui de
+    // la prime.
     const types = [...new Set(vus.map((o) => o.type))];
-    const comparables = types.filter((t) => vus.some((o) => o.type === t && o.duree)
-      && vus.some((o) => o.type === t && !o.duree));
-    const mieux = comparables.filter((t) => moy(vus.filter((o) => o.type === t && o.duree))
-      > moy(vus.filter((o) => o.type === t && !o.duree)));
-    ok(comparables.length === 0 || mieux.length === comparables.length,
+    const comparables = types.filter(
+      (t) => bucket(t, true).length >= 4 && bucket(t, false).length >= 4);
+    const mieux = comparables.filter((t) => moy(bucket(t, true)) > moy(bucket(t, false)));
+    // Cette ligne-ci ne vérifie pas le jeu : elle vérifie la mesure. Si le
+    // tirage change au point qu'aucun type n'a plus ses quatre exemplaires de
+    // chaque côté, la comparaison d'en dessous ne compare plus rien — et sans
+    // ce garde, elle passerait au vert pour cette raison-là.
+    ok(comparables.length > 0, 'assez d’ordres de chaque sorte pour comparer',
+      types.map((t) => `${t} ${bucket(t, false).length}/${bucket(t, true).length}`).join(' · '));
+    ok(mieux.length === comparables.length,
       'et l’urgence paie mieux, à type égal',
-      comparables.map((t) => `${t} ${Math.round(moy(vus.filter((o) => o.type === t && !o.duree)))}`
-        + ` → ${Math.round(moy(vus.filter((o) => o.type === t && o.duree)))}`).join(' · ')
-        || 'aucun type tiré dans les deux formes');
+      comparables.map((t) => `${t} ${Math.round(moy(bucket(t, false)))}`
+        + ` → ${Math.round(moy(bucket(t, true)))}`
+        + ` (${bucket(t, false).length}/${bucket(t, true).length})`).join(' · ')
+        || 'aucun type tiré assez souvent dans les deux formes');
   }
 }
 
@@ -5692,6 +5823,189 @@ section('9 sexvicies ter. La bourse des matières premières');
   ok(avecB < brut && avecB > cours.rations,
     'son prix est ramen\u00e9 vers le cours, sans s\u2019y confondre',
     `${brut} \u2192 ${avecB.toFixed(1)}, cours ${cours.rations.toFixed(1)}`);
+}
+
+section('9 sexvicies quater. Le comptoir : traiter sans bouger de chez soi');
+{
+  // Ce que le comptoir change : jusqu'ici, tout le commerce du jeu demandait
+  // d'y aller. Il coûte donc une recherche, un bâtiment, et l'une des deux
+  // portes — leurs couleurs, ou leur estime.
+  const monteComptoir = (graine) => {
+    const st = nouvellePartie(graine, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const w = st.world;
+    const riche = DIPLO_FACTIONS.find((k) => w.factions[k].colonies.length >= 4);
+    w.factions[riche].tresor = 9000;
+    ouvrirBourse(w, riche, 0);
+    tickBourses(w, 0);
+    // Un camp fondé, inscrit sur les cartes, avec de quoi vendre.
+    const g = groupeActif(st);
+    const sienne = w.colonies.find((c) => c.faction === riche && !c.ruine);
+    st.base.fonde = true;
+    st.base.regionId = g.regionId;
+    st.base.batiments = { comptoir: 1, entrepot: 3 };
+    st.base.colonieId = `poste-${graine}`;
+    // La place du joueur existe pour le monde : c'est ce qui permet qu'un
+    // convoi ait une adresse où aller.
+    w.colonies.push({
+      id: st.base.colonieId, nom: 'Votre camp', regionId: st.base.regionId,
+      faction: null, pop: 40, taille: 1, stock: {}, unrest: 0, murs: 0,
+      defense: 0, defenseMax: 0, contrats: [], notables: [], ruine: false,
+    });
+    st.base.stock = { rations: 400, ferraille: 200 };
+    st.player.credits = 20000;
+    return { st, w, riche, sienne };
+  };
+
+  // --- Les deux portes.
+  {
+    const { st, riche } = monteComptoir(2024);
+    st.player.reputation[riche] = 0;
+    ok(!peutTraiter(st).ok, 'sans couleurs ni estime, aucun réseau ne traite',
+      peutTraiter(st).motif);
+
+    st.player.reputation[riche] = ESTIME_COMPTOIR;
+    const ouvert = peutTraiter(st);
+    ok(ouvert.ok, `${ESTIME_COMPTOIR} d’estime suffisent, sans porter leurs couleurs`,
+      ouvert.motif || '');
+    ok(ouvert.ok && !ouvert.comptoir.sien,
+      'et l’on reste un étranger : la commission est plus lourde',
+      ouvert.ok ? `${Math.round(ouvert.comptoir.commission * 100)} %` : '');
+
+    // L'autre porte : la place du joueur porte leur drapeau.
+    const { st: st2, riche: r2 } = monteComptoir(2024);
+    st2.player.reputation[r2] = 0;
+    st2.world.colonies.find((c) => c.id === st2.base.colonieId).faction = r2;
+    const sien = peutTraiter(st2);
+    ok(sien.ok && sien.comptoir.sien, 'porter leurs couleurs ouvre la même porte, moins cher',
+      sien.ok ? `${Math.round(sien.comptoir.commission * 100)} %` : sien.motif);
+    ok(sien.ok && ouvert.ok && sien.comptoir.commission < ouvert.comptoir.commission,
+      'et c’est bien moins cher chez soi que chez les autres');
+  }
+
+  // --- Le bâtiment est la condition, pas la recherche seule.
+  {
+    const { st, riche } = monteComptoir(2024);
+    st.player.reputation[riche] = 80;
+    st.base.batiments = { entrepot: 3 };
+    ok(!peutTraiter(st).ok, 'sans le bâtiment, rien ne se traite', peutTraiter(st).motif);
+  }
+
+  // --- Le devis, avant de cliquer.
+  {
+    const { st, riche } = monteComptoir(2024);
+    st.player.reputation[riche] = 80;
+    const d = chiffrerOrdre(st, 'achat', 'rations', 100);
+    ok(d.ok && d.qte === 100 && d.brut > 0 && d.frais > 0,
+      'un ordre se chiffre avant d’être passé',
+      d.ok ? `${d.brut} cr + ${d.frais} de commission` : d.motif);
+    ok(d.ok && d.total === d.brut + d.frais,
+      'à l’achat, la commission s’ajoute');
+    const v = chiffrerOrdre(st, 'vente', 'rations', 100);
+    ok(v.ok && v.total === v.brut - v.frais, 'à la vente, elle se retient');
+
+    // Le courtier vit de sa connaissance du marché.
+    st.base.postes = { courtier: 2 };
+    const avecCourtier = chiffrerOrdre(st, 'achat', 'rations', 100);
+    ok(avecCourtier.ok && avecCourtier.frais < d.frais,
+      'un courtier au comptoir rogne la commission',
+      `${d.frais} → ${avecCourtier.frais} cr`);
+  }
+
+  // --- L'achat : débité maintenant, livré à l'arrivée.
+  {
+    const { st, riche } = monteComptoir(2024);
+    st.player.reputation[riche] = 80;
+    const avantCr = st.player.credits;
+    const avantStock = st.base.stock.rations;
+    const rng = new Rng(9);
+    const r = passerOrdre(st, 'achat', 'rations', 100, 'aucune', rng, () => {}, null);
+    ok(r.ok, 'l’ordre d’achat passe', r.motif || '');
+    ok(st.player.credits < avantCr, 'et il est débité tout de suite',
+      `${avantCr} → ${st.player.credits}`);
+    ok(st.base.stock.rations === avantStock,
+      'mais rien n’est encore arrivé : la marchandise est sur la route');
+    ok(ordresEnCours(st).length === 1, 'le convoi se suit');
+
+    // On le fait arriver, sans pillage : le monde s'arrête de tirer.
+    const car = ordresEnCours(st)[0];
+    car.escorte = 9999;
+    for (let i = 0; i < 900 && ordresEnCours(st).length; i++) tick(st);
+    ok(!ordresEnCours(st).length, 'le convoi finit par arriver');
+    ok(st.base.stock.rations > avantStock, 'et la marchandise est dans l’entrepôt',
+      `${avantStock} → ${Math.round(st.base.stock.rations)}`);
+  }
+
+  // --- La vente : sortie maintenant, payée à l'arrivée.
+  {
+    const { st, riche } = monteComptoir(2024);
+    st.player.reputation[riche] = 80;
+    const avantCr = st.player.credits;
+    const rng = new Rng(9);
+    const r = passerOrdre(st, 'vente', 'ferraille', 100, 'aucune', rng, () => {}, null);
+    ok(r.ok, 'l’ordre de vente passe', r.motif || '');
+    ok(Math.round(st.base.stock.ferraille) === 100,
+      'la marchandise quitte l’entrepôt tout de suite',
+      `${Math.round(st.base.stock.ferraille)}`);
+    ok(st.player.credits === avantCr, 'et rien n’est encore payé');
+    const car = ordresEnCours(st)[0];
+    car.escorte = 9999;
+    for (let i = 0; i < 900 && ordresEnCours(st).length; i++) tick(st);
+    ok(st.player.credits > avantCr, 'on est payé à l’arrivée, pas au départ',
+      `${avantCr} → ${st.player.credits}`);
+  }
+
+  // --- Le convoi pillé. C'est ce qui empêche le comptoir d'être un
+  //     téléporteur, et c'est donc ce qu'il faut vérifier le plus.
+  {
+    const { st, riche } = monteComptoir(2024);
+    st.player.reputation[riche] = 80;
+    const rng = new Rng(9);
+    passerOrdre(st, 'vente', 'ferraille', 100, 'aucune', rng, () => {}, null);
+    const avantCr = st.player.credits;
+    const car = ordresEnCours(st)[0];
+    // On force le pillage : la région devient un coupe-gorge et le convoi n'a
+    // aucune garde.
+    car.escorte = 0;
+    for (const rid of car.route) st.world.regions[rid].danger = 1;
+    st.world.regions[car.regionId].danger = 1;
+    let tours = 0;
+    while (ordresEnCours(st).length && tours < 900) { tick(st); tours++; }
+    ok(!ordresEnCours(st).length, 'un convoi sans garde en terre hostile ne va pas loin',
+      `${tours} h`);
+    ok(st.player.credits === avantCr,
+      'et personne ne paie pour une livraison qui n’est jamais arrivée');
+    ok(Math.round(st.base.stock.ferraille) === 100,
+      'la marchandise, elle, est bien perdue');
+  }
+
+  // --- Ce que l'escorte achète, mesuré contre un témoin.
+  {
+    const survivants = (force) => {
+      let vivants = 0;
+      for (let n = 0; n < 24; n++) {
+        const { st, riche } = monteComptoir(2024);
+        st.player.reputation[riche] = 80;
+        const rng = new Rng(100 + n);
+        passerOrdre(st, 'vente', 'ferraille', 100, 'aucune', rng, () => {}, null);
+        const car = ordresEnCours(st)[0];
+        car.escorte = force;
+        for (const rid of car.route) st.world.regions[rid].danger = 0.25;
+        st.world.regions[car.regionId].danger = 0.25;
+        // La graine du monde décide du tirage ; on la fait varier pour ne pas
+        // mesurer un seul jet de dé vingt-quatre fois.
+        st.rngState = new Rng(500 + n).save();
+        for (let i = 0; i < 900 && ordresEnCours(st).length; i++) tick(st);
+        if (st.player.credits > 20000) vivants++;
+      }
+      return vivants;
+    };
+    const nu = survivants(0);
+    const garde = survivants(ESCORTES[2].force);
+    ok(garde > nu, 'payer la garde se voit sur ce qui arrive',
+      `${nu}/24 sans escorte · ${garde}/24 avec`);
+    ok(garde < 24, 'et rien n’est jamais sûr : un convoi reste un convoi',
+      `${garde}/24`);
+  }
 }
 
 section('10. Rattrapage hors ligne');

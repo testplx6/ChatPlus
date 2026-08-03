@@ -398,6 +398,34 @@ export function damer(world, i, force = 1) {
   r.piste = Math.min(1, (r.piste || 0) + 0.02 * force);
 }
 
+// Les cinq tableaux de travail du Dijkstra, alloués une fois pour toutes.
+//
+// Ils étaient créés à chaque appel. Tant que les routes ne se calculaient qu'au
+// moment de donner un ordre, personne ne s'en apercevait ; depuis que les
+// réseaux de bourse envoient des convois d'eux-mêmes, `chemin` tourne plusieurs
+// fois par minute de jeu et ces cinq tableaux de quatre cent trente-deux cases
+// — plus un objet et un tableau par case visitée, dans `voisins` — étaient
+// devenus le premier fournisseur du ramasse-miettes.
+//
+// Aucun risque de collision : le moteur est synchrone et `chemin` ne s'appelle
+// pas lui-même. `ardoise` les redimensionne si la carte grandit.
+let ardoiseN = 0;
+let ardoiseDist = null;
+let ardoisePrev = null;
+let ardoiseVus = null;
+let ardoiseTasN = null;
+let ardoiseTasD = null;
+
+function ardoise(n) {
+  if (n <= ardoiseN) return;
+  ardoiseN = n;
+  ardoiseDist = new Float64Array(n);
+  ardoisePrev = new Int32Array(n);
+  ardoiseVus = new Uint8Array(n);
+  ardoiseTasN = new Int32Array(n + 1);
+  ardoiseTasD = new Float64Array(n + 1);
+}
+
 /**
  * Dijkstra sur la grille, avec un tas binaire. Retourne la liste des régions de
  * `from` (exclu) à `to`.
@@ -410,14 +438,18 @@ export function damer(world, i, force = 1) {
 export function chemin(world, from, to, mods = {}) {
   if (from === to) return [];
   const n = world.regions.length;
-  const dist = new Array(n).fill(Infinity);
-  const prev = new Array(n).fill(-1);
-  const vus = new Array(n).fill(false);
+  ardoise(n);
+  const dist = ardoiseDist;
+  const prev = ardoisePrev;
+  const vus = ardoiseVus;
+  dist.fill(Infinity, 0, n);
+  prev.fill(-1, 0, n);
+  vus.fill(0, 0, n);
   dist[from] = 0;
 
   // Tas binaire minimal : deux tableaux plats, pas d'objets alloués par nœud.
-  const tasN = new Int32Array(n + 1);
-  const tasD = new Float64Array(n + 1);
+  const tasN = ardoiseTasN;
+  const tasD = ardoiseTasD;
   let taille = 0;
   const pousser = (node, d) => {
     let i = ++taille;
@@ -456,10 +488,19 @@ export function chemin(world, from, to, mods = {}) {
     const u = tirer();
     if (vus[u]) continue; // doublon laissé par une amélioration ultérieure
     if (u === to) break;
-    vus[u] = true;
-    for (const v of voisins(u)) {
+    vus[u] = 1;
+    // Les quatre voisins à la main : `voisins()` alloue un objet et un tableau,
+    // et cette boucle-ci tourne une fois par case de la carte.
+    const ux = u % LARGEUR;
+    const uy = (u / LARGEUR) | 0;
+    const du = dist[u];
+    for (let d = 0; d < 4; d++) {
+      const vx = ux + (d === 0 ? -1 : d === 1 ? 1 : 0);
+      const vy = uy + (d === 2 ? -1 : d === 3 ? 1 : 0);
+      if (vx < 0 || vy < 0 || vx >= LARGEUR || vy >= HAUTEUR) continue;
+      const v = vy * LARGEUR + vx;
       if (vus[v]) continue;
-      const nd = dist[u] + coutTraversee(world, v, mods);
+      const nd = du + coutTraversee(world, v, mods);
       if (nd < dist[v]) { dist[v] = nd; prev[v] = u; pousser(v, nd); }
     }
   }

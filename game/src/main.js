@@ -12,7 +12,10 @@ import { monterUI, rafraichir, attacherEtat, rendreAccueil, ouvrirOnglet } from 
 import { Rng, seedFromString } from './rng.js';
 import { makeCharacter, estVivant } from './characters.js';
 import { creerLogger, fouillerSite, combatContre } from './events.js';
-import { attaquerCaravane } from './caravanes.js';
+import {
+  attaquerCaravane, passerOrdre, ordresEnCours, ESCORTES,
+} from './caravanes.js';
+import { peutTraiter, comptoirsPossibles, comptoirActif, chiffrerOrdre } from './bourse.js';
 import { sEngager, quitter, toucherRations as toucherRationsA } from './allegeance.js';
 import { genererBande, TACTIQUES } from './combat.js';
 import { groupeActif, tousLesMembres, scinder, fusionner, choisirGroupe, assignerTache } from './groupes.js';
@@ -267,6 +270,62 @@ const API = {
   disposerCorps(id, quoi) {
     const r = disposerCorps(state, groupeActif(state), id, quoi, creerLogger(state));
     sauver();
+    return r;
+  },
+
+  // -------------------------------------------------------------------------
+  // Le comptoir
+  // -------------------------------------------------------------------------
+
+  /** Tout ce que l'écran du comptoir a besoin de savoir, en un appel. */
+  comptoir() {
+    if (!state) return null;
+    const v = peutTraiter(state);
+    return {
+      ok: v.ok,
+      motif: v.motif || null,
+      reseaux: comptoirsPossibles(state),
+      actif: comptoirActif(state),
+      escortes: ESCORTES,
+      ordres: ordresEnCours(state).map((c) => ({
+        id: c.id,
+        sens: c.sens,
+        cargaison: c.cargaison,
+        paiement: c.paiement || 0,
+        regionId: c.regionId,
+        reste: Math.max(0, c.route.length - c.etape),
+        escorte: Math.round(c.escorte),
+        escorteGroupe: c.escorteGroupe || null,
+        depuis: c.depuis,
+      })),
+    };
+  },
+
+  /** Le réseau avec lequel on veut traiter, quand il y en a plusieurs. */
+  choisirComptoir(id) {
+    if (!state || !state.base) return { ok: false, motif: 'Aucune partie en cours.' };
+    if (!comptoirsPossibles(state).some((x) => x.id === id)) {
+      return { ok: false, motif: 'Ce réseau ne traite pas avec vous.' };
+    }
+    state.base.comptoir = id;
+    sauver();
+    return { ok: true };
+  },
+
+  /** Le prix d'un ordre, avant de le passer. */
+  chiffrerOrdre(sens, key, qte) {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    return chiffrerOrdre(state, sens, key, Number(qte));
+  },
+
+  /** Et l'ordre lui-même : le convoi part, avec ce qu'on a payé pour le garder. */
+  passerOrdre(sens, key, qte, escorte, groupe) {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    const rng = new Rng(state.rngState);
+    const r = passerOrdre(
+      state, sens, key, Number(qte), escorte, rng, creerLogger(state), groupe || null);
+    state.rngState = rng.save();
+    if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },
 
