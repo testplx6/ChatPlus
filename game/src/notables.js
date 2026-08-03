@@ -124,15 +124,41 @@ function trait(p) {
 }
 
 /**
+ * Ce qu'une maison ajoute à la marge de ses marchands, par principe.
+ *
+ * `cupidite` existait dans la table des factions depuis le premier jour et
+ * n'était lue nulle part : sept nombres soigneusement choisis — 0,95 pour le
+ * Syndicat, 0,3 pour l'Église — qui ne faisaient absolument rien. Un champ mort
+ * est pire qu'un champ absent : il donne l'impression que la chose est réglée.
+ *
+ * Écart volontairement modeste. Le caractère du marchand pèse déjà lourd (voir
+ * `margeMarchand`), et l'on veut que ce soit *lui* qu'on apprenne à lire, pas
+ * une constante par drapeau. Entre l'Église et le Syndicat, ça fait environ
+ * cinq points de marge — de quoi préférer un marché à un autre à distance
+ * égale, pas de quoi rendre un quartier de la carte injouable.
+ */
+export const POIDS_CUPIDITE = 0.08;
+
+export function margeFaction(col) {
+  const f = col && col.faction && FACTIONS[col.faction];
+  if (!f || f.cupidite === undefined) return 0;
+  // Centré sur la moyenne des six : une faction moyennement âpre ne change
+  // rien, les autres s'en écartent dans les deux sens.
+  return (f.cupidite - 0.575) * POIDS_CUPIDITE;
+}
+
+/**
  * Ce que l'armurier ajoute à sa marge, ou en retire. Un bon commerçant se
  * défend mieux ; un retors prend davantage ; et il vous fait un prix s'il vous
  * apprécie. Entre le pire et le meilleur cas, ça fait un tiers de différence.
+ *
+ * Plus ce que la maison exige de lui, qu'il soit retors ou non.
  */
 export function margeMarchand(col) {
   const p = notable(col, 'armurier');
-  if (!p) return 0;
+  if (!p) return margeFaction(col);
   const t = trait(p);
-  return t.marge + Math.min(0.12, p.comp / 700) - (p.opinion / 100) * 0.12;
+  return t.marge + Math.min(0.12, p.comp / 700) - (p.opinion / 100) * 0.12 + margeFaction(col);
 }
 
 /** Ce que le contremaître ajoute à la production de la ville. */

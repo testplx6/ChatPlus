@@ -3818,15 +3818,41 @@ function trait(p) {
 }
 
 /**
+ * Ce qu'une maison ajoute à la marge de ses marchands, par principe.
+ *
+ * `cupidite` existait dans la table des factions depuis le premier jour et
+ * n'était lue nulle part : sept nombres soigneusement choisis — 0,95 pour le
+ * Syndicat, 0,3 pour l'Église — qui ne faisaient absolument rien. Un champ mort
+ * est pire qu'un champ absent : il donne l'impression que la chose est réglée.
+ *
+ * Écart volontairement modeste. Le caractère du marchand pèse déjà lourd (voir
+ * `margeMarchand`), et l'on veut que ce soit *lui* qu'on apprenne à lire, pas
+ * une constante par drapeau. Entre l'Église et le Syndicat, ça fait environ
+ * cinq points de marge — de quoi préférer un marché à un autre à distance
+ * égale, pas de quoi rendre un quartier de la carte injouable.
+ */
+const POIDS_CUPIDITE = 0.08;
+
+function margeFaction(col) {
+  const f = col && col.faction && FACTIONS[col.faction];
+  if (!f || f.cupidite === undefined) return 0;
+  // Centré sur la moyenne des six : une faction moyennement âpre ne change
+  // rien, les autres s'en écartent dans les deux sens.
+  return (f.cupidite - 0.575) * POIDS_CUPIDITE;
+}
+
+/**
  * Ce que l'armurier ajoute à sa marge, ou en retire. Un bon commerçant se
  * défend mieux ; un retors prend davantage ; et il vous fait un prix s'il vous
  * apprécie. Entre le pire et le meilleur cas, ça fait un tiers de différence.
+ *
+ * Plus ce que la maison exige de lui, qu'il soit retors ou non.
  */
 function margeMarchand(col) {
   const p = notable(col, 'armurier');
-  if (!p) return 0;
+  if (!p) return margeFaction(col);
   const t = trait(p);
-  return t.marge + Math.min(0.12, p.comp / 700) - (p.opinion / 100) * 0.12;
+  return t.marge + Math.min(0.12, p.comp / 700) - (p.opinion / 100) * 0.12 + margeFaction(col);
 }
 
 /** Ce que le contremaître ajoute à la production de la ville. */
@@ -5612,6 +5638,116 @@ function estimeEngagement(faction) {
 }
 
 // ---------------------------------------------------------------------------
+// Ce que chaque drapeau donne en propre
+// ---------------------------------------------------------------------------
+
+/**
+ * Le service, c'est la même chose partout — plus une chose qui n'est qu'à eux.
+ *
+ * La première version distribuait des compromis : celui-ci paie mieux mais
+ * protège moins, celui-là arme mieux mais paie mal. Verdict du joueur, et il
+ * avait raison : « y aura pas une seule milice qui sera intéressante, il
+ * faudrait qu'elles le soient toutes mais avec des extras propres à chacune
+ * d'elles. » Un compromis entre six options qu'on ne peut pas comparer avant de
+ * les avoir vécues n'est pas un choix, c'est une loterie qu'on regrette.
+ *
+ * Donc : la base est **identique** pour les six — les mêmes grades, la même
+ * remise, la même solde, les mêmes rations, le même palier d'armurier (voir
+ * RANGS, et rien là-dedans ne dépend du drapeau). Ce qui change, c'est un seul
+ * avantage supplémentaire par couleur, qui ne s'obtient nulle part ailleurs et
+ * qui ne coûte rien à personne. On ne choisit pas ce qu'on sacrifie, on choisit
+ * ce qu'on gagne.
+ *
+ * Chacun ouvre à un grade différent, et c'est le seul dosage : ce qui pèse lourd
+ * se mérite. `rang` est un indice dans RANGS.
+ */
+const SERVICES = {
+  corpo: {
+    cle: 'compte',
+    nom: 'Le compte ouvert',
+    rang: 1,
+    court: 'comptoir sans surtaxe',
+    desc: 'Leur réseau vous traite comme un des leurs : le comptoir s’ouvre à vous quelle '
+      + 'que soit votre estime, et sans la surtaxe qu’on fait payer aux étrangers.',
+  },
+  militaire: {
+    cle: 'colonne',
+    nom: 'La colonne qui vient',
+    rang: 2,
+    court: 'renfort à l’avant-poste',
+    desc: 'Quand une colonne marche sur votre avant-poste, une des leurs part le défendre. '
+      + 'Ils ne demandent pas si ça vous arrange.',
+  },
+  commune: {
+    cle: 'bras',
+    nom: 'Les bras',
+    rang: 0,
+    court: 'des gens viennent s’installer',
+    desc: 'On parle de vous sur les pistes : les gens viennent s’installer chez vous deux fois '
+      + 'plus vite, et l’on s’entasse un peu plus volontiers qu’ailleurs.',
+  },
+  nomade: {
+    cle: 'fret',
+    nom: 'Le fret',
+    rang: 1,
+    court: 'convois gardés pour rien',
+    desc: 'Ils connaissent les routes et ils y sont chez eux : vos convois de comptoir voyagent '
+      + 'escortés sans que vous payiez l’escorte.',
+  },
+  fanatique: {
+    cle: 'ecoute',
+    nom: 'L’écoute',
+    rang: 1,
+    court: 'recherche accélérée',
+    desc: 'Leurs relais écoutent pour vous. Ce que vous cherchez, vous le trouvez un quart '
+      + 'plus vite — et ils ne demandent rien pour ça.',
+  },
+  criminel: {
+    cle: 'recel',
+    nom: 'Le recel',
+    rang: 0,
+    court: 'aucune prime sur votre tête',
+    desc: 'Ce qu’on raconte sur vous s’arrête à leur porte : plus aucune prime ne se met sur '
+      + 'votre tête, nulle part, tant que vous les servez.',
+  },
+};
+
+/** L'avantage propre à ce drapeau, quel que soit votre grade. */
+function serviceDe(faction) {
+  const f = FACTIONS[faction];
+  return (f && SERVICES[f.style]) || null;
+}
+
+/**
+ * Cet avantage-ci joue-t-il en ce moment ?
+ *
+ * `cle` est celle de SERVICES — 'compte', 'colonne', 'bras', 'fret', 'ecoute',
+ * 'recel'. On rend la faction qui le procure, ou `null` : les endroits qui s'en
+ * servent ont souvent besoin de nommer qui rend le service.
+ *
+ * Une seule fonction interrogée partout, plutôt qu'un test de style recopié à
+ * six endroits — c'est ce qui garantit que l'écran et le moteur parlent du même
+ * avantage.
+ */
+function avantage(state, cle) {
+  // Écrit à la main plutôt qu'avec `groupesEngages` et `rangDe` : cette
+  // fonction est interrogée plusieurs fois par tick, et ces deux-là allouent
+  // chacune — un tableau filtré, un objet de grade — pour une lecture qui n'en
+  // a aucun besoin.
+  const gs = state.player.groupes || [];
+  for (let i = 0; i < gs.length; i++) {
+    const all = gs[i].allegeance;
+    if (!all) continue;
+    const s = serviceDe(all.faction);
+    if (!s || s.cle !== cle) continue;
+    // Le grade requis, sans construire l'objet : il suffit de savoir si l'on a
+    // les points du palier.
+    if (all.points >= RANGS[s.rang].points) return all.faction;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Ce que l'estime fait, dit en clair
 // ---------------------------------------------------------------------------
 //
@@ -5933,6 +6069,28 @@ function garnison(state, regionId, groupe) {
   const col = state.world.colonies.find((c) => c.id === r.colonie);
   if (!col || col.ruine || col.faction !== all.faction) return null;
   return col;
+}
+
+/**
+ * La colonne qui vient : ce que la Milice de Cendre donne aux siens.
+ *
+ * Un avant-poste assiégé ne l'est plus tout à fait seul. Ce n'est pas une
+ * garnison permanente — elle ne compte que pendant l'assaut, et seulement là où
+ * il y a un assaut : la Milice ne garde pas votre hangar, elle vient au bruit.
+ *
+ * L'ordre de grandeur : un avant-poste bien tenu défend autour de quarante, et
+ * une colonne qui marche sur lui en pèse cent à deux cents. Quarante de renfort
+ * ne rend donc pas la place imprenable — ça change l'issue d'un siège serré,
+ * ce qui est exactement ce qu'un allié doit faire.
+ */
+const RENFORT_MILICE = 40;
+
+function renfortMilice(state) {
+  const f = avantage(state, 'colonne');
+  if (!f) return 0;
+  // Ils viennent d'autant plus nombreux qu'on pèse chez eux.
+  const r = meilleurGrade(state, f);
+  return Math.round(RENFORT_MILICE * (1 + (r ? r.index - SERVICES.militaire.rang : 0) * 0.5));
 }
 
 // ---------------------------------------------------------------------------
@@ -7749,8 +7907,14 @@ function comptoirsPossibles(state) {
     const membres = reseauDe(world, key);
     const id = idReseau(membres);
     if (faits.has(id)) continue;
-    // Nos couleurs, ou l'estime de l'un des membres du réseau.
-    const sien = !!(col && col.faction && membres.includes(col.faction));
+    // Nos couleurs, l'estime de l'un des membres du réseau — ou le compte
+    // ouvert, l'avantage propre au Consortium : servir des gens qui vivent du
+    // contrat vous fait traiter comme un des leurs, y compris chez leurs
+    // partenaires. C'est ce que vaut leur drapeau, et ça ne se trouve nulle
+    // part ailleurs.
+    const compte = avantage(state, 'compte');
+    const parLeCompte = !!(compte && membres.includes(compte));
+    const sien = !!(col && col.faction && membres.includes(col.faction)) || parLeCompte;
     const estime = Math.max(...membres.map((k) => state.player.reputation[k] || 0));
     if (!sien && estime < ESTIME_COMPTOIR) continue;
     faits.add(id);
@@ -7758,6 +7922,7 @@ function comptoirsPossibles(state) {
       id,
       membres,
       sien,
+      parLeCompte,
       estime: Math.round(estime),
       commission: COMMISSION + (sien ? 0 : COMMISSION_ETRANGER),
       prix: (world.cotations || {})[id] ? world.cotations[id].prix : null,
@@ -8910,7 +9075,11 @@ function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEscorte) 
     < distance(a.regionId, base.regionId) ? b : a));
 
   const esc = ESCORTES.find((x) => x.id === escorteId) || ESCORTES[0];
-  const fraisEscorte = Math.round(devis.brut * esc.cout);
+  // Le fret : ce que les Rouilleurs donnent aux leurs. Ils vivent sur les
+  // routes, la garde ne leur coûte rien à fournir — et c'est ce qui fait d'eux
+  // un drapeau qu'on choisit, pas un drapeau par défaut. Voir SERVICES.
+  const fret = !!avantage(state, 'fret');
+  const fraisEscorte = fret ? 0 : Math.round(devis.brut * esc.cout);
 
   if (sens === 'achat') {
     const du = devis.total + fraisEscorte;
@@ -12228,8 +12397,13 @@ function abriDe(state, regionId) {
 /** Ce qu'on tire d'une chaîne quand personne ne fournit de courant. */
 const SOCLE_MANUEL = 0.4;
 
-function populationMax(base) {
-  return niveau(base, 'baraquement') * 9 + niveau(base, 'hydroponie') * 4;
+function populationMax(base, state) {
+  const lits = niveau(base, 'baraquement') * 9 + niveau(base, 'hydroponie') * 4;
+  // Les bras : ce que les Communes Libres donnent aux leurs. Chez des gens qui
+  // ne rendent de comptes qu'à la récolte, on s'entasse plus volontiers — un
+  // quart de lits en plus, et deux fois plus de monde qui vient. C'est
+  // l'avantage propre à ce drapeau, voir SERVICES.
+  return state && avantage(state, 'bras') ? Math.round(lits * 1.25) : lits;
 }
 
 // ---------------------------------------------------------------------------
@@ -12630,7 +12804,7 @@ function apportBatiment(base, key, state) {
   const n = niveau(base, key) + 1;
   switch (key) {
     case 'baraquement':
-      return `Loge 9 habitants de plus (${populationMax(base)} → ${populationMax(base) + 9}).`;
+      return `Loge 9 habitants de plus (${populationMax(base, state)} → ${populationMax(base, state) + 9}).`;
     case 'hydroponie':
       return `Transforme la biomasse en vivres, ~${(1.25 * n * 0.9).toFixed(1)} rations/h à plein régime, `
         + 'et loge 4 personnes de plus.';
@@ -12745,7 +12919,7 @@ function chaineAutonomie(state) {
   const halle = niveau(base, 'halle');
   const hyd = niveau(base, 'hydroponie');
   const bassins = niveau(base, 'bassins');
-  const places = populationMax(base);
+  const places = populationMax(base, state);
   // Deux façons d'avoir de la biomasse : la région en donne, ou l'on en fait
   // pousser. Tant qu'il n'y avait que la première, l'alerte d'un camp planté
   // dans une friche était un constat sans issue — « vous n'en aurez jamais » —
@@ -12852,12 +13026,19 @@ function coutRecherche(base, key) {
   return scale(r.cout, r.coutMul, niveauRech(base, key));
 }
 
-function tempsRecherche(base, key) {
+function tempsRecherche(base, key, state) {
   const r = RESEARCH[key];
   const brut = r.heures * Math.pow(r.tempsMul, niveauRech(base, key));
   const antenne = niveau(base, 'antenne');
-  return Math.max(1, Math.round(brut / (1 + antenne * 0.25)));
+  // L'écoute : ce que l'Église du Signal donne à qui la sert. Leurs relais
+  // cherchent avec vous. C'est l'avantage propre à ce drapeau-là, et il ne
+  // s'obtient nulle part ailleurs — voir SERVICES.
+  const ecoute = state && avantage(state, 'ecoute') ? GAIN_ECOUTE : 0;
+  return Math.max(1, Math.round(brut / (1 + antenne * 0.25 + ecoute)));
 }
+
+/** Ce que l'écoute retire à une recherche. Un quart, et c'est déjà beaucoup. */
+const GAIN_ECOUTE = 0.33;
 
 function capaciteStock(base, state) {
   // Un magasinier gagne de la place : ranger, c'est du volume. Ce sont les
@@ -13012,7 +13193,7 @@ function lancerRecherche(state, key) {
     if (k === 'credits') state.player.credits -= cout[k];
     else base.stock[k] -= cout[k];
   }
-  const total = tempsRecherche(base, key);
+  const total = tempsRecherche(base, key, state);
   base.fileRech.push({ key, niveau: niveauRech(base, key) + 1 + enFile, restant: total, total });
   return { ok: true };
 }
@@ -13168,7 +13349,11 @@ function tickBase(state, log, ctx) {
 
   // --- Population : elle s'installe si on peut la loger et la nourrir, elle
   // s'en va si l'un des deux manque. Sa main-d'œuvre fait tourner les ateliers.
-  const maxPop = populationMax(base);
+  // `populationMax` reste le seul endroit qui sait ce que les bras ajoutent de
+  // lits — le recopier ici ferait deux nombres à tenir d'accord, et l'on sait
+  // depuis les postes ce que ça coûte. On l'appelle simplement une fois.
+  const lesBras = !!avantage(state, 'bras');
+  const maxPop = populationMax(base, state);
   const rationsDispo = base.stock.rations || 0;
   // La cantine : manger assis, à heure fixe, avec quelqu'un qui compte les
   // portions. Jusqu'à un tiers de vivres en moins pour les mêmes bouches — et
@@ -13211,7 +13396,7 @@ function tickBase(state, log, ctx) {
   const reserve = Math.min(1, rationsDispo / Math.max(1, (base.pop + 1) * 12));
   const attrait = reserve * (0.4 + 0.6 * (base.moral / 100))
     * (1 + niveau(base, 'baraquement') * 0.2);
-  if (base.pop < maxPop && rng.chance(0.022 * attrait)) {
+  if (base.pop < maxPop && rng.chance(0.022 * attrait * (lesBras ? 2 : 1))) {
     base.pop += 1;
     if (base.pop === 1) {
       log({ type: 'base', texte: 'Quelqu’un s’installe à l’avant-poste. Ça commence comme ça.', regionId: base.regionId, important: true });
@@ -15347,6 +15532,47 @@ function bandeLocale(state, ctx, groupe) {
  * tirage est global, et c'est le groupe qu'ils trouvent qui doit s'expliquer.
  * Un tirage par groupe multiplierait leur fréquence par le nombre de groupes.
  */
+/** Ce qu'une rancune perd par jour. Une haine s'émousse vite. */
+const OUBLI_RANCUNE = 0.45;
+
+/** Et ce qu'un service rendu perd par jour, au mieux. */
+const EROSION_ESTIME = 0.1;
+
+/**
+ * Au-dessus, on s'efface à plein tarif ; en dessous, de moins en moins vite.
+ *
+ * Trente : c'est l'ordre de grandeur de ce qu'on a en poche au premier jour
+ * quand une ville vous accueille, et de ce que demandent les drapeaux les plus
+ * ouverts.
+ */
+const PALIER_EROSION = 30;
+
+/**
+ * L'estime s'efface, mais de moins en moins vite à mesure qu'elle baisse.
+ *
+ * C'était un taux plat de un dixième par jour, et il rendait l'ouverture du jeu
+ * impraticable. Mesuré, en ne faisant ni bien ni mal — le cas du joueur qui
+ * explore, c'est-à-dire les premières heures de toutes les parties :
+ *
+ *   Ombrelle   seuil 26 · 28 d'estime au départ · sous le seuil à J20
+ *   Hexa       seuil 26 · 28                    · sous le seuil à J7
+ *   Église     seuil 40 · 42                    · sous le seuil à J20
+ *
+ * Et en huit mois de jeu, l'estime de départ était intégralement partie. On
+ * commençait donc reçu quelque part et l'on devenait un inconnu en une semaine,
+ * sans avoir rien fait de mal. Le commentaire d'ESTIME_ENGAGEMENT l'avait
+ * pressenti sans le corriger : « demander trois points de plus, c'est demander
+ * de courir plus vite qu'une pente ».
+ *
+ * On garde la pente là où elle a un sens — une gloire de Commandeur doit se
+ * défendre — et on l'aplatit là où elle tue le début de partie. Le service rendu
+ * s'oublie ; le premier service rendu s'oublie très lentement.
+ */
+function erosionEstime(v) {
+  if (v <= 0) return 0;
+  return Math.min(v, EROSION_ESTIME * Math.min(1, v / PALIER_EROSION));
+}
+
 function tenterChasseurs(state, log, ctx) {
   const rng = ctx.rng;
   const primes = state.player.primes || (state.player.primes = {});
@@ -15354,6 +15580,9 @@ function tenterChasseurs(state, log, ctx) {
   // Les rancunes s'émoussent. Sans cet oubli, la réputation n'est qu'un
   // cliquet qui descend : dix accrochages suffisent à se rendre le monde
   // définitivement hostile, et plus rien ne peut réparer ça.
+  //
+  // L'estime, elle, s'efface de moins en moins vite à mesure qu'elle baisse :
+  // voir `erosionEstime`.
   // Témoin du banc : on coupe l'oubli pour savoir ce qu'il coûte vraiment à
   // l'estime, plutôt que de le deviner. Voir test/equilibre.js, SANS=erosion.
   if (state.temps % 24 === 0 && !state.sansErosion) {
@@ -15368,8 +15597,7 @@ function tenterChasseurs(state, log, ctx) {
       // sert ce drapeau, rien ne s'efface chez lui. C'était la seule façon de
       // perdre du terrain en servant tous les jours.
       if (v > 0 && estAuService(state, k)) continue;
-      const pas = v > 0 ? Math.min(v, 0.1) : Math.min(-v, 0.45);
-      state.player.reputation[k] = v > 0 ? v - pas : v + pas;
+      state.player.reputation[k] = v > 0 ? v - erosionEstime(v) : v + Math.min(-v, OUBLI_RANCUNE);
     }
   }
 
@@ -15396,6 +15624,20 @@ function tenterChasseurs(state, log, ctx) {
 
   const traques = Object.keys(primes).filter((k) => primes[k] > 0 && FACTIONS[k]);
   if (!traques.length) return false;
+
+  // Le recel : ce que le Syndicat Ombrelle donne aux siens. Ils ne vous
+  // blanchissent pas, ils font mieux — ils achètent le silence de ceux qui
+  // auraient encaissé. Tant qu'une colonne porte leurs couleurs, personne ne
+  // vient. C'est l'avantage propre à ce drapeau, et il ne s'obtient nulle part
+  // ailleurs : voir SERVICES.
+  //
+  // Les primes restent inscrites, elles ne sont pas effacées. Quitter leur
+  // service, et tout ce qu'on doit au monde réapparaît d'un coup.
+  //
+  // Après le filtre, pas avant : sans prime sur la tête il n'y a rien à
+  // receler, et c'est le cas de presque toutes les heures de presque toutes les
+  // parties. On ne paie la question que quand elle se pose.
+  if (avantage(state, 'recel')) return false;
   const intensite = traques.reduce((t, k) => t + primes[k], 0);
   // Une visite tous les deux à trois mois de jeu : une menace, pas un métronome.
   if (!rng.chance(0.0012 * intensite)) return false;
@@ -17767,7 +18009,9 @@ function tick(state) {
   // monde ne connaît que sa vitrine, il ne saurait pas démonter le camp.
   ctx.perdreAvantPoste = (motif) => perdreAvantPoste(state, log, motif);
   ctx.saccagerAvantPoste = (force) => saccagerAvantPoste(state, log, force);
-  ctx.renfortAvantPoste = () => forceEscouade(state);
+  // Ce qui défend le camp au moment du choc : les vôtres restés sur place, et
+  // la colonne que la Milice envoie à ceux qui la servent (voir SERVICES).
+  ctx.renfortAvantPoste = () => forceEscouade(state) + renfortMilice(state);
   // Qui a une raison de venir prendre votre ville : ceux qui vous détestent, et
   // ceux à qui vous faites la guerre en portant d'autres couleurs. Les autres
   // savent qu'elle a un propriétaire et regardent ailleurs.
@@ -19255,13 +19499,40 @@ function blocRegime(col) {
     <div class="aide">${e(dit)}.</div>`;
 }
 
+/**
+ * Ce que ce drapeau-ci donne et qu'aucun autre ne donne.
+ *
+ * On le montre **avant** de s'engager, et c'est tout l'intérêt : les six
+ * services offrent exactement la même chose — mêmes grades, même remise, même
+ * solde, mêmes rations — et se distinguent par un seul avantage chacun. Cacher
+ * cet avantage jusqu'à l'avoir mérité ferait du choix de couleur un tirage au
+ * sort qu'on regrette trois cents heures plus tard.
+ */
+function blocExtra(faction, dejaAuService) {
+  const s = serviceDe(faction);
+  if (!s) return '';
+  const rang = RANGS[s.rang];
+  const tenu = !!avantage(S, s.cle);
+  const acquis = dejaAuService && tenu;
+  // La mention passe sous le titre plutôt qu'à côté : collée au nom, elle se
+  // coupait au milieu — « La colonne qui vient ce » puis « qu'eux seuls
+  // donnent » à la ligne suivante.
+  return `<div class="sep"></div>
+    <div class="ligne souple">
+      <span class="k">${acquis ? '✓ ' : ''}${e(s.nom)}</span>
+      <span class="v ${acquis ? 'ok' : ''}">${acquis ? 'acquis' : `dès ${e(rang.nom)}`}</span>
+    </div>
+    <div class="aide">Ce qu’eux seuls donnent. ${e(s.desc)}</div>`;
+}
+
 function blocEngagement(col) {
   const all = G() && G().allegeance;
   if (all && all.faction === col.faction) {
     const rang = rangDe(all);
     return `<div class="sep"></div>
       <div class="ligne"><span class="k">Vous servez ici</span>
-        <span class="v" style="color:${couleurFaction(col.faction)}">${e(rang.def.nom)}</span></div>`;
+        <span class="v" style="color:${couleurFaction(col.faction)}">${e(rang.def.nom)}</span></div>
+      ${blocExtra(col.faction, true)}`;
   }
   if (all) return '';
   // Une ville libre ne recrute personne à son service : il n'y a pas de service.
@@ -19271,7 +19542,11 @@ function blocEngagement(col) {
   }
   const v = peutSEngager(S, col.faction);
   const rep = S.player.reputation[col.faction] || 0;
-  return `<div class="sep"></div>
+  return `${blocExtra(col.faction, false)}
+    <div class="aide">Le reste est le même partout : les mêmes grades, la même remise,
+      la même solde, les mêmes rations. On ne choisit pas ce qu’on sacrifie,
+      on choisit ce qu’on gagne.</div>
+    <div class="sep"></div>
     <button class="act mini" data-a="engager" data-k="${e(col.faction)}" ${v.ok ? '' : 'disabled'}>
       ${v.ok ? `Entrer au service ${e(FACTIONS[col.faction].genitif)}`
     : `Engagement refusé — estime ${Math.round(rep)}/${estimeEngagement(col.faction)}`}</button>`;
@@ -20617,7 +20892,7 @@ function ecranBase() {
     return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
       <div class="ligne"><span class="k">${e(rd.nom)}</span><span class="v"><span class="puce">niv ${niv}/${rd.max}</span></span></div>
       <div class="aide">${e(rd.desc)}</div>
-      <div class="aide">Coût : ${e(coutTexte(cout))} · ${dureeTexte(tempsRecherche(b, k))}</div>
+      <div class="aide">Coût : ${e(coutTexte(cout))} · ${dureeTexte(tempsRecherche(b, k, S))}</div>
       <button class="act mini" data-a="chercher" data-k="${k}"
         ${plein || !dispo || sansAntenne ? 'disabled' : ''} style="margin-top:4px">
         ${plein ? 'Terminé' : sansAntenne ? 'Antenne requise' : 'Lancer'}</button>
@@ -20640,7 +20915,7 @@ function ecranBase() {
       ${(b.stock.carburant || 0) <= 0 ? 'plus de carburant.' : 'énergie insuffisante.'}</div>` : ''}
     <div class="sep"></div>
     <div class="ligne"><span class="k">Habitants</span>
-      <span class="v">${n(Math.round(b.pop || 0))} / ${n(populationMax(b))}${b.colonieId
+      <span class="v">${n(Math.round(b.pop || 0))} / ${n(populationMax(b, S))}${b.colonieId
     ? ' · <span class="ok">sur les cartes</span>' : ''}</span></div>
     ${b.colonieId
     ? `${blocDrapeau(b)}`
@@ -20676,8 +20951,8 @@ function ecranBase() {
     ${jauge(stock / capa, stock / capa > 0.95 ? 'rouge' : '')}
     <div class="sep"></div>
     <div class="ligne"><span class="k">Habitants</span>
-      <span class="v">${n(b.pop || 0)} / ${n(populationMax(b))}</span></div>
-    ${jauge(populationMax(b) ? (b.pop || 0) / populationMax(b) : 0, '', '#6be08a')}
+      <span class="v">${n(b.pop || 0)} / ${n(populationMax(b, S))}</span></div>
+    ${jauge(populationMax(b, S) ? (b.pop || 0) / populationMax(b, S) : 0, '', '#6be08a')}
     <div class="aide">${(b.pop || 0) === 0
     ? 'Personne ne vit ici. Un baraquement et des vivres y changeraient quelque chose.'
     : `Main-d’œuvre ×${mainDoeuvre(b, S).toFixed(2)} sur les chaînes · +${n(Math.round((b.pop || 0) * 2.5))} de défense · ${n((b.pop || 0) * 0.014 * 24, 1)} rations/jour consommées`}</div>

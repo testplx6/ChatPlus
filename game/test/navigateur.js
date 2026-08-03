@@ -462,6 +462,26 @@ const colonnes = (p) => p.evaluate(() => {
   ok(colVille.length === 0,
     'rien ne descend en colonne sur la fiche d’une ville',
     colVille.slice(0, 3).join(' | '));
+
+  // Les six services donnent la même base et un seul avantage propre. Cet
+  // avantage se lit *avant* de s'engager, sinon le choix de couleur est un
+  // tirage au sort qu'on regrette trois cents heures plus tard.
+  const extra = await page.locator('#ecran').innerText();
+  const nomsExtras = ['Le compte ouvert', 'La colonne qui vient', 'Les bras',
+    'Le fret', 'L’écoute', 'Le recel'];
+  ok(nomsExtras.some((x) => extra.includes(x)),
+    'la fiche annonce l’extra propre à ce drapeau, avant tout engagement',
+    extra.slice(0, 200).replace(/\n+/g, ' | '));
+  ok(/le reste est le même partout/i.test(extra),
+    'et dit que le reste est identique : on choisit ce qu’on gagne, pas ce qu’on sacrifie');
+  ok(/dès (Affilié|Agent|Lieutenant|Capitaine|Commandeur)/.test(extra),
+    'avec le grade auquel il s’ouvre', extra.slice(0, 200).replace(/\n+/g, ' | '));
+  await page.evaluate(() => {
+    const b = document.querySelector('[data-a="engager"]');
+    if (b) b.scrollIntoView({ block: 'center' });
+  });
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: join(CAPTURES, '30-service.png') });
 }
 
 // Fouiller un site : on doit voir ce qu'on en a tiré, tout de suite et après.

@@ -1756,6 +1756,61 @@ qui passe devant le ralentissement — un bac vide ne produit rien, un camp à
 80 % de courant produit à 80 %. Annoncer le second quand c'est le premier qui
 bloque envoie le joueur réparer ce qui marche.
 
+### Six drapeaux qu'on choisit pour ce qu'ils donnent
+
+La première version des six services distribuait des compromis : celui-ci paie
+mieux mais protège moins, celui-là arme mieux mais paie mal. Verdict du joueur,
+et il avait raison : « y aura pas une seule milice qui sera intéressante, il
+faudrait qu'elles le soient toutes mais avec des extras propres à chacune
+d'elles. » Un compromis entre six options qu'on ne peut pas comparer avant de
+les avoir vécues n'est pas un choix, c'est une loterie qu'on regrette trois
+cents heures plus tard.
+
+La base est donc **identique** pour les six — mêmes grades, même remise, même
+solde, mêmes rations, même palier d'armurier. Ce qui change, c'est un seul
+avantage par couleur, qui ne s'obtient nulle part ailleurs :
+
+| Drapeau | Ce qu'eux seuls donnent | Dès |
+|---|---|---|
+| Consortium Hexa | le comptoir s'ouvre sans estime et sans surtaxe d'étranger | Agent |
+| Milice de Cendre | une colonne vient défendre votre avant-poste assiégé | Lieutenant |
+| Communes Libres | des gens viennent s'installer deux fois plus vite, et l'on s'entasse | Affilié |
+| Les Rouilleurs | vos convois voyagent escortés sans que l'escorte se paie | Agent |
+| Église du Signal | vos recherches vont un tiers plus vite | Agent |
+| Syndicat Ombrelle | plus aucune prime ne se met sur votre tête | Affilié |
+
+On ne choisit pas ce qu'on sacrifie, on choisit ce qu'on gagne. Et l'écran le
+dit **avant** l'engagement, sinon rien de tout ça ne sert : un avantage qu'on
+découvre après avoir juré n'a pas participé à la décision.
+
+Deux réglages morts corrigés au passage, tous deux du même genre — déclarés,
+jamais lus :
+
+**`cupidite`** vivait dans la table des factions depuis le premier jour sans
+être branchée nulle part. Sept nombres choisis avec soin — 0,95 pour le
+Syndicat, 0,3 pour l'Église — qui ne faisaient rien. Mesuré avant sur quatre
+mondes et trois cent vingt-neuf villes, l'écart achat/vente allait de ×1,72 à
+×1,80 **sans le moindre rapport avec la cupidité**, le Syndicat le plus âpre
+affichant même l'écart le plus doux de tous. Après : ×1,65 chez l'Église,
+×1,87 au Consortium, dans l'ordre. L'écart reste modeste à dessein — c'est le
+caractère du marchand qu'on doit apprendre à lire, pas une constante par
+drapeau.
+
+**L'érosion de l'estime** était un dixième par jour, quel que soit le niveau.
+Mesuré en ne faisant ni bien ni mal — le cas du joueur qui explore, c'est-à-dire
+les premières heures de toutes les parties — l'estime de départ était
+intégralement partie en huit mois : 28 → 4, 28 → 2, 42 → 18. On commençait reçu
+quelque part et l'on devenait un inconnu sans avoir rien fait de mal. Elle est
+maintenant dégressive : plein tarif au-dessus de trente, de moins en moins vite
+en dessous. Même mesure après : 28 → 12,6 et 28 → 11,7. Une gloire se défend
+encore ; le premier service rendu ne s'évapore plus.
+
+Cette mesure-là a d'abord menti, et pour une raison qui vaut d'être notée :
+l'estime semblait cesser de baisser au bout de deux mois pile. Ce n'était pas
+un plancher, c'était l'escouade qui mourait de faim — un `tick` sur une partie
+finie ne fait plus rien. **Une courbe qui devient plate mérite qu'on demande si
+c'est le phénomène qui s'arrête ou l'instrument.**
+
 ## Ce que la simulation fait
 
 **Le temps.** Un tick = une heure de jeu, dix secondes réelles à ×1 — et le jeu

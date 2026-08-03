@@ -27,7 +27,7 @@ import { tickFormation } from './formation.js';
 import { rafraichirPanneaux, tickContrats } from './contrats.js';
 import { bancDe } from './recrues.js';
 import {
-  tickAllegeance, palierBonus, rangDe, estimeEngagement,
+  tickAllegeance, palierBonus, rangDe, estimeEngagement, renfortMilice,
 } from './allegeance.js';
 import { jugerActes, tickCharges } from './influence.js';
 import { tickSecteurs } from './secteur.js';
@@ -382,7 +382,9 @@ export function tick(state) {
   // monde ne connaît que sa vitrine, il ne saurait pas démonter le camp.
   ctx.perdreAvantPoste = (motif) => perdreAvantPoste(state, log, motif);
   ctx.saccagerAvantPoste = (force) => saccagerAvantPoste(state, log, force);
-  ctx.renfortAvantPoste = () => forceEscouade(state);
+  // Ce qui défend le camp au moment du choc : les vôtres restés sur place, et
+  // la colonne que la Milice envoie à ceux qui la servent (voir SERVICES).
+  ctx.renfortAvantPoste = () => forceEscouade(state) + renfortMilice(state);
   // Qui a une raison de venir prendre votre ville : ceux qui vous détestent, et
   // ceux à qui vous faites la guerre en portant d'autres couleurs. Les autres
   // savent qu'elle a un propriétaire et regardent ailleurs.

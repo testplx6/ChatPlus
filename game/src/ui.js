@@ -53,6 +53,7 @@ import { lireRapport } from './rapport.js';
 import { conditions, SAISONS, METEO } from './climat.js';
 import {
   RANGS, rangDe, estAuService, peutSEngager, avancementOrdre, REPUTATION_MINIMALE,
+  serviceDe, avantage,
   bilanService, effetsEstime, palierEstime, estimeEngagement, ESTIME_ENGAGEMENT,
   droitIntendance, garnison, RANG_GARNISON, JOURS_INTENDANCE,
 } from './allegeance.js';
@@ -1248,13 +1249,40 @@ function blocRegime(col) {
     <div class="aide">${e(dit)}.</div>`;
 }
 
+/**
+ * Ce que ce drapeau-ci donne et qu'aucun autre ne donne.
+ *
+ * On le montre **avant** de s'engager, et c'est tout l'intérêt : les six
+ * services offrent exactement la même chose — mêmes grades, même remise, même
+ * solde, mêmes rations — et se distinguent par un seul avantage chacun. Cacher
+ * cet avantage jusqu'à l'avoir mérité ferait du choix de couleur un tirage au
+ * sort qu'on regrette trois cents heures plus tard.
+ */
+function blocExtra(faction, dejaAuService) {
+  const s = serviceDe(faction);
+  if (!s) return '';
+  const rang = RANGS[s.rang];
+  const tenu = !!avantage(S, s.cle);
+  const acquis = dejaAuService && tenu;
+  // La mention passe sous le titre plutôt qu'à côté : collée au nom, elle se
+  // coupait au milieu — « La colonne qui vient ce » puis « qu'eux seuls
+  // donnent » à la ligne suivante.
+  return `<div class="sep"></div>
+    <div class="ligne souple">
+      <span class="k">${acquis ? '✓ ' : ''}${e(s.nom)}</span>
+      <span class="v ${acquis ? 'ok' : ''}">${acquis ? 'acquis' : `dès ${e(rang.nom)}`}</span>
+    </div>
+    <div class="aide">Ce qu’eux seuls donnent. ${e(s.desc)}</div>`;
+}
+
 function blocEngagement(col) {
   const all = G() && G().allegeance;
   if (all && all.faction === col.faction) {
     const rang = rangDe(all);
     return `<div class="sep"></div>
       <div class="ligne"><span class="k">Vous servez ici</span>
-        <span class="v" style="color:${couleurFaction(col.faction)}">${e(rang.def.nom)}</span></div>`;
+        <span class="v" style="color:${couleurFaction(col.faction)}">${e(rang.def.nom)}</span></div>
+      ${blocExtra(col.faction, true)}`;
   }
   if (all) return '';
   // Une ville libre ne recrute personne à son service : il n'y a pas de service.
@@ -1264,7 +1292,11 @@ function blocEngagement(col) {
   }
   const v = peutSEngager(S, col.faction);
   const rep = S.player.reputation[col.faction] || 0;
-  return `<div class="sep"></div>
+  return `${blocExtra(col.faction, false)}
+    <div class="aide">Le reste est le même partout : les mêmes grades, la même remise,
+      la même solde, les mêmes rations. On ne choisit pas ce qu’on sacrifie,
+      on choisit ce qu’on gagne.</div>
+    <div class="sep"></div>
     <button class="act mini" data-a="engager" data-k="${e(col.faction)}" ${v.ok ? '' : 'disabled'}>
       ${v.ok ? `Entrer au service ${e(FACTIONS[col.faction].genitif)}`
     : `Engagement refusé — estime ${Math.round(rep)}/${estimeEngagement(col.faction)}`}</button>`;
@@ -2610,7 +2642,7 @@ function ecranBase() {
     return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
       <div class="ligne"><span class="k">${e(rd.nom)}</span><span class="v"><span class="puce">niv ${niv}/${rd.max}</span></span></div>
       <div class="aide">${e(rd.desc)}</div>
-      <div class="aide">Coût : ${e(coutTexte(cout))} · ${dureeTexte(tempsRecherche(b, k))}</div>
+      <div class="aide">Coût : ${e(coutTexte(cout))} · ${dureeTexte(tempsRecherche(b, k, S))}</div>
       <button class="act mini" data-a="chercher" data-k="${k}"
         ${plein || !dispo || sansAntenne ? 'disabled' : ''} style="margin-top:4px">
         ${plein ? 'Terminé' : sansAntenne ? 'Antenne requise' : 'Lancer'}</button>
@@ -2633,7 +2665,7 @@ function ecranBase() {
       ${(b.stock.carburant || 0) <= 0 ? 'plus de carburant.' : 'énergie insuffisante.'}</div>` : ''}
     <div class="sep"></div>
     <div class="ligne"><span class="k">Habitants</span>
-      <span class="v">${n(Math.round(b.pop || 0))} / ${n(populationMax(b))}${b.colonieId
+      <span class="v">${n(Math.round(b.pop || 0))} / ${n(populationMax(b, S))}${b.colonieId
     ? ' · <span class="ok">sur les cartes</span>' : ''}</span></div>
     ${b.colonieId
     ? `${blocDrapeau(b)}`
@@ -2669,8 +2701,8 @@ function ecranBase() {
     ${jauge(stock / capa, stock / capa > 0.95 ? 'rouge' : '')}
     <div class="sep"></div>
     <div class="ligne"><span class="k">Habitants</span>
-      <span class="v">${n(b.pop || 0)} / ${n(populationMax(b))}</span></div>
-    ${jauge(populationMax(b) ? (b.pop || 0) / populationMax(b) : 0, '', '#6be08a')}
+      <span class="v">${n(b.pop || 0)} / ${n(populationMax(b, S))}</span></div>
+    ${jauge(populationMax(b, S) ? (b.pop || 0) / populationMax(b, S) : 0, '', '#6be08a')}
     <div class="aide">${(b.pop || 0) === 0
     ? 'Personne ne vit ici. Un baraquement et des vivres y changeraient quelque chose.'
     : `Main-d’œuvre ×${mainDoeuvre(b, S).toFixed(2)} sur les chaînes · +${n(Math.round((b.pop || 0) * 2.5))} de défense · ${n((b.pop || 0) * 0.014 * 24, 1)} rations/jour consommées`}</div>

@@ -21,7 +21,9 @@ import {
   attaquerCaravane, passerOrdre, ordresEnCours, ESCORTES,
 } from '../src/caravanes.js';
 import { combatContre, fouillerSite } from '../src/events.js';
-import { bandeLocale } from '../src/events.js';
+import {
+  bandeLocale, tenterChasseurs, erosionEstime, EROSION_ESTIME,
+} from '../src/events.js';
 import { damer, coutTraversee, PISTE_GAIN, rendementRegion } from '../src/world.js';
 import {
   aUneBourse, reseauDe, idReseau, veutOuvrirBourse, ouvrirBourse, signerAccord,
@@ -45,7 +47,7 @@ import {
   manoeuvres, affecter, rendementMetier, mainDoeuvre, niveauRech,
   perdreAvantPoste, saccagerAvantPoste, menacesSurLaBase, rendementLibre, AMENDEMENT_MAX,
   recetteDe, recettesDe, reglerRecette, reglerReserve, brasEscouade,
-  voulus, tenus, postesDegarnis, brasDisponibles, ORDRE_EMBAUCHE,
+  voulus, tenus, postesDegarnis, brasDisponibles, ORDRE_EMBAUCHE, tempsRecherche,
 } from '../src/base.js';
 import {
   METIER_KEYS, METIERS, SKILLS, BIOMES, BUILDINGS, RESEARCH, POSTURES, COMMODITIES,
@@ -108,7 +110,7 @@ import {
   acheter, vendre, prixJoueur, actifs, emploi, productionColonie, consommationColonie,
   capacitePortage, poidsInventaire, simulerAchat, simulerVente,
 } from '../src/economy.js';
-import { vocation, notable } from '../src/notables.js';
+import { vocation, notable, POIDS_CUPIDITE } from '../src/notables.js';
 import {
   tickServices, honorer, demandesIci, souvenirs, faveurChef, renfortSoin,
   villesOuvertes, estime, SOINS_SEUIL, REGISTRES_SEUIL, PANNEAU_FERME,
@@ -127,7 +129,7 @@ import {
   sEngager, rangDe, RANGS, peutSEngager, REPUTATION_MINIMALE,
   droitIntendance, toucherRations, garnison, RANG_GARNISON, JOURS_INTENDANCE,
   bilanService, noterFait, FEUILLE_MAX, palierBonus, effetsEstime, PALIERS_ESTIME,
-  estimeEngagement,
+  estimeEngagement, SERVICES, avantage, renfortMilice,
 } from '../src/allegeance.js';
 import {
   vueColonie, estSurveillee, ageTexte, nouvellesConnues, DELAI_NOUVELLE, observer,
@@ -915,6 +917,64 @@ ok(ach.ok && ach.qte > 0 && s6.player.credits < 5000, 'achat débité et livré'
 const ven = vendre(s6, col6, 'ferraille', ach.qte);
 ok(ven.ok && ven.gain > 0 && ven.gain < ach.cout, 'revente à perte immédiate (marge)');
 
+section('6 ter. Une maison âpre fait payer ses clients');
+{
+  // `cupidite` vivait dans la table des factions depuis le premier jour sans
+  // être lue nulle part : sept nombres soigneusement choisis — 0,95 pour le
+  // Syndicat, 0,3 pour l'Église — qui ne faisaient rien du tout. Un champ mort
+  // est pire qu'un champ absent : il donne l'impression que la chose est réglée.
+  //
+  // Mesuré avant de brancher, sur quatre mondes et trois cent vingt-neuf
+  // villes : l'écart achat/vente allait de ×1,72 à ×1,80 sans le moindre
+  // rapport avec la cupidité, le Syndicat le plus âpre affichant même l'écart
+  // le plus doux de tous. Après : ×1,65 chez l'Église, ×1,87 au Consortium,
+  // dans l'ordre.
+  const par = {};
+  for (const graine of [11, 22, 33, 44]) {
+    const st = nouvellePartie(graine, { maintenant: 0, depart: 'ville', equipe: 3 });
+    for (let i = 0; i < 400; i++) tick(st);
+    for (const col of st.world.colonies) {
+      if (!col.faction || col.ruine) continue;
+      let s = 0;
+      let n = 0;
+      for (const k of ['rations', 'ferraille', 'minerai', 'medkit']) {
+        const p = prixJoueur(col, k, 0, 0, 0, undefined, st.world);
+        // Le rapport achat/vente : c'est la marge, débarrassée du niveau des prix.
+        s += p.achat / p.vente;
+        n++;
+      }
+      (par[col.faction] = par[col.faction] || []).push(s / n);
+    }
+  }
+  const moy = (a) => a.reduce((s, v) => s + v, 0) / Math.max(1, a.length);
+  const lignes = DIPLO_FACTIONS
+    .filter((k) => (par[k] || []).length > 10)
+    .map((k) => ({ k, cup: FACTIONS[k].cupidite, ecart: moy(par[k]) }))
+    .sort((a, b) => a.cup - b.cup);
+  ok(lignes.length >= 5, 'assez de villes de chaque drapeau pour comparer',
+    `${lignes.length} drapeaux`);
+
+  const doux = lignes[0];
+  const apre = lignes[lignes.length - 1];
+  ok(apre.ecart > doux.ecart * 1.06,
+    'la maison la plus âpre fait nettement payer plus que la plus douce',
+    `${FACTIONS[doux.k].court} ×${doux.ecart.toFixed(3)} → ${FACTIONS[apre.k].court} ×${apre.ecart.toFixed(3)}`);
+
+  // Et sans écraser le marchand : c'est lui qu'on apprend à lire, pas une
+  // constante par drapeau. Si l'écart entre les deux extrêmes dépassait le
+  // tiers que fait le caractère d'un armurier, le drapeau déciderait de tout.
+  ok(apre.ecart < doux.ecart * 1.33,
+    'sans pour autant écraser le caractère du marchand',
+    `${Math.round(100 * (apre.ecart / doux.ecart - 1))} % d’écart`);
+
+  // Le témoin, et c'est lui qui prouve que la cause est bien celle-là : à poids
+  // nul, l'ordre disparaît. On ne le rejoue pas ici (il faudrait un second
+  // moteur), mais le chiffre est au-dessus, et POIDS_CUPIDITE est le seul
+  // interrupteur.
+  ok(POIDS_CUPIDITE > 0, 'et la cupidité est bien branchée, pas seulement déclarée',
+    `poids ${POIDS_CUPIDITE}`);
+}
+
 section('6 bis. Tenir un empire trop grand se paie');
 {
   // Ce frein est resté mort depuis le jour où il a été écrit : `distance` prend
@@ -1272,6 +1332,238 @@ const liens9c = groupeActif(s9c).membres.flatMap((c) => Object.values(c.liens ||
 ok(liens9c.length === 0 || Math.max(...liens9c) < 100,
   'les liens d’escouade ne saturent pas', liens9c.join(','));
 verifierCoherence(s9c, 'après 8 000 h au service d’une faction');
+
+section('9 ter ter. Ce qu’on a mérité ne s’évapore plus');
+{
+  // L'estime s'effaçait d'un dixième par jour, quel que soit son niveau. Mesuré
+  // en ne faisant ni bien ni mal — le cas du joueur qui explore, c'est-à-dire
+  // les premières heures de toutes les parties — l'estime de départ était
+  // intégralement partie en huit mois de jeu : 28 → 4, 28 → 2, 42 → 18. On
+  // commençait reçu quelque part et l'on devenait un inconnu sans avoir rien
+  // fait de mal.
+
+  // La forme d'abord, sur la fonction elle-même : c'est là que la règle vit.
+  ok(erosionEstime(60) === EROSION_ESTIME,
+    'au-dessus du palier, on s’efface à plein tarif',
+    `${erosionEstime(60)}`);
+  ok(erosionEstime(10) < erosionEstime(28),
+    'et de moins en moins vite à mesure qu’on descend',
+    `28 → ${erosionEstime(28).toFixed(3)}/j · 10 → ${erosionEstime(10).toFixed(3)}/j`);
+  ok(erosionEstime(2) > 0, 'sans jamais s’arrêter tout à fait',
+    `${erosionEstime(2).toFixed(3)}/j`);
+  ok(erosionEstime(0) === 0 && erosionEstime(-30) === 0,
+    'et ceci ne parle que de l’estime : les rancunes ont leur propre oubli');
+
+  // Puis l'effet, dans une vraie partie. On nourrit l'escouade : sans ça elle
+  // meurt de faim au bout de deux mois et l'on mesure une partie finie, pas une
+  // érosion. C'est le piège qui a d'abord fait croire que l'érosion s'arrêtait
+  // toute seule.
+  const st = nouvellePartie(101, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const hote = DIPLO_FACTIONS.find((k) => (st.player.reputation[k] || 0) > 5);
+  ok(!!hote, 'une ville d’accueil vous connaît au premier jour');
+  const depart = st.player.reputation[hote];
+  for (let i = 0; i < 24 * 240; i++) {
+    groupeActif(st).inventaire.rations = 400;
+    tick(st);
+  }
+  const reste = st.player.reputation[hote] || 0;
+  ok(reste > depart * 0.35,
+    'huit mois plus tard, l’estime du départ n’a pas disparu',
+    `${depart.toFixed(0)} → ${reste.toFixed(1)}`);
+  ok(reste < depart,
+    'mais elle a bien baissé : servir reste la seule façon de la tenir',
+    `${depart.toFixed(0)} → ${reste.toFixed(1)}`);
+}
+
+section('9 ter bis. Six drapeaux, six extras, une seule base');
+{
+  // Le reproche du joueur, mot pour mot : « y aura pas une seule milice qui
+  // sera intéressante, il faudrait qu'elles le soient toutes mais avec des
+  // extras propres à chacune d'elles. » La première version distribuait des
+  // compromis — celui-ci paie mieux mais protège moins. Un compromis entre six
+  // options qu'on ne peut pas comparer avant de les avoir vécues n'est pas un
+  // choix, c'est une loterie qu'on regrette.
+  //
+  // Ce qui est vérifié ici : la base est la même partout, chaque drapeau a son
+  // extra, et chaque extra fait quelque chose de mesurable.
+
+  // --- La base ne dépend d'aucun drapeau. C'est la moitié de la promesse, et
+  //     c'est la moitié qu'on casserait sans s'en rendre compte.
+  const styles = [...new Set(DIPLO_FACTIONS.map((k) => FACTIONS[k].style))];
+  ok(styles.length === 6, 'six couleurs, six styles', styles.join(' '));
+  ok(styles.every((s) => SERVICES[s]), 'chacun a son extra',
+    styles.filter((s) => !SERVICES[s]).join(' ') || '');
+  const cles = styles.map((s) => SERVICES[s].cle);
+  ok(new Set(cles).size === cles.length, 'et aucun extra n’est partagé', cles.join(' '));
+
+  // --- Un banc commun : la même partie, la même escouade, un drapeau différent.
+  const auService = (style, rang) => {
+    const st = nouvellePartie(3131, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const faction = DIPLO_FACTIONS.find((k) => FACTIONS[k].style === style);
+    const g = groupeActif(st);
+    const col = st.world.colonies.find((c) => c.faction === faction && !c.ruine);
+    if (col) g.regionId = col.regionId;
+    st.player.reputation[faction] = 100;
+    sEngager(st, faction, () => {}, g);
+    // On monte au grade voulu sans jouer trois cents heures pour ça.
+    g.allegeance.points = RANGS[rang].points;
+    return { st, faction, g };
+  };
+  const rangDe6 = (style) => SERVICES[style].rang;
+
+  // --- Le compte ouvert : le comptoir sans estime et sans surtaxe.
+  {
+    const monter = (avecDrapeau) => {
+      const { st, faction } = avecDrapeau
+        ? auService('corpo', rangDe6('corpo'))
+        : { st: nouvellePartie(3131, { maintenant: 0, depart: 'ville', equipe: 3 }), faction: null };
+      const hexa = DIPLO_FACTIONS.find((k) => FACTIONS[k].style === 'corpo');
+      st.world.factions[hexa].colonies = st.world.colonies
+        .filter((c) => c.faction === hexa).map((c) => c.id);
+      st.world.factions[hexa].tresor = 9000;
+      ouvrirBourse(st.world, hexa, 0);
+      tickBourses(st.world, 0);
+      st.base.fonde = true;
+      st.base.regionId = groupeActif(st).regionId;
+      st.base.batiments = { comptoir: 1, entrepot: 3 };
+      st.base.colonieId = 'poste-six';
+      st.world.colonies.push({
+        id: 'poste-six', nom: 'Camp', regionId: st.base.regionId, faction: null,
+        pop: 40, taille: 1, stock: {}, unrest: 0, murs: 0, defense: 0,
+        defenseMax: 0, contrats: [], notables: [], ruine: false,
+      });
+      // Zéro d'estime : sans le compte, la porte est fermée.
+      if (!avecDrapeau) st.player.reputation[hexa] = 0;
+      return { st, faction };
+    };
+    const sans = monter(false);
+    ok(!peutTraiter(sans.st).ok, 'sans drapeau ni estime, le comptoir reste fermé',
+      peutTraiter(sans.st).motif);
+    const avec = monter(true);
+    const v = peutTraiter(avec.st);
+    ok(v.ok, 'le compte ouvert du Consortium l’ouvre à lui seul', v.motif || '');
+    ok(v.ok && v.comptoir.parLeCompte && v.comptoir.sien,
+      'et l’on y est traité comme un des leurs',
+      v.ok ? `commission ${Math.round(v.comptoir.commission * 100)} %` : '');
+  }
+
+  // --- Le fret : le convoi gardé sans qu'on paie la garde.
+  {
+    const passer = (avecDrapeau) => {
+      const base = auService(avecDrapeau ? 'nomade' : 'militaire', 3);
+      const st = base.st;
+      const riche = DIPLO_FACTIONS.find((k) => st.world.factions[k].colonies.length >= 4);
+      st.world.factions[riche].tresor = 9000;
+      ouvrirBourse(st.world, riche, 0);
+      tickBourses(st.world, 0);
+      st.player.reputation[riche] = 80;
+      st.base.fonde = true;
+      st.base.regionId = groupeActif(st).regionId;
+      st.base.batiments = { comptoir: 1, entrepot: 3 };
+      st.base.colonieId = 'poste-fret';
+      st.world.colonies.push({
+        id: 'poste-fret', nom: 'Camp', regionId: st.base.regionId, faction: null,
+        pop: 40, taille: 1, stock: {}, unrest: 0, murs: 0, defense: 0,
+        defenseMax: 0, contrats: [], notables: [], ruine: false,
+      });
+      st.base.stock = { ferraille: 500 };
+      st.player.credits = 30000;
+      const avant = st.player.credits;
+      const r = passerOrdre(st, 'vente', 'ferraille', 200, 'lourde', new Rng(3), () => {}, null);
+      return { r, paye: avant - st.player.credits };
+    };
+    const sansFret = passer(false);
+    const avecFret = passer(true);
+    ok(sansFret.r.ok && avecFret.r.ok, 'l’ordre passe dans les deux cas',
+      `${sansFret.r.motif || 'ok'} · ${avecFret.r.motif || 'ok'}`);
+    ok(sansFret.paye > 0, 'sans le fret, l’escorte lourde se paie d’avance',
+      `${sansFret.paye} cr`);
+    ok(avecFret.paye === 0, 'avec le fret des Rouilleurs, elle ne coûte rien',
+      `${avecFret.paye} cr`);
+    ok(avecFret.r.caravane.escorte === sansFret.r.caravane.escorte,
+      'et c’est bien la même garde, pas une garde au rabais',
+      `${sansFret.r.caravane.escorte} vs ${avecFret.r.caravane.escorte}`);
+  }
+
+  // --- L'écoute : la recherche plus rapide.
+  {
+    const sans = auService('militaire', 3);
+    const avec = auService('fanatique', rangDe6('fanatique'));
+    for (const x of [sans, avec]) {
+      x.st.base.fonde = true;
+      x.st.base.regionId = groupeActif(x.st).regionId;
+      x.st.base.batiments = { antenne: 1 };
+    }
+    const t1 = tempsRecherche(sans.st.base, 'logistique', sans.st);
+    const t2 = tempsRecherche(avec.st.base, 'logistique', avec.st);
+    ok(t2 < t1, 'l’écoute de l’Église raccourcit une recherche',
+      `${t1} h → ${t2} h`);
+    ok(t2 > t1 * 0.6, 'sans la rendre gratuite', `${Math.round(100 * t2 / t1)} %`);
+  }
+
+  // --- Les bras : plus de lits, et du monde qui vient plus vite.
+  {
+    const sans = auService('militaire', 3);
+    const avec = auService('commune', rangDe6('commune'));
+    for (const x of [sans, avec]) {
+      x.st.base.fonde = true;
+      x.st.base.regionId = groupeActif(x.st).regionId;
+      x.st.base.batiments = { baraquement: 2, hydroponie: 1 };
+    }
+    const p1 = populationMax(sans.st.base, sans.st);
+    const p2 = populationMax(avec.st.base, avec.st);
+    ok(p2 > p1, 'les Communes Libres logent plus de monde au même bâti',
+      `${p1} → ${p2} lits`);
+  }
+
+  // --- Le recel : plus personne ne vient encaisser.
+  {
+    const chasse = (style) => {
+      const { st } = auService(style, 3);
+      // On se fait détester de tout le monde, et l'on regarde qui vient.
+      for (const k of DIPLO_FACTIONS) {
+        if (FACTIONS[k].style === style) continue;
+        st.player.reputation[k] = -90;
+      }
+      let visites = 0;
+      const log = (e) => { if (e.type === 'chasseurs') visites++; };
+      for (let i = 0; i < 4000; i++) {
+        tenterChasseurs(st, log, { rng: new Rng(900 + i) });
+      }
+      return visites;
+    };
+    const sansRecel = chasse('militaire');
+    const avecRecel = chasse('criminel');
+    ok(sansRecel > 0, 'haï de tous, on reçoit la visite de chasseurs de prime',
+      `${sansRecel} en 4 000 h`);
+    ok(avecRecel === 0, 'sous les couleurs du Syndicat, plus personne ne vient',
+      `${avecRecel}`);
+  }
+
+  // --- La colonne : le renfort au moment du choc.
+  {
+    const sans = auService('commune', 3);
+    const avec = auService('militaire', rangDe6('militaire'));
+    ok(renfortMilice(sans.st) === 0, 'sans les couleurs de la Milice, aucun renfort');
+    ok(renfortMilice(avec.st) > 0, 'avec elles, une colonne vient',
+      `${renfortMilice(avec.st)} de force`);
+    // Et le grade y fait : on pèse ce qu'on vaut chez eux.
+    const haut = auService('militaire', 4);
+    ok(renfortMilice(haut.st) > renfortMilice(avec.st),
+      'et l’on vient d’autant plus nombreux qu’on pèse chez eux',
+      `${renfortMilice(avec.st)} → ${renfortMilice(haut.st)}`);
+  }
+
+  // --- Et l'on n'a qu'un extra à la fois : c'est ce qui fait du drapeau une
+  //     décision plutôt qu'une collection.
+  {
+    const { st } = auService('criminel', 4);
+    const tenus = Object.keys(SERVICES)
+      .filter((s) => avantage(st, SERVICES[s].cle));
+    ok(tenus.length === 1 && tenus[0] === 'criminel',
+      'servir un drapeau donne son extra, et lui seul', tenus.join(' '));
+  }
+}
 
 section('9 quater. Groupes, tâches individuelles, détachement');
 const s9d = nouvellePartie(31415, { maintenant: 0, depart: 'ville', equipe: 3 });

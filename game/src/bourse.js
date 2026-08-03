@@ -21,6 +21,7 @@
 
 import { COMMODITY_KEYS, COMMODITIES, FACTIONS, DIPLO_FACTIONS } from './data.js';
 import { prixUnitaire } from './economy.js';
+import { avantage } from './allegeance.js';
 
 /** Ce qu'il faut tenir pour ouvrir une bourse : ça ne se décrète pas à trois. */
 export const VILLES_BOURSE = 4;
@@ -328,8 +329,14 @@ export function comptoirsPossibles(state) {
     const membres = reseauDe(world, key);
     const id = idReseau(membres);
     if (faits.has(id)) continue;
-    // Nos couleurs, ou l'estime de l'un des membres du réseau.
-    const sien = !!(col && col.faction && membres.includes(col.faction));
+    // Nos couleurs, l'estime de l'un des membres du réseau — ou le compte
+    // ouvert, l'avantage propre au Consortium : servir des gens qui vivent du
+    // contrat vous fait traiter comme un des leurs, y compris chez leurs
+    // partenaires. C'est ce que vaut leur drapeau, et ça ne se trouve nulle
+    // part ailleurs.
+    const compte = avantage(state, 'compte');
+    const parLeCompte = !!(compte && membres.includes(compte));
+    const sien = !!(col && col.faction && membres.includes(col.faction)) || parLeCompte;
     const estime = Math.max(...membres.map((k) => state.player.reputation[k] || 0));
     if (!sien && estime < ESTIME_COMPTOIR) continue;
     faits.add(id);
@@ -337,6 +344,7 @@ export function comptoirsPossibles(state) {
       id,
       membres,
       sien,
+      parLeCompte,
       estime: Math.round(estime),
       commission: COMMISSION + (sien ? 0 : COMMISSION_ETRANGER),
       prix: (world.cotations || {})[id] ? world.cotations[id].prix : null,

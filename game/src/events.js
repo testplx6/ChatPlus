@@ -9,7 +9,7 @@ import {
 import { colonieDe, voisins, nomRegion, distance } from './world.js';
 import { compterVictoire } from './contrats.js';
 import {
-  compterVictoireOrdre, crediter, estAuService, rangDe, renfortsDisponibles,
+  compterVictoireOrdre, crediter, estAuService, rangDe, renfortsDisponibles, avantage,
 } from './allegeance.js';
 import { genererBande, resoudreCombat, butin } from './combat.js';
 import { perdreBete, visibiliteAttelage } from './betes.js';
@@ -421,6 +421,47 @@ export function bandeLocale(state, ctx, groupe) {
  * tirage est global, et c'est le groupe qu'ils trouvent qui doit s'expliquer.
  * Un tirage par groupe multiplierait leur fréquence par le nombre de groupes.
  */
+/** Ce qu'une rancune perd par jour. Une haine s'émousse vite. */
+export const OUBLI_RANCUNE = 0.45;
+
+/** Et ce qu'un service rendu perd par jour, au mieux. */
+export const EROSION_ESTIME = 0.1;
+
+/**
+ * Au-dessus, on s'efface à plein tarif ; en dessous, de moins en moins vite.
+ *
+ * Trente : c'est l'ordre de grandeur de ce qu'on a en poche au premier jour
+ * quand une ville vous accueille, et de ce que demandent les drapeaux les plus
+ * ouverts.
+ */
+export const PALIER_EROSION = 30;
+
+/**
+ * L'estime s'efface, mais de moins en moins vite à mesure qu'elle baisse.
+ *
+ * C'était un taux plat de un dixième par jour, et il rendait l'ouverture du jeu
+ * impraticable. Mesuré, en ne faisant ni bien ni mal — le cas du joueur qui
+ * explore, c'est-à-dire les premières heures de toutes les parties :
+ *
+ *   Ombrelle   seuil 26 · 28 d'estime au départ · sous le seuil à J20
+ *   Hexa       seuil 26 · 28                    · sous le seuil à J7
+ *   Église     seuil 40 · 42                    · sous le seuil à J20
+ *
+ * Et en huit mois de jeu, l'estime de départ était intégralement partie. On
+ * commençait donc reçu quelque part et l'on devenait un inconnu en une semaine,
+ * sans avoir rien fait de mal. Le commentaire d'ESTIME_ENGAGEMENT l'avait
+ * pressenti sans le corriger : « demander trois points de plus, c'est demander
+ * de courir plus vite qu'une pente ».
+ *
+ * On garde la pente là où elle a un sens — une gloire de Commandeur doit se
+ * défendre — et on l'aplatit là où elle tue le début de partie. Le service rendu
+ * s'oublie ; le premier service rendu s'oublie très lentement.
+ */
+export function erosionEstime(v) {
+  if (v <= 0) return 0;
+  return Math.min(v, EROSION_ESTIME * Math.min(1, v / PALIER_EROSION));
+}
+
 export function tenterChasseurs(state, log, ctx) {
   const rng = ctx.rng;
   const primes = state.player.primes || (state.player.primes = {});
@@ -428,6 +469,9 @@ export function tenterChasseurs(state, log, ctx) {
   // Les rancunes s'émoussent. Sans cet oubli, la réputation n'est qu'un
   // cliquet qui descend : dix accrochages suffisent à se rendre le monde
   // définitivement hostile, et plus rien ne peut réparer ça.
+  //
+  // L'estime, elle, s'efface de moins en moins vite à mesure qu'elle baisse :
+  // voir `erosionEstime`.
   // Témoin du banc : on coupe l'oubli pour savoir ce qu'il coûte vraiment à
   // l'estime, plutôt que de le deviner. Voir test/equilibre.js, SANS=erosion.
   if (state.temps % 24 === 0 && !state.sansErosion) {
@@ -442,8 +486,7 @@ export function tenterChasseurs(state, log, ctx) {
       // sert ce drapeau, rien ne s'efface chez lui. C'était la seule façon de
       // perdre du terrain en servant tous les jours.
       if (v > 0 && estAuService(state, k)) continue;
-      const pas = v > 0 ? Math.min(v, 0.1) : Math.min(-v, 0.45);
-      state.player.reputation[k] = v > 0 ? v - pas : v + pas;
+      state.player.reputation[k] = v > 0 ? v - erosionEstime(v) : v + Math.min(-v, OUBLI_RANCUNE);
     }
   }
 
@@ -470,6 +513,20 @@ export function tenterChasseurs(state, log, ctx) {
 
   const traques = Object.keys(primes).filter((k) => primes[k] > 0 && FACTIONS[k]);
   if (!traques.length) return false;
+
+  // Le recel : ce que le Syndicat Ombrelle donne aux siens. Ils ne vous
+  // blanchissent pas, ils font mieux — ils achètent le silence de ceux qui
+  // auraient encaissé. Tant qu'une colonne porte leurs couleurs, personne ne
+  // vient. C'est l'avantage propre à ce drapeau, et il ne s'obtient nulle part
+  // ailleurs : voir SERVICES.
+  //
+  // Les primes restent inscrites, elles ne sont pas effacées. Quitter leur
+  // service, et tout ce qu'on doit au monde réapparaît d'un coup.
+  //
+  // Après le filtre, pas avant : sans prime sur la tête il n'y a rien à
+  // receler, et c'est le cas de presque toutes les heures de presque toutes les
+  // parties. On ne paie la question que quand elle se pose.
+  if (avantage(state, 'recel')) return false;
   const intensite = traques.reduce((t, k) => t + primes[k], 0);
   // Une visite tous les deux à trois mois de jeu : une menace, pas un métronome.
   if (!rng.chance(0.0012 * intensite)) return false;

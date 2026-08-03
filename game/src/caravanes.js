@@ -17,6 +17,7 @@ import { groupeActif } from './groupes.js';
 import { cibleStock, prixUnitaire, capacitePortage, poidsInventaire } from './economy.js';
 import { idDepuisRng, estDebout, comp } from './characters.js';
 import { retenirEnVille } from './services.js';
+import { avantage } from './allegeance.js';
 
 /** Au-delà, la carte devient un embouteillage illisible. */
 export const MAX_CARAVANES = 7;
@@ -253,7 +254,11 @@ export function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEs
     < distance(a.regionId, base.regionId) ? b : a));
 
   const esc = ESCORTES.find((x) => x.id === escorteId) || ESCORTES[0];
-  const fraisEscorte = Math.round(devis.brut * esc.cout);
+  // Le fret : ce que les Rouilleurs donnent aux leurs. Ils vivent sur les
+  // routes, la garde ne leur coûte rien à fournir — et c'est ce qui fait d'eux
+  // un drapeau qu'on choisit, pas un drapeau par défaut. Voir SERVICES.
+  const fret = !!avantage(state, 'fret');
+  const fraisEscorte = fret ? 0 : Math.round(devis.brut * esc.cout);
 
   if (sens === 'achat') {
     const du = devis.total + fraisEscorte;

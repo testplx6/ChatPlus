@@ -10,7 +10,7 @@ import { METEO } from './climat.js';
 import { loisDe } from './lois.js';
 import { comp, gagnerXp, estDebout, XP_PRATIQUE } from './characters.js';
 import { groupes, groupeActif } from './groupes.js';
-import { garnison } from './allegeance.js';
+import { garnison, avantage } from './allegeance.js';
 import { estSurveillee } from './connaissance.js';
 import { noterArgent } from './rapport.js';
 
@@ -97,8 +97,13 @@ export function abriDe(state, regionId) {
 /** Ce qu'on tire d'une chaîne quand personne ne fournit de courant. */
 export const SOCLE_MANUEL = 0.4;
 
-export function populationMax(base) {
-  return niveau(base, 'baraquement') * 9 + niveau(base, 'hydroponie') * 4;
+export function populationMax(base, state) {
+  const lits = niveau(base, 'baraquement') * 9 + niveau(base, 'hydroponie') * 4;
+  // Les bras : ce que les Communes Libres donnent aux leurs. Chez des gens qui
+  // ne rendent de comptes qu'à la récolte, on s'entasse plus volontiers — un
+  // quart de lits en plus, et deux fois plus de monde qui vient. C'est
+  // l'avantage propre à ce drapeau, voir SERVICES.
+  return state && avantage(state, 'bras') ? Math.round(lits * 1.25) : lits;
 }
 
 // ---------------------------------------------------------------------------
@@ -499,7 +504,7 @@ export function apportBatiment(base, key, state) {
   const n = niveau(base, key) + 1;
   switch (key) {
     case 'baraquement':
-      return `Loge 9 habitants de plus (${populationMax(base)} → ${populationMax(base) + 9}).`;
+      return `Loge 9 habitants de plus (${populationMax(base, state)} → ${populationMax(base, state) + 9}).`;
     case 'hydroponie':
       return `Transforme la biomasse en vivres, ~${(1.25 * n * 0.9).toFixed(1)} rations/h à plein régime, `
         + 'et loge 4 personnes de plus.';
@@ -614,7 +619,7 @@ export function chaineAutonomie(state) {
   const halle = niveau(base, 'halle');
   const hyd = niveau(base, 'hydroponie');
   const bassins = niveau(base, 'bassins');
-  const places = populationMax(base);
+  const places = populationMax(base, state);
   // Deux façons d'avoir de la biomasse : la région en donne, ou l'on en fait
   // pousser. Tant qu'il n'y avait que la première, l'alerte d'un camp planté
   // dans une friche était un constat sans issue — « vous n'en aurez jamais » —
@@ -721,12 +726,19 @@ export function coutRecherche(base, key) {
   return scale(r.cout, r.coutMul, niveauRech(base, key));
 }
 
-export function tempsRecherche(base, key) {
+export function tempsRecherche(base, key, state) {
   const r = RESEARCH[key];
   const brut = r.heures * Math.pow(r.tempsMul, niveauRech(base, key));
   const antenne = niveau(base, 'antenne');
-  return Math.max(1, Math.round(brut / (1 + antenne * 0.25)));
+  // L'écoute : ce que l'Église du Signal donne à qui la sert. Leurs relais
+  // cherchent avec vous. C'est l'avantage propre à ce drapeau-là, et il ne
+  // s'obtient nulle part ailleurs — voir SERVICES.
+  const ecoute = state && avantage(state, 'ecoute') ? GAIN_ECOUTE : 0;
+  return Math.max(1, Math.round(brut / (1 + antenne * 0.25 + ecoute)));
 }
+
+/** Ce que l'écoute retire à une recherche. Un quart, et c'est déjà beaucoup. */
+export const GAIN_ECOUTE = 0.33;
 
 export function capaciteStock(base, state) {
   // Un magasinier gagne de la place : ranger, c'est du volume. Ce sont les
@@ -881,7 +893,7 @@ export function lancerRecherche(state, key) {
     if (k === 'credits') state.player.credits -= cout[k];
     else base.stock[k] -= cout[k];
   }
-  const total = tempsRecherche(base, key);
+  const total = tempsRecherche(base, key, state);
   base.fileRech.push({ key, niveau: niveauRech(base, key) + 1 + enFile, restant: total, total });
   return { ok: true };
 }
@@ -1037,7 +1049,11 @@ export function tickBase(state, log, ctx) {
 
   // --- Population : elle s'installe si on peut la loger et la nourrir, elle
   // s'en va si l'un des deux manque. Sa main-d'œuvre fait tourner les ateliers.
-  const maxPop = populationMax(base);
+  // `populationMax` reste le seul endroit qui sait ce que les bras ajoutent de
+  // lits — le recopier ici ferait deux nombres à tenir d'accord, et l'on sait
+  // depuis les postes ce que ça coûte. On l'appelle simplement une fois.
+  const lesBras = !!avantage(state, 'bras');
+  const maxPop = populationMax(base, state);
   const rationsDispo = base.stock.rations || 0;
   // La cantine : manger assis, à heure fixe, avec quelqu'un qui compte les
   // portions. Jusqu'à un tiers de vivres en moins pour les mêmes bouches — et
@@ -1080,7 +1096,7 @@ export function tickBase(state, log, ctx) {
   const reserve = Math.min(1, rationsDispo / Math.max(1, (base.pop + 1) * 12));
   const attrait = reserve * (0.4 + 0.6 * (base.moral / 100))
     * (1 + niveau(base, 'baraquement') * 0.2);
-  if (base.pop < maxPop && rng.chance(0.022 * attrait)) {
+  if (base.pop < maxPop && rng.chance(0.022 * attrait * (lesBras ? 2 : 1))) {
     base.pop += 1;
     if (base.pop === 1) {
       log({ type: 'base', texte: 'Quelqu’un s’installe à l’avant-poste. Ça commence comme ça.', regionId: base.regionId, important: true });

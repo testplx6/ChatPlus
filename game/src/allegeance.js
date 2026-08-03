@@ -103,6 +103,116 @@ export function estimeEngagement(faction) {
 }
 
 // ---------------------------------------------------------------------------
+// Ce que chaque drapeau donne en propre
+// ---------------------------------------------------------------------------
+
+/**
+ * Le service, c'est la même chose partout — plus une chose qui n'est qu'à eux.
+ *
+ * La première version distribuait des compromis : celui-ci paie mieux mais
+ * protège moins, celui-là arme mieux mais paie mal. Verdict du joueur, et il
+ * avait raison : « y aura pas une seule milice qui sera intéressante, il
+ * faudrait qu'elles le soient toutes mais avec des extras propres à chacune
+ * d'elles. » Un compromis entre six options qu'on ne peut pas comparer avant de
+ * les avoir vécues n'est pas un choix, c'est une loterie qu'on regrette.
+ *
+ * Donc : la base est **identique** pour les six — les mêmes grades, la même
+ * remise, la même solde, les mêmes rations, le même palier d'armurier (voir
+ * RANGS, et rien là-dedans ne dépend du drapeau). Ce qui change, c'est un seul
+ * avantage supplémentaire par couleur, qui ne s'obtient nulle part ailleurs et
+ * qui ne coûte rien à personne. On ne choisit pas ce qu'on sacrifie, on choisit
+ * ce qu'on gagne.
+ *
+ * Chacun ouvre à un grade différent, et c'est le seul dosage : ce qui pèse lourd
+ * se mérite. `rang` est un indice dans RANGS.
+ */
+export const SERVICES = {
+  corpo: {
+    cle: 'compte',
+    nom: 'Le compte ouvert',
+    rang: 1,
+    court: 'comptoir sans surtaxe',
+    desc: 'Leur réseau vous traite comme un des leurs : le comptoir s’ouvre à vous quelle '
+      + 'que soit votre estime, et sans la surtaxe qu’on fait payer aux étrangers.',
+  },
+  militaire: {
+    cle: 'colonne',
+    nom: 'La colonne qui vient',
+    rang: 2,
+    court: 'renfort à l’avant-poste',
+    desc: 'Quand une colonne marche sur votre avant-poste, une des leurs part le défendre. '
+      + 'Ils ne demandent pas si ça vous arrange.',
+  },
+  commune: {
+    cle: 'bras',
+    nom: 'Les bras',
+    rang: 0,
+    court: 'des gens viennent s’installer',
+    desc: 'On parle de vous sur les pistes : les gens viennent s’installer chez vous deux fois '
+      + 'plus vite, et l’on s’entasse un peu plus volontiers qu’ailleurs.',
+  },
+  nomade: {
+    cle: 'fret',
+    nom: 'Le fret',
+    rang: 1,
+    court: 'convois gardés pour rien',
+    desc: 'Ils connaissent les routes et ils y sont chez eux : vos convois de comptoir voyagent '
+      + 'escortés sans que vous payiez l’escorte.',
+  },
+  fanatique: {
+    cle: 'ecoute',
+    nom: 'L’écoute',
+    rang: 1,
+    court: 'recherche accélérée',
+    desc: 'Leurs relais écoutent pour vous. Ce que vous cherchez, vous le trouvez un quart '
+      + 'plus vite — et ils ne demandent rien pour ça.',
+  },
+  criminel: {
+    cle: 'recel',
+    nom: 'Le recel',
+    rang: 0,
+    court: 'aucune prime sur votre tête',
+    desc: 'Ce qu’on raconte sur vous s’arrête à leur porte : plus aucune prime ne se met sur '
+      + 'votre tête, nulle part, tant que vous les servez.',
+  },
+};
+
+/** L'avantage propre à ce drapeau, quel que soit votre grade. */
+export function serviceDe(faction) {
+  const f = FACTIONS[faction];
+  return (f && SERVICES[f.style]) || null;
+}
+
+/**
+ * Cet avantage-ci joue-t-il en ce moment ?
+ *
+ * `cle` est celle de SERVICES — 'compte', 'colonne', 'bras', 'fret', 'ecoute',
+ * 'recel'. On rend la faction qui le procure, ou `null` : les endroits qui s'en
+ * servent ont souvent besoin de nommer qui rend le service.
+ *
+ * Une seule fonction interrogée partout, plutôt qu'un test de style recopié à
+ * six endroits — c'est ce qui garantit que l'écran et le moteur parlent du même
+ * avantage.
+ */
+export function avantage(state, cle) {
+  // Écrit à la main plutôt qu'avec `groupesEngages` et `rangDe` : cette
+  // fonction est interrogée plusieurs fois par tick, et ces deux-là allouent
+  // chacune — un tableau filtré, un objet de grade — pour une lecture qui n'en
+  // a aucun besoin.
+  const gs = state.player.groupes || [];
+  for (let i = 0; i < gs.length; i++) {
+    const all = gs[i].allegeance;
+    if (!all) continue;
+    const s = serviceDe(all.faction);
+    if (!s || s.cle !== cle) continue;
+    // Le grade requis, sans construire l'objet : il suffit de savoir si l'on a
+    // les points du palier.
+    if (all.points >= RANGS[s.rang].points) return all.faction;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Ce que l'estime fait, dit en clair
 // ---------------------------------------------------------------------------
 //
@@ -424,6 +534,28 @@ export function garnison(state, regionId, groupe) {
   const col = state.world.colonies.find((c) => c.id === r.colonie);
   if (!col || col.ruine || col.faction !== all.faction) return null;
   return col;
+}
+
+/**
+ * La colonne qui vient : ce que la Milice de Cendre donne aux siens.
+ *
+ * Un avant-poste assiégé ne l'est plus tout à fait seul. Ce n'est pas une
+ * garnison permanente — elle ne compte que pendant l'assaut, et seulement là où
+ * il y a un assaut : la Milice ne garde pas votre hangar, elle vient au bruit.
+ *
+ * L'ordre de grandeur : un avant-poste bien tenu défend autour de quarante, et
+ * une colonne qui marche sur lui en pèse cent à deux cents. Quarante de renfort
+ * ne rend donc pas la place imprenable — ça change l'issue d'un siège serré,
+ * ce qui est exactement ce qu'un allié doit faire.
+ */
+export const RENFORT_MILICE = 40;
+
+export function renfortMilice(state) {
+  const f = avantage(state, 'colonne');
+  if (!f) return 0;
+  // Ils viennent d'autant plus nombreux qu'on pèse chez eux.
+  const r = meilleurGrade(state, f);
+  return Math.round(RENFORT_MILICE * (1 + (r ? r.index - SERVICES.militaire.rang : 0) * 0.5));
 }
 
 // ---------------------------------------------------------------------------
