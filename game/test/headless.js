@@ -28,7 +28,7 @@ import { damer, coutTraversee, PISTE_GAIN, rendementRegion } from '../src/world.
 import {
   aUneBourse, reseauDe, idReseau, veutOuvrirBourse, ouvrirBourse, signerAccord,
   rompreAccords, coursDe, tickBourses, prixAvecBourse,
-  peutTraiter, chiffrerOrdre, ESTIME_COMPTOIR,
+  peutTraiter, chiffrerOrdre, ESTIME_COMPTOIR, resumeBourses, PAS_COTATION,
 } from '../src/bourse.js';
 import { distanceMorale } from '../src/factions.js';
 import { loiIci } from '../src/lois.js';
@@ -6157,6 +6157,23 @@ section('9 sexvicies ter. La bourse des matières premières');
   const cours = coursDe(vraiMonde, riche);
   ok(cours && cours.rations > 0, 'une fois publi\u00e9, chaque mati\u00e8re a son cours',
     cours ? `rations \u00e0 ${cours.rations.toFixed(1)}` : 'aucun');
+
+  // Le cours ne doit pas moisir : une bourse publie tous les jours, et un
+  // panneau qui annonce « publié il y a huit jours » serait un mécanisme en
+  // panne qu'on prendrait pour un mécanisme lent.
+  {
+    const frais = nouvellePartie(1313, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const gros = DIPLO_FACTIONS.find((k) => frais.world.factions[k].colonies.length >= 4);
+    frais.world.factions[gros].tresor = 9000;
+    ouvrirBourse(frais.world, gros, 0);
+    for (let i = 0; i < 600; i++) tick(frais);
+    const id = (frais.world.reseauParFaction || {})[gros];
+    const cot = id && (frais.world.cotations || {})[id];
+    ok(!!cot, 'la bourse publie toujours après six cents heures', id || 'aucun réseau');
+    ok(cot && frais.temps - cot.maj < PAS_COTATION,
+      'et son cours date de moins d’un jour',
+      cot ? `${frais.temps - cot.maj} h` : '—');
+  }
 
   // Et une ville branchée ne fait plus tout à fait ses prix.
   const col = vraiMonde.colonies.find((c) => c.faction === riche && !c.ruine);

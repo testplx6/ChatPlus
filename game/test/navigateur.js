@@ -10,7 +10,7 @@
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
-import { nouvellePartie, avancer } from '../src/sim.js';
+import { nouvellePartie, avancer, tick as tickSim } from '../src/sim.js';
 import {
   fonderBase, lancerConstruction, lancerRecherche, COUT_FONDATION,
 } from '../src/base.js';
@@ -24,7 +24,7 @@ import { loisDe } from '../src/lois.js';
 import { genererBande } from '../src/combat.js';
 import { Rng } from '../src/rng.js';
 import { makeCharacter } from '../src/characters.js';
-import { ouvrirBourse, tickBourses } from '../src/bourse.js';
+import { ouvrirBourse, tickBourses, signerAccord } from '../src/bourse.js';
 import { DIPLO_FACTIONS } from '../src/data.js';
 
 const RACINE = resolve(new URL('..', import.meta.url).pathname);
@@ -1560,6 +1560,51 @@ const texteApres = await page.evaluate(() => document.querySelector('#modale').t
 ok(/apporté des medkits/.test(texteApres), 'et il s’en souvient à l’écran');
 await page.click('[data-a="fermer"]');
 await page.waitForTimeout(300);
+
+console.log('\n8 vicies ter. Les bourses du monde, enfin visibles');
+{
+  // Toute cette couche tournait sans que le joueur en voie rien : des factions
+  // ouvraient des bourses, les branchaient les unes sur les autres par des
+  // accords, et une guerre débranchait le tout. On ne le découvrait qu'en
+  // montant un comptoir, et seulement pour le réseau avec lequel on traitait.
+  const mb = nouvellePartie(1313, { maintenant: Date.now(), depart: 'ville' });
+  for (let i = 0; i < 200; i++) tickSim(mb);
+  const riches = DIPLO_FACTIONS.filter((k) => mb.world.factions[k].colonies.length >= 4);
+  for (const k of riches.slice(0, 3)) {
+    mb.world.factions[k].tresor = 9000;
+    ouvrirBourse(mb.world, k, mb.temps);
+  }
+  if (riches.length >= 2) signerAccord(mb.world, riches[0], riches[1], mb.temps);
+  tickBourses(mb.world, 0);
+  mb.dernierReel = Date.now();
+
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((t) => localStorage.setItem('cendres.save.v1', t), serialiser(mb));
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.click('[data-a="onglet"][data-k="monde"]');
+  await page.waitForTimeout(500);
+
+  const bourses = await page.evaluate(() => {
+    const sec = [...document.querySelectorAll('#ecran > section')].find((x) => /BOURSES/i.test(x.textContent));
+    return sec ? sec.innerText.replace(/\s+/g, ' ') : null;
+  });
+  ok(!!bourses, 'l’écran Monde montre les bourses ouvertes');
+  ok(bourses && /réseau/i.test(bourses), 'et combien de réseaux existent',
+    (bourses || '').slice(0, 120));
+  ok(bourses && /ville\(s\)/.test(bourses) && /% de la carte/.test(bourses),
+    'avec le poids de chacun sur la carte', (bourses || '').slice(0, 160));
+  ok(bourses && /accord/i.test(bourses),
+    'et l’accord qui en relie deux se voit', (bourses || '').slice(0, 200));
+  ok(bourses && /prix de base/.test(bourses),
+    'ainsi que la cherté de leur cours', (bourses || '').slice(0, 200));
+  await page.evaluate(() => {
+    const sec = [...document.querySelectorAll('#ecran > section')].find((x) => /BOURSES/i.test(x.textContent));
+    if (sec) sec.scrollIntoView({ block: 'center' });
+  });
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: join(CAPTURES, '42-bourses.png') });
+}
 
 console.log('\n8 vicies bis. Toutes les fiches, pas seulement celle qu’on a signalée');
 {

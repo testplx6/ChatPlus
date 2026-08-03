@@ -1866,6 +1866,25 @@ quelques secondes plus tard. Mesuré avant correction : 400 px, puis 0, puis 0 �
 chacun des dix relevés suivants. **Corriger un conteneur qui défile sans
 regarder les autres, c'est corriger la moitié d'un défaut.**
 
+### Une bourse qu'on ne voyait pas
+
+La couche des bourses tournait entièrement en coulisse : des factions ouvraient
+des marchés communs, en branchaient les cours les uns sur les autres par des
+accords, une guerre débranchait le tout — et le joueur n'en voyait rien. Il ne
+le découvrait qu'en montant un comptoir, et seulement pour le réseau avec lequel
+il traitait. Or ce mécanisme décide des prix de la moitié de la carte.
+
+**Un mécanisme qu'on ne voit pas n'existe pas pour celui qui joue.** L'écran
+Monde montre donc, à côté des routes marchandes, chaque réseau : qui l'a ouvert,
+qui s'y est accordé, combien de villes il tient et quelle part de la carte ça
+représente, et l'écart moyen de son cours au prix de base — un seul nombre qui
+dit « cher » ou « bon marché », plutôt que dix cours à comparer de tête.
+
+Un test vérifie au passage que le cours ne moisit pas : après six cents heures
+de jeu, la cotation publiée doit dater de moins d'un jour. Un panneau qui
+annoncerait « publié il y a huit jours » serait un mécanisme en panne qu'on
+prendrait pour un mécanisme lent.
+
 ### Ce qu'une barre repliée doit dire
 
 Un encart replié qui ne montre que son titre ne sert à rien : on le rouvre pour

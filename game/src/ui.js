@@ -13,7 +13,7 @@ import {
   rendementRegion, amendementRegion,
 } from './world.js';
 import { resumeSauvegarde, EMPLACEMENTS_MAX } from './save.js';
-import { ligneCours } from './bourse.js';
+import { ligneCours, resumeBourses, comptoirActif } from './bourse.js';
 import {
   comp, pvTotal, etatCourt, estVivant, estDebout, ratio, peutEquiper,
   SEUIL_FAMINE, SEUIL_VENTRE_CREUX,
@@ -3696,6 +3696,82 @@ function blocOuVousEnEtes() {
     ${lignes}</section>`;
 }
 
+/**
+ * Les bourses du monde, et ce qu'elles cotent.
+ *
+ * Toute cette couche tournait sans que le joueur en voie rien : des factions
+ * ouvraient des bourses, en branchaient les cours les uns sur les autres par
+ * des accords, et une guerre débranchait le tout — invisible. On ne le
+ * découvrait qu'en montant un comptoir, et seulement pour le réseau avec lequel
+ * on traitait. **Un mécanisme qu'on ne voit pas n'existe pas pour celui qui
+ * joue**, et celui-ci décide des prix de la moitié de la carte.
+ *
+ * Ce qu'on montre : qui a ouvert, qui s'est accordé avec qui, combien de villes
+ * chaque réseau tient, et l'écart de son cours au prix de base — c'est-à-dire
+ * où il est cher et où il est bon marché. On ne montre pas le détail des dix
+ * matières : c'est l'affaire du comptoir, qui sert à traiter.
+ */
+function blocBourses() {
+  const liste = resumeBourses(S.world);
+  const total = S.world.colonies.filter((c) => !c.ruine && c.faction).length;
+  if (!liste.length) {
+    return `<section class="panneau">
+      <h2 class="titre">Bourses <span class="droite">aucune</span></h2>
+      <div class="aide">Personne n’a encore ouvert de marché commun. Chaque ville fait ses
+        prix dans son coin, et une famine à huit régions d’un grenier plein peut durer des
+        mois. Il faut à une faction quatre villes, de quoi amorcer, et un chef qui pense
+        au commerce plutôt qu’à la guerre.</div>
+    </section>`;
+  }
+  const lignes = liste.map((r) => {
+    const nom = r.noms.join(' + ');
+    const part = Math.round((r.villes / Math.max(1, total)) * 100);
+    // L'écart moyen au prix de base : un seul nombre qui dit « cher » ou « bon
+    // marché », plutôt que dix cours qu'il faudrait comparer de tête.
+    let ecart = null;
+    if (r.prix) {
+      let somme = 0;
+      let compte = 0;
+      for (const k of COMMODITY_KEYS) {
+        const l = ligneCours(r.prix, k);
+        if (l.valeur > 0) { somme += l.ecart; compte++; }
+      }
+      if (compte) ecart = somme / compte;
+    }
+    const age = r.maj === null ? null : S.temps - r.maj;
+    return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
+      <div class="ligne souple">
+        <span class="k">${e(nom)}${r.membres.length > 1
+    ? ' <span class="puce ok">accord</span>' : ''}</span>
+        <span class="v">${r.villes} ville(s) · ${part} % de la carte</span>
+      </div>
+      <div class="aide">${ecart === null
+    ? 'Cours pas encore publié.'
+    : `Cours ${ecart > 0.02 ? `<span class="alerte">${Math.round(ecart * 100)} % au-dessus`
+      : ecart < -0.02 ? `<span class="ok">${Math.round(-ecart * 100)} % en dessous`
+        : '<span>au niveau'} du prix de base</span>${
+      age !== null ? ` · publié il y a ${dureeTexte(age)}` : ''}`}</div>
+    </div>`;
+  }).join('');
+
+  const monReseau = comptoirActif(S);
+  return `<section class="panneau">
+    <h2 class="titre">Bourses
+      <span class="resume">${e(liste.map((r) => `${r.noms.length > 1
+    ? r.membres.length + ' unis' : r.noms[0]} ${r.villes} v.`).join(' · '))}</span>
+      <span class="droite">${liste.length} réseau(x)</span></h2>
+    <div class="aide">Les villes d’un même réseau s’approvisionnent entre elles en priorité
+      et traitent contre un cours commun, republié chaque jour. Un accord relie deux
+      réseaux ; une guerre les sépare.</div>
+    <div class="sep"></div>
+    ${lignes}
+    <div class="aide" style="margin-top:6px">${monReseau
+    ? `Vous traitez avec ${e(monReseau.membres.map((k) => FACTIONS[k].nom).join(' + '))}${
+      monReseau.sien ? ', comme un des leurs' : ` (${Math.round(monReseau.commission * 100)} % de commission)`}.`
+    : 'Vous ne traitez avec aucun : il faut un comptoir au camp, et leurs couleurs ou leur estime.'}</div>
+  </section>`;
+}
+
 function ecranMonde() {
   const crypto = (S.base.recherche.cryptographie || 0) > 0;
   const cl = classement(S.world);
@@ -3853,6 +3929,8 @@ function ecranMonde() {
         <span class="v">${e(de ? de.nom : '?')} → ${e(vers ? vers.nom : '?')} · ${n(valeurCargaison(c))} cr</span></div>`;
   }).join('') : '<div class="aide">Aucune caravane sur les routes. Mauvais signe.</div>'}
   </section>
+
+  ${blocBourses()}
 
   <section class="panneau"><h2 class="titre">Rapport de puissance</h2>${factionsHtml}
     ${(() => {
