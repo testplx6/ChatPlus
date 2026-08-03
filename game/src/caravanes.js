@@ -19,7 +19,19 @@ import { idDepuisRng, estDebout, comp } from './characters.js';
 import { retenirEnVille } from './services.js';
 import { avantage } from './allegeance.js';
 
-/** Au-delà, la carte devient un embouteillage illisible. */
+/**
+ * Le plafond du commerce d'opportunité — celui que le hasard tire, par
+ * opposition aux convois qu'un réseau décide.
+ *
+ * Il ne borne rien, et c'est mesuré : porté de sept à vingt, la circulation ne
+ * bouge pas d'un dixième de convoi. Ce qui borne, c'est qu'un départ demande une
+ * ville en surplus, une ville en manque à portée, et un écart de prix qui paie
+ * le trajet — trois conditions qui se rencontrent rarement ensemble.
+ *
+ * On le garde comme garde-fou d'affichage, pas comme réglage : si un jour
+ * l'économie s'emballe, la carte ne deviendra pas illisible. Mais il ne faut pas
+ * espérer changer quoi que ce soit en le touchant.
+ */
 export const MAX_CARAVANES = 7;
 
 /**
@@ -330,8 +342,11 @@ export function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEs
     sens,
     versBase: sens === 'achat',
     paiement: sens === 'vente' ? devis.total : 0,
-    deId: sens === 'achat' ? place.id : base.colonieId,
-    versId: sens === 'achat' ? base.colonieId : place.id,
+    // Le camp n'a pas besoin d'être une ville inscrite : `versBase` suffit à dire
+    // où va le convoi, et `destinationTenable` le sait. On garde l'identifiant
+    // quand il existe, pour les convois qui repartent d'une place reconnue.
+    deId: sens === 'achat' ? place.id : (base.colonieId || null),
+    versId: sens === 'achat' ? (base.colonieId || null) : place.id,
     regionId: de,
     route,
     etape: 0,
@@ -547,11 +562,14 @@ export function tickCaravanes(state, log, ctx) {
   // meilleures routes, des départs décidés. Mesuré avant : 0,8 caravane en
   // circulation en moyenne sur toute la carte, pic à trois. Le plafond de sept
   // n'a jamais été la contrainte ; c'était le tirage.
-  // Toutes les douze heures, pas toutes les trois : ce passage examine chaque
-  // ville du réseau pour chacune des dix matières, et à trois il coûtait à lui
-  // seul la moitié du budget d'un tick. Un convoi met des dizaines d'heures à
-  // arriver ; décider quatre fois moins souvent ne se voit pas.
-  if (!state.world.sansDeparts && state.temps % 12 === 0) departsDuReseau(state, rng, log);
+  // Toutes les trois heures. Ça a été douze pendant un temps, « pour la perf » —
+  // et c'était un réflexe payé pour rien : le tick mesurait alors cent trente
+  // microsecondes parce que je lançais mes mesures pendant que les suites de
+  // tests tournaient, pas parce que ce passage coûtait cher. Remis à trois et
+  // remesuré : neuf convois en circulation au lieu de six, une ville debout de
+  // plus, et le tick sous le budget. **Une limite doit gagner sa place ; celle-ci
+  // ne la gagnait pas.**
+  if (!state.world.sansDeparts && state.temps % 3 === 0) departsDuReseau(state, rng, log);
 }
 
 // ---------------------------------------------------------------------------

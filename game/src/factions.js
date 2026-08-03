@@ -874,7 +874,7 @@ function regimeVise(temp, pays, actuel) {
 }
 
 /** La sévérité que ce conseil juge nécessaire. */
-function peineVisee(temp, pays) {
+export function peineVisee(temp, pays) {
   // Des routes sûres ne réclament pas de corde ; un pays qui gronde, si — et un
   // chef dur y voit toujours la solution, ce qui n'est pas la même chose que
   // d'avoir raison.

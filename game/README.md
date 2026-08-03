@@ -1913,6 +1913,40 @@ de la diplomatie, comme la guerre et la paix — Commandeur. Et chaque acte est
 inscrit au dossier : on en répond, comme d'une colonne envoyée se faire
 détruire.
 
+### Huit portes pour un seul ordre
+
+Le reproche, mot pour mot : « tu as codé une bourse d'échange et je ne peux même
+pas la tester tellement tu as rendu le truc injouable. » Compté bout à bout, il
+fallait franchir **huit conditions** pour passer un ordre :
+
+    1. fonder un avant-poste
+    2. bâtir une antenne
+    3. chercher la Cryptographie
+    4. chercher la Cotation
+    5. bâtir le comptoir
+    6. faire inscrire le camp sur les cartes — dix-huit habitants
+    7. attendre qu'une faction ouvre une bourse
+    8. porter ses couleurs, ou quarante d'estime
+
+Chacune se défendait seule. La sixième surtout : « personne n'envoie de convoi à
+un camp qui n'existe pour personne » — c'est même joli. Sauf que dix-huit
+habitants, ce sont des centaines d'heures de jeu, et que **le comptoir est
+précisément ce qui fait de vous une adresse**. La porte contredisait ce qu'elle
+gardait.
+
+C'est la somme qui était absurde, et **personne ne compte la somme en écrivant la
+huitième porte**. On juge la condition qu'on ajoute, jamais le chemin entier.
+Restent quatre :
+
+    1. fonder un avant-poste
+    2. bâtir une antenne
+    3. chercher la Cotation — plus de prérequis, et trois fois moins chère
+    4. bâtir le comptoir — 70 ferraille, 35 polymère, 10 composant
+
+Plus une porte d'entrée, ramenée de quarante d'estime à vingt. Vérifié bout en
+bout par un test : un camp neuf, sans un habitant, jamais inscrit sur aucune
+carte, passe un ordre et se fait payer à la livraison.
+
 ### « Les factions savent-elles ouvrir leur bourse ? »
 
 Deux questions en une, et deux réponses différentes.

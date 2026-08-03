@@ -1101,9 +1101,9 @@ const BUILDINGS = {
     // Le camp cesse d'être un dépôt qu'il faut vider à dos d'homme. Ça ne
     // s'obtient pas seulement en payant : il faut une place inscrite sur les
     // cartes, et un réseau qui accepte de traiter avec vous.
-    cout: { ferraille: 90, polymere: 50, composant: 30, alliage: 20 },
+    cout: { ferraille: 70, polymere: 35, composant: 10 },
     coutMul: 1.7,
-    heures: 18,
+    heures: 12,
     tempsMul: 1.55,
     energie: -6,
     max: 5,
@@ -1308,13 +1308,17 @@ const RESEARCH = {
   cotation: {
     nom: 'Cotation',
     desc: 'Débloque le comptoir : lire les cours d’une bourse et traiter avec elle sans bouger.',
-    // On ne lit pas les cours d'un marché sans lire ses transmissions : la
-    // Cryptographie d'abord. C'est aussi ce qui fait de cette branche-là un
-    // vrai investissement, et pas une case à cocher.
-    exige: 'cryptographie',
-    cout: { composant: 35, isotope: 18, credits: 800 },
+    // Elle a exigé la Cryptographie, et coûté trois fois ce prix-là. Compté
+    // bout à bout, il fallait alors franchir huit conditions pour passer un
+    // seul ordre — dont dix-huit habitants au camp. Un joueur l'a dit sans
+    // détour : « tu as codé une bourse et je ne peux même pas la tester. »
+    //
+    // Chacune de ces conditions se défendait seule ; c'est leur somme qui était
+    // absurde, et personne ne compte la somme en écrivant la huitième. **Une
+    // porte se juge sur le chemin entier, pas sur elle-même.**
+    cout: { composant: 12, ferraille: 60, credits: 250 },
     coutMul: 1.9,
-    heures: 22,
+    heures: 14,
     tempsMul: 1.75,
     max: 5,
   },
@@ -7975,8 +7979,15 @@ function resumeBourses(world) {
 // Le comptoir du joueur
 // ---------------------------------------------------------------------------
 
-/** L'estime qui ouvre un comptoir à qui ne porte aucune couleur. */
-const ESTIME_COMPTOIR = 40;
+/**
+ * L'estime qui ouvre un comptoir à qui ne porte aucune couleur.
+ *
+ * Quarante d'abord, ce qui était le seuil d'engagement de la faction la plus
+ * fermée du jeu — autant dire jamais, pour une commune autonome qui n'en sert
+ * aucune. Vingt : de quoi avoir rendu quelques services, pas de quoi y consacrer
+ * sa partie.
+ */
+const ESTIME_COMPTOIR = 20;
 /** Ce que le réseau retient sur chaque ordre, avant courtier et estime. */
 const COMMISSION = 0.12;
 /** Et le supplément qu'on paie quand on n'est pas des leurs. */
@@ -7993,9 +8004,11 @@ const COMMISSION_ETRANGER = 0.08;
  */
 function comptoirsPossibles(state) {
   const base = state.base;
-  if (!base || !base.fonde || !base.colonieId) return [];
+  if (!base || !base.fonde) return [];
   const world = state.world;
-  const col = world.colonies.find((c) => c.id === base.colonieId);
+  // La place du camp, si elle existe : elle sert à savoir sous quel drapeau on
+  // se trouve, pas à autoriser le commerce.
+  const col = base.colonieId ? world.colonies.find((c) => c.id === base.colonieId) : null;
   const out = [];
   const faits = new Set();
   for (const key of DIPLO_FACTIONS) {
@@ -8042,13 +8055,11 @@ function peutTraiter(state) {
   if (!niveauComptoir(base)) {
     return { ok: false, motif: 'Il faut un comptoir : recherche Cotation, puis le bâtiment.' };
   }
-  if (!base.colonieId) {
-    return {
-      ok: false,
-      motif: 'Il faut une place inscrite sur les cartes : personne n’envoie de convoi '
-        + 'à un camp qui n’existe pour personne.',
-    };
-  }
+  // On exigeait ici que le camp soit inscrit sur les cartes — dix-huit habitants,
+  // c'est-à-dire des centaines d'heures. C'était la plus lourde des huit portes,
+  // et la moins justifiée : **un comptoir est précisément ce qui fait de vous une
+  // adresse.** Un convoi sait où aller dès qu'il y a quelqu'un pour le recevoir.
+
   const c = comptoirActif(state);
   if (!c) {
     return {
@@ -8936,7 +8947,19 @@ function plafondCaravanes(world) {
   return MAX_CARAVANES + reseaux(world).length * CARAVANES_PAR_RESEAU;
 }
 
-/** Au-delà, la carte devient un embouteillage illisible. */
+/**
+ * Le plafond du commerce d'opportunité — celui que le hasard tire, par
+ * opposition aux convois qu'un réseau décide.
+ *
+ * Il ne borne rien, et c'est mesuré : porté de sept à vingt, la circulation ne
+ * bouge pas d'un dixième de convoi. Ce qui borne, c'est qu'un départ demande une
+ * ville en surplus, une ville en manque à portée, et un écart de prix qui paie
+ * le trajet — trois conditions qui se rencontrent rarement ensemble.
+ *
+ * On le garde comme garde-fou d'affichage, pas comme réglage : si un jour
+ * l'économie s'emballe, la carte ne deviendra pas illisible. Mais il ne faut pas
+ * espérer changer quoi que ce soit en le touchant.
+ */
 const MAX_CARAVANES = 7;
 
 /**
@@ -9247,8 +9270,11 @@ function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEscorte) 
     sens,
     versBase: sens === 'achat',
     paiement: sens === 'vente' ? devis.total : 0,
-    deId: sens === 'achat' ? place.id : base.colonieId,
-    versId: sens === 'achat' ? base.colonieId : place.id,
+    // Le camp n'a pas besoin d'être une ville inscrite : `versBase` suffit à dire
+    // où va le convoi, et `destinationTenable` le sait. On garde l'identifiant
+    // quand il existe, pour les convois qui repartent d'une place reconnue.
+    deId: sens === 'achat' ? place.id : (base.colonieId || null),
+    versId: sens === 'achat' ? (base.colonieId || null) : place.id,
     regionId: de,
     route,
     etape: 0,
@@ -9464,11 +9490,14 @@ function tickCaravanes(state, log, ctx) {
   // meilleures routes, des départs décidés. Mesuré avant : 0,8 caravane en
   // circulation en moyenne sur toute la carte, pic à trois. Le plafond de sept
   // n'a jamais été la contrainte ; c'était le tirage.
-  // Toutes les douze heures, pas toutes les trois : ce passage examine chaque
-  // ville du réseau pour chacune des dix matières, et à trois il coûtait à lui
-  // seul la moitié du budget d'un tick. Un convoi met des dizaines d'heures à
-  // arriver ; décider quatre fois moins souvent ne se voit pas.
-  if (!state.world.sansDeparts && state.temps % 12 === 0) departsDuReseau(state, rng, log);
+  // Toutes les trois heures. Ça a été douze pendant un temps, « pour la perf » —
+  // et c'était un réflexe payé pour rien : le tick mesurait alors cent trente
+  // microsecondes parce que je lançais mes mesures pendant que les suites de
+  // tests tournaient, pas parce que ce passage coûtait cher. Remis à trois et
+  // remesuré : neuf convois en circulation au lieu de six, une ville debout de
+  // plus, et le tick sous le budget. **Une limite doit gagner sa place ; celle-ci
+  // ne la gagnait pas.**
+  if (!state.world.sansDeparts && state.temps % 3 === 0) departsDuReseau(state, rng, log);
 }
 
 // ---------------------------------------------------------------------------

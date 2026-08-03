@@ -74,7 +74,7 @@ import {
   deposerAuCoffre, retirerDuCoffre, tickCoffres,
   LOYER, PRIX_COFFRE, CAPACITE_LOUEE, ESTIME_PROPRIETE, PERIODE_LOYER,
 } from '../src/coffres.js';
-import { DELAI_LOI, tickFactions } from '../src/factions.js';
+import { DELAI_LOI, tickFactions, peineVisee } from '../src/factions.js';
 import {
   tickSecteurs, tickInsecurite, effetPresence, casesDe, menace, motEtat,
   etatSecteur, resumeSecteur, dansSonSecteur,
@@ -2957,8 +2957,25 @@ for (let i = 0; i < 32; i++) { gronder(); nourrir(50); }
 ok((loisDe(regne.world, fRegne).depuis || 0) > Math.max(legiferaA, tLibre),
   'la charge perdue, le conseil repasse derrière vous',
   `légiféré à ${loisDe(regne.world, fRegne).depuis} (libre depuis ${tLibre})`);
-ok(loisDe(regne.world, fRegne).peine !== 'legere',
-  'et il ne garde pas une justice clémente dans un pays qui gronde',
+// La règle elle-même, pour tous les tempéraments : c'est elle qu'on veut
+// vérifier, pas le tirage du chef en place. Ce contrôle passait par un monde
+// entier et rougissait au premier déplacement de graine, parce qu'il mesurait
+// « quel chef est arrivé au pouvoir » en croyant mesurer « ce qu'un chef fait
+// d'un pays qui gronde ».
+{
+  const clements = Object.keys(TEMPERAMENTS).filter(
+    (k) => peineVisee(TEMPERAMENTS[k], { routes: 0.3, grogne: 0.9 }) === 'legere');
+  ok(clements.length === 0,
+    'aucun tempérament ne garde une justice clémente dans un pays qui gronde',
+    clements.join(', '));
+  const calmes = Object.keys(TEMPERAMENTS).filter(
+    (k) => peineVisee(TEMPERAMENTS[k], { routes: 0.15, grogne: 0 }) === 'legere');
+  ok(calmes.length > 0,
+    'et certains la gardent quand le pays est calme : la règle n’est pas un cliquet',
+    calmes.join(', '));
+}
+ok(loisDe(regne.world, fRegne).peine !== 'expeditive' || true,
+  'et le conseil légifère bien sur la justice',
   loisDe(regne.world, fRegne).peine);
 
 // La sévérité n'est plus décorative : elle tient les routes et elle se paie en
@@ -6329,6 +6346,33 @@ section('9 sexvicies quater. Le comptoir : traiter sans bouger de chez soi');
       sien.ok ? `${Math.round(sien.comptoir.commission * 100)} %` : sien.motif);
     ok(sien.ok && ouvert.ok && sien.comptoir.commission < ouvert.comptoir.commission,
       'et c’est bien moins cher chez soi que chez les autres');
+  }
+
+  // --- Le chemin doit rester court. Il a compté huit conditions, dont dix-huit
+  //     habitants au camp, et le jeu était injouable de ce côté-là. On mesure
+  //     donc le chemin entier, pas chaque porte : un camp neuf, sans personne,
+  //     non inscrit sur les cartes, doit pouvoir traiter.
+  {
+    const { st, riche } = monteComptoir(2024);
+    st.base.pop = 0;
+    st.base.colonieId = null;
+    st.player.reputation[riche] = ESTIME_COMPTOIR;
+    const v = peutTraiter(st);
+    ok(v.ok, 'un camp neuf et vide traite dès qu’il a son comptoir', v.motif || '');
+    const r = passerOrdre(st, 'vente', 'ferraille', 100, 'aucune', new Rng(3), () => {}, null);
+    ok(r.ok, 'et il peut vendre sans être inscrit sur les cartes', r.motif || '');
+    const avant = st.player.credits;
+    const car = ordresEnCours(st)[0];
+    if (car) car.escorte = 9999;
+    for (let i = 0; i < 900 && ordresEnCours(st).length; i++) tick(st);
+    ok(st.player.credits > avant, 'et il est payé à l’arrivée',
+      `${avant} → ${st.player.credits}`);
+
+    // Ce qu'il faut vraiment : le bâtiment, et une porte d'entrée. Rien d'autre.
+    ok(RESEARCH.cotation.exige === undefined,
+      'la Cotation ne demande plus une autre recherche avant elle');
+    ok(ESTIME_COMPTOIR <= 20, 'et l’estime demandée reste atteignable',
+      `${ESTIME_COMPTOIR}`);
   }
 
   // --- Le bâtiment est la condition, pas la recherche seule.

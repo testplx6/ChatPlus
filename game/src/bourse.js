@@ -324,8 +324,15 @@ export function resumeBourses(world) {
 // Le comptoir du joueur
 // ---------------------------------------------------------------------------
 
-/** L'estime qui ouvre un comptoir à qui ne porte aucune couleur. */
-export const ESTIME_COMPTOIR = 40;
+/**
+ * L'estime qui ouvre un comptoir à qui ne porte aucune couleur.
+ *
+ * Quarante d'abord, ce qui était le seuil d'engagement de la faction la plus
+ * fermée du jeu — autant dire jamais, pour une commune autonome qui n'en sert
+ * aucune. Vingt : de quoi avoir rendu quelques services, pas de quoi y consacrer
+ * sa partie.
+ */
+export const ESTIME_COMPTOIR = 20;
 /** Ce que le réseau retient sur chaque ordre, avant courtier et estime. */
 export const COMMISSION = 0.12;
 /** Et le supplément qu'on paie quand on n'est pas des leurs. */
@@ -342,9 +349,11 @@ export const COMMISSION_ETRANGER = 0.08;
  */
 export function comptoirsPossibles(state) {
   const base = state.base;
-  if (!base || !base.fonde || !base.colonieId) return [];
+  if (!base || !base.fonde) return [];
   const world = state.world;
-  const col = world.colonies.find((c) => c.id === base.colonieId);
+  // La place du camp, si elle existe : elle sert à savoir sous quel drapeau on
+  // se trouve, pas à autoriser le commerce.
+  const col = base.colonieId ? world.colonies.find((c) => c.id === base.colonieId) : null;
   const out = [];
   const faits = new Set();
   for (const key of DIPLO_FACTIONS) {
@@ -391,13 +400,11 @@ export function peutTraiter(state) {
   if (!niveauComptoir(base)) {
     return { ok: false, motif: 'Il faut un comptoir : recherche Cotation, puis le bâtiment.' };
   }
-  if (!base.colonieId) {
-    return {
-      ok: false,
-      motif: 'Il faut une place inscrite sur les cartes : personne n’envoie de convoi '
-        + 'à un camp qui n’existe pour personne.',
-    };
-  }
+  // On exigeait ici que le camp soit inscrit sur les cartes — dix-huit habitants,
+  // c'est-à-dire des centaines d'heures. C'était la plus lourde des huit portes,
+  // et la moins justifiée : **un comptoir est précisément ce qui fait de vous une
+  // adresse.** Un convoi sait où aller dès qu'il y a quelqu'un pour le recevoir.
+
   const c = comptoirActif(state);
   if (!c) {
     return {

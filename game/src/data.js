@@ -297,9 +297,9 @@ export const BUILDINGS = {
     // Le camp cesse d'être un dépôt qu'il faut vider à dos d'homme. Ça ne
     // s'obtient pas seulement en payant : il faut une place inscrite sur les
     // cartes, et un réseau qui accepte de traiter avec vous.
-    cout: { ferraille: 90, polymere: 50, composant: 30, alliage: 20 },
+    cout: { ferraille: 70, polymere: 35, composant: 10 },
     coutMul: 1.7,
-    heures: 18,
+    heures: 12,
     tempsMul: 1.55,
     energie: -6,
     max: 5,
@@ -504,13 +504,17 @@ export const RESEARCH = {
   cotation: {
     nom: 'Cotation',
     desc: 'Débloque le comptoir : lire les cours d’une bourse et traiter avec elle sans bouger.',
-    // On ne lit pas les cours d'un marché sans lire ses transmissions : la
-    // Cryptographie d'abord. C'est aussi ce qui fait de cette branche-là un
-    // vrai investissement, et pas une case à cocher.
-    exige: 'cryptographie',
-    cout: { composant: 35, isotope: 18, credits: 800 },
+    // Elle a exigé la Cryptographie, et coûté trois fois ce prix-là. Compté
+    // bout à bout, il fallait alors franchir huit conditions pour passer un
+    // seul ordre — dont dix-huit habitants au camp. Un joueur l'a dit sans
+    // détour : « tu as codé une bourse et je ne peux même pas la tester. »
+    //
+    // Chacune de ces conditions se défendait seule ; c'est leur somme qui était
+    // absurde, et personne ne compte la somme en écrivant la huitième. **Une
+    // porte se juge sur le chemin entier, pas sur elle-même.**
+    cout: { composant: 12, ferraille: 60, credits: 250 },
     coutMul: 1.9,
-    heures: 22,
+    heures: 14,
     tempsMul: 1.75,
     max: 5,
   },
