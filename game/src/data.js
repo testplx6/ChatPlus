@@ -265,6 +265,32 @@ export const BUILDINGS = {
     energie: 0,
     max: 10,
   },
+  semoir: {
+    nom: 'Ensemenceuse',
+    desc: 'On jette de la vie sur une terre qui n’en veut pas, et l’on recommence.',
+    // Ce que les bassins font sous cloche, l'ensemenceuse le fait dehors : elle
+    // ne nourrit personne à elle seule, elle change la région. C'est lent, et
+    // ça vaut pour tout le monde — l'escouade qui fouille, la halle qui
+    // ramasse, et la ville qui s'installerait là un jour.
+    cout: { ferraille: 60, polymere: 40, composant: 10 },
+    coutMul: 1.65,
+    heures: 12,
+    tempsMul: 1.5,
+    energie: -4,
+    max: 5,
+    recherche: 'insemination',
+  },
+  terraformeur: {
+    nom: 'Station de terraformation',
+    desc: 'Casser la roche, corriger le sol, concentrer ce qui dort dessous.',
+    cout: { ferraille: 120, alliage: 45, composant: 25, isotope: 10 },
+    coutMul: 1.7,
+    heures: 22,
+    tempsMul: 1.55,
+    energie: -14,
+    max: 5,
+    recherche: 'terraformation',
+  },
   solaire: {
     nom: 'Capteurs solaires',
     desc: 'Du courant sans rien brûler, tant que le ciel le veut bien.',
@@ -461,14 +487,41 @@ export const RESEARCH = {
     tempsMul: 1.7,
     max: 5,
   },
+  insemination: {
+    nom: 'Insémination',
+    desc: 'Débloque l’ensemenceuse : la terre autour du camp se met à donner de la biomasse.',
+    // On maîtrise d'abord la culture sous cloche, ensuite seulement on jette
+    // des organismes dehors et l'on regarde ce qu'ils font.
+    exige: 'cultures',
+    cout: { composant: 20, credits: 400 },
+    coutMul: 1.85,
+    heures: 16,
+    tempsMul: 1.7,
+    max: 5,
+  },
+  terraformation: {
+    nom: 'Terraformation',
+    desc: 'Débloque la station : on choisit ce que la terre doit rendre, et l’on attend.',
+    exige: 'insemination',
+    cout: { composant: 45, isotope: 20, alliage: 30, credits: 900 },
+    coutMul: 2.0,
+    heures: 26,
+    tempsMul: 1.8,
+    max: 5,
+  },
   pyrolyse: {
     nom: 'Pyrolyse',
-    desc: 'La raffinerie tire aussi du carburant de la biomasse. +10 % de rendement par niveau.',
-    // Le pendant des bassins, du côté de l'énergie. La raffinerie ne savait
-    // faire du carburant qu'à partir de polymère, qu'on ne ramasse que dans
-    // trois biomes sur neuf : un camp planté ailleurs achetait son carburant en
-    // ville jusqu'à la fin de la partie, ou son générateur restait éteint.
-    // Avec la pyrolyse, la chaîne se referme : bassins → biomasse → carburant.
+    desc: 'La raffinerie brûle les déchets des autres chaînes et en tire du carburant. +10 % par niveau.',
+    // La raffinerie ne savait faire du carburant qu'à partir de polymère, qu'on
+    // ne ramasse que dans trois biomes sur neuf : un camp planté ailleurs
+    // achetait son carburant en ville jusqu'à la fin de la partie, ou son
+    // générateur restait éteint.
+    //
+    // Elle brûle les déchets, pas la biomasse. Faire du carburant avec ce qui
+    // aurait pu être des rations, c'est exactement ce qu'un camp affamé ne doit
+    // pas avoir intérêt à faire. Les déchets, eux, ne servaient à rien et ne se
+    // vendent nulle part : la pyrolyse récompense d'avoir monté une vraie
+    // chaîne de transformation, pas d'avoir des bacs.
     cout: { composant: 12, credits: 220 },
     coutMul: 1.8,
     heures: 10,
@@ -985,6 +1038,16 @@ export const METIERS = {
     nom: 'Cultivateur', batiment: 'hydroponie', parNiveau: 3, apport: 0.14,
     skill: 'ingenierie', effet: 'Rations produites par l’hydroponie',
     texte: 'Repiquer, tailler, écarter ce qui pourrit avant que ça contamine le bac.',
+  },
+  semeur: {
+    nom: 'Semeur', batiment: 'semoir', parNiveau: 2, apport: 0.15,
+    skill: 'medecine', effet: 'Vitesse à laquelle la terre reprend',
+    texte: 'Il faut savoir ce qui prend et ce qui pourrit. C’est de la biologie, pas du jardinage.',
+  },
+  terraformier: {
+    nom: 'Terraformier', batiment: 'terraformeur', parNiveau: 2, apport: 0.15,
+    skill: 'ingenierie', effet: 'Vitesse d’amendement de la région',
+    texte: 'On travaille pour des gens qu’on ne connaîtra pas.',
   },
   bassinier: {
     nom: 'Bassinier', batiment: 'bassins', parNiveau: 3, apport: 0.14,

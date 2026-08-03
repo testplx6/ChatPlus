@@ -20,14 +20,14 @@ import { BETES } from '../src/betes.js';
 import { attaquerCaravane } from '../src/caravanes.js';
 import { combatContre, fouillerSite } from '../src/events.js';
 import { bandeLocale } from '../src/events.js';
-import { damer, coutTraversee, PISTE_GAIN } from '../src/world.js';
+import { damer, coutTraversee, PISTE_GAIN, rendementRegion } from '../src/world.js';
 import { distanceMorale } from '../src/factions.js';
 import { loiIci } from '../src/lois.js';
 import { primeLivraison, prixEsclave } from '../src/justice.js';
 import { classement, puissance } from '../src/factions.js';
 import {
   donnerOrdre, verifierExercice, COMPETENCES_EXERCICE, consommationGroupe, autonomie,
-  apercuEscouade,
+  apercuEscouade, rendementPrevu,
 } from '../src/squad.js';
 import {
   fonderBase, lancerConstruction, lancerRecherche, placesMetier, affectes,
@@ -36,7 +36,7 @@ import {
   peutReconnaitre, reconnaitreAvantPoste, peutRattacher, rattacherVille, preleverImpot,
   declarerIndependance, synchroniserVitrine,
   manoeuvres, affecter, rendementMetier, mainDoeuvre, niveauRech,
-  perdreAvantPoste, saccagerAvantPoste, menacesSurLaBase, rendementLibre,
+  perdreAvantPoste, saccagerAvantPoste, menacesSurLaBase, rendementLibre, AMENDEMENT_MAX,
 } from '../src/base.js';
 import {
   METIER_KEYS, METIERS, SKILLS, BIOMES, BUILDINGS, RESEARCH, POSTURES, COMMODITIES,
@@ -4978,6 +4978,11 @@ section('9 quinvicies quater. La pyrolyse, isolée de tout le reste');
   // carburant, oui ou non ? Deux camps identiques, même graine, même stock, et
   // l'on compare. C'est la seule façon d'attribuer la différence à la pyrolyse
   // plutôt qu'au générateur qui brûle en même temps.
+  //
+  // Et il faut de vraies chaînes qui tournent : la pyrolyse ne mange plus la
+  // biomasse mais les déchets, et un camp qui ne transforme rien n'en produit
+  // aucun. C'est le point de la correction — on se chauffe de ses restes, pas
+  // de sa nourriture.
   const camp = (avecPyro) => {
     const s = nouvellePartie(1919, { maintenant: 0, depart: 'ville', equipe: 3 });
     const g = groupeActif(s);
@@ -4987,17 +4992,188 @@ section('9 quinvicies quater. La pyrolyse, isolée de tout le reste');
       g.inventaire[k] = (g.inventaire[k] || 0) + COUT_FONDATION[k];
     }
     fonderBase(s, () => {}, g);
-    Object.assign(s.base.batiments, { raffinerie: 2, entrepot: 4, generateur: 2 });
-    s.base.stock.biomasse = 600;
-    s.base.stock.carburant = 400;
+    // Le courant vient des capteurs, pas d'un générateur : sinon les deux camps
+    // tombent à sec, l'énergie passe à zéro, la raffinerie s'arrête, et l'on
+    // compare deux camps morts. Le témoin doit rester en vie pour témoigner.
+    Object.assign(s.base.batiments,
+      { raffinerie: 2, fonderie: 2, hydroponie: 2, entrepot: 6, baraquement: 2,
+        solaire: 4, eolienne: 4 });
+    s.base.stock.biomasse = 3000;
+    s.base.stock.minerai = 3000;
+    s.base.stock.carburant = 0;
+    s.base.commerce = false;
+    s.player.credits = 0;
     if (avecPyro) s.base.recherche.pyrolyse = 1;
-    avancer(s, 400);
-    return Math.round(s.base.stock.carburant || 0);
+    for (let i = 0; i < 900; i++) tick(s);
+    return {
+      carb: Math.round(s.base.stock.carburant || 0),
+      dechets: Math.round(s.base.dechets || 0),
+    };
   };
   const sans = camp(false);
   const avec = camp(true);
-  ok(avec > sans, 'la pyrolyse produit bien du carburant, toutes choses égales',
-    `${sans} sans, ${avec} avec — soit +${avec - sans}`);
+  ok(sans.dechets > 0, 'des chaînes qui tournent laissent un tas derrière elles',
+    `${sans.dechets} déchets`);
+  ok(avec.carb > sans.carb, 'et la pyrolyse en tire du carburant, toutes choses égales',
+    `${sans.carb} sans, ${avec.carb} avec — soit +${avec.carb - sans.carb}`);
+  ok(avec.dechets < sans.dechets, 'en vidant le tas plutôt que le garde-manger',
+    `${sans.dechets} → ${avec.dechets}`);
+
+  // Le point de la correction, dit en une mesure : la nourriture ne sert plus
+  // de carburant. Un camp sans aucune chaîne de transformation, mais plein de
+  // biomasse, ne doit pas produire une goutte.
+  const bacsSeuls = () => {
+    const s = nouvellePartie(2020, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(s);
+    g.regionId = s.world.regions.find(
+      (r) => r.biome === 'steppe' && !s.world.colonies.some((c) => c.regionId === r.i)).i;
+    for (const k of Object.keys(COUT_FONDATION)) {
+      g.inventaire[k] = (g.inventaire[k] || 0) + COUT_FONDATION[k];
+    }
+    fonderBase(s, () => {}, g);
+    Object.assign(s.base.batiments,
+      { raffinerie: 2, entrepot: 6, solaire: 4, eolienne: 4 });
+    s.base.recherche.pyrolyse = 3;
+    s.base.stock.biomasse = 3000;
+    s.base.stock.carburant = 0;
+    s.base.commerce = false;
+    s.player.credits = 0;
+    const avant = s.base.stock.biomasse;
+    for (let i = 0; i < 600; i++) tick(s);
+    return { bioAvant: avant, bioApres: Math.round(s.base.stock.biomasse || 0) };
+  };
+  const b = bacsSeuls();
+  ok(b.bioApres >= b.bioAvant - 1,
+    'une réserve de biomasse n’est plus jamais brûlée : on ne fait pas du carburant '
+    + 'avec ce qui aurait pu être des rations',
+    `${b.bioAvant} → ${b.bioApres}`);
+}
+
+section('9 quinvicies quinquies. Changer la terre');
+{
+  // Le sol était une constante du monde : `BIOMES[r.biome].yields`, lu à six
+  // endroits différents — la halle, la production d'une ville, et trois ordres
+  // d'escouade. Une terre qu'on amende devait donc être ajoutée six fois, ou
+  // elle mentait cinq fois. Tout passe maintenant par `rendementRegion`.
+  const st = nouvellePartie(2024, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const gt = groupeActif(st);
+  const fri = st.world.regions.find(
+    (r) => r.biome === 'friche' && !st.world.colonies.some((c) => c.regionId === r.i));
+  gt.regionId = fri.i;
+  for (const k of Object.keys(COUT_FONDATION)) {
+    gt.inventaire[k] = (gt.inventaire[k] || 0) + COUT_FONDATION[k];
+  }
+  fonderBase(st, () => {}, gt);
+  st.base.batiments.antenne = 1;
+  st.base.stock.composant = 200;
+  st.base.stock.isotope = 100;
+  st.base.stock.alliage = 100;
+  st.base.stock.ferraille = 600;
+  st.base.stock.polymere = 300;
+  st.player.credits = 20000;
+
+  // L'arbre est un arbre : on ne saute pas les branches.
+  ok(!lancerRecherche(st, 'terraformation').ok,
+    'on ne terraforme pas avant de savoir semer',
+    lancerRecherche(st, 'terraformation').motif);
+  ok(!lancerRecherche(st, 'insemination').ok,
+    'et l’on ne sème pas avant de savoir cultiver sous cloche',
+    lancerRecherche(st, 'insemination').motif);
+  st.base.recherche.cultures = 1;
+  ok(lancerRecherche(st, 'insemination').ok, 'les Cultures closes ouvrent l’Insémination');
+  avancer(st, 600);
+  ok(niveauRech(st.base, 'insemination') >= 1, 'et elle aboutit',
+    `${niveauRech(st.base, 'insemination')}`);
+  ok(lancerRecherche(st, 'terraformation').ok,
+    'qui ouvre à son tour la Terraformation');
+
+  // Ce que la terre rend, avant qu'on y touche.
+  const avant = rendementRegion(st.world, fri.i);
+  ok(!avant.biomasse, 'une friche ne donne pas un gramme de biomasse',
+    JSON.stringify(avant));
+
+  // On sème. Le tick, pas `avancer` : celui-ci s'arrête à l'extinction de
+  // l'escouade et l'on mesurerait un palier là où il n'y a qu'un mort.
+  Object.assign(st.base.batiments,
+    { semoir: 3, entrepot: 4, generateur: 3, baraquement: 3, hydroponie: 1 });
+  st.base.stock.biomasse = 20000;
+  st.base.stock.carburant = 20000;
+  for (let i = 0; i < 1500; i++) tick(st);
+  const apres = rendementRegion(st.world, fri.i);
+  ok((apres.biomasse || 0) > 0.3,
+    'après quinze cents heures d’ensemenceuse, la friche donne de la biomasse',
+    `${(apres.biomasse || 0).toFixed(2)}`);
+  ok((apres.biomasse || 0) <= AMENDEMENT_MAX.semoir + 0.001,
+    'sans jamais dépasser le plafond : on rend une mauvaise place vivable, pas '
+    + 'meilleure que la meilleure',
+    `${(apres.biomasse || 0).toFixed(2)} / ${AMENDEMENT_MAX.semoir}`);
+  ok(apres.isotope === avant.isotope && apres.ferraille === avant.ferraille,
+    'et le reste du sol n’a pas bougé');
+
+  // La table de données n'a pas été touchée : c'est le piège d'une fonction qui
+  // rendrait l'objet du biome au lieu d'une copie — un seul camp amendé, et les
+  // 432 cases de la carte changeraient avec.
+  ok(!BIOMES.friche.yields.biomasse,
+    'la table des biomes est intacte : on a copié, pas muté',
+    JSON.stringify(BIOMES.friche.yields));
+
+  // L'amendement vaut pour tout le monde, pas seulement pour la halle. C'est le
+  // point de la source unique : l'escouade qui fouille ici doit le sentir.
+  const vu = rendementPrevu(st, 'fouille', fri.i);
+  ok(vu && vu.par && (vu.par.biomasse || 0) > 0,
+    'et l’escouade qui fouille cette case y trouve de la biomasse',
+    JSON.stringify(vu && vu.par));
+
+  // Le sol appartient au monde, pas au camp : on perd la place, la terre reste.
+  perdreAvantPoste(st, () => {});
+  const orphelin = rendementRegion(st.world, fri.i);
+  ok((orphelin.biomasse || 0) > 0.3,
+    'perdre le camp ne défait pas ce qu’on a fait au sol',
+    `${(orphelin.biomasse || 0).toFixed(2)}`);
+}
+
+section('9 quinvicies sexies. La station ne travaille que ce qu’on lui dit');
+{
+  const camp = (cible, carburant) => {
+    const s = nouvellePartie(3033, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(s);
+    g.regionId = s.world.regions.find(
+      (r) => r.biome === 'desert' && !s.world.colonies.some((c) => c.regionId === r.i)).i;
+    for (const k of Object.keys(COUT_FONDATION)) {
+      g.inventaire[k] = (g.inventaire[k] || 0) + COUT_FONDATION[k];
+    }
+    fonderBase(s, () => {}, g);
+    Object.assign(s.base.batiments,
+      { terraformeur: 3, entrepot: 4, generateur: 3, baraquement: 3, hydroponie: 1 });
+    s.base.stock.carburant = carburant;
+    // Les colporteurs achètent du carburant pour le camp quand il en manque :
+    // « à sec » n'était pas à sec, et la station tournait quand même. On coupe
+    // le commerce et la bourse, sinon le témoin ne témoigne de rien.
+    s.base.commerce = false;
+    s.player.credits = 0;
+    s.base.stock.composant = 4000;
+    s.base.stock.biomasse = 9000;
+    s.base.terraforme = cible;
+    for (let i = 0; i < 3000; i++) tick(s);
+    return rendementRegion(s.world, s.base.regionId);
+  };
+
+  const sansCible = camp(null, 40000);
+  ok(!sansCible.ferraille,
+    'une station sans cible ne fait rien du tout', JSON.stringify(sansCible));
+
+  const avecCible = camp('ferraille', 40000);
+  ok((avecCible.ferraille || 0) > 0.2,
+    'avec une cible, le désert se met à rendre de la ferraille — qu’il n’a jamais eue',
+    `${(avecCible.ferraille || 0).toFixed(2)}`);
+
+  const aSec = camp('ferraille', 0);
+  ok(!aSec.ferraille || aSec.ferraille < 0.02,
+    'et sans carburant à brûler, elle ne corrige rien',
+    `${(aSec.ferraille || 0).toFixed(3)}`);
+
+  ok((camp('minerai', 40000).minerai || 0) > (BIOMES.desert.yields.minerai || 0),
+    'elle sait aussi pousser ce que la région donne déjà');
 }
 
 section('9 sexvicies. L’Essaim saccage, il ne prend pas');

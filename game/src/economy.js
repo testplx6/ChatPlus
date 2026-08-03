@@ -8,7 +8,7 @@ import {
 } from './data.js';
 import { comp, gagnerXp, portage, XP_PRATIQUE } from './characters.js';
 import { remiseDe, palierBonus } from './allegeance.js';
-import { distance as distanceCases } from './world.js';
+import { distance as distanceCases, rendementRegion } from './world.js';
 import { groupeActif } from './groupes.js';
 import {
   METIERS_VILLE, METIER_VILLE_KEYS, PART_ACTIVE, VOCATION_BIOME, VOCATION_STYLE, POIDS_BASE,
@@ -212,11 +212,12 @@ export function productionColonie(world, col) {
   // le cas au premier jet — assèche les trésors des factions, qui ne lèvent plus
   // d'armées, et fige la carte politique.
   const PAR_TETE = 0.115 * richesse;
-  for (const k of Object.keys(biome.yields)) {
+  const rendus = rendementRegion(world, col.regionId);
+  for (const k of Object.keys(rendus)) {
     const gens = k === 'minerai' ? emploi(col, 'mineur')
       : k === 'biomasse' ? emploi(col, 'paysan')
         : emploi(col, 'ferrailleur');
-    prod[k] = (prod[k] || 0) + biome.yields[k] * gens * PAR_TETE;
+    prod[k] = (prod[k] || 0) + rendus[k] * gens * PAR_TETE;
   }
 
   // Les paysans cultivent en plus de ce qu'ils cueillent : c'est la fertilité du

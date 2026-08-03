@@ -9,6 +9,7 @@ import {
 } from './data.js';
 import {
   nomRegion, lieuAvecCoord, colonieDe, colonieParId, coord, chemin, coutTraversee, distance,
+  rendementRegion, amendementRegion,
 } from './world.js';
 import {
   comp, pvTotal, etatCourt, estVivant, estDebout, ratio, peutEquiper,
@@ -27,7 +28,7 @@ import {
   peutReconnaitre, peutRattacher,
   lancerRecherche, annulerConstruction, fonderBase, deposer, retirer,
   COUT_FONDATION, manquePour, apportBatiment, chaineAutonomie, menacesSurLaBase,
-  forceEscouade,
+  forceEscouade, AMENDABLES, AMENDEMENT_MAX, dechetsMax,
 } from './base.js';
 import { classement, enGuerre } from './factions.js';
 import { titreDe, lignesDe } from './chronique.js';
@@ -2024,6 +2025,57 @@ function blocEcoleBase() {
   </section>`;
 }
 
+/**
+ * Ce que la terre est devenue, et ce qu'on lui demande.
+ *
+ * Un amendement se compte en centièmes par jour : sans un endroit qui affiche
+ * le total et l'écart avec le sol d'origine, on paie une station pendant six
+ * mois sans jamais voir ce qu'elle a fait. C'est aussi le seul écran où l'on
+ * choisit la cible de la station — sans cible, elle ne fait rien, et le dire
+ * est la moitié du travail.
+ */
+function blocTerre() {
+  const b = S.base;
+  if (!b.fonde) return '';
+  const sem = nivBat(b, 'semoir');
+  const ter = nivBat(b, 'terraformeur');
+  const reg = S.world.regions[b.regionId];
+  const amend = amendementRegion(S.world, b.regionId);
+  if (!sem && !ter && !amend) return '';
+
+  const nat = BIOMES[reg.biome].yields || {};
+  const rendu = rendementRegion(S.world, b.regionId);
+  const lignes = Object.keys(rendu).sort((x, y) => rendu[y] - rendu[x]).map((k) => {
+    const gain = rendu[k] - (nat[k] || 0);
+    return `<div class="ligne"><span class="k">${e(COMMODITIES[k].nom)}</span>
+      <span class="v">${rendu[k].toFixed(2)}${gain > 0.005
+  ? ` <span class="ok">(+${gain.toFixed(2)})</span>` : ''}</span></div>`;
+  }).join('');
+
+  return `<section class="panneau">
+    <h2 class="titre">La terre <span class="droite">${e(BIOMES[reg.biome].nom)}</span></h2>
+    <div class="aide">Ce que cette case rend par heure de travail — à la halle, et à
+      qui fouille ou creuse ici. Ce qu’on y ajoute reste dans le sol : on peut perdre
+      la place, la terre restera meilleure qu’on l’a trouvée.</div>
+    <div class="sep"></div>
+    ${lignes || '<div class="aide">Cette terre ne rend rien du tout.</div>'}
+    ${ter > 0 ? `<div class="sep"></div>
+      <div class="titre">Ce que la station travaille</div>
+      <div class="taches" style="margin-top:5px">
+        ${AMENDABLES.map((k) => `<button class="act mini ${b.terraforme === k ? 'primaire' : ''}"
+          data-a="terraformer" data-k="${k}">${e(COMMODITIES[k].nom)}</button>`).join('')}
+        <button class="act mini ${!b.terraforme ? 'primaire' : ''}"
+          data-a="terraformer" data-k="">Rien</button>
+      </div>
+      <div class="aide">${b.terraforme
+    ? `Elle travaille ${e(COMMODITIES[b.terraforme].nom.toLowerCase())}, jusqu’à `
+      + `+${AMENDEMENT_MAX.terraformeur}. Elle brûle du carburant et des composants pour ça.`
+    : '<span class="alerte">Aucune cible : la station tourne à vide.</span>'}</div>` : ''}
+    ${sem > 0 ? `<div class="aide">L’ensemenceuse pousse la biomasse jusqu’à
+      +${AMENDEMENT_MAX.semoir}, et consomme de la biomasse pour semer.</div>` : ''}
+  </section>`;
+}
+
 function ecranBase() {
   const b = S.base;
   if (!b.fonde) {
@@ -2120,6 +2172,7 @@ function ecranBase() {
   // manger — étaient noyées entre la fonderie et la raffinerie.
   const FAMILLES = [
     { nom: 'Tenir sur place', clefs: ['baraquement', 'halle', 'bassins', 'hydroponie', 'cantine'] },
+    { nom: 'Changer la terre', clefs: ['semoir', 'terraformeur'] },
     { nom: 'Alimenter', clefs: ['generateur', 'solaire', 'eolienne'] },
     { nom: 'Produire', clefs: ['entrepot', 'fonderie', 'raffinerie', 'atelier'] },
     { nom: 'Se défendre et soigner', clefs: ['mur', 'poste', 'infirmerie'] },
@@ -2207,6 +2260,14 @@ function ecranBase() {
       au prix du détail : moins avantageux que d’aller vendre soi-même, et l’on n’a pas
       marché. Ils passent d’autant plus souvent que la piste est faite
       (${Math.round((S.world.regions[b.regionId].piste || 0) * 100)} %).</div>
+    ${(b.dechets || 0) > 0.5 || nivBat(b, 'raffinerie') > 0 ? `<div class="ligne">
+      <span class="k">Déchets</span>
+      <span class="v ${(b.dechets || 0) >= dechetsMax(b) * 0.98 ? 'alerte' : ''}">${
+  n(Math.round(b.dechets || 0))} / ${n(dechetsMax(b))}</span></div>
+      <div class="aide">Ce que les chaînes recrachent. Ça ne se vend pas et ça ne se porte
+        pas ; au-delà du tas, le vent l’emporte.${niveauRech(b, 'pyrolyse') > 0
+    ? ' La raffinerie le brûle et en tire du carburant.'
+    : ' <span class="ambre">La Pyrolyse en ferait du carburant.</span>'}</div>` : ''}
     <div class="ligne"><span class="k">Entrepôt</span>
       <span class="v ${stock >= capa * 0.98 ? 'alerte' : ''}">${n(stock)} / ${n(capa)}</span></div>
     ${b.gaspille > 20 ? `<div class="aide alerte">L’entrepôt a déjà refusé
@@ -2221,6 +2282,7 @@ function ecranBase() {
     : `Main-d’œuvre ×${mainDoeuvre(b).toFixed(2)} sur les chaînes · +${n(Math.round((b.pop || 0) * 2.5))} de défense · ${n((b.pop || 0) * 0.014 * 24, 1)} rations/jour consommées`}</div>
   </section>
 
+  ${blocTerre()}
   ${blocChaine()}
   ${blocMetiers()}
   ${blocEcoleBase()}
@@ -4369,6 +4431,15 @@ function surClic(ev) {
 
     case 'autoemploi': {
       ACTIONS.autoEmploi();
+      break;
+    }
+
+    case 'terraformer': {
+      // La chaîne vide vaut « rien » : une station sans cible ne travaille pas,
+      // et c'est un choix qu'on doit pouvoir faire — le carburant sert ailleurs.
+      S.base.terraforme = el.dataset.k || null;
+      ACTIONS.sauver();
+      rafraichir(true);
       break;
     }
 

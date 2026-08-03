@@ -177,6 +177,8 @@ export function normaliser(state) {
     if (b.majEmploi === undefined) b.majEmploi = -999;
     if (b.gaspilleJour === undefined) b.gaspilleJour = 0;
     if (b.dernierGaspillage === undefined) b.dernierGaspillage = -999;
+    if (b.dechets === undefined) b.dechets = 0;
+    if (b.terraforme === undefined) b.terraforme = null;
     // Avant les métiers, les habitants étaient un multiplicateur anonyme : on
     // les laisse manœuvres, le joueur les affectera s'il le veut.
     if (!b.postes) b.postes = {};

@@ -493,6 +493,38 @@ export function siteConnu(world, i) {
   return r && r.site && r.site.connu && !r.site.fouille ? r.site : null;
 }
 
+/**
+ * Ce qu'une région donne à l'heure de travail — le biome, plus ce qu'on y a
+ * fait.
+ *
+ * Six endroits lisaient `BIOMES[r.biome].yields` chacun de leur côté : la
+ * halle, la production d'une ville, et trois ordres d'escouade. Une terre
+ * qu'on amende devait donc être ajoutée six fois, ou elle mentait cinq fois.
+ * Une seule fonction, et l'amendement vaut partout — pour votre camp comme
+ * pour la ville qui s'installerait là un jour.
+ *
+ * `amendement` n'existe pas dans les vieilles sauvegardes ni sur les 431 autres
+ * cases : le cas courant ne coûte donc qu'une copie.
+ */
+export function rendementRegion(world, i) {
+  const r = world.regions[i];
+  const out = Object.assign({}, BIOMES[r.biome].yields || {});
+  if (!r.amendement) return out;
+  for (const k of Object.keys(r.amendement)) {
+    const a = r.amendement[k];
+    if (a > 0) out[k] = Number(((out[k] || 0) + a).toFixed(3));
+  }
+  return out;
+}
+
+/** Ce qu'on a ajouté à cette terre, et rien d'autre. Pour le dire à l'écran. */
+export function amendementRegion(world, i) {
+  const a = world.regions[i].amendement;
+  if (!a) return null;
+  const dit = Object.keys(a).filter((k) => a[k] > 0.001);
+  return dit.length ? dit.map((k) => ({ key: k, gain: a[k] })) : null;
+}
+
 export function nomRegion(world, i) {
   const r = world.regions[i];
   const col = colonieDe(world, i);

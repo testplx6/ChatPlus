@@ -7,6 +7,7 @@
 import { BIOMES, POSTURES, COMMODITIES, POI, SKILLS } from './data.js';
 import {
   chemin, coutTraversee, decouvrir, nomRegion, colonieDe, distance, damer,
+  rendementRegion,
 } from './world.js';
 import {
   comp, gagnerXp, estDebout, estVivant, tickPerso, nourrir, pvTotal,
@@ -57,7 +58,7 @@ export function rendementPrevu(state, type, regionId) {
   const biome = BIOMES[r.biome];
   const filtre = FILTRES[type];
   if (filtre === undefined) return null;
-  const rendements = Object.assign({}, biome.yields);
+  const rendements = rendementRegion(state.world, r.i);
   if (type === 'chasse') {
     rendements.biomasse = Math.max(rendements.biomasse || 0, r.biome === 'relais' ? 0.05 : 0.18);
   }
@@ -203,7 +204,7 @@ function recolter(state, g, type, travailleurs, log, ctx, facteur = 1) {
 
   // Même un désert nourrit son homme, mal : la chasse a un plancher partout,
   // sinon un ordre parfaitement raisonnable rend zéro sans prévenir.
-  const rendements = Object.assign({}, biome.yields);
+  const rendements = rendementRegion(state.world, r.i);
   if (type === 'chasse') {
     rendements.biomasse = Math.max(rendements.biomasse || 0, r.biome === 'relais' ? 0.05 : 0.18);
   }
@@ -902,7 +903,7 @@ export function apercuEscouade(state, g) {
     const skill = SKILL_ORDRE[type];
     const climat = conditions(state.world, state.temps);
     const coh = rendementCohesion(g);
-    const rendements = Object.assign({}, biome.yields);
+    const rendements = rendementRegion(state.world, r.i);
     if (type === 'chasse') {
       rendements.biomasse = Math.max(rendements.biomasse || 0, r.biome === 'relais' ? 0.05 : 0.18);
     }

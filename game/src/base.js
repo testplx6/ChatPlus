@@ -5,6 +5,7 @@ import {
   BUILDINGS, RESEARCH, COMMODITY_KEYS, COMMODITIES, METIERS, METIER_KEYS, BIOMES,
   FACTIONS,
 } from './data.js';
+import { rendementRegion } from './world.js';
 import { METEO } from './climat.js';
 import { loisDe } from './lois.js';
 import { comp, gagnerXp, estDebout, XP_PRATIQUE } from './characters.js';
@@ -33,6 +34,10 @@ export function creerBase() {
     gaspille: 0,
     gaspilleJour: 0,
     dernierGaspillage: -999,
+    // Le tas derrière l'atelier : ce que les chaînes recrachent. Voir `rebuter`.
+    dechets: 0,
+    // Ce que la station de terraformation travaille, s'il y en a une.
+    terraforme: null,
     // Les habitants se placent eux-mêmes dans les métiers ouverts. Voir
     // `embaucher` : sans ça, un avant-poste de quarante habitants tourne avec
     // personne affecté à rien.
@@ -317,16 +322,33 @@ export function apportBatiment(base, key, state) {
     case 'bassins': {
       const gain = 1 + niveauRech(base, 'cultures') * 0.18;
       const reg = state && state.world.regions[base.regionId];
-      const y = (reg && BIOMES[reg.biome] && BIOMES[reg.biome].yields) || {};
+      const y = (reg && state) ? rendementRegion(state.world, base.regionId) : {};
       return `~${(0.55 * n * gain).toFixed(2)} biomasse/h à plein régime, où que soit le camp.`
         + (y.biomasse ? '' : ' Ici, c’est la seule source possible.');
+    }
+    case 'semoir': {
+      const reg = state && state.world.regions[base.regionId];
+      const a = (reg && reg.amendement && reg.amendement.biomasse) || 0;
+      return `La région rend ${(0.00030 * n * 24).toFixed(3)} de biomasse de plus par jour, `
+        + `jusqu’à +${AMENDEMENT_MAX.semoir}. Elle en est à +${a.toFixed(2)}. `
+        + 'Ça vaut pour la halle, pour l’escouade qui fouille, et pour toujours.';
+    }
+    case 'terraformeur': {
+      const reg = state && state.world.regions[base.regionId];
+      const c = base.terraforme;
+      const a = (c && reg && reg.amendement && reg.amendement[c]) || 0;
+      return `Corrige le sol sur une ressource au choix, ${(0.00022 * n * 24).toFixed(3)} `
+        + `par jour, jusqu’à +${AMENDEMENT_MAX.terraformeur} — même sur ce que la région ne `
+        + `donne pas du tout. ${c ? `Travaille ${COMMODITIES[c].nom.toLowerCase()} : `
+          + `+${a.toFixed(2)}.` : 'Aucune cible choisie : elle ne fait rien.'} `
+        + 'Consomme du carburant et des composants.';
     }
     case 'halle': {
       // Ce que *cette* région donne, avant de dépenser soixante-cinq ferrailles
       // pour découvrir qu'elle ne donne pas de biomasse. Une friche se ramasse
       // très bien, mais on n'y mange pas.
       const reg = state && state.world.regions[base.regionId];
-      const y = (reg && BIOMES[reg.biome] && BIOMES[reg.biome].yields) || null;
+      const y = (reg && state) ? rendementRegion(state.world, base.regionId) : null;
       const liste = y ? Object.keys(y).map((k) => COMMODITIES[k].nom.toLowerCase()).join(', ') : null;
       return 'Ramasse la région toute seule, sans l’escouade et sans épuiser la case.'
         + (liste ? ` Ici : ${liste}.` : '')
@@ -354,7 +376,10 @@ export function apportBatiment(base, key, state) {
     case 'cantine':
       return 'Jusqu’à un tiers de vivres en moins pour les mêmes bouches, et du moral.';
     case 'fonderie': return 'Minerai → alliage, la première pièce de tout ce qui se fabrique.';
-    case 'raffinerie': return 'Polymère → carburant, ce que brûle le générateur.';
+    case 'raffinerie': return 'Polymère → carburant, ce que brûle le générateur.'
+      + (niveauRech(base, 'pyrolyse') > 0
+        ? ' Elle brûle aussi les déchets des autres chaînes.'
+        : ' Avec la Pyrolyse, elle brûlerait aussi les déchets des autres chaînes.');
     case 'atelier': return 'Alliage + polymère → composants, qu’on ne trouve presque nulle part.';
     case 'infirmerie': return 'Soigne les vôtres au repos et fabrique des medkits.';
     case 'antenne': return 'Ouvre la recherche, l’école maison, et voit plus loin.';
@@ -399,7 +424,7 @@ export function chaineAutonomie(state) {
   const rations = Math.floor(base.stock.rations || 0);
   const carburant = Math.floor(base.stock.carburant || 0);
   const reg = state.world.regions[base.regionId];
-  const rend = (reg && BIOMES[reg.biome] && BIOMES[reg.biome].yields) || {};
+  const rend = reg ? rendementRegion(state.world, base.regionId) : {};
   const donne = Object.keys(rend);
   const donneBiomasse = (rend.biomasse || 0) > 0;
   const halle = niveau(base, 'halle');
@@ -653,6 +678,12 @@ export function lancerRecherche(state, key) {
   if (niveau(base, 'antenne') < 1) return { ok: false, motif: 'Antenne requise.' };
   const r = RESEARCH[key];
   if (!r) return { ok: false, motif: 'Recherche inconnue.' };
+  // Une recherche peut en supposer une autre : on maîtrise la culture sous
+  // cloche avant de semer dehors, et l'on sème avant de prétendre corriger un
+  // sol. Sans ça, l'arbre est une liste et l'ordre n'a aucun sens.
+  if (r.exige && niveauRech(base, r.exige) < 1) {
+    return { ok: false, motif: `Il faut d’abord ${RESEARCH[r.exige].nom}.` };
+  }
   const enFile = base.fileRech.filter((x) => x.key === key).length;
   if (niveauRech(base, key) + enFile >= r.max) return { ok: false, motif: 'Niveau maximum atteint.' };
   if (base.fileRech.length >= 3) return { ok: false, motif: 'File pleine (3).' };
@@ -721,6 +752,28 @@ function ajouter(base, key, qte) {
   base.stock[key] = (base.stock[key] || 0) + reel;
   if (qte - reel > 0.001) base.gaspille = (base.gaspille || 0) + (qte - reel);
   return reel;
+}
+
+/**
+ * Le tas derrière l'atelier.
+ *
+ * Toute transformation recrache quelque chose : des tiges, des scories, des
+ * chutes, des résidus. Ce n'est pas une marchandise — ça ne se vend pas, ça ne
+ * se porte pas, aucune ville n'en veut — donc ça ne passe pas par l'entrepôt
+ * et ça n'encombre pas les listes de stock. Ça s'entasse, et au-delà d'un
+ * certain tas, le vent l'emporte.
+ *
+ * C'est ce que mange la pyrolyse. Un camp qui transforme beaucoup se chauffe
+ * avec ses propres restes ; un camp qui ne fait que cultiver n'a presque rien à
+ * brûler, et c'est juste.
+ */
+export function dechetsMax(base) {
+  return 60 + niveau(base, 'entrepot') * 40;
+}
+
+function rebuter(base, qte) {
+  if (!(qte > 0)) return;
+  base.dechets = Math.min(dechetsMax(base), (base.dechets || 0) + qte);
 }
 
 function consommer(base, key, qte) {
@@ -835,30 +888,37 @@ export function tickBase(state, log, ctx) {
   if (hyd > 0) {
     const bio = consommer(base, 'biomasse', 1.25 * hyd * aLaMain * mo * M.cultivateur);
     ajouter(base, 'rations', bio * 0.9 * (1 + (rech.hydroponie_av || 0) * 0.15));
+    rebuter(base, bio * 0.22); // tiges, balles, ce qui a tourné
   }
   const fond = niveau(base, 'fonderie');
   if (fond > 0) {
     const min = consommer(base, 'minerai', 1.2 * fond * r * mo * M.fondeur);
     ajouter(base, 'alliage', min * 0.42 * (1 + (rech.metallurgie || 0) * 0.12));
+    rebuter(base, min * 0.35); // scories
   }
   const raf = niveau(base, 'raffinerie');
   if (raf > 0) {
     const pol = consommer(base, 'polymere', 0.9 * raf * r * mo * M.raffineur);
     ajouter(base, 'carburant', pol * 0.55);
-    // La pyrolyse : ce qui a poussé finit aussi dans le réservoir. Moins bien
-    // que le polymère — on brûle de l'eau et des tiges — mais le polymère ne se
-    // ramasse que dans trois biomes sur neuf, et la biomasse se cultive
-    // n'importe où depuis les bassins. C'est ce qui referme la chaîne.
+    rebuter(base, pol * 0.2); // résidus de distillation
+    // La pyrolyse : le tas qui traîne derrière l'atelier finit dans le
+    // réservoir.
+    //
+    // Première version : elle brûlait la biomasse elle-même, c'est-à-dire de
+    // la nourriture. Faire du carburant avec ce qui aurait pu être des rations
+    // est précisément ce qu'un camp affamé ne doit pas avoir intérêt à faire.
+    // Elle mange maintenant les déchets — ce que les chaînes recrachent et que
+    // personne ne ramasse. C'est gratuit, ça ne se transporte pas, ça ne se
+    // vend pas, et ça récompense d'avoir monté une vraie production plutôt que
+    // d'avoir des bassins.
     const pyr = niveauRech(base, 'pyrolyse');
     if (pyr > 0) {
-      // On ne mange pas le grain qui reste : la pyrolyse ne prend que ce qui
-      // dépasse de quoi tenir l'hydroponie une bonne journée. Sans ce garde,
-      // un camp avec raffinerie mourait de faim en faisant du carburant.
-      const garde = 12 * niveau(base, 'hydroponie');
-      const dispo = Math.max(0, (base.stock.biomasse || 0) - garde);
-      const veut = 0.7 * raf * r * mo * M.raffineur;
-      const bio = consommer(base, 'biomasse', Math.min(veut, dispo));
-      ajouter(base, 'carburant', bio * 0.3 * (1 + (pyr - 1) * 0.1));
+      const veut = 1.1 * raf * r * mo * M.raffineur;
+      const brule = Math.min(veut, base.dechets || 0);
+      if (brule > 0) {
+        base.dechets = Math.max(0, (base.dechets || 0) - brule);
+        ajouter(base, 'carburant', brule * 0.45 * (1 + (pyr - 1) * 0.1));
+      }
     }
   }
   const atl = niveau(base, 'atelier');
@@ -866,6 +926,7 @@ export function tickBase(state, log, ctx) {
     const all = consommer(base, 'alliage', 0.35 * atl * r * mo * M.machiniste);
     const pol = consommer(base, 'polymere', 0.5 * atl * r * mo * M.machiniste);
     ajouter(base, 'composant', Math.min(all / 0.35, pol / 0.5) * 0.14 * atl * r);
+    rebuter(base, (all + pol) * 0.3); // chutes et rebuts d'assemblage
   }
   // La halle : jusqu'ici l'avant-poste ne savait que transformer ce qu'on lui
   // apportait. Il ramasse maintenant sa propre région, au rendement du biome et
@@ -873,7 +934,7 @@ export function tickBase(state, log, ctx) {
   const halle = niveau(base, 'halle');
   if (halle > 0) {
     const regHalle = state.world.regions[base.regionId];
-    const y = BIOMES[regHalle.biome].yields || {};
+    const y = rendementRegion(state.world, base.regionId);
     // Ramasser se fait avec des bras, et la halle en était pourtant punie :
     // elle passait par `aLaMain`, qui vaut 0,4 sans courant. Un camp qui n'a
     // pas encore de générateur — c'est-à-dire tout camp de moins de mille
@@ -900,8 +961,16 @@ export function tickBase(state, log, ctx) {
   const bas = niveau(base, 'bassins');
   if (bas > 0) {
     const gain = 1 + niveauRech(base, 'cultures') * 0.18;
-    ajouter(base, 'biomasse', 0.55 * bas * (0.4 + 0.6 * r) * mo * M.bassinier * gain);
+    const pousse = 0.55 * bas * (0.4 + 0.6 * r) * mo * M.bassinier * gain;
+    ajouter(base, 'biomasse', pousse);
+    rebuter(base, pousse * 0.18); // ce qu'on écume et qu'on jette
   }
+
+  // --- Amender la terre. Le seul travail du camp dont le produit ne rentre pas
+  // dans l'entrepôt : il reste dans le sol, il vaut pour tout le monde, et il
+  // ne se transporte pas. On perd la place, on perd l'amendement avec — ce qui
+  // est exactement ce que ça veut dire, planter quelque part.
+  amender(state, base, r, mo, M);
 
   const inf = niveau(base, 'infirmerie');
   if (inf > 0) {
@@ -1438,6 +1507,70 @@ export function perdreAvantPoste(state, log, motif) {
       regionId: reg,
       important: true,
     });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Amender la terre
+// ---------------------------------------------------------------------------
+
+/**
+ * Jusqu'où l'on peut pousser une terre, par ressource.
+ *
+ * Deux plafonds, et l'écart entre eux est le sujet. L'ensemenceuse ramène une
+ * friche stérile au niveau d'une steppe médiocre ; elle n'en fait pas un
+ * marais. La station va plus loin, y compris sur ce que le biome ne donne pas
+ * du tout — mais elle ne fabrique pas un Relais Orbital dans un désert.
+ *
+ * Le principe : on rend une mauvaise place vivable, jamais meilleure que la
+ * meilleure. Sans ce plafond, terraformer serait la seule chose à faire de la
+ * partie, et le choix de l'endroit où l'on plante son camp ne voudrait plus
+ * rien dire.
+ */
+export const AMENDEMENT_MAX = { semoir: 0.55, terraformeur: 0.9 };
+
+/** Ce qu'une station peut travailler : ce qu'un sol peut rendre, en somme. */
+export const AMENDABLES = [
+  'biomasse', 'ferraille', 'minerai', 'polymere', 'carburant', 'isotope', 'alliage',
+];
+
+function amender(state, base, r, mo, M) {
+  const reg = state.world.regions[base.regionId];
+  if (!reg) return;
+
+  // L'amendement vit sur la région, pas sur le camp — un seul exemplaire.
+  //
+  // Le garder aussi dans `state.base` aurait été commode et faux : deux nombres
+  // écrits séparément finissent toujours par diverger. Et le sol est la moitié
+  // partagée de l'état : une terre qu'on a corrigée reste corrigée pour la
+  // ville qui s'y installera après vous, même si vous perdez la place. C'est
+  // ce que ça veut dire, terraformer.
+  const pousse = (key, gain, plafond) => {
+    const a = reg.amendement || (reg.amendement = {});
+    const restant = plafond - (a[key] || 0);
+    if (restant <= 0) return false;
+    a[key] = Number(((a[key] || 0) + Math.min(gain, restant)).toFixed(5));
+    return true;
+  };
+
+  // L'ensemenceuse : de la vie, et rien d'autre. Elle mange sa propre semence.
+  const sem = niveau(base, 'semoir');
+  if (sem > 0) {
+    const graine = consommer(base, 'biomasse', 0.25 * sem * r * mo * M.semeur);
+    if (graine > 0.001) {
+      pousse('biomasse', 0.00030 * sem * r * mo * M.semeur, AMENDEMENT_MAX.semoir);
+    }
+  }
+
+  // La station : ce qu'on lui demande, à condition de la nourrir.
+  const ter = niveau(base, 'terraformeur');
+  const cible = base.terraforme;
+  if (ter > 0 && cible && AMENDABLES.includes(cible)) {
+    const carb = consommer(base, 'carburant', 0.35 * ter * r * mo * M.terraformier);
+    const piece = consommer(base, 'composant', 0.006 * ter * r * mo * M.terraformier);
+    if (carb > 0.001 && piece > 0.00001) {
+      pousse(cible, 0.00022 * ter * r * mo * M.terraformier, AMENDEMENT_MAX.terraformeur);
+    }
   }
 }
 
