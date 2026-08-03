@@ -9,6 +9,7 @@ import { loisDe } from './lois.js';
 import { comp, gagnerXp, estDebout, XP_PRATIQUE } from './characters.js';
 import { groupes, groupeActif } from './groupes.js';
 import { garnison } from './allegeance.js';
+import { estSurveillee } from './connaissance.js';
 import { noterArgent } from './rapport.js';
 
 export function creerBase() {
@@ -1402,14 +1403,26 @@ export function saccagerAvantPoste(state, log, force) {
 export function menacesSurLaBase(state) {
   const base = state.base;
   if (!base.fonde) return [];
+  // Ce qu'on sait, et comment on le sait. Le reste du jeu tient à ce que
+  // l'information soit imparfaite — les relevés de villes portent leur date, le
+  // trésor d'une faction ne se lit qu'avec la Cryptographie — et la première
+  // version de cette alerte annonçait la force exacte d'une colonne à trente
+  // régions de là. On sait qu'ils viennent : lever une colonne se crie sur les
+  // places, et sa destination avec. Combien ils sont est une autre affaire.
+  const crypto = (base.recherche.cryptographie || 0) > 0;
+  // Le poste de garde n'avait qu'un usage : voir venir les pillards. Il voit
+  // aussi venir les colonnes, et c'est enfin une raison de le monter.
+  const guet = niveau(base, 'poste');
   const out = [];
   for (const a of state.world.armees || []) {
     if (a.cible !== base.colonieId) continue;
     // Ce qu'il lui reste à parcourir, en cases, d'après sa propre route.
     const reste = Math.max(0, (a.route ? a.route.length : 0) - (a.etape || 0));
+    const vue = crypto || estSurveillee(state, a.regionId) || (guet > 0 && reste <= guet * 2);
     out.push({
       faction: a.faction,
-      force: a.force,
+      force: vue ? a.force : null,
+      vue,
       cases: reste,
       regionId: a.regionId,
       etat: a.etat,

@@ -12328,14 +12328,26 @@ function saccagerAvantPoste(state, log, force) {
 function menacesSurLaBase(state) {
   const base = state.base;
   if (!base.fonde) return [];
+  // Ce qu'on sait, et comment on le sait. Le reste du jeu tient à ce que
+  // l'information soit imparfaite — les relevés de villes portent leur date, le
+  // trésor d'une faction ne se lit qu'avec la Cryptographie — et la première
+  // version de cette alerte annonçait la force exacte d'une colonne à trente
+  // régions de là. On sait qu'ils viennent : lever une colonne se crie sur les
+  // places, et sa destination avec. Combien ils sont est une autre affaire.
+  const crypto = (base.recherche.cryptographie || 0) > 0;
+  // Le poste de garde n'avait qu'un usage : voir venir les pillards. Il voit
+  // aussi venir les colonnes, et c'est enfin une raison de le monter.
+  const guet = niveau(base, 'poste');
   const out = [];
   for (const a of state.world.armees || []) {
     if (a.cible !== base.colonieId) continue;
     // Ce qu'il lui reste à parcourir, en cases, d'après sa propre route.
     const reste = Math.max(0, (a.route ? a.route.length : 0) - (a.etape || 0));
+    const vue = crypto || estSurveillee(state, a.regionId) || (guet > 0 && reste <= guet * 2);
     out.push({
       faction: a.faction,
-      force: a.force,
+      force: vue ? a.force : null,
+      vue,
       cases: reste,
       regionId: a.regionId,
       etat: a.etat,
@@ -16939,7 +16951,8 @@ function blocSituation() {
   // perdre entièrement sans avoir joué : elle met des centaines d'heures à
   // arriver, et l'on n'en était averti que par l'épitaphe.
   for (const m of menacesSurLaBase(S)) {
-    const t = `${FACTIONS[m.faction].nom} marche sur ${S.base.nom} — ${n(m.force)} hommes, `
+    const t = `${FACTIONS[m.faction].nom} marche sur ${S.base.nom} — ${m.vue
+      ? `${n(m.force)} hommes` : 'nombre inconnu'}, `
       + `${m.cases <= 0 ? 'ils y sont' : `${m.cases} région${m.cases > 1 ? 's' : ''}`}`;
     if (m.cases <= 4) urgences.push(`${t}.`);
     else bientot.push(t);
@@ -18131,8 +18144,14 @@ function ecranBase() {
       <span class="droite alerte">${menaces.length}</span></h2>
     ${menaces.map((m) => `<div class="ligne"><span class="k"
       style="color:${couleurFaction(m.faction)}">${e(FACTIONS[m.faction].nom)}</span>
-      <span class="v ${m.cases <= 3 ? 'alerte' : ''}">${n(m.force)} hommes · ${
+      <span class="v ${m.cases <= 3 ? 'alerte' : ''}">${m.vue
+    ? `${n(m.force)} hommes` : '<span class="aide">nombre inconnu</span>'} · ${
   m.cases <= 0 ? 'ils y sont' : `${m.cases} région${m.cases > 1 ? 's' : ''}`}</span></div>`).join('')}
+    ${menaces.some((m) => !m.vue) ? `<div class="aide">On sait qu’ils viennent — lever une
+      colonne se crie sur les places — mais pas combien ils sont. Il faut les avoir en vue :
+      un poste de garde porte à deux régions par niveau, l’Optique élargit ce que le camp
+      surveille, la Cryptographie ouvre leurs transmissions, et quelqu’un envoyé sur leur
+      route les compte de ses yeux.</div>` : ''}
     ${(() => {
     // Les nombres qui décident, et rien d'autre. « Renforcez votre défense » ne
     // dit pas si l'on tient ; « 137 + 22 contre 200 » le dit. On reprend les
@@ -18144,7 +18163,11 @@ function ecranBase() {
     const escouade = Math.round(forceEscouade(S));
     const murs = (col ? col.murs : nivBat(b, 'mur') * 3) * 2;
     const tenue = (place + escouade) * 0.875 + murs;
-    const pire = Math.max(...menaces.map((m) => m.force));
+    // On ne compare qu'à ce qu'on a vraiment vu. Une colonne qu'on n'a pas
+    // comptée ne doit pas produire un verdict : c'est ce qu'on ignore qui
+    // décide, et le dire est plus utile que d'inventer un chiffre.
+    const comptees = menaces.filter((m) => m.vue);
+    const pire = comptees.length ? Math.max(...comptees.map((m) => m.force)) : null;
     return `<div class="sep"></div>
       <div class="ligne"><span class="k">Place et garnison</span>
         <span class="v">${n(place)}</span></div>
@@ -18152,13 +18175,18 @@ function ecranBase() {
       <div class="ligne"><span class="k">Escouade sur place</span>
         <span class="v ${escouade > 0 ? 'ok' : 'alerte'}">${escouade > 0
   ? `+${n(escouade)}` : 'personne'}</span></div>
-      <div class="ligne"><span class="k">Ce qu’ils envoient</span>
+      <div class="ligne"><span class="k">Ce que la place vaut</span>
+        <span class="v">${n(Math.round(tenue))}</span></div>
+      ${pire === null ? `<div class="aide">Ce qu’ils envoient : on ne le sait pas encore.
+        La place vaut ${n(Math.round(tenue))} ; c’est le seul des deux nombres qui soit à
+        vous.</div>`
+    : `<div class="ligne"><span class="k">Ce qu’ils envoient</span>
         <span class="v alerte">${n(pire)}</span></div>
       <div class="aide">${tenue >= pire * 0.8
-    ? 'À vue de nez, la place tient. Le sort s’en mêle des deux côtés.'
-    : 'À vue de nez, la place tombe. Ce qui pèse, dans l’ordre : les habitants '
-      + '(2,5 chacun), un niveau de mur de plus, des miliciens affectés, et '
-      + 'l’escouade ici plutôt qu’ailleurs — elle vaut ce que valent ses gens au combat.'}</div>`;
+      ? 'À vue de nez, la place tient. Le sort s’en mêle des deux côtés.'
+      : 'À vue de nez, la place tombe. Ce qui pèse, dans l’ordre : les habitants '
+        + '(2,5 chacun), un niveau de mur de plus, des miliciens affectés, et '
+        + 'l’escouade ici plutôt qu’ailleurs — elle vaut ce que valent ses gens au combat.'}</div>`}`;
   })()}
   </section>` : '';
 

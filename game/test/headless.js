@@ -4947,6 +4947,71 @@ section('9 sexvicies. L’Essaim saccage, il ne prend pas');
   }
 }
 
+section('9 sexvicies bis. On sait qu’ils viennent, pas combien ils sont');
+{
+  // L'alerte « on marche sur votre camp » annonçait la force exacte d'une
+  // colonne à trente régions de là, alors que tout le reste du jeu tient à ce
+  // que l'information soit imparfaite : les relevés de villes portent leur
+  // date, le trésor d'une faction ne se lit qu'avec la Cryptographie. Lever une
+  // colonne se crie sur les places — on sait donc qu'ils viennent et où — mais
+  // les compter demande des yeux.
+  const sv = nouvellePartie(5150, { maintenant: 0, depart: 'ville', equipe: 4 });
+  const gv = groupeActif(sv);
+  const site = sv.world.regions.find(
+    (r) => r.biome === 'marais' && !sv.world.colonies.some((c) => c.regionId === r.i));
+  gv.regionId = site.i;
+  for (const k of Object.keys(COUT_FONDATION)) {
+    gv.inventaire[k] = (gv.inventaire[k] || 0) + COUT_FONDATION[k];
+  }
+  fonderBase(sv, () => {}, gv);
+  Object.assign(sv.base.batiments,
+    { halle: 2, hydroponie: 2, baraquement: 3, generateur: 1, mur: 2, entrepot: 3 });
+  sv.base.stock.carburant = 4000;
+  avancer(sv, 1200);
+  const colV = reconnaitreAvantPoste(sv, () => {});
+
+  // Trois endroits distincts : le camp, la colonne, l'escouade. Confondre les
+  // deux derniers donne des yeux sans le vouloir — la première version de cette
+  // vérification posait l'escouade sur la case de la colonne, voyait tout, et
+  // ne prouvait donc rien.
+  const depuis = sv.world.regions.find((r) => Math.abs(r.i - sv.base.regionId) > 20);
+  const ailleurs = sv.world.regions.find(
+    (r) => Math.abs(r.i - sv.base.regionId) > 20 && Math.abs(r.i - depuis.i) > 20);
+  for (const gr of groupes(sv)) gr.regionId = ailleurs.i;
+  sv.world.armees.push({
+    id: 'aVue', faction: 'cendre', regionId: depuis.i, force: 340, forceMax: 340,
+    cible: colV.id, route: new Array(8).fill(sv.base.regionId), etape: 0, progres: 0,
+    etat: 'marche', ravitaillement: 600,
+  });
+
+  const vue = () => menacesSurLaBase(sv)[0];
+  ok(vue() && vue().cases === 8, 'la colonne est annoncée, et l’on sait à combien elle est',
+    JSON.stringify(vue()));
+  ok(!vue().vue && vue().force === null,
+    'mais un camp sans yeux ne les compte pas', JSON.stringify(vue()));
+
+  sv.base.batiments.poste = 1;
+  ok(!vue().vue, 'un poste de garde de niveau 1 porte à deux régions : pas à huit');
+  sv.base.batiments.poste = 4;
+  ok(vue().vue && vue().force === 340,
+    'à quatre niveaux il porte à huit, et l’on compte', JSON.stringify(vue()));
+  sv.base.batiments.poste = 0;
+
+  sv.base.recherche.optique = 3;
+  ok(!vue().vue, 'l’Optique élargit ce que le camp surveille, pas jusqu’à huit régions');
+  sv.base.recherche.optique = 0;
+
+  sv.base.recherche.cryptographie = 1;
+  ok(vue().vue && vue().force === 340,
+    'la Cryptographie ouvre leurs transmissions : on lit leurs effectifs');
+  sv.base.recherche.cryptographie = 0;
+  ok(!vue().vue, 'et sans elle, on retombe dans le noir');
+
+  for (const gr of groupes(sv)) gr.regionId = depuis.i;
+  ok(vue().vue && vue().force === 340,
+    'quelqu’un envoyé sur leur route les compte de ses yeux');
+}
+
 section('9 septvicies. Refonder, c’est repartir de rien');
 {
   // On perdait un camp, on en refondait un ailleurs, et le second héritait du
