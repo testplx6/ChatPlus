@@ -15867,6 +15867,206 @@ function existeSauvegarde() {
   return !!(s && s.getItem(CLE));
 }
 
+// ---------------------------------------------------------------------------
+// Emplacements : plusieurs parties gardées côte à côte
+// ---------------------------------------------------------------------------
+//
+// La partie en cours continue de vivre sous `CLE`, écrite toutes les cinq
+// secondes ; rien de ce qui suit ne la touche. Ce sont des copies qu'on prend
+// exprès, qu'on nomme, et qu'on relit quand on veut — pour revenir sur un
+// choix, pour comparer deux façons de jouer, ou pour garder l'état exact d'une
+// partie où quelque chose s'est mal passé.
+//
+// Ce dernier usage est le plus utile pendant qu'on écrit le jeu : un défaut
+// qu'on ne sait pas reproduire est un défaut qu'on ne corrige pas. Un
+// emplacement s'exporte en fichier, et un fichier se transmet.
+
+const CLE_INDEX = 'cendres.emplacements.v1';
+const PREFIXE = 'cendres.emp.';
+
+/**
+ * Combien d'emplacements on autorise.
+ *
+ * Une partie pèse de 245 Ko neuve à 346 Ko après quatre mille heures, et le
+ * stockage d'un navigateur tourne autour de cinq mégaoctets. Huit tient
+ * largement, douze frôlerait le mur — et le mur, ici, c'est une écriture qui
+ * échoue au moment où l'on croyait sauvegarder.
+ */
+const EMPLACEMENTS_MAX = 8;
+
+function lireIndex() {
+  const s = stockage();
+  if (!s) return [];
+  try {
+    const brut = JSON.parse(s.getItem(CLE_INDEX) || '[]');
+    return Array.isArray(brut) ? brut : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function ecrireIndex(liste) {
+  const s = stockage();
+  if (!s) return false;
+  try {
+    s.setItem(CLE_INDEX, JSON.stringify(liste));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * De quoi reconnaître une partie sans l'ouvrir.
+ *
+ * Une liste de « Sauvegarde 1, Sauvegarde 2, Sauvegarde 3 » ne sert à rien : au
+ * bout de trois, on ne sait plus laquelle est laquelle. On garde donc le jour,
+ * les vivants, la bourse et l'endroit — c'est ce qu'on regarde pour se
+ * rappeler où l'on en était.
+ */
+function resumeSauvegarde(state) {
+  const gs = (state.player && state.player.groupes) || [];
+  const gens = gs.reduce(
+    (t, g) => t + (g.membres || []).filter((c) => c && c.etat !== 'mort').length, 0);
+  return {
+    temps: state.temps || 0,
+    jour: Math.floor((state.temps || 0) / 24) + 1,
+    gens,
+    credits: Math.round((state.player && state.player.credits) || 0),
+    base: !!(state.base && state.base.fonde),
+    nomBase: state.base && state.base.fonde ? state.base.nom : null,
+    depart: state.depart || null,
+    seed: state.seed,
+  };
+}
+
+/** Les emplacements occupés, du plus récemment écrit au plus ancien. */
+function listerEmplacements() {
+  return lireIndex().slice().sort((a, b) => (b.quand || 0) - (a.quand || 0));
+}
+
+/** Ce que tout ça pèse, pour le dire avant que l'écriture échoue. */
+function poidsEmplacements() {
+  const s = stockage();
+  if (!s) return { octets: 0, n: 0 };
+  let octets = 0;
+  let n = 0;
+  for (const e of lireIndex()) {
+    const txt = s.getItem(PREFIXE + e.id);
+    if (txt) { octets += txt.length; n += 1; }
+  }
+  return { octets, n };
+}
+
+/**
+ * Écrire la partie dans un emplacement. `id` absent : on en crée un nouveau.
+ *
+ * Le quota est la seule vraie panne possible ici, et elle doit se dire : une
+ * sauvegarde qu'on croit prise et qui n'existe pas est pire que pas de
+ * sauvegarde du tout.
+ */
+function enregistrerEmplacement(state, nom, id) {
+  const s = stockage();
+  if (!s) return { ok: false, motif: 'Stockage local indisponible.' };
+  const index = lireIndex();
+  const existant = id ? index.find((x) => x.id === id) : null;
+  if (!existant && index.length >= EMPLACEMENTS_MAX) {
+    return { ok: false, motif: `Plus de place : ${EMPLACEMENTS_MAX} emplacements au plus.` };
+  }
+  // Un identifiant qui ne dépend pas du hasard ni de l'heure de jeu : le temps
+  // réel suffit, et deux enregistrements dans la même milliseconde n'arrivent
+  // pas quand c'est un doigt qui appuie.
+  const clef = existant ? existant.id : `e${Date.now().toString(36)}`;
+  const txt = serialiser(state);
+  try {
+    s.setItem(PREFIXE + clef, txt);
+  } catch (e) {
+    return { ok: false, motif: 'Écriture impossible : le stockage est plein.' };
+  }
+  const entree = {
+    id: clef,
+    nom: (nom || '').trim() || `Jour ${Math.floor((state.temps || 0) / 24) + 1}`,
+    quand: Date.now(),
+    octets: txt.length,
+    resume: resumeSauvegarde(state),
+  };
+  const suite = index.filter((x) => x.id !== clef).concat([entree]);
+  if (!ecrireIndex(suite)) {
+    s.removeItem(PREFIXE + clef);
+    return { ok: false, motif: 'Écriture impossible : le stockage est plein.' };
+  }
+  return { ok: true, id: clef, entree };
+}
+
+function chargerEmplacement(id) {
+  const s = stockage();
+  if (!s) return null;
+  const txt = s.getItem(PREFIXE + id);
+  if (!txt) return null;
+  try {
+    return deserialiser(txt);
+  } catch (e) {
+    return null;
+  }
+}
+
+function supprimerEmplacement(id) {
+  const s = stockage();
+  if (!s) return { ok: false, motif: 'Stockage local indisponible.' };
+  s.removeItem(PREFIXE + id);
+  ecrireIndex(lireIndex().filter((x) => x.id !== id));
+  return { ok: true };
+}
+
+function renommerEmplacement(id, nom) {
+  const index = lireIndex();
+  const e = index.find((x) => x.id === id);
+  if (!e) return { ok: false, motif: 'Cet emplacement n’existe plus.' };
+  e.nom = (nom || '').trim() || e.nom;
+  return ecrireIndex(index) ? { ok: true } : { ok: false, motif: 'Écriture impossible.' };
+}
+
+// ---------------------------------------------------------------------------
+// Fichiers : sortir une partie du navigateur, et l'y remettre
+// ---------------------------------------------------------------------------
+
+/**
+ * Le nom du fichier. Il doit se lire dans un dossier de téléchargements six
+ * mois plus tard, donc il porte la graine et le jour — pas un horodatage brut.
+ */
+function nomFichier(state) {
+  const r = resumeSauvegarde(state);
+  return `cendres-j${r.jour}-${state.seed}.json`;
+}
+
+/**
+ * Relire un fichier. On refuse clairement plutôt que d'ouvrir n'importe quoi :
+ * une sauvegarde d'un autre jeu, un fichier tronqué ou une partie d'avant
+ * l'agrandissement de la carte donneraient un monde faux, pas un monde dégradé.
+ */
+function importerTexte(txt) {
+  let brut;
+  try {
+    brut = JSON.parse(txt);
+  } catch (e) {
+    return { ok: false, motif: 'Ce fichier n’est pas une sauvegarde lisible.' };
+  }
+  if (!brut || typeof brut !== 'object' || !brut.world || !brut.player) {
+    return { ok: false, motif: 'Ce fichier ne contient pas de partie.' };
+  }
+  if (brut.version !== VERSION) {
+    return {
+      ok: false,
+      motif: `Partie de version ${brut.version ?? '?'} : ce jeu lit la version ${VERSION}.`,
+    };
+  }
+  try {
+    return { ok: true, state: normaliser(brut) };
+  } catch (e) {
+    return { ok: false, motif: 'Partie illisible : elle est incomplète ou abîmée.' };
+  }
+}
+
 // ===== src/sim.js ====================================================
 // Orchestration : création de partie, tick horaire, rattrapage du temps passé
 // hors ligne. `state.world` est la moitié partagée de l'état (celle qui vivrait
@@ -16573,6 +16773,8 @@ let ouverts = new Set();
 let filtreJournal = 'tout';
 let modale = null;
 let dernierRendu = -1;
+/** Quel écran on a dessiné en dernier : voir la position de lecture. */
+let dernierOngletRendu = null;
 let dernierRenduMs = 0;
 let derniereInteraction = 0;
 let toastTimer = null;
@@ -16670,7 +16872,10 @@ function couleurFaction(k) {
 // ---------------------------------------------------------------------------
 
 function rafraichir(force) {
-  if (!S) { rendreAccueil(); return; }
+  // Sans partie en cours, on redessine l'accueil — mais avec ce qu'il savait
+  // déjà. Rappeler `rendreAccueil()` sans arguments effaçait le bouton
+  // « Reprendre » à la première action faite depuis l'accueil.
+  if (!S) { rendreAccueil(derniereSauvegarde, dernierePerimee); return; }
   const maintenant = (typeof performance !== 'undefined' ? performance.now() : Date.now());
   if (!force) {
     if (S.temps === dernierRendu) return;
@@ -16683,7 +16888,15 @@ function rafraichir(force) {
   dernierRenduMs = maintenant;
 
   const ecran = $('#ecran');
-  const scroll = ecran.scrollTop;
+  // On garde la position de lecture quand on redessine *le même* écran — à ×16
+  // le rendu se refait plusieurs fois par seconde, et sans ça on remonterait en
+  // haut de page en permanence. Mais on ne la garde pas d'un écran à l'autre :
+  // arriver sur la carte défilé à trois cents pixels du haut n'a aucun sens, et
+  // c'est ce qui se produisait en sortant d'un accueil devenu plus long — la
+  // carte apparaissait hors de vue, et les gestes tombaient dans le vide.
+  const memeEcran = onglet === dernierOngletRendu;
+  const scroll = memeEcran ? ecran.scrollTop : 0;
+  dernierOngletRendu = onglet;
 
   rendreBarreHaut();
   rendreNav();
@@ -16778,6 +16991,8 @@ function rendreBarreHaut() {
     <div class="hd-pousse vitesse" role="group" aria-label="Vitesse">
       ${VITESSES.map((v) => `<button data-a="vitesse" data-v="${v}"
         aria-pressed="${S.vitesse === v}">×${v}</button>`).join('')}
+      <button data-a="modale" data-m="sauvegardes" aria-label="Sauvegardes"
+        title="Sauvegardes">⛁</button>
     </div>`;
 }
 
@@ -19655,6 +19870,129 @@ function blocChronique() {
 // Modales
 // ---------------------------------------------------------------------------
 
+/**
+ * Les sauvegardes : plusieurs parties gardées côte à côte, et des fichiers.
+ *
+ * La partie en cours s'écrit toute seule toutes les cinq secondes et continue
+ * de le faire — rien ici ne la remplace. Ce sont des copies qu'on prend exprès,
+ * pour revenir sur un choix, pour comparer deux façons de jouer, ou pour garder
+ * l'état exact d'une partie où quelque chose s'est mal passé.
+ *
+ * Ce dernier usage est le plus utile pendant qu'on écrit le jeu : un défaut
+ * qu'on ne sait pas reproduire est un défaut qu'on ne corrige pas, et une
+ * capture d'écran ne dit presque rien. Un fichier, si.
+ */
+function modaleSauvegardes() {
+  const liste = ACTIONS.emplacements();
+  const poids = ACTIONS.poidsSauvegardes();
+  const mo = (o) => `${(o / 1048576).toFixed(1)} Mo`;
+  const quandTexte = (ms) => {
+    const d = Date.now() - ms;
+    if (d < 60000) return 'à l’instant';
+    if (d < 3600000) return `il y a ${Math.round(d / 60000)} min`;
+    if (d < 86400000) return `il y a ${Math.round(d / 3600000)} h`;
+    return `il y a ${Math.round(d / 86400000)} j`;
+  };
+  const ligne = (x) => {
+    const r = x.resume || {};
+    return `<div style="border-bottom:1px solid #1b2029;padding:7px 0">
+      <div class="ligne souple"><span class="k">${e(x.nom)}</span>
+        <span class="v aide">${e(quandTexte(x.quand))}</span></div>
+      <div class="aide">Jour ${n(r.jour || 0)} · ${n(r.gens || 0)} vivant(s) ·
+        ${n(r.credits || 0)} cr${r.base ? ` · ${e(r.nomBase || 'un camp')}` : ' · sans camp'}
+        · graine ${e(String(r.seed ?? '?'))}</div>
+      <div class="taches" style="margin-top:5px">
+        <button class="act mini primaire" data-a="charger-emp" data-k="${e(x.id)}">Charger</button>
+        <button class="act mini" data-a="ecraser-emp" data-k="${e(x.id)}">Écraser</button>
+        <button class="act mini danger" data-a="suppr-emp" data-k="${e(x.id)}">Supprimer</button>
+      </div>
+    </div>`;
+  };
+
+  const r = S ? resumeSauvegarde(S) : null;
+  return `<h2 class="titre">Sauvegardes
+    <span class="droite aide">${liste.length}/${EMPLACEMENTS_MAX}</span></h2>
+  <div class="aide">La partie en cours s’écrit toute seule en continu. Ce sont des copies
+    qu’on garde à côté : on peut en charger une à tout moment, et la partie en cours
+    est alors remplacée.</div>
+  ${r ? `<div class="sep"></div>
+    <div class="ligne"><span class="k">Partie en cours</span>
+      <span class="v">Jour ${n(r.jour)} · ${n(r.gens)} vivant(s) · ${n(r.credits)} cr</span></div>
+    <button class="act primaire" data-a="enregistrer-emp" style="margin-top:6px"
+      ${liste.length >= EMPLACEMENTS_MAX ? 'disabled' : ''}>
+      ${liste.length >= EMPLACEMENTS_MAX
+    ? 'Plus de place — écrasez-en une' : 'Enregistrer dans un nouvel emplacement'}</button>` : ''}
+  <div class="sep"></div>
+  ${liste.length ? liste.map(ligne).join('')
+    : '<div class="aide">Aucune copie gardée pour l’instant.</div>'}
+  <div class="sep"></div>
+  <div class="titre">Fichiers</div>
+  <div class="aide">Une partie exportée est un fichier : on peut la garder ailleurs que
+    dans ce navigateur, la passer sur un autre appareil, ou l’envoyer à quelqu’un pour
+    qu’il voie exactement ce que vous voyez.</div>
+  <div class="taches" style="margin-top:6px">
+    ${S ? '<button class="act mini" data-a="exporter-partie">Exporter la partie</button>' : ''}
+    <button class="act mini" data-a="importer-partie">Charger un fichier</button>
+  </div>
+  <div class="aide" style="margin-top:6px">Place occupée : ${e(mo(poids.octets))}
+    sur les cinq mégaoctets environ qu’un navigateur accorde.</div>`;
+}
+
+/**
+ * Refermer la boîte, pour de bon.
+ *
+ * `modale = null` ne suffit pas : `rafraichir` n'appelle `rendreModale` que
+ * s'il y a quelque chose à montrer, si bien qu'une boîte fermée sans redessin
+ * reste affichée et continue d'intercepter tous les clics de la page. Le jeu
+ * paraît alors figé — on clique, rien ne répond. Une seule porte de sortie,
+ * donc, et tout le monde passe par elle.
+ */
+/**
+ * Les copies gardées, vues depuis l'accueil.
+ *
+ * Il faut pouvoir reprendre une partie d'avant sans passer par celle qui
+ * tourne, et surtout ouvrir un fichier quand on n'a aucune partie en cours —
+ * c'est exactement le cas d'un fichier reçu de quelqu'un d'autre.
+ *
+ * Enfermé dans sa propre fonction, et non écrit dans le gabarit de l'accueil :
+ * si quelque chose y échoue, c'est ce bloc qui manque, pas l'écran d'accueil
+ * entier — lequel se termine par `$('#modale').hidden = true`, la ligne qui
+ * empêche une boîte fantôme d'avaler tous les clics de la page.
+ */
+function blocAccueilSauvegardes() {
+  let liste = [];
+  try {
+    liste = (ACTIONS && ACTIONS.emplacements) ? ACTIONS.emplacements() : [];
+  } catch (err) {
+    return '';
+  }
+  return `<div class="panneau">
+    <div class="titre">Sauvegardes ${liste.length
+  ? `<span class="droite aide">${liste.length}</span>` : ''}</div>
+    ${liste.length ? liste.map((x) => {
+    const r = x.resume || {};
+    return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
+        <div class="ligne souple"><span class="k">${e(x.nom)}</span>
+          <span class="v aide">jour ${n(r.jour || 0)} · ${n(r.gens || 0)} vivant(s)</span></div>
+        <div class="taches" style="margin-top:4px">
+          <button class="act mini primaire" data-a="charger-emp" data-k="${e(x.id)}">Charger</button>
+          <button class="act mini danger" data-a="suppr-emp" data-k="${e(x.id)}">Supprimer</button>
+        </div>
+      </div>`;
+  }).join('')
+    : '<div class="aide">Aucune copie gardée. En cours de partie, le bouton ⛁ de la '
+      + 'barre du haut permet d’en prendre.</div>'}
+    <div style="height:8px"></div>
+    <button class="act mini" data-a="importer-partie">Charger un fichier de partie</button>
+  </div>`;
+}
+
+function fermerModale() {
+  modale = null;
+  rendreModale();
+  rafraichir(true);
+}
+
 function rendreModale() {
   const el = $('#modale');
   // Le rapport d'absence passe avant tout le reste : c'est la première chose
@@ -19683,6 +20021,7 @@ function contenuModale() {
     case 'equipement': return modaleEquipement() + fermer;
     case 'entrainement': return modaleEntrainement() + fermer;
     case 'recrutement': return modaleRecrutement() + fermer;
+    case 'sauvegardes': return modaleSauvegardes() + fermer;
     default: return fermer;
   }
 }
@@ -20424,6 +20763,7 @@ function rendreAccueil(aSauvegarde, perimee = false) {
       <div style="height:8px"></div>
       <button class="act primaire" data-a="nouvelle">Commencer</button>
     </div>
+    ${blocAccueilSauvegardes()}
     ${aSauvegarde ? '<button class="act danger" data-a="effacer">Effacer la sauvegarde</button>' : ''}
   </div>`;
   $('#modale').hidden = true;
@@ -20535,9 +20875,7 @@ function surClic(ev) {
       break;
 
     case 'fermer':
-      modale = null;
-      rendreModale();
-      rafraichir(true);
+      fermerModale();
       break;
     // Le rapport d'absence ne se lit qu'une fois : on l'efface de l'état, sinon
     // il reviendrait à chaque chargement de la sauvegarde.
@@ -20900,6 +21238,73 @@ function surClic(ev) {
       break;
     }
 
+    case 'enregistrer-emp': {
+      const nom = prompt('Nom de la sauvegarde ?',
+        S ? `Jour ${Math.floor(S.temps / 24) + 1}` : 'Sauvegarde');
+      if (nom === null) break;
+      const r = ACTIONS.enregistrer(nom);
+      if (!r.ok) alert(r.motif);
+      rafraichir(true);
+      break;
+    }
+
+    case 'ecraser-emp': {
+      const dej = ACTIONS.emplacements().find((x) => x.id === el.dataset.k);
+      if (!confirm(`Écraser « ${dej ? dej.nom : el.dataset.k} » par la partie en cours ?`)) break;
+      const r = ACTIONS.enregistrer(dej ? dej.nom : '', el.dataset.k);
+      if (!r.ok) alert(r.motif);
+      rafraichir(true);
+      break;
+    }
+
+    case 'charger-emp': {
+      const dej = ACTIONS.emplacements().find((x) => x.id === el.dataset.k);
+      // On prévient : charger remplace la partie en cours, et c'est irréversible
+      // pour elle. Le dire une fois vaut mieux qu'un regret.
+      if (!confirm(`Charger « ${dej ? dej.nom : el.dataset.k} » ? `
+        + 'La partie en cours sera remplacée.')) break;
+      const r = ACTIONS.chargerEmplacement(el.dataset.k);
+      if (!r.ok) { alert(r.motif); break; }
+      fermerModale();
+      break;
+    }
+
+    case 'suppr-emp': {
+      const dej = ACTIONS.emplacements().find((x) => x.id === el.dataset.k);
+      if (!confirm(`Supprimer « ${dej ? dej.nom : el.dataset.k} » ? C’est définitif.`)) break;
+      ACTIONS.supprimerEmplacement(el.dataset.k);
+      rafraichir(true);
+      break;
+    }
+
+    case 'exporter-partie': {
+      const r = ACTIONS.exporter();
+      if (!r.ok) alert(r.motif);
+      break;
+    }
+
+    case 'importer-partie': {
+      // Un `<input type=file>` créé à la volée : pas de champ caché à maintenir
+      // dans le squelette, et la lecture reste dans la même fonction.
+      const inp = document.createElement('input');
+      inp.type = 'file';
+      inp.accept = '.json,application/json';
+      inp.addEventListener('change', () => {
+        const f = inp.files && inp.files[0];
+        if (!f) return;
+        const fr = new FileReader();
+        fr.onload = () => {
+          const r = ACTIONS.importer(String(fr.result));
+          if (!r.ok) { alert(r.motif); return; }
+          fermerModale();
+        };
+        fr.onerror = () => alert('Fichier illisible.');
+        fr.readAsText(f);
+      });
+      inp.click();
+      break;
+    }
+
     case 'terraformer': {
       // La chaîne vide vaut « rien » : une station sans cible ne travaille pas,
       // et c'est un choix qu'on doit pouvoir faire — le carburant sert ailleurs.
@@ -21034,6 +21439,69 @@ const API = {
     const s = charger();
     if (!s) { rendreAccueil(false, sauvegardePerimee()); return; }
     lancer(s);
+  },
+
+  // --- Emplacements de sauvegarde. La partie en cours continue de s'écrire
+  // toutes les cinq secondes sous sa propre clé ; ce sont des copies prises
+  // exprès, à côté, qu'on nomme et qu'on relit quand on veut.
+  emplacements: () => listerEmplacements(),
+  poidsSauvegardes: () => poidsEmplacements(),
+
+  enregistrer(nom, id) {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    // On écrit d'abord la partie en cours : un emplacement pris juste après une
+    // action doit contenir cette action, pas l'état d'il y a quatre secondes.
+    sauver();
+    return enregistrerEmplacement(state, nom, id);
+  },
+
+  chargerEmplacement(id) {
+    const s = chargerEmplacement(id);
+    if (!s) return { ok: false, motif: 'Emplacement illisible.' };
+    // On écrase la partie en cours : c'est ce que veut dire « charger », et
+    // laisser deux parties vivantes en même temps rendrait la suite incompréhensible.
+    lancer(s);
+    sauver();
+    return { ok: true };
+  },
+
+  supprimerEmplacement: (id) => supprimerEmplacement(id),
+  renommerEmplacement: (id, nom) => renommerEmplacement(id, nom),
+
+  /**
+   * Sortir la partie du navigateur.
+   *
+   * C'est la fonction la plus utile de tout ce panneau pendant qu'on écrit le
+   * jeu : un défaut qu'on ne sait pas reproduire est un défaut qu'on ne corrige
+   * pas, et un fichier se transmet là où une capture d'écran ne dit rien.
+   */
+  exporter() {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    sauver();
+    try {
+      const blob = new Blob([serialiser(state)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nomFichier(state);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Un objet-URL non révoqué garde la partie entière en mémoire.
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      return { ok: true, nom: a.download };
+    } catch (e) {
+      return { ok: false, motif: 'Le navigateur a refusé le téléchargement.' };
+    }
+  },
+
+  /** Relire un fichier, et le poser directement comme partie en cours. */
+  importer(txt) {
+    const r = importerTexte(txt);
+    if (!r.ok) return r;
+    lancer(r.state);
+    sauver();
+    return { ok: true, resume: resumeSauvegarde(r.state) };
   },
 
   effacer() {

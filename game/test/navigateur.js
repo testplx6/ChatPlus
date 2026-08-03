@@ -1765,6 +1765,108 @@ await page.waitForTimeout(300);
 ok((await page.evaluate(() => document.querySelector('#ecran').textContent.trim().length)) > 60,
   'le jeu est jouable au sortir du rattrapage');
 
+console.log('\n8 sexties. Changer d’écran remet la lecture en haut');
+{
+  // `rafraichir` gardait la position de lecture à chaque redessin — utile à
+  // ×16, où l'écran se refait plusieurs fois par seconde — mais il la gardait
+  // aussi d'un écran à l'autre. Un accueil un peu long, et l'on arrivait sur la
+  // carte défilé à trois cents pixels du haut, canvas hors de vue, tous les
+  // gestes tombant dans le vide. Le défaut ne s'est vu que parce qu'il a cassé
+  // la manœuvre de la carte quatre sections plus haut.
+  await page.click('[data-a="onglet"][data-k="journal"]');
+  await page.waitForTimeout(300);
+  await page.evaluate(() => { document.querySelector('#ecran').scrollTop = 400; });
+  const descendu = await page.evaluate(() => document.querySelector('#ecran').scrollTop);
+  ok(descendu > 100, 'on descend dans un écran long', `${descendu} px`);
+  await page.click('[data-a="onglet"][data-k="carte"]');
+  await page.waitForTimeout(400);
+  ok((await page.evaluate(() => document.querySelector('#ecran').scrollTop)) === 0,
+    'et l’écran suivant s’ouvre par le haut');
+  const hautCarte = await page.evaluate(() => {
+    const b = document.querySelector('#carte-boite').getBoundingClientRect();
+    return b.top >= 0 && b.height > 100;
+  });
+  ok(hautCarte, 'la carte est bien dans la vue, pas au-dessus');
+}
+
+console.log('\n8 septies. Sauvegardes : plusieurs parties côte à côte');
+{
+  // Le jeu n'avait qu'une seule sauvegarde, écrasée toutes les cinq secondes :
+  // impossible de revenir sur un choix, de comparer deux façons de jouer, ou de
+  // garder l'état d'une partie où quelque chose venait de mal tourner. Ce
+  // dernier point vaut surtout pendant qu'on écrit le jeu — un défaut qu'on ne
+  // sait pas reproduire est un défaut qu'on ne corrige pas.
+  await page.evaluate(() => {
+    for (const k of Object.keys(localStorage)) {
+      if (k.startsWith('cendres.emp')) localStorage.removeItem(k);
+    }
+  });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+
+  await page.click('[data-a="modale"][data-m="sauvegardes"]');
+  await page.waitForTimeout(300);
+  const vide = await page.locator('#modale').innerText();
+  ok(/Sauvegardes/i.test(vide), 'le panneau des sauvegardes s’ouvre',
+    vide.slice(0, 120).replace(/\n+/g, ' | '));
+  ok(/Aucune copie/i.test(vide), 'et il est vide au départ');
+
+  // `prompt` et `confirm` bloquent une page sans pilote : on répond d'avance.
+  page.on('dialog', (d) => d.accept('Essai'));
+  await page.click('[data-a="enregistrer-emp"]');
+  await page.waitForTimeout(400);
+  const apres = await page.locator('#modale').innerText();
+  ok(/Essai/.test(apres), 'une copie nommée apparaît dans la liste',
+    apres.slice(0, 240).replace(/\n+/g, ' | '));
+  ok(/vivant/i.test(apres), 'avec de quoi la reconnaître sans l’ouvrir');
+
+  const combien = await page.evaluate(
+    () => JSON.parse(localStorage.getItem('cendres.emplacements.v1') || '[]').length);
+  ok(combien === 1, 'et elle est bien écrite dans le stockage', `${combien}`);
+
+  // Le vrai test : la partie avance, on recharge la copie, et l'on doit
+  // retomber sur l'heure de la copie — pas sur celle d'avant, pas sur celle
+  // d'après.
+  const tCopie = await page.evaluate(() => {
+    const i = JSON.parse(localStorage.getItem('cendres.emplacements.v1'))[0];
+    return JSON.parse(localStorage.getItem(`cendres.emp.${i.id}`)).temps;
+  });
+  await page.click('[data-a="fermer"]');
+  await page.click('[data-a="vitesse"][data-v="60"]');
+  // Plus de cinq secondes : c'est le pas de l'écriture automatique, et lire
+  // avant elle donne l'heure d'avant. La première version attendait 2,5 s et
+  // relevait deux fois le même chiffre.
+  await page.waitForTimeout(7000);
+  const tPlusTard = await page.evaluate(() => JSON.parse(
+    localStorage.getItem('cendres.save.v1')).temps);
+  ok(tPlusTard > tCopie, 'la partie a avancé depuis la copie',
+    `${tCopie} → ${tPlusTard}`);
+
+  await page.click('[data-a="modale"][data-m="sauvegardes"]');
+  await page.waitForTimeout(300);
+  await page.click('[data-a="charger-emp"]');
+  await page.waitForTimeout(600);
+  const tRevenu = await page.evaluate(() => JSON.parse(
+    localStorage.getItem('cendres.save.v1')).temps);
+  ok(Math.abs(tRevenu - tCopie) < 60,
+    'charger une copie ramène la partie à son heure',
+    `copie ${tCopie} · partie ${tPlusTard} · après chargement ${tRevenu}`);
+  ok(await page.locator('#modale').isHidden(), 'et le panneau se referme');
+  await page.screenshot({ path: join(CAPTURES, '15-sauvegardes.png'), fullPage: true });
+
+  // Elles se voient aussi depuis l'accueil : un fichier reçu de quelqu'un doit
+  // pouvoir s'ouvrir sans avoir de partie en cours.
+  await page.click('[data-a="vitesse"][data-v="1"]');
+  await page.reload({ waitUntil: 'networkidle' });
+  const accueil = await page.locator('#ecran').innerText();
+  ok(/Sauvegardes/i.test(accueil) && /Essai/.test(accueil),
+    'l’accueil montre les copies gardées',
+    accueil.slice(0, 300).replace(/\n+/g, ' | '));
+  ok(/Charger un fichier/i.test(accueil),
+    'et propose d’ouvrir un fichier sans partie en cours');
+}
+
 console.log('\n9. Fichier unique ouvert en file://');
 const { existsSync } = await import('node:fs');
 const chemin = join(RACINE, 'dist', 'cendres.html');

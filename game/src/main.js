@@ -2,7 +2,12 @@
 // sauvegarde régulièrement. Le seul module avec des effets de bord temporels.
 
 import { nouvellePartie, rattraper, rattrapageEtale, TICK_MS } from './sim.js';
-import { charger, sauvegarder, effacer, existeSauvegarde, sauvegardePerimee } from './save.js';
+import {
+  charger, sauvegarder, effacer, existeSauvegarde, sauvegardePerimee,
+  listerEmplacements, enregistrerEmplacement, chargerEmplacement,
+  supprimerEmplacement, renommerEmplacement, poidsEmplacements,
+  serialiser, importerTexte, nomFichier, resumeSauvegarde,
+} from './save.js';
 import { monterUI, rafraichir, attacherEtat, rendreAccueil, ouvrirOnglet } from './ui.js';
 import { Rng, seedFromString } from './rng.js';
 import { makeCharacter, estVivant } from './characters.js';
@@ -87,6 +92,69 @@ const API = {
     const s = charger();
     if (!s) { rendreAccueil(false, sauvegardePerimee()); return; }
     lancer(s);
+  },
+
+  // --- Emplacements de sauvegarde. La partie en cours continue de s'écrire
+  // toutes les cinq secondes sous sa propre clé ; ce sont des copies prises
+  // exprès, à côté, qu'on nomme et qu'on relit quand on veut.
+  emplacements: () => listerEmplacements(),
+  poidsSauvegardes: () => poidsEmplacements(),
+
+  enregistrer(nom, id) {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    // On écrit d'abord la partie en cours : un emplacement pris juste après une
+    // action doit contenir cette action, pas l'état d'il y a quatre secondes.
+    sauver();
+    return enregistrerEmplacement(state, nom, id);
+  },
+
+  chargerEmplacement(id) {
+    const s = chargerEmplacement(id);
+    if (!s) return { ok: false, motif: 'Emplacement illisible.' };
+    // On écrase la partie en cours : c'est ce que veut dire « charger », et
+    // laisser deux parties vivantes en même temps rendrait la suite incompréhensible.
+    lancer(s);
+    sauver();
+    return { ok: true };
+  },
+
+  supprimerEmplacement: (id) => supprimerEmplacement(id),
+  renommerEmplacement: (id, nom) => renommerEmplacement(id, nom),
+
+  /**
+   * Sortir la partie du navigateur.
+   *
+   * C'est la fonction la plus utile de tout ce panneau pendant qu'on écrit le
+   * jeu : un défaut qu'on ne sait pas reproduire est un défaut qu'on ne corrige
+   * pas, et un fichier se transmet là où une capture d'écran ne dit rien.
+   */
+  exporter() {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    sauver();
+    try {
+      const blob = new Blob([serialiser(state)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nomFichier(state);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Un objet-URL non révoqué garde la partie entière en mémoire.
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      return { ok: true, nom: a.download };
+    } catch (e) {
+      return { ok: false, motif: 'Le navigateur a refusé le téléchargement.' };
+    }
+  },
+
+  /** Relire un fichier, et le poser directement comme partie en cours. */
+  importer(txt) {
+    const r = importerTexte(txt);
+    if (!r.ok) return r;
+    lancer(r.state);
+    sauver();
+    return { ok: true, resume: resumeSauvegarde(r.state) };
   },
 
   effacer() {

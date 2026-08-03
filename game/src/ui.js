@@ -11,6 +11,7 @@ import {
   nomRegion, lieuAvecCoord, colonieDe, colonieParId, coord, chemin, coutTraversee, distance,
   rendementRegion, amendementRegion,
 } from './world.js';
+import { resumeSauvegarde, EMPLACEMENTS_MAX } from './save.js';
 import {
   comp, pvTotal, etatCourt, estVivant, estDebout, ratio, peutEquiper,
   SEUIL_FAMINE, SEUIL_VENTRE_CREUX,
@@ -107,6 +108,8 @@ let ouverts = new Set();
 let filtreJournal = 'tout';
 let modale = null;
 let dernierRendu = -1;
+/** Quel écran on a dessiné en dernier : voir la position de lecture. */
+let dernierOngletRendu = null;
 let dernierRenduMs = 0;
 let derniereInteraction = 0;
 let toastTimer = null;
@@ -204,7 +207,10 @@ function couleurFaction(k) {
 // ---------------------------------------------------------------------------
 
 export function rafraichir(force) {
-  if (!S) { rendreAccueil(); return; }
+  // Sans partie en cours, on redessine l'accueil — mais avec ce qu'il savait
+  // déjà. Rappeler `rendreAccueil()` sans arguments effaçait le bouton
+  // « Reprendre » à la première action faite depuis l'accueil.
+  if (!S) { rendreAccueil(derniereSauvegarde, dernierePerimee); return; }
   const maintenant = (typeof performance !== 'undefined' ? performance.now() : Date.now());
   if (!force) {
     if (S.temps === dernierRendu) return;
@@ -217,7 +223,15 @@ export function rafraichir(force) {
   dernierRenduMs = maintenant;
 
   const ecran = $('#ecran');
-  const scroll = ecran.scrollTop;
+  // On garde la position de lecture quand on redessine *le même* écran — à ×16
+  // le rendu se refait plusieurs fois par seconde, et sans ça on remonterait en
+  // haut de page en permanence. Mais on ne la garde pas d'un écran à l'autre :
+  // arriver sur la carte défilé à trois cents pixels du haut n'a aucun sens, et
+  // c'est ce qui se produisait en sortant d'un accueil devenu plus long — la
+  // carte apparaissait hors de vue, et les gestes tombaient dans le vide.
+  const memeEcran = onglet === dernierOngletRendu;
+  const scroll = memeEcran ? ecran.scrollTop : 0;
+  dernierOngletRendu = onglet;
 
   rendreBarreHaut();
   rendreNav();
@@ -312,6 +326,8 @@ function rendreBarreHaut() {
     <div class="hd-pousse vitesse" role="group" aria-label="Vitesse">
       ${VITESSES.map((v) => `<button data-a="vitesse" data-v="${v}"
         aria-pressed="${S.vitesse === v}">×${v}</button>`).join('')}
+      <button data-a="modale" data-m="sauvegardes" aria-label="Sauvegardes"
+        title="Sauvegardes">⛁</button>
     </div>`;
 }
 
@@ -3189,6 +3205,129 @@ function blocChronique() {
 // Modales
 // ---------------------------------------------------------------------------
 
+/**
+ * Les sauvegardes : plusieurs parties gardées côte à côte, et des fichiers.
+ *
+ * La partie en cours s'écrit toute seule toutes les cinq secondes et continue
+ * de le faire — rien ici ne la remplace. Ce sont des copies qu'on prend exprès,
+ * pour revenir sur un choix, pour comparer deux façons de jouer, ou pour garder
+ * l'état exact d'une partie où quelque chose s'est mal passé.
+ *
+ * Ce dernier usage est le plus utile pendant qu'on écrit le jeu : un défaut
+ * qu'on ne sait pas reproduire est un défaut qu'on ne corrige pas, et une
+ * capture d'écran ne dit presque rien. Un fichier, si.
+ */
+function modaleSauvegardes() {
+  const liste = ACTIONS.emplacements();
+  const poids = ACTIONS.poidsSauvegardes();
+  const mo = (o) => `${(o / 1048576).toFixed(1)} Mo`;
+  const quandTexte = (ms) => {
+    const d = Date.now() - ms;
+    if (d < 60000) return 'à l’instant';
+    if (d < 3600000) return `il y a ${Math.round(d / 60000)} min`;
+    if (d < 86400000) return `il y a ${Math.round(d / 3600000)} h`;
+    return `il y a ${Math.round(d / 86400000)} j`;
+  };
+  const ligne = (x) => {
+    const r = x.resume || {};
+    return `<div style="border-bottom:1px solid #1b2029;padding:7px 0">
+      <div class="ligne souple"><span class="k">${e(x.nom)}</span>
+        <span class="v aide">${e(quandTexte(x.quand))}</span></div>
+      <div class="aide">Jour ${n(r.jour || 0)} · ${n(r.gens || 0)} vivant(s) ·
+        ${n(r.credits || 0)} cr${r.base ? ` · ${e(r.nomBase || 'un camp')}` : ' · sans camp'}
+        · graine ${e(String(r.seed ?? '?'))}</div>
+      <div class="taches" style="margin-top:5px">
+        <button class="act mini primaire" data-a="charger-emp" data-k="${e(x.id)}">Charger</button>
+        <button class="act mini" data-a="ecraser-emp" data-k="${e(x.id)}">Écraser</button>
+        <button class="act mini danger" data-a="suppr-emp" data-k="${e(x.id)}">Supprimer</button>
+      </div>
+    </div>`;
+  };
+
+  const r = S ? resumeSauvegarde(S) : null;
+  return `<h2 class="titre">Sauvegardes
+    <span class="droite aide">${liste.length}/${EMPLACEMENTS_MAX}</span></h2>
+  <div class="aide">La partie en cours s’écrit toute seule en continu. Ce sont des copies
+    qu’on garde à côté : on peut en charger une à tout moment, et la partie en cours
+    est alors remplacée.</div>
+  ${r ? `<div class="sep"></div>
+    <div class="ligne"><span class="k">Partie en cours</span>
+      <span class="v">Jour ${n(r.jour)} · ${n(r.gens)} vivant(s) · ${n(r.credits)} cr</span></div>
+    <button class="act primaire" data-a="enregistrer-emp" style="margin-top:6px"
+      ${liste.length >= EMPLACEMENTS_MAX ? 'disabled' : ''}>
+      ${liste.length >= EMPLACEMENTS_MAX
+    ? 'Plus de place — écrasez-en une' : 'Enregistrer dans un nouvel emplacement'}</button>` : ''}
+  <div class="sep"></div>
+  ${liste.length ? liste.map(ligne).join('')
+    : '<div class="aide">Aucune copie gardée pour l’instant.</div>'}
+  <div class="sep"></div>
+  <div class="titre">Fichiers</div>
+  <div class="aide">Une partie exportée est un fichier : on peut la garder ailleurs que
+    dans ce navigateur, la passer sur un autre appareil, ou l’envoyer à quelqu’un pour
+    qu’il voie exactement ce que vous voyez.</div>
+  <div class="taches" style="margin-top:6px">
+    ${S ? '<button class="act mini" data-a="exporter-partie">Exporter la partie</button>' : ''}
+    <button class="act mini" data-a="importer-partie">Charger un fichier</button>
+  </div>
+  <div class="aide" style="margin-top:6px">Place occupée : ${e(mo(poids.octets))}
+    sur les cinq mégaoctets environ qu’un navigateur accorde.</div>`;
+}
+
+/**
+ * Refermer la boîte, pour de bon.
+ *
+ * `modale = null` ne suffit pas : `rafraichir` n'appelle `rendreModale` que
+ * s'il y a quelque chose à montrer, si bien qu'une boîte fermée sans redessin
+ * reste affichée et continue d'intercepter tous les clics de la page. Le jeu
+ * paraît alors figé — on clique, rien ne répond. Une seule porte de sortie,
+ * donc, et tout le monde passe par elle.
+ */
+/**
+ * Les copies gardées, vues depuis l'accueil.
+ *
+ * Il faut pouvoir reprendre une partie d'avant sans passer par celle qui
+ * tourne, et surtout ouvrir un fichier quand on n'a aucune partie en cours —
+ * c'est exactement le cas d'un fichier reçu de quelqu'un d'autre.
+ *
+ * Enfermé dans sa propre fonction, et non écrit dans le gabarit de l'accueil :
+ * si quelque chose y échoue, c'est ce bloc qui manque, pas l'écran d'accueil
+ * entier — lequel se termine par `$('#modale').hidden = true`, la ligne qui
+ * empêche une boîte fantôme d'avaler tous les clics de la page.
+ */
+function blocAccueilSauvegardes() {
+  let liste = [];
+  try {
+    liste = (ACTIONS && ACTIONS.emplacements) ? ACTIONS.emplacements() : [];
+  } catch (err) {
+    return '';
+  }
+  return `<div class="panneau">
+    <div class="titre">Sauvegardes ${liste.length
+  ? `<span class="droite aide">${liste.length}</span>` : ''}</div>
+    ${liste.length ? liste.map((x) => {
+    const r = x.resume || {};
+    return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
+        <div class="ligne souple"><span class="k">${e(x.nom)}</span>
+          <span class="v aide">jour ${n(r.jour || 0)} · ${n(r.gens || 0)} vivant(s)</span></div>
+        <div class="taches" style="margin-top:4px">
+          <button class="act mini primaire" data-a="charger-emp" data-k="${e(x.id)}">Charger</button>
+          <button class="act mini danger" data-a="suppr-emp" data-k="${e(x.id)}">Supprimer</button>
+        </div>
+      </div>`;
+  }).join('')
+    : '<div class="aide">Aucune copie gardée. En cours de partie, le bouton ⛁ de la '
+      + 'barre du haut permet d’en prendre.</div>'}
+    <div style="height:8px"></div>
+    <button class="act mini" data-a="importer-partie">Charger un fichier de partie</button>
+  </div>`;
+}
+
+function fermerModale() {
+  modale = null;
+  rendreModale();
+  rafraichir(true);
+}
+
 function rendreModale() {
   const el = $('#modale');
   // Le rapport d'absence passe avant tout le reste : c'est la première chose
@@ -3217,6 +3356,7 @@ function contenuModale() {
     case 'equipement': return modaleEquipement() + fermer;
     case 'entrainement': return modaleEntrainement() + fermer;
     case 'recrutement': return modaleRecrutement() + fermer;
+    case 'sauvegardes': return modaleSauvegardes() + fermer;
     default: return fermer;
   }
 }
@@ -3958,6 +4098,7 @@ export function rendreAccueil(aSauvegarde, perimee = false) {
       <div style="height:8px"></div>
       <button class="act primaire" data-a="nouvelle">Commencer</button>
     </div>
+    ${blocAccueilSauvegardes()}
     ${aSauvegarde ? '<button class="act danger" data-a="effacer">Effacer la sauvegarde</button>' : ''}
   </div>`;
   $('#modale').hidden = true;
@@ -4069,9 +4210,7 @@ function surClic(ev) {
       break;
 
     case 'fermer':
-      modale = null;
-      rendreModale();
-      rafraichir(true);
+      fermerModale();
       break;
     // Le rapport d'absence ne se lit qu'une fois : on l'efface de l'état, sinon
     // il reviendrait à chaque chargement de la sauvegarde.
@@ -4431,6 +4570,73 @@ function surClic(ev) {
 
     case 'autoemploi': {
       ACTIONS.autoEmploi();
+      break;
+    }
+
+    case 'enregistrer-emp': {
+      const nom = prompt('Nom de la sauvegarde ?',
+        S ? `Jour ${Math.floor(S.temps / 24) + 1}` : 'Sauvegarde');
+      if (nom === null) break;
+      const r = ACTIONS.enregistrer(nom);
+      if (!r.ok) alert(r.motif);
+      rafraichir(true);
+      break;
+    }
+
+    case 'ecraser-emp': {
+      const dej = ACTIONS.emplacements().find((x) => x.id === el.dataset.k);
+      if (!confirm(`Écraser « ${dej ? dej.nom : el.dataset.k} » par la partie en cours ?`)) break;
+      const r = ACTIONS.enregistrer(dej ? dej.nom : '', el.dataset.k);
+      if (!r.ok) alert(r.motif);
+      rafraichir(true);
+      break;
+    }
+
+    case 'charger-emp': {
+      const dej = ACTIONS.emplacements().find((x) => x.id === el.dataset.k);
+      // On prévient : charger remplace la partie en cours, et c'est irréversible
+      // pour elle. Le dire une fois vaut mieux qu'un regret.
+      if (!confirm(`Charger « ${dej ? dej.nom : el.dataset.k} » ? `
+        + 'La partie en cours sera remplacée.')) break;
+      const r = ACTIONS.chargerEmplacement(el.dataset.k);
+      if (!r.ok) { alert(r.motif); break; }
+      fermerModale();
+      break;
+    }
+
+    case 'suppr-emp': {
+      const dej = ACTIONS.emplacements().find((x) => x.id === el.dataset.k);
+      if (!confirm(`Supprimer « ${dej ? dej.nom : el.dataset.k} » ? C’est définitif.`)) break;
+      ACTIONS.supprimerEmplacement(el.dataset.k);
+      rafraichir(true);
+      break;
+    }
+
+    case 'exporter-partie': {
+      const r = ACTIONS.exporter();
+      if (!r.ok) alert(r.motif);
+      break;
+    }
+
+    case 'importer-partie': {
+      // Un `<input type=file>` créé à la volée : pas de champ caché à maintenir
+      // dans le squelette, et la lecture reste dans la même fonction.
+      const inp = document.createElement('input');
+      inp.type = 'file';
+      inp.accept = '.json,application/json';
+      inp.addEventListener('change', () => {
+        const f = inp.files && inp.files[0];
+        if (!f) return;
+        const fr = new FileReader();
+        fr.onload = () => {
+          const r = ACTIONS.importer(String(fr.result));
+          if (!r.ok) { alert(r.motif); return; }
+          fermerModale();
+        };
+        fr.onerror = () => alert('Fichier illisible.');
+        fr.readAsText(f);
+      });
+      inp.click();
       break;
     }
 

@@ -254,3 +254,203 @@ export function existeSauvegarde() {
   const s = stockage();
   return !!(s && s.getItem(CLE));
 }
+
+// ---------------------------------------------------------------------------
+// Emplacements : plusieurs parties gardées côte à côte
+// ---------------------------------------------------------------------------
+//
+// La partie en cours continue de vivre sous `CLE`, écrite toutes les cinq
+// secondes ; rien de ce qui suit ne la touche. Ce sont des copies qu'on prend
+// exprès, qu'on nomme, et qu'on relit quand on veut — pour revenir sur un
+// choix, pour comparer deux façons de jouer, ou pour garder l'état exact d'une
+// partie où quelque chose s'est mal passé.
+//
+// Ce dernier usage est le plus utile pendant qu'on écrit le jeu : un défaut
+// qu'on ne sait pas reproduire est un défaut qu'on ne corrige pas. Un
+// emplacement s'exporte en fichier, et un fichier se transmet.
+
+const CLE_INDEX = 'cendres.emplacements.v1';
+const PREFIXE = 'cendres.emp.';
+
+/**
+ * Combien d'emplacements on autorise.
+ *
+ * Une partie pèse de 245 Ko neuve à 346 Ko après quatre mille heures, et le
+ * stockage d'un navigateur tourne autour de cinq mégaoctets. Huit tient
+ * largement, douze frôlerait le mur — et le mur, ici, c'est une écriture qui
+ * échoue au moment où l'on croyait sauvegarder.
+ */
+export const EMPLACEMENTS_MAX = 8;
+
+function lireIndex() {
+  const s = stockage();
+  if (!s) return [];
+  try {
+    const brut = JSON.parse(s.getItem(CLE_INDEX) || '[]');
+    return Array.isArray(brut) ? brut : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function ecrireIndex(liste) {
+  const s = stockage();
+  if (!s) return false;
+  try {
+    s.setItem(CLE_INDEX, JSON.stringify(liste));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * De quoi reconnaître une partie sans l'ouvrir.
+ *
+ * Une liste de « Sauvegarde 1, Sauvegarde 2, Sauvegarde 3 » ne sert à rien : au
+ * bout de trois, on ne sait plus laquelle est laquelle. On garde donc le jour,
+ * les vivants, la bourse et l'endroit — c'est ce qu'on regarde pour se
+ * rappeler où l'on en était.
+ */
+export function resumeSauvegarde(state) {
+  const gs = (state.player && state.player.groupes) || [];
+  const gens = gs.reduce(
+    (t, g) => t + (g.membres || []).filter((c) => c && c.etat !== 'mort').length, 0);
+  return {
+    temps: state.temps || 0,
+    jour: Math.floor((state.temps || 0) / 24) + 1,
+    gens,
+    credits: Math.round((state.player && state.player.credits) || 0),
+    base: !!(state.base && state.base.fonde),
+    nomBase: state.base && state.base.fonde ? state.base.nom : null,
+    depart: state.depart || null,
+    seed: state.seed,
+  };
+}
+
+/** Les emplacements occupés, du plus récemment écrit au plus ancien. */
+export function listerEmplacements() {
+  return lireIndex().slice().sort((a, b) => (b.quand || 0) - (a.quand || 0));
+}
+
+/** Ce que tout ça pèse, pour le dire avant que l'écriture échoue. */
+export function poidsEmplacements() {
+  const s = stockage();
+  if (!s) return { octets: 0, n: 0 };
+  let octets = 0;
+  let n = 0;
+  for (const e of lireIndex()) {
+    const txt = s.getItem(PREFIXE + e.id);
+    if (txt) { octets += txt.length; n += 1; }
+  }
+  return { octets, n };
+}
+
+/**
+ * Écrire la partie dans un emplacement. `id` absent : on en crée un nouveau.
+ *
+ * Le quota est la seule vraie panne possible ici, et elle doit se dire : une
+ * sauvegarde qu'on croit prise et qui n'existe pas est pire que pas de
+ * sauvegarde du tout.
+ */
+export function enregistrerEmplacement(state, nom, id) {
+  const s = stockage();
+  if (!s) return { ok: false, motif: 'Stockage local indisponible.' };
+  const index = lireIndex();
+  const existant = id ? index.find((x) => x.id === id) : null;
+  if (!existant && index.length >= EMPLACEMENTS_MAX) {
+    return { ok: false, motif: `Plus de place : ${EMPLACEMENTS_MAX} emplacements au plus.` };
+  }
+  // Un identifiant qui ne dépend pas du hasard ni de l'heure de jeu : le temps
+  // réel suffit, et deux enregistrements dans la même milliseconde n'arrivent
+  // pas quand c'est un doigt qui appuie.
+  const clef = existant ? existant.id : `e${Date.now().toString(36)}`;
+  const txt = serialiser(state);
+  try {
+    s.setItem(PREFIXE + clef, txt);
+  } catch (e) {
+    return { ok: false, motif: 'Écriture impossible : le stockage est plein.' };
+  }
+  const entree = {
+    id: clef,
+    nom: (nom || '').trim() || `Jour ${Math.floor((state.temps || 0) / 24) + 1}`,
+    quand: Date.now(),
+    octets: txt.length,
+    resume: resumeSauvegarde(state),
+  };
+  const suite = index.filter((x) => x.id !== clef).concat([entree]);
+  if (!ecrireIndex(suite)) {
+    s.removeItem(PREFIXE + clef);
+    return { ok: false, motif: 'Écriture impossible : le stockage est plein.' };
+  }
+  return { ok: true, id: clef, entree };
+}
+
+export function chargerEmplacement(id) {
+  const s = stockage();
+  if (!s) return null;
+  const txt = s.getItem(PREFIXE + id);
+  if (!txt) return null;
+  try {
+    return deserialiser(txt);
+  } catch (e) {
+    return null;
+  }
+}
+
+export function supprimerEmplacement(id) {
+  const s = stockage();
+  if (!s) return { ok: false, motif: 'Stockage local indisponible.' };
+  s.removeItem(PREFIXE + id);
+  ecrireIndex(lireIndex().filter((x) => x.id !== id));
+  return { ok: true };
+}
+
+export function renommerEmplacement(id, nom) {
+  const index = lireIndex();
+  const e = index.find((x) => x.id === id);
+  if (!e) return { ok: false, motif: 'Cet emplacement n’existe plus.' };
+  e.nom = (nom || '').trim() || e.nom;
+  return ecrireIndex(index) ? { ok: true } : { ok: false, motif: 'Écriture impossible.' };
+}
+
+// ---------------------------------------------------------------------------
+// Fichiers : sortir une partie du navigateur, et l'y remettre
+// ---------------------------------------------------------------------------
+
+/**
+ * Le nom du fichier. Il doit se lire dans un dossier de téléchargements six
+ * mois plus tard, donc il porte la graine et le jour — pas un horodatage brut.
+ */
+export function nomFichier(state) {
+  const r = resumeSauvegarde(state);
+  return `cendres-j${r.jour}-${state.seed}.json`;
+}
+
+/**
+ * Relire un fichier. On refuse clairement plutôt que d'ouvrir n'importe quoi :
+ * une sauvegarde d'un autre jeu, un fichier tronqué ou une partie d'avant
+ * l'agrandissement de la carte donneraient un monde faux, pas un monde dégradé.
+ */
+export function importerTexte(txt) {
+  let brut;
+  try {
+    brut = JSON.parse(txt);
+  } catch (e) {
+    return { ok: false, motif: 'Ce fichier n’est pas une sauvegarde lisible.' };
+  }
+  if (!brut || typeof brut !== 'object' || !brut.world || !brut.player) {
+    return { ok: false, motif: 'Ce fichier ne contient pas de partie.' };
+  }
+  if (brut.version !== VERSION) {
+    return {
+      ok: false,
+      motif: `Partie de version ${brut.version ?? '?'} : ce jeu lit la version ${VERSION}.`,
+    };
+  }
+  try {
+    return { ok: true, state: normaliser(brut) };
+  } catch (e) {
+    return { ok: false, motif: 'Partie illisible : elle est incomplète ou abîmée.' };
+  }
+}
