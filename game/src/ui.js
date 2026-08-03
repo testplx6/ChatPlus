@@ -6,7 +6,7 @@ import {
   RESEARCH, RESEARCH_KEYS, ITEMS, SKILLS, SKILL_KEYS, BODY_PARTS, BODY_KEYS,
   POSTURES, POSTURE_KEYS, TRAITS, POI, CONTRATS, DIPLOMES, METIERS, METIER_KEYS,
   METIERS_VILLE, METIER_VILLE_KEYS,
-  RECETTES_KEYS, ARRET,
+  RECETTES_KEYS, ARRET, ENTREES,
 } from './data.js';
 import {
   nomRegion, lieuAvecCoord, colonieDe, colonieParId, coord, chemin, coutTraversee, distance,
@@ -31,6 +31,7 @@ import {
   lancerRecherche, annulerConstruction, fonderBase, deposer, retirer,
   COUT_FONDATION, manquePour, apportBatiment, chaineAutonomie, menacesSurLaBase,
   forceEscouade, AMENDABLES, AMENDEMENT_MAX, dechetsMax, recetteDe, recettesDe,
+  brasEscouade, reserveDe,
 } from './base.js';
 import { classement, enGuerre } from './factions.js';
 import { titreDe, lignesDe } from './chronique.js';
@@ -1026,15 +1027,20 @@ function blocRegionCourante() {
   const o = G().ordre;
   const ici = S.base.fonde && S.base.regionId === rid;
 
-  const ordresDispo = ['repos', 'fouille', 'mine', 'chasse', 'exploration', 'patrouille'];
+  // « Travaux » ne s'offre que chez soi : ailleurs il n'y a rien à faire
+  // tourner. C'est aussi le seul ordre qui ne rapporte rien au groupe.
+  const ordresDispo = ['repos', 'fouille', 'mine', 'chasse', 'exploration', 'patrouille']
+    .concat(ici ? ['travaux'] : []);
   const boutons = ordresDispo.map((k) => {
     const prev = rendementPrevu(S, k);
     const rien = prev && prev.total <= 0.02;
-    const chiffre = prev
-      ? (rien ? 'rien ici' : `${prev.total.toFixed(2)}/h`)
-      : k === 'exploration' ? 'carte' : k === 'patrouille' ? 'combat' : 'récup.';
+    const chiffre = k === 'travaux'
+      ? `+${vivantsDe(G()).filter(estDebout).length} bras`
+      : prev
+        ? (rien ? 'rien ici' : `${prev.total.toFixed(2)}/h`)
+        : k === 'exploration' ? 'carte' : k === 'patrouille' ? 'combat' : 'récup.';
     return `<button class="act ordre" data-a="ordre" data-k="${k}"
-      aria-pressed="${o.type === k}" ${rien ? 'disabled' : ''}>
+      aria-pressed="${o.type === k}" ${rien && k !== 'travaux' ? 'disabled' : ''}>
       <span class="o-n">${e(ORDRES[k].nom)}</span>
       <span class="o-r ${rien ? 'alerte' : ''}">${e(chiffre)}</span>
     </button>`;
@@ -1926,24 +1932,54 @@ function nomComp(k) {
   return (SKILLS[k] || String(k)).toLowerCase();
 }
 
+/**
+ * Ce que votre escouade apporte au camp, ou pourrait y apporter.
+ *
+ * Les métiers ne se remplissaient que d'habitants, lesquels arrivent seuls, au
+ * compte-gouttes, et sont plafonnés par les lits. Une escouade de six pouvait
+ * camper six mois sur place sans tenir un seul poste. La phrase exacte du
+ * joueur : « j'ai mon escouade mais elle ne peut même pas travailler dans la
+ * base. »
+ */
+function blocBras() {
+  const b = S.base;
+  if (!b.fonde) return '';
+  const bras = brasEscouade(S);
+  const ici = S.player.groupes.filter((g) => g.regionId === b.regionId);
+  const debout = ici.reduce((t, g) => t + g.membres.filter(estDebout).length, 0);
+  if (bras > 0) {
+    return `<div class="aide ok">${n(bras)} des vôtres sont aux travaux : autant de bras
+      en plus sur toutes les chaînes, et ils ne prennent aucun lit.</div>`;
+  }
+  if (debout > 0) {
+    return `<div class="aide ambre">${n(debout)} des vôtres sont ici sans rien faire pour le
+      camp. L’ordre « Travaux », sur la carte, les met au travail.</div>`;
+  }
+  return '<div class="aide">Aucun des vôtres n’est sur place. Une escouade postée ici '
+    + 'peut se mettre au service du camp — ordre « Travaux ».</div>';
+}
+
 function blocMetiers() {
   const b = S.base;
-  const libres = manoeuvres(b);
+  const libres = manoeuvres(b, S);
   const ouverts = METIER_KEYS.filter((k) => placesMetier(b, k) > 0);
 
-  if (!b.pop) {
+  const bras = brasEscouade(S);
+  if (!b.pop && !bras) {
     return `<section class="panneau">
       <h2 class="titre">Métiers</h2>
       <div class="aide">Personne à employer. Il faut d’abord que des gens s’installent :
         un baraquement pour les loger, des rations pour les garder.</div>
+      ${blocBras()}
     </section>`;
   }
   if (!ouverts.length) {
     return `<section class="panneau">
       <h2 class="titre">Métiers <span class="droite">${n(libres)} manœuvre(s)</span></h2>
       <div class="aide">Aucun poste ouvert : ce sont les bâtiments qui créent les places.
-        En attendant, tout le monde donne un coup de main partout — ×${mainDoeuvre(b).toFixed(2)}
+        En attendant, tout le monde donne un coup de main partout — ×${mainDoeuvre(b, S).toFixed(2)}
         sur l’ensemble.</div>
+      ${blocBras()}
     </section>`;
   }
 
@@ -1975,7 +2011,7 @@ function blocMetiers() {
   return `<section class="panneau">
     <h2 class="titre">Métiers
       <span class="droite">${n(libres)} manœuvre(s) sur ${n(b.pop)}</span></h2>
-    <div class="aide">Un habitant sans poste aide partout un peu (×${mainDoeuvre(b).toFixed(2)}
+    <div class="aide">Un habitant sans poste aide partout un peu (×${mainDoeuvre(b, S).toFixed(2)}
       sur l’ensemble). Affecté, il rend bien davantage — mais sur sa chaîne seulement.
       Un des vôtres présent à l’avant-poste encadre l’équipe et vaut plusieurs bras.</div>
     <div class="sep"></div>
@@ -2089,6 +2125,35 @@ function blocConsignes() {
   }).join('');
 
   const arretes = montes.filter((k) => recetteDe(b, k) === ARRET).length;
+
+  // Les réserves : le plancher qu'aucune chaîne n'entame.
+  //
+  // « Les bâtiments bouffent les ressources avant qu'on ne puisse les utiliser
+  // pour payer les recherches et autres bâtiments. » Arrêter la chaîne marche,
+  // mais c'est tout ou rien — et l'on oublie de la rallumer. Un plancher, lui,
+  // se pose une fois : la chaîne s'arrête d'elle-même en l'atteignant et
+  // reprend quand la récolte l'a dépassé.
+  //
+  // On ne propose que les matières que les chaînes montées consomment vraiment.
+  // La liste complète des dix marchandises serait un mur de boutons dont huit
+  // ne servent à rien.
+  const mange = new Set();
+  for (const k of montes) {
+    if (recetteDe(b, k) === ARRET) continue;
+    for (const m of (ENTREES[k] || [])) mange.add(m);
+  }
+  const paliers = [0, 50, 150, 400];
+  const reserves = [...mange].map((k) => {
+    const val = reserveDe(b, k);
+    const stock = Math.round(b.stock[k] || 0);
+    return `<div class="ligne souple"><span class="k">${e(COMMODITIES[k].nom)}
+      <span class="aide">${n(stock)} en stock</span></span>
+      <span class="v"><span class="taches">${paliers.map((p) => `<button
+        class="act mini ${val === p ? 'primaire' : ''}"
+        data-a="reserve" data-k="${k}" data-n="${p}">${p || '—'}</button>`).join('')}</span></span>
+    </div>`;
+  }).join('');
+
   return `<section class="panneau">
     <h2 class="titre">Consignes
       <span class="droite ${arretes ? 'alerte' : ''}">${arretes
@@ -2097,6 +2162,12 @@ function blocConsignes() {
       laisse faire brûlera le polymère que l’atelier attendait.</div>
     <div class="sep"></div>
     ${lignes}
+    ${reserves ? `<div class="sep"></div>
+      <div class="titre">Réserves intouchables</div>
+      <div class="aide">Le plancher sous lequel aucune chaîne ne descend. C’est ainsi
+        qu’on garde de quoi payer un bâtiment ou une recherche sans avoir à tout
+        éteindre. Les gens, les bêtes et le générateur passent outre.</div>
+      <div style="height:6px"></div>${reserves}` : ''}
   </section>`;
 }
 
@@ -2345,7 +2416,7 @@ function ecranBase() {
     ${jauge(populationMax(b) ? (b.pop || 0) / populationMax(b) : 0, '', '#6be08a')}
     <div class="aide">${(b.pop || 0) === 0
     ? 'Personne ne vit ici. Un baraquement et des vivres y changeraient quelque chose.'
-    : `Main-d’œuvre ×${mainDoeuvre(b).toFixed(2)} sur les chaînes · +${n(Math.round((b.pop || 0) * 2.5))} de défense · ${n((b.pop || 0) * 0.014 * 24, 1)} rations/jour consommées`}</div>
+    : `Main-d’œuvre ×${mainDoeuvre(b, S).toFixed(2)} sur les chaînes · +${n(Math.round((b.pop || 0) * 2.5))} de défense · ${n((b.pop || 0) * 0.014 * 24, 1)} rations/jour consommées`}</div>
   </section>
 
   ${blocChaine()}
@@ -4688,6 +4759,13 @@ function surClic(ev) {
         fr.readAsText(f);
       });
       inp.click();
+      break;
+    }
+
+    case 'reserve': {
+      const r = ACTIONS.reglerReserve(el.dataset.k, Number(el.dataset.n));
+      if (!r.ok) alert(r.motif);
+      rafraichir(true);
       break;
     }
 

@@ -37,7 +37,7 @@ import {
   declarerIndependance, synchroniserVitrine,
   manoeuvres, affecter, rendementMetier, mainDoeuvre, niveauRech,
   perdreAvantPoste, saccagerAvantPoste, menacesSurLaBase, rendementLibre, AMENDEMENT_MAX,
-  recetteDe, recettesDe, reglerRecette,
+  recetteDe, recettesDe, reglerRecette, reglerReserve, brasEscouade,
 } from '../src/base.js';
 import {
   METIER_KEYS, METIERS, SKILLS, BIOMES, BUILDINGS, RESEARCH, POSTURES, COMMODITIES,
@@ -5143,6 +5143,66 @@ section('9 quinvicies septies. On donne des consignes aux chaînes');
     'on ne règle pas une consigne qu’on n’a pas cherchée');
   ok(reglerRecette(neuf, 'raffinerie', 'arret').ok,
     'mais on a toujours le droit de dire non');
+}
+
+section('9 quinvicies octies. Un plancher qu’aucune chaîne n’entame');
+{
+  // « Les bâtiments bouffent les ressources avant qu'on ne puisse les utiliser
+  // pour payer les recherches et autres bâtiments. » C'était exact et sans
+  // remède : la fonderie mange le minerai, l'atelier l'alliage, la raffinerie
+  // le polymère, et il ne reste jamais de quoi payer quoi que ce soit. Arrêter
+  // la chaîne marchait — tout ou rien, et l'on oublie de la rallumer.
+  const camp = (plancher) => {
+    const s = nouvellePartie(6161, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(s);
+    g.regionId = s.world.regions.find(
+      (r) => r.biome === 'canyons' && !s.world.colonies.some((c) => c.regionId === r.i)).i;
+    for (const k of Object.keys(COUT_FONDATION)) {
+      g.inventaire[k] = (g.inventaire[k] || 0) + COUT_FONDATION[k];
+    }
+    fonderBase(s, () => {}, g);
+    Object.assign(s.base.batiments,
+      { fonderie: 2, entrepot: 8, solaire: 4, eolienne: 4, baraquement: 1 });
+    s.base.stock.minerai = 500;
+    s.base.commerce = false;
+    s.player.credits = 0;
+    if (plancher != null) reglerReserve(s, 'minerai', plancher);
+    for (let i = 0; i < 500; i++) tick(s);
+    return Math.round(s.base.stock.minerai || 0);
+  };
+
+  const libre = camp(null);
+  ok(libre < 400, 'sans plancher, la fonderie racle le minerai', `${libre} restant`);
+
+  const garde = camp(300);
+  ok(garde >= 300, 'avec un plancher à 300, elle s’arrête dessus',
+    `${garde} restant`);
+  ok(garde > libre, 'et il reste donc de quoi payer autre chose',
+    `${libre} sans plancher, ${garde} avec`);
+
+  // Le plancher n'est pas un arrêt : la chaîne a bien travaillé jusque-là.
+  ok(garde < 500, 'elle a quand même produit tant qu’il y avait du rab',
+    `${garde} sur 500 au départ`);
+
+  // Ce qui nourrit passe outre : on ne s'affame pas en croyant économiser, et
+  // le générateur non plus — c'est lui qui rend les chaînes possibles.
+  const sf = nouvellePartie(6262, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const gf = groupeActif(sf);
+  gf.regionId = sf.world.regions.find(
+    (r) => !sf.world.colonies.some((c) => c.regionId === r.i)).i;
+  for (const k of Object.keys(COUT_FONDATION)) {
+    gf.inventaire[k] = (gf.inventaire[k] || 0) + COUT_FONDATION[k];
+  }
+  fonderBase(sf, () => {}, gf);
+  Object.assign(sf.base.batiments, { generateur: 2, entrepot: 4, hydroponie: 1 });
+  sf.base.stock.carburant = 400;
+  reglerReserve(sf, 'carburant', 400);
+  for (let i = 0; i < 200; i++) tick(sf);
+  ok((sf.base.stock.carburant || 0) < 400,
+    'un plancher sur le carburant n’éteint pas le générateur',
+    `${Math.round(sf.base.stock.carburant || 0)}`);
+  ok(recettesDe(sf.base, 'generateur').length === 1,
+    'mais on peut l’arrêter, et c’est une consigne, pas un plancher');
 }
 
 section('9 quinvicies quinquies. Changer la terre');

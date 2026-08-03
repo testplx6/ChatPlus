@@ -179,6 +179,7 @@ export function normaliser(state) {
     if (b.dernierGaspillage === undefined) b.dernierGaspillage = -999;
     if (b.dechets === undefined) b.dechets = 0;
     if (b.terraforme === undefined) b.terraforme = null;
+    if (!b.reserves) b.reserves = {};
     if (!b.recettes) {
       // Les consignes n'existaient pas, et la raffinerie faisait les deux à la
       // fois : du carburant depuis le polymère *et* depuis les déchets. Elles

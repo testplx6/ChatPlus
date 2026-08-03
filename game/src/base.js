@@ -36,6 +36,8 @@ export function creerBase() {
     dernierGaspillage: -999,
     // Le tas derrière l'atelier : ce que les chaînes recrachent. Voir `rebuter`.
     dechets: 0,
+    // Ce qu'aucune chaîne n'a le droit d'entamer. Voir `consommer`.
+    reserves: {},
     // Ce que la station de terraformation travaille, s'il y en a une.
     terraforme: null,
     // La consigne de chaque chaîne. Voir RECETTES dans data.js.
@@ -116,11 +118,42 @@ export function affectes(base, key) {
   return Math.max(0, Math.min(n, placesMetier(base, key)));
 }
 
-/** Ceux qui n'ont pas de poste : ils aident partout, sans rien faire de précis. */
-export function manoeuvres(base) {
+/**
+ * Les bras de votre escouade mis au service du camp.
+ *
+ * Un membre debout, présent sur la case de l'avant-poste, et dont le groupe a
+ * reçu l'ordre « Travaux ». Ni ceux qui dorment ailleurs, ni ceux qui sont
+ * partis fouiller, ni ceux qui sont à terre : on compte des gens qui
+ * travaillent, pas des gens qui existent.
+ *
+ * Ils comptent comme des manœuvres, pas comme des habitants — ils ne mangent
+ * pas au réfectoire du camp (leur groupe a ses propres vivres), ils ne
+ * remplissent pas les lits, et ils repartent quand on leur donne un autre
+ * ordre. C'est exactement ce qu'on veut d'une escouade : une main-d'œuvre
+ * qu'on déplace.
+ */
+export function brasEscouade(state) {
+  const base = state && state.base;
+  if (!base || !base.fonde) return 0;
+  let n = 0;
+  for (const g of groupes(state)) {
+    if (g.regionId !== base.regionId) continue;
+    if (!g.ordre || g.ordre.type !== 'travaux') continue;
+    for (const c of g.membres) if (estDebout(c)) n += 1;
+  }
+  return n;
+}
+
+/**
+ * Ceux qui n'ont pas de poste : ils aident partout, sans rien faire de précis.
+ *
+ * `state` est facultatif — sans lui on ne compte que les habitants, ce qui
+ * était le comportement d'avant. Avec, on compte aussi l'escouade aux travaux.
+ */
+export function manoeuvres(base, state) {
   let pris = 0;
   for (const k of METIER_KEYS) pris += affectes(base, k);
-  return Math.max(0, Math.round((base.pop || 0) - pris));
+  return Math.max(0, Math.round((base.pop || 0) + brasEscouade(state) - pris));
 }
 
 /**
@@ -128,8 +161,8 @@ export function manoeuvres(base) {
  * plus faible que ce que rend une place tenue : c'est ce qui rend la
  * spécialisation intéressante plutôt que décorative.
  */
-export function mainDoeuvre(base) {
-  return 1 + Math.min(0.6, manoeuvres(base) / 60);
+export function mainDoeuvre(base, state) {
+  return 1 + Math.min(0.6, manoeuvres(base, state) / 60);
 }
 
 /**
@@ -171,7 +204,7 @@ export function affecter(state, key, n) {
   const places = placesMetier(base, key);
   if (places <= 0) return { ok: false, motif: `Il faut bâtir ${BUILDINGS[METIERS[key].batiment].nom.toLowerCase()}.` };
   const actuel = affectes(base, key);
-  const libre = manoeuvres(base);
+  const libre = manoeuvres(base, state);
   const vise = Math.max(0, Math.min(n, places, actuel + libre));
   base.postes[key] = vise;
   return { ok: true, affectes: vise };
@@ -203,10 +236,14 @@ const ORDRE_EMBAUCHE = [
  * L'ordre de priorité fait le reste : on ne met personne à la fonderie tant
  * qu'il manque un cultivateur, parce qu'on ne mange pas de l'alliage.
  */
-export function embaucher(base) {
+export function embaucher(base, state) {
   if (base.autoEmploi === false) return;
   const postes = {};
-  let reste = Math.floor(base.pop || 0);
+  // Les bras de l'escouade tiennent des postes, pas seulement un coup de main.
+  // Compter six personnes comme six manœuvres ne valait que dix pour cent sur
+  // les chaînes ; les mêmes six sur des postes valent bien davantage, et c'est
+  // ce qu'on attend de gens qu'on a nommés, équipés et formés.
+  let reste = Math.floor((base.pop || 0) + brasEscouade(state));
   for (const k of ORDRE_EMBAUCHE) {
     if (reste <= 0) break;
     const places = placesMetier(base, k);
@@ -229,7 +266,7 @@ export function embaucher(base) {
 }
 
 /** Après une famine ou une démolition, les postes se réajustent tout seuls. */
-export function reajusterPostes(base) {
+export function reajusterPostes(base, state) {
   if (!base.postes) { base.postes = {}; return; }
   for (const k of METIER_KEYS) {
     const max = placesMetier(base, k);
@@ -238,9 +275,14 @@ export function reajusterPostes(base) {
   let total = 0;
   for (const k of METIER_KEYS) total += base.postes[k] || 0;
   // Trop de postes pour trop peu de monde : on dégarnit du dernier au premier.
-  for (let i = METIER_KEYS.length - 1; i >= 0 && total > (base.pop || 0); i--) {
+  //
+  // « Trop peu de monde » comptait les seuls habitants, si bien que cette
+  // fonction défaisait chaque heure ce que l'embauche venait de faire : une
+  // escouade aux travaux ne tenait jamais un poste, quoi qu'on règle.
+  const bras = Math.floor((base.pop || 0) + brasEscouade(state));
+  for (let i = METIER_KEYS.length - 1; i >= 0 && total > bras; i--) {
     const k = METIER_KEYS[i];
-    const retire = Math.min(base.postes[k] || 0, total - (base.pop || 0));
+    const retire = Math.min(base.postes[k] || 0, total - bras);
     base.postes[k] = (base.postes[k] || 0) - retire;
     total -= retire;
   }
@@ -811,9 +853,37 @@ function rebuter(base, qte) {
   base.dechets = Math.min(dechetsMax(base), (base.dechets || 0) + qte);
 }
 
-function consommer(base, key, qte) {
+/**
+ * Ce qu'une chaîne a le droit de prendre — et ce qu'on lui interdit.
+ *
+ * « Les bâtiments bouffent les ressources avant qu'on ne puisse les utiliser
+ * pour payer les recherches et autres bâtiments. » C'est exact, et c'était sans
+ * remède : la fonderie mange le minerai, l'atelier mange l'alliage, la
+ * raffinerie mange le polymère, et il ne reste jamais les cent cinquante
+ * composants d'une recherche. Arrêter la chaîne marchait, mais c'est tout ou
+ * rien — et l'on oublie de la rallumer.
+ *
+ * Une réserve est un plancher : la chaîne s'arrête d'elle-même en l'atteignant,
+ * et reprend quand la récolte l'a dépassé. Elle ne s'applique qu'aux chaînes de
+ * production ; ce que mangent les gens, les bêtes et les prisonniers passe
+ * outre, sinon on s'affamerait en croyant économiser.
+ */
+export function reserveDe(base, key) {
+  return Math.max(0, (base.reserves && base.reserves[key]) || 0);
+}
+
+export function reglerReserve(state, key, qte) {
+  const base = state.base;
+  if (!COMMODITIES[key]) return { ok: false, motif: 'Ressource inconnue.' };
+  if (!base.reserves) base.reserves = {};
+  base.reserves[key] = Math.max(0, Math.round(qte) || 0);
+  return { ok: true, reserve: base.reserves[key] };
+}
+
+function consommer(base, key, qte, ignorerReserve) {
   const dispo = base.stock[key] || 0;
-  const pris = Math.min(dispo, qte);
+  const plancher = ignorerReserve ? 0 : reserveDe(base, key);
+  const pris = Math.max(0, Math.min(dispo - plancher, qte));
   base.stock[key] = dispo - pris;
   return pris;
 }
@@ -836,16 +906,22 @@ export function tickBase(state, log, ctx) {
   // heures.
   if (base.autoEmploi !== false && t0 - (base.majEmploi || -999) >= 24) {
     base.majEmploi = t0;
-    embaucher(base);
+    embaucher(base, state);
   }
   // Postes tenus, contremaîtres compris. Calculé une fois pour tout le tick.
-  reajusterPostes(base);
+  reajusterPostes(base, state);
   const M = {};
   for (const k of METIER_KEYS) M[k] = rendementMetier(state, k).mult;
 
   // --- Énergie. Un mécanicien règle les générateurs : ils brûlent moins.
   const gen = niveau(base, 'generateur');
-  if (gen > 0) consommer(base, 'carburant', (0.55 * gen) / M.mecanicien);
+  // Le générateur passe outre les réserves : c'est lui qui rend les chaînes
+  // possibles, et une réserve de carburant qui l'éteint se retourne contre
+  // celui qui l'a posée. Pour qu'il cesse de brûler, on l'arrête — c'est une
+  // consigne, pas un plancher.
+  if (gen > 0 && recetteDe(base, 'generateur') !== ARRET) {
+    consommer(base, 'carburant', (0.55 * gen) / M.mecanicien, true);
+  }
   const e = energie(base, state);
   const r = e.ratio;
 
@@ -903,7 +979,7 @@ export function tickBase(state, log, ctx) {
     }
   }
   if (base.pop > maxPop) base.pop = maxPop;
-  const mo = mainDoeuvre(base);
+  const mo = mainDoeuvre(base, state);
 
   // --- Chaînes de production
   // Chaque chaîne tourne au rythme de ceux qui la tiennent : les manœuvres
@@ -1036,7 +1112,7 @@ export function tickBase(state, log, ctx) {
   // --- File de construction
   if (base.file.length) {
     const item = base.file[0];
-    let vitesse = (1 + Math.min(1, manoeuvres(base) / 30)) * M.batisseur;
+    let vitesse = (1 + Math.min(1, manoeuvres(base, state) / 30)) * M.batisseur;
     if (surPlace) {
       // Ceux qui sont là mettent la main à la pâte
       let ing = 0;

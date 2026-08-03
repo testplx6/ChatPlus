@@ -678,6 +678,7 @@ export const RESEARCH_KEYS = Object.keys(RESEARCH);
 export const ARRET = 'arret';
 
 export const RECETTES = {
+  generateur: [{ id: 'marche', nom: 'Brûler du carburant', aide: 'Du courant tant qu’il y a de quoi brûler. Un camp qui capte assez peut l’éteindre.' }],
   halle: [{ id: 'marche', nom: 'Ramasser la région', aide: 'Ce que le terrain donne, sans épuiser la case.' }],
   bassins: [{ id: 'marche', nom: 'Cultiver de la biomasse', aide: 'Algues et lentilles d’eau, où qu’on soit.' }],
   hydroponie: [{ id: 'marche', nom: 'Biomasse → rations', aide: 'De quoi manger.' }],
@@ -712,6 +713,24 @@ export const RECETTES = {
   ],
   semoir: [{ id: 'marche', nom: 'Semer la région', aide: 'Consomme de la biomasse comme semence.' }],
   terraformeur: [{ id: 'marche', nom: 'Corriger le sol', aide: 'Voir la cible dans « La terre ».' }],
+};
+
+/**
+ * Ce que chaque chaîne prend dans l'entrepôt.
+ *
+ * Sert à ne proposer un plancher de réserve que pour les matières qu'on
+ * consomme vraiment : la liste des dix marchandises serait un mur de boutons
+ * dont huit ne servent à rien. On liste toutes les entrées possibles d'un
+ * bâtiment, consigne comprise — la fonderie peut manger l'un ou l'autre.
+ */
+export const ENTREES = {
+  hydroponie: ['biomasse'],
+  infirmerie: ['biomasse'],
+  fonderie: ['minerai', 'ferraille'],
+  atelier: ['alliage', 'polymere'],
+  raffinerie: ['polymere'],
+  semoir: ['biomasse'],
+  terraformeur: ['carburant', 'composant'],
 };
 
 export const RECETTES_KEYS = Object.keys(RECETTES);

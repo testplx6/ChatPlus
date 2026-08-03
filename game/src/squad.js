@@ -43,6 +43,15 @@ export const ORDRES = {
   entrainement: { nom: 'S’entraîner', desc: 'Progresser vite, consommer des vivres.', effort: 1.1 },
   patrouille: { nom: 'Patrouiller', desc: 'Chercher l’affrontement dans le secteur.', effort: 1.1 },
   voyage: { nom: 'En route', desc: 'Déplacement vers une région.', effort: 1 },
+  // Le seul ordre qui ne rapporte rien au groupe : il rapporte au camp.
+  //
+  // Les métiers de l'avant-poste ne se remplissaient que d'habitants — des gens
+  // anonymes qui arrivent tout seuls, au compte-gouttes, et dont le nombre est
+  // plafonné par les lits. Votre escouade, elle, pouvait camper sur place des
+  // mois entiers sans toucher une pelle : elle défendait les murs et supervisait
+  // les postes, mais ne tenait aucun. « J'ai mon escouade mais elle ne peut même
+  // pas travailler dans la base. » C'était exact.
+  travaux: { nom: 'Travaux', desc: 'Se mettre au service du camp : bras en plus sur toutes les chaînes.', effort: 1 },
 };
 
 /**
@@ -100,6 +109,9 @@ export function donnerOrdre(state, ordre, groupe) {
     return { ok: true };
   }
   if (!ORDRES[ordre.type]) return { ok: false, motif: 'Ordre inconnu.' };
+  if (ordre.type === 'travaux' && !(state.base.fonde && state.base.regionId === g.regionId)) {
+    return { ok: false, motif: 'Il faut être à votre avant-poste pour y travailler.' };
+  }
   if (ordre.type === 'entrainement') {
     const v = verifierExercice(ordre.skill);
     if (!v.ok) return v;
