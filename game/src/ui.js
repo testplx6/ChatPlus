@@ -37,6 +37,7 @@ import {
 } from './squad.js';
 import {
   progres as progresContrat, lieuValidation, accepter, abandonner, peutRendre, MAX_CONTRATS,
+  gainEstime,
 } from './contrats.js';
 import {
   horloge, VITESSES, DEPARTS, DEPART_KEYS, DEPART_DEFAUT,
@@ -2161,7 +2162,7 @@ function ligneContrat(c, enCours) {
     <div class="ligne">
       <span class="k"><span class="puce" style="border-color:${couleurFaction(c.faction)};color:${couleurFaction(c.faction)}">${e(CONTRATS[c.type].nom)}</span>${
   presse ? ' <span class="puce mal">urgent</span>' : ''}</span>
-      <span class="v ambre">${n(c.recompense)} cr · rép +${c.reputation}</span>
+      <span class="v ambre">${n(c.recompense)} cr · rép +${gainEstime(S, c)}</span>
     </div>
     <div class="contrat-t">${e(c.titre)}</div>
     ${p ? `${jauge(p.total ? p.fait / p.total : 0, p.pret ? 'vert' : '')}

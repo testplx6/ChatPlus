@@ -12466,7 +12466,30 @@ const PRIME_URGENCE = 1.5;
 /** Ce qu'une collecte peut demander au plus, en kilos. Voir `contratCollecte`. */
 const POIDS_COLLECTE_MAX = 80;
 
-// Ce qu'un contrat rendu fait à votre nom : deux fois plus qu'avant, et la
+/**
+ * Ce qu'un contrat rapporte vraiment à votre nom, ici et maintenant.
+ *
+ * Le chiffre écrit sur l'offre est ce que vaut le travail ; ce qu'on en retire
+ * dépend de ce qu'on pense déjà de vous. Se faire un nom auprès de gens qui
+ * vous ignorent est facile ; impressionner ceux qui vous admirent déjà l'est
+ * beaucoup moins.
+ *
+ * Sans ce rendement décroissant, doubler le tarif des contrats — voir plus bas
+ * pourquoi il le fallait — remplaçait un plancher par un plafond : huit
+ * contrats suffisaient à saturer une faction à cent, et le panneau
+ * d'affichage ne rapportait plus ensuite que de l'argent. Avec, on approche du
+ * sommet sans jamais l'atteindre, et un contrat garde toujours une valeur.
+ *
+ * On ne dépasse jamais un pour un : un contrat ne rachète pas une haine plus
+ * vite qu'il ne bâtit une estime.
+ */
+function gainEstime(state, c) {
+  const rep = state.player.reputation[c.faction] || 0;
+  const part = Math.min(1, Math.max(0.15, 1 - rep / 100));
+  return Math.max(1, Math.round((c.reputation || 0) * part));
+}
+
+// Ce qu'un contrat rendu fait à votre nom : nettement plus qu'avant, et la
 // raison tient en une mesure.
 //
 // Le banc a appris à courtiser un drapeau et un seul, quatre mille heures
@@ -12479,9 +12502,9 @@ const POIDS_COLLECTE_MAX = 80;
 //
 // Ce n'était pas l'oubli qui rongeait — le couper entièrement (SANS=erosion)
 // ne rendait que six points. C'était le tarif. Un contrat rendu valait deux à
-// dix points pour cent à trois cents heures de travail ; il en vaut cinq à
-// vingt-deux. On garde les seuils : ce sont eux qui donnent leur caractère aux
-// six drapeaux, et c'est la monnaie qui manquait, pas les prix.
+// dix points ; il en vaut quatre à seize, dont on ne touche qu'une part selon
+// `gainEstime`. On garde les seuils : ce sont eux qui donnent leur caractère
+// aux six drapeaux, et c'est la monnaie qui manquait, pas les prix.
 
 function contratCollecte(rng, state, col, t) {
   // Une ville demande ce qui lui manque vraiment.
@@ -12517,7 +12540,7 @@ function contratCollecte(rng, state, col, t) {
     ressource,
     quantite,
     recompense: Math.round(valeur * rng.range(2.6, 3.6)),
-    reputation: rng.irange(7, 16),
+    reputation: rng.irange(5, 11),
     duree: rng.irange(180, 400),
     titre: `Rassembler ${quantite} ${COMMODITIES[ressource].nom.toLowerCase()}`,
   };
@@ -12540,7 +12563,7 @@ function contratLivraison(rng, state, col, t) {
     quantite,
     poids: Number(poids.toFixed(1)),
     recompense: Math.round((80 + d * 55 + poids * 6) * rng.range(0.9, 1.4)),
-    reputation: rng.irange(9, 20),
+    reputation: rng.irange(7, 15),
     duree: Math.round(d * rng.range(14, 24)),
     titre: `Porter ${quantite} ${COMMODITIES[ressource].nom.toLowerCase()} `
       + `à ${dest.nom} (${coordonnee(state.world, dest.regionId)})`,
@@ -12565,7 +12588,7 @@ function contratPrime(rng, state, col, t) {
     victoires,
     progres: 0,
     recompense: Math.round(victoires * rng.irange(220, 460)),
-    reputation: rng.irange(9, 22),
+    reputation: rng.irange(7, 16),
     duree: rng.irange(240, 500),
     titre: `${victoires} victoire${victoires > 1 ? 's' : ''} contre ${cible === 'bandits' ? 'les pillards' : FACTIONS[cible].nom}`,
   };
@@ -12582,7 +12605,7 @@ function contratReconnaissance(rng, state, col, t) {
     type: 'reconnaissance',
     regionId: r.i,
     recompense: Math.round((70 + d * 45) * rng.range(0.9, 1.3)),
-    reputation: rng.irange(5, 13),
+    reputation: rng.irange(4, 10),
     // Aller **et** revenir : un relevé se rend au panneau qui l'a affiché, et
     // la durée ne payait que l'aller. Une escouade arrivée sur la case à midi
     // voyait donc le contrat échoir à treize heures, à trois régions de la ville
@@ -12909,7 +12932,8 @@ function recompenser(state, c, log) {
   if (estAuService(state, c.faction)) {
     crediter(state, Math.round(c.recompense / 7) + 10, log, 'Contrat honoré pour les vôtres');
   }
-  state.player.reputation[c.faction] = Math.min(100, (state.player.reputation[c.faction] || 0) + c.reputation);
+  const gagne = gainEstime(state, c);
+  state.player.reputation[c.faction] = Math.min(100, repAvant + gagne);
   state.stats.contratsRemplis = (state.stats.contratsRemplis || 0) + 1;
   noterContrat(state, c, 'honore', {
     cr: state.player.credits - crAvant,
@@ -12917,7 +12941,7 @@ function recompenser(state, c, log) {
   });
   log({
     type: 'contrat',
-    texte: `Contrat rempli : ${c.titre}. ${c.recompense} cr, réputation +${c.reputation}.`,
+    texte: `Contrat rempli : ${c.titre}. ${c.recompense} cr, réputation +${gagne}.`,
     important: true,
   });
 }
@@ -17967,7 +17991,7 @@ function ligneContrat(c, enCours) {
     <div class="ligne">
       <span class="k"><span class="puce" style="border-color:${couleurFaction(c.faction)};color:${couleurFaction(c.faction)}">${e(CONTRATS[c.type].nom)}</span>${
   presse ? ' <span class="puce mal">urgent</span>' : ''}</span>
-      <span class="v ambre">${n(c.recompense)} cr · rép +${c.reputation}</span>
+      <span class="v ambre">${n(c.recompense)} cr · rép +${gainEstime(S, c)}</span>
     </div>
     <div class="contrat-t">${e(c.titre)}</div>
     ${p ? `${jauge(p.total ? p.fait / p.total : 0, p.pret ? 'vert' : '')}

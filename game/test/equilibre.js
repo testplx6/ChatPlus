@@ -204,6 +204,18 @@ const VISE = process.env.VISE || '';
 /** Au bout de combien d'heures on renonce à celui qu'on courtisait. */
 const REPLI_H = 2000;
 /**
+ * Profil assidu : on ne fait que ça, et pour un seul drapeau.
+ *
+ * Le bot ordinaire rend deux contrats par partie. Toute mesure de la
+ * réputation faite sur lui ne donne donc qu'un plancher — utile pour savoir si
+ * une porte est franchissable, inutile pour savoir si elle est trop facile.
+ * L'assidu remplit son carnet à chaque panneau, n'accepte que ce qui compte
+ * pour celui qu'il courtise, et rentre le rendre. C'est le témoin du haut :
+ * s'il sature une faction à cent en un mois de jeu, le tarif est trop
+ * généreux, quoi qu'en dise le bot moyen.
+ */
+const ASSIDU = process.env.ASSIDU === '1';
+/**
  * Profil négrier : on prend les gens vivants et on les vend.
  *
  * Le jeu affirme deux choses qu'aucune mesure n'a jamais vérifiées : que vendre
@@ -1254,8 +1266,17 @@ function jouerPrincipal(state, g, memo) {
       // On préfère toujours ce qui fait monter chez celle qu'on courtise.
       faisables.sort((a, b) => (b.faction === courtisee ? 1 : 0) - (a.faction === courtisee ? 1 : 0)
         || (b.reputation || 0) - (a.reputation || 0));
-      if (faisables.length) {
-        const pris = accepter(state, colIci, faisables[0].id, () => {}, g);
+      // Un contrat par passage en ville, sauf pour l'assidu, qui remplit son
+      // carnet et n'accepte que ce qui compte pour celle qu'il courtise. C'est
+      // lui qui dit à quelle vitesse un joueur consciencieux sature une
+      // réputation — le bot ordinaire, qui rend deux contrats par partie, ne
+      // peut mesurer qu'un plancher.
+      const aPrendre = ASSIDU
+        ? faisables.filter((c) => c.faction === courtisee)
+        : faisables.slice(0, 1);
+      for (const offre of aPrendre) {
+        if (p.contrats.length >= MAX_CONTRATS - 1) break;
+        const pris = accepter(state, colIci, offre.id, () => {}, g);
         if (pris && pris.ok !== false) TRACE.contratsPris += 1;
       }
     }

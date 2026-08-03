@@ -40,7 +40,7 @@ import {
 import { METIER_KEYS, BIOMES, BUILDINGS, POSTURES, COMMODITIES } from '../src/data.js';
 import {
   accepter, abandonner, peutRendre, progres as progresContrat,
-  OPINION_ECHU, OPINION_RENDU, POIDS_COLLECTE_MAX,
+  OPINION_ECHU, OPINION_RENDU, POIDS_COLLECTE_MAX, gainEstime,
 } from '../src/contrats.js';
 import { genererBanc, primeDe, tensionRecrutement, engager } from '../src/recrues.js';
 import {
@@ -4727,6 +4727,51 @@ section('9 quattuorvicies. Les ordres de mission aussi : le délai est l’excep
         + ` → ${Math.round(moy(vus.filter((o) => o.type === t && o.duree)))}`).join(' · ')
         || 'aucun type tiré dans les deux formes');
   }
+}
+
+section('9 quinvicies. Se faire un nom coûte de moins en moins cher au début, de plus en plus après');
+{
+  // Le tarif d'un contrat avait été doublé parce qu'une partie entière passée
+  // au service d'un drapeau ne faisait monter l'estime qu'à onze. La correction
+  // seule créait le défaut inverse : huit contrats saturaient une faction à
+  // cent, et le panneau d'affichage ne rapportait plus ensuite que de l'argent.
+  // On ne touche donc qu'une part du tarif, décroissante avec ce qu'on vaut
+  // déjà à leurs yeux.
+  const sg = nouvellePartie(9182, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const colG = sg.world.colonies.find((c) => c.faction && !c.ruine);
+  const faux = { faction: colG.faction, reputation: 10 };
+
+  sg.player.reputation[colG.faction] = 0;
+  const aZero = gainEstime(sg, faux);
+  sg.player.reputation[colG.faction] = 50;
+  const aCinquante = gainEstime(sg, faux);
+  sg.player.reputation[colG.faction] = 95;
+  const aQuatreVingtQuinze = gainEstime(sg, faux);
+
+  ok(aZero === 10, 'inconnu, on touche le tarif plein', `${aZero}`);
+  ok(aCinquante < aZero && aCinquante >= 4,
+    'à mi-chemin, la moitié', `${aCinquante}`);
+  ok(aQuatreVingtQuinze < aCinquante && aQuatreVingtQuinze >= 1,
+    'et tout en haut, des miettes — mais jamais rien',
+    `${aQuatreVingtQuinze}`);
+
+  // Le point de la manœuvre : on n'atteint pas cent en une poignée de contrats,
+  // et l'on ne cesse jamais de progresser non plus.
+  sg.player.reputation[colG.faction] = 0;
+  let n = 0;
+  while ((sg.player.reputation[colG.faction] || 0) < 100 && n < 500) {
+    sg.player.reputation[colG.faction] = Math.min(100,
+      sg.player.reputation[colG.faction] + gainEstime(sg, faux));
+    n += 1;
+  }
+  ok(n >= 20, 'saturer une faction demande une vraie carrière', `${n} contrats`);
+  ok(n < 500, 'mais le sommet n’est pas hors d’atteinte', `${n} contrats`);
+
+  // Et l'on ne rachète pas une haine plus vite qu'on ne bâtit une estime.
+  sg.player.reputation[colG.faction] = -80;
+  ok(gainEstime(sg, faux) <= 10,
+    'un contrat ne vaut jamais plus que son tarif, même chez ceux qui vous détestent',
+    `${gainEstime(sg, faux)}`);
 }
 
 section('10. Rattrapage hors ligne');
