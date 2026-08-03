@@ -1857,6 +1857,15 @@ l'interface n'en porte, si bien que sa présence répond à la question — et u
 vérifie les deux sens, que tout ce qui se clique en porte un et que rien
 d'inerte n'en porte.
 
+Corollaire trouvé le lendemain, et qui aurait dû l'être en même temps : la
+modale avait le même défaut, en pire. Elle se réécrivait entièrement à chaque
+rafraîchissement, `.boite` — le conteneur qui défile — étant détruite et refaite
+plusieurs fois par seconde. Un élément neuf a un défilement à zéro : on ouvrait
+« Qui vit ici », on descendait dans la liste, et l'on était remonté tout en haut
+quelques secondes plus tard. Mesuré avant correction : 400 px, puis 0, puis 0 à
+chacun des dix relevés suivants. **Corriger un conteneur qui défile sans
+regarder les autres, c'est corriger la moitié d'un défaut.**
+
 ### Le même défaut, deux fois, à trois jours d'intervalle
 
 `capaciteStock(base)` a gagné un paramètre `state` facultatif : les magasiniers

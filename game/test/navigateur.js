@@ -1088,8 +1088,45 @@ await page.waitForSelector('#carte');
 await page.waitForTimeout(600);
 ok(await page.locator('[data-a="modale"][data-m="ville"]').count() > 0,
   'la ville propose de voir qui y vit');
+// La vitesse se règle avant d'ouvrir : la modale couvre tout l'écran, et le
+// sélecteur de vitesse est dessous — un clic dessus n'arriverait jamais.
+await page.click('[data-a="vitesse"][data-v="16"]');
 await page.click('[data-a="modale"][data-m="ville"]');
 await page.waitForTimeout(400);
+
+{
+  // « Si je vais dans "qui vit ici", je scroll vers le bas et au bout de
+  // quelques secondes ça me ramène en haut. » La modale se réécrivait
+  // entièrement à chaque rafraîchissement : `.boite`, qui est le conteneur qui
+  // défile, était détruite et refaite plusieurs fois par seconde, et un élément
+  // neuf a un défilement à zéro. Mesuré avant la correction : 400 px, puis 0, et
+  // 0 à chacun des dix relevés suivants.
+  const taille = await page.evaluate(() => {
+    const b = document.querySelector('#modale .boite');
+    return { h: b.scrollHeight, vue: b.clientHeight };
+  });
+  ok(taille.h > taille.vue + 200, 'la liste des habitants dépasse l’écran',
+    `${taille.h}px pour ${taille.vue}px visibles`);
+  await page.evaluate(() => { document.querySelector('#modale .boite').scrollTop = 400; });
+  await page.waitForTimeout(300);
+  const lu = () => page.evaluate(() => {
+    const b = document.querySelector('#modale .boite');
+    const el = document.elementFromPoint(200, b.getBoundingClientRect().top + 10);
+    return { s: Math.round(b.scrollTop), t: (el ? el.textContent : '').slice(0, 30).replace(/\s+/g, ' ') };
+  });
+  const debut = await lu();
+  let ramene = 0;
+  for (let i = 0; i < 6; i++) {
+    await page.waitForTimeout(400);
+    const v = await lu();
+    if (v.s !== debut.s || v.t !== debut.t) ramene++;
+  }
+  ok(ramene === 0, 'et l’on y reste : la modale ne remonte plus toute seule',
+    `${ramene}/6 relevés déplacés · ${debut.s}px « ${debut.t} »`);
+  // On remonte en haut pour la suite du bloc, qui capture la fiche.
+  await page.evaluate(() => { document.querySelector('#modale .boite').scrollTop = 0; });
+  await page.waitForTimeout(200);
+}
 const texteVille = await page.evaluate(() => document.querySelector('#modale').textContent);
 ok(/MÉTIERS/i.test(texteVille) && /actifs/.test(texteVille),
   'elle détaille ses métiers et le nombre d’actifs');

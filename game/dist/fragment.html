@@ -18423,6 +18423,8 @@ let dernierRendu = -1;
 let dernierOngletRendu = null;
 // Le dernier texte d'écran produit : on ne réécrit pas un DOM identique.
 let dernierHtml = null;
+// Idem pour la modale, qui a son propre défilement à préserver.
+let dernierHtmlModale = null;
 let dernierRenduMs = 0;
 let derniereInteraction = 0;
 let toastTimer = null;
@@ -22302,18 +22304,42 @@ function fermerModale() {
   rafraichir(true);
 }
 
+/**
+ * La modale suit exactement la même règle que l'écran, et pour la même raison.
+ *
+ * Elle se réécrivait entièrement à chaque rafraîchissement — `.boite`, qui est
+ * le conteneur qui défile, était détruite et refaite plusieurs fois par seconde.
+ * Un élément neuf a un défilement à zéro : on ouvrait « Qui vit ici », on
+ * descendait dans la liste, et quelques secondes plus tard on était remonté tout
+ * en haut sans avoir rien touché.
+ *
+ * On garde donc la boîte et l'on ne remplace que son contenu — et seulement s'il
+ * a changé.
+ */
 function rendreModale() {
   const el = $('#modale');
-  // Le rapport d'absence passe avant tout le reste : c'est la première chose
-  // qu'on doit lire en rouvrant, et on ne la lit qu'une fois.
-  if (!modale && S.rapport && S.rapport.apres) {
-    el.hidden = false;
-    el.innerHTML = `<div class="boite">${modaleRapport()}</div>`;
+  const rapport = !modale && S.rapport && S.rapport.apres;
+  if (!modale && !rapport) {
+    el.hidden = true;
+    el.innerHTML = '';
+    dernierHtmlModale = null;
     return;
   }
-  if (!modale) { el.hidden = true; el.innerHTML = ''; return; }
   el.hidden = false;
-  el.innerHTML = `<div class="boite">${contenuModale()}</div>`;
+  // Le rapport d'absence passe avant tout le reste : c'est la première chose
+  // qu'on doit lire en rouvrant, et on ne la lit qu'une fois.
+  const html = rapport ? modaleRapport() : contenuModale();
+  let boite = el.querySelector(':scope > .boite');
+  if (!boite) {
+    el.innerHTML = '<div class="boite"></div>';
+    boite = el.querySelector(':scope > .boite');
+    dernierHtmlModale = null;
+  }
+  if (html === dernierHtmlModale) return;
+  const ancre = mesurerAncre(boite);
+  dernierHtmlModale = html;
+  boite.innerHTML = html;
+  restaurerAncre(boite, ancre);
 }
 
 function contenuModale() {
