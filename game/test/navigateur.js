@@ -1523,6 +1523,117 @@ ok(/apporté des medkits/.test(texteApres), 'et il s’en souvient à l’écran
 await page.click('[data-a="fermer"]');
 await page.waitForTimeout(300);
 
+console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit pas');
+{
+  // Trois défauts d'usage rapportés ensemble : « régulièrement la page se
+  // rafraîchit ce qui décale là où on se trouve », « j'aimerais que les encarts
+  // soient refermables car certains sont très grands », « voir quel texte est
+  // cliquable ou non de façon bien distincte ».
+  const foule = partieAvancee();
+  const gF = groupeActif(foule);
+  const modele = JSON.parse(JSON.stringify(gF.membres[0]));
+  for (let i = 0; i < 18; i++) {
+    const c = JSON.parse(JSON.stringify(modele));
+    c.id = `recrue${i}`;
+    c.nom = `Recrue ${i}`;
+    gF.membres.push(c);
+  }
+  foule.dernierReel = Date.now();
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate(() => localStorage.removeItem('cendres.replis.v1'));
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(foule));
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.click('[data-a="onglet"][data-k="escouade"]');
+  await page.waitForTimeout(500);
+
+  // --- Les clés d'encart, qui servent au pli comme à l'ancre de défilement.
+  const cles = await page.evaluate(
+    () => [...document.querySelectorAll('#ecran > section.pliable > h2.titre')].map((h) => h.dataset.k));
+  ok(cles.length > 3, 'les encarts sont repliables', `${cles.length} encarts`);
+  ok(new Set(cles).size === cles.length,
+    'et chacun a une clé à lui — deux encarts de même titre ne se replient pas ensemble',
+    cles.join(' · '));
+
+  // --- Ce qui se clique se voit : un chevron, et lui seul.
+  const chevrons = await page.evaluate(() => {
+    const a = (el) => getComputedStyle(el, '::after').borderRightWidth;
+    const pliables = [...document.querySelectorAll('#ecran > section.pliable > h2.titre')];
+    const inertes = [...document.querySelectorAll('#ecran .aide, #ecran .ligne > .k')];
+    return {
+      avec: pliables.filter((h) => parseFloat(a(h)) > 0).length,
+      total: pliables.length,
+      curseur: pliables.filter((h) => getComputedStyle(h).cursor === 'pointer').length,
+      inertesAvecChevron: inertes.filter((h) => parseFloat(a(h)) > 0).length,
+    };
+  });
+  ok(chevrons.avec === chevrons.total,
+    'chaque titre qui répond au doigt porte un chevron',
+    `${chevrons.avec}/${chevrons.total}`);
+  ok(chevrons.curseur === chevrons.total, 'et le curseur le dit aussi');
+  ok(chevrons.inertesAvecChevron === 0,
+    'et rien d’inerte n’en porte : le chevron veut dire « appuyez ici »',
+    `${chevrons.inertesAvecChevron} textes inertes en portent un`);
+
+  // --- Replier : ça raccourcit, ça tient au rechargement.
+  const gros = 'Qui fait quoi';
+  const avant = await page.evaluate(() => document.querySelector('#ecran').scrollHeight);
+  await page.click(`h2.titre[data-k="${gros}"]`);
+  await page.waitForTimeout(350);
+  const apres = await page.evaluate(() => document.querySelector('#ecran').scrollHeight);
+  ok(apres < avant, 'replier un encart raccourcit vraiment la page', `${avant} → ${apres}px`);
+  const plie = await page.evaluate(
+    () => [...document.querySelectorAll('.panneau.plie > h2.titre')].map((h) => h.dataset.k));
+  ok(plie.length === 1 && plie[0] === gros, 'et lui seul est replié', plie.join(', '));
+
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.click('[data-a="onglet"][data-k="escouade"]');
+  await page.waitForTimeout(500);
+  const encore = await page.evaluate(
+    () => [...document.querySelectorAll('.panneau.plie > h2.titre')].map((h) => h.dataset.k));
+  ok(encore.includes(gros), 'le pli survit au rechargement', encore.join(', ') || 'aucun');
+  await page.click(`h2.titre[data-k="${gros}"]`);
+  await page.waitForTimeout(300);
+
+  // --- Et l'ancre de défilement : c'est le texte qui doit rester en place, pas
+  //     le nombre de pixels. Sur la carte et au journal, l'encart du haut change
+  //     de hauteur tout seul — une alerte, une nouvelle ligne — et l'on se
+  //     retrouvait ailleurs sans avoir touché à rien.
+  for (const tab of ['carte', 'journal']) {
+    await page.click(`[data-a="onglet"][data-k="${tab}"]`);
+    await page.waitForTimeout(400);
+    await page.click('[data-a="vitesse"][data-v="60"]');
+    // On se place là où il reste de la place en dessous. Tout en bas, garder le
+    // texte immobile quand un encart apparaît au-dessus demanderait de défiler
+    // au-delà de la fin : le navigateur borne, et la mesure accuserait l'ancre
+    // d'un défaut qui n'est pas le sien.
+    const mesures = await page.evaluate(() => {
+      const ec = document.querySelector('#ecran');
+      return { h: ec.scrollHeight, vue: ec.clientHeight };
+    });
+    if (mesures.h < mesures.vue + 500) continue;
+    const cible = Math.min(Math.floor(mesures.h / 2), mesures.h - mesures.vue - 400);
+    await page.evaluate((y) => { document.querySelector('#ecran').scrollTop = y; }, cible);
+    await page.waitForTimeout(300);
+    const lu = () => page.evaluate(() => {
+      const ec = document.querySelector('#ecran');
+      const el = document.elementFromPoint(200, ec.getBoundingClientRect().top + 10);
+      return (el ? el.textContent : '').slice(0, 34).replace(/\s+/g, ' ');
+    });
+    const debut = await lu();
+    let bouges = 0;
+    for (let i = 0; i < 8; i++) {
+      await page.waitForTimeout(400);
+      if (await lu() !== debut) bouges++;
+    }
+    ok(bouges <= 1, `écran ${tab} : ce qu’on lit reste sous les yeux`,
+      `${bouges}/8 relevés déplacés · « ${debut} »`);
+    await page.click('[data-a="vitesse"][data-v="1"]');
+  }
+}
+
 console.log('\n8 nonies quater. Le comptoir, à l’écran');
 {
   // Le panneau qui manquait : le moteur savait passer des ordres, personne ne

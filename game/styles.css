@@ -594,3 +594,62 @@ button.act.ordre[aria-pressed="true"] .o-r { color: var(--cyan); }
   margin-bottom: 5px;
 }
 .stele .k { color: var(--texte); }
+
+/* ---------------------------------------------------------------------------
+   Ce qui se clique, et ce qui ne se clique pas
+   ---------------------------------------------------------------------------
+
+   « J'aimerais voir quel texte est cliquable ou non de façon bien distincte. »
+   Les boutons se voyaient — ils ont un cadre. Le reste non : un `<summary>` qui
+   déplie une fiche ressemblait trait pour trait à une ligne de texte, et
+   maintenant que les titres d'encart replient leur contenu, le problème se
+   posait pour eux aussi.
+
+   Une seule convention, tenue partout : **ce qui répond au doigt porte un
+   chevron et s'éclaircit.** Le chevron tourne quand c'est ouvert. Rien d'autre
+   dans l'interface ne porte de chevron, si bien que sa présence est une réponse
+   à la question « est-ce que je peux appuyer là-dessus ». */
+
+.pliable > h2.titre,
+summary {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Le chevron. Un pseudo-élément plutôt qu'un caractère dans le gabarit :
+   les gabarits ne savent pas s'ils sont ouverts, le CSS si. */
+.pliable > h2.titre::after,
+summary::after {
+  content: '';
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  margin-left: 6px;
+  border-right: 1.5px solid var(--texte-3);
+  border-bottom: 1.5px solid var(--texte-3);
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform .12s ease;
+}
+.pliable > h2.titre { padding: 2px 0; }
+.pliable > h2.titre:hover,
+summary:hover { color: var(--texte); }
+.pliable > h2.titre:hover::after,
+summary:hover::after { border-color: var(--cyan); }
+
+/* Replié : le chevron pointe vers la droite, et le contenu disparaît. */
+.panneau.plie > h2.titre::after { transform: rotate(-45deg) translate(-2px, 2px); }
+.panneau.plie > *:not(h2.titre) { display: none; }
+.panneau.plie > h2.titre { margin-bottom: 0; }
+
+/* Les `<details>` déjà présents suivent la même règle. `summary` n'est pas un
+   conteneur flex par défaut : sans ça le chevron se colle au texte au lieu
+   d'aller au bout de la ligne. */
+summary { display: flex; align-items: center; gap: 8px; }
+summary::-webkit-details-marker { display: none; }
+summary > .k, summary > .ligne { flex: 1 1 auto; }
+details[open] > summary::after { transform: rotate(45deg) translate(-2px, -2px); }
+details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px, 2px); }
+
+/* Et l'inverse : un titre d'encart qu'on ne peut pas replier — celui qui porte
+   la carte — ne doit pas prétendre le contraire. */
+.panneau:not(.pliable) > h2.titre { cursor: default; }

@@ -674,7 +674,7 @@ function tenirAvantPoste(state, g, memo) {
 
   // --- Sur place : on vide le sac dans l'entrepôt, on lance ce qu'on peut.
   if (surPlace) {
-    const libre = capaciteStock(base) - totalStock(base);
+    const libre = capaciteStock(state) - totalStock(base);
     // Ce qu'on doit à quelqu'un ne va pas à l'entrepôt.
     //
     // Le camp avalait la cargaison d'un marchand et le lot promis à un notable :

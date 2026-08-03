@@ -115,6 +115,8 @@ let modale = null;
 let dernierRendu = -1;
 /** Quel écran on a dessiné en dernier : voir la position de lecture. */
 let dernierOngletRendu = null;
+// Le dernier texte d'écran produit : on ne réécrit pas un DOM identique.
+let dernierHtml = null;
 let dernierRenduMs = 0;
 let derniereInteraction = 0;
 let toastTimer = null;
@@ -208,6 +210,174 @@ function couleurFaction(k) {
 }
 
 // ---------------------------------------------------------------------------
+// Garder sa place en lisant
+// ---------------------------------------------------------------------------
+//
+// L'écran se reconstruit d'un bloc plusieurs fois par seconde, et l'on rendait
+// ensuite au conteneur son `scrollTop` d'avant. Ça paraît suffisant ; ça ne
+// l'est pas, parce qu'**un nombre de pixels n'est pas une position de lecture**.
+// Dès qu'un encart au-dessus du point de lecture change de hauteur — une alerte
+// qui apparaît, un convoi qui s'ajoute, une nouvelle ligne au journal — les
+// mêmes sept cents pixels ne désignent plus le même texte, et l'on se retrouve
+// ailleurs sans avoir touché à rien.
+//
+// Mesuré, seize relevés par écran à ×60 : sur la carte, le défilement bougeait
+// quinze fois sur seize ; au journal il ne bougeait pas d'un pixel mais le texte
+// lu changeait quatorze fois sur seize, parce que le fil défile sous vous.
+//
+// On mémorise donc *ce qu'on lisait*, et on le remet là où il était.
+
+/**
+ * L'identité d'un encart, stable d'un rendu à l'autre : son titre, débarrassé
+ * de tout ce qui porte des valeurs qui bougent.
+ */
+function cleUnique(vus, cle) {
+  const n = (vus.get(cle) || 0) + 1;
+  vus.set(cle, n);
+  return n > 1 ? `${cle}#${n}` : cle;
+}
+
+function cleSection(sec, i) {
+  const h = sec.querySelector('h2.titre');
+  if (!h) return `s${i}`;
+  const c = h.cloneNode(true);
+  for (const d of c.querySelectorAll('.droite, .puce')) d.remove();
+  return c.textContent.trim().slice(0, 48) || `s${i}`;
+}
+
+/** Position d'un élément dans le conteneur défilant, en pixels depuis le haut. */
+function dansEcran(ecran, el) {
+  return el.getBoundingClientRect().top - ecran.getBoundingClientRect().top + ecran.scrollTop;
+}
+
+/**
+ * Ce qu'on est en train de lire : le premier élément identifiable dont le bas
+ * dépasse encore le haut de la fenêtre, et de combien il la dépasse.
+ */
+function mesurerAncre(ecran) {
+  const top = ecran.scrollTop;
+  if (top <= 0) return null;
+  const secs = ecran.children;
+  const vus = new Map();
+  for (let i = 0; i < secs.length; i++) {
+    const s = secs[i];
+    const cle = cleUnique(vus, cleSection(s, i));
+    const y = dansEcran(ecran, s);
+    if (y + s.offsetHeight <= top) continue;
+    // Dans l'encart, l'élément porteur d'ancre le plus haut encore visible —
+    // c'est ce qui sauve le journal, où c'est le contenu de l'encart qui glisse
+    // et pas l'encart.
+    for (const it of s.querySelectorAll('[data-ancre]')) {
+      const yi = dansEcran(ecran, it);
+      if (yi + it.offsetHeight > top) return { cle: `${cle}|${it.dataset.ancre}`, delta: top - yi };
+    }
+    return { cle, delta: top - y };
+  }
+  return null;
+}
+
+/**
+ * Et on la remet où elle était.
+ *
+ * Une limite qu'il vaut mieux connaître : quand on lisait tout en bas et qu'un
+ * encart apparaît au-dessus, garder le texte immobile demanderait de défiler
+ * au-delà de la fin du document. Le navigateur borne, et le texte descend
+ * quand même. Rien à y faire sans allonger artificiellement la page, ce qui
+ * serait pire. Vu à l'instrument : ancre calculée à 937 px, appliquée à 841,
+ * qui était le maximum possible.
+ */
+function restaurerAncre(ecran, a) {
+  if (!a) { ecran.scrollTop = 0; return; }
+  const [cleSec, cleItem] = a.cle.split('|');
+  const secs = ecran.children;
+  const vus = new Map();
+  for (let i = 0; i < secs.length; i++) {
+    if (cleUnique(vus, cleSection(secs[i], i)) !== cleSec) continue;
+    if (cleItem === undefined) { ecran.scrollTop = dansEcran(ecran, secs[i]) + a.delta; return; }
+    const it = secs[i].querySelector(`[data-ancre="${CSS.escape(cleItem)}"]`);
+    if (it) { ecran.scrollTop = dansEcran(ecran, it) + a.delta; return; }
+    // L'élément a disparu — une entrée chassée du journal, par exemple. On se
+    // rabat sur l'encart, ce qui vaut mieux que de remonter tout en haut.
+    ecran.scrollTop = dansEcran(ecran, secs[i]) + a.delta;
+    return;
+  }
+  // L'encart lui-même n'existe plus : on ne devine pas, on laisse en place.
+}
+
+// ---------------------------------------------------------------------------
+// Replier ce qu'on ne lit pas
+// ---------------------------------------------------------------------------
+//
+// Certains encarts sont très longs — la liste d'une escouade de vingt-cinq
+// personnes tient sur plusieurs écrans, et il faut la traverser chaque fois
+// qu'on veut ce qui se trouve dessous. On les replie donc, et le pli tient d'une
+// session à l'autre.
+//
+// Fait ici plutôt que dans les trente gabarits : chaque encart de premier niveau
+// porte déjà un titre, et ce titre est déjà l'identité stable dont l'ancre de
+// défilement se sert. Un seul endroit sait replier, et il ne peut pas oublier un
+// encart écrit demain.
+
+const CLE_REPLIS = 'cendres.replis.v1';
+let replis = null;
+
+function chargerReplis() {
+  if (replis) return replis;
+  replis = new Set();
+  try {
+    const brut = localStorage.getItem(CLE_REPLIS);
+    if (brut) for (const c of JSON.parse(brut)) replis.add(c);
+  } catch { /* un stockage refusé ne doit pas empêcher de jouer */ }
+  return replis;
+}
+
+function noterReplis() {
+  try {
+    localStorage.setItem(CLE_REPLIS, JSON.stringify([...chargerReplis()]));
+  } catch { /* idem */ }
+}
+
+/** Replie ou déplie un encart, et s'en souvient. */
+export function basculerRepli(cle) {
+  const r = chargerReplis();
+  if (r.has(cle)) r.delete(cle);
+  else r.add(cle);
+  noterReplis();
+}
+
+/**
+ * Rend chaque titre d'encart cliquable, et cache le contenu de ceux qu'on a
+ * repliés. Le canevas de la carte est laissé tranquille : le replier reviendrait
+ * à cacher la carte, ce que personne ne cherche à faire depuis son titre.
+ */
+function appliquerReplis(ecran) {
+  const r = chargerReplis();
+  const secs = ecran.children;
+  // Deux encarts peuvent porter le même titre — l'écran Escouade en a deux qui
+  // s'appellent « Cohésion de Convoi ». Sans ce compteur, replier l'un replierait
+  // l'autre, et l'ancre de défilement se tromperait de cible.
+  const vus = new Map();
+  // Le canevas repéré une fois : `s.querySelector('#carte')` fouillait le
+  // sous-arbre de chaque encart, deux fois et demie par seconde, pour une
+  // réponse qui ne change pas.
+  const carte = ecran.querySelector('#carte');
+  for (let i = 0; i < secs.length; i++) {
+    const s = secs[i];
+    const h = s.querySelector(':scope > h2.titre');
+    if (!h || (carte && s.contains(carte))) continue;
+    const cle = cleUnique(vus, cleSection(s, i));
+    s.classList.add('pliable');
+    h.setAttribute('data-a', 'plier');
+    h.setAttribute('data-k', cle);
+    h.setAttribute('role', 'button');
+    h.setAttribute('tabindex', '0');
+    const plie = r.has(cle);
+    s.classList.toggle('plie', plie);
+    h.setAttribute('aria-expanded', plie ? 'false' : 'true');
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Rendu principal
 // ---------------------------------------------------------------------------
 
@@ -235,7 +405,7 @@ export function rafraichir(force) {
   // c'est ce qui se produisait en sortant d'un accueil devenu plus long — la
   // carte apparaissait hors de vue, et les gestes tombaient dans le vide.
   const memeEcran = onglet === dernierOngletRendu;
-  const scroll = memeEcran ? ecran.scrollTop : 0;
+  const ancre = memeEcran ? mesurerAncre(ecran) : null;
   dernierOngletRendu = onglet;
 
   rendreBarreHaut();
@@ -257,9 +427,19 @@ export function rafraichir(force) {
     monde: ecranMonde,
     journal: ecranJournal,
   }[onglet] || ecranCarte;
+  // Rien n'a changé dans le texte de l'écran : on ne touche pas au DOM. Réécrire
+  // un écran identique coûte un scintillement, casse une sélection de texte en
+  // cours, et sur téléphone interrompt l'inertie du défilement — pour rien.
+  //
+  // On ne sort pas de la fonction pour autant : la carte est un canevas, elle
+  // bouge même quand le texte autour ne bouge pas.
+  let ecrit = true;
   try {
-    ecran.innerHTML = rendu();
+    const html = rendu();
+    if (html === dernierHtml && memeEcran) ecrit = false;
+    else { dernierHtml = html; ecran.innerHTML = html; }
   } catch (err) {
+    dernierHtml = null;
     ecran.innerHTML = `<section class="panneau urgent">
       <h2 class="titre">Cet écran n’a pas pu s’afficher</h2>
       <div class="aide">C’est un défaut du jeu, pas de votre partie : elle continue de
@@ -274,7 +454,11 @@ export function rafraichir(force) {
     // Et dans la console, en entier : c'est là qu'on va chercher la cause.
     if (typeof console !== 'undefined') console.error(`écran « ${onglet} » :`, err);
   }
-  ecran.scrollTop = scroll;
+  // Toujours, même quand on n'a rien réécrit : replier un encart ne change pas
+  // une virgule au texte produit, seulement une classe sur la section. Sauter ce
+  // passage quand le HTML est identique rendait le bouton inopérant — le pli
+  // était bien noté, il ne s'appliquait qu'au rechargement suivant.
+  appliquerReplis(ecran);
 
   const cv = $('#carte');
   if (cv) {
@@ -282,6 +466,11 @@ export function rafraichir(force) {
     if (cv.parentElement) lierGestesCarte(cv.parentElement);
     centrerCarte(cv);
   }
+  // La place de lecture se rend en dernier, une fois la mise en page arrêtée.
+  // Le canevas se dimensionne d'après la place qu'on lui laisse : le redessiner
+  // après avoir replacé le défilement décalait tout ce qui se trouve dessous,
+  // et c'était le seul écran où l'ancre ne tenait pas ses promesses.
+  if (ecrit) restaurerAncre(ecran, ancre);
   // `rendreModale` s'occupe aussi du rapport d'absence, qui s'ouvre de
   // lui-même : on l'appelle donc même sans modale demandée.
   if (modale || (S.rapport && S.rapport.apres)) rendreModale();
@@ -2528,7 +2717,7 @@ function ecranBase() {
 
   const en = energie(b, S);
   const stock = totalStock(b);
-  const capa = capaciteStock(b, S);
+  const capa = capaciteStock(S);
 
   // Ce qui marche sur vous, en tête d'écran et pas au fond du journal.
   const menaces = menacesSurLaBase(S);
@@ -3586,7 +3775,9 @@ function ecranJournal() {
 
   const html = entrees.length ? entrees.map((x) => {
     const h = horloge(x.t);
-    return `<div class="entree ${couleurLog(x.type)}">
+    // Une ancre par entrée : le journal est un fil, il grandit par le haut, et
+    // sans elle on se fait pousser vers le bas pendant qu'on lit.
+    return `<div class="entree ${couleurLog(x.type)}" data-ancre="${e(`${x.t}-${(x.texte || '').slice(0, 24)}`)}">
       <div class="t">${h.texte}</div>
       <div>${e(x.texte)}</div>
       ${x.detail && x.detail.length ? `<div class="detail">${x.detail.map(e).join('<br>')}</div>` : ''}
@@ -4148,7 +4339,7 @@ function modaleTransfert() {
     if (!sac && !ent) return '';
     // Ce qui partira vraiment, borné par ce qu'on a et par la place restante :
     // le bouton annonce le nombre plutôt qu'une flèche.
-    const versBas = Math.min(qteTransfert, sac, Math.max(0, capaciteStock(b, S) - totalStock(b)));
+    const versBas = Math.min(qteTransfert, sac, Math.max(0, capaciteStock(S) - totalStock(b)));
     const place = capacitePortage(S, G()) - poidsInventaire(G().inventaire);
     const versHaut = Math.min(qteTransfert, ent,
       Math.floor(place / Math.max(0.01, COMMODITIES[k].poids)));
@@ -4162,7 +4353,7 @@ function modaleTransfert() {
     </div>`;
   }).join('');
   return `<h2 class="titre">Transfert
-    <span class="droite">${n(totalStock(b))}/${n(capaciteStock(b, S))}</span></h2>
+    <span class="droite">${n(totalStock(b))}/${n(capaciteStock(S))}</span></h2>
   <div class="aide">↓ vers l’entrepôt · ↑ vers le sac. Les boutons annoncent ce qui
     passera vraiment : ce qu’on a, ce que l’entrepôt peut prendre, ce que le sac peut porter.</div>
   <div class="taches" style="margin-top:6px">Quantité ${choixQuantite('qte-transfert', qteTransfert)}</div>
@@ -5155,6 +5346,11 @@ function surClic(ev) {
       rafraichir(true);
       break;
     }
+
+    case 'plier':
+      basculerRepli(el.dataset.k);
+      rafraichir(true);
+      break;
 
     case 'reserve': {
       const r = ACTIONS.reglerReserve(el.dataset.k, Number(el.dataset.n));

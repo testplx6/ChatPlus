@@ -596,6 +596,65 @@ button.act.ordre[aria-pressed="true"] .o-r { color: var(--cyan); }
   margin-bottom: 5px;
 }
 .stele .k { color: var(--texte); }
+
+/* ---------------------------------------------------------------------------
+   Ce qui se clique, et ce qui ne se clique pas
+   ---------------------------------------------------------------------------
+
+   « J'aimerais voir quel texte est cliquable ou non de façon bien distincte. »
+   Les boutons se voyaient — ils ont un cadre. Le reste non : un `<summary>` qui
+   déplie une fiche ressemblait trait pour trait à une ligne de texte, et
+   maintenant que les titres d'encart replient leur contenu, le problème se
+   posait pour eux aussi.
+
+   Une seule convention, tenue partout : **ce qui répond au doigt porte un
+   chevron et s'éclaircit.** Le chevron tourne quand c'est ouvert. Rien d'autre
+   dans l'interface ne porte de chevron, si bien que sa présence est une réponse
+   à la question « est-ce que je peux appuyer là-dessus ». */
+
+.pliable > h2.titre,
+summary {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Le chevron. Un pseudo-élément plutôt qu'un caractère dans le gabarit :
+   les gabarits ne savent pas s'ils sont ouverts, le CSS si. */
+.pliable > h2.titre::after,
+summary::after {
+  content: '';
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  margin-left: 6px;
+  border-right: 1.5px solid var(--texte-3);
+  border-bottom: 1.5px solid var(--texte-3);
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform .12s ease;
+}
+.pliable > h2.titre { padding: 2px 0; }
+.pliable > h2.titre:hover,
+summary:hover { color: var(--texte); }
+.pliable > h2.titre:hover::after,
+summary:hover::after { border-color: var(--cyan); }
+
+/* Replié : le chevron pointe vers la droite, et le contenu disparaît. */
+.panneau.plie > h2.titre::after { transform: rotate(-45deg) translate(-2px, 2px); }
+.panneau.plie > *:not(h2.titre) { display: none; }
+.panneau.plie > h2.titre { margin-bottom: 0; }
+
+/* Les `<details>` déjà présents suivent la même règle. `summary` n'est pas un
+   conteneur flex par défaut : sans ça le chevron se colle au texte au lieu
+   d'aller au bout de la ligne. */
+summary { display: flex; align-items: center; gap: 8px; }
+summary::-webkit-details-marker { display: none; }
+summary > .k, summary > .ligne { flex: 1 1 auto; }
+details[open] > summary::after { transform: rotate(45deg) translate(-2px, -2px); }
+details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px, 2px); }
+
+/* Et l'inverse : un titre d'encart qu'on ne peut pas replier — celui qui porte
+   la carte — ne doit pas prétendre le contraire. */
+.panneau:not(.pliable) > h2.titre { cursor: default; }
 </style>
   <div id="racine">
     <header id="barre-haut"></header>
@@ -13025,11 +13084,22 @@ function tempsRecherche(base, key, state) {
 /** Ce que l'écoute retire à une recherche. Un quart, et c'est déjà beaucoup. */
 const GAIN_ECOUTE = 0.33;
 
-function capaciteStock(base, state) {
-  // Un magasinier gagne de la place : ranger, c'est du volume. Ce sont les
-  // magasiniers vraiment à leur poste qui comptent — mais sans `state` on ne
-  // sait rien de l'escouade, et l'on retombe alors sur les seuls habitants,
-  // c'est-à-dire sur le comportement d'avant.
+/**
+ * Ce que l'entrepôt tient. **`state` n'est pas facultatif.**
+ *
+ * Il l'a été pendant quelques heures, et ça a suffi. Les magasiniers qui
+ * comptent sont ceux qui tiennent vraiment leur poste, ce qui suppose de savoir
+ * si l'escouade prête la main — donc `state`. Là où on l'oubliait, la capacité
+ * retombait aux seuls habitants : l'écran annonçait 5 504 et le dépôt refusait
+ * à 3 200, avec pour tout message « Rien à déposer, ou entrepôt plein », qui
+ * était faux et le paraissait.
+ *
+ * On prend donc `state` et l'on en tire la base, plutôt que d'accepter les deux
+ * et de rendre deux nombres différents. **Un paramètre qu'on peut omettre finit
+ * par l'être** — c'est la deuxième fois dans ce fichier, après `arriver()`.
+ */
+function capaciteStock(state) {
+  const base = state.base;
   const m = 1 + affectes(base, 'magasinier', state) * METIERS.magasinier.apport;
   return Math.round((800 + niveau(base, 'entrepot') * 800) * m);
 }
@@ -13229,9 +13299,10 @@ function fonderBase(state, log, groupe) {
  * jouant — et un joueur, lui, aurait simplement vu ses cultures ne rien rendre
  * sans jamais comprendre pourquoi. Ce qui se perd doit se dire.
  */
-function ajouter(base, key, qte) {
+function ajouter(state, key, qte) {
   if (qte <= 0) return 0;
-  const libre = capaciteStock(base) - totalStock(base);
+  const base = state.base;
+  const libre = capaciteStock(state) - totalStock(base);
   const reel = Math.max(0, Math.min(qte, libre));
   base.stock[key] = (base.stock[key] || 0) + reel;
   if (qte - reel > 0.001) base.gaspille = (base.gaspille || 0) + (qte - reel);
@@ -13409,7 +13480,7 @@ function tickBase(state, log, ctx) {
   const hyd = niveau(base, 'hydroponie');
   if (hyd > 0 && recetteDe(base, 'hydroponie') !== ARRET) {
     const bio = consommer(base, 'biomasse', 1.25 * hyd * aLaMain * mo * M.cultivateur);
-    ajouter(base, 'rations', bio * 0.9 * (1 + (rech.hydroponie_av || 0) * 0.15));
+    ajouter(state, 'rations', bio * 0.9 * (1 + (rech.hydroponie_av || 0) * 0.15));
     rebuter(base, bio * 0.22); // tiges, balles, ce qui a tourné
   }
   const fond = niveau(base, 'fonderie');
@@ -13423,7 +13494,7 @@ function tickBase(state, log, ctx) {
     const debit = depuis === 'ferraille' ? 1.5 : 1.2;
     const rendu = depuis === 'ferraille' ? 0.21 : 0.42;
     const pris = consommer(base, depuis, debit * fond * r * mo * M.fondeur);
-    ajouter(base, 'alliage', pris * rendu * (1 + (rech.metallurgie || 0) * 0.12));
+    ajouter(state, 'alliage', pris * rendu * (1 + (rech.metallurgie || 0) * 0.12));
     rebuter(base, pris * 0.35); // scories
   }
   const raf = niveau(base, 'raffinerie');
@@ -13431,7 +13502,7 @@ function tickBase(state, log, ctx) {
   if (raf > 0 && recRaf !== ARRET) {
     if (recRaf === 'carburant') {
       const pol = consommer(base, 'polymere', 0.9 * raf * r * mo * M.raffineur);
-      ajouter(base, 'carburant', pol * 0.55);
+      ajouter(state, 'carburant', pol * 0.55);
       rebuter(base, pol * 0.2); // résidus de distillation
     } else {
       // Le tas qui traîne derrière l'atelier, plutôt qu'une matière qui sert
@@ -13452,9 +13523,9 @@ function tickBase(state, log, ctx) {
           // Moins rentable qu'un plein de carburant — trois crédits contre cinq
           // et demi par unité de déchet — et c'est parfois la seule façon
           // d'avoir du polymère, sans lequel l'atelier ne fait rien.
-          ajouter(base, 'polymere', brule * 0.5 * (1 + (ref - 1) * 0.1));
+          ajouter(state, 'polymere', brule * 0.5 * (1 + (ref - 1) * 0.1));
         } else {
-          ajouter(base, 'carburant', brule * 0.45 * (1 + (pyr - 1) * 0.1));
+          ajouter(state, 'carburant', brule * 0.45 * (1 + (pyr - 1) * 0.1));
         }
       }
     }
@@ -13463,7 +13534,7 @@ function tickBase(state, log, ctx) {
   if (atl > 0 && recetteDe(base, 'atelier') !== ARRET) {
     const all = consommer(base, 'alliage', 0.35 * atl * r * mo * M.machiniste);
     const pol = consommer(base, 'polymere', 0.5 * atl * r * mo * M.machiniste);
-    ajouter(base, 'composant', Math.min(all / 0.35, pol / 0.5) * 0.14 * atl * r);
+    ajouter(state, 'composant', Math.min(all / 0.35, pol / 0.5) * 0.14 * atl * r);
     rebuter(base, (all + pol) * 0.3); // chutes et rebuts d'assemblage
   }
   // La halle : jusqu'ici l'avant-poste ne savait que transformer ce qu'on lui
@@ -13487,7 +13558,7 @@ function tickBase(state, log, ctx) {
     const bras = 0.75 + 0.45 * r;
     const taux = 1.1 * halle * bras * mo * M.recoltant * regHalle.richesse
       * (ctx.climat ? 1 + (ctx.climat.rendement('ferraille') - 1) * 0.6 : 1);
-    for (const k of Object.keys(y)) ajouter(base, k, y[k] * taux);
+    for (const k of Object.keys(y)) ajouter(state, k, y[k] * taux);
   }
 
   // Les bassins : de la biomasse qui ne demande rien au terrain.
@@ -13500,7 +13571,7 @@ function tickBase(state, log, ctx) {
   if (bas > 0 && recetteDe(base, 'bassins') !== ARRET) {
     const gain = 1 + niveauRech(base, 'cultures') * 0.18;
     const pousse = 0.55 * bas * (0.4 + 0.6 * r) * mo * M.bassinier * gain;
-    ajouter(base, 'biomasse', pousse);
+    ajouter(state, 'biomasse', pousse);
     rebuter(base, pousse * 0.18); // ce qu'on écume et qu'on jette
   }
 
@@ -13513,7 +13584,7 @@ function tickBase(state, log, ctx) {
   const inf = niveau(base, 'infirmerie');
   if (inf > 0 && recetteDe(base, 'infirmerie') !== ARRET) {
     const bio = consommer(base, 'biomasse', 0.4 * inf * r * M.infirmier);
-    ajouter(base, 'medkit', bio * 0.09);
+    ajouter(state, 'medkit', bio * 0.09);
   }
 
   // Les habitants ne regardent pas un raid les bras croisés — et ceux qui sont
@@ -13987,7 +14058,7 @@ function visiteMarchand(state, rng, log) {
     if (qte < 5) continue;
     state.player.credits -= Math.round(qte * prix);
     noterArgent(state, 'colporteurs (achats pour le camp)', -Math.round(qte * prix));
-    ajouter(base, k, qte);
+    ajouter(state, k, qte);
     achete += qte;
   }
 
@@ -14216,7 +14287,7 @@ function deposer(state, key, qte, groupe) {
     return { ok: false, motif: 'Il faut être à l’avant-poste.' };
   }
   const dispo = g.inventaire[key] || 0;
-  const libre = capaciteStock(base) - totalStock(base);
+  const libre = capaciteStock(state) - totalStock(base);
   const n = Math.max(0, Math.min(Math.floor(qte), dispo, Math.floor(libre)));
   if (n <= 0) return { ok: false, motif: 'Rien à déposer, ou entrepôt plein.' };
   g.inventaire[key] -= n;
@@ -18350,6 +18421,8 @@ let modale = null;
 let dernierRendu = -1;
 /** Quel écran on a dessiné en dernier : voir la position de lecture. */
 let dernierOngletRendu = null;
+// Le dernier texte d'écran produit : on ne réécrit pas un DOM identique.
+let dernierHtml = null;
 let dernierRenduMs = 0;
 let derniereInteraction = 0;
 let toastTimer = null;
@@ -18443,6 +18516,174 @@ function couleurFaction(k) {
 }
 
 // ---------------------------------------------------------------------------
+// Garder sa place en lisant
+// ---------------------------------------------------------------------------
+//
+// L'écran se reconstruit d'un bloc plusieurs fois par seconde, et l'on rendait
+// ensuite au conteneur son `scrollTop` d'avant. Ça paraît suffisant ; ça ne
+// l'est pas, parce qu'**un nombre de pixels n'est pas une position de lecture**.
+// Dès qu'un encart au-dessus du point de lecture change de hauteur — une alerte
+// qui apparaît, un convoi qui s'ajoute, une nouvelle ligne au journal — les
+// mêmes sept cents pixels ne désignent plus le même texte, et l'on se retrouve
+// ailleurs sans avoir touché à rien.
+//
+// Mesuré, seize relevés par écran à ×60 : sur la carte, le défilement bougeait
+// quinze fois sur seize ; au journal il ne bougeait pas d'un pixel mais le texte
+// lu changeait quatorze fois sur seize, parce que le fil défile sous vous.
+//
+// On mémorise donc *ce qu'on lisait*, et on le remet là où il était.
+
+/**
+ * L'identité d'un encart, stable d'un rendu à l'autre : son titre, débarrassé
+ * de tout ce qui porte des valeurs qui bougent.
+ */
+function cleUnique(vus, cle) {
+  const n = (vus.get(cle) || 0) + 1;
+  vus.set(cle, n);
+  return n > 1 ? `${cle}#${n}` : cle;
+}
+
+function cleSection(sec, i) {
+  const h = sec.querySelector('h2.titre');
+  if (!h) return `s${i}`;
+  const c = h.cloneNode(true);
+  for (const d of c.querySelectorAll('.droite, .puce')) d.remove();
+  return c.textContent.trim().slice(0, 48) || `s${i}`;
+}
+
+/** Position d'un élément dans le conteneur défilant, en pixels depuis le haut. */
+function dansEcran(ecran, el) {
+  return el.getBoundingClientRect().top - ecran.getBoundingClientRect().top + ecran.scrollTop;
+}
+
+/**
+ * Ce qu'on est en train de lire : le premier élément identifiable dont le bas
+ * dépasse encore le haut de la fenêtre, et de combien il la dépasse.
+ */
+function mesurerAncre(ecran) {
+  const top = ecran.scrollTop;
+  if (top <= 0) return null;
+  const secs = ecran.children;
+  const vus = new Map();
+  for (let i = 0; i < secs.length; i++) {
+    const s = secs[i];
+    const cle = cleUnique(vus, cleSection(s, i));
+    const y = dansEcran(ecran, s);
+    if (y + s.offsetHeight <= top) continue;
+    // Dans l'encart, l'élément porteur d'ancre le plus haut encore visible —
+    // c'est ce qui sauve le journal, où c'est le contenu de l'encart qui glisse
+    // et pas l'encart.
+    for (const it of s.querySelectorAll('[data-ancre]')) {
+      const yi = dansEcran(ecran, it);
+      if (yi + it.offsetHeight > top) return { cle: `${cle}|${it.dataset.ancre}`, delta: top - yi };
+    }
+    return { cle, delta: top - y };
+  }
+  return null;
+}
+
+/**
+ * Et on la remet où elle était.
+ *
+ * Une limite qu'il vaut mieux connaître : quand on lisait tout en bas et qu'un
+ * encart apparaît au-dessus, garder le texte immobile demanderait de défiler
+ * au-delà de la fin du document. Le navigateur borne, et le texte descend
+ * quand même. Rien à y faire sans allonger artificiellement la page, ce qui
+ * serait pire. Vu à l'instrument : ancre calculée à 937 px, appliquée à 841,
+ * qui était le maximum possible.
+ */
+function restaurerAncre(ecran, a) {
+  if (!a) { ecran.scrollTop = 0; return; }
+  const [cleSec, cleItem] = a.cle.split('|');
+  const secs = ecran.children;
+  const vus = new Map();
+  for (let i = 0; i < secs.length; i++) {
+    if (cleUnique(vus, cleSection(secs[i], i)) !== cleSec) continue;
+    if (cleItem === undefined) { ecran.scrollTop = dansEcran(ecran, secs[i]) + a.delta; return; }
+    const it = secs[i].querySelector(`[data-ancre="${CSS.escape(cleItem)}"]`);
+    if (it) { ecran.scrollTop = dansEcran(ecran, it) + a.delta; return; }
+    // L'élément a disparu — une entrée chassée du journal, par exemple. On se
+    // rabat sur l'encart, ce qui vaut mieux que de remonter tout en haut.
+    ecran.scrollTop = dansEcran(ecran, secs[i]) + a.delta;
+    return;
+  }
+  // L'encart lui-même n'existe plus : on ne devine pas, on laisse en place.
+}
+
+// ---------------------------------------------------------------------------
+// Replier ce qu'on ne lit pas
+// ---------------------------------------------------------------------------
+//
+// Certains encarts sont très longs — la liste d'une escouade de vingt-cinq
+// personnes tient sur plusieurs écrans, et il faut la traverser chaque fois
+// qu'on veut ce qui se trouve dessous. On les replie donc, et le pli tient d'une
+// session à l'autre.
+//
+// Fait ici plutôt que dans les trente gabarits : chaque encart de premier niveau
+// porte déjà un titre, et ce titre est déjà l'identité stable dont l'ancre de
+// défilement se sert. Un seul endroit sait replier, et il ne peut pas oublier un
+// encart écrit demain.
+
+const CLE_REPLIS = 'cendres.replis.v1';
+let replis = null;
+
+function chargerReplis() {
+  if (replis) return replis;
+  replis = new Set();
+  try {
+    const brut = localStorage.getItem(CLE_REPLIS);
+    if (brut) for (const c of JSON.parse(brut)) replis.add(c);
+  } catch { /* un stockage refusé ne doit pas empêcher de jouer */ }
+  return replis;
+}
+
+function noterReplis() {
+  try {
+    localStorage.setItem(CLE_REPLIS, JSON.stringify([...chargerReplis()]));
+  } catch { /* idem */ }
+}
+
+/** Replie ou déplie un encart, et s'en souvient. */
+function basculerRepli(cle) {
+  const r = chargerReplis();
+  if (r.has(cle)) r.delete(cle);
+  else r.add(cle);
+  noterReplis();
+}
+
+/**
+ * Rend chaque titre d'encart cliquable, et cache le contenu de ceux qu'on a
+ * repliés. Le canevas de la carte est laissé tranquille : le replier reviendrait
+ * à cacher la carte, ce que personne ne cherche à faire depuis son titre.
+ */
+function appliquerReplis(ecran) {
+  const r = chargerReplis();
+  const secs = ecran.children;
+  // Deux encarts peuvent porter le même titre — l'écran Escouade en a deux qui
+  // s'appellent « Cohésion de Convoi ». Sans ce compteur, replier l'un replierait
+  // l'autre, et l'ancre de défilement se tromperait de cible.
+  const vus = new Map();
+  // Le canevas repéré une fois : `s.querySelector('#carte')` fouillait le
+  // sous-arbre de chaque encart, deux fois et demie par seconde, pour une
+  // réponse qui ne change pas.
+  const carte = ecran.querySelector('#carte');
+  for (let i = 0; i < secs.length; i++) {
+    const s = secs[i];
+    const h = s.querySelector(':scope > h2.titre');
+    if (!h || (carte && s.contains(carte))) continue;
+    const cle = cleUnique(vus, cleSection(s, i));
+    s.classList.add('pliable');
+    h.setAttribute('data-a', 'plier');
+    h.setAttribute('data-k', cle);
+    h.setAttribute('role', 'button');
+    h.setAttribute('tabindex', '0');
+    const plie = r.has(cle);
+    s.classList.toggle('plie', plie);
+    h.setAttribute('aria-expanded', plie ? 'false' : 'true');
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Rendu principal
 // ---------------------------------------------------------------------------
 
@@ -18470,7 +18711,7 @@ function rafraichir(force) {
   // c'est ce qui se produisait en sortant d'un accueil devenu plus long — la
   // carte apparaissait hors de vue, et les gestes tombaient dans le vide.
   const memeEcran = onglet === dernierOngletRendu;
-  const scroll = memeEcran ? ecran.scrollTop : 0;
+  const ancre = memeEcran ? mesurerAncre(ecran) : null;
   dernierOngletRendu = onglet;
 
   rendreBarreHaut();
@@ -18492,9 +18733,19 @@ function rafraichir(force) {
     monde: ecranMonde,
     journal: ecranJournal,
   }[onglet] || ecranCarte;
+  // Rien n'a changé dans le texte de l'écran : on ne touche pas au DOM. Réécrire
+  // un écran identique coûte un scintillement, casse une sélection de texte en
+  // cours, et sur téléphone interrompt l'inertie du défilement — pour rien.
+  //
+  // On ne sort pas de la fonction pour autant : la carte est un canevas, elle
+  // bouge même quand le texte autour ne bouge pas.
+  let ecrit = true;
   try {
-    ecran.innerHTML = rendu();
+    const html = rendu();
+    if (html === dernierHtml && memeEcran) ecrit = false;
+    else { dernierHtml = html; ecran.innerHTML = html; }
   } catch (err) {
+    dernierHtml = null;
     ecran.innerHTML = `<section class="panneau urgent">
       <h2 class="titre">Cet écran n’a pas pu s’afficher</h2>
       <div class="aide">C’est un défaut du jeu, pas de votre partie : elle continue de
@@ -18509,7 +18760,11 @@ function rafraichir(force) {
     // Et dans la console, en entier : c'est là qu'on va chercher la cause.
     if (typeof console !== 'undefined') console.error(`écran « ${onglet} » :`, err);
   }
-  ecran.scrollTop = scroll;
+  // Toujours, même quand on n'a rien réécrit : replier un encart ne change pas
+  // une virgule au texte produit, seulement une classe sur la section. Sauter ce
+  // passage quand le HTML est identique rendait le bouton inopérant — le pli
+  // était bien noté, il ne s'appliquait qu'au rechargement suivant.
+  appliquerReplis(ecran);
 
   const cv = $('#carte');
   if (cv) {
@@ -18517,6 +18772,11 @@ function rafraichir(force) {
     if (cv.parentElement) lierGestesCarte(cv.parentElement);
     centrerCarte(cv);
   }
+  // La place de lecture se rend en dernier, une fois la mise en page arrêtée.
+  // Le canevas se dimensionne d'après la place qu'on lui laisse : le redessiner
+  // après avoir replacé le défilement décalait tout ce qui se trouve dessous,
+  // et c'était le seul écran où l'ancre ne tenait pas ses promesses.
+  if (ecrit) restaurerAncre(ecran, ancre);
   // `rendreModale` s'occupe aussi du rapport d'absence, qui s'ouvre de
   // lui-même : on l'appelle donc même sans modale demandée.
   if (modale || (S.rapport && S.rapport.apres)) rendreModale();
@@ -20763,7 +21023,7 @@ function ecranBase() {
 
   const en = energie(b, S);
   const stock = totalStock(b);
-  const capa = capaciteStock(b, S);
+  const capa = capaciteStock(S);
 
   // Ce qui marche sur vous, en tête d'écran et pas au fond du journal.
   const menaces = menacesSurLaBase(S);
@@ -21821,7 +22081,9 @@ function ecranJournal() {
 
   const html = entrees.length ? entrees.map((x) => {
     const h = horloge(x.t);
-    return `<div class="entree ${couleurLog(x.type)}">
+    // Une ancre par entrée : le journal est un fil, il grandit par le haut, et
+    // sans elle on se fait pousser vers le bas pendant qu'on lit.
+    return `<div class="entree ${couleurLog(x.type)}" data-ancre="${e(`${x.t}-${(x.texte || '').slice(0, 24)}`)}">
       <div class="t">${h.texte}</div>
       <div>${e(x.texte)}</div>
       ${x.detail && x.detail.length ? `<div class="detail">${x.detail.map(e).join('<br>')}</div>` : ''}
@@ -22383,7 +22645,7 @@ function modaleTransfert() {
     if (!sac && !ent) return '';
     // Ce qui partira vraiment, borné par ce qu'on a et par la place restante :
     // le bouton annonce le nombre plutôt qu'une flèche.
-    const versBas = Math.min(qteTransfert, sac, Math.max(0, capaciteStock(b, S) - totalStock(b)));
+    const versBas = Math.min(qteTransfert, sac, Math.max(0, capaciteStock(S) - totalStock(b)));
     const place = capacitePortage(S, G()) - poidsInventaire(G().inventaire);
     const versHaut = Math.min(qteTransfert, ent,
       Math.floor(place / Math.max(0.01, COMMODITIES[k].poids)));
@@ -22397,7 +22659,7 @@ function modaleTransfert() {
     </div>`;
   }).join('');
   return `<h2 class="titre">Transfert
-    <span class="droite">${n(totalStock(b))}/${n(capaciteStock(b, S))}</span></h2>
+    <span class="droite">${n(totalStock(b))}/${n(capaciteStock(S))}</span></h2>
   <div class="aide">↓ vers l’entrepôt · ↑ vers le sac. Les boutons annoncent ce qui
     passera vraiment : ce qu’on a, ce que l’entrepôt peut prendre, ce que le sac peut porter.</div>
   <div class="taches" style="margin-top:6px">Quantité ${choixQuantite('qte-transfert', qteTransfert)}</div>
@@ -23390,6 +23652,11 @@ function surClic(ev) {
       rafraichir(true);
       break;
     }
+
+    case 'plier':
+      basculerRepli(el.dataset.k);
+      rafraichir(true);
+      break;
 
     case 'reserve': {
       const r = ACTIONS.reglerReserve(el.dataset.k, Number(el.dataset.n));

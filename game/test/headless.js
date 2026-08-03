@@ -48,6 +48,7 @@ import {
   perdreAvantPoste, saccagerAvantPoste, menacesSurLaBase, rendementLibre, AMENDEMENT_MAX,
   recetteDe, recettesDe, reglerRecette, reglerReserve, brasEscouade,
   voulus, tenus, postesDegarnis, brasDisponibles, ORDRE_EMBAUCHE, tempsRecherche,
+  deposer,
 } from '../src/base.js';
 import {
   METIER_KEYS, METIERS, SKILLS, BIOMES, BUILDINGS, RESEARCH, POSTURES, COMMODITIES,
@@ -3269,11 +3270,11 @@ fonderBase(plein, () => {});
 Object.assign(plein.base.batiments, { generateur: 3, hydroponie: 3, entrepot: 1 });
 plein.base.pop = 4;
 // On remplit l'entrepôt à ras bord, en laissant de quoi produire.
-const capaPlein = capaciteStock(plein.base);
+const capaPlein = capaciteStock(plein);
 plein.base.stock.biomasse = Math.round(capaPlein * 0.5);
 plein.base.stock.ferraille = Math.round(capaPlein * 0.5);
 plein.base.stock.carburant = 60;
-ok(totalStock(plein.base) >= capaciteStock(plein.base) * 0.95, 'l’entrepôt est plein');
+ok(totalStock(plein.base) >= capaciteStock(plein) * 0.95, 'l’entrepôt est plein');
 const perduAvant = plein.base.gaspille;
 avancer(plein, 120);
 ok(plein.base.gaspille > perduAvant,
@@ -3284,6 +3285,55 @@ ok(plein.journal.some((x) => x.type === 'entrepot'),
 ok(plein.journal.filter((x) => x.type === 'entrepot').length <= 120 / 24 + 1,
   'sans que l’avertissement devienne un bruit de fond',
   `${plein.journal.filter((x) => x.type === 'entrepot').length} avertissements en 120 h`);
+
+{
+  // Le chiffre affiché et le chiffre du moteur sont le même, et rien ne permet
+  // qu'ils divergent.
+  //
+  // Ils ont divergé. `capaciteStock` avait gagné un `state` facultatif — les
+  // magasiniers qui comptent sont ceux qui tiennent vraiment leur poste, ce qui
+  // suppose de savoir si l'escouade prête la main — et le dépôt l'appelait sans.
+  // L'écran annonçait 5 504, le dépôt refusait à 3 200, et disait « Rien à
+  // déposer, ou entrepôt plein », qui était faux et le paraissait. `state` est
+  // obligatoire maintenant : l'oublier fait tomber la fonction au lieu de rendre
+  // un autre nombre.
+  const dep = nouvellePartie(4242, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const gDep = groupeActif(dep);
+  const rngDep = new Rng(5);
+  for (let i = 0; i < 12; i++) gDep.membres.push(makeCharacter(rngDep, {}));
+  dep.base.fonde = true;
+  dep.base.regionId = gDep.regionId;
+  dep.base.batiments = { entrepot: 3 };
+  dep.base.pop = 0;               // un camp neuf : ce sont les vôtres qui rangent
+  dep.base.stock = {};
+  gDep.ordre = { type: 'travaux' };
+  affecter(dep, 'magasinier', 6);
+  gDep.inventaire.ferraille = 400;
+
+  const capa = capaciteStock(dep);
+  ok(affectes(dep.base, 'magasinier', dep) === 6,
+    'l’escouade aux travaux tient les postes de magasinier',
+    `${affectes(dep.base, 'magasinier', dep)}`);
+  ok(capa > 800 + 3 * 800, 'et l’entrepôt en est agrandi d’autant',
+    `${capa} au lieu de ${800 + 3 * 800}`);
+
+  // Un cheveu sous le plafond affiché : le dépôt doit passer.
+  dep.base.stock.ferraille = capa - 60;
+  const r = deposer(dep, 'ferraille', 50);
+  ok(r.ok && r.qte === 50,
+    'on peut déposer jusqu’au chiffre que l’écran annonce',
+    JSON.stringify(r));
+
+  // À ras bord : il refuse, et c'est alors vrai.
+  dep.base.stock.ferraille = capa;
+  const r2 = deposer(dep, 'ferraille', 50);
+  ok(!r2.ok, 'et il ne refuse qu’une fois vraiment plein', JSON.stringify(r2));
+
+  // Le garde qui rend l'oubli impossible : sans `state`, ça tombe.
+  let tombe = false;
+  try { capaciteStock(dep.base); } catch { tombe = true; }
+  ok(tombe, 'appeler la capacité sans la partie ne rend plus un second chiffre');
+}
 
 const large = nouvellePartie(3131, { maintenant: 0, depart: 'ville', equipe: 3 });
 const gLarge = groupeActif(large);
@@ -3962,8 +4012,8 @@ ok(fonderBase(camp1, () => {}).ok, 'un campement se paie en ferraille seule',
 ok(abriDe(camp1, gCamp1.regionId) > 1.5,
   'et dès le premier piquet, on y dort mieux qu’ailleurs',
   `×${abriDe(camp1, gCamp1.regionId).toFixed(2)}`);
-ok(capaciteStock(camp1.base) > 500,
-  'un camp vide est déjà un dépôt', `${capaciteStock(camp1.base)} unités`);
+ok(capaciteStock(camp1) > 500,
+  'un camp vide est déjà un dépôt', `${capaciteStock(camp1)} unités`);
 
 // Le toit se voit sur la fatigue : deux escouades identiques, l'une chez elle.
 const dehors = makeCharacter(new Rng(31), { archetype: 'ferrailleur' });

@@ -740,11 +740,22 @@ export function tempsRecherche(base, key, state) {
 /** Ce que l'écoute retire à une recherche. Un quart, et c'est déjà beaucoup. */
 export const GAIN_ECOUTE = 0.33;
 
-export function capaciteStock(base, state) {
-  // Un magasinier gagne de la place : ranger, c'est du volume. Ce sont les
-  // magasiniers vraiment à leur poste qui comptent — mais sans `state` on ne
-  // sait rien de l'escouade, et l'on retombe alors sur les seuls habitants,
-  // c'est-à-dire sur le comportement d'avant.
+/**
+ * Ce que l'entrepôt tient. **`state` n'est pas facultatif.**
+ *
+ * Il l'a été pendant quelques heures, et ça a suffi. Les magasiniers qui
+ * comptent sont ceux qui tiennent vraiment leur poste, ce qui suppose de savoir
+ * si l'escouade prête la main — donc `state`. Là où on l'oubliait, la capacité
+ * retombait aux seuls habitants : l'écran annonçait 5 504 et le dépôt refusait
+ * à 3 200, avec pour tout message « Rien à déposer, ou entrepôt plein », qui
+ * était faux et le paraissait.
+ *
+ * On prend donc `state` et l'on en tire la base, plutôt que d'accepter les deux
+ * et de rendre deux nombres différents. **Un paramètre qu'on peut omettre finit
+ * par l'être** — c'est la deuxième fois dans ce fichier, après `arriver()`.
+ */
+export function capaciteStock(state) {
+  const base = state.base;
   const m = 1 + affectes(base, 'magasinier', state) * METIERS.magasinier.apport;
   return Math.round((800 + niveau(base, 'entrepot') * 800) * m);
 }
@@ -944,9 +955,10 @@ export function fonderBase(state, log, groupe) {
  * jouant — et un joueur, lui, aurait simplement vu ses cultures ne rien rendre
  * sans jamais comprendre pourquoi. Ce qui se perd doit se dire.
  */
-function ajouter(base, key, qte) {
+function ajouter(state, key, qte) {
   if (qte <= 0) return 0;
-  const libre = capaciteStock(base) - totalStock(base);
+  const base = state.base;
+  const libre = capaciteStock(state) - totalStock(base);
   const reel = Math.max(0, Math.min(qte, libre));
   base.stock[key] = (base.stock[key] || 0) + reel;
   if (qte - reel > 0.001) base.gaspille = (base.gaspille || 0) + (qte - reel);
@@ -1124,7 +1136,7 @@ export function tickBase(state, log, ctx) {
   const hyd = niveau(base, 'hydroponie');
   if (hyd > 0 && recetteDe(base, 'hydroponie') !== ARRET) {
     const bio = consommer(base, 'biomasse', 1.25 * hyd * aLaMain * mo * M.cultivateur);
-    ajouter(base, 'rations', bio * 0.9 * (1 + (rech.hydroponie_av || 0) * 0.15));
+    ajouter(state, 'rations', bio * 0.9 * (1 + (rech.hydroponie_av || 0) * 0.15));
     rebuter(base, bio * 0.22); // tiges, balles, ce qui a tourné
   }
   const fond = niveau(base, 'fonderie');
@@ -1138,7 +1150,7 @@ export function tickBase(state, log, ctx) {
     const debit = depuis === 'ferraille' ? 1.5 : 1.2;
     const rendu = depuis === 'ferraille' ? 0.21 : 0.42;
     const pris = consommer(base, depuis, debit * fond * r * mo * M.fondeur);
-    ajouter(base, 'alliage', pris * rendu * (1 + (rech.metallurgie || 0) * 0.12));
+    ajouter(state, 'alliage', pris * rendu * (1 + (rech.metallurgie || 0) * 0.12));
     rebuter(base, pris * 0.35); // scories
   }
   const raf = niveau(base, 'raffinerie');
@@ -1146,7 +1158,7 @@ export function tickBase(state, log, ctx) {
   if (raf > 0 && recRaf !== ARRET) {
     if (recRaf === 'carburant') {
       const pol = consommer(base, 'polymere', 0.9 * raf * r * mo * M.raffineur);
-      ajouter(base, 'carburant', pol * 0.55);
+      ajouter(state, 'carburant', pol * 0.55);
       rebuter(base, pol * 0.2); // résidus de distillation
     } else {
       // Le tas qui traîne derrière l'atelier, plutôt qu'une matière qui sert
@@ -1167,9 +1179,9 @@ export function tickBase(state, log, ctx) {
           // Moins rentable qu'un plein de carburant — trois crédits contre cinq
           // et demi par unité de déchet — et c'est parfois la seule façon
           // d'avoir du polymère, sans lequel l'atelier ne fait rien.
-          ajouter(base, 'polymere', brule * 0.5 * (1 + (ref - 1) * 0.1));
+          ajouter(state, 'polymere', brule * 0.5 * (1 + (ref - 1) * 0.1));
         } else {
-          ajouter(base, 'carburant', brule * 0.45 * (1 + (pyr - 1) * 0.1));
+          ajouter(state, 'carburant', brule * 0.45 * (1 + (pyr - 1) * 0.1));
         }
       }
     }
@@ -1178,7 +1190,7 @@ export function tickBase(state, log, ctx) {
   if (atl > 0 && recetteDe(base, 'atelier') !== ARRET) {
     const all = consommer(base, 'alliage', 0.35 * atl * r * mo * M.machiniste);
     const pol = consommer(base, 'polymere', 0.5 * atl * r * mo * M.machiniste);
-    ajouter(base, 'composant', Math.min(all / 0.35, pol / 0.5) * 0.14 * atl * r);
+    ajouter(state, 'composant', Math.min(all / 0.35, pol / 0.5) * 0.14 * atl * r);
     rebuter(base, (all + pol) * 0.3); // chutes et rebuts d'assemblage
   }
   // La halle : jusqu'ici l'avant-poste ne savait que transformer ce qu'on lui
@@ -1202,7 +1214,7 @@ export function tickBase(state, log, ctx) {
     const bras = 0.75 + 0.45 * r;
     const taux = 1.1 * halle * bras * mo * M.recoltant * regHalle.richesse
       * (ctx.climat ? 1 + (ctx.climat.rendement('ferraille') - 1) * 0.6 : 1);
-    for (const k of Object.keys(y)) ajouter(base, k, y[k] * taux);
+    for (const k of Object.keys(y)) ajouter(state, k, y[k] * taux);
   }
 
   // Les bassins : de la biomasse qui ne demande rien au terrain.
@@ -1215,7 +1227,7 @@ export function tickBase(state, log, ctx) {
   if (bas > 0 && recetteDe(base, 'bassins') !== ARRET) {
     const gain = 1 + niveauRech(base, 'cultures') * 0.18;
     const pousse = 0.55 * bas * (0.4 + 0.6 * r) * mo * M.bassinier * gain;
-    ajouter(base, 'biomasse', pousse);
+    ajouter(state, 'biomasse', pousse);
     rebuter(base, pousse * 0.18); // ce qu'on écume et qu'on jette
   }
 
@@ -1228,7 +1240,7 @@ export function tickBase(state, log, ctx) {
   const inf = niveau(base, 'infirmerie');
   if (inf > 0 && recetteDe(base, 'infirmerie') !== ARRET) {
     const bio = consommer(base, 'biomasse', 0.4 * inf * r * M.infirmier);
-    ajouter(base, 'medkit', bio * 0.09);
+    ajouter(state, 'medkit', bio * 0.09);
   }
 
   // Les habitants ne regardent pas un raid les bras croisés — et ceux qui sont
@@ -1702,7 +1714,7 @@ export function visiteMarchand(state, rng, log) {
     if (qte < 5) continue;
     state.player.credits -= Math.round(qte * prix);
     noterArgent(state, 'colporteurs (achats pour le camp)', -Math.round(qte * prix));
-    ajouter(base, k, qte);
+    ajouter(state, k, qte);
     achete += qte;
   }
 
@@ -1931,7 +1943,7 @@ export function deposer(state, key, qte, groupe) {
     return { ok: false, motif: 'Il faut être à l’avant-poste.' };
   }
   const dispo = g.inventaire[key] || 0;
-  const libre = capaciteStock(base) - totalStock(base);
+  const libre = capaciteStock(state) - totalStock(base);
   const n = Math.max(0, Math.min(Math.floor(qte), dispo, Math.floor(libre)));
   if (n <= 0) return { ok: false, motif: 'Rien à déposer, ou entrepôt plein.' };
   g.inventaire[key] -= n;

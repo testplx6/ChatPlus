@@ -1811,6 +1811,69 @@ un plancher, c'était l'escouade qui mourait de faim — un `tick` sur une parti
 finie ne fait plus rien. **Une courbe qui devient plate mérite qu'on demande si
 c'est le phénomène qui s'arrête ou l'instrument.**
 
+### Un nombre de pixels n'est pas une position de lecture
+
+L'écran se reconstruit d'un bloc plusieurs fois par seconde, et l'on rendait
+ensuite au conteneur son `scrollTop` d'avant. Ça paraît suffisant. Ça ne l'est
+pas : dès qu'un encart au-dessus du point de lecture change de hauteur — une
+alerte qui apparaît, un secteur qu'on découvre, une ligne de plus au journal —
+les mêmes sept cents pixels ne désignent plus le même texte.
+
+Mesuré, seize relevés par écran à ×60 :
+
+| écran | défilement déplacé | **texte lu déplacé** |
+|---|---|---|
+| carte | 15/16 | 13/16 |
+| journal | 0/16 | 14/16 |
+
+Le journal est le cas instructif : le défilement ne bougeait pas d'un pixel, et
+pourtant on ne lisait plus la même chose une fois sur deux, parce que le fil
+grandit par le haut. **La bonne mesure n'était pas le défilement, c'était le
+texte.**
+
+On mémorise donc *ce qu'on lisait* — l'encart, ou l'entrée de journal, avec son
+décalage — et on le remet où il était. Après : 0/16 sur les deux écrans, le
+défilement bougeant beaucoup, ce qui est précisément son travail.
+
+Une limite subsiste, et elle est irréductible : si l'on lisait tout en bas et
+qu'un encart apparaît au-dessus, garder le texte immobile demanderait de défiler
+au-delà de la fin du document. Le navigateur borne. Vue à l'instrument, ancre
+calculée à 937 px et appliquée à 841, qui était le maximum possible. Le premier
+test écrit accusait l'ancre de ce défaut-là ; c'était le test qui lisait au ras
+du bas.
+
+Deux effets de bord gagnés au passage : on ne réécrit plus le DOM quand le texte
+produit est identique — ce qui supprime le scintillement et cesse d'interrompre
+l'inertie du défilement sur téléphone — et les encarts se replient, d'un clic sur
+leur titre, le pli survivant au rechargement. Le repli se fait en un seul endroit
+à partir du titre de chaque encart, si bien qu'un encart écrit demain sera
+repliable sans qu'on y pense.
+
+Reste la question qui allait avec : **quel texte répond au doigt ?** Les boutons
+se voyaient, ils ont un cadre ; un `<summary>` qui déplie une fiche ressemblait
+trait pour trait à une ligne de texte. Une seule convention, tenue partout : ce
+qui se clique porte un chevron, qui tourne quand c'est ouvert. Rien d'autre dans
+l'interface n'en porte, si bien que sa présence répond à la question — et un test
+vérifie les deux sens, que tout ce qui se clique en porte un et que rien
+d'inerte n'en porte.
+
+### Le même défaut, deux fois, à trois jours d'intervalle
+
+`capaciteStock(base)` a gagné un paramètre `state` facultatif : les magasiniers
+qui agrandissent l'entrepôt sont ceux qui tiennent vraiment leur poste, ce qui
+suppose de savoir si l'escouade prête la main. Les appels de l'interface l'ont
+reçu ; celui du dépôt ne l'a pas eu.
+
+L'écran annonçait **5 504**, le dépôt refusait à **3 200**, et disait « Rien à
+déposer, ou entrepôt plein » — qui était faux, et qui le paraissait. C'est
+exactement ce qui venait d'arriver à `arriver()` dans les caravanes, où le même
+`state` facultatif en dernière position avait été oublié par un appel sur deux.
+
+`state` est le premier paramètre et il est obligatoire : l'oublier fait tomber la
+fonction au lieu de rendre un second nombre. **Un paramètre qu'on peut omettre
+finit par l'être** — et un garde qui échoue bruyamment vaut mieux qu'une valeur
+par défaut plausible.
+
 ## Ce que la simulation fait
 
 **Le temps.** Un tick = une heure de jeu, dix secondes réelles à ×1 — et le jeu
