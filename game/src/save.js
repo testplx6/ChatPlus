@@ -179,6 +179,15 @@ export function normaliser(state) {
     if (b.dernierGaspillage === undefined) b.dernierGaspillage = -999;
     if (b.dechets === undefined) b.dechets = 0;
     if (b.terraforme === undefined) b.terraforme = null;
+    if (!b.recettes) {
+      // Les consignes n'existaient pas, et la raffinerie faisait les deux à la
+      // fois : du carburant depuis le polymère *et* depuis les déchets. Elles
+      // s'excluent désormais — sinon la recherche est un bonus gratuit plutôt
+      // qu'une décision. Une partie qui avait la pyrolyse la garde donc comme
+      // consigne, plutôt que de se réveiller sans elle un matin.
+      b.recettes = {};
+      if ((b.recherche || {}).pyrolyse >= 1) b.recettes.raffinerie = 'pyrolyse';
+    }
     // Avant les métiers, les habitants étaient un multiplicateur anonyme : on
     // les laisse manœuvres, le joueur les affectera s'il le veut.
     if (!b.postes) b.postes = {};

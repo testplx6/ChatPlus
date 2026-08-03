@@ -3,7 +3,7 @@
 
 import {
   BUILDINGS, RESEARCH, COMMODITY_KEYS, COMMODITIES, METIERS, METIER_KEYS, BIOMES,
-  FACTIONS,
+  FACTIONS, RECETTES, ARRET,
 } from './data.js';
 import { rendementRegion } from './world.js';
 import { METEO } from './climat.js';
@@ -38,6 +38,8 @@ export function creerBase() {
     dechets: 0,
     // Ce que la station de terraformation travaille, s'il y en a une.
     terraforme: null,
+    // La consigne de chaque chaîne. Voir RECETTES dans data.js.
+    recettes: {},
     // Les habitants se placent eux-mêmes dans les métiers ouverts. Voir
     // `embaucher` : sans ça, un avant-poste de quarante habitants tourne avec
     // personne affecté à rien.
@@ -270,6 +272,39 @@ export function niveau(base, key) {
 
 export function niveauRech(base, key) {
   return base.recherche[key] || 0;
+}
+
+/** Les consignes qu'on peut donner à ce bâtiment, ici et maintenant. */
+export function recettesDe(base, key) {
+  return (RECETTES[key] || []).filter((r) => !r.recherche || niveauRech(base, r.recherche) >= 1);
+}
+
+/**
+ * La consigne que suit ce bâtiment.
+ *
+ * Rien de choisi : la première recette disponible, c'est-à-dire ce que le
+ * bâtiment a toujours fait. Une consigne devenue impossible — la recherche a
+ * été perdue avec le camp, le bâtiment a été rasé — retombe sur la même
+ * valeur plutôt que d'arrêter la chaîne en silence.
+ */
+export function recetteDe(base, key) {
+  const dispo = recettesDe(base, key);
+  if (!dispo.length) return ARRET;
+  const choisie = (base.recettes || {})[key];
+  if (choisie === ARRET) return ARRET;
+  return dispo.some((r) => r.id === choisie) ? choisie : dispo[0].id;
+}
+
+/** Donner une consigne. `ARRET` est toujours acceptable : on a le droit de dire non. */
+export function reglerRecette(state, key, id) {
+  const base = state.base;
+  if (!RECETTES[key]) return { ok: false, motif: 'Ce bâtiment n’a rien à régler.' };
+  if (id !== ARRET && !recettesDe(base, key).some((r) => r.id === id)) {
+    return { ok: false, motif: 'Cette consigne n’est pas disponible.' };
+  }
+  if (!base.recettes) base.recettes = {};
+  base.recettes[key] = id;
+  return { ok: true };
 }
 
 function scale(cout, mul, n) {
@@ -885,44 +920,60 @@ export function tickBase(state, log, ctx) {
   const aLaMain = Math.max(SOCLE_MANUEL, r);
 
   const hyd = niveau(base, 'hydroponie');
-  if (hyd > 0) {
+  if (hyd > 0 && recetteDe(base, 'hydroponie') !== ARRET) {
     const bio = consommer(base, 'biomasse', 1.25 * hyd * aLaMain * mo * M.cultivateur);
     ajouter(base, 'rations', bio * 0.9 * (1 + (rech.hydroponie_av || 0) * 0.15));
     rebuter(base, bio * 0.22); // tiges, balles, ce qui a tourné
   }
   const fond = niveau(base, 'fonderie');
-  if (fond > 0) {
-    const min = consommer(base, 'minerai', 1.2 * fond * r * mo * M.fondeur);
-    ajouter(base, 'alliage', min * 0.42 * (1 + (rech.metallurgie || 0) * 0.12));
-    rebuter(base, min * 0.35); // scories
+  const recFond = recetteDe(base, 'fonderie');
+  if (fond > 0 && recFond !== ARRET) {
+    // Refondre de la ferraille rend deux fois moins qu'un bon minerai — mais la
+    // ferraille se ramasse dans presque tous les biomes, personne n'en veut au
+    // marché, et l'entrepôt en déborde. C'est la seule ressource abondante qui
+    // n'entrait dans aucune chaîne.
+    const depuis = recFond === 'ferraille' ? 'ferraille' : 'minerai';
+    const debit = depuis === 'ferraille' ? 1.5 : 1.2;
+    const rendu = depuis === 'ferraille' ? 0.21 : 0.42;
+    const pris = consommer(base, depuis, debit * fond * r * mo * M.fondeur);
+    ajouter(base, 'alliage', pris * rendu * (1 + (rech.metallurgie || 0) * 0.12));
+    rebuter(base, pris * 0.35); // scories
   }
   const raf = niveau(base, 'raffinerie');
-  if (raf > 0) {
-    const pol = consommer(base, 'polymere', 0.9 * raf * r * mo * M.raffineur);
-    ajouter(base, 'carburant', pol * 0.55);
-    rebuter(base, pol * 0.2); // résidus de distillation
-    // La pyrolyse : le tas qui traîne derrière l'atelier finit dans le
-    // réservoir.
-    //
-    // Première version : elle brûlait la biomasse elle-même, c'est-à-dire de
-    // la nourriture. Faire du carburant avec ce qui aurait pu être des rations
-    // est précisément ce qu'un camp affamé ne doit pas avoir intérêt à faire.
-    // Elle mange maintenant les déchets — ce que les chaînes recrachent et que
-    // personne ne ramasse. C'est gratuit, ça ne se transporte pas, ça ne se
-    // vend pas, et ça récompense d'avoir monté une vraie production plutôt que
-    // d'avoir des bassins.
-    const pyr = niveauRech(base, 'pyrolyse');
-    if (pyr > 0) {
+  const recRaf = recetteDe(base, 'raffinerie');
+  if (raf > 0 && recRaf !== ARRET) {
+    if (recRaf === 'carburant') {
+      const pol = consommer(base, 'polymere', 0.9 * raf * r * mo * M.raffineur);
+      ajouter(base, 'carburant', pol * 0.55);
+      rebuter(base, pol * 0.2); // résidus de distillation
+    } else {
+      // Le tas qui traîne derrière l'atelier, plutôt qu'une matière qui sert
+      // ailleurs. La pyrolyse brûlait la biomasse dans sa première version,
+      // c'est-à-dire de la nourriture — précisément ce qu'un camp affamé ne
+      // doit pas avoir intérêt à faire. Les déchets, eux, ne servaient à rien.
+      //
+      // Et l'on choisit : du carburant, ou du polymère. Les deux ensemble
+      // faisaient de la recherche un bonus gratuit plutôt qu'une décision, et
+      // le polymère n'aurait servi à personne tant qu'on avait mieux à brûler.
+      const pyr = niveauRech(base, 'pyrolyse');
+      const ref = niveauRech(base, 'reformage');
       const veut = 1.1 * raf * r * mo * M.raffineur;
       const brule = Math.min(veut, base.dechets || 0);
       if (brule > 0) {
         base.dechets = Math.max(0, (base.dechets || 0) - brule);
-        ajouter(base, 'carburant', brule * 0.45 * (1 + (pyr - 1) * 0.1));
+        if (recRaf === 'reformage') {
+          // Moins rentable qu'un plein de carburant — trois crédits contre cinq
+          // et demi par unité de déchet — et c'est parfois la seule façon
+          // d'avoir du polymère, sans lequel l'atelier ne fait rien.
+          ajouter(base, 'polymere', brule * 0.5 * (1 + (ref - 1) * 0.1));
+        } else {
+          ajouter(base, 'carburant', brule * 0.45 * (1 + (pyr - 1) * 0.1));
+        }
       }
     }
   }
   const atl = niveau(base, 'atelier');
-  if (atl > 0) {
+  if (atl > 0 && recetteDe(base, 'atelier') !== ARRET) {
     const all = consommer(base, 'alliage', 0.35 * atl * r * mo * M.machiniste);
     const pol = consommer(base, 'polymere', 0.5 * atl * r * mo * M.machiniste);
     ajouter(base, 'composant', Math.min(all / 0.35, pol / 0.5) * 0.14 * atl * r);
@@ -932,7 +983,7 @@ export function tickBase(state, log, ctx) {
   // apportait. Il ramasse maintenant sa propre région, au rendement du biome et
   // sans épuiser la case — c'est une exploitation, pas une fouille.
   const halle = niveau(base, 'halle');
-  if (halle > 0) {
+  if (halle > 0 && recetteDe(base, 'halle') !== ARRET) {
     const regHalle = state.world.regions[base.regionId];
     const y = rendementRegion(state.world, base.regionId);
     // Ramasser se fait avec des bras, et la halle en était pourtant punie :
@@ -959,7 +1010,7 @@ export function tickBase(state, log, ctx) {
   // rendement, c'est qu'ils marchent partout. Ils tiennent au courant plus que
   // la halle : une pompe et des lampes ne se remplacent pas par des bras.
   const bas = niveau(base, 'bassins');
-  if (bas > 0) {
+  if (bas > 0 && recetteDe(base, 'bassins') !== ARRET) {
     const gain = 1 + niveauRech(base, 'cultures') * 0.18;
     const pousse = 0.55 * bas * (0.4 + 0.6 * r) * mo * M.bassinier * gain;
     ajouter(base, 'biomasse', pousse);
@@ -973,7 +1024,7 @@ export function tickBase(state, log, ctx) {
   amender(state, base, r, mo, M);
 
   const inf = niveau(base, 'infirmerie');
-  if (inf > 0) {
+  if (inf > 0 && recetteDe(base, 'infirmerie') !== ARRET) {
     const bio = consommer(base, 'biomasse', 0.4 * inf * r * M.infirmier);
     ajouter(base, 'medkit', bio * 0.09);
   }

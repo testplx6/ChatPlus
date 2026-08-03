@@ -6,6 +6,7 @@ import {
   RESEARCH, RESEARCH_KEYS, ITEMS, SKILLS, SKILL_KEYS, BODY_PARTS, BODY_KEYS,
   POSTURES, POSTURE_KEYS, TRAITS, POI, CONTRATS, DIPLOMES, METIERS, METIER_KEYS,
   METIERS_VILLE, METIER_VILLE_KEYS,
+  RECETTES_KEYS, ARRET,
 } from './data.js';
 import {
   nomRegion, lieuAvecCoord, colonieDe, colonieParId, coord, chemin, coutTraversee, distance,
@@ -29,7 +30,7 @@ import {
   peutReconnaitre, peutRattacher,
   lancerRecherche, annulerConstruction, fonderBase, deposer, retirer,
   COUT_FONDATION, manquePour, apportBatiment, chaineAutonomie, menacesSurLaBase,
-  forceEscouade, AMENDABLES, AMENDEMENT_MAX, dechetsMax,
+  forceEscouade, AMENDABLES, AMENDEMENT_MAX, dechetsMax, recetteDe, recettesDe,
 } from './base.js';
 import { classement, enGuerre } from './factions.js';
 import { titreDe, lignesDe } from './chronique.js';
@@ -2050,6 +2051,55 @@ function blocEcoleBase() {
  * choisit la cible de la station — sans cible, elle ne fait rien, et le dire
  * est la moitié du travail.
  */
+/**
+ * Les consignes : ce qu'on demande à chaque chaîne, et le droit de dire non.
+ *
+ * Jusqu'ici une chaîne consommait dès qu'elle avait de quoi. La raffinerie
+ * brûlait le polymère qu'on gardait pour l'atelier ; l'infirmerie mangeait la
+ * biomasse qui devait devenir des rations. On ne dirigeait pas un avant-poste,
+ * on le regardait tourner.
+ *
+ * On n'affiche que les bâtiments montés : une liste de consignes pour des
+ * ateliers qui n'existent pas est du bruit.
+ */
+function blocConsignes() {
+  const b = S.base;
+  if (!b.fonde) return '';
+  const montes = RECETTES_KEYS.filter((k) => nivBat(b, k) > 0);
+  if (!montes.length) return '';
+
+  const lignes = montes.map((k) => {
+    const choix = recettesDe(b, k);
+    const actuelle = recetteDe(b, k);
+    const def = choix.find((x) => x.id === actuelle);
+    // On ne propose « arrêt » que là où il y a quelque chose à arrêter, et l'on
+    // ne montre les autres consignes que s'il y en a plus d'une : un bouton
+    // unique qu'on ne peut pas changer n'est pas un choix, c'est du décor.
+    const boutons = [...choix, { id: ARRET, nom: 'Arrêter' }].map((x) => `
+      <button class="act mini ${actuelle === x.id ? 'primaire' : ''}${x.id === ARRET ? ' danger' : ''}"
+        data-a="recette" data-k="${k}" data-r="${x.id}">${e(x.nom)}</button>`).join('');
+    return `<div style="border-bottom:1px solid #1b2029;padding:7px 0">
+      <div class="ligne souple"><span class="k">${e(BUILDINGS[k].nom)}
+        <span class="puce">niv ${nivBat(b, k)}</span></span>
+        <span class="v ${actuelle === ARRET ? 'alerte' : 'ok'}">${
+  actuelle === ARRET ? 'à l’arrêt' : 'en marche'}</span></div>
+      <div class="aide">${def ? e(def.aide || def.nom) : 'Rien ne tourne ici.'}</div>
+      <div class="taches" style="margin-top:5px">${boutons}</div>
+    </div>`;
+  }).join('');
+
+  const arretes = montes.filter((k) => recetteDe(b, k) === ARRET).length;
+  return `<section class="panneau">
+    <h2 class="titre">Consignes
+      <span class="droite ${arretes ? 'alerte' : ''}">${arretes
+  ? `${arretes} à l’arrêt` : `${montes.length} en marche`}</span></h2>
+    <div class="aide">Ce que chaque chaîne a le droit de consommer. Une raffinerie qu’on
+      laisse faire brûlera le polymère que l’atelier attendait.</div>
+    <div class="sep"></div>
+    ${lignes}
+  </section>`;
+}
+
 function blocTerre() {
   const b = S.base;
   if (!b.fonde) return '';
@@ -2298,8 +2348,9 @@ function ecranBase() {
     : `Main-d’œuvre ×${mainDoeuvre(b).toFixed(2)} sur les chaînes · +${n(Math.round((b.pop || 0) * 2.5))} de défense · ${n((b.pop || 0) * 0.014 * 24, 1)} rations/jour consommées`}</div>
   </section>
 
-  ${blocTerre()}
   ${blocChaine()}
+  ${blocConsignes()}
+  ${blocTerre()}
   ${blocMetiers()}
   ${blocEcoleBase()}
 
@@ -4637,6 +4688,13 @@ function surClic(ev) {
         fr.readAsText(f);
       });
       inp.click();
+      break;
+    }
+
+    case 'recette': {
+      const r = ACTIONS.reglerRecette(el.dataset.k, el.dataset.r);
+      if (!r.ok) alert(r.motif);
+      rafraichir(true);
       break;
     }
 

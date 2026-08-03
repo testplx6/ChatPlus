@@ -18,7 +18,7 @@ import { genererBande, TACTIQUES } from './combat.js';
 import { groupeActif, tousLesMembres, scinder, fusionner, choisirGroupe, assignerTache } from './groupes.js';
 import {
   reconnaitreAvantPoste, peutReconnaitre, rattacherVille,
-  declarerIndependance,
+  declarerIndependance, reglerRecette,
 } from './base.js';
 import { verifierExercice } from './squad.js';
 import { honorer as honorerService } from './services.js';
@@ -116,6 +116,14 @@ const API = {
     lancer(s);
     sauver();
     return { ok: true };
+  },
+
+  /** Ce qu'on demande à une chaîne — y compris de ne rien faire. */
+  reglerRecette(batiment, id) {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    const r = reglerRecette(state, batiment, id);
+    if (r.ok) sauver();
+    return r;
   },
 
   supprimerEmplacement: (id) => supprimerEmplacement(id),

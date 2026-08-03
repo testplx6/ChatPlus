@@ -37,6 +37,7 @@ import {
   declarerIndependance, synchroniserVitrine,
   manoeuvres, affecter, rendementMetier, mainDoeuvre, niveauRech,
   perdreAvantPoste, saccagerAvantPoste, menacesSurLaBase, rendementLibre, AMENDEMENT_MAX,
+  recetteDe, recettesDe, reglerRecette,
 } from '../src/base.js';
 import {
   METIER_KEYS, METIERS, SKILLS, BIOMES, BUILDINGS, RESEARCH, POSTURES, COMMODITIES,
@@ -5003,7 +5004,12 @@ section('9 quinvicies quater. La pyrolyse, isolée de tout le reste');
     s.base.stock.carburant = 0;
     s.base.commerce = false;
     s.player.credits = 0;
-    if (avecPyro) s.base.recherche.pyrolyse = 1;
+    if (avecPyro) {
+      s.base.recherche.pyrolyse = 1;
+      // Les consignes s'excluent : avoir la recherche ne suffit pas, il faut
+      // dire à la raffinerie ce qu'on veut qu'elle fasse.
+      reglerRecette(s, 'raffinerie', 'pyrolyse');
+    }
     for (let i = 0; i < 900; i++) tick(s);
     return {
       carb: Math.round(s.base.stock.carburant || 0),
@@ -5047,6 +5053,96 @@ section('9 quinvicies quater. La pyrolyse, isolée de tout le reste');
     'une réserve de biomasse n’est plus jamais brûlée : on ne fait pas du carburant '
     + 'avec ce qui aurait pu être des rations',
     `${b.bioAvant} → ${b.bioApres}`);
+}
+
+section('9 quinvicies septies. On donne des consignes aux chaînes');
+{
+  // « J'aimerais pouvoir demander à ma raffinerie d'arrêter de brûler du
+  // polymère. » Une chaîne consommait dès qu'elle avait de quoi : la raffinerie
+  // brûlait le polymère gardé pour l'atelier, l'infirmerie mangeait la biomasse
+  // qui devait devenir des rations. On ne dirigeait pas un avant-poste, on le
+  // regardait tourner.
+  const camp = (regler) => {
+    const s = nouvellePartie(4747, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(s);
+    g.regionId = s.world.regions.find(
+      (r) => r.biome === 'steppe' && !s.world.colonies.some((c) => c.regionId === r.i)).i;
+    for (const k of Object.keys(COUT_FONDATION)) {
+      g.inventaire[k] = (g.inventaire[k] || 0) + COUT_FONDATION[k];
+    }
+    fonderBase(s, () => {}, g);
+    Object.assign(s.base.batiments,
+      { raffinerie: 2, fonderie: 2, entrepot: 6, solaire: 4, eolienne: 4, baraquement: 2 });
+    s.base.stock.polymere = 600;
+    s.base.stock.minerai = 600;
+    s.base.stock.ferraille = 600;
+    s.base.commerce = false;
+    s.player.credits = 0;
+    if (regler) regler(s);
+    for (let i = 0; i < 400; i++) tick(s);
+    return {
+      pol: Math.round(s.base.stock.polymere || 0),
+      carb: Math.round(s.base.stock.carburant || 0),
+      all: Math.round(s.base.stock.alliage || 0),
+      fer: Math.round(s.base.stock.ferraille || 0),
+      min: Math.round(s.base.stock.minerai || 0),
+      dechets: Math.round(s.base.dechets || 0),
+    };
+  };
+
+  const libre = camp(null);
+  ok(libre.pol < 600 && libre.carb > 0,
+    'laissée libre, la raffinerie brûle le polymère',
+    `polymère ${libre.pol}, carburant ${libre.carb}`);
+
+  const stop = camp((s) => reglerRecette(s, 'raffinerie', 'arret'));
+  ok(stop.pol === 600, 'à l’arrêt, elle n’y touche plus', `polymère ${stop.pol}`);
+  ok(stop.carb === 0, 'et ne produit rien', `carburant ${stop.carb}`);
+
+  // Les autres chaînes tournent toujours : arrêter l'une n'arrête pas tout.
+  ok(stop.all > 0, 'la fonderie, elle, continue', `alliage ${stop.all}`);
+
+  // Refonte : la ferraille entre enfin dans une chaîne. C'est la ressource la
+  // plus abondante du monde et la seule qui ne servait à rien.
+  const surMinerai = camp(null);
+  const surFerraille = camp((s) => {
+    s.base.recherche.refonte = 1;
+    reglerRecette(s, 'fonderie', 'ferraille');
+  });
+  ok(surFerraille.fer < 600 && surFerraille.min === 600,
+    'avec la Refonte, la fonderie mange de la ferraille et laisse le minerai',
+    `ferraille ${surFerraille.fer}, minerai ${surFerraille.min}`);
+  ok(surFerraille.all > 0 && surFerraille.all < surMinerai.all,
+    'elle en tire de l’alliage, moins bien que du minerai',
+    `${surFerraille.all} contre ${surMinerai.all}`);
+  ok(!recettesDe({ recherche: {}, recettes: {} }, 'fonderie').some((x) => x.id === 'ferraille'),
+    'et sans la recherche, la consigne n’est même pas proposée');
+
+  // Reformage : du polymère là où il n'en pousse pas. C'est le vrai trou —
+  // trois biomes sur neuf en donnent, et sans lui l'atelier ne fait rien.
+  const reforme = camp((s) => {
+    s.base.recherche.pyrolyse = 1;
+    s.base.recherche.reformage = 1;
+    reglerRecette(s, 'raffinerie', 'reformage');
+    s.base.stock.polymere = 0;
+  });
+  ok(reforme.pol > 0, 'la raffinerie recompose du polymère à partir des déchets',
+    `${reforme.pol} polymère depuis zéro`);
+  ok(reforme.carb === 0, 'et alors elle ne fait plus de carburant : c’est l’un ou l’autre',
+    `carburant ${reforme.carb}`);
+
+  // La consigne par défaut est celle d'avant : rien ne change pour qui ne
+  // touche à rien.
+  const neuf = nouvellePartie(4848, { maintenant: 0, depart: 'ville', equipe: 3 });
+  ok(recetteDe(neuf.base, 'raffinerie') === 'carburant',
+    'sans rien régler, une raffinerie fait ce qu’elle a toujours fait',
+    recetteDe(neuf.base, 'raffinerie'));
+  ok(recetteDe(neuf.base, 'hydroponie') === 'marche',
+    'et les chaînes à consigne unique tournent');
+  ok(reglerRecette(neuf, 'raffinerie', 'reformage').ok === false,
+    'on ne règle pas une consigne qu’on n’a pas cherchée');
+  ok(reglerRecette(neuf, 'raffinerie', 'arret').ok,
+    'mais on a toujours le droit de dire non');
 }
 
 section('9 quinvicies quinquies. Changer la terre');

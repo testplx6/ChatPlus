@@ -487,6 +487,33 @@ export const RESEARCH = {
     tempsMul: 1.7,
     max: 5,
   },
+  refonte: {
+    nom: 'Refonte',
+    desc: 'La fonderie sait aussi tirer de l’alliage de la ferraille, deux fois moins bien.',
+    // La ferraille est la ressource la plus abondante du monde et la seule qui
+    // n'entre dans aucune chaîne : on en ramasse partout, on la vend trois
+    // crédits, et l'entrepôt déborde. Elle devient une matière première.
+    exige: 'metallurgie',
+    cout: { composant: 10, credits: 200 },
+    coutMul: 1.8,
+    heures: 10,
+    tempsMul: 1.7,
+    max: 5,
+  },
+  reformage: {
+    nom: 'Reformage',
+    desc: 'La raffinerie sait recomposer du polymère à partir des déchets.',
+    // Le trou que ça bouche : le polymère ne se ramasse que dans trois biomes
+    // sur neuf, et l'atelier en demande pour chaque composant. Planté ailleurs,
+    // on achetait son polymère en ville jusqu'à la fin de la partie — ou l'on
+    // ne fabriquait jamais rien.
+    exige: 'pyrolyse',
+    cout: { composant: 28, isotope: 10, credits: 550 },
+    coutMul: 1.9,
+    heures: 18,
+    tempsMul: 1.75,
+    max: 5,
+  },
   insemination: {
     nom: 'Insémination',
     desc: 'Débloque l’ensemenceuse : la terre autour du camp se met à donner de la biomasse.',
@@ -628,6 +655,66 @@ export const RESEARCH = {
 };
 
 export const RESEARCH_KEYS = Object.keys(RESEARCH);
+
+// ---------------------------------------------------------------------------
+// Recettes : ce qu'on demande à chaque chaîne
+// ---------------------------------------------------------------------------
+//
+// Une chaîne consommait dès qu'elle avait de quoi, sans qu'on puisse dire non :
+// la raffinerie brûlait le polymère qu'on gardait pour l'atelier, l'infirmerie
+// mangeait la biomasse qui devait devenir des rations. On ne dirigeait pas un
+// avant-poste, on le regardait tourner.
+//
+// Chaque bâtiment de production a donc une consigne. La plupart n'ont que
+// « marche » — mais tous ont « arrêt », et c'est déjà la moitié de ce qui
+// manquait. Deux en ont plusieurs, et c'est là que ça devient un choix :
+//
+//   la raffinerie   du carburant, ou du polymère là où il n'en pousse pas
+//   la fonderie     du minerai quand il y en a, de la ferraille sinon
+//
+// `recherche` : la consigne n'apparaît qu'une fois la recherche faite.
+// `defaut`    : ce qu'on fait tant que personne n'a rien dit.
+
+export const ARRET = 'arret';
+
+export const RECETTES = {
+  halle: [{ id: 'marche', nom: 'Ramasser la région', aide: 'Ce que le terrain donne, sans épuiser la case.' }],
+  bassins: [{ id: 'marche', nom: 'Cultiver de la biomasse', aide: 'Algues et lentilles d’eau, où qu’on soit.' }],
+  hydroponie: [{ id: 'marche', nom: 'Biomasse → rations', aide: 'De quoi manger.' }],
+  infirmerie: [{ id: 'marche', nom: 'Biomasse → medkits', aide: 'Et l’on soigne les vôtres au repos.' }],
+  atelier: [{ id: 'marche', nom: 'Alliage + polymère → composants', aide: 'Ce qu’on ne trouve presque nulle part.' }],
+  fonderie: [
+    { id: 'minerai', nom: 'Minerai → alliage', aide: 'Le bon rendement, quand la région donne du minerai.' },
+    {
+      id: 'ferraille',
+      nom: 'Ferraille → alliage',
+      aide: 'Deux fois moins bon, mais la ferraille traîne dans presque tous les biomes '
+        + 'et personne n’en veut au marché.',
+      recherche: 'refonte',
+    },
+  ],
+  raffinerie: [
+    { id: 'carburant', nom: 'Polymère → carburant', aide: 'Ce que brûle le générateur.' },
+    {
+      id: 'pyrolyse',
+      nom: 'Déchets → carburant',
+      aide: 'Le tas derrière l’atelier, plutôt qu’une matière qui sert ailleurs.',
+      recherche: 'pyrolyse',
+    },
+    {
+      id: 'reformage',
+      nom: 'Déchets → polymère',
+      aide: 'Moins rentable que du carburant, et c’est parfois la seule façon d’en avoir : '
+        + 'le polymère ne se ramasse que dans trois biomes sur neuf, et sans lui l’atelier '
+        + 'ne fait pas un composant.',
+      recherche: 'reformage',
+    },
+  ],
+  semoir: [{ id: 'marche', nom: 'Semer la région', aide: 'Consomme de la biomasse comme semence.' }],
+  terraformeur: [{ id: 'marche', nom: 'Corriger le sol', aide: 'Voir la cible dans « La terre ».' }],
+};
+
+export const RECETTES_KEYS = Object.keys(RECETTES);
 
 // ---------------------------------------------------------------------------
 // Équipement
