@@ -23,6 +23,7 @@ import { capturables, fairePrisonniers } from '../src/justice.js';
 import { loisDe } from '../src/lois.js';
 import { genererBande } from '../src/combat.js';
 import { Rng } from '../src/rng.js';
+import { makeCharacter } from '../src/characters.js';
 import { ouvrirBourse, tickBourses } from '../src/bourse.js';
 import { DIPLO_FACTIONS } from '../src/data.js';
 
@@ -1559,6 +1560,98 @@ const texteApres = await page.evaluate(() => document.querySelector('#modale').t
 ok(/apporté des medkits/.test(texteApres), 'et il s’en souvient à l’écran');
 await page.click('[data-a="fermer"]');
 await page.waitForTimeout(300);
+
+console.log('\n8 vicies bis. Toutes les fiches, pas seulement celle qu’on a signalée');
+{
+  // « Ça va être bon pour toutes les modales ? » — question juste, et la réponse
+  // ne se déduit pas : elle se mesure. Elles passent toutes par le même rendu,
+  // mais l'ancre travaille sur la structure de chacune, et rien ne dit d'avance
+  // qu'elle s'y retrouve partout.
+  //
+  // Deux pièges rencontrés en écrivant cette mesure, et tous deux donnaient un
+  // faux verdict :
+  //
+  //   — suivre le *texte* au haut de la fenêtre accusait le marché, dont les
+  //     prix changent tout seuls. Un texte qui change n'est pas un texte qui
+  //     bouge : on suit donc une position ;
+  //   — marquer l'élément suivi d'un attribut le perdait à chaque réécriture,
+  //     et l'on mesurait sa disparition. On le suit par son rang.
+  const pp = await navigateur.newPage({ viewport: { width: 390, height: 300 } });
+  const err = [];
+  pp.on('pageerror', (x) => err.push(x.message));
+  await pp.goto(`http://localhost:${PORT}/`, { waitUntil: 'networkidle' });
+
+  const ville = nouvellePartie(20260729, { maintenant: Date.now(), depart: 'ville' });
+  const gv = groupeActif(ville);
+  const rngv = new Rng(9);
+  for (let i = 0; i < 14; i++) gv.membres.push(makeCharacter(rngv, {}));
+  ville.player.credits = 90000;
+  Object.assign(gv.inventaire, { ferraille: 300, rations: 300, polymere: 100, minerai: 100, medkit: 20 });
+  avancer(ville, 30);
+  ville.dernierReel = Date.now();
+  await pp.evaluate((t) => localStorage.setItem('cendres.save.v1', t), serialiser(ville));
+  await pp.reload({ waitUntil: 'networkidle' });
+  await pp.click('[data-a="continuer"]');
+  await pp.waitForSelector('#carte');
+  await pp.click('[data-a="vitesse"][data-v="16"]');
+  await pp.waitForTimeout(400);
+
+  const testees = [];
+  const trop = [];
+  for (const ecranNom of ['carte', 'escouade']) {
+    await pp.click(`[data-a="onglet"][data-k="${ecranNom}"]`);
+    await pp.waitForTimeout(400);
+    const liste = [...new Set(await pp.evaluate(
+      () => [...document.querySelectorAll('[data-a="modale"]')].map((b) => b.dataset.m)))];
+    for (const m of liste) {
+      if (testees.includes(m)) continue;
+      await pp.evaluate((k) => {
+        const b = document.querySelector(`[data-a="modale"][data-m="${k}"]`);
+        if (b) b.click();
+      }, m);
+      await pp.waitForTimeout(400);
+      const t = await pp.evaluate(() => {
+        const b = document.querySelector('#modale .boite');
+        return b ? { h: b.scrollHeight, vue: b.clientHeight } : null;
+      });
+      if (!t || t.h <= t.vue + 30) {
+        if (t) trop.push(m);
+      } else {
+        await pp.evaluate((y) => { document.querySelector('#modale .boite').scrollTop = y; },
+          Math.max(20, Math.min(300, t.h - t.vue - 20)));
+        await pp.waitForTimeout(250);
+        const idx = await pp.evaluate(() => {
+          const b = document.querySelector('#modale .boite');
+          const haut = b.getBoundingClientRect().top;
+          const enf = [...b.children];
+          for (let i = 0; i < enf.length; i++) if (enf[i].getBoundingClientRect().bottom > haut + 2) return i;
+          return -1;
+        });
+        const pos = () => pp.evaluate((i) => {
+          const b = document.querySelector('#modale .boite');
+          const el = b.children[i];
+          return el ? Math.round(el.getBoundingClientRect().top - b.getBoundingClientRect().top) : null;
+        }, idx);
+        const d0 = await pos();
+        let bouge = 0;
+        for (let i = 0; i < 5; i++) {
+          await pp.waitForTimeout(350);
+          const v = await pos();
+          if (v === null || Math.abs(v - d0) > 2) bouge++;
+        }
+        testees.push(m);
+        ok(bouge === 0, `fiche « ${m} » : on garde sa place`,
+          `${bouge}/5 relevés déplacés · enfant ${idx} à ${d0}px`);
+      }
+      await pp.evaluate(() => { const b = document.querySelector('[data-a="fermer"]'); if (b) b.click(); });
+      await pp.waitForTimeout(250);
+    }
+  }
+  ok(testees.length >= 8, 'et l’on en a vraiment essayé une bonne partie',
+    `${testees.length} mesurées : ${testees.join(', ')}${trop.length ? ` · trop courtes ici : ${trop.join(', ')}` : ''}`);
+  ok(err.length === 0, 'aucune erreur pendant le tour des fiches', err.join(' | '));
+  await pp.close();
+}
 
 console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit pas');
 {
