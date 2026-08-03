@@ -655,6 +655,35 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
 /* Et l'inverse : un titre d'encart qu'on ne peut pas replier — celui qui porte
    la carte — ne doit pas prétendre le contraire. */
 .panneau:not(.pliable) > h2.titre { cursor: default; }
+
+/* ---------------------------------------------------------------------------
+   Ce qu'une barre repliée doit dire
+   ---------------------------------------------------------------------------
+
+   Un encart replié qui ne montre que son titre ne sert à rien : on le déplie
+   pour lire le seul chiffre qu'on cherchait, puis on le replie. Autant que la
+   barre le porte.
+
+   Deux fentes, et elles ne servent pas à la même chose. `.droite` est ce qui
+   compte assez pour être visible tout le temps — elle existait déjà. `.resume`
+   est le tableau de bord : caché quand l'encart est ouvert (le contenu le dit
+   mieux, en détail), montré quand il est replié. */
+
+.titre .resume { display: none; }
+.panneau.plie > h2.titre .resume {
+  display: inline;
+  color: var(--texte-2);
+  letter-spacing: .04em;
+  text-transform: none;
+  font-size: 11px;
+}
+/* Replié, la barre a le droit de passer à la ligne : un résumé utile vaut mieux
+   qu'un résumé tronqué. */
+.panneau.plie > h2.titre { flex-wrap: wrap; row-gap: 2px; }
+.panneau.plie > h2.titre .resume { flex: 1 1 100%; order: 3; }
+.panneau.plie > h2.titre .resume .mal { color: var(--rouge); }
+.panneau.plie > h2.titre .resume .att { color: var(--ambre); }
+.panneau.plie > h2.titre .resume .bien { color: var(--vert); }
 </style>
   <div id="racine">
     <header id="barre-haut"></header>
@@ -18549,7 +18578,11 @@ function cleSection(sec, i) {
   const h = sec.querySelector('h2.titre');
   if (!h) return `s${i}`;
   const c = h.cloneNode(true);
-  for (const d of c.querySelectorAll('.droite, .puce')) d.remove();
+  // Tout ce qui porte des valeurs qui bougent : la partie droite, les puces, et
+  // le résumé de barre repliée. Oublier ce dernier faisait changer la clé d'un
+  // encart chaque fois que son résumé changeait — donc le pli ne tenait plus, et
+  // l'ancre de défilement cherchait un encart qui n'existait pas sous ce nom.
+  for (const d of c.querySelectorAll('.droite, .puce, .resume')) d.remove();
   return c.textContent.trim().slice(0, 48) || `s${i}`;
 }
 
@@ -19318,7 +19351,11 @@ function blocFil() {
   const recentes = S.journal.filter((x) => !x.discret).slice(-7).reverse();
   if (!recentes.length) return '';
   return `<section class="panneau">
-    <h2 class="titre">Dernières nouvelles</h2>
+    <h2 class="titre">Dernières nouvelles
+      <span class="resume">${recentes.length
+    ? e(`${horloge(recentes[0].t).texte} — ${recentes[0].texte}`.slice(0, 90))
+    : 'rien à signaler'}</span>
+      <span class="droite">${recentes.length}</span></h2>
     <div class="fil">
       ${recentes.map((x) => `<div class="fil-l ${couleurLog(x.type)}">
         <span class="fil-t">${horloge(x.t).texte}</span>
@@ -20023,7 +20060,8 @@ function blocDetachement() {
   const possible = place && choisis > 0 && choisis < dispo.length;
 
   return `<section class="panneau">
-    <h2 class="titre">Détacher</h2>
+    <h2 class="titre">Détacher
+      <span class="droite">${dispo.length} debout</span></h2>
     ${dispo.length < 2
     ? '<div class="aide">Il faut au moins deux personnes debout pour se séparer.</div>'
     : `<div class="aide">Les vivres et le matériel suivent au prorata. Choisissez qui part.</div>
@@ -20153,7 +20191,9 @@ function blocTactique() {
   const biome = S.world.regions[g.regionId].biome;
   const choisie = S.player.tactique || 'ligne';
   return `<section class="panneau">
-    <h2 class="titre">Tactique <span class="droite">${e(BIOMES[biome].nom)}</span></h2>
+    <h2 class="titre">Tactique
+      <span class="resume">sur ${e(BIOMES[biome].nom.toLowerCase())} · ${e(apercuTactique(choisie, biome, 1, armes / Math.max(1, vivants)).mot)}</span>
+      <span class="droite">${e(TACTIQUES[choisie].nom)}</span></h2>
     <div class="pile">
       ${TACTIQUE_KEYS.map((k) => {
     const t = TACTIQUES[k];
@@ -20298,7 +20338,8 @@ function blocQuiFaitQuoi() {
 
   return `<section class="panneau">
     <h2 class="titre">Qui fait quoi
-      <span class="droite">${gens.length} debout sur ${g.membres.length}</span></h2>
+      <span class="resume">${e(resumeTaches(g))}</span>
+      <span class="droite">${gens.length}/${g.membres.length} debout</span></h2>
     ${lignes}
     <div class="sep"></div>
     <div class="ligne"><span class="k">Ensemble, par jour</span>
@@ -20361,7 +20402,8 @@ function ecranEscouade() {
   ${blocDepouilles()}
 
   <section class="panneau">
-    <h2 class="titre">Posture</h2>
+    <h2 class="titre">Posture
+      <span class="droite">${e(POSTURES[p.posture] ? POSTURES[p.posture].nom : '—')}</span></h2>
     <div class="grille3">
       ${POSTURE_KEYS.map((k) => `<button class="act mini" data-a="posture" data-k="${k}"
         aria-pressed="${p.posture === k}">${e(POSTURES[k].nom)}</button>`).join('')}
@@ -20372,7 +20414,9 @@ function ecranEscouade() {
   ${blocTactique()}
 
   <section class="panneau">
-    <h2 class="titre">Consignes permanentes</h2>
+    <h2 class="titre">Consignes permanentes
+      <span class="droite">${Object.keys(pol).filter((k) => pol[k]).length} active(s)</span>
+      <span class="resume">${e(resumePolitique(pol))}</span></h2>
     <div class="pile">
       ${[
     ['recruter', 'Recruter les errants croisés en route'],
@@ -20493,6 +20537,94 @@ function blocBras() {
     + 'peut se mettre au service du camp — ordre « Travaux ».</div>';
 }
 
+/**
+ * Ce qu'une barre repliée dit d'un coup d'œil. Voir `.resume` dans styles.css :
+ * ces textes ne s'affichent que quand l'encart est fermé, là où le détail n'est
+ * plus lisible et où il faut néanmoins savoir si l'on doit ouvrir.
+ */
+function resumeMetiers(b) {
+  const tenus = METIER_KEYS
+    .map((k) => [k, affectes(b, k, S)])
+    .filter(([, v]) => v > 0)
+    .sort((x, y) => y[1] - x[1]);
+  if (!tenus.length) return 'aucun poste tenu';
+  return tenus.slice(0, 4).map(([k, v]) => `${METIERS[k].nom.toLowerCase()} ${v}`).join(' · ')
+    + (tenus.length > 4 ? '…' : '');
+}
+
+/** Ce qui tourne, et surtout ce qui est bloqué : c'est ça qu'on cherche. */
+function resumeChaines(b, montes) {
+  const bloquees = montes.filter((k) => {
+    if (recetteDe(b, k) === ARRET) return false;
+    if (k === 'generateur') return Math.floor(b.stock.carburant || 0) <= 0;
+    if (k === 'raffinerie' && recetteDe(b, k) !== 'carburant') return (b.dechets || 0) <= 0;
+    return (ENTREES[k] || []).some((m) => Math.floor(b.stock[m] || 0) <= reserveDe(b, m));
+  });
+  const arretees = montes.filter((k) => recetteDe(b, k) === ARRET);
+  const bouts = [];
+  if (bloquees.length) {
+    bouts.push(`<span class="mal">à sec : ${e(bloquees.map((k) => BUILDINGS[k].nom.toLowerCase()).join(', '))}</span>`);
+  }
+  if (arretees.length) {
+    bouts.push(`<span class="att">arrêté : ${e(arretees.map((k) => BUILDINGS[k].nom.toLowerCase()).join(', '))}</span>`);
+  }
+  if (!bouts.length) bouts.push('<span class="bien">tout tourne</span>');
+  return bouts.join(' · ');
+}
+
+function resumeBatiments(b) {
+  const montes = Object.keys(b.batiments).filter((k) => b.batiments[k] > 0);
+  if (!montes.length) return 'rien de bâti';
+  return montes
+    .sort((x, y) => b.batiments[y] - b.batiments[x])
+    .map((k) => `${BUILDINGS[k].nom.toLowerCase()} ${b.batiments[k]}`)
+    .join(' · ');
+}
+
+/**
+ * Les matières qui manquent d'abord, celles qui débordent ensuite. C'est ce
+ * qu'on veut savoir sans ouvrir : ce qui va bloquer une chaîne, et ce qui va
+ * se perdre faute de place.
+ */
+function resumeStock(b) {
+  const vides = [];
+  const gros = [];
+  for (const k of COMMODITY_KEYS) {
+    const q = Math.floor(b.stock[k] || 0);
+    if (q <= 0) vides.push(COMMODITIES[k].nom.toLowerCase());
+    else gros.push([k, q]);
+  }
+  gros.sort((x, y) => y[1] - x[1]);
+  const tete = gros.slice(0, 3).map(([k, q]) => `${COMMODITIES[k].nom.toLowerCase()} ${n(q)}`).join(' · ');
+  const manque = vides.length
+    ? ` · <span class="mal">à zéro : ${e(vides.slice(0, 4).join(', '))}${vides.length > 4 ? '…' : ''}</span>`
+    : '';
+  return (tete || 'entrepôt vide') + manque;
+}
+
+function resumeTaches(g) {
+  const compte = {};
+  for (const c of g.membres) {
+    if (!estDebout(c)) continue;
+    const t = c.tache || (g.ordre && g.ordre.type) || 'repos';
+    compte[t] = (compte[t] || 0) + 1;
+  }
+  const noms = { repos: 'repos', fouille: 'fouille', extraction: 'extraction', chasse: 'chasse', exploration: 'exploration', patrouille: 'patrouille', entrainement: 'entraînement', voyage: 'marche', travaux: 'travaux' };
+  const parts = Object.keys(compte)
+    .sort((a, b) => compte[b] - compte[a])
+    .map((k) => `${compte[k]} ${noms[k] || k}`);
+  return parts.length ? parts.join(' · ') : 'personne debout';
+}
+
+function resumePolitique(pol) {
+  const noms = {
+    recruter: 'recrute', commercer: 'commerce', payerPeage: 'paie les péages',
+    achever: 'achève', viserChefs: 'vise les chefs', halte: 's’arrête aux blessés',
+  };
+  const on = Object.keys(noms).filter((k) => pol[k]).map((k) => noms[k]);
+  return on.length ? on.join(' · ') : 'aucune : on ne fait rien de soi-même';
+}
+
 function blocMetiers() {
   const b = S.base;
   const libres = manoeuvres(b, S);
@@ -20560,6 +20692,8 @@ function blocMetiers() {
 
   return `<section class="panneau">
     <h2 class="titre">Métiers
+      <span class="resume">${e(resumeMetiers(b))}${degarnis
+    ? ` · <span class="att">${n(degarnis)} poste(s) sans personne</span>` : ''}</span>
       <span class="droite">${n(libres)} manœuvre(s) sur ${n(total)}</span></h2>
     <div class="aide">${n(total)} bras en tout : ${n(Math.floor(b.pop || 0))} habitant(s)${bras
     ? ` et ${n(bras)} des vôtres aux travaux — ceux-là repartent avec l’escouade`
@@ -20787,6 +20921,7 @@ function blocConsignes() {
 
   return `<section class="panneau">
     <h2 class="titre">Consignes
+      <span class="resume">${resumeChaines(b, montes)}</span>
       <span class="droite ${arretes ? 'alerte' : ''}">${arretes
   ? `${arretes} à l’arrêt` : `${montes.length} en marche`}</span></h2>
     <div class="aide">Ce que chaque chaîne a le droit de consommer. Une raffinerie qu’on
@@ -21213,17 +21348,27 @@ function ecranBase() {
   ${blocEcoleBase()}
 
   <section class="panneau">
-    <h2 class="titre">File de construction <span class="droite">${b.file.length}/5</span></h2>
+    <h2 class="titre">File de construction
+      <span class="resume">${b.file.length
+    ? e(b.file.map((x) => `${BUILDINGS[x.key].nom} → niv. ${x.niveau}`).join(' · '))
+    : 'rien en chantier'}</span>
+      <span class="droite">${b.file.length}/5</span></h2>
     ${fileHtml}
   </section>
 
   <section class="panneau">
-    <h2 class="titre">Bâtiments</h2>
+    <h2 class="titre">Bâtiments
+      <span class="resume">${e(resumeBatiments(b))}</span>
+      <span class="droite">${Object.keys(b.batiments).filter((k) => b.batiments[k] > 0).length} montés</span></h2>
     ${batHtml}
   </section>
 
   <section class="panneau">
-    <h2 class="titre">Recherche <span class="droite">${b.fileRech.length}/3</span></h2>
+    <h2 class="titre">Recherche
+      <span class="resume">${b.fileRech.length
+    ? e(b.fileRech.map((x) => `${RESEARCH[x.key].nom} — ${dureeTexte(Math.max(0, x.restant))}`).join(' · '))
+    : 'aucune recherche en cours'}</span>
+      <span class="droite">${b.fileRech.length}/3</span></h2>
     ${b.fileRech.length ? b.fileRech.map((it) => `
       <div style="margin-bottom:6px">
         <div class="ligne"><span class="k">${e(RESEARCH[it.key].nom)} → niv. ${it.niveau}</span>
@@ -21235,7 +21380,10 @@ function ecranBase() {
   </section>
 
   <section class="panneau">
-    <h2 class="titre">Stock</h2>
+    <h2 class="titre">Stock
+      <span class="resume">${resumeStock(b)}</span>
+      <span class="droite ${totalStock(b) > capaciteStock(S) * 0.95 ? 'alerte' : ''}">${
+  n(Math.round(totalStock(b)))} / ${n(capaciteStock(S))}</span></h2>
     ${stockHtml}
   </section>`;
 }

@@ -1866,6 +1866,42 @@ quelques secondes plus tard. Mesuré avant correction : 400 px, puis 0, puis 0 �
 chacun des dix relevés suivants. **Corriger un conteneur qui défile sans
 regarder les autres, c'est corriger la moitié d'un défaut.**
 
+### Ce qu'une barre repliée doit dire
+
+Un encart replié qui ne montre que son titre ne sert à rien : on le rouvre pour
+lire le seul chiffre qu'on cherchait, puis on le referme. Deux fentes dans la
+barre, et elles ne servent pas à la même chose. `.droite` est ce qui compte assez
+pour être visible tout le temps. `.resume` est le tableau de bord : caché quand
+l'encart est ouvert — le contenu le dit mieux, en détail — et montré quand il
+est replié.
+
+Ce que ça donne sur l'écran BASE, tout entier tenant dans une hauteur d'écran :
+
+    AVANT-POSTE            CANYONS G4
+    CHAÎNE DE L'AUTONOMIE         2/4
+    CONSIGNES            2 EN MARCHE     à sec : générateur, hydroponie
+    MÉTIERS       0 MANŒUVRE(S) SUR 4    cultivateur 2 · mécanicien 1 · opérateur 1
+    FILE DE CONSTRUCTION          0/5    rien en chantier
+    BÂTIMENTS               3 MONTÉS     générateur 1 · hydroponie 1 · antenne 1
+    RECHERCHE                     0/3    aucune recherche en cours
+    STOCK                   463 / 800    polymère 124 · minerai 103 · ferraille 91
+                                         à zéro : biomasse, carburant, isotope, medkit
+
+Le résumé des chaînes ne liste pas ce qui tourne : il nomme ce qui est **à sec**,
+parce que c'est la seule chose sur laquelle on peut agir. Celui du stock donne
+les trois plus gros tas et, en rouge, ce qui est tombé à zéro.
+
+Deux tests gardent la promesse : qu'aucune barre repliée ne se réduise à son
+titre, et qu'aucun résumé ne répète ce que la partie droite dit déjà. Le second
+a servi tout de suite — la tactique s'annonçait deux fois.
+
+Et le premier écrit de ces résumés a cassé le pli : la clé d'un encart se
+calcule à partir de son titre débarrassé de ce qui bouge, et le résumé n'en
+faisait pas partie. La clé changeait donc à chaque fois que le résumé changeait,
+si bien que le pli ne tenait plus et que l'ancre de défilement cherchait un
+encart qui n'existait plus sous ce nom. **Une identité calculée doit exclure tout
+ce qui varie — et la liste de ce qui varie s'allonge à chaque fonctionnalité.**
+
 ### Le même défaut, deux fois, à trois jours d'intervalle
 
 `capaciteStock(base)` a gagné un paramètre `state` facultatif : les magasiniers

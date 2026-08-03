@@ -1724,8 +1724,57 @@ console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit
   const encore = await page.evaluate(
     () => [...document.querySelectorAll('.panneau.plie > h2.titre')].map((h) => h.dataset.k));
   ok(encore.includes(gros), 'le pli survit au rechargement', encore.join(', ') || 'aucun');
-  await page.click(`h2.titre[data-k="${gros}"]`);
-  await page.waitForTimeout(300);
+
+  // --- Ce que dit une barre repliée. Un encart fermé qui ne montre que son
+  //     titre ne sert à rien : on le rouvre pour lire le seul chiffre qu'on
+  //     cherchait. La barre doit le porter.
+  {
+    const cles2 = await page.evaluate(
+      () => [...document.querySelectorAll('#ecran > section.pliable > h2.titre')].map((h) => h.dataset.k));
+    for (const k of cles2) {
+      await page.evaluate((c) => {
+        const h = document.querySelector(`h2.titre[data-k="${CSS.escape(c)}"]`);
+        if (h && !h.parentElement.classList.contains('plie')) h.click();
+      }, k);
+      await page.waitForTimeout(50);
+    }
+    await page.waitForTimeout(300);
+    const barres = await page.evaluate(() => [...document.querySelectorAll('#ecran > section.plie')]
+      .map((sec) => {
+        const h = sec.querySelector(':scope > h2.titre');
+        const c = h.cloneNode(true);
+        for (const d of c.querySelectorAll('.droite, .resume')) d.remove();
+        return {
+          cle: h.dataset.k,
+          titre: c.textContent.trim(),
+          reste: h.innerText.replace(/\s+/g, ' ').trim(),
+        };
+      }));
+    const muettes = barres.filter((b) => b.reste.replace(/\s+/g, ' ').trim().length
+      <= b.titre.replace(/\s+/g, ' ').trim().length + 1);
+    ok(barres.length >= 6, 'tous les encarts sont repliés pour la mesure', `${barres.length}`);
+    ok(muettes.length === 0,
+      'et chaque barre repliée porte un chiffre ou un état, pas seulement son titre',
+      muettes.map((b) => b.cle).join(' · ') || '');
+    // Et pas de doublon bête : le résumé ne répète pas ce que la droite dit déjà.
+    const repetes = await page.evaluate(() => [...document.querySelectorAll('#ecran > section.plie > h2.titre')]
+      .filter((h) => {
+        const d = h.querySelector('.droite');
+        const r = h.querySelector('.resume');
+        if (!d || !r) return false;
+        const a = d.textContent.trim().toLowerCase();
+        return a.length > 3 && r.textContent.trim().toLowerCase().includes(a);
+      }).map((h) => h.dataset.k));
+    ok(repetes.length === 0, 'sans redire deux fois la même chose', repetes.join(' · '));
+    for (const k of cles2) {
+      await page.evaluate((c) => {
+        const h = document.querySelector(`h2.titre[data-k="${CSS.escape(c)}"]`);
+        if (h && h.parentElement.classList.contains('plie')) h.click();
+      }, k);
+      await page.waitForTimeout(50);
+    }
+    await page.waitForTimeout(300);
+  }
 
   // --- Et l'ancre de défilement : c'est le texte qui doit rester en place, pas
   //     le nombre de pixels. Sur la carte et au journal, l'encart du haut change

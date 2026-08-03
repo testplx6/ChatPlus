@@ -653,3 +653,32 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
 /* Et l'inverse : un titre d'encart qu'on ne peut pas replier — celui qui porte
    la carte — ne doit pas prétendre le contraire. */
 .panneau:not(.pliable) > h2.titre { cursor: default; }
+
+/* ---------------------------------------------------------------------------
+   Ce qu'une barre repliée doit dire
+   ---------------------------------------------------------------------------
+
+   Un encart replié qui ne montre que son titre ne sert à rien : on le déplie
+   pour lire le seul chiffre qu'on cherchait, puis on le replie. Autant que la
+   barre le porte.
+
+   Deux fentes, et elles ne servent pas à la même chose. `.droite` est ce qui
+   compte assez pour être visible tout le temps — elle existait déjà. `.resume`
+   est le tableau de bord : caché quand l'encart est ouvert (le contenu le dit
+   mieux, en détail), montré quand il est replié. */
+
+.titre .resume { display: none; }
+.panneau.plie > h2.titre .resume {
+  display: inline;
+  color: var(--texte-2);
+  letter-spacing: .04em;
+  text-transform: none;
+  font-size: 11px;
+}
+/* Replié, la barre a le droit de passer à la ligne : un résumé utile vaut mieux
+   qu'un résumé tronqué. */
+.panneau.plie > h2.titre { flex-wrap: wrap; row-gap: 2px; }
+.panneau.plie > h2.titre .resume { flex: 1 1 100%; order: 3; }
+.panneau.plie > h2.titre .resume .mal { color: var(--rouge); }
+.panneau.plie > h2.titre .resume .att { color: var(--ambre); }
+.panneau.plie > h2.titre .resume .bien { color: var(--vert); }
