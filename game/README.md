@@ -1913,6 +1913,54 @@ de la diplomatie, comme la guerre et la paix — Commandeur. Et chaque acte est
 inscrit au dossier : on en répond, comme d'une colonne envoyée se faire
 détruire.
 
+### « Les factions savent-elles ouvrir leur bourse ? »
+
+Deux questions en une, et deux réponses différentes.
+
+**Savent-elles le faire ?** Oui, mais moins bien qu'écrit. La règle disait « le
+bâtisseur et le marchand » — or il n'existe pas de tempérament « marchand » dans
+ce jeu. La moitié de la condition était morte, et le test l'affirmait vivante :
+il passait la chaîne `'marchand'` à la fonction, qui répondait oui, et personne
+ne vérifiait que le monde produisait de tels chefs. **Un test qui interroge une
+valeur impossible ne vérifie rien.** Un contrôle compare désormais les
+tempéraments cités à ceux qui existent.
+
+Corrigé — bâtisseur, méthodique, rapace, plus le prudent quand la caisse
+déborde — et un tempérament pour les accords, parce qu'un rancunier ne branche
+pas ses cours sur ceux du voisin :
+
+    bourses ouvertes    1,5 → 3,4 par partie, médiane 1523 h → 775 h
+    accords signés     0,08 → 0,88 par partie
+
+**Est-ce utile ?** Pas comme le prétendaient les commentaires. Le vrai goulot
+n'était aucune des constantes, c'était l'expédition elle-même : un convoi par
+réseau toutes les douze heures, pour le seul pire manque. Preuve par l'absurde —
+faire passer le budget de quatre à trente convois ne changeait rien, il en
+circulait 3,4 dans les trois cas. **Quand augmenter la limite ne change rien,
+c'est qu'on n'avait pas trouvé la bonne.**
+
+L'entonnoir élargi, les convois doublent. Et le résultat surprend :
+
+                     villes debout   % nourries   villes nourries
+    bourses coupées         62            45 %           28
+    4 convois/réseau        68            41 %           28
+    12 convois/réseau       75            38 %           28
+    30 convois/réseau       74            38 %           28
+
+Le taux baisse et pourtant rien ne s'aggrave : le dénominateur change. La bourse
+maintient debout des villes qui s'effondraient, et ces rescapées vivent au bord
+de la faim. Le compte des villes repues, lui, ne bouge pas d'une unité. **Un taux
+dont le dénominateur bouge ne dit rien tant qu'on n'a pas regardé le
+numérateur** — et j'avais annoncé « 50 → 61 % de villes nourries » sur une mesure
+antérieure qui ne tenait pas en jeu réel.
+
+Ce qu'une bourse fait, donc, dit exactement : elle empêche l'effondrement, pas la
+faim. Six villes de plus debout pour deux mille cinq cents crédits. Desserrer les
+seuils par-dessus le marché — trois villes au lieu de quatre, mille deux cents
+crédits au lieu de deux mille cinq cents, des départs toutes les trois heures —
+n'achète que deux villes de plus : **les garde-fous chiffrés n'étaient pas ce qui
+bridait.**
+
 ### Une bourse qu'on ne voyait pas
 
 La couche des bourses tournait entièrement en coulisse : des factions ouvraient

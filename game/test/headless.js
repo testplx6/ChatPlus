@@ -29,6 +29,7 @@ import {
   aUneBourse, reseauDe, idReseau, veutOuvrirBourse, ouvrirBourse, signerAccord,
   rompreAccords, coursDe, tickBourses, prixAvecBourse,
   peutTraiter, chiffrerOrdre, ESTIME_COMPTOIR, resumeBourses, PAS_COTATION,
+  OUVRENT_BOURSE, SIGNENT_ACCORD, veutAccord,
 } from '../src/bourse.js';
 import { distanceMorale } from '../src/factions.js';
 import { loiIci } from '../src/lois.js';
@@ -4354,12 +4355,34 @@ crediterDirigeant(s9x.world, 'cendre', 'prise', 3);
 ok(dx.legitimite > legDepart, 'en prendre la regagne');
 
 // Sur une année, les têtes changent et les guerres se closent sur leur objet.
+//
+// Sur plusieurs graines, et avec `tick` plutôt qu'`avancer` : ce contrôle a
+// tenu sur une seule partie pendant des mois, et il a fini par rougir au
+// premier déplacement du tirage. Deux fragilités d'un coup — une graine unique
+// ne mesure qu'elle-même, et `avancer` s'arrête net quand l'escouade meurt, si
+// bien qu'on croyait jouer huit mille heures alors qu'on en jouait mille trois
+// cents. Vérifié : sept graines sur huit closent une guerre sur son objet ; la
+// huitième est celle où l'escouade meurt à t=1386.
+{
+  let changements = 0;
+  let closes = 0;
+  const detail = [];
+  for (const graine of [6363, 1111, 2222, 3333]) {
+    const sy = nouvellePartie(graine, { maintenant: 0, depart: 'ville', equipe: 3 });
+    for (let i = 0; i < 8000; i++) tick(sy);
+    const ch = sy.journal.filter((x) => x.type === 'dirigeant').length;
+    const cl = sy.journal.filter((x) => x.type === 'paix' && /affaire est réglée/.test(x.texte)).length;
+    changements += ch;
+    closes += cl;
+    detail.push(`${graine}: ${ch} chefs, ${cl} closes`);
+  }
+  ok(changements > 0, 'des chefs cèdent la place au cours d’une année', detail.join(' · '));
+  ok(closes > 0, 'des guerres s’arrêtent parce qu’elles ont obtenu ce qu’elles voulaient',
+    detail.join(' · '));
+}
+// Une partie longue, gardée pour les vérifications de cohérence qui suivent.
 const s9y = nouvellePartie(6363, { maintenant: 0, depart: 'ville', equipe: 3 });
-avancer(s9y, 8000);
-const changements = s9y.journal.filter((x) => x.type === 'dirigeant').length;
-const closes = s9y.journal.filter((x) => x.type === 'paix' && /affaire est réglée/.test(x.texte)).length;
-ok(changements > 0, 'des chefs cèdent la place au cours d’une année', `${changements}`);
-ok(closes > 0, 'des guerres s’arrêtent parce qu’elles ont obtenu ce qu’elles voulaient', `${closes}`);
+for (let i = 0; i < 8000; i++) tick(s9y);
 ok(s9y.world.guerres.every((g) => g.but), 'toute guerre en cours a un objet déclaré');
 ok(DIPLO_FACTIONS.every((k) => !coloniesVivantes(s9y, k).length || dirigeant(s9y.world, k)),
   'une faction encore debout a toujours quelqu’un à sa tête');
@@ -6166,12 +6189,23 @@ section('9 sexvicies ter. La bourse des matières premières');
 
   w.factions[fk].colonies = ['x1', 'x2', 'x3', 'x4'];
   w.factions[fk].tresor = 9000;
-  ok(veutOuvrirBourse(w, fk, 'guerrier') === false,
+  // Les tempéraments cités ici doivent exister : le test disait « un marchand,
+  // si » et passait au vert, alors qu'aucun chef de ce monde n'est marchand.
+  // La branche du moteur était morte, et le test l'affirmait vivante. **Un test
+  // qui interroge une valeur impossible ne vérifie rien.**
+  const inconnus = [...OUVRENT_BOURSE, ...SIGNENT_ACCORD].filter((t) => !TEMPERAMENTS[t]);
+  ok(inconnus.length === 0,
+    'les tempéraments qui décident du commerce existent tous',
+    inconnus.join(', ') || `${OUVRENT_BOURSE.join(', ')} · ${SIGNENT_ACCORD.join(', ')}`);
+
+  ok(veutOuvrirBourse(w, fk, 'conquerant') === false,
     'un chef qui ne pense qu\u2019\u00e0 la guerre n\u2019ouvre pas de march\u00e9');
-  ok(veutOuvrirBourse(w, fk, 'marchand'), 'un marchand, si');
+  ok(veutOuvrirBourse(w, fk, OUVRENT_BOURSE[0]), 'un b\u00e2tisseur, si');
   w.factions[fk].colonies = ['x1', 'x2'];
-  ok(!veutOuvrirBourse(w, fk, 'marchand'), 'et il faut des villes \u00e0 relier');
+  ok(!veutOuvrirBourse(w, fk, OUVRENT_BOURSE[0]), 'et il faut des villes \u00e0 relier');
   w.factions[fk].colonies = ['x1', 'x2', 'x3', 'x4'];
+  ok(!veutAccord('rancunier'), 'un rancunier ne branche pas ses cours sur ceux du voisin');
+  ok(veutAccord(SIGNENT_ACCORD[0]), 'un conciliateur, si');
 
   const avant = w.factions[fk].tresor;
   ok(ouvrirBourse(w, fk, 100), 'la bourse s\u2019ouvre');

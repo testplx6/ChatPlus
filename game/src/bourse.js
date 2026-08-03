@@ -185,20 +185,43 @@ export function prixAvecBourse(world, col, key, brut) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Qui, parmi les chefs, a l'idée d'organiser son économie.
+ *
+ * La première version disait « le bâtisseur et le marchand ». Il n'y a pas de
+ * tempérament « marchand » dans ce jeu : la branche était morte, et la moitié
+ * de la règle avec. Pire, le test l'affirmait — il passait un tempérament que
+ * le monde ne produit jamais, et il passait au vert. **Un test qui interroge
+ * une valeur impossible ne vérifie rien.**
+ *
+ * On liste donc de vrais tempéraments, et on les choisit sur pièces : le
+ * bâtisseur organise, le méthodique aussi — c'est même le plus répandu, et une
+ * bourse est exactement de l'organisation —, le rapace y voit une caisse, et le
+ * prudent s'y résout quand elle déborde. Le conquérant et le rancunier ont
+ * d'autres soucis.
+ */
+export const OUVRENT_BOURSE = ['batisseur', 'methodique', 'rapace'];
+
+/** Et qui accepte de brancher ses cours sur ceux d'un voisin. */
+export const SIGNENT_ACCORD = ['conciliateur', 'batisseur', 'methodique', 'rapace', 'prudent'];
+
+/**
  * Une faction ouvre-t-elle sa bourse ?
  *
  * Il faut des villes à relier, de quoi payer l'amorce, et quelqu'un que ça
- * intéresse. Un dirigeant qui ne pense qu'à la guerre n'ouvre pas de marché :
- * c'est le bâtisseur et le marchand qui y viennent, et le prudent quand la
- * caisse déborde.
+ * intéresse.
  */
 export function veutOuvrirBourse(world, key, temperament) {
   const f = world.factions[key];
   if (!f || f.bourse) return false;
   if ((f.colonies || []).length < VILLES_BOURSE) return false;
   if (f.tresor < TRESOR_BOURSE) return false;
-  return temperament === 'batisseur' || temperament === 'marchand'
-    || (temperament === 'prudent' && f.tresor > TRESOR_BOURSE * 2);
+  if (OUVRENT_BOURSE.includes(temperament)) return true;
+  return temperament === 'prudent' && f.tresor > TRESOR_BOURSE * 2;
+}
+
+/** Ce chef-ci signerait-il un accord commercial ? */
+export function veutAccord(temperament) {
+  return SIGNENT_ACCORD.includes(temperament);
 }
 
 export function ouvrirBourse(world, key, t) {

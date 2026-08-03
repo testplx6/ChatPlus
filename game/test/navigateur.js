@@ -2387,14 +2387,25 @@ console.log('\n8 septies. Sauvegardes : plusieurs parties côte à côte');
   // garder l'état d'une partie où quelque chose venait de mal tourner. Ce
   // dernier point vaut surtout pendant qu'on écrit le jeu — un défaut qu'on ne
   // sait pas reproduire est un défaut qu'on ne corrige pas.
+  // On repart d'une partie vivante plutôt que d'hériter de celle qu'a laissée la
+  // section précédente : ce bloc vérifie que l'horloge avance, et une partie
+  // terminée ne tique plus. Le contrôle a rougi ainsi — « 5168 → 5168 » — pour
+  // une escouade morte trois sections plus haut, ce qui n'avait rien à voir avec
+  // les sauvegardes. **Un test doit poser lui-même les conditions qu'il mesure.**
+  const vivante = partieAvancee();
+  vivante.dernierReel = Date.now();
+  await page.reload({ waitUntil: 'networkidle' });
   await page.evaluate(() => {
     for (const k of Object.keys(localStorage)) {
       if (k.startsWith('cendres.emp')) localStorage.removeItem(k);
     }
   });
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((t) => localStorage.setItem('cendres.save.v1', t), serialiser(vivante));
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
+  const enVie = await page.evaluate(
+    () => !JSON.parse(localStorage.getItem('cendres.save.v1')).fin);
+  ok(enVie, 'la partie de départ est bien en cours');
 
   await page.click('[data-a="modale"][data-m="sauvegardes"]');
   await page.waitForTimeout(300);

@@ -23,17 +23,34 @@ import { avantage } from './allegeance.js';
 export const MAX_CARAVANES = 7;
 
 /**
- * Ce qu'une bourse ajoute de convois en propre.
+ * Ce qu'une bourse ajoute de convois en propre — et ce que ça fait vraiment.
  *
- * Première version : un réseau ne faisait que *choisir* mieux ses trajets —
- * plus loin, pour moins cher. Mesuré contre un témoin à bourses coupées, même
- * graine, mêmes villes : 49 % de vivres contre 50 %, et 58 % contre 62 %.
- * Aucun effet. La raison est arithmétique : sept caravanes pour cinquante-cinq
- * villes, c'est le nombre de convois qui borne tout, pas leur destination.
- * Mieux viser sans partir plus souvent revient à déshabiller Pierre.
+ * Première version : un réseau ne faisait que *choisir* mieux ses trajets. Sans
+ * effet, pour une raison arithmétique — c'est le nombre de convois qui borne
+ * tout, pas leur destination. On lui en a donc payé.
  *
- * Une bourse paie donc des convois. C'est ce qu'on achète avec les deux mille
- * cinq cents crédits de l'amorce, et c'est ce qui se voit.
+ * Puis on a cru que ça nourrissait les villes. **Ça ne les nourrit pas.**
+ * Mesuré contre un témoin à bourses coupées, huit graines, quatre mille heures :
+ *
+ *                     villes debout   % nourries   villes nourries
+ *   bourses coupées         62            45 %           28
+ *   4 convois/réseau        68            41 %           28
+ *   12 convois/réseau       75            38 %           28
+ *   30 convois/réseau       74            38 %           28
+ *
+ * Le taux baisse et pourtant rien ne s'aggrave : le dénominateur change. La
+ * bourse maintient debout des villes qui s'effondraient, et ces rescapées vivent
+ * au bord de la faim — elles gonflent le total sans gonfler le compte des
+ * repues, qui ne bouge pas d'une unité. **Un taux dont le dénominateur bouge ne
+ * dit rien tant qu'on n'a pas regardé le numérateur.**
+ *
+ * Ce qu'une bourse fait, donc : elle empêche l'effondrement, pas la faim. Six
+ * villes de plus debout, et c'est déjà beaucoup pour deux mille cinq cents
+ * crédits.
+ *
+ * Quatre, et pas douze : au-delà, on achète des villes marginales de plus en
+ * plus cher — sept villes pour trente-sept microsecondes de tick, sans une
+ * bouche nourrie en plus.
  */
 export const CARAVANES_PAR_RESEAU = 4;
 const HEURES_PAR_CASE = 2;
@@ -159,59 +176,75 @@ export function tenterDepart(state, rng, log) {
 export function departsDuReseau(state, rng, log) {
   const world = state.world;
   for (const membres of reseaux(world)) {
-    const enCours = world.caravanes.filter(
+    let enCours = world.caravanes.filter(
       (c) => c.reseau === idReseau(membres)).length;
     if (enCours >= CARAVANES_PAR_RESEAU) continue;
 
     const villes = villesDuReseau(world, membres).filter(vivante);
     if (villes.length < 2) continue;
 
-    // Le pire manque, toutes matières confondues, pondéré par ce que ça pèse :
-    // une ville sans vivres passe avant une ville sans isotope.
-    let pire = null;
+    // Tous les manques, du pire au moindre, pondérés par ce que ça pèse : une
+    // ville sans vivres passe avant une ville sans isotope.
+    //
+    // Tous, et c'est le correctif. On n'en traitait qu'un seul par appel, si
+    // bien qu'un réseau expédiait au plus un convoi toutes les douze heures —
+    // et s'il n'existait aucune source pour ce manque-là, aucun. Mesuré : le
+    // budget de convois est passé de quatre à trente sans rien changer, il en
+    // circulait 3,4 dans les trois cas. Ce n'était pas le plafond qui bornait,
+    // c'était l'entonnoir.
+    const manques = [];
     for (const col of villes) {
       for (const k of COMMODITY_KEYS) {
         const manque = besoin(col, k);
         if (manque < 12) continue;
-        const urgence = manque * (k === 'rations' ? 3 : 1);
-        if (!pire || urgence > pire.urgence) pire = { col, k, manque, urgence };
+        manques.push({ col, k, manque, urgence: manque * (k === 'rations' ? 3 : 1) });
       }
     }
-    if (!pire) continue;
+    manques.sort((a, b) => b.urgence - a.urgence);
 
-    let source = null;
-    for (const col of villes) {
-      if (col.id === pire.col.id) continue;
-      const dispo = (col.stock[pire.k] || 0) - cibleStock(col, pire.k) * 1.1;
-      if (dispo < 12) continue;
-      const d = distance(col.regionId, pire.col.regionId);
-      const score = Math.min(dispo, pire.manque) / (1 + d * 0.5);
-      if (!source || score > source.score) source = { col, dispo, d, score };
+    for (const pire of manques) {
+      if (enCours >= CARAVANES_PAR_RESEAU) break;
+      // Une ville déjà servie ce tour-ci attend le suivant : on répartit plutôt
+      // que d'empiler six convois sur le même grenier.
+      if (world.caravanes.some((c) => c.reseau === idReseau(membres) && c.versId === pire.col.id)) {
+        continue;
+      }
+
+      let source = null;
+      for (const col of villes) {
+        if (col.id === pire.col.id) continue;
+        const dispo = (col.stock[pire.k] || 0) - cibleStock(col, pire.k) * 1.1;
+        if (dispo < 12) continue;
+        const d = distance(col.regionId, pire.col.regionId);
+        const score = Math.min(dispo, pire.manque) / (1 + d * 0.5);
+        if (!source || score > source.score) source = { col, dispo, d, score };
+      }
+      if (!source) continue;
+      enCours++;
+
+      const route = chemin(world, source.col.regionId, pire.col.regionId);
+      if (!route || !route.length) continue;
+
+      const qte = Math.max(12, Math.round(Math.min(source.dispo, pire.manque) * 0.8));
+      source.col.stock[pire.k] = Math.max(0, (source.col.stock[pire.k] || 0) - qte);
+      const f = world.factions[source.col.faction];
+      if (f) f.tresor = Math.max(0, f.tresor - Math.round(qte * 0.4));
+      world.caravanes.push({
+        id: idDepuisRng(rng, 'v'),
+        faction: source.col.faction,
+        reseau: idReseau(membres),
+        deId: source.col.id,
+        versId: pire.col.id,
+        regionId: source.col.regionId,
+        route,
+        etape: 0,
+        progres: 0,
+        cargaison: { [pire.k]: qte },
+        // Un convoi de bourse voyage escorté : c'est un service, pas une aventure.
+        escorte: Math.round(14 + qte * 0.3),
+        depuis: state.temps,
+      });
     }
-    if (!source) continue;
-
-    const route = chemin(world, source.col.regionId, pire.col.regionId);
-    if (!route || !route.length) continue;
-
-    const qte = Math.max(12, Math.round(Math.min(source.dispo, pire.manque) * 0.8));
-    source.col.stock[pire.k] = Math.max(0, (source.col.stock[pire.k] || 0) - qte);
-    const f = world.factions[source.col.faction];
-    if (f) f.tresor = Math.max(0, f.tresor - Math.round(qte * 0.4));
-    world.caravanes.push({
-      id: idDepuisRng(rng, 'v'),
-      faction: source.col.faction,
-      reseau: idReseau(membres),
-      deId: source.col.id,
-      versId: pire.col.id,
-      regionId: source.col.regionId,
-      route,
-      etape: 0,
-      progres: 0,
-      cargaison: { [pire.k]: qte },
-      // Un convoi de bourse voyage escorté : c'est un service, pas une aventure.
-      escorte: Math.round(14 + qte * 0.3),
-      depuis: state.temps,
-    });
   }
 }
 

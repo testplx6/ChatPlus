@@ -4,6 +4,7 @@
 import { FACTIONS, DIPLO_FACTIONS, COMMODITY_KEYS } from './data.js';
 import {
   veutOuvrirBourse, ouvrirBourse, aUneBourse, partenairePossible, signerAccord,
+  veutAccord,
   rompreAccords, tickBourses,
 } from './bourse.js';
 import {
@@ -935,7 +936,9 @@ function legiferer(world, key, t, log, ctx) {
   if (veutOuvrirBourse(world, key, d.temperament) && ouvrirBourse(world, key, t)) {
     changements.push('une bourse des matières premières est ouverte');
   }
-  if (aUneBourse(world, key)) {
+  // Un rancunier ne branche pas ses cours sur ceux du voisin, et un conquérant
+  // n'a pas la tête à ça.
+  if (aUneBourse(world, key) && veutAccord(d.temperament)) {
     const part = partenairePossible(world, key);
     if (part && signerAccord(world, key, part.key, t)) {
       changements.push(`les cours sont branchés sur ceux ${FACTIONS[part.key].genitif}`);
