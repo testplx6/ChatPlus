@@ -36,8 +36,11 @@ import {
   peutReconnaitre, reconnaitreAvantPoste, peutRattacher, rattacherVille, preleverImpot,
   declarerIndependance, synchroniserVitrine,
   manoeuvres, affecter, rendementMetier, mainDoeuvre, niveauRech,
+  perdreAvantPoste, saccagerAvantPoste, menacesSurLaBase,
 } from '../src/base.js';
-import { METIER_KEYS, BIOMES, BUILDINGS, POSTURES, COMMODITIES } from '../src/data.js';
+import {
+  METIER_KEYS, METIERS, SKILLS, BIOMES, BUILDINGS, RESEARCH, POSTURES, COMMODITIES,
+} from '../src/data.js';
 import {
   accepter, abandonner, peutRendre, progres as progresContrat,
   OPINION_ECHU, OPINION_RENDU, POIDS_COLLECTE_MAX, gainEstime,
@@ -58,7 +61,7 @@ import {
   deposerAuCoffre, retirerDuCoffre, tickCoffres,
   LOYER, PRIX_COFFRE, CAPACITE_LOUEE, ESTIME_PROPRIETE, PERIODE_LOYER,
 } from '../src/coffres.js';
-import { DELAI_LOI } from '../src/factions.js';
+import { DELAI_LOI, tickFactions } from '../src/factions.js';
 import {
   tickSecteurs, tickInsecurite, effetPresence, casesDe, menace, motEtat,
   etatSecteur, resumeSecteur, dansSonSecteur,
@@ -4836,6 +4839,156 @@ section('9 quinvicies. Se faire un nom coûte de moins en moins cher au début, 
   ok(gainEstime(sg, faux) <= 10,
     'un contrat ne vaut jamais plus que son tarif, même chez ceux qui vous détestent',
     `${gainEstime(sg, faux)}`);
+}
+
+section('9 quinvicies bis. Les tables de données se pointent les unes les autres sans mentir');
+{
+  // Le métier `bassinier` avait été livré avec `skill: 'survie'`, qui n'est pas
+  // une compétence de ce jeu. Personne ne s'en est aperçu : le moteur passe,
+  // parce que `comp()` retourne un plancher pour une clé inconnue. C'est
+  // l'interface qui tombait, sur `SKILLS[m.skill].toLowerCase()` — et comme la
+  // liste des métiers ne s'affiche qu'à partir du premier habitant, l'onglet
+  // BASE marchait le premier jour et jamais ensuite. Une partie entière perdue
+  // pour une chaîne de caractères.
+  //
+  // Une table qui en désigne une autre doit désigner quelque chose. C'est
+  // vérifiable en six lignes, et ça ne l'était pas.
+  const skillsFaux = METIER_KEYS.filter((k) => !SKILLS[METIERS[k].skill]);
+  ok(skillsFaux.length === 0,
+    'chaque métier nomme une compétence qui existe',
+    skillsFaux.map((k) => `${k}→${METIERS[k].skill}`).join(', ') || 'toutes bonnes');
+
+  const batFaux = METIER_KEYS.filter((k) => !BUILDINGS[METIERS[k].batiment]);
+  ok(batFaux.length === 0,
+    'et un bâtiment qui existe',
+    batFaux.map((k) => `${k}→${METIERS[k].batiment}`).join(', ') || 'tous bons');
+
+  const rechFausse = Object.keys(BUILDINGS)
+    .filter((k) => BUILDINGS[k].recherche && !RESEARCH[BUILDINGS[k].recherche]);
+  ok(rechFausse.length === 0,
+    'un bâtiment verrouillé nomme une recherche qui existe',
+    rechFausse.join(', ') || 'toutes bonnes');
+}
+
+section('9 sexvicies. L’Essaim saccage, il ne prend pas');
+{
+  // Rapporté depuis une partie, capture d'écran à l'appui : deux lignes du
+  // journal à la même heure —
+  //
+  //   « L'Essaim saccage Avant-poste. La ville tient, à peine. »
+  //   « Avant-poste est tombée. Ce qu'on y avait bâti est à eux, désormais. »
+  //
+  // `capturer` démontait le camp du joueur **avant** de regarder qui attaquait.
+  // L'Essaim, qui ne gouverne rien, rendait ensuite la place à son ancien
+  // drapeau : le joueur lisait donc sur la carte que sa propre faction venait
+  // de prendre son propre camp.
+  const sa = nouvellePartie(4321, { maintenant: 0, depart: 'ville', equipe: 4 });
+  const ga = groupeActif(sa);
+  const libre = sa.world.regions.find(
+    (r) => r.biome === 'marais' && !sa.world.colonies.some((c) => c.regionId === r.i));
+  ga.regionId = libre.i;
+  for (const k of Object.keys(COUT_FONDATION)) {
+    ga.inventaire[k] = (ga.inventaire[k] || 0) + COUT_FONDATION[k];
+  }
+  fonderBase(sa, () => {}, ga);
+  Object.assign(sa.base.batiments,
+    { halle: 2, hydroponie: 2, baraquement: 3, generateur: 1, mur: 2, entrepot: 3 });
+  sa.base.stock.carburant = 4000;
+  avancer(sa, 1200);
+  const colA = reconnaitreAvantPoste(sa, () => {});
+  ok(colA && colA.avantPoste, 'l’avant-poste est sur les cartes', colA && colA.id);
+
+  const popAvant = Math.round(sa.base.pop);
+  const stockAvant = Math.round(sa.base.stock.rations || 0);
+  ok(popAvant > 0 && stockAvant > 0, 'et il a des gens et des vivres',
+    `${popAvant} habitant(s), ${stockAvant} rations`);
+
+  const journal = [];
+  const logA = (ev) => journal.push(ev.texte);
+  const ctxA = {
+    rng: new Rng(9),
+    perdreAvantPoste: (m) => perdreAvantPoste(sa, logA, m),
+    saccagerAvantPoste: (f) => saccagerAvantPoste(sa, logA, f),
+  };
+  sa.world.armees.push({
+    id: 'aEssaim', faction: 'essaim', regionId: colA.regionId, force: 900, forceMax: 900,
+    cible: colA.id, route: [colA.regionId], etape: 0, progres: 0, etat: 'marche',
+    ravitaillement: 400,
+  });
+
+  // La menace est lisible avant d'arriver : c'est tout ce qui manquait pour
+  // pouvoir rentrer défendre plutôt que de lire l'épitaphe.
+  const vues = menacesSurLaBase(sa);
+  ok(vues.length === 1 && vues[0].faction === 'essaim',
+    'une colonne en marche sur le camp est visible avant qu’elle arrive',
+    JSON.stringify(vues));
+
+  for (let i = 0; i < 900 && sa.world.armees.some((a) => a.id === 'aEssaim'); i++) {
+    tickFactions(sa.world, sa.temps + i, logA, ctxA);
+  }
+  ok(sa.base.fonde, 'le camp est toujours debout : l’Essaim ne prend pas de places');
+  ok(colA.avantPoste, 'et il est toujours à nous sur les cartes');
+  ok(!journal.some((t) => /est tombée/.test(t)),
+    'aucune épitaphe pour un camp qui tient',
+    journal.filter((t) => /tomb/.test(t)).join(' | ') || '(aucune)');
+
+  // Mais un saccage doit coûter : la vérité du camp est dans `state.base`, et
+  // `synchroniserVitrine` réécrit la fiche du monde au tick suivant — abîmer
+  // celle-ci ne coûtait donc rien du tout.
+  const passe = journal.some((t) => /L’Essaim tombe sur/.test(t));
+  ok(passe, 'le passage de l’Essaim est raconté',
+    journal.filter((t) => /Essaim/.test(t)).join(' | ') || '(rien)');
+  if (passe) {
+    ok(Math.round(sa.base.pop) < popAvant,
+      'des habitants ont fui', `${popAvant} → ${Math.round(sa.base.pop)}`);
+    ok(Math.round(sa.base.stock.rations || 0) < stockAvant,
+      'et les réserves ont été prises',
+      `${stockAvant} → ${Math.round(sa.base.stock.rations || 0)}`);
+  }
+}
+
+section('9 septvicies. Refonder, c’est repartir de rien');
+{
+  // On perdait un camp, on en refondait un ailleurs, et le second héritait du
+  // dossier du premier : ses habitants, ses postes, sa file de recherche et —
+  // le pire — son `colonieId`, c'est-à-dire l'entrée du monde d'une ville qui
+  // ne nous appartenait plus.
+  const sr = nouvellePartie(8642, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const gr = groupeActif(sr);
+  const place = sr.world.regions.find(
+    (r) => !sr.world.colonies.some((c) => c.regionId === r.i));
+  gr.regionId = place.i;
+  for (const k of Object.keys(COUT_FONDATION)) {
+    gr.inventaire[k] = (gr.inventaire[k] || 0) + COUT_FONDATION[k];
+  }
+  fonderBase(sr, () => {}, gr);
+  sr.base.colonieId = 's999';
+  sr.base.pop = 30;
+  sr.base.postes = { cultivateur: ['x'] };
+  sr.base.fileRech = [{ key: 'cultures', niveau: 1, restant: 10, total: 10 }];
+  sr.base.gaspille = 500;
+
+  perdreAvantPoste(sr, () => {});
+  ok(!sr.base.fonde && sr.base.colonieId === null && sr.base.fileRech.length === 0,
+    'ce qui tombe emporte tout : dossier, postes, recherches',
+    JSON.stringify({ colonieId: sr.base.colonieId, rech: sr.base.fileRech.length }));
+
+  const ailleurs = sr.world.regions.find(
+    (r) => r.i !== place.i && !sr.world.colonies.some((c) => c.regionId === r.i));
+  gr.regionId = ailleurs.i;
+  for (const k of Object.keys(COUT_FONDATION)) {
+    gr.inventaire[k] = (gr.inventaire[k] || 0) + COUT_FONDATION[k];
+  }
+  ok(fonderBase(sr, () => {}, gr).ok, 'on peut refonder ailleurs');
+  ok(sr.base.colonieId === null && (sr.base.pop || 0) === 0
+    && Object.keys(sr.base.postes).length === 0 && sr.base.fileRech.length === 0
+    && (sr.base.gaspille || 0) === 0,
+  'et le nouveau camp ne traîne rien de l’ancien',
+  JSON.stringify({
+    colonieId: sr.base.colonieId, pop: sr.base.pop,
+    postes: Object.keys(sr.base.postes).length, rech: sr.base.fileRech.length,
+    gaspille: sr.base.gaspille,
+  }));
 }
 
 section('10. Rattrapage hors ligne');

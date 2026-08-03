@@ -608,6 +608,20 @@ export function fonderBase(state, log, groupe) {
   base.regionId = g.regionId;
   base.batiments = {};
   base.defense = 10;
+  // On refonde à neuf. La première version ne remettait à zéro que les
+  // bâtiments : un second camp héritait des habitants du premier, de ses
+  // postes, de son entrepôt et — le pire — de son `colonieId`, c'est-à-dire du
+  // dossier d'une ville qui appartenait à quelqu'un d'autre ou n'était plus
+  // qu'un tas de pierres. Ce qu'on avait ne se transporte pas.
+  base.colonieId = null;
+  base.file = [];
+  base.fileRech = [];
+  base.postes = {};
+  base.pop = 0;
+  base.gaspille = 0;
+  base.derniereAttaque = -999;
+  base.majVitrine = -999;
+  base.majEmploi = -999;
   log({ type: 'base', texte: `Avant-poste fondé. Ici, au moins, c’est chez nous.`, regionId: base.regionId });
   return { ok: true };
 }
@@ -1303,7 +1317,7 @@ export function visiteMarchand(state, rng, log) {
  * prennent ce qu'il y a et s'installent. Il vous reste votre escouade, et de
  * quoi recommencer ailleurs — c'est très exactement ce que ce jeu raconte.
  */
-export function perdreAvantPoste(state, log) {
+export function perdreAvantPoste(state, log, motif) {
   const base = state.base;
   if (!base.fonde) return;
   const nom = base.nom;
@@ -1313,18 +1327,95 @@ export function perdreAvantPoste(state, log) {
   base.regionId = null;
   base.batiments = {};
   base.file = [];
+  // Ce que la première version oubliait, et qui restait accroché au camp
+  // suivant : la file de recherche d'un laboratoire qui n'existe plus, et les
+  // débris comptables d'un entrepôt qui n'est plus à nous.
+  base.fileRech = [];
   base.postes = {};
   base.pop = 0;
+  base.defense = 0;
+  base.gaspille = 0;
+  base.derniereAttaque = -999;
+  base.majVitrine = -999;
+  base.majEmploi = -999;
   for (const k of COMMODITY_KEYS) base.stock[k] = 0;
   if (log) {
     log({
       type: 'base',
-      texte: `${nom} est tombée. Ce qu’on y avait bâti est à eux, désormais. `
-        + `Il reste l’escouade, et de la place ailleurs.`,
+      texte: motif
+        || `${nom} est tombée. Ce qu’on y avait bâti est à eux, désormais. `
+          + `Il reste l’escouade, et de la place ailleurs.`,
       regionId: reg,
       important: true,
     });
   }
+}
+
+/**
+ * L'Essaim est passé. Il ne gouverne pas, il saigne.
+ *
+ * La vérité d'un avant-poste est dans `state.base`, pas dans son entrée du
+ * monde : saccager la seconde ne coûtait rien, puisque `synchroniserVitrine`
+ * réécrit la population et la défense au tick suivant à partir de la première.
+ * Un raid de l'Essaim sur le camp du joueur était donc, à la lettre, gratuit.
+ */
+export function saccagerAvantPoste(state, log, force) {
+  const base = state.base;
+  if (!base.fonde) return;
+  let pris = 0;
+  for (const k of COMMODITY_KEYS) {
+    const perdu = Math.round((base.stock[k] || 0) * 0.35);
+    base.stock[k] = Math.max(0, (base.stock[k] || 0) - perdu);
+    pris += perdu;
+  }
+  const avant = Math.round(base.pop || 0);
+  base.pop = Math.max(0, Math.round((base.pop || 0) * 0.8));
+  base.defense = Math.round((base.defense || 0) * 0.6);
+  base.derniereAttaque = state.temps;
+  const partis = avant - Math.round(base.pop);
+  if (log) {
+    log({
+      type: 'raid',
+      texte: `L’Essaim tombe sur ${base.nom} : ${force} bêtes, `
+        + `${pris} unités emportées${partis > 0 ? ` et ${partis} habitant(s) en fuite` : ''}. `
+        + `Les murs tiennent. Ils reviendront.`,
+      regionId: base.regionId,
+      important: true,
+    });
+  }
+}
+
+/**
+ * Les colonnes qui marchent sur votre avant-poste, et où elles en sont.
+ *
+ * Une colonne se lève à l'autre bout de la carte, marche pendant des centaines
+ * d'heures, arrive, et prend la place. Tout cela était écrit au journal — « X
+ * lève une colonne en direction de Manase » — au milieu de quatre cents autres
+ * lignes, sans être marqué comme important, et jamais rappelé ensuite. On
+ * perdait un camp de trente-cinq âmes sans avoir rien vu venir, et le seul
+ * message qui restait était son épitaphe.
+ *
+ * Ici on ne lit pas un journal : on regarde qui marche, maintenant, et à
+ * combien de cases. C'est la seule information qui permette de choisir entre
+ * rentrer défendre, monter un mur, ou accepter de perdre la place.
+ */
+export function menacesSurLaBase(state) {
+  const base = state.base;
+  if (!base.fonde) return [];
+  const out = [];
+  for (const a of state.world.armees || []) {
+    if (a.cible !== base.colonieId) continue;
+    // Ce qu'il lui reste à parcourir, en cases, d'après sa propre route.
+    const reste = Math.max(0, (a.route ? a.route.length : 0) - (a.etape || 0));
+    out.push({
+      faction: a.faction,
+      force: a.force,
+      cases: reste,
+      regionId: a.regionId,
+      etat: a.etat,
+    });
+  }
+  return out.sort((x, y) => x.cases - y.cases);
 }
 
 /** Ce que valent, l'arme à la main, les gens présents à l'avant-poste. */

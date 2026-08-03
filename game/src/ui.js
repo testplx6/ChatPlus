@@ -26,7 +26,7 @@ import {
   tempsRecherche, capaciteStock, totalStock, energie, lancerConstruction, POP_RECONNUE,
   peutReconnaitre, peutRattacher,
   lancerRecherche, annulerConstruction, fonderBase, deposer, retirer,
-  COUT_FONDATION, manquePour, apportBatiment, chaineAutonomie,
+  COUT_FONDATION, manquePour, apportBatiment, chaineAutonomie, menacesSurLaBase,
 } from './base.js';
 import { classement, enGuerre } from './factions.js';
 import { titreDe, lignesDe } from './chronique.js';
@@ -220,14 +220,38 @@ export function rafraichir(force) {
   rendreBarreHaut();
   rendreNav();
 
-  switch (onglet) {
-    case 'carte': ecran.innerHTML = ecranCarte(); break;
-    case 'escouade': ecran.innerHTML = ecranEscouade(); break;
-    case 'base': ecran.innerHTML = ecranBase(); break;
-    case 'contrats': ecran.innerHTML = ecranContrats(); break;
-    case 'monde': ecran.innerHTML = ecranMonde(); break;
-    case 'journal': ecran.innerHTML = ecranJournal(); break;
-    default: ecran.innerHTML = ecranCarte();
+  // Un écran qui plante ne doit pas se contenter de ne rien faire.
+  //
+  // `onglet` était déjà changé, puis le rendu jetait, et l'exception remontait
+  // hors du gestionnaire de clic : la barre de navigation ne bougeait même pas.
+  // Vu de l'écran, appuyer sur BASE n'avait aucun effet — pas un message, pas
+  // une trace, rien à raconter. Une partie entière a été jouée avec un onglet
+  // mort sans qu'on puisse dire pourquoi. Désormais l'écran affiche sa propre
+  // panne, et le reste du jeu continue de tourner.
+  const rendu = {
+    carte: ecranCarte,
+    escouade: ecranEscouade,
+    base: ecranBase,
+    contrats: ecranContrats,
+    monde: ecranMonde,
+    journal: ecranJournal,
+  }[onglet] || ecranCarte;
+  try {
+    ecran.innerHTML = rendu();
+  } catch (err) {
+    ecran.innerHTML = `<section class="panneau urgent">
+      <h2 class="titre">Cet écran n’a pas pu s’afficher</h2>
+      <div class="aide">C’est un défaut du jeu, pas de votre partie : elle continue de
+        tourner et votre sauvegarde n’est pas touchée. Les autres onglets fonctionnent.</div>
+      <div class="sep"></div>
+      <div class="ligne souple"><span class="k">Onglet</span><span class="v">${e(onglet)}</span></div>
+      <div class="aide" style="color:var(--rouge);white-space:pre-wrap">${e(String(
+    (err && err.message) || err))}</div>
+      <div class="aide" style="white-space:pre-wrap;opacity:0.7">${e(String(
+    (err && err.stack) || '').split('\n').slice(0, 4).join('\n'))}</div>
+    </section>`;
+    // Et dans la console, en entier : c'est là qu'on va chercher la cause.
+    if (typeof console !== 'undefined') console.error(`écran « ${onglet} » :`, err);
   }
   ecran.scrollTop = scroll;
 
@@ -835,6 +859,16 @@ function blocSituation() {
   const poids = poidsInventaire(g.inventaire);
   if (cap > 0 && poids > cap * 0.98) {
     bientot.push('sac plein : on laisse du butin sur place');
+  }
+
+  // Une colonne en marche sur votre camp est la seule chose du jeu qu'on peut
+  // perdre entièrement sans avoir joué : elle met des centaines d'heures à
+  // arriver, et l'on n'en était averti que par l'épitaphe.
+  for (const m of menacesSurLaBase(S)) {
+    const t = `${FACTIONS[m.faction].nom} marche sur ${S.base.nom} — ${n(m.force)} hommes, `
+      + `${m.cases <= 0 ? 'ils y sont' : `${m.cases} région${m.cases > 1 ? 's' : ''}`}`;
+    if (m.cases <= 4) urgences.push(`${t}.`);
+    else bientot.push(t);
   }
 
   // Les échéances : ce qui va se retourner contre vous si vous l'oubliez.
@@ -1858,6 +1892,20 @@ function blocChaine() {
   </section>`;
 }
 
+/**
+ * Le nom d'une compétence, sans faire tomber l'écran si la clé est fausse.
+ *
+ * `SKILLS[m.skill].toLowerCase()` a tué l'onglet BASE d'une partie entière : un
+ * métier livré avec `skill: 'survie'`, qui n'est pas une compétence de ce jeu,
+ * et la liste des métiers ne s'affiche qu'à partir du premier habitant — le
+ * joueur pouvait donc ouvrir sa base au premier jour et plus jamais ensuite,
+ * sans le moindre message. Le vrai garde-fou est le test qui vérifie la table ;
+ * celui-ci fait qu'une faute de frappe coûte un mot laid, pas un écran mort.
+ */
+function nomComp(k) {
+  return (SKILLS[k] || String(k)).toLowerCase();
+}
+
 function blocMetiers() {
   const b = S.base;
   const libres = manoeuvres(b);
@@ -1891,8 +1939,8 @@ function blocMetiers() {
       </div>
       <div class="aide">${e(m.effet)}. ${e(m.texte)}</div>
       <div class="aide" ${rd.contremaitre ? 'style="color:var(--cyan)"' : ''}>${rd.contremaitre
-    ? `Contremaître ${e(rd.contremaitre.nom)} — ${e(SKILLS[m.skill].toLowerCase())} ${Math.round(comp(rd.contremaitre, m.skill))}`
-    : `Sans contremaître (${e(SKILLS[m.skill].toLowerCase())})`}</div>
+    ? `Contremaître ${e(rd.contremaitre.nom)} — ${e(nomComp(m.skill))} ${Math.round(comp(rd.contremaitre, m.skill))}`
+    : `Sans contremaître (${e(nomComp(m.skill))})`}</div>
       <div class="taches" style="margin-top:5px">
         <button class="act mini" data-a="poste" data-k="${k}" data-n="-1" ${n0 <= 0 ? 'disabled' : ''}>−</button>
         <button class="act mini" data-a="poste" data-k="${k}" data-n="1"
@@ -2002,6 +2050,19 @@ function ecranBase() {
   const stock = totalStock(b);
   const capa = capaciteStock(b);
 
+  // Ce qui marche sur vous, en tête d'écran et pas au fond du journal.
+  const menaces = menacesSurLaBase(S);
+  const menaceHtml = menaces.length ? `<section class="panneau urgent">
+    <h2 class="titre">On marche sur ${e(b.nom)}
+      <span class="droite alerte">${menaces.length}</span></h2>
+    ${menaces.map((m) => `<div class="ligne"><span class="k"
+      style="color:${couleurFaction(m.faction)}">${e(FACTIONS[m.faction].nom)}</span>
+      <span class="v ${m.cases <= 3 ? 'alerte' : ''}">${n(m.force)} hommes · ${
+  m.cases <= 0 ? 'ils y sont' : `${m.cases} région${m.cases > 1 ? 's' : ''}`}</span></div>`).join('')}
+    <div class="aide">Votre défense tient à ${n(Math.round(b.defense))}. Un mur, des habitants,
+      et l’escouade sur place comptent ; ce qui est ailleurs ne compte pas.</div>
+  </section>` : '';
+
   const fileHtml = b.file.length ? b.file.map((it, i) => `
     <div style="margin-bottom:6px">
       <div class="ligne"><span class="k">${e(BUILDINGS[it.key].nom)} → niv. ${it.niveau}</span>
@@ -2070,6 +2131,7 @@ function ecranBase() {
     <span class="k">${e(COMMODITIES[k].nom)}</span><span class="v">${n(b.stock[k] || 0)}</span></div>`).join('');
 
   return `
+  ${menaceHtml}
   <section class="panneau">
     <h2 class="titre">${e(b.nom)} <span class="droite">${e(lieuAvecCoord(S.world, b.regionId))}</span></h2>
     <div class="grille2">
@@ -2939,7 +3001,27 @@ function ecranMonde() {
   }).join('') : '<div class="aide">Aucune caravane sur les routes. Mauvais signe.</div>'}
   </section>
 
-  <section class="panneau"><h2 class="titre">Rapport de puissance</h2>${factionsHtml}</section>
+  <section class="panneau"><h2 class="titre">Rapport de puissance</h2>${factionsHtml}
+    ${(() => {
+    // Le septième drapeau n'est pas dans le classement — il ne gouverne rien,
+    // ne négocie rien et n'a pas de trésor —, si bien qu'il n'était nulle part.
+    // On croisait ses bandes, on lisait son nom dans le journal quand il
+    // saccageait une ville, et rien ne disait ce que c'était. Un joueur a fait
+    // une partie entière sans le savoir.
+    const vu = S.world.armees.some((a) => a.faction === 'essaim')
+      || S.world.regions.some((r) => r.decouvert && r.controle === 'essaim')
+      || S.journal.some((x) => (x.texte || '').includes('Essaim'));
+    if (!vu) return '';
+    return `<div class="sep"></div>
+      <div class="ligne"><span class="k" style="color:${couleurFaction('essaim')}">${
+  e(FACTIONS.essaim.nom)}</span><span class="v">hors classement</span></div>
+      <div class="aide">Ce ne sont pas des gens. Ils ne tiennent rien, ne votent rien,
+        n’acceptent ni contrat ni parole donnée, et l’on n’entre pas à leur service.
+        Leurs bandes descendent sur une place, prennent ce qu’il y a et repartent :
+        une ville saccagée par eux reste à qui elle était. Il n’y a pas de paix à
+        signer avec eux — seulement des murs, ou de la distance.</div>`;
+  })()}
+  </section>
   <section class="panneau"><h2 class="titre">Chiffres</h2>
     ${chiffres.map(([k, v]) => `<div class="ligne"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('')}
   </section>

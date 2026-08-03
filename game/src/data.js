@@ -916,7 +916,7 @@ export const METIERS = {
   },
   bassinier: {
     nom: 'Bassinier', batiment: 'bassins', parNiveau: 3, apport: 0.14,
-    skill: 'survie', effet: 'Biomasse tirée des bassins',
+    skill: 'ingenierie', effet: 'Biomasse tirée des bassins',
     texte: 'Écumer, brasser, retirer ce qui vire. Une eau qu’on laisse tranquille meurt.',
   },
   fondeur: {

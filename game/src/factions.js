@@ -120,7 +120,18 @@ function leverArmee(world, key, force, depuis, cibleId, log) {
   };
   world.armees.push(a);
   f.tresor -= coutArmee(force);
-  log({
+  // Quand c'est chez vous qu'ils vont, ce n'est plus une nouvelle du monde,
+  // c'est un préavis. La ligne était noyée parmi quatre cents autres et n'était
+  // même pas marquée importante : on apprenait la colonne en lisant l'épitaphe
+  // de son propre camp.
+  log(col.avantPoste ? {
+    type: 'armee',
+    texte: `${FACTIONS[key].nom} lève${FACTIONS[key].pluriel ? 'nt' : ''} une colonne de ${force} `
+      + `hommes et la lance sur ${col.nom}. C’est chez vous qu’ils vont.`,
+    factions: [key],
+    regionId: depuis,
+    important: true,
+  } : {
     type: 'armee',
     texte: `${FACTIONS[key].nom} lève${FACTIONS[key].pluriel ? 'nt' : ''} une colonne (${force}) en direction de ${col.nom}.`,
     factions: [key],
@@ -135,14 +146,30 @@ function dissoudre(world, armee) {
 }
 
 function capturer(world, armee, col, t, log, ctx) {
-  // L'avant-poste du joueur : sa vérité est dans `state.base`, pas ici. On
-  // prévient l'appelant, qui sait démonter le camp.
-  if (col.avantPoste) {
-    col.avantPoste = false;
-    if (ctx && ctx.perdreAvantPoste) ctx.perdreAvantPoste();
-  }
   const ancien = col.faction;
   const nouveau = armee.faction;
+
+  // L'avant-poste du joueur : sa vérité est dans `state.base`, pas ici. On
+  // prévient l'appelant, qui sait démonter le camp.
+  //
+  // Mais l'Essaim ne prend rien : il saigne une place et repart, et le message
+  // qui suit dit lui-même « la ville tient, à peine ». La première version
+  // démontait pourtant le camp du joueur avant même de regarder qui attaquait —
+  // deux lignes à la même heure dans le journal, « L'Essaim saccage Avant-poste.
+  // La ville tient, à peine. » puis « Avant-poste est tombée. » Et comme
+  // l'Essaim rend ensuite la place à son ancien drapeau, on lisait sur la carte
+  // que sa propre faction venait de prendre son propre camp.
+  if (col.avantPoste && nouveau !== 'essaim') {
+    col.avantPoste = false;
+    // « est tombée » ne disait ni devant qui, ni combien ils étaient. On perd
+    // sa place ; on a le droit de savoir devant quoi.
+    if (ctx && ctx.perdreAvantPoste) {
+      ctx.perdreAvantPoste(`${col.nom} est tombée : ${FACTIONS[armee.faction].nom} `
+        + `${FACTIONS[armee.faction].pluriel ? 'y sont entrés' : 'y est entré'} `
+        + `avec ${armee.force} hommes. Ce qu’on y avait bâti est à eux, désormais. `
+        + `Il reste l’escouade, et de la place ailleurs.`);
+    }
+  }
   if (ancien && world.factions[ancien]) {
     const fa = world.factions[ancien];
     fa.colonies = fa.colonies.filter((c) => c !== col.id);
@@ -159,12 +186,19 @@ function capturer(world, armee, col, t, log, ctx) {
     if (ancien && world.factions[ancien] && !world.factions[ancien].colonies.includes(col.id)) {
       world.factions[ancien].colonies.push(col.id);
     }
-    log({
-      type: 'raid',
-      texte: `L’Essaim saccage ${col.nom}. La ville tient, à peine.`,
-      regionId: col.regionId,
-      factions: [ancien].filter(Boolean),
-    });
+    // Chez le joueur, le saccage doit mordre là où sont les vraies réserves :
+    // `synchroniserVitrine` réécrit population et défense au tick suivant, si
+    // bien qu'abîmer la fiche du monde ne coûtait rien.
+    if (col.avantPoste && ctx && ctx.saccagerAvantPoste) {
+      ctx.saccagerAvantPoste(armee.force);
+    } else {
+      log({
+        type: 'raid',
+        texte: `L’Essaim saccage ${col.nom}. La ville tient, à peine.`,
+        regionId: col.regionId,
+        factions: [ancien].filter(Boolean),
+      });
+    }
   } else {
     col.faction = nouveau;
     world.factions[nouveau].colonies.push(col.id);

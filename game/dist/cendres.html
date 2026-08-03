@@ -1647,7 +1647,7 @@ const METIERS = {
   },
   bassinier: {
     nom: 'Bassinier', batiment: 'bassins', parNiveau: 3, apport: 0.14,
-    skill: 'survie', effet: 'Biomasse tirée des bassins',
+    skill: 'ingenierie', effet: 'Biomasse tirée des bassins',
     texte: 'Écumer, brasser, retirer ce qui vire. Une eau qu’on laisse tranquille meurt.',
   },
   fondeur: {
@@ -8215,7 +8215,18 @@ function leverArmee(world, key, force, depuis, cibleId, log) {
   };
   world.armees.push(a);
   f.tresor -= coutArmee(force);
-  log({
+  // Quand c'est chez vous qu'ils vont, ce n'est plus une nouvelle du monde,
+  // c'est un préavis. La ligne était noyée parmi quatre cents autres et n'était
+  // même pas marquée importante : on apprenait la colonne en lisant l'épitaphe
+  // de son propre camp.
+  log(col.avantPoste ? {
+    type: 'armee',
+    texte: `${FACTIONS[key].nom} lève${FACTIONS[key].pluriel ? 'nt' : ''} une colonne de ${force} `
+      + `hommes et la lance sur ${col.nom}. C’est chez vous qu’ils vont.`,
+    factions: [key],
+    regionId: depuis,
+    important: true,
+  } : {
     type: 'armee',
     texte: `${FACTIONS[key].nom} lève${FACTIONS[key].pluriel ? 'nt' : ''} une colonne (${force}) en direction de ${col.nom}.`,
     factions: [key],
@@ -8230,14 +8241,30 @@ function dissoudre(world, armee) {
 }
 
 function capturer(world, armee, col, t, log, ctx) {
-  // L'avant-poste du joueur : sa vérité est dans `state.base`, pas ici. On
-  // prévient l'appelant, qui sait démonter le camp.
-  if (col.avantPoste) {
-    col.avantPoste = false;
-    if (ctx && ctx.perdreAvantPoste) ctx.perdreAvantPoste();
-  }
   const ancien = col.faction;
   const nouveau = armee.faction;
+
+  // L'avant-poste du joueur : sa vérité est dans `state.base`, pas ici. On
+  // prévient l'appelant, qui sait démonter le camp.
+  //
+  // Mais l'Essaim ne prend rien : il saigne une place et repart, et le message
+  // qui suit dit lui-même « la ville tient, à peine ». La première version
+  // démontait pourtant le camp du joueur avant même de regarder qui attaquait —
+  // deux lignes à la même heure dans le journal, « L'Essaim saccage Avant-poste.
+  // La ville tient, à peine. » puis « Avant-poste est tombée. » Et comme
+  // l'Essaim rend ensuite la place à son ancien drapeau, on lisait sur la carte
+  // que sa propre faction venait de prendre son propre camp.
+  if (col.avantPoste && nouveau !== 'essaim') {
+    col.avantPoste = false;
+    // « est tombée » ne disait ni devant qui, ni combien ils étaient. On perd
+    // sa place ; on a le droit de savoir devant quoi.
+    if (ctx && ctx.perdreAvantPoste) {
+      ctx.perdreAvantPoste(`${col.nom} est tombée : ${FACTIONS[armee.faction].nom} `
+        + `${FACTIONS[armee.faction].pluriel ? 'y sont entrés' : 'y est entré'} `
+        + `avec ${armee.force} hommes. Ce qu’on y avait bâti est à eux, désormais. `
+        + `Il reste l’escouade, et de la place ailleurs.`);
+    }
+  }
   if (ancien && world.factions[ancien]) {
     const fa = world.factions[ancien];
     fa.colonies = fa.colonies.filter((c) => c !== col.id);
@@ -8254,12 +8281,19 @@ function capturer(world, armee, col, t, log, ctx) {
     if (ancien && world.factions[ancien] && !world.factions[ancien].colonies.includes(col.id)) {
       world.factions[ancien].colonies.push(col.id);
     }
-    log({
-      type: 'raid',
-      texte: `L’Essaim saccage ${col.nom}. La ville tient, à peine.`,
-      regionId: col.regionId,
-      factions: [ancien].filter(Boolean),
-    });
+    // Chez le joueur, le saccage doit mordre là où sont les vraies réserves :
+    // `synchroniserVitrine` réécrit population et défense au tick suivant, si
+    // bien qu'abîmer la fiche du monde ne coûtait rien.
+    if (col.avantPoste && ctx && ctx.saccagerAvantPoste) {
+      ctx.saccagerAvantPoste(armee.force);
+    } else {
+      log({
+        type: 'raid',
+        texte: `L’Essaim saccage ${col.nom}. La ville tient, à peine.`,
+        regionId: col.regionId,
+        factions: [ancien].filter(Boolean),
+      });
+    }
   } else {
     col.faction = nouveau;
     world.factions[nouveau].colonies.push(col.id);
@@ -11490,6 +11524,20 @@ function fonderBase(state, log, groupe) {
   base.regionId = g.regionId;
   base.batiments = {};
   base.defense = 10;
+  // On refonde à neuf. La première version ne remettait à zéro que les
+  // bâtiments : un second camp héritait des habitants du premier, de ses
+  // postes, de son entrepôt et — le pire — de son `colonieId`, c'est-à-dire du
+  // dossier d'une ville qui appartenait à quelqu'un d'autre ou n'était plus
+  // qu'un tas de pierres. Ce qu'on avait ne se transporte pas.
+  base.colonieId = null;
+  base.file = [];
+  base.fileRech = [];
+  base.postes = {};
+  base.pop = 0;
+  base.gaspille = 0;
+  base.derniereAttaque = -999;
+  base.majVitrine = -999;
+  base.majEmploi = -999;
   log({ type: 'base', texte: `Avant-poste fondé. Ici, au moins, c’est chez nous.`, regionId: base.regionId });
   return { ok: true };
 }
@@ -12185,7 +12233,7 @@ function visiteMarchand(state, rng, log) {
  * prennent ce qu'il y a et s'installent. Il vous reste votre escouade, et de
  * quoi recommencer ailleurs — c'est très exactement ce que ce jeu raconte.
  */
-function perdreAvantPoste(state, log) {
+function perdreAvantPoste(state, log, motif) {
   const base = state.base;
   if (!base.fonde) return;
   const nom = base.nom;
@@ -12195,18 +12243,95 @@ function perdreAvantPoste(state, log) {
   base.regionId = null;
   base.batiments = {};
   base.file = [];
+  // Ce que la première version oubliait, et qui restait accroché au camp
+  // suivant : la file de recherche d'un laboratoire qui n'existe plus, et les
+  // débris comptables d'un entrepôt qui n'est plus à nous.
+  base.fileRech = [];
   base.postes = {};
   base.pop = 0;
+  base.defense = 0;
+  base.gaspille = 0;
+  base.derniereAttaque = -999;
+  base.majVitrine = -999;
+  base.majEmploi = -999;
   for (const k of COMMODITY_KEYS) base.stock[k] = 0;
   if (log) {
     log({
       type: 'base',
-      texte: `${nom} est tombée. Ce qu’on y avait bâti est à eux, désormais. `
-        + `Il reste l’escouade, et de la place ailleurs.`,
+      texte: motif
+        || `${nom} est tombée. Ce qu’on y avait bâti est à eux, désormais. `
+          + `Il reste l’escouade, et de la place ailleurs.`,
       regionId: reg,
       important: true,
     });
   }
+}
+
+/**
+ * L'Essaim est passé. Il ne gouverne pas, il saigne.
+ *
+ * La vérité d'un avant-poste est dans `state.base`, pas dans son entrée du
+ * monde : saccager la seconde ne coûtait rien, puisque `synchroniserVitrine`
+ * réécrit la population et la défense au tick suivant à partir de la première.
+ * Un raid de l'Essaim sur le camp du joueur était donc, à la lettre, gratuit.
+ */
+function saccagerAvantPoste(state, log, force) {
+  const base = state.base;
+  if (!base.fonde) return;
+  let pris = 0;
+  for (const k of COMMODITY_KEYS) {
+    const perdu = Math.round((base.stock[k] || 0) * 0.35);
+    base.stock[k] = Math.max(0, (base.stock[k] || 0) - perdu);
+    pris += perdu;
+  }
+  const avant = Math.round(base.pop || 0);
+  base.pop = Math.max(0, Math.round((base.pop || 0) * 0.8));
+  base.defense = Math.round((base.defense || 0) * 0.6);
+  base.derniereAttaque = state.temps;
+  const partis = avant - Math.round(base.pop);
+  if (log) {
+    log({
+      type: 'raid',
+      texte: `L’Essaim tombe sur ${base.nom} : ${force} bêtes, `
+        + `${pris} unités emportées${partis > 0 ? ` et ${partis} habitant(s) en fuite` : ''}. `
+        + `Les murs tiennent. Ils reviendront.`,
+      regionId: base.regionId,
+      important: true,
+    });
+  }
+}
+
+/**
+ * Les colonnes qui marchent sur votre avant-poste, et où elles en sont.
+ *
+ * Une colonne se lève à l'autre bout de la carte, marche pendant des centaines
+ * d'heures, arrive, et prend la place. Tout cela était écrit au journal — « X
+ * lève une colonne en direction de Manase » — au milieu de quatre cents autres
+ * lignes, sans être marqué comme important, et jamais rappelé ensuite. On
+ * perdait un camp de trente-cinq âmes sans avoir rien vu venir, et le seul
+ * message qui restait était son épitaphe.
+ *
+ * Ici on ne lit pas un journal : on regarde qui marche, maintenant, et à
+ * combien de cases. C'est la seule information qui permette de choisir entre
+ * rentrer défendre, monter un mur, ou accepter de perdre la place.
+ */
+function menacesSurLaBase(state) {
+  const base = state.base;
+  if (!base.fonde) return [];
+  const out = [];
+  for (const a of state.world.armees || []) {
+    if (a.cible !== base.colonieId) continue;
+    // Ce qu'il lui reste à parcourir, en cases, d'après sa propre route.
+    const reste = Math.max(0, (a.route ? a.route.length : 0) - (a.etape || 0));
+    out.push({
+      faction: a.faction,
+      force: a.force,
+      cases: reste,
+      regionId: a.regionId,
+      etat: a.etat,
+    });
+  }
+  return out.sort((x, y) => x.cases - y.cases);
 }
 
 /** Ce que valent, l'arme à la main, les gens présents à l'avant-poste. */
@@ -15690,7 +15815,8 @@ function tick(state) {
   if (state.absent) ctx.absent = true;
   // Ce qu'il faut faire si une colonne prend l'avant-poste du joueur : le
   // monde ne connaît que sa vitrine, il ne saurait pas démonter le camp.
-  ctx.perdreAvantPoste = () => perdreAvantPoste(state, log);
+  ctx.perdreAvantPoste = (motif) => perdreAvantPoste(state, log, motif);
+  ctx.saccagerAvantPoste = (force) => saccagerAvantPoste(state, log, force);
   // Qui a une raison de venir prendre votre ville : ceux qui vous détestent, et
   // ceux à qui vous faites la guerre en portant d'autres couleurs. Les autres
   // savent qu'elle a un propriétaire et regardent ailleurs.
@@ -15826,13 +15952,26 @@ function tick(state) {
         important: true,
       });
     } else if (ev.evenement === 'effondrement') {
+      // L'avant-poste du joueur est une colonie comme les autres pour ce
+      // tick-ci, et il mourait donc comme les autres — sauf que personne ne
+      // démontait `state.base`. On gardait un camp « fondé » assis sur une
+      // ruine : les chaînes tournaient, l'entrepôt existait, et il devenait
+      // impossible d'en refonder un ailleurs puisque celui-là existait encore.
+      const sien = col.avantPoste && state.base.colonieId === col.id;
       const ancienne = effondrer(state.world, col);
-      log({
-        type: 'effondrement',
-        texte: `${col.nom} est abandonnée${ancienne ? ` par ${FACTIONS[ancienne].nom}` : ''}. Il n’en reste que des ruines.`,
-        regionId: col.regionId,
-        important: true,
-      });
+      if (sien) {
+        col.avantPoste = false;
+        perdreAvantPoste(state, log,
+          `${col.nom} s’est vidée. Les derniers sont partis sans rien dire, `
+          + `et il ne reste que des murs. Il faudra recommencer ailleurs.`);
+      } else {
+        log({
+          type: 'effondrement',
+          texte: `${col.nom} est abandonnée${ancienne ? ` par ${FACTIONS[ancienne].nom}` : ''}. Il n’en reste que des ruines.`,
+          regionId: col.regionId,
+          important: true,
+        });
+      }
     }
   }
   tickFactions(state.world, state.temps, log, ctx);
@@ -16144,14 +16283,38 @@ function rafraichir(force) {
   rendreBarreHaut();
   rendreNav();
 
-  switch (onglet) {
-    case 'carte': ecran.innerHTML = ecranCarte(); break;
-    case 'escouade': ecran.innerHTML = ecranEscouade(); break;
-    case 'base': ecran.innerHTML = ecranBase(); break;
-    case 'contrats': ecran.innerHTML = ecranContrats(); break;
-    case 'monde': ecran.innerHTML = ecranMonde(); break;
-    case 'journal': ecran.innerHTML = ecranJournal(); break;
-    default: ecran.innerHTML = ecranCarte();
+  // Un écran qui plante ne doit pas se contenter de ne rien faire.
+  //
+  // `onglet` était déjà changé, puis le rendu jetait, et l'exception remontait
+  // hors du gestionnaire de clic : la barre de navigation ne bougeait même pas.
+  // Vu de l'écran, appuyer sur BASE n'avait aucun effet — pas un message, pas
+  // une trace, rien à raconter. Une partie entière a été jouée avec un onglet
+  // mort sans qu'on puisse dire pourquoi. Désormais l'écran affiche sa propre
+  // panne, et le reste du jeu continue de tourner.
+  const rendu = {
+    carte: ecranCarte,
+    escouade: ecranEscouade,
+    base: ecranBase,
+    contrats: ecranContrats,
+    monde: ecranMonde,
+    journal: ecranJournal,
+  }[onglet] || ecranCarte;
+  try {
+    ecran.innerHTML = rendu();
+  } catch (err) {
+    ecran.innerHTML = `<section class="panneau urgent">
+      <h2 class="titre">Cet écran n’a pas pu s’afficher</h2>
+      <div class="aide">C’est un défaut du jeu, pas de votre partie : elle continue de
+        tourner et votre sauvegarde n’est pas touchée. Les autres onglets fonctionnent.</div>
+      <div class="sep"></div>
+      <div class="ligne souple"><span class="k">Onglet</span><span class="v">${e(onglet)}</span></div>
+      <div class="aide" style="color:var(--rouge);white-space:pre-wrap">${e(String(
+    (err && err.message) || err))}</div>
+      <div class="aide" style="white-space:pre-wrap;opacity:0.7">${e(String(
+    (err && err.stack) || '').split('\n').slice(0, 4).join('\n'))}</div>
+    </section>`;
+    // Et dans la console, en entier : c'est là qu'on va chercher la cause.
+    if (typeof console !== 'undefined') console.error(`écran « ${onglet} » :`, err);
   }
   ecran.scrollTop = scroll;
 
@@ -16759,6 +16922,16 @@ function blocSituation() {
   const poids = poidsInventaire(g.inventaire);
   if (cap > 0 && poids > cap * 0.98) {
     bientot.push('sac plein : on laisse du butin sur place');
+  }
+
+  // Une colonne en marche sur votre camp est la seule chose du jeu qu'on peut
+  // perdre entièrement sans avoir joué : elle met des centaines d'heures à
+  // arriver, et l'on n'en était averti que par l'épitaphe.
+  for (const m of menacesSurLaBase(S)) {
+    const t = `${FACTIONS[m.faction].nom} marche sur ${S.base.nom} — ${n(m.force)} hommes, `
+      + `${m.cases <= 0 ? 'ils y sont' : `${m.cases} région${m.cases > 1 ? 's' : ''}`}`;
+    if (m.cases <= 4) urgences.push(`${t}.`);
+    else bientot.push(t);
   }
 
   // Les échéances : ce qui va se retourner contre vous si vous l'oubliez.
@@ -17782,6 +17955,20 @@ function blocChaine() {
   </section>`;
 }
 
+/**
+ * Le nom d'une compétence, sans faire tomber l'écran si la clé est fausse.
+ *
+ * `SKILLS[m.skill].toLowerCase()` a tué l'onglet BASE d'une partie entière : un
+ * métier livré avec `skill: 'survie'`, qui n'est pas une compétence de ce jeu,
+ * et la liste des métiers ne s'affiche qu'à partir du premier habitant — le
+ * joueur pouvait donc ouvrir sa base au premier jour et plus jamais ensuite,
+ * sans le moindre message. Le vrai garde-fou est le test qui vérifie la table ;
+ * celui-ci fait qu'une faute de frappe coûte un mot laid, pas un écran mort.
+ */
+function nomComp(k) {
+  return (SKILLS[k] || String(k)).toLowerCase();
+}
+
 function blocMetiers() {
   const b = S.base;
   const libres = manoeuvres(b);
@@ -17815,8 +18002,8 @@ function blocMetiers() {
       </div>
       <div class="aide">${e(m.effet)}. ${e(m.texte)}</div>
       <div class="aide" ${rd.contremaitre ? 'style="color:var(--cyan)"' : ''}>${rd.contremaitre
-    ? `Contremaître ${e(rd.contremaitre.nom)} — ${e(SKILLS[m.skill].toLowerCase())} ${Math.round(comp(rd.contremaitre, m.skill))}`
-    : `Sans contremaître (${e(SKILLS[m.skill].toLowerCase())})`}</div>
+    ? `Contremaître ${e(rd.contremaitre.nom)} — ${e(nomComp(m.skill))} ${Math.round(comp(rd.contremaitre, m.skill))}`
+    : `Sans contremaître (${e(nomComp(m.skill))})`}</div>
       <div class="taches" style="margin-top:5px">
         <button class="act mini" data-a="poste" data-k="${k}" data-n="-1" ${n0 <= 0 ? 'disabled' : ''}>−</button>
         <button class="act mini" data-a="poste" data-k="${k}" data-n="1"
@@ -17926,6 +18113,19 @@ function ecranBase() {
   const stock = totalStock(b);
   const capa = capaciteStock(b);
 
+  // Ce qui marche sur vous, en tête d'écran et pas au fond du journal.
+  const menaces = menacesSurLaBase(S);
+  const menaceHtml = menaces.length ? `<section class="panneau urgent">
+    <h2 class="titre">On marche sur ${e(b.nom)}
+      <span class="droite alerte">${menaces.length}</span></h2>
+    ${menaces.map((m) => `<div class="ligne"><span class="k"
+      style="color:${couleurFaction(m.faction)}">${e(FACTIONS[m.faction].nom)}</span>
+      <span class="v ${m.cases <= 3 ? 'alerte' : ''}">${n(m.force)} hommes · ${
+  m.cases <= 0 ? 'ils y sont' : `${m.cases} région${m.cases > 1 ? 's' : ''}`}</span></div>`).join('')}
+    <div class="aide">Votre défense tient à ${n(Math.round(b.defense))}. Un mur, des habitants,
+      et l’escouade sur place comptent ; ce qui est ailleurs ne compte pas.</div>
+  </section>` : '';
+
   const fileHtml = b.file.length ? b.file.map((it, i) => `
     <div style="margin-bottom:6px">
       <div class="ligne"><span class="k">${e(BUILDINGS[it.key].nom)} → niv. ${it.niveau}</span>
@@ -17994,6 +18194,7 @@ function ecranBase() {
     <span class="k">${e(COMMODITIES[k].nom)}</span><span class="v">${n(b.stock[k] || 0)}</span></div>`).join('');
 
   return `
+  ${menaceHtml}
   <section class="panneau">
     <h2 class="titre">${e(b.nom)} <span class="droite">${e(lieuAvecCoord(S.world, b.regionId))}</span></h2>
     <div class="grille2">
@@ -18863,7 +19064,27 @@ function ecranMonde() {
   }).join('') : '<div class="aide">Aucune caravane sur les routes. Mauvais signe.</div>'}
   </section>
 
-  <section class="panneau"><h2 class="titre">Rapport de puissance</h2>${factionsHtml}</section>
+  <section class="panneau"><h2 class="titre">Rapport de puissance</h2>${factionsHtml}
+    ${(() => {
+    // Le septième drapeau n'est pas dans le classement — il ne gouverne rien,
+    // ne négocie rien et n'a pas de trésor —, si bien qu'il n'était nulle part.
+    // On croisait ses bandes, on lisait son nom dans le journal quand il
+    // saccageait une ville, et rien ne disait ce que c'était. Un joueur a fait
+    // une partie entière sans le savoir.
+    const vu = S.world.armees.some((a) => a.faction === 'essaim')
+      || S.world.regions.some((r) => r.decouvert && r.controle === 'essaim')
+      || S.journal.some((x) => (x.texte || '').includes('Essaim'));
+    if (!vu) return '';
+    return `<div class="sep"></div>
+      <div class="ligne"><span class="k" style="color:${couleurFaction('essaim')}">${
+  e(FACTIONS.essaim.nom)}</span><span class="v">hors classement</span></div>
+      <div class="aide">Ce ne sont pas des gens. Ils ne tiennent rien, ne votent rien,
+        n’acceptent ni contrat ni parole donnée, et l’on n’entre pas à leur service.
+        Leurs bandes descendent sur une place, prennent ce qu’il y a et repartent :
+        une ville saccagée par eux reste à qui elle était. Il n’y a pas de paix à
+        signer avec eux — seulement des murs, ou de la distance.</div>`;
+  })()}
+  </section>
   <section class="panneau"><h2 class="titre">Chiffres</h2>
     ${chiffres.map(([k, v]) => `<div class="ligne"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('')}
   </section>

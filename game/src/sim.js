@@ -6,7 +6,7 @@ import { Rng } from './rng.js';
 import { FACTIONS, DIPLO_FACTIONS } from './data.js';
 import { genererMonde, decouvrir, colonieParId, nomRegion, distance } from './world.js';
 import { makeCharacter, idDepuisRng, ARCHETYPE_KEYS } from './characters.js';
-import { creerBase, tickBase, perdreAvantPoste } from './base.js';
+import { creerBase, tickBase, perdreAvantPoste, saccagerAvantPoste } from './base.js';
 import {
   tickColonie, etalDe, effondrer, faireSecession, faireRevolte, emploisInitiaux,
 } from './economy.js';
@@ -378,7 +378,8 @@ export function tick(state) {
   if (state.absent) ctx.absent = true;
   // Ce qu'il faut faire si une colonne prend l'avant-poste du joueur : le
   // monde ne connaît que sa vitrine, il ne saurait pas démonter le camp.
-  ctx.perdreAvantPoste = () => perdreAvantPoste(state, log);
+  ctx.perdreAvantPoste = (motif) => perdreAvantPoste(state, log, motif);
+  ctx.saccagerAvantPoste = (force) => saccagerAvantPoste(state, log, force);
   // Qui a une raison de venir prendre votre ville : ceux qui vous détestent, et
   // ceux à qui vous faites la guerre en portant d'autres couleurs. Les autres
   // savent qu'elle a un propriétaire et regardent ailleurs.
@@ -514,13 +515,26 @@ export function tick(state) {
         important: true,
       });
     } else if (ev.evenement === 'effondrement') {
+      // L'avant-poste du joueur est une colonie comme les autres pour ce
+      // tick-ci, et il mourait donc comme les autres — sauf que personne ne
+      // démontait `state.base`. On gardait un camp « fondé » assis sur une
+      // ruine : les chaînes tournaient, l'entrepôt existait, et il devenait
+      // impossible d'en refonder un ailleurs puisque celui-là existait encore.
+      const sien = col.avantPoste && state.base.colonieId === col.id;
       const ancienne = effondrer(state.world, col);
-      log({
-        type: 'effondrement',
-        texte: `${col.nom} est abandonnée${ancienne ? ` par ${FACTIONS[ancienne].nom}` : ''}. Il n’en reste que des ruines.`,
-        regionId: col.regionId,
-        important: true,
-      });
+      if (sien) {
+        col.avantPoste = false;
+        perdreAvantPoste(state, log,
+          `${col.nom} s’est vidée. Les derniers sont partis sans rien dire, `
+          + `et il ne reste que des murs. Il faudra recommencer ailleurs.`);
+      } else {
+        log({
+          type: 'effondrement',
+          texte: `${col.nom} est abandonnée${ancienne ? ` par ${FACTIONS[ancienne].nom}` : ''}. Il n’en reste que des ruines.`,
+          regionId: col.regionId,
+          important: true,
+        });
+      }
     }
   }
   tickFactions(state.world, state.temps, log, ctx);
