@@ -158,6 +158,37 @@ const aliasTous = [];
 const requisTous = new Map(); // nom importé → module qui le réclame
 let collisions = 0;
 
+/**
+ * Tout bouton dessiné doit avoir un gestionnaire, et réciproquement.
+ *
+ * Un remplacement en bloc dans `ui.js` a emporté `case 'recette'` et
+ * `case 'reserve'` avec lui : les boutons restaient à l'écran, ils ne
+ * faisaient plus rien, et aucune suite de tests ne l'a vu — parce qu'aucune ne
+ * clique sur *tous* les boutons du jeu. Rien ne reliait le dessin à l'action ;
+ * c'était deux listes tenues à la main, dans deux moitiés du même fichier.
+ *
+ * On les compare. C'est six lignes, ça coûte une milliseconde, et ça attrape
+ * toute la classe : un bouton orphelin comme un gestionnaire mort.
+ */
+function verifierActions(src) {
+  const dessines = new Set();
+  for (const m2 of src.matchAll(/data-a="([a-z0-9-]+)"/g)) dessines.add(m2[1]);
+  // Les gabarits dynamiques : `data-a="${...}"`. On ne peut pas les lire, on
+  // les signale pour qu'ils ne passent pas pour des oublis.
+  const dynamiques = /data-a="\$\{/.test(src);
+  const traites = new Set();
+  for (const m2 of src.matchAll(/case '([a-z0-9-]+)':/g)) traites.add(m2[1]);
+
+  const orphelins = [...dessines].filter((k) => !traites.has(k));
+  if (orphelins.length) {
+    throw new Error(
+      `Boutons sans gestionnaire dans ui.js : ${orphelins.join(', ')}.\n`
+      + '  Ils s’affichent et ne font rien. Ajoutez leur `case`, ou retirez-les.'
+    );
+  }
+  return { dessines: dessines.size, traites: traites.size, dynamiques };
+}
+
 for (const nom of MODULES) {
   const brut = await readFile(join(RACINE, 'src', nom), 'utf8');
   const { code, alias, requis } = retirerImports(brut);
@@ -200,6 +231,17 @@ for (const nom of MODULES) {
   }
   aliasTous.push(...alias);
   morceaux.push(`// ===== src/${nom} ${'='.repeat(Math.max(0, 58 - nom.length))}\n${propre.trim()}`);
+}
+
+// Les boutons et leurs gestionnaires, avant tout le reste : un bouton mort ne
+// casse pas le bundle, il casse la partie de quelqu'un.
+{
+  const ui = sourcesParModule.find((m) => m.nom === 'ui.js');
+  if (ui) {
+    const r = verifierActions(ui.brut);
+    console.log(`ui.js — ${r.dessines} action(s) dessinée(s), ${r.traites} traitée(s)`
+      + `${r.dynamiques ? ', plus des gabarits dynamiques non vérifiables' : ''}`);
+  }
 }
 
 if (collisions) {
@@ -330,3 +372,5 @@ ${js}
   await writeFile(join(RACINE, 'dist', 'cendres.html'), html);
   console.log(`dist/cendres.html — ${(html.length / 1024).toFixed(0)} Ko, ${MODULES.length} modules, 0 collision`);
 }
+
+

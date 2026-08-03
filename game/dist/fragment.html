@@ -22269,6 +22269,20 @@ function surClic(ev) {
       break;
     }
 
+    case 'recette': {
+      const r = ACTIONS.reglerRecette(el.dataset.k, el.dataset.r);
+      if (!r.ok) messageSauvegardes = r.motif;
+      rafraichir(true);
+      break;
+    }
+
+    case 'reserve': {
+      const r = ACTIONS.reglerReserve(el.dataset.k, Number(el.dataset.n));
+      if (!r.ok) messageSauvegardes = r.motif;
+      rafraichir(true);
+      break;
+    }
+
     case 'terraformer': {
       // La chaîne vide vaut « rien » : une station sans cible ne travaille pas,
       // et c'est un choix qu'on doit pouvoir faire — le carburant sert ailleurs.
