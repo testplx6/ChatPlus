@@ -311,6 +311,35 @@ commande.
 
 ## Blocages
 
+### F1 — `verifier --complet` ne peut pas être vert ici, et ce n'est pas la charge
+
+Mesuré au calme (`loadavg` 0,03) : **166 à 172 µs par tick brut, 187 à 196
+normalisés**, contre un budget de 110. La garde « machine chargée » refuse en
+plus de conclure, parce que l'étalon rend ×1,13 — ce processeur-ci fait la
+boucle arithmétique en 22 ms là où la machine de référence en mettait 25.
+
+Deux choses distinctes, et il faut les tenir séparées :
+
+1. **La dette de vitesse est réelle** : ~170 µs contre 110, quelle que soit la
+   normalisation. Elle appartient au lot F1 et elle est antérieure à ce lot —
+   le lot F0 n'a touché aucun fichier de `src/` (`tools/`, `test/`, les
+   documents, rien d'autre), il ne peut pas l'avoir causée.
+2. **La garde est mal orientée.** Elle a été écrite après un incident où la même
+   révision mesurait 108 puis 160 µs à une heure d'écart ; elle refuse
+   au-dessus de ×1,08, c'est-à-dire quand la machine est *plus rapide* que la
+   référence. Sur une machine réellement chargée l'étalon ralentit et le facteur
+   descend sous 1 — la garde ne s'y déclenche pas. Elle attrape aujourd'hui une
+   machine saine et laisserait passer le cas qu'elle visait.
+
+**Ne pas élargir le seuil pour faire passer la mesure** — c'est exactement ce
+que ce fichier interdit. La garde est à réécrire sur ce qu'elle voulait dire :
+la stabilité entre passes, pas l'écart à une machine de référence disparue.
+C'est du travail de lot F1, avec sa propre mesure.
+
+En attendant, `--complet` est vert sur toutes ses autres étapes : 37 fichiers
+statiques, 37 modules bundlés, 1 044/1 046 tests moteur, **264 vérifications
+navigateur**, **7 gardes du monde**.
+
 ### F0.3 — l'invariant comptable casse à `MONNAIE.inertie = 0,99`
 
 Relevé pendant le balayage de confirmation, 6 graines × 6 000 h : l'écart de
