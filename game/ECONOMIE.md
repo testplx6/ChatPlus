@@ -187,7 +187,46 @@ Deux conséquences immédiates, et elles doivent se voir :
 - tous les détenteurs de cette monnaie perdent, vous compris ;
 - les prix locaux montent, donc la grogne monte (`unrest += k × baisse du cours`).
 
-### 4.4 Retrait
+### 4.4 Le taux directeur
+
+Une banque centrale sans taux directeur n'est pas une banque centrale. Ici il a
+un office précis et pas un seul décoratif : **c'est le prix auquel une faction
+prête à ses villes**, donc c'est lui qui commande la quantité de monnaie qui
+entre en circulation.
+
+C'est une loi, de la même forme que l'impôt, avec ses paliers :
+
+| palier | taux par conseil | ce que ça fait |
+|---|---:|---|
+| accommodant | 1 % | l'argent est bon marché : les villes empruntent, mangent et bâtissent |
+| ordinaire | 2 % | |
+| ferme | 4 % | on rembourse plus qu'on n'emprunte |
+| étouffant | 7 % | on défend la monnaie et on étrangle le pays |
+
+Le dirigeant en fixe un par défaut selon son tempérament ; **vous pouvez le
+changer au grade requis**, et il est affiché en clair sur l'écran de la faction,
+avec sa tendance.
+
+Quatre effets, tous réels, aucun cosmétique :
+
+1. **L'intérêt sur la dette des villes** est ce taux. C'est une recette du
+   trésor qui vient du pays lui-même.
+2. **L'emprunt pour les travaux.** Une ville n'emprunte pour ses murs, son
+   marché ou ses greniers que si le taux est sous `SEUIL_TRAVAUX ≈ 3 %`. Un pays
+   à l'argent cher cesse visiblement de bâtir.
+3. **La prime de confiance sur le cours.** Un taux au-dessus de la moyenne du
+   monde soutient la monnaie :
+   `cours = clamp(gage / masse, 0,05, 4) × (1 + (taux − tauxMoyenMonde) × K)`
+   avec `K` calibré pour qu'un écart de quatre points donne environ +15 %.
+   Monter le taux est donc la seule façon de défendre une monnaie sans rien
+   racheter — et elle se paie en villes qui n'empruntent plus.
+4. **Le rythme des défauts.** Un taux étouffant multiplie les défauts, donc les
+   révoltes, donc les villes qui changent de drapeau.
+
+C'est le dilemme entier d'une banque centrale, en un seul curseur, et il est à
+vous dès que vous êtes assez gradé.
+
+### 4.5 Retrait
 
 Une faction excédentaire peut racheter sa propre monnaie contre des réserves
 étrangères et la brûler : `f.tresor -= n`, `f.masse -= n`, `f.reserve -= n × cours`.
@@ -257,27 +296,66 @@ Un refus est un événement, avec un nom et une ville, pas une règle silencieus
 
 ### 6.2 L'intérêt et le remboursement
 
-Au conseil : `col.dette × TAUX_INTERET` s'ajoute à la dette
-(`TAUX_INTERET ≈ 0,02` par conseil, à calibrer). La remontée du surplus va
-**d'abord** au remboursement, et seulement ensuite au trésor.
+Au conseil : `col.dette × tauxDirecteur(faction créancière)` s'ajoute à la dette.
+La remontée du surplus va **d'abord** au remboursement, et seulement ensuite au
+trésor. L'intérêt encaissé est une recette du trésor du créancier.
 
-### 6.3 Le défaut
+### 6.3 Le créancier
+
+Une dette a un porteur, et ce n'est pas toujours le pays de la ville :
+
+```
+col.dette     : number
+col.creancier : string | null   // clé de faction ; null = pas de dette
+```
+
+Au premier emprunt, le créancier est la faction de la ville. Il peut changer par
+**rachat de dette** : une faction — ou vous, au grade requis — paie au porteur le
+montant de la dette dans une monnaie qu'il accepte, et devient le porteur.
+
+Le rachat est une décision de conseil, prise quand :
+- la ville visée est jugée intéressante (population, position, mine) ;
+- le porteur actuel est jugé faible, ou détesté ;
+- le tempérament s'y prête — le Consortium Hexa achète, la Milice de Cendre
+  méprise ce genre de manœuvre.
+
+Racheter la dette de la ville d'un autre est un acte hostile visible : la
+relation avec le porteur chute de 30, et la nouvelle est journalisée avec son
+nom.
+
+### 6.4 Le défaut
 
 Une ville dont la dette dépasse le plafond depuis plus de `DUREE_DEFAUT`
-conseils fait défaut :
-- la dette est annulée, et la faction perd d'autant (la monnaie disparaît :
-  `f.masse -= dette`, ce qui **renforce** le cours — un défaut est déflationniste,
-  et c'est correct) ;
-- `unrest += 0,25`, et la ville devient candidate à la sécession ou à la révolte
-  par les mécanismes qui existent déjà ;
-- le dirigeant perd du crédit auprès des siens.
+conseils fait défaut. Ce qui arrive alors dépend de qui la tenait :
 
-### 6.4 La décision du joueur
+**Créancier = sa propre faction.** La dette est annulée, la faction perd
+d'autant, et la monnaie disparaît (`f.masse -= dette`) — un défaut est
+déflationniste, et c'est correct. `unrest += 0,25`, la ville devient candidate à
+la révolte ou à la sécession par les mécanismes existants, et le dirigeant perd
+du crédit auprès des siens.
+
+**Créancier = une faction étrangère.** La ville **passe sous son drapeau**. La
+dette est annulée de la même façon. C'est la conquête par l'argent : une autre
+façon de prendre une ville que par les armes, plus lente, plus chère à préparer,
+et qui ne demande pas une seule colonne.
+
+Elle doit coûter ce qu'elle vaut, sinon elle remplace la guerre au lieu de la
+concurrencer :
+- la relation entre les deux factions chute de 45, ce qui suffit souvent à
+  déclarer la guerre ;
+- la ville prise garde sa grogne et gagne `unrest += 0,2` — on n'aime pas
+  changer de pays sur un relevé de compte ;
+- toutes les factions qui voient faire baissent leur opinion du repreneur de 10.
+  Prendre une ville par la dette une fois est une manœuvre ; en prendre quatre
+  fait de vous un usurier, et le monde le sait.
+
+### 6.5 Les décisions du joueur
 
 Au grade requis, vous pouvez **accorder ou refuser un crédit** à une ville de
-votre faction, et **émettre** pour le financer. Nourrir une ville en faisant
-tomber la monnaie du pays est exactement le genre de décision que ce jeu doit
-poser.
+votre faction, **fixer le taux directeur**, **émettre** pour financer un prêt, et
+**racheter la dette** d'une ville étrangère. Nourrir une ville en faisant tomber
+la monnaie du pays, ou étrangler le pays pour tenir sa monnaie, est exactement le
+genre de décision que ce jeu doit poser.
 
 ---
 
@@ -286,9 +364,20 @@ poser.
 ### 7.1 Le portefeuille
 
 `state.player.credits` devient `state.player.bourse`, un objet
-`{ hexa: 1200, rouilleurs: 340, ... }`. Toute somme affichée l'est dans la
-monnaie concernée, **avec son équivalent en `ac` entre parenthèses**. Le total du
-portefeuille est toujours donné en `ac`.
+`{ hexa: 1200, rouilleurs: 340, ... }`. Vous détenez plusieurs monnaies à la
+fois, et c'est vous qui décidez quoi garder : on conserve la forte, on se
+débarrasse de la faible avant qu'elle tombe.
+
+**Toute somme est affichée dans sa seule monnaie, sans équivalent.** Décision
+prise : chaque pays est un monde, et l'écran reste propre. L'ancien crédit reste
+l'unité de compte *du moteur* — les cotations, le gage, les cours sont calculés
+dedans — mais il n'apparaît nulle part à l'écran sauf au bureau de change, où
+comparer deux monnaies est précisément le sujet.
+
+Ce que ça coûte, et il faut l'assumer : vous ne saurez pas d'un coup d'œil ce que
+vaut votre portefeuille, ni si le prix qu'on vous fait à l'étranger est bon. Il
+faut passer par un bureau de change pour le savoir, ou l'avoir en tête. C'est une
+friction voulue, pas un oubli.
 
 Migration : à l'ouverture d'une vieille sauvegarde, `credits` devient un solde
 dans la monnaie de la faction de la ville la plus proche, converti au cours du
@@ -316,8 +405,10 @@ Elles suivent la table existante de `influence.js` et s'y ajoutent :
 |---|---|---|
 | Ouvrir un bureau de change dans une ville | Capitaine | trésor |
 | Accorder un crédit à une ville | Commandeur | trésor |
+| Fixer le taux directeur | Commandeur | rien, et tout le pays le sent |
 | Battre monnaie | Commandeur | rien, et c'est le problème |
 | Fixer le taux d'imposition | Commandeur | déjà en place |
+| Racheter la dette d'une ville étrangère | Maréchal | trésor, en monnaie acceptée |
 | Retirer de la monnaie | Maréchal | réserve de change |
 
 Le principe déjà validé tient : **le décideur ordonne, c'est exécuté**. Aucune
@@ -332,7 +423,8 @@ pouvez le prendre à votre charge.
 |---|---|
 | `economy.js` | prix locaux, salaires, consommation solvable, caisse, ménages |
 | `monnaie.js` **(nouveau)** | masse, gage, cours, émission, retrait, change, invariant |
-| `credit.js` **(nouveau)** | emprunt, intérêt, remboursement, défaut |
+| `credit.js` **(nouveau)** | emprunt, créancier, intérêt, remboursement, défaut, rachat de dette |
+| `lois.js` | la loi `directeur` et ses quatre paliers, à côté de `impot` |
 | `caravanes.js` | conversion à la livraison, écart de change, solvabilité |
 | `factions.js` | puits du trésor (garnison, solde), décision d'émettre, conseil |
 | `influence.js` | quatre prérogatives de plus |
@@ -352,6 +444,8 @@ Rien qui ne soit pur JSON. Aucune classe, aucune référence circulaire.
 col.caisse    : number   // déjà là
 col.menages   : number   // nouveau
 col.dette     : number   // nouveau
+col.creancier : string | null  // nouveau — clé de faction
+col.defautDepuis : number | null  // nouveau — conseil où le plafond a été franchi
 col.change    : boolean  // nouveau — la ville tient un bureau
 
 f.masse       : number   // nouveau
@@ -359,6 +453,7 @@ f.gage        : number   // nouveau, cache recalculé au conseil
 f.cours       : number   // nouveau, lissé
 f.reserve     : { [faction]: number }  // nouveau, monnaies étrangères
 f.emissions   : number   // nouveau, compteur pour le journal et l'écran
+f.lois.directeur : number  // nouveau, à côté de f.lois.impot
 
 player.bourse : { [faction]: number }  // remplace player.credits
 ```
@@ -372,16 +467,24 @@ doit exiger une nouvelle partie.
 
 Contrainte : téléphone d'abord, texte, français.
 
-- **Le portefeuille** est une ligne repliable : le total en `ac`, et le détail
-  par monnaie quand on l'ouvre.
-- **Tout prix** s'écrit `128 ⌂ (96 ac)`. Le symbole de chaque monnaie est propre
-  à la faction.
-- **L'écran d'une ville** gagne une ligne : `Change — 1 ⌂ = 0,74 ac · écart 8 %`,
-  cliquable si un bureau existe.
-- **L'écran d'une faction** gagne le cours, sa tendance sur les dix derniers
-  conseils, la masse et le nombre d'émissions.
+- **Le portefeuille** est une ligne repliable : la monnaie du lieu où vous êtes
+  en tête, le reste quand on l'ouvre. Pas de total : il n'existe pas d'unité pour
+  l'écrire.
+- **Tout prix** s'écrit dans la seule monnaie du lieu, avec le symbole propre à
+  la faction : `128 ⌂`. Rien entre parenthèses.
+- **L'écran d'une ville** gagne une ligne quand un bureau existe :
+  `Change — 1 ⌂ vaut 1,34 ✶ · écart 8 %`, cliquable. C'est le seul endroit du jeu
+  où deux monnaies se regardent, et l'ancien crédit n'y sert que de pivot.
+- **L'écran d'une faction** gagne le cours et sa tendance sur les dix derniers
+  conseils, la masse, le nombre d'émissions, **et le taux directeur** avec son
+  palier en toutes lettres.
 - **Un bandeau** quand une monnaie que vous détenez perd plus de 10 % : on ne
-  doit jamais découvrir une dévaluation en relisant ses comptes.
+  doit jamais découvrir une dévaluation en relisant ses comptes. C'est le
+  contrepoids du choix d'afficher les prix en monnaie locale seule — sans lui, on
+  se ferait laminer sans jamais rien voir venir.
+- **Une ligne au journal** à chaque émission, chaque changement de taux
+  directeur, chaque rachat de dette et chaque défaut, avec le nom de la ville et
+  celui du repreneur.
 
 ---
 
@@ -422,6 +525,8 @@ Six graines, six mille heures, comparé au témoin `82636d8`.
 | écart entre la monnaie la plus forte et la plus faible | — | ≥ ×2 en fin de partie |
 | monnaies effondrées (cours < 0,4) sur 6 parties | — | ≥ 1 |
 | villes en défaut sur 6 parties | — | 5 à 25 |
+| villes reprises par leur créancier sur 6 parties | — | 2 à 10 — une manœuvre, pas la règle |
+| paliers de taux directeur utilisés par les PNJ | — | les quatre, aucun sous 8 % des conseils |
 | accords commerciaux signés | 0,88/partie | ≥ 2/partie |
 | tick | 72 µs | < 110 µs |
 | tests | 1006/1006 | 1006 + les nouveaux, tous verts |
@@ -442,21 +547,27 @@ trésor (garnison et solde des colonnes). Pas encore de monnaie, pas encore de
 crédit. *Attendu : le trésor médian redescend, les factions redeviennent
 abattables. La population ne remonte pas encore.*
 
-**Lot B — le crédit.** Dette, intérêt, remboursement, refus, défaut. *Attendu :
-la population remonte au-dessus de 130 000 et les villes affamées reviennent
-sous 25 %.*
+**Lot B — le crédit et le taux directeur.** Dette, créancier, intérêt au taux
+directeur, remboursement, refus, défaut. La loi `directeur` et ses quatre
+paliers, posés par le tempérament du dirigeant. *Attendu : la population remonte
+au-dessus de 130 000, les villes affamées reviennent sous 25 %, et les quatre
+paliers de taux sont réellement employés par les PNJ.*
 
-**Lot C — la monnaie.** Masse, gage, cours, émission, retrait, invariant
-comptable. Prix locaux. *Attendu : les cours divergent d'un facteur deux au
-moins, au moins une monnaie s'effondre par lot de six parties.*
+**Lot C — la monnaie.** Masse, gage, cours, prime de confiance du taux
+directeur, émission, retrait, invariant comptable. Prix locaux. *Attendu : les
+cours divergent d'un facteur deux au moins, au moins une monnaie s'effondre par
+lot de six parties.*
 
-**Lot D — le change.** Bureaux, écart, effet des accords, conversion des
-caravanes. *Attendu : les accords commerciaux deviennent rentables et se
-multiplient.*
+**Lot D — le change et la conquête par la dette.** Bureaux, écart, effet des
+accords, conversion des caravanes, rachat de dette et reprise d'une ville par
+son créancier. *Attendu : les accords commerciaux deviennent rentables et se
+multiplient ; entre deux et dix villes changent de drapeau sans qu'une colonne
+soit levée.*
 
-**Lot E — vous.** Portefeuille multi-monnaies, prix affichés, écran du change,
-prérogatives monétaires, bandeau de dévaluation. *Attendu : le banc joue une
-partie complète sans se ruiner par accident.*
+**Lot E — vous.** Portefeuille multi-monnaies, prix en monnaie locale seule,
+écran du change, prérogatives monétaires — taux directeur, émission, crédit,
+rachat de dette —, bandeau de dévaluation. *Attendu : le banc joue une partie
+complète sans se ruiner par accident.*
 
 **Lot F — la perte de vitesse.** Remise du tick sous 110 µs, tests de navigateur,
 README, artefact republié.
@@ -467,9 +578,11 @@ README, artefact republié.
 
 À dire maintenant pour ne pas y revenir :
 
-- pas de marché obligataire, pas de dette entre factions ;
-- pas de taux directeur ni de politique monétaire fine — l'émission est un
-  bouton, pas une courbe ;
+- pas de marché obligataire ; la seule dette qui existe est celle d'une ville, et
+  elle se rachète d'un bloc ou pas du tout ;
+- le taux directeur a quatre paliers, pas une courbe continue, et il n'y a rien
+  d'autre comme instrument monétaire — pas de réserves obligatoires, pas
+  d'opérations d'open market ;
 - pas de spéculation des PNJ sur les monnaies ;
 - pas de salaires indexés ni de spirale prix-salaires ;
 - pas de banques privées ; le prêteur est la faction, et c'est tout ;
@@ -477,25 +590,28 @@ README, artefact republié.
 
 ---
 
-## 16. Ce qui reste à arbitrer
+## 16. Ce qui a été tranché
 
-Quatre questions dont la réponse change le travail.
+| question | décision |
+|---|---|
+| L'ancien crédit affiché à côté des prix ? | **Non.** Monnaie locale seule ; l'ancien crédit ne paraît qu'au bureau de change. Chaque pays est un monde. |
+| Le portefeuille | **Multi-monnaies, change manuel.** On garde la forte, on lâche la faible avant qu'elle tombe. |
+| Battre monnaie | **Prérogative du joueur au grade requis**, en plus des PNJ. |
+| Le défaut d'une ville | **Passage sous la coupe du créancier**, quand le créancier est étranger ; révolte quand c'est son propre pays. La conquête par la dette existe. |
+| Le taux directeur | **Il existe**, en quatre paliers, visible et modifiable au grade requis. Il commande l'intérêt, l'emprunt pour travaux, la prime de confiance du cours et le rythme des défauts. |
 
-1. **L'ancien crédit comme unité de compte affichée partout, ou rien du tout ?**
-   Avec, on lit toujours ce qu'une somme vaut vraiment, au prix d'un chiffre de
-   plus à l'écran. Sans, chaque monnaie est un monde et il faut faire le calcul
-   de tête.
+Restent à calibrer, et rien d'autre : `PART_SALARIALE`, `HORIZON_GAGE`, `K` de la
+prime de confiance, `ECART_BASE`, `PLAFOND_DETTE`, `SEUIL_TRAVAUX`,
+`DUREE_DEFAUT`, et les quatre paliers du taux directeur. Aucun ne sera choisi à
+vue : chacun passe par un balayage mesuré contre les cibles du §13.
 
-2. **Le portefeuille multi-monnaies, ou une conversion automatique à l'entrée
-   d'une ville ?** Multi-monnaies, c'est la version riche : on garde de la
-   monnaie forte, on se débarrasse de la faible avant qu'elle tombe. Automatique,
-   c'est indolore mais on ne joue plus au change, on le subit.
+---
 
-3. **Battre monnaie : réservé aux PNJ, ou prérogative du joueur ?** Prérogative,
-   c'est la décision la plus lourde du jeu et elle est irréversible. Réservé aux
-   PNJ, c'est un événement qu'on subit et qu'on peut anticiper.
+## 17. Ce qui reste ouvert
 
-4. **Le défaut d'une ville : révolte, sécession, ou passage sous la coupe du
-   créancier ?** La troisième option ouvrirait la conquête par la dette, ce qui
-   est une autre façon de prendre une ville que par les armes — et le Consortium
-   Hexa n'attend que ça.
+Une seule chose, et elle attend le lot D : **le rachat de dette peut-il viser
+une ville qui n'a pas encore fait défaut ?** Si oui, une faction riche peut
+acheter d'avance toutes les dettes de son voisin et attendre. Si non, il faut
+qu'une ville soit déjà en difficulté pour qu'on puisse la convoiter, ce qui rend
+la manœuvre plus rare et plus lisible. La mesure du lot D tranchera : si les
+villes reprises dépassent dix par lot de six parties, on ferme.
