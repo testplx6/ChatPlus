@@ -149,6 +149,9 @@ function jouer({ sim, data, eco, eco2 }, graine, horizon) {
     // une étiquette ; un invariant qui dérive est un moteur qui fabrique de
     // l'argent sans le dire.
     cours: data.DIPLO_FACTIONS.map((k) => s.world.factions[k].cours || 1),
+    // Les créances rachetées et les villes prises sans une colonne : sans ces
+    // deux nombres, on ne sait pas si la conquête par l'argent existe.
+    creances: cols.filter((c) => c.cession).length,
     ecart: eco2.auditer(s.world).reduce((a2, x) => a2 + Math.abs(x.ecart), 0),
     // Les paliers de taux directeur qu'on trouve en fin de partie : une loi que
     // personne n'emploie jamais est une loi morte, et ça ne se voit pas
@@ -267,6 +270,7 @@ function agreger(cfg) {
       return v.length ? `${Math.min(...v).toFixed(2)}–${Math.max(...v).toFixed(2)}` : '—';
     })(),
     ecart: Math.round(som(cfg, 'ecart')),
+    creances: som(cfg, 'creances'),
     affamees: `${som(cfg, 'affamees')} (${Math.round(som(cfg, 'affamees') / Math.max(1, som(cfg, 'villes')) * 100)} %)`,
     paliers: [...new Set(cfg.parties.flatMap((p2) => p2.paliers))]
       .sort((a4, b4) => a4 - b4).map((x) => `${Math.round(x * 100)}`).join('/'),
@@ -285,7 +289,7 @@ const COLONNES = [
   ['guerres', 'guerres', 7], ['balance', 'prod/cons', 9],
   ['masse', 'masse', 9], ['ou', 'caisses/ménages/trésors', 22],
   ['endettees', 'endettées', 9], ['affamees', 'affamées', 11],
-  ['cours', 'cours', 11], ['ecart', 'écart', 6],
+  ['cours', 'cours', 11], ['ecart', 'écart', 6], ['creances', 'créances', 9],
   ['paliers', 'taux %', 12],
   ['usParTick', 'µs/tick', 7],
 ];

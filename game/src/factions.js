@@ -16,7 +16,9 @@ import {
 import {
   effondrer, emploisInitiaux, remonterCaisses, verser, productionColonie,
 } from './economy.js';
-import { tickCredit, veutBatir } from './credit.js';
+import {
+  tickCredit, veutBatir, racheterCreance, valeurNette,
+} from './credit.js';
 import { transferer, transfererVille, annuler, majCours } from './monnaie.js';
 import { pourvoirCharges } from './notables.js';
 import { chemin, colonieParId, distance, voisins, damer } from './world.js';
@@ -35,6 +37,12 @@ import {
  * gonflaient sans fin et plus une seule faction ne s'effondrait — dix sur
  * trente-six auparavant, zéro après. Calibrées au banc.
  */
+/**
+ * Qui achète des créances. Le Consortium et l'Ombrelle traitent, la Milice
+ * méprise ce genre de manœuvre — le tempérament, pas le hasard.
+ */
+export const ACHETEURS = ['rapace', 'methodique', 'batisseur'];
+
 export const ETAT = {
   /** Par point de défense et par heure. */
   parDefense: 0.002,
@@ -573,6 +581,36 @@ function conseil(world, key, t, log, ctx) {
   // Puis les comptes de ses villes : ce qu'elles doivent, ce qu'elles rendent,
   // ce qu'on leur prête encore, et celles qu'on laisse tomber.
   tickCredit(world, key, mesColonies, heures, log);
+
+  // Racheter la créance d'une ville étrangère : une autre façon de prendre une
+  // ville que par les armes. Plus lente, plus chère en argent, et sans une
+  // colonne. Le porteur décide du prix — voir `prixCession` —, et le
+  // tempérament décide si l'on est de ceux qui achètent.
+  const chef = dirigeant(world, key);
+  if (chef && ACHETEURS.includes(chef.temperament) && f.tresor > 4000
+      && rng.chance(0.35 * penchant(world, key, 'expansion'))) {
+    const convoitees = world.colonies.filter(
+      (c) => !c.ruine && c.faction && c.faction !== key && c.dette > 500
+        && c.creancier && c.creancier !== key
+        && mesColonies.some((m) => distance(m.regionId, c.regionId) <= 6));
+    for (const c of convoitees) {
+      // On n'achète pas un boulet : la même valeur nette s'appliquera à nous.
+      if (valeurNette(world, c, key) <= 0) continue;
+      const r = racheterCreance(world, c, key, t);
+      if (r.ok) {
+        log({
+          type: 'bourse',
+          texte: `${FACTIONS[key].nom} rachète${FACTIONS[key].pluriel ? 'nt' : ''} `
+            + `la dette de ${c.nom} pour ${r.prix} cr. `
+            + `${FACTIONS[r.porteur].nom} ${FACTIONS[r.porteur].pluriel ? 'ont cédé' : 'a cédé'}.`,
+          regionId: c.regionId,
+          factions: [key, r.porteur],
+          important: true,
+        });
+        break;
+      }
+    }
+  }
 
   // Et le cours de sa monnaie, gagé sur un mois de la production du pays.
   // Prendre des villes renforce une monnaie, en perdre l'affaiblit, en imprimer

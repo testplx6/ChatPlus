@@ -139,6 +139,69 @@ export function majCours(world, key, valeurProduction) {
 }
 
 /**
+ * Les réglages du change. `ecartBase` est le prix de la commodité : ce qu'un
+ * bureau prend pour convertir. Il se divise par deux entre deux pays liés par
+ * un accord commercial — et c'est là, enfin, que la bourse paie. Sur les
+ * volumes que déplacent les caravanes, six points d'écart séparent un négoce
+ * rentable d'un négoce qui ne l'est pas.
+ */
+export const CHANGE = {
+  ecartBase: 0.12,
+  /** Ce qu'un accord commercial retranche de l'écart. */
+  remiseAccord: 0.5,
+  /** Ce qu'une grande place retranche : on change mieux dans une vraie ville. */
+  remiseTaille: 0.25,
+  /** Et ce que vaut d'être bien vu ici. */
+  remiseEstime: 0.30,
+};
+
+/**
+ * Le taux entre deux monnaies : ce que vaut l'une dans l'autre. Rien de plus
+ * qu'un rapport de cours — l'ancien crédit ne sert que de pivot, et c'est pour
+ * ça qu'il n'apparaît nulle part ailleurs qu'au bureau de change.
+ */
+export function taux(world, de, vers) {
+  return coursMonnaie(world, de) / Math.max(0.001, coursMonnaie(world, vers));
+}
+
+/**
+ * L'écart que prend le bureau. Une ville sans drapeau n'en prend aucun : c'est
+ * l'avantage d'un endroit sans loi, et ça donne une raison d'y passer.
+ */
+export function ecartChange(world, col, de, vers, estime = 0) {
+  if (!col || !col.faction) return 0;
+  if (de === vers) return 0;
+  const lies = (world.accords || []).some(
+    (a) => (a.a === de && a.b === vers) || (a.a === vers && a.b === de));
+  let e = CHANGE.ecartBase;
+  if (lies) e *= 1 - CHANGE.remiseAccord;
+  e *= 1 - CHANGE.remiseTaille * Math.max(0, Math.min(1, ((col.taille || 1) - 1) / 2));
+  e *= 1 - CHANGE.remiseEstime * Math.max(0, Math.min(1, estime / 100));
+  return e;
+}
+
+/**
+ * Le change, côté registres : des unités disparaissent d'un pays et d'autres
+ * apparaissent dans l'autre, au taux du jour. Ce n'est pas un transfert à
+ * montant égal — c'est précisément ce que « changer » veut dire, et l'écrire
+ * comme un transfert cassait l'invariant de deux mille crédits en deux mille
+ * heures.
+ */
+export function convertirMasse(world, de, vers, sorti, entre) {
+  const a = de && world.factions[de];
+  const b = vers && world.factions[vers];
+  if (a && sorti > 0) a.masse = Math.max(0, (a.masse || 0) - sorti);
+  if (b && entre > 0) b.masse = (b.masse || 0) + entre;
+  return entre;
+}
+
+/** Ce qu'on reçoit en changeant, écart déduit. */
+export function convertir(world, col, de, vers, montant, estime = 0) {
+  if (!(montant > 0)) return 0;
+  return montant * taux(world, de, vers) * (1 - ecartChange(world, col, de, vers, estime));
+}
+
+/**
  * Battre monnaie. La seule façon de créer une unité, et elle se voit : la masse
  * monte, donc le cours baisse au conseil suivant, donc tout le monde qui en
  * détient perd — le joueur compris.

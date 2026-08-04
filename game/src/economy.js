@@ -427,6 +427,12 @@ function valeurCourante(lot) {
 export function verser(world, faction, col, montant) {
   const f = faction && world.factions[faction];
   if (!f || !(montant > 0)) return 0;
+  // On ne paie pas chez le voisin. Une liste de colonies prise en début de
+  // séance peut contenir une ville tombée depuis : le trésor sortait alors
+  // d'un pays et l'argent atterrissait dans l'autre, sans qu'aucun registre ne
+  // bouge. Quatre cents crédits par bataille, et l'invariant comptable dérivait
+  // de 0,45 % en six mille heures.
+  if (col && col.faction && col.faction !== faction) return 0;
   const paye = Math.min(montant, Math.max(0, f.tresor));
   if (paye <= 0) return 0;
   f.tresor -= paye;

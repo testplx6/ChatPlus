@@ -20,7 +20,9 @@ import {
 import { idDepuisRng, estDebout, comp } from './characters.js';
 import { retenirEnVille } from './services.js';
 import { avantage } from './allegeance.js';
-import { transferer } from './monnaie.js';
+import {
+  transferer, convertirMasse, ecartChange, taux,
+} from './monnaie.js';
 
 /**
  * Le plafond du commerce d'opportunité — celui que le hasard tire, par
@@ -573,10 +575,23 @@ function arriver(state, car, log) {
     const de = colonieParId(world, car.deId);
     if (de && vivante(de) && de.id !== vers.id) {
       const regle = debourser(vers, valeurCargaison(car));
-      encaisser(world, de, regle);
-      // D'un pays à l'autre, les unités changent de registre. Au pair pour
-      // l'instant : le cours et son écart viennent au lot D.
-      transferer(world, vers.faction, de.faction, regle);
+      if (vers.faction === de.faction) {
+        encaisser(world, de, regle);
+      } else {
+        // D'un pays à l'autre, on change. Le vendeur reçoit ce que sa monnaie
+        // vaut, l'écart reste à la ville qui tient le bureau — et il est deux
+        // fois moindre si les deux pays ont signé un accord. C'est là que la
+        // bourse paie enfin.
+        // L'écart reste sur place, dans la monnaie du payeur ; le reste part
+        // au change. Les unités sorties et les unités entrées ne sont pas les
+        // mêmes en nombre : c'est le taux, et c'est tout le sujet.
+        const garde = regle * ecartChange(world, vers, vers.faction, de.faction);
+        const change = regle - garde;
+        const recu = change * taux(world, vers.faction, de.faction);
+        convertirMasse(world, vers.faction, de.faction, change, recu);
+        encaisser(world, de, recu);
+        encaisser(world, vers, garde);
+      }
     }
   }
   retirerCaravane(world, car);

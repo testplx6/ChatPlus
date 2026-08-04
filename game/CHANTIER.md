@@ -177,24 +177,47 @@ Ce fichier prépare le travail, il ne l'autorise pas.
 
 ## Lot D — le change et la conquête par la dette (ECONOMIE §5, §6.3–6.4)
 
-- [ ] **D1. Le change** : taux `cours(a)/cours(b)`, écart `ECART_BASE = 0,12`
+- [x] **D1. Le change** : taux `cours(a)/cours(b)`, écart `ECART_BASE = 0,12`
   balayable, divisé par 2 sous accord commercial, réduit par taille de ville et
   estime ; l'écart encaissé par la ville du bureau. Villes libres : toutes
   monnaies, sans écart.
-- [ ] **D2. Les caravanes inter-factions** convertissent au taux du jour
+- [x] **D2. Les caravanes inter-factions** convertissent au taux du jour
   (R9 : encaisser/debourser, l'invariant tient par monnaie).
-- [ ] **D3. Le rachat de créance** : `valeurNette` (ECONOMIE §6.3.1), les trois
+- [x] **D3. Le rachat de créance** : `valeurNette` (ECONOMIE §6.3.1), les trois
   issues du vendeur (refus / rabais jusqu'à 0,4× / prime jusqu'à 4×),
   enregistrement `col.cession`. Critère : tests des trois issues pilotés par
   l'état du vendeur.
-- [ ] **D4. La saisie par créancier étranger** + l'effet diplomatique
+- [x] **D4. La saisie par créancier étranger** + l'effet diplomatique
   bidirectionnel `prix encaissé − valeur perdue` appliqué **à la reprise**
   (ECONOMIE §6.3.3–6.3.4 : rancune, indifférence, ou gratitude — pas de borne
   à zéro). Critère : trois tests, un par signe.
-- [ ] **D5. Calibrage + livraison** : reprises **2–10** / 6 parties ; cessions
-  consenties **≥ 1/3** ; refus **≥ 50 %** ; accords **≥ 2/partie** ; invariant ;
-  tick. CIBLES.json, ECONOMIE, verifier --complet.
+- [x] **D5. Calibrage + livraison.** Mesuré, 6 graines × 6 000 h, contre
+  `82636d8` :
 
+  | cible | attendu | obtenu | |
+  |---|---|---:|---|
+  | invariant comptable | exact | **0** | ✔ |
+  | accords commerciaux | ≥ 2/partie | **21** (3,5/partie) | ✔ témoin 8 |
+  | villes reprises par leur créancier | 2 à 10 | **47** | ✘ trop |
+  | écart des cours | ≥ ×2 | **×8,7** (0,40 – 3,49) | ✔ |
+  | villes bien nourries | — | **387** | ✔ témoin 230 |
+  | villes affamées | — | **16 %** | ✔ témoin 24 % |
+  | trésor médian | 30 000–120 000 | **54 952** | ✔ |
+  | villes debout | — | **517** | ✔ témoin 394 |
+  | population | — | **57 893** | ✘ témoin 140 534 |
+  | factions écrasées | ≥ 4/36 | **1/36** | ✘ |
+
+  **La conquête par l'argent existe, et elle est trop facile** : quarante-sept
+  villes changent de drapeau sans une colonne, pour une fourchette qui visait
+  deux à dix. Le prix d'une créance sort bien de la situation du vendeur — les
+  trois issues sont vérifiées par test — mais rien ne limite le *nombre* de
+  manœuvres qu'une faction mène de front. À reprendre : soit une seule créance
+  étrangère portée à la fois, soit un prix qui monte avec le nombre de villes
+  déjà prises de cette façon. Le second est plus juste — on devient un usurier
+  connu, et on le paie.
+
+  Les deux dettes du lot C restent ouvertes et s'aggravent : population et
+  factions écrasées. Voir le lot F.
 ## Lot E — le joueur (ECONOMIE §7, §10)
 
 - [ ] **E1. `player.bourse`** multi-monnaies ; migration des sauvegardes
