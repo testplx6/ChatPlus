@@ -265,11 +265,39 @@ commande.
 
   | | mesuré |
   |---|---|
-  | leviers recensés | à mesurer |
-  | parties jouées | à mesurer |
-  | levier sur la population | à mesurer |
-  | levier sur le drame | à mesurer |
-  | champs morts | à mesurer |
+  | leviers recensés | **84**, portés par 8 modules sur les 36 lus |
+  | parties jouées | **1 044** (174 configurations × 6 graines × 6 000 h) |
+  | leviers vivants | **57** |
+  | champs morts | **27** |
+  | levier sur le drame | `MONNAIE.inertie`, `CAISSE.partSalariale` |
+  | levier sur la population | `MONNAIE.inertie` — le même |
+
+  **Le drame est commandé par la monnaie, pas par l'armée.** Confirmé au
+  balayage direct, 6 graines × 6 000 h, et pas seulement lu sur la carte :
+
+  | `MONNAIE.inertie` | 0,70 | 0,90 | 0,95 | 0,98 | 0,99 |
+  |---|---:|---:|---:|---:|---:|
+  | factions écrasées | 1/36 | 4/36 | 2/36 | **6/36** | 6/36 |
+  | population | 57 893 | 54 442 | 58 774 | **70 883** | 79 726 |
+  | villes | 517 | 463 | 478 | 440 | 414 |
+  | trésor médian | 54 952 | 45 253 | 33 846 | 28 076 | 14 038 |
+  | écart comptable | 0 | 0 | 0 | 0 | **229** |
+
+  `CAISSE.partSalariale` va dans le même sens : 0,55 → 1/36 et 57 893 hab.,
+  0,77 → **5/36 et 65 476 hab.**
+
+  Les deux cibles que le lot F devait poursuivre séparément — « ≥ 4/36 écrasées »
+  et « la population remonte » — sont **le même levier**, et c'est un levier
+  monétaire. L'inertie du cours est le lissage qui empêche une monnaie de
+  s'effondrer d'un coup ; à 0,7 elle laisse le cours d'un pays qui faiblit
+  tomber au plancher, ce qui renchérit tout chez lui, effondre sa consommation
+  — et le protège d'être achevé. Le pays agonise sans mourir. Plus haut, la
+  monnaie ne fait plus bouclier : les pays faibles tombent pour de bon et le
+  monde nourrit un cinquième d'habitants en plus.
+
+  **`ETAT.parDefense` est confirmé mort sur le drame.** La carte ne lui trouve
+  d'effet que sur la dette et les convois — d'où l'échec du balayage ×10 du lot
+  D, qui cherchait le drame là où il n'est pas.
 
 ### F1 — F3
 
@@ -283,7 +311,38 @@ commande.
 
 ## Blocages
 
-*(aucun en cours)*
+### F0.3 — l'invariant comptable casse à `MONNAIE.inertie = 0,99`
+
+Relevé pendant le balayage de confirmation, 6 graines × 6 000 h : l'écart de
+`auditer()` vaut **0 pour 0,70 / 0,90 / 0,95 / 0,98, et 229 à 0,99**. Il doit
+valoir zéro partout — c'est l'invariant qui dit que le moteur ne fabrique pas
+d'argent en douce, et cinq fuites ont déjà été trouvées par lui pendant les
+lots C et D.
+
+229 sur une masse de 1 579 015, c'est 0,015 % : mince, mais un invariant ne se
+juge pas en proportion. Un cours qui reste collé près de 1 emprunte un chemin
+que les autres réglages n'exercent jamais, et c'est là que ça fuit.
+
+**Ce n'est pas un blocage de F0** — la carte est faite et sa cible est
+atteinte. C'est une dette datée, à instruire par le lot F **avant** de toucher
+à `inertie`, parce que le levier que la carte recommande passe juste à côté de
+ce trou. Ne pas régler `inertie` au-dessus de 0,98 tant que l'écart n'est pas
+expliqué.
+
+### F0.3 — deux familles de leviers dont l'effet surprend
+
+`PALIERS_ITEM.*` (paliers d'objets) et `POIDS_BASE.*` (poids des métiers en
+ville) sortent parmi les leviers vivants, parfois haut : `POIDS_BASE.cantinier`
+est le premier levier du monde sur l'argent des ménages, `PALIERS_ITEM.verrou`
+et `.kevlar` rendent des chiffres identiques à la deuxième décimale sur quatre
+métriques.
+
+L'identité s'explique — les deux valent 2, et ×1,4 les fait franchir le même
+entier —, mais l'ampleur, non. Deux lectures : ces catalogues nourrissent
+vraiment la production et les prix des villes, ou bien leur effet mesuré est du
+chaos que cinq placebos ne suffisent pas à borner. **À trancher par un balayage
+direct avant de s'appuyer dessus**, comme le document le prescrit lui-même pour
+toute trouvaille. Les deux leviers retenus pour le lot F, eux, sont confirmés.
 
 ### A3 — résolu : la demande était un besoin, pas une demande solvable
 

@@ -497,11 +497,22 @@ function ecrireCarte({
     t.push('> et tout ce qui suit se lit comme une hypothèse, pas comme une mesure.');
     t.push('');
   }
-  t.push('| métrique | valeur de référence | plancher de bruit |');
+  t.push('| métrique | référence, par partie | plancher de bruit |');
   t.push('|---|---:|---:|');
   for (const [m, nom] of METRIQUES) {
-    t.push(`| ${nom} | ${Math.round(moyenne(ref, m))} | ${pc(sol[m])} |`);
+    const v = moyenne(ref, m);
+    const ecrit = Math.abs(v) < 10 ? v.toFixed(2).replace('.', ',') : String(Math.round(v));
+    t.push(`| ${nom} | ${ecrit} | ${pc(sol[m])} |`);
   }
+  t.push('');
+  t.push('Les valeurs sont **par partie**, moyennées sur les graines — le banc, lui,');
+  t.push('additionne les six. Une métrique qui vaut moins de 1 par partie se compare en');
+  t.push('unités et non en pour cent : « une faction écrasée de plus » veut dire quelque');
+  t.push('chose, « +500 % de factions écrasées » ne veut rien dire. Les élasticités de ces');
+  t.push('métriques-là sont énormes par construction et ne se lisent pas comme les autres ;');
+  t.push('elles désignent une piste, elles ne la prouvent pas. **Toute trouvaille sur une');
+  t.push('petite métrique se confirme par un balayage direct** (`--balaye`) avant d\'être');
+  t.push('tenue pour acquise.');
   t.push('');
   t.push('Un plancher élevé n\'est pas un défaut de l\'instrument : c\'est une propriété');
   t.push('du monde. Les factions écrasées se comptent sur les doigts d\'une main — une');
