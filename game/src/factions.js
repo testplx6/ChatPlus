@@ -641,13 +641,19 @@ function conseil(world, key, t, log, ctx) {
     // existantes pour ne pas se marcher dessus. Chercher parmi les seules
     // cases adjacentes était contradictoire : elles sont toutes à distance 1
     // d'une colonie, donc aucune ne passait jamais le filtre d'espacement.
+    // Les deux filtres sont indépendants, donc l'ordre est libre — et il n'est
+    // pas gratuit. « À portée de nos terres » ne regarde qu'une quinzaine de
+    // villes et écarte la quasi-totalité des mille quatre cents cases ; « pas
+    // trop près d'une ville » les regarde toutes, cinq cents désormais. Les
+    // prendre dans l'autre sens faisait cinq cent mille appels à `distance` par
+    // séance de conseil pour un résultat identique.
     const candidates = [];
     for (const r of world.regions) {
       if (r.colonie || r.biome === 'relais') continue;
-      const tropPres = world.colonies.some((c) => !c.ruine && distance(c.regionId, r.i) < 2);
-      if (tropPres) continue;
       const aPortee = mesColonies.some((c) => distance(c.regionId, r.i) <= 3);
-      if (aPortee) candidates.push(r);
+      if (!aPortee) continue;
+      const tropPres = world.colonies.some((c) => !c.ruine && distance(c.regionId, r.i) < 2);
+      if (!tropPres) candidates.push(r);
     }
     if (candidates.length) {
       const r = rng.pick(candidates);

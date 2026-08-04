@@ -2793,8 +2793,18 @@ function genererColonies(rng, regions) {
       // Qui la ville tient enfermé. Voir justice.js.
       geole: null,
       marche: 1 + taille * 0.35,
+      // Ce que la ville a en caisse. Une ville n'est pas un entrepôt sans
+      // comptes : elle vend, elle achète, et sa faction prélève sur ce qu'elle
+      // gagne. Voir CAISSE dans economy.js.
+      //
+      // Pas un tirage : la population est déjà tirée, et consommer un nombre
+      // aléatoire de plus ici décale tous ceux d'après. Le monde entier changeait
+      // de forme à graine égale, et huit vérifications assises sur des mondes
+      // connus tombaient d'un coup — sans qu'aucune ne parle d'argent.
+      caisse: 0,
       prises: 0,
     };
+    col.caisse = Math.round(col.pop * 1.2);
     col.defenseMax = Math.round(col.pop * 0.09 + col.murs * 12);
     col.defense = Math.round(col.defenseMax * rng.range(0.6, 1));
     colonies.push(col);
@@ -8124,6 +8134,33 @@ function ligneCours(prix, key) {
 
 
 /**
+ * La caisse d'une ville.
+ *
+ * Avant elle, aucune ville n'avait de crédits : les seules bourses au sens
+ * comptable étaient le trésor des factions et la poche du joueur. Le trésor,
+ * lui, se remplissait à 84 % par une planche à billets — l'arrivée d'une
+ * caravane créditait la faction expéditrice de 35 % de la cargaison, et
+ * *personne* ne payait, la ville destinataire recevant la marchandise pour
+ * rien. Mesuré sur trois parties de six mille heures : 2,17 millions de crédits
+ * créés à partir de rien, un revenu proportionnel au nombre de convois qu'on
+ * fait circuler — donc au nombre de villes — et une carte coupée en deux, une
+ * médiane à 52 000 crédits et un tiers des factions sous 500 pour toujours. Une
+ * faction réduite à une ville ne faisait plus circuler aucun convoi interne :
+ * son revenu tombait à 0,2 crédit par heure et elle ne pouvait plus jamais rien
+ * ordonner — ni bourse, ni garnison, ni grenier.
+ *
+ * Ce qui remplace : une ville gagne ce qu'elle vend, paie ce qu'elle achète, et
+ * sa faction prélève au passage. Le trésor d'une faction est littéralement ce
+ * que ses villes ont gagné.
+ *
+ * `marge` est la part de ce qui se vend sur place qui devient de l'argent, et
+ * non de la marchandise qui change de main. Ce n'est pas la production entière :
+ * une ville ne s'enrichit que de ce qui trouve preneur, d'où le `min(offre,
+ * besoin)` de `revenuInterne`.
+ */
+const CAISSE = { marge: 0.10, parTete: 12 };
+
+/**
  * Ce que coûte de tenir un empire trop grand et trop étalé.
  *
  * La forme d'abord : la tension est un *produit*, pas une somme. Une ville
@@ -8426,6 +8463,120 @@ function consommationColonie(col) {
   };
 }
 
+/**
+ * Ce qu'une ville gagne à faire tourner sa propre économie, par heure.
+ *
+ * Ses habitants achètent à ses producteurs : c'est là que l'argent naît, et
+ * nulle part ailleurs. On ne compte donc que la part de la production qui
+ * répond à un besoin sur place — `min(offre, besoin)`. Le reste est du surplus :
+ * il ne vaut de l'argent que si une caravane l'emporte, et c'est `arriver` qui
+ * le paie alors.
+ *
+ * La grogne coupe ce revenu : une ville en révolte ne fait pas ses marchés.
+ */
+function revenuInterne(world, col, prod, cons) {
+  const p = prod || productionColonie(world, col);
+  const c = cons || consommationColonie(col);
+  let vendu = 0;
+  for (const k of COMMODITY_KEYS) {
+    const offre = p[k] || 0;
+    if (offre <= 0) continue;
+    vendu += Math.min(offre, c[k] || 0) * COMMODITIES[k].prix;
+  }
+  return vendu * CAISSE.marge * Math.max(0, 1 - (col.unrest || 0));
+}
+
+/**
+ * Une ville encaisse, et sa faction prélève sa part au passage.
+ *
+ * Un seul point d'entrée, volontairement : toute recette d'une ville passe par
+ * ici — production vendue sur place, cargaison livrée, achat du joueur au
+ * marché. Ce qui n'appelle pas `encaisser` n'entre nulle part et se perd sans
+ * que rien ne le signale ; c'est la seule façon de se tromper ici, et elle se
+ * voit en relisant les appels.
+ *
+ * Ce prélèvement fait double emploi avec la remontée des caisses — et il le
+ * fait exprès. La remontée seule a été mesurée : une ville pauvre n'atteint
+ * jamais son fonds de roulement, donc elle ne remonte jamais rien, donc une
+ * faction réduite à une ville reste à zéro pour toujours. C'était le défaut
+ * qu'on cherchait à corriger. Les deux mécanismes n'ont donc pas le même
+ * office : celui-ci prend une part de tout ce qui rentre, même chez les
+ * pauvres ; l'autre empêche les riches de thésauriser sans fin.
+ */
+function encaisser(world, col, montant) {
+  if (!(montant > 0) || !col) return 0;
+  const f = col.faction && world.factions[col.faction];
+  const impot = f ? montant * loisDe(world, col.faction).impot : 0;
+  if (f) f.tresor += impot;
+  col.caisse = (col.caisse || 0) + (montant - impot);
+  return impot;
+}
+
+/**
+ * Le fonds de roulement qu'une ville garde par-devers elle, et que sa faction
+ * ne prend pas.
+ *
+ * C'est ici que le taux d'imposition agit désormais, et il agit sur ce qui
+ * compte : une ville prélevée à la légère garde de quoi se faire livrer pendant
+ * des semaines ; une ville pressurée vit au jour le jour et ne peut plus rien
+ * s'acheter quand la récolte manque. Le confiscatoire ne fait plus seulement
+ * gronder — il affame, et par un chemin qu'on peut suivre.
+ *
+ * Le premier jet prélevait un pourcentage sur chaque recette. Deux défauts
+ * mesurés sur trois parties de six mille heures : le trésor médian tombait à
+ * 4 000 crédits — les factions ne levaient plus rien — pendant que les villes
+ * empilaient 35 000 crédits qu'elles ne dépensaient jamais. Un pourcentage
+ * laisse toujours la ville s'enrichir sans fin ; un plafond, non.
+ *
+ * La réserve suit la population, et non la consommation de l'heure. La première
+ * version prenait la seconde, et c'était un piège : la consommation d'une ville
+ * s'effondre dès qu'elle se rationne, donc sa réserve s'effondre avec, donc tout
+ * son fonds de roulement remonte d'un coup au trésor — au pire moment, celui où
+ * elle avait justement besoin d'acheter. Mesuré : les trésors médians sautaient
+ * à cinquante mille crédits dès la cinq centième heure, sur ce seul effet. Une
+ * réserve est un ordre de grandeur, pas un relevé.
+ */
+function facteurReserve(taux) {
+  // Ordinaire (5 %) : 1. Léger : un peu plus. Confiscatoire : le cinquième.
+  return Math.max(0.2, 1 + (0.05 - taux) * 8);
+}
+
+function reserveVille(col, taux) {
+  return (col.pop || 0) * CAISSE.parTete * facteurReserve(taux);
+}
+
+/**
+ * Ce que les villes d'une faction remontent à son trésor : tout ce qu'elles ont
+ * au-delà de leur fonds de roulement. C'est la seule recette d'une faction qui
+ * vienne de son propre pays — et, depuis que les caravanes ne créditent plus à
+ * partir de rien, la seule qui ne vienne pas de la guerre.
+ */
+function remonterCaisses(world, key, colonies) {
+  const f = world.factions[key];
+  if (!f) return 0;
+  const taux = loisDe(world, key).impot;
+  let leve = 0;
+  for (const col of colonies) {
+    const surplus = (col.caisse || 0) - reserveVille(col, taux);
+    if (surplus <= 0) continue;
+    col.caisse -= surplus;
+    leve += surplus;
+  }
+  f.tresor += leve;
+  return leve;
+}
+
+/**
+ * Une ville paie. Elle ne paie que ce qu'elle a — et ce qu'elle n'a pas, elle ne
+ * l'achètera pas : c'est ce qui donne enfin un poids à la caisse.
+ */
+function debourser(col, montant) {
+  if (!col || !(montant > 0)) return 0;
+  const paye = Math.min(montant, col.caisse || 0);
+  col.caisse = (col.caisse || 0) - paye;
+  return paye;
+}
+
 /** Une ville morte ne produit plus, ne commerce plus, ne recrute plus. */
 function estVivante(col) {
   return !!col && !col.ruine;
@@ -8461,6 +8612,10 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
     const c = (cons[k] || 0) * dt;
     col.stock[k] = Math.max(0, (col.stock[k] || 0) + p - c);
   }
+
+  // --- La caisse. Une heure de marché : ce que la ville produit et que
+  // quelqu'un veut ici même se vend, et sa faction en prélève sa part.
+  encaisser(world, col, revenuInterne(world, col, prod, cons) * dt);
 
   // --- Vivres. On sert ce qu'on peut ; la satiété commande tout le reste.
   const amortiVivant = climat ? 1 + (climat.rendement('rations') - 1) * 0.45 : 1;
@@ -8809,6 +8964,8 @@ function acheter(state, col, key, qte, groupe) {
   }
   col.stock[key] = Math.max(0, (col.stock[key] || 0) - sim.qte);
   state.player.credits -= sim.cout;
+  // Ce que vous payez entre en caisse chez qui vous a servi, impôt compris.
+  encaisser(state.world, col, sim.cout);
   g.inventaire[key] = (g.inventaire[key] || 0) + sim.qte;
   const negoc = meilleurCommercant(g.membres);
   if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.5 + sim.qte * 0.3);
@@ -8822,6 +8979,11 @@ function vendre(state, col, key, qte, groupe) {
   col.stock[key] = (col.stock[key] || 0) + sim.qte;
   g.inventaire[key] -= sim.qte;
   state.player.credits += sim.gain;
+  // La ville règle sur sa caisse. Elle vous paie en entier même si elle n'a pas
+  // le compte : le prix était affiché, on ne le renégocie pas au comptoir. Ce
+  // qu'elle sort ici, elle ne l'aura plus pour se ravitailler — vendre son butin
+  // dans un bourg exsangue l'assèche pour de bon.
+  debourser(col, sim.brut);
   const negoc = meilleurCommercant(g.membres);
   if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.5 + sim.qte * 0.3);
   return { ok: true, qte: sim.qte, gain: sim.gain, taxe: sim.taxe, brut: sim.brut };
@@ -8993,6 +9155,33 @@ const MAX_CARAVANES = 7;
  * bouche nourrie en plus.
  */
 const CARAVANES_PAR_RESEAU = 4;
+
+/**
+ * Les dossiers qu'un réseau instruit par tour, refus compris. Voir le
+ * commentaire dans `departsDuReseau` pour ce qui l'a rendu nécessaire.
+ *
+ * Trois fois le budget de convois, et la valeur est mesurée. Trois graines,
+ * six mille heures :
+ *
+ *     essais    convois    villes debout    population
+ *        4        4 663         269           53 906
+ *       12        7 972         235           48 474
+ *       40       15 330         258           53 176
+ *
+ * La circulation triple ; le monde, lui, ne bouge pas — les villes debout
+ * rebondissent sans ordre entre 235 et 269, ce qui est le bruit de trois
+ * graines. Les convois supplémentaires ne nourrissent personne : ce qui borne
+ * le commerce, ce n'est pas le nombre de dossiers examinés, c'est le nombre de
+ * villes en surplus capables de répondre.
+ *
+ * Et ça se paie : sans plafond du tout, le tick passe de 126 à 154 µs. On
+ * achète donc vingt-huit microsecondes contre des convois qui ne servent à
+ * rien.
+ *
+ * Une première version de ce commentaire affirmait que la circulation ne
+ * bougeait pas. C'était écrit avant d'avoir mesuré, et c'était faux.
+ */
+const ESSAIS_PAR_RESEAU = CARAVANES_PAR_RESEAU * 3;
 const HEURES_PAR_CASE = 2;
 
 // ---------------------------------------------------------------------------
@@ -9008,6 +9197,22 @@ function surplus(col) {
     if (stock > cible * 1.6 && stock > 25) out.push([k, stock - cible * 1.2]);
   }
   return out;
+}
+
+/**
+ * A-t-elle quelque chose en trop, oui ou non ? Sans construire la liste.
+ *
+ * `surplus` alloue un tableau, et un couple par marchandise. Le tri des
+ * vendeurs l'appelait pour chacune des cinq cents villes du monde, pour n'en
+ * regarder que la longueur : cinq cents tableaux jetés à chaque passe.
+ */
+function aDuSurplus(col) {
+  for (const k of COMMODITY_KEYS) {
+    const cible = cibleStock(col, k);
+    const stock = col.stock[k] || 0;
+    if (stock > cible * 1.6 && stock > 25) return true;
+  }
+  return false;
 }
 
 /** Ce qui lui manque cruellement. */
@@ -9030,7 +9235,7 @@ function tenterDepart(state, rng, log) {
   const world = state.world;
   if (world.caravanes.length >= plafondCaravanes(world)) return null;
 
-  const vendeurs = world.colonies.filter((c) => vivante(c) && surplus(c).length);
+  const vendeurs = world.colonies.filter((c) => vivante(c) && aDuSurplus(c));
   if (!vendeurs.length) return null;
   const de = rng.pick(vendeurs);
   const dispo = surplus(de);
@@ -9079,7 +9284,12 @@ function tenterDepart(state, rng, log) {
   const route = chemin(world, de.regionId, meilleur.vers.regionId);
   if (!route || !route.length) return null;
 
-  const qte = Math.max(10, Math.round(meilleur.qte * rng.range(0.5, 0.9)));
+  // Un marchand ne charge pas pour une ville qui ne peut pas régler.
+  const qte = qteSolvable(
+    meilleur.vers, meilleur.k,
+    Math.max(10, Math.round(meilleur.qte * rng.range(0.5, 0.9)))
+  );
+  if (qte < 6) return null;
   de.stock[meilleur.k] = Math.max(0, (de.stock[meilleur.k] || 0) - qte);
 
   const car = {
@@ -9116,8 +9326,18 @@ function tenterDepart(state, rng, log) {
 function departsDuReseau(state, rng, log) {
   const world = state.world;
   for (const membres of reseaux(world)) {
-    let enCours = world.caravanes.filter(
-      (c) => c.reseau === idReseau(membres)).length;
+    // La clé du réseau, et les villes déjà servies ce tour-ci : une fois, ici.
+    // Elles étaient recalculées à chaque manque examiné — `idReseau` alloue une
+    // chaîne, et le balayage des convois en vol est linéaire. À elles deux,
+    // 4,5 % du tick pour un résultat identique à chaque tour.
+    const cle = idReseau(membres);
+    const servies = new Set();
+    let enCours = 0;
+    for (const c of world.caravanes) {
+      if (c.reseau !== cle) continue;
+      enCours += 1;
+      servies.add(c.versId);
+    }
     if (enCours >= CARAVANES_PAR_RESEAU) continue;
 
     const villes = villesDuReseau(world, membres).filter(vivante);
@@ -9132,26 +9352,56 @@ function departsDuReseau(state, rng, log) {
     // budget de convois est passé de quatre à trente sans rien changer, il en
     // circulait 3,4 dans les trois cas. Ce n'était pas le plafond qui bornait,
     // c'était l'entonnoir.
+    // Une seule passe sur les villes du réseau, qui relève à la fois les manques
+    // et, par marchandise, qui pourrait y répondre.
+    //
+    // La version précédente rebalayait toutes les villes du réseau pour *chacun*
+    // des dossiers instruits — quadratique en villes, et les réseaux grossissent
+    // avec les bourses. C'était 4,5 fois plus cher par ville que dans le monde
+    // témoin. Au passage, `cibleStock` était appelé deux fois par couple
+    // ville/marchandise, une fois pour le manque et une fois pour le surplus.
     const manques = [];
+    const offres = new Map();
     for (const col of villes) {
       for (const k of COMMODITY_KEYS) {
-        const manque = besoin(col, k);
-        if (manque < 12) continue;
-        manques.push({ col, k, manque, urgence: manque * (k === 'rations' ? 3 : 1) });
+        const cible = cibleStock(col, k);
+        const stock = col.stock[k] || 0;
+        const manque = Math.max(0, cible * 0.8 - stock);
+        if (manque >= 12) {
+          manques.push({ col, k, manque, urgence: manque * (k === 'rations' ? 3 : 1) });
+        }
+        // On ne retient ici que *qui* pourrait fournir : le disponible sera
+        // recalculé au moment de choisir, parce qu'un départ vide le stock de sa
+        // source et que le suivant doit le voir. Un stock ne remonte pas en cours
+        // de passe, donc aucun fournisseur possible ne nous échappe.
+        if (stock - cible * 1.1 >= 12) {
+          const l = offres.get(k);
+          if (l) l.push(col); else offres.set(k, [col]);
+        }
       }
     }
     manques.sort((a, b) => b.urgence - a.urgence);
 
+    // Le nombre de dossiers qu'un réseau instruit par tour. Ce n'est pas le
+    // budget de convois : c'est le temps de ses commis.
+    //
+    // Il a fallu ce plafond le jour où le contrôle de solvabilité est passé
+    // devant le comptage des convois. Le déplacement était juste — une ville
+    // sans le sou ne doit pas consommer le budget d'une ville qui pouvait payer
+    // — mais il a transformé une boucle bornée à quatre en balayage de toute la
+    // liste des manques, chaque tour rebalayant les villes du réseau pour y
+    // chercher une source. Sur un monde à cinq cents villes : `departsDuReseau`
+    // multiplié par 5,9.
+    let essais = 0;
     for (const pire of manques) {
-      if (enCours >= CARAVANES_PAR_RESEAU) break;
+      if (enCours >= CARAVANES_PAR_RESEAU || essais >= ESSAIS_PAR_RESEAU) break;
       // Une ville déjà servie ce tour-ci attend le suivant : on répartit plutôt
       // que d'empiler six convois sur le même grenier.
-      if (world.caravanes.some((c) => c.reseau === idReseau(membres) && c.versId === pire.col.id)) {
-        continue;
-      }
+      if (servies.has(pire.col.id)) continue;
+      essais += 1;
 
       let source = null;
-      for (const col of villes) {
+      for (const col of (offres.get(pire.k) || [])) {
         if (col.id === pire.col.id) continue;
         const dispo = (col.stock[pire.k] || 0) - cibleStock(col, pire.k) * 1.1;
         if (dispo < 12) continue;
@@ -9160,19 +9410,23 @@ function departsDuReseau(state, rng, log) {
         if (!source || score > source.score) source = { col, dispo, d, score };
       }
       if (!source) continue;
-      enCours++;
 
+      // La solvabilité se vérifie avant de compter le convoi : une ville sans
+      // le sou consommerait sinon le budget du réseau sans que rien ne parte,
+      // et priverait de convoi une ville qui, elle, pouvait payer.
+      const voulu = Math.max(12, Math.round(Math.min(source.dispo, pire.manque) * 0.8));
+      const qte = qteSolvable(pire.col, pire.k, voulu);
+      if (qte < 6) continue;
+
+      enCours++;
       const route = chemin(world, source.col.regionId, pire.col.regionId);
       if (!route || !route.length) continue;
-
-      const qte = Math.max(12, Math.round(Math.min(source.dispo, pire.manque) * 0.8));
+      servies.add(pire.col.id);
       source.col.stock[pire.k] = Math.max(0, (source.col.stock[pire.k] || 0) - qte);
-      const f = world.factions[source.col.faction];
-      if (f) f.tresor = Math.max(0, f.tresor - Math.round(qte * 0.4));
       world.caravanes.push({
         id: idDepuisRng(rng, 'v'),
         faction: source.col.faction,
-        reseau: idReseau(membres),
+        reseau: cle,
         deId: source.col.id,
         versId: pire.col.id,
         regionId: source.col.regionId,
@@ -9239,6 +9493,10 @@ function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEscorte) 
       return { ok: false, motif: `Il manque ${du - state.player.credits} cr.` };
     }
     state.player.credits -= du;
+    // Ce que vous payez ne s'évapore pas : la ville qui vous fournit l'encaisse,
+    // et sa faction prélève sa part. Votre négoce laisse enfin une trace dans le
+    // monde au lieu de ne bouger que vos propres crédits.
+    encaisser(world, place, devis.total);
   } else {
     const dispo = Math.floor(base.stock[key] || 0);
     if (dispo < devis.qte) {
@@ -9314,6 +9572,25 @@ function retirerCaravane(world, car) {
   if (i >= 0) world.caravanes.splice(i, 1);
 }
 
+/**
+ * Ce que l'acheteuse peut payer, en quantité.
+ *
+ * Un convoi ne part plus pour une ville qui n'a pas de quoi régler : la caisse
+ * d'une ville ne serait qu'un chiffre décoratif si elle ne pouvait jamais
+ * manquer. On rogne la cargaison au lieu d'annuler le départ — une ville
+ * pauvre se fait livrer moins, elle ne se fait pas oublier.
+ *
+ * `debourser` à l'arrivée ne rend pas ce plafond inutile : entre le départ et
+ * l'arrivée, la ville a pu dépenser. Le plafond décide de ce qu'on charge, le
+ * débours de ce qui se paie vraiment.
+ */
+function qteSolvable(vers, k, qte) {
+  if (!vers || vers.avantPoste) return qte;
+  const prix = COMMODITIES[k].prix;
+  if (!(prix > 0)) return qte;
+  return Math.min(qte, Math.floor((vers.caisse || 0) / prix));
+}
+
 function valeurCargaison(car) {
   let v = 0;
   for (const k of Object.keys(car.cargaison)) {
@@ -9347,6 +9624,13 @@ function arriver(state, car, log) {
       }
     } else {
       state.player.credits += car.paiement || 0;
+      // La ville qui vous a acheté règle sur sa caisse. Elle vous paie en
+      // entier — le prix était convenu à la commande, et un ordre honoré se
+      // paie ; ce qu'elle n'a pas, elle ne l'aura simplement plus pour se
+      // ravitailler. Le crédit qu'elle vous consent ainsi n'est pas modélisé :
+      // c'est la première approximation qu'il faudra reprendre le jour où les
+      // villes auront des dettes.
+      debourser(colonieParId(world, car.versId), car.paiement || 0);
       if (log) {
         log({
           type: 'bourse',
@@ -9364,10 +9648,18 @@ function arriver(state, car, log) {
     for (const k of Object.keys(car.cargaison)) {
       vers.stock[k] = (vers.stock[k] || 0) + car.cargaison[k];
     }
-    // Le vendeur encaisse : le trésor de sa faction s'en ressent.
+    // Le marché se conclut ici : l'acheteuse paie, le vendeur encaisse, et la
+    // faction du vendeur prélève sa part au passage.
+    //
+    // Avant, l'arrivée créditait la faction expéditrice de 35 % de la valeur et
+    // *personne* ne payait — la ville destinataire recevait la marchandise pour
+    // rien. C'était 84 % des recettes des factions, et 2,17 millions de crédits
+    // créés à partir de rien sur trois parties. Un convoi déplace désormais de
+    // l'argent au lieu d'en fabriquer : c'est ce qui fait qu'une bourse, qui
+    // ouvre le négoce entre factions, vaut quelque chose.
     const de = colonieParId(world, car.deId);
-    if (de && de.faction && world.factions[de.faction]) {
-      world.factions[de.faction].tresor += Math.round(valeurCargaison(car) * 0.35);
+    if (de && vivante(de) && de.id !== vers.id) {
+      encaisser(world, de, debourser(vers, valeurCargaison(car)));
     }
   }
   retirerCaravane(world, car);
@@ -9490,14 +9782,26 @@ function tickCaravanes(state, log, ctx) {
   // meilleures routes, des départs décidés. Mesuré avant : 0,8 caravane en
   // circulation en moyenne sur toute la carte, pic à trois. Le plafond de sept
   // n'a jamais été la contrainte ; c'était le tirage.
-  // Toutes les trois heures. Ça a été douze pendant un temps, « pour la perf » —
-  // et c'était un réflexe payé pour rien : le tick mesurait alors cent trente
-  // microsecondes parce que je lançais mes mesures pendant que les suites de
-  // tests tournaient, pas parce que ce passage coûtait cher. Remis à trois et
-  // remesuré : neuf convois en circulation au lieu de six, une ville debout de
-  // plus, et le tick sous le budget. **Une limite doit gagner sa place ; celle-ci
-  // ne la gagnait pas.**
-  if (!state.world.sansDeparts && state.temps % 3 === 0) departsDuReseau(state, rng, log);
+  // Toutes les huit heures, et c'est mesuré, pas prudent. Six graines, six
+  // mille heures :
+  //
+  //     cadence   villes debout   population   villes nourries   convois
+  //       3 h          515          105 504         270          16 222
+  //       5 h          522          102 951         280          17 876
+  //       8 h          513          106 726         279          16 998
+  //
+  // Le monde est rigoureusement indifférent : mêmes villes, même population,
+  // mêmes convois. La raison est arithmétique — le budget d'un réseau est de
+  // quatre convois *en vol*, pas quatre départs par passe. Repasser toutes les
+  // trois heures ne fait donc que reconstater un budget plein. Et ça se paie :
+  // 128 à 146 µs de tick à trois heures, 112 à 118 à huit.
+  //
+  // Ça a été douze pendant un temps, « pour la perf », et c'était alors un
+  // réflexe payé pour rien : le tick mesurait cent trente microsecondes parce
+  // que je lançais mes mesures pendant que les suites de tests tournaient. Une
+  // limite doit gagner sa place. Celle-là ne la gagnait pas ; celle-ci la gagne,
+  // et on peut dire de combien.
+  if (!state.world.sansDeparts && state.temps % 8 === 0) departsDuReseau(state, rng, log);
 }
 
 // ---------------------------------------------------------------------------
@@ -9618,7 +9922,12 @@ function attaquerCaravane(state, car, rng, log, combatContre, genererBande, grou
 function puissance(world, key) {
   const f = world.factions[key];
   if (!f) return 0;
-  let p = f.tresor / 60;
+  // Le trésor pèse trois fois moins qu'avant, parce qu'il vaut trois fois plus.
+  // Il ne se remplissait que de butin et d'une planche à billets ; il tient
+  // désormais à ce que le pays produit, et sa médiane a triplé. Laissé à
+  // soixante, il écrasait tout le reste — une faction valait sa caisse et non
+  // ses villes, et la diplomatie se réglait au relevé de compte.
+  let p = f.tresor / 180;
   for (const cid of f.colonies) {
     const c = colonieParId(world, cid);
     if (!c) continue;
@@ -10085,11 +10394,14 @@ function conseil(world, key, t, log, ctx) {
   // aussi vers l'extérieur.
   jugerLesAutres(world, key);
 
-  // Revenus : l'impôt, au taux que la loi fixe. Ce n'est plus une constante —
-  // c'est la première décision d'un Commandeur qui se lit dans les comptes.
-  const taux = loisDe(world, key).impot;
-  const revenu = mesColonies.reduce((s, c) => s + c.pop * taux * (1 - c.unrest), 0);
-  f.tresor += Math.round(revenu);
+  // Revenus : les villes remontent ce qu'elles ont au-delà de leur fonds de
+  // roulement. L'impôt était assis sur la population et sur rien d'autre — une
+  // ville ruinée rapportait autant qu'une ville prospère de même taille — et le
+  // trésor tenait à 84 % de caravanes qui créditaient sans que personne ne paie.
+  // Il porte désormais sur ce que les villes ont réellement gagné, et le taux
+  // que la loi fixe décide de ce qu'on leur laisse pour commercer : voir
+  // `reserveVille` dans economy.js.
+  remonterCaisses(world, key, mesColonies);
   // Et ce qu'on prélève au-delà de l'ordinaire se paie en grogne.
   const pression = pressionFiscale(world, key);
   if (pression !== 0) {
@@ -10228,13 +10540,19 @@ function conseil(world, key, t, log, ctx) {
     // existantes pour ne pas se marcher dessus. Chercher parmi les seules
     // cases adjacentes était contradictoire : elles sont toutes à distance 1
     // d'une colonie, donc aucune ne passait jamais le filtre d'espacement.
+    // Les deux filtres sont indépendants, donc l'ordre est libre — et il n'est
+    // pas gratuit. « À portée de nos terres » ne regarde qu'une quinzaine de
+    // villes et écarte la quasi-totalité des mille quatre cents cases ; « pas
+    // trop près d'une ville » les regarde toutes, cinq cents désormais. Les
+    // prendre dans l'autre sens faisait cinq cent mille appels à `distance` par
+    // séance de conseil pour un résultat identique.
     const candidates = [];
     for (const r of world.regions) {
       if (r.colonie || r.biome === 'relais') continue;
-      const tropPres = world.colonies.some((c) => !c.ruine && distance(c.regionId, r.i) < 2);
-      if (tropPres) continue;
       const aPortee = mesColonies.some((c) => distance(c.regionId, r.i) <= 3);
-      if (aPortee) candidates.push(r);
+      if (!aPortee) continue;
+      const tropPres = world.colonies.some((c) => !c.ruine && distance(c.regionId, r.i) < 2);
+      if (!tropPres) candidates.push(r);
     }
     if (candidates.length) {
       const r = rng.pick(candidates);
@@ -10290,6 +10608,10 @@ function fonderColonie(world, key, region, rng, t) {
     stock,
     unrest: 0.1,
     marche: 1.35,
+    // Une ville neuve part avec de quoi acheter son premier convoi : sans
+    // liquidités, elle ne peut rien se faire livrer et meurt de faim avant
+    // d'avoir produit de quoi payer.
+    caisse: 400,
     prises: 0,
     banc: null,
     geole: null,
@@ -14033,6 +14355,10 @@ function reconnaitreAvantPoste(state, log) {
     stock,
     unrest: 0,
     marche: 1,
+    // Votre camp n'a pas de caisse à lui : ce qu'il vend et ce qu'il achète
+    // passe par votre poche. Le champ existe pour que la forme d'une colonie
+    // reste la même partout, et il reste à zéro.
+    caisse: 0,
     prises: 0,
     banc: null,
     geole: null,
@@ -17596,6 +17922,11 @@ function normaliser(state) {
   }
   for (const c of w.colonies) {
     if (c.declin === undefined) c.declin = 0;
+    // Avant la caisse, une ville n'avait pas de crédits : elle recevait sans
+    // payer et vendait sans encaisser. On leur ouvre un compte à hauteur de ce
+    // qu'elles pèsent — les mettre à zéro les empêcherait de se ravitailler
+    // pendant les cent premières heures d'une partie déjà avancée.
+    if (c.caisse === undefined) c.caisse = Math.round((c.pop || 0) * 1.2);
     if (c.prises === undefined) c.prises = 0;
     // Les métiers d'une ville d'avant : le premier tick les répartira.
     if (c.emplois === undefined) c.emplois = null;
@@ -18229,6 +18560,14 @@ function nouvellePartie(seed, opts = {}) {
   for (const col of world.colonies) {
     col.emplois = emploisInitiaux(world, col, rng);
     pourvoirCharges(col, rng, 0);
+    // Et son fonds de roulement. Une ville qui existe depuis des générations a
+    // de quoi commercer le premier jour ; la faire naître à quatre cents crédits
+    // lui coûtait mille heures à remplir sa réserve, pendant lesquelles elle ne
+    // remontait rien à sa faction. Mesuré : à mille cinq cents heures, quinze
+    // factions sur trente-six pouvaient s'offrir une bourse au lieu de
+    // vingt-quatre. Le début de partie devenait plus pauvre qu'avant, ce qui est
+    // le contraire de ce qu'on cherchait.
+    col.caisse = Math.round(reserveVille(col, 0.05));
   }
   // Et chaque faction a quelqu'un à sa tête dès le premier jour — sauf l'Essaim,
   // qui n'a pas de politique : il déferle. On pose quand même la clé, sinon

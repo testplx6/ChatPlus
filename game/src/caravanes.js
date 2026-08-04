@@ -67,6 +67,33 @@ export const MAX_CARAVANES = 7;
  * bouche nourrie en plus.
  */
 export const CARAVANES_PAR_RESEAU = 4;
+
+/**
+ * Les dossiers qu'un réseau instruit par tour, refus compris. Voir le
+ * commentaire dans `departsDuReseau` pour ce qui l'a rendu nécessaire.
+ *
+ * Trois fois le budget de convois, et la valeur est mesurée. Trois graines,
+ * six mille heures :
+ *
+ *     essais    convois    villes debout    population
+ *        4        4 663         269           53 906
+ *       12        7 972         235           48 474
+ *       40       15 330         258           53 176
+ *
+ * La circulation triple ; le monde, lui, ne bouge pas — les villes debout
+ * rebondissent sans ordre entre 235 et 269, ce qui est le bruit de trois
+ * graines. Les convois supplémentaires ne nourrissent personne : ce qui borne
+ * le commerce, ce n'est pas le nombre de dossiers examinés, c'est le nombre de
+ * villes en surplus capables de répondre.
+ *
+ * Et ça se paie : sans plafond du tout, le tick passe de 126 à 154 µs. On
+ * achète donc vingt-huit microsecondes contre des convois qui ne servent à
+ * rien.
+ *
+ * Une première version de ce commentaire affirmait que la circulation ne
+ * bougeait pas. C'était écrit avant d'avoir mesuré, et c'était faux.
+ */
+export const ESSAIS_PAR_RESEAU = CARAVANES_PAR_RESEAU * 3;
 const HEURES_PAR_CASE = 2;
 
 // ---------------------------------------------------------------------------
@@ -82,6 +109,22 @@ function surplus(col) {
     if (stock > cible * 1.6 && stock > 25) out.push([k, stock - cible * 1.2]);
   }
   return out;
+}
+
+/**
+ * A-t-elle quelque chose en trop, oui ou non ? Sans construire la liste.
+ *
+ * `surplus` alloue un tableau, et un couple par marchandise. Le tri des
+ * vendeurs l'appelait pour chacune des cinq cents villes du monde, pour n'en
+ * regarder que la longueur : cinq cents tableaux jetés à chaque passe.
+ */
+function aDuSurplus(col) {
+  for (const k of COMMODITY_KEYS) {
+    const cible = cibleStock(col, k);
+    const stock = col.stock[k] || 0;
+    if (stock > cible * 1.6 && stock > 25) return true;
+  }
+  return false;
 }
 
 /** Ce qui lui manque cruellement. */
@@ -104,7 +147,7 @@ export function tenterDepart(state, rng, log) {
   const world = state.world;
   if (world.caravanes.length >= plafondCaravanes(world)) return null;
 
-  const vendeurs = world.colonies.filter((c) => vivante(c) && surplus(c).length);
+  const vendeurs = world.colonies.filter((c) => vivante(c) && aDuSurplus(c));
   if (!vendeurs.length) return null;
   const de = rng.pick(vendeurs);
   const dispo = surplus(de);
@@ -195,8 +238,18 @@ export function tenterDepart(state, rng, log) {
 export function departsDuReseau(state, rng, log) {
   const world = state.world;
   for (const membres of reseaux(world)) {
-    let enCours = world.caravanes.filter(
-      (c) => c.reseau === idReseau(membres)).length;
+    // La clé du réseau, et les villes déjà servies ce tour-ci : une fois, ici.
+    // Elles étaient recalculées à chaque manque examiné — `idReseau` alloue une
+    // chaîne, et le balayage des convois en vol est linéaire. À elles deux,
+    // 4,5 % du tick pour un résultat identique à chaque tour.
+    const cle = idReseau(membres);
+    const servies = new Set();
+    let enCours = 0;
+    for (const c of world.caravanes) {
+      if (c.reseau !== cle) continue;
+      enCours += 1;
+      servies.add(c.versId);
+    }
     if (enCours >= CARAVANES_PAR_RESEAU) continue;
 
     const villes = villesDuReseau(world, membres).filter(vivante);
@@ -211,26 +264,56 @@ export function departsDuReseau(state, rng, log) {
     // budget de convois est passé de quatre à trente sans rien changer, il en
     // circulait 3,4 dans les trois cas. Ce n'était pas le plafond qui bornait,
     // c'était l'entonnoir.
+    // Une seule passe sur les villes du réseau, qui relève à la fois les manques
+    // et, par marchandise, qui pourrait y répondre.
+    //
+    // La version précédente rebalayait toutes les villes du réseau pour *chacun*
+    // des dossiers instruits — quadratique en villes, et les réseaux grossissent
+    // avec les bourses. C'était 4,5 fois plus cher par ville que dans le monde
+    // témoin. Au passage, `cibleStock` était appelé deux fois par couple
+    // ville/marchandise, une fois pour le manque et une fois pour le surplus.
     const manques = [];
+    const offres = new Map();
     for (const col of villes) {
       for (const k of COMMODITY_KEYS) {
-        const manque = besoin(col, k);
-        if (manque < 12) continue;
-        manques.push({ col, k, manque, urgence: manque * (k === 'rations' ? 3 : 1) });
+        const cible = cibleStock(col, k);
+        const stock = col.stock[k] || 0;
+        const manque = Math.max(0, cible * 0.8 - stock);
+        if (manque >= 12) {
+          manques.push({ col, k, manque, urgence: manque * (k === 'rations' ? 3 : 1) });
+        }
+        // On ne retient ici que *qui* pourrait fournir : le disponible sera
+        // recalculé au moment de choisir, parce qu'un départ vide le stock de sa
+        // source et que le suivant doit le voir. Un stock ne remonte pas en cours
+        // de passe, donc aucun fournisseur possible ne nous échappe.
+        if (stock - cible * 1.1 >= 12) {
+          const l = offres.get(k);
+          if (l) l.push(col); else offres.set(k, [col]);
+        }
       }
     }
     manques.sort((a, b) => b.urgence - a.urgence);
 
+    // Le nombre de dossiers qu'un réseau instruit par tour. Ce n'est pas le
+    // budget de convois : c'est le temps de ses commis.
+    //
+    // Il a fallu ce plafond le jour où le contrôle de solvabilité est passé
+    // devant le comptage des convois. Le déplacement était juste — une ville
+    // sans le sou ne doit pas consommer le budget d'une ville qui pouvait payer
+    // — mais il a transformé une boucle bornée à quatre en balayage de toute la
+    // liste des manques, chaque tour rebalayant les villes du réseau pour y
+    // chercher une source. Sur un monde à cinq cents villes : `departsDuReseau`
+    // multiplié par 5,9.
+    let essais = 0;
     for (const pire of manques) {
-      if (enCours >= CARAVANES_PAR_RESEAU) break;
+      if (enCours >= CARAVANES_PAR_RESEAU || essais >= ESSAIS_PAR_RESEAU) break;
       // Une ville déjà servie ce tour-ci attend le suivant : on répartit plutôt
       // que d'empiler six convois sur le même grenier.
-      if (world.caravanes.some((c) => c.reseau === idReseau(membres) && c.versId === pire.col.id)) {
-        continue;
-      }
+      if (servies.has(pire.col.id)) continue;
+      essais += 1;
 
       let source = null;
-      for (const col of villes) {
+      for (const col of (offres.get(pire.k) || [])) {
         if (col.id === pire.col.id) continue;
         const dispo = (col.stock[pire.k] || 0) - cibleStock(col, pire.k) * 1.1;
         if (dispo < 12) continue;
@@ -250,11 +333,12 @@ export function departsDuReseau(state, rng, log) {
       enCours++;
       const route = chemin(world, source.col.regionId, pire.col.regionId);
       if (!route || !route.length) continue;
+      servies.add(pire.col.id);
       source.col.stock[pire.k] = Math.max(0, (source.col.stock[pire.k] || 0) - qte);
       world.caravanes.push({
         id: idDepuisRng(rng, 'v'),
         faction: source.col.faction,
-        reseau: idReseau(membres),
+        reseau: cle,
         deId: source.col.id,
         versId: pire.col.id,
         regionId: source.col.regionId,
@@ -610,14 +694,26 @@ export function tickCaravanes(state, log, ctx) {
   // meilleures routes, des départs décidés. Mesuré avant : 0,8 caravane en
   // circulation en moyenne sur toute la carte, pic à trois. Le plafond de sept
   // n'a jamais été la contrainte ; c'était le tirage.
-  // Toutes les trois heures. Ça a été douze pendant un temps, « pour la perf » —
-  // et c'était un réflexe payé pour rien : le tick mesurait alors cent trente
-  // microsecondes parce que je lançais mes mesures pendant que les suites de
-  // tests tournaient, pas parce que ce passage coûtait cher. Remis à trois et
-  // remesuré : neuf convois en circulation au lieu de six, une ville debout de
-  // plus, et le tick sous le budget. **Une limite doit gagner sa place ; celle-ci
-  // ne la gagnait pas.**
-  if (!state.world.sansDeparts && state.temps % 3 === 0) departsDuReseau(state, rng, log);
+  // Toutes les huit heures, et c'est mesuré, pas prudent. Six graines, six
+  // mille heures :
+  //
+  //     cadence   villes debout   population   villes nourries   convois
+  //       3 h          515          105 504         270          16 222
+  //       5 h          522          102 951         280          17 876
+  //       8 h          513          106 726         279          16 998
+  //
+  // Le monde est rigoureusement indifférent : mêmes villes, même population,
+  // mêmes convois. La raison est arithmétique — le budget d'un réseau est de
+  // quatre convois *en vol*, pas quatre départs par passe. Repasser toutes les
+  // trois heures ne fait donc que reconstater un budget plein. Et ça se paie :
+  // 128 à 146 µs de tick à trois heures, 112 à 118 à huit.
+  //
+  // Ça a été douze pendant un temps, « pour la perf », et c'était alors un
+  // réflexe payé pour rien : le tick mesurait cent trente microsecondes parce
+  // que je lançais mes mesures pendant que les suites de tests tournaient. Une
+  // limite doit gagner sa place. Celle-là ne la gagnait pas ; celle-ci la gagne,
+  // et on peut dire de combien.
+  if (!state.world.sansDeparts && state.temps % 8 === 0) departsDuReseau(state, rng, log);
 }
 
 // ---------------------------------------------------------------------------
