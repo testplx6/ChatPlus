@@ -713,7 +713,16 @@ function positionJoueur(state) {
  * rien à faire dans le jeu.
  */
 export const PART_URGENTE_ORDRE = 0.25;
-export const PRIME_URGENCE_ORDRE = 1.5;
+/**
+ * Ce qu'un ordre pressé paie de plus.
+ *
+ * Dans un objet, et non en scalaire : c'est ce qui permet de la neutraliser
+ * pour mesurer, et donc de comparer deux mondes qui ne diffèrent que par elle.
+ * Sans ce témoin, on comparait la moyenne des ordres pressés à celle des
+ * calmes — une mesure qui dépend surtout de la distance et de la quantité, et
+ * qui s'inversait sans que la prime ait bougé. Voir R2 dans RECETTES.md.
+ */
+export const URGENCE_ORDRE = { prime: 1.5 };
 
 function delai(d, rng, base = 200) {
   return Math.round((base + d * 2 * 26) * rng.range(1, 1.4));
@@ -1057,7 +1066,7 @@ function tickEngagement(state, g, log, ctx) {
     if (o) {
       // Le délai est l'exception, et il se paie. Voir `delai` au-dessus.
       o.urgent = rng.chance(PART_URGENTE_ORDRE);
-      if (o.urgent) o.recompense = Math.round(o.recompense * PRIME_URGENCE_ORDRE);
+      if (o.urgent) o.recompense = Math.round(o.recompense * URGENCE_ORDRE.prime);
       else o.duree = null;
       o.echeance = o.duree ? state.temps + o.duree : null;
       all.ordre = o;

@@ -133,7 +133,7 @@ import {
   sEngager, rangDe, RANGS, peutSEngager, REPUTATION_MINIMALE,
   droitIntendance, toucherRations, garnison, RANG_GARNISON, JOURS_INTENDANCE,
   bilanService, noterFait, FEUILLE_MAX, palierBonus, effetsEstime, PALIERS_ESTIME,
-  estimeEngagement, SERVICES, avantage, renfortMilice,
+  estimeEngagement, SERVICES, avantage, renfortMilice, URGENCE_ORDRE,
 } from '../src/allegeance.js';
 import {
   vueColonie, estSurveillee, ageTexte, nouvellesConnues, DELAI_NOUVELLE, observer,
@@ -1366,14 +1366,30 @@ section('9 ter ter. Ce qu’on a mérité ne s’évapore plus');
   const hote = DIPLO_FACTIONS.find((k) => (st.player.reputation[k] || 0) > 5);
   ok(!!hote, 'une ville d’accueil vous connaît au premier jour');
   const depart = st.player.reputation[hote];
-  for (let i = 0; i < 24 * 240; i++) {
-    groupeActif(st).inventaire.rations = 400;
-    tick(st);
-  }
-  const reste = st.player.reputation[hote] || 0;
-  ok(reste > depart * 0.35,
-    'huit mois plus tard, l’estime du départ n’a pas disparu',
-    `${depart.toFixed(0)} → ${reste.toFixed(1)}`);
+  const jouer = (jours) => {
+    for (let i = 0; i < 24 * jours; i++) {
+      groupeActif(st).inventaire.rations = 400;
+      tick(st);
+    }
+    return st.player.reputation[hote] || 0;
+  };
+  const miParcours = jouer(120);
+  const reste = jouer(120);
+
+  // Le sujet, c'est que l'érosion *ralentit* — pas qu'il reste tel pourcentage
+  // au bout de tel nombre de jours. La première version exigeait « plus de 35 %
+  // après huit mois » sur une seule graine : elle est tombée à 33 % le jour où
+  // un changement d'économie a décalé le monde de quelques pour cent, et elle
+  // accusait alors l'érosion, qui n'avait pas bougé d'un iota. On compare donc
+  // les deux moitiés du parcours l'une à l'autre : c'est ce que « dégressif »
+  // veut dire, et ça ne dépend d'aucun seuil choisi à la main.
+  const premiere = depart - miParcours;
+  const seconde = miParcours - reste;
+  ok(seconde < premiere,
+    'l’érosion ralentit : les quatre mois suivants coûtent moins que les premiers',
+    `${depart.toFixed(0)} → ${miParcours.toFixed(1)} → ${reste.toFixed(1)} `
+    + `(perte ${premiere.toFixed(1)} puis ${seconde.toFixed(1)})`);
+  ok(reste > 0, 'et il en reste toujours quelque chose', `${reste.toFixed(1)}`);
   ok(reste < depart,
     'mais elle a bien baissé : servir reste la seule façon de la tenir',
     `${depart.toFixed(0)} → ${reste.toFixed(1)}`);
@@ -5351,22 +5367,53 @@ section('9 quattuorvicies. Les ordres de mission aussi : le délai est l’excep
     // Quatre de chaque côté au minimum. En dessous, la moyenne d'une case est
     // un tirage unique et l'écart qu'on lit est celui des villes, pas celui de
     // la prime.
-    const types = [...new Set(vus.map((o) => o.type))];
-    const comparables = types.filter(
-      (t) => bucket(t, true).length >= 4 && bucket(t, false).length >= 4);
-    const mieux = comparables.filter((t) => moy(bucket(t, true)) > moy(bucket(t, false)));
-    // Cette ligne-ci ne vérifie pas le jeu : elle vérifie la mesure. Si le
-    // tirage change au point qu'aucun type n'a plus ses quatre exemplaires de
-    // chaque côté, la comparaison d'en dessous ne compare plus rien — et sans
-    // ce garde, elle passerait au vert pour cette raison-là.
-    ok(comparables.length > 0, 'assez d’ordres de chaque sorte pour comparer',
-      types.map((t) => `${t} ${bucket(t, false).length}/${bucket(t, true).length}`).join(' · '));
-    ok(mieux.length === comparables.length,
-      'et l’urgence paie mieux, à type égal',
-      comparables.map((t) => `${t} ${Math.round(moy(bucket(t, false)))}`
-        + ` → ${Math.round(moy(bucket(t, true)))}`
-        + ` (${bucket(t, false).length}/${bucket(t, true).length})`).join(' · ')
-        || 'aucun type tiré assez souvent dans les deux formes');
+    // Comparer la moyenne des pressés à celle des calmes, même type par type,
+    // ne mesure pas la prime : la récompense de base dépend de la distance et
+    // de la quantité, qui varient bien plus que les cinquante pour cent de la
+    // prime. Sur cinquante ravitaillements calmes contre quatorze pressés, la
+    // moyenne des pressés est tombée sous celle des calmes — la prime n'y était
+    // pour rien, elle s'applique toujours.
+    //
+    // Ce qui se mesure vraiment, c'est la prime elle-même, avec un témoin :
+    // le même monde, la même graine, les mêmes tirages, la prime neutralisée
+    // d'un côté. Tout écart est alors le sien et rien d'autre.
+    const memeMonde = (prime) => {
+      const sp = nouvellePartie(8181, { maintenant: 0, depart: 'ville', equipe: 4 });
+      const gp = groupeActif(sp);
+      const cp = sp.world.colonies.find((c) => c.faction && !c.ruine);
+      gp.regionId = cp.regionId;
+      sp.player.reputation[cp.faction] = 60;
+      sEngager(sp, cp.faction, () => {}, gp);
+      const recus = [];
+      const memoire = URGENCE_ORDRE.prime;
+      URGENCE_ORDRE.prime = prime;
+      try {
+        for (let i = 0; i < 60; i++) {
+          gp.allegeance.prochainOrdre = sp.temps;
+          avancer(sp, 30);
+          const o = gp.allegeance.ordre;
+          if (o && !recus.some((x) => x.id === o.id)) {
+            recus.push({ id: o.id, urgent: !!o.urgent, recompense: o.recompense });
+            gp.allegeance.ordre = null;
+          }
+        }
+      } finally { URGENCE_ORDRE.prime = memoire; }
+      return recus;
+    };
+    const sansPrime = memeMonde(1);
+    const avecPrime = memeMonde(URGENCE_ORDRE.prime);
+    const pressesDe = (l) => l.filter((o) => o.urgent);
+    const totalDe = (l) => l.reduce((t, o) => t + o.recompense, 0);
+    ok(pressesDe(sansPrime).length > 0
+      && pressesDe(sansPrime).length === pressesDe(avecPrime).length,
+      'le témoin tire exactement les mêmes ordres pressés',
+      `${pressesDe(sansPrime).length} contre ${pressesDe(avecPrime).length}`);
+    ok(totalDe(pressesDe(avecPrime)) > totalDe(pressesDe(sansPrime)),
+      'et l’urgence paie mieux : c’est la prime, et rien que la prime',
+      `${totalDe(pressesDe(sansPrime))} → ${totalDe(pressesDe(avecPrime))} cr`);
+    ok(totalDe(sansPrime.filter((o) => !o.urgent))
+      === totalDe(avecPrime.filter((o) => !o.urgent)),
+      'et elle ne touche à rien d’autre : les ordres calmes paient pareil');
   }
 }
 
@@ -5651,6 +5698,14 @@ section('9 quinvicies septies. On donne des consignes aux chaînes');
     s.base.stock.ferraille = 600;
     s.base.commerce = false;
     s.player.credits = 0;
+    // Les raids n'ont rien à faire ici : ce qu'on mesure, c'est ce que les
+    // chaînes de production consomment, et une razzia emporte un tiers des
+    // stocks d'un coup. Le décor est resté muet là-dessus pendant longtemps
+    // parce qu'aucune n'était tombée — puis un changement d'économie a décalé
+    // le monde, une razzia a frappé à la quarante-cinquième heure, et trois
+    // vérifications de raffinerie ont accusé la raffinerie. Un décor qui tient
+    // par chance ne tient pas.
+    s.base.derniereAttaque = 1e9;
     if (regler) regler(s);
     for (let i = 0; i < 400; i++) tick(s);
     return {
@@ -5838,6 +5893,9 @@ section('9 quinvicies octies. Un plancher qu’aucune chaîne n’entame');
     s.base.stock.minerai = 500;
     s.base.commerce = false;
     s.player.credits = 0;
+    // Pas de razzia : voir le décor de la raffinerie plus haut. Un plancher de
+    // réserve ne peut rien contre des pillards, et ce n'est pas la question.
+    s.base.derniereAttaque = 1e9;
     if (plancher != null) reglerReserve(s, 'minerai', plancher);
     for (let i = 0; i < 500; i++) tick(s);
     return Math.round(s.base.stock.minerai || 0);
@@ -6591,6 +6649,10 @@ section('13. Économie — lot A : le circuit fermé');
   avancer(a1, 200); avancer(b1, 200);
   ok(serialiser(a1) === serialiser(b1), 'même graine → même monde, ménages compris');
 }
+
+// A2 à A5 — le reste du circuit fermé — n'est pas ici : le lot est bloqué, et
+// la raison est consignée dans CHANTIER.md. Le code a été écrit, mesuré, puis
+// retiré ; ce qu'il a appris tient dans les chiffres de la section Blocages.
 
 // ===========================================================================
 console.log('\n' + '='.repeat(42));

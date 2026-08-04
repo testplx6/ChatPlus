@@ -176,5 +176,82 @@ Ce fichier prépare le travail, il ne l'autorise pas.
 
 ## Blocages
 
-*(vide — y consigner : tâche, ce qui bloque, ce qui a été essayé, la mesure qui
-sort de la fourchette. Committer, s'arrêter.)*
+### A3 — la porte de solvabilité ne peut pas tenir seule (bloquant pour tout le lot)
+
+**Ce qui bloque.** ECONOMIE §3.2 demande qu'une population sans argent ne
+consomme pas, satiété comprise : « du grain plein et des gens sans le sou doit
+produire une satiété < 1 ». Écrit tel quel, avec le reste du circuit (A2, A4,
+A5), **le monde ne tient à aucun réglage**. Ce n'est pas un calibrage manqué,
+c'est la conception du §3 qui manque une pièce.
+
+**Ce qui a été fait, puis retiré.** A2 (salaires), A3 (consommation solvable),
+A4 (garnisons et murs payés par le trésor), A5 (solde des colonnes), plus la
+conversion en virements de toutes les destructions de monnaie du trésor — lever
+une colonne, monter un mur, fonder. Le code marchait, la suite passait à
+1016/1016. Il a été retiré du moteur : ce qu'il a appris est ci-dessous.
+
+**Les mesures** (3 graines × 6 000 h ; témoin `82636d8` : 180 villes,
+69 313 habitants, trésor médian 51 944, 6/18 fauchées).
+
+Balayage de la part salariale, porte fermée :
+
+| part | villes | pop | trésor méd | fauchées | caisses / ménages / trésors |
+|---:|---:|---:|---:|---:|---|
+| 0,05 | 265 | 15 822 | 79 344 | 0/18 | 227k / 108k / 1385k |
+| 0,20 | 252 | **26 895** | 65 483 | 1/18 | 310k / 404k / 995k |
+| 0,38 | 162 | 32 997 | 282 | 15/18 | 100k / 1095k / 41k |
+| 0,55 | 95 | 37 173 | 339 | 17/18 | 18k / 588k / 11k |
+| 0,98 | 149 | 10 155 | 112 | 14/18 | — |
+
+Deux régimes, aucun viable. **Au-dessus de 0,3**, les ménages thésaurisent —
+jusqu'à 93 % de la monnaie du monde immobilisée dans leurs poches, 317 000
+crédits sur 341 000 — et les caisses se vident en salaires sans jamais rien
+encaisser. **En dessous**, caisses et trésors tiennent, mais les habitants n'ont
+pas de quoi manger. La population plafonne à 27 000 contre 69 000 au témoin.
+
+Et la porte ouverte (`gateSolvabilite = 0`, tout le reste identique) ne sauve
+rien non plus : 163 villes, **52 809 habitants**, mais trésor médian 459 et
+13/18 factions fauchées. On échange une famine contre des États en faillite.
+
+**Le comptage des flux** (1 graine × 3 000 h) dit pourquoi :
+
+```
+salaires dus        6 091 476        facture voulue      4 734 750
+salaires versés     3 721 921        facture réglée      3 669 492
+versements du trésor  275 349
+```
+
+Les ménages encaissent structurellement plus qu'ils ne dépensent : leur sortie
+est bornée par la marchandise disponible, leur entrée ne l'est pas. L'excédent
+est exactement ce que le trésor leur verse.
+
+**La cause, en une phrase.** Le prix ne répond qu'au stock, jamais à la monnaie
+disponible. Un marché à prix exogène sous contrainte de budget se solde par du
+gâchis ou par la famine — il n'a pas d'équilibre. Facturer au prix du jour
+plutôt qu'au prix du catalogue (fait, `prixUnitaire`) atténue sans résoudre : le
+prix plafonne à ×3,2 et ne baisse jamais quand la demande faiblit.
+
+**Ce qu'il faudrait décider** — et c'est une décision de conception, pas
+d'exécution : le prix d'une ville doit dépendre de la monnaie en circulation
+chez elle, pas seulement de son stock. C'est la théorie quantitative de la
+monnaie, et c'est très exactement ce que le lot C fait à l'échelle d'un pays
+avec `cours = gage / masse`. La question est donc : **avance-t-on le mécanisme
+de cours au niveau de la ville, et le lot C n'en devient-il pas un cas
+particulier ?**
+
+Tant que ce n'est pas tranché, A3 à A7 restent fermés, et A1 seul est livré.
+
+### Ce qui a été gardé au passage
+
+Trois décors réparés, qui tenaient par chance et sont tombés dès que le monde a
+bougé de quelques pour cent — aucun ne parlait d'économie :
+
+- la raffinerie et le plancher de réserve mesuraient les stocks d'un camp qu'une
+  razzia pouvait vider d'un tiers ; le décor l'interdit désormais ;
+- l'érosion d'estime exigeait « plus de 35 % après huit mois » sur une seule
+  graine ; elle compare maintenant ses deux moitiés, ce qui est ce que
+  « dégressif » veut dire et ne dépend d'aucun seuil ;
+- la prime d'urgence était jugée sur la moyenne des ordres pressés contre les
+  calmes — une mesure dominée par la distance et la quantité, qui s'inversait
+  sans que la prime ait bougé. Elle est désormais mesurée contre un témoin :
+  même monde, mêmes tirages, prime neutralisée d'un côté.

@@ -51,7 +51,28 @@ const SRC = join(JEU, 'src');
 async function chargerMoteur(src) {
   const sim = await import(pathToFileURL(join(src, 'sim.js')).href);
   const data = await import(pathToFileURL(join(src, 'data.js')).href);
-  return { sim, data };
+  const eco = await import(pathToFileURL(join(src, 'economy.js')).href);
+  return { sim, data, eco };
+}
+
+/**
+ * La balance physique d'une ville : ce qu'elle produit contre ce qu'elle
+ * consomme, en valeur, par heure. C'est la mesure qui manquait — un monde peut
+ * paraître prospère en villes debout tout en vivant d'un déficit permanent que
+ * personne ne paie, et cette ligne-là le dit.
+ */
+function balance({ data, eco }, world, cols) {
+  let prod = 0;
+  let cons = 0;
+  for (const col of cols) {
+    const p = eco.productionColonie(world, col);
+    const c = eco.consommationColonie(col);
+    for (const k of data.COMMODITY_KEYS) {
+      prod += (p[k] || 0) * data.COMMODITIES[k].prix;
+      cons += (c[k] || 0) * data.COMMODITIES[k].prix;
+    }
+  }
+  return { prod, cons };
 }
 
 /** Applique des règles `module.OBJET.champ = valeur` au graphe de modules. */
@@ -81,7 +102,7 @@ async function appliquerRegles(src, regles) {
  * campagne de cette session a recalculées à la main, réunies une fois pour
  * toutes. En ajouter une ici la donne à toutes les mesures futures.
  */
-function jouer({ sim, data }, graine, horizon) {
+function jouer({ sim, data, eco }, graine, horizon) {
   const t0 = performance.now();
   const s = sim.nouvellePartie(graine);
   const convoisVus = new Set();
@@ -93,6 +114,7 @@ function jouer({ sim, data }, graine, horizon) {
   const duree = performance.now() - t0;
 
   const cols = s.world.colonies.filter((c) => !c.ruine && c.faction);
+  const bal = balance({ sim, data }.data ? { data, eco } : { data, eco }, s.world, cols);
   const tresors = data.DIPLO_FACTIONS.map((k) => s.world.factions[k].tresor);
   const ecrasees = data.DIPLO_FACTIONS.filter(
     (k) => s.world.factions[k].colonies.length <= 2
@@ -110,6 +132,14 @@ function jouer({ sim, data }, graine, horizon) {
     accords: (s.world.accords || []).length,
     convois: convoisVus.size,
     guerres: (s.world.guerres || []).length,
+    prod: Math.round(bal.prod),
+    cons: Math.round(bal.cons),
+    // Où est l'argent. Un circuit fermé peut être juste et pourtant jammé :
+    // si tout s'accumule d'un côté, l'autre n'a plus de quoi acheter et le
+    // monde meurt en paraissant équilibré. Ces trois nombres le disent.
+    enCaisses: Math.round(cols.reduce((a2, c) => a2 + (c.caisse || 0), 0)),
+    enMenages: Math.round(cols.reduce((a2, c) => a2 + (c.menages || 0), 0)),
+    enTresors: Math.round(tresors.reduce((a2, v) => a2 + v, 0)),
     armees: (s.world.armees || []).length,
     duree: Math.round(duree),
     usParTick: duree / horizon * 1000,
@@ -207,6 +237,12 @@ function agreger(cfg) {
     accords: som(cfg, 'accords'),
     convois: som(cfg, 'convois'),
     guerres: som(cfg, 'guerres'),
+    // Ce que le monde produit rapporté à ce qu'il consomme, en valeur. Sous 1,
+    // les villes vivent d'un déficit que quelqu'un paie — ou que personne ne
+    // paie, ce qui était le cas avant que la monnaie ne circule.
+    balance: (som(cfg, 'prod') / Math.max(1, som(cfg, 'cons'))).toFixed(2),
+    masse: som(cfg, 'enCaisses') + som(cfg, 'enMenages') + som(cfg, 'enTresors'),
+    ou: `${Math.round(som(cfg, 'enCaisses') / 1000)}k/${Math.round(som(cfg, 'enMenages') / 1000)}k/${Math.round(som(cfg, 'enTresors') / 1000)}k`,
     usParTick: Math.round(med(cfg.parties.map((p) => p.usParTick))),
   };
 }
@@ -217,7 +253,9 @@ const COLONNES = [
   ['tresorMed', 'trésor méd', 10], ['fauchees', '<2500', 6],
   ['caisseMed', 'caisse méd', 10], ['bourses', 'bourses', 7],
   ['accords', 'accords', 7], ['convois', 'convois', 8],
-  ['guerres', 'guerres', 7], ['usParTick', 'µs/tick', 7],
+  ['guerres', 'guerres', 7], ['balance', 'prod/cons', 9],
+  ['masse', 'masse', 9], ['ou', 'caisses/ménages/trésors', 22],
+  ['usParTick', 'µs/tick', 7],
 ];
 
 function afficher(lignes) {

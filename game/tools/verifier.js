@@ -111,20 +111,35 @@ etape('moteur (test/headless.js)', () => {
 if (COMPLET) {
   etape('vitesse (5 passes, médiane)', () => {
     const passes = [];
+    const facteurs = [];
     for (let i = 0; i < 5; i++) {
       const r = lancer('node', ['test/perf.js']);
-      const m = r.sortie.match(/([\d.]+) µs normalisés/);
-      if (m) passes.push(Number(m[1]));
+      const m = r.sortie.match(/([\d.]+) µs normalisés \(machine ×([\d.]+)\)/);
+      if (m) { passes.push(Number(m[1])); facteurs.push(Number(m[2])); }
     }
     if (passes.length < 5) throw new Error('mesures incomplètes');
     passes.sort((a, b) => a - b);
+    facteurs.sort((a, b) => a - b);
     const mediane = passes[2];
+    const machine = facteurs[2];
     const dispersion = (passes[4] - passes[0]) / mediane;
+
+    // Deux façons pour une machine de mentir, et il a fallu se faire prendre
+    // par la seconde. La première est le tremblement : cinq passes qui
+    // s'écartent. La seconde est la dérive — cinq passes bien serrées, toutes
+    // fausses ensemble. Le même commit a mesuré 108 µs puis 160 µs à une heure
+    // d'intervalle, code inchangé, dispersion normale. Un budget qui échoue sur
+    // une machine chargée apprend à ignorer le rouge, ce qui est pire que pas
+    // de budget du tout : on refuse donc de conclure plutôt que d'accuser.
     if (dispersion > 0.18) {
       throw new Error(`machine instable (±${Math.round(dispersion * 100)} %) — remesurer au calme`);
     }
-    if (mediane > 110) throw new Error(`${mediane} µs > budget 110`);
-    return `${mediane} µs`;
+    if (machine > 1.08) {
+      throw new Error(`machine chargée (×${machine}) — mesure non concluante, `
+        + `${mediane} µs relevés. Remesurer au calme avant de conclure.`);
+    }
+    if (mediane > 110) throw new Error(`${mediane} µs > budget 110 (machine ×${machine})`);
+    return `${mediane} µs (machine ×${machine})`;
   });
 
   etape('navigateur (264 vérifications)', () => {
