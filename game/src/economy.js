@@ -453,10 +453,26 @@ export function verser(world, faction, col, montant) {
   // bouge. Quatre cents crédits par bataille, et l'invariant comptable dérivait
   // de 0,45 % en six mille heures.
   if (col && col.faction && col.faction !== faction) return 0;
+  // Et on ne paie à personne. Verser, c'est déplacer de l'argent d'un registre
+  // à un autre — sans destinataire, le trésor se vidait dans le néant et la
+  // masse ne bougeait pas : de l'argent qui cesse d'exister sans que personne
+  // l'ait décidé, exactement le défaut que l'invariant est là pour attraper.
+  //
+  // Deux cas, tous deux datés au tick près (graine 42, `MONNAIE.inertie` à
+  // 0,99, tick 3294) : la faction ombrelle perd sa dernière ville puis verse la
+  // solde de sa colonne à la ville de départ, dont `colonieDepart` ne rend plus
+  // rien — 229,00 crédits, et l'écart comptable relevé au banc valait 229,00.
+  // L'autre cas est l'avant-poste, dont le monde ne connaît que la vitrine : sa
+  // vérité est dans `state.base`, et le monde n'a pas le droit d'y toucher.
+  //
+  // Une solde qu'on ne peut pas verser n'est pas une solde gratuite : elle
+  // n'est simplement pas versée, comme une garnison qu'un trésor vide ne paie
+  // pas. C'est la règle du lot A5 lue jusqu'au bout, pas une règle nouvelle.
+  if (!col || col.avantPoste) return 0;
   const paye = Math.min(montant, Math.max(0, f.tresor));
   if (paye <= 0) return 0;
   f.tresor -= paye;
-  if (col && !col.avantPoste) col.menages = (col.menages || 0) + paye;
+  col.menages = (col.menages || 0) + paye;
   return paye;
 }
 

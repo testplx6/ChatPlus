@@ -7103,6 +7103,49 @@ section('17. Cartographie — l’instrument qui dit quel levier commande quoi')
 }
 
 // ===========================================================================
+section('17 bis. Payer à personne, ce n’est pas payer');
+{
+  // Daté au tick près : graine 42, `MONNAIE.inertie` à 0,99, tick 3294. La
+  // faction ombrelle perd sa dernière ville, puis verse la solde de sa colonne
+  // à la ville de départ — qui n'existe plus. `colonieDepart` rend null, le
+  // trésor est débité quand même, et personne n'est crédité : 229,00 crédits
+  // sortent de ce qui existe sans que la masse bouge. L'écart relevé au banc
+  // valait 229,00 exactement, au centime.
+  const sV = nouvellePartie(303, { maintenant: 0 });
+  const fV = sV.world.factions.methodistes || sV.world.factions[DIPLO_FACTIONS[0]];
+  const avant = fV.tresor;
+
+  ok(verser(sV.world, DIPLO_FACTIONS[0], null, 200) === 0 && fV.tresor === avant,
+    'sans ville où verser, le trésor ne bouge pas',
+    `${avant} -> ${fV.tresor}`);
+
+  // Même chose pour un avant-poste : sa vérité est dans `state.base`, le monde
+  // ne connaît que sa vitrine et ne peut créditer personne dedans. On ne
+  // prélève donc rien.
+  const vitrine = sV.world.colonies.find((c) => c.faction === DIPLO_FACTIONS[0]);
+  if (vitrine) {
+    vitrine.avantPoste = true;
+    const t2 = fV.tresor;
+    ok(verser(sV.world, DIPLO_FACTIONS[0], vitrine, 200) === 0 && fV.tresor === t2,
+      'ni pour un avant-poste, dont le monde ne connaît que la vitrine');
+    vitrine.avantPoste = false;
+  }
+
+  // Et le versement ordinaire continue de marcher, sinon on aurait « corrigé »
+  // en cassant le circuit.
+  const ville = sV.world.colonies.find(
+    (c) => c.faction === DIPLO_FACTIONS[0] && !c.avantPoste && !c.ruine);
+  if (ville) {
+    const t3 = fV.tresor;
+    const m3 = ville.menages || 0;
+    const paye = verser(sV.world, DIPLO_FACTIONS[0], ville, 200);
+    ok(paye > 0 && Math.abs((fV.tresor - t3) + paye) < 1e-9
+      && Math.abs((ville.menages - m3) - paye) < 1e-9,
+      'et payer une vraie ville déplace l’argent sans en créer ni en détruire');
+  }
+}
+
+// ===========================================================================
 section('18. La vitesse se juge contre un témoin, pas contre une machine morte');
 {
   // Les quatre situations sont mesurées, pas supposées — même révision, même

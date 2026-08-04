@@ -371,7 +371,35 @@ Toutes les autres étapes de `--complet` sont vertes : 37 fichiers statiques,
 37 modules bundlés, 1 051/1 052 tests moteur, 264 vérifications navigateur,
 7 gardes du monde.
 
-### F0.3 — l'invariant comptable casse à `MONNAIE.inertie = 0,99`
+### F0.3 — résolu : la sixième fuite, 229 crédits versés à personne
+
+Datée au tick près : graine 42, `MONNAIE.inertie` à 0,99, **tick 3294**. La
+faction ombrelle perd sa dernière ville — saisie par un créancier, comptes
+convertis correctement, écart nul juste après. Puis, plus loin dans le même
+tick, elle verse la solde de sa colonne à sa ville de départ. `colonieDepart`
+ne rend plus rien, et `verser` débitait le trésor quand même sans créditer
+personne : **229,00 crédits**, et l'écart relevé au banc valait 229,00.
+
+Le même trou existait pour un avant-poste : le monde n'en connaît que la
+vitrine, sa vérité est dans `state.base`, donc le crédit n'allait nulle part —
+mais le trésor payait.
+
+Le correctif ne pose aucune règle nouvelle : verser, c'est déplacer de l'argent
+d'un registre à un autre, et sans destinataire il n'y a rien à déplacer. Une
+solde qu'on ne peut pas verser n'est pas une solde gratuite, elle n'est pas
+versée — comme une garnison qu'un trésor vide ne paie pas, ce que le lot A4
+disait déjà.
+
+Mesuré : écart **0 à 0,98 comme à 0,99**, et au réglage courant le monde est
+identique au bit près (517 villes, 57 893 habitants, mêmes 47 créances). La
+route vers `inertie` est dégagée.
+
+Ce qui reste à instruire de la chasse : `colonieDepart` rend `null` alors que la
+faction a une colonne en campagne. Ce n'est pas un bug comptable — c'est une
+question de jeu. Une faction sans plus aucune ville garde-t-elle une armée sur
+le terrain, et qui la paie ? À trancher par le propriétaire du projet, pas ici.
+
+### ~~F0.3~~ — l'invariant comptable cassait à `MONNAIE.inertie = 0,99`
 
 Relevé pendant le balayage de confirmation, 6 graines × 6 000 h : l'écart de
 `auditer()` vaut **0 pour 0,70 / 0,90 / 0,95 / 0,98, et 229 à 0,99**. Il doit
