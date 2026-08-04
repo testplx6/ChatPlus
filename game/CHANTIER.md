@@ -309,6 +309,26 @@ commande.
 
 ---
 
+## Lot G — la colonne qu'on ne paie plus (règle donnée par le propriétaire)
+
+Consignée telle qu'elle a été dictée, **pas encore spécifiée ni chiffrée**. Elle
+répond à la question laissée ouverte par la chasse à la sixième fuite : une
+faction sans plus aucune ville garde-t-elle une armée sur le terrain, et qui la
+paie ?
+
+> Si elle n'est plus payée par sa faction, la colonne peut rester un temps à son
+> service, selon la loyauté que les individus qui la composent lui portent. Mais
+> elle peut mourir de faim, et décider de faire cavalier seul, de fonder sa
+> faction, de se faire payer par une autre, de se disloquer.
+
+Ce que ça implique, et qui reste à trancher avant d'écrire une ligne : une
+colonne acquiert une loyauté propre, donc un état ; « mourir de faim » suppose
+qu'elle consomme ; « fonder sa faction » touche à la création de factions en
+cours de partie, ce que le moteur ne sait pas faire ; « se faire payer par une
+autre » est un marché, donc un prix. Aujourd'hui, une colonne non payée survit
+et ne coûte rien — c'est le comportement par défaut, il est cohérent mais il
+n'est pas celui-là.
+
 ## Blocages
 
 ### F1a — résolu : la garde de vitesse mesurait l'envers de ce qu'elle croyait
