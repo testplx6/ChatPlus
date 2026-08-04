@@ -6,6 +6,43 @@ est soit mesuré, soit chiffré, soit explicitement marqué comme à calibrer.
 
 ---
 
+## Principe de réglage — à lire avant tout le reste
+
+Ce moteur se règle par l'intérieur. Quand un comportement dérape, on corrige **ce
+qui le rend avantageux** — son prix, sa durée, ses conditions d'accès — et jamais
+en collant à côté une pénalité sans rapport.
+
+Le réflexe paresseux, celui qu'on s'interdit ici : constater qu'une stratégie
+domine et lui accrocher un malus de réputation, un plafond arbitraire ou une
+condition de monde inventée pour l'occasion. Un frein posé à côté du mécanisme ne
+le corrige pas, il le camoufle — et six mois plus tard personne ne sait plus
+pourquoi il est là, ni ce qui casse si on l'enlève. Ce dépôt en a déjà payé le
+prix : un frein de surextension mort pendant des mois parce que ses constantes
+avaient été choisies à vue contre un mécanisme qui ne tournait pas.
+
+**Un bon frein naît de la situation, pas d'une constante.** L'exemple qui a
+servi à écrire cette règle : la conquête par la dette. On aurait pu la brider
+avec un multiple fixe sur le prix de rachat. On la bride par le vendeur — une
+faction en paix refuse, une faction à sec brade, une faction que la ville
+encombre paie presque pour s'en défaire. Le frein sort de l'état du monde, il
+varie de partie en partie, il se comprend sans commentaire, et il ouvre du jeu au
+lieu d'en fermer.
+
+Trois questions à se poser avant d'ajouter le moindre coefficient :
+
+1. Est-ce que quelqu'un, dans le monde, a une raison de s'y opposer ? Si oui,
+   c'est lui le frein, pas mon chiffre.
+2. Est-ce que ce coefficient décrit une *rareté* — du temps, de l'argent, de la
+   distance, de la confiance — ou est-ce qu'il décrète un interdit ?
+3. Si je l'enlève dans six mois, est-ce que la mesure me le dira ? Si non, il
+   n'a rien à faire là.
+
+Et le corollaire, qui vaut pour tout ce document : **une mesure sans témoin ne
+mesure rien.** Aucun réglage n'est retenu sans le chiffre d'à côté, celui de la
+version qu'on remplace.
+
+---
+
 ## 1. Pourquoi
 
 ### 1.1 Ce qui existait avant
@@ -212,8 +249,9 @@ Quatre effets, tous réels, aucun cosmétique :
 1. **L'intérêt sur la dette des villes** est ce taux. C'est une recette du
    trésor qui vient du pays lui-même.
 2. **L'emprunt pour les travaux.** Une ville n'emprunte pour ses murs, son
-   marché ou ses greniers que si le taux est sous `SEUIL_TRAVAUX ≈ 3 %`. Un pays
-   à l'argent cher cesse visiblement de bâtir.
+   marché ou ses greniers que si l'ouvrage rapporte plus que l'intérêt ne
+   coûte — comparaison, pas seuil décrété. Un pays à l'argent cher cesse
+   visiblement de bâtir, et on peut dire pourquoi ville par ville.
 3. **La prime de confiance sur le cours.** Un taux au-dessus de la moyenne du
    monde soutient la monnaie :
    `cours = clamp(gage / masse, 0,05, 4) × (1 + (taux − tauxMoyenMonde) × K)`
@@ -286,13 +324,22 @@ f.tresor  -= montant
 col.caisse += montant
 ```
 
-La faction refuse si :
-- son trésor est vide **et** elle ne veut pas émettre ;
-- `col.dette > PLAFOND_DETTE × col.pop` (`PLAFOND_DETTE ≈ 25 ac/habitant`, à
-  calibrer) ;
-- la ville est en révolte (`unrest > 0,7`) — on ne prête pas à qui ne paiera pas.
+Le prêteur refuse quand il ne veut plus, pas quand un plafond le lui interdit.
+Il n'y a **aucun montant maximum écrit nulle part** : ce qui borne l'emprunt,
+c'est le trésor du prêteur, qui est fini, et son jugement, qui est intéressé.
+
+Il refuse donc si :
+- son trésor est vide **et** il ne veut pas émettre ;
+- la ville est déjà insolvable (§6.4) **et** il n'a pas de raison de la garder
+  en vie — sa propre faction en a une : une ville qui fait défaut se révolte ;
+- il est étranger et juge que la ville ne vaut pas ce qu'elle lui coûtera
+  (§6.3.2).
 
 Un refus est un événement, avec un nom et une ville, pas une règle silencieuse.
+
+**Une première version posait ici un plafond en crédits par habitant. C'était un
+décret** — voir le principe de réglage en tête de document. Il est remplacé par
+le §6.4, qui ne décide rien et se contente de constater.
 
 ### 6.2 L'intérêt et le remboursement
 
@@ -310,44 +357,168 @@ col.creancier : string | null   // clé de faction ; null = pas de dette
 ```
 
 Au premier emprunt, le créancier est la faction de la ville. Il peut changer par
-**rachat de dette** : une faction — ou vous, au grade requis — paie au porteur le
-montant de la dette dans une monnaie qu'il accepte, et devient le porteur.
+**rachat de créance** : une faction — ou vous, au grade requis — paie au porteur
+le prix qu'il demande, dans une monnaie qu'il accepte, et devient le porteur.
 
-Le rachat est une décision de conseil, prise quand :
-- la ville visée est jugée intéressante (population, position, mine) ;
-- le porteur actuel est jugé faible, ou détesté ;
-- le tempérament s'y prête — le Consortium Hexa achète, la Milice de Cendre
-  méprise ce genre de manœuvre.
+### 6.3.1 Le vendeur n'est pas passif
 
-Racheter la dette de la ville d'un autre est un acte hostile visible : la
-relation avec le porteur chute de 30, et la nouvelle est journalisée avec son
-nom.
+C'est le point le plus important de tout le chapitre, et il applique le principe
+de réglage en tête de document. On demande à une faction de céder la créance
+d'une de ses propres villes, souvent à un rival ; elle sait parfaitement pourquoi
+on la lui demande. Le prix n'est donc pas une constante, c'est **sa** décision.
 
-### 6.4 Le défaut
+Ce qui la détermine, dans cet ordre :
 
-Une ville dont la dette dépasse le plafond depuis plus de `DUREE_DEFAUT`
-conseils fait défaut. Ce qui arrive alors dépend de qui la tenait :
+**Ce que la ville lui rapporte, ou lui coûte.** On calcule ce qu'elle vaut à qui
+la tient, par conseil :
 
-**Créancier = sa propre faction.** La dette est annulée, la faction perd
-d'autant, et la monnaie disparaît (`f.masse -= dette`) — un défaut est
-déflationniste, et c'est correct. `unrest += 0,25`, la ville devient candidate à
-la révolte ou à la sécession par les mécanismes existants, et le dirigeant perd
-du crédit auprès des siens.
+```
+valeurNette(col, f) = remontée + impôt + intérêts perçus
+                    − garnison − travaux − prêts consentis
+                    − ce que la surextension lui coûte en grogne, converti
+```
 
-**Créancier = une faction étrangère.** La ville **passe sous son drapeau**. La
-dette est annulée de la même façon. C'est la conquête par l'argent : une autre
-façon de prendre une ville que par les armes, plus lente, plus chère à préparer,
-et qui ne demande pas une seule colonne.
+**Une ville à valeur nette négative est une charge, et son propriétaire a intérêt
+à s'en défaire.** C'est ta remarque, et elle retourne le mécanisme : la
+conquête par la dette n'est pas toujours une agression, c'est parfois un service
+qu'on rend à un pays trop grand qui n'arrive plus à tenir ses marges. Le frein de
+surextension qui existe déjà nourrit directement ce calcul — plus une ville est
+loin de sa capitale dans un empire trop étalé, plus elle est chère à tenir, plus
+son propriétaire est disposé à la lâcher.
 
-Elle doit coûter ce qu'elle vaut, sinon elle remplace la guerre au lieu de la
-concurrencer :
-- la relation entre les deux factions chute de 45, ce qui suffit souvent à
-  déclarer la guerre ;
-- la ville prise garde sa grogne et gagne `unrest += 0,2` — on n'aime pas
-  changer de pays sur un relevé de compte ;
-- toutes les factions qui voient faire baissent leur opinion du repreneur de 10.
-  Prendre une ville par la dette une fois est une manœuvre ; en prendre quatre
-  fait de vous un usurier, et le monde le sait.
+**Sa trésorerie.** Une faction à sec a besoin de liquide tout de suite ; une
+faction à l'aise n'a aucune raison de vendre.
+
+**Ce qu'elle pense de l'acheteur.** On ne cède pas une ville à qui vous fait la
+guerre — sauf à être aux abois.
+
+D'où le prix :
+
+```
+prime = PRIME_BASE
+      − valeurNette normalisée        // une charge se brade
+      − besoin de liquide             // un pays à sec aussi
+      + hostilité envers l'acheteur   // un ennemi paie plein tarif, ou se voit refuser
+      + attachement à la ville        // capitale, mine, position de front
+prix  = dette × clamp(prime, 0,4, 4)
+```
+
+Et trois issues, pas une :
+
+- **refus pur et simple** — faction en paix, à l'aise, ville qui rapporte :
+  elle ne vend pas, et rien ne l'y oblige ;
+- **vente au rabais** — jusqu'à 40 % de la dette, quand la ville est une charge
+  ou que la caisse est vide : elle est contente d'être débarrassée ;
+- **prime dissuasive** — jusqu'au quadruple, quand c'est un ennemi qui demande.
+
+Le frein est donc endogène : il naît de l'état du monde, il varie de partie en
+partie, il se comprend sans qu'on l'explique. Et il ouvre un jeu de plus, celui
+qu'aucune constante n'aurait donné : **affamer un pays pour qu'il te vende ses
+créances au rabais**, ou au contraire **lui racheter le boulet qu'il traîne** et
+en faire quelque chose parce que ta capitale est à trois cases et pas à douze.
+
+### 6.3.2 Le repreneur hérite du problème
+
+Une ville qui ne valait rien à son ancien propriétaire ne vaut pas forcément
+quelque chose au nouveau. C'est le contrepoids naturel, et il ne coûte pas une
+ligne de règle : la même `valeurNette` s'appliquera à toi. Il faut donc juger si
+la ville est mauvaise **en soi** — pauvre, stérile, ingouvernable — ou seulement
+**mal tenue** : trop loin de la capitale d'un empire trop grand, pressurée par un
+taux confiscatoire, coupée de toute route commerciale. La première est un piège,
+la seconde est une affaire.
+
+C'est exactement la décision qu'on veut poser, et elle ne demande aucun
+mécanisme supplémentaire.
+
+### 6.3.3 Ce que ça coûte en relations
+
+La cession se journalise avec le nom des deux parties. La relation avec le
+porteur chute de 15 **quand il a refusé une première fois et qu'on insiste par la
+prime** ; une cession consentie ne coûte rien du tout, puisque c'est un marché
+que les deux ont voulu.
+
+Aucune pénalité auprès des tiers. Personne dans ce monde ne condamne une
+conquête — on ne va pas se mettre à condamner un contrat.
+
+### 6.4 L'insolvabilité, puis le défaut
+
+Deux choses distinctes, et les confondre était l'erreur de la première version.
+
+**L'insolvabilité est un état, et il se calcule.** Une ville est insolvable
+quand l'intérêt qu'elle doit dépasse ce qu'elle est capable de rembourser :
+
+```
+insolvable(col) = col.dette × tauxDirecteur(créancier) > surplus(col)
+```
+
+où `surplus(col)` est ce que la ville dégage au-delà de son fonds de roulement,
+c'est-à-dire exactement ce qui servirait à rembourser. Au-delà, la dette croît
+plus vite qu'elle ne se rembourse : c'est la définition de la ruine, pas un
+seuil qu'on décrète.
+
+Aucune constante ici. Le seuil sort du taux directeur et de l'économie de la
+ville, il est différent pour chaque ville, et il bouge avec elles. Une ville
+prospère porte une dette énorme sans broncher ; un bourg pauvre est ruiné pour
+trois cents crédits.
+
+**Et c'est ce qui donne son mordant au taux directeur.** Le monter rend
+littéralement ses débiteurs insolvables — c'est le mécanisme lui-même, et plus
+un effet de bord. Un prédateur monte son taux pour précipiter le défaut des
+villes dont il tient les créances, et étrangle ses propres villes en le faisant.
+
+**Le défaut est une décision, celle du créancier.** Une ville insolvable ne
+tombe pas toute seule : elle tombe quand celui qui la tient cesse de prêter.
+D'où trois issues, à chaque conseil :
+
+- **Sa propre faction continue de prêter.** C'est le cas ordinaire : laisser
+  défaillir sa propre ville, c'est la révolte assurée. On jette de l'argent par
+  la fenêtre parce que l'alternative est pire — et le trésor s'en ressent, ce
+  qui rend la faction abattable.
+- **Sa propre faction lâche.** Trésor vide, ou dirigeant qui coupe les
+  dépenses. La dette est annulée, la monnaie disparaît (`f.masse -= dette`) —
+  un défaut est déflationniste, et c'est correct. `unrest += 0,25`, la ville
+  devient candidate à la révolte ou à la sécession par les mécanismes
+  existants, et le dirigeant perd du crédit auprès des siens.
+- **Un créancier étranger saisit.** Il le fait quand il juge la ville bonne à
+  prendre, avec la même `valeurNette` que le vendeur a utilisée pour la lui
+  céder (§6.3.1). La ville **passe sous son drapeau**, la dette est annulée de
+  la même façon.
+
+Il n'y a donc ni plafond de dette, ni durée avant défaut. Ce qui borne tout
+cela, c'est le trésor d'un prêteur, qui est fini, et son intérêt, qui est
+calculable.
+
+### 6.4.1 Ce que coûte une ville prise par la dette
+
+Pas de perte de population, murs et défense intacts, `unrest += 0,15` — on
+n'aime pas changer de pays sur un relevé de compte, mais c'est sans commune
+mesure avec un assaut, qui emporte 18 % des habitants et met la grogne à +0,35.
+Prendre une ville entière est précisément l'intérêt de l'acheter.
+
+**Et la grogne peut baisser.** Une ville dont le créancier étranger prête plus
+que ne prêtait son propre pays mange mieux, et le sait. Les gens se moquent de
+savoir sur quel registre ils figurent. Nourrir la ville affamée d'un voisin
+jusqu'à ce qu'elle soit à vous est une stratégie entière.
+
+Relations : **−25 avec le dépossédé**, comme une prise par les armes — il a
+perdu une ville, le résultat est le même. Rien de plus, et **rien du tout auprès
+des tiers**.
+
+Une première version mettait −45 et −10 à toute la carte. C'était faux, et
+mesurable : dans ce jeu, déclarer la guerre coûte −60, chaque assaut −8, la
+prise −25, et *aucune faction ne juge jamais une conquête* — `jugerLesAutres` ne
+regarde que les lois. On faisait donc payer un rachat de créance plus cher
+qu'une guerre d'extermination, au nom d'une morale que personne ici ne professe.
+
+L'équilibre entre le sang et l'argent tient donc aux prix, pas aux jugements :
+
+| | par les armes | par la dette |
+|---|---:|---:|
+| argent | 700 à 1 170 (`force × 5,2`) | tout ce qu'on a prêté, perdu au défaut |
+| relations | −60 (guerre) −8 par assaut −25 | −25 |
+| délai | 50 à 100 heures | plusieurs centaines |
+| ce qu'on récupère | 18 % de la population perdue, murs éventrés, grogne +0,35 | la ville entière, intacte |
+| condition | avoir une raison de guerre | qu'elle soit déjà à l'agonie, et que son porteur cède |
 
 ### 6.5 Les décisions du joueur
 
@@ -526,6 +697,8 @@ Six graines, six mille heures, comparé au témoin `82636d8`.
 | monnaies effondrées (cours < 0,4) sur 6 parties | — | ≥ 1 |
 | villes en défaut sur 6 parties | — | 5 à 25 |
 | villes reprises par leur créancier sur 6 parties | — | 2 à 10 — une manœuvre, pas la règle |
+| créances cédées de plein gré (ville à charge) | — | ≥ 1/3 des cessions : le mécanisme n'est pas qu'une agression |
+| refus de vendre opposés aux demandes de rachat | — | ≥ 50 % : le vendeur décide vraiment |
 | paliers de taux directeur utilisés par les PNJ | — | les quatre, aucun sous 8 % des conseils |
 | accords commerciaux signés | 0,88/partie | ≥ 2/partie |
 | tick | 72 µs | < 110 µs |
@@ -585,7 +758,11 @@ README, artefact republié.
   d'opérations d'open market ;
 - pas de spéculation des PNJ sur les monnaies ;
 - pas de salaires indexés ni de spirale prix-salaires ;
-- pas de banques privées ; le prêteur est la faction, et c'est tout ;
+- pas de banques privées ni de financiers indépendants : le prêteur est une
+  faction, ou vous. Un notable riche qui prêterait pour son propre compte serait
+  un acteur de plus à faire vivre, avec ses buts, sa mort et sa succession —
+  c'est un autre chantier, et il ne se décide pas en passant. Le rôle du
+  financier, dans cette version, c'est vous qui le tenez ;
 - une seule marchandise déclenche le crédit au premier jet : les rations.
 
 ---
@@ -601,17 +778,41 @@ README, artefact republié.
 | Le taux directeur | **Il existe**, en quatre paliers, visible et modifiable au grade requis. Il commande l'intérêt, l'emprunt pour travaux, la prime de confiance du cours et le rythme des défauts. |
 
 Restent à calibrer, et rien d'autre : `PART_SALARIALE`, `HORIZON_GAGE`, `K` de la
-prime de confiance, `ECART_BASE`, `PLAFOND_DETTE`, `SEUIL_TRAVAUX`,
-`DUREE_DEFAUT`, et les quatre paliers du taux directeur. Aucun ne sera choisi à
-vue : chacun passe par un balayage mesuré contre les cibles du §13.
+prime de confiance, `ECART_BASE`, `PRIME_BASE` du rachat, et les quatre paliers
+du taux directeur. Aucun ne sera choisi à vue : chacun passe par un balayage
+mesuré contre les cibles du §13.
+
+Chacun décrit une **rareté ou un prix** — la part du travail dans la valeur, la
+durée qui gage une monnaie, la sensibilité d'un cours, le coût d'un change, le
+prix d'une créance, le loyer de l'argent. Aucun ne décrète un interdit. C'est le
+test du §Principe de réglage, et ils le passent tous les six.
 
 ---
 
-## 17. Ce qui reste ouvert
+## 17. Deux constantes supprimées, et pourquoi
 
-Une seule chose, et elle attend le lot D : **le rachat de dette peut-il viser
-une ville qui n'a pas encore fait défaut ?** Si oui, une faction riche peut
-acheter d'avance toutes les dettes de son voisin et attendre. Si non, il faut
-qu'une ville soit déjà en difficulté pour qu'on puisse la convoiter, ce qui rend
-la manœuvre plus rare et plus lisible. La mesure du lot D tranchera : si les
-villes reprises dépassent dix par lot de six parties, on ferme.
+Elles figuraient dans la première version. Elles sont retirées parce qu'elles
+échouaient au principe de réglage, et le raisonnement est consigné ici pour
+qu'on ne les réintroduise pas par distraction.
+
+**`PLAFOND_DETTE` — le montant au-delà duquel une ville faisait défaut.**
+Le besoin était réel : il faut bien que quelque chose dise quand un débiteur est
+ruiné. La forme était un décret — « vingt-cinq crédits par habitant » ne décrit
+aucune rareté. Remplacé par de l'arithmétique : une ville est insolvable quand
+son intérêt dépasse ce qu'elle peut rembourser (§6.4). Le seuil sort désormais du
+taux directeur et de l'économie de chaque ville, il diffère pour chacune, et il
+bouge avec elles.
+
+**`DUREE_DEFAUT` — le nombre de conseils d'insolvabilité avant la chute.**
+Confondait un état et une décision. L'insolvabilité se calcule ; le défaut, lui,
+est le choix d'un créancier qui cesse de prêter, et ce choix a déjà toutes ses
+raisons (§6.4). Une durée fixe n'y ajoutait qu'un délai arbitraire.
+
+**Et une interdiction supprimée : « on ne peut pas racheter la créance d'une
+ville qui n'est pas déjà en difficulté ».** C'était le réflexe paresseux à
+l'état pur — une condition de monde inventée pour brider une action. Elle était
+en outre redondante depuis que le vendeur décide : une ville en bonne santé a une
+valeur nette positive, donc son porteur refuse ou demande le quadruple (§6.3.1).
+Le frein existait déjà, vivant ; on allait en poser un mort par-dessus.
+
+Il ne reste, dans tout le chapitre du crédit, aucune constante décrétée.
