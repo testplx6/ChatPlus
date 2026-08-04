@@ -34,24 +34,32 @@ const NOM_CONSTANTE = /^[A-Z][A-Z0-9_]*$/;
  * Rien à tenir à jour : la liste se déduit du code. Une liste qu'il faut penser
  * à compléter finit incomplète.
  */
-export function recenser(modules) {
+export function recenser(modules, profondeurMax = 3) {
   const leviers = [];
   const ecartes = [];
+  const descendre = (nomModule, objet, chemin, valeur) => {
+    for (const [champ, v] of Object.entries(valeur)) {
+      const sous = chemin.concat(champ);
+      const ou = { module: nomModule, objet, champ: sous.slice(1).join('.'), chemin: sous };
+      if (typeof v === 'number' && Number.isFinite(v)) {
+        if (v === 0) ecartes.push({ ...ou, motif: 'à zéro — aucun facteur ne le déplace' });
+        else leviers.push({ ...ou, valeur: v });
+      } else if (v && typeof v === 'object' && !Array.isArray(v)) {
+        if (sous.length > profondeurMax) {
+          ecartes.push({ ...ou, motif: `plus profond que ${profondeurMax} niveaux` });
+        } else {
+          descendre(nomModule, objet, sous, v);
+        }
+      } else {
+        ecartes.push({ ...ou, motif: Array.isArray(v) ? 'un tableau' : 'pas un nombre' });
+      }
+    }
+  };
   for (const [nomModule, exports] of Object.entries(modules)) {
     for (const [objet, valeur] of Object.entries(exports)) {
       if (!NOM_CONSTANTE.test(objet)) continue;
       if (typeof valeur !== 'object' || valeur === null || Array.isArray(valeur)) continue;
-      for (const [champ, v] of Object.entries(valeur)) {
-        const ou = { module: nomModule, objet, champ };
-        if (typeof v !== 'number' || !Number.isFinite(v)) {
-          ecartes.push({ ...ou, motif: Array.isArray(v) || (v && typeof v === 'object')
-            ? 'imbriqué — hors de portée de module.OBJET.champ' : 'pas un nombre' });
-        } else if (v === 0) {
-          ecartes.push({ ...ou, motif: 'à zéro — aucun facteur ne le déplace' });
-        } else {
-          leviers.push({ ...ou, valeur: v });
-        }
-      }
+      descendre(nomModule, objet, [objet], valeur);
     }
   }
   return { leviers, ecartes };

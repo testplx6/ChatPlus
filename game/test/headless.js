@@ -7046,13 +7046,25 @@ section('17. Cartographie — l’instrument qui dit quel levier commande quoi')
 
   ok(cles.includes('economy.CAISSE.marge') && cles.includes('data.MENAGES.parTete'),
     'le recensement trouve les champs numériques des objets exportés', cles.join(' '));
-  ok(!cles.some((c) => c.startsWith('economy.COMMODITIES')),
-    'il ne descend pas dans un catalogue imbriqué', cles.join(' '));
+  ok(cles.filter((c) => c.startsWith('economy.COMMODITIES')).length === 1,
+    'un catalogue rend ses feuilles chiffrées, pas ses branches', cles.join(' '));
   ok(!cles.some((c) => c.includes('SEUILS') || c.includes('prixUnitaire')),
     'ni dans un tableau, ni dans une fonction');
   ok(ecartes.some((e) => e.champ === 'mort'),
     'un champ à zéro est écarté, et dit pourquoi : ×0,7 le laisserait à zéro',
     JSON.stringify(ecartes));
+
+  // Et les catalogues. Ils étaient hors carte, et ce n'était pas une petite
+  // omission : 84 champs plats contre 903 imbriqués. Le banc savait déjà
+  // appliquer `module.OBJET.sous.champ` — c'est le recensement qui refusait de
+  // descendre, donc les neuf dixièmes du moteur n'avaient jamais été mesurés.
+  ok(cles.includes('economy.COMMODITIES.rations.prix'),
+    'le recensement descend dans les catalogues', cles.join(' '));
+  const profond = recenser({
+    m: { A: { b: { c: { d: 7 } } } },
+  }).leviers.map((l) => l.chemin.join('.'));
+  ok(profond.includes('A.b.c.d'), 'jusqu’à trois niveaux sous l’objet exporté',
+    profond.join(' '));
 
   // L'élasticité : de combien de pour cent bouge la métrique pour un pour cent
   // de levier. C'est la seule forme comparable d'un levier à l'autre — une

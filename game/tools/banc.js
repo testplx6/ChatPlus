@@ -343,8 +343,8 @@ async function cartographier(graines, horizon, max) {
   for (const l of retenus) {
     for (const [cote, facteur] of [['bas', BAS], ['haut', HAUT]]) {
       configs.push({
-        nom: `${l.module}.${l.objet}.${l.champ} ${cote}`, src: SRC, role: cote, levier: l,
-        regles: [{ module: l.module, chemin: [l.objet, l.champ], valeur: l.valeur * facteur }],
+        nom: `${l.module}.${l.chemin.join('.')} ${cote}`, src: SRC, role: cote, levier: l,
+        regles: [{ module: l.module, chemin: l.chemin, valeur: l.valeur * facteur }],
       });
     }
   }
@@ -371,7 +371,8 @@ async function cartographier(graines, horizon, max) {
     return { l, remue: Math.max(...Object.values(e).map((x) => Math.abs(x) || 0)) };
   }).filter((x) => x.remue > 0).sort((a, b) => b.remue - a.remue);
   const vus = new Set();
-  const choisis = remuants.filter((x) => !vus.has(x.l.module) && vus.add(x.l.module))
+  const choisis = remuants.filter((x) => !vus.has(`${x.l.module}.${x.l.objet}`)
+    && vus.add(`${x.l.module}.${x.l.objet}`))
     .slice(0, PLACEBOS);
   const placebos = choisis.map((x) => ({
     nom: `placebo ${x.l.objet}.${x.l.champ}`, src: SRC, role: 'placebo',
@@ -392,7 +393,7 @@ async function cartographier(graines, horizon, max) {
 
   const lignes = [];
   for (const l of retenus) {
-    const cle = `${l.module}.${l.objet}.${l.champ}`;
+    const cle = `${l.module}.${l.chemin.join('.')}`;
     const bas = configs.find((c) => c.role === 'bas' && c.levier === l);
     const haut = configs.find((c) => c.role === 'haut' && c.levier === l);
     const eb = ecarts(ref, bas.parties);
@@ -418,7 +419,7 @@ async function cartographier(graines, horizon, max) {
 
   ecrireCarte({
     lignes, sol, ref, graines, horizon, ecartes, illisibles, retenus, leviers,
-    placebos: choisis.map((x) => `${x.l.module}.${x.l.objet}.${x.l.champ}`), bougent,
+    placebos: choisis.map((x) => `${x.l.module}.${x.l.chemin.join('.')}`), bougent,
   });
   const morts = lignes.filter((x) => !x.effets.length);
   console.log(`\nCARTOGRAPHIE.md écrit — ${lignes.length - morts.length} leviers vivants, `
@@ -552,7 +553,7 @@ function ecrireCarte({
   t.push('ses trous se lit comme une carte complète.');
   t.push('');
   const parMotif = {};
-  for (const e of ecartes) (parMotif[e.motif] = parMotif[e.motif] || []).push(`${e.objet}.${e.champ}`);
+  for (const e of ecartes) (parMotif[e.motif] = parMotif[e.motif] || []).push(e.chemin.join('.'));
   for (const [motif, l] of Object.entries(parMotif)) {
     t.push(`- **${motif}** : ${l.length} champs — ${l.slice(0, 10).join(', ')}`
       + `${l.length > 10 ? '…' : ''}`);
