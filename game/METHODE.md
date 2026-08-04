@@ -8,9 +8,140 @@ regarder le jour où on voudra la remettre en cause.
 À relire quand on ajoute un mécanisme, quand on choisit un coefficient, ou quand
 on est sur le point d'écrire « il suffit de ».
 
+**La section 1 passe avant toutes les autres.** Le reste dit comment travailler
+proprement ; elle dit ce qu'on cherche. On peut mesurer parfaitement et livrer un
+monde mort.
+
 ---
 
-## 1. Régler par l'intérieur
+## 1. Ce qu'on cherche
+
+La rigueur des sections suivantes ne sert à rien toute seule. On peut mesurer
+parfaitement, tester parfaitement, et produire un monde juste et mort. Ce qu'on
+cherche tient en quatre mots, et ils passent avant le reste.
+
+### 1.1 Réaliste
+
+**La bonne question, devant un mécanisme, c'est « qu'est-ce qui se passerait
+vraiment ? »** Elle produit des règles qu'on n'aurait jamais inventées en
+cherchant à équilibrer.
+
+> **Incident.** « Le vendeur n'est pas passif. » On cherchait à brider la
+> conquête d'une ville par le rachat de sa dette, et on partait sur un multiple
+> fixe. En se demandant simplement ce que ferait quelqu'un à qui l'on demande de
+> céder la créance d'une de ses propres villes à un rival, on a obtenu trois
+> issues au lieu d'une, un frein qui varie de partie en partie, et deux
+> stratégies entières — affamer un pays pour qu'il brade, ou soulager un voisin
+> du boulet qu'il traîne.
+
+**Le réalisme est un générateur, pas un but.** On ne simule pas ce que personne
+ne verra jamais. Les ménages d'une ville sont modélisés parce que sans eux
+l'argent apparaît de nulle part, et ça, ça se voit dans les comptes. Les
+financiers privés ne le sont pas : ce serait un acteur de plus à faire vivre pour
+aucun effet visible.
+
+**Une cause doit pouvoir se dire en une phrase.** Si on ne peut pas nommer
+pourquoi une ville est tombée, le joueur ne le pourra pas non plus — et il aura
+raison de trouver le monde arbitraire.
+
+### 1.2 Jouable
+
+**Un mécanisme qu'on ne peut pas atteindre n'existe pas.**
+
+> **Incident.** La bourse d'échange. Codée, testée, mesurée — et hors d'atteinte :
+> il fallait une recherche, un bâtiment, un camp inscrit sur les cartes, 40
+> d'estime, une faction à quatre villes et 2 500 crédits en caisse. Huit portes
+> pour un seul ordre. Le joueur a écrit : « tu as codé une bourse d'échange et je
+> ne peux même pas la tester tellement tu as rendu le truc injouable. »
+
+**Une porte se juge sur tout le chemin, pas sur elle-même.** Chaque condition
+prise isolément semble raisonnable ; c'est leur produit qui décide si quelqu'un
+passe. Compter les portes avant d'en ajouter une.
+
+**Et l'inverse est tout aussi vrai : on ne supprime pas le contenu intéressant
+pour régler un problème d'accès.** Une recherche à mener et un bâtiment à
+construire, c'est *le* jeu, pas un obstacle. Ce qu'il faut couper, ce sont les
+conditions qui n'apportent rien à faire, pas celles qui donnent quelque chose à
+faire.
+
+**Un choix a besoin d'au moins deux options vivantes.** Si une réponse gagne
+toujours, ce n'est pas un choix, c'est un tutoriel.
+
+> **Incident.** Les six milices. La première version en rendait une intéressante
+> et cinq décoratives. Le joueur : « il faudrait qu'elles le soient toutes, mais
+> avec des extras propres à chacune d'elles. » Chaque drapeau a désormais son
+> service propre.
+
+**On doit pouvoir revenir.** Une situation mauvaise doit rester récupérable, et
+une défaite doit être lisible : on doit savoir ce qui nous a tués.
+
+### 1.3 Agréable
+
+**L'écran ne bouge pas sous le doigt.** Rien ne se replie, ne se recharge ni ne
+se déplace pendant qu'on lit.
+
+> **Incident.** Un rafraîchissement reconstruisait les modales et remettait le
+> défilement en haut : sur seize écrans mesurés, treize à quatorze sautaient. On
+> perdait sa place toutes les quelques secondes.
+
+**On ne doit jamais découvrir une chose importante en relisant ses comptes.**
+
+> **Incident.** La colonne qui marchait sur le camp du joueur. L'annonce partait
+> au journal, noyée parmi quatre cents autres lignes, et n'était même pas marquée
+> importante. On apprenait l'attaque en lisant l'épitaphe de son propre camp.
+
+**Le journal est plafonné : l'important ne doit pas être chassé par le banal.**
+Les départs et arrivées de caravanes n'y figurent pas — il en passe des
+centaines, elles auraient effacé les guerres et les morts.
+
+**Ce qui est cliquable doit se voir.** Convention unique, tenue partout.
+
+**Attendre n'est pas un mécanisme de jeu.** Si une décision demande deux cents
+heures, c'est l'accélération qui doit la rendre supportable, pas la patience du
+joueur.
+
+**Téléphone d'abord.** Panneaux repliables, barres qui résument, rien qui déborde
+en largeur.
+
+### 1.4 Logique
+
+**Le monde ne tourne pas autour du joueur, et il tourne sans lui.** Les factions
+se font la guerre qu'il soit là ou non, et ce qu'il ne voit pas continue
+d'exister.
+
+**Ce que le joueur peut faire, une faction doit pouvoir le faire — et
+réciproquement.** Pas de magie asymétrique. Le joueur gradé ordonne, le conseil
+décide par tempérament, et c'est le même mécanisme derrière.
+
+**Le nom doit correspondre au comportement.** Un comptoir se comporte comme un
+comptoir. Une règle qu'il faut expliquer parce que son nom dit autre chose est à
+renommer ou à refaire.
+
+**Si un résultat fait dire « ça n'a aucun sens », être équilibré ne le sauve
+pas.**
+
+> **Incident.** Prendre une ville en rachetant sa dette coûtait plus cher en
+> relations que la prendre d'assaut en massacrant 18 % de ses habitants. Le
+> joueur : « selon toi c'est moins bien vu par le peuple de prendre une ville par
+> la ruse que par le sang ? » Vérification faite, aucune faction de ce monde ne
+> juge jamais une conquête. On avait inventé une morale que personne n'y professe.
+
+**Un monde équilibré mais sans drame est un monde raté.**
+
+> **Incident.** Après un changement d'économie, tous les indicateurs étaient bons
+> — plus une seule faction fauchée, plus de villes debout, des bourses partout —
+> et **plus aucune faction ne se faisait écraser**, contre dix sur trente-six
+> auparavant. Chaque chiffre était meilleur, et le monde n'avait plus d'histoires.
+> « Les factions écrasées » est depuis une cible mesurée au même titre que les
+> autres.
+
+C'est la règle qui gouverne toutes les autres : ce moteur n'existe pas pour
+produire des nombres cohérents, il existe pour produire des situations qu'on a
+envie de raconter.
+
+---
+
+## 2. Régler par l'intérieur
 
 **Quand un comportement dérape, on corrige ce qui le rend avantageux — son prix,
 sa durée, ses conditions d'accès. Jamais en collant à côté une pénalité sans
@@ -57,7 +188,7 @@ précisément celui qui avait le mieux dédommagé.
 
 ---
 
-## 2. Mesurer
+## 3. Mesurer
 
 **Une mesure sans témoin ne mesure rien.** Aucun réglage n'est retenu sans le
 chiffre d'à côté, celui de la version qu'on remplace.
@@ -91,7 +222,7 @@ n'était pas le nombre de convois, c'était le tonnage.
 
 ---
 
-## 3. Vérifier
+## 4. Vérifier
 
 **Un test qui interroge une valeur impossible ne vérifie rien, et il passe.**
 
@@ -129,7 +260,7 @@ le marché, dont les prix bougent à chaque tick. Poser un attribut ne survivait
 
 ---
 
-## 4. Le déterminisme n'est pas négociable
+## 5. Le déterminisme n'est pas négociable
 
 La simulation est déterministe : même graine, même monde, à l'unité près. Tout ce
 qui suit en dépend — les tests, les balayages, les témoins, la reprise d'une
@@ -147,7 +278,7 @@ Corollaire : `Date.now()` et `Math.random()` n'ont rien à faire dans le moteur.
 
 ---
 
-## 5. Ce qui ne se négocie pas
+## 6. Ce qui ne se négocie pas
 
 - **L'état est du JSON pur.** Pas de classe, pas de fonction, pas de référence
   circulaire. Un aller-retour `JSON.parse(JSON.stringify(state))` doit rendre
@@ -165,7 +296,7 @@ Corollaire : `Date.now()` et `Math.random()` n'ont rien à faire dans le moteur.
 
 ---
 
-## 6. Écrire le code
+## 7. Écrire le code
 
 **Le commentaire dit pourquoi, pas quoi.** Un commentaire utile raconte ce qui a
 été essayé, ce que ça a donné, et pourquoi la version retenue l'a emporté. Les
@@ -175,18 +306,11 @@ les remettre en cause sans tout remesurer.
 **Une constante sans sa mesure est une opinion.** Si on ne peut pas écrire à côté
 d'elle le tableau qui l'a fait choisir, c'est qu'on l'a devinée.
 
-**Une porte se juge sur tout le chemin, pas sur elle-même.** Chaque condition
-d'accès prise isolément peut sembler raisonnable ; c'est leur produit qui décide
-si quelqu'un passe. Compter les portes avant d'en ajouter une.
-
 ---
 
-## 7. Travailler ensemble
+## 8. Travailler ensemble
 
 - **Rien ne se code sans validation.** On propose, on chiffre, on attend.
-- **On ne supprime pas le contenu intéressant pour régler un problème
-  d'équilibre.** Un chemin trop long ne veut pas dire que les étapes ne valent
-  rien : recherche et bâtiment à construire sont *le* jeu, pas des obstacles.
 - **On rapporte les résultats tels quels.** Si un test échoue, on le dit avec sa
   sortie. Si une étape a été sautée, on le dit. Une cible manquée n'est pas un
   échec : c'est une mesure à expliquer avant de continuer.
@@ -194,7 +318,7 @@ si quelqu'un passe. Compter les portes avant d'en ajouter une.
 
 ---
 
-## 8. Le format d'une proposition
+## 9. Le format d'une proposition
 
 Avant de coder quoi que ce soit :
 
