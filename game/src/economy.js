@@ -117,18 +117,38 @@ export function cibleStock(col, key) {
  * la ville. C'est ce qui permet de chiffrer une transaction avant de la faire,
  * puisque chaque unité échangée déplace le prix de la suivante.
  */
-export function prixUnitaire(col, key, stockSimule, world) {
+export function prixUnitaire(col, key, stockSimule, world, ctx) {
   const base = COMMODITIES[key].prix;
   const cible = Math.max(1, cibleStock(col, key));
   const stock = Math.max(0, stockSimule === undefined ? (col.stock[key] || 0) : stockSimule);
   // Rapport stock/demande → facteur borné [0.45, 3.2]
-  const tension = cible * solvabilite(col) / (stock + cible * 0.35);
+  const c = ctx || contextePrix(col, world);
+  const tension = cible * c.sol / (stock + cible * 0.35);
   const f = Math.max(0.45, Math.min(3.2, Math.pow(tension, 0.85)));
   // Et ce que vaut la monnaie du lieu. Une monnaie faible fait des prix locaux
   // élevés : l'inflation se lit sur l'écran du marché sans qu'on l'explique.
   // `cours` vaut 1 tant que le conseil n'est pas passé, et pour une ville sans
   // drapeau — là, on paie en ce qu'on veut, et personne ne cote.
-  return base * f * (1 + col.unrest * 0.35) / coursMonnaie(world, col.faction);
+  return base * f * c.humeur / c.cours;
+}
+
+/**
+ * Ce qui, dans un prix, ne dépend pas de la marchandise : la solvabilité des
+ * habitants, l'humeur de la ville, le cours de sa monnaie.
+ *
+ * Les trois se recalculaient à chaque marchandise, donc dix fois par ville et
+ * par heure pour un résultat dix fois identique. Le contexte se calcule une
+ * fois et se passe à la boucle. Les opérations et leur ordre sont inchangés :
+ * `prixUnitaire` rend au bit près ce qu'il rendait — c'est ce que les tests
+ * d'économie vérifient déjà, et le monde joué au banc doit rester identique à
+ * la graine près.
+ */
+export function contextePrix(col, world) {
+  return {
+    sol: solvabilite(col),
+    humeur: 1 + col.unrest * 0.35,
+    cours: coursMonnaie(world, col.faction),
+  };
 }
 
 /**
@@ -588,6 +608,7 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
   // — le marché se vide dans les deux cas au lieu de se bloquer.
   let facture = 0;
   if (!col.avantPoste) {
+    const ctx = contextePrix(col, world);
     for (let i = 0; i < COMMODITY_KEYS.length; i++) {
       const k = COMMODITY_KEYS[i];
       const veut = (cons[k] || 0) * dt;
@@ -595,7 +616,7 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
       // On ne facture que ce qui peut être servi : facturer le besoin plutôt
       // que l'étal vidait les poches pour des marchandises inexistantes.
       const enRayon = (col.stock[k] || 0) + (k === 'rations' ? 0 : (prod[k] || 0) * dt);
-      facture += Math.min(veut, enRayon) * prixUnitaire(col, k, undefined, world);
+      facture += Math.min(veut, enRayon) * prixUnitaire(col, k, undefined, world, ctx);
     }
   }
   const regle = facture > 0 ? Math.min(facture, col.menages || 0) : 0;

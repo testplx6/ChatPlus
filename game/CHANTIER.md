@@ -352,11 +352,20 @@ desserrage : 110 µs normalisés, un témoin à 60-64 µs bruts ici soit 67-71
 normalisés, d'où 110/71 ≈ 1,55. La preuve que ce n'est pas un budget taillé pour
 passer : l'étape est rouge à **×1,99**.
 
-### F1b — la dette de vitesse, elle, reste entière
+### F1b — la dette de vitesse : ×1,99 → ×1,77, budget ×1,55
 
-Le tick est à **×1,99 du témoin** (114 contre 57 µs, même machine, même minute)
-pour un budget de ×1,55. C'est la vraie dette de vitesse, et elle est antérieure
-au lot F0 — celui-ci n'a touché aucun fichier de `src/`.
+Antérieure au lot F0, qui n'a touché aucun fichier de `src/`. Premier morceau
+remboursé : le contexte de prix. `solvabilite`, l'humeur de la ville et le cours
+de sa monnaie ne dépendent pas de la marchandise et se recalculaient à chaque
+marchandise — dix fois par ville et par heure pour dix résultats identiques.
+Calculés une fois, passés à la boucle : **×1,99 → ×1,77**, et le monde joué au
+banc est identique au bit près sur les six graines (mêmes 517 villes, mêmes
+57 893 habitants, même écart comptable nul).
+
+Ce qui reste à trouver, d'après le profil : `chemin` 6,9 %, `departsDuReseau`
+5,7 %, le ramasse-miettes 4,6 %, `prixUnitaire` encore 4,1 %. Aucun point chaud
+unique — le profil est plat, il faudra plusieurs prises, chacune mesurée contre
+le témoin, chacune vérifiée « monde identique » au banc avant d'être gardée.
 
 Toutes les autres étapes de `--complet` sont vertes : 37 fichiers statiques,
 37 modules bundlés, 1 051/1 052 tests moteur, 264 vérifications navigateur,
