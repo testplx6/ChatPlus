@@ -15,6 +15,8 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { verdict } from './vitesse.js';
+import { srcDeRevision, TEMOIN } from './revision.js';
 
 const ICI = dirname(fileURLToPath(import.meta.url));
 const JEU = resolve(ICI, '..');
@@ -108,42 +110,45 @@ etape('moteur (test/headless.js)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4. La vitesse, mesurée comme il faut : cinq passes, médiane, et l'aveu
-// d'instabilité plutôt qu'un verdict sur une machine chargée.
+// 4. La vitesse, jugée contre un témoin — la seule façon qui résiste à la
+// machine du jour. Le détail de l'instrument et les quatre relevés qui l'ont
+// dicté sont dans tools/vitesse.js.
 // ---------------------------------------------------------------------------
 
-if (COMPLET) {
-  etape('vitesse (5 passes, médiane)', () => {
-    const passes = [];
-    const facteurs = [];
-    for (let i = 0; i < 5; i++) {
-      const r = lancer('node', ['test/perf.js']);
-      const m = r.sortie.match(/([\d.]+) µs normalisés \(machine ×([\d.]+)\)/);
-      if (m) { passes.push(Number(m[1])); facteurs.push(Number(m[2])); }
-    }
-    if (passes.length < 5) throw new Error('mesures incomplètes');
-    passes.sort((a, b) => a - b);
-    facteurs.sort((a, b) => a - b);
-    const mediane = passes[2];
-    const machine = facteurs[2];
-    const dispersion = (passes[4] - passes[0]) / mediane;
+/**
+ * Ce qu'on s'autorise, en multiples du coût d'un tick au témoin.
+ *
+ * Traduction de l'ancien budget, pas un desserrage : il valait 110 µs
+ * « normalisés », le témoin en mesure 60 à 64 bruts sur cette machine, soit 67
+ * à 71 une fois normalisés par le même facteur — d'où 110/71 ≈ 1,55. La preuve
+ * que ce n'est pas un budget taillé pour passer : le tick est aujourd'hui à
+ * ×1,92 et l'étape reste rouge.
+ */
+const BUDGET = 1.55;
 
-    // Deux façons pour une machine de mentir, et il a fallu se faire prendre
-    // par la seconde. La première est le tremblement : cinq passes qui
-    // s'écartent. La seconde est la dérive — cinq passes bien serrées, toutes
-    // fausses ensemble. Le même commit a mesuré 108 µs puis 160 µs à une heure
-    // d'intervalle, code inchangé, dispersion normale. Un budget qui échoue sur
-    // une machine chargée apprend à ignorer le rouge, ce qui est pire que pas
-    // de budget du tout : on refuse donc de conclure plutôt que d'accuser.
-    if (dispersion > 0.18) {
-      throw new Error(`machine instable (±${Math.round(dispersion * 100)} %) — remesurer au calme`);
-    }
-    if (machine > 1.08) {
-      throw new Error(`machine chargée (×${machine}) — mesure non concluante, `
-        + `${mediane} µs relevés. Remesurer au calme avant de conclure.`);
-    }
-    if (mediane > 110) throw new Error(`${mediane} µs > budget 110 (machine ×${machine})`);
-    return `${mediane} µs (machine ×${machine})`;
+if (COMPLET) {
+  etape(`vitesse (contre le témoin ${TEMOIN})`, () => {
+    const { src: temoinSrc, rev } = srcDeRevision(TEMOIN);
+    const une = (src) => {
+      const r = lancer('node', ['tools/vitesse.js', src]);
+      const v = Number((r.sortie.match(/([\d.]+)/) || [])[1]);
+      if (!(v > 0)) throw new Error(`mesure illisible : ${r.sortie.trim().slice(0, 80)}`);
+      return v;
+    };
+    // En alternant, et chacune dans son processus : mesurer les deux révisions
+    // dans le même processus les fait se réchauffer l'une l'autre — 216, 157
+    // puis 132 µs pour trois mesures du même code, dans l'ordre, sans que rien
+    // ne change.
+    const courants = [];
+    const temoins = [];
+    for (let i = 0; i < 3; i++) { courants.push(une(SRC)); temoins.push(une(temoinSrc)); }
+    const courant = Math.min(...courants);
+    const temoin = Math.min(...temoins);
+    const dispersion = (Math.max(...courants) - courant) / courant;
+
+    const v = verdict({ courant, temoin, budget: BUDGET, dispersion });
+    if (v.issue !== 'tenu') throw new Error(`${v.dit} [${v.issue}]`);
+    return `${v.dit}, témoin ${rev}`;
   });
 
   etape('navigateur (264 vérifications)', () => {

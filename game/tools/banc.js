@@ -42,6 +42,7 @@ import {
   recenser, elasticite, planchers, significatif, asymetrique, METRIQUES,
   moyenne, ecarts,
 } from './cartographie.js';
+import { srcDeRevision } from './revision.js';
 
 const ICI = dirname(fileURLToPath(import.meta.url));
 const JEU = resolve(ICI, '..');
@@ -216,30 +217,6 @@ async function campagne(configs, graines, horizon, surAvancement) {
   }));
   for (const c of configs) c.parties.sort((a, b) => a.graine - b.graine);
   return configs;
-}
-
-// ---------------------------------------------------------------------------
-// Le témoin : une révision extraite une fois, en cache
-// ---------------------------------------------------------------------------
-
-/**
- * `git archive` plutôt qu'un stash ou un worktree : rien à remettre en place,
- * rien qui puisse se perdre, et le moteur n'a aucune dépendance hors de src/.
- */
-function srcDeRevision(rev) {
-  const complet = execFileSync('git', ['-C', DEPOT, 'rev-parse', '--short', rev],
-    { encoding: 'utf8' }).trim();
-  const abri = join(JEU, '.banc');
-  const cache = join(abri, complet);
-  if (!existsSync(join(cache, 'sim.js'))) {
-    mkdirSync(cache, { recursive: true });
-    writeFileSync(join(abri, '.gitignore'), '*\n');
-    // Le tar de src/ dépasse le méga-octet du tampon par défaut.
-    const tar = execFileSync('git', ['-C', DEPOT, 'archive', complet, 'game/src'],
-      { maxBuffer: 64 * 1024 * 1024 });
-    execFileSync('tar', ['-x', '--strip-components=2', '-C', cache], { input: tar });
-  }
-  return { src: cache, rev: complet };
 }
 
 // ---------------------------------------------------------------------------

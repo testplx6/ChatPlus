@@ -41,6 +41,7 @@ import { distanceMorale } from '../src/factions.js';
 import {
   recenser, elasticite, planchers, significatif, asymetrique, ecarts,
 } from '../tools/cartographie.js';
+import { verdict } from '../tools/vitesse.js';
 import { loiIci } from '../src/lois.js';
 import { primeLivraison, prixEsclave } from '../src/justice.js';
 import { classement, puissance } from '../src/factions.js';
@@ -7099,6 +7100,44 @@ section('17. Cartographie — l’instrument qui dit quel levier commande quoi')
   // c'est déjà une règle de METHODE. Encore faut-il que la carte le dise.
   ok(asymetrique({ bas: 0.9, haut: 0.02 }) && !asymetrique({ bas: 0.9, haut: 0.8 }),
     'la carte signale les leviers qui ne poussent que d’un côté');
+}
+
+// ===========================================================================
+section('18. La vitesse se juge contre un témoin, pas contre une machine morte');
+{
+  // Les quatre situations sont mesurées, pas supposées — même révision, même
+  // journée : machine calme 115-125 µs (dispersion 9 %, rapport ×1,92) ;
+  // machine chargée 178-254 (dispersion 31 %, rapport ×1,52) ; machine
+  // uniformément ralentie 166-172 (dispersion 4 %, et pourtant 50 % faux).
+  const v = (o) => verdict({ budget: 1.55, dispersion: 0.05, ...o });
+
+  ok(v({ courant: 120, temoin: 62 }).issue === 'depasse',
+    'au calme, le tick à ×1,92 du témoin dépasse le budget — et c’est la vérité',
+    v({ courant: 120, temoin: 62 }).dit);
+  ok(v({ courant: 95, temoin: 62 }).issue === 'tenu',
+    'sous le budget, tenu');
+
+  // Une machine uniformément ralentie multiplie les deux chiffres : le rapport
+  // ne bouge pas. C'est ce cas-là qui avait fait déclarer 108 µs puis 160 sur
+  // le même code, et l'ancienne garde ne le voyait pas.
+  ok(v({ courant: 190, temoin: 98 }).issue === 'depasse',
+    'une machine deux fois plus lente ne change pas le verdict : les deux ralentissent',
+    v({ courant: 190, temoin: 98 }).dit);
+
+  // La contention en pointe, elle, ajoute un coût à peu près constant aux deux
+  // et écrase le rapport — 1,92 devient 1,52, le budget passerait à tort. Ce
+  // n'est pas le rapport qui la voit, c'est la dispersion.
+  ok(v({ courant: 250, temoin: 164 }).issue === 'tenu',
+    'la contention comprime le rapport — le rapport seul se ferait avoir',
+    v({ courant: 250, temoin: 164 }).dit);
+  ok(v({ courant: 250, temoin: 164, dispersion: 0.31 }).issue === 'instable',
+    'mais la dispersion des passes la trahit, et on refuse de conclure');
+
+  // Refuser de conclure n'est pas échouer : c'est le seul verdict honnête quand
+  // l'instrument n'est pas en état. L'ancienne garde, elle, rendait « budget
+  // tenu » à 102 µs normalisés pendant que le tick coûtait 235 µs réels.
+  ok(v({ courant: 0, temoin: 62 }).issue === 'illisible',
+    'une mesure manquante ne devient jamais un verdict');
 }
 
 // ===========================================================================

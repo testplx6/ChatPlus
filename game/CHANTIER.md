@@ -311,34 +311,56 @@ commande.
 
 ## Blocages
 
-### F1 — `verifier --complet` ne peut pas être vert ici, et ce n'est pas la charge
+### F1a — résolu : la garde de vitesse mesurait l'envers de ce qu'elle croyait
 
-Mesuré au calme (`loadavg` 0,03) : **166 à 172 µs par tick brut, 187 à 196
-normalisés**, contre un budget de 110. La garde « machine chargée » refuse en
-plus de conclure, parce que l'étalon rend ×1,13 — ce processeur-ci fait la
-boucle arithmétique en 22 ms là où la machine de référence en mettait 25.
+**Correction d'un chiffre publié ici.** J'avais écrit « 166 à 172 µs au calme,
+`loadavg` 0,03 ». La moyenne à une minute était bien à 0,03, mais celles à cinq
+et quinze minutes étaient à 0,97 et 2,58 : la machine sortait d'une campagne de
+mille parties et n'avait pas récupéré. **Au vrai calme, le tick est à 113-119 µs
+bruts**, pas 166. Je venais de reproduire tout seul l'incident que la garde
+était censée attraper — même code, 113 puis 172 µs à une demi-heure d'écart.
 
-Deux choses distinctes, et il faut les tenir séparées :
+Les quatre relevés qui ont dicté la nouvelle garde, même révision, même journée :
 
-1. **La dette de vitesse est réelle** : ~170 µs contre 110, quelle que soit la
-   normalisation. Elle appartient au lot F1 et elle est antérieure à ce lot —
-   le lot F0 n'a touché aucun fichier de `src/` (`tools/`, `test/`, les
-   documents, rien d'autre), il ne peut pas l'avoir causée.
-2. **La garde est mal orientée.** Elle a été écrite après un incident où la même
-   révision mesurait 108 puis 160 µs à une heure d'écart ; elle refuse
-   au-dessus de ×1,08, c'est-à-dire quand la machine est *plus rapide* que la
-   référence. Sur une machine réellement chargée l'étalon ralentit et le facteur
-   descend sous 1 — la garde ne s'y déclenche pas. Elle attrape aujourd'hui une
-   machine saine et laisserait passer le cas qu'elle visait.
+| | tick courant | dispersion | rapport au témoin | ancienne garde |
+|---|---:|---:|---:|---|
+| machine calme (×1,13) | 115–125 µs | 9 % | ×1,92 | **refuse de conclure** |
+| machine chargée (×0,59) | 178–254 µs | 31 % | ×1,52 | **« budget tenu », 102 µs** |
+| machine ralentie uniformément | 166–172 µs | 4 % | ×1,79 | passe |
 
-**Ne pas élargir le seuil pour faire passer la mesure** — c'est exactement ce
-que ce fichier interdit. La garde est à réécrire sur ce qu'elle voulait dire :
-la stabilité entre passes, pas l'écart à une machine de référence disparue.
-C'est du travail de lot F1, avec sa propre mesure.
+L'ancienne garde refusait de conclure sur une machine saine et **déclarait le
+budget tenu à 102 µs normalisés pendant que le tick coûtait 235 µs réels** :
+sur une machine chargée l'étalon ralentit, le facteur s'effondre à 0,59, et la
+normalisation divise le vrai coût par deux. Un seuil dans le mauvais sens ne se
+rattrape pas en le déplaçant.
 
-En attendant, `--complet` est vert sur toutes ses autres étapes : 37 fichiers
-statiques, 37 modules bundlés, 1 044/1 046 tests moteur, **264 vérifications
-navigateur**, **7 gardes du monde**.
+**La sortie est la règle de la maison : une mesure sans témoin ne mesure rien.**
+`tools/vitesse.js` mesure la révision courante et le témoin `82636d8` dans la
+même minute, sur la même machine, en alternant les passes, une par processus
+(mesurées dans le même processus, elles se réchauffent l'une l'autre : 216, 157
+puis 132 µs pour trois mesures du même code). Plus d'étalon à entretenir, plus
+de machine de référence à faire revivre.
+
+Les deux gardes sont nécessaires, et le tableau dit pourquoi : le rapport
+encaisse le ralentissement uniforme (les deux révisions ralentissent ensemble)
+mais la contention en pointe le comprime — 1,92 devient 1,52, et le budget
+passerait à tort. C'est la dispersion des passes qui la trahit : 9 % au calme,
+31 % sous charge.
+
+Le budget devient **×1,55 du témoin**. C'est la traduction de l'ancien, pas un
+desserrage : 110 µs normalisés, un témoin à 60-64 µs bruts ici soit 67-71
+normalisés, d'où 110/71 ≈ 1,55. La preuve que ce n'est pas un budget taillé pour
+passer : l'étape est rouge à **×1,99**.
+
+### F1b — la dette de vitesse, elle, reste entière
+
+Le tick est à **×1,99 du témoin** (114 contre 57 µs, même machine, même minute)
+pour un budget de ×1,55. C'est la vraie dette de vitesse, et elle est antérieure
+au lot F0 — celui-ci n'a touché aucun fichier de `src/`.
+
+Toutes les autres étapes de `--complet` sont vertes : 37 fichiers statiques,
+37 modules bundlés, 1 051/1 052 tests moteur, 264 vérifications navigateur,
+7 gardes du monde.
 
 ### F0.3 — l'invariant comptable casse à `MONNAIE.inertie = 0,99`
 
