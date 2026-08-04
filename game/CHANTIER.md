@@ -29,14 +29,14 @@ Ce fichier prépare le travail, il ne l'autorise pas.
   Critère : tests « une ville neuve a des ménages », « normaliser en donne aux
   vieilles parties », aller-retour JSON exact ; verifier vert.
 
-- [ ] **A2. Les salaires** (`caisse → menages`). Dans `tickColonie`, chaque
+- [x] **A2. Les salaires** (`caisse → menages`). Dans `tickColonie`, chaque
   heure : `salaires = min(caisse, valeurProduction × CAISSE.partSalariale × dt)`.
   `partSalariale` dans l'objet `CAISSE` (R2), départ 0,55, balayage au lot A6.
   Salaires impayés (caisse à sec) : `unrest += CAISSE.grogneImpayes × dt` (même
   objet). Critère : test « une ville qui produit paie ses gens », test « caisse
   vide → grogne monte », verifier vert.
 
-- [ ] **A3. La consommation solvable** (`menages → caisse`). La ville ne sert
+- [x] **A3. La consommation solvable** (`menages → caisse`). La ville ne sert
   que ce que les ménages peuvent payer : plafonner la consommation servie par
   `menages / prix`, y compris la satiété — du grain plein et des gens sans le
   sou doit produire une satiété < 1 (la famine de 1846, ECONOMIE §3.2).
@@ -45,7 +45,7 @@ Ce fichier prépare le travail, il ne l'autorise pas.
   test « la boucle salaires→consommation conserve l'argent au centime »,
   verifier vert.
 
-- [ ] **A4. La garnison et les travaux se paient** (`tresor → menages`).
+- [x] **A4. La garnison et les travaux se paient** (`tresor → menages`).
   Au conseil, chaque ville tenue coûte à sa faction :
   `(defense × ECONOMIE_FACTION.parDefense + murs × ECONOMIE_FACTION.parMur) ×
   heures écoulées`, versé aux ménages de la ville (c'est un revenu local). Une
@@ -54,14 +54,14 @@ Ce fichier prépare le travail, il ne l'autorise pas.
   test « tenir coûte », test « trésor vide → la défense s'érode », verifier
   vert.
 
-- [ ] **A5. La solde des colonnes** (`tresor → menages` de la ville de départ,
+- [x] **A5. La solde des colonnes** (`tresor → menages` de la ville de départ,
   par conseil, tant que l'armée existe). Une guerre longue vide un trésor —
   c'est ce qui rend une faction abattable (ECONOMIE §1.2). Critère : test
   « une colonne en campagne coûte par heure », et au banc : les guerres
   longues appauvrissent (vérifier à la main sur une graine, chiffres dans le
   commit). Verifier vert.
 
-- [ ] **A6. Calibrage du lot.** Balayer `CAISSE.partSalariale`,
+- [x] **A6. Calibrage du lot.** Balayer `CAISSE.partSalariale`,
   `ECONOMIE_FACTION.parDefense/.parMur`, la solde (R8). Fourchettes à
   atteindre (ECONOMIE §13 + lot A attendu) : trésor méd **30 000–120 000** ;
   écrasées **≥ 4/36** (le drame revient) ; villes **≥ 380** ; pop **≥ 95 000**
@@ -69,7 +69,7 @@ Ce fichier prépare le travail, il ne l'autorise pas.
   Tableaux dans les commentaires des constantes. Hors fourchette après
   balayage honnête → Blocages.
 
-- [ ] **A7. Livraison du lot.** Resserrer `CIBLES.json` sur l'état mesuré ;
+- [x] **A7. Livraison du lot.** Resserrer `CIBLES.json` sur l'état mesuré ;
   mettre à jour ECONOMIE §1.2 (la colonne « après lot A ») ; verifier
   --complet vert ; commit de synthèse avec le tableau avant/après.
 
@@ -176,70 +176,39 @@ Ce fichier prépare le travail, il ne l'autorise pas.
 
 ## Blocages
 
-### A3 — la porte de solvabilité ne peut pas tenir seule (bloquant pour tout le lot)
+*(aucun en cours)*
 
-**Ce qui bloque.** ECONOMIE §3.2 demande qu'une population sans argent ne
-consomme pas, satiété comprise : « du grain plein et des gens sans le sou doit
-produire une satiété < 1 ». Écrit tel quel, avec le reste du circuit (A2, A4,
-A5), **le monde ne tient à aucun réglage**. Ce n'est pas un calibrage manqué,
-c'est la conception du §3 qui manque une pièce.
+### A3 — résolu : la demande était un besoin, pas une demande solvable
 
-**Ce qui a été fait, puis retiré.** A2 (salaires), A3 (consommation solvable),
-A4 (garnisons et murs payés par le trésor), A5 (solde des colonnes), plus la
-conversion en virements de toutes les destructions de monnaie du trésor — lever
-une colonne, monter un mur, fonder. Le code marchait, la suite passait à
-1016/1016. Il a été retiré du moteur : ce qu'il a appris est ci-dessous.
+Consigné ici parce que c'est le blocage le plus instructif du chantier, et que
+la solution ne s'est trouvée qu'après l'avoir formulé.
 
-**Les mesures** (3 graines × 6 000 h ; témoin `82636d8` : 180 villes,
-69 313 habitants, trésor médian 51 944, 6/18 fauchées).
+**Ce qui bloquait.** Le circuit refermé, le monde ne tenait à aucun réglage.
+Part salariale au-dessus de 0,3 : les ménages thésaurisaient jusqu'à 93 % de la
+monnaie du monde et les caisses se vidaient en salaires sans rien encaisser. En
+dessous : caisses et trésors tenaient, mais les gens n'avaient pas de quoi
+manger. Population plafonnée à 27 000 contre 69 000 au témoin, à toute valeur
+entre 0,05 et 0,98.
 
-Balayage de la part salariale, porte fermée :
+**La cause.** Le moteur ne connaissait que la moitié de l'offre et de la
+demande. L'offre était là — le stock. La demande ne dépendait que de la
+population : `cibleStock(col, key) = pop × coefficient`. Mille habitants fauchés
+« demandaient » exactement autant que mille habitants riches, et le prix ne
+savait pas si l'acheteur avait de quoi payer. D'où les deux symptômes : une
+ville sans le sou gardait des prix hauts, sa marchandise ne trouvait pas
+preneur et pourrissait pendant que les gens mouraient de faim ; une ville riche
+ne faisait monter aucun prix, donc son argent ne repartait jamais.
 
-| part | villes | pop | trésor méd | fauchées | caisses / ménages / trésors |
-|---:|---:|---:|---:|---:|---|
-| 0,05 | 265 | 15 822 | 79 344 | 0/18 | 227k / 108k / 1385k |
-| 0,20 | 252 | **26 895** | 65 483 | 1/18 | 310k / 404k / 995k |
-| 0,38 | 162 | 32 997 | 282 | 15/18 | 100k / 1095k / 41k |
-| 0,55 | 95 | 37 173 | 339 | 17/18 | 18k / 588k / 11k |
-| 0,98 | 149 | 10 155 | 112 | 14/18 | — |
+**Ce qui a débloqué.** Une ligne : la demande est multipliée par la solvabilité
+des habitants — `menages / (pop × MENAGES.parTete)`, bornée. Le prix baisse chez
+les pauvres, monte chez les riches, et le marché se vide dans les deux cas au
+lieu de se bloquer. C'est l'offre et la demande écrite en entier.
 
-Deux régimes, aucun viable. **Au-dessus de 0,3**, les ménages thésaurisent —
-jusqu'à 93 % de la monnaie du monde immobilisée dans leurs poches, 317 000
-crédits sur 341 000 — et les caisses se vident en salaires sans jamais rien
-encaisser. **En dessous**, caisses et trésors tiennent, mais les habitants n'ont
-pas de quoi manger. La population plafonne à 27 000 contre 69 000 au témoin.
-
-Et la porte ouverte (`gateSolvabilite = 0`, tout le reste identique) ne sauve
-rien non plus : 163 villes, **52 809 habitants**, mais trésor médian 459 et
-13/18 factions fauchées. On échange une famine contre des États en faillite.
-
-**Le comptage des flux** (1 graine × 3 000 h) dit pourquoi :
-
-```
-salaires dus        6 091 476        facture voulue      4 734 750
-salaires versés     3 721 921        facture réglée      3 669 492
-versements du trésor  275 349
-```
-
-Les ménages encaissent structurellement plus qu'ils ne dépensent : leur sortie
-est bornée par la marchandise disponible, leur entrée ne l'est pas. L'excédent
-est exactement ce que le trésor leur verse.
-
-**La cause, en une phrase.** Le prix ne répond qu'au stock, jamais à la monnaie
-disponible. Un marché à prix exogène sous contrainte de budget se solde par du
-gâchis ou par la famine — il n'a pas d'équilibre. Facturer au prix du jour
-plutôt qu'au prix du catalogue (fait, `prixUnitaire`) atténue sans résoudre : le
-prix plafonne à ×3,2 et ne baisse jamais quand la demande faiblit.
-
-**Ce qu'il faudrait décider** — et c'est une décision de conception, pas
-d'exécution : le prix d'une ville doit dépendre de la monnaie en circulation
-chez elle, pas seulement de son stock. C'est la théorie quantitative de la
-monnaie, et c'est très exactement ce que le lot C fait à l'échelle d'un pays
-avec `cours = gage / masse`. La question est donc : **avance-t-on le mécanisme
-de cours au niveau de la ville, et le lot C n'en devient-il pas un cas
-particulier ?**
-
-Tant que ce n'est pas tranché, A3 à A7 restent fermés, et A1 seul est livré.
+**Le piège du plafond.** Première borne à ×2,2 : 36 villes sur 49 y étaient
+collées, le prix ne pouvait plus monter et la monnaie restait immobilisée. Le
+balayage a montré la sortie — au-delà de 20 la borne ne mord plus du tout et le
+résultat ne bouge plus d'un habitant. Une limite qu'on atteint tout le temps
+n'est pas une limite, c'est un mur.
 
 ### Ce qui a été gardé au passage
 

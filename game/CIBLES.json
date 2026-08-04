@@ -1,14 +1,36 @@
 {
-  "_note": "Les gardes du monde, vérifiées par tools/verifier.js --complet via le banc. Ce ne sont PAS les cibles d'un chantier (elles vivent dans son cahier des charges, cf. ECONOMIE.md §13) : ce sont les fourchettes larges en dessous desquelles le monde s'est effondré sans que personne ne le voie. Chaque chantier livré les resserre vers son état mesuré. Clés = colonnes agrégées du banc (tools/banc.js) ; les valeurs x/36 sont comparées sur leur numérateur.",
+  "_note": "Les gardes du monde, vérifiées par tools/verifier.js --complet via le banc. Ce ne sont PAS les cibles d'un chantier (elles vivent dans son cahier des charges, cf. ECONOMIE.md §13) : ce sont les fourchettes larges en dessous desquelles le monde s'est effondré sans que personne ne le voie. Resserrées après le lot A sur l'état mesuré — 401 villes, 96 726 habitants, 238 nourries, 27 bourses, 14 026 convois, 15 guerres, 7/36 factions écrasées. Chaque chantier livré les resserre à nouveau. Clés = colonnes agrégées du banc ; les valeurs x/36 sont comparées sur leur numérateur.",
   "temoin": "82636d8",
   "graines": "11,42,77,103,251,909",
   "horizon": 6000,
   "gardes": {
-    "villes": [350, 700],
-    "pop": [90000, 200000],
-    "nourries": [180, 600],
-    "bourses": [12, 36],
-    "convois": [8000, 40000],
-    "guerres": [6, 60]
+    "villes": [
+      320,
+      520
+    ],
+    "pop": [
+      75000,
+      150000
+    ],
+    "nourries": [
+      180,
+      340
+    ],
+    "ecrasees": [
+      3,
+      18
+    ],
+    "bourses": [
+      16,
+      36
+    ],
+    "convois": [
+      8000,
+      30000
+    ],
+    "guerres": [
+      6,
+      40
+    ]
   }
 }

@@ -72,15 +72,24 @@ ville.
 Une ville a désormais une caisse. Elle gagne ce qu'elle vend, paie ce qu'elle
 achète, et sa faction prélève sa part. Six graines, six mille heures :
 
-| | témoin | avec la caisse |
-|---|---:|---:|
-| factions sous 2 500 cr | 10/36 | **0/36** |
-| bourse possible à h=1500 | 24/36 | **36/36** |
-| trésor médian | 52 319 | 159 331 |
-| villes debout | 394 | 514 |
-| population totale | 140 534 | **103 889** |
-| factions écrasées (≤ 2 villes) | 10 | **0** |
-| tick | 72 µs | **166 µs** |
+| | témoin | avec la caisse | **après le lot A** |
+|---|---:|---:|---:|
+| factions sous 2 500 cr | 10/36 | 0/36 | **8/36** |
+| trésor médian | 52 319 | 159 331 | **39 098** |
+| villes debout | 394 | 514 | **401** |
+| villes bien nourries | 230 | 279 | **238** |
+| population totale | 140 534 | 103 889 | **96 726** |
+| factions écrasées (≤ 2 villes) | 10 | **0** | **7** |
+| production / consommation | 0,99 | — | **1,12** |
+| monnaie : caisses / ménages / trésors | 0k / 0k / 3926k | — | **250k / 734k / 1423k** |
+| bourses ouvertes | 24 | 34 | **27** |
+| tick | 72 µs | 166 µs | **~110 µs** |
+
+Le lot A est livré. Le drame est revenu — sept factions écrasées contre zéro —,
+la monnaie circule dans les trois stocks au lieu de dormir dans les trésors, et
+le monde produit désormais plus qu'il ne consomme. La population reste sous le
+témoin d'un tiers : c'est le prix d'une consommation qui se paie, et le lot B
+(le crédit) est ce qui doit la faire remonter.
 
 Le défaut de départ est réglé. Trois nouveaux sont apparus, et ils ont chacun
 une cause identifiée.

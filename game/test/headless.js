@@ -15,7 +15,9 @@ import {
   rendementTactique,
 } from '../src/combat.js';
 import { titreDe, lignesDe, faitsDe, RENOMMEES } from '../src/chronique.js';
-import { faireRevolte, SEUIL_REVOLTE, SUREXTENSION } from '../src/economy.js';
+import {
+  faireRevolte, SEUIL_REVOLTE, SUREXTENSION, tickColonie, prixUnitaire, verser,
+} from '../src/economy.js';
 import { BETES } from '../src/betes.js';
 import {
   attaquerCaravane, passerOrdre, ordresEnCours, ESCORTES,
@@ -4671,20 +4673,35 @@ section('9 quaterdecies. Ce que l’estime change, et ce qu’une absence ne co�
   // Une absence ne se paie pas en estime. C'est la contrepartie du rattrapage :
   // le monde tourne sans vous, mais on ne vous reproche pas de n'avoir pas été
   // là pour recevoir un ordre.
-  const sa = nouvellePartie(5151, { maintenant: 0, depart: 'ville', equipe: 3 });
-  const ga = groupeActif(sa);
-  const colA = sa.world.colonies.find((c) => c.faction && !c.ruine);
-  ga.regionId = colA.regionId;
-  sa.player.reputation[colA.faction] = 40;
-  sEngager(sa, colA.faction, () => {}, ga);
-  ga.allegeance.ordre = {
-    id: 'o-abs', type: 'reconnaissance', regionId: 0, titre: 'Reconnaître le secteur',
-    recompense: 200, service: 20, duree: 10, echeance: sa.temps + 2,
+  // Le décor se joue deux fois, avec et sans l'ordre : c'est la seule façon de
+  // séparer ce que l'absence coûte de ce que quarante heures de monde coûtent.
+  // Mesurée dans l'absolu, cette vérification est tombée le jour où la ville
+  // du décor a changé de mains pendant le rattrapage — l'estime est passée de
+  // 40 à 0, et l'ordre manqué n'y était pour rien.
+  const scene = (avecOrdre) => {
+    const s0 = nouvellePartie(5151, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g0 = groupeActif(s0);
+    const c0 = s0.world.colonies.find((c) => c.faction && !c.ruine);
+    const drapeau = c0.faction;
+    g0.regionId = c0.regionId;
+    s0.player.reputation[drapeau] = 40;
+    sEngager(s0, drapeau, () => {}, g0);
+    if (avecOrdre) {
+      g0.allegeance.ordre = {
+        id: 'o-abs', type: 'reconnaissance', regionId: 0, titre: 'Reconnaître le secteur',
+        recompense: 200, service: 20, duree: 10, echeance: s0.temps + 2,
+      };
+    }
+    s0.dernierReel = 1;
+    rattraper(s0, 1 + TICK_MS * 40);
+    return { s: s0, g: g0, drapeau, rep: s0.player.reputation[drapeau] || 0 };
   };
-  const repAvantAbs = sa.player.reputation[colA.faction];
-  const manquesAvant = ga.allegeance.manques || 0;
-  sa.dernierReel = 1;
-  rattraper(sa, 1 + TICK_MS * 40);
+  const temoinAbs = scene(false);
+  const avecAbs = scene(true);
+  const sa = avecAbs.s;
+  const ga = avecAbs.g;
+  const colA = { faction: avecAbs.drapeau };
+  const manquesAvant = 0;
   ok(!ga.allegeance.ordre || ga.allegeance.ordre.id !== 'o-abs',
     'un ordre dont l’échéance tombe pendant l’absence est retiré');
   ok((ga.allegeance.manques || 0) === manquesAvant,
@@ -4692,9 +4709,9 @@ section('9 quaterdecies. Ce que l’estime change, et ce qu’une absence ne co�
     `${manquesAvant} → ${ga.allegeance.manques || 0}`);
   // L'estime positive s'émousse d'elle-même avec le temps (voir events.js) :
   // ce qu'on vérifie, c'est qu'aucune sanction de 3 points ne s'y ajoute.
-  ok(repAvantAbs - sa.player.reputation[colA.faction] < 1,
-    'et il ne coûte pas d’estime, hors l’oubli ordinaire',
-    `${repAvantAbs} → ${sa.player.reputation[colA.faction]}`);
+  ok(Math.abs(temoinAbs.rep - avecAbs.rep) < 0.001,
+    'et il ne coûte pas d’estime : exactement autant que sans ordre du tout',
+    `sans ordre ${temoinAbs.rep.toFixed(2)} · avec ${avecAbs.rep.toFixed(2)}`);
   ok((ga.allegeance.faits || []).some((f) => f.id !== undefined || f.issue === 'annule'),
     'le dossier le porte comme annulé, pas comme manqué',
     (ga.allegeance.faits || []).map((f) => f.issue).join(','));
@@ -6650,9 +6667,95 @@ section('13. Économie — lot A : le circuit fermé');
   ok(serialiser(a1) === serialiser(b1), 'même graine → même monde, ménages compris');
 }
 
-// A2 à A5 — le reste du circuit fermé — n'est pas ici : le lot est bloqué, et
-// la raison est consignée dans CHANTIER.md. Le code a été écrit, mesuré, puis
-// retiré ; ce qu'il a appris tient dans les chiffres de la section Blocages.
+// A2 à A5 — le circuit refermé. Les quatre mouvements d'une heure de ville :
+// les gens achètent, la ville sert ce qu'elle peut, elle paie ses ouvriers, et
+// le trésor lui rend de quoi tenir ses murs.
+{
+  const sC = nouvellePartie(31415, { maintenant: 0, depart: 'ville' });
+  const v = sC.world.colonies.find((c) => !c.ruine && c.faction && c.pop > 200);
+
+  // La demande est solvable : deux villes identiques, seule la bourse de leurs
+  // habitants diffère, et le prix suit.
+  const pauvre = JSON.parse(JSON.stringify(v));
+  const riche = JSON.parse(JSON.stringify(v));
+  pauvre.menages = 0;
+  riche.menages = v.pop * 30;
+  ok(prixUnitaire(pauvre, 'rations') < prixUnitaire(riche, 'rations'),
+    'une ville sans le sou brade, une ville pleine aux as surenchérit',
+    `${prixUnitaire(pauvre, 'rations').toFixed(2)} contre `
+    + `${prixUnitaire(riche, 'rations').toFixed(2)}`);
+
+  // Les salaires sortent de la caisse et vont chez les gens. Mesuré contre un
+  // témoin : la décrue naturelle de la grogne noie toute hausse regardée seule.
+  const deuxVilles = [50000, 0].map((sou) => {
+    const s0 = nouvellePartie(31415, { maintenant: 0, depart: 'ville' });
+    const w = s0.world.colonies.find((c) => c.id === v.id);
+    w.caisse = sou;
+    w.unrest = 0.2;
+    tickColonie(s0.world, w, new Rng(7), null, 24, 0, () => {}, 0, false);
+    return w;
+  });
+  ok(deuxVilles[1].unrest > deuxVilles[0].unrest,
+    'la ville qui ne peut pas payer ses gens gronde plus que celle qui peut',
+    `payée ${deuxVilles[0].unrest.toFixed(4)} · impayée ${deuxVilles[1].unrest.toFixed(4)}`);
+
+  // Du grain plein, des gens sans le sou : la satiété tombe quand même. C'est
+  // l'Irlande de 1846, et le moteur doit savoir la produire.
+  const grenierPlein = (avecArgent) => {
+    const s0 = nouvellePartie(31415, { maintenant: 0, depart: 'ville' });
+    const g0 = s0.world.colonies.find((c) => c.id === v.id);
+    const depart = g0.pop;
+    for (let i = 0; i < 40; i++) {
+      // Le grenier reste plein d'un bout à l'autre : ce n'est jamais la récolte
+      // qui manque, uniquement de quoi la payer.
+      g0.stock.rations = g0.pop * 40;
+      g0.menages = avecArgent ? g0.pop * 20 : 0;
+      tickColonie(s0.world, g0, new Rng(3), null, 24, 0, () => {}, i * 24, false);
+    }
+    return { depart, fin: g0.pop };
+  };
+  const nourrie = grenierPlein(true);
+  const fauchee = grenierPlein(false);
+  ok(fauchee.fin < nourrie.fin,
+    'grenier plein des deux côtés : celle dont les gens n’ont pas un sou se vide',
+    `avec argent ${Math.round(nourrie.depart)} → ${Math.round(nourrie.fin)} · `
+    + `sans argent ${Math.round(fauchee.depart)} → ${Math.round(fauchee.fin)}`);
+
+  // Le trésor rend aux villes ce qu'il leur prend, au lieu de le détruire.
+  // Le versement lui-même : le trésor baisse d'exactement ce que les poches
+  // gagnent, et rien n'est créé au passage.
+  //
+  // Testé sur pièce, et non sur quatre cents heures de simulation : deux
+  // mondes qui ne diffèrent que par une constante divergent de toute façon,
+  // et l'on finit par mesurer la divergence au lieu du mécanisme. C'est le
+  // piège qui a fait conclure, une fois, qu'entretenir ses garnisons
+  // *enrichissait* le trésor.
+  const sE = nouvellePartie(2024, { maintenant: 0, depart: 'ville' });
+  const fE = DIPLO_FACTIONS.find((k) => sE.world.factions[k].colonies.length > 2);
+  const villeE = sE.world.colonies.find((c) => c.faction === fE);
+  sE.world.factions[fE].tresor = 10000;
+  villeE.menages = 500;
+  const rendu = verser(sE.world, fE, villeE, 1200);
+  ok(rendu === 1200 && sE.world.factions[fE].tresor === 8800 && villeE.menages === 1700,
+    'ce que le trésor verse, les gens le reçoivent — au crédit près',
+    `versé ${rendu}, trésor ${sE.world.factions[fE].tresor}, poches ${villeE.menages}`);
+
+  sE.world.factions[fE].tresor = 300;
+  const bride = verser(sE.world, fE, villeE, 1200);
+  ok(bride === 300 && sE.world.factions[fE].tresor === 0,
+    'et un trésor vide ne verse que ce qu’il a, jamais à découvert',
+    `versé ${bride} sur 1200 demandés`);
+
+  // L'intégration — « le conseil s'en sert vraiment » — n'est pas vérifiée ici,
+  // et c'est délibéré. Sur cent vingt heures, l'impôt encaissé dépasse
+  // l'entretien versé et le trésor monte ; sur quatre cents, deux mondes qui ne
+  // diffèrent que par une constante ont assez divergé pour qu'on mesure la
+  // divergence. Ce que le circuit fait à l'échelle du monde se lit au banc, et
+  // nulle part ailleurs : `node tools/banc.js --temoin 82636d8` montre la
+  // monnaie répartie 250k/734k/1423k entre caisses, ménages et trésors, là où
+  // le témoin l'avait à 0k/0k/3926k — tout dans les trésors, parce que rien ne
+  // circulait.
+}
 
 // ===========================================================================
 console.log('\n' + '='.repeat(42));

@@ -11,7 +11,7 @@ import {
   dirigeant, penchant, crediterDirigeant, butDeGuerre, etatDuBut, tickDirigeant,
   TEMPERAMENTS,
 } from './dirigeants.js';
-import { effondrer, emploisInitiaux, remonterCaisses } from './economy.js';
+import { effondrer, emploisInitiaux, remonterCaisses, verser } from './economy.js';
 import { pourvoirCharges } from './notables.js';
 import { chemin, colonieParId, distance, voisins, damer } from './world.js';
 import { loisDe, pressionFiscale, IMPOTS, PEINES, REGIMES } from './lois.js';
@@ -19,6 +19,24 @@ import { loisDe, pressionFiscale, IMPOTS, PEINES, REGIMES } from './lois.js';
 // ---------------------------------------------------------------------------
 // Mesures
 // ---------------------------------------------------------------------------
+
+/**
+ * Ce que coûte de tenir, par heure. Les seules dépenses courantes d'une
+ * faction — tout le reste est ponctuel. Ce sont elles qui rendent une faction
+ * abattable : une guerre longue vide une caisse. Sans elles, les trésors
+ * gonflaient sans fin et plus une seule faction ne s'effondrait — dix sur
+ * trente-six auparavant, zéro après. Calibrées au banc.
+ */
+export const ETAT = {
+  /** Par point de défense et par heure. */
+  parDefense: 0.005,
+  /** Par niveau de mur et par heure. */
+  parMur: 0.05,
+  /** Par soldat en campagne et par heure. */
+  parSoldat: 0.03,
+  /** Ce qu'une garnison impayée perd par heure : les gardes n'attendent pas. */
+  desertion: 0.004,
+};
 
 export function puissance(world, key) {
   const f = world.factions[key];
@@ -123,6 +141,19 @@ function coutArmee(force) {
   return Math.round(force * 5.2);
 }
 
+/** La ville de la faction la plus proche d'une case : celle qui fournit. */
+function colonieDepart(world, key, regionId) {
+  let meilleure = null;
+  let mieux = Infinity;
+  for (const cid of world.factions[key].colonies) {
+    const c = colonieParId(world, cid);
+    if (!c || c.ruine) continue;
+    const d = distance(c.regionId, regionId);
+    if (d < mieux) { mieux = d; meilleure = c; }
+  }
+  return meilleure;
+}
+
 function leverArmee(world, key, force, depuis, cibleId, log) {
   const f = world.factions[key];
   const col = colonieParId(world, cibleId);
@@ -142,7 +173,10 @@ function leverArmee(world, key, force, depuis, cibleId, log) {
     ravitaillement: 60 + Math.round(force / 4),
   };
   world.armees.push(a);
-  f.tresor -= coutArmee(force);
+  // La levée se paie sur place : recruter, armer, ravitailler passe entre les
+  // mains de gens qui vivent quelque part. L'argent quitte le trésor mais ne
+  // quitte pas le monde.
+  verser(world, key, colonieDepart(world, key, depuis), coutArmee(force));
   // Quand c'est chez vous qu'ils vont, ce n'est plus une nouvelle du monde,
   // c'est un préavis. La ligne était noyée parmi quatre cents autres et n'était
   // même pas marquée importante : on apprenait la colonne en lisant l'épitaphe
@@ -503,6 +537,27 @@ function conseil(world, key, t, log, ctx) {
   // que la loi fixe décide de ce qu'on leur laisse pour commercer : voir
   // `reserveVille` dans economy.js.
   remonterCaisses(world, key, mesColonies);
+
+  // Ce que tenir un pays coûte, et à qui ça profite. Une garnison, ce sont des
+  // hommes payés ; des murs entretenus, ce sont des maçons. Le trésor rend donc
+  // aux villes une part de ce qu'il leur a pris : c'est ce qui fait tourner la
+  // monnaie au lieu de la faire disparaître.
+  const heures = Math.max(1, t - (f.dernierConseil || 0));
+  f.dernierConseil = t;
+  for (const col of mesColonies) {
+    const du = (col.defense * ETAT.parDefense + col.murs * ETAT.parMur) * heures;
+    const paye = verser(world, key, col, du);
+    if (paye < du * 0.999 && col.defense > 0) {
+      col.defense = Math.max(0, col.defense * (1 - ETAT.desertion * heures));
+    }
+  }
+  // Et la solde de ceux qui sont en campagne, versée là où on les a levés.
+  for (const a of world.armees) {
+    if (a.faction !== key) continue;
+    verser(world, key, colonieDepart(world, key, a.regionId),
+      a.force * ETAT.parSoldat * heures);
+  }
+
   // Et ce qu'on prélève au-delà de l'ordinaire se paie en grogne.
   const pression = pressionFiscale(world, key);
   if (pression !== 0) {
@@ -658,7 +713,8 @@ function conseil(world, key, t, log, ctx) {
     if (candidates.length) {
       const r = rng.pick(candidates);
       const col = fonderColonie(world, key, r, rng, t);
-      f.tresor -= 1500;
+      // Ce que coûte de fonder va aux colons : c'est leur mise de départ.
+      verser(world, key, col, 1500);
       crediterDirigeant(world, key, 'fondation');
       log({
         type: 'fondation',
@@ -675,7 +731,8 @@ function conseil(world, key, t, log, ctx) {
   if (!guerresDe(world, key).length && f.tresor > 900 && rng.chance(0.6)) {
     const col = rng.pick(mesColonies);
     col.murs += 1;
-    f.tresor -= 400;
+    // Des murs se paient à des maçons, et les maçons habitent la ville.
+    verser(world, key, col, 400);
     log({
       type: 'chantier',
       texte: `${FACTIONS[key].nom} renforce${FACTIONS[key].pluriel ? 'nt' : ''} les défenses de ${col.nom}.`,

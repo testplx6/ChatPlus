@@ -4,7 +4,7 @@
 
 import {
   COMMODITIES, COMMODITY_KEYS, BIOMES, ITEMS, FACTIONS,
-  ETAL_PAR_STYLE, PALIERS_ITEM,
+  ETAL_PAR_STYLE, PALIERS_ITEM, MENAGES,
 } from './data.js';
 import { comp, gagnerXp, portage, XP_PRATIQUE } from './characters.js';
 import { remiseDe, palierBonus } from './allegeance.js';
@@ -46,7 +46,14 @@ import { loiIci, loisDe } from './lois.js';
  * une ville ne s'enrichit que de ce qui trouve preneur, d'où le `min(offre,
  * besoin)` de `revenuInterne`.
  */
-export const CAISSE = { marge: 0.10, parTete: 12 };
+export const CAISSE = {
+  marge: 0.10,
+  parTete: 12,
+  /** La part de ce que la ville produit qui repart en salaires, chez ses gens. */
+  partSalariale: 0.55,
+  /** Ce que coûte une paie qu'on ne peut pas verser, par heure de retard. */
+  grogneImpayes: 0.0025,
+};
 
 /**
  * Ce que coûte de tenir un empire trop grand et trop étalé.
@@ -113,11 +120,48 @@ export function prixUnitaire(col, key, stockSimule) {
   const base = COMMODITIES[key].prix;
   const cible = Math.max(1, cibleStock(col, key));
   const stock = Math.max(0, stockSimule === undefined ? (col.stock[key] || 0) : stockSimule);
-  // Rapport stock/cible → facteur borné [0.45, 3.2]
-  const tension = cible / (stock + cible * 0.35);
+  // Rapport stock/demande → facteur borné [0.45, 3.2]
+  const tension = cible * solvabilite(col) / (stock + cible * 0.35);
   const f = Math.max(0.45, Math.min(3.2, Math.pow(tension, 0.85)));
   return base * f * (1 + col.unrest * 0.35);
 }
+
+/**
+ * Ce que les gens d'ici peuvent mettre, rapporté à ce qu'ils mettent d'ordinaire.
+ *
+ * Le moteur ne connaissait que la moitié de l'offre et de la demande. L'offre y
+ * était — c'est le stock. La demande, elle, ne dépendait que de la population :
+ * mille habitants fauchés « demandaient » exactement autant que mille habitants
+ * riches, et le prix ne savait pas si l'acheteur avait de quoi payer. C'était un
+ * besoin, pas une demande solvable.
+ *
+ * Ce que ça coûtait, mesuré : une ville sans le sou gardait des prix hauts, donc
+ * sa marchandise ne trouvait pas preneur, donc elle pourrissait sur l'étal
+ * pendant que les gens mouraient de faim ; et à l'inverse, des ménages pleins
+ * aux as ne faisaient monter aucun prix, donc leur argent ne repartait jamais et
+ * s'entassait — jusqu'à 93 % de la monnaie du monde immobilisée dans leurs
+ * poches. Famine d'un côté, thésaurisation de l'autre : deux symptômes d'une
+ * seule cause.
+ *
+ * Un seul nombre par ville, sans allocation : ce facteur est lu dans le chemin
+ * le plus chaud du moteur.
+ */
+export function solvabilite(col) {
+  // Votre camp n'a pas de ménages : sa vérité est dans votre poche, et son étal
+  // ne doit pas s'effondrer parce qu'un champ vaut zéro.
+  if (col.avantPoste || !(col.pop > 0)) return 1;
+  const ordinaire = col.pop * MENAGES.parTete;
+  const a = (col.menages || 0) / ordinaire;
+  return a < SOLVABILITE.plancher ? SOLVABILITE.plancher
+    : (a > SOLVABILITE.plafond ? SOLVABILITE.plafond : a);
+}
+
+/**
+ * Jusqu'où la bourse des habitants a le droit de tirer les prix. Bornes
+ * calibrées au banc : sans plancher, une ville ruinée brade à zéro et le joueur
+ * la pille ; sans plafond, une ville riche cote des prix que personne ne paie.
+ */
+export const SOLVABILITE = { plancher: 0.35, plafond: 20 };
 
 /**
  * Prix effectifs pour le joueur.
@@ -352,6 +396,40 @@ export function consommationColonie(col) {
 }
 
 /**
+ * La valeur d'un lot, sans rien allouer. `valeurLot` passe par `Object.keys`,
+ * qui construit un tableau à chaque appel — sans conséquence pour un butin
+ * chiffré une fois, pas dans le tick de cinq cents villes.
+ */
+function valeurCourante(lot) {
+  let v = 0;
+  for (let i = 0; i < COMMODITY_KEYS.length; i++) {
+    const k = COMMODITY_KEYS[i];
+    const q = lot[k];
+    if (q > 0) v += q * COMMODITIES[k].prix;
+  }
+  return v;
+}
+
+/**
+ * Le trésor verse aux gens d'une ville : garnisons, chantiers, solde.
+ *
+ * Sans ce versement, le trésor *détruisait* la monnaie — moins quatre cents
+ * crédits pour un mur, moins le prix d'une colonne pour la lever — et le
+ * circuit fermé fuyait par ce bout-là. Des murs se paient à des maçons, une
+ * colonne se lève avec de la solde : cet argent va chez les gens, et il revient
+ * à la ville quand ils font leurs courses.
+ */
+export function verser(world, faction, col, montant) {
+  const f = faction && world.factions[faction];
+  if (!f || !(montant > 0)) return 0;
+  const paye = Math.min(montant, Math.max(0, f.tresor));
+  if (paye <= 0) return 0;
+  f.tresor -= paye;
+  if (col && !col.avantPoste) col.menages = (col.menages || 0) + paye;
+  return paye;
+}
+
+/**
  * Ce qu'une ville gagne à faire tourner sa propre économie, par heure.
  *
  * Ses habitants achètent à ses producteurs : c'est là que l'argent naît, et
@@ -490,6 +568,32 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
   // p n'est plus minuscule.
   const surDt = (p) => (dt === 1 ? p : 1 - Math.pow(1 - p, dt));
 
+  // --- Ce que les gens d'ici achètent à leur ville, au prix du jour.
+  //
+  // Seconde moitié du circuit : les habitants rachètent ce que la ville produit
+  // avec l'argent qu'elle vient de leur verser en salaires. La monnaie tourne au
+  // lieu d'apparaître. Et comme le prix tient compte de ce qu'ils ont en poche
+  // (voir `solvabilite`), une ville pauvre brade et une ville riche surenchérit
+  // — le marché se vide dans les deux cas au lieu de se bloquer.
+  let facture = 0;
+  if (!col.avantPoste) {
+    for (let i = 0; i < COMMODITY_KEYS.length; i++) {
+      const k = COMMODITY_KEYS[i];
+      const veut = (cons[k] || 0) * dt;
+      if (veut <= 0) continue;
+      // On ne facture que ce qui peut être servi : facturer le besoin plutôt
+      // que l'étal vidait les poches pour des marchandises inexistantes.
+      const enRayon = (col.stock[k] || 0) + (k === 'rations' ? 0 : (prod[k] || 0) * dt);
+      facture += Math.min(veut, enRayon) * prixUnitaire(col, k);
+    }
+  }
+  const regle = facture > 0 ? Math.min(facture, col.menages || 0) : 0;
+  const part = facture > 0 ? regle / facture : 1;
+  if (regle > 0) {
+    col.menages -= regle;
+    encaisser(world, col, regle);
+  }
+
   for (const k of COMMODITY_KEYS) {
     if (k === 'rations') continue; // traité à part, c'est la survie
     // Une ville encaisse mieux les saisons qu'une escouade : elle a des
@@ -497,20 +601,41 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
     const brut = climat ? climat.rendement(k) : 1;
     const amorti = 1 + (brut - 1) * 0.45;
     const p = (prod[k] || 0) * amorti * dt;
-    const c = (cons[k] || 0) * dt;
+    const c = (cons[k] || 0) * dt * part;
     col.stock[k] = Math.max(0, (col.stock[k] || 0) + p - c);
   }
 
-  // --- La caisse. Une heure de marché : ce que la ville produit et que
-  // quelqu'un veut ici même se vend, et sa faction en prélève sa part.
-  encaisser(world, col, revenuInterne(world, col, prod, cons) * dt);
+  // --- Les salaires. La ville paie ceux qui produisent : cet argent sort de sa
+  // caisse pour aller dans les poches de ses habitants, qui s'en serviront pour
+  // lui racheter ce qu'elle fabrique. Une paie qu'on ne peut pas verser se voit
+  // dans l'humeur — sans quoi une caisse vide ne se manifestait nulle part.
+  //
+  // `revenuInterne` a disparu d'ici, et c'est le cœur du lot : il représentait
+  // « ce que la ville vend sur son propre marché » à une époque où personne
+  // n'achetait, c'est-à-dire de la monnaie créée à chaque heure dans chaque
+  // ville, sans contrepartie. Ses clients existent maintenant, ils ont un nom et
+  // une bourse, et ils paient plus haut.
+  if (!col.avantPoste) {
+    const du = valeurCourante(prod) * CAISSE.partSalariale * dt;
+    if (du > 0) {
+      const paye = debourser(col, du);
+      col.menages = (col.menages || 0) + paye;
+      const impaye = du - paye;
+      if (impaye > 0) {
+        col.unrest = Math.min(1, col.unrest
+          + CAISSE.grogneImpayes * Math.min(1, impaye / du) * dt);
+      }
+    }
+  }
 
   // --- Vivres. On sert ce qu'on peut ; la satiété commande tout le reste.
   const amortiVivant = climat ? 1 + (climat.rendement('rations') - 1) * 0.45 : 1;
   const arrivage = (prod.rations || 0) * amortiVivant * dt;
   const besoin = col.pop * 0.014 * (cons.cantine || 1) * dt;
   const disponible = (col.stock.rations || 0) + arrivage;
-  const servi = Math.min(besoin, disponible);
+  // On ne sert que ce qui est là *et* ce qui se paie : une population sans un
+  // sou ne mange pas, fût-ce sur un grenier plein.
+  const servi = Math.min(besoin * part, disponible);
   col.stock.rations = Math.max(0, disponible - servi);
   const satiete = besoin > 0 ? servi / besoin : 1;
 
