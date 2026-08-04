@@ -17,7 +17,9 @@ import {
 import { titreDe, lignesDe, faitsDe, RENOMMEES } from '../src/chronique.js';
 import {
   faireRevolte, SEUIL_REVOLTE, SUREXTENSION, tickColonie, prixUnitaire, verser,
+  reserveVille,
 } from '../src/economy.js';
+import { tickCredit, insolvable, veutBatir } from '../src/credit.js';
 import { BETES } from '../src/betes.js';
 import {
   attaquerCaravane, passerOrdre, ordresEnCours, ESCORTES,
@@ -66,7 +68,9 @@ import {
   surveillanceManquante, lenteurPrisonniers, tickPrisonniers, tickGeole,
   geoleDe, apaisementGeole, tickOrdrePublic,
 } from '../src/justice.js';
-import { loisDe, pressionFiscale, PEINES, REGIMES } from '../src/lois.js';
+import {
+  loisDe, pressionFiscale, PEINES, REGIMES, DIRECTEURS, directeurInitial,
+} from '../src/lois.js';
 import {
   depouillesDe, lenteurDepouilles, poidsMoral, disposerCorps, prixOrganes,
   effetsDe, ritesPour,
@@ -1375,8 +1379,14 @@ section('9 ter ter. Ce qu’on a mérité ne s’évapore plus');
     }
     return st.player.reputation[hote] || 0;
   };
-  const miParcours = jouer(120);
-  const reste = jouer(120);
+  // Cent vingt jours, en deux moitiés — et pas huit mois. Au-delà, l'estime
+  // bouge pour des raisons qui n'ont rien à voir avec l'oubli : l'escouade se
+  // bat, dépouille des morts, et chaque cadavre fouillé coûte cinq points à la
+  // faction du mort. Mesuré, la trajectoire est 28 → 25,3 → 22,9 → 20,7 → 18,8
+  // sur quatre mois, puis un décrochage brutal à zéro le huitième — trois
+  // pillages, rien d'autre. Un horizon trop long ne mesure plus son sujet.
+  const miParcours = jouer(60);
+  const reste = jouer(60);
 
   // Le sujet, c'est que l'érosion *ralentit* — pas qu'il reste tel pourcentage
   // au bout de tel nombre de jours. La première version exigeait « plus de 35 %
@@ -1388,7 +1398,7 @@ section('9 ter ter. Ce qu’on a mérité ne s’évapore plus');
   const premiere = depart - miParcours;
   const seconde = miParcours - reste;
   ok(seconde < premiere,
-    'l’érosion ralentit : les quatre mois suivants coûtent moins que les premiers',
+    'l’érosion ralentit : les deux mois suivants coûtent moins que les deux premiers',
     `${depart.toFixed(0)} → ${miParcours.toFixed(1)} → ${reste.toFixed(1)} `
     + `(perte ${premiere.toFixed(1)} puis ${seconde.toFixed(1)})`);
   ok(reste > 0, 'et il en reste toujours quelque chose', `${reste.toFixed(1)}`);
@@ -6755,6 +6765,95 @@ section('13. Économie — lot A : le circuit fermé');
   // monnaie répartie 250k/734k/1423k entre caisses, ménages et trésors, là où
   // le témoin l'avait à 0k/0k/3926k — tout dans les trésors, parce que rien ne
   // circulait.
+}
+
+section('14. Économie — lot B : le crédit et le taux directeur');
+{
+  // B1. Le loyer de l'argent est une loi, et le caractère du chef la pose.
+  const sB = nouvellePartie(606, { maintenant: 0, depart: 'ville' });
+  avancer(sB, 400);
+  const taux = DIPLO_FACTIONS.map((k) => loisDe(sB.world, k).directeur);
+  ok(taux.every((t) => DIRECTEURS.some((d) => Math.abs(d.taux - t) < 0.0001)),
+    'chaque faction a un taux directeur, et c’est un des quatre paliers',
+    taux.map((t) => `${Math.round(t * 100)} %`).join(' · '));
+  // Le caractère du chef décide, et ça se vérifie sur la règle, pas sur un
+  // relevé : à quatre cents heures les conseils ont pu converger sur le même
+  // palier parce que leurs caisses se ressemblent, ce qui ne dit rien du
+  // mécanisme. Que les quatre paliers servent réellement en partie se lit au
+  // banc, colonne « taux % ».
+  const paliersVoulus = Object.keys(TEMPERAMENTS)
+    .map((k) => directeurInitial(TEMPERAMENTS[k]));
+  ok(new Set(paliersVoulus).size >= 3,
+    'et les tempéraments ne visent pas tous le même : qui prélève lourd prête cher',
+    [...new Set(paliersVoulus)].sort().map((t) => `${Math.round(t * 100)} %`).join(' · '));
+
+  // B4. L'insolvabilité se calcule, elle ne se décrète pas — et c'est le taux
+  // du créancier qui la déclenche. Deux mondes identiques, seul le loyer change.
+  const sI = nouvellePartie(606, { maintenant: 0, depart: 'ville' });
+  const ville = sI.world.colonies.find((c) => !c.ruine && c.faction);
+  ville.dette = 4000;
+  ville.creancier = ville.faction;
+  ville.caisse = reserveVille(ville, 0.05) + 100;
+  loisDe(sI.world, ville.faction).directeur = 0.01;
+  const tenable = insolvable(sI.world, ville);
+  loisDe(sI.world, ville.faction).directeur = 0.07;
+  const intenable = insolvable(sI.world, ville);
+  ok(!tenable && intenable,
+    'monter le loyer de l’argent rend littéralement ses débiteurs insolvables',
+    `à 1 % ${tenable ? 'insolvable' : 'tenable'}, à 7 % ${intenable ? 'insolvable' : 'tenable'}`);
+
+  // B2/B3. Une ville affamée emprunte, et ça sort du trésor. Puis ça revient.
+  const sP = nouvellePartie(606, { maintenant: 0, depart: 'ville' });
+  const fP = DIPLO_FACTIONS.find((k) => sP.world.factions[k].colonies.length > 1);
+  const vP = sP.world.colonies.find((c) => c.faction === fP && !c.ruine);
+  vP.stock.rations = 0;
+  vP.menages = 0;
+  sP.world.factions[fP].tresor = 100000;
+  const tresorAvant = sP.world.factions[fP].tresor;
+  tickCredit(sP.world, fP, [vP], 60, () => {});
+  ok(vP.dette > 0 && vP.creancier === fP && sP.world.factions[fP].tresor < tresorAvant,
+    'une ville qui a faim emprunte à son pays, et le pays le paie de sa poche',
+    `dette ${Math.round(vP.dette)}, trésor ${tresorAvant} → ${Math.round(sP.world.factions[fP].tresor)}`);
+  ok(vP.menages > 0,
+    'et l’argent va chez les gens : c’est eux qui ont faim, pas la mairie',
+    `poches ${Math.round(vP.menages)}`);
+
+  const dueAvant = vP.dette;
+  vP.stock.rations = vP.pop * 5;
+  vP.caisse = reserveVille(vP, 0.05) + dueAvant * 2;
+  tickCredit(sP.world, fP, [vP], 60, () => {});
+  ok(vP.dette < dueAvant,
+    'et une ville qui se refait rembourse avant toute chose',
+    `${Math.round(dueAvant)} → ${Math.round(vP.dette)}`);
+
+  // B4. Le défaut : la créance s'efface, la monnaie disparaît, la ville gronde.
+  const sD2 = nouvellePartie(606, { maintenant: 0, depart: 'ville' });
+  const fD = DIPLO_FACTIONS.find((k) => sD2.world.factions[k].colonies.length > 1);
+  const vD = sD2.world.colonies.find((c) => c.faction === fD && !c.ruine);
+  vD.dette = 9000;
+  vD.creancier = fD;
+  vD.caisse = 0;
+  vD.stock.rations = 0;
+  vD.menages = 0;
+  sD2.world.factions[fD].tresor = 0;
+  const grogneD = vD.unrest;
+  tickCredit(sD2.world, fD, [vD], 60, () => {});
+  ok(vD.dette === 0 && vD.creancier === null && vD.unrest > grogneD,
+    'un créancier qui ne prête plus laisse tomber : la dette s’efface, la ville gronde',
+    `dette → ${vD.dette}, grogne ${grogneD.toFixed(2)} → ${vD.unrest.toFixed(2)}`);
+
+  // B5. On n'emprunte pour bâtir que si l'ouvrage rapporte plus que l'intérêt.
+  const sW = nouvellePartie(606, { maintenant: 0, depart: 'ville' });
+  const vW = sW.world.colonies.find((c) => !c.ruine && c.faction);
+  vW.murs = 1;
+  vW.caisse = reserveVille(vW, 0.05) + 60;
+  loisDe(sW.world, vW.faction).directeur = 0.01;
+  const bonMarche = veutBatir(sW.world, vW);
+  loisDe(sW.world, vW.faction).directeur = 0.07;
+  const cherPaye = veutBatir(sW.world, vW);
+  ok(bonMarche && !cherPaye,
+    'l’argent bon marché fait bâtir, l’argent cher arrête les chantiers',
+    `à 1 % ${bonMarche ? 'oui' : 'non'}, à 7 % ${cherPaye ? 'oui' : 'non'}`);
 }
 
 // ===========================================================================

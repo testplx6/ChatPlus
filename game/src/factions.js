@@ -12,9 +12,12 @@ import {
   TEMPERAMENTS,
 } from './dirigeants.js';
 import { effondrer, emploisInitiaux, remonterCaisses, verser } from './economy.js';
+import { tickCredit, veutBatir } from './credit.js';
 import { pourvoirCharges } from './notables.js';
 import { chemin, colonieParId, distance, voisins, damer } from './world.js';
-import { loisDe, pressionFiscale, IMPOTS, PEINES, REGIMES } from './lois.js';
+import {
+  loisDe, pressionFiscale, IMPOTS, PEINES, REGIMES, DIRECTEURS, directeurInitial,
+} from './lois.js';
 
 // ---------------------------------------------------------------------------
 // Mesures
@@ -29,7 +32,7 @@ import { loisDe, pressionFiscale, IMPOTS, PEINES, REGIMES } from './lois.js';
  */
 export const ETAT = {
   /** Par point de défense et par heure. */
-  parDefense: 0.005,
+  parDefense: 0.002,
   /** Par niveau de mur et par heure. */
   parMur: 0.05,
   /** Par soldat en campagne et par heure. */
@@ -558,6 +561,10 @@ function conseil(world, key, t, log, ctx) {
       a.force * ETAT.parSoldat * heures);
   }
 
+  // Puis les comptes de ses villes : ce qu'elles doivent, ce qu'elles rendent,
+  // ce qu'on leur prête encore, et celles qu'on laisse tomber.
+  tickCredit(world, key, mesColonies, heures, log);
+
   // Et ce qu'on prélève au-delà de l'ordinaire se paie en grogne.
   const pression = pressionFiscale(world, key);
   if (pression !== 0) {
@@ -727,9 +734,13 @@ function conseil(world, key, t, log, ctx) {
     }
   }
 
-  // 5) Sinon, investir : murs et défense
-  if (!guerresDe(world, key).length && f.tresor > 900 && rng.chance(0.6)) {
-    const col = rng.pick(mesColonies);
+  // 5) Sinon, investir : murs et défense — mais seulement là où l'ouvrage vaut
+  //    ce que l'argent coûte. Un pays au loyer étouffant cesse visiblement de
+  //    bâtir, et l'on peut dire de quelle ville il s'agit. Voir `veutBatir`.
+  const aBatir = mesColonies.filter((c) => veutBatir(world, c));
+  if (!guerresDe(world, key).length && f.tresor > 900 && aBatir.length
+      && rng.chance(0.6)) {
+    const col = rng.pick(aBatir);
     col.murs += 1;
     // Des murs se paient à des maçons, et les maçons habitent la ville.
     verser(world, key, col, 400);
@@ -772,6 +783,9 @@ export function fonderColonie(world, key, region, rng, t) {
     // sinon la ville a beau produire, personne ne peut lui rien acheter.
     caisse: 400,
     menages: 0,   // posé juste après, une fois la population tirée
+    dette: 0,
+    creancier: null,
+    cession: null,
     prises: 0,
     banc: null,
     geole: null,
@@ -1001,6 +1015,21 @@ function legiferer(world, key, t, log, ctx) {
   // s'instruire, se faire soigner, ce qu'on retient sur ses ventes, ce que
   // l'armurier consent à sortir. C'est donc une loi comme les autres — sauf
   // qu'elle le regarde, lui, et pas seulement leurs sujets.
+  // Le loyer de l'argent. Un chef à la main lourde prête cher ; et une caisse
+  // vide fait monter le taux d'un cran — on cesse de prêter quand on n'a plus
+  // rien, exactement comme on cesse de bâtir.
+  let dir = directeurInitial(temp);
+  if (pays.caisse < 700) dir = Math.min(0.07, dir * 1.6);
+  else if (pays.caisse > 3200) dir = Math.max(0.01, dir * 0.75);
+  const palier = DIRECTEURS.reduce(
+    (a2, b2) => (Math.abs(b2.taux - dir) < Math.abs(a2.taux - dir) ? b2 : a2));
+  if (Math.abs(palier.taux - lois.directeur) > 0.001) {
+    const monte = palier.taux > lois.directeur;
+    lois.directeur = palier.taux;
+    changements.push(`le loyer de l’argent ${monte ? 'monte' : 'retombe'} `
+      + `à ${palier.nom.toLowerCase()} (${Math.round(palier.taux * 100)} % par séance)`);
+  }
+
   const reg = regimeVise(temp, pays, lois.regime);
   if (reg !== lois.regime) {
     lois.regime = reg;

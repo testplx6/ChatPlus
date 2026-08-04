@@ -62,6 +62,43 @@ export const IMPOTS = [
 ];
 
 /**
+ * Le taux directeur : le prix auquel une faction prête à ses villes.
+ *
+ * Une banque centrale sans taux directeur n'en est pas une, et celui-ci n'a
+ * rien de décoratif — c'est lui qui commande la quantité de monnaie qui entre
+ * en circulation par le crédit. Quatre effets, tous réels :
+ *
+ *   1. l'intérêt sur la dette des villes, qui est une recette du créancier ;
+ *   2. le seuil au-delà duquel une ville n'emprunte plus pour bâtir ;
+ *   3. l'insolvabilité elle-même — une ville est ruinée quand son intérêt
+ *      dépasse ce qu'elle peut rembourser, donc monter le taux ruine
+ *      littéralement ses débiteurs ;
+ *   4. et, par là, le rythme des défauts.
+ *
+ * Monter le taux défend la caisse et étrangle le pays ; le baisser nourrit les
+ * villes et vide le trésor. C'est le dilemme entier d'une banque centrale, en un
+ * curseur, et il appartient au joueur dès qu'il est assez gradé.
+ */
+export const DIRECTEURS = [
+  { key: 'accommodant', nom: 'Accommodant', taux: 0.01, desc: 'L’argent est bon marché : les villes empruntent, mangent et bâtissent.' },
+  { key: 'ordinaire', nom: 'Ordinaire', taux: 0.02, desc: 'Le loyer de l’argent, sans intention particulière.' },
+  { key: 'ferme', nom: 'Ferme', taux: 0.04, desc: 'On rembourse plus qu’on n’emprunte. Les chantiers s’arrêtent.' },
+  { key: 'etouffant', nom: 'Étouffant', taux: 0.07, desc: 'On tient la caisse et l’on étrangle le pays.' },
+];
+
+/**
+ * Le palier qu'un dirigeant pose par défaut. La main sur la bourse d'autrui —
+ * `fisc` — dit aussi ce qu'on pense du crédit : qui prélève lourd prête cher.
+ */
+export function directeurInitial(temperament) {
+  const f = temperament ? temperament.fisc : 1;
+  if (f >= 1.4) return DIRECTEURS[3].taux;
+  if (f >= 1.1) return DIRECTEURS[2].taux;
+  if (f >= 0.85) return DIRECTEURS[1].taux;
+  return DIRECTEURS[0].taux;
+}
+
+/**
  * Le régime d'une faction : ce qu'on a le droit de faire chez elle.
  *
  * Les trois lois précédentes réglaient ce que la faction se fait à elle-même —
@@ -184,7 +221,7 @@ export function pressionFiscale(world, faction) {
 /** Les lois d'une faction, avec leurs valeurs par défaut. */
 export function loisDe(world, faction) {
   const f = world.factions[faction];
-  if (!f) return { peine: 'ferme', esclavage: false, impot: 0.05, regime: 'charte' };
+  if (!f) return { peine: 'ferme', esclavage: false, impot: 0.05, regime: 'charte', directeur: 0.02 };
   if (!f.lois) {
     f.lois = {
       peine: 'ferme',
@@ -195,10 +232,16 @@ export function loisDe(world, faction) {
       // Le régime, lui, préexiste au joueur : une faction gouverne déjà d'une
       // certaine manière le jour où il arrive.
       regime: regimeInitial(faction),
+      // Et le loyer de l'argent, que son chef a fixé selon son caractère. Posé
+      // à l'ordinaire ici : le premier conseil le corrigera au tempérament du
+      // dirigeant, qui n'existe pas encore quand ces lois se créent.
+      directeur: DIRECTEURS[1].taux,
     };
   }
   // Les parties commencées avant les régimes n'en ont pas.
   if (!f.lois.regime) f.lois.regime = regimeInitial(faction);
+  // Ni avant le taux directeur.
+  if (f.lois.directeur === undefined) f.lois.directeur = DIRECTEURS[1].taux;
   return f.lois;
 }
 

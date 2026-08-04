@@ -143,6 +143,10 @@ export function normaliser(state) {
     if (c.menages === undefined) {
       c.menages = c.avantPoste ? 0 : Math.round((c.pop || 0) * MENAGES.parTete);
     }
+    // Avant le crédit, personne ne devait rien à personne.
+    if (c.dette === undefined) c.dette = 0;
+    if (c.creancier === undefined) c.creancier = null;
+    if (c.cession === undefined) c.cession = null;
     if (c.prises === undefined) c.prises = 0;
     // Les métiers d'une ville d'avant : le premier tick les répartira.
     if (c.emplois === undefined) c.emplois = null;

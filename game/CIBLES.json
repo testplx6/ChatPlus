@@ -1,32 +1,32 @@
 {
-  "_note": "Les gardes du monde, vérifiées par tools/verifier.js --complet via le banc. Ce ne sont PAS les cibles d'un chantier (elles vivent dans son cahier des charges, cf. ECONOMIE.md §13) : ce sont les fourchettes larges en dessous desquelles le monde s'est effondré sans que personne ne le voie. Resserrées après le lot A sur l'état mesuré — 401 villes, 96 726 habitants, 238 nourries, 27 bourses, 14 026 convois, 15 guerres, 7/36 factions écrasées. Chaque chantier livré les resserre à nouveau. Clés = colonnes agrégées du banc ; les valeurs x/36 sont comparées sur leur numérateur.",
+  "_note": "Les gardes du monde, vérifiées par tools/verifier.js --complet via le banc. Ce ne sont PAS les cibles d'un chantier (elles vivent dans son cahier des charges, cf. ECONOMIE.md §13) : ce sont les fourchettes larges en dessous desquelles le monde s'est effondré sans que personne ne le voie. Resserrées après le lot B sur l'état mesuré — 439 villes, 90 721 habitants, 286 nourries, 24 % d'affamées, 32 bourses, 5/36 factions écrasées, les quatre paliers de taux directeur employés. Chaque chantier livré les resserre à nouveau. Clés = colonnes agrégées du banc ; les valeurs x/36 sont comparées sur leur numérateur.",
   "temoin": "82636d8",
   "graines": "11,42,77,103,251,909",
   "horizon": 6000,
   "gardes": {
     "villes": [
-      320,
-      520
+      340,
+      560
     ],
     "pop": [
-      75000,
+      70000,
       150000
     ],
     "nourries": [
-      180,
-      340
+      210,
+      380
     ],
     "ecrasees": [
       3,
       18
     ],
     "bourses": [
-      16,
+      18,
       36
     ],
     "convois": [
-      8000,
-      30000
+      10000,
+      34000
     ],
     "guerres": [
       6,

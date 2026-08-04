@@ -201,6 +201,12 @@ function genererColonies(rng, regions) {
       // était là bien avant les ménages ; c'est le test des ménages qui l'a
       // sorti, parce qu'il vérifiait l'état entier et pas seulement son sujet.
       declin: 0,
+      // Ce que la ville doit, et à qui. Voir credit.js — il n'y a ni plafond
+      // ni délai : ce qui borne un prêt est le trésor du prêteur et son
+      // intérêt, pas un chiffre décrété.
+      dette: 0,
+      creancier: null,
+      cession: null,
     };
     col.caisse = Math.round(col.pop * 1.2);
     col.menages = Math.round(col.pop * MENAGES.parTete);

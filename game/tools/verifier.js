@@ -95,10 +95,14 @@ etape('moteur (test/headless.js)', () => {
   const r = lancer('node', ['test/headless.js']);
   const m = r.sortie.match(/(\d+)\/(\d+) tests passés/);
   if (!m) throw new Error('sortie illisible');
-  // La vitesse se juge à l'étape dédiée, au calme et en médiane : une passe
-  // unique au milieu d'une suite chargée a déjà fait accuser un innocent.
+  // Les deux verdicts de vitesse sont écartés ici : ils dérivent d'une passe
+  // unique prise au milieu d'une suite chargée, et « rattrapage maximal » n'est
+  // que le même chiffre exprimé en secondes de rejeu. La vitesse se juge à
+  // l'étape dédiée, au calme, en médiane de cinq passes et avec le facteur
+  // machine sous les yeux — une passe unique a déjà fait accuser un innocent.
+  const TIMING = /^tick sous |^rattrapage maximal /;
   const echecs = [...r.sortie.matchAll(/✗ ([^\n]+)/g)]
-    .map((x) => x[1]).filter((x) => !x.startsWith('tick sous'));
+    .map((x) => x[1]).filter((x) => !TIMING.test(x));
   if (echecs.length) throw new Error(echecs.join(' ; '));
   return `${m[1]}/${m[2]}`;
 });

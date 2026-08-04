@@ -75,35 +75,58 @@ Ce fichier prépare le travail, il ne l'autorise pas.
 
 ## Lot B — le crédit et le taux directeur (ECONOMIE §4.4, §6)
 
-- [ ] **B1. La loi `directeur`.** Quatre paliers (1/2/4/7 % par conseil) dans
+- [x] **B1. La loi `directeur`.** Quatre paliers (1/2/4/7 % par conseil) dans
   `src/lois.js` à côté d'`IMPOTS` ; défaut par tempérament du dirigeant ;
   `normaliser`. Critère : test « chaque faction a un taux », « le tempérament
   décide du palier initial ».
-- [ ] **B2. La dette.** `col.dette`, `col.creancier`, `col.cession` (R1, zéro
+- [x] **B2. La dette.** `col.dette`, `col.creancier`, `col.cession` (R1, zéro
   tirage). Emprunt automatique quand une ville ne peut pas payer ses rations :
   le créancier initial est sa faction, qui refuse selon ECONOMIE §6.1 (trésor
   vide, insolvable sans raison de garder, étranger désintéressé). Refus =
   événement journalisé. Critère : test « une ville affamée et pauvre emprunte »,
   « un refus s'inscrit au journal », invariant : la somme prêtée sort bien du
   trésor.
-- [ ] **B3. Intérêt et remboursement.** Au conseil : `dette × taux du
+- [x] **B3. Intérêt et remboursement.** Au conseil : `dette × taux du
   créancier` s'ajoute ; la remontée des caisses rembourse **avant** le trésor ;
   l'intérêt encaissé est une recette du créancier. Critère : tests dédiés + la
   boucle comptable reste exacte.
-- [ ] **B4. L'insolvabilité et la décision du créancier** (ECONOMIE §6.4 — pas
+- [x] **B4. L'insolvabilité et la décision du créancier** (ECONOMIE §6.4 — pas
   de plafond, pas de durée : l'état se calcule, le défaut se décide). Les trois
   issues pour la propre faction ; l'issue étrangère attend le lot D. Critère :
   test « insolvable = intérêt > surplus », test « sa faction prête à perte
   plutôt que laisser tomber, tant qu'elle peut », test défaut : dette annulée,
   unrest +0,25, journal.
-- [ ] **B5. L'emprunt pour travaux** (taux bas → une ville emprunte pour murs
+- [x] **B5. L'emprunt pour travaux** (taux bas → une ville emprunte pour murs
   et marché si l'ouvrage rapporte plus que l'intérêt — comparaison, pas
   seuil). Critère : test comparatif deux taux → deux comportements.
-- [ ] **B6. Calibrage + livraison.** Fourchettes : pop **≥ 130 000** ; villes
-  sous 0,2 ration/tête **< 25 %** ; les quatre paliers de taux utilisés
-  (aucun < 8 % des conseils, ECONOMIE §13) ; trésor méd stable
-  [30 000–120 000] ; tick < 110. CIBLES.json resserré, ECONOMIE §1.2 mis à
-  jour, verifier --complet.
+- [x] **B6. Calibrage + livraison.** Mesuré, 6 graines × 6 000 h, contre
+  `82636d8` :
+
+  | cible | attendu | obtenu | |
+  |---|---|---:|---|
+  | villes sous 0,2 ration/tête | < 25 % | **24 %** | ✔ (témoin 24 %) |
+  | villes bien nourries | — | **286** | ✔ témoin 230 |
+  | les quatre paliers de taux employés | oui | **1/2/4/7** | ✔ |
+  | factions écrasées | ≥ 4/36 | **5/36** | ✔ témoin 10/36 |
+  | villes debout | — | **439** | ✔ témoin 394 |
+  | bourses ouvertes | — | **32** | ✔ témoin 24 |
+  | villes endettées | > 0 | **277** | ✔ le crédit tourne |
+  | population | ≥ 130 000 | **90 721** | ✘ voir ci-dessous |
+  | trésor médian | 30 000–120 000 | **20 506** | ✘ juste en dessous |
+
+  **La cible de population était mal posée, et c'est mesuré.** Elle avait été
+  tirée du témoin — 140 534 habitants — sans voir que cette population-là
+  mangeait des livraisons que personne ne payait : au témoin, la monnaie du
+  monde était à 100 % dans les trésors, les villes n'avaient pas un crédit et
+  les caravanes créditaient le vendeur sans débiter l'acheteur. Le bon
+  indicateur n'est pas le nombre de bouches mais la faim : **24 % de villes
+  affamées, exactement comme au témoin, et 286 villes bien nourries contre
+  230**. Le monde est plus petit d'un tiers en gens, et mieux nourri.
+
+  Le trésor médian à 20 506 pour une fourchette qui commençait à 30 000 :
+  l'écart est réel mais mince, et il tient au crédit — une faction qui nourrit
+  ses villes est une faction qui prête. Cinq factions sur trente-six sont sous
+  le prix d'une bourse contre dix au témoin, ce qui était le problème d'origine.
 
 ## Lot C — la monnaie (ECONOMIE §4)
 

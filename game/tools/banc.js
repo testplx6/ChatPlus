@@ -140,6 +140,18 @@ function jouer({ sim, data, eco }, graine, horizon) {
     enCaisses: Math.round(cols.reduce((a2, c) => a2 + (c.caisse || 0), 0)),
     enMenages: Math.round(cols.reduce((a2, c) => a2 + (c.menages || 0), 0)),
     enTresors: Math.round(tresors.reduce((a2, v) => a2 + v, 0)),
+    // Le crédit : combien de villes doivent, et combien. Sans ces deux nombres
+    // on ne sait pas si le mécanisme tourne ou s'il dort.
+    endettees: cols.filter((c) => (c.dette || 0) > 1).length,
+    // Les paliers de taux directeur qu'on trouve en fin de partie : une loi que
+    // personne n'emploie jamais est une loi morte, et ça ne se voit pas
+    // autrement.
+    paliers: data.DIPLO_FACTIONS.map(
+      (k) => ((s.world.factions[k].lois || {}).directeur || 0)),
+    // Les villes qui manquent vraiment : moins d'un cinquième de ration par
+    // tête. C'est la mesure de la faim, celle que « bien nourries » ne dit pas.
+    affamees: cols.filter((c) => (c.stock.rations || 0) < c.pop * 0.2).length,
+    dette: Math.round(cols.reduce((a2, c) => a2 + (c.dette || 0), 0)),
     armees: (s.world.armees || []).length,
     duree: Math.round(duree),
     usParTick: duree / horizon * 1000,
@@ -242,6 +254,11 @@ function agreger(cfg) {
     // paie, ce qui était le cas avant que la monnaie ne circule.
     balance: (som(cfg, 'prod') / Math.max(1, som(cfg, 'cons'))).toFixed(2),
     masse: som(cfg, 'enCaisses') + som(cfg, 'enMenages') + som(cfg, 'enTresors'),
+    endettees: som(cfg, 'endettees'),
+    affamees: `${som(cfg, 'affamees')} (${Math.round(som(cfg, 'affamees') / Math.max(1, som(cfg, 'villes')) * 100)} %)`,
+    paliers: [...new Set(cfg.parties.flatMap((p2) => p2.paliers))]
+      .sort((a4, b4) => a4 - b4).map((x) => `${Math.round(x * 100)}`).join('/'),
+    dette: som(cfg, 'dette'),
     ou: `${Math.round(som(cfg, 'enCaisses') / 1000)}k/${Math.round(som(cfg, 'enMenages') / 1000)}k/${Math.round(som(cfg, 'enTresors') / 1000)}k`,
     usParTick: Math.round(med(cfg.parties.map((p) => p.usParTick))),
   };
@@ -255,6 +272,8 @@ const COLONNES = [
   ['accords', 'accords', 7], ['convois', 'convois', 8],
   ['guerres', 'guerres', 7], ['balance', 'prod/cons', 9],
   ['masse', 'masse', 9], ['ou', 'caisses/ménages/trésors', 22],
+  ['endettees', 'endettées', 9], ['affamees', 'affamées', 11],
+  ['paliers', 'taux %', 12],
   ['usParTick', 'µs/tick', 7],
 ];
 

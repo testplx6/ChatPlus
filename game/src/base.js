@@ -1457,6 +1457,9 @@ export function reconnaitreAvantPoste(state, log) {
     // ils restent à zéro.
     caisse: 0,
     menages: 0,
+    dette: 0,
+    creancier: null,
+    cession: null,
     prises: 0,
     banc: null,
     geole: null,

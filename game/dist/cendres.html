@@ -2483,6 +2483,43 @@ const IMPOTS = [
 ];
 
 /**
+ * Le taux directeur : le prix auquel une faction prête à ses villes.
+ *
+ * Une banque centrale sans taux directeur n'en est pas une, et celui-ci n'a
+ * rien de décoratif — c'est lui qui commande la quantité de monnaie qui entre
+ * en circulation par le crédit. Quatre effets, tous réels :
+ *
+ *   1. l'intérêt sur la dette des villes, qui est une recette du créancier ;
+ *   2. le seuil au-delà duquel une ville n'emprunte plus pour bâtir ;
+ *   3. l'insolvabilité elle-même — une ville est ruinée quand son intérêt
+ *      dépasse ce qu'elle peut rembourser, donc monter le taux ruine
+ *      littéralement ses débiteurs ;
+ *   4. et, par là, le rythme des défauts.
+ *
+ * Monter le taux défend la caisse et étrangle le pays ; le baisser nourrit les
+ * villes et vide le trésor. C'est le dilemme entier d'une banque centrale, en un
+ * curseur, et il appartient au joueur dès qu'il est assez gradé.
+ */
+const DIRECTEURS = [
+  { key: 'accommodant', nom: 'Accommodant', taux: 0.01, desc: 'L’argent est bon marché : les villes empruntent, mangent et bâtissent.' },
+  { key: 'ordinaire', nom: 'Ordinaire', taux: 0.02, desc: 'Le loyer de l’argent, sans intention particulière.' },
+  { key: 'ferme', nom: 'Ferme', taux: 0.04, desc: 'On rembourse plus qu’on n’emprunte. Les chantiers s’arrêtent.' },
+  { key: 'etouffant', nom: 'Étouffant', taux: 0.07, desc: 'On tient la caisse et l’on étrangle le pays.' },
+];
+
+/**
+ * Le palier qu'un dirigeant pose par défaut. La main sur la bourse d'autrui —
+ * `fisc` — dit aussi ce qu'on pense du crédit : qui prélève lourd prête cher.
+ */
+function directeurInitial(temperament) {
+  const f = temperament ? temperament.fisc : 1;
+  if (f >= 1.4) return DIRECTEURS[3].taux;
+  if (f >= 1.1) return DIRECTEURS[2].taux;
+  if (f >= 0.85) return DIRECTEURS[1].taux;
+  return DIRECTEURS[0].taux;
+}
+
+/**
  * Le régime d'une faction : ce qu'on a le droit de faire chez elle.
  *
  * Les trois lois précédentes réglaient ce que la faction se fait à elle-même —
@@ -2605,7 +2642,7 @@ function pressionFiscale(world, faction) {
 /** Les lois d'une faction, avec leurs valeurs par défaut. */
 function loisDe(world, faction) {
   const f = world.factions[faction];
-  if (!f) return { peine: 'ferme', esclavage: false, impot: 0.05, regime: 'charte' };
+  if (!f) return { peine: 'ferme', esclavage: false, impot: 0.05, regime: 'charte', directeur: 0.02 };
   if (!f.lois) {
     f.lois = {
       peine: 'ferme',
@@ -2616,10 +2653,16 @@ function loisDe(world, faction) {
       // Le régime, lui, préexiste au joueur : une faction gouverne déjà d'une
       // certaine manière le jour où il arrive.
       regime: regimeInitial(faction),
+      // Et le loyer de l'argent, que son chef a fixé selon son caractère. Posé
+      // à l'ordinaire ici : le premier conseil le corrigera au tempérament du
+      // dirigeant, qui n'existe pas encore quand ces lois se créent.
+      directeur: DIRECTEURS[1].taux,
     };
   }
   // Les parties commencées avant les régimes n'en ont pas.
   if (!f.lois.regime) f.lois.regime = regimeInitial(faction);
+  // Ni avant le taux directeur.
+  if (f.lois.directeur === undefined) f.lois.directeur = DIRECTEURS[1].taux;
   return f.lois;
 }
 
@@ -2843,6 +2886,12 @@ function genererColonies(rng, regions) {
       // était là bien avant les ménages ; c'est le test des ménages qui l'a
       // sorti, parce qu'il vérifiait l'état entier et pas seulement son sujet.
       declin: 0,
+      // Ce que la ville doit, et à qui. Voir credit.js — il n'y a ni plafond
+      // ni délai : ce qui borne un prêt est le trésor du prêteur et son
+      // intérêt, pas un chiffre décrété.
+      dette: 0,
+      creancier: null,
+      cession: null,
     };
     col.caisse = Math.round(col.pop * 1.2);
     col.menages = Math.round(col.pop * MENAGES.parTete);
@@ -9272,6 +9321,199 @@ function vendreItem(state, col, indexObjet, groupe) {
   return { ok: true, prix: p, nom: ITEMS[key].nom };
 }
 
+// ===== src/credit.js =================================================
+// Le crédit. Une ville qui ne peut pas nourrir ses gens emprunte à sa faction ;
+// la dette porte intérêt au taux directeur du créancier ; et quand l'intérêt
+// dépasse ce que la ville peut rembourser, elle est insolvable.
+//
+// Ce module existe parce que le circuit fermé, seul, condamne les villes
+// pauvres. Mesuré au lot A : la population tombait à deux tiers du témoin, non
+// pas faute de récolte — le monde produit 12 % de plus qu'il ne consomme — mais
+// faute de quoi la payer. Une ville en mauvaise passe n'a aucun moyen de
+// traverser la mauvaise passe. Le crédit est ce moyen.
+//
+// Deux choses qu'on prend soin de ne pas confondre, et les confondre était
+// l'erreur de la première conception :
+//
+//   l'insolvabilité est un ÉTAT, et il se calcule ;
+//   le défaut est une DÉCISION, et c'est celle du créancier.
+//
+// D'où l'absence, ici, de tout plafond d'endettement et de toute durée avant
+// chute. Ce qui borne un prêt, c'est le trésor du prêteur — qui est fini — et
+// son intérêt — qui est calculable. Un plafond en crédits par habitant serait un
+// décret : voir le principe de réglage en tête de METHODE.md.
+
+
+/**
+ * Les réglages du crédit. Tous décrivent un prix ou une durée ; aucun ne
+ * décrète un interdit. Calibrés au banc — voir le tableau du lot B6 dans
+ * CHANTIER.md.
+ */
+const CREDIT = {
+  /** Combien d'heures de vivres une ville cherche à se garantir en empruntant. */
+  heuresCouvertes: 240,
+  /** En dessous de ce ratio rations/population, la ville demande de l'aide. */
+  seuilDetresse: 0.9,
+  /** Ce qu'un défaut ajoute de grogne. */
+  grogneDefaut: 0.25,
+  /**
+   * Ce qu'une faction accepte de risquer sur une seule ville, en part de son
+   * trésor. Ce n'est pas un plafond d'endettement — c'est de la prudence de
+   * prêteur, et elle suit la fortune du prêteur au lieu d'être un chiffre.
+   */
+  partDuTresor: 0.01,
+  /**
+   * La part de son excédent qu'une ville accepte de consacrer au service d'une
+   * dette nouvelle. Au-delà, l'ouvrage attendra des jours meilleurs.
+   */
+  partServiceDette: 0.25,
+};
+
+/** Ce que la ville doit d'intérêt par heure, au taux de son créancier. */
+function interetHoraire(world, col) {
+  if (!col.dette || !col.creancier) return 0;
+  // Le taux est « par séance de conseil », soit environ soixante heures.
+  return col.dette * loisDe(world, col.creancier).directeur / 60;
+}
+
+/**
+ * Ce qu'une ville dégage pour rembourser : ce qui dépasse son fonds de
+ * roulement. En dessous, elle a besoin de tout ce qu'elle a pour commercer.
+ */
+function capaciteRemboursement(world, col) {
+  if (!col.faction) return 0;
+  return Math.max(0, (col.caisse || 0) - reserveVille(col, loisDe(world, col.faction).impot));
+}
+
+/**
+ * Insolvable : l'intérêt court plus vite que ce qu'on peut rendre. C'est de
+ * l'arithmétique, pas un seuil qu'on décrète — chaque ville a le sien, et il
+ * bouge avec elle. Une ville prospère porte une dette énorme sans broncher ; un
+ * bourg pauvre est ruiné pour trois cents crédits.
+ *
+ * Et c'est là que le taux directeur mord : le monter rend littéralement ses
+ * débiteurs insolvables.
+ */
+function insolvable(world, col) {
+  if (!col.dette) return false;
+  return interetHoraire(world, col) * 60 > capaciteRemboursement(world, col);
+}
+
+/** Ce qu'il manque à une ville pour tenir, en crédits. Zéro si elle tient. */
+function detresse(world, col) {
+  const parTete = (col.stock.rations || 0) / Math.max(1, col.pop);
+  if (parTete >= CREDIT.seuilDetresse) return 0;
+  const manque = (CREDIT.seuilDetresse - parTete) * col.pop;
+  // Au prix qu'elle paierait, pas au prix du catalogue : c'est ce qu'il lui
+  // faut réellement en poche.
+  return manque * prixUnitaire(col, 'rations');
+}
+
+/**
+ * Le conseil se penche sur ses villes en difficulté.
+ *
+ * Trois issues par ville, et ce sont trois décisions, pas trois règles :
+ * prêter, laisser courir, ou laisser tomber. Une faction rechigne à laisser
+ * défaillir sa propre ville — un défaut, c'est la révolte — donc elle jette de
+ * l'argent par la fenêtre tant qu'elle peut, et son trésor s'en ressent. C'est
+ * ce qui la rend abattable.
+ */
+function tickCredit(world, key, colonies, heures, log) {
+  const f = world.factions[key];
+  if (!f) return;
+
+  for (const col of colonies) {
+    if (col.avantPoste) continue;
+
+    // 1. L'intérêt court.
+    if (col.dette > 0 && col.creancier) {
+      const du = interetHoraire(world, col) * heures;
+      col.dette += du;
+      const c = world.factions[col.creancier];
+      // L'intérêt est une créance de plus, pas de l'argent qui apparaît : le
+      // créancier ne l'encaisse qu'au remboursement. Le noter ici le
+      // créditerait deux fois.
+      if (!c) col.creancier = key;
+    }
+
+    // 2. Le remboursement, prioritaire sur tout le reste.
+    if (col.dette > 0) {
+      const peut = Math.min(col.dette, capaciteRemboursement(world, col));
+      if (peut > 0) {
+        col.caisse -= peut;
+        col.dette -= peut;
+        const c = world.factions[col.creancier];
+        if (c) c.tresor += peut;
+        if (col.dette < 0.5) { col.dette = 0; col.creancier = null; col.cession = null; }
+      }
+    }
+
+    // 3. Le prêt, si la ville est en détresse et qu'on veut bien.
+    const besoin = detresse(world, col);
+    if (besoin > 0) {
+      const prudence = Math.max(0, f.tresor * CREDIT.partDuTresor - (col.dette || 0));
+      const pret = Math.min(besoin, f.tresor, prudence);
+      if (pret > 1) {
+        f.tresor -= pret;
+        // Chez les gens, et non dans la caisse de la ville. C'est la nuance qui
+        // décide de tout : une ville affamée a de la marchandise, ce sont ses
+        // habitants qui n'ont pas de quoi l'acheter. Prêter à la caisse
+        // permettait d'importer du grain qui restait sur l'étal. Nourrir son
+        // peuple, c'est lui donner de quoi manger — soupe populaire, travaux de
+        // secours, peu importe le nom : l'argent va dans les poches, et il
+        // revient à la ville dès la première course.
+        col.menages = (col.menages || 0) + pret;
+        col.dette = (col.dette || 0) + pret;
+        if (!col.creancier) col.creancier = key;
+      } else if ((col.dette || 0) > 0 && insolvable(world, col)) {
+        // 4. On ne prête plus, et elle ne s'en sortira pas : on efface. La
+        // monnaie disparaît avec la créance — un défaut est déflationniste, et
+        // c'est correct.
+        const perdu = col.dette;
+        col.dette = 0;
+        col.creancier = null;
+        col.cession = null;
+        col.unrest = Math.min(1, col.unrest + CREDIT.grogneDefaut);
+        if (log) {
+          log({
+            type: 'faillite',
+            texte: `${col.nom} fait défaut : ${Math.round(perdu)} crédits partis en fumée, `
+              + `et ${FACTIONS[key].nom} ${FACTIONS[key].pluriel ? 'n’en verront' : 'n’en verra'} `
+              + `jamais la couleur. La ville gronde.`,
+            regionId: col.regionId,
+            factions: [key],
+            important: true,
+          });
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Emprunter pour bâtir, quand l'argent est bon marché.
+ *
+ * Comparaison, pas seuil : la ville emprunte si elle peut porter l'intérêt sans
+ * s'étrangler — le service de la dette contre ce qu'elle dégage réellement au
+ * delà de son fonds de roulement.
+ *
+ * Une première version comparait la valeur du mur à l'intérêt : on mettait en
+ * face du loyer le stock que le mur protège, soit des milliers de crédits
+ * contre quelques dizaines. La réponse était « oui » à tous les taux, ce qui
+ * revenait à n'avoir pas de règle. Comparer un gain hypothétique à un coût
+ * certain demande une probabilité d'assaut, qu'il aurait fallu inventer ;
+ * comparer une charge à une capacité ne demande rien à personne.
+ */
+function veutBatir(world, col) {
+  if (!col.faction || col.avantPoste) return false;
+  if (col.murs >= col.taille * 6) return false;
+  const service = COUT_MUR * loisDe(world, col.faction).directeur;
+  return service <= capaciteRemboursement(world, col) * CREDIT.partServiceDette;
+}
+
+/** Ce qu'un niveau de mur coûte à une ville qui se le paie elle-même. */
+const COUT_MUR = 400;
+
 // ===== src/caravanes.js ==============================================
 // Caravanes marchandes. Les villes ne vivent pas en vase clos : ce qu'une
 // colonie a en trop part chez celle qui en manque, sur des routes qui traversent
@@ -10103,7 +10345,7 @@ function attaquerCaravane(state, car, rng, log, combatContre, genererBande, grou
  */
 const ETAT = {
   /** Par point de défense et par heure. */
-  parDefense: 0.005,
+  parDefense: 0.002,
   /** Par niveau de mur et par heure. */
   parMur: 0.05,
   /** Par soldat en campagne et par heure. */
@@ -10632,6 +10874,10 @@ function conseil(world, key, t, log, ctx) {
       a.force * ETAT.parSoldat * heures);
   }
 
+  // Puis les comptes de ses villes : ce qu'elles doivent, ce qu'elles rendent,
+  // ce qu'on leur prête encore, et celles qu'on laisse tomber.
+  tickCredit(world, key, mesColonies, heures, log);
+
   // Et ce qu'on prélève au-delà de l'ordinaire se paie en grogne.
   const pression = pressionFiscale(world, key);
   if (pression !== 0) {
@@ -10801,9 +11047,13 @@ function conseil(world, key, t, log, ctx) {
     }
   }
 
-  // 5) Sinon, investir : murs et défense
-  if (!guerresDe(world, key).length && f.tresor > 900 && rng.chance(0.6)) {
-    const col = rng.pick(mesColonies);
+  // 5) Sinon, investir : murs et défense — mais seulement là où l'ouvrage vaut
+  //    ce que l'argent coûte. Un pays au loyer étouffant cesse visiblement de
+  //    bâtir, et l'on peut dire de quelle ville il s'agit. Voir `veutBatir`.
+  const aBatir = mesColonies.filter((c) => veutBatir(world, c));
+  if (!guerresDe(world, key).length && f.tresor > 900 && aBatir.length
+      && rng.chance(0.6)) {
+    const col = rng.pick(aBatir);
     col.murs += 1;
     // Des murs se paient à des maçons, et les maçons habitent la ville.
     verser(world, key, col, 400);
@@ -10846,6 +11096,9 @@ function fonderColonie(world, key, region, rng, t) {
     // sinon la ville a beau produire, personne ne peut lui rien acheter.
     caisse: 400,
     menages: 0,   // posé juste après, une fois la population tirée
+    dette: 0,
+    creancier: null,
+    cession: null,
     prises: 0,
     banc: null,
     geole: null,
@@ -11075,6 +11328,21 @@ function legiferer(world, key, t, log, ctx) {
   // s'instruire, se faire soigner, ce qu'on retient sur ses ventes, ce que
   // l'armurier consent à sortir. C'est donc une loi comme les autres — sauf
   // qu'elle le regarde, lui, et pas seulement leurs sujets.
+  // Le loyer de l'argent. Un chef à la main lourde prête cher ; et une caisse
+  // vide fait monter le taux d'un cran — on cesse de prêter quand on n'a plus
+  // rien, exactement comme on cesse de bâtir.
+  let dir = directeurInitial(temp);
+  if (pays.caisse < 700) dir = Math.min(0.07, dir * 1.6);
+  else if (pays.caisse > 3200) dir = Math.max(0.01, dir * 0.75);
+  const palier = DIRECTEURS.reduce(
+    (a2, b2) => (Math.abs(b2.taux - dir) < Math.abs(a2.taux - dir) ? b2 : a2));
+  if (Math.abs(palier.taux - lois.directeur) > 0.001) {
+    const monte = palier.taux > lois.directeur;
+    lois.directeur = palier.taux;
+    changements.push(`le loyer de l’argent ${monte ? 'monte' : 'retombe'} `
+      + `à ${palier.nom.toLowerCase()} (${Math.round(palier.taux * 100)} % par séance)`);
+  }
+
   const reg = regimeVise(temp, pays, lois.regime);
   if (reg !== lois.regime) {
     lois.regime = reg;
@@ -14596,6 +14864,9 @@ function reconnaitreAvantPoste(state, log) {
     // ils restent à zéro.
     caisse: 0,
     menages: 0,
+    dette: 0,
+    creancier: null,
+    cession: null,
     prises: 0,
     banc: null,
     geole: null,
@@ -18170,6 +18441,10 @@ function normaliser(state) {
     if (c.menages === undefined) {
       c.menages = c.avantPoste ? 0 : Math.round((c.pop || 0) * MENAGES.parTete);
     }
+    // Avant le crédit, personne ne devait rien à personne.
+    if (c.dette === undefined) c.dette = 0;
+    if (c.creancier === undefined) c.creancier = null;
+    if (c.cession === undefined) c.cession = null;
     if (c.prises === undefined) c.prises = 0;
     // Les métiers d'une ville d'avant : le premier tick les répartira.
     if (c.emplois === undefined) c.emplois = null;
