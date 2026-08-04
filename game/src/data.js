@@ -4,6 +4,25 @@
 export const TICK_HOURS = 1; // 1 tick = 1 heure de jeu
 export const HOURS_PER_DAY = 24;
 
+/**
+ * Ce que les habitants d'une ville ont en poche.
+ *
+ * Ce stock manquait, et son absence était le défaut de fond de la première
+ * économie : le revenu d'une ville sortait de nulle part, donc la monnaie ne
+ * faisait que croître, donc les trésors gonflaient sans fin et plus aucune
+ * faction ne pouvait être abattue. Avec les ménages, ce que la ville encaisse
+ * sort de la poche de ses gens, et ce qu'elle leur verse en salaires y
+ * retourne : la monnaie circule au lieu d'apparaître.
+ *
+ * Ici plutôt que dans economy.js parce que world.js en a besoin à la création
+ * et qu'economy.js dépend déjà de world.js — l'inverse ferait un cycle.
+ *
+ * `parTete` est dérivé de la population, jamais tiré : un `rng` de plus dans la
+ * création d'une ville décale tous les tirages suivants et le monde entier
+ * change à graine égale. Calibré au lot A6.
+ */
+export const MENAGES = { parTete: 3 };
+
 // ---------------------------------------------------------------------------
 // Marchandises
 // ---------------------------------------------------------------------------

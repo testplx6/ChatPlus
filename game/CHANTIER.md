@@ -23,7 +23,7 @@ Ce fichier prépare le travail, il ne l'autorise pas.
 
 ## Lot A — fermer le circuit (ECONOMIE §3)
 
-- [ ] **A1. Les ménages.** `col.menages` : ce que les habitants ont en poche.
+- [x] **A1. Les ménages.** `col.menages` : ce que les habitants ont en poche.
   Création (R1 : les trois lieux, valeur dérivée de `pop` — proposition :
   `pop × 3` —, zéro tirage), `normaliser`, avant-poste à 0 (comme `caisse`).
   Critère : tests « une ville neuve a des ménages », « normaliser en donne aux

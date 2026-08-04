@@ -1,7 +1,7 @@
 // Le monde tourne sans le joueur : les factions lèvent des armées, assiègent,
 // prennent des colonies, signent des paix. C'est le cœur « vivant » de la sim.
 
-import { FACTIONS, DIPLO_FACTIONS, COMMODITY_KEYS } from './data.js';
+import { FACTIONS, DIPLO_FACTIONS, COMMODITY_KEYS, MENAGES } from './data.js';
 import {
   veutOuvrirBourse, ouvrirBourse, aUneBourse, partenairePossible, signerAccord,
   veutAccord,
@@ -711,8 +711,10 @@ export function fonderColonie(world, key, region, rng, t) {
     marche: 1.35,
     // Une ville neuve part avec de quoi acheter son premier convoi : sans
     // liquidités, elle ne peut rien se faire livrer et meurt de faim avant
-    // d'avoir produit de quoi payer.
+    // d'avoir produit de quoi payer. Et ses habitants avec de quoi consommer,
+    // sinon la ville a beau produire, personne ne peut lui rien acheter.
     caisse: 400,
+    menages: 0,   // posé juste après, une fois la population tirée
     prises: 0,
     banc: null,
     geole: null,
@@ -720,6 +722,7 @@ export function fonderColonie(world, key, region, rng, t) {
     fondeeA: t,
     factionOrigine: key,
   };
+  col.menages = Math.round(col.pop * MENAGES.parTete);
   col.defenseMax = Math.round(col.pop * 0.09 + col.murs * 12);
   col.defense = col.defenseMax;
   world.colonies.push(col);

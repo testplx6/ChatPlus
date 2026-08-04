@@ -6553,6 +6553,46 @@ ok(groupeActif(s12).membres.some((ch) => ch.faim > 60) || s12.fin, 'la famine s�
 verifierCoherence(s12, 'sous famine');
 
 // ===========================================================================
+// Le chantier économie. Un bloc par lot, dans l'ordre de CHANTIER.md — pour
+// qu'on voie d'un coup d'œil ce que chaque lot a réellement rendu vrai.
+// ===========================================================================
+
+section('13. Économie — lot A : le circuit fermé');
+
+// A1. Les ménages : ce que les habitants ont en poche. Sans ce stock, le revenu
+// d'une ville venait de nulle part — c'était le défaut mesuré du premier jet.
+{
+  const sA = nouvellePartie(777, { maintenant: 0, depart: 'ville' });
+  const villes = sA.world.colonies.filter((c) => !c.ruine && c.faction);
+  ok(villes.every((c) => typeof c.menages === 'number' && c.menages > 0),
+    'une ville neuve a des ménages qui ont de quoi acheter',
+    `${villes.filter((c) => !(c.menages > 0)).length} ville(s) sans ménages`);
+
+  // Une partie d'avant les ménages ne doit pas se réveiller avec des habitants
+  // sans un sou : elle ne pourrait plus rien consommer.
+  const vieux = JSON.parse(serialiser(sA));
+  for (const c of vieux.world.colonies) delete c.menages;
+  const rattrape = deserialiser(JSON.stringify(vieux));
+  const rv = rattrape.world.colonies.filter((c) => !c.ruine && c.faction);
+  ok(rv.every((c) => c.menages > 0),
+    'et `normaliser` en donne aux parties déjà commencées');
+
+  // L'état reste du JSON pur : un aller-retour ne perd rien. Écrit large
+  // exprès — la première version a ainsi débusqué `declin`, absent à la
+  // création des villes et ajouté par `normaliser` au rechargement, qui rendait
+  // l'aller-retour inexact bien avant qu'il soit question de ménages.
+  ok(serialiser(deserialiser(serialiser(sA))) === serialiser(sA),
+    'une partie neuve fait l’aller-retour JSON sans rien gagner ni perdre');
+
+  // Le déterminisme d'abord : un champ nouveau ne doit consommer aucun tirage,
+  // sinon tous les suivants se décalent et le monde change à graine égale.
+  const a1 = nouvellePartie(4242, { maintenant: 0, depart: 'ville' });
+  const b1 = nouvellePartie(4242, { maintenant: 0, depart: 'ville' });
+  avancer(a1, 200); avancer(b1, 200);
+  ok(serialiser(a1) === serialiser(b1), 'même graine → même monde, ménages compris');
+}
+
+// ===========================================================================
 console.log('\n' + '='.repeat(42));
 console.log(`${total - echecs}/${total} tests passés`);
 if (echecs > 0) {

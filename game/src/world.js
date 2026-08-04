@@ -4,7 +4,7 @@
 
 import {
   BIOMES, BIOME_KEYS, FACTIONS, DIPLO_FACTIONS, VILLE_A, VILLE_B, COMMODITY_KEYS,
-  POI, POI_KEYS,
+  POI, POI_KEYS, MENAGES,
 } from './data.js';
 
 // Une carte de 10×8 se traversait de bout en bout en deux jours de jeu : au
@@ -195,8 +195,15 @@ function genererColonies(rng, regions) {
       // connus tombaient d'un coup — sans qu'aucune ne parle d'argent.
       caisse: 0,
       prises: 0,
+      // Présent dès la naissance, à zéro. Absent, `normaliser` l'ajoutait au
+      // rechargement — et l'aller-retour JSON d'une partie neuve n'était donc
+      // pas exact, alors que c'est un invariant déclaré du projet. Le défaut
+      // était là bien avant les ménages ; c'est le test des ménages qui l'a
+      // sorti, parce qu'il vérifiait l'état entier et pas seulement son sujet.
+      declin: 0,
     };
     col.caisse = Math.round(col.pop * 1.2);
+    col.menages = Math.round(col.pop * MENAGES.parTete);
     col.defenseMax = Math.round(col.pop * 0.09 + col.murs * 12);
     col.defense = Math.round(col.defenseMax * rng.range(0.6, 1));
     colonies.push(col);

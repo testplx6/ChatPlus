@@ -1451,10 +1451,12 @@ export function reconnaitreAvantPoste(state, log) {
     stock,
     unrest: 0,
     marche: 1,
-    // Votre camp n'a pas de caisse à lui : ce qu'il vend et ce qu'il achète
-    // passe par votre poche. Le champ existe pour que la forme d'une colonie
-    // reste la même partout, et il reste à zéro.
+    // Votre camp n'a pas de caisse à lui, ni de ménages : ce qu'il vend et ce
+    // qu'il achète passe par votre poche, et ses habitants sont vos gens. Les
+    // champs existent pour que la forme d'une colonie reste la même partout, et
+    // ils restent à zéro.
     caisse: 0,
+    menages: 0,
     prises: 0,
     banc: null,
     geole: null,

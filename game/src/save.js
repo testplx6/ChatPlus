@@ -4,6 +4,7 @@
 
 import { groupeVide } from './groupes.js';
 import { creerConnaissance } from './connaissance.js';
+import { MENAGES } from './data.js';
 
 export const CLE = 'cendres.save.v1';
 /**
@@ -136,6 +137,12 @@ export function normaliser(state) {
     // qu'elles pèsent — les mettre à zéro les empêcherait de se ravitailler
     // pendant les cent premières heures d'une partie déjà avancée.
     if (c.caisse === undefined) c.caisse = Math.round((c.pop || 0) * 1.2);
+    // Avant les ménages, les habitants n'avaient rien en poche — donc, la règle
+    // du circuit fermé venue avec eux, plus rien à dépenser et une ville qui ne
+    // consomme plus. On leur ouvre la même bourse qu'à une ville neuve.
+    if (c.menages === undefined) {
+      c.menages = c.avantPoste ? 0 : Math.round((c.pop || 0) * MENAGES.parTete);
+    }
     if (c.prises === undefined) c.prises = 0;
     // Les métiers d'une ville d'avant : le premier tick les répartira.
     if (c.emplois === undefined) c.emplois = null;

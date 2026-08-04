@@ -823,6 +823,25 @@ const fixerLoiA = fixerLoi;
 const TICK_HOURS = 1; // 1 tick = 1 heure de jeu
 const HOURS_PER_DAY = 24;
 
+/**
+ * Ce que les habitants d'une ville ont en poche.
+ *
+ * Ce stock manquait, et son absence était le défaut de fond de la première
+ * économie : le revenu d'une ville sortait de nulle part, donc la monnaie ne
+ * faisait que croître, donc les trésors gonflaient sans fin et plus aucune
+ * faction ne pouvait être abattue. Avec les ménages, ce que la ville encaisse
+ * sort de la poche de ses gens, et ce qu'elle leur verse en salaires y
+ * retourne : la monnaie circule au lieu d'apparaître.
+ *
+ * Ici plutôt que dans economy.js parce que world.js en a besoin à la création
+ * et qu'economy.js dépend déjà de world.js — l'inverse ferait un cycle.
+ *
+ * `parTete` est dérivé de la population, jamais tiré : un `rng` de plus dans la
+ * création d'une ville décale tous les tirages suivants et le monde entier
+ * change à graine égale. Calibré au lot A6.
+ */
+const MENAGES = { parTete: 3 };
+
 // ---------------------------------------------------------------------------
 // Marchandises
 // ---------------------------------------------------------------------------
@@ -2818,8 +2837,15 @@ function genererColonies(rng, regions) {
       // connus tombaient d'un coup — sans qu'aucune ne parle d'argent.
       caisse: 0,
       prises: 0,
+      // Présent dès la naissance, à zéro. Absent, `normaliser` l'ajoutait au
+      // rechargement — et l'aller-retour JSON d'une partie neuve n'était donc
+      // pas exact, alors que c'est un invariant déclaré du projet. Le défaut
+      // était là bien avant les ménages ; c'est le test des ménages qui l'a
+      // sorti, parce qu'il vérifiait l'état entier et pas seulement son sujet.
+      declin: 0,
     };
     col.caisse = Math.round(col.pop * 1.2);
+    col.menages = Math.round(col.pop * MENAGES.parTete);
     col.defenseMax = Math.round(col.pop * 0.09 + col.murs * 12);
     col.defense = Math.round(col.defenseMax * rng.range(0.6, 1));
     colonies.push(col);
@@ -10625,8 +10651,10 @@ function fonderColonie(world, key, region, rng, t) {
     marche: 1.35,
     // Une ville neuve part avec de quoi acheter son premier convoi : sans
     // liquidités, elle ne peut rien se faire livrer et meurt de faim avant
-    // d'avoir produit de quoi payer.
+    // d'avoir produit de quoi payer. Et ses habitants avec de quoi consommer,
+    // sinon la ville a beau produire, personne ne peut lui rien acheter.
     caisse: 400,
+    menages: 0,   // posé juste après, une fois la population tirée
     prises: 0,
     banc: null,
     geole: null,
@@ -10634,6 +10662,7 @@ function fonderColonie(world, key, region, rng, t) {
     fondeeA: t,
     factionOrigine: key,
   };
+  col.menages = Math.round(col.pop * MENAGES.parTete);
   col.defenseMax = Math.round(col.pop * 0.09 + col.murs * 12);
   col.defense = col.defenseMax;
   world.colonies.push(col);
@@ -14370,10 +14399,12 @@ function reconnaitreAvantPoste(state, log) {
     stock,
     unrest: 0,
     marche: 1,
-    // Votre camp n'a pas de caisse à lui : ce qu'il vend et ce qu'il achète
-    // passe par votre poche. Le champ existe pour que la forme d'une colonie
-    // reste la même partout, et il reste à zéro.
+    // Votre camp n'a pas de caisse à lui, ni de ménages : ce qu'il vend et ce
+    // qu'il achète passe par votre poche, et ses habitants sont vos gens. Les
+    // champs existent pour que la forme d'une colonie reste la même partout, et
+    // ils restent à zéro.
     caisse: 0,
+    menages: 0,
     prises: 0,
     banc: null,
     geole: null,
@@ -17942,6 +17973,12 @@ function normaliser(state) {
     // qu'elles pèsent — les mettre à zéro les empêcherait de se ravitailler
     // pendant les cent premières heures d'une partie déjà avancée.
     if (c.caisse === undefined) c.caisse = Math.round((c.pop || 0) * 1.2);
+    // Avant les ménages, les habitants n'avaient rien en poche — donc, la règle
+    // du circuit fermé venue avec eux, plus rien à dépenser et une ville qui ne
+    // consomme plus. On leur ouvre la même bourse qu'à une ville neuve.
+    if (c.menages === undefined) {
+      c.menages = c.avantPoste ? 0 : Math.round((c.pop || 0) * MENAGES.parTete);
+    }
     if (c.prises === undefined) c.prises = 0;
     // Les métiers d'une ville d'avant : le premier tick les répartira.
     if (c.emplois === undefined) c.emplois = null;

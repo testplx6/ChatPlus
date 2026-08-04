@@ -240,6 +240,24 @@ function lireRegle(texte) {
   return { module: morceaux[0], chemin: morceaux.slice(1), brut };
 }
 
+/**
+ * Un nombre, ou rien.
+ *
+ * `Number('abc')` rend `NaN` sans se plaindre. Le banc jouait alors six parties
+ * avec la constante à `NaN` et affichait un tableau — trésor médian 2 458,
+ * quatre factions fauchées sur six — d'apparence parfaitement crédible. Une
+ * mesure fausse qui a l'air juste est pire que pas de mesure du tout : c'est le
+ * seul défaut qu'une relecture adversariale du banc ait trouvé, et c'est le
+ * pire qu'un instrument puisse avoir.
+ */
+function lireNombre(brut, contexte) {
+  const v = Number(brut);
+  if (!Number.isFinite(v)) {
+    throw new Error(`${contexte} : « ${brut} » n'est pas un nombre`);
+  }
+  return v;
+}
+
 async function principal() {
   const args = process.argv.slice(2);
   const option = (nom) => {
@@ -248,10 +266,11 @@ async function principal() {
   };
   const drapeau = (nom) => args.includes(nom);
 
-  const graines = (option('--graines') || '11,42,77,103,251,909').split(',').map(Number);
-  const horizon = Number(option('--horizon') || 6000);
+  const graines = (option('--graines') || '11,42,77,103,251,909').split(',')
+    .map((g) => lireNombre(g, '--graines'));
+  const horizon = lireNombre(option('--horizon') || 6000, '--horizon');
   const regles = args.flatMap((a, i) => (a === '--regle' ? [lireRegle(args[i + 1])] : []))
-    .map((r) => ({ ...r, valeur: Number(r.brut) }));
+    .map((r) => ({ ...r, valeur: lireNombre(r.brut, `--regle ${r.module}.${r.chemin.join('.')}`) }));
 
   // --sauve : un monde joué, prêt à charger dans l'UI. Zéro attente à l'écran.
   if (option('--sauve')) {
@@ -298,7 +317,8 @@ async function principal() {
   const configs = [];
   const balaye = option('--balaye') ? lireRegle(option('--balaye')) : null;
   if (balaye) {
-    for (const v of balaye.brut.split(',').map(Number)) {
+    for (const v of balaye.brut.split(',')
+      .map((x) => lireNombre(x, `--balaye ${balaye.chemin.join('.')}`))) {
       configs.push({
         nom: `${balaye.chemin.join('.')}=${v}`,
         src: SRC,
