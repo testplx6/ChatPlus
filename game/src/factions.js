@@ -11,7 +11,7 @@ import {
   dirigeant, penchant, crediterDirigeant, butDeGuerre, etatDuBut, tickDirigeant,
   TEMPERAMENTS,
 } from './dirigeants.js';
-import { effondrer, emploisInitiaux } from './economy.js';
+import { effondrer, emploisInitiaux, remonterCaisses } from './economy.js';
 import { pourvoirCharges } from './notables.js';
 import { chemin, colonieParId, distance, voisins, damer } from './world.js';
 import { loisDe, pressionFiscale, IMPOTS, PEINES, REGIMES } from './lois.js';
@@ -23,7 +23,12 @@ import { loisDe, pressionFiscale, IMPOTS, PEINES, REGIMES } from './lois.js';
 export function puissance(world, key) {
   const f = world.factions[key];
   if (!f) return 0;
-  let p = f.tresor / 60;
+  // Le trésor pèse trois fois moins qu'avant, parce qu'il vaut trois fois plus.
+  // Il ne se remplissait que de butin et d'une planche à billets ; il tient
+  // désormais à ce que le pays produit, et sa médiane a triplé. Laissé à
+  // soixante, il écrasait tout le reste — une faction valait sa caisse et non
+  // ses villes, et la diplomatie se réglait au relevé de compte.
+  let p = f.tresor / 180;
   for (const cid of f.colonies) {
     const c = colonieParId(world, cid);
     if (!c) continue;
@@ -490,11 +495,14 @@ function conseil(world, key, t, log, ctx) {
   // aussi vers l'extérieur.
   jugerLesAutres(world, key);
 
-  // Revenus : l'impôt, au taux que la loi fixe. Ce n'est plus une constante —
-  // c'est la première décision d'un Commandeur qui se lit dans les comptes.
-  const taux = loisDe(world, key).impot;
-  const revenu = mesColonies.reduce((s, c) => s + c.pop * taux * (1 - c.unrest), 0);
-  f.tresor += Math.round(revenu);
+  // Revenus : les villes remontent ce qu'elles ont au-delà de leur fonds de
+  // roulement. L'impôt était assis sur la population et sur rien d'autre — une
+  // ville ruinée rapportait autant qu'une ville prospère de même taille — et le
+  // trésor tenait à 84 % de caravanes qui créditaient sans que personne ne paie.
+  // Il porte désormais sur ce que les villes ont réellement gagné, et le taux
+  // que la loi fixe décide de ce qu'on leur laisse pour commercer : voir
+  // `reserveVille` dans economy.js.
+  remonterCaisses(world, key, mesColonies);
   // Et ce qu'on prélève au-delà de l'ordinaire se paie en grogne.
   const pression = pressionFiscale(world, key);
   if (pression !== 0) {
@@ -695,6 +703,10 @@ export function fonderColonie(world, key, region, rng, t) {
     stock,
     unrest: 0.1,
     marche: 1.35,
+    // Une ville neuve part avec de quoi acheter son premier convoi : sans
+    // liquidités, elle ne peut rien se faire livrer et meurt de faim avant
+    // d'avoir produit de quoi payer.
+    caisse: 400,
     prises: 0,
     banc: null,
     geole: null,

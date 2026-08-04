@@ -131,6 +131,11 @@ export function normaliser(state) {
   }
   for (const c of w.colonies) {
     if (c.declin === undefined) c.declin = 0;
+    // Avant la caisse, une ville n'avait pas de crédits : elle recevait sans
+    // payer et vendait sans encaisser. On leur ouvre un compte à hauteur de ce
+    // qu'elles pèsent — les mettre à zéro les empêcherait de se ravitailler
+    // pendant les cent premières heures d'une partie déjà avancée.
+    if (c.caisse === undefined) c.caisse = Math.round((c.pop || 0) * 1.2);
     if (c.prises === undefined) c.prises = 0;
     // Les métiers d'une ville d'avant : le premier tick les répartira.
     if (c.emplois === undefined) c.emplois = null;

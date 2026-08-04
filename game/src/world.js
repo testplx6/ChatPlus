@@ -185,8 +185,18 @@ function genererColonies(rng, regions) {
       // Qui la ville tient enfermé. Voir justice.js.
       geole: null,
       marche: 1 + taille * 0.35,
+      // Ce que la ville a en caisse. Une ville n'est pas un entrepôt sans
+      // comptes : elle vend, elle achète, et sa faction prélève sur ce qu'elle
+      // gagne. Voir CAISSE dans economy.js.
+      //
+      // Pas un tirage : la population est déjà tirée, et consommer un nombre
+      // aléatoire de plus ici décale tous ceux d'après. Le monde entier changeait
+      // de forme à graine égale, et huit vérifications assises sur des mondes
+      // connus tombaient d'un coup — sans qu'aucune ne parle d'argent.
+      caisse: 0,
       prises: 0,
     };
+    col.caisse = Math.round(col.pop * 1.2);
     col.defenseMax = Math.round(col.pop * 0.09 + col.murs * 12);
     col.defense = Math.round(col.defenseMax * rng.range(0.6, 1));
     colonies.push(col);

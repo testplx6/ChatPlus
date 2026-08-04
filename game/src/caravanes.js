@@ -14,7 +14,9 @@ export function plafondCaravanes(world) {
   return MAX_CARAVANES + reseaux(world).length * CARAVANES_PAR_RESEAU;
 }
 import { groupeActif } from './groupes.js';
-import { cibleStock, prixUnitaire, capacitePortage, poidsInventaire } from './economy.js';
+import {
+  cibleStock, prixUnitaire, capacitePortage, poidsInventaire, encaisser, debourser,
+} from './economy.js';
 import { idDepuisRng, estDebout, comp } from './characters.js';
 import { retenirEnVille } from './services.js';
 import { avantage } from './allegeance.js';
@@ -151,7 +153,12 @@ export function tenterDepart(state, rng, log) {
   const route = chemin(world, de.regionId, meilleur.vers.regionId);
   if (!route || !route.length) return null;
 
-  const qte = Math.max(10, Math.round(meilleur.qte * rng.range(0.5, 0.9)));
+  // Un marchand ne charge pas pour une ville qui ne peut pas régler.
+  const qte = qteSolvable(
+    meilleur.vers, meilleur.k,
+    Math.max(10, Math.round(meilleur.qte * rng.range(0.5, 0.9)))
+  );
+  if (qte < 6) return null;
   de.stock[meilleur.k] = Math.max(0, (de.stock[meilleur.k] || 0) - qte);
 
   const car = {
@@ -232,15 +239,18 @@ export function departsDuReseau(state, rng, log) {
         if (!source || score > source.score) source = { col, dispo, d, score };
       }
       if (!source) continue;
-      enCours++;
 
+      // La solvabilité se vérifie avant de compter le convoi : une ville sans
+      // le sou consommerait sinon le budget du réseau sans que rien ne parte,
+      // et priverait de convoi une ville qui, elle, pouvait payer.
+      const voulu = Math.max(12, Math.round(Math.min(source.dispo, pire.manque) * 0.8));
+      const qte = qteSolvable(pire.col, pire.k, voulu);
+      if (qte < 6) continue;
+
+      enCours++;
       const route = chemin(world, source.col.regionId, pire.col.regionId);
       if (!route || !route.length) continue;
-
-      const qte = Math.max(12, Math.round(Math.min(source.dispo, pire.manque) * 0.8));
       source.col.stock[pire.k] = Math.max(0, (source.col.stock[pire.k] || 0) - qte);
-      const f = world.factions[source.col.faction];
-      if (f) f.tresor = Math.max(0, f.tresor - Math.round(qte * 0.4));
       world.caravanes.push({
         id: idDepuisRng(rng, 'v'),
         faction: source.col.faction,
@@ -311,6 +321,10 @@ export function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEs
       return { ok: false, motif: `Il manque ${du - state.player.credits} cr.` };
     }
     state.player.credits -= du;
+    // Ce que vous payez ne s'évapore pas : la ville qui vous fournit l'encaisse,
+    // et sa faction prélève sa part. Votre négoce laisse enfin une trace dans le
+    // monde au lieu de ne bouger que vos propres crédits.
+    encaisser(world, place, devis.total);
   } else {
     const dispo = Math.floor(base.stock[key] || 0);
     if (dispo < devis.qte) {
@@ -386,6 +400,25 @@ function retirerCaravane(world, car) {
   if (i >= 0) world.caravanes.splice(i, 1);
 }
 
+/**
+ * Ce que l'acheteuse peut payer, en quantité.
+ *
+ * Un convoi ne part plus pour une ville qui n'a pas de quoi régler : la caisse
+ * d'une ville ne serait qu'un chiffre décoratif si elle ne pouvait jamais
+ * manquer. On rogne la cargaison au lieu d'annuler le départ — une ville
+ * pauvre se fait livrer moins, elle ne se fait pas oublier.
+ *
+ * `debourser` à l'arrivée ne rend pas ce plafond inutile : entre le départ et
+ * l'arrivée, la ville a pu dépenser. Le plafond décide de ce qu'on charge, le
+ * débours de ce qui se paie vraiment.
+ */
+export function qteSolvable(vers, k, qte) {
+  if (!vers || vers.avantPoste) return qte;
+  const prix = COMMODITIES[k].prix;
+  if (!(prix > 0)) return qte;
+  return Math.min(qte, Math.floor((vers.caisse || 0) / prix));
+}
+
 export function valeurCargaison(car) {
   let v = 0;
   for (const k of Object.keys(car.cargaison)) {
@@ -419,6 +452,13 @@ function arriver(state, car, log) {
       }
     } else {
       state.player.credits += car.paiement || 0;
+      // La ville qui vous a acheté règle sur sa caisse. Elle vous paie en
+      // entier — le prix était convenu à la commande, et un ordre honoré se
+      // paie ; ce qu'elle n'a pas, elle ne l'aura simplement plus pour se
+      // ravitailler. Le crédit qu'elle vous consent ainsi n'est pas modélisé :
+      // c'est la première approximation qu'il faudra reprendre le jour où les
+      // villes auront des dettes.
+      debourser(colonieParId(world, car.versId), car.paiement || 0);
       if (log) {
         log({
           type: 'bourse',
@@ -436,10 +476,18 @@ function arriver(state, car, log) {
     for (const k of Object.keys(car.cargaison)) {
       vers.stock[k] = (vers.stock[k] || 0) + car.cargaison[k];
     }
-    // Le vendeur encaisse : le trésor de sa faction s'en ressent.
+    // Le marché se conclut ici : l'acheteuse paie, le vendeur encaisse, et la
+    // faction du vendeur prélève sa part au passage.
+    //
+    // Avant, l'arrivée créditait la faction expéditrice de 35 % de la valeur et
+    // *personne* ne payait — la ville destinataire recevait la marchandise pour
+    // rien. C'était 84 % des recettes des factions, et 2,17 millions de crédits
+    // créés à partir de rien sur trois parties. Un convoi déplace désormais de
+    // l'argent au lieu d'en fabriquer : c'est ce qui fait qu'une bourse, qui
+    // ouvre le négoce entre factions, vaut quelque chose.
     const de = colonieParId(world, car.deId);
-    if (de && de.faction && world.factions[de.faction]) {
-      world.factions[de.faction].tresor += Math.round(valeurCargaison(car) * 0.35);
+    if (de && vivante(de) && de.id !== vers.id) {
+      encaisser(world, de, debourser(vers, valeurCargaison(car)));
     }
   }
   retirerCaravane(world, car);

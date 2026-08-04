@@ -19,7 +19,34 @@ import {
 } from './notables.js';
 import { tickServices } from './services.js';
 import { portageAttelage } from './betes.js';
-import { loiIci } from './lois.js';
+import { loiIci, loisDe } from './lois.js';
+
+/**
+ * La caisse d'une ville.
+ *
+ * Avant elle, aucune ville n'avait de crédits : les seules bourses au sens
+ * comptable étaient le trésor des factions et la poche du joueur. Le trésor,
+ * lui, se remplissait à 84 % par une planche à billets — l'arrivée d'une
+ * caravane créditait la faction expéditrice de 35 % de la cargaison, et
+ * *personne* ne payait, la ville destinataire recevant la marchandise pour
+ * rien. Mesuré sur trois parties de six mille heures : 2,17 millions de crédits
+ * créés à partir de rien, un revenu proportionnel au nombre de convois qu'on
+ * fait circuler — donc au nombre de villes — et une carte coupée en deux, une
+ * médiane à 52 000 crédits et un tiers des factions sous 500 pour toujours. Une
+ * faction réduite à une ville ne faisait plus circuler aucun convoi interne :
+ * son revenu tombait à 0,2 crédit par heure et elle ne pouvait plus jamais rien
+ * ordonner — ni bourse, ni garnison, ni grenier.
+ *
+ * Ce qui remplace : une ville gagne ce qu'elle vend, paie ce qu'elle achète, et
+ * sa faction prélève au passage. Le trésor d'une faction est littéralement ce
+ * que ses villes ont gagné.
+ *
+ * `marge` est la part de ce qui se vend sur place qui devient de l'argent, et
+ * non de la marchandise qui change de main. Ce n'est pas la production entière :
+ * une ville ne s'enrichit que de ce qui trouve preneur, d'où le `min(offre,
+ * besoin)` de `revenuInterne`.
+ */
+export const CAISSE = { marge: 0.10, parTete: 12 };
 
 /**
  * Ce que coûte de tenir un empire trop grand et trop étalé.
@@ -324,6 +351,120 @@ export function consommationColonie(col) {
   };
 }
 
+/**
+ * Ce qu'une ville gagne à faire tourner sa propre économie, par heure.
+ *
+ * Ses habitants achètent à ses producteurs : c'est là que l'argent naît, et
+ * nulle part ailleurs. On ne compte donc que la part de la production qui
+ * répond à un besoin sur place — `min(offre, besoin)`. Le reste est du surplus :
+ * il ne vaut de l'argent que si une caravane l'emporte, et c'est `arriver` qui
+ * le paie alors.
+ *
+ * La grogne coupe ce revenu : une ville en révolte ne fait pas ses marchés.
+ */
+export function revenuInterne(world, col, prod, cons) {
+  const p = prod || productionColonie(world, col);
+  const c = cons || consommationColonie(col);
+  let vendu = 0;
+  for (const k of COMMODITY_KEYS) {
+    const offre = p[k] || 0;
+    if (offre <= 0) continue;
+    vendu += Math.min(offre, c[k] || 0) * COMMODITIES[k].prix;
+  }
+  return vendu * CAISSE.marge * Math.max(0, 1 - (col.unrest || 0));
+}
+
+/**
+ * Une ville encaisse, et sa faction prélève sa part au passage.
+ *
+ * Un seul point d'entrée, volontairement : toute recette d'une ville passe par
+ * ici — production vendue sur place, cargaison livrée, achat du joueur au
+ * marché. Ce qui n'appelle pas `encaisser` n'entre nulle part et se perd sans
+ * que rien ne le signale ; c'est la seule façon de se tromper ici, et elle se
+ * voit en relisant les appels.
+ *
+ * Ce prélèvement fait double emploi avec la remontée des caisses — et il le
+ * fait exprès. La remontée seule a été mesurée : une ville pauvre n'atteint
+ * jamais son fonds de roulement, donc elle ne remonte jamais rien, donc une
+ * faction réduite à une ville reste à zéro pour toujours. C'était le défaut
+ * qu'on cherchait à corriger. Les deux mécanismes n'ont donc pas le même
+ * office : celui-ci prend une part de tout ce qui rentre, même chez les
+ * pauvres ; l'autre empêche les riches de thésauriser sans fin.
+ */
+export function encaisser(world, col, montant) {
+  if (!(montant > 0) || !col) return 0;
+  const f = col.faction && world.factions[col.faction];
+  const impot = f ? montant * loisDe(world, col.faction).impot : 0;
+  if (f) f.tresor += impot;
+  col.caisse = (col.caisse || 0) + (montant - impot);
+  return impot;
+}
+
+/**
+ * Le fonds de roulement qu'une ville garde par-devers elle, et que sa faction
+ * ne prend pas.
+ *
+ * C'est ici que le taux d'imposition agit désormais, et il agit sur ce qui
+ * compte : une ville prélevée à la légère garde de quoi se faire livrer pendant
+ * des semaines ; une ville pressurée vit au jour le jour et ne peut plus rien
+ * s'acheter quand la récolte manque. Le confiscatoire ne fait plus seulement
+ * gronder — il affame, et par un chemin qu'on peut suivre.
+ *
+ * Le premier jet prélevait un pourcentage sur chaque recette. Deux défauts
+ * mesurés sur trois parties de six mille heures : le trésor médian tombait à
+ * 4 000 crédits — les factions ne levaient plus rien — pendant que les villes
+ * empilaient 35 000 crédits qu'elles ne dépensaient jamais. Un pourcentage
+ * laisse toujours la ville s'enrichir sans fin ; un plafond, non.
+ *
+ * La réserve suit la population, et non la consommation de l'heure. La première
+ * version prenait la seconde, et c'était un piège : la consommation d'une ville
+ * s'effondre dès qu'elle se rationne, donc sa réserve s'effondre avec, donc tout
+ * son fonds de roulement remonte d'un coup au trésor — au pire moment, celui où
+ * elle avait justement besoin d'acheter. Mesuré : les trésors médians sautaient
+ * à cinquante mille crédits dès la cinq centième heure, sur ce seul effet. Une
+ * réserve est un ordre de grandeur, pas un relevé.
+ */
+export function facteurReserve(taux) {
+  // Ordinaire (5 %) : 1. Léger : un peu plus. Confiscatoire : le cinquième.
+  return Math.max(0.2, 1 + (0.05 - taux) * 8);
+}
+
+export function reserveVille(col, taux) {
+  return (col.pop || 0) * CAISSE.parTete * facteurReserve(taux);
+}
+
+/**
+ * Ce que les villes d'une faction remontent à son trésor : tout ce qu'elles ont
+ * au-delà de leur fonds de roulement. C'est la seule recette d'une faction qui
+ * vienne de son propre pays — et, depuis que les caravanes ne créditent plus à
+ * partir de rien, la seule qui ne vienne pas de la guerre.
+ */
+export function remonterCaisses(world, key, colonies) {
+  const f = world.factions[key];
+  if (!f) return 0;
+  const taux = loisDe(world, key).impot;
+  let leve = 0;
+  for (const col of colonies) {
+    const surplus = (col.caisse || 0) - reserveVille(col, taux);
+    if (surplus <= 0) continue;
+    col.caisse -= surplus;
+    leve += surplus;
+  }
+  f.tresor += leve;
+  return leve;
+}
+
+/**
+ * Une ville paie. Elle ne paie que ce qu'elle a — et ce qu'elle n'a pas, elle ne
+ * l'achètera pas : c'est ce qui donne enfin un poids à la caisse.
+ */
+export function debourser(col, montant) {
+  if (!col || !(montant > 0)) return 0;
+  const paye = Math.min(montant, col.caisse || 0);
+  col.caisse = (col.caisse || 0) - paye;
+  return paye;
+}
+
 /** Une ville morte ne produit plus, ne commerce plus, ne recrute plus. */
 export function estVivante(col) {
   return !!col && !col.ruine;
@@ -359,6 +500,10 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
     const c = (cons[k] || 0) * dt;
     col.stock[k] = Math.max(0, (col.stock[k] || 0) + p - c);
   }
+
+  // --- La caisse. Une heure de marché : ce que la ville produit et que
+  // quelqu'un veut ici même se vend, et sa faction en prélève sa part.
+  encaisser(world, col, revenuInterne(world, col, prod, cons) * dt);
 
   // --- Vivres. On sert ce qu'on peut ; la satiété commande tout le reste.
   const amortiVivant = climat ? 1 + (climat.rendement('rations') - 1) * 0.45 : 1;
@@ -707,6 +852,8 @@ export function acheter(state, col, key, qte, groupe) {
   }
   col.stock[key] = Math.max(0, (col.stock[key] || 0) - sim.qte);
   state.player.credits -= sim.cout;
+  // Ce que vous payez entre en caisse chez qui vous a servi, impôt compris.
+  encaisser(state.world, col, sim.cout);
   g.inventaire[key] = (g.inventaire[key] || 0) + sim.qte;
   const negoc = meilleurCommercant(g.membres);
   if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.5 + sim.qte * 0.3);
@@ -720,6 +867,11 @@ export function vendre(state, col, key, qte, groupe) {
   col.stock[key] = (col.stock[key] || 0) + sim.qte;
   g.inventaire[key] -= sim.qte;
   state.player.credits += sim.gain;
+  // La ville règle sur sa caisse. Elle vous paie en entier même si elle n'a pas
+  // le compte : le prix était affiché, on ne le renégocie pas au comptoir. Ce
+  // qu'elle sort ici, elle ne l'aura plus pour se ravitailler — vendre son butin
+  // dans un bourg exsangue l'assèche pour de bon.
+  debourser(col, sim.brut);
   const negoc = meilleurCommercant(g.membres);
   if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.5 + sim.qte * 0.3);
   return { ok: true, qte: sim.qte, gain: sim.gain, taxe: sim.taxe, brut: sim.brut };

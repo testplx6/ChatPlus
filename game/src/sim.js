@@ -11,6 +11,7 @@ import {
 } from './base.js';
 import {
   tickColonie, etalDe, effondrer, faireSecession, faireRevolte, emploisInitiaux,
+  reserveVille,
 } from './economy.js';
 import { tickClimat, conditions, saison } from './climat.js';
 import { tickCaravanes } from './caravanes.js';
@@ -308,6 +309,14 @@ export function nouvellePartie(seed, opts = {}) {
   for (const col of world.colonies) {
     col.emplois = emploisInitiaux(world, col, rng);
     pourvoirCharges(col, rng, 0);
+    // Et son fonds de roulement. Une ville qui existe depuis des générations a
+    // de quoi commercer le premier jour ; la faire naître à quatre cents crédits
+    // lui coûtait mille heures à remplir sa réserve, pendant lesquelles elle ne
+    // remontait rien à sa faction. Mesuré : à mille cinq cents heures, quinze
+    // factions sur trente-six pouvaient s'offrir une bourse au lieu de
+    // vingt-quatre. Le début de partie devenait plus pauvre qu'avant, ce qui est
+    // le contraire de ce qu'on cherchait.
+    col.caisse = Math.round(reserveVille(col, 0.05));
   }
   // Et chaque faction a quelqu'un à sa tête dès le premier jour — sauf l'Essaim,
   // qui n'a pas de politique : il déferle. On pose quand même la clé, sinon
