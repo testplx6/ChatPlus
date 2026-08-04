@@ -25,6 +25,7 @@ import { colonieDe } from './world.js';
 import { enGuerre } from './factions.js';
 import { crediter } from './allegeance.js';
 import { loisDe, loiIci, PEINES } from './lois.js';
+import { depenser } from './monnaie.js';
 
 /** Combien de prisonniers une paire de bras surveille sans y penser. */
 export const PAR_GARDIEN = 1.5;
@@ -371,7 +372,7 @@ export function disposer(state, g, captifId, quoi, log) {
     const prix = rancon(state, col, c);
     if (prix <= 0) return { ok: false, motif: 'Personne ne paiera pour lui.' };
     retirerCaptif(g, c);
-    state.world.factions[cap.faction].tresor -= prix;
+    depenser(state.world, cap.faction, prix);
     state.player.credits += prix;
     // On rend un homme : c'est mieux vu que de le vendre, moins bien que de
     // l'avoir laissé tranquille.

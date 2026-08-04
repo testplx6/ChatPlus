@@ -20,6 +20,7 @@ import {
 import { tickServices } from './services.js';
 import { portageAttelage } from './betes.js';
 import { loiIci, loisDe } from './lois.js';
+import { sortirDuCircuit, transfererVille, coursMonnaie } from './monnaie.js';
 
 /**
  * La caisse d'une ville.
@@ -116,14 +117,18 @@ export function cibleStock(col, key) {
  * la ville. C'est ce qui permet de chiffrer une transaction avant de la faire,
  * puisque chaque unité échangée déplace le prix de la suivante.
  */
-export function prixUnitaire(col, key, stockSimule) {
+export function prixUnitaire(col, key, stockSimule, world) {
   const base = COMMODITIES[key].prix;
   const cible = Math.max(1, cibleStock(col, key));
   const stock = Math.max(0, stockSimule === undefined ? (col.stock[key] || 0) : stockSimule);
   // Rapport stock/demande → facteur borné [0.45, 3.2]
   const tension = cible * solvabilite(col) / (stock + cible * 0.35);
   const f = Math.max(0.45, Math.min(3.2, Math.pow(tension, 0.85)));
-  return base * f * (1 + col.unrest * 0.35);
+  // Et ce que vaut la monnaie du lieu. Une monnaie faible fait des prix locaux
+  // élevés : l'inflation se lit sur l'écran du marché sans qu'on l'explique.
+  // `cours` vaut 1 tant que le conseil n'est pas passé, et pour une ville sans
+  // drapeau — là, on paie en ce qu'on veut, et personne ne cote.
+  return base * f * (1 + col.unrest * 0.35) / coursMonnaie(world, col.faction);
 }
 
 /**
@@ -173,7 +178,7 @@ export function prixJoueur(col, key, habilete = 0, repu = 0, remise = 0, stockSi
   // les fait à moitié. `world` est facultatif — sans lui on rend le prix local,
   // ce qui était le comportement d'avant.
   const p = world
-    ? prixAvecBourse(world, col, key, prixUnitaire(col, key, stockSimule))
+    ? prixAvecBourse(world, col, key, prixUnitaire(col, key, stockSimule, world))
     : prixUnitaire(col, key, stockSimule);
   // La marge n'est pas une constante du monde : c'est celle d'un homme, avec
   // son caractère, son métier et ce qu'il pense de vous.
@@ -584,7 +589,7 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
       // On ne facture que ce qui peut être servi : facturer le besoin plutôt
       // que l'étal vidait les poches pour des marchandises inexistantes.
       const enRayon = (col.stock[k] || 0) + (k === 'rations' ? 0 : (prod[k] || 0) * dt);
-      facture += Math.min(veut, enRayon) * prixUnitaire(col, k);
+      facture += Math.min(veut, enRayon) * prixUnitaire(col, k, undefined, world);
     }
   }
   const regle = facture > 0 ? Math.min(facture, col.menages || 0) : 0;
@@ -820,6 +825,9 @@ export function faireRevolte(world, col, rng, t) {
     f.colonies = f.colonies.filter((id) => id !== col.id);
     if (f.capitale === col.id) f.capitale = f.colonies[0] || null;
   }
+  // Une ville qui s'affranchit emporte ses comptes : cette monnaie ne circule
+  // plus dans le pays qu'elle vient de quitter.
+  sortirDuCircuit(world, ancienne, col);
   col.faction = null;
   col.factionOrigine = null;
   col.contrats = [];
@@ -839,6 +847,8 @@ export function faireSecession(world, col) {
     f.colonies = f.colonies.filter((id) => id !== col.id);
     if (f.capitale === col.id) f.capitale = f.colonies[0] || null;
   }
+  // Elle repasse sous son ancien drapeau, comptes compris.
+  transfererVille(world, col, ancienne, rendue);
   col.faction = rendue;
   const cible = world.factions[rendue];
   if (!cible.colonies.includes(col.id)) cible.colonies.push(col.id);
@@ -861,6 +871,15 @@ export function effondrer(world, col) {
     f.colonies = f.colonies.filter((id) => id !== col.id);
     if (f.capitale === col.id) f.capitale = f.colonies[0] || null;
   }
+  // Une ville morte ne fait plus circuler ce qu'elle avait — et elle ne le
+  // détient plus non plus. Laisser les comptes garnis sur une ruine, c'était
+  // un avoir fantôme : le jour où quelqu'un revendiquait la place, trois mille
+  // crédits entraient dans sa masse monétaire sans être nulle part.
+  sortirDuCircuit(world, ancienne, col);
+  col.caisse = 0;
+  col.menages = 0;
+  col.dette = 0;
+  col.creancier = null;
   col.faction = null;
   const r = world.regions[col.regionId];
   r.controle = null;

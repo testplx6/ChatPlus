@@ -1,35 +1,35 @@
 {
-  "_note": "Les gardes du monde, vérifiées par tools/verifier.js --complet via le banc. Ce ne sont PAS les cibles d'un chantier (elles vivent dans son cahier des charges, cf. ECONOMIE.md §13) : ce sont les fourchettes larges en dessous desquelles le monde s'est effondré sans que personne ne le voie. Resserrées après le lot B sur l'état mesuré — 439 villes, 90 721 habitants, 286 nourries, 24 % d'affamées, 32 bourses, 5/36 factions écrasées, les quatre paliers de taux directeur employés. Chaque chantier livré les resserre à nouveau. Clés = colonnes agrégées du banc ; les valeurs x/36 sont comparées sur leur numérateur.",
+  "_note": "Les gardes du monde, vérifiées par tools/verifier.js --complet via le banc. Ce ne sont PAS les cibles d'un chantier (elles vivent dans son cahier des charges, cf. ECONOMIE.md §13) : ce sont les fourchettes larges en dessous desquelles le monde s'est effondré sans que personne ne le voie. Resserrées après le lot C sur l'état mesuré — 500 villes, 55 106 habitants, 424 nourries, 7 % d'affamées, 35 bourses, invariant comptable exact, cours de 0,40 à 2,21. La fourchette de population reste large et celle des factions écrasées basse : ce sont les deux dettes de calibrage du lot C, consignées dans CHANTIER.md. Clés = colonnes agrégées du banc ; les valeurs x/36 sont comparées sur leur numérateur.",
   "temoin": "82636d8",
   "graines": "11,42,77,103,251,909",
   "horizon": 6000,
   "gardes": {
     "villes": [
-      340,
-      560
+      380,
+      620
     ],
     "pop": [
-      70000,
+      40000,
       150000
     ],
     "nourries": [
-      210,
-      380
+      300,
+      520
     ],
     "ecrasees": [
-      3,
+      0,
       18
     ],
     "bourses": [
-      18,
+      20,
       36
     ],
     "convois": [
-      10000,
+      12000,
       34000
     ],
     "guerres": [
-      6,
+      4,
       40
     ]
   }

@@ -11,6 +11,7 @@ import { idDepuisRng } from './characters.js';
 import { groupes, groupeActif } from './groupes.js';
 import { loisDe, REGIMES } from './lois.js';
 import { noterArgent } from './rapport.js';
+import { depenser } from './monnaie.js';
 
 export const RANGS = [
   {
@@ -637,8 +638,7 @@ export function toucherRations(state, col, log, groupe) {
   if (!g || g.regionId !== col.regionId) {
     return { ok: false, motif: 'Il faut être sur place.' };
   }
-  const f = state.world.factions[g.allegeance.faction];
-  f.tresor = Math.max(0, f.tresor - d.cout);
+  depenser(state.world, g.allegeance.faction, d.cout);
   g.inventaire.rations = (g.inventaire.rations || 0) + d.quantite;
   g.allegeance.intendance = state.temps;
   if (log) {

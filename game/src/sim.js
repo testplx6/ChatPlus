@@ -22,6 +22,7 @@ import { creerLogger } from './events.js';
 import { VERSION } from './save.js';
 import { groupeVide } from './groupes.js';
 import { creerConnaissance, observer, estSurveillee } from './connaissance.js';
+import { poserMasseInitiale } from './monnaie.js';
 import { pourvoirCharges } from './notables.js';
 import { creerDirigeant, crediterDirigeant } from './dirigeants.js';
 import { tickFormation } from './formation.js';
@@ -324,6 +325,10 @@ export function nouvellePartie(seed, opts = {}) {
   for (const k of Object.keys(world.factions)) {
     world.factions[k].dirigeant = k === 'essaim' ? null : creerDirigeant(rng, k, 0);
   }
+  // Et la monnaie de chacun : la masse émise vaut exactement ce qui existe, si
+  // bien que l'invariant comptable naît vrai. Tout ce qui le brisera ensuite est
+  // un bug qu'on pourra dater — voir `auditer` dans monnaie.js.
+  poserMasseInitiale(world);
 
   decouvrir(world, regionDepart, 2);
   observer(state);

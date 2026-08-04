@@ -47,6 +47,8 @@ const MODULES = [
   'economy.js',
   // Le crédit aux villes : il lit l'économie, personne ne le lit avant lui.
   'credit.js',
+  // La monnaie des factions : masse, gage, cours. Lit les lois et les données.
+  'monnaie.js',
   'caravanes.js',
   'factions.js',
   // Les prérogatives d'un gradé s'exercent sur ce que factions.js sait faire :

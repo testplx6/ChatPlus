@@ -13,6 +13,7 @@ import { groupes, groupeActif } from './groupes.js';
 import { garnison, avantage } from './allegeance.js';
 import { estSurveillee } from './connaissance.js';
 import { noterArgent } from './rapport.js';
+import { depenser, entrerDehors } from './monnaie.js';
 
 export function creerBase() {
   const stock = {};
@@ -1506,7 +1507,7 @@ export function synchroniserVitrine(state) {
     const f = state.world.factions[col.faction];
     const veut = Math.round(30 + (base.pop || 0) * 3);
     const paye = Math.min(veut, Math.floor(f.tresor / 40));
-    if (paye > 0) { f.tresor -= paye * 0.5; garnison = paye; }
+    if (paye > 0) { depenser(state.world, col.faction, paye * 0.5); garnison = paye; }
   }
   col.defense = Math.round((base.defense || 0) + garnison);
   col.defenseMax = Math.max(col.defense, Math.round((base.defense || 0) + garnison));
@@ -1628,7 +1629,10 @@ export function preleverImpot(state, log) {
     base.stock.rations -= rations;
     reste -= rations * 9;
   }
+  // Ce que vous versez vient de votre poche, qui n'est pas encore libellée par
+  // monnaie : pour le pays, c'est de l'argent qui entre depuis le dehors.
   f.tresor += du - reste;
+  entrerDehors(state.world, col.faction, du - reste);
   if (reste > 0 && log && state.temps % 240 === 0) {
     log({
       type: 'base',

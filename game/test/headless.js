@@ -20,6 +20,7 @@ import {
   reserveVille,
 } from '../src/economy.js';
 import { tickCredit, insolvable, veutBatir } from '../src/credit.js';
+import { auditer, emettre } from '../src/monnaie.js';
 import { BETES } from '../src/betes.js';
 import {
   attaquerCaravane, passerOrdre, ordresEnCours, ESCORTES,
@@ -4758,6 +4759,11 @@ section('9 quindecies. Le rapport d’absence');
     sr.player.reputation[colr.faction] = 40;
     sEngager(sr, colr.faction, () => {}, gr);
   }
+  // De quoi tenir : le rattrapage s'arrête net si l'escouade meurt en route, et
+  // le rapport ne couvrirait alors que les heures vécues. Ce qu'on mesure ici,
+  // c'est le rapport d'absence, pas la survie — et un décor qui dépend de la
+  // survie tombe le jour où le monde change de quelques pour cent.
+  for (const g of sr.player.groupes) g.inventaire.rations = 4000;
   sr.vitesse = 1;
   sr.dernierReel = 1;
   const creditsAvant = sr.player.credits;
@@ -5818,6 +5824,9 @@ section('9 quinvicies nonies. Aux travaux, on mange à la cantine');
     s.base.stock.rations = reservesDuCamp;
     s.base.commerce = false;
     s.player.credits = 0;
+    // Ni razzia : une colonne de pillards emporte un tiers des réserves, et le
+    // test accuserait alors la cantine. Voir le décor de la raffinerie.
+    s.base.derniereAttaque = 1e9;
     // Pas une ration dans les sacs : c'est la mesure décisive. Comparer la
     // consommation du paquetage entre les deux ordres ne dit rien — « travaux »
     // demande un effort et creuse davantage l'appétit, si bien que la
@@ -6854,6 +6863,67 @@ section('14. Économie — lot B : le crédit et le taux directeur');
   ok(bonMarche && !cherPaye,
     'l’argent bon marché fait bâtir, l’argent cher arrête les chantiers',
     `à 1 % ${bonMarche ? 'oui' : 'non'}, à 7 % ${cherPaye ? 'oui' : 'non'}`);
+}
+
+section('15. Économie — lot C : la monnaie');
+{
+  // C2. L'invariant comptable. Le test le plus important du chantier : la somme
+  // de ce qui existe en monnaie d'un pays doit être exactement égale à ce qu'il
+  // a émis. Pas approximativement — exactement. Une divergence est un endroit
+  // du moteur où l'argent apparaît ou disparaît sans que personne l'ait décidé.
+  const sM = nouvellePartie(4242, { maintenant: 0, depart: 'ville' });
+  ok(auditer(sM.world).every((e) => e.ecart === 0),
+    'à la création, tout ce qui existe est exactement ce qui a été émis');
+  let pire = 0;
+  for (let t = 0; t < 2000; t++) {
+    tick(sM);
+    if (t % 50) continue;
+    for (const e of auditer(sM.world)) pire = Math.max(pire, Math.abs(e.ecart));
+  }
+  // Le seuil est le bruit de la virgule flottante, pas une tolérance de
+  // confort : additionner deux cent mille fois des dixièmes de crédit laisse
+  // quelques 1e-10 derrière soi, et c'est la seule chose qu'on accepte. Tout ce
+  // qui dépasse est de l'argent qui vient de nulle part — au dernier relevé,
+  // trois mille crédits fantômes tenaient à une ville en ruine qu'on
+  // revendiquait avec ses comptes.
+  ok(pire < 1e-6,
+    'et deux mille heures plus tard, toujours : rien ne se crée, rien ne se perd',
+    `écart maximal ${pire.toExponential(2)}`);
+
+  // C1/C3. Battre monnaie dilue : la masse monte, donc le cours baisse.
+  const sE = nouvellePartie(4242, { maintenant: 0, depart: 'ville' });
+  avancer(sE, 200);
+  const fE = DIPLO_FACTIONS[0];
+  const masseAvant = sE.world.factions[fE].masse;
+  emettre(sE.world, fE, 50000);
+  ok(sE.world.factions[fE].masse === masseAvant + 50000,
+    'battre monnaie ajoute à la masse, et le trésor l’encaisse');
+  const coursAvant = sE.world.factions[fE].cours;
+  for (let i = 0; i < 6; i++) {
+    sE.world.factions[fE].prochainConseil = 1;
+    avancer(sE, 90);
+  }
+  ok(sE.world.factions[fE].cours < coursAvant,
+    'et le cours baisse : on ne s’enrichit pas en imprimant',
+    `${coursAvant.toFixed(3)} → ${sE.world.factions[fE].cours.toFixed(3)}`);
+
+  // C4. Une monnaie faible fait des prix locaux élevés.
+  const sP2 = nouvellePartie(4242, { maintenant: 0, depart: 'ville' });
+  const vP2 = sP2.world.colonies.find((c) => !c.ruine && c.faction);
+  sP2.world.factions[vP2.faction].cours = 1;
+  const cher = prixUnitaire(vP2, 'rations', undefined, sP2.world);
+  sP2.world.factions[vP2.faction].cours = 2;
+  const bonMarche = prixUnitaire(vP2, 'rations', undefined, sP2.world);
+  ok(bonMarche < cher,
+    'une monnaie qui vaut le double fait des prix locaux deux fois moindres',
+    `cours 1 → ${cher.toFixed(2)} · cours 2 → ${bonMarche.toFixed(2)}`);
+
+  // Et les monnaies divergent réellement en partie : sinon ce sont des
+  // étiquettes. Mesuré au banc sur six graines : de 0,40 à 2,21.
+  const coursFin = DIPLO_FACTIONS.map((k) => sM.world.factions[k].cours);
+  ok(Math.max(...coursFin) / Math.min(...coursFin) > 1.3,
+    'et elles ne valent pas toutes la même chose : les pays divergent',
+    coursFin.map((c) => c.toFixed(2)).join(' · '));
 }
 
 // ===========================================================================

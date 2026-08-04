@@ -22,6 +22,7 @@
 import { COMMODITY_KEYS, COMMODITIES, FACTIONS, DIPLO_FACTIONS } from './data.js';
 import { prixUnitaire } from './economy.js';
 import { avantage } from './allegeance.js';
+import { depenser } from './monnaie.js';
 
 /** Ce qu'il faut tenir pour ouvrir une bourse : ça ne se décrète pas à trois. */
 export const VILLES_BOURSE = 4;
@@ -228,7 +229,7 @@ export function ouvrirBourse(world, key, t) {
   const f = world.factions[key];
   if (!f || f.bourse) return false;
   f.bourse = { depuis: t };
-  f.tresor = Math.max(0, f.tresor - TRESOR_BOURSE);
+  depenser(world, key, TRESOR_BOURSE);
   return true;
 }
 

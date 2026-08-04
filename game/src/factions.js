@@ -1,7 +1,9 @@
 // Le monde tourne sans le joueur : les factions lèvent des armées, assiègent,
 // prennent des colonies, signent des paix. C'est le cœur « vivant » de la sim.
 
-import { FACTIONS, DIPLO_FACTIONS, COMMODITY_KEYS, MENAGES } from './data.js';
+import {
+  FACTIONS, DIPLO_FACTIONS, COMMODITY_KEYS, MENAGES, COMMODITIES,
+} from './data.js';
 import {
   veutOuvrirBourse, ouvrirBourse, aUneBourse, partenairePossible, signerAccord,
   veutAccord,
@@ -11,8 +13,11 @@ import {
   dirigeant, penchant, crediterDirigeant, butDeGuerre, etatDuBut, tickDirigeant,
   TEMPERAMENTS,
 } from './dirigeants.js';
-import { effondrer, emploisInitiaux, remonterCaisses, verser } from './economy.js';
+import {
+  effondrer, emploisInitiaux, remonterCaisses, verser, productionColonie,
+} from './economy.js';
 import { tickCredit, veutBatir } from './credit.js';
+import { transferer, transfererVille, annuler, majCours } from './monnaie.js';
 import { pourvoirCharges } from './notables.js';
 import { chemin, colonieParId, distance, voisins, damer } from './world.js';
 import {
@@ -279,7 +284,11 @@ function capturer(world, armee, col, t, log, ctx) {
       col.stock[k] -= pris;
       butin += pris;
     }
-    world.factions[nouveau].tresor += Math.round(butin * 1.6);
+    // Le butin, c'est de la marchandise emportée, pas de la monnaie trouvée : la
+    // créditer au trésor en fabriquait à chaque prise de ville. Le vainqueur
+    // hérite en revanche de ce que la ville avait en caisse et dans les poches
+    // de ses gens — ça, ça change simplement de registre.
+    transfererVille(world, col, ancien, nouveau);
     col.defense = Math.round(col.defenseMax * 0.25);
     log({
       type: 'capture',
@@ -512,7 +521,7 @@ function conseil(world, key, t, log, ctx) {
     const depuis = sauvages.length ? rng.pick(sauvages).i : rng.pick(world.regions).i;
     const force = rng.irange(30, 70) + Math.floor(t / 400);
     const a = leverArmee(world, 'essaim', force, depuis, cible.id, log);
-    if (a) f.tresor = 0;
+    if (a) { annuler(world, key, f.tresor); f.tresor = 0; }
     return;
   }
 
@@ -564,6 +573,16 @@ function conseil(world, key, t, log, ctx) {
   // Puis les comptes de ses villes : ce qu'elles doivent, ce qu'elles rendent,
   // ce qu'on leur prête encore, et celles qu'on laisse tomber.
   tickCredit(world, key, mesColonies, heures, log);
+
+  // Et le cours de sa monnaie, gagé sur un mois de la production du pays.
+  // Prendre des villes renforce une monnaie, en perdre l'affaiblit, en imprimer
+  // la dilue — sans qu'on ait eu à écrire une règle pour le dire.
+  let production = 0;
+  for (const col of mesColonies) {
+    const p2 = productionColonie(world, col);
+    for (const k of COMMODITY_KEYS) production += (p2[k] || 0) * COMMODITIES[k].prix;
+  }
+  majCours(world, key, production);
 
   // Et ce qu'on prélève au-delà de l'ordinaire se paie en grogne.
   const pression = pressionFiscale(world, key);
@@ -720,8 +739,14 @@ function conseil(world, key, t, log, ctx) {
     if (candidates.length) {
       const r = rng.pick(candidates);
       const col = fonderColonie(world, key, r, rng, t);
-      // Ce que coûte de fonder va aux colons : c'est leur mise de départ.
+      // Ce que coûte de fonder va aux colons : c'est toute leur mise de départ,
+      // et elle sort du trésor. Un tiers passe aussitôt en caisse commune — de
+      // quoi commander un premier convoi, sans quoi la ville ne peut rien se
+      // faire livrer et meurt avant d'avoir produit de quoi payer.
       verser(world, key, col, 1500);
+      const fonds = Math.round((col.menages || 0) / 3);
+      col.menages -= fonds;
+      col.caisse = (col.caisse || 0) + fonds;
       crediterDirigeant(world, key, 'fondation');
       log({
         type: 'fondation',
@@ -777,12 +802,13 @@ export function fonderColonie(world, key, region, rng, t) {
     stock,
     unrest: 0.1,
     marche: 1.35,
-    // Une ville neuve part avec de quoi acheter son premier convoi : sans
-    // liquidités, elle ne peut rien se faire livrer et meurt de faim avant
-    // d'avoir produit de quoi payer. Et ses habitants avec de quoi consommer,
-    // sinon la ville a beau produire, personne ne peut lui rien acheter.
-    caisse: 400,
-    menages: 0,   // posé juste après, une fois la population tirée
+    // À zéro, les deux. Une ville neuve reçoit sa mise de départ du trésor qui
+    // la fonde — voir `verser` chez l'appelant —, elle ne la trouve pas sous
+    // ses pieds. Garnie d'office, elle fabriquait huit cents crédits à chaque
+    // fondation, et l'invariant comptable s'en ressentait à la douzième heure
+    // de la première partie mesurée.
+    caisse: 0,
+    menages: 0,
     dette: 0,
     creancier: null,
     cession: null,
@@ -793,7 +819,6 @@ export function fonderColonie(world, key, region, rng, t) {
     fondeeA: t,
     factionOrigine: key,
   };
-  col.menages = Math.round(col.pop * MENAGES.parTete);
   col.defenseMax = Math.round(col.pop * 0.09 + col.murs * 12);
   col.defense = col.defenseMax;
   world.colonies.push(col);

@@ -20,6 +20,7 @@ import {
 import { idDepuisRng, estDebout, comp } from './characters.js';
 import { retenirEnVille } from './services.js';
 import { avantage } from './allegeance.js';
+import { transferer } from './monnaie.js';
 
 /**
  * Le plafond du commerce d'opportunité — celui que le hasard tire, par
@@ -571,7 +572,11 @@ function arriver(state, car, log) {
     // ouvre le négoce entre factions, vaut quelque chose.
     const de = colonieParId(world, car.deId);
     if (de && vivante(de) && de.id !== vers.id) {
-      encaisser(world, de, debourser(vers, valeurCargaison(car)));
+      const regle = debourser(vers, valeurCargaison(car));
+      encaisser(world, de, regle);
+      // D'un pays à l'autre, les unités changent de registre. Au pair pour
+      // l'instant : le cours et son écart viennent au lot D.
+      transferer(world, vers.faction, de.faction, regle);
     }
   }
   retirerCaravane(world, car);
@@ -657,7 +662,10 @@ export function tickCaravanes(state, log, ctx) {
       (a) => a.regionId === car.regionId && a.faction !== car.faction
     );
     if (armee && rng.chance(0.5)) {
-      world.factions[armee.faction].tresor += Math.round(valeurCargaison(car) * 0.5);
+      // Une colonne qui pille emporte des caisses, pas un virement. Créditer
+      // ici le trésor du pillard fabriquait de la monnaie à chaque convoi
+      // intercepté — c'était la dernière planche à billets du moteur.
+
       pillee(state, car, FACTIONS[armee.faction].nom, log);
       continue;
     }

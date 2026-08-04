@@ -35,6 +35,7 @@ import {
   aUneBourse, ouvrirBourse, signerAccord, rompreAccords, partenairePossible,
   VILLES_BOURSE, TRESOR_BOURSE,
 } from './bourse.js';
+import { depenser } from './monnaie.js';
 
 /**
  * Ce que chaque charge permet. `rang` est l'indice minimal dans RANGS.
@@ -316,7 +317,7 @@ export function leverColonne(state, faction, depuisId, cibleId, log) {
     ? colonieParId(state.world, depuisId)
     : villeLaPlusProche(state.world, faction, cible.regionId);
   if (!depuis || depuis.faction !== faction) return { ok: false, motif: 'Il faut partir d’une de vos villes.' };
-  f.tresor -= cout;
+  depenser(state.world, faction, cout);
   const a = {
     id: `a${state.world.prochainArmeeId++}`,
     faction,
@@ -388,7 +389,7 @@ export function fonderPoste(state, faction, regionIndex, rng, log) {
   if (!sitesFondation(state.world, faction).some((s) => s.i === r.i)) {
     return { ok: false, motif: 'On ne fonde pas là : trop loin des vôtres, ou trop près d’une ville.' };
   }
-  f.tresor -= COUT_POSTE;
+  depenser(state.world, faction, COUT_POSTE);
   const col = fonderColonie(state.world, faction, r, rng, state.temps);
   crediterDirigeant(state.world, faction, 'fondation');
   inscrireActe(state, faction, { type: 'fondation', colonie: col.id, t: state.temps });
@@ -634,7 +635,7 @@ export function renforcerGarnison(state, faction, log) {
   if (f.tresor < COUT_GARNISON) {
     return { ok: false, motif: `Le trésor ne suit pas : ${Math.round(f.tresor)} / ${COUT_GARNISON} cr.` };
   }
-  f.tresor -= COUT_GARNISON;
+  depenser(state.world, faction, COUT_GARNISON);
   col.murs += 2;
   col.defenseMax = Math.round(col.pop * 0.09 + col.murs * 12);
   col.defense = Math.min(col.defenseMax, col.defense + Math.round(col.defenseMax * 0.3));
@@ -660,7 +661,7 @@ export function ouvrirGreniers(state, faction, log) {
   if (f.tresor < COUT_GRENIER) {
     return { ok: false, motif: `Le trésor ne suit pas : ${Math.round(f.tresor)} / ${COUT_GRENIER} cr.` };
   }
-  f.tresor -= COUT_GRENIER;
+  depenser(state.world, faction, COUT_GRENIER);
   col.stock.rations = (col.stock.rations || 0) + Math.round(col.pop * 0.9);
   col.unrest = Math.max(0, (col.unrest || 0) - 0.18);
   if (log) {

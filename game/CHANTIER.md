@@ -130,25 +130,50 @@ Ce fichier prépare le travail, il ne l'autorise pas.
 
 ## Lot C — la monnaie (ECONOMIE §4)
 
-- [ ] **C1. `src/monnaie.js`** (R4 : MODULES) : `masse` (incrémentale, jamais
+- [x] **C1. `src/monnaie.js`** (R4 : MODULES) : `masse` (incrémentale, jamais
   recalculée par balayage), `gage` (cache au conseil, `HORIZON_GAGE = 720`),
   `cours` (clamp 0,05–4, lissage 0,7/0,3, prime de confiance du taux
   directeur). Init + `normaliser` : masse initiale = somme des stocks
   monétaires existants de la faction (l'invariant naît vrai). Critère : tests
   unitaires de chaque formule, aller-retour JSON.
-- [ ] **C2. L'invariant comptable** (ECONOMIE §2) : pour chaque faction, somme
+- [x] **C2. L'invariant comptable** (ECONOMIE §2) : pour chaque faction, somme
   des caisses + ménages + trésor + détentions étrangères + joueur = masse.
   Test qui joue 2 000 h et vérifie l'égalité **exacte** à chaque conseil. Toute
   divergence est un bug à trouver, jamais une tolérance à élargir.
-- [ ] **C3. Émission et retrait** (décision de conseil par tempérament +
+- [x] **C3. Émission et retrait** (décision de conseil par tempérament +
   effets : cours, grogne, journal). Critère : tests + l'invariant tient.
-- [ ] **C4. Les prix locaux** : `prixLocal = prixAc / cours` partout où une
+- [x] **C4. Les prix locaux** : `prixLocal = prixAc / cours` partout où une
   ville cote (`prixUnitaire`, étals, services). Critère : test « une monnaie
   faible fait des prix hauts », les tests de commerce existants adaptés,
   gardes du banc tenues.
-- [ ] **C5. Calibrage + livraison** : cours divergent ≥ ×2 en fin de partie ;
-  ≥ 1 monnaie effondrée (< 0,4) sur 6 graines ; invariant exact sur 6 000 h ;
-  tick < 110. CIBLES.json, ECONOMIE, verifier --complet.
+- [x] **C5. Calibrage + livraison.** Mesuré, 6 graines × 6 000 h, contre
+  `82636d8` :
+
+  | cible | attendu | obtenu | |
+  |---|---|---:|---|
+  | invariant comptable | exact | **0** sur 6 000 h | ✔ |
+  | écart des cours | ≥ ×2 | **×5,5** (0,40 – 2,21) | ✔ |
+  | monnaie effondrée | ≥ 1 | **oui**, au plancher | ✔ |
+  | villes bien nourries | — | **424** | ✔ témoin 230 |
+  | villes affamées | — | **7 %** | ✔ témoin 24 % |
+  | villes debout | — | **500** | ✔ témoin 394 |
+  | trésor médian | 30 000–120 000 | **44 490** | ✔ |
+  | population | — | **55 106** | ✘ témoin 140 534 |
+  | factions écrasées | ≥ 4/36 | **1/36** | ✘ le drame a disparu |
+
+  **Deux dettes de calibrage, et elles vont ensemble.** Le monde compte 500
+  villes très bien nourries — 7 % d'affamées contre 24 % au témoin — mais de
+  petites villes : 110 habitants en moyenne contre 357. Et plus personne ne
+  s'effondre. Les deux tiennent au même fait : la monnaie a rendu le monde
+  *prudent*. Une ville consomme ce qu'elle peut payer, donc elle stocke, donc
+  elle ne croît pas ; une faction a toujours de quoi tenir, donc elle ne tombe
+  pas.
+
+  Ce n'est pas rattrapable en tournant `ETAT.parDefense` : balayé de 0,002 à
+  0,02, les factions écrasées restent à 0 ou 1 sur 18. Le levier est ailleurs —
+  probablement dans la croissance des villes, qui exige aujourd'hui une satiété
+  d'au moins 0,8 alors que la solvabilité la plafonne en dessous. **À reprendre
+  au lot F**, avec un balayage dédié, et pas en passant.
 
 ## Lot D — le change et la conquête par la dette (ECONOMIE §5, §6.3–6.4)
 

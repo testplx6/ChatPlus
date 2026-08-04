@@ -86,7 +86,7 @@ export function detresse(world, col) {
   const manque = (CREDIT.seuilDetresse - parTete) * col.pop;
   // Au prix qu'elle paierait, pas au prix du catalogue : c'est ce qu'il lui
   // faut réellement en poche.
-  return manque * prixUnitaire(col, 'rations');
+  return manque * prixUnitaire(col, 'rations', undefined, world);
 }
 
 /**

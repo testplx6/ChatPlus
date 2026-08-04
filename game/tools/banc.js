@@ -52,7 +52,9 @@ async function chargerMoteur(src) {
   const sim = await import(pathToFileURL(join(src, 'sim.js')).href);
   const data = await import(pathToFileURL(join(src, 'data.js')).href);
   const eco = await import(pathToFileURL(join(src, 'economy.js')).href);
-  return { sim, data, eco };
+  let eco2 = { auditer: () => [] };
+  try { eco2 = await import(pathToFileURL(join(src, 'monnaie.js')).href); } catch (e) { /* témoin */ }
+  return { sim, data, eco, eco2 };
 }
 
 /**
@@ -102,7 +104,7 @@ async function appliquerRegles(src, regles) {
  * campagne de cette session a recalculées à la main, réunies une fois pour
  * toutes. En ajouter une ici la donne à toutes les mesures futures.
  */
-function jouer({ sim, data, eco }, graine, horizon) {
+function jouer({ sim, data, eco, eco2 }, graine, horizon) {
   const t0 = performance.now();
   const s = sim.nouvellePartie(graine);
   const convoisVus = new Set();
@@ -143,6 +145,11 @@ function jouer({ sim, data, eco }, graine, horizon) {
     // Le crédit : combien de villes doivent, et combien. Sans ces deux nombres
     // on ne sait pas si le mécanisme tourne ou s'il dort.
     endettees: cols.filter((c) => (c.dette || 0) > 1).length,
+    // Les cours, et l'écart comptable. Une monnaie qui ne diverge jamais est
+    // une étiquette ; un invariant qui dérive est un moteur qui fabrique de
+    // l'argent sans le dire.
+    cours: data.DIPLO_FACTIONS.map((k) => s.world.factions[k].cours || 1),
+    ecart: eco2.auditer(s.world).reduce((a2, x) => a2 + Math.abs(x.ecart), 0),
     // Les paliers de taux directeur qu'on trouve en fin de partie : une loi que
     // personne n'emploie jamais est une loi morte, et ça ne se voit pas
     // autrement.
@@ -255,6 +262,11 @@ function agreger(cfg) {
     balance: (som(cfg, 'prod') / Math.max(1, som(cfg, 'cons'))).toFixed(2),
     masse: som(cfg, 'enCaisses') + som(cfg, 'enMenages') + som(cfg, 'enTresors'),
     endettees: som(cfg, 'endettees'),
+    cours: (() => {
+      const v = cfg.parties.flatMap((p2) => p2.cours);
+      return v.length ? `${Math.min(...v).toFixed(2)}–${Math.max(...v).toFixed(2)}` : '—';
+    })(),
+    ecart: Math.round(som(cfg, 'ecart')),
     affamees: `${som(cfg, 'affamees')} (${Math.round(som(cfg, 'affamees') / Math.max(1, som(cfg, 'villes')) * 100)} %)`,
     paliers: [...new Set(cfg.parties.flatMap((p2) => p2.paliers))]
       .sort((a4, b4) => a4 - b4).map((x) => `${Math.round(x * 100)}`).join('/'),
@@ -273,6 +285,7 @@ const COLONNES = [
   ['guerres', 'guerres', 7], ['balance', 'prod/cons', 9],
   ['masse', 'masse', 9], ['ou', 'caisses/ménages/trésors', 22],
   ['endettees', 'endettées', 9], ['affamees', 'affamées', 11],
+  ['cours', 'cours', 11], ['ecart', 'écart', 6],
   ['paliers', 'taux %', 12],
   ['usParTick', 'µs/tick', 7],
 ];
