@@ -231,6 +231,28 @@ dans un script à côté.
 > demi-heure ; le banc la rend en huit secondes, et il retrouve les chiffres
 > historiques à l'unité près.
 
+**Savoir quel levier commande quoi, avant d'essayer de régler.**
+`CARTOGRAPHIE.md` dit, pour chaque constante du moteur, ce qu'elle déplace et de
+combien. Il se régénère (`node tools/banc.js --cartographie`). On le lit d'abord
+— trois calibrages du lot D ont été perdus sur des leviers qui ne commandaient
+rien, `ETAT.parDefense` multiplié par dix pour zéro faction écrasée de plus.
+
+**Le déterminisme n'annule pas le bruit : il le déplace.** Deux parties de même
+graine et même réglage sont identiques au bit près, alors on croit tout écart
+significatif. Mais multiplier une constante par 1,0001 — ce qui ne change rien
+d'économique — décale les tirages, et six mille heures plus tard le monde a
+divergé quand même. La carte mesure ce chaos-là avec des placebos et déclare
+**nul**, pas « faible », tout ce qui reste dessous.
+
+> **Incident.** Les premiers placebos étaient tirés à intervalle régulier dans
+> la liste des constantes triée par nom de fichier : tous sont tombés dans le
+> même coin du moteur, sur des champs que la simulation du monde ne lit jamais.
+> Le monde n'a pas bougé d'un habitant, le plancher est sorti à **0,0 % sur les
+> quinze métriques**, et tout serait devenu significatif. Un placebo doit porter
+> sur un levier dont on a mesuré qu'il remue le monde — sinon il ne mesure que
+> son propre silence, et c'est le pire sens dans lequel un instrument puisse se
+> tromper.
+
 **Chercher la cause, pas la corrélation.** La population avait chuté de 28 % après
 un changement d'économie. L'hypothèse commode — « il part moins de convois » —
 était fausse : il en partait *plus*, mais six fois plus maigres. La bonne mesure

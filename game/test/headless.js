@@ -38,6 +38,9 @@ import {
   OUVRENT_BOURSE, SIGNENT_ACCORD, veutAccord,
 } from '../src/bourse.js';
 import { distanceMorale } from '../src/factions.js';
+import {
+  recenser, elasticite, planchers, significatif, asymetrique, ecarts,
+} from '../tools/cartographie.js';
 import { loiIci } from '../src/lois.js';
 import { primeLivraison, prixEsclave } from '../src/justice.js';
 import { classement, puissance } from '../src/factions.js';
@@ -7019,6 +7022,83 @@ section('16. Économie — lot D : le change et la conquête par la dette');
   ok(pire < 1e-6,
     'et les comptes tiennent à travers le change et les saisies',
     `écart maximal ${pire.toExponential(2)}`);
+}
+
+// ===========================================================================
+section('17. Cartographie — l’instrument qui dit quel levier commande quoi');
+{
+  // Le recensement. Ce qui compte n'est pas ce qu'il trouve, c'est ce qu'il
+  // refuse : un catalogue imbriqué n'est pas un levier, un champ à zéro ne se
+  // multiplie pas, et un export en minuscules n'est pas une constante de
+  // réglage. Sans ces trois refus la campagne joue des parties pour rien.
+  const faux = {
+    economy: {
+      CAISSE: { marge: 0.1, parTete: 12, mort: 0 },
+      COMMODITIES: { rations: { prix: 4 } },
+      prixUnitaire: () => 0,
+      SEUILS: [1, 2, 3],
+    },
+    data: { MENAGES: { parTete: 3 } },
+  };
+  const { leviers: lv, ecartes } = recenser(faux);
+  const cles = lv.map((l) => `${l.module}.${l.objet}.${l.champ}`);
+
+  ok(cles.includes('economy.CAISSE.marge') && cles.includes('data.MENAGES.parTete'),
+    'le recensement trouve les champs numériques des objets exportés', cles.join(' '));
+  ok(!cles.some((c) => c.startsWith('economy.COMMODITIES')),
+    'il ne descend pas dans un catalogue imbriqué', cles.join(' '));
+  ok(!cles.some((c) => c.includes('SEUILS') || c.includes('prixUnitaire')),
+    'ni dans un tableau, ni dans une fonction');
+  ok(ecartes.some((e) => e.champ === 'mort'),
+    'un champ à zéro est écarté, et dit pourquoi : ×0,7 le laisserait à zéro',
+    JSON.stringify(ecartes));
+
+  // L'élasticité : de combien de pour cent bouge la métrique pour un pour cent
+  // de levier. C'est la seule forme comparable d'un levier à l'autre — une
+  // différence brute mélange des habitants avec des guerres.
+  ok(Math.abs(elasticite(1000, 1100, 0.4) - 0.25) < 1e-9,
+    'l’élasticité rapporte la variation relative de la métrique à celle du levier',
+    String(elasticite(1000, 1100, 0.4)));
+  ok(elasticite(0, 3, 0.4) === null,
+    'une métrique nulle à la référence n’a pas d’élasticité — on ne divise pas par zéro');
+
+  // Le plancher de bruit. Le moteur est déterministe : changer une constante
+  // d'un dix-millième ne change rien d'économique, mais décale les tirages et
+  // le monde diverge quand même. C'est du chaos, pas un effet. Le placebo le
+  // mesure, et tout ce qui reste dessous est déclaré nul — pas « faible ».
+  const sol = planchers([
+    { pop: 0.004, ecrasees: 0.30 },
+    { pop: 0.011, ecrasees: 0.10 },
+  ]);
+  ok(Math.abs(sol.pop - 0.011) < 1e-9 && Math.abs(sol.ecrasees - 0.30) < 1e-9,
+    'le plancher d’une métrique est le pire écart qu’un placebo produit',
+    JSON.stringify(sol));
+  ok(significatif(0.02, sol.pop) && !significatif(-0.009, sol.pop),
+    'un effet sous son plancher n’est pas un petit effet : il n’en est pas un');
+  ok(!significatif(0.25, sol.ecrasees),
+    'et une métrique très chaotique exige beaucoup avant de conclure');
+
+  // Les petits comptes. « Factions écrasées » vaut 1 sur six parties, parfois
+  // 0 : divisé par sa référence, l'écart part à l'infini et le plancher avec —
+  // après quoi plus rien n'est jamais significatif et la métrique s'éteint sans
+  // rien dire. Une métrique muette pour cause d'infini est le pire des cas :
+  // elle a l'air d'un monde sans levier.
+  const partie = (v) => ({
+    pop: 1000 * v, villes: 0, nourries: 0, affamees: 0, ecrasees: v, guerres: 0,
+    convois: 0, accords: 0, bourses: 0, endettees: 0, dette: 0, creances: 0,
+    enCaisses: 0, enMenages: 0, enTresors: 0,
+  });
+  const e0 = ecarts([partie(0)], [partie(2)]);
+  ok(Number.isFinite(e0.ecrasees) && e0.ecrasees === 2,
+    'une métrique nulle à la référence se compare en écart absolu, jamais à l’infini',
+    String(e0.ecrasees));
+  ok(Math.abs(ecarts([partie(4)], [partie(5)]).pop - 0.25) < 1e-9,
+    'et une grande métrique se compare bien en relatif');
+
+  // Un levier qui ne pousse que dans un sens est une règle à moitié écrite —
+  // c'est déjà une règle de METHODE. Encore faut-il que la carte le dise.
+  ok(asymetrique({ bas: 0.9, haut: 0.02 }) && !asymetrique({ bas: 0.9, haut: 0.8 }),
+    'la carte signale les leviers qui ne poussent que d’un côté');
 }
 
 // ===========================================================================

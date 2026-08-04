@@ -35,9 +35,13 @@ import {
 } from 'node:worker_threads';
 import { availableParallelism } from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, existsSync, writeFileSync } from 'node:fs';
+import { mkdirSync, existsSync, writeFileSync, readdirSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import {
+  recenser, elasticite, planchers, significatif, asymetrique, METRIQUES,
+  moyenne, ecarts,
+} from './cartographie.js';
 
 const ICI = dirname(fileURLToPath(import.meta.url));
 const JEU = resolve(ICI, '..');
@@ -192,7 +196,7 @@ function unePartieEnWorker(tache) {
 }
 
 /** Toutes les parties de toutes les configurations, à plat, N à la fois. */
-async function campagne(configs, graines, horizon) {
+async function campagne(configs, graines, horizon, surAvancement) {
   const taches = [];
   for (const c of configs) {
     c.parties = [];
@@ -202,10 +206,12 @@ async function campagne(configs, graines, horizon) {
   }
   const largeur = Math.max(1, Math.min(availableParallelism() - 1, taches.length));
   let i = 0;
+  let faites = 0;
   await Promise.all(Array.from({ length: largeur }, async () => {
     while (i < taches.length) {
       const t = taches[i++];
       t.config.parties.push(await unePartieEnWorker(t.tache));
+      if (surAvancement) surAvancement(++faites, taches.length);
     }
   }));
   for (const c of configs) c.parties.sort((a, b) => a.graine - b.graine);
@@ -302,6 +308,280 @@ function afficher(lignes) {
 }
 
 // ---------------------------------------------------------------------------
+// La cartographie : chaque levier, deux fois, contre une référence
+// ---------------------------------------------------------------------------
+
+const BAS = 0.7;
+const HAUT = 1.4;
+const PLACEBO = 1.0001;
+const PLACEBOS = 8;
+
+const pc = (x) => (Number.isFinite(x) ? `${(x * 100).toFixed(1).replace('.', ',')} %` : '—');
+const el = (x) => (x === null || !Number.isFinite(x) ? '—' : x.toFixed(2).replace('.', ','));
+
+/** Tous les modules du moteur, importés une fois. `main.js` touche le DOM. */
+async function tousLesModules(src) {
+  const modules = {};
+  const illisibles = [];
+  for (const f of readdirSync(src).filter((n) => n.endsWith('.js')).sort()) {
+    try {
+      modules[f.slice(0, -3)] = await import(pathToFileURL(join(src, f)).href);
+    } catch (e) {
+      illisibles.push(f);
+    }
+  }
+  return { modules, illisibles };
+}
+
+/** Une passe de configurations, avec l'avancement et le temps restant. */
+async function jouerConfigs(configs, graines, horizon) {
+  const t0 = performance.now();
+  let dernier = -1;
+  await campagne(configs, graines, horizon, (faites, sur) => {
+    const part = Math.floor(faites / sur * 20);
+    if (part === dernier) return;
+    dernier = part;
+    const ecoule = (performance.now() - t0) / 1000;
+    process.stdout.write(`\r  ${String(Math.round(faites / sur * 100)).padStart(3)} % — `
+      + `${Math.round(ecoule)} s, reste ~${Math.round(ecoule * (sur / faites - 1))} s   `);
+  });
+  console.log(`\r  ${Math.round((performance.now() - t0) / 1000)} s${' '.repeat(30)}`);
+}
+
+/**
+ * La campagne de cartographie et son document.
+ *
+ * Une configuration de référence, quelques placebos qui mesurent le chaos, puis
+ * deux points par levier. Les graines sont les mêmes partout : la comparaison
+ * est appariée, ce qui est la seule façon de lire un effet dans un monde où
+ * changer un dix-millième de constante fait déjà diverger la trajectoire.
+ */
+async function cartographier(graines, horizon, max) {
+  const { modules, illisibles } = await tousLesModules(SRC);
+  const { leviers, ecartes } = recenser(modules);
+  const retenus = max ? leviers.slice(0, max) : leviers;
+
+  // Première passe : la référence et les deux points de chaque levier.
+  const configs = [{ nom: 'référence', src: SRC, regles: [], role: 'ref' }];
+  for (const l of retenus) {
+    for (const [cote, facteur] of [['bas', BAS], ['haut', HAUT]]) {
+      configs.push({
+        nom: `${l.module}.${l.objet}.${l.champ} ${cote}`, src: SRC, role: cote, levier: l,
+        regles: [{ module: l.module, chemin: [l.objet, l.champ], valeur: l.valeur * facteur }],
+      });
+    }
+  }
+  console.log(`${retenus.length} leviers — passe 1 : ${configs.length} configurations, `
+    + `${configs.length * graines.length} parties de ${horizon} h.`);
+  await jouerConfigs(configs, graines, horizon);
+  const ref = configs[0].parties;
+
+  // Deuxième passe : les placebos, et il faut les choisir après coup.
+  //
+  // Un placebo sur une constante que le moteur ne lit jamais ne mesure rien —
+  // le monde ne bouge pas d'un habitant, le plancher tombe à zéro, et le moindre
+  // frémissement devient « significatif ». C'est le pire sens dans lequel une
+  // carte puisse se tromper, et le premier essai est tombé dedans : les huit
+  // placebos étaient tirés à intervalle régulier dans une liste triée par nom de
+  // fichier, donc tous dans le même coin du moteur.
+  //
+  // On sait maintenant lesquels remuent le monde. Les placebos vont sur les plus
+  // remuants, un par module pour couvrir des mécanismes différents.
+  const remuants = retenus.map((l) => {
+    const bas = configs.find((c) => c.role === 'bas' && c.levier === l);
+    const haut = configs.find((c) => c.role === 'haut' && c.levier === l);
+    const e = { ...ecarts(ref, bas.parties), ...ecarts(ref, haut.parties) };
+    return { l, remue: Math.max(...Object.values(e).map((x) => Math.abs(x) || 0)) };
+  }).filter((x) => x.remue > 0).sort((a, b) => b.remue - a.remue);
+  const vus = new Set();
+  const choisis = remuants.filter((x) => !vus.has(x.l.module) && vus.add(x.l.module))
+    .slice(0, PLACEBOS);
+  const placebos = choisis.map((x) => ({
+    nom: `placebo ${x.l.objet}.${x.l.champ}`, src: SRC, role: 'placebo',
+    regles: [{ module: x.l.module, chemin: [x.l.objet, x.l.champ], valeur: x.l.valeur * PLACEBO }],
+  }));
+  console.log(`passe 2 : ${placebos.length} placebos (×${PLACEBO}) sur les leviers `
+    + 'les plus remuants — le plancher de bruit.');
+  if (placebos.length) await jouerConfigs(placebos, graines, horizon);
+
+  // Le plancher de bruit. Sans lui aucun chiffre plus bas ne veut rien dire.
+  const sol = planchers(placebos.map((c) => ecarts(ref, c.parties)));
+  const bougent = placebos.filter((c) => Object.values(ecarts(ref, c.parties))
+    .some((x) => Math.abs(x) > 0)).length;
+  if (!bougent) {
+    console.log('⚠ aucun placebo n’a fait diverger le monde : le plancher vaut zéro '
+      + 'et la carte ne distingue plus un effet d’un frémissement.');
+  }
+
+  const lignes = [];
+  for (const l of retenus) {
+    const cle = `${l.module}.${l.objet}.${l.champ}`;
+    const bas = configs.find((c) => c.role === 'bas' && c.levier === l);
+    const haut = configs.find((c) => c.role === 'haut' && c.levier === l);
+    const eb = ecarts(ref, bas.parties);
+    const eh = ecarts(ref, haut.parties);
+    const effets = [];
+    for (const [m, nom] of METRIQUES) {
+      const sb = significatif(eb[m], sol[m]);
+      const sh = significatif(eh[m], sol[m]);
+      if (!sb && !sh) continue;
+      const e = [
+        sb ? elasticite(moyenne(ref, m), moyenne(bas.parties, m), BAS - 1) : null,
+        sh ? elasticite(moyenne(ref, m), moyenne(haut.parties, m), HAUT - 1) : null,
+      ];
+      effets.push({
+        m, nom, ecartBas: eb[m], ecartHaut: eh[m], elBas: e[0], elHaut: e[1],
+        force: Math.max(Math.abs(e[0] || 0), Math.abs(e[1] || 0)),
+        asym: asymetrique({ bas: sb ? eb[m] : 0, haut: sh ? eh[m] : 0 }),
+      });
+    }
+    effets.sort((a, b) => b.force - a.force);
+    lignes.push({ cle, valeur: l.valeur, effets });
+  }
+
+  ecrireCarte({
+    lignes, sol, ref, graines, horizon, ecartes, illisibles, retenus, leviers,
+    placebos: choisis.map((x) => `${x.l.module}.${x.l.objet}.${x.l.champ}`), bougent,
+  });
+  const morts = lignes.filter((x) => !x.effets.length);
+  console.log(`\nCARTOGRAPHIE.md écrit — ${lignes.length - morts.length} leviers vivants, `
+    + `${morts.length} sans effet mesurable.`);
+  return { lignes, sol };
+}
+
+/** Le document. Il doit se lire seul, par quelqu'un qui n'a pas joué la campagne. */
+function ecrireCarte({
+  lignes, sol, ref, graines, horizon, ecartes, illisibles, retenus, leviers,
+  placebos, bougent,
+}) {
+  const rev = execFileSync('git', ['-C', DEPOT, 'rev-parse', '--short', 'HEAD'],
+    { encoding: 'utf8' }).trim();
+  const vivants = lignes.filter((x) => x.effets.length);
+  const morts = lignes.filter((x) => !x.effets.length);
+  const t = [];
+  t.push('# La carte des leviers');
+  t.push('');
+  t.push('Ce que chaque constante du moteur commande, et de combien. Document');
+  t.push('**produit par la mesure** — il se régénère, il ne se modifie pas à la main :');
+  t.push('');
+  t.push('```');
+  t.push('node tools/banc.js --cartographie');
+  t.push('```');
+  t.push('');
+  t.push(`Révision \`${rev}\` — ${retenus.length} leviers sur ${leviers.length} recensés, `
+    + `${graines.length} graines × ${horizon} h.`);
+  t.push('');
+  t.push('## Comment lire');
+  t.push('');
+  t.push('Chaque levier est joué deux fois : à **×0,7** et à **×1,4** de sa valeur');
+  t.push('actuelle, aux mêmes graines que la référence. L\'**élasticité** est la');
+  t.push('variation de la métrique en pour cent pour un pour cent de levier : à +0,50,');
+  t.push('doubler la constante augmente la métrique de moitié. Le signe dit le sens.');
+  t.push('');
+  t.push('Une élasticité n\'est écrite que si l\'écart dépasse le **plancher de bruit**.');
+  t.push('Le moteur est déterministe, mais multiplier une constante par 1,0001 — ce qui');
+  t.push('ne change rien d\'économique — décale les tirages, et six mille heures plus');
+  t.push('tard le monde a divergé quand même. Ce chaos-là est mesuré par des placebos,');
+  t.push('métrique par métrique, et tout ce qui reste dessous est déclaré **nul**, pas');
+  t.push('« faible ». C\'est pour cette raison qu\'une colonne vide se lit « aucun effet »');
+  t.push('et non « effet non détecté ».');
+  t.push('');
+  t.push(`Les ${placebos.length} placebos portent sur les leviers qui remuent le plus le`);
+  t.push('monde, un par module — un placebo posé sur une constante que le moteur ne lit');
+  t.push('jamais mesurerait un chaos nul et rendrait tout significatif :');
+  t.push('');
+  t.push(placebos.map((p) => `\`${p}\``).join(', ') || '*aucun*');
+  t.push('');
+  if (!bougent) {
+    t.push('> ⚠ **Aucun placebo n\'a fait diverger le monde.** Le plancher vaut zéro,');
+    t.push('> et tout ce qui suit se lit comme une hypothèse, pas comme une mesure.');
+    t.push('');
+  }
+  t.push('| métrique | valeur de référence | plancher de bruit |');
+  t.push('|---|---:|---:|');
+  for (const [m, nom] of METRIQUES) {
+    t.push(`| ${nom} | ${Math.round(moyenne(ref, m))} | ${pc(sol[m])} |`);
+  }
+  t.push('');
+  t.push('Un plancher élevé n\'est pas un défaut de l\'instrument : c\'est une propriété');
+  t.push('du monde. Les factions écrasées se comptent sur les doigts d\'une main — une');
+  t.push('de plus ou de moins, et le pourcentage saute. Ces métriques-là exigent');
+  t.push('beaucoup avant qu\'on puisse conclure, et c\'est justement ce qu\'il fallait');
+  t.push('savoir avant de prétendre les régler.');
+  t.push('');
+  t.push('## Ce que chaque métrique commande — les leviers, par métrique');
+  t.push('');
+  for (const [m, nom] of METRIQUES) {
+    const dessus = [];
+    for (const l of lignes) {
+      const e = l.effets.find((x) => x.m === m);
+      if (e) dessus.push({ cle: l.cle, valeur: l.valeur, e });
+    }
+    dessus.sort((a, b) => b.e.force - a.e.force);
+    t.push(`### ${nom}`);
+    t.push('');
+    if (!dessus.length) {
+      t.push('**Aucun levier.** Aucune constante plate du moteur ne déplace cette');
+      t.push('métrique au-delà du bruit. Ce n\'est pas un réglage à trouver : c\'est une');
+      t.push('structure à changer.');
+      t.push('');
+      continue;
+    }
+    t.push('| levier | valeur | ×0,7 | ×1,4 | élasticité | |');
+    t.push('|---|---:|---:|---:|---:|---|');
+    for (const d of dessus.slice(0, 12)) {
+      const f = d.e.elHaut !== null ? d.e.elHaut : d.e.elBas;
+      t.push(`| \`${d.cle}\` | ${d.valeur} | ${d.e.elBas === null ? '—' : pc(d.e.ecartBas)} `
+        + `| ${d.e.elHaut === null ? '—' : pc(d.e.ecartHaut)} | ${el(f)} `
+        + `| ${d.e.asym ? 'ne pousse que d\'un côté' : ''} |`);
+    }
+    if (dessus.length > 12) t.push(`| … | | | | | ${dessus.length - 12} autres |`);
+    t.push('');
+  }
+  t.push('## Les leviers vivants, par force');
+  t.push('');
+  t.push('| levier | valeur | ce qu\'il commande |');
+  t.push('|---|---:|---|');
+  for (const l of vivants.slice().sort((a, b) => b.effets[0].force - a.effets[0].force)) {
+    t.push(`| \`${l.cle}\` | ${l.valeur} | `
+      + `${l.effets.slice(0, 4).map((e) => `${e.nom} ${el(e.elHaut !== null ? e.elHaut : e.elBas)}`).join(', ')} |`);
+  }
+  t.push('');
+  t.push('## Les champs morts');
+  t.push('');
+  t.push('Ces constantes ne déplacent **aucune** métrique au-delà du bruit, ni à ×0,7');
+  t.push('ni à ×1,4. Chacune est une question ouverte : décor assumé, effet trop local');
+  t.push('pour ces métriques, ou mécanisme qui ne se déclenche jamais. Ne pas les');
+  t.push('régler — les instruire.');
+  t.push('');
+  for (const l of morts) t.push(`- \`${l.cle}\` = ${l.valeur}`);
+  t.push('');
+  t.push('## Ce qui n\'est pas sur la carte');
+  t.push('');
+  t.push('La convention `module.OBJET.champ` du banc n\'atteint pas les objets');
+  t.push('imbriqués. Ces champs-là existent et pèsent peut-être lourd — ils ne sont');
+  t.push('simplement pas mesurés ici. Le dire est le minimum : une carte muette sur');
+  t.push('ses trous se lit comme une carte complète.');
+  t.push('');
+  const parMotif = {};
+  for (const e of ecartes) (parMotif[e.motif] = parMotif[e.motif] || []).push(`${e.objet}.${e.champ}`);
+  for (const [motif, l] of Object.entries(parMotif)) {
+    t.push(`- **${motif}** : ${l.length} champs — ${l.slice(0, 10).join(', ')}`
+      + `${l.length > 10 ? '…' : ''}`);
+  }
+  if (illisibles.length) t.push(`- **modules non chargeables hors navigateur** : ${illisibles.join(', ')}`);
+  t.push('');
+  t.push('La vitesse du tick n\'est pas cartographiée non plus : elle dépend de la');
+  t.push('charge de la machine, pas du monde. Elle se mesure au calme, avec ses deux');
+  t.push('gardes, par `verifier --complet`.');
+  t.push('');
+  t.push('Enfin, la carte donne des effets **isolés** : un levier à la fois, tous les');
+  t.push('autres au repos. Deux leviers qui se compensent ne se lisent pas dessus.');
+  t.push('');
+  writeFileSync(join(JEU, 'CARTOGRAPHIE.md'), `${t.join('\n')}`);
+}
+
+// ---------------------------------------------------------------------------
 // Ligne de commande
 // ---------------------------------------------------------------------------
 
@@ -354,6 +634,13 @@ async function principal() {
     for (let t = 0; t < horizon; t++) moteur.sim.tick(s);
     writeFileSync(option('--sauve'), JSON.stringify(s));
     console.log(`${option('--sauve')} — graine ${graines[0]}, ${horizon} h.`);
+    return;
+  }
+
+  // --cartographie : quel levier commande quoi. Une campagne, un document.
+  if (drapeau('--cartographie')) {
+    await cartographier(graines, horizon,
+      option('--max') ? lireNombre(option('--max'), '--max') : 0);
     return;
   }
 

@@ -237,6 +237,42 @@ Ce fichier prépare le travail, il ne l'autorise pas.
 
 ## Lot F — livraison générale
 
+### F0 — la carte des leviers, avant tout réglage
+
+Trois calibrages du lot D ont échoué pour la même raison : le levier choisi à
+l'intuition ne commandait rien. `ETAT.parDefense` multiplié par dix laisse les
+factions écrasées à 1 sur 18 ; `CAISSE.partSalariale` de 0,05 à 0,98 laissait la
+population plafonnée. On règle à l'aveugle, et rien ne se capitalise d'un
+réglage au suivant. F0 mesure une fois pour toutes ce que chaque constante
+commande.
+
+- [x] **F0.1. Le module de cartographie** (`tools/cartographie.js`) : recense
+  les champs numériques des objets exportés en MAJUSCULES de `src/`, calcule
+  les élasticités appariées et le plancher de bruit. Fonctions pures, testées
+  dans `test/headless.js` §17 — un instrument de mesure qui se trompe fait tout
+  mesurer faux. Critère : recensement, élasticité, plancher et significativité
+  couverts par des tests.
+- [x] **F0.2. `node tools/banc.js --cartographie`** : joue référence, placebos
+  et deux points par levier (×0,7 et ×1,4), écrit `CARTOGRAPHIE.md`. `--max N`
+  pour travailler sur un sous-ensemble sans payer la campagne entière.
+  Critère : `--max 2 --graines 11,42 --horizon 400` rend un document lisible en
+  moins d'une minute.
+- [ ] **F0.3. La campagne complète** (6 graines, 6 000 h) jouée, et ses trois
+  listes consignées ici : ce qui commande la population, ce qui commande le
+  drame, ce qui ne commande rien. Critère : au moins un levier au-dessus du
+  plancher de bruit sur les factions écrasées — ou le constat qu'aucune
+  constante plate ne le commande, ce qui oriente le lot autrement.
+
+  | | mesuré |
+  |---|---|
+  | leviers recensés | à mesurer |
+  | parties jouées | à mesurer |
+  | levier sur la population | à mesurer |
+  | levier sur le drame | à mesurer |
+  | champs morts | à mesurer |
+
+### F1 — F3
+
 - [ ] **F1.** `verifier --complet` vert, tick < 110 en médiane calibrée.
 - [ ] **F2.** README + ECONOMIE mis à jour avec les mesures finales ; le
   tableau des douze cibles d'ECONOMIE §13 rempli contre le témoin `82636d8`.
