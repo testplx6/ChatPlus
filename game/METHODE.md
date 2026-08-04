@@ -215,6 +215,22 @@ raisonnement sert à choisir *quoi* mesurer.
 **Reproduire, instrumenter, mesurer, et seulement après, changer.** Dans cet
 ordre. Une correction écrite avant la mesure corrige une hypothèse.
 
+**La mesure est une commande, pas un script.** `node tools/banc.js` joue les
+graines en parallèle, compare à n'importe quelle révision (`--temoin`), balaye
+une constante (`--balaye`), profile (`--profil`), et se vérifie lui-même
+(`--verif`, worker contre thread principal — un banc qui mesure faux fait tout
+mesurer faux). Toute métrique nouvelle s'ajoute à `jouer()` dans le banc, jamais
+dans un script à côté.
+
+> **Incident.** Une session de calibrage entière engloutie par son propre
+> outillage : dix scripts jetables réinventant les mêmes relevés, des `git
+> stash` pour mesurer le témoin — dont un perdu en route —, des balayages joués
+> en séquence, et une mesure de vitesse faite pendant que les suites de tests
+> tournaient, qui a fait accuser le mauvais passage. La campagne
+> « courant contre témoin, six graines, six mille heures » coûtait une
+> demi-heure ; le banc la rend en huit secondes, et il retrouve les chiffres
+> historiques à l'unité près.
+
 **Chercher la cause, pas la corrélation.** La population avait chuté de 28 % après
 un changement d'économie. L'hypothèse commode — « il part moins de convois » —
 était fausse : il en partait *plus*, mais six fois plus maigres. La bonne mesure
