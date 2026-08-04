@@ -8,6 +8,14 @@ l'usage, blessures membre par membre, K.O. avant la mort) dans une interface de
 gestion à la **OGame** (files d'attente, production, recherche, temps réel qui
 continue de tourner pendant votre absence).
 
+> **Avant de toucher au moteur, lire [`METHODE.md`](METHODE.md).** Comment on
+> règle ce simulateur, comment on mesure, et le catalogue des pièges déjà payés
+> ici — chaque règle avec l'incident qui l'a écrite.
+>
+> Le chantier en cours est décrit dans [`ECONOMIE.md`](ECONOMIE.md) : circuit
+> monétaire fermé, une monnaie par faction, bureaux de change et crédit aux
+> villes.
+
 ## Lancer le jeu
 
 ```bash

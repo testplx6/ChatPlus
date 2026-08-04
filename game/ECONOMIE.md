@@ -8,6 +8,10 @@ est soit mesuré, soit chiffré, soit explicitement marqué comme à calibrer.
 
 ## Principe de réglage — à lire avant tout le reste
 
+> Ce principe et les autres règles de travail de ce dépôt sont réunis dans
+> [`METHODE.md`](METHODE.md), avec les incidents qui les ont écrites. Ce qui
+> suit en est l'application au présent chantier.
+
 Ce moteur se règle par l'intérieur. Quand un comportement dérape, on corrige **ce
 qui le rend avantageux** — son prix, sa durée, ses conditions d'accès — et jamais
 en collant à côté une pénalité sans rapport.
@@ -354,6 +358,7 @@ Une dette a un porteur, et ce n'est pas toujours le pays de la ville :
 ```
 col.dette     : number
 col.creancier : string | null   // clé de faction ; null = pas de dette
+col.cession   : { de, prix, quand } | null   // la dernière vente de la créance
 ```
 
 Au premier emprunt, le créancier est la faction de la ville. Il peut changer par
@@ -430,15 +435,81 @@ la seconde est une affaire.
 C'est exactement la décision qu'on veut poser, et elle ne demande aucun
 mécanisme supplémentaire.
 
-### 6.3.3 Ce que ça coûte en relations
+### 6.3.3 Ce que la cession fait aux relations
 
-La cession se journalise avec le nom des deux parties. La relation avec le
-porteur chute de 15 **quand il a refusé une première fois et qu'on insiste par la
-prime** ; une cession consentie ne coûte rien du tout, puisque c'est un marché
-que les deux ont voulu.
+Une seule formule, deux signes, aucun cas particulier :
 
-Aucune pénalité auprès des tiers. Personne dans ce monde ne condamne une
-conquête — on ne va pas se mettre à condamner un contrat.
+```
+effet = prix encaissé − valeur perdue
+```
+
+où `valeur perdue = valeurNette(col, ancien porteur) × HORIZON_GAGE` — il faut
+bien un horizon pour comparer un revenu par conseil à une somme, et c'est le
+même que celui qui gage la monnaie. On n'en invente pas un second.
+
+| situation | valeur perdue | prix encaissé | effet |
+|---|---:|---:|---|
+| joyau arraché à un pays aux abois | 8 000 | 3 600 | **−4 400** — rancune |
+| marché équilibré | 8 000 | 8 500 | ≈ 0 — un contrat, rien de plus |
+| boulet dont on est débarrassé | −6 000 | 1 200 | **+7 200** — gratitude |
+
+La troisième ligne n'est pas une bizarrerie, c'est le mécanisme pris au mot :
+celui qui traînait une ville à charge s'en est trouvé soulagé **et** payé pour
+ça. Il n'y a aucune raison d'écrire « et pourtant sa relation ne bouge pas ».
+
+Une version antérieure bornait cet effet à zéro. C'était une main sur la
+balance : la formule avait été écrite comme une pénalité, donc elle refusait de
+devenir autre chose. **Une règle qui ne peut aller que dans un sens est
+probablement à moitié écrite.**
+
+Ce que le signe positif ouvre, et qui n'existait pas sans lui :
+
+- **On s'achète des amis en soulageant les autres de leurs fardeaux.** Une
+  faction peut se faire bien voir de toute la carte en absorbant les mauvaises
+  villes de tout le monde — et se retrouver à la tête d'un empire fait des
+  rebuts des autres. C'est un profil de faction entier, et il tombe des règles.
+- **Céder devient un geste diplomatique.** Qui veut se rapprocher de quelqu'un
+  lui propose sa pire ville à bas prix.
+
+Le garde-fou existe déjà et ne demande aucune ligne : chaque rachat coûte de
+l'argent réel, la même `valeurNette` s'appliquera au repreneur, et il accumule
+ces villes loin de sa capitale — donc la surextension, qui existe et qui est
+mesurée, lui monte la grogne.
+
+La seule borne conservée est une **échelle** : l'effet est ramené dans l'ordre de
+grandeur des autres mouvements diplomatiques du jeu, pour qu'un rachat ne pèse
+pas dix fois une déclaration de guerre. C'est une pente, pas un interdit.
+
+**Aucun effet auprès des tiers.** Personne dans ce monde ne condamne une
+conquête — on ne va pas se mettre à juger un contrat.
+
+### 6.3.4 Quand l'effet s'applique
+
+Deux moments, séparés parfois de plusieurs centaines d'heures.
+
+**À la cession**, il ne se passe rien d'autre qu'un paiement. Aucun mouvement
+diplomatique. On enregistre seulement qui a vendu et combien il a touché :
+
+```
+col.cession = { de: 'rouilleurs', prix: 3600, quand: 4200 }
+```
+
+**À la reprise de la ville**, on relit ces trois valeurs, on calcule l'effet, on
+l'applique.
+
+La raison n'est pas cosmétique. Racheter une créance peut être un placement
+honnête : on encaisse les intérêts, la ville se redresse, elle rembourse, elle
+reste au drapeau de son pays. Dans ce cas il n'y a **jamais** d'effet
+diplomatique, et c'est juste — personne n'a été lésé. Ce qui pique, c'est de
+découvrir après coup que l'acheteur ne voulait pas les intérêts, il voulait la
+ville. **Pas de reprise, pas de grief.**
+
+C'est aussi ce qui empêche le mécanisme de devenir un impôt sur le commerce de
+créances : on ne pénalise pas l'achat d'une dette, on pèse ce qu'on a sous-payé
+une ville qu'on a fini par prendre.
+
+Trois valeurs mortes, écrites une fois, relues une fois. Pas de compteur qui
+tourne en fond.
 
 ### 6.4 L'insolvabilité, puis le défaut
 
@@ -500,22 +571,31 @@ que ne prêtait son propre pays mange mieux, et le sait. Les gens se moquent de
 savoir sur quel registre ils figurent. Nourrir la ville affamée d'un voisin
 jusqu'à ce qu'elle soit à vous est une stratégie entière.
 
-Relations : **−25 avec le dépossédé**, comme une prise par les armes — il a
-perdu une ville, le résultat est le même. Rien de plus, et **rien du tout auprès
-des tiers**.
+Côté relations, **il n'y a aucun chiffre écrit ici** : c'est la formule du
+§6.3.3 qui s'applique, et elle a déjà tout dit. Selon ce que la ville valait à
+son ancien porteur et ce qu'il en a tiré, la reprise lui laisse une rancune, de
+l'indifférence, ou de la reconnaissance.
 
-Une première version mettait −45 et −10 à toute la carte. C'était faux, et
-mesurable : dans ce jeu, déclarer la guerre coûte −60, chaque assaut −8, la
-prise −25, et *aucune faction ne juge jamais une conquête* — `jugerLesAutres` ne
-regarde que les lois. On faisait donc payer un rachat de créance plus cher
-qu'une guerre d'extermination, au nom d'une morale que personne ici ne professe.
+Deux versions antérieures ont été supprimées, et le raisonnement est gardé pour
+qu'on ne les réécrive pas :
+
+**−45 avec le dépossédé et −10 à toute la carte.** Faux, et vérifiable dans le
+code : déclarer la guerre coûte −60, chaque assaut −8, la prise −25, et *aucune
+faction ne juge jamais une conquête* — `jugerLesAutres` ne regarde que les lois.
+On faisait donc payer un rachat de créance plus cher qu'une guerre
+d'extermination, au nom d'une morale que personne ici ne professe.
+
+**−25, par symétrie avec la prise par les armes.** Mieux, mais encore une
+constante décrétée — et surtout absurde dans la moitié des cas : si le porteur a
+consenti à la vente, pourquoi en voudrait-il à l'acheteur du résultat ? Il savait
+ce qu'il vendait.
 
 L'équilibre entre le sang et l'argent tient donc aux prix, pas aux jugements :
 
 | | par les armes | par la dette |
 |---|---:|---:|
 | argent | 700 à 1 170 (`force × 5,2`) | tout ce qu'on a prêté, perdu au défaut |
-| relations | −60 (guerre) −8 par assaut −25 | −25 |
+| relations | −60 (guerre) −8 par assaut −25, toujours | de −x à +x, selon le marché conclu |
 | délai | 50 à 100 heures | plusieurs centaines |
 | ce qu'on récupère | 18 % de la population perdue, murs éventrés, grogne +0,35 | la ville entière, intacte |
 | condition | avoir une raison de guerre | qu'elle soit déjà à l'agonie, et que son porteur cède |
@@ -616,7 +696,7 @@ col.caisse    : number   // déjà là
 col.menages   : number   // nouveau
 col.dette     : number   // nouveau
 col.creancier : string | null  // nouveau — clé de faction
-col.defautDepuis : number | null  // nouveau — conseil où le plafond a été franchi
+col.cession   : { de: string, prix: number, quand: number } | null  // nouveau
 col.change    : boolean  // nouveau — la ville tient un bureau
 
 f.masse       : number   // nouveau
