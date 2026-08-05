@@ -7158,52 +7158,56 @@ section('17 bis. Payer à personne, ce n’est pas payer');
 }
 
 // ===========================================================================
-section('18. La vitesse : ce que l’instrument sait mesurer, et ce qu’il ne sait pas');
+section('18. La vitesse : une mesure sans témoin ne mesure rien, ici plus qu’ailleurs');
 {
-  // Trois protocoles essayés, tous mesurés sur du CODE IDENTIQUE — la seule
-  // épreuve qui vaille pour un instrument de comparaison, puisque la réponse
-  // juste est connue d'avance : ×1,00.
+  // Cette machine ralentit d'un facteur deux toute seule, et l'étalon
+  // arithmétique ne le voit pas : 109 µs par tick à un moment, 200 µs vingt
+  // minutes plus tard sur le MÊME code, machine au repos, pendant que l'étalon
+  // reste à ×1,12. Ce n'est pas la fréquence du processeur, c'est la mémoire —
+  // et un étalon qui tient dans le cache ne peut pas la mesurer.
   //
-  //   deux processus, min de 3      ->  ×1,17   (variance machine : 94 à 126 µs)
-  //   un processus, entrelacé ×6    ->  ×0,86   (V8 optimise deux graphes de
-  //                                              modules séparément et inégalement)
-  //   fenêtres de 12 000 ticks      ->  ×0,83
+  // Conséquence : AUCUNE garde absolue n'est fiable ici. Seule une comparaison
+  // dans la même minute annule la dérive, puisque les deux révisions la
+  // subissent ensemble. Éprouvé sur du code identique, ce qui est la seule
+  // question dont la réponse est connue d'avance :
   //
-  // Conclusion : cet instrument résout une dizaine de pour cent, pas trois. Un
-  // seuil de non-régression à +3 % aurait clignoté au rouge sans qu'une ligne
-  // ait changé — et une étape qui clignote, on apprend à l'ignorer.
+  //   toujours A d'abord, min de 3   ->  ×1,17   (biais de position)
+  //   entrelacé dans un seul procès  ->  ×0,86   (V8 optimise deux graphes
+  //                                               de modules inégalement)
+  //   ALTERNÉ A,B,B,A, min de 6      ->  ×0,998  ← et pendant l'état lent
   //
-  // Ce qui reste mesurable, et qui est aussi ce qui compte : le PLAFOND VÉCU.
-  // Il est absolu (pas de comparaison, pas de second graphe de modules), le
-  // minimum de plusieurs passes l'approche par en dessous, et une machine lente
-  // rend un verdict pessimiste — jamais complaisant. Plus une non-régression
-  // GROSSIÈRE contre un chiffre relevé à la livraison précédente, calibrée sur
-  // la résolution réelle de l'instrument.
+  // D'où les deux gardes ci-dessous, toutes deux adossées au rapport.
   const v = (o) => verdict({
-    dispersion: 0.05, usReference: 110, rapportMax: 1.25,
-    rattrapageMax: 17000, plafondMs: 2500, ...o,
+    courant: 107, temoin: 107, dispersion: 0.05, usReference: 107,
+    rapportMax: 1.08, rattrapageMax: 17000, plafondMs: 2500, ...o,
   });
 
-  ok(v({ courant: 107 }).issue === 'tenu',
-    'le rattrapage maximal sous le plafond, et pas de dérive : tenu',
-    v({ courant: 107 }).dit);
-  ok(v({ courant: 200 }).issue === 'lent',
-    'un tick qui ferait dépasser 2,5 s de rattrapage est refusé',
-    v({ courant: 200 }).dit);
-  ok(v({ courant: 145, plafondMs: 9000 }).issue === 'regression',
-    'et une dérive grossière contre la livraison précédente aussi, plafond ou pas',
-    v({ courant: 145, plafondMs: 9000 }).dit);
-  ok(v({ courant: 120 }).issue === 'tenu',
-    'mais neuf pour cent de plus ne déclenchent rien : c’est sous la résolution',
-    v({ courant: 120 }).dit);
-  ok(v({ courant: 60 }).issue === 'tenu',
-    'et personne n’est puni d’avoir accéléré');
+  ok(v({}).issue === 'tenu', 'code inchangé, machine quelconque : tenu', v({}).dit);
+  ok(v({ courant: 214, temoin: 214 }).issue === 'tenu',
+    'la machine deux fois plus lente ne rend pas un verdict : les deux ralentissent',
+    v({ courant: 214, temoin: 214 }).dit);
 
-  // La dispersion reste la garde qui attrape une machine chargée : elle a déjà
+  // La non-régression, serrée puisque le protocole résout à moins d'un pour cent.
+  ok(v({ courant: 120 }).issue === 'regression',
+    'douze pour cent de plus que la livraison précédente : régression',
+    v({ courant: 120 }).dit);
+  ok(v({ courant: 111 }).issue === 'tenu', 'quatre pour cent restent dans le bruit');
+  ok(v({ courant: 80 }).issue === 'tenu', 'et personne n’est puni d’avoir accéléré');
+
+  // Le plafond vécu, estimé par le rapport : le coût absolu relevé au calme à
+  // la livraison précédente, corrigé de ce que le code a changé depuis. Ça le
+  // rend insensible à l'état de la machine, ce qu'une mesure brute n'est pas.
+  ok(v({ courant: 160, usReference: 107, rapportMax: 9 }).issue === 'lent',
+    'un tick qui ferait dépasser 2,5 s de rattrapage est refusé, même sans régression',
+    v({ courant: 160, usReference: 107, rapportMax: 9 }).dit);
+  ok(v({ courant: 214, temoin: 214, usReference: 200 }).issue === 'lent',
+    'et le plafond se juge sur le coût estimé, pas sur la mesure du jour',
+    v({ courant: 214, temoin: 214, usReference: 200 }).dit);
+
+  // La dispersion reste : elle attrape la contention en pointe, celle qui avait
   // fait déclarer « budget tenu » à 102 µs pendant qu'un tick coûtait 235.
-  ok(v({ courant: 107, dispersion: 0.31 }).issue === 'instable',
-    'des passes dispersées ne rendent pas un verdict, elles demandent qu’on remesure',
-    v({ courant: 107, dispersion: 0.31 }).dit);
+  ok(v({ dispersion: 0.31 }).issue === 'instable',
+    'des passes dispersées ne rendent pas un verdict, elles demandent qu’on remesure');
   ok(v({ courant: 0 }).issue === 'illisible',
     'une mesure manquante ne devient jamais un verdict');
 }

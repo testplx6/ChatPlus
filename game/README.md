@@ -96,20 +96,47 @@ l'avant-poste, le combat, le rattrapage hors ligne, la vitalité du monde sur la
 durée (villes fondées, villes effondrées, population qui ne s'écroule pas) et
 les cas limites (escouade décimée, famine, sac plein).
 
-Il tient aussi un **budget de performance** : le coût d'un tick est mesuré, puis
-rapporté à la vitesse de la machine par un étalon (le même travail fixe partout).
-Un plafond en microsecondes sèches serait soit trop lâche pour attraper une
-régression, soit capricieux d'une machine à l'autre. Le plafond monte quand la
-simulation gagne du travail — jamais quand elle se dégrade —, et le fichier de
-test dit à chaque fois ce que la hausse a payé : 60 µs au départ, 65 avec les
-groupes et la connaissance imparfaite, 88 avec les métiers des villes et leurs
-notables, 94 avec les demandes personnelles de ces notables, 114 avec la carte
-de 24×18 et ses 86 villes, 116 avec les cantiniers et les ouvriers. Sans cette
-trace, relever le budget deviendrait un moyen commode de ne jamais voir une
-régression.
+Il tient aussi une **garde de performance**, et elle a été refaite trois fois
+parce que les deux premières mesuraient autre chose que ce qu'elles croyaient.
 
-Le plafond est ensuite **descendu** de 145 à 110, sans qu'une ligne de moteur
-change : c'est la mesure qui a cessé de mentir. Voir plus bas.
+La première rapportait le coût d'un tick à la vitesse de la machine par un
+étalon arithmétique, puis refusait de conclure au-dessus de ×1,08. Mesuré : sur
+une machine chargée, l'étalon ralentit, le facteur s'effondre à ×0,59 et la
+normalisation **déclarait le budget tenu à 102 µs pendant qu'un tick coûtait
+235 µs réels**. Le seuil se déclenchait quand la machine était plus *rapide*
+que la référence — jamais quand elle était chargée.
+
+La deuxième mesurait en absolu. Elle est tombée sur pire : **cette machine
+ralentit du simple au double toute seule** — 109 µs par tick à un moment,
+200 µs vingt minutes plus tard, même code, machine au repos — et l'étalon
+arithmétique n'en voit rien, il reste à ×1,12. Ce n'est pas la fréquence du
+processeur, c'est la mémoire, et un étalon qui tient dans le cache ne peut pas
+la mesurer.
+
+La troisième est la règle de la maison appliquée à la lettre : **une mesure
+sans témoin ne mesure rien.** On mesure la révision courante et celle de la
+livraison précédente dans la même minute, sur la même machine, **en alternant**
+— A, B, B, A — et on garde le minimum de six. Éprouvé sur du code identique, la
+seule question dont la réponse est connue d'avance :
+
+| protocole | verdict attendu ×1,00 |
+|---|---|
+| toujours A d'abord, min de 3 | ×1,17 — biais de position |
+| entrelacé dans un seul processus | ×0,86 — V8 optimise deux graphes de modules inégalement |
+| **alterné A,B,B,A, min de 6** | **×0,998** — y compris pendant l'état lent |
+
+Deux gardes en découlent, toutes deux adossées au rapport, donc insensibles à
+l'heure qu'il est : la **non-régression** (le rapport à la livraison précédente
+reste sous ×1,08) et le **plafond vécu** — le rattrapage maximal, deux ans de
+jeu d'un coup au retour d'une longue absence, reste sous 2,5 s. C'est la seule
+contrainte que le joueur ressente, et elle est estimée par le rapport plutôt
+que chronométrée à l'instant. Mesuré à la livraison du lot F : **1,85 s**.
+
+L'ancien plafond en microsecondes — 110 µs, hérité d'une machine disparue et
+comparé à un monde qui n'avait ni ménages, ni crédit, ni monnaie — a été
+abandonné pour une raison simple : à ×1,69 contre ×1,55, l'écart qu'il défendait
+valait **26 millisecondes sur une nuit d'absence**. Un seuil que rien ne
+justifie apprend à ignorer le rouge, ce qui est pire que pas de seuil du tout.
 
 ### Trois voies, trois façons de tenir
 

@@ -253,6 +253,27 @@ divergé quand même. La carte mesure ce chaos-là avec des placebos et déclare
 > son propre silence, et c'est le pire sens dans lequel un instrument puisse se
 > tromper.
 
+**Un instrument de comparaison se juge sur du code identique.** C'est la seule
+question dont la réponse est connue d'avance : deux fois la même chose doit
+rendre ×1,00. Tout protocole qui échoue à cette épreuve mesure autre chose que
+ce qu'il croit.
+
+> **Incident.** Trois protocoles de mesure de vitesse, éprouvés sur du code
+> identique : toujours la révision courante en premier, minimum de trois →
+> **×1,17** (biais de position) ; les deux révisions entrelacées dans un seul
+> processus → **×0,86** (V8 compile et optimise deux graphes de modules
+> séparément et inégalement) ; alterné A, B, B, A et minimum de six → **×0,998**.
+> Le seuil de non-régression à +3 % que j'allais livrer avec les deux premiers
+> aurait clignoté au rouge sans qu'une ligne ait changé.
+
+**Une machine peut ralentir sans que rien ne le dise.** Celle-ci varie du simple
+au double sur le même code, au repos — 109 µs par tick puis 200 µs vingt minutes
+plus tard — et l'étalon arithmétique n'en voit rien : il reste à ×1,12. Ce n'est
+pas la fréquence du processeur, c'est la mémoire, et un étalon qui tient dans le
+cache ne peut pas la mesurer. **Aucune garde absolue n'est fiable sur une telle
+machine** ; seul un rapport mesuré dans la même minute l'est, parce que les deux
+révisions subissent la même chose ensemble.
+
 **Chercher la cause, pas la corrélation.** La population avait chuté de 28 % après
 un changement d'économie. L'hypothèse commode — « il part moins de convois » —
 était fausse : il en partait *plus*, mais six fois plus maigres. La bonne mesure

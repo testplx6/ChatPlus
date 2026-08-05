@@ -67,62 +67,65 @@ if (process.argv[1] && process.argv[1].endsWith('vitesse.js') && process.argv[2]
 }
 
 /**
- * Le verdict. Deux gardes, calibrées sur ce que l'instrument sait réellement
- * mesurer — c'est la deuxième leçon de cette histoire, et elle a coûté deux
- * protocoles.
+ * Le verdict. Deux gardes, toutes deux adossées au rapport — et c'est la leçon
+ * la plus chère de cette histoire, payée en trois protocoles.
  *
- * **Ce que l'instrument ne sait pas faire.** Comparer deux révisions rend
- * ×1,17 sur du code identique en deux processus (la variance machine va de 94
- * à 126 µs pour la même chose), et ×0,86 entrelacé dans un seul processus —
- * V8 compile et optimise deux graphes de modules séparément, et inégalement.
- * Allonger les fenêtres à 12 000 ticks n'y change rien. La résolution est
- * d'une dizaine de pour cent, pas de trois. Un seuil de non-régression à +3 %
- * aurait clignoté au rouge sans qu'une ligne ait changé.
+ * **Cette machine ralentit du simple au double toute seule.** Même code, même
+ * repos : 109 µs par tick à un moment, 200 µs vingt minutes plus tard. Et
+ * l'étalon arithmétique ne le voit pas — il reste à ×1,12 dans les deux cas.
+ * Ce n'est pas la fréquence du processeur, c'est la mémoire, et un étalon qui
+ * tient dans le cache ne peut pas la mesurer. Aucune garde absolue n'est donc
+ * fiable ici : ni un budget en microsecondes, ni un plafond en secondes.
  *
- * L'ancienne — « le tick ne dépasse pas ×1,55 du témoin historique » — était ma
- * traduction arithmétique de « 110 µs », un nombre hérité d'une machine qui
- * n'existe plus, mesuré contre un monde qui n'avait ni ménages, ni crédit, ni
- * monnaie. À ×1,69 contre ×1,55, l'écart vécu par le joueur valait **26
- * millisecondes sur une nuit d'absence**. Un seuil que rien ne justifie apprend
- * à ignorer le rouge, ce qui est pire que pas de seuil du tout.
+ * **Ce qui marche, éprouvé sur du code identique** — la seule question dont la
+ * réponse est connue d'avance, ×1,00 :
  *
- * Ce qui le remplace, et qui tient dans la résolution :
+ *     toujours A d'abord, min de 3    ->  ×1,17    biais de position
+ *     entrelacé dans un seul procès   ->  ×0,86    V8 optimise deux graphes
+ *                                                  de modules inégalement
+ *     ALTERNÉ A,B,B,A, min de 6       ->  ×0,998   et pendant l'état lent
  *
+ * Le rapport résout donc à moins d'un pour cent, parce que les deux révisions
+ * subissent la même machine dans la même minute.
+ *
+ * Les deux gardes en découlent :
+ *
+ * - **la non-régression** : le rapport à la livraison précédente ne dépasse pas
+ *   `rapportMax`. Serré, puisque le protocole le permet ;
  * - **le plafond vécu** : le rattrapage maximal (`RATTRAPAGE_MAX` heures d'un
- *   coup, au retour d'une longue absence) reste sous `plafondMs`. Absolu, donc
- *   pas de second graphe de modules à comparer ; le minimum de plusieurs
- *   passes l'approche par en dessous ; une machine lente rend un verdict
- *   pessimiste, jamais complaisant. Marge actuelle : 1,82 s pour 2,50 s ;
- * - **la non-régression grossière** : le tick ne dépasse pas `rapportMax` fois
- *   `vitesse.us` de `CIBLES.json`, un chiffre relevé à la livraison précédente
- *   et avancé délibérément. À ×1,25 elle n'attrape pas une dérive de 5 % — mais
- *   elle attrape ce qui arrive vraiment : une boucle quadratique introduite
- *   sans qu'on s'en aperçoive. Ce chiffre est propre à la machine qui l'a
- *   relevé : changer de machine oblige à le relever de nouveau.
+ *   coup au retour d'une longue absence) reste sous `plafondMs` — jugé sur le
+ *   coût *estimé*, `vitesse.us` de `CIBLES.json` corrigé par le rapport, et non
+ *   sur la mesure du jour. C'est la seule contrainte que le joueur ressente, et
+ *   la seule façon de la vérifier sans être à la merci de l'heure qu'il est.
  *
- * Plus l'aveu d'instabilité, qui reste : des passes dispersées ne rendent pas
- * un verdict, elles demandent qu'on remesure.
+ * Plus l'aveu d'instabilité, qui attrape la contention en pointe : des passes
+ * dispersées ne rendent pas un verdict, elles demandent qu'on remesure.
  */
 export function verdict({
-  courant, dispersion, usReference, rapportMax = 1.25, dispersionMax = 0.15,
+  courant, temoin, dispersion, usReference, rapportMax = 1.08, dispersionMax = 0.15,
   rattrapageMax = 17000, plafondMs = 2500,
 }) {
-  if (!(courant > 0)) return { issue: 'illisible', dit: 'mesure manquante' };
+  if (!(courant > 0) || !(temoin > 0)) return { issue: 'illisible', dit: 'mesure manquante' };
   if (dispersion > dispersionMax) {
     return {
       issue: 'instable',
       dit: `passes dispersées de ±${Math.round(dispersion * 100)} % — remesurer au calme`,
     };
   }
-  const rattrapage = courant * rattrapageMax / 1000;
-  const rapport = usReference > 0 ? courant / usReference : 0;
+  const rapport = courant / temoin;
+  // Le coût absolu ESTIMÉ : celui relevé au calme à la livraison précédente,
+  // corrigé de ce que le code a changé depuis. Le rapport étant insensible à
+  // l'état de la machine, l'estimation l'est aussi — ce qu'une mesure brute
+  // n'est pas, sur une machine qui varie du simple au double.
+  const estime = (usReference > 0 ? usReference : courant) * rapport;
+  const rattrapage = estime * rattrapageMax / 1000;
   const dit = `rattrapage max ${(rattrapage / 1000).toFixed(2)} s `
-    + `(${Math.round(courant)} µs/tick, ×${rapport.toFixed(2)} de la livraison précédente)`;
+    + `(${Math.round(estime)} µs/tick estimés, ×${rapport.toFixed(3)} de la livraison précédente)`;
   if (rattrapage > plafondMs) {
-    return { issue: 'lent', rapport, rattrapage, dit: `${dit} — plafond ${plafondMs / 1000} s` };
+    return { issue: 'lent', rapport, estime, dit: `${dit} — plafond ${plafondMs / 1000} s` };
   }
   if (rapport > rapportMax) {
-    return { issue: 'regression', rapport, rattrapage, dit: `${dit} — seuil ×${rapportMax}` };
+    return { issue: 'regression', rapport, estime, dit: `${dit} — seuil ×${rapportMax}` };
   }
-  return { issue: 'tenu', rapport, rattrapage, dit };
+  return { issue: 'tenu', rapport, estime, dit };
 }

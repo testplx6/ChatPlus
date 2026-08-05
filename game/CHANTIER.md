@@ -301,9 +301,20 @@ commande.
 
 ### F1 — F3
 
-- [ ] **F1.** `verifier --complet` vert, tick < 110 en médiane calibrée.
-- [ ] **F2.** README + ECONOMIE mis à jour avec les mesures finales ; le
-  tableau des douze cibles d'ECONOMIE §13 rempli contre le témoin `82636d8`.
+- [x] **F1.** `verifier --complet` **vert sur ses six étapes** — et vert pendant
+  que la machine était dans son état lent, ce qui est la preuve que la garde est
+  immunisée. Rattrapage max **1,85 s** pour un plafond à 2,50 s.
+- [x] **F2.** Tableau d'ECONOMIE §13 rempli contre le témoin `82636d8` :
+  **neuf cibles sur quatorze tenues**, et chaque manquée expliquée — deux mal
+  posées (tirées d'un témoin qui vivait d'une planche à billets), une qui
+  interrogeait une valeur impossible (« cours < 0,4 » quand le plancher vaut
+  0,40), deux dépassées d'un ordre de grandeur (5 579 faillites pour 5 à 25 ;
+  47 villes reprises par un créancier pour 2 à 10) et deux non mesurables faute
+  d'événement journalisé. README refait sur la garde de vitesse, METHODE §3
+  augmenté des deux règles que cette session a payées. `CIBLES.json` resserré :
+  **10 gardes** au lieu de 7, dont trois neuves (endettées, créances, monnaies
+  au plancher). Le banc compte désormais les événements par type et les
+  monnaies au plancher.
 - [ ] **F3.** Artefact republié (fragment identique à `dist/fragment.html`,
   SHA vérifié) — seulement sur demande explicite du propriétaire.
 

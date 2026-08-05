@@ -113,8 +113,19 @@ function jouer({ sim, data, eco, eco2 }, graine, horizon) {
   const t0 = performance.now();
   const s = sim.nouvellePartie(graine);
   const convoisVus = new Set();
+  // Les événements par type, comptés au vol. Le journal est borné à 400 entrées
+  // et les plus vieilles sautent : à la fin d'une partie de six mille heures,
+  // il ne reste que la dernière journée. Sans ce relevé, « combien de villes
+  // ont fait défaut » et « combien de créances ont été cédées » ne sont pas
+  // mesurables du tout — et ce sont deux cibles du cahier des charges.
+  const evts = {};
   for (let t = 0; t < horizon; t++) {
     sim.tick(s);
+    const j = s.journal || [];
+    for (let i = j.length - 1; i >= 0; i--) {
+      if (j[i].t !== s.temps) break;
+      evts[j[i].type] = (evts[j[i].type] || 0) + 1;
+    }
     const cars = s.world.caravanes || [];
     for (let i = 0; i < cars.length; i++) convoisVus.add(cars[i].id);
   }
@@ -167,6 +178,12 @@ function jouer({ sim, data, eco, eco2 }, graine, horizon) {
     // tête. C'est la mesure de la faim, celle que « bien nourries » ne dit pas.
     affamees: cols.filter((c) => (c.stock.rations || 0) < c.pop * 0.2).length,
     dette: Math.round(cols.reduce((a2, c) => a2 + (c.dette || 0), 0)),
+    evts,
+    // Les monnaies collées au plancher. « Cours < 0,4 » était une cible qui
+    // interrogeait une valeur impossible : `coursMin` vaut 0,4, aucun cours ne
+    // descend dessous — la cible ne pouvait donc jamais rien vérifier.
+    auPlancher: data.DIPLO_FACTIONS.filter(
+      (k) => (s.world.factions[k].cours || 1) <= 0.4001).length,
     armees: (s.world.armees || []).length,
     duree: Math.round(duree),
     usParTick: duree / horizon * 1000,
@@ -258,6 +275,11 @@ function agreger(cfg) {
     paliers: [...new Set(cfg.parties.flatMap((p2) => p2.paliers))]
       .sort((a4, b4) => a4 - b4).map((x) => `${Math.round(x * 100)}`).join('/'),
     dette: som(cfg, 'dette'),
+    auPlancher: som(cfg, 'auPlancher'),
+    evts: cfg.parties.reduce((a, p) => {
+      for (const [k, v] of Object.entries(p.evts || {})) a[k] = (a[k] || 0) + v;
+      return a;
+    }, {}),
     ou: `${Math.round(som(cfg, 'enCaisses') / 1000)}k/${Math.round(som(cfg, 'enMenages') / 1000)}k/${Math.round(som(cfg, 'enTresors') / 1000)}k`,
     usParTick: Math.round(med(cfg.parties.map((p) => p.usParTick))),
   };

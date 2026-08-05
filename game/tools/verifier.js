@@ -117,32 +117,44 @@ etape('moteur (test/headless.js)', () => {
 // ---------------------------------------------------------------------------
 
 if (COMPLET) {
-  etape('vitesse (plafond vécu)', () => {
+  etape('vitesse (rapport + plafond vécu)', () => {
     const cibles = JSON.parse(readFileSync(join(JEU, 'CIBLES.json'), 'utf8'));
     const reglage = cibles.vitesse || {};
-    // Six passes, chacune dans son processus, et on garde la meilleure. Le
-    // minimum est le seul agrégat qu'un voisin bruyant ne peut que dégrader :
-    // il approche le coût vrai par en dessous. On ne mesure PAS de seconde
-    // révision — comparer deux graphes de modules rend ×0,86 sur du code
-    // identique, voir tools/vitesse.js.
-    const passes = [];
+    const { src: temoinSrc, rev } = srcDeRevision(reglage.temoin || TEMOIN);
     let rattrapageMax = 17000;
-    for (let i = 0; i < 6; i++) {
-      const r = lancer('node', ['tools/vitesse.js', SRC]);
+    const une = (src) => {
+      const r = lancer('node', ['tools/vitesse.js', src]);
       const m = r.sortie.match(/([\d.]+)\s+(\d+)/);
       if (!m) throw new Error(`mesure illisible : ${r.sortie.trim().slice(0, 80)}`);
-      passes.push(Number(m[1]));
       rattrapageMax = Number(m[2]);
+      return Number(m[1]);
+    };
+    // A,B,B,A — l'alternance n'est pas une coquetterie : mesurer toujours le
+    // courant en premier donnait ×1,17 sur du code identique. Alterné et pris
+    // au minimum de six, le même essai rend ×0,998, machine lente comprise.
+    const courants = [];
+    const temoins = [];
+    const rapports = [];
+    for (let i = 0; i < 3; i++) {
+      const a1 = une(SRC); const b1 = une(temoinSrc);
+      const b2 = une(temoinSrc); const a2 = une(SRC);
+      courants.push(a1, a2); temoins.push(b1, b2);
+      rapports.push(a1 / b1, a2 / b2);
     }
-    const courant = Math.min(...passes);
-    const dispersion = (Math.max(...passes) - courant) / courant;
+    const courant = Math.min(...courants);
+    // La dispersion se mesure sur les RAPPORTS, pas sur les mesures brutes.
+    // Sur cette machine, les mesures brutes s'écartent de 23 % sans que le
+    // verdict en souffre — le minimum de chaque côté converge à ±2 % — et la
+    // garde refusait alors de conclure sur une mesure parfaitement bonne. Une
+    // garde doit surveiller ce qu'on juge, pas ce qui se trouve à côté.
+    const dispersion = (Math.max(...rapports) - Math.min(...rapports)) / Math.min(...rapports);
     const v = verdict({
-      courant, dispersion, rattrapageMax, usReference: reglage.us,
-      rapportMax: reglage.rapportMax, plafondMs: reglage.plafondMs,
-      dispersionMax: reglage.dispersionMax,
+      courant, temoin: Math.min(...temoins), dispersion, rattrapageMax,
+      usReference: reglage.us, rapportMax: reglage.rapportMax,
+      plafondMs: reglage.plafondMs, dispersionMax: reglage.dispersionMax,
     });
     if (v.issue !== 'tenu') throw new Error(`${v.dit} [${v.issue}]`);
-    return v.dit;
+    return `${v.dit}, livraison ${rev}`;
   });
 
   etape('navigateur (264 vérifications)', () => {

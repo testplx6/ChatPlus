@@ -1,43 +1,56 @@
 {
-  "_note": "Les gardes du monde, vérifiées par tools/verifier.js --complet via le banc. Ce ne sont PAS les cibles d'un chantier (elles vivent dans son cahier des charges, cf. ECONOMIE.md §13) : ce sont les fourchettes larges en dessous desquelles le monde s'est effondré sans que personne ne le voie. Resserrées après le lot C sur l'état mesuré — 500 villes, 55 106 habitants, 424 nourries, 7 % d'affamées, 35 bourses, invariant comptable exact, cours de 0,40 à 2,21. La fourchette de population reste large et celle des factions écrasées basse : ce sont les deux dettes de calibrage du lot C, consignées dans CHANTIER.md. Clés = colonnes agrégées du banc ; les valeurs x/36 sont comparées sur leur numérateur.",
+  "_note": "Les gardes du monde, vérifiées par tools/verifier.js --complet via le banc. Ce ne sont PAS les cibles d'un chantier (elles vivent dans son cahier des charges, cf. ECONOMIE.md §13) : ce sont les fourchettes larges en dessous desquelles le monde s'est effondré sans que personne ne le voie. Resserrées à la livraison du lot F sur l'état mesuré — 517 villes, 57 893 habitants, 387 nourries, 16 % d'affamées, 35 bourses, 21 accords, 47 créances, invariant comptable exact, cours de 0,40 à 3,49, 15 monnaies sur 36 au plancher. La fourchette des factions écrasées reste basse et celle des créances haute : ce sont les deux dettes consignées dans ECONOMIE §13, à instruire par un chantier propre, pas à masquer en resserrant une garde. Clés = colonnes agrégées du banc ; les valeurs x/36 sont comparées sur leur numérateur.",
   "temoin": "82636d8",
   "graines": "11,42,77,103,251,909",
   "horizon": 6000,
   "gardes": {
     "villes": [
-      380,
-      620
+      430,
+      600
     ],
     "pop": [
-      40000,
-      150000
+      45000,
+      90000
     ],
     "nourries": [
-      300,
-      520
+      320,
+      460
     ],
     "ecrasees": [
       0,
       18
     ],
     "bourses": [
-      20,
+      28,
       36
     ],
     "convois": [
-      12000,
-      34000
+      14000,
+      24000
     ],
     "guerres": [
-      4,
-      40
+      10,
+      34
+    ],
+    "endettees": [
+      250,
+      430
+    ],
+    "creances": [
+      20,
+      70
+    ],
+    "auPlancher": [
+      6,
+      30
     ]
   },
   "vitesse": {
-    "_note": "Le plafond est absolu et c'est la seule contrainte que le joueur ressente : RATTRAPAGE_MAX heures d'un coup au retour d'une longue absence, étalées en tranches, doivent rester vécues comme instantanées. « us » est le coût du tick relevé à la livraison précédente SUR CETTE MACHINE — changer de machine oblige à le relever de nouveau. Le seuil de non-régression est grossier (×1,25) parce que l'instrument résout une dizaine de pour cent et pas trois : voir tools/vitesse.js et le blocage F1b bis de CHANTIER.md.",
+    "_note": "Deux gardes, toutes deux adossées au RAPPORT à la livraison précédente — parce que cette machine ralentit du simple au double toute seule (109 puis 200 µs sur le même code, au repos) et que l'étalon arithmétique ne le voit pas. « temoin » est la révision de la livraison précédente, mesurée dans la même minute que la courante, en alternance ; « us » est son coût relevé AU CALME, qui sert à estimer le coût absolu d'aujourd'hui via le rapport. Avancer les deux ensemble, délibérément, à chaque livraison. Voir tools/vitesse.js pour les trois protocoles essayés et ce qu'ils rendent sur du code identique. La dispersion porte sur les rapports par paire (relevé typique : 12 %), pas sur les mesures brutes (23 % sans que le verdict en souffre) : le minimum de chaque côté converge à ±2 %.",
+    "temoin": "ab6312f",
     "us": 107,
-    "rapportMax": 1.25,
+    "rapportMax": 1.08,
     "plafondMs": 2500,
-    "dispersionMax": 0.35
+    "dispersionMax": 0.25
   }
 }

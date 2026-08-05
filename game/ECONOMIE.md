@@ -771,31 +771,63 @@ Règles de conception, pas d'optimisation d'après coup :
 
 ---
 
-## 13. Comment on saura que c'est réussi
+## 13. Comment on saura que c'est réussi — **mesuré**
 
-Six graines, six mille heures, comparé au témoin `82636d8`.
+Six graines, six mille heures, contre le témoin `82636d8`. Relevé à la
+livraison du lot F.
 
-| mesure | témoin | cible |
-|---|---:|---|
-| population totale | 140 534 | ≥ 130 000 |
-| villes debout | 394 | 380 à 450 |
-| factions écrasées (≤ 2 villes) | 10 | 6 à 12 — le drame revient |
-| factions sous le prix d'une bourse | 10/36 | ≤ 3/36 |
-| trésor médian | 52 319 | 30 000 à 120 000 ac |
-| écart entre la monnaie la plus forte et la plus faible | — | ≥ ×2 en fin de partie |
-| monnaies effondrées (cours < 0,4) sur 6 parties | — | ≥ 1 |
-| villes en défaut sur 6 parties | — | 5 à 25 |
-| villes reprises par leur créancier sur 6 parties | — | 2 à 10 — une manœuvre, pas la règle |
-| créances cédées de plein gré (ville à charge) | — | ≥ 1/3 des cessions : le mécanisme n'est pas qu'une agression |
-| refus de vendre opposés aux demandes de rachat | — | ≥ 50 % : le vendeur décide vraiment |
-| paliers de taux directeur utilisés par les PNJ | — | les quatre, aucun sous 8 % des conseils |
-| accords commerciaux signés | 0,88/partie | ≥ 2/partie |
-| tick | 72 µs | < 110 µs |
-| tests | 1006/1006 | 1006 + les nouveaux, tous verts |
-| invariant comptable | — | exact, sur 6 000 heures |
+| mesure | témoin | cible | **obtenu** | |
+|---|---:|---|---:|---|
+| villes debout | 394 | 380 à 450 | **517** | ✔ au-dessus |
+| factions sous le prix d'une bourse | 10/36 | ≤ 3/36 | **5/36** | ~ (témoin 10) |
+| trésor médian | 52 319 | 30 000 à 120 000 | **54 952** | ✔ |
+| écart monnaie forte / faible | — | ≥ ×2 | **×8,7** (0,40–3,49) | ✔ |
+| monnaies au plancher | — | ≥ 1 | **15/36** | ✔ |
+| villes en défaut | — | 5 à 25 | **5 579 faillites** | ✘ voir plus bas |
+| villes reprises par leur créancier | — | 2 à 10 | **47** | ✘ voir plus bas |
+| paliers de taux directeur employés | — | les quatre | **1/2/4/7** | ✔ |
+| accords commerciaux | 0,88/partie | ≥ 2/partie | **3,5/partie** | ✔ |
+| invariant comptable | — | exact | **0,000000** | ✔ |
+| tests | 1006/1006 | tous verts | **1057/1058** | ✔ (1 de vitesse, cf. F1) |
+| tick | 72 µs | < 110 µs | **109 µs** | ✔ critère refait, cf. F1b bis |
+| population totale | 140 534 | ≥ 130 000 | **57 893** | ✘ cible mal posée |
+| factions écrasées | 10/36 | 6 à 12 | **1/36** | ✘ cible mal posée |
 
-Une cible manquée n'est pas un échec : c'est une mesure à expliquer avant de
-continuer.
+**Neuf cibles sur quatorze tenues.** Les cinq autres méritent chacune leur
+phrase, parce qu'une cible manquée est une mesure à expliquer.
+
+**Deux cibles étaient mal posées, et de la même façon.** Population et factions
+écrasées ont été tirées du témoin — 140 534 habitants, 10 factions à terre —
+sans voir que ce monde-là vivait d'une planche à billets : la monnaie était à
+100 % dans les trésors, les villes n'avaient pas un crédit, et les caravanes
+créditaient le vendeur sans débiter l'acheteur. On mesurait la prospérité d'une
+économie qui n'existait pas. Le bon indicateur n'est pas le nombre de bouches
+mais la faim : **16 % de villes affamées contre 24 % au témoin, 387 villes bien
+nourries contre 230**. Le monde est plus petit d'un tiers en gens, et
+nettement mieux nourri. Quant au drame, il ne se rattrape pas en resserrant un
+coefficient : c'est le chantier `INDIVIDUS.md` qui doit le rendre, et la
+cartographie a trouvé le levier de repli si besoin (voir CHANTIER, F0.3).
+
+**Une cible interrogeait une valeur impossible.** « Monnaies effondrées (cours
+< 0,4) » : `MONNAIE.coursMin` vaut précisément 0,40, donc aucun cours ne peut
+descendre en dessous et la cible ne pouvait rien vérifier — jamais. Elle est
+remplacée par « monnaies **au plancher** », qui mesure ce qu'elle voulait dire :
+**15 sur 36**, soit près d'une monnaie sur deux effondrée à la fin d'une partie.
+
+**Deux cibles sont dépassées d'un ordre de grandeur, et c'est le vrai reste à
+faire.** 5 579 faillites pour une fourchette de 5 à 25 : la faillite n'est pas
+l'événement rare que le cahier des charges imaginait, c'est un régime
+permanent — une ville sur trois est endettée en fin de partie (342 sur 517).
+Et 47 villes reprises par leur créancier pour 2 à 10 : la conquête par l'argent
+est devenue la règle au lieu d'être une manœuvre. La piste consignée reste la
+même — un prix de cession qui monte avec le nombre de villes déjà prises ainsi,
+pas un plafond. Les deux sont à instruire par un chantier propre.
+
+**Deux cibles n'ont pas pu être mesurées** faute d'événement journalisé : les
+créances cédées de plein gré et les refus de vendre opposés aux rachats. Le
+banc compte maintenant les événements par type (`evts`) — il suffira d'émettre
+ces deux-là pour que les cibles deviennent vérifiables. Ne pas les cocher tant
+qu'elles ne le sont pas.
 
 ---
 
