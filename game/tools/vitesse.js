@@ -29,6 +29,10 @@ import { join } from 'node:path';
 export const CHAUFFE = 200;
 export const MESURE = 3000;
 
+/** Le plafond de rattrapage du moteur mesuré — lu chez lui, jamais recopié. */
+let derniereRattrapageMax = 17000;
+export const rattrapageMaxLu = () => derniereRattrapageMax;
+
 /**
  * Le coût d'un tick, en microsecondes, pour un répertoire `src/` donné.
  *
@@ -37,7 +41,9 @@ export const MESURE = 3000;
  * et il le fait de la même façon pour les deux révisions comparées.
  */
 export async function mesurer(src, passes = 3, graine = 777) {
-  const { nouvellePartie, tick } = await import(pathToFileURL(join(src, 'sim.js')).href);
+  const sim = await import(pathToFileURL(join(src, 'sim.js')).href);
+  const { nouvellePartie, tick } = sim;
+  derniereRattrapageMax = sim.RATTRAPAGE_MAX || 17000;
   let ms = Infinity;
   for (let p = 0; p < passes; p++) {
     const st = nouvellePartie(graine, { maintenant: 0 });
@@ -56,38 +62,67 @@ export async function mesurer(src, passes = 3, graine = 777) {
 // à la volée garde de l'élan d'une mesure à l'autre et la seconde révision
 // mesurée en profite.
 if (process.argv[1] && process.argv[1].endsWith('vitesse.js') && process.argv[2]) {
-  console.log((await mesurer(process.argv[2])).toFixed(1));
+  const us = await mesurer(process.argv[2]);
+  console.log(`${us.toFixed(1)} ${rattrapageMaxLu()}`);
 }
 
 /**
- * Le verdict, séparé de la mesure pour être testable sans occuper la machine.
+ * Le verdict. Deux gardes, calibrées sur ce que l'instrument sait réellement
+ * mesurer — c'est la deuxième leçon de cette histoire, et elle a coûté deux
+ * protocoles.
  *
- * Trois issues, et la troisième est celle qui manquait :
+ * **Ce que l'instrument ne sait pas faire.** Comparer deux révisions rend
+ * ×1,17 sur du code identique en deux processus (la variance machine va de 94
+ * à 126 µs pour la même chose), et ×0,86 entrelacé dans un seul processus —
+ * V8 compile et optimise deux graphes de modules séparément, et inégalement.
+ * Allonger les fenêtres à 12 000 ticks n'y change rien. La résolution est
+ * d'une dizaine de pour cent, pas de trois. Un seuil de non-régression à +3 %
+ * aurait clignoté au rouge sans qu'une ligne ait changé.
  *
- * - **instable** : les passes s'écartent trop pour qu'on conclue quoi que ce
- *   soit. On ne dit pas « c'est vert », on dit « remesurer » ;
- * - **au-dessus du budget** : le rapport au témoin dépasse ce qu'on s'autorise ;
- * - **tenu**.
+ * L'ancienne — « le tick ne dépasse pas ×1,55 du témoin historique » — était ma
+ * traduction arithmétique de « 110 µs », un nombre hérité d'une machine qui
+ * n'existe plus, mesuré contre un monde qui n'avait ni ménages, ni crédit, ni
+ * monnaie. À ×1,69 contre ×1,55, l'écart vécu par le joueur valait **26
+ * millisecondes sur une nuit d'absence**. Un seuil que rien ne justifie apprend
+ * à ignorer le rouge, ce qui est pire que pas de seuil du tout.
  *
- * Le budget est un rapport, pas des microsecondes. Des microsecondes ne veulent
- * rien dire sans la machine qui les a rendues, et la machine de référence de ce
- * projet n'existe plus.
+ * Ce qui le remplace, et qui tient dans la résolution :
+ *
+ * - **le plafond vécu** : le rattrapage maximal (`RATTRAPAGE_MAX` heures d'un
+ *   coup, au retour d'une longue absence) reste sous `plafondMs`. Absolu, donc
+ *   pas de second graphe de modules à comparer ; le minimum de plusieurs
+ *   passes l'approche par en dessous ; une machine lente rend un verdict
+ *   pessimiste, jamais complaisant. Marge actuelle : 1,82 s pour 2,50 s ;
+ * - **la non-régression grossière** : le tick ne dépasse pas `rapportMax` fois
+ *   `vitesse.us` de `CIBLES.json`, un chiffre relevé à la livraison précédente
+ *   et avancé délibérément. À ×1,25 elle n'attrape pas une dérive de 5 % — mais
+ *   elle attrape ce qui arrive vraiment : une boucle quadratique introduite
+ *   sans qu'on s'en aperçoive. Ce chiffre est propre à la machine qui l'a
+ *   relevé : changer de machine oblige à le relever de nouveau.
+ *
+ * Plus l'aveu d'instabilité, qui reste : des passes dispersées ne rendent pas
+ * un verdict, elles demandent qu'on remesure.
  */
-export function verdict({ courant, temoin, budget, dispersion, dispersionMax = 0.15 }) {
-  if (!(courant > 0) || !(temoin > 0)) {
-    return { issue: 'illisible', dit: 'mesure manquante' };
-  }
+export function verdict({
+  courant, dispersion, usReference, rapportMax = 1.25, dispersionMax = 0.15,
+  rattrapageMax = 17000, plafondMs = 2500,
+}) {
+  if (!(courant > 0)) return { issue: 'illisible', dit: 'mesure manquante' };
   if (dispersion > dispersionMax) {
     return {
       issue: 'instable',
       dit: `passes dispersées de ±${Math.round(dispersion * 100)} % — remesurer au calme`,
     };
   }
-  const rapport = courant / temoin;
-  const dit = `×${rapport.toFixed(2)} du témoin (${Math.round(courant)} contre `
-    + `${Math.round(temoin)} µs, même machine, même minute)`;
-  if (rapport > budget) {
-    return { issue: 'depasse', rapport, dit: `${dit} — budget ×${budget}` };
+  const rattrapage = courant * rattrapageMax / 1000;
+  const rapport = usReference > 0 ? courant / usReference : 0;
+  const dit = `rattrapage max ${(rattrapage / 1000).toFixed(2)} s `
+    + `(${Math.round(courant)} µs/tick, ×${rapport.toFixed(2)} de la livraison précédente)`;
+  if (rattrapage > plafondMs) {
+    return { issue: 'lent', rapport, rattrapage, dit: `${dit} — plafond ${plafondMs / 1000} s` };
   }
-  return { issue: 'tenu', rapport, dit };
+  if (rapport > rapportMax) {
+    return { issue: 'regression', rapport, rattrapage, dit: `${dit} — seuil ×${rapportMax}` };
+  }
+  return { issue: 'tenu', rapport, rattrapage, dit };
 }

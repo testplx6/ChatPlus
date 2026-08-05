@@ -110,45 +110,39 @@ etape('moteur (test/headless.js)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4. La vitesse, jugée contre un témoin — la seule façon qui résiste à la
-// machine du jour. Le détail de l'instrument et les quatre relevés qui l'ont
-// dicté sont dans tools/vitesse.js.
+// 4. La vitesse : le plafond que le joueur ressent, et la non-régression contre
+// la livraison précédente (le témoin de CIBLES.json, avancé délibérément). Le
+// détail de l'instrument, les quatre relevés qui l'ont dicté et ce que
+// l'ancien budget ne protégeait pas sont dans tools/vitesse.js.
 // ---------------------------------------------------------------------------
 
-/**
- * Ce qu'on s'autorise, en multiples du coût d'un tick au témoin.
- *
- * Traduction de l'ancien budget, pas un desserrage : il valait 110 µs
- * « normalisés », le témoin en mesure 60 à 64 bruts sur cette machine, soit 67
- * à 71 une fois normalisés par le même facteur — d'où 110/71 ≈ 1,55. La preuve
- * que ce n'est pas un budget taillé pour passer : le tick est aujourd'hui à
- * ×1,92 et l'étape reste rouge.
- */
-const BUDGET = 1.55;
-
 if (COMPLET) {
-  etape(`vitesse (contre le témoin ${TEMOIN})`, () => {
-    const { src: temoinSrc, rev } = srcDeRevision(TEMOIN);
-    const une = (src) => {
-      const r = lancer('node', ['tools/vitesse.js', src]);
-      const v = Number((r.sortie.match(/([\d.]+)/) || [])[1]);
-      if (!(v > 0)) throw new Error(`mesure illisible : ${r.sortie.trim().slice(0, 80)}`);
-      return v;
-    };
-    // En alternant, et chacune dans son processus : mesurer les deux révisions
-    // dans le même processus les fait se réchauffer l'une l'autre — 216, 157
-    // puis 132 µs pour trois mesures du même code, dans l'ordre, sans que rien
-    // ne change.
-    const courants = [];
-    const temoins = [];
-    for (let i = 0; i < 3; i++) { courants.push(une(SRC)); temoins.push(une(temoinSrc)); }
-    const courant = Math.min(...courants);
-    const temoin = Math.min(...temoins);
-    const dispersion = (Math.max(...courants) - courant) / courant;
-
-    const v = verdict({ courant, temoin, budget: BUDGET, dispersion });
+  etape('vitesse (plafond vécu)', () => {
+    const cibles = JSON.parse(readFileSync(join(JEU, 'CIBLES.json'), 'utf8'));
+    const reglage = cibles.vitesse || {};
+    // Six passes, chacune dans son processus, et on garde la meilleure. Le
+    // minimum est le seul agrégat qu'un voisin bruyant ne peut que dégrader :
+    // il approche le coût vrai par en dessous. On ne mesure PAS de seconde
+    // révision — comparer deux graphes de modules rend ×0,86 sur du code
+    // identique, voir tools/vitesse.js.
+    const passes = [];
+    let rattrapageMax = 17000;
+    for (let i = 0; i < 6; i++) {
+      const r = lancer('node', ['tools/vitesse.js', SRC]);
+      const m = r.sortie.match(/([\d.]+)\s+(\d+)/);
+      if (!m) throw new Error(`mesure illisible : ${r.sortie.trim().slice(0, 80)}`);
+      passes.push(Number(m[1]));
+      rattrapageMax = Number(m[2]);
+    }
+    const courant = Math.min(...passes);
+    const dispersion = (Math.max(...passes) - courant) / courant;
+    const v = verdict({
+      courant, dispersion, rattrapageMax, usReference: reglage.us,
+      rapportMax: reglage.rapportMax, plafondMs: reglage.plafondMs,
+      dispersionMax: reglage.dispersionMax,
+    });
     if (v.issue !== 'tenu') throw new Error(`${v.dit} [${v.issue}]`);
-    return `${v.dit}, témoin ${rev}`;
+    return v.dit;
   });
 
   etape('navigateur (264 vérifications)', () => {

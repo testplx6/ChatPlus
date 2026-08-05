@@ -7158,40 +7158,53 @@ section('17 bis. Payer à personne, ce n’est pas payer');
 }
 
 // ===========================================================================
-section('18. La vitesse se juge contre un témoin, pas contre une machine morte');
+section('18. La vitesse : ce que l’instrument sait mesurer, et ce qu’il ne sait pas');
 {
-  // Les quatre situations sont mesurées, pas supposées — même révision, même
-  // journée : machine calme 115-125 µs (dispersion 9 %, rapport ×1,92) ;
-  // machine chargée 178-254 (dispersion 31 %, rapport ×1,52) ; machine
-  // uniformément ralentie 166-172 (dispersion 4 %, et pourtant 50 % faux).
-  const v = (o) => verdict({ budget: 1.55, dispersion: 0.05, ...o });
+  // Trois protocoles essayés, tous mesurés sur du CODE IDENTIQUE — la seule
+  // épreuve qui vaille pour un instrument de comparaison, puisque la réponse
+  // juste est connue d'avance : ×1,00.
+  //
+  //   deux processus, min de 3      ->  ×1,17   (variance machine : 94 à 126 µs)
+  //   un processus, entrelacé ×6    ->  ×0,86   (V8 optimise deux graphes de
+  //                                              modules séparément et inégalement)
+  //   fenêtres de 12 000 ticks      ->  ×0,83
+  //
+  // Conclusion : cet instrument résout une dizaine de pour cent, pas trois. Un
+  // seuil de non-régression à +3 % aurait clignoté au rouge sans qu'une ligne
+  // ait changé — et une étape qui clignote, on apprend à l'ignorer.
+  //
+  // Ce qui reste mesurable, et qui est aussi ce qui compte : le PLAFOND VÉCU.
+  // Il est absolu (pas de comparaison, pas de second graphe de modules), le
+  // minimum de plusieurs passes l'approche par en dessous, et une machine lente
+  // rend un verdict pessimiste — jamais complaisant. Plus une non-régression
+  // GROSSIÈRE contre un chiffre relevé à la livraison précédente, calibrée sur
+  // la résolution réelle de l'instrument.
+  const v = (o) => verdict({
+    dispersion: 0.05, usReference: 110, rapportMax: 1.25,
+    rattrapageMax: 17000, plafondMs: 2500, ...o,
+  });
 
-  ok(v({ courant: 120, temoin: 62 }).issue === 'depasse',
-    'au calme, le tick à ×1,92 du témoin dépasse le budget — et c’est la vérité',
-    v({ courant: 120, temoin: 62 }).dit);
-  ok(v({ courant: 95, temoin: 62 }).issue === 'tenu',
-    'sous le budget, tenu');
+  ok(v({ courant: 107 }).issue === 'tenu',
+    'le rattrapage maximal sous le plafond, et pas de dérive : tenu',
+    v({ courant: 107 }).dit);
+  ok(v({ courant: 200 }).issue === 'lent',
+    'un tick qui ferait dépasser 2,5 s de rattrapage est refusé',
+    v({ courant: 200 }).dit);
+  ok(v({ courant: 145, plafondMs: 9000 }).issue === 'regression',
+    'et une dérive grossière contre la livraison précédente aussi, plafond ou pas',
+    v({ courant: 145, plafondMs: 9000 }).dit);
+  ok(v({ courant: 120 }).issue === 'tenu',
+    'mais neuf pour cent de plus ne déclenchent rien : c’est sous la résolution',
+    v({ courant: 120 }).dit);
+  ok(v({ courant: 60 }).issue === 'tenu',
+    'et personne n’est puni d’avoir accéléré');
 
-  // Une machine uniformément ralentie multiplie les deux chiffres : le rapport
-  // ne bouge pas. C'est ce cas-là qui avait fait déclarer 108 µs puis 160 sur
-  // le même code, et l'ancienne garde ne le voyait pas.
-  ok(v({ courant: 190, temoin: 98 }).issue === 'depasse',
-    'une machine deux fois plus lente ne change pas le verdict : les deux ralentissent',
-    v({ courant: 190, temoin: 98 }).dit);
-
-  // La contention en pointe, elle, ajoute un coût à peu près constant aux deux
-  // et écrase le rapport — 1,92 devient 1,52, le budget passerait à tort. Ce
-  // n'est pas le rapport qui la voit, c'est la dispersion.
-  ok(v({ courant: 250, temoin: 164 }).issue === 'tenu',
-    'la contention comprime le rapport — le rapport seul se ferait avoir',
-    v({ courant: 250, temoin: 164 }).dit);
-  ok(v({ courant: 250, temoin: 164, dispersion: 0.31 }).issue === 'instable',
-    'mais la dispersion des passes la trahit, et on refuse de conclure');
-
-  // Refuser de conclure n'est pas échouer : c'est le seul verdict honnête quand
-  // l'instrument n'est pas en état. L'ancienne garde, elle, rendait « budget
-  // tenu » à 102 µs normalisés pendant que le tick coûtait 235 µs réels.
-  ok(v({ courant: 0, temoin: 62 }).issue === 'illisible',
+  // La dispersion reste la garde qui attrape une machine chargée : elle a déjà
+  // fait déclarer « budget tenu » à 102 µs pendant qu'un tick coûtait 235.
+  ok(v({ courant: 107, dispersion: 0.31 }).issue === 'instable',
+    'des passes dispersées ne rendent pas un verdict, elles demandent qu’on remesure',
+    v({ courant: 107, dispersion: 0.31 }).dit);
+  ok(v({ courant: 0 }).issue === 'illisible',
     'une mesure manquante ne devient jamais un verdict');
 }
 

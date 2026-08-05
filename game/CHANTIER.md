@@ -373,7 +373,41 @@ desserrage : 110 µs normalisés, un témoin à 60-64 µs bruts ici soit 67-71
 normalisés, d'où 110/71 ≈ 1,55. La preuve que ce n'est pas un budget taillé pour
 passer : l'étape est rouge à **×1,99**.
 
-### F1b bis — BLOCAGE : le budget de vitesse protège-t-il quelque chose ?
+### F1b bis — RÉSOLU : le critère de vitesse, et ce que l'instrument sait mesurer
+
+Décidé par le propriétaire : deux critères utiles à la place d'un budget hérité.
+En les branchant, l'instrument a montré qu'il ne pouvait en tenir qu'un et
+demi — et c'est mesuré, pas supposé.
+
+**L'épreuve du code identique.** Un instrument de comparaison se juge sur une
+question dont la réponse est connue : deux fois le même code doit rendre ×1,00.
+
+| protocole | verdict sur du code identique |
+|---|---|
+| deux processus, min de 3 | **×1,17** (la même chose mesure 94 à 126 µs) |
+| un processus, entrelacé ×6 | **×0,86** (V8 optimise deux graphes de modules inégalement) |
+| fenêtres de 12 000 ticks | **×0,83** |
+
+La résolution est d'une dizaine de pour cent, pas de trois. Le seuil de
+non-régression à +3 % aurait clignoté au rouge sans qu'une ligne ait changé —
+et une étape qui clignote, on apprend à l'ignorer. C'est exactement le défaut
+qu'on venait de corriger sur l'ancienne garde.
+
+**Ce qui est livré, calibré sur la résolution réelle :**
+
+- **le plafond vécu** — le rattrapage maximal reste sous 2,5 s. Absolu, donc
+  aucun second graphe de modules à comparer ; le minimum de six passes
+  l'approche par en dessous ; une machine lente rend un verdict pessimiste,
+  jamais complaisant. **Mesuré : 1,85 s.**
+- **la non-régression grossière** — le tick ne dépasse pas ×1,25 le chiffre
+  relevé à la livraison précédente (`CIBLES.json`, `vitesse.us`), avancé
+  délibérément. Elle n'attrape pas 5 % de dérive, mais elle attrape ce qui
+  arrive vraiment : une boucle quadratique introduite sans qu'on la voie.
+- la dispersion reste, inchangée.
+
+`verifier --complet` est **vert sur ses six étapes**.
+
+### ~~F1b bis~~ — l'énoncé du blocage, gardé pour la trace
 
 Deuxième prise remboursée (Dijkstra, ci-dessous) : **×1,77 → ×1,69**. Le profil
 est maintenant **plat** — profil inclusif et profil par ligne à l'appui, il n'y

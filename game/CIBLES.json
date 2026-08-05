@@ -32,5 +32,12 @@
       4,
       40
     ]
+  },
+  "vitesse": {
+    "_note": "Le plafond est absolu et c'est la seule contrainte que le joueur ressente : RATTRAPAGE_MAX heures d'un coup au retour d'une longue absence, étalées en tranches, doivent rester vécues comme instantanées. « us » est le coût du tick relevé à la livraison précédente SUR CETTE MACHINE — changer de machine oblige à le relever de nouveau. Le seuil de non-régression est grossier (×1,25) parce que l'instrument résout une dizaine de pour cent et pas trois : voir tools/vitesse.js et le blocage F1b bis de CHANTIER.md.",
+    "us": 107,
+    "rapportMax": 1.25,
+    "plafondMs": 2500,
+    "dispersionMax": 0.35
   }
 }
