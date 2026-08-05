@@ -168,6 +168,30 @@ export function moyenne(parties, cle) {
 }
 
 /**
+ * Toutes les moyennes d'une configuration, en un objet.
+ *
+ * C'est ce qu'on écrit au journal de reprise : une campagne de mille neuf cents
+ * configurations dure des heures, et une machine qui s'endort emportait tout.
+ * Garder les parties entières ferait un fichier de plusieurs dizaines de
+ * mégaoctets pour rien — les moyennes suffisent à tout ce qui suit.
+ */
+export function moyennes(parties) {
+  const m = {};
+  for (const [cle] of METRIQUES) m[cle] = moyenne(parties, cle);
+  return m;
+}
+
+/** L'écart entre deux jeux de moyennes. Voir `ecarts` pour la règle du signe. */
+export function ecartsDe(reference, variante) {
+  const e = {};
+  for (const [cle] of METRIQUES) {
+    const r = reference[cle] || 0;
+    e[cle] = ((variante[cle] || 0) - r) / Math.max(Math.abs(r), 1);
+  }
+  return e;
+}
+
+/**
  * L'écart d'une configuration à la référence, métrique par métrique.
  * Les graines sont les mêmes des deux côtés : la comparaison est appariée, ce
  * qui retire d'un coup toute la variabilité du tirage du monde.

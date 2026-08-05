@@ -35,12 +35,12 @@ import {
 } from 'node:worker_threads';
 import { availableParallelism } from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, existsSync, writeFileSync, readdirSync } from 'node:fs';
+import { mkdirSync, existsSync, writeFileSync, readdirSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   recenser, elasticite, planchers, significatif, asymetrique, METRIQUES,
-  moyenne, ecarts,
+  moyenne, ecarts, moyennes, ecartsDe,
 } from './cartographie.js';
 import { srcDeRevision } from './revision.js';
 
@@ -292,6 +292,25 @@ const BAS = 0.7;
 const HAUT = 1.4;
 const PLACEBO = 1.0001;
 const PLACEBOS = 8;
+/** Leviers joués entre deux écritures du journal de reprise. */
+const PAQUET = 15;
+const JOURNAL = join(JEU, '.banc', 'cartographie.json');
+
+/** Le journal de reprise. Changer de graines ou d'horizon le repart de zéro. */
+function ouvrirJournal(graines, horizon) {
+  const signature = `${graines.join(',')} × ${horizon} h`;
+  if (existsSync(JOURNAL)) {
+    const j = JSON.parse(readFileSync(JOURNAL, 'utf8'));
+    if (j.signature === signature) return j;
+    console.log(`journal écarté : il portait « ${j.signature} », on joue « ${signature} ».`);
+  }
+  return { signature, ref: null, leviers: {}, placebos: {} };
+}
+
+function ecrireJournal(j) {
+  mkdirSync(dirname(JOURNAL), { recursive: true });
+  writeFileSync(JOURNAL, JSON.stringify(j));
+}
 
 const pc = (x) => (Number.isFinite(x) ? `${(x * 100).toFixed(1).replace('.', ',')} %` : '—');
 const el = (x) => (x === null || !Number.isFinite(x) ? '—' : x.toFixed(2).replace('.', ','));
@@ -337,21 +356,52 @@ async function cartographier(graines, horizon, max) {
   const { modules, illisibles } = await tousLesModules(SRC);
   const { leviers, ecartes } = recenser(modules);
   const retenus = max ? leviers.slice(0, max) : leviers;
+  const journal = ouvrirJournal(graines, horizon);
 
-  // Première passe : la référence et les deux points de chaque levier.
-  const configs = [{ nom: 'référence', src: SRC, regles: [], role: 'ref' }];
-  for (const l of retenus) {
-    for (const [cote, facteur] of [['bas', BAS], ['haut', HAUT]]) {
-      configs.push({
-        nom: `${l.module}.${l.chemin.join('.')} ${cote}`, src: SRC, role: cote, levier: l,
-        regles: [{ module: l.module, chemin: l.chemin, valeur: l.valeur * facteur }],
-      });
-    }
+  // Première passe : la référence, puis les deux points de chaque levier, par
+  // paquets — et le journal est écrit après chaque paquet.
+  //
+  // Mille neuf cent soixante-quinze configurations, c'est des heures de
+  // machine, et une machine qui s'endort emportait tout : la première tentative
+  // est morte à 5 % sans laisser une ligne. Une campagne qui ne survit pas à une
+  // coupure n'est pas un outil, c'est un pari. Relancer la même commande reprend
+  // maintenant où elle en était.
+  if (!journal.ref) {
+    const c = [{ nom: 'référence', src: SRC, regles: [] }];
+    await jouerConfigs(c, graines, horizon);
+    journal.ref = moyennes(c[0].parties);
+    ecrireJournal(journal);
   }
-  console.log(`${retenus.length} leviers — passe 1 : ${configs.length} configurations, `
-    + `${configs.length * graines.length} parties de ${horizon} h.`);
-  await jouerConfigs(configs, graines, horizon);
-  const ref = configs[0].parties;
+  const ref = journal.ref;
+
+  const aFaire = retenus.filter((l) => !journal.leviers[`${l.module}.${l.chemin.join('.')}`]);
+  const deja = retenus.length - aFaire.length;
+  console.log(`${retenus.length} leviers`
+    + `${deja ? ` — ${deja} déjà au journal, ${aFaire.length} à jouer` : ''}`
+    + ` — passe 1 : ${aFaire.length * 2} configurations, `
+    + `${aFaire.length * 2 * graines.length} parties de ${horizon} h.`);
+  for (let i = 0; i < aFaire.length; i += PAQUET) {
+    const lot = aFaire.slice(i, i + PAQUET);
+    const configs = [];
+    for (const l of lot) {
+      for (const [cote, facteur] of [['bas', BAS], ['haut', HAUT]]) {
+        configs.push({
+          nom: `${l.module}.${l.chemin.join('.')} ${cote}`, src: SRC, role: cote, levier: l,
+          regles: [{ module: l.module, chemin: l.chemin, valeur: l.valeur * facteur }],
+        });
+      }
+    }
+    process.stdout.write(`  paquet ${Math.floor(i / PAQUET) + 1}/${Math.ceil(aFaire.length / PAQUET)} `);
+    await jouerConfigs(configs, graines, horizon);
+    for (const l of lot) {
+      journal.leviers[`${l.module}.${l.chemin.join('.')}`] = {
+        valeur: l.valeur,
+        bas: moyennes(configs.find((c) => c.role === 'bas' && c.levier === l).parties),
+        haut: moyennes(configs.find((c) => c.role === 'haut' && c.levier === l).parties),
+      };
+    }
+    ecrireJournal(journal);
+  }
 
   // Deuxième passe : les placebos, et il faut les choisir après coup.
   //
@@ -363,29 +413,37 @@ async function cartographier(graines, horizon, max) {
   // fichier, donc tous dans le même coin du moteur.
   //
   // On sait maintenant lesquels remuent le monde. Les placebos vont sur les plus
-  // remuants, un par module pour couvrir des mécanismes différents.
+  // remuants, un par objet exporté pour couvrir des mécanismes différents.
   const remuants = retenus.map((l) => {
-    const bas = configs.find((c) => c.role === 'bas' && c.levier === l);
-    const haut = configs.find((c) => c.role === 'haut' && c.levier === l);
-    const e = { ...ecarts(ref, bas.parties), ...ecarts(ref, haut.parties) };
+    const j = journal.leviers[`${l.module}.${l.chemin.join('.')}`];
+    const e = { ...ecartsDe(ref, j.bas), ...ecartsDe(ref, j.haut) };
     return { l, remue: Math.max(...Object.values(e).map((x) => Math.abs(x) || 0)) };
   }).filter((x) => x.remue > 0).sort((a, b) => b.remue - a.remue);
   const vus = new Set();
   const choisis = remuants.filter((x) => !vus.has(`${x.l.module}.${x.l.objet}`)
     && vus.add(`${x.l.module}.${x.l.objet}`))
     .slice(0, PLACEBOS);
-  const placebos = choisis.map((x) => ({
-    nom: `placebo ${x.l.objet}.${x.l.champ}`, src: SRC, role: 'placebo',
-    regles: [{ module: x.l.module, chemin: [x.l.objet, x.l.champ], valeur: x.l.valeur * PLACEBO }],
-  }));
-  console.log(`passe 2 : ${placebos.length} placebos (×${PLACEBO}) sur les leviers `
-    + 'les plus remuants — le plancher de bruit.');
-  if (placebos.length) await jouerConfigs(placebos, graines, horizon);
+  const manquants = choisis.filter((x) => !journal.placebos[`${x.l.module}.${x.l.chemin.join('.')}`]);
+  console.log(`passe 2 : ${choisis.length} placebos (×${PLACEBO}) sur les leviers `
+    + `les plus remuants — le plancher de bruit${manquants.length ? '' : ' (au journal)'}.`);
+  if (manquants.length) {
+    const configs = manquants.map((x) => ({
+      nom: `placebo ${x.l.chemin.join('.')}`, src: SRC, role: 'placebo', levier: x.l,
+      regles: [{ module: x.l.module, chemin: x.l.chemin, valeur: x.l.valeur * PLACEBO }],
+    }));
+    await jouerConfigs(configs, graines, horizon);
+    for (const c of configs) {
+      journal.placebos[`${c.levier.module}.${c.levier.chemin.join('.')}`] = moyennes(c.parties);
+    }
+    ecrireJournal(journal);
+  }
 
   // Le plancher de bruit. Sans lui aucun chiffre plus bas ne veut rien dire.
-  const sol = planchers(placebos.map((c) => ecarts(ref, c.parties)));
-  const bougent = placebos.filter((c) => Object.values(ecarts(ref, c.parties))
-    .some((x) => Math.abs(x) > 0)).length;
+  const mesuresPlacebo = choisis
+    .map((x) => journal.placebos[`${x.l.module}.${x.l.chemin.join('.')}`])
+    .filter(Boolean).map((m) => ecartsDe(ref, m));
+  const sol = planchers(mesuresPlacebo);
+  const bougent = mesuresPlacebo.filter((e) => Object.values(e).some((x) => Math.abs(x) > 0)).length;
   if (!bougent) {
     console.log('⚠ aucun placebo n’a fait diverger le monde : le plancher vaut zéro '
       + 'et la carte ne distingue plus un effet d’un frémissement.');
@@ -394,18 +452,17 @@ async function cartographier(graines, horizon, max) {
   const lignes = [];
   for (const l of retenus) {
     const cle = `${l.module}.${l.chemin.join('.')}`;
-    const bas = configs.find((c) => c.role === 'bas' && c.levier === l);
-    const haut = configs.find((c) => c.role === 'haut' && c.levier === l);
-    const eb = ecarts(ref, bas.parties);
-    const eh = ecarts(ref, haut.parties);
+    const j = journal.leviers[cle];
+    const eb = ecartsDe(ref, j.bas);
+    const eh = ecartsDe(ref, j.haut);
     const effets = [];
     for (const [m, nom] of METRIQUES) {
       const sb = significatif(eb[m], sol[m]);
       const sh = significatif(eh[m], sol[m]);
       if (!sb && !sh) continue;
       const e = [
-        sb ? elasticite(moyenne(ref, m), moyenne(bas.parties, m), BAS - 1) : null,
-        sh ? elasticite(moyenne(ref, m), moyenne(haut.parties, m), HAUT - 1) : null,
+        sb ? elasticite(ref[m], j.bas[m], BAS - 1) : null,
+        sh ? elasticite(ref[m], j.haut[m], HAUT - 1) : null,
       ];
       effets.push({
         m, nom, ecartBas: eb[m], ecartHaut: eh[m], elBas: e[0], elHaut: e[1],
@@ -478,7 +535,7 @@ function ecrireCarte({
   t.push('| métrique | référence, par partie | plancher de bruit |');
   t.push('|---|---:|---:|');
   for (const [m, nom] of METRIQUES) {
-    const v = moyenne(ref, m);
+    const v = ref[m];
     const ecrit = Math.abs(v) < 10 ? v.toFixed(2).replace('.', ',') : String(Math.round(v));
     t.push(`| ${nom} | ${ecrit} | ${pc(sol[m])} |`);
   }
