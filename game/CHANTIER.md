@@ -341,6 +341,49 @@ autre » est un marché, donc un prix. Aujourd'hui, une colonne non payée survi
 et ne coûte rien — c'est le comportement par défaut, il est cohérent mais il
 n'est pas celui-là.
 
+## Leviers actionnables — mesurés, prêts, non appliqués
+
+Ce que la cartographie a trouvé et que le balayage direct a confirmé, gardé ici
+pour être actionné le jour où on le décide. **Ne rien appliquer sans redire
+pourquoi** : chacun a un prix, écrit en face.
+
+### Le drame par le climat — `climat.SAISONS.accalmie.vivant` : 1,1 → 0,77
+
+Ce que c'est : ce que la bonne saison fait pousser de vivant. Le baisser, c'est
+un monde qui nourrit moins de monde, donc des pays faibles qui ne tiennent plus.
+
+    node tools/banc.js --balaye climat.SAISONS.accalmie.vivant=0.77,0.9,1.1
+
+Mesuré, 6 graines × 6 000 h :
+
+| | 0,77 | 0,9 | **1,1 (courant)** |
+|---|---:|---:|---:|
+| factions écrasées | **5/36** | 2/36 | 1/36 |
+| villes debout | 481 | 488 | 517 |
+| villes affamées | **12 %** | 10 % | 16 % |
+| population | 54 452 | 46 069 | 57 893 |
+| accords commerciaux | 13 | 12 | 21 |
+| trésor médian | 59 338 | 56 422 | 54 952 |
+| amplitude des cours | 0,40–3,35 | 0,40–2,59 | 0,40–3,49 |
+| écart comptable | 0 | 0 | 0 |
+
+**Ce qu'on gagne** : le drame revient (5 factions écrasées au lieu d'une), la
+monnaie reste pleinement vivante — ce que `MONNAIE.inertie` ne savait pas faire
+—, et le monde a *moins* faim, parce qu'il se réduit à ce qu'il peut nourrir.
+
+**Ce qu'on perd** : 36 villes, 8 accords commerciaux, 3 400 habitants.
+
+**Pourquoi ce n'est pas appliqué.** C'est du drame fabriqué en tournant un
+bouton : les pays meurent parce qu'il pleut moins, pas parce qu'il leur est
+arrivé quelque chose. Décision du propriétaire (août 2026) : le drame doit
+d'abord venir des acteurs du chantier `INDIVIDUS.md` — armée impayée qui se
+retourne, ville saisie par son créancier. Ce levier reste le repli si les
+acteurs ne suffisent pas, et il est mesuré pour être actionnable en cinq
+minutes.
+
+**Après application** : `CIBLES.json` à resserrer (villes, pop, accords,
+écrasées), ECONOMIE §13 à remesurer.
+
 ## Blocages
 
 ### F1a — résolu : la garde de vitesse mesurait l'envers de ce qu'elle croyait
