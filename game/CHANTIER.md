@@ -438,6 +438,29 @@ atteinte. C'est une dette datée, à instruire par le lot F **avant** de toucher
 ce trou. Ne pas régler `inertie` au-dessus de 0,98 tant que l'écart n'est pas
 expliqué.
 
+### F0.3 — la campagne des 987 leviers : le drame a un levier propre
+
+Campagne complète (987 leviers, ~2 000 configurations, 6 graines × 6 000 h) :
+**292 leviers vivants, 695 morts**, 8 placebos, `CARTOGRAPHIE.md` régénéré.
+Sur les factions écrasées, les catalogues ont livré ce que les constantes
+plates n'avaient pas : des leviers de **production**, pas de monnaie —
+`SAISONS.accalmie.vivant`, `VOCATION_BIOME.canyons.paysan`, `BIOMES.*.yields`.
+
+Confirmé au balayage direct (la règle : jamais une petite métrique sur la foi
+de la carte seule) — `data.VOCATION_BIOME.canyons.paysan` :
+
+| | 0,35 | 0,5 (courant) | 0,7 |
+|---|---:|---:|---:|
+| factions écrasées | 3/36 | 1/36 | **5/36** |
+| population | 47 736 | 57 893 | 53 254 |
+| cours (amplitude) | 0,40–3,68 | 0,40–3,49 | **0,40–4,00** |
+| écart comptable | 0 | 0 | 0 |
+
+À 0,7 : le drame revient (5/36) **et la monnaie reste vivante** — c'est
+exactement ce que `MONNAIE.inertie` ne savait pas faire. Prix payé : 474
+villes contre 517, accords 12 contre 21. Le réglage effectif de ce levier est
+un choix de calibrage du lot F, sur proposition au propriétaire.
+
 ### F0.3 — décision prise : le drame attendra les acteurs, pas un gel du cours
 
 Décidé par le propriétaire (août 2026), après la carte : si la campagne des
