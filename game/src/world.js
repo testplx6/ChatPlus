@@ -435,16 +435,25 @@ export function damer(world, i, force = 1) {
 let ardoiseN = 0;
 let ardoiseDist = null;
 let ardoisePrev = null;
-let ardoiseVus = null;
 let ardoiseTasN = null;
 let ardoiseTasD = null;
+// Le numéro de la course en cours. Effacer trois tableaux de quatre cent
+// trente-deux cases à chaque appel coûtait plus cher que la course elle-même :
+// un Dijkstra qui s'arrête à sa cible n'en visite qu'une poignée, mais payait
+// treize cents écritures avant de partir. Une case est « vierge » quand sa
+// marque n'est pas celle de la course : plus rien à effacer.
+let ardoiseGen = 0;
+let ardoiseGenDist = null;
+let ardoiseGenVus = null;
 
 function ardoise(n) {
   if (n <= ardoiseN) return;
   ardoiseN = n;
   ardoiseDist = new Float64Array(n);
   ardoisePrev = new Int32Array(n);
-  ardoiseVus = new Uint8Array(n);
+  ardoiseGenDist = new Int32Array(n);
+  ardoiseGenVus = new Int32Array(n);
+  ardoiseGen = 0;
   ardoiseTasN = new Int32Array(n + 1);
   ardoiseTasD = new Float64Array(n + 1);
 }
@@ -464,11 +473,16 @@ export function chemin(world, from, to, mods = {}) {
   ardoise(n);
   const dist = ardoiseDist;
   const prev = ardoisePrev;
-  const vus = ardoiseVus;
-  dist.fill(Infinity, 0, n);
-  prev.fill(-1, 0, n);
-  vus.fill(0, 0, n);
+  const genDist = ardoiseGenDist;
+  const genVus = ardoiseGenVus;
+  if (ardoiseGen >= 2147483646) { genDist.fill(0); genVus.fill(0); ardoiseGen = 0; }
+  const gen = ++ardoiseGen;
   dist[from] = 0;
+  prev[from] = -1;
+  genDist[from] = gen;
+  // Le facteur des mods ne change pas d'une case à l'autre : il sortait de la
+  // boucle une fois par arête.
+  const red = 1 - (mods.reductionVoyage || 0);
 
   // Tas binaire minimal : deux tableaux plats, pas d'objets alloués par nœud.
   const tasN = ardoiseTasN;
@@ -509,9 +523,9 @@ export function chemin(world, from, to, mods = {}) {
   pousser(from, 0);
   while (taille > 0) {
     const u = tirer();
-    if (vus[u]) continue; // doublon laissé par une amélioration ultérieure
+    if (genVus[u] === gen) continue; // doublon laissé par une amélioration ultérieure
     if (u === to) break;
-    vus[u] = 1;
+    genVus[u] = gen;
     // Les quatre voisins à la main : `voisins()` alloue un objet et un tableau,
     // et cette boucle-ci tourne une fois par case de la carte.
     const ux = u % LARGEUR;
@@ -522,12 +536,16 @@ export function chemin(world, from, to, mods = {}) {
       const vy = uy + (d === 2 ? -1 : d === 3 ? 1 : 0);
       if (vx < 0 || vy < 0 || vx >= LARGEUR || vy >= HAUTEUR) continue;
       const v = vy * LARGEUR + vx;
-      if (vus[v]) continue;
-      const nd = du + coutTraversee(world, v, mods);
-      if (nd < dist[v]) { dist[v] = nd; prev[v] = u; pousser(v, nd); }
+      if (genVus[v] === gen) continue;
+      const r = world.regions[v];
+      const piste = world.sansPistes ? 1 : 1 - (r.piste || 0) * PISTE_GAIN;
+      const nd = du + Math.max(1, BIOMES[r.biome].cout * piste * red);
+      if (genDist[v] !== gen || nd < dist[v]) {
+        dist[v] = nd; prev[v] = u; genDist[v] = gen; pousser(v, nd);
+      }
     }
   }
-  if (dist[to] === Infinity) return null;
+  if (genDist[to] !== gen) return null;
   const path = [];
   let cur = to;
   while (cur !== from && cur !== -1) {

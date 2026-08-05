@@ -705,17 +705,69 @@ async function principal() {
     for (let t = 0; t < 3000; t++) moteur.sim.tick(s);
     const { profile } = await sess.post('Profiler.stop');
     const parId = new Map(profile.nodes.map((n) => [n.id, n]));
-    const compte = new Map();
+    const nom = (n) => {
+      const f = n.callFrame;
+      return `${f.functionName || '(anonyme)'}  ${(f.url || '').split('/').pop()}:${f.lineNumber + 1}`;
+    };
+    const propre = new Map();
     for (const ech of profile.samples) {
       const n = parId.get(ech);
-      if (!n) continue;
-      const f = n.callFrame;
-      const cle = `${f.functionName || '(anonyme)'}  ${(f.url || '').split('/').pop()}:${f.lineNumber + 1}`;
-      compte.set(cle, (compte.get(cle) || 0) + 1);
+      if (n) propre.set(nom(n), (propre.get(nom(n)) || 0) + 1);
     }
+    // Le temps *inclusif* : ce que coûte une fonction avec tout ce qu'elle
+    // appelle. Le temps propre seul ne dit pas où couper — un tick à 12 % de
+    // temps propre peut porter 60 % du travail, et une feuille à 4 % peut être
+    // le seul endroit où l'on gagne quelque chose. Il a fallu chercher où
+    // gagner douze pour cent avec un profil plat pour s'en apercevoir.
+    const enfants = new Map();
+    for (const n of profile.nodes) enfants.set(n.id, n.children || []);
+    const propreParId = new Map();
+    for (const ech of profile.samples) propreParId.set(ech, (propreParId.get(ech) || 0) + 1);
+    const memo = new Map();
+    const inclusif = (id, pile) => {
+      if (memo.has(id)) return memo.get(id);
+      let n = propreParId.get(id) || 0;
+      for (const c of enfants.get(id) || []) {
+        if (pile.has(c)) continue;            // récursion : on ne compte qu'une fois
+        pile.add(c);
+        n += inclusif(c, pile);
+        pile.delete(c);
+      }
+      memo.set(id, n);
+      return n;
+    };
     const total = profile.samples.length;
-    for (const [cle, n] of [...compte.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20)) {
-      console.log(`  ${(n / total * 100).toFixed(1).padStart(5)} %  ${cle}`);
+    const cumul = new Map();
+    for (const n of profile.nodes) {
+      const v = inclusif(n.id, new Set([n.id]));
+      const cle = nom(n);
+      cumul.set(cle, Math.max(cumul.get(cle) || 0, v));
+    }
+    // --profil <motif> : les lignes chaudes d'une fonction, pas seulement son
+    // total. Sans ça on lit « tick coûte 11 % » et on va deviner où.
+    const motif = args[args.indexOf('--profil') + 1];
+    if (motif && !motif.startsWith('--')) {
+      const lignes = new Map();
+      for (const n of profile.nodes) {
+        if (!nom(n).includes(motif) || !n.positionTicks) continue;
+        for (const p2 of n.positionTicks) {
+          const cle = `${(n.callFrame.url || '').split('/').pop()}:${p2.line}`;
+          lignes.set(cle, (lignes.get(cle) || 0) + p2.ticks);
+        }
+      }
+      const tot = [...lignes.values()].reduce((a, b) => a + b, 0);
+      console.log(`  lignes chaudes de « ${motif} » — ${tot} échantillons`);
+      for (const [cle, n2] of [...lignes.entries()].sort((a, b) => b[1] - a[1]).slice(0, 18)) {
+        console.log(`  ${(n2 / total * 100).toFixed(2).padStart(6)} % du tick   ${cle}`);
+      }
+      return;
+    }
+    console.log('  inclusif   propre   fonction');
+    const lignes = [...cumul.entries()].sort((a, b) => b[1] - a[1]).slice(0, 24);
+    for (const [cle, inc] of lignes) {
+      const pr = propre.get(cle) || 0;
+      console.log(`  ${(inc / total * 100).toFixed(1).padStart(7)} % `
+        + `${(pr / total * 100).toFixed(1).padStart(7)} %   ${cle}`);
     }
     return;
   }

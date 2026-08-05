@@ -373,6 +373,48 @@ desserrage : 110 µs normalisés, un témoin à 60-64 µs bruts ici soit 67-71
 normalisés, d'où 110/71 ≈ 1,55. La preuve que ce n'est pas un budget taillé pour
 passer : l'étape est rouge à **×1,99**.
 
+### F1b bis — BLOCAGE : le budget de vitesse protège-t-il quelque chose ?
+
+Deuxième prise remboursée (Dijkstra, ci-dessous) : **×1,77 → ×1,69**. Le profil
+est maintenant **plat** — profil inclusif et profil par ligne à l'appui, il n'y
+a plus de gisement : trois sous-arbres se partagent le tick (colonies 25 %,
+caravanes 23 %, factions 20 %) et aucune ligne ne dépasse 1,6 %. Aller de 1,69
+à 1,55 serait une dizaine de micro-prises à 1 %, chacune avec son risque de
+régression, pour un gain qu'il faut regarder en face :
+
+| | µs/tick | une nuit d'absence | le plafond `RATTRAPAGE_MAX` (2 ans) |
+|---|---:|---:|---:|
+| aujourd'hui (×1,69) | 107 | 308 ms | 1,82 s |
+| au budget (×1,55) | 98 | 282 ms | 1,67 s |
+| témoin `82636d8` (×1,00) | 63 | 181 ms | 1,07 s |
+
+**Vingt-six millisecondes sur une nuit d'absence.** Le rattrapage est en plus
+étalé par tranches de 200 heures (`rattrapageEtale`), donc rien ne fige jamais
+l'écran. Sur un téléphone — le moteur est mobile-first, comptons ×4 — l'écart
+reste sous la centaine de millisecondes.
+
+**Ce qui pose problème n'est pas la mesure, c'est le critère.** ×1,55 est ma
+traduction arithmétique de « 110 µs », un nombre hérité d'une machine qui
+n'existe plus. Et le témoin `82636d8` est un monde **sans économie réelle** :
+ni ménages, ni crédit, ni monnaie, ni change. Exiger que quatre couches
+économiques coûtent moins de 55 % de plus qu'un monde qui ne les a pas n'est
+adossé à rien.
+
+**Ce que je propose, et qui appartient au propriétaire** — deux critères qui
+protègent ce qui compte vraiment, à la place d'un seul qui ne protège rien :
+
+1. **Le plafond vécu** : le rattrapage maximal reste sous 2,5 s sur cette
+   machine (soit ~10 s sur un téléphone lent, étalées en tranches). Mesuré
+   aujourd'hui : 1,82 s. C'est la seule contrainte que le joueur ressent.
+2. **La non-régression** : le tick ne ralentit pas d'une livraison à l'autre
+   sans raison écrite — témoin glissant, la révision précédente, seuil +3 %.
+   C'est ce qui empêche la dette de revenir en douce, et c'est ce que le
+   budget absolu prétendait faire sans y parvenir.
+
+Tant que ce n'est pas tranché, `verifier --complet` reste rouge sur cette
+étape, et **le seuil n'est pas touché** — l'élargir pour faire passer la
+mesure est précisément ce que ce fichier interdit.
+
 ### F1b — la dette de vitesse : ×1,99 → ×1,77, budget ×1,55
 
 Antérieure au lot F0, qui n'a touché aucun fichier de `src/`. Premier morceau
