@@ -65,6 +65,7 @@ quelqu'un d'autre.
 | `CHANTIER.md` | la file de tâches du chantier en cours, avec critères |
 | `RECETTES.md` | les opérations récurrentes, pas à pas, avec leurs pièges |
 | `ECONOMIE.md` | le cahier des charges du chantier économie |
+| `INDIVIDUS.md` | le cahier des charges du chantier individus — préparé, non démarré |
 | `CARTOGRAPHIE.md` | ce que chaque constante commande — produit par la mesure, à lire avant de régler |
 | `CIBLES.json` | les gardes du monde vérifiées par `verifier --complet` |
 | `README.md` | le projet, les tests, l'architecture |

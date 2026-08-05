@@ -311,7 +311,8 @@ commande.
 
 ## Lot G — la colonne qu'on ne paie plus (règle donnée par le propriétaire)
 
-Consignée telle qu'elle a été dictée, **pas encore spécifiée ni chiffrée**. Elle
+**Spécifiée depuis dans `INDIVIDUS.md` (lot 6)** — elle s'exécutera avec ce
+chantier-là, pas ici. Consignée telle qu'elle a été dictée. Elle
 répond à la question laissée ouverte par la chasse à la sixième fuite : une
 faction sans plus aucune ville garde-t-elle une armée sur le terrain, et qui la
 paie ?
