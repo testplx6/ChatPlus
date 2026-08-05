@@ -438,6 +438,16 @@ atteinte. C'est une dette datée, à instruire par le lot F **avant** de toucher
 ce trou. Ne pas régler `inertie` au-dessus de 0,98 tant que l'écart n'est pas
 expliqué.
 
+### F0.3 — décision prise : le drame attendra les acteurs, pas un gel du cours
+
+Décidé par le propriétaire (août 2026), après la carte : si la campagne des
+987 leviers ne trouve pas de levier de drame plus propre que `MONNAIE.inertie`
+— qui n'en fait qu'en gelant la monnaie — **`inertie` reste à 0,70**. La
+monnaie vit, le change et le lot E gardent leur sens, et le drame viendra des
+acteurs du chantier `INDIVIDUS.md` : retournements de colonnes, débandades,
+saisies nommées. La cible « ≥ 4/36 écrasées » se re-mesurera après ce
+chantier-là ; d'ici là elle ne bloque pas la livraison du lot F.
+
 ### F0.3 — deux familles de leviers dont l'effet surprend
 
 `PALIERS_ITEM.*` (paliers d'objets) et `POIDS_BASE.*` (poids des métiers en

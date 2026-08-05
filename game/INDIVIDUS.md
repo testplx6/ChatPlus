@@ -249,6 +249,36 @@ seule la source change.
   fourchettes de `CIBLES.json` tenues, chiffres dans le commit. Si une garde
   casse : Blocages, stop — ne pas élargir la garde.
 
+### Lot 3b — l'indépendance au trajet, jusqu'au bout (décidé, propriétaire)
+
+**Quoi.** Après le lot 3, le flux principal reste consommé par des mécanismes
+qui dépendent du joueur : les rencontres et chasseurs de l'escouade
+(`events.js:588-598` — la probabilité dépend de la région), et par des
+mécanismes du monde qui, eux, n'en dépendent pas mais partagent le même flux
+(conseils, caravanes, armées). Trois bascules du même geste que le lot 3 :
+
+- **le flux privé du joueur** : `state.player.rngEtat` (posé par dérivation,
+  `grainDe('joueur', graine)`, jamais tiré) — rencontres, chasseurs, bandes,
+  butins passent dessus. C'est de l'état *privé*, il en a le droit ;
+- **les conseils, par dérivation apatride** : `new Rng(grainDe('conseil', key,
+  t))` au début de chaque conseil — rien à stocker, rien à migrer ;
+- **les caravanes, par réseau et par heure** : `new Rng(grainDe('reseau', cle,
+  t))` dans `departsDuReseau` — la clé du réseau existe déjà (`idReseau`).
+
+- [ ] **I3b.1. L'énumération d'abord.** Recenser TOUS les consommateurs
+  restants du flux principal (grep `rng.` sur les chemins appelés depuis
+  `tick`), classer chacun : *global* (climat…) ou *à basculer*, et écrire la
+  liste ici même avant de coder. Critère : la liste est dans ce document,
+  chaque entrée avec fichier:ligne et sa classe.
+- [ ] **I3b.2-4. Les trois bascules**, une par commit, chacune re-mesurée au
+  banc (gardes tenues).
+- [ ] **I3b.5. La preuve entière.** Test rouge : deux parties à graine égale,
+  trajets différents, 300 h, **sans avant-poste et sans action** :
+  `state.rngState` final identique — le flux principal n'est plus consommé que
+  par du global. (La maille de détail reste : les villes proches du joueur
+  tiquent plus fin, c'est le niveau de détail assumé ; en multijoueur, le
+  serveur tiquera à maille uniforme et cette dépendance-là disparaît d'elle-même.)
+
 ### Lot 4 — la promotion narrative : le vivier
 
 **Quoi.** Quand une charge de notable se libère, la ville promeut de
@@ -388,9 +418,10 @@ sinon :
 4. **Se disloquer** — la colonne disparaît, comme une armée battue :
    `La colonne de ${nommerActeur('colonne', a.id)} s'est débandée, faute de
    solde. On en reverra certains sur les routes.`
-5. **Fonder sa faction** — **hors périmètre : Blocage.** Le moteur ne sait pas
+5. **Fonder sa faction** — **hors de ce chantier, décidé** (propriétaire,
+   août 2026) : ce sera un chantier propre, plus tard — le moteur ne sait pas
    créer une faction en cours de partie (clés fixes, diplomatie, couleurs,
-   UI). Décision et chantier propres si le propriétaire y tient.
+   UI). L'idée reste au registre ; ici, la colonne se débande ou se vend.
 
 - [ ] **I6.1. `a.impayees`.** Les armées se créent en **deux** endroits —
   `factions.js:191` (`leverArmee`) et `influence.js:335` — plus `normaliser`
@@ -460,15 +491,14 @@ sinon :
 **Prises** (avec le propriétaire, session d'août 2026) :
 - l'approche « vue dérivée + promotion par le toucher + mémoire bornée » ;
 - la règle de la colonne sans solde (dictée, voir lot 6) ;
-- ce chantier passe avant le lot E de l'économie.
+- l'ordre des chantiers : **lot F (économie) → Individus → lot E** ;
+- « fonder sa faction » : chantier propre, plus tard — l'idée reste au
+  registre, rien ne bloque en attendant (lot 6, issue 5) ;
+- le **lot 3b** est retenu et fait partie de ce chantier ;
+- si la carte des 987 leviers ne trouve pas de levier de drame plus propre
+  que `MONNAIE.inertie` : **on garde 0,70** (la monnaie vit) et le drame
+  viendra des acteurs de ce chantier — retournements, débandades, saisies
+  nommées. La cible « ≥ 4/36 écrasées » se re-mesure après.
 
 **À prendre avant de démarrer :**
-- le sort de « fonder sa faction » (issue 5, lot 6) — chantier propre ou
-  abandon ;
-- **le « lot 3b »** : pousser l'indépendance au trajet du joueur jusqu'au
-  bout — un flux privé du joueur (`state.player`) pour rencontres et
-  chasseurs, un flux par faction pour les conseils, un flux par réseau pour
-  les caravanes. C'est la condition d'un `state.world` rigoureusement
-  identique pour tous en multijoueur ; c'est aussi trois bascules de plus du
-  même geste que le lot 3. Recommandé, mais c'est un lot entier : à décider ;
-- démarrage effectif : ce document prépare, il n'autorise pas.
+- le démarrage effectif : ce document prépare, il n'autorise pas.
