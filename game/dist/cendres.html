@@ -800,6 +800,26 @@ function seedFromString(str) {
   return h >>> 0;
 }
 
+/**
+ * Une graine stable, dérivée d'un chemin — jamais du flux principal.
+ *
+ * C'est la primitive du chantier `INDIVIDUS.md`, et elle tient en une ligne
+ * parce que tout le reste en découle. Un individu qu'on n'a pas encore touché
+ * n'a pas besoin d'exister dans la sauvegarde : il suffit qu'il se recalcule à
+ * l'identique quand quelqu'un regarde. Pour ça il lui faut sa propre graine —
+ * si on la tirait du flux scellé, matérialiser quelqu'un décalerait tous les
+ * tirages suivants, et le monde entier changerait selon l'endroit où le joueur
+ * se promène. C'est exactement le défaut que porte aujourd'hui le banc de
+ * recrutement (`sim.js:463`), et que ce chantier vient réparer.
+ *
+ * Les morceaux sont séparés par un caractère qu'aucun identifiant ne contient :
+ * sans ça `('ab', 'c')` et `('a', 'bc')` rendraient la même graine, et deux
+ * villes voisines finiraient par partager leurs gens.
+ */
+function grainDe(...morceaux) {
+  return seedFromString(morceaux.join('\u0000'));
+}
+
 // Alias d'import
 const distanceCases = distance;
 const deboutDe = debout;

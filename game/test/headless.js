@@ -5,7 +5,7 @@ import {
   nouvellePartie, avancer, tick, rattraper, rattrapageEtale,
   TICK_MS, RATTRAPAGE_MAX, DEPARTS, DEPART_KEYS,
 } from '../src/sim.js';
-import { Rng } from '../src/rng.js';
+import { Rng, grainDe } from '../src/rng.js';
 import { mesurerTick, CHAUFFE, MESURE } from './perf.js';
 import { lireRapport, MARQUANTS_MAX } from '../src/rapport.js';
 import { serialiser, deserialiser } from '../src/save.js';
@@ -7210,6 +7210,38 @@ section('18. La vitesse : une mesure sans témoin ne mesure rien, ici plus qu’
     'des passes dispersées ne rendent pas un verdict, elles demandent qu’on remesure');
   ok(v({ courant: 0 }).issue === 'illisible',
     'une mesure manquante ne devient jamais un verdict');
+}
+
+// ===========================================================================
+section('19. La graine dérivée — la primitive du chantier Individus');
+{
+  // Tout le chantier tient sur une idée : un individu qu'on n'a pas encore
+  // touché n'est pas de l'état, c'est une FONCTION de l'endroit et du moment.
+  // Il se recalcule à l'identique quand quelqu'un regarde, et ne coûte rien
+  // quand personne ne regarde. Pour ça il faut une graine qui ne vienne PAS du
+  // flux principal — sans quoi matérialiser un individu décale tous les tirages
+  // suivants, et le monde entier change selon où le joueur se promène.
+  ok(grainDe('banc', 's12', 4) === grainDe('banc', 's12', 4),
+    'les mêmes morceaux rendent la même graine');
+  ok(new Rng(grainDe('banc', 's12', 4)).u32() === new Rng(grainDe('banc', 's12', 4)).u32(),
+    'donc la même suite de tirages — c’est ce qui rend un individu reproductible');
+  ok(grainDe('banc', 's12', 4) !== grainDe('banc', 's12', 5)
+    && grainDe('banc', 's12', 4) !== grainDe('banc', 's21', 4),
+    'deux chemins différents divergent, sur n’importe quel morceau');
+
+  // La séparation des morceaux compte : sans elle, ('ab','c') et ('a','bc')
+  // rendraient la même graine, et deux villes voisines partageraient leur banc.
+  ok(grainDe('ab', 'c') !== grainDe('a', 'bc'),
+    'les morceaux sont séparés, pas concaténés — deux découpages ne se confondent pas');
+
+  // Et le point qui justifie l'existence de la fonction : dériver ne consomme
+  // rien. C'est la garantie que matérialiser un individu ne bouge pas le monde.
+  const sG = nouvellePartie(451, { maintenant: 0 });
+  const avantG = sG.rngState;
+  for (let i = 0; i < 50; i++) new Rng(grainDe('acteur', 'ruine', i)).u32();
+  ok(sG.rngState === avantG,
+    'dériver cinquante graines ne touche pas au flux principal scellé',
+    `${avantG} -> ${sG.rngState}`);
 }
 
 // ===========================================================================

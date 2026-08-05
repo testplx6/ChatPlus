@@ -62,10 +62,10 @@ quelqu'un d'autre.
 | fichier | quoi |
 |---|---|
 | `METHODE.md` | comment on travaille ici — chaque règle avec l'incident qui l'a écrite |
-| `CHANTIER.md` | la file de tâches du chantier en cours, avec critères |
+| `CHANTIER.md` | la file de tâches du chantier économie — livré, gardé pour ses mesures et ses leviers |
 | `RECETTES.md` | les opérations récurrentes, pas à pas, avec leurs pièges |
 | `ECONOMIE.md` | le cahier des charges du chantier économie |
-| `INDIVIDUS.md` | le cahier des charges du chantier individus — préparé, non démarré |
+| `INDIVIDUS.md` | **le chantier en cours** : les individus, sans payer le prix de Dwarf Fortress |
 | `CARTOGRAPHIE.md` | ce que chaque constante commande — produit par la mesure, à lire avant de régler |
 | `CIBLES.json` | les gardes du monde vérifiées par `verifier --complet` |
 | `README.md` | le projet, les tests, l'architecture |

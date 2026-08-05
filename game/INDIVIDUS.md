@@ -1,7 +1,7 @@
 # Chantier « Individus » — l'unité de Dwarf Fortress sans en payer le prix
 
-⚠️ **Chantier préparé, pas démarré.** Il ne démarre qu'avec l'accord explicite
-du propriétaire du projet. Prérequis : le lot F du chantier économie livré.
+✅ **Chantier démarré** (accord du propriétaire, août 2026), le lot F du chantier
+économie étant livré.
 Recommandé **avant** le lot E : ce chantier retouche le monde, E pose
 l'interface dessus — l'ordre inverse ferait tout retoucher deux fois.
 
@@ -87,7 +87,7 @@ export function grainDe(...morceaux) {
 doit exister, être testée et être commitée avant qu'on s'en serve, pour que
 chaque lot suivant ait un point de départ vert.
 
-- [ ] **I1.1.** `grainDe` dans `src/rng.js`, exportée (R7 pour le test).
+- [x] **I1.1.** `grainDe` dans `src/rng.js`, exportée (R7 pour le test).
   Tests (section « 19. La graine dérivée » de `test/headless.js`), rouges
   d'abord :
   - « les mêmes morceaux rendent la même suite » —
