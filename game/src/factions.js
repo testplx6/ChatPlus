@@ -177,7 +177,9 @@ function leverArmee(world, key, force, depuis, cibleId, log) {
   if (!col) return null;
   const route = chemin(world, depuis, col.regionId) || [];
   const a = {
-    id: `a${world.prochainArmeeId++}`,
+    id: `a${world.prochainArmeeId}`,
+    // Le dé de la colonne, dérivé de son nom — jamais tiré du sac.
+    rngEtat: grainDe(world.graine, 'armee', `a${world.prochainArmeeId++}`),
     faction: key,
     regionId: depuis,
     force,
@@ -1209,8 +1211,14 @@ export function tickFactions(world, t, log, ctx) {
     if (!world.armees.includes(armee)) continue;
     // Une colonne a son propre hasard, dérivé de son nom et de l'heure : deux
     // colonnes en campagne ne se décalent plus l'une l'autre.
-    ctx.rng = new Rng(grainDe(world.graine, 'armee', armee.id, t));
+    // Le dé de la colonne, posé à sa levée et rescellé chaque heure — pas
+    // redérivé : hacher une chaîne par colonne et par heure coûtait un tiers du
+    // tick, et la garde de vitesse l'a refusé. Même correction que pour les
+    // convois.
+    const rngA = new Rng(armee.rngEtat || grainDe(world.graine, 'armee', armee.id));
+    ctx.rng = rngA;
     tickArmee(world, armee, t, log, ctx);
+    armee.rngEtat = rngA.save();
     ctx.rng = sacCommun;
   }
 

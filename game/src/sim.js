@@ -581,9 +581,16 @@ export function tick(state) {
   // grade du joueur décidait des tirages du monde entier.
   if (state.temps % 40 === 0) {
     for (const col of state.world.colonies) {
-      if (col.ruine) continue;
+      if (col.ruine) { col.contrats = []; continue; }
+      // La condition d'expiration, qui était dans `rafraichirPanneaux` : un
+      // panneau se renouvelle quand il est périmé, pas toutes les quarante
+      // heures pour les quatre-vingt-six villes. L'avoir perdue en basculant
+      // sur le flux de la ville coûtait un tiers du tick, et la garde de
+      // vitesse l'a refusé.
       const rngV = new Rng(col.rngEtat);
-      genererContrats(state, col, rngV, state.temps);
+      if (!col.contrats || state.temps >= (col.contratsExpire || 0)) {
+        genererContrats(state, col, rngV, state.temps);
+      }
       etalDe(state.world, col, rngV, state.temps, palierBonus(state, col.faction));
       col.rngEtat = rngV.save();
     }

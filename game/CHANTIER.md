@@ -394,12 +394,18 @@ accords et guerres identiques eux aussi. Le monde ne dépend plus du trajet.
 
 Deux choses restent rouges, et `--complet` avec elles :
 
-1. **Vitesse : ×1,317 de la livraison précédente** (141 µs estimés contre 107),
-   pour un seuil à ×1,08. Cause probable, non confirmée : `grainDe` hache une
-   chaîne **par armée et par heure** (`grainDe(graine, 'armee', id, t)`), et
-   pareil par réseau de caravanes. Les convois ont déjà été corrigés — flux
-   posé une fois à la création, `car.rngEtat`, comme les villes — et il reste à
-   faire la même chose pour les armées. **À reprendre là.**
+1. **Vitesse : ×1,140 de la livraison précédente** (122 µs estimés contre 107),
+   pour un seuil à ×1,08. Partie du chemin faite : c'était **×1,317**, et deux
+   causes ont été trouvées puis corrigées — les convois et les colonnes
+   redérivaient une graine à chaque heure (flux persistant maintenant, comme
+   les villes), et surtout **la condition d'expiration des panneaux avait été
+   perdue** en les basculant sur le flux de la ville : les 86 villes
+   régénéraient leurs contrats toutes les 40 heures au lieu des seules
+   périmées. Écarté au passage : ce n'est pas le monde qui a grossi — la graine
+   mesurée en compte 79 villes contre 91 à la livraison précédente, donc moins.
+   **Il reste ×1,14 à expliquer.** Piste non explorée : les réseaux de
+   caravanes dérivent encore `grainDe(graine, 'reseau', clé, t)` toutes les
+   huit heures, et `new Rng` par convoi et par heure.
 2. **Navigateur : expiration sur le bouton « captif / livrer »** — l'élément est
    trouvé mais ne devient jamais actionnable. Non diagnostiqué. Le monde ayant
    changé, la mise en scène du décor ne tient probablement plus ; à instruire
