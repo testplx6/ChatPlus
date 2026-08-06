@@ -1337,9 +1337,14 @@ await page.screenshot({ path: join(CAPTURES, '26-prisonniers.png'), fullPage: tr
 const crAvantCap = await page.evaluate(
   () => JSON.parse(localStorage.getItem('cendres.save.v1')).player.credits
 );
-await page.locator('details[data-id^="captif-"] > summary').first().click();
+// On ouvre TOUS les panneaux, pas seulement le premier : le bouton « livrer »
+// n'appartient pas forcément au premier captif, et replié il existe dans le
+// document sans être cliquable — l'attente expirait sur un élément trouvé mais
+// invisible. Le décor supposait que le premier captif était le bon.
+const volets = page.locator('details[data-id^="captif-"] > summary');
+for (let i = 0; i < await volets.count(); i++) await volets.nth(i).click();
 await page.waitForTimeout(300);
-const livrable = page.locator('[data-a="captif"][data-k="livrer"]').first();
+const livrable = page.locator('[data-a="captif"][data-k="livrer"]:visible').first();
 if (await livrable.count()) {
   await livrable.click();
   await page.waitForTimeout(500);
