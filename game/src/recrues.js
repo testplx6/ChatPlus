@@ -18,6 +18,7 @@
 
 import { SKILL_KEYS } from './data.js';
 import { makeCharacter, comp, ARCHETYPE_KEYS } from './characters.js';
+import { Rng, grainDe } from './rng.js';
 
 /** Durée de vie d'un banc de recrutement avant que les gens se placent ailleurs. */
 export const DUREE_BANC = 260;
@@ -58,28 +59,38 @@ export function primeDe(state, col, c) {
 }
 
 /**
- * Le banc d'une ville : qui s'y trouve, en ce moment, prêt à partir. Une grande
- * ville en propose plus ; une ville qui gronde en propose beaucoup plus, parce
- * que tout le monde veut s'en aller.
+ * Le banc d'une ville, **dérivé** : une pure fonction de l'endroit et du moment.
+ *
+ * Personne ne le fabrique, personne ne l'efface, il n'est nulle part dans la
+ * sauvegarde. Deux joueurs dans la même ville y verraient les mêmes gens sans
+ * échanger un octet, et le monde n'a plus besoin de savoir où se trouve le
+ * joueur pour décider qui existe — c'est le piège n°5 réparé.
+ *
+ * L'agitation entre dans la composition, parce qu'une ville qui gronde laisse
+ * partir plus de monde et que c'est une règle de jeu qu'on garde. Mais elle
+ * bouge à chaque heure : prise brute, le banc se renouvellerait sous les yeux
+ * du joueur. On la quantifie donc au quart, et c'est ce quart-là qui entre à la
+ * fois dans la graine et dans le nombre de gens — sans quoi la liste changerait
+ * de longueur sans que la graine change.
+ *
+ * Ce qui reste en état, et seulement au moment où l'on touche : `col.bancPris`,
+ * les identifiants déjà engagés cette époque-ci. Une trentaine d'octets, oubliés
+ * dès que l'époque tourne.
  */
-export function genererBanc(state, col, rng, t) {
-  const combien = Math.max(1, Math.min(5,
-    Math.round(1 + col.taille * 0.8 + (col.unrest || 0) * 4)));
+export function bancDerive(col, t) {
+  if (!col || col.ruine) return { epoque: 0, gens: [] };
+  const epoque = Math.floor(t / DUREE_BANC);
+  const agitation = Math.round((col.unrest || 0) * 4);
+  const rng = new Rng(grainDe('banc', col.id, epoque, col.taille, agitation));
+  const combien = Math.max(1, Math.min(5, Math.round(1 + col.taille * 0.8 + agitation)));
   const gens = [];
   for (let i = 0; i < combien; i++) {
     // Le niveau suit la ville : on ne trouve pas de vétéran dans un hameau.
     const niveau = rng.weighted([[0, 4], [1, 3], [2, 1.5 + col.taille], [3, col.taille * 0.6]]);
-    const c = makeCharacter(rng, { archetype: rng.pick(ARCHETYPE_KEYS), niveau });
-    gens.push(c);
+    gens.push(makeCharacter(rng, { archetype: rng.pick(ARCHETYPE_KEYS), niveau }));
   }
-  col.banc = { gens, expire: t + DUREE_BANC };
-  return col.banc;
-}
-
-export function bancDe(state, col, rng, t) {
-  if (!col || col.ruine) return null;
-  if (!col.banc || t >= col.banc.expire) genererBanc(state, col, rng, t);
-  return col.banc;
+  const pris = (col.bancPris && col.bancPris.epoque === epoque) ? col.bancPris.ids : [];
+  return { epoque, gens: pris.length ? gens.filter((c) => !pris.includes(c.id)) : gens };
 }
 
 /**
@@ -87,21 +98,30 @@ export function bancDe(state, col, rng, t) {
  * d'entasser du monde, c'est la cohésion qui se délite (voir groupes.js), pas
  * une règle qui interdit.
  */
-export function engager(state, col, index, log, groupe) {
+export function engager(state, col, id, log, groupe) {
   const g = groupe || (state.player.groupes || [])[0];
   if (!g) return { ok: false, motif: 'Aucun groupe.' };
   if (!col || col.ruine || g.regionId !== col.regionId) {
     return { ok: false, motif: 'Il faut être en ville.' };
   }
-  const banc = col.banc;
-  if (!banc || !banc.gens[index]) return { ok: false, motif: 'Cette personne s’est placée ailleurs.' };
-  const c = banc.gens[index];
+  // Par identifiant, plus par rang dans la liste : le banc n'est plus un objet
+  // qu'on garde en main, c'est une vue qu'on recalcule. Un rang ne veut rien
+  // dire d'un calcul à l'autre — un identifiant, si.
+  const banc = bancDerive(col, state.temps);
+  const c = banc.gens.find((x) => x.id === id);
+  if (!c) return { ok: false, motif: 'Cette personne s’est placée ailleurs.' };
   const prix = primeDe(state, col, c);
   if (state.player.credits < prix) {
     return { ok: false, motif: `Il manque ${prix - state.player.credits} cr.` };
   }
   state.player.credits -= prix;
-  banc.gens.splice(index, 1);
+  // La promotion par le toucher : c'est ici, et seulement ici, qu'un individu
+  // dérivé entre dans l'état. Le registre est remis à zéro quand l'époque
+  // tourne — on ne garde pas la mémoire de gens qui ne sont plus là.
+  if (!col.bancPris || col.bancPris.epoque !== banc.epoque) {
+    col.bancPris = { epoque: banc.epoque, ids: [] };
+  }
+  col.bancPris.ids.push(c.id);
   g.membres.push(c);
   if (log) {
     log({

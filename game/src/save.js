@@ -154,7 +154,10 @@ export function normaliser(state) {
     if (!c.notables) c.notables = [];
     // Avant le banc de recrutement, on tirait un inconnu au sort en payant
     // d'avance. Le premier passage en ville en garnit un.
-    if (c.banc === undefined) c.banc = null;
+    // Le banc n'est plus de l'état : il se dérive de la ville et de l'heure
+    // (voir `bancDerive`). Les vieilles sauvegardes en portent un, on le jette.
+    if (c.banc !== undefined) delete c.banc;
+    if (c.bancPris === undefined) c.bancPris = null;
     // Avant la justice, une ville n'enfermait personne.
     if (c.geole === undefined) c.geole = null;
     // Avant les services, ces gens n'attendaient rien et ne retenaient rien.

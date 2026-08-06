@@ -27,7 +27,6 @@ import { pourvoirCharges } from './notables.js';
 import { creerDirigeant, crediterDirigeant } from './dirigeants.js';
 import { tickFormation } from './formation.js';
 import { rafraichirPanneaux, tickContrats } from './contrats.js';
-import { bancDe } from './recrues.js';
 import {
   tickAllegeance, palierBonus, rangDe, estimeEngagement, renfortMilice,
 } from './allegeance.js';
@@ -452,16 +451,16 @@ export function tick(state) {
     col.vuA = state.temps;
     // La réputation locale infléchit ce que les gens d'ici pensent de vous.
     const rep = (col.faction && state.player.reputation[col.faction]) || 0;
-    // Être là change ce qui vit : le banc de recrutement ne se garnit que sous
-    // nos yeux. `yeux` contient aussi la région de l'avant-poste, mais on ne
-    // fonde jamais un avant-poste sur une ville : pour une colonie, c'est bien
-    // « un groupe est ici ».
+    // `yeux` contient aussi la région de l'avant-poste, mais on ne fonde jamais
+    // un avant-poste sur une ville : pour une colonie, c'est bien « un groupe
+    // est ici ».
     const present = yeux.includes(col.regionId);
-    // Le banc de recrutement ne se garnit que là où l'on est. Le tenir à jour
-    // dans les quatre-vingt-six villes, ce serait deux cents personnages
-    // inventés pour rien dans chaque sauvegarde.
-    if (present) bancDe(state, col, rng, state.temps);
-    else if (col.banc) col.banc = null;
+    // Le banc de recrutement ne se fabrique plus ici. Il se DÉRIVE de la ville
+    // et de l'heure, au moment où quelqu'un le regarde (`bancDerive`). Ce qu'on
+    // vient de supprimer était le seul endroit où le monde lisait la position du
+    // joueur pour décider qui existe — et où les tirages d'un banc sortaient du
+    // flux scellé, si bien qu'à graine égale le monde divergeait selon le trajet
+    // du promeneur. Voir INDIVIDUS.md, lot 2.
     // La vitrine d'un avant-poste n'a pas d'économie propre : sa vérité est
     // dans `state.base`, et la simuler ici la ferait vivre deux fois.
     if (col.avantPoste) { col.vuA = state.temps; continue; }

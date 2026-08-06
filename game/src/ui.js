@@ -67,7 +67,7 @@ import {
 } from './formation.js';
 import { CHARGES, CARACTERES, margeMarchand, vocation } from './notables.js';
 import { demandesIci, souvenirs, faveurChef, SOINS_SEUIL, REGISTRES_SEUIL } from './services.js';
-import { primeDe, apercu, tensionRecrutement } from './recrues.js';
+import { primeDe, apercu, tensionRecrutement, bancDerive } from './recrues.js';
 import {
   prisonniersDe, capaciteGarde, surveillanceManquante, optionsPour,
   lenteurPrisonniers, geoleDe,
@@ -4939,7 +4939,7 @@ function modaleRecrutement() {
   const ici = vivantsDe(g).length;
   const plafond = plafondCohesion(S, g);
   const apres = Math.max(12, 100 / (1 + Math.max(0, ici + 1 - noy) / 7));
-  const banc = (col.banc && col.banc.gens) || [];
+  const banc = bancDerive(col, S.temps).gens;
 
   const gens = banc.length ? banc.map((c, i) => {
     const prix = primeDe(S, col, c);
@@ -4955,7 +4955,7 @@ function modaleRecrutement() {
     e(TRAITS[t] ? TRAITS[t].nom : t)).join(' · ')}</div>` : ''}
       <div class="ligne"><span class="k">Prime</span><span class="v">${n(prix)} cr</span></div>
       <button class="act mini${S.player.credits >= prix ? ' primaire' : ''}"
-        data-a="recruter" data-i="${i}" style="margin-top:4px"
+        data-a="recruter" data-i="${e(c.id)}" style="margin-top:4px"
         ${S.player.credits < prix ? 'disabled' : ''}>
         ${S.player.credits < prix ? 'Crédits insuffisants' : 'Engager'}</button>
     </div>`;

@@ -1462,7 +1462,8 @@ export function reconnaitreAvantPoste(state, log) {
     creancier: null,
     cession: null,
     prises: 0,
-    banc: null,
+    // Le registre des engagements du banc. Le banc lui-même se dérive.
+    bancPris: null,
     geole: null,
     emplois: null,
     notables: [],

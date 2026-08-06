@@ -132,57 +132,36 @@ verraient le même banc sans échanger un octet. Deux instabilités assumées pa
 franchit un quart renouvelle son banc en pleine époque — rare, sans
 conséquence, et dit ici.
 
-- [ ] **I2.1. `bancDerive`** dans `src/recrues.js`, à côté de l'ancien code
-  (pas encore branchée). Tests rouges d'abord :
-  - « le banc d'une ville est le même pour tout observateur » — deux appels,
-    même `t`, même contenu au bit près (`JSON.stringify` égaux) ;
-  - « l'époque tourne, le banc change » — `t` et `t + DUREE_BANC` diffèrent ;
-  - « l'agitation ne secoue le banc qu'au quart » — deux appels dans la même
-    époque, `col.unrest` bougé de 0,03 entre les deux (sans franchir un
-    quart) : même contenu ;
-  - « matérialiser ne consomme pas le flux principal » — `state.rngState`
-    inchangé autour de l'appel.
-- [ ] **I2.2. Le recrutement promeut.** `engager` recalcule `bancDerive`,
-  retrouve le personnage **par `id`** (plus par index : l'appelant
-  `main.js:349` passe `Number(index)` aujourd'hui — il passe à l'id, et le
-  `data-a` de l'écran de recrutement `ui.js:4942` émet l'id), le pousse dans
-  `g.membres`, écrit `col.bancPris` (créé ou remplacé si l'époque a tourné),
-  débite, journalise — même déroulé qu'aujourd'hui (`recrues.js:90-116`).
-  `col.bancPris` passe par `normaliser` — écart assumé à R1 §1, dit ici : ce
-  champ naît **absent** (`normaliser` → `null`), aucun lieu de création ne le
-  pose, il n'existe qu'après un premier recrutement. Test rouge :
-  « recruter retire du banc, et le banc régénéré ne le contient plus ».
-- [ ] **I2.3. Bascule et démolition.** Les sites, énumérés et vérifiés dans le
-  code — c'est la liste complète, le critère grep prouve qu'elle l'est restée :
+- [x] **I2.1. `bancDerive`** — pure fonction de la ville et de l'heure, avec
+  l'agitation quantifiée au quart (elle entre à la fois dans la graine et dans
+  le nombre de gens, sinon la liste changerait de longueur sans que la graine
+  change). Tests : même contenu pour tout observateur, l'époque qui tourne,
+  le frémissement d'agitation qui ne renouvelle rien, et le flux scellé
+  inchangé après matérialisation des 86 villes.
+- [x] **I2.2. Le recrutement promeut.** `engager` prend un **identifiant** et
+  non plus un rang : un rang ne veut rien dire d'un calcul à l'autre. Il pose
+  `col.bancPris = { epoque, ids }` — le seul résidu en état, oublié dès que
+  l'époque tourne. Créé aux **trois** endroits qui fabriquent une colonie
+  (`world.js`, `base.js` pour la vitrine, `factions.js` pour une fondation) et
+  dans `normaliser`, qui jette au passage l'ancien `banc` des vieilles parties.
+- [x] **I2.3. Bascule et démolition.** `sim.js` ne fabrique ni n'efface plus
+  rien ; `genererBanc` et `bancDe` sont supprimés ; l'écran lit `bancDerive` et
+  son bouton porte l'identifiant. Critère mécanique tenu : `grep "col\.banc"`
+  dans `src/` ne rend plus rien.
+- [x] **I2.4. Ce que le lot prouve — et ce qu'il ne prouve pas.**
+  **Prouvé** : après trois cents heures passées en ville, plus une seule
+  personne dérivée ne dort dans la sauvegarde, et plus une ville ne porte la
+  clé. Le monde ne fabrique plus personne, donc il n'a plus rien à ranger.
+  **Pas encore prouvé, et le cahier des charges promettait trop ici** : que la
+  position du joueur ne déplace plus rien. Elle change encore la *maille* des
+  colonies (`pasColonie`), donc le nombre d'appels au tick, donc la
+  consommation du flux partagé — et un flux partagé contamine tout. La preuve
+  entière appartient au lot 3.
 
-  | site | quoi |
-  |---|---|
-  | `sim.js:463-464` | matérialisation/purge par présence — **supprimé** |
-  | `recrues.js:65-77` (`genererBanc`), `:79-83` (`bancDe`) | **supprimés**, remplacés par `bancDerive` |
-  | `recrues.js:96-98, 104` (`engager`) | lit `bancDerive`, écrit `bancPris` (I2.2) |
-  | `ui.js:4942` | l'écran lit `bancDerive(col, state.temps)` |
-  | `main.js:349` | l'action de recrutement passe l'id (I2.2) |
-  | `world.js:184`, `base.js:1465`, `factions.js:854` | `banc: null` à la création — **retirés** |
-  | `save.js:157` | `c.banc = null` devient `delete c.banc` |
-  | `test/headless.js:3881, 3912, 3919` | les tests du banc se réécrivent sur `bancDerive` |
-
-  Critère mécanique : `grep -rn "col\.banc\b" src/ | grep -v bancPris` = **0
-  partout** ; `grep -n "c\.banc\b" src/save.js` = **1 seule ligne**, le
-  `delete` de `normaliser` ; tests navigateur verts (l'écran de recrutement n'a
-  pas changé de comportement) ; banc contre la révision précédente — le monde
-  bouge (les tirages du banc quittent le flux principal), les gardes de
-  `CIBLES.json` tiennent.
-- [ ] **I2.4. La preuve, à la mesure de ce que le lot prouve.** Pas de
-  comparaison de `rngState` entre deux positions du joueur : la maille des
-  colonies (`pasColonie`) dépend encore de la position et les rencontres de
-  l'escouade tirent selon la région — c'est le lot 3 et au-delà. Ce qui se
-  prouve ici, mécaniquement :
-  - grep : `bancDe` et `genererBanc` n'apparaissent plus dans `sim.js` ;
-  - le test de pureté d'I2.1 (le flux ne bouge pas autour de `bancDerive`) ;
-  - test rouge « regarder ne tire pas » : deux parties à graine égale, même
-    trajet ; dans l'une on appelle `bancDerive` cinquante fois en cours de
-    route, dans l'autre jamais — `state.rngState` et le monde finissent
-    identiques au bit près.
+  **Ce que le lot coûte au monde**, mesuré contre la révision d'avant, 6 graines
+  × 6 000 h : villes 517 → **506**, population 57 893 → **55 312**, factions
+  écrasées 1/36 → **2/36**, guerres 21 → 13, écart comptable 0. Le monde change
+  parce que les tirages du banc ont quitté le flux — c'était le but.
 
 ### Lot 3 — le flux par colonie (le monde cesse de lire le joueur, seconde moitié)
 

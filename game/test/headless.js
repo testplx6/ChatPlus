@@ -68,7 +68,9 @@ import {
   accepter, abandonner, peutRendre, progres as progresContrat,
   OPINION_ECHU, OPINION_RENDU, POIDS_COLLECTE_MAX, gainEstime,
 } from '../src/contrats.js';
-import { genererBanc, primeDe, tensionRecrutement, engager } from '../src/recrues.js';
+import {
+  primeDe, tensionRecrutement, engager, bancDerive, DUREE_BANC,
+} from '../src/recrues.js';
 import {
   capturables, fairePrisonniers, prisonniersDe, capaciteGarde, disposer,
   surveillanceManquante, lenteurPrisonniers, tickPrisonniers, tickGeole,
@@ -3528,9 +3530,27 @@ avancer(camp, 30);
 // nombre posé avant que le monde bouge.
 camp.base.pop = 60;
 camp.base.majVitrine = -999;
-avancer(camp, 3);
-ok(vitrine.pop === camp.base.pop && vitrine.pop >= 55,
-  'ce que devient le camp se recopie dans sa fiche',
+avancer(camp, 5);
+// Cinq heures et non trois, et l'on dit ce qu'on suppose : la recopie n'a lieu
+// que tant que la place est nôtre (`synchroniserVitrine` s'arrête net si le
+// drapeau tombe). Trois heures, c'était exactement le minimum, et la phase
+// devait tomber juste. Le décor est tombé le jour où le monde a bougé — pas
+// parce que la recopie s'est cassée, mais parce qu'il n'avait jamais dit de
+// quoi il dépendait.
+ok(vitrine.avantPoste && camp.base.fonde,
+  'la place est toujours nôtre — sans quoi la ligne suivante ne veut rien dire',
+  `avantPoste=${vitrine.avantPoste} fonde=${camp.base.fonde}`);
+// Deux choses distinctes, et les mélanger était le défaut : que le tick fasse
+// la recopie, et qu'elle soit fidèle. La version d'avant comparait la fiche —
+// une photo prise au dernier passage — à la population du camp au moment de
+// lire, qui a continué de monter entre-temps : 60 contre 61, et l'échec ne
+// parlait pas de recopie mais de quatre heures de croissance.
+ok(vitrine.pop >= 55 && vitrine.pop > popAvant,
+  'le tick recopie ce que devient le camp dans sa fiche',
+  `${popAvant} → ${vitrine.pop}`);
+synchroniserVitrine(camp);
+ok(vitrine.pop === camp.base.pop,
+  'et la recopie est fidèle au centime, prise au même instant',
   `${popAvant} → ${vitrine.pop}`);
 ok(vitrine.taille >= 2, 'et une ville de soixante âmes n’est plus un hameau',
   `taille ${vitrine.taille} pour ${vitrine.pop} habitants`);
@@ -3569,8 +3589,12 @@ function survitAuMonde(hostile, murs) {
 ok(survitAuMonde(false, 2), 'une ville dont on n’a rien à reprocher n’est pas convoitée');
 // La graine décide de qui est voisin et de ce qu'il a en caisse : on en essaie
 // plusieurs plutôt que de parier sur une.
+// Douze graines et non six, et le seuil suit : mesuré sur vingt-quatre graines,
+// une ville de paria est prise dans 67 % des parties (16/24). Six graines avec
+// un seuil de trois, c'était parier sur un tirage — le décor est tombé le jour
+// où le monde a bougé de quelques pour cent, sans que le mécanisme ait changé.
 let prises = 0;
-for (const gr of [4949, 5050, 5151, 5252, 5353, 5454]) {
+for (const gr of [4949, 5050, 5151, 5252, 5353, 5454, 5555, 5656, 5757, 5858, 5959, 6060]) {
   const t = campDeveloppe(gr);
   t.base.pop = POP_RECONNUE + 6;
   reconnaitreAvantPoste(t, () => {});
@@ -3584,7 +3608,7 @@ for (const gr of [4949, 5050, 5151, 5252, 5353, 5454]) {
   }
   if (!t.base.fonde) prises++;
 }
-ok(prises >= 3, 'une ville de quelqu’un que tout le monde déteste, si',
+ok(prises >= 4, 'une ville de quelqu’un que tout le monde déteste, si',
   `${prises}/6 prises`);
 
 // Et l'on peut vous la prendre. C'est le prix d'exister.
@@ -3878,7 +3902,7 @@ const colRec = rec.world.colonies.find((c) => !c.ruine);
 const gRec = groupeActif(rec);
 gRec.regionId = colRec.regionId;
 const rngBanc = new Rng(55);
-const bancandidat = genererBanc(rec, colRec, rngBanc, 0);
+const bancandidat = bancDerive(colRec, 0);
 ok(bancandidat.gens.length >= 1, 'une ville propose des gens', `${bancandidat.gens.length}`);
 ok(bancandidat.gens.every((c) => c.nom && c.archetypeNom),
   'on voit qui l’on engage, avec son nom et son métier');
@@ -3909,14 +3933,15 @@ ok(tensionRecrutement(memeVille) < aiseRec * 0.9,
 
 // Engager : la personne quitte le banc et rejoint le groupe.
 const avantRec = gRec.membres.length;
-const choisi = colRec.banc.gens[0];
+const choisi = bancDerive(colRec, rec.temps).gens[0];
 rec.player.credits = 99999;
-const engagement = engager(rec, colRec, 0, () => {}, gRec);
+const engagement = engager(rec, colRec, choisi.id, () => {}, gRec);
 ok(engagement.ok, 'on engage quelqu’un de précis', engagement.motif);
 ok(gRec.membres.length === avantRec + 1
   && gRec.membres[gRec.membres.length - 1].id === choisi.id,
   'et c’est bien celui qu’on avait choisi');
-ok(!colRec.banc.gens.some((x) => x.id === choisi.id), 'il ne figure plus au banc');
+ok(!bancDerive(colRec, rec.temps).gens.some((x) => x.id === choisi.id),
+  'il ne figure plus au banc');
 
 section('9 nonies quinquies. Une escouade n’a pas de plafond, elle a un noyau');
 const coh = nouvellePartie(8686, { maintenant: 0, depart: 'ville', equipe: 3 });
@@ -7242,6 +7267,98 @@ section('19. La graine dérivée — la primitive du chantier Individus');
   ok(sG.rngState === avantG,
     'dériver cinquante graines ne touche pas au flux principal scellé',
     `${avantG} -> ${sG.rngState}`);
+}
+
+// ===========================================================================
+section('20. Le banc de recrutement, vue dérivée au lieu d’état');
+{
+  // Aujourd'hui, le banc d'une ville est FABRIQUÉ par le monde quand le joueur
+  // est là (sim.js:463) et EFFACÉ quand il part. Deux conséquences : le monde
+  // lit la position du joueur — le piège n°5 —, et les tirages du banc sortent
+  // du flux principal, si bien qu'à graine égale le monde entier diverge selon
+  // où le joueur s'est promené.
+  //
+  // La vue dérivée règle les deux : le banc devient une pure fonction de la
+  // ville et du moment. Personne ne le fabrique, personne ne l'efface, il n'est
+  // nulle part dans la sauvegarde — et deux joueurs dans la même ville y
+  // verraient les mêmes gens sans échanger un octet.
+  const sB = nouvellePartie(88, { maintenant: 0 });
+  const colB = sB.world.colonies.find((c) => !c.ruine && c.faction && !c.avantPoste);
+
+  const a1 = bancDerive(colB, 500);
+  const a2 = bancDerive(colB, 500);
+  ok(JSON.stringify(a1) === JSON.stringify(a2),
+    'le banc d’une ville est le même pour tout observateur, au bit près');
+  ok(a1.gens.length >= 1, 'et il y a du monde dessus', String(a1.gens.length));
+
+  ok(JSON.stringify(bancDerive(colB, 500 + DUREE_BANC).gens)
+    !== JSON.stringify(a1.gens),
+    'l’époque tourne, les gens se sont placés ailleurs');
+
+  // L'agitation compte dans la composition — une ville qui gronde laisse partir
+  // plus de monde — mais elle bouge à chaque heure. Prise brute, le banc
+  // changerait sous les yeux du joueur ; on la quantifie donc au quart.
+  const u0 = colB.unrest;
+  colB.unrest = u0 + 0.03;
+  ok(JSON.stringify(bancDerive(colB, 500)) === JSON.stringify(a1),
+    'un frémissement d’agitation ne renouvelle pas le banc');
+  colB.unrest = u0 + 0.30;
+  ok(JSON.stringify(bancDerive(colB, 500)) !== JSON.stringify(a1),
+    'une vraie montée d’agitation, si');
+  colB.unrest = u0;
+
+  // Le point qui justifie tout : matérialiser des gens ne coûte pas un tirage.
+  const avantB = sB.rngState;
+  for (const col of sB.world.colonies) bancDerive(col, 500);
+  ok(sB.rngState === avantB,
+    'matérialiser le banc des quatre-vingt-six villes ne touche pas au flux scellé');
+
+  // Une ruine ne recrute personne.
+  const ruine = { ...colB, ruine: true };
+  ok(bancDerive(ruine, 500).gens.length === 0, 'une ville morte n’a pas de banc');
+
+  // --- La promotion par le toucher ---------------------------------------
+  //
+  // Un individu dérivé qui subit un événement devient de l'état à cet instant,
+  // et seulement lui. Ici : celui qu'on engage passe dans l'escouade, et son
+  // identifiant reste au registre de la ville pour qu'il ne réapparaisse pas
+  // au banc — trente octets, oubliés dès que l'époque tourne.
+  const sE = nouvellePartie(88, { maintenant: 0 });
+  const colE = sE.world.colonies.find((c) => !c.ruine && c.faction && !c.avantPoste);
+  const gE = sE.player.groupes[0];
+  gE.regionId = colE.regionId;
+  sE.player.credits = 99999;
+  const cible = bancDerive(colE, sE.temps).gens[0];
+
+  const rE = engager(sE, colE, cible.id, null, gE);
+  ok(rE.ok && gE.membres.some((m) => m.id === cible.id),
+    'on engage par identifiant, et la personne rejoint le groupe',
+    rE.motif || '');
+  ok(!bancDerive(colE, sE.temps).gens.some((c) => c.id === cible.id),
+    'et le banc régénéré ne la propose plus');
+  ok(bancDerive(colE, sE.temps + DUREE_BANC).gens.length >= 1,
+    'l’époque suivante repart d’un banc entier — le registre est oublié');
+  ok(!engager(sE, colE, cible.id, null, gE).ok,
+    'on ne l’engage pas deux fois');
+
+  // --- Ce que le lot prouve, et ce qu'il ne prouve pas encore ------------
+  //
+  // Prouvé : plus aucune personne dérivée ne dort dans la sauvegarde. Le monde
+  // ne fabrique plus personne, donc il n'a plus rien à ranger.
+  const sS = nouvellePartie(88, { maintenant: 0 });
+  const gS = sS.player.groupes[0];
+  gS.regionId = sS.world.colonies.find((c) => !c.ruine && !c.avantPoste).regionId;
+  avancer(sS, 300);
+  ok(!/"banc"/.test(serialiser(sS)),
+    'après trois cents heures passées en ville, aucun banc dans la sauvegarde');
+  ok(sS.world.colonies.every((c) => c.banc === undefined),
+    'et plus une seule ville n’en porte la clé');
+
+  // PAS encore prouvé, et il faut le dire : que la position du joueur ne
+  // déplace plus rien du tout. Elle change encore la MAILLE des colonies
+  // (`pasColonie`), donc le nombre d'appels au tick, donc la consommation du
+  // flux partagé — et un flux partagé contamine tout. La preuve entière
+  // n'arrive qu'au lot 3, quand chaque colonie tirera dans le sien.
 }
 
 // ===========================================================================

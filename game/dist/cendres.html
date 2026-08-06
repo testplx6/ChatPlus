@@ -2883,10 +2883,12 @@ function genererColonies(rng, regions) {
       unrest: Number(rng.range(0, 0.2).toFixed(2)),
       // Qui travaille à quoi. Rempli une fois la faction attribuée.
       emplois: null,
-      // Qui cherche à partir d'ici. Ne se garnit que quand le joueur y est :
-      // voir recrues.js. La clé existe dès la création, sinon `normaliser`
-      // l'ajoute au rechargement et l'aller-retour JSON n'est plus exact.
-      banc: null,
+      // Le registre des gens déjà engagés au banc, pour l'époque en cours. Le
+      // banc lui-même n'est pas de l'état : il se dérive de la ville et de
+      // l'heure (voir `bancDerive` dans recrues.js). La clé existe dès la
+      // création, sinon `normaliser` l'ajoute au rechargement et l'aller-retour
+      // JSON n'est plus exact.
+      bancPris: null,
       // Qui la ville tient enfermé. Voir justice.js.
       geole: null,
       marche: 1 + taille * 0.35,
@@ -5393,28 +5395,38 @@ function primeDe(state, col, c) {
 }
 
 /**
- * Le banc d'une ville : qui s'y trouve, en ce moment, prêt à partir. Une grande
- * ville en propose plus ; une ville qui gronde en propose beaucoup plus, parce
- * que tout le monde veut s'en aller.
+ * Le banc d'une ville, **dérivé** : une pure fonction de l'endroit et du moment.
+ *
+ * Personne ne le fabrique, personne ne l'efface, il n'est nulle part dans la
+ * sauvegarde. Deux joueurs dans la même ville y verraient les mêmes gens sans
+ * échanger un octet, et le monde n'a plus besoin de savoir où se trouve le
+ * joueur pour décider qui existe — c'est le piège n°5 réparé.
+ *
+ * L'agitation entre dans la composition, parce qu'une ville qui gronde laisse
+ * partir plus de monde et que c'est une règle de jeu qu'on garde. Mais elle
+ * bouge à chaque heure : prise brute, le banc se renouvellerait sous les yeux
+ * du joueur. On la quantifie donc au quart, et c'est ce quart-là qui entre à la
+ * fois dans la graine et dans le nombre de gens — sans quoi la liste changerait
+ * de longueur sans que la graine change.
+ *
+ * Ce qui reste en état, et seulement au moment où l'on touche : `col.bancPris`,
+ * les identifiants déjà engagés cette époque-ci. Une trentaine d'octets, oubliés
+ * dès que l'époque tourne.
  */
-function genererBanc(state, col, rng, t) {
-  const combien = Math.max(1, Math.min(5,
-    Math.round(1 + col.taille * 0.8 + (col.unrest || 0) * 4)));
+function bancDerive(col, t) {
+  if (!col || col.ruine) return { epoque: 0, gens: [] };
+  const epoque = Math.floor(t / DUREE_BANC);
+  const agitation = Math.round((col.unrest || 0) * 4);
+  const rng = new Rng(grainDe('banc', col.id, epoque, col.taille, agitation));
+  const combien = Math.max(1, Math.min(5, Math.round(1 + col.taille * 0.8 + agitation)));
   const gens = [];
   for (let i = 0; i < combien; i++) {
     // Le niveau suit la ville : on ne trouve pas de vétéran dans un hameau.
     const niveau = rng.weighted([[0, 4], [1, 3], [2, 1.5 + col.taille], [3, col.taille * 0.6]]);
-    const c = makeCharacter(rng, { archetype: rng.pick(ARCHETYPE_KEYS), niveau });
-    gens.push(c);
+    gens.push(makeCharacter(rng, { archetype: rng.pick(ARCHETYPE_KEYS), niveau }));
   }
-  col.banc = { gens, expire: t + DUREE_BANC };
-  return col.banc;
-}
-
-function bancDe(state, col, rng, t) {
-  if (!col || col.ruine) return null;
-  if (!col.banc || t >= col.banc.expire) genererBanc(state, col, rng, t);
-  return col.banc;
+  const pris = (col.bancPris && col.bancPris.epoque === epoque) ? col.bancPris.ids : [];
+  return { epoque, gens: pris.length ? gens.filter((c) => !pris.includes(c.id)) : gens };
 }
 
 /**
@@ -5422,21 +5434,30 @@ function bancDe(state, col, rng, t) {
  * d'entasser du monde, c'est la cohésion qui se délite (voir groupes.js), pas
  * une règle qui interdit.
  */
-function engager(state, col, index, log, groupe) {
+function engager(state, col, id, log, groupe) {
   const g = groupe || (state.player.groupes || [])[0];
   if (!g) return { ok: false, motif: 'Aucun groupe.' };
   if (!col || col.ruine || g.regionId !== col.regionId) {
     return { ok: false, motif: 'Il faut être en ville.' };
   }
-  const banc = col.banc;
-  if (!banc || !banc.gens[index]) return { ok: false, motif: 'Cette personne s’est placée ailleurs.' };
-  const c = banc.gens[index];
+  // Par identifiant, plus par rang dans la liste : le banc n'est plus un objet
+  // qu'on garde en main, c'est une vue qu'on recalcule. Un rang ne veut rien
+  // dire d'un calcul à l'autre — un identifiant, si.
+  const banc = bancDerive(col, state.temps);
+  const c = banc.gens.find((x) => x.id === id);
+  if (!c) return { ok: false, motif: 'Cette personne s’est placée ailleurs.' };
   const prix = primeDe(state, col, c);
   if (state.player.credits < prix) {
     return { ok: false, motif: `Il manque ${prix - state.player.credits} cr.` };
   }
   state.player.credits -= prix;
-  banc.gens.splice(index, 1);
+  // La promotion par le toucher : c'est ici, et seulement ici, qu'un individu
+  // dérivé entre dans l'état. Le registre est remis à zéro quand l'époque
+  // tourne — on ne garde pas la mémoire de gens qui ne sont plus là.
+  if (!col.bancPris || col.bancPris.epoque !== banc.epoque) {
+    col.bancPris = { epoque: banc.epoque, ids: [] };
+  }
+  col.bancPris.ids.push(c.id);
   g.membres.push(c);
   if (log) {
     log({
@@ -11822,7 +11843,8 @@ function fonderColonie(world, key, region, rng, t) {
     creancier: null,
     cession: null,
     prises: 0,
-    banc: null,
+    // Le registre des engagements du banc. Le banc lui-même se dérive.
+    bancPris: null,
     geole: null,
     declin: 0,
     fondeeA: t,
@@ -15589,7 +15611,8 @@ function reconnaitreAvantPoste(state, log) {
     creancier: null,
     cession: null,
     prises: 0,
-    banc: null,
+    // Le registre des engagements du banc. Le banc lui-même se dérive.
+    bancPris: null,
     geole: null,
     emplois: null,
     notables: [],
@@ -19176,7 +19199,10 @@ function normaliser(state) {
     if (!c.notables) c.notables = [];
     // Avant le banc de recrutement, on tirait un inconnu au sort en payant
     // d'avance. Le premier passage en ville en garnit un.
-    if (c.banc === undefined) c.banc = null;
+    // Le banc n'est plus de l'état : il se dérive de la ville et de l'heure
+    // (voir `bancDerive`). Les vieilles sauvegardes en portent un, on le jette.
+    if (c.banc !== undefined) delete c.banc;
+    if (c.bancPris === undefined) c.bancPris = null;
     // Avant la justice, une ville n'enfermait personne.
     if (c.geole === undefined) c.geole = null;
     // Avant les services, ces gens n'attendaient rien et ne retenaient rien.
@@ -19944,16 +19970,16 @@ function tick(state) {
     col.vuA = state.temps;
     // La réputation locale infléchit ce que les gens d'ici pensent de vous.
     const rep = (col.faction && state.player.reputation[col.faction]) || 0;
-    // Être là change ce qui vit : le banc de recrutement ne se garnit que sous
-    // nos yeux. `yeux` contient aussi la région de l'avant-poste, mais on ne
-    // fonde jamais un avant-poste sur une ville : pour une colonie, c'est bien
-    // « un groupe est ici ».
+    // `yeux` contient aussi la région de l'avant-poste, mais on ne fonde jamais
+    // un avant-poste sur une ville : pour une colonie, c'est bien « un groupe
+    // est ici ».
     const present = yeux.includes(col.regionId);
-    // Le banc de recrutement ne se garnit que là où l'on est. Le tenir à jour
-    // dans les quatre-vingt-six villes, ce serait deux cents personnages
-    // inventés pour rien dans chaque sauvegarde.
-    if (present) bancDe(state, col, rng, state.temps);
-    else if (col.banc) col.banc = null;
+    // Le banc de recrutement ne se fabrique plus ici. Il se DÉRIVE de la ville
+    // et de l'heure, au moment où quelqu'un le regarde (`bancDerive`). Ce qu'on
+    // vient de supprimer était le seul endroit où le monde lisait la position du
+    // joueur pour décider qui existe — et où les tirages d'un banc sortaient du
+    // flux scellé, si bien qu'à graine égale le monde divergeait selon le trajet
+    // du promeneur. Voir INDIVIDUS.md, lot 2.
     // La vitrine d'un avant-poste n'a pas d'économie propre : sa vérité est
     // dans `state.base`, et la simuler ici la ferait vivre deux fois.
     if (col.avantPoste) { col.vuA = state.temps; continue; }
@@ -25065,7 +25091,7 @@ function modaleRecrutement() {
   const ici = vivantsDe(g).length;
   const plafond = plafondCohesion(S, g);
   const apres = Math.max(12, 100 / (1 + Math.max(0, ici + 1 - noy) / 7));
-  const banc = (col.banc && col.banc.gens) || [];
+  const banc = bancDerive(col, S.temps).gens;
 
   const gens = banc.length ? banc.map((c, i) => {
     const prix = primeDe(S, col, c);
@@ -25081,7 +25107,7 @@ function modaleRecrutement() {
     e(TRAITS[t] ? TRAITS[t].nom : t)).join(' · ')}</div>` : ''}
       <div class="ligne"><span class="k">Prime</span><span class="v">${n(prix)} cr</span></div>
       <button class="act mini${S.player.credits >= prix ? ' primaire' : ''}"
-        data-a="recruter" data-i="${i}" style="margin-top:4px"
+        data-a="recruter" data-i="${e(c.id)}" style="margin-top:4px"
         ${S.player.credits < prix ? 'disabled' : ''}>
         ${S.player.credits < prix ? 'Crédits insuffisants' : 'Engager'}</button>
     </div>`;

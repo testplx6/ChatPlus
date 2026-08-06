@@ -851,7 +851,8 @@ export function fonderColonie(world, key, region, rng, t) {
     creancier: null,
     cession: null,
     prises: 0,
-    banc: null,
+    // Le registre des engagements du banc. Le banc lui-même se dérive.
+    bancPris: null,
     geole: null,
     declin: 0,
     fondeeA: t,
