@@ -77,11 +77,11 @@ export function primeDe(state, col, c) {
  * les identifiants déjà engagés cette époque-ci. Une trentaine d'octets, oubliés
  * dès que l'époque tourne.
  */
-export function bancDerive(col, t) {
+export function bancDerive(col, t, graine = 0) {
   if (!col || col.ruine) return { epoque: 0, gens: [] };
   const epoque = Math.floor(t / DUREE_BANC);
   const agitation = Math.round((col.unrest || 0) * 4);
-  const rng = new Rng(grainDe('banc', col.id, epoque, col.taille, agitation));
+  const rng = new Rng(grainDe(graine, 'banc', col.id, epoque, col.taille, agitation));
   const combien = Math.max(1, Math.min(5, Math.round(1 + col.taille * 0.8 + agitation)));
   const gens = [];
   for (let i = 0; i < combien; i++) {
@@ -107,7 +107,7 @@ export function engager(state, col, id, log, groupe) {
   // Par identifiant, plus par rang dans la liste : le banc n'est plus un objet
   // qu'on garde en main, c'est une vue qu'on recalcule. Un rang ne veut rien
   // dire d'un calcul à l'autre — un identifiant, si.
-  const banc = bancDerive(col, state.temps);
+  const banc = bancDerive(col, state.temps, state.world.graine);
   const c = banc.gens.find((x) => x.id === id);
   if (!c) return { ok: false, motif: 'Cette personne s’est placée ailleurs.' };
   const prix = primeDe(state, col, c);

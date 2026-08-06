@@ -386,6 +386,50 @@ minutes.
 
 ## Blocages
 
+### Lot 3b — INACHEVÉ : deux étapes rouges, commité mais NON POUSSÉ
+
+Le but du lot est **atteint et prouvé** : `state.rngState` est identique après
+200 heures que le joueur soit immobile dans un coin ou dans l'autre. Armées,
+accords et guerres identiques eux aussi. Le monde ne dépend plus du trajet.
+
+Deux choses restent rouges, et `--complet` avec elles :
+
+1. **Vitesse : ×1,317 de la livraison précédente** (141 µs estimés contre 107),
+   pour un seuil à ×1,08. Cause probable, non confirmée : `grainDe` hache une
+   chaîne **par armée et par heure** (`grainDe(graine, 'armee', id, t)`), et
+   pareil par réseau de caravanes. Les convois ont déjà été corrigés — flux
+   posé une fois à la création, `car.rngEtat`, comme les villes — et il reste à
+   faire la même chose pour les armées. **À reprendre là.**
+2. **Navigateur : expiration sur le bouton « captif / livrer »** — l'élément est
+   trouvé mais ne devient jamais actionnable. Non diagnostiqué. Le monde ayant
+   changé, la mise en scène du décor ne tient probablement plus ; à instruire
+   avant toute conclusion.
+
+Ce qui est fait et tient : flux privé du joueur, conseils/dirigeants/armées par
+dérivation apatride, un dé par convoi, panneaux et étals sur le flux de la
+ville. Effet mesuré sur le monde, 6 graines × 6 000 h : villes 480 → 498,
+population 52 585 → 57 739, factions écrasées 3/36 → 2/36, écart comptable nul,
+les dix gardes tiennent.
+
+
+### Lot 3b — une faction rayée de la carte : drame voulu ou garde à tenir ?
+
+Après la séparation des flux, sur six graines jouées 8 000 heures : **cinq
+gardent leurs six factions, une (4242) en raye une entièrement**. Le décor
+disait « aucune faction n'est rayée » — vrai d'un monde qui n'avait pas de
+drame, et c'est précisément ce qu'on cherchait à changer.
+
+Ce n'est pas une question technique. Une faction effacée de la carte, est-ce le
+drame qu'on veut ou une limite à tenir ? Les gardes de `CIBLES.json` ne
+tranchent pas : elles comptent les factions *écrasées* (deux villes ou moins),
+pas les disparues.
+
+En attendant la décision, le décor a été assoupli à « le monde ne s'effondre
+pas à quelques factions » (≥ 5 sur 6) avec la mesure écrite à côté. **C'est un
+assouplissement, il est signalé comme tel**, et il se resserre d'une ligne si
+la réponse est « une faction ne disparaît jamais ».
+
+
 ### F1a — résolu : la garde de vitesse mesurait l'envers de ce qu'elle croyait
 
 **Correction d'un chiffre publié ici.** J'avais écrit « 166 à 172 µs au calme,

@@ -104,6 +104,12 @@ export function seedFromString(str) {
  * Les morceaux sont séparés par un caractère qu'aucun identifiant ne contient :
  * sans ça `('ab', 'c')` et `('a', 'bc')` rendraient la même graine, et deux
  * villes voisines finiraient par partager leurs gens.
+ *
+ * **Le premier morceau doit toujours être la graine de la partie.** Sans elle,
+ * une dérivation qui ne dépend que du lieu et de l'heure donne les mêmes dés à
+ * *toutes* les parties : deux mondes différents auraient la même chance aux
+ * convois à la même heure. Un décor l'a attrapé — vingt-quatre tirages censés
+ * différer rendaient vingt-quatre fois le même résultat.
  */
 export function grainDe(...morceaux) {
   return seedFromString(morceaux.join('\u0000'));

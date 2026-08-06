@@ -2,7 +2,7 @@
 // hors ligne. `state.world` est la moitié partagée de l'état (celle qui vivrait
 // côté serveur en multijoueur), `state.player` / `state.base` la moitié privée.
 
-import { Rng } from './rng.js';
+import { Rng, grainDe } from './rng.js';
 import { FACTIONS, DIPLO_FACTIONS } from './data.js';
 import { genererMonde, decouvrir, colonieParId, nomRegion, distance } from './world.js';
 import { makeCharacter, idDepuisRng, ARCHETYPE_KEYS } from './characters.js';
@@ -26,7 +26,7 @@ import { poserMasseInitiale } from './monnaie.js';
 import { pourvoirCharges } from './notables.js';
 import { creerDirigeant, crediterDirigeant } from './dirigeants.js';
 import { tickFormation } from './formation.js';
-import { rafraichirPanneaux, tickContrats } from './contrats.js';
+import { rafraichirPanneaux, genererContrats, tickContrats } from './contrats.js';
 import {
   tickAllegeance, palierBonus, rangDe, estimeEngagement, renfortMilice,
 } from './allegeance.js';
@@ -158,7 +158,7 @@ export const DEPART_DEFAUT = 'survivant';
 
 export function nouvellePartie(seed, opts = {}) {
   const rng = new Rng(seed);
-  const world = genererMonde(rng);
+  const world = genererMonde(rng, seed);
 
   // Le scénario d'ouverture, choisi à l'accueil. Voir DEPARTS juste au-dessus.
   // `'ville'` reste accepté : le banc et le harnais l'emploient partout, et
@@ -247,6 +247,15 @@ export function nouvellePartie(seed, opts = {}) {
     nom: opts.nom || 'Convoi sans nom',
     world,
     player: {
+      // Le hasard du joueur, dans sa poche. Dérivé de l'état du monde à cet
+      // instant — pas un tirage de plus, sinon le monde entier se décale.
+      //
+      // Tout ce que le joueur fait tirait au sac commun : son escouade, son
+      // camp, ses allégeances, ses contrats. Chacun de ces tirages décalait
+      // ceux des factions et des caravanes, si bien que deux parties de même
+      // graine divergeaient parce qu'il avait marché ailleurs. Et `player` est
+      // privé par construction : son hasard n'a rien à faire dans `world`.
+      rngEtat: grainDe('joueur', seed, rng.save()),
       credits: scen.equipe ? 450 : rng.irange(20, 70),
       // Les gens et ce qu'ils portent vivent dans les groupes ; le reste, ici.
       groupes: [premier],
@@ -567,14 +576,23 @@ export function tick(state) {
   tickCoffres(state, log);
 
   // Panneaux d'affichage et étals se renouvellent de loin en loin.
+  // Panneaux et étals se renouvellent avec le hasard DE LA VILLE : ils la
+  // concernent seule, et `palierBonus` lit le joueur — sur le sac commun, le
+  // grade du joueur décidait des tirages du monde entier.
   if (state.temps % 40 === 0) {
-    rafraichirPanneaux(state, rng, state.temps);
     for (const col of state.world.colonies) {
-      if (!col.ruine) etalDe(state.world, col, rng, state.temps, palierBonus(state, col.faction));
+      if (col.ruine) continue;
+      const rngV = new Rng(col.rngEtat);
+      genererContrats(state, col, rngV, state.temps);
+      etalDe(state.world, col, rngV, state.temps, palierBonus(state, col.faction));
+      col.rngEtat = rngV.save();
     }
   }
 
-  // Puis l'avant-poste et l'escouade.
+  // Puis l'avant-poste et l'escouade — sur le flux du joueur, pas sur celui du
+  // monde. C'est la bascule qui rend le monde indifférent au trajet.
+  const rngJoueur = new Rng(state.player.rngEtat);
+  ctx.rng = rngJoueur;
   tickBase(state, log, ctx);
   if (!state.fin) tickSquad(state, log, ctx);
   if (!state.fin) tickContrats(state, log, ctx);
@@ -587,6 +605,9 @@ export function tick(state) {
   if (!state.fin) jugerActes(state, log);
   if (!state.fin) tickCharges(state, log);
   if (!state.fin) tickFormation(state, log);
+
+  state.player.rngEtat = rngJoueur.save();
+  ctx.rng = rng;
 
   // En dernier : on relève ce qu'on a sous les yeux, après que tout a bougé.
   observer(state);

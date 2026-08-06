@@ -243,11 +243,25 @@ mécanismes du monde qui, eux, n'en dépendent pas mais partagent le même flux
 - **les caravanes, par réseau et par heure** : `new Rng(grainDe('reseau', cle,
   t))` dans `departsDuReseau` — la clé du réseau existe déjà (`idReseau`).
 
-- [ ] **I3b.1. L'énumération d'abord.** Recenser TOUS les consommateurs
-  restants du flux principal (grep `rng.` sur les chemins appelés depuis
-  `tick`), classer chacun : *global* (climat…) ou *à basculer*, et écrire la
-  liste ici même avant de coder. Critère : la liste est dans ce document,
-  chaque entrée avec fichier:ligne et sa classe.
+- [x] **I3b.1. L'énumération.** Tous les consommateurs restants du flux
+  principal, classés. Comptés par module (`rng.` sur les chemins appelés depuis
+  `tick`) :
+
+  | consommateur | tirages | classe | où il ira |
+  |---|---:|---|---|
+  | `tickClimat` (`climat.js`) | 2 | **global** | reste au flux principal — le temps qu'il fait est le même pour tout le monde |
+  | `tickFactions` → `conseil`, armées, fondations | 32 | à basculer | `grainDe('conseil', faction, t)`, apatride |
+  | `tickCaravanes` → départs, incidents | 8 | à basculer | `grainDe('reseau', clé, t)`, apatride |
+  | `rafraichirPanneaux` + `etalDe` (`contrats.js`) | 22 | à basculer | le flux de la ville, `col.rngEtat` — il existe déjà |
+  | `tickSquad` | 11 | **joueur** | `state.player.rngEtat`, privé |
+  | `tickBase` | 11 | **joueur** | idem |
+  | `tickAllegeance` | 16 | **joueur** | idem |
+  | `tickContrats`, `tickCharges`, `tickFormation`, `jugerActes` | — | **joueur** | idem |
+  | `notables` | 7 | déjà fait | appelé depuis `tickColonie`, donc sur le flux de la ville |
+  | `secteur`, `bourse`, `connaissance` | 0 | — | ne tirent rien |
+
+  Une fois les trois bascules faites, le flux principal n'est plus consommé que
+  par le climat — deux tirages par heure, les mêmes quel que soit le trajet.
 - [ ] **I3b.2-4. Les trois bascules**, une par commit, chacune re-mesurée au
   banc (gardes tenues).
 - [ ] **I3b.5. La preuve entière.** Test rouge : deux parties à graine égale,

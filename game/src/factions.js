@@ -4,7 +4,7 @@
 import {
   FACTIONS, DIPLO_FACTIONS, COMMODITY_KEYS, MENAGES, COMMODITIES,
 } from './data.js';
-import { grainDe } from './rng.js';
+import { Rng, grainDe } from './rng.js';
 import {
   veutOuvrirBourse, ouvrirBourse, aUneBourse, partenairePossible, signerAccord,
   veutAccord,
@@ -853,7 +853,7 @@ export function fonderColonie(world, key, region, rng, t) {
     cession: null,
     prises: 0,
     // Le hasard de cette ville, à elle seule — dérivé, jamais tiré.
-    rngEtat: grainDe('colonie', `s${world.prochaineColonieId}`),
+    rngEtat: grainDe(world.graine, 'colonie', `s${world.prochaineColonieId}`),
     // Le registre des engagements du banc. Le banc lui-même se dérive.
     bancPris: null,
     geole: null,
@@ -1178,10 +1178,19 @@ export function tickFactions(world, t, log, ctx) {
   // Les cours se republient une fois par jour : une bourse affiche un prix,
   // elle ne le recalcule pas à chaque regard.
   tickBourses(world, t);
+  // Chaque conseil délibère avec son propre hasard, dérivé du pays et de
+  // l'heure — apatride, rien à ranger dans la sauvegarde. Tant qu'ils
+  // puisaient au sac commun, un conseil qui tirait trois fois au lieu de deux
+  // décalait tout ce qui venait après, y compris les caravanes et le climat.
+  const sacCommun = ctx.rng;
   for (const key of Object.keys(world.factions)) {
     const f = world.factions[key];
     f.prochainConseil -= 1;
-    if (f.prochainConseil <= 0) conseil(world, key, t, log, ctx);
+    if (f.prochainConseil <= 0) {
+      ctx.rng = new Rng(grainDe(world.graine, 'conseil', key, t));
+      conseil(world, key, t, log, ctx);
+      ctx.rng = sacCommun;
+    }
   }
 
   // Les chefs vieillissent une fois par jour de jeu, pas vingt-quatre : leur
@@ -1191,13 +1200,18 @@ export function tickFactions(world, t, log, ctx) {
       // Un chef répond aussi de l'humeur de son pays, pas seulement de ses
       // guerres : la grogne moyenne entre directement dans sa légitimité.
       const pays = etatDuPays(world, key);
-      tickDirigeant(world, key, ctx.rng, 24, t, log, pays ? pays.grogne : 0);
+      tickDirigeant(world, key, new Rng(grainDe(world.graine, 'dirigeant', key, t)), 24, t, log,
+        pays ? pays.grogne : 0);
     }
   }
 
   for (const armee of world.armees.slice()) {
     if (!world.armees.includes(armee)) continue;
+    // Une colonne a son propre hasard, dérivé de son nom et de l'heure : deux
+    // colonnes en campagne ne se décalent plus l'une l'autre.
+    ctx.rng = new Rng(grainDe(world.graine, 'armee', armee.id, t));
     tickArmee(world, armee, t, log, ctx);
+    ctx.rng = sacCommun;
   }
 
   // Le plus fort se fait détester : les autres se liguent doucement contre

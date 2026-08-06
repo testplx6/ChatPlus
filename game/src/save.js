@@ -30,6 +30,10 @@ export function serialiser(state) {
  * serait la solution paresseuse.
  */
 export function normaliser(state) {
+  // Le flux privé du joueur — dérivé, jamais tiré (voir sim.js).
+  if (state.player && typeof state.player.rngEtat !== 'number') {
+    state.player.rngEtat = grainDe(state.seed || 0, 'joueur', state.rngState || 0);
+  }
   const p = state.player;
 
   // Avant les groupes, l'escouade était un bloc unique posé sur `player`.
@@ -161,7 +165,7 @@ export function normaliser(state) {
     if (c.bancPris === undefined) c.bancPris = null;
     // Le flux propre de la ville : dérivé de son nom, donc identique à celui
     // qu'une partie neuve lui aurait donné. Pas un tirage.
-    if (typeof c.rngEtat !== 'number') c.rngEtat = grainDe('colonie', c.id);
+    if (typeof c.rngEtat !== 'number') c.rngEtat = grainDe(state.world.graine || 0, 'colonie', c.id);
     // Avant la justice, une ville n'enfermait personne.
     if (c.geole === undefined) c.geole = null;
     // Avant les services, ces gens n'attendaient rien et ne retenaient rien.

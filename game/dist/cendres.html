@@ -815,6 +815,12 @@ function seedFromString(str) {
  * Les morceaux sont séparés par un caractère qu'aucun identifiant ne contient :
  * sans ça `('ab', 'c')` et `('a', 'bc')` rendraient la même graine, et deux
  * villes voisines finiraient par partager leurs gens.
+ *
+ * **Le premier morceau doit toujours être la graine de la partie.** Sans elle,
+ * une dérivation qui ne dépend que du lieu et de l'heure donne les mêmes dés à
+ * *toutes* les parties : deux mondes différents auraient la même chance aux
+ * convois à la même heure. Un décor l'a attrapé — vingt-quatre tirages censés
+ * différer rendaient vingt-quatre fois le même résultat.
  */
 function grainDe(...morceaux) {
   return seedFromString(morceaux.join('\u0000'));
@@ -2850,7 +2856,7 @@ function stockInitial(rng, taille) {
   return s;
 }
 
-function genererColonies(rng, regions) {
+function genererColonies(rng, regions, graine) {
   const colonies = [];
   const pris = new Set();
   const occupees = new Set();
@@ -2888,7 +2894,7 @@ function genererColonies(rng, regions) {
       // Tant que toutes les villes puisaient au même sac, la maille de leur
       // tick — qui dépend de la distance au joueur — décidait de l'ordre des
       // tirages, et le monde entier divergeait selon le trajet du promeneur.
-      rngEtat: grainDe('colonie', `s${colonies.length + 1}`),
+      rngEtat: grainDe(graine, 'colonie', `s${colonies.length + 1}`),
       // Le registre des gens déjà engagés au banc, pour l'époque en cours. Le
       // banc lui-même n'est pas de l'état : il se dérive de la ville et de
       // l'heure (voir `bancDerive` dans recrues.js). La clé existe dès la
@@ -3047,12 +3053,15 @@ function semerSites(rng, regions) {
   }
 }
 
-function genererMonde(rng) {
+function genererMonde(rng, graine = 0) {
   const regions = genererBiomes(rng);
-  const colonies = genererColonies(rng, regions);
+  const colonies = genererColonies(rng, regions, graine);
   semerSites(rng, regions);
   const factions = attribuerFactions(rng, regions, colonies);
   return {
+    // La graine de la partie, gardée : toute dérivation la prend en premier
+    // morceau, sinon deux mondes différents partageraient les mêmes dés.
+    graine,
     largeur: LARGEUR,
     hauteur: HAUTEUR,
     regions,
@@ -5419,11 +5428,11 @@ function primeDe(state, col, c) {
  * les identifiants déjà engagés cette époque-ci. Une trentaine d'octets, oubliés
  * dès que l'époque tourne.
  */
-function bancDerive(col, t) {
+function bancDerive(col, t, graine = 0) {
   if (!col || col.ruine) return { epoque: 0, gens: [] };
   const epoque = Math.floor(t / DUREE_BANC);
   const agitation = Math.round((col.unrest || 0) * 4);
-  const rng = new Rng(grainDe('banc', col.id, epoque, col.taille, agitation));
+  const rng = new Rng(grainDe(graine, 'banc', col.id, epoque, col.taille, agitation));
   const combien = Math.max(1, Math.min(5, Math.round(1 + col.taille * 0.8 + agitation)));
   const gens = [];
   for (let i = 0; i < combien; i++) {
@@ -5449,7 +5458,7 @@ function engager(state, col, id, log, groupe) {
   // Par identifiant, plus par rang dans la liste : le banc n'est plus un objet
   // qu'on garde en main, c'est une vue qu'on recalcule. Un rang ne veut rien
   // dire d'un calcul à l'autre — un identifiant, si.
-  const banc = bancDerive(col, state.temps);
+  const banc = bancDerive(col, state.temps, state.world.graine);
   const c = banc.gens.find((x) => x.id === id);
   if (!c) return { ok: false, motif: 'Cette personne s’est placée ailleurs.' };
   const prix = primeDe(state, col, c);
@@ -10383,6 +10392,7 @@ function tenterDepart(state, rng, log) {
 
   const car = {
     id: idDepuisRng(rng, 'v'),
+    rngEtat: 0,   // posé juste après le littéral : dérivé de son nom, pas tiré
     faction: de.faction,
     deId: de.id,
     versId: meilleur.vers.id,
@@ -10395,6 +10405,7 @@ function tenterDepart(state, rng, log) {
     escorte: Math.round(6 + qte * 0.25 * rng.range(0.7, 1.4)),
     depuis: state.temps,
   };
+  car.rngEtat = grainDe(world.graine, 'convoi', car.id);
   world.caravanes.push(car);
   // Départs et arrivées ne sont pas journalisés : il en passe des centaines,
   // et le journal est plafonné — elles chasseraient les guerres et les morts
@@ -10412,7 +10423,7 @@ function tenterDepart(state, rng, log) {
  * deux mille cinq cents crédits de l'amorce, et le convoi coûte sa course à la
  * caisse commune.
  */
-function departsDuReseau(state, rng, log) {
+function departsDuReseau(state, _rng, log) {
   const world = state.world;
   for (const membres of reseaux(world)) {
     // La clé du réseau, et les villes déjà servies ce tour-ci : une fois, ici.
@@ -10420,6 +10431,11 @@ function departsDuReseau(state, rng, log) {
     // chaîne, et le balayage des convois en vol est linéaire. À elles deux,
     // 4,5 % du tick pour un résultat identique à chaque tour.
     const cle = idReseau(membres);
+    // Chaque réseau expédie avec son propre hasard, dérivé de sa clé et de
+    // l'heure. Apatride : rien à ranger, rien à migrer. Tant qu'ils puisaient
+    // au sac commun, l'ordre des réseaux décidait des tirages de tout ce qui
+    // suit.
+    const rng = new Rng(grainDe(world.graine, 'reseau', cle, state.temps));
     const servies = new Set();
     let enCours = 0;
     for (const c of world.caravanes) {
@@ -10512,8 +10528,9 @@ function departsDuReseau(state, rng, log) {
       if (!route || !route.length) continue;
       servies.add(pire.col.id);
       source.col.stock[pire.k] = Math.max(0, (source.col.stock[pire.k] || 0) - qte);
-      world.caravanes.push({
+      world.caravanes.push(avecDe(world, {
         id: idDepuisRng(rng, 'v'),
+        rngEtat: 0,
         faction: source.col.faction,
         reseau: cle,
         deId: source.col.id,
@@ -10526,7 +10543,7 @@ function departsDuReseau(state, rng, log) {
         // Un convoi de bourse voyage escorté : c'est un service, pas une aventure.
         escorte: Math.round(14 + qte * 0.3),
         depuis: state.temps,
-      });
+      }));
     }
   }
 }
@@ -10610,6 +10627,7 @@ function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEscorte) 
 
   const car = {
     id: idDepuisRng(rng, 'o'),
+    rngEtat: 0,
     faction: place.faction,
     reseau: devis.comptoir.id,
     // Ce qui distingue ce convoi de tous les autres : il est à vous.
@@ -10631,6 +10649,7 @@ function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEscorte) 
     escorteGroupe: groupeEscorte || null,
     depuis: state.temps,
   };
+  car.rngEtat = grainDe(world.graine, 'convoi', car.id);
   world.caravanes.push(car);
   if (log) {
     log({
@@ -10830,14 +10849,24 @@ function destinationTenable(state, car) {
   return vivante(colonieParId(state.world, car.versId));
 }
 
+/** Le dé d'un convoi : dérivé de son nom, posé une fois, jamais tiré du sac. */
+function avecDe(world, car) {
+  car.rngEtat = grainDe(world.graine, 'convoi', car.id);
+  return car;
+}
+
 /** Une heure de route pour toutes les caravanes. */
 function tickCaravanes(state, log, ctx) {
-  const rng = ctx.rng;
   const world = state.world;
   if (!world.caravanes) world.caravanes = [];
 
   for (const car of world.caravanes.slice()) {
     if (!world.caravanes.includes(car)) continue;
+    // Chaque convoi a son propre dé, posé à son départ et rescellé à chaque
+    // heure — comme pour les villes. Pas le sac commun, et pas non plus une
+    // graine redérivée à chaque tour : hacher une chaîne par convoi et par
+    // heure coûtait un tiers du tick, et la garde de vitesse l'a refusé.
+    const rng = new Rng(car.rngEtat);
 
     // La destination existe-t-elle encore ? `vivante` exige un drapeau, et
     // c'est juste pour une ville — mais le camp du joueur n'en a pas quand il
@@ -10872,6 +10901,11 @@ function tickCaravanes(state, log, ctx) {
       car.escorte = Math.max(0, car.escorte - rng.irange(2, 8));
     }
 
+    // Le dé du convoi est rescellé ici : tout ce qui tire est passé, et les
+    // sorties d'avant ont retiré le convoi du monde — il n'a plus de dé à
+    // garder.
+    car.rngEtat = rng.save();
+
     car.progres += 1;
     if (car.progres < HEURES_PAR_CASE) continue;
     car.progres = 0;
@@ -10885,7 +10919,11 @@ function tickCaravanes(state, log, ctx) {
   }
 
   // Nouveau départ de temps en temps
-  if (state.temps % 9 === 0) tenterDepart(state, rng, log);
+  // Les départs spontanés ont leur propre dé, dérivé de l'heure : ils
+  // concernent le monde entier, pas un convoi en particulier.
+  if (state.temps % 9 === 0) {
+    tenterDepart(state, new Rng(grainDe(world.graine, 'depart', state.temps)), log);
+  }
   // Et les réseaux, eux, ne tirent pas au sort : ils regardent où ça manque et
   // ils envoient. C'est très exactement ce qu'une bourse achète — pas de
   // meilleures routes, des départs décidés. Mesuré avant : 0,8 caravane en
@@ -10910,7 +10948,9 @@ function tickCaravanes(state, log, ctx) {
   // que je lançais mes mesures pendant que les suites de tests tournaient. Une
   // limite doit gagner sa place. Celle-là ne la gagnait pas ; celle-ci la gagne,
   // et on peut dire de combien.
-  if (!state.world.sansDeparts && state.temps % 8 === 0) departsDuReseau(state, rng, log);
+  // `departsDuReseau` ouvre son propre flux par réseau : il n'a plus besoin
+  // qu'on lui en passe un.
+  if (!state.world.sansDeparts && state.temps % 8 === 0) departsDuReseau(state, null, log);
 }
 
 // ---------------------------------------------------------------------------
@@ -11850,7 +11890,7 @@ function fonderColonie(world, key, region, rng, t) {
     cession: null,
     prises: 0,
     // Le hasard de cette ville, à elle seule — dérivé, jamais tiré.
-    rngEtat: grainDe('colonie', `s${world.prochaineColonieId}`),
+    rngEtat: grainDe(world.graine, 'colonie', `s${world.prochaineColonieId}`),
     // Le registre des engagements du banc. Le banc lui-même se dérive.
     bancPris: null,
     geole: null,
@@ -12175,10 +12215,19 @@ function tickFactions(world, t, log, ctx) {
   // Les cours se republient une fois par jour : une bourse affiche un prix,
   // elle ne le recalcule pas à chaque regard.
   tickBourses(world, t);
+  // Chaque conseil délibère avec son propre hasard, dérivé du pays et de
+  // l'heure — apatride, rien à ranger dans la sauvegarde. Tant qu'ils
+  // puisaient au sac commun, un conseil qui tirait trois fois au lieu de deux
+  // décalait tout ce qui venait après, y compris les caravanes et le climat.
+  const sacCommun = ctx.rng;
   for (const key of Object.keys(world.factions)) {
     const f = world.factions[key];
     f.prochainConseil -= 1;
-    if (f.prochainConseil <= 0) conseil(world, key, t, log, ctx);
+    if (f.prochainConseil <= 0) {
+      ctx.rng = new Rng(grainDe(world.graine, 'conseil', key, t));
+      conseil(world, key, t, log, ctx);
+      ctx.rng = sacCommun;
+    }
   }
 
   // Les chefs vieillissent une fois par jour de jeu, pas vingt-quatre : leur
@@ -12188,13 +12237,18 @@ function tickFactions(world, t, log, ctx) {
       // Un chef répond aussi de l'humeur de son pays, pas seulement de ses
       // guerres : la grogne moyenne entre directement dans sa légitimité.
       const pays = etatDuPays(world, key);
-      tickDirigeant(world, key, ctx.rng, 24, t, log, pays ? pays.grogne : 0);
+      tickDirigeant(world, key, new Rng(grainDe(world.graine, 'dirigeant', key, t)), 24, t, log,
+        pays ? pays.grogne : 0);
     }
   }
 
   for (const armee of world.armees.slice()) {
     if (!world.armees.includes(armee)) continue;
+    // Une colonne a son propre hasard, dérivé de son nom et de l'heure : deux
+    // colonnes en campagne ne se décalent plus l'une l'autre.
+    ctx.rng = new Rng(grainDe(world.graine, 'armee', armee.id, t));
     tickArmee(world, armee, t, log, ctx);
+    ctx.rng = sacCommun;
   }
 
   // Le plus fort se fait détester : les autres se liguent doucement contre
@@ -15620,7 +15674,7 @@ function reconnaitreAvantPoste(state, log) {
     cession: null,
     prises: 0,
     // Le hasard de cette ville, à elle seule — dérivé, jamais tiré.
-    rngEtat: grainDe('colonie', `s${w.prochaineColonieId}`),
+    rngEtat: grainDe(w.graine, 'colonie', `s${w.prochaineColonieId}`),
     // Le registre des engagements du banc. Le banc lui-même se dérive.
     bancPris: null,
     geole: null,
@@ -19084,6 +19138,10 @@ function serialiser(state) {
  * serait la solution paresseuse.
  */
 function normaliser(state) {
+  // Le flux privé du joueur — dérivé, jamais tiré (voir sim.js).
+  if (state.player && typeof state.player.rngEtat !== 'number') {
+    state.player.rngEtat = grainDe(state.seed || 0, 'joueur', state.rngState || 0);
+  }
   const p = state.player;
 
   // Avant les groupes, l'escouade était un bloc unique posé sur `player`.
@@ -19215,7 +19273,7 @@ function normaliser(state) {
     if (c.bancPris === undefined) c.bancPris = null;
     // Le flux propre de la ville : dérivé de son nom, donc identique à celui
     // qu'une partie neuve lui aurait donné. Pas un tirage.
-    if (typeof c.rngEtat !== 'number') c.rngEtat = grainDe('colonie', c.id);
+    if (typeof c.rngEtat !== 'number') c.rngEtat = grainDe(state.world.graine || 0, 'colonie', c.id);
     // Avant la justice, une ville n'enfermait personne.
     if (c.geole === undefined) c.geole = null;
     // Avant les services, ces gens n'attendaient rien et ne retenaient rien.
@@ -19690,7 +19748,7 @@ const DEPART_DEFAUT = 'survivant';
 
 function nouvellePartie(seed, opts = {}) {
   const rng = new Rng(seed);
-  const world = genererMonde(rng);
+  const world = genererMonde(rng, seed);
 
   // Le scénario d'ouverture, choisi à l'accueil. Voir DEPARTS juste au-dessus.
   // `'ville'` reste accepté : le banc et le harnais l'emploient partout, et
@@ -19779,6 +19837,15 @@ function nouvellePartie(seed, opts = {}) {
     nom: opts.nom || 'Convoi sans nom',
     world,
     player: {
+      // Le hasard du joueur, dans sa poche. Dérivé de l'état du monde à cet
+      // instant — pas un tirage de plus, sinon le monde entier se décale.
+      //
+      // Tout ce que le joueur fait tirait au sac commun : son escouade, son
+      // camp, ses allégeances, ses contrats. Chacun de ces tirages décalait
+      // ceux des factions et des caravanes, si bien que deux parties de même
+      // graine divergeaient parce qu'il avait marché ailleurs. Et `player` est
+      // privé par construction : son hasard n'a rien à faire dans `world`.
+      rngEtat: grainDe('joueur', seed, rng.save()),
       credits: scen.equipe ? 450 : rng.irange(20, 70),
       // Les gens et ce qu'ils portent vivent dans les groupes ; le reste, ici.
       groupes: [premier],
@@ -20099,14 +20166,23 @@ function tick(state) {
   tickCoffres(state, log);
 
   // Panneaux d'affichage et étals se renouvellent de loin en loin.
+  // Panneaux et étals se renouvellent avec le hasard DE LA VILLE : ils la
+  // concernent seule, et `palierBonus` lit le joueur — sur le sac commun, le
+  // grade du joueur décidait des tirages du monde entier.
   if (state.temps % 40 === 0) {
-    rafraichirPanneaux(state, rng, state.temps);
     for (const col of state.world.colonies) {
-      if (!col.ruine) etalDe(state.world, col, rng, state.temps, palierBonus(state, col.faction));
+      if (col.ruine) continue;
+      const rngV = new Rng(col.rngEtat);
+      genererContrats(state, col, rngV, state.temps);
+      etalDe(state.world, col, rngV, state.temps, palierBonus(state, col.faction));
+      col.rngEtat = rngV.save();
     }
   }
 
-  // Puis l'avant-poste et l'escouade.
+  // Puis l'avant-poste et l'escouade — sur le flux du joueur, pas sur celui du
+  // monde. C'est la bascule qui rend le monde indifférent au trajet.
+  const rngJoueur = new Rng(state.player.rngEtat);
+  ctx.rng = rngJoueur;
   tickBase(state, log, ctx);
   if (!state.fin) tickSquad(state, log, ctx);
   if (!state.fin) tickContrats(state, log, ctx);
@@ -20119,6 +20195,9 @@ function tick(state) {
   if (!state.fin) jugerActes(state, log);
   if (!state.fin) tickCharges(state, log);
   if (!state.fin) tickFormation(state, log);
+
+  state.player.rngEtat = rngJoueur.save();
+  ctx.rng = rng;
 
   // En dernier : on relève ce qu'on a sous les yeux, après que tout a bougé.
   observer(state);
@@ -25110,7 +25189,7 @@ function modaleRecrutement() {
   const ici = vivantsDe(g).length;
   const plafond = plafondCohesion(S, g);
   const apres = Math.max(12, 100 / (1 + Math.max(0, ici + 1 - noy) / 7));
-  const banc = bancDerive(col, S.temps).gens;
+  const banc = bancDerive(col, S.temps, S.world.graine).gens;
 
   const gens = banc.length ? banc.map((c, i) => {
     const prix = primeDe(S, col, c);

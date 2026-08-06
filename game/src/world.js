@@ -146,7 +146,7 @@ function stockInitial(rng, taille) {
   return s;
 }
 
-function genererColonies(rng, regions) {
+function genererColonies(rng, regions, graine) {
   const colonies = [];
   const pris = new Set();
   const occupees = new Set();
@@ -184,7 +184,7 @@ function genererColonies(rng, regions) {
       // Tant que toutes les villes puisaient au même sac, la maille de leur
       // tick — qui dépend de la distance au joueur — décidait de l'ordre des
       // tirages, et le monde entier divergeait selon le trajet du promeneur.
-      rngEtat: grainDe('colonie', `s${colonies.length + 1}`),
+      rngEtat: grainDe(graine, 'colonie', `s${colonies.length + 1}`),
       // Le registre des gens déjà engagés au banc, pour l'époque en cours. Le
       // banc lui-même n'est pas de l'état : il se dérive de la ville et de
       // l'heure (voir `bancDerive` dans recrues.js). La clé existe dès la
@@ -343,12 +343,15 @@ function semerSites(rng, regions) {
   }
 }
 
-export function genererMonde(rng) {
+export function genererMonde(rng, graine = 0) {
   const regions = genererBiomes(rng);
-  const colonies = genererColonies(rng, regions);
+  const colonies = genererColonies(rng, regions, graine);
   semerSites(rng, regions);
   const factions = attribuerFactions(rng, regions, colonies);
   return {
+    // La graine de la partie, gardée : toute dérivation la prend en premier
+    // morceau, sinon deux mondes différents partageraient les mêmes dés.
+    graine,
     largeur: LARGEUR,
     hauteur: HAUTEUR,
     regions,

@@ -1464,7 +1464,7 @@ export function reconnaitreAvantPoste(state, log) {
     cession: null,
     prises: 0,
     // Le hasard de cette ville, à elle seule — dérivé, jamais tiré.
-    rngEtat: grainDe('colonie', `s${w.prochaineColonieId}`),
+    rngEtat: grainDe(w.graine, 'colonie', `s${w.prochaineColonieId}`),
     // Le registre des engagements du banc. Le banc lui-même se dérive.
     bancPris: null,
     geole: null,

@@ -4,6 +4,7 @@
 // donne au joueur autre chose à faire que ramasser des cailloux.
 
 import { COMMODITIES, COMMODITY_KEYS, FACTIONS } from './data.js';
+import { Rng, grainDe } from './rng.js';
 import { chemin, colonieParId, colonieDe, nomRegion, distance, damer } from './world.js';
 import {
   reseauDe, reseaux, idReseau, villesDuReseau, peutTraiter, chiffrerOrdre,
@@ -209,6 +210,7 @@ export function tenterDepart(state, rng, log) {
 
   const car = {
     id: idDepuisRng(rng, 'v'),
+    rngEtat: 0,   // posé juste après le littéral : dérivé de son nom, pas tiré
     faction: de.faction,
     deId: de.id,
     versId: meilleur.vers.id,
@@ -221,6 +223,7 @@ export function tenterDepart(state, rng, log) {
     escorte: Math.round(6 + qte * 0.25 * rng.range(0.7, 1.4)),
     depuis: state.temps,
   };
+  car.rngEtat = grainDe(world.graine, 'convoi', car.id);
   world.caravanes.push(car);
   // Départs et arrivées ne sont pas journalisés : il en passe des centaines,
   // et le journal est plafonné — elles chasseraient les guerres et les morts
@@ -238,7 +241,7 @@ export function tenterDepart(state, rng, log) {
  * deux mille cinq cents crédits de l'amorce, et le convoi coûte sa course à la
  * caisse commune.
  */
-export function departsDuReseau(state, rng, log) {
+export function departsDuReseau(state, _rng, log) {
   const world = state.world;
   for (const membres of reseaux(world)) {
     // La clé du réseau, et les villes déjà servies ce tour-ci : une fois, ici.
@@ -246,6 +249,11 @@ export function departsDuReseau(state, rng, log) {
     // chaîne, et le balayage des convois en vol est linéaire. À elles deux,
     // 4,5 % du tick pour un résultat identique à chaque tour.
     const cle = idReseau(membres);
+    // Chaque réseau expédie avec son propre hasard, dérivé de sa clé et de
+    // l'heure. Apatride : rien à ranger, rien à migrer. Tant qu'ils puisaient
+    // au sac commun, l'ordre des réseaux décidait des tirages de tout ce qui
+    // suit.
+    const rng = new Rng(grainDe(world.graine, 'reseau', cle, state.temps));
     const servies = new Set();
     let enCours = 0;
     for (const c of world.caravanes) {
@@ -338,8 +346,9 @@ export function departsDuReseau(state, rng, log) {
       if (!route || !route.length) continue;
       servies.add(pire.col.id);
       source.col.stock[pire.k] = Math.max(0, (source.col.stock[pire.k] || 0) - qte);
-      world.caravanes.push({
+      world.caravanes.push(avecDe(world, {
         id: idDepuisRng(rng, 'v'),
+        rngEtat: 0,
         faction: source.col.faction,
         reseau: cle,
         deId: source.col.id,
@@ -352,7 +361,7 @@ export function departsDuReseau(state, rng, log) {
         // Un convoi de bourse voyage escorté : c'est un service, pas une aventure.
         escorte: Math.round(14 + qte * 0.3),
         depuis: state.temps,
-      });
+      }));
     }
   }
 }
@@ -436,6 +445,7 @@ export function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEs
 
   const car = {
     id: idDepuisRng(rng, 'o'),
+    rngEtat: 0,
     faction: place.faction,
     reseau: devis.comptoir.id,
     // Ce qui distingue ce convoi de tous les autres : il est à vous.
@@ -457,6 +467,7 @@ export function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEs
     escorteGroupe: groupeEscorte || null,
     depuis: state.temps,
   };
+  car.rngEtat = grainDe(world.graine, 'convoi', car.id);
   world.caravanes.push(car);
   if (log) {
     log({
@@ -656,14 +667,24 @@ function destinationTenable(state, car) {
   return vivante(colonieParId(state.world, car.versId));
 }
 
+/** Le dé d'un convoi : dérivé de son nom, posé une fois, jamais tiré du sac. */
+function avecDe(world, car) {
+  car.rngEtat = grainDe(world.graine, 'convoi', car.id);
+  return car;
+}
+
 /** Une heure de route pour toutes les caravanes. */
 export function tickCaravanes(state, log, ctx) {
-  const rng = ctx.rng;
   const world = state.world;
   if (!world.caravanes) world.caravanes = [];
 
   for (const car of world.caravanes.slice()) {
     if (!world.caravanes.includes(car)) continue;
+    // Chaque convoi a son propre dé, posé à son départ et rescellé à chaque
+    // heure — comme pour les villes. Pas le sac commun, et pas non plus une
+    // graine redérivée à chaque tour : hacher une chaîne par convoi et par
+    // heure coûtait un tiers du tick, et la garde de vitesse l'a refusé.
+    const rng = new Rng(car.rngEtat);
 
     // La destination existe-t-elle encore ? `vivante` exige un drapeau, et
     // c'est juste pour une ville — mais le camp du joueur n'en a pas quand il
@@ -698,6 +719,11 @@ export function tickCaravanes(state, log, ctx) {
       car.escorte = Math.max(0, car.escorte - rng.irange(2, 8));
     }
 
+    // Le dé du convoi est rescellé ici : tout ce qui tire est passé, et les
+    // sorties d'avant ont retiré le convoi du monde — il n'a plus de dé à
+    // garder.
+    car.rngEtat = rng.save();
+
     car.progres += 1;
     if (car.progres < HEURES_PAR_CASE) continue;
     car.progres = 0;
@@ -711,7 +737,11 @@ export function tickCaravanes(state, log, ctx) {
   }
 
   // Nouveau départ de temps en temps
-  if (state.temps % 9 === 0) tenterDepart(state, rng, log);
+  // Les départs spontanés ont leur propre dé, dérivé de l'heure : ils
+  // concernent le monde entier, pas un convoi en particulier.
+  if (state.temps % 9 === 0) {
+    tenterDepart(state, new Rng(grainDe(world.graine, 'depart', state.temps)), log);
+  }
   // Et les réseaux, eux, ne tirent pas au sort : ils regardent où ça manque et
   // ils envoient. C'est très exactement ce qu'une bourse achète — pas de
   // meilleures routes, des départs décidés. Mesuré avant : 0,8 caravane en
@@ -736,7 +766,9 @@ export function tickCaravanes(state, log, ctx) {
   // que je lançais mes mesures pendant que les suites de tests tournaient. Une
   // limite doit gagner sa place. Celle-là ne la gagnait pas ; celle-ci la gagne,
   // et on peut dire de combien.
-  if (!state.world.sansDeparts && state.temps % 8 === 0) departsDuReseau(state, rng, log);
+  // `departsDuReseau` ouvre son propre flux par réseau : il n'a plus besoin
+  // qu'on lui en passe un.
+  if (!state.world.sansDeparts && state.temps % 8 === 0) departsDuReseau(state, null, log);
 }
 
 // ---------------------------------------------------------------------------
