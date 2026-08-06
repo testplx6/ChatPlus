@@ -418,7 +418,19 @@ population 52 585 → 57 739, factions écrasées 3/36 → 2/36, écart comptabl
 les dix gardes tiennent.
 
 
-### Lot 3b — une faction rayée de la carte : drame voulu ou garde à tenir ?
+### ~~Lot 3b~~ — TRANCHÉ : une faction éliminée, c'est le drame qu'on voulait
+
+Décision du propriétaire (août 2026), et elle va plus loin que la question
+posée : **qu'une faction disparaisse ne pose aucun problème, et le monde doit
+en plus pouvoir en voir naître de nouvelles.**
+
+Deux conséquences. Le décor ne garde qu'un garde-fou d'effondrement (le monde
+ne se réduit pas à une puissance unique) au lieu d'interdire la disparition.
+Et surtout, **« fonder sa faction » cesse d'être une idée au registre pour
+devenir une exigence** : voir `INDIVIDUS.md`, lot 6, issue 5 — c'était rangé en
+« chantier propre, plus tard », c'est maintenant du travail à spécifier.
+
+### L'énoncé d'origine, gardé pour la trace
 
 Après la séparation des flux, sur six graines jouées 8 000 heures : **cinq
 gardent leurs six factions, une (4242) en raye une entièrement**. Le décor

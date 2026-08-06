@@ -1343,12 +1343,15 @@ ok(rangDe(groupeActif(s9c).allegeance).def.nom === 'Affilié', 'on démarre au p
 for (let i = 0; i < 8000; i++) tick(s9c);
 ok(!!groupeActif(s9c).allegeance, 'la faction servie existe encore après 8 000 h');
 const debout9c = DIPLO_FACTIONS.filter((k) => s9c.world.factions[k].colonies.length);
-// Mesuré sur six graines après les flux séparés : cinq gardent leurs six
-// factions, une en raye une (4242). Le décor disait « jamais », ce qui était
-// vrai d'un monde sans drame ; il dit maintenant « pas d'effondrement », et
-// l'écart est remonté au propriétaire — voir CHANTIER.md, Blocages.
-ok(debout9c.length >= 5, 'le monde ne s’effondre pas à quelques factions',
-  `${debout9c.length}/6`);
+// Tranché par le propriétaire (août 2026) : **qu'une faction soit éliminée ne
+// pose aucun problème** — c'est le drame qu'on cherchait, et le monde doit en
+// plus pouvoir en voir naître de nouvelles. Ce décor disait « aucune faction
+// n'est rayée de la carte », ce qui n'était vrai que d'un monde sans histoire.
+// Il ne reste qu'un garde-fou d'effondrement : le monde ne doit pas se réduire
+// à une puissance unique par accident silencieux. Mesuré sur six graines à
+// 8 000 h : cinq en gardent six, une en garde cinq.
+ok(debout9c.length >= 2, 'le monde ne se réduit pas à une puissance unique',
+  `${debout9c.length}/6 debout`);
 ok(s9c.world.colonies.filter((c) => !c.ruine).length >= 10, 'le monde garde ses villes',
   `${s9c.world.colonies.filter((c) => !c.ruine).length}`);
 const liens9c = groupeActif(s9c).membres.flatMap((c) => Object.values(c.liens || {}));

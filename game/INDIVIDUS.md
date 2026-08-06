@@ -410,10 +410,16 @@ sinon :
 4. **Se disloquer** — la colonne disparaît, comme une armée battue :
    `La colonne de ${nommerActeur('colonne', a.id)} s'est débandée, faute de
    solde. On en reverra certains sur les routes.`
-5. **Fonder sa faction** — **hors de ce chantier, décidé** (propriétaire,
-   août 2026) : ce sera un chantier propre, plus tard — le moteur ne sait pas
-   créer une faction en cours de partie (clés fixes, diplomatie, couleurs,
-   UI). L'idée reste au registre ; ici, la colonne se débande ou se vend.
+5. **Fonder sa faction** — **exigence, et non plus option** (propriétaire,
+   août 2026) : « qu'une faction soit éliminée ne pose aucun problème, en plus
+   de nouvelles doivent pouvoir être créées ». Le moteur ne sait pas le faire —
+   les clés de `FACTIONS` sont fixes, et la diplomatie, les couleurs et
+   l'interface sont câblées dessus. **À spécifier dans son propre cahier des
+   charges avant d'écrire une ligne** : d'où vient le nom, d'où viennent les
+   couleurs, comment la diplomatie accueille un venu, ce qu'une faction neuve
+   hérite de la colonne qui l'a fondée, et ce que l'écran en montre. Dans ce
+   lot-ci, la colonne se débande ou se vend ; la fondation viendra du chantier
+   dédié.
 
 - [ ] **I6.1. `a.impayees`.** Les armées se créent en **deux** endroits —
   `factions.js:191` (`leverArmee`) et `influence.js:335` — plus `normaliser`
