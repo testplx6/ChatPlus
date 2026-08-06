@@ -406,10 +406,20 @@ Deux choses restent rouges, et `--complet` avec elles :
    **Il reste ×1,14 à expliquer.** Piste non explorée : les réseaux de
    caravanes dérivent encore `grainDe(graine, 'reseau', clé, t)` toutes les
    huit heures, et `new Rng` par convoi et par heure.
-2. **Navigateur : expiration sur le bouton « captif / livrer »** — l'élément est
-   trouvé mais ne devient jamais actionnable. Non diagnostiqué. Le monde ayant
-   changé, la mise en scène du décor ne tient probablement plus ; à instruire
-   avant toute conclusion.
+2. ~~**Navigateur : expiration sur « captif / livrer »**~~ — **résolu**. Le
+   bouton existait dans le document mais restait replié : le décor n'ouvrait
+   que le premier volet de captif, en supposant que c'était le bon. Tous les
+   volets sont ouverts maintenant, et le bouton est cherché parmi les visibles.
+   264 vérifications vertes.
+
+3. **La machine ne permet plus de conclure sur la vitesse.** Trois mesures
+   consécutives, `loadavg` à 0,23 : dispersion des rapports de ±31 %, ±51 %,
+   ±55 % — la garde refuse, et elle a raison. C'est le même défaut de la
+   machine que celui documenté dans `tools/vitesse.js` (109 puis 200 µs sur le
+   même code au repos), mais devenu si violent qu'aucune mesure ne tient. La
+   dernière mesure concluante disait **×1,14 pour un seuil à ×1,08**.
+   **À remesurer sur une machine saine avant toute conclusion** — et c'est un
+   argument de plus pour la question du serveur dédié.
 
 Ce qui est fait et tient : flux privé du joueur, conseils/dirigeants/armées par
 dérivation apatride, un dé par convoi, panneaux et étals sur le flux de la
