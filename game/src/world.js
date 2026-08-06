@@ -6,6 +6,7 @@ import {
   BIOMES, BIOME_KEYS, FACTIONS, DIPLO_FACTIONS, VILLE_A, VILLE_B, COMMODITY_KEYS,
   POI, POI_KEYS, MENAGES,
 } from './data.js';
+import { grainDe } from './rng.js';
 
 // Une carte de 10×8 se traversait de bout en bout en deux jours de jeu : au
 // bout d'une saison le joueur avait tout vu, et « explorer » n'était plus qu'un
@@ -178,6 +179,12 @@ function genererColonies(rng, regions) {
       unrest: Number(rng.range(0, 0.2).toFixed(2)),
       // Qui travaille à quoi. Rempli une fois la faction attribuée.
       emplois: null,
+      // Le hasard de cette ville, à elle seule. Dérivé de son nom, jamais tiré
+      // du sac commun : y consommer un nombre décalerait tout ce qui suit.
+      // Tant que toutes les villes puisaient au même sac, la maille de leur
+      // tick — qui dépend de la distance au joueur — décidait de l'ordre des
+      // tirages, et le monde entier divergeait selon le trajet du promeneur.
+      rngEtat: grainDe('colonie', `s${colonies.length + 1}`),
       // Le registre des gens déjà engagés au banc, pour l'époque en cours. Le
       // banc lui-même n'est pas de l'état : il se dérive de la ville et de
       // l'heure (voir `bancDerive` dans recrues.js). La clé existe dès la

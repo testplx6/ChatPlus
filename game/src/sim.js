@@ -470,7 +470,12 @@ export function tick(state) {
     // Ce que la loi fait à l'humeur : on ne pend pas vite sans que la ville
     // s'en ressente, et on ne relâche pas non plus sans que ça se voie.
     tickOrdrePublic(state, col, du);
-    const ev = tickColonie(state.world, col, rng, climat, du, rep, log, state.temps, present);
+    // Le flux de la ville, ouvert et rescellé autour de son tick. C'est ce qui
+    // coupe la contamination : ce qu'une ville tire ne décale plus rien chez
+    // les autres, quel que soit l'ordre où le niveau de détail les fait passer.
+    const rngCol = new Rng(col.rngEtat);
+    const ev = tickColonie(state.world, col, rngCol, climat, du, rep, log, state.temps, present);
+    col.rngEtat = rngCol.save();
     if (!ev) continue;
     if (ev.evenement === 'croissance') {
       log({
@@ -481,7 +486,8 @@ export function tick(state) {
       });
     } else if (ev.evenement === 'revolte') {
       const ancienne = col.faction;
-      const r = faireRevolte(state.world, col, rng, state.temps);
+      const r = faireRevolte(state.world, col, rngCol, state.temps);
+      col.rngEtat = rngCol.save();
       // Une émeute laisse les pistes du coin dans un état déplorable : des
       // gens armés qui n'ont plus rien à perdre, et personne pour les tenir.
       const reg = state.world.regions[col.regionId];

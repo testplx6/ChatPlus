@@ -205,28 +205,27 @@ l'appel `tickColonie` (`sim.js:474` ; en dessous : `ajusterEmplois` via
 appelée depuis `sim.js:485`). Les signatures gardent leur paramètre `rng` —
 seule la source change.
 
-- [ ] **I3.1. Le champ et la plomberie.** `col.rngEtat` (R1 : **les trois
-  lieux** — `world.js`, `fonderColonie` dans `factions.js`, l'avant-poste dans
-  `base.js` — plus `normaliser`, partout avec `grainDe('colonie', col.id)` :
-  même valeur dérivée, donc zéro tirage, piège 1 respecté). Bascule des trois
-  passages du périmètre ci-dessus. Critère grep : dans `sim.js`, ni
-  `tickColonie(`, ni `genererEtal`/`etalDe`, ni `faireRevolte` ne reçoivent le
-  `rng` du tick. Test rouge « deux villes ne se contaminent plus » : deux
-  parties à graine égale ; dans l'une, on consomme trois tirages de plus sur
-  le flux de la ville A (`new Rng(colA.rngEtat)`, trois `u32`, resceller) ;
-  la ville B garde, au bit près, ses `notables`, ses `emplois` et son
-  `rngEtat` — champs que seul son propre flux alimente, donc comparables à
-  tout horizon malgré les couplages légitimes (caravanes, conseils).
-- [ ] **I3.2. La preuve du piège 5, restreinte et honnête.** Test rouge :
-  même position du joueur, deux parties à graine égale, 300 h ; dans l'une on
-  force cinq tirages de plus sur les flux de trois villes différentes ; le
-  `state.rngState` final est identique (le flux principal n'a rien vu), et
-  seules ces trois villes diffèrent — leurs voisines gardent `notables`,
-  `emplois` et `rngEtat` au bit près.
-- [ ] **I3.3. Le nouveau témoin.** Ce lot change le monde à graine égale (les
-  tirages changent de flux) : banc complet contre la révision d'avant-lot,
-  fourchettes de `CIBLES.json` tenues, chiffres dans le commit. Si une garde
-  casse : Blocages, stop — ne pas élargir la garde.
+- [x] **I3.1. Le champ et la plomberie.** `col.rngEtat`, dérivé de
+  `grainDe('colonie', id)` — pas un tirage, donc le piège n°1 est respecté.
+  Posé aux **quatre** endroits qui font une colonie (`world.js`, `base.js` pour
+  la vitrine, `factions.js` pour une fondation, `normaliser` pour les vieilles
+  parties : la même dérivation, donc la même valeur qu'une partie neuve).
+  `sim.js` ouvre le flux de la ville autour de son tick et le rescelle — deux
+  fois, parce que la révolte tire encore après. Test : on dérange le flux d'une
+  ville et **toutes les autres restent intactes**, 100 %.
+- [x] **I3.2. Ce que ça ne prouve pas encore, mesuré.** Deux parties, même
+  graine, joueur immobile dans deux coins opposés, 300 heures : sur les
+  **73 villes hors des deux voisinages, zéro** est identique au bit près. Les
+  factions, les caravanes et l'escouade puisent toujours au sac commun **et
+  touchent les villes** — un convoi qui n'arrive pas au même moment change le
+  stock, donc les prix, donc ce que la ville tire chez elle. Isoler le flux des
+  colonies était nécessaire ; ce n'est pas suffisant. La preuve entière est au
+  lot 3b, et c'est maintenant chiffré plutôt que supposé.
+- [x] **I3.3. Le nouveau témoin.** Mesuré contre la révision d'avant, 6 graines
+  × 6 000 h : villes 506 → **480**, population 55 312 → **52 585**, bien
+  nourries 379 → **409**, affamées 17 % → **8 %**, factions écrasées 2/36 →
+  **3/36**, écart comptable 0. Les dix gardes de `CIBLES.json` tiennent.
+  Le monde est plus petit et nettement mieux nourri.
 
 ### Lot 3b — l'indépendance au trajet, jusqu'au bout (décidé, propriétaire)
 

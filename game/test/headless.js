@@ -5718,7 +5718,7 @@ section('9 quinvicies quater. La pyrolyse, isolée de tout le reste');
   // Le point de la correction, dit en une mesure : la nourriture ne sert plus
   // de carburant. Un camp sans aucune chaîne de transformation, mais plein de
   // biomasse, ne doit pas produire une goutte.
-  const bacsSeuls = () => {
+  const bacsSeuls = (raffinerie) => {
     const s = nouvellePartie(2020, { maintenant: 0, depart: 'ville', equipe: 3 });
     const g = groupeActif(s);
     g.regionId = s.world.regions.find(
@@ -5728,7 +5728,7 @@ section('9 quinvicies quater. La pyrolyse, isolée de tout le reste');
     }
     fonderBase(s, () => {}, g);
     Object.assign(s.base.batiments,
-      { raffinerie: 2, entrepot: 6, solaire: 4, eolienne: 4 });
+      { raffinerie, entrepot: 6, solaire: 4, eolienne: 4 });
     s.base.recherche.pyrolyse = 3;
     s.base.stock.biomasse = 3000;
     s.base.stock.carburant = 0;
@@ -5738,11 +5738,16 @@ section('9 quinvicies quater. La pyrolyse, isolée de tout le reste');
     for (let i = 0; i < 600; i++) tick(s);
     return { bioAvant: avant, bioApres: Math.round(s.base.stock.biomasse || 0) };
   };
-  const b = bacsSeuls();
-  ok(b.bioApres >= b.bioAvant - 1,
+  // Contre un témoin, et pas dans l'absolu : ces six cents heures peuvent
+  // apporter une razzia — mesuré, une l'a fait tomber de 3 000 à 1 999 sans
+  // qu'une goutte de carburant soit produite. Un camp sans raffinerie subit la
+  // même, et c'est la DIFFÉRENCE qui dit si la raffinerie a mangé la réserve.
+  const b = bacsSeuls(2);
+  const bSans = bacsSeuls(0);
+  ok(b.bioApres >= bSans.bioApres - 1,
     'une réserve de biomasse n’est plus jamais brûlée : on ne fait pas du carburant '
     + 'avec ce qui aurait pu être des rations',
-    `${b.bioAvant} → ${b.bioApres}`);
+    `${b.bioAvant} → ${b.bioApres} avec raffinerie, ${bSans.bioApres} sans`);
 }
 
 section('9 quinvicies septies. On donne des consignes aux chaînes');
@@ -7359,6 +7364,41 @@ section('20. Le banc de recrutement, vue dérivée au lieu d’état');
   // (`pasColonie`), donc le nombre d'appels au tick, donc la consommation du
   // flux partagé — et un flux partagé contamine tout. La preuve entière
   // n'arrive qu'au lot 3, quand chaque colonie tirera dans le sien.
+}
+
+// ===========================================================================
+section('21. Chaque ville tire dans son propre flux');
+{
+  // Aujourd'hui toutes les villes puisent dans le même sac de hasard, et la
+  // maille de leur tick dépend de la distance au joueur (`pasColonie`) : une
+  // ville proche avance toutes les trois heures, une ville lointaine toutes les
+  // vingt-quatre. Le NOMBRE d'appels dépend donc du trajet du promeneur, et
+  // comme le sac est commun, tout ce qui vient après se décale. Une ville qui
+  // tire chez elle ne peut plus décaler personne.
+  const semer = (graine) => nouvellePartie(graine, { maintenant: 0 });
+  const sA = semer(313);
+  const sB = semer(313);
+
+  const idA = sA.world.colonies.find((c) => !c.ruine && c.faction && !c.avantPoste).id;
+  const autre = (s) => s.world.colonies.filter(
+    (c) => !c.ruine && c.faction && !c.avantPoste && c.id !== idA);
+
+  ok(typeof sA.world.colonies[0].rngEtat === 'number',
+    'une ville neuve a son propre flux, dérivé de son nom et non tiré du sac');
+  ok(sA.world.colonies[0].rngEtat !== sA.world.colonies[1].rngEtat,
+    'et deux villes n’ont pas le même');
+
+  // On dérange le flux d'UNE ville, et on regarde les autres.
+  sB.world.colonies.find((c) => c.id === idA).rngEtat = 987654321;
+  for (let i = 0; i < 40; i++) { tick(sA); tick(sB); }
+
+  const memeFlux = autre(sA).filter((c) => {
+    const jumelle = sB.world.colonies.find((x) => x.id === c.id);
+    return jumelle && jumelle.rngEtat === c.rngEtat;
+  }).length;
+  ok(memeFlux === autre(sA).length,
+    'déranger une ville ne déplace pas le hasard des autres',
+    `${memeFlux}/${autre(sA).length} intactes`);
 }
 
 // ===========================================================================

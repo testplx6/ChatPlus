@@ -4,6 +4,7 @@
 import {
   FACTIONS, DIPLO_FACTIONS, COMMODITY_KEYS, MENAGES, COMMODITIES,
 } from './data.js';
+import { grainDe } from './rng.js';
 import {
   veutOuvrirBourse, ouvrirBourse, aUneBourse, partenairePossible, signerAccord,
   veutAccord,
@@ -851,6 +852,8 @@ export function fonderColonie(world, key, region, rng, t) {
     creancier: null,
     cession: null,
     prises: 0,
+    // Le hasard de cette ville, à elle seule — dérivé, jamais tiré.
+    rngEtat: grainDe('colonie', `s${world.prochaineColonieId}`),
     // Le registre des engagements du banc. Le banc lui-même se dérive.
     bancPris: null,
     geole: null,

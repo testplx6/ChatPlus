@@ -3,6 +3,7 @@
 // fois la persistance navigateur et, plus tard, un envoi au serveur.
 
 import { groupeVide } from './groupes.js';
+import { grainDe } from './rng.js';
 import { creerConnaissance } from './connaissance.js';
 import { MENAGES } from './data.js';
 
@@ -158,6 +159,9 @@ export function normaliser(state) {
     // (voir `bancDerive`). Les vieilles sauvegardes en portent un, on le jette.
     if (c.banc !== undefined) delete c.banc;
     if (c.bancPris === undefined) c.bancPris = null;
+    // Le flux propre de la ville : dérivé de son nom, donc identique à celui
+    // qu'une partie neuve lui aurait donné. Pas un tirage.
+    if (typeof c.rngEtat !== 'number') c.rngEtat = grainDe('colonie', c.id);
     // Avant la justice, une ville n'enfermait personne.
     if (c.geole === undefined) c.geole = null;
     // Avant les services, ces gens n'attendaient rien et ne retenaient rien.

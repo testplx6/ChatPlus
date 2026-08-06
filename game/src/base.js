@@ -5,6 +5,7 @@ import {
   BUILDINGS, RESEARCH, COMMODITY_KEYS, COMMODITIES, METIERS, METIER_KEYS, BIOMES,
   FACTIONS, RECETTES, ARRET,
 } from './data.js';
+import { grainDe } from './rng.js';
 import { rendementRegion } from './world.js';
 import { METEO } from './climat.js';
 import { loisDe } from './lois.js';
@@ -1462,6 +1463,8 @@ export function reconnaitreAvantPoste(state, log) {
     creancier: null,
     cession: null,
     prises: 0,
+    // Le hasard de cette ville, à elle seule — dérivé, jamais tiré.
+    rngEtat: grainDe('colonie', `s${w.prochaineColonieId}`),
     // Le registre des engagements du banc. Le banc lui-même se dérive.
     bancPris: null,
     geole: null,

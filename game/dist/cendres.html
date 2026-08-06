@@ -2883,6 +2883,12 @@ function genererColonies(rng, regions) {
       unrest: Number(rng.range(0, 0.2).toFixed(2)),
       // Qui travaille à quoi. Rempli une fois la faction attribuée.
       emplois: null,
+      // Le hasard de cette ville, à elle seule. Dérivé de son nom, jamais tiré
+      // du sac commun : y consommer un nombre décalerait tout ce qui suit.
+      // Tant que toutes les villes puisaient au même sac, la maille de leur
+      // tick — qui dépend de la distance au joueur — décidait de l'ordre des
+      // tirages, et le monde entier divergeait selon le trajet du promeneur.
+      rngEtat: grainDe('colonie', `s${colonies.length + 1}`),
       // Le registre des gens déjà engagés au banc, pour l'époque en cours. Le
       // banc lui-même n'est pas de l'état : il se dérive de la ville et de
       // l'heure (voir `bancDerive` dans recrues.js). La clé existe dès la
@@ -11843,6 +11849,8 @@ function fonderColonie(world, key, region, rng, t) {
     creancier: null,
     cession: null,
     prises: 0,
+    // Le hasard de cette ville, à elle seule — dérivé, jamais tiré.
+    rngEtat: grainDe('colonie', `s${world.prochaineColonieId}`),
     // Le registre des engagements du banc. Le banc lui-même se dérive.
     bancPris: null,
     geole: null,
@@ -15611,6 +15619,8 @@ function reconnaitreAvantPoste(state, log) {
     creancier: null,
     cession: null,
     prises: 0,
+    // Le hasard de cette ville, à elle seule — dérivé, jamais tiré.
+    rngEtat: grainDe('colonie', `s${w.prochaineColonieId}`),
     // Le registre des engagements du banc. Le banc lui-même se dérive.
     bancPris: null,
     geole: null,
@@ -19203,6 +19213,9 @@ function normaliser(state) {
     // (voir `bancDerive`). Les vieilles sauvegardes en portent un, on le jette.
     if (c.banc !== undefined) delete c.banc;
     if (c.bancPris === undefined) c.bancPris = null;
+    // Le flux propre de la ville : dérivé de son nom, donc identique à celui
+    // qu'une partie neuve lui aurait donné. Pas un tirage.
+    if (typeof c.rngEtat !== 'number') c.rngEtat = grainDe('colonie', c.id);
     // Avant la justice, une ville n'enfermait personne.
     if (c.geole === undefined) c.geole = null;
     // Avant les services, ces gens n'attendaient rien et ne retenaient rien.
@@ -19989,7 +20002,12 @@ function tick(state) {
     // Ce que la loi fait à l'humeur : on ne pend pas vite sans que la ville
     // s'en ressente, et on ne relâche pas non plus sans que ça se voie.
     tickOrdrePublic(state, col, du);
-    const ev = tickColonie(state.world, col, rng, climat, du, rep, log, state.temps, present);
+    // Le flux de la ville, ouvert et rescellé autour de son tick. C'est ce qui
+    // coupe la contamination : ce qu'une ville tire ne décale plus rien chez
+    // les autres, quel que soit l'ordre où le niveau de détail les fait passer.
+    const rngCol = new Rng(col.rngEtat);
+    const ev = tickColonie(state.world, col, rngCol, climat, du, rep, log, state.temps, present);
+    col.rngEtat = rngCol.save();
     if (!ev) continue;
     if (ev.evenement === 'croissance') {
       log({
@@ -20000,7 +20018,8 @@ function tick(state) {
       });
     } else if (ev.evenement === 'revolte') {
       const ancienne = col.faction;
-      const r = faireRevolte(state.world, col, rng, state.temps);
+      const r = faireRevolte(state.world, col, rngCol, state.temps);
+      col.rngEtat = rngCol.save();
       // Une émeute laisse les pistes du coin dans un état déplorable : des
       // gens armés qui n'ont plus rien à perdre, et personne pour les tenir.
       const reg = state.world.regions[col.regionId];
