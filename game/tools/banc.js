@@ -650,6 +650,93 @@ function ecrireCarte({
 }
 
 // ---------------------------------------------------------------------------
+// Le niveau de détail : ce qu'il fait à une ville
+// ---------------------------------------------------------------------------
+
+const med2 = (a) => (a.length ? a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)] : 0);
+
+/**
+ * Une ville proche du joueur avance heure par heure ; une ville lointaine par
+ * tranches de vingt-quatre (`pasColonie`). Les probabilités sont converties par
+ * `surDt` pour être équivalentes **en moyenne** — mais rien ne dit que la ville
+ * qui en sort est la même. Une première mesure a montré +7,7 % de population et
+ * moins d'agitation sous la maille fine, sur douze villes et une graine : un
+ * signal, pas une conclusion, et deux de ses chiffres étaient inexploitables
+ * pour cause de dénominateur proche de zéro.
+ *
+ * Deux mesures ici. La première regarde le monde entier, à médianes et en
+ * absolu. La seconde **isole la maille de tout le reste** : la même ville,
+ * clonée, avancée de vingt-quatre heures d'un côté par tranches d'une heure et
+ * de l'autre d'un coup — aucune caravane, aucune guerre, aucun voisin. C'est
+ * celle-là qui instruit la cause.
+ */
+async function mesurerMaille(graines, horizon) {
+  const moteur = await chargerMoteur(SRC);
+  const { sim, eco } = moteur;
+  const climat = await import(pathToFileURL(join(SRC, 'climat.js')).href);
+  const rngMod = await import(pathToFileURL(join(SRC, 'rng.js')).href);
+  const monde = await import(pathToFileURL(join(SRC, 'world.js')).href);
+
+  console.log('1. Le monde entier — la même ville sous les deux mailles\n');
+  const dPop = []; const dUnrest = []; const dRations = []; const dCaisse = [];
+  let deboutFin = 0; let deboutGros = 0;
+  const X = 4 * 24 + 4; const Y = 13 * 24 + 19;
+  for (const g of graines) {
+    const jouer2 = (region) => {
+      const s = sim.nouvellePartie(g, { maintenant: 0 });
+      for (let i = 0; i < horizon; i++) { s.player.groupes[0].regionId = region; sim.tick(s); }
+      return s;
+    };
+    const A = jouer2(X); const B = jouer2(Y);
+    for (const [centre, fin, gros] of [[X, A, B], [Y, B, A]]) {
+      for (const c0 of A.world.colonies) {
+        if (monde.distance(c0.regionId, centre) > 4) continue;
+        const f = fin.world.colonies.find((x) => x.id === c0.id);
+        const gr = gros.world.colonies.find((x) => x.id === c0.id);
+        const vf = f && !f.ruine && f.faction; const vg = gr && !gr.ruine && gr.faction;
+        deboutFin += vf ? 1 : 0; deboutGros += vg ? 1 : 0;
+        if (!vf || !vg) continue;
+        dPop.push(f.pop - gr.pop);
+        dUnrest.push(f.unrest - gr.unrest);
+        dRations.push((f.stock.rations || 0) - (gr.stock.rations || 0));
+        dCaisse.push((f.caisse || 0) - (gr.caisse || 0));
+      }
+    }
+  }
+  console.log(`   ${dPop.length} villes appariées, ${graines.length} graines × ${horizon} h`);
+  console.log(`   population   médiane ${med2(dPop) >= 0 ? '+' : ''}${Math.round(med2(dPop))} habitants`);
+  console.log(`   agitation    médiane ${med2(dUnrest) >= 0 ? '+' : ''}${med2(dUnrest).toFixed(3)}`);
+  console.log(`   rations      médiane ${med2(dRations) >= 0 ? '+' : ''}${Math.round(med2(dRations))}`);
+  console.log(`   caisse       médiane ${med2(dCaisse) >= 0 ? '+' : ''}${Math.round(med2(dCaisse))}`);
+  console.log(`   debout       ${deboutFin} en maille fine, ${deboutGros} en maille grossière`);
+
+  console.log('\n2. La maille seule — même ville clonée, aucun voisin, aucune caravane\n');
+  const s = sim.nouvellePartie(graines[0], { maintenant: 0 });
+  for (let i = 0; i < 400; i++) sim.tick(s);
+  const cond = climat.conditions(s.world, s.temps);
+  const ecarts2 = { pop: [], rations: [], unrest: [], caisse: [], menages: [] };
+  for (const c0 of s.world.colonies.filter((c) => !c.ruine && c.faction && !c.avantPoste).slice(0, 40)) {
+    const fin = JSON.parse(JSON.stringify(c0));
+    const gros = JSON.parse(JSON.stringify(c0));
+    const rf = new rngMod.Rng(12345); const rg = new rngMod.Rng(12345);
+    for (let jour = 0; jour < 40; jour++) {
+      for (let h = 0; h < 24; h++) eco.tickColonie(s.world, fin, rf, cond, 1, 0, null, s.temps + jour * 24 + h);
+      eco.tickColonie(s.world, gros, rg, cond, 24, 0, null, s.temps + jour * 24);
+    }
+    ecarts2.pop.push(fin.pop - gros.pop);
+    ecarts2.rations.push((fin.stock.rations || 0) - (gros.stock.rations || 0));
+    ecarts2.unrest.push(fin.unrest - gros.unrest);
+    ecarts2.caisse.push((fin.caisse || 0) - (gros.caisse || 0));
+    ecarts2.menages.push((fin.menages || 0) - (gros.menages || 0));
+  }
+  console.log(`   ${ecarts2.pop.length} villes, 40 jours simulés des deux façons`);
+  for (const [k, v] of Object.entries(ecarts2)) {
+    const m = med2(v);
+    console.log(`   ${k.padEnd(9)} médiane ${m >= 0 ? '+' : ''}${Math.abs(m) < 10 ? m.toFixed(3) : Math.round(m)}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Ligne de commande
 // ---------------------------------------------------------------------------
 
@@ -709,6 +796,13 @@ async function principal() {
   if (drapeau('--cartographie')) {
     await cartographier(graines, horizon,
       option('--max') ? lireNombre(option('--max'), '--max') : 0);
+    return;
+  }
+
+  // --maille : ce que le niveau de détail fait à une ville. Deux mesures, et la
+  // seconde est celle qui instruit la cause.
+  if (drapeau('--maille')) {
+    await mesurerMaille(graines.slice(0, 3), horizon);
     return;
   }
 

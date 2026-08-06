@@ -274,6 +274,18 @@ cache ne peut pas la mesurer. **Aucune garde absolue n'est fiable sur une telle
 machine** ; seul un rapport mesuré dans la même minute l'est, parce que les deux
 révisions subissent la même chose ensemble.
 
+**Une probabilité se regroupe, un compte ne se regroupe pas.** `surDt` convertit
+« la chance que ça arrive » d'une heure à une tranche de vingt-quatre. Il ne
+convertit pas « combien de fois ». Un mécanisme qui peut se produire plusieurs
+fois par tranche est donc simulé différemment selon la maille — et la maille
+dépend de la distance au joueur.
+
+> **Incident.** Mesuré par `banc --maille`, la même ville clonée sur quarante
+> jours : rations, agitation et caisse **identiques au millième** sous les deux
+> mailles ; population et ménages, non. La cause est `rng.chance(surDt(p))`
+> suivi de `pop += irange(0, 2)` — une seule occurrence par tranche, de même
+> ampleur, là où vingt-quatre heures fines en autorisent vingt-quatre.
+
 **Chercher la cause, pas la corrélation.** La population avait chuté de 28 % après
 un changement d'économie. L'hypothèse commode — « il part moins de convois » —
 était fausse : il en partait *plus*, mais six fois plus maigres. La bonne mesure

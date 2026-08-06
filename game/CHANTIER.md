@@ -386,6 +386,39 @@ minutes.
 
 ## Blocages
 
+### Le niveau de détail n'est pas neutre — cause instruite, correctif à décider
+
+`node tools/banc.js --maille` mesure ce que la maille fait à une ville. Deux
+relevés, et c'est le second qui tranche.
+
+**Le monde entier** (3 graines × 2 000 h, 48 villes appariées, la même ville
+sous les deux mailles) : population médiane **+28 habitants** en maille fine,
+rations +27, caisse −168, agitation nulle, et **52 villes debout en maille fine
+contre 55 en grossière**.
+
+**La maille seule** — même ville clonée, quarante jours, aucun voisin, aucune
+caravane : rations, agitation et caisse **identiques au millième**. Seules la
+population (−10) et les ménages (−39) divergent.
+
+**La cause, nommée** : `surDt(p) = 1 − (1−p)^dt` convertit correctement *la
+probabilité qu'un événement arrive* sur la tranche — mais **pas son nombre
+d'occurrences**. `economy.js:719-730` : sur vingt-quatre heures fines, la ville
+peut gagner ou perdre des habitants **vingt-quatre fois** ; sur une tranche de
+vingt-quatre, **une seule fois**, et de la même ampleur. Tout ce qui est un
+*taux* (agitation, stocks, salaires) se regroupe exactement — c'est mesuré à
+zéro. Tout ce qui est un *événement quantifié* ne se regroupe pas.
+
+Le signe s'explique alors : isolée, la ville s'affame et c'est la branche de
+départ qui domine — la maille fine perd plus. Dans le monde, les villes sont
+ravitaillées, c'est la croissance qui domine — la maille fine gagne plus.
+
+**Correctif possible, non appliqué** : tirer le *nombre* d'occurrences sur la
+tranche (loi binomiale, ou espérance `p × dt` appliquée à l'ampleur) au lieu
+d'un seul tirage. Ce n'est pas un réglage, c'est une règle de jeu — combien de
+gens une ville peut-elle perdre en un jour ? — donc une décision du
+propriétaire, et un lot à part entière.
+
+
 ### Lot 3b — INACHEVÉ : deux étapes rouges, commité mais NON POUSSÉ
 
 Le but du lot est **atteint et prouvé** : `state.rngState` est identique après
