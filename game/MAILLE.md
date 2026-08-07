@@ -1,7 +1,14 @@
 # Chantier « Invariance à la maille »
 
-⚠️ **Proposé, pas démarré.** Il ne démarre qu'avec l'accord explicite du
-propriétaire. Format : `METHODE.md` §9.
+✅ **Démarré** (accord du propriétaire, août 2026). Format : `METHODE.md` §9.
+
+**La réserve du propriétaire, consignée telle qu'elle a été dite** : « d'accord
+pour l'invariance de la maille même si je ne suis pas convaincu à terme, ça
+reste une solution raisonnable en phase de dev ». Autrement dit : corriger le
+compte des événements est tenu pour un **compromis de phase de développement**,
+pas pour la réponse définitive. Ce qui viendrait après n'est pas décidé —
+serveur à maille uniforme, sous-pas, ou une autre architecture de simulation.
+Le chantier avance en le sachant, et ne prétend pas clore la question.
 
 Un moteur de simulation est crédible quand **le modèle ne dépend pas de la
 façon dont on le regarde**. C'est la propriété la plus centrale qu'il puisse
@@ -124,7 +131,7 @@ décidé.
 
 | cible | comment on la mesure |
 |---|---|
-| invariance | `banc --maille`, partie 2 : les cinq écarts médians **à zéro**, pas seulement trois |
+| invariance | `banc --maille`, partie 2 : les cinq écarts médians **sous le plancher de bruit**, mesuré par placebo comme dans la cartographie. « À zéro » était une cible mal posée : corriger le compte supprime le biais systématique, il reste l'écart de deux tirages honnêtes — et exiger l'impossible, c'est ne rien vérifier |
 | invariance dans le monde | `banc --maille`, partie 1 : population médiane à ±3 habitants et villes debout à ±1 |
 | coût | la garde de vitesse : rapport à la livraison précédente. Estimé ~3 % ; au-delà de ×1,08 la variante approchée passe devant l'exacte |
 | le monde tient | les dix gardes de `CIBLES.json`, resserrées après coup sur l'état mesuré |
@@ -153,11 +160,43 @@ villes à la maille fine coûteraient environ trois fois le budget du tick, et
 une campagne de mille parties passerait de vingt minutes à une heure. **On
 garde le niveau de détail ; on corrige seulement qu'il biaise.**
 
-## 7. Reste à instruire avant de démarrer
+## 7. Le recensement — fait
 
-`banc --maille` ne mesure aujourd'hui que `tickColonie`. **Les autres
-mécanismes qui reçoivent un `dt`** — la geôle, l'ordre public, les secteurs,
-les armées en campagne — n'ont pas été examinés. Ils souffrent peut-être du
-même défaut. La première tâche du chantier est de les recenser et de les
-mesurer, comme la cartographie l'a fait pour les constantes : **on ne corrige
-pas ce qu'on n'a pas compté.**
+Tout ce qui reçoit un `dt`, et ce que chacun en fait. **Deux seulement sont
+atteints**, et c'est une bonne nouvelle : le périmètre est petit.
+
+| mécanisme | reçoit `dt` | événement quantifié ? |
+|---|---|---|
+| `economy.tickColonie` | oui | **OUI** — `economy.js:719-730`, naissance et départ |
+| `notables.tickNotables` | oui | **OUI** — `notables.js:233`, la relève d'une charge |
+| `services.tickServices` | oui | non — `services.js:170` : au plus une demande à la fois par notable, c'est voulu |
+| `economy.ajusterEmplois` | oui | non — un lissage continu |
+| `justice.tickGeole`, `tickOrdrePublic` | oui | non — pas un seul tirage |
+| `secteur.effetPresence` | oui | non — pas un seul tirage |
+| `dirigeants.tickDirigeant` | oui | appelé à `dt = 24` fixe, donc jamais deux mailles |
+| `factions`, `allegeance`, `base`, `squad` | non | hors sujet : ils tirent, mais à maille unique |
+
+**`notables.js:233`** refait exactement la même faute que `economy.js` :
+`rng.chance(dt === 1 ? q : 1 - Math.pow(1 - q, dt))` puis un seul remplacement.
+Une ville lointaine ne peut donc changer de chef qu'une fois par tranche de
+vingt-quatre heures, une ville proche vingt-quatre fois.
+
+**Ce que le recensement écarte, et qu'il fallait vérifier** : les stocks, les
+salaires, l'agitation, l'ordre public, la geôle et les secteurs sont des
+*taux*. Ils se regroupent exactement — c'est déjà mesuré à zéro par
+`banc --maille`, et ça confirme le recensement au lieu de le supposer.
+
+## 8. Les tâches
+
+- [ ] **M1.** La primitive `combienDeFois` + tests rouges d'abord : sur mille
+  tirages, l'espérance à `dt = 24` vaut `24 p` à 5 % près ; à `dt = 1` elle rend
+  exactement ce que rendait `rng.chance(p)`.
+- [ ] **M2.** Brancher `economy.js:719-730` (naissance, départ). Mesurer :
+  `banc --maille` partie 2, l'écart de population doit tomber sous le plancher.
+- [ ] **M3.** Brancher `notables.js:233` (relève d'une charge). Même mesure.
+- [ ] **M4.** Le plancher de bruit lui-même : ajouter à `banc --maille` un
+  placebo — deux mailles fines de graines voisines — sans quoi « sous le
+  plancher » ne veut rien dire.
+- [ ] **M5.** Livraison : `CIBLES.json` resserré sur l'état mesuré, coût du tick
+  chiffré contre la livraison précédente, et le résidu de rétroaction écrit
+  noir sur blanc plutôt que passé sous silence.
