@@ -154,6 +154,8 @@ import {
 } from '../src/connaissance.js';
 import { distance } from '../src/world.js';
 import { conditions } from '../src/climat.js';
+import { pousserAuVivier, VIVIER_MAX } from '../src/justice.js';
+import { pourvoirCharges, tickNotables } from '../src/notables.js';
 
 let echecs = 0;
 let total = 0;
@@ -7650,6 +7652,138 @@ section('23. Une probabilité se regroupe, un compte ne se regroupe pas');
     `${e24.caisse.toFixed(3)} crédits`);
   ok(Math.abs(e24.menages) < 0.1, 'et les mêmes ménages',
     `${e24.menages.toFixed(3)} crédits`);
+}
+
+// ===========================================================================
+section('24. Le vivier — la ville promeut qui a déjà une histoire');
+{
+  // Chantier INDIVIDUS, lot 4. Une charge qui se libère tirait toujours un nom
+  // neuf : personne ne revenait jamais. Le vivier garde trois noms que le
+  // joueur a laissés derrière lui, et la ville y puise avant d'inventer.
+  const sV = nouvellePartie(515, { maintenant: 0 });
+  const cV = sV.world.colonies.find((c) => !c.ruine && c.faction && !c.avantPoste);
+  ok(Array.isArray(cV.vivier) && cV.vivier.length === 0,
+    'une ville neuve a un vivier, vide');
+
+  // Le champ existe aux trois lieux de création — la carte, la fondation, le
+  // camp — sinon `normaliser` le rajoute au rechargement et l'aller-retour JSON
+  // n'est plus exact. C'est ce que ce test-ci vérifie vraiment.
+  const avantV = JSON.stringify(sV);
+  ok(JSON.stringify(deserialiser(serialiser(sV))) === avantV,
+    'et l’aller-retour JSON reste exact');
+
+  // Une vieille sauvegarde n'en a pas.
+  const vieux = JSON.parse(avantV);
+  for (const c of vieux.world.colonies) delete c.vivier;
+  const rattrape = deserialiser(JSON.stringify(vieux));
+  ok(rattrape.world.colonies.every((c) => Array.isArray(c.vivier) && c.vivier.length === 0),
+    'et une partie d’avant le vivier en reçoit un vide');
+
+  // La borne : trois noms, et c'est le plus vieux qui saute.
+  const cB = rattrape.world.colonies.find((c) => c.id === cV.id);
+  for (let i = 1; i <= 5; i++) pousserAuVivier(cB, `Nom${i}`, 'captif', i);
+  ok(cB.vivier.length === VIVIER_MAX,
+    `le vivier ne garde que ${VIVIER_MAX} noms`, `${cB.vivier.length}`);
+  ok(cB.vivier.map((v) => v.nom).join(',') === 'Nom3,Nom4,Nom5',
+    'et ce sont les plus récents', cB.vivier.map((v) => v.nom).join(','));
+
+  // --- La source : ce que le joueur laisse derrière lui -------------------
+  //
+  // Toutes les issues d'un captif passent par `disposer`, et trois seulement
+  // laissent quelqu'un sur place. Relâché ou livré, l'homme reste dans la
+  // ville et peut y refaire sa vie. Vendu, rançonné, enrôlé, il part — et
+  // aucun des trois ne doit garnir le vivier : un vendu ne devient pas
+  // armurier, un rançonné rentre chez lui, un enrôlé suit le joueur.
+  const captifEn = (issue) => {
+    const st = nouvellePartie(7474, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(st);
+    const ville = st.world.colonies.find((c) => c.regionId === g.regionId);
+    // La vente est refusée par défaut ici — aucune faction ne commence
+    // esclavagiste. Sans cette ligne, le test « un captif vendu n'y entre
+    // pas » passe sur une vente qui n'a jamais eu lieu, et il ne vérifie
+    // rien. C'est le piège de `METHODE.md` §4, et il a été attrapé en
+    // relisant la valeur de retour plutôt que la couleur du test.
+    if (issue === 'vendre') loisDe(st.world, ville.faction).esclavage = true;
+    const bande = genererBande(new Rng(11), 'bandits', 4, 1);
+    for (const c of bande.membres) { c.etat = 'ko'; c.corps.torse.pv = 0; }
+    fairePrisonniers(st, g, bande, capturables(g, bande), () => {});
+    const captif = prisonniersDe(g)[0];
+    const r = disposer(st, g, captif.id, issue, () => {});
+    return { ville, captif, r };
+  };
+
+  const relache = captifEn('relacher');
+  ok(relache.r.ok && relache.ville.vivier.some((v) => v.nom === relache.captif.nom),
+    'un captif relâché en ville entre au vivier',
+    `${relache.ville.vivier.map((v) => v.nom).join(', ') || 'vide'}`);
+  ok(relache.ville.vivier[0] && relache.ville.vivier[0].origine === 'captif',
+    'et il y entre avec son origine');
+
+  const livre = captifEn('livrer');
+  ok(livre.r.ok && livre.ville.vivier.some((v) => v.nom === livre.captif.nom),
+    'un captif livré à la justice y entre aussi',
+    `${livre.ville.vivier.map((v) => v.nom).join(', ') || 'vide'}`);
+
+  const vendu = captifEn('vendre');
+  ok(vendu.r.ok, 'la vente est bien autorisée dans la ville du test',
+    vendu.r.motif || '');
+  ok(vendu.ville.vivier.length === 0, 'et un captif vendu n’entre pas au vivier',
+    `${vendu.ville.vivier.length} au vivier`);
+
+  const enrole = captifEn('enroler');
+  ok(enrole.r.ok && enrole.ville.vivier.length === 0,
+    'un captif enrôlé non plus — il suit le joueur',
+    `${enrole.ville.vivier.length} au vivier`);
+
+  // --- La promotion : la ville puise dans sa mémoire avant d'inventer ------
+  //
+  // Une charge qui se libère tirait toujours un nom neuf. Maintenant, si la
+  // ville se souvient de quelqu'un, c'est lui. Le reste du personnage — âge,
+  // compétence, caractère, humeur — se tire exactement comme avant : **le nom
+  // est remplacé après coup, pas à la place d'un tirage**, sinon tous les
+  // tirages suivants se décalent et le monde change à graine égale.
+  const promo = (avecVivier) => {
+    const st = nouvellePartie(909, { maintenant: 0 });
+    const col = st.world.colonies.find((c) => !c.ruine && c.faction && !c.avantPoste
+      && c.notables && c.notables.length > 0);
+    if (avecVivier) pousserAuVivier(col, 'Vieille Connaissance', 'captif', st.temps);
+    // On fait mourir le chef de vieillesse : `notables.js` remplace une charge
+    // vacante au tick suivant.
+    const chef = col.notables.find((p) => p.charge === 'chef') || col.notables[0];
+    const idAvant = chef.id;
+    chef.age = 90;
+    const lignes = [];
+    for (let i = 0; i < 400 && col.notables.some((p) => p.id === idAvant); i++) {
+      tickNotables(col, new Rng(1000 + i), 24, 0, (e) => lignes.push(e.texte), st.temps + i * 24);
+      pourvoirCharges(col, new Rng(2000 + i), st.temps + i * 24, (e) => lignes.push(e.texte));
+    }
+    const remplacant = col.notables.find((p) => p.charge === chef.charge);
+    return { col, remplacant, lignes, parti: !col.notables.some((p) => p.id === idAvant) };
+  };
+
+  const sans = promo(false);
+  ok(sans.parti && !!sans.remplacant, 'un notable trop vieux finit par céder sa place',
+    sans.remplacant ? sans.remplacant.nom : 'personne');
+
+  const avec = promo(true);
+  ok(avec.parti && avec.remplacant && avec.remplacant.nom === 'Vieille Connaissance',
+    'une ville au vivier garni promeut un nom connu',
+    avec.remplacant ? avec.remplacant.nom : 'personne');
+  ok(avec.col.vivier.length === 0, 'et le nom sort du vivier — on ne promeut pas deux fois');
+  ok(avec.lignes.some((l) => /ancien captif/.test(l)),
+    'et le journal dit d’où il vient',
+    avec.lignes.filter((l) => /devient/.test(l)).slice(-1)[0] || 'rien');
+
+  // Le témoin : hors le nom, le personnage est le même des deux côtés. C'est
+  // ce qui prouve qu'aucun tirage n'a été ajouté ni déplacé.
+  ok(sans.remplacant && avec.remplacant
+    && sans.remplacant.age === avec.remplacant.age
+    && sans.remplacant.comp === avec.remplacant.comp
+    && sans.remplacant.caractere === avec.remplacant.caractere,
+  'et seul le nom change — mêmes tirages, même ordre',
+  sans.remplacant && avec.remplacant
+    ? `${sans.remplacant.age}/${sans.remplacant.comp} contre ${avec.remplacant.age}/${avec.remplacant.comp}`
+    : 'pas de remplaçant');
 }
 
 // ===========================================================================

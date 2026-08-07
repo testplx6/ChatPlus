@@ -96,7 +96,43 @@ export function chargesDe(col) {
  * disparition de ses médecins, c'est-à-dire presque jamais — et cette fonction
  * est appelée à chaque tranche de colonie.
  */
-export function pourvoirCharges(col, rng, t) {
+/**
+ * Quelqu'un prend une charge — de préférence quelqu'un dont la ville se
+ * souvient.
+ *
+ * C'est le lot 4 du chantier `INDIVIDUS.md`. Sans le vivier, une charge qui se
+ * libère tirait toujours un nom neuf : personne ne revenait jamais, et une
+ * ville où le joueur avait laissé une trace ressemblait à toutes les autres.
+ *
+ * **Le nom est remplacé après `creerNotable`, jamais à la place de son
+ * tirage.** `nommer(rng)` doit consommer ce qu'il consommait, sinon tous les
+ * tirages suivants se décalent et le monde entier change à graine égale —
+ * piège n°1 de `game/CLAUDE.md`. Un test le garde : hors le nom, le notable
+ * promu est identique, âge, compétence et caractère compris, à celui qui aurait
+ * été inventé.
+ *
+ * Les deux sites qui pourvoient une charge passent par ici — la charge neuve
+ * (`pourvoirCharges`) et la relève d'un partant (`tickNotables`). Les tenir
+ * séparés, c'était garantir qu'un des deux oublierait le vivier ; c'est
+ * d'ailleurs le premier qui avait été branché, et c'est l'autre qui servait.
+ */
+export function promouvoir(rng, charge, col, t, log = null) {
+  const p = creerNotable(rng, charge, col, t);
+  const memoire = Array.isArray(col.vivier) && col.vivier.length ? col.vivier.shift() : null;
+  if (!memoire) return p;
+  p.nom = memoire.nom;
+  p.origine = memoire.origine;
+  if (log) {
+    log({
+      type: 'notable',
+      texte: `${p.nom}, ancien captif relâché ici, devient ${CHARGES[charge].nom} de ${col.nom}.`,
+      regionId: col.regionId,
+    });
+  }
+  return p;
+}
+
+export function pourvoirCharges(col, rng, t, log = null) {
   if (!col.notables) col.notables = [];
   const attendues = 2 + (col.taille >= 2 ? 1 : 0)
     + ((col.emplois && col.emplois.medecin) > 0 ? 1 : 0);
@@ -106,7 +142,7 @@ export function pourvoirCharges(col, rng, t) {
   col.notables = col.notables.filter((p) => voulues.includes(p.charge));
   for (const charge of voulues) {
     if (col.notables.some((p) => p.charge === charge)) continue;
-    col.notables.push(creerNotable(rng, charge, col, t));
+    col.notables.push(promouvoir(rng, charge, col, t, log));
   }
 }
 
@@ -232,12 +268,18 @@ export function tickNotables(col, rng, dt, reputation, log, t = 0) {
     const q = 0.00006 + vieux * 0.0006;
     if (rng.chance(dt === 1 ? q : 1 - Math.pow(1 - q, dt))) {
       const partant = p.nom;
-      const neuf = creerNotable(rng, p.charge, col, 0);
+      // Le journal du remplaçant se tient ici et pas dans `promouvoir` : ce
+      // n'est pas la même phrase quand quelqu'un laisse sa place que quand une
+      // charge s'ouvre. On lui passe donc `null`, et on dit tout d'un coup.
+      const neuf = promouvoir(rng, p.charge, col, 0);
       Object.assign(p, neuf, { depuis: 0 });
       if (log) {
         log({
           type: 'notable',
-          texte: `${CHARGES[p.charge].nom} de ${col.nom} : ${partant} laisse la place à ${p.nom}.`,
+          texte: neuf.origine === 'captif'
+            ? `${CHARGES[p.charge].nom} de ${col.nom} : ${partant} laisse la place à `
+              + `${p.nom}, ancien captif relâché ici.`
+            : `${CHARGES[p.charge].nom} de ${col.nom} : ${partant} laisse la place à ${p.nom}.`,
           regionId: col.regionId,
         });
       }

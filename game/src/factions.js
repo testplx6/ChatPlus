@@ -858,6 +858,7 @@ export function fonderColonie(world, key, region, rng, t) {
     rngEtat: grainDe(world.graine, 'colonie', `s${world.prochaineColonieId}`),
     // Le registre des engagements du banc. Le banc lui-même se dérive.
     bancPris: null,
+    vivier: [],
     geole: null,
     declin: 0,
     fondeeA: t,

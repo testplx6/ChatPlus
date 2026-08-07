@@ -285,6 +285,30 @@ export function optionsPour(state, col, g, c) {
   return out;
 }
 
+/**
+ * Combien de noms une ville garde en mémoire.
+ *
+ * Trois, et la borne compte plus que le chiffre : le vivier est un souvenir,
+ * pas un registre. Sans borne il grossirait sans fin dans la sauvegarde de
+ * chaque ville, et le chantier `INDIVIDUS.md` existe précisément pour ajouter
+ * des visages sans payer le prix de Dwarf Fortress.
+ */
+export const VIVIER_MAX = 3;
+
+/**
+ * La ville se souvient de quelqu'un que le joueur a laissé derrière lui.
+ *
+ * File d'attente bornée : quand elle déborde, c'est le plus vieux souvenir qui
+ * s'efface. Une ville n'a pas de mémoire longue, et un nom vieux de trois ans
+ * ne veut plus rien dire à personne.
+ */
+export function pousserAuVivier(col, nom, origine, t) {
+  if (!col || !nom) return;
+  if (!Array.isArray(col.vivier)) col.vivier = [];
+  col.vivier.push({ nom, origine, t });
+  while (col.vivier.length > VIVIER_MAX) col.vivier.shift();
+}
+
 function retirerCaptif(g, c) {
   const i = prisonniersDe(g).findIndex((x) => x.id === c.id);
   if (i >= 0) g.prisonniers.splice(i, 1);
@@ -311,6 +335,10 @@ export function disposer(state, g, captifId, quoi, log) {
     retirerCaptif(g, c);
     state.stats.captifsRelaches = (state.stats.captifsRelaches || 0) + 1;
     noterReputation(state, cap.faction, 4);
+    // La ville se souvient de lui. On peut relâcher quelqu'un au milieu de
+    // nulle part — il n'y a alors personne pour s'en souvenir, et c'est
+    // pourquoi le garde sur `col` est là.
+    if (col && !col.ruine) pousserAuVivier(col, c.nom, 'captif', state.temps);
     if (log) {
       log({
         type: 'prisonnier',
@@ -351,6 +379,8 @@ export function disposer(state, g, captifId, quoi, log) {
     ecrouer(state, col, c, loi);
     noterReputation(state, col.faction, 2);
     noterReputation(state, cap.faction, -3);
+    // Il purge sa peine ici, donc il reste ici. La ville le connaîtra.
+    pousserAuVivier(col, c.nom, 'captif', state.temps);
     // Livrer un brigand à la faction qu'on sert, c'est du service rendu — et
     // c'est ce qui relie la geôle à la carrière.
     if (g.allegeance && g.allegeance.faction === col.faction) {

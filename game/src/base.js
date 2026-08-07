@@ -1467,6 +1467,7 @@ export function reconnaitreAvantPoste(state, log) {
     rngEtat: grainDe(w.graine, 'colonie', `s${w.prochaineColonieId}`),
     // Le registre des engagements du banc. Le banc lui-même se dérive.
     bancPris: null,
+    vivier: [],
     geole: null,
     emplois: null,
     notables: [],

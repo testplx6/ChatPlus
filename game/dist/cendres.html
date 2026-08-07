@@ -2931,6 +2931,8 @@ function genererColonies(rng, regions, graine) {
       // création, sinon `normaliser` l'ajoute au rechargement et l'aller-retour
       // JSON n'est plus exact.
       bancPris: null,
+      // Les noms que la ville garde en mémoire — voir `pousserAuVivier`.
+      vivier: [],
       // Qui la ville tient enfermé. Voir justice.js.
       geole: null,
       marche: 1 + taille * 0.35,
@@ -4052,7 +4054,43 @@ function chargesDe(col) {
  * disparition de ses médecins, c'est-à-dire presque jamais — et cette fonction
  * est appelée à chaque tranche de colonie.
  */
-function pourvoirCharges(col, rng, t) {
+/**
+ * Quelqu'un prend une charge — de préférence quelqu'un dont la ville se
+ * souvient.
+ *
+ * C'est le lot 4 du chantier `INDIVIDUS.md`. Sans le vivier, une charge qui se
+ * libère tirait toujours un nom neuf : personne ne revenait jamais, et une
+ * ville où le joueur avait laissé une trace ressemblait à toutes les autres.
+ *
+ * **Le nom est remplacé après `creerNotable`, jamais à la place de son
+ * tirage.** `nommer(rng)` doit consommer ce qu'il consommait, sinon tous les
+ * tirages suivants se décalent et le monde entier change à graine égale —
+ * piège n°1 de `game/CLAUDE.md`. Un test le garde : hors le nom, le notable
+ * promu est identique, âge, compétence et caractère compris, à celui qui aurait
+ * été inventé.
+ *
+ * Les deux sites qui pourvoient une charge passent par ici — la charge neuve
+ * (`pourvoirCharges`) et la relève d'un partant (`tickNotables`). Les tenir
+ * séparés, c'était garantir qu'un des deux oublierait le vivier ; c'est
+ * d'ailleurs le premier qui avait été branché, et c'est l'autre qui servait.
+ */
+function promouvoir(rng, charge, col, t, log = null) {
+  const p = creerNotable(rng, charge, col, t);
+  const memoire = Array.isArray(col.vivier) && col.vivier.length ? col.vivier.shift() : null;
+  if (!memoire) return p;
+  p.nom = memoire.nom;
+  p.origine = memoire.origine;
+  if (log) {
+    log({
+      type: 'notable',
+      texte: `${p.nom}, ancien captif relâché ici, devient ${CHARGES[charge].nom} de ${col.nom}.`,
+      regionId: col.regionId,
+    });
+  }
+  return p;
+}
+
+function pourvoirCharges(col, rng, t, log = null) {
   if (!col.notables) col.notables = [];
   const attendues = 2 + (col.taille >= 2 ? 1 : 0)
     + ((col.emplois && col.emplois.medecin) > 0 ? 1 : 0);
@@ -4062,7 +4100,7 @@ function pourvoirCharges(col, rng, t) {
   col.notables = col.notables.filter((p) => voulues.includes(p.charge));
   for (const charge of voulues) {
     if (col.notables.some((p) => p.charge === charge)) continue;
-    col.notables.push(creerNotable(rng, charge, col, t));
+    col.notables.push(promouvoir(rng, charge, col, t, log));
   }
 }
 
@@ -4188,12 +4226,18 @@ function tickNotables(col, rng, dt, reputation, log, t = 0) {
     const q = 0.00006 + vieux * 0.0006;
     if (rng.chance(dt === 1 ? q : 1 - Math.pow(1 - q, dt))) {
       const partant = p.nom;
-      const neuf = creerNotable(rng, p.charge, col, 0);
+      // Le journal du remplaçant se tient ici et pas dans `promouvoir` : ce
+      // n'est pas la même phrase quand quelqu'un laisse sa place que quand une
+      // charge s'ouvre. On lui passe donc `null`, et on dit tout d'un coup.
+      const neuf = promouvoir(rng, p.charge, col, 0);
       Object.assign(p, neuf, { depuis: 0 });
       if (log) {
         log({
           type: 'notable',
-          texte: `${CHARGES[p.charge].nom} de ${col.nom} : ${partant} laisse la place à ${p.nom}.`,
+          texte: neuf.origine === 'captif'
+            ? `${CHARGES[p.charge].nom} de ${col.nom} : ${partant} laisse la place à `
+              + `${p.nom}, ancien captif relâché ici.`
+            : `${CHARGES[p.charge].nom} de ${col.nom} : ${partant} laisse la place à ${p.nom}.`,
           regionId: col.regionId,
         });
       }
@@ -8929,7 +8973,7 @@ function estVivante(col) {
 function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null, t = 0, present = false) {
   if (col.ruine) return null;
   ajusterEmplois(world, col, rng, dt);
-  pourvoirCharges(col, rng, t);
+  pourvoirCharges(col, rng, t, log);
   tickNotables(col, rng, dt, reputation, log, t);
   tickServices(col, rng, dt, t);
   const prod = productionColonie(world, col);
@@ -12086,6 +12130,7 @@ function fonderColonie(world, key, region, rng, t) {
     rngEtat: grainDe(world.graine, 'colonie', `s${world.prochaineColonieId}`),
     // Le registre des engagements du banc. Le banc lui-même se dérive.
     bancPris: null,
+    vivier: [],
     geole: null,
     declin: 0,
     fondeeA: t,
@@ -13596,6 +13641,30 @@ function optionsPour(state, col, g, c) {
   return out;
 }
 
+/**
+ * Combien de noms une ville garde en mémoire.
+ *
+ * Trois, et la borne compte plus que le chiffre : le vivier est un souvenir,
+ * pas un registre. Sans borne il grossirait sans fin dans la sauvegarde de
+ * chaque ville, et le chantier `INDIVIDUS.md` existe précisément pour ajouter
+ * des visages sans payer le prix de Dwarf Fortress.
+ */
+const VIVIER_MAX = 3;
+
+/**
+ * La ville se souvient de quelqu'un que le joueur a laissé derrière lui.
+ *
+ * File d'attente bornée : quand elle déborde, c'est le plus vieux souvenir qui
+ * s'efface. Une ville n'a pas de mémoire longue, et un nom vieux de trois ans
+ * ne veut plus rien dire à personne.
+ */
+function pousserAuVivier(col, nom, origine, t) {
+  if (!col || !nom) return;
+  if (!Array.isArray(col.vivier)) col.vivier = [];
+  col.vivier.push({ nom, origine, t });
+  while (col.vivier.length > VIVIER_MAX) col.vivier.shift();
+}
+
 function retirerCaptif(g, c) {
   const i = prisonniersDe(g).findIndex((x) => x.id === c.id);
   if (i >= 0) g.prisonniers.splice(i, 1);
@@ -13622,6 +13691,10 @@ function disposer(state, g, captifId, quoi, log) {
     retirerCaptif(g, c);
     state.stats.captifsRelaches = (state.stats.captifsRelaches || 0) + 1;
     noterReputation(state, cap.faction, 4);
+    // La ville se souvient de lui. On peut relâcher quelqu'un au milieu de
+    // nulle part — il n'y a alors personne pour s'en souvenir, et c'est
+    // pourquoi le garde sur `col` est là.
+    if (col && !col.ruine) pousserAuVivier(col, c.nom, 'captif', state.temps);
     if (log) {
       log({
         type: 'prisonnier',
@@ -13662,6 +13735,8 @@ function disposer(state, g, captifId, quoi, log) {
     ecrouer(state, col, c, loi);
     noterReputation(state, col.faction, 2);
     noterReputation(state, cap.faction, -3);
+    // Il purge sa peine ici, donc il reste ici. La ville le connaîtra.
+    pousserAuVivier(col, c.nom, 'captif', state.temps);
     // Livrer un brigand à la faction qu'on sert, c'est du service rendu — et
     // c'est ce qui relie la geôle à la carrière.
     if (g.allegeance && g.allegeance.faction === col.faction) {
@@ -15876,6 +15951,7 @@ function reconnaitreAvantPoste(state, log) {
     rngEtat: grainDe(w.graine, 'colonie', `s${w.prochaineColonieId}`),
     // Le registre des engagements du banc. Le banc lui-même se dérive.
     bancPris: null,
+    vivier: [],
     geole: null,
     emplois: null,
     notables: [],
@@ -19470,6 +19546,9 @@ function normaliser(state) {
     // (voir `bancDerive`). Les vieilles sauvegardes en portent un, on le jette.
     if (c.banc !== undefined) delete c.banc;
     if (c.bancPris === undefined) c.bancPris = null;
+    // Avant le vivier, une ville ne se souvenait de personne. Vide, donc : lui
+    // inventer des souvenirs qu'elle n'a pas eus serait pire que rien.
+    if (!Array.isArray(c.vivier)) c.vivier = [];
     // Le flux propre de la ville : dérivé de son nom, donc identique à celui
     // qu'une partie neuve lui aurait donné. Pas un tirage.
     if (typeof c.rngEtat !== 'number') c.rngEtat = grainDe(state.world.graine || 0, 'colonie', c.id);

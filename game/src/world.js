@@ -191,6 +191,8 @@ function genererColonies(rng, regions, graine) {
       // création, sinon `normaliser` l'ajoute au rechargement et l'aller-retour
       // JSON n'est plus exact.
       bancPris: null,
+      // Les noms que la ville garde en mémoire — voir `pousserAuVivier`.
+      vivier: [],
       // Qui la ville tient enfermé. Voir justice.js.
       geole: null,
       marche: 1 + taille * 0.35,

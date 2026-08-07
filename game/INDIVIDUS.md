@@ -314,22 +314,34 @@ se tire comme aujourd'hui, mêmes tirages, même ordre), et le journal le dit :
 > `${nom}, ancien captif relâché ici, devient ${CHARGES[charge].nom} de
 > ${col.nom}.`
 
-- [ ] **I4.1. Le champ.** `col.vivier` (R1 : les trois lieux, borne 3 écrite en
-  constante à côté du champ, `normaliser` → `[]`). Test : aller-retour JSON
-  exact, borne tenue (pousser 5 → il en reste 3, les plus récentes).
-- [ ] **I4.2. La source.** Dans `disposer` (`justice.js`), aux deux branches
-  dites ci-dessus. Tests rouges : « un captif relâché en ville entre au
-  vivier », « un captif livré entre au vivier », « un captif vendu n'y entre
-  pas ».
-- [ ] **I4.3. La promotion.** Dans `creerNotable`/`pourvoirCharges`. Test
-  rouge : « une ville au vivier garni promeut un nom connu » — la fixture
-  s'écrit ainsi (il n'en existe pas de toute faite : le §9 de `headless.js`
-  fait seulement vieillir les notables, l.4354-4361, il sert de modèle) :
-  garnir `col.vivier` à la main, poser `age = 90` sur un notable (la mortalité
-  par âge est `notables.js:231`, le remplacement l.235), ticker jusqu'au
-  remplacement, vérifier que le remplaçant porte le nom du vivier et que le
-  journal contient « ancien captif relâché ici ». Critère : les tests des
-  notables existants restent verts (le nombre de notables ne change pas).
+- [x] **I4.1. Le champ.** `col.vivier`, borné à `VIVIER_MAX = 3` (constante
+  exportée à côté de `pousserAuVivier`, dans `justice.js`). Posé aux trois lieux
+  de création — carte, fondation, camp — et rattrapé par `normaliser` à `[]`.
+  Aller-retour JSON exact, borne tenue (cinq poussés, les trois plus récents
+  restent).
+- [x] **I4.2. La source.** Les deux branches de `disposer` où l'homme reste sur
+  place : relâché (avec le garde sur `col`, on peut relâcher au milieu de nulle
+  part) et livré à la justice (il y purge sa peine).
+
+  **Un test à vide attrapé au passage**, et c'est le piège de `METHODE.md` §4 :
+  « un captif vendu n'entre pas au vivier » passait sur une vente **refusée** —
+  aucune faction ne commence esclavagiste, donc `disposer` rendait
+  `{ ok: false }` et le test ne vérifiait rien. La loi de la ville est
+  maintenant mise à `esclavage: true` dans la fixture, et un garde vérifie que
+  la vente a bien eu lieu avant de conclure. Trouvé en relisant la valeur de
+  retour, pas la couleur du test.
+- [x] **I4.3. La promotion.** Extraite dans `promouvoir(rng, charge, col, t,
+  log)`, et c'est le cœur de la tâche : **le chantier désignait le mauvais
+  site.** Il disait `creerNotable`/`pourvoirCharges` ; or la relève d'une charge
+  se fait dans `tickNotables`, et c'est elle qui sert en pratique. Branché sur
+  `pourvoirCharges` seul, le mécanisme était mort — le test l'a montré en
+  restant rouge après implémentation. Les deux sites passent maintenant par le
+  même chemin.
+
+  Le nom est remplacé **après** `creerNotable`, jamais à la place de son tirage.
+  Un témoin le garde : hors le nom, le notable promu est identique — âge,
+  compétence, caractère — à celui qui aurait été inventé. Sans lui, on ne
+  saurait pas si le monde a bougé à graine égale.
 
 ### Lot 5 — le drame rétroactif : nommer sans stocker
 
