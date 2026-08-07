@@ -119,12 +119,21 @@ function jouer({ sim, data, eco, eco2 }, graine, horizon) {
   // ont fait défaut » et « combien de créances ont été cédées » ne sont pas
   // mesurables du tout — et ce sont deux cibles du cahier des charges.
   const evts = {};
+  // Les deux issues d'une colonne sans solde. Elles partagent le type
+  // `colonne` avec la ligne d'attrition, donc le compte par type ne les
+  // sépare pas — et ce sont elles, pas le type, que le lot 6 doit calibrer.
+  let retournements = 0;
+  let debandades = 0;
   for (let t = 0; t < horizon; t++) {
     sim.tick(s);
     const j = s.journal || [];
     for (let i = j.length - 1; i >= 0; i--) {
       if (j[i].t !== s.temps) break;
       evts[j[i].type] = (evts[j[i].type] || 0) + 1;
+      if (j[i].type === 'colonne') {
+        if (j[i].texte.includes('retourné sa veste')) retournements += 1;
+        else if (j[i].texte.includes('faute de solde')) debandades += 1;
+      }
     }
     const cars = s.world.caravanes || [];
     for (let i = 0; i < cars.length; i++) convoisVus.add(cars[i].id);
@@ -185,6 +194,8 @@ function jouer({ sim, data, eco, eco2 }, graine, horizon) {
     auPlancher: data.DIPLO_FACTIONS.filter(
       (k) => (s.world.factions[k].cours || 1) <= 0.4001).length,
     armees: (s.world.armees || []).length,
+    retournements,
+    debandades,
     duree: Math.round(duree),
     usParTick: duree / horizon * 1000,
   };
@@ -276,6 +287,8 @@ function agreger(cfg) {
       .sort((a4, b4) => a4 - b4).map((x) => `${Math.round(x * 100)}`).join('/'),
     dette: som(cfg, 'dette'),
     auPlancher: som(cfg, 'auPlancher'),
+    retournements: som(cfg, 'retournements'),
+    debandades: som(cfg, 'debandades'),
     evts: cfg.parties.reduce((a, p) => {
       for (const [k, v] of Object.entries(p.evts || {})) a[k] = (a[k] || 0) + v;
       return a;
@@ -296,6 +309,7 @@ const COLONNES = [
   ['endettees', 'endettées', 9], ['affamees', 'affamées', 11],
   ['cours', 'cours', 11], ['ecart', 'écart', 6], ['creances', 'créances', 9],
   ['paliers', 'taux %', 12],
+  ['retournements', 'vestes', 7], ['debandades', 'débandes', 9],
   ['usParTick', 'µs/tick', 7],
 ];
 

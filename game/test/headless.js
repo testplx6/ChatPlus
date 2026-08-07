@@ -37,7 +37,7 @@ import {
   peutTraiter, chiffrerOrdre, ESTIME_COMPTOIR, resumeBourses, PAS_COTATION,
   OUVRENT_BOURSE, SIGNENT_ACCORD, veutAccord,
 } from '../src/bourse.js';
-import { distanceMorale } from '../src/factions.js';
+import { distanceMorale, enGuerre, COLONNE } from '../src/factions.js';
 import {
   recenser, elasticite, planchers, significatif, asymetrique, ecarts,
 } from '../tools/cartographie.js';
@@ -7866,6 +7866,148 @@ section('25. Nommer sans stocker — le drame rétroactif');
     && acteurs(lignes).join('|') === acteurs(bis).join('|'),
   'et rejouer la partie rejoue les mêmes hommes',
   `${acteurs(lignes).length} captures`);
+}
+
+// ===========================================================================
+section('26. La colonne sans solde');
+{
+  // Chantier INDIVIDUS, lot 6, et c'est une règle du propriétaire : « si elle
+  // n'est plus payée par sa faction, la colonne peut rester un temps à son
+  // service, selon la loyauté que les individus qui la composent lui portent.
+  // Mais elle peut mourir de faim, et décider de faire cavalier seul, de fonder
+  // sa faction, de se faire payer par une autre, de se disloquer. »
+  //
+  // Une seule clé d'état nouvelle : `a.impayees`, les heures de solde dues.
+  // Pas d'individus persistants dans la colonne — le chantier existe pour
+  // ajouter des visages sans payer le prix de Dwarf Fortress.
+  const sA = nouvellePartie(4141, { maintenant: 0 });
+  for (let i = 0; i < 600; i++) tick(sA);
+  const armees = sA.world.armees || [];
+  ok(armees.length > 0, 'le monde lève des colonnes', `${armees.length}`);
+  ok(armees.every((a) => typeof a.impayees === 'number'),
+    'et chacune porte son ardoise');
+
+  // Une vieille sauvegarde n'en a pas.
+  const brut = JSON.parse(JSON.stringify(sA));
+  for (const a of brut.world.armees) delete a.impayees;
+  const rattrapee = deserialiser(JSON.stringify(brut));
+  ok((rattrapee.world.armees || []).every((a) => a.impayees === 0),
+    'une partie d’avant l’ardoise en reçoit une vierge');
+
+  // L'ardoise s'allonge quand le trésor est vide, et s'efface quand il paie.
+  // Le monde est neuf et on ne lui fabrique pas de dette : on vide un trésor,
+  // ce qui est un état parfaitement atteignable, et on laisse les conseils
+  // tourner. La leçon du §16 : on n'audite pas un monde qu'on a trafiqué.
+  // Une colonne va au bout de sa campagne et se dissout : suivre UN objet
+  // pendant trois cents heures, c'est mesurer sa fin, pas sa solde. On regarde
+  // donc toutes les colonnes du pays, et on prend la pire ardoise vue.
+  //
+  // La grâce est mise hors de portée le temps de cette mesure-ci, et c'est
+  // nécessaire : sans ça, une colonne impayée se débande dans le conseil même
+  // où son ardoise devient positive, et le compteur n'est jamais observable
+  // depuis l'extérieur. On mesurerait alors la conséquence en croyant mesurer
+  // la cause. Les quatre issues sont vérifiées juste en dessous, à leur place.
+  const pireArdoise = (tresor) => {
+    const grace = COLONNE.grace;
+    COLONNE.grace = 1e9;
+    const st = nouvellePartie(4141, { maintenant: 0 });
+    for (let i = 0; i < 600; i++) tick(st);
+    const a0 = (st.world.armees || [])[0];
+    if (!a0) return null;
+    const key = a0.faction;
+    const f = st.world.factions[key];
+    let pire = 0;
+    let vues = 0;
+    for (let i = 0; i < 600; i++) {
+      // Vider le trésor ne suffit pas : le conseil remonte d'abord les caisses
+      // de ses villes, PUIS paie. Un pays fauché, c'est un trésor vide et des
+      // villes vides — les deux, sinon la solde tombe quand même et le test ne
+      // mesure rien. Trouvé en le voyant rester à zéro heure due.
+      f.tresor = tresor;
+      if (tresor === 0) {
+        for (const c of st.world.colonies) if (c.faction === key) c.caisse = 0;
+      }
+      tick(st);
+      for (const a of st.world.armees || []) {
+        if (a.faction !== key) continue;
+        vues += 1;
+        pire = Math.max(pire, a.impayees || 0);
+      }
+    }
+    COLONNE.grace = grace;
+    return { pire, vues };
+  };
+  const fauche = pireArdoise(0);
+  const riche = pireArdoise(500000);
+  ok(riche && riche.vues > 0 && fauche && fauche.vues > 0,
+    'le pays garde des colonnes sous les yeux pendant la mesure',
+    `${fauche ? fauche.vues : 0} vues à sec, ${riche ? riche.vues : 0} au riche`);
+  ok(fauche && fauche.pire > 0, 'trésor vide : l’ardoise s’allonge',
+    fauche ? `${fauche.pire} heures dues` : 'pas de colonne');
+  ok(riche && riche.pire === 0, 'trésor plein : aucune ardoise nulle part',
+    riche ? `${riche.pire} heures dues` : 'pas de colonne');
+
+  // --- Les quatre issues ---------------------------------------------------
+  //
+  // La loyauté n'est pas un état : elle se dérive de la légitimité du
+  // dirigeant. Une colonne au service d'un chef assis tient plus longtemps que
+  // celle d'un usurpateur, et c'est tout ce que la règle demande.
+  ok(COLONNE.grace > 0 && COLONNE.attrition > 0 && COLONNE.debandade > 0,
+    'les trois constantes de la colonne existent et sont balayables',
+    `grâce ${COLONNE.grace} h · attrition ${COLONNE.attrition} · débandade ${COLONNE.debandade}`);
+
+  // Un pays fauché, en guerre, avec un voisin riche : les quatre issues sont
+  // toutes atteignables. On compte ce qui arrive plutôt que de le supposer.
+  const campagne = (avecPayeur) => {
+    const st = nouvellePartie(4141, { maintenant: 0 });
+    for (let i = 0; i < 600; i++) tick(st);
+    const a0 = (st.world.armees || [])[0];
+    if (!a0) return null;
+    const key = a0.faction;
+    const lignes = [];
+    const jrn = (e) => { if (e && e.texte) lignes.push(e.texte); };
+    // L'ennemi le plus proche, riche ou fauché selon le cas.
+    const ennemis = Object.keys(st.world.factions).filter(
+      (k) => k !== key && enGuerre(st.world, k, key));
+    for (let i = 0; i < 900; i++) {
+      st.world.factions[key].tresor = 0;
+      for (const c of st.world.colonies) if (c.faction === key) c.caisse = 0;
+      for (const e of ennemis) {
+        st.world.factions[e].tresor = avecPayeur ? 900000 : 0;
+      }
+      tick(st);
+      for (const e of st.journal || []) jrn(e);
+      st.journal = [];
+    }
+    return { lignes, key, ennemis: ennemis.length };
+  };
+
+  const sansPayeur = campagne(false);
+  ok(sansPayeur && sansPayeur.lignes.some((l) => l.includes('faute de solde')),
+    'une colonne qu’on ne paie plus finit par se débander',
+    sansPayeur ? `${sansPayeur.lignes.filter((l) => l.includes('faute de solde')).length} débandades` : 'rien');
+  ok(sansPayeur && sansPayeur.lignes.some((l) => l.includes('fond à vue d’œil')),
+    'et avant ça elle fond',
+    sansPayeur ? `${sansPayeur.lignes.filter((l) => l.includes('fond à vue d’œil')).length} lignes` : 'rien');
+
+  const avecPayeur = campagne(true);
+  ok(avecPayeur && avecPayeur.lignes.some((l) => l.includes('retourné sa veste')),
+    'un voisin en guerre et solvable la rachète',
+    avecPayeur ? `${avecPayeur.lignes.filter((l) => l.includes('retourné sa veste')).length} retournements` : 'rien');
+
+  // L'argent du retournement sort d'un trésor et entre dans un autre : le
+  // circuit reste fermé. On l'audite sur un monde qu'on n'a PAS trafiqué —
+  // vider un trésor à la main, c'est fabriquer de la monnaie manquante, et
+  // l'audit accuserait le moteur de ce que le décor a fait.
+  const sAudit = nouvellePartie(4141, { maintenant: 0 });
+  let pireEcart = 0;
+  for (let i = 0; i < 1500; i++) {
+    tick(sAudit);
+    if (i % 100) continue;
+    for (const e of auditer(sAudit.world)) pireEcart = Math.max(pireEcart, Math.abs(e.ecart));
+  }
+  ok(pireEcart < 1e-6, 'et les comptes tiennent à travers les soldes et les retournements',
+    `écart maximal ${pireEcart.toExponential(2)}`);
 }
 
 // ===========================================================================

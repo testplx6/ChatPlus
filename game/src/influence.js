@@ -330,6 +330,7 @@ export function leverColonne(state, faction, depuisId, cibleId, log) {
     progres: 0,
     etat: 'marche',
     ravitaillement: 60 + Math.round(FORCE_LEVEE / 4),
+    impayees: 0,
     surOrdre: true,
   };
   state.world.armees.push(a);

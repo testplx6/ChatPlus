@@ -11353,6 +11353,43 @@ const ETAT = {
   desertion: 0.004,
 };
 
+/**
+ * Ce qu'il advient d'une colonne qu'on ne paie plus.
+ *
+ * La règle, telle que dictée par le propriétaire : « si elle n'est plus payée
+ * par sa faction, la colonne peut rester un temps à son service, selon la
+ * loyauté que les individus qui la composent lui portent. Mais elle peut mourir
+ * de faim, et décider de faire cavalier seul, de fonder sa faction, de se faire
+ * payer par une autre, de se disloquer. »
+ *
+ * Quatre issues sont ici. La cinquième — fonder sa faction — ne l'est pas : les
+ * clés de `FACTIONS` sont fixes et la diplomatie, les couleurs et l'interface
+ * sont câblées dessus. Elle a son propre cahier des charges à écrire, et
+ * l'improviser serait exactement ce que la méthode interdit.
+ *
+ * **Les valeurs de départ sortent de deux mesures, pas d'une intuition**, et
+ * la première proposition du chantier — une grâce de 240 heures — aurait rendu
+ * le mécanisme mort par construction :
+ *
+ *   durée de vie d'une colonne : médiane **61 h**, 9e décile 95 h, **maximum
+ *   111 h** sur 709 colonnes suivies, trois graines et 3 000 heures. Aucune
+ *   n'atteint 240 heures, donc aucune n'aurait jamais bronché ;
+ *   intervalle entre deux conseils : **30 à 75 heures**, une cinquantaine en
+ *   moyenne. Une colonne voit donc un à deux conseils dans sa vie.
+ *
+ * D'où une grâce d'un jour — le premier conseil impayé passe, le second non —
+ * et une attrition qui mord assez pour se voir en un ou deux conseils. Balayées
+ * en I6.4 ; ce sont des points de départ mesurés, pas des valeurs finales.
+ */
+const COLONNE = {
+  /** Heures d'impayé qu'une colonne encaisse avant de broncher, à légitimité 50. */
+  grace: 24,
+  /** Ce qu'elle perd par heure d'impayé au-delà, en part de sa force. */
+  attrition: 0.012,
+  /** En dessous de quoi il ne reste plus une colonne, mais des hommes sur les routes. */
+  debandade: 12,
+};
+
 function puissance(world, key) {
   const f = world.factions[key];
   if (!f) return 0;
@@ -11488,6 +11525,9 @@ function leverArmee(world, key, force, depuis, cibleId, log) {
     progres: 0,
     etat: 'marche',
     ravitaillement: 60 + Math.round(force / 4),
+    // Les heures de solde qu'on lui doit. Voir la solde, plus bas : une colonne
+    // qu'on ne paie plus ne reste pas indéfiniment au garde-à-vous.
+    impayees: 0,
   };
   world.armees.push(a);
   // La levée se paie sur place : recruter, armer, ravitailler passe entre les
@@ -11874,11 +11914,21 @@ function conseil(world, key, t, log, ctx) {
     }
   }
   // Et la solde de ceux qui sont en campagne, versée là où on les a levés.
+  //
+  // Ce qui n'est pas versé est maintenant compté. Une colonne payée efface son
+  // ardoise ; une colonne qui ne l'est pas la voit s'allonger, et c'est elle
+  // qui décide plus bas si elle reste, si elle fond, si elle se vend ou si elle
+  // se débande. Le seuil de réussite est celui de la ligne du dessus — 0,999 —
+  // et pas l'égalité : `verser` rend un flottant, et exiger l'exact ferait
+  // déserter des colonnes parfaitement payées.
   for (const a of world.armees) {
     if (a.faction !== key) continue;
-    verser(world, key, colonieDepart(world, key, a.regionId),
-      a.force * ETAT.parSoldat * heures);
+    const du = a.force * ETAT.parSoldat * heures;
+    const paye = verser(world, key, colonieDepart(world, key, a.regionId), du);
+    if (du <= 0 || paye >= du * 0.999) a.impayees = 0;
+    else a.impayees = (a.impayees || 0) + heures;
   }
+  jugerColonnes(world, key, heures, t, log);
 
   // Puis les comptes de ses villes : ce qu'elles doivent, ce qu'elles rendent,
   // ce qu'on leur prête encore, et celles qu'on laisse tomber.
@@ -12476,6 +12526,80 @@ function legiferer(world, key, t, log, ctx) {
 // Tick global
 // ---------------------------------------------------------------------------
 
+/**
+ * Ce que décide une colonne qu'on ne paie plus. Quatre issues, dans cet ordre.
+ *
+ * **La loyauté n'est pas un état** : elle se dérive de la légitimité du
+ * dirigeant. Une colonne au service d'un chef assis endure deux fois plus
+ * longtemps que celle d'un usurpateur, et il n'y a rien à stocker ni à migrer
+ * pour ça.
+ *
+ * L'ordre compte. On regarde d'abord si quelqu'un paie mieux : des hommes qui
+ * ont le choix entre déserter et changer de drapeau choisissent le drapeau. Le
+ * payeur règle l'ardoise **depuis son propre trésor** — le circuit reste fermé,
+ * et `auditer` le vérifie sur tout le déroulé.
+ */
+function jugerColonnes(world, key, heures, t, log) {
+  const chef = dirigeant(world, key);
+  const loyaute = COLONNE.grace * Math.max(0.2, (chef ? chef.legitimite : 50) / 50);
+  for (const a of world.armees.slice()) {
+    if (a.faction !== key || !(a.impayees > loyaute)) continue;
+
+    // Issue 3 : se faire payer par une autre. Il faut un ennemi de son pays qui
+    // puisse réellement solder l'ardoise — promettre ne suffit pas.
+    const dette = a.force * ETAT.parSoldat * a.impayees;
+    const payeur = Object.keys(world.factions).find(
+      (k) => k !== key && k !== 'essaim' && enGuerre(world, k, key)
+        && world.factions[k].tresor >= dette);
+    if (payeur) {
+      // L'argent sort du trésor du payeur et entre dans la ville où la colonne
+      // a été levée : c'est là que vivent les gens qu'on solde.
+      verser(world, payeur, colonieDepart(world, payeur, a.regionId), dette);
+      a.faction = payeur;
+      a.impayees = 0;
+      if (log) {
+        log({
+          type: 'colonne',
+          texte: `Le capitaine ${nommerActeur(world, 'colonne', a.id)} a retourné sa veste : `
+            + `la solde de ${FACTIONS[payeur].nom} sonnait plus juste.`,
+          regionId: a.regionId,
+          factions: [key, payeur],
+          important: true,
+        });
+      }
+      continue;
+    }
+
+    // Issue 2 : s'affaiblir. La faim mord, et les désertions se comptent.
+    const avant = a.force;
+    a.force = Math.max(0, a.force * (1 - COLONNE.attrition * heures));
+    if (log && Math.round(avant) > Math.round(a.force)) {
+      log({
+        type: 'colonne',
+        texte: `La colonne de ${nommerActeur(world, 'colonne', a.id)} fond à vue d’œil : `
+          + `${Math.round(avant)} hommes hier, ${Math.round(a.force)} ce matin, et pas une pièce.`,
+        regionId: a.regionId,
+        factions: [key],
+      });
+    }
+
+    // Issue 4 : se disloquer.
+    if (a.force < COLONNE.debandade) {
+      if (log) {
+        log({
+          type: 'colonne',
+          texte: `La colonne de ${nommerActeur(world, 'colonne', a.id)} s’est débandée, `
+            + `faute de solde. On en reverra certains sur les routes.`,
+          regionId: a.regionId,
+          factions: [key],
+          important: true,
+        });
+      }
+      dissoudre(world, a);
+    }
+  }
+}
+
 function tickFactions(world, t, log, ctx) {
   // Les cours se republient une fois par jour : une bourse affiche un prix,
   // elle ne le recalcule pas à chaque regard.
@@ -12890,6 +13014,7 @@ function leverColonne(state, faction, depuisId, cibleId, log) {
     progres: 0,
     etat: 'marche',
     ravitaillement: 60 + Math.round(FORCE_LEVEE / 4),
+    impayees: 0,
     surOrdre: true,
   };
   state.world.armees.push(a);
@@ -19538,6 +19663,12 @@ function normaliser(state) {
     if (w.factions[k].consigne !== undefined) delete w.factions[k].consigne;
   }
   if (!w.meteo) w.meteo = { type: 'couvert', restant: 4 };
+  // Avant la colonne sans solde, une armée était payée ou ne l'était pas, et
+  // personne ne comptait. Ardoise vierge : les heures d'avant n'ont pas été
+  // comptées, et les inventer donnerait des désertions rétroactives.
+  for (const a of w.armees || []) {
+    if (typeof a.impayees !== 'number') a.impayees = 0;
+  }
   for (const r of w.regions) {
     // Les routes d'avant les secteurs : sûres par défaut, elles se dégraderont
     // toutes seules si personne ne les tient.

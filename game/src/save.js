@@ -128,6 +128,12 @@ export function normaliser(state) {
     if (w.factions[k].consigne !== undefined) delete w.factions[k].consigne;
   }
   if (!w.meteo) w.meteo = { type: 'couvert', restant: 4 };
+  // Avant la colonne sans solde, une armée était payée ou ne l'était pas, et
+  // personne ne comptait. Ardoise vierge : les heures d'avant n'ont pas été
+  // comptées, et les inventer donnerait des désertions rétroactives.
+  for (const a of w.armees || []) {
+    if (typeof a.impayees !== 'number') a.impayees = 0;
+  }
   for (const r of w.regions) {
     // Les routes d'avant les secteurs : sûres par défaut, elles se dégraderont
     // toutes seules si personne ne les tient.

@@ -458,28 +458,58 @@ sinon :
    lot-ci, la colonne se débande ou se vend ; la fondation viendra du chantier
    dédié.
 
-- [ ] **I6.1. `a.impayees`.** Les armées se créent en **deux** endroits —
-  `factions.js:191` (`leverArmee`) et `influence.js:335` — plus `normaliser`
-  pour les sauvegardes qui portent des armées (R1, adaptée : la recette parle
-  des villes, les lieux sont ceux-ci). Au site de la solde
-  (`factions.js:574-579`) : `du = a.force × ETAT.parSoldat × heures`,
-  `paye = verser(...)` ; **réussite = `paye ≥ du × 0,999`** (la convention de
-  `factions.js:570`) → `impayees = 0` ; sinon `impayees += heures`. Test
-  rouge : « une solde versée efface l'ardoise, une solde manquée l'allonge ».
-- [ ] **I6.2. Les issues 1-2** (rester, s'affaiblir), selon l'algorithme
-  ci-dessus. Tests rouges avec fixtures : trésor vidé à la main sur un monde
-  neuf (pas de dette fabriquée — la leçon du §16 : on n'audite pas un monde
-  qu'on a trafiqué).
-- [ ] **I6.3. Les issues 3-4** (retournement, débandade), textes ci-dessus.
-  Test : l'argent du retournement sort du trésor payeur au centime
-  (`auditer` = 0 sur tout le déroulé).
-- [ ] **I6.4. Calibrage.** Balayer `COLONNE.grace`, `COLONNE.attrition` et
-  `COLONNE.debandade` (R8) : cibles — les guerres longues produisent des
-  retournements et des débandades (**somme des six graines > 0 pour chacun
-  des deux compteurs**), les factions écrasées restent dans les gardes de
-  `CIBLES.json`, l'écart comptable reste 0. Ajouter les deux compteurs à
-  `jouer()` dans `tools/banc.js` (retournements, débandades) — jamais de
-  script à côté.
+- [x] **I6.1. `a.impayees`.** Aux deux lieux de création (`leverArmee`,
+  `influence.js`) plus `normaliser` à zéro — les heures d'avant n'ont pas été
+  comptées, et les inventer donnerait des désertions rétroactives. Au site de la
+  solde : réussite à `paye ≥ du × 0,999`, comme la ligne du dessus.
+
+  **Deux pièges de fixture attrapés par la mesure.** Vider le trésor ne suffit
+  pas à affamer une colonne : le conseil remonte d'abord les caisses de ses
+  villes, *puis* paie — il faut vider les deux. Et une fois les issues
+  branchées, l'ardoise n'est plus observable de l'extérieur, parce que la
+  colonne se débande dans le conseil même où elle devient positive : la grâce
+  est donc mise hors de portée le temps de cette mesure-là, sans quoi on
+  mesurerait la conséquence en croyant mesurer la cause.
+- [x] **I6.2–I6.3. Les quatre issues.** Rester, fondre, se vendre, se débander.
+  La loyauté se dérive de la légitimité du dirigeant — aucun état de plus.
+  L'ordre compte : on regarde d'abord si quelqu'un paie mieux, parce que des
+  hommes qui ont le choix entre déserter et changer de drapeau choisissent le
+  drapeau. Le payeur règle l'ardoise depuis son propre trésor, et `auditer`
+  reste à zéro sur tout le déroulé.
+- [x] **I6.4. Calibrage — et son résultat est un constat, pas un réglage.**
+
+  **La proposition du chantier rendait le mécanisme mort par construction.**
+  Elle avançait `grace: 240` heures ; or une colonne vit **61 heures en
+  médiane, 111 au maximum** sur 709 colonnes suivies (3 graines × 3 000 h), et
+  les conseils se tiennent toutes les 30 à 75 heures. Aucune colonne n'aurait
+  jamais bronché. Valeurs de départ refaites sur ces deux mesures : grâce d'un
+  jour, attrition qui mord en un ou deux conseils.
+
+  Deux compteurs ajoutés à `jouer()` dans `tools/banc.js` — vestes retournées et
+  débandades — parce qu'ils partagent le type `colonne` avec la ligne
+  d'attrition et que le compte par type ne les sépare pas.
+
+  | balayage | vestes | débandades |
+  |---|---:|---:|
+  | `COLONNE.grace` = 12 / 24 / 48 | 4 / 3 / 2 | 0 / 0 / 0 |
+  | `COLONNE.attrition` = 0,012 / 0,03 / 0,06 | 3 / 3 / 3 | 0 / 0 / 0 |
+
+  **L'attrition n'a aucun effet — pas un chiffre ne bouge sur trois valeurs.**
+  C'est la signature d'une branche jamais atteinte, et l'instrumentation le
+  confirme : sur **790 colonnes vues au conseil**, 3 seulement portent une
+  ardoise (0,4 %), les 3 dépassent la grâce, et les 3 trouvent un payeur
+  solvable. La branche « fondre puis se débander » ne s'exécute donc jamais.
+
+  La cible du lot — les deux compteurs > 0 sur six graines — est **tenue pour
+  les retournements (3), pas pour les débandades (0)**. Elle n'est pas
+  contournée : le blocage est consigné. Ce n'est pas une constante à régler,
+  c'est que les factions paient presque toujours leurs colonnes (une centaine
+  de crédits par conseil contre des trésors médians de 19 000).
+
+  Vérifié au passage, parce que `enGuerre` rend vrai pour l'Essaim contre tout
+  le monde : les trois payeurs sont de vraies factions — Rouilleurs, Ombrelle,
+  Hexa — et jamais l'Essaim, dont le trésor est à zéro et qui ne peut donc
+  jamais solder personne.
 
 ---
 

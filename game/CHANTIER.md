@@ -386,6 +386,34 @@ minutes.
 
 ## Blocages
 
+### La colonne qui se débande ne se débande jamais — 0 sur six graines
+
+Le lot 6 du chantier `INDIVIDUS.md` demande que les deux issues extrêmes d'une
+colonne impayée surviennent au moins une fois sur les six graines. Les
+retournements y sont (3). **Les débandades sont à zéro, et ce n'est pas un
+problème de réglage.**
+
+Instruit plutôt que supposé. Sur **790 colonnes vues au conseil** (3 graines ×
+6 000 h), 3 seulement portent une ardoise — 0,4 %. Les trois dépassent la
+grâce, et les trois trouvent un ennemi solvable qui les rachète. La branche
+« fondre puis se débander » n'est donc jamais exécutée. Le balayage le confirme
+sans ambiguïté : `COLONNE.attrition` à 0,012, 0,03 ou 0,06 ne fait bouger
+**aucun** chiffre du banc.
+
+La cause est en amont : une faction paie ses colonnes une centaine de crédits
+par conseil, contre un trésor médian de 19 000. Elle n'est pratiquement jamais
+à sec au mauvais moment.
+
+Ce qu'il faut décider, et ce n'est pas un réglage : **est-ce qu'une faction doit
+pouvoir se retrouver à sec en pleine guerre ?** Aujourd'hui, non — et le
+mécanisme de la colonne sans solde est donc un décor de luxe qui attend son
+heure. Trois pistes, aucune prise : rendre la guerre plus chère, rendre les
+trésors plus fragiles, ou accepter que ce soit un événement rare et le dire.
+
+La fourchette n'est pas élargie et les constantes ne sont pas forcées pour
+fabriquer du drame. Les deux compteurs sont maintenant au banc : le jour où
+l'économie change, on le verra.
+
 ### L'économie est calibrée dans un monde faussé — `nourries` tombe à 299 pour un minimum de 320
 
 Le chantier de maille (`MAILLE.md`) corrige la date des prix : une tranche
