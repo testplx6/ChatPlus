@@ -23,7 +23,7 @@ import { VERSION } from './save.js';
 import { groupeVide } from './groupes.js';
 import { creerConnaissance, observer, estSurveillee } from './connaissance.js';
 import { poserMasseInitiale } from './monnaie.js';
-import { pourvoirCharges } from './notables.js';
+import { pourvoirCharges, nommerActeur } from './notables.js';
 import { creerDirigeant, crediterDirigeant } from './dirigeants.js';
 import { tickFormation } from './formation.js';
 import { rafraichirPanneaux, genererContrats, tickContrats } from './contrats.js';
@@ -541,9 +541,10 @@ export function tick(state) {
       const r = faireSecession(state.world, col);
       log({
         type: 'secession',
-        texte: r.renaissance
+        texte: (r.renaissance
           ? `${col.nom} se soulève : ${FACTIONS[r.rendue].nom} renaît de ses cendres.`
-          : `${col.nom} chasse ${FACTIONS[r.ancienne].nom} et rejoint ${FACTIONS[r.rendue].nom}.`,
+          : `${col.nom} chasse ${FACTIONS[r.ancienne].nom} et rejoint ${FACTIONS[r.rendue].nom}.`)
+          + ` C’est ${nommerActeur(state.world, 'secession', col.id)} qui a décroché l’ancien drapeau.`,
         regionId: col.regionId,
         important: true,
       });
@@ -563,7 +564,9 @@ export function tick(state) {
       } else {
         log({
           type: 'effondrement',
-          texte: `${col.nom} est abandonnée${ancienne ? ` par ${FACTIONS[ancienne].nom}` : ''}. Il n’en reste que des ruines.`,
+          texte: `${col.nom} est abandonnée${ancienne ? ` par ${FACTIONS[ancienne].nom}` : ''}. `
+            + `Il n’en reste que des ruines. La famille de ${nommerActeur(state.world, 'ruine', col.id)} `
+            + `est partie la première ; les autres ont suivi.`,
           regionId: col.regionId,
           important: true,
         });

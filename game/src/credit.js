@@ -21,6 +21,7 @@
 
 import { COMMODITIES, COMMODITY_KEYS } from './data.js';
 import { loisDe } from './lois.js';
+import { nommerActeur } from './notables.js';
 import { transferer, convertirMasse, taux } from './monnaie.js';
 import {
   cibleStock, reserveVille, prixUnitaire, productionColonie,
@@ -365,7 +366,9 @@ export function saisir(world, col, ancien, repreneur, log) {
       texte: `${col.nom} passe ${FACTIONS[repreneur].datif} : `
         + `${FACTIONS[repreneur].nom} ${FACTIONS[repreneur].pluriel ? 'en détenaient' : 'en détenait'} `
         + `la dette, et personne n’a levé une colonne. `
-        + `${FACTIONS[ancien].nom} ${effet < -5 ? 'ne l’oublieront pas' : 'y perd peu'}.`,
+        + `${FACTIONS[ancien].nom} ${effet < -5 ? 'ne l’oublieront pas' : 'y perd peu'}. `
+        + `${nommerActeur(world, 'saisie', col.id)} tenait l’étal du marché ; `
+        + `on dit qu’il a fermé boutique le jour même.`,
       regionId: col.regionId,
       factions: [ancien, repreneur],
       important: true,

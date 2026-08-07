@@ -375,18 +375,31 @@ lignes vivent aux sites d'appel, dans sim.js) :
 | capture militaire | `factions.js:301-306` | `${nommerActeur('capture', col.id, col.prises)} a été vu clouant sa porte avant l'assaut.` |
 | sécession | `sim.js:528-535`, les **deux** variantes (renaissance et normale) ; la sécession issue d'une révolte (`sim.js:505-514`) garde son texte — la révolte est déjà son propre drame | `C'est ${nommerActeur('secession', col.id)} qui a décroché l'ancien drapeau.` |
 
-- [ ] **I5.1. `nommerActeur`** dans `src/notables.js` (voir le commentaire du
-  gabarit : ordre du bundle, imports déjà en place). Tests rouges : « le même
-  événement nomme le même acteur » (deux appels égaux), « deux événements
-  nomment deux acteurs » ; « nommer ne touche pas le flux principal ».
-- [ ] **I5.2. Les quatre textes.** Aux quatre sites, dans la ligne de journal
-  **existante** (pas d'entrée nouvelle : on enrichit `texte`). Tests — sur un
-  fragment **propre au texte ajouté**, jamais sur « contient un nom » (toute
-  ligne existante contient déjà des noms de villes, le test naîtrait vert) :
-  la fixture de saisie (§16) vérifie « tenait l'étal du marché », celle de
-  sécession « a décroché l'ancien drapeau » ; et à graine égale, le nom est
-  identique entre deux parties. Critère : `verifier` vert, aucune nouvelle clé
-  d'état (grep : `nommerActeur` n'écrit rien).
+- [x] **I5.1. `nommerActeur`** dans `src/notables.js`. Tests rouges d'abord —
+  l'export n'existait pas.
+
+  **Le gabarit du chantier avait un défaut, et il est corrigé** : il écrivait
+  `grainDe('acteur', ...morceaux)`, sans la graine de la partie. Or `grainDe`
+  documente précisément ce piège — une dérivation qui ne dépend que du lieu
+  donne les mêmes dés à *toutes* les parties, et deux mondes différents
+  auraient eu le même homme clouant sa porte dans la même ville. La signature
+  est donc `nommerActeur(world, ...morceaux)`, et un test le garde.
+- [x] **I5.2. Les quatre textes**, dans les lignes de journal existantes.
+  Aucune clé d'état nouvelle : `nommerActeur` n'écrit rien.
+
+  Les tests portent sur un fragment **propre au texte ajouté**, jamais sur
+  « la ligne contient un nom ». Les quatre événements sont assez fréquents pour
+  qu'une seule partie suffise — relevé sur cinq graines × 3 000 heures : 5 à 11
+  effondrements, 63 à 87 saisies, 158 à 236 captures, 40 à 56 sécessions. Le
+  plus rare l'est encore cinq fois.
+
+  Ces tests-là sont **nés verts**, le câblage ayant précédé leur écriture. Leur
+  capacité à échouer a donc été vérifiée à la main : retirer l'ajout d'un seul
+  des quatre sites rend rouge le test correspondant, et lui seul.
+
+  Un test de plus, qui n'était pas demandé et qui est le cœur du lot : à graine
+  égale, rejouer la partie rejoue **les mêmes hommes**. C'est ce qui distingue
+  un acteur dérivé d'un acteur tiré.
 
 ### Lot 6 — la colonne sans solde (la règle du propriétaire, spécifiée)
 

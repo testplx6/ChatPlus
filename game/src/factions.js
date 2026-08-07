@@ -21,7 +21,7 @@ import {
   tickCredit, veutBatir, racheterCreance, valeurNette,
 } from './credit.js';
 import { transferer, transfererVille, annuler, majCours } from './monnaie.js';
-import { pourvoirCharges } from './notables.js';
+import { pourvoirCharges, nommerActeur } from './notables.js';
 import { chemin, colonieParId, distance, voisins, damer } from './world.js';
 import {
   loisDe, pressionFiscale, IMPOTS, PEINES, REGIMES, DIRECTEURS, directeurInitial,
@@ -303,7 +303,8 @@ function capturer(world, armee, col, t, log, ctx) {
     col.defense = Math.round(col.defenseMax * 0.25);
     log({
       type: 'capture',
-      texte: `${FACTIONS[nouveau].nom} s’empare${FACTIONS[nouveau].pluriel ? 'nt' : ''} de ${col.nom}${ancien ? ` (${FACTIONS[ancien].nom})` : ''}.`,
+      texte: `${FACTIONS[nouveau].nom} s’empare${FACTIONS[nouveau].pluriel ? 'nt' : ''} de ${col.nom}${ancien ? ` (${FACTIONS[ancien].nom})` : ''}. `
+        + `${nommerActeur(world, 'capture', col.id, col.prises)} a été vu clouant sa porte avant l’assaut.`,
       regionId: col.regionId,
       factions: [nouveau, ancien].filter(Boolean),
     });

@@ -14,6 +14,7 @@
 
 import { NOMS_PERSO, SURNOMS, METIERS_VILLE, METIER_VILLE_KEYS, FACTIONS } from './data.js';
 import { idDepuisRng } from './characters.js';
+import { Rng, grainDe } from './rng.js';
 import { HEURES_PAR_AN } from './climat.js';
 
 /** Les charges qu'une ville pourvoit, selon ce qu'elle est. */
@@ -55,6 +56,30 @@ const CARACTERE_KEYS = Object.keys(CARACTERES);
 // ---------------------------------------------------------------------------
 // Naissance et mort d'une charge
 // ---------------------------------------------------------------------------
+
+/**
+ * Un visage pour un drame, sans un octet d'état.
+ *
+ * Une ville qui s'effondre, qui est saisie, prise ou qui fait sécession :
+ * quatre lignes de journal, et pas un nom dedans. Ce lot en met un — mais pas
+ * en le stockant, parce qu'il faudrait alors le stocker pour toutes les villes
+ * et tous les drames qui n'arriveront jamais. Le nom se **recalcule** quand
+ * quelqu'un lit la ligne, à partir de ce qui identifie l'événement.
+ *
+ * C'est le principe du chantier `INDIVIDUS.md` : un individu qu'on n'a pas
+ * touché n'a pas besoin d'exister ailleurs que dans la graine qui le
+ * reconstitue.
+ *
+ * **Le monde passe en premier, et ce n'est pas décoratif.** Le gabarit du
+ * chantier écrivait `grainDe('acteur', ...morceaux)`, sans la graine de la
+ * partie — et `grainDe` documente précisément ce piège : une dérivation qui ne
+ * dépend que du lieu donne les mêmes dés à *toutes* les parties. Deux mondes
+ * différents auraient eu le même homme clouant sa porte dans la même ville. Un
+ * test le garde.
+ */
+export function nommerActeur(world, ...morceaux) {
+  return nommer(new Rng(grainDe((world && world.graine) || 0, 'acteur', ...morceaux)));
+}
 
 function nommer(rng) {
   const base = rng.pick(NOMS_PERSO);

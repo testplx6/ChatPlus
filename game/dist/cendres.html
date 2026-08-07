@@ -4014,6 +4014,30 @@ const CARACTERE_KEYS = Object.keys(CARACTERES);
 // Naissance et mort d'une charge
 // ---------------------------------------------------------------------------
 
+/**
+ * Un visage pour un drame, sans un octet d'état.
+ *
+ * Une ville qui s'effondre, qui est saisie, prise ou qui fait sécession :
+ * quatre lignes de journal, et pas un nom dedans. Ce lot en met un — mais pas
+ * en le stockant, parce qu'il faudrait alors le stocker pour toutes les villes
+ * et tous les drames qui n'arriveront jamais. Le nom se **recalcule** quand
+ * quelqu'un lit la ligne, à partir de ce qui identifie l'événement.
+ *
+ * C'est le principe du chantier `INDIVIDUS.md` : un individu qu'on n'a pas
+ * touché n'a pas besoin d'exister ailleurs que dans la graine qui le
+ * reconstitue.
+ *
+ * **Le monde passe en premier, et ce n'est pas décoratif.** Le gabarit du
+ * chantier écrivait `grainDe('acteur', ...morceaux)`, sans la graine de la
+ * partie — et `grainDe` documente précisément ce piège : une dérivation qui ne
+ * dépend que du lieu donne les mêmes dés à *toutes* les parties. Deux mondes
+ * différents auraient eu le même homme clouant sa porte dans la même ville. Un
+ * test le garde.
+ */
+function nommerActeur(world, ...morceaux) {
+  return nommer(new Rng(grainDe((world && world.graine) || 0, 'acteur', ...morceaux)));
+}
+
 function nommer(rng) {
   const base = rng.pick(NOMS_PERSO);
   return rng.chance(0.35) ? `${base} ${rng.pick(SURNOMS)}` : base;
@@ -10051,7 +10075,9 @@ function saisir(world, col, ancien, repreneur, log) {
       texte: `${col.nom} passe ${FACTIONS[repreneur].datif} : `
         + `${FACTIONS[repreneur].nom} ${FACTIONS[repreneur].pluriel ? 'en détenaient' : 'en détenait'} `
         + `la dette, et personne n’a levé une colonne. `
-        + `${FACTIONS[ancien].nom} ${effet < -5 ? 'ne l’oublieront pas' : 'y perd peu'}.`,
+        + `${FACTIONS[ancien].nom} ${effet < -5 ? 'ne l’oublieront pas' : 'y perd peu'}. `
+        + `${nommerActeur(world, 'saisie', col.id)} tenait l’étal du marché ; `
+        + `on dit qu’il a fermé boutique le jour même.`,
       regionId: col.regionId,
       factions: [ancien, repreneur],
       important: true,
@@ -11575,7 +11601,8 @@ function capturer(world, armee, col, t, log, ctx) {
     col.defense = Math.round(col.defenseMax * 0.25);
     log({
       type: 'capture',
-      texte: `${FACTIONS[nouveau].nom} s’empare${FACTIONS[nouveau].pluriel ? 'nt' : ''} de ${col.nom}${ancien ? ` (${FACTIONS[ancien].nom})` : ''}.`,
+      texte: `${FACTIONS[nouveau].nom} s’empare${FACTIONS[nouveau].pluriel ? 'nt' : ''} de ${col.nom}${ancien ? ` (${FACTIONS[ancien].nom})` : ''}. `
+        + `${nommerActeur(world, 'capture', col.id, col.prises)} a été vu clouant sa porte avant l’assaut.`,
       regionId: col.regionId,
       factions: [nouveau, ancien].filter(Boolean),
     });
@@ -20409,9 +20436,10 @@ function tick(state) {
       const r = faireSecession(state.world, col);
       log({
         type: 'secession',
-        texte: r.renaissance
+        texte: (r.renaissance
           ? `${col.nom} se soulève : ${FACTIONS[r.rendue].nom} renaît de ses cendres.`
-          : `${col.nom} chasse ${FACTIONS[r.ancienne].nom} et rejoint ${FACTIONS[r.rendue].nom}.`,
+          : `${col.nom} chasse ${FACTIONS[r.ancienne].nom} et rejoint ${FACTIONS[r.rendue].nom}.`)
+          + ` C’est ${nommerActeur(state.world, 'secession', col.id)} qui a décroché l’ancien drapeau.`,
         regionId: col.regionId,
         important: true,
       });
@@ -20431,7 +20459,9 @@ function tick(state) {
       } else {
         log({
           type: 'effondrement',
-          texte: `${col.nom} est abandonnée${ancienne ? ` par ${FACTIONS[ancienne].nom}` : ''}. Il n’en reste que des ruines.`,
+          texte: `${col.nom} est abandonnée${ancienne ? ` par ${FACTIONS[ancienne].nom}` : ''}. `
+            + `Il n’en reste que des ruines. La famille de ${nommerActeur(state.world, 'ruine', col.id)} `
+            + `est partie la première ; les autres ont suivi.`,
           regionId: col.regionId,
           important: true,
         });

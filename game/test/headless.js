@@ -155,7 +155,7 @@ import {
 import { distance } from '../src/world.js';
 import { conditions } from '../src/climat.js';
 import { pousserAuVivier, VIVIER_MAX } from '../src/justice.js';
-import { pourvoirCharges, tickNotables } from '../src/notables.js';
+import { pourvoirCharges, tickNotables, nommerActeur } from '../src/notables.js';
 
 let echecs = 0;
 let total = 0;
@@ -7784,6 +7784,88 @@ section('24. Le vivier — la ville promeut qui a déjà une histoire');
   sans.remplacant && avec.remplacant
     ? `${sans.remplacant.age}/${sans.remplacant.comp} contre ${avec.remplacant.age}/${avec.remplacant.comp}`
     : 'pas de remplaçant');
+}
+
+// ===========================================================================
+section('25. Nommer sans stocker — le drame rétroactif');
+{
+  // Chantier INDIVIDUS, lot 5. Une ville qui s'effondre, une ville saisie, une
+  // ville prise, une ville qui fait sécession : quatre drames, et pas un visage.
+  // `nommerActeur` en donne un **à l'écriture de la ligne de journal**, par
+  // graine dérivée — zéro état, zéro tirage du flux principal.
+  const sN = nouvellePartie(313, { maintenant: 0 });
+  const w = sN.world;
+
+  ok(nommerActeur(w, 'ruine', 's7') === nommerActeur(w, 'ruine', 's7'),
+    'le même événement nomme toujours le même acteur',
+    nommerActeur(w, 'ruine', 's7'));
+  ok(nommerActeur(w, 'ruine', 's7') !== nommerActeur(w, 'ruine', 's8'),
+    'deux villes, deux acteurs',
+    `${nommerActeur(w, 'ruine', 's7')} / ${nommerActeur(w, 'ruine', 's8')}`);
+  ok(nommerActeur(w, 'ruine', 's7') !== nommerActeur(w, 'saisie', 's7'),
+    'et deux drames dans la même ville, deux acteurs aussi',
+    `${nommerActeur(w, 'ruine', 's7')} / ${nommerActeur(w, 'saisie', 's7')}`);
+
+  // Le piège que `grainDe` documente, et qu'un décor a déjà attrapé une fois :
+  // une dérivation qui ne dépend que du lieu donne les mêmes dés à TOUTES les
+  // parties. Deux mondes différents auraient le même homme au même endroit.
+  const autre = nouvellePartie(707, { maintenant: 0 });
+  ok(nommerActeur(w, 'ruine', 's7') !== nommerActeur(autre.world, 'ruine', 's7'),
+    'et deux parties différentes ne nomment pas le même homme',
+    `${nommerActeur(w, 'ruine', 's7')} / ${nommerActeur(autre.world, 'ruine', 's7')}`);
+
+  // Zéro tirage du flux principal : c'est toute la raison d'être de la graine
+  // dérivée. Nommer quelqu'un ne doit pas décaler le monde.
+  const avantFlux = sN.rngState;
+  for (let i = 0; i < 50; i++) nommerActeur(w, 'ruine', `s${i}`);
+  ok(sN.rngState === avantFlux, 'nommer ne touche pas au hasard du monde');
+
+  // --- Les quatre drames, dans le journal ---------------------------------
+  //
+  // Chaque test porte sur un fragment **propre au texte ajouté**, jamais sur
+  // « la ligne contient un nom » : toute ligne de journal contient déjà des
+  // noms de villes et de factions, et un tel test naîtrait vert.
+  //
+  // Ces tests-ci sont nés verts — les quatre textes ont été câblés avant d'être
+  // testés, contrairement à `nommerActeur` dont le test a bien échoué d'abord.
+  // Leur capacité à échouer a donc été vérifiée à la main, fragment par
+  // fragment : retirer l'ajout d'un seul des quatre sites rend le test
+  // correspondant rouge, et lui seul.
+  //
+  // Les quatre événements sont assez fréquents pour qu'une seule partie suffise
+  // — relevé sur cinq graines et 3 000 heures : 5 à 11 effondrements, 63 à 87
+  // saisies, 158 à 236 captures, 40 à 56 sécessions. Le plus rare l'est encore
+  // cinq fois, donc le test ne dépend pas de la chance.
+  const FRAGMENTS = {
+    'une ville abandonnée': 'est partie la première',
+    'une ville saisie par son créancier': 'tenait l’étal du marché',
+    'une ville prise d’assaut': 'clouant sa porte',
+    'une ville qui fait sécession': 'décroché l’ancien drapeau',
+  };
+  const jouerDrames = (graine) => {
+    const st = nouvellePartie(graine, { maintenant: 0 });
+    const lignes = [];
+    for (let i = 0; i < 2500; i++) {
+      tick(st);
+      for (const e of st.journal || []) if (e.texte) lignes.push(e.texte);
+      st.journal = [];
+    }
+    return lignes;
+  };
+  const lignes = jouerDrames(909);
+  for (const [quoi, f] of Object.entries(FRAGMENTS)) {
+    const n = lignes.filter((l) => l.includes(f)).length;
+    ok(n > 0, `${quoi} donne un visage à son drame`, `${n} lignes`);
+  }
+
+  // Et à graine égale, le même homme. C'est ce qui distingue un acteur dérivé
+  // d'un acteur tiré : rejouer la partie doit rejouer les gens.
+  const bis = jouerDrames(909);
+  const acteurs = (ls) => ls.filter((l) => l.includes('clouant sa porte'));
+  ok(acteurs(lignes).length > 0
+    && acteurs(lignes).join('|') === acteurs(bis).join('|'),
+  'et rejouer la partie rejoue les mêmes hommes',
+  `${acteurs(lignes).length} captures`);
 }
 
 // ===========================================================================
