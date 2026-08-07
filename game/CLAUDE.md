@@ -12,6 +12,7 @@ node tools/verifier.js --complet   # + vitesse calibrée, navigateur, gardes mon
 node tools/banc.js --temoin <rev>  # mesurer le monde contre une révision
 node tools/banc.js --balaye economy.CAISSE.marge=0.06,0.10   # calibrer une constante
 node tools/banc.js --cartographie  # quel levier commande quoi -> CARTOGRAPHIE.md
+node tools/banc.js --maille        # ce que le niveau de détail fait à une ville
 node tools/banc.js --profil        # où part le temps
 node tools/banc.js --sauve m.json  # un monde joué d'avance, pour regarder l'UI
 node tools/bundle.js               # reconstruire dist/ (fait par verifier)
@@ -66,6 +67,7 @@ quelqu'un d'autre.
 | `RECETTES.md` | les opérations récurrentes, pas à pas, avec leurs pièges |
 | `ECONOMIE.md` | le cahier des charges du chantier économie |
 | `INDIVIDUS.md` | **le chantier en cours** : les individus, sans payer le prix de Dwarf Fortress |
+| `MAILLE.md` | l'invariance à la maille — chantier proposé, non démarré |
 | `CARTOGRAPHIE.md` | ce que chaque constante commande — produit par la mesure, à lire avant de régler |
 | `CIBLES.json` | les gardes du monde vérifiées par `verifier --complet` |
 | `README.md` | le projet, les tests, l'architecture |
