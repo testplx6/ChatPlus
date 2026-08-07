@@ -207,6 +207,20 @@ Le seul seuil que ce chantier garde est le ×1,08 de §5, et ce n'est pas une
 limite du monde : c'est ce que l'instrument de vitesse sait résoudre. Il borne
 ce qui peut passer sans être dit, pas ce que la simulation a le droit d'être.
 
+## 3 bis. Ce que M0 a fait au monde, mesuré
+
+Le correctif change le monde à graine égale, et c'était annoncé. Sur le banc
+(6 graines × 6 000 h), l'essentiel tient : 481 villes, 71 638 habitants, 361
+nourries, 33 bourses, 18 055 convois, 20 guerres, 323 endettées — toutes dans
+leurs fourchettes. Une garde en sort :
+
+**Les créances passent de 47 à 78, pour un maximum de 70.** Ce n'est pas une
+surprise à masquer : les ménages dépensent davantage sur la tranche, les villes
+lointaines encaissent plus, et le crédit se déplace. La fourchette des créances
+est déjà signalée dans `CIBLES.json` comme une dette du projet — « à instruire
+par un chantier propre, pas à masquer en resserrant une garde ». Elle est donc
+consignée dans les Blocages, et **pas élargie**.
+
 ## 4. Ce que ça casse, dit d'avance
 
 - **Le monde change à graine égale.** La croissance et la décroissance des
@@ -223,10 +237,10 @@ ce qui peut passer sans être dit, pas ce que la simulation a le droit d'être.
 
 | cible | comment on la mesure | état |
 |---|---|---|
-| invariance | `banc --maille`, partie 2 : les cinq écarts médians **sous le plancher de bruit** établi par placebo. « À zéro » était une cible mal posée : deux tirages honnêtes ne rendent jamais la même ville, et exiger l'impossible, c'est ne rien vérifier | 1 sur 5 tenue |
-| erreur locale | l'erreur d'**une journée** depuis un état identique, grandeur par grandeur et pas par pas. C'est le critère net : il ne mélange pas le défaut de maille avec ce que quarante jours de chaos en font, et il porte son propre témoin (`pas 1` doit rendre zéro) | caisse +4,81 et rations −7,20 → viser sous 0,1 |
-| invariance dans le monde | `banc --maille`, partie 1 : population médiane à ±3 habitants et villes debout à ±1 | +28 et 52/55 |
-| coût | la garde de vitesse : rapport à la livraison précédente. Au-delà de ×1,08 la variante approchée passe devant l'exacte | à mesurer |
+| invariance | `banc --maille`, partie 2 : les cinq écarts médians **sous le plancher de bruit** établi par placebo. « À zéro » était une cible mal posée : deux tirages honnêtes ne rendent jamais la même ville, et exiger l'impossible, c'est ne rien vérifier | **2 sur 5** (pop, agitation) — était 1 sur 5 |
+| erreur locale | l'erreur d'**une journée** depuis un état identique, grandeur par grandeur et pas par pas. C'est le critère net : il ne mélange pas le défaut de maille avec ce que quarante jours de chaos en font, et il porte son propre témoin (`pas 1` doit rendre zéro) | **3 sur 5** sous 0,1 ; reste caisse +1,11 et ménages −0,91 |
+| invariance dans le monde | `banc --maille`, partie 1 : population médiane à ±3 habitants et villes debout à ±1 | +15 (était +28) et 43/48 |
+| coût | la garde de vitesse : rapport à la livraison précédente | **×1,03** pour M0 — tenu |
 | le monde tient | les dix gardes de `CIBLES.json`, resserrées après coup sur l'état mesuré | à remesurer |
 | l'invariant comptable | exact, comme toujours | tenu |
 
@@ -320,11 +334,17 @@ Le recensement des tirages quantifiés reste valable tel quel :
 Une ville lointaine ne peut donc changer de chef qu'une fois par tranche de
 vingt-quatre heures, une ville proche vingt-quatre fois.
 
-**Le recensement des saturations, lui, reste à faire** : c'est la tâche M0. Il
-ne se fait pas à la lecture — un `min` peut être inoffensif s'il ne mord jamais.
-Il se fait par l'erreur locale, mécanisme par mécanisme, avec le mouchard qui a
-servi ici : compter les fois où le plafond mord et ce qu'il retient, à `dt = 1`
-puis à `dt = 24`.
+**Le recensement des saturations, lui, reste à faire** : c'est la tâche M0 bis.
+Il ne se fait pas à la lecture — un `min` peut être inoffensif s'il ne mord
+jamais, et un autre peut porter tout le défaut. Il se fait par l'erreur locale,
+mécanisme par mécanisme, avec le mouchard qui a servi ici : compter les fois où
+le plafond mord et ce qu'il retient, à `dt = 1` puis à `dt = 24`.
+
+Une saturation connue et déjà instruite y attend : `min(veut, enRayon)` dans le
+calcul de `facture`, qui porte le résidu de M0. Et un avertissement qui vaut
+pour toutes — **la retirer n'est pas la corriger** : supprimée, elle fait passer
+l'erreur locale de caisse de 4,81 à **315**, parce que facturer le besoin plutôt
+que l'étal vide les bourses pour des marchandises qui n'existent pas.
 
 ## 8. Les tâches
 
@@ -341,15 +361,33 @@ puis à `dt = 24`.
   mailles fines, protocole identique), et écarte grandeur par grandeur les
   villes dont les deux côtés sont sur la même borne. Coût : 27 s.
   **Il a renversé le diagnostic du chantier** — voir §1 bis et §2 a.
-- [ ] **M0.** *(nouveau, et prioritaire : M2 et M3 ne sont plus le poste
-  principal.)* Corriger `economy.js:638`, la note des ménages. Les salaires de
-  la tranche doivent être versés avant les courses, ou les courses réparties sur
-  la tranche — à trancher au banc, pas à l'avis. Critère : l'erreur locale de
-  caisse passe de **+4,81** à moins de 0,1 crédit par ville et par jour, et
-  l'antisymétrie ménages/caisse reste exacte.
-- [ ] **M0 bis.** Le recensement des saturations (§7), par l'erreur locale et
-  le mouchard, mécanisme par mécanisme. Plus le résidu de 1,71 crédit par jour
-  des villes où le plafond ne mord pas.
+- [x] **M0.** Le circuit ménages↔ville se refait `dt` fois par tranche : la note
+  de l'heure, puis la paie de l'heure. **Cible tenue sur trois grandeurs, pas
+  sur cinq** — l'erreur locale à `dt = 24` :
+
+  | | avant | après | cible 0,1 |
+  |---|---:|---:|---|
+  | rations | −7,200 | **−0,010** | tenue (÷ 700) |
+  | agitation | −0,034 | **+0,000** | tenue |
+  | caisse | +4,810 | **+1,108** | **non tenue** (÷ 4,3) |
+  | ménages | −4,818 | **−0,913** | **non tenue** (÷ 5,3) |
+
+  Le coût est nul — ×1,03 contre le code d'avant, sur trois relevés (×0,996,
+  ×1,039, ×1,041). Il ne l'était pas d'emblée : écrite en boucle naïve avec
+  `encaisser` et `debourser` à chaque tour, la correction coûtait ×1,10 à ×1,15.
+  Deux mesures l'ont ramenée — une **voie rapide en forme close**, exacte parce
+  que les deux bourses évoluent d'un pas constant et que leur minimum sur la
+  tranche est donc à la première ou à la dernière heure (54 % des tranches la
+  prennent), et l'**inlining** de la boucle pour les 46 % restants, qui à elle
+  seule pesait 7,4 % du tick. Vérifié : monde identique octet pour octet sur
+  trois graines × 2 000 heures avant/après l'inlining.
+- [ ] **M0 bis.** Le résidu de M0, et il est instruit : `facture` est calculée
+  **une fois pour la tranche entière**, avec `min(veut, enRayon)` où
+  `enRayon = stock + prod × dt`, et des prix relus une seule fois. Deuxième
+  saturation, autre mécanisme. Attention : la retirer telle quelle fait
+  exploser l'erreur à +315 (témoin négatif mesuré) — elle est porteuse, il faut
+  l'intégrer, pas la supprimer. Plus le recensement des autres saturations (§7),
+  par l'erreur locale et le mouchard.
 - [ ] **M2.** Brancher `combienDeFois` sur `economy.js:719-730` (naissance,
   départ). **Le critère est à trouver, et c'est un blocage à part entière** :
   l'écart de population sur quarante jours est sous le plancher (−2 pour ±3), et

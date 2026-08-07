@@ -386,26 +386,47 @@ minutes.
 
 ## Blocages
 
+### Les créances sortent de leur fourchette après M0 — 78 pour un maximum de 70
+
+Le correctif de maille M0 (`MAILLE.md`) change le monde à graine égale, et
+c'était annoncé. Neuf gardes sur dix tiennent — 481 villes, 71 638 habitants,
+361 nourries, 33 bourses, 18 055 convois, 20 guerres, 323 endettées. **Les
+créances passent de 47 à 78**, au-dessus du plafond de 70.
+
+Le mécanisme est cohérent avec le correctif : les ménages dépensent davantage
+sur une tranche, les villes lointaines encaissent plus, et le crédit se
+redistribue. Mais la fourchette des créances est **déjà** signalée dans
+`CIBLES.json` comme une dette du projet, « à instruire par un chantier propre,
+pas à masquer en resserrant une garde ». La resserrer maintenant reviendrait à
+faire exactement ce que cette note interdit, et à le faire sur la garde qui
+avait justement été mise de côté pour être instruite.
+
+Elle n'est donc **pas élargie**. Ce qu'il faut : instruire à quoi tient le
+nombre de créances — qui prête, à qui, pourquoi ça n'est jamais remboursé — et
+seulement ensuite décider si 78 est un monde sain ou un symptôme. C'est un lot,
+pas un réglage.
+
 ### La garde de vitesse est rouge, et elle l'était avant le travail du jour
 
-`verifier --complet` refuse : **×1,135 contre la livraison précédente**, pour un
-seuil de ×1,08. Rien n'est donc poussé — M1 et M4 sont commités et restent sur
-la branche locale.
+`verifier --complet` refuse : **×1,157 contre la livraison précédente**, pour un
+seuil de ×1,08.
 
-**Ce n'est pas le travail du jour.** Trois relevés de HEAD contre `b5d59cf`, le
-dernier commit d'avant : **×1,055 / ×1,024 / ×0,943**. Ils encadrent 1,00 ; les
-deux commits du jour ne coûtent rien de mesurable, ce qui était attendu — la
-seule modification de `src/` est une fonction exportée que le moteur n'appelle
-pas encore.
+**Le seuil était déjà franchi avant ce chantier.** `b5d59cf`, le dernier commit
+d'avant, contre le témoin `ab6312f` de `CIBLES.json` : **×1,089**. La régression
+est antérieure et n'a jamais été attribuée. Elle appartient au travail d'avant.
 
-**Le seuil était déjà franchi.** `b5d59cf` contre le témoin `ab6312f` de
-`CIBLES.json` : **×1,089**. La régression est donc antérieure et n'a jamais été
-attribuée. Elle appartient au travail d'avant, pas à celui-ci.
+**Et ce chantier n'y ajoute presque rien**, mesuré à chaque étape plutôt
+qu'espéré :
 
-**Et la machine ne sait plus conclure finement.** Dispersion des rapports sur
-les quatre relevés : 11 %, 17 %, 26 %, 39 %, pour un `dispersionMax` de 25 %.
-Deux relevés sur quatre auraient dû être refusés comme instables. Le coût brut
-du tick est de 148 à 152 µs quand la référence de `CIBLES.json` en annonce 107 ;
+| | rapport contre le code d'avant |
+|---|---|
+| M1 (la primitive, non branchée) | ×1,055 / ×1,024 / ×0,943 — encadrent 1,00 |
+| M0 en boucle naïve | ×1,095 / ×1,148 / ×1,101 — refusé, réécrit |
+| M0 livré (forme close + boucle inlinée) | **×0,996 / ×1,039 / ×1,041** |
+
+**Et la machine ne sait plus conclure finement.** Dispersion des rapports :
+10 à 39 % selon les relevés, pour un `dispersionMax` de 25 %. Le coût brut du
+tick est de 145 à 168 µs quand la référence de `CIBLES.json` en annonce 107 ;
 `test/perf.js` documente déjà que cette machine varie du simple au double au
 repos sans que l'étalon arithmétique le voie.
 

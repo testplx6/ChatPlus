@@ -8948,12 +8948,117 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
       facture += Math.min(veut, enRayon) * prixUnitaire(col, k, undefined, world, ctx);
     }
   }
-  const regle = facture > 0 ? Math.min(facture, col.menages || 0) : 0;
-  const part = facture > 0 ? regle / facture : 1;
-  if (regle > 0) {
-    col.menages -= regle;
-    encaisser(world, col, regle);
+  // --- Le circuit se boucle heure par heure, même quand la ville est loin.
+  //
+  // Les courses et la paie sont deux moitiés d'un même circuit, et **elles
+  // s'alimentent l'une l'autre à l'heure** : ce que la ville verse le matin,
+  // ses habitants le dépensent l'après-midi, et elle le réencaisse. Le code
+  // faisait les courses une fois par tranche, plafonnées à ce que les ménages
+  // avaient **au début** de la tranche, puis versait les salaires de la
+  // journée entière — trop tard pour être dépensés. Le plafond mordait donc
+  // plus fort à la maille grossière, et une ville lointaine encaissait moins de
+  // ses propres habitants qu'une ville proche dans le même état.
+  //
+  // C'était le poste dominant du chantier `MAILLE.md`, et il n'était pas dans
+  // son recensement : on n'y cherchait que des tirages quantifiés. **Une
+  // saturation ne se regroupe pas non plus** — et celle-ci coûtait, mesurée sur
+  // une seule journée depuis un état identique, 4,81 crédits de caisse par
+  // ville, proportionnels au pas, avec 293 crédits par jour dans les villes où
+  // le plafond mord contre 1,71 là où il ne mord jamais.
+  //
+  // La correction, c'est de refaire le circuit `dt` fois : la note de l'heure,
+  // puis la paie de l'heure. À `dt = 1` elle rend exactement ce que rendait
+  // l'ancien code, dans le même ordre et avec les mêmes tirages.
+  //
+  // Écrite naïvement — une boucle de vingt-quatre passages avec `encaisser` et
+  // `debourser` à chaque tour — elle coûte **+10 à +15 % de tick**, mesuré trois
+  // fois contre le code d'avant (×1,095, ×1,148, ×1,101). C'est trop : le
+  // budget du moteur se compte en microsecondes et cette correction n'en vaut
+  // pas dix.
+  //
+  // D'où la voie rapide ci-dessous, et elle n'est pas une approximation. Tant
+  // qu'aucun des deux plafonds ne mord, les deux mouvements sont **linéaires**
+  // en leur montant : `encaisser` prélève un impôt proportionnel, `debourser`
+  // rend son argument entier. Vingt-quatre appels de `x` valent alors
+  // exactement un appel de `24 x`. Et savoir si un plafond mordra ne demande pas
+  // de simuler : les deux bourses évoluent d'un pas constant, donc leur minimum
+  // sur la tranche est à la première ou à la dernière heure, et deux
+  // comparaisons suffisent. Quand l'une des deux mord, on retombe sur la
+  // boucle, qui reste la vérité.
+  const factureHeure = facture / dt;
+  const duHeure = col.avantPoste ? 0 : valeurCourante(prod) * CAISSE.partSalariale;
+  let regle = 0;
+  let paye = 0;
+  const impot = col.faction && world.factions[col.faction]
+    ? loisDe(world, col.faction).impot : 0;
+  // Ce que chaque bourse gagne ou perd par heure si rien ne bute.
+  const dMenages = duHeure - factureHeure;
+  const dCaisse = factureHeure * (1 - impot) - duHeure;
+  const m0 = col.menages || 0;
+  const c0 = col.caisse || 0;
+  const menagesTient = Math.min(m0, m0 + (dt - 1) * dMenages) >= factureHeure;
+  // La caisse est regardée juste après l'encaissement de l'heure, puisque c'est
+  // là qu'on lui demande de payer.
+  const caisseTient = Math.min(c0, c0 + (dt - 1) * dCaisse)
+    + factureHeure * (1 - impot) >= duHeure;
+  if (dt === 1 || (menagesTient && caisseTient)) {
+    if (facture > 0) {
+      // `menagesTient` dit que la bourse ne bute jamais **au fil de la
+      // tranche**, salaires compris : la note passe donc en entier, même
+      // quand elle dépasse ce que les ménages ont à la première heure. Y
+      // remettre un `min` sur la bourse initiale était le piège, et il a coûté
+      // sept désaccords sur cent vingt contre la boucle — jusqu'à 357 crédits
+      // sur une ville. Le `min` ne sert qu'à `dt = 1`, où la tranche EST
+      // l'heure et où il n'y a pas de salaire à venir.
+      const achat = menagesTient ? facture : Math.min(facture, m0);
+      if (achat > 0) {
+        col.menages -= achat;
+        encaisser(world, col, achat);
+        regle = achat;
+      }
+    }
+    if (duHeure > 0) {
+      paye = debourser(col, duHeure * dt);
+      col.menages = (col.menages || 0) + paye;
+    }
+  } else {
+    // La boucle, quand un plafond mord pour de bon. Elle n'appelle ni
+    // `encaisser` ni `debourser` : les deux se réduisent ici à trois lignes
+    // d'arithmétique sur des variables locales. Ce n'est pas de la coquetterie
+    // — la même boucle écrite avec ses deux appels coûtait **7,4 % du tick à
+    // elle seule**, mesuré contre une variante sans boucle du tout ; tout le
+    // reste du correctif ne coûte que 1,3 %.
+    //
+    // L'impôt est versé **à chaque heure** et non cumulé pour un versement
+    // unique, bien qu'il soit proportionnel : cumuler change l'ordre de
+    // sommation, et deux mondes joués deux mille heures divergeaient alors au
+    // seizième chiffre puis pour de bon. Une optimisation qui change le monde
+    // n'est pas une optimisation.
+    const fisc = impot > 0 ? world.factions[col.faction] : null;
+    let menages = m0;
+    let caisse = c0;
+    for (let h = 0; h < dt; h++) {
+      if (factureHeure > 0) {
+        const achat = factureHeure < menages ? factureHeure : menages;
+        if (achat > 0) {
+          menages -= achat;
+          const pris = achat * impot;
+          if (fisc) fisc.tresor += pris;
+          caisse += achat - pris;
+          regle += achat;
+        }
+      }
+      if (duHeure > 0) {
+        const verse = duHeure < caisse ? duHeure : caisse;
+        caisse -= verse;
+        menages += verse;
+        paye += verse;
+      }
+    }
+    col.menages = menages;
+    col.caisse = caisse;
   }
+  const part = facture > 0 ? regle / facture : 1;
 
   for (const k of COMMODITY_KEYS) {
     if (k === 'rations') continue; // traité à part, c'est la survie
@@ -8976,16 +9081,17 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
   // n'achetait, c'est-à-dire de la monnaie créée à chaque heure dans chaque
   // ville, sans contrepartie. Ses clients existent maintenant, ils ont un nom et
   // une bourse, et ils paient plus haut.
-  if (!col.avantPoste) {
-    const du = valeurCourante(prod) * CAISSE.partSalariale * dt;
-    if (du > 0) {
-      const paye = debourser(col, du);
-      col.menages = (col.menages || 0) + paye;
-      const impaye = du - paye;
-      if (impaye > 0) {
-        col.unrest = Math.min(1, col.unrest
-          + CAISSE.grogneImpayes * Math.min(1, impaye / du) * dt);
-      }
+  // Les salaires sont versés dans la boucle du circuit, plus haut. Ne reste ici
+  // que ce qu'ils laissent derrière eux quand la caisse est à sec : la grogne.
+  // Elle se compte sur la tranche entière, à partir de ce qui a réellement été
+  // versé heure par heure — une ville qui n'a pu payer que trois heures sur
+  // vingt-quatre le sent vingt-et-une fois.
+  const du = duHeure * dt;
+  if (du > 0) {
+    const impaye = du - paye;
+    if (impaye > 0) {
+      col.unrest = Math.min(1, col.unrest
+        + CAISSE.grogneImpayes * Math.min(1, impaye / du) * dt);
     }
   }
 

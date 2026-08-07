@@ -153,6 +153,7 @@ import {
   vueColonie, estSurveillee, ageTexte, nouvellesConnues, DELAI_NOUVELLE, observer,
 } from '../src/connaissance.js';
 import { distance } from '../src/world.js';
+import { conditions } from '../src/climat.js';
 
 let echecs = 0;
 let total = 0;
@@ -6756,17 +6757,30 @@ section('13. Économie — lot A : le circuit fermé');
 
   // Les salaires sortent de la caisse et vont chez les gens. Mesuré contre un
   // témoin : la décrue naturelle de la grogne noie toute hausse regardée seule.
-  const deuxVilles = [50000, 0].map((sou) => {
-    const s0 = nouvellePartie(31415, { maintenant: 0, depart: 'ville' });
-    const w = s0.world.colonies.find((c) => c.id === v.id);
-    w.caisse = sou;
-    w.unrest = 0.2;
-    tickColonie(s0.world, w, new Rng(7), null, 24, 0, () => {}, 0, false);
-    return w;
-  });
-  ok(deuxVilles[1].unrest > deuxVilles[0].unrest,
-    'la ville qui ne peut pas payer ses gens gronde plus que celle qui peut',
-    `payée ${deuxVilles[0].unrest.toFixed(4)} · impayée ${deuxVilles[1].unrest.toFixed(4)}`);
+  //
+  // **Les ménages sont mis à zéro des deux côtés**, et c'est le cœur du test.
+  // Sans ça, une ville au trésor vide se refinance en une heure sur ses propres
+  // ventes et paie tout le monde : la caisse n'est plus la variable qu'on
+  // observe. La fixture d'origine ne l'écartait pas, et elle ne passait que
+  // pour une mauvaise raison — relevé avant le correctif de maille, écart de
+  // grogne **0,0000 à `dt = 1`** contre 0,0243 à `dt = 24`. Elle ne vérifiait
+  // pas la règle, elle vérifiait le défaut de tranche qui l'imitait. D'où la
+  // boucle sur les deux mailles ci-dessous : une règle du monde ne dépend pas
+  // de la distance au joueur.
+  for (const dt of [1, 24]) {
+    const deuxVilles = [50000, 0].map((sou) => {
+      const s0 = nouvellePartie(31415, { maintenant: 0, depart: 'ville' });
+      const w = s0.world.colonies.find((c) => c.id === v.id);
+      w.caisse = sou;
+      w.menages = 0;
+      w.unrest = 0.2;
+      for (let h = 0; h < 24; h += dt) tickColonie(s0.world, w, new Rng(7), null, dt, 0, () => {}, h, false);
+      return w;
+    });
+    ok(deuxVilles[1].unrest > deuxVilles[0].unrest + 0.1,
+      `la ville qui ne peut pas payer ses gens gronde plus que celle qui peut (dt = ${dt})`,
+      `payée ${deuxVilles[0].unrest.toFixed(4)} · impayée ${deuxVilles[1].unrest.toFixed(4)}`);
+  }
 
   // Du grain plein, des gens sans le sou : la satiété tombe quand même. C'est
   // l'Irlande de 1846, et le moteur doit savoir la produire.
@@ -7493,6 +7507,85 @@ section('23. Une probabilité se regroupe, un compte ne se regroupe pas');
   ok(ancienne < 24 * 0.05 * 0.7,
     'et l’ancienne forme sous-comptait de plus de 30 %',
     `${ancienne.toFixed(3)} contre ${(24 * 0.05).toFixed(3)}`);
+
+  // --- L'erreur locale : une journée, depuis un état identique ------------
+  //
+  // Le critère du chantier `MAILLE.md`, et le seul qui isole le défaut de ce
+  // que quarante jours de chaos en font. Une ville jouée vingt-quatre heures
+  // fines et la même ville jouée d'une seule tranche doivent finir au même
+  // endroit ; l'écart se lit à trois décimales, et il croît avec le pas quand
+  // il y a un biais de tranche.
+  //
+  // Ce qu'il attrapait au moment de son écriture, `economy.js:638` : les
+  // ménages font leurs courses une fois par tranche, plafonnés à ce qu'ils ont
+  // au début, et les salaires de la journée arrivent après — trop tard pour
+  // être dépensés. Le plafond mord donc plus fort à la maille grossière.
+  // Le monde du banc, et pas celui qui traîne dans la suite : la graine 777 à
+  // 3 200 heures rend une erreur locale de 0,0003 sur la caisse, la graine 11 à
+  // 400 heures en rend 1,108. Un test posé sur la première aurait affiché vert
+  // sur un défaut que la seconde voit. On mesure là où ça se voit, et le banc
+  // et la suite disent alors le même chiffre.
+  const sT = nouvellePartie(11, { maintenant: 0 });
+  for (let i = 0; i < 400; i++) tick(sT);
+  const villesT = sT.world.colonies
+    .filter((c) => !c.ruine && c.faction && !c.avantPoste).slice(0, 40);
+  const condT = conditions(sT.world, sT.temps);
+  const erreurLocale = (dt) => {
+    const d = { caisse: [], menages: [], rations: [], unrest: [] };
+    for (const c0 of villesT) {
+      const A = JSON.parse(JSON.stringify(c0));
+      const B = JSON.parse(JSON.stringify(c0));
+      const rA = new Rng(9); const rB = new Rng(9);
+      for (let h = 0; h < 24; h++) tickColonie(sT.world, A, rA, condT, 1, 0, null, sT.temps + h);
+      for (let h = 0; h < 24; h += dt) tickColonie(sT.world, B, rB, condT, dt, 0, null, sT.temps + h);
+      // Mêmes exclusions qu'au banc : une grandeur collée à sa borne des deux
+      // côtés rend un écart nul qui ne prouve rien.
+      if (!((A.caisse || 0) <= 0 && (B.caisse || 0) <= 0)) d.caisse.push((A.caisse || 0) - (B.caisse || 0));
+      if (!((A.menages || 0) <= 0 && (B.menages || 0) <= 0)) d.menages.push((A.menages || 0) - (B.menages || 0));
+      if (!((A.stock.rations || 0) <= 0 && (B.stock.rations || 0) <= 0)) {
+        d.rations.push((A.stock.rations || 0) - (B.stock.rations || 0));
+      }
+      const borne = (c) => c.unrest <= 0 || c.unrest >= 1;
+      if (!(borne(A) && borne(B))) d.unrest.push(A.unrest - B.unrest);
+    }
+    const med = (a) => (a.length ? a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)] : 0);
+    return {
+      caisse: med(d.caisse), menages: med(d.menages), rations: med(d.rations), unrest: med(d.unrest),
+    };
+  };
+
+  // Le témoin : deux mailles fines identiques doivent rendre zéro partout.
+  // Sans lui, un « écart faible » ne dirait pas si l'instrument mesure quoi que
+  // ce soit.
+  const temoinT = erreurLocale(1);
+  ok(temoinT.caisse === 0 && temoinT.menages === 0 && temoinT.rations === 0,
+    'témoin : deux mailles fines rendent exactement zéro',
+    `${temoinT.caisse} / ${temoinT.menages} / ${temoinT.rations}`);
+
+  // Les seuils ci-dessous ne sont PAS la cible du chantier, et il faut le dire
+  // ici plutôt que dans un coin : `MAILLE.md` §5 vise 0,1 sur les cinq
+  // grandeurs, et **M0 ne l'atteint que sur trois**. Ce que ces gardes
+  // enregistrent, c'est l'état mesuré après M0, contre l'état d'avant :
+  //
+  //     rations   −7,200  →  −0,010   (÷ 700, cible tenue)
+  //     agitation −0,034  →  +0,000   (cible tenue)
+  //     caisse    +4,810  →  +1,108   (÷ 4,3, cible NON tenue)
+  //     ménages   −4,818  →  −0,913   (÷ 5,3, cible NON tenue)
+  //
+  // Le résidu vient d'ailleurs que du plafond des ménages : `facture` est
+  // calculée une fois pour la tranche entière, avec `min(veut, enRayon)` et des
+  // prix relus une seule fois. C'est une deuxième saturation, sur un autre
+  // mécanisme, et elle a sa tâche — M0 bis. Les gardes sont là pour empêcher de
+  // reculer, pas pour déclarer l'affaire close.
+  const e24 = erreurLocale(24);
+  ok(Math.abs(e24.rations) < 0.1, 'une tranche de 24 h sert les mêmes rations qu’heure par heure',
+    `${e24.rations.toFixed(3)} de rations`);
+  ok(Math.abs(e24.unrest) < 0.001, 'et elle laisse la même agitation',
+    `${e24.unrest.toFixed(4)}`);
+  ok(Math.abs(e24.caisse) < 1.5, 'et une caisse à moins d’un crédit et demi (cible 0,1 : non tenue)',
+    `${e24.caisse.toFixed(3)} crédits`);
+  ok(Math.abs(e24.menages) < 1.2, 'et des ménages de même (cible 0,1 : non tenue)',
+    `${e24.menages.toFixed(3)} crédits`);
 }
 
 // ===========================================================================
