@@ -7463,10 +7463,54 @@ section('22. Le joueur tire dans sa poche, pas dans celle du monde');
   };
   const g1 = partie(0);
   const g2 = partie(431);
-  for (let i = 0; i < 200; i++) { tick(g1); tick(g2); }
+  for (let i = 0; i < 300; i++) { tick(g1); tick(g2); }
   ok(g1.rngState === g2.rngState,
     'et le flux du monde ne bouge plus d’un trajet à l’autre',
     `${g1.rngState} / ${g2.rngState}`);
+
+  // --- La preuve entière (INDIVIDUS I3b.5) --------------------------------
+  //
+  // Le test au-dessus dit que deux trajets donnent le même flux. Il ne dit pas
+  // *pourquoi*, et il passerait encore si deux mécanismes se compensaient. Le
+  // vrai énoncé est plus fort et se mesure directement : **le flux principal
+  // n'est plus consommé que par le climat.**
+  //
+  // Il se compte sans instrumenter le moteur. `mulberry32` avance son état de
+  // `0x6d2b79f5` par tirage, et cette constante est impaire donc inversible
+  // modulo 2³² : le nombre de tirages d'une heure se lit dans la différence
+  // d'état. Aucune sonde à poser, rien à retirer après.
+  //
+  // Ce test est né vert, ce qui ne prouve rien tout seul — les trois bascules
+  // (conseils, caravanes, panneaux de ville) avaient été faites sans être
+  // prouvées. Sa capacité à échouer a donc été vérifiée à la main : un seul
+  // `rng.f()` posé devant `tickFactions` le fait passer au rouge (« tailles
+  // observées : 1, 3 »). **Et le test au-dessus, lui, restait vert** — un
+  // tirage identique dans les deux trajets ne les fait pas diverger. C'est la
+  // démonstration qu'il est strictement plus faible, et la raison d'écrire
+  // celui-ci.
+  const INV = (() => {
+    let x = 1n;
+    const a = 0x6d2b79f5n;
+    const m = 1n << 32n;
+    for (let i = 0; i < 40; i++) x = (x * (2n - a * x)) % m;
+    return ((x % m) + m) % m;
+  })();
+  const gF = partie(0);
+  for (let i = 0; i < 200; i++) tick(gF);
+  const parHeure = {};
+  for (let i = 0; i < 300; i++) {
+    const avant = gF.rngState;
+    tick(gF);
+    const n = Number((BigInt((gF.rngState - avant) >>> 0) * INV) % (1n << 32n));
+    parHeure[n] = (parHeure[n] || 0) + 1;
+  }
+  const tailles = Object.keys(parHeure).map(Number).sort((a, b) => a - b);
+  ok(tailles.every((n) => n === 0 || n === 2),
+    'le flux du monde n’est plus consommé que par le climat, deux tirages à la fois',
+    `tailles observées : ${tailles.join(', ')}`);
+  ok((parHeure[2] || 0) > 0 && (parHeure[0] || 0) > 0,
+    'et il est bien consommé — le compteur mesure quelque chose',
+    `${parHeure[2] || 0} heures à 2 tirages, ${parHeure[0] || 0} à zéro`);
 }
 
 // ===========================================================================

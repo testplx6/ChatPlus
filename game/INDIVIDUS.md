@@ -262,12 +262,24 @@ mécanismes du monde qui, eux, n'en dépendent pas mais partagent le même flux
 
   Une fois les trois bascules faites, le flux principal n'est plus consommé que
   par le climat — deux tirages par heure, les mêmes quel que soit le trajet.
-- [ ] **I3b.2-4. Les trois bascules**, une par commit, chacune re-mesurée au
-  banc (gardes tenues).
-- [ ] **I3b.5. La preuve entière.** Test rouge : deux parties à graine égale,
-  trajets différents, 300 h, **sans avant-poste et sans action** :
-  `state.rngState` final identique — le flux principal n'est plus consommé que
-  par du global. (La maille de détail reste : les villes proches du joueur
+- [x] **I3b.2-4. Les trois bascules** — conseils et armées sur
+  `grainDe(world.graine, 'conseil', …)`, caravanes sur le flux du convoi et du
+  réseau, panneaux et étals sur `col.rngEtat`. Faites dans les commits du lot
+  3b, mais **jamais prouvées ni cochées** : c'est I3b.5 qui l'a rattrapé.
+- [x] **I3b.5. La preuve entière**, et elle est plus forte que celle qui était
+  demandée. « Deux trajets, même `rngState` » ne dit pas *pourquoi*, et reste
+  vert si deux mécanismes se compensent — vérifié : un `rng.f()` ajouté devant
+  `tickFactions` ne le fait pas broncher.
+
+  L'énoncé retenu est donc direct : **le flux principal n'est plus consommé que
+  par le climat, deux tirages à la fois.** Il se compte sans instrumenter le
+  moteur — `mulberry32` avance son état de `0x6d2b79f5` par tirage, constante
+  impaire donc inversible modulo 2³², et le nombre de tirages d'une heure se lit
+  dans la différence d'état. Relevé sur 300 heures : 277 heures à zéro tirage,
+  23 à deux. Aucune sonde à poser, rien à retirer après.
+
+  Test né vert, donc capacité à échouer vérifiée à la main : le même `rng.f()`
+  le fait passer au rouge (« tailles observées : 1, 3 »). (La maille de détail reste : les villes proches du joueur
   tiquent plus fin, c'est le niveau de détail assumé ; en multijoueur, le
   serveur tiquera à maille uniforme et cette dépendance-là disparaît d'elle-même.)
 
