@@ -826,6 +826,36 @@ function grainDe(...morceaux) {
   return seedFromString(morceaux.join('\u0000'));
 }
 
+/**
+ * Combien de fois un événement horaire de probabilité `p` survient en `dt`
+ * heures. La primitive du chantier `MAILLE.md`.
+ *
+ * Une ville proche du joueur avance heure par heure, une ville lointaine par
+ * tranches de vingt-quatre. Pour tout ce qui est un *taux* — les stocks, les
+ * salaires, l'agitation — la tranche se regroupe exactement, et c'est mesuré à
+ * zéro. Pour un *événement quantifié*, non : `1 − (1−p)^dt` rend bien la
+ * probabilité qu'il arrive au moins une fois, mais le code qui s'en sert ne
+ * l'applique ensuite qu'une seule fois. Vingt-quatre heures fines autorisent
+ * vingt-quatre départs ; une tranche de vingt-quatre n'en autorisait qu'un. La
+ * même ville, dans le même état, n'évoluait donc pas pareil selon qu'on la
+ * regardait — mesuré à dix habitants d'écart sur quarante jours isolés.
+ *
+ * D'où la règle, inscrite dans `METHODE.md` §3 : **une probabilité se regroupe,
+ * un compte ne se regroupe pas.**
+ *
+ * Le tirage est exact — `dt` épreuves de Bernoulli, pas une approximation —
+ * parce que `dt` reste petit : 3 près du joueur, 24 à 28 loin, jamais plus. Il
+ * consomme `dt` tirages, toujours, quels que soient `p` et le résultat : un
+ * nombre de tirages qui dépendrait de l'un ou de l'autre rendrait la suite du
+ * flux imprévisible.
+ */
+function combienDeFois(rng, p, dt) {
+  if (dt <= 1) return rng.chance(p) ? 1 : 0;
+  let n = 0;
+  for (let i = 0; i < dt; i++) if (rng.f() < p) n += 1;
+  return n;
+}
+
 // Alias d'import
 const distanceCases = distance;
 const deboutDe = debout;

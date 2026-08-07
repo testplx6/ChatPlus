@@ -109,11 +109,29 @@ binomial par la somme d'une loi de Poisson tronquée, ou l'espérance `p × dt`
 appliquée à l'ampleur avec un tirage pour la partie fractionnaire. Moins exact,
 mais `dt` fois moins de tirages. Le choix se fait au banc, pas à l'avis.
 
-**Ce qui est une règle de jeu et non une décision technique**, à trancher par
-le propriétaire avant de coder : **combien d'habitants une ville peut-elle
-perdre en un jour ?** Aujourd'hui la réponse est « au plus trois si elle est
-loin, jusqu'à soixante-douze si elle est proche » — et personne ne l'a jamais
-décidé.
+**Une question mal posée, et sa correction.** Ce document demandait au
+propriétaire de trancher : « combien d'habitants une ville peut-elle perdre en
+un jour ? ». Sa réponse : « pourquoi vouloir mettre des limites fixes dans une
+simulation qui a vocation à être réaliste ? » — et elle est juste. Demander de
+choisir un plafond, c'est demander une constante inventée de plus, exactement
+ce que `METHODE.md` §2 interdit. Le `rng.irange(1, 3)` déjà en place est du même
+bois : personne ne l'a décidé, il ne sort d'aucune situation, et un hameau de
+quarante âmes y perd autant qu'une ville de neuf cents dans le même état.
+
+Deux conséquences, et elles sont nettes :
+
+- **le plafond disparaît de lui-même.** Une fois le compte corrigé, une ville
+  lointaine pourra perdre autant qu'une ville proche le peut déjà. Il n'y a
+  donc rien à trancher : la question ne se pose plus ;
+- **l'ampleur reste fausse, et ce n'est pas ce chantier.** Combien de gens
+  partent devrait naître du déficit — combien ne sont pas nourris, de combien
+  de rations la ville manque, où ils peuvent aller. C'est un changement de
+  règle, il sort du périmètre de §6, et il est inscrit à part : voir
+  « L'ampleur au lieu du plafond » plus bas.
+
+Le seul seuil que ce chantier garde est le ×1,08 de §5, et ce n'est pas une
+limite du monde : c'est ce que l'instrument de vitesse sait résoudre. Il borne
+ce qui peut passer sans être dit, pas ce que la simulation a le droit d'être.
 
 ## 4. Ce que ça casse, dit d'avance
 
@@ -146,6 +164,27 @@ décidé.
   maximal pour ne rien régler du problème de fond.
 - On ne touche à aucun autre mécanisme dans ce chantier. La cause est
   identifiée et localisée ; élargir le périmètre, c'est perdre le témoin.
+- **On ne corrige pas l'ampleur ici.** Voir juste en dessous : c'est une règle
+  de jeu, pas un défaut de maille, et les deux ne se mesurent pas ensemble.
+
+### L'ampleur au lieu du plafond — à faire, hors de ce chantier
+
+Corriger le compte remet la maille d'aplomb ; ça ne rend pas l'ampleur juste
+pour autant. `col.pop -= rng.irange(1, 3)` et `col.pop += rng.irange(0, 2)`
+sont deux constantes que personne n'a décidées, et elles ignorent la situation :
+même départ pour un hameau qui meurt de faim et pour une ville de neuf cents
+qui se serre la ceinture.
+
+Ce qu'il faudrait à la place — à spécifier, pas à improviser : un départ tiré
+du **déficit** (combien d'habitants la ville ne peut pas nourrir), tempéré par
+ce qui retient (l'attachement, l'ordre public) et par ce qui accueille (une
+ville atteignable, et sa distance). Même chose pour la naissance, du côté du
+surplus. Aucune de ces quantités n'est un nombre à choisir : elles sont toutes
+déjà dans l'état de la ville.
+
+Ce n'est pas fait ici parce que ça changerait la population du monde en même
+temps que la correction de maille, et qu'on ne saurait plus lequel des deux a
+fait quoi. Le chantier reste à ouvrir, après celui-ci.
 
 ## 6 bis. Pourquoi ne pas le repousser à la fin
 
@@ -188,9 +227,13 @@ salaires, l'agitation, l'ordre public, la geôle et les secteurs sont des
 
 ## 8. Les tâches
 
-- [ ] **M1.** La primitive `combienDeFois` + tests rouges d'abord : sur mille
-  tirages, l'espérance à `dt = 24` vaut `24 p` à 5 % près ; à `dt = 1` elle rend
-  exactement ce que rendait `rng.chance(p)`.
+- [x] **M1.** La primitive `combienDeFois` (`src/rng.js`, et non `economy.js` :
+  `notables.js` en a besoin aussi). Huit tests, rouges d'abord — l'export
+  n'existait pas. À `dt = 1` elle rend le même verdict *et* le même état de
+  flux que `rng.chance(p)`, donc la brancher ne décale rien à la maille fine ;
+  à `dt = 24` l'espérance vaut `24 p` à 5 % près sur quatre mille tirages, pour
+  `p` valant 0,01, 0,05 et 0,12. Un test garde la trace du biais corrigé :
+  l'ancienne forme plafonnait à 0,71 départ là où il en part 1,20.
 - [ ] **M2.** Brancher `economy.js:719-730` (naissance, départ). Mesurer :
   `banc --maille` partie 2, l'écart de population doit tomber sous le plancher.
 - [ ] **M3.** Brancher `notables.js:233` (relève d'une charge). Même mesure.

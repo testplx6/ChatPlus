@@ -66,8 +66,8 @@ quelqu'un d'autre.
 | `CHANTIER.md` | la file de tâches du chantier économie — livré, gardé pour ses mesures et ses leviers |
 | `RECETTES.md` | les opérations récurrentes, pas à pas, avec leurs pièges |
 | `ECONOMIE.md` | le cahier des charges du chantier économie |
-| `INDIVIDUS.md` | **le chantier en cours** : les individus, sans payer le prix de Dwarf Fortress |
-| `MAILLE.md` | l'invariance à la maille — chantier proposé, non démarré |
+| `MAILLE.md` | **le chantier en cours** : l'invariance à la maille — la même ville doit évoluer pareil qu'on la regarde ou non |
+| `INDIVIDUS.md` | les individus sans payer le prix de Dwarf Fortress — lots 1 à 3b faits, la suite après la maille |
 | `CARTOGRAPHIE.md` | ce que chaque constante commande — produit par la mesure, à lire avant de régler |
 | `CIBLES.json` | les gardes du monde vérifiées par `verifier --complet` |
 | `README.md` | le projet, les tests, l'architecture |

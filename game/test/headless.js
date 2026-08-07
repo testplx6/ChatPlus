@@ -5,7 +5,7 @@ import {
   nouvellePartie, avancer, tick, rattraper, rattrapageEtale,
   TICK_MS, RATTRAPAGE_MAX, DEPARTS, DEPART_KEYS,
 } from '../src/sim.js';
-import { Rng, grainDe } from '../src/rng.js';
+import { Rng, grainDe, combienDeFois } from '../src/rng.js';
 import { mesurerTick, CHAUFFE, MESURE } from './perf.js';
 import { lireRapport, MARQUANTS_MAX } from '../src/rapport.js';
 import { serialiser, deserialiser } from '../src/save.js';
@@ -7433,6 +7433,66 @@ section('22. Le joueur tire dans sa poche, pas dans celle du monde');
   ok(g1.rngState === g2.rngState,
     'et le flux du monde ne bouge plus d’un trajet à l’autre',
     `${g1.rngState} / ${g2.rngState}`);
+}
+
+// ===========================================================================
+section('23. Une probabilité se regroupe, un compte ne se regroupe pas');
+{
+  // `surDt(p) = 1 − (1−p)^dt` convertit correctement la probabilité qu'un
+  // événement arrive sur une tranche. Il ne convertit pas son NOMBRE
+  // d'occurrences : vingt-quatre heures fines autorisent vingt-quatre départs,
+  // une tranche de vingt-quatre n'en autorise qu'un. D'où `combienDeFois`, qui
+  // tire le compte au lieu de tirer l'occurrence. Voir `MAILLE.md`.
+
+  // À la maille fine, la primitive doit rendre exactement l'ancien code —
+  // même verdict et même état du flux, sinon brancher `combienDeFois` décale
+  // tous les tirages suivants pour rien.
+  let memeVerdict = true;
+  let memeFlux = true;
+  for (let i = 0; i < 200; i++) {
+    const a = new Rng(1000 + i);
+    const b = new Rng(1000 + i);
+    const p = 0.03 + (i % 17) * 0.05;
+    const avant = a.chance(p) ? 1 : 0;
+    const apres = combienDeFois(b, p, 1);
+    if (avant !== apres) memeVerdict = false;
+    if (a.save() !== b.save()) memeFlux = false;
+  }
+  ok(memeVerdict, 'à dt = 1, le compte vaut ce que rendait rng.chance');
+  ok(memeFlux, 'à dt = 1, elle consomme exactement un tirage');
+
+  // À dt = 24, l'espérance doit valoir 24 p : c'est toute la correction.
+  const esperance = (p, dt, n = 4000) => {
+    const rng = new Rng(4242);
+    let somme = 0;
+    for (let i = 0; i < n; i++) somme += combienDeFois(rng, p, dt);
+    return somme / n;
+  };
+  for (const p of [0.01, 0.05, 0.12]) {
+    const attendu = 24 * p;
+    const mesure = esperance(p, 24);
+    ok(Math.abs(mesure - attendu) <= attendu * 0.05,
+      `à dt = 24 et p = ${p}, l’espérance vaut 24 p à 5 % près`,
+      `${mesure.toFixed(3)} pour ${attendu.toFixed(3)}`);
+  }
+
+  // Et la borne : jamais négatif, jamais plus d'occurrences que d'heures.
+  const rngB = new Rng(77);
+  let borne = true;
+  for (let i = 0; i < 500; i++) {
+    const n = combienDeFois(rngB, 0.5, 24);
+    if (!Number.isInteger(n) || n < 0 || n > 24) borne = false;
+  }
+  ok(borne, 'le compte est un entier de 0 à dt');
+
+  // Ce que l'ancienne forme perdait, chiffré : à p = 0,05 sur vingt-quatre
+  // heures, elle plafonnait à 0,71 départ là où il en part 1,20. Le test garde
+  // la trace du biais qu'on corrige — sans quoi personne ne saura pourquoi le
+  // monde a changé.
+  const ancienne = 1 - Math.pow(1 - 0.05, 24);
+  ok(ancienne < 24 * 0.05 * 0.7,
+    'et l’ancienne forme sous-comptait de plus de 30 %',
+    `${ancienne.toFixed(3)} contre ${(24 * 0.05).toFixed(3)}`);
 }
 
 // ===========================================================================
