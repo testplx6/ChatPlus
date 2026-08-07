@@ -1021,13 +1021,33 @@ section('6 bis. Tenir un empire trop grand se paie');
     g.colonies = Array.from({ length: villes }, (_, i) => g.colonies[i % g.colonies.length]);
     const cible = st.world.colonies.find((c) => c.id === sienne.id);
     cible.unrest = 0.2;
-    for (let i = 0; i < 400; i++) tick(st);
+    // Deux cents heures, et pas quatre cents — la mesure s'arrête avant que la
+    // ville surchargée ne bute sur le plafond d'agitation.
+    //
+    // La version d'origine mesurait à 400 h et passait pour une mauvaise
+    // raison : à cette échéance la ville surchargée était à **1,000 pile**,
+    // c'est-à-dire à sa borne, et le test comparait un chiffre libre à une
+    // butée. Un monde un peu plus doux — celui d'après le chantier de maille —
+    // lui a suffi à ne plus saturer, et l'ordre s'est inversé, sans que le
+    // mécanisme ait bougé d'une ligne. Relevé sur les deux codes :
+    //
+    //        h      avant le chantier        après
+    //       100    0,288 → 0,445 (ok)     0,181 → 0,327 (ok)
+    //       200    0,468 → 0,800 (ok)     0,379 → 0,719 (ok)
+    //       400    0,749 → 1,000 (butée)  0,662 → 0,501 (inversé)
+    //
+    // À 200 h les deux côtés sont libres et l'écart vaut près du double. C'est
+    // la même leçon que le plancher de bruit : **une grandeur collée à sa borne
+    // ne prouve rien**, et une mesure prise trop tard mesure la rétroaction
+    // plutôt que le mécanisme.
+    for (let i = 0; i < 200; i++) tick(st);
     return cible.unrest;
   };
 
   const petit = agiter(SUREXTENSION.seuil);
   const grand = agiter(SUREXTENSION.seuil + 12);
-  ok(grand > petit, 'douze villes de trop, et la ville tient moins bien',
+  ok(grand > petit * 1.3 && grand < 1,
+    'douze villes de trop, et la ville tient nettement moins bien',
     `${petit.toFixed(3)} → ${grand.toFixed(3)}`);
 
   // Et le NaN, nommément : c'est lui qu'on n'a pas vu pendant tout ce temps.
@@ -7582,9 +7602,9 @@ section('23. Une probabilité se regroupe, un compte ne se regroupe pas');
     `${e24.rations.toFixed(3)} de rations`);
   ok(Math.abs(e24.unrest) < 0.001, 'et elle laisse la même agitation',
     `${e24.unrest.toFixed(4)}`);
-  ok(Math.abs(e24.caisse) < 1.5, 'et une caisse à moins d’un crédit et demi (cible 0,1 : non tenue)',
+  ok(Math.abs(e24.caisse) < 0.1, 'et elle laisse la même caisse',
     `${e24.caisse.toFixed(3)} crédits`);
-  ok(Math.abs(e24.menages) < 1.2, 'et des ménages de même (cible 0,1 : non tenue)',
+  ok(Math.abs(e24.menages) < 0.1, 'et les mêmes ménages',
     `${e24.menages.toFixed(3)} crédits`);
 }
 

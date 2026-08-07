@@ -386,25 +386,29 @@ minutes.
 
 ## Blocages
 
-### Les créances sortent de leur fourchette après M0 — 78 pour un maximum de 70
+### L'économie est calibrée dans un monde faussé — `nourries` tombe à 299 pour un minimum de 320
 
-Le correctif de maille M0 (`MAILLE.md`) change le monde à graine égale, et
-c'était annoncé. Neuf gardes sur dix tiennent — 481 villes, 71 638 habitants,
-361 nourries, 33 bourses, 18 055 convois, 20 guerres, 323 endettées. **Les
-créances passent de 47 à 78**, au-dessus du plafond de 70.
+Le chantier de maille (`MAILLE.md`) corrige la date des prix : une tranche
+facturait tout au prix de son premier instant, elle facture maintenant au prix
+du milieu. La facture des ménages monte de 1,60 crédit par ville et par jour,
+donc la part servie baisse, donc la satiété baisse. **Le monde passe de 16 % à
+28 % de villes affamées, et `nourries` de 387 à 299.**
 
-Le mécanisme est cohérent avec le correctif : les ménages dépensent davantage
-sur une tranche, les villes lointaines encaissent plus, et le crédit se
-redistribue. Mais la fourchette des créances est **déjà** signalée dans
-`CIBLES.json` comme une dette du projet, « à instruire par un chantier propre,
-pas à masquer en resserrant une garde ». La resserrer maintenant reviendrait à
-faire exactement ce que cette note interdit, et à le faire sur la garde qui
-avait justement été mise de côté pour être instruite.
+Ce n'est pas une régression du correctif. **C'est l'ancien équilibre qui
+reposait sur le biais** : le monde sous-facturait ses habitants et les
+nourrissait donc trop. Neuf gardes sur dix tiennent — 462 villes, 79 530
+habitants, 33 bourses, 16 325 convois, 18 guerres, 338 endettées, 70 créances.
 
-Elle n'est donc **pas élargie**. Ce qu'il faut : instruire à quoi tient le
-nombre de créances — qui prête, à qui, pourquoi ça n'est jamais remboursé — et
-seulement ensuite décider si 78 est un monde sain ou un symptôme. C'est un lot,
-pas un réglage.
+La fourchette n'est **pas élargie**. Ce qu'il faut est un lot : recalibrer
+l'économie dans le monde corrigé, au balayage (`banc --balaye`), en commençant
+par ce qui commande la satiété — `CAISSE.partSalariale`, `CAISSE.marge`, les
+bornes de `SOLVABILITE`. Le chantier avait annoncé cette dette au §6 bis :
+« tout réglage posé d'ici là l'est dans un monde faussé et devra être remesuré
+après ». Elle est échue.
+
+À noter au passage : les créances étaient sorties après M0 (78 pour un maximum
+de 70) et sont revenues à 70 après M0 bis. Elles restent la dette signalée par
+`CIBLES.json`, à instruire et non à masquer.
 
 ### La garde de vitesse est rouge, et elle l'était avant le travail du jour
 
@@ -423,6 +427,17 @@ qu'espéré :
 | M1 (la primitive, non branchée) | ×1,055 / ×1,024 / ×0,943 — encadrent 1,00 |
 | M0 en boucle naïve | ×1,095 / ×1,148 / ×1,101 — refusé, réécrit |
 | M0 livré (forme close + boucle inlinée) | **×0,996 / ×1,039 / ×1,041** |
+| M0 bis (une seconde passe de prix) | ×1,044, puis ×1,119 — **l'instrument ne tranche plus** |
+| le chantier entier | ×1,096 / ×1,129 / ×1,174 / ×1,175 |
+
+**Et l'instrument a cessé de résoudre en cours de route.** Les relevés du soir
+donnent des dispersions de 13, 23, 26 et même 184 % pour un `dispersionMax` de
+25 %, sur une machine passée de 145 à 220 µs de tick brut sur du code inchangé.
+Les composants mesurés séparément (×1,04 puis ×1,04) ne se recomposent pas avec
+le total mesuré (×1,10 à ×1,17). **On ne sait donc pas ce que le chantier coûte
+à mieux que « entre 5 et 17 % ».** C'est une mesure manquante, pas une mesure
+rassurante, et elle attend une machine calme au même titre que la régression
+antérieure.
 
 **Et la machine ne sait plus conclure finement.** Dispersion des rapports :
 10 à 39 % selon les relevés, pour un `dispersionMax` de 25 %. Le coût brut du

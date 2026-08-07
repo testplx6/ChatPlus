@@ -8485,11 +8485,24 @@ function contextePrix(col, world) {
  * le plus chaud du moteur.
  */
 function solvabilite(col) {
+  return solvabiliteDe(col, col.menages || 0);
+}
+
+/**
+ * La même chose, mais sur une bourse qu'on lui donne plutôt que sur la sienne.
+ *
+ * Sert au point milieu de `tickColonie` : pour placer un prix au milieu d'une
+ * tranche, il faut la solvabilité qu'aura la ville au milieu de la tranche, et
+ * on ne va pas cloner la ville pour ça. Une seule formule, deux appelants —
+ * sans quoi les deux se mettraient à diverger un jour sans que personne ne le
+ * voie.
+ */
+function solvabiliteDe(col, menages) {
   // Votre camp n'a pas de ménages : sa vérité est dans votre poche, et son étal
   // ne doit pas s'effondrer parce qu'un champ vaut zéro.
   if (col.avantPoste || !(col.pop > 0)) return 1;
   const ordinaire = col.pop * MENAGES.parTete;
-  const a = (col.menages || 0) / ordinaire;
+  const a = menages / ordinaire;
   return a < SOLVABILITE.plancher ? SOLVABILITE.plancher
     : (a > SOLVABILITE.plafond ? SOLVABILITE.plafond : a);
 }
@@ -8946,6 +8959,48 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
       // que l'étal vidait les poches pour des marchandises inexistantes.
       const enRayon = (col.stock[k] || 0) + (k === 'rations' ? 0 : (prod[k] || 0) * dt);
       facture += Math.min(veut, enRayon) * prixUnitaire(col, k, undefined, world, ctx);
+    }
+
+    // --- Le prix du milieu de la tranche, et non celui du premier instant.
+    //
+    // Le reste du défaut de maille était là, et il était invisible à la
+    // lecture : le prix dépend de ce que les gens ont en poche et de ce qu'il
+    // reste sur l'étal (`solvabilite`, `cibleStock`), or les deux bougent au
+    // fil de la journée. Vingt-quatre heures fines facturent aux prix de chaque
+    // heure ; une tranche facturait tout au prix de la première. Mesuré en
+    // séparant les deux effets sur la facture d'une journée : **1,60 crédit de
+    // dérive des prix contre −0,09 pour la saturation de l'étal**. C'était donc
+    // les prix, pas l'étal.
+    //
+    // La correction est la règle du point milieu : on estime où en seront la
+    // bourse et l'étal à mi-tranche, et on facture là. L'erreur d'une méthode
+    // d'ordre un est proportionnelle au pas ; évaluée au milieu, ce terme
+    // s'annule. Et ça se vérifie plutôt que de se raconter — l'erreur locale de
+    // caisse passe de **+1,108 à 0,000** à `dt = 24`, et reste à 0,000 pour
+    // `dt` valant 2, 4 et 8.
+    //
+    // La projection n'a pas besoin d'être exacte : son seul travail est de
+    // placer le prix. Elle ne clone rien — `prixUnitaire` sait déjà recevoir un
+    // stock simulé, et `solvabiliteDe` une bourse. Coût mesuré : ×1,044, une
+    // seconde passe de prix par tranche, et rien à `dt = 1`.
+    if (dt > 1 && facture > 0) {
+      const demi = dt / 2;
+      const partP = Math.min(1, (col.menages || 0) / facture);
+      const mMid = Math.max(0, (col.menages || 0)
+        + (valeurCourante(prod) * CAISSE.partSalariale - facture / dt) * demi);
+      const ctxMid = { sol: solvabiliteDe(col, mMid), humeur: ctx.humeur, cours: ctx.cours };
+      facture = 0;
+      for (let i = 0; i < COMMODITY_KEYS.length; i++) {
+        const k = COMMODITY_KEYS[i];
+        const veut = (cons[k] || 0) * dt;
+        if (veut <= 0) continue;
+        const enRayon = (col.stock[k] || 0) + (k === 'rations' ? 0 : (prod[k] || 0) * dt);
+        const brut = climat ? climat.rendement(k) : 1;
+        const amorti = k === 'rations' ? 1 : 1 + (brut - 1) * 0.45;
+        const sMid = Math.max(0, (col.stock[k] || 0)
+          + ((prod[k] || 0) * amorti - (cons[k] || 0) * partP) * demi);
+        facture += Math.min(veut, enRayon) * prixUnitaire(col, k, sMid, world, ctxMid);
+      }
     }
   }
   // --- Le circuit se boucle heure par heure, même quand la ville est loin.

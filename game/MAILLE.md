@@ -207,19 +207,39 @@ Le seul seuil que ce chantier garde est le ×1,08 de §5, et ce n'est pas une
 limite du monde : c'est ce que l'instrument de vitesse sait résoudre. Il borne
 ce qui peut passer sans être dit, pas ce que la simulation a le droit d'être.
 
-## 3 bis. Ce que M0 a fait au monde, mesuré
+## 3 bis. Ce que le correctif a fait au monde, mesuré
 
 Le correctif change le monde à graine égale, et c'était annoncé. Sur le banc
-(6 graines × 6 000 h), l'essentiel tient : 481 villes, 71 638 habitants, 361
-nourries, 33 bourses, 18 055 convois, 20 guerres, 323 endettées — toutes dans
-leurs fourchettes. Une garde en sort :
+(6 graines × 6 000 h) :
 
-**Les créances passent de 47 à 78, pour un maximum de 70.** Ce n'est pas une
-surprise à masquer : les ménages dépensent davantage sur la tranche, les villes
-lointaines encaissent plus, et le crédit se déplace. La fourchette des créances
-est déjà signalée dans `CIBLES.json` comme une dette du projet — « à instruire
-par un chantier propre, pas à masquer en resserrant une garde ». Elle est donc
-consignée dans les Blocages, et **pas élargie**.
+| | avant le chantier | après M0 | après M0 bis | fourchette |
+|---|---:|---:|---:|---|
+| villes | 517 | 481 | 462 | 430–600 |
+| habitants | 57 893 | 71 638 | 79 530 | 45 000–90 000 |
+| **nourries** | 387 | 361 | **299** | **320–460** |
+| affamées | 16 % | 17 % | **28 %** | — |
+| créances | 47 | 78 | 70 | 20–70 |
+| bourses | 35 | 33 | 33 | 28–36 |
+
+**Le monde est devenu plus affamé, et le mécanisme est net.** Corriger la date
+des prix relève la facture des ménages — mesuré, +1,60 crédit par ville et par
+jour. La part servie, `regle / facture`, baisse d'autant, et c'est elle qui
+commande la satiété. **Le monde d'avant sous-facturait ses habitants et les
+nourrissait donc trop.** Ce n'est pas une régression du correctif : c'est
+l'ancien équilibre qui reposait sur le biais.
+
+C'est exactement ce que §6 bis annonçait — « tout réglage posé d'ici là l'est
+dans un monde faussé et devra être remesuré après ». La dette est là, elle est
+échue, et elle est moins chère maintenant que plus tard.
+
+**La garde `nourries` sort donc de sa fourchette, et elle n'est pas élargie.**
+Ce qu'il faut : recalibrer l'économie dans le monde corrigé, au balayage
+(`banc --balaye`), et non retoucher le garde-fou. C'est un lot, il est consigné
+dans les Blocages.
+
+Les créances, elles, étaient sorties après M0 (78) et sont revenues dans la
+fourchette après M0 bis (70, à la limite haute). Elles restent la dette signalée
+par `CIBLES.json`.
 
 ## 4. Ce que ça casse, dit d'avance
 
@@ -381,13 +401,33 @@ que l'étal vide les bourses pour des marchandises qui n'existent pas.
   prennent), et l'**inlining** de la boucle pour les 46 % restants, qui à elle
   seule pesait 7,4 % du tick. Vérifié : monde identique octet pour octet sur
   trois graines × 2 000 heures avant/après l'inlining.
-- [ ] **M0 bis.** Le résidu de M0, et il est instruit : `facture` est calculée
-  **une fois pour la tranche entière**, avec `min(veut, enRayon)` où
-  `enRayon = stock + prod × dt`, et des prix relus une seule fois. Deuxième
-  saturation, autre mécanisme. Attention : la retirer telle quelle fait
-  exploser l'erreur à +315 (témoin négatif mesuré) — elle est porteuse, il faut
-  l'intégrer, pas la supprimer. Plus le recensement des autres saturations (§7),
-  par l'erreur locale et le mouchard.
+- [x] **M0 bis.** Le résidu de M0 n'était pas une saturation : **c'étaient les
+  prix**. Séparés numériquement sur la facture d'une journée — 1,60 crédit de
+  dérive des prix contre −0,09 pour la saturation de l'étal. Le prix dépend de
+  ce que les gens ont en poche et de ce qui reste sur l'étal ; les deux bougent
+  dans la journée, et la tranche facturait tout au prix du premier instant.
+
+  Corrigé par la **règle du point milieu** : on projette bourse et étal à
+  mi-tranche et on facture là. L'erreur d'une méthode d'ordre un est
+  proportionnelle au pas ; évaluée au milieu, ce terme s'annule.
+
+  | erreur locale, `dt = 24` | avant M0 | après M0 | après M0 bis |
+  |---|---:|---:|---:|
+  | caisse | +4,810 | +1,108 | **+0,000** |
+  | ménages | −4,818 | −0,913 | **+0,000** |
+  | rations | −7,200 | −0,010 | −0,010 |
+  | agitation | −0,034 | +0,000 | +0,000 |
+
+  Et à `dt` = 2, 4 et 8 aussi. La méthode a été bornée avant d'être écrite : en
+  donnant à la tranche le **vrai** état de mi-journée (obtenu en trichant, par
+  un clone joué douze heures), l'erreur tombait à −0,055. Le prédicteur réel
+  fait aussi bien. Sans cette borne, on aurait pu écrire trois cents lignes pour
+  découvrir que l'idée ne valait rien.
+- [ ] **M0 ter.** Le recensement des saturations (§7), par l'erreur locale et le
+  mouchard. Une est déjà connue et laissée en place : `min(veut, enRayon)` dans
+  `facture`. Elle ne pèse que −0,09 par jour, et **la retirer fait exploser
+  l'erreur à +315** (témoin négatif mesuré) — elle est porteuse, il faudrait
+  l'intégrer, pas la supprimer.
 - [ ] **M2.** Brancher `combienDeFois` sur `economy.js:719-730` (naissance,
   départ). **Le critère est à trouver, et c'est un blocage à part entière** :
   l'écart de population sur quarante jours est sous le plancher (−2 pour ±3), et
