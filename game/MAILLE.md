@@ -82,10 +82,20 @@ function combienDeFois(rng, p, dt) {
 }
 ```
 
-Elle coûte `dt` tirages au lieu d'un — c'est exactement ce que la maille fine
-consomme, donc **le coût cesse de dépendre de la maille** : on ne gagne plus de
-temps en regardant ailleurs. C'est le prix honnête de l'invariance, et il faut
-le mesurer avant de le payer (voir §5).
+**Ce que ça coûte, et une erreur à ne pas refaire.** Une première version de ce
+document annonçait que « le coût cesse de dépendre de la maille » — c'était
+faux, et la confusion vaut d'être dite : elle mélangeait ce correctif avec la
+suppression du niveau de détail, qui elle coûterait environ **trois fois** le
+budget du tick et n'est pas proposée.
+
+Le correctif ne touche que **deux tirages** par tick de colonie — la naissance
+et le départ. Toute l'économie continue de se calculer en une passe pour la
+tranche entière. L'ordre de grandeur, à partir de chiffres mesurés : un tirage
+coûte **7,2 ns**, deux événements deviennent au plus 2 × 24 tirages, une dizaine
+de ticks de colonie par heure — soit **~3,5 µs sur 110, de l'ordre de 3 %**. Et
+un tirage binomial écrit correctement (une inversion au lieu d'une boucle) le
+ramènerait à presque rien. À mesurer, mais l'estimation est loin d'un facteur
+trois.
 
 **Une variante moins chère, à mesurer contre celle-ci** : un seul tirage
 binomial par la somme d'une loi de Poisson tronquée, ou l'espérance `p × dt`
@@ -116,7 +126,7 @@ décidé.
 |---|---|
 | invariance | `banc --maille`, partie 2 : les cinq écarts médians **à zéro**, pas seulement trois |
 | invariance dans le monde | `banc --maille`, partie 1 : population médiane à ±3 habitants et villes debout à ±1 |
-| coût | la garde de vitesse : rapport à la livraison précédente, seuil décidé après la première mesure |
+| coût | la garde de vitesse : rapport à la livraison précédente. Estimé ~3 % ; au-delà de ×1,08 la variante approchée passe devant l'exacte |
 | le monde tient | les dix gardes de `CIBLES.json`, resserrées après coup sur l'état mesuré |
 | l'invariant comptable | exact, comme toujours |
 
@@ -129,6 +139,19 @@ décidé.
   maximal pour ne rien régler du problème de fond.
 - On ne touche à aucun autre mécanisme dans ce chantier. La cause est
   identifiée et localisée ; élargir le périmètre, c'est perdre le témoin.
+
+## 6 bis. Pourquoi ne pas le repousser à la fin
+
+La question a été posée, et la réponse est mesurée plutôt que d'opinion :
+**repousser l'invariance ne fait pas gagner du temps de développement, elle en
+fait perdre.** Le biais contamine chaque calibrage — tout réglage posé d'ici là
+l'est dans un monde faussé et devra être remesuré après. On paierait deux fois
+chaque cible.
+
+Ce que le niveau de détail fait gagner est réel et n'est pas en cause : les 86
+villes à la maille fine coûteraient environ trois fois le budget du tick, et
+une campagne de mille parties passerait de vingt minutes à une heure. **On
+garde le niveau de détail ; on corrige seulement qu'il biaise.**
 
 ## 7. Reste à instruire avant de démarrer
 
