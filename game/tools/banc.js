@@ -714,25 +714,139 @@ async function mesurerMaille(graines, horizon) {
   const s = sim.nouvellePartie(graines[0], { maintenant: 0 });
   for (let i = 0; i < 400; i++) sim.tick(s);
   const cond = climat.conditions(s.world, s.temps);
-  const ecarts2 = { pop: [], rations: [], unrest: [], caisse: [], menages: [] };
-  for (const c0 of s.world.colonies.filter((c) => !c.ruine && c.faction && !c.avantPoste).slice(0, 40)) {
-    const fin = JSON.parse(JSON.stringify(c0));
-    const gros = JSON.parse(JSON.stringify(c0));
-    const rf = new rngMod.Rng(12345); const rg = new rngMod.Rng(12345);
-    for (let jour = 0; jour < 40; jour++) {
-      for (let h = 0; h < 24; h++) eco.tickColonie(s.world, fin, rf, cond, 1, 0, null, s.temps + jour * 24 + h);
-      eco.tickColonie(s.world, gros, rg, cond, 24, 0, null, s.temps + jour * 24);
+  const villes = s.world.colonies
+    .filter((c) => !c.ruine && c.faction && !c.avantPoste).slice(0, 40);
+
+  /**
+   * Les cinq grandeurs suivies, chacune avec ses bornes. Les bornes ne sont pas
+   * décoratives : **une grandeur collée à sa borne des deux côtés rend un écart
+   * nul qui ne prouve rien**, et c'est une erreur que ce banc a commise.
+   *
+   * Relevé après quarante jours isolés, sur quarante villes : l'agitation est à
+   * 1,000 dans trente d'entre elles et à 0 dans neuf, les greniers sont vides
+   * dans dix-neuf, les caisses dans quatorze. Les « trois grandeurs identiques
+   * au millième » qu'on lisait comme la signature d'un regroupement exact
+   * étaient pour l'essentiel des villes saturées comparées à elles-mêmes. On
+   * écarte donc, grandeur par grandeur, les villes où les deux côtés sont
+   * assis sur la même borne — et on dit combien il en reste.
+   */
+  const GRANDEURS = {
+    pop: { lire: (c) => c.pop, borne: (c) => c.pop <= 25 || c.pop >= c.taille * 900 },
+    rations: { lire: (c) => c.stock.rations || 0, borne: (c) => (c.stock.rations || 0) <= 0 },
+    unrest: { lire: (c) => c.unrest, borne: (c) => c.unrest <= 0 || c.unrest >= 1 },
+    caisse: { lire: (c) => c.caisse || 0, borne: (c) => (c.caisse || 0) <= 0 },
+    menages: { lire: (c) => c.menages || 0, borne: (c) => (c.menages || 0) <= 0 },
+  };
+  const CLES = Object.keys(GRANDEURS);
+  const vide = () => {
+    const e = Object.fromEntries(CLES.map((k) => [k, []]));
+    e.total = 0;
+    return e;
+  };
+
+  /**
+   * Une campagne de clones : chaque ville jouée deux fois quarante jours, la
+   * première à la maille `dtA` avec la graine `gA`, la seconde à `dtB` avec
+   * `gB`. Empile les écarts (A − B), une valeur par ville et par grandeur.
+   *
+   * C'est la même fonction qui sert à la mesure et au placebo : `(1, 24)`
+   * mesure ce que la maille fait, `(1, 1)` mesure ce que deux tirages honnêtes
+   * font. Un placebo qui passerait par un autre chemin de code ne mesurerait
+   * pas le même bruit.
+   */
+  const campagne = (dtA, dtB, gA, gB, e, jours = 40) => {
+    for (const c0 of villes) {
+      const A = JSON.parse(JSON.stringify(c0));
+      const B = JSON.parse(JSON.stringify(c0));
+      const rA = new rngMod.Rng(gA); const rB = new rngMod.Rng(gB);
+      for (let jour = 0; jour < jours; jour++) {
+        const t0 = s.temps + jour * 24;
+        for (let h = 0; h < 24; h += dtA) eco.tickColonie(s.world, A, rA, cond, dtA, 0, null, t0 + h);
+        for (let h = 0; h < 24; h += dtB) eco.tickColonie(s.world, B, rB, cond, dtB, 0, null, t0 + h);
+      }
+      e.total += 1;
+      for (const [k, g] of Object.entries(GRANDEURS)) {
+        if (g.borne(A) && g.borne(B)) continue;
+        e[k].push(g.lire(A) - g.lire(B));
+      }
     }
-    ecarts2.pop.push(fin.pop - gros.pop);
-    ecarts2.rations.push((fin.stock.rations || 0) - (gros.stock.rations || 0));
-    ecarts2.unrest.push(fin.unrest - gros.unrest);
-    ecarts2.caisse.push((fin.caisse || 0) - (gros.caisse || 0));
-    ecarts2.menages.push((fin.menages || 0) - (gros.menages || 0));
+    return e;
+  };
+
+  /**
+   * Un relevé : `REPETITIONS` campagnes de graines différentes, mises en
+   * commun. Une seule campagne ne suffit pas — l'écart médian de quarante
+   * villes se promène tout seul, et il s'est promené d'exactement l'ordre de
+   * grandeur qu'on croyait mesurer. Mettre huit campagnes en commun divise ce
+   * vagabondage par la racine de huit sans rien changer à un biais, qui lui ne
+   * se moyenne pas.
+   *
+   * **Les deux côtés tirent sur des graines différentes, y compris pour la
+   * mesure.** C'est contre-intuitif et c'est la condition pour que le placebo
+   * veuille dire quelque chose : donner la même graine aux deux mailles les
+   * corrèle un peu, alors que le placebo, lui, ne peut pas l'être — il
+   * rendrait deux villes identiques. On comparerait alors une mesure peu
+   * bruitée à un plancher trop haut, et tout passerait « sous le plancher ».
+   */
+  const REPETITIONS = 8;
+  const releve = (dtA, dtB, base) => {
+    const e = vide();
+    for (let i = 0; i < REPETITIONS; i++) campagne(dtA, dtB, base + i * 2, base + i * 2 + 1, e);
+    return e;
+  };
+
+  const ecarts2 = releve(1, 24, 12345);
+
+  // Le plancher de bruit. Sans lui, « l'écart tombe à zéro » n'est pas une
+  // cible mais une incantation : deux tirages honnêtes ne rendent jamais
+  // exactement la même ville, et exiger l'impossible revient à ne rien
+  // vérifier. Le placebo compare donc deux mailles FINES — aucun biais de
+  // maille possible, rien que le hasard, tout le reste identique au relevé de
+  // mesure. On garde le plus grand écart médian qu'il produise sur huit
+  // relevés : c'est ce qu'une mesure doit dépasser pour vouloir dire
+  // quelque chose.
+  const PLACEBOS = 8;
+  const plancher = Object.fromEntries(CLES.map((k) => [k, 0]));
+  for (let i = 0; i < PLACEBOS; i++) {
+    const e = releve(1, 1, 90001 + i * REPETITIONS * 2);
+    for (const k of CLES) plancher[k] = Math.max(plancher[k], Math.abs(med2(e[k])));
   }
-  console.log(`   ${ecarts2.pop.length} villes, 40 jours simulés des deux façons`);
-  for (const [k, v] of Object.entries(ecarts2)) {
-    const m = med2(v);
-    console.log(`   ${k.padEnd(9)} médiane ${m >= 0 ? '+' : ''}${Math.abs(m) < 10 ? m.toFixed(3) : Math.round(m)}`);
+
+  const fmt = (v) => (Math.abs(v) < 10 ? v.toFixed(3) : String(Math.round(v)));
+  console.log(`   ${villes.length} villes × ${REPETITIONS} graines, 40 jours simulés des deux façons`);
+  console.log(`   plancher de bruit : ${PLACEBOS} placebos (deux mailles fines, même protocole)`);
+  console.log('   « exploitables » : les villes où les deux côtés ne sont pas sur la même borne\n');
+  console.log(`   ${'grandeur'.padEnd(9)} ${'exploitables'.padStart(13)} ${'écart médian'.padStart(13)} `
+    + `${'plancher'.padStart(9)}   verdict`);
+  for (const k of CLES) {
+    const m = med2(ecarts2[k]);
+    const dit = Math.abs(m) > plancher[k] ? 'AU-DESSUS' : 'sous le plancher';
+    console.log(`   ${k.padEnd(9)} ${`${ecarts2[k].length}/${ecarts2.total}`.padStart(13)} `
+      + `${`${m >= 0 ? '+' : ''}${fmt(m)}`.padStart(13)} `
+      + `${`±${fmt(plancher[k])}`.padStart(9)}   ${dit}`);
+  }
+
+  // -------------------------------------------------------------------------
+  // 3. L'erreur locale — la seule mesure qui isole le défaut lui-même
+  // -------------------------------------------------------------------------
+  //
+  // Quarante jours mélangent le défaut de maille avec ce que le chaos en fait
+  // ensuite : le signal se noie dans un plancher de ±3, et on peut alors lire
+  // n'importe quoi dedans — on l'a fait. UNE journée depuis un état identique
+  // ne mélange rien. Le défaut s'y lit à trois décimales, et sa marque de
+  // fabrique est qu'il **croît avec le pas** : un biais de tranche est
+  // proportionnel à la tranche, un hasard ne l'est pas. D'où la colonne par pas
+  // plutôt qu'un chiffre unique.
+  console.log('\n3. L\'erreur locale — une journée, depuis un état identique\n');
+  console.log(`   ${'pas'.padStart(4)} ${CLES.map((k) => k.padStart(10)).join(' ')}`);
+  for (const dt of [1, 2, 4, 8, 24]) {
+    const e = vide();
+    // Même graine des deux côtés : sur une seule journée, il n'y a pas de
+    // trajectoire à décorréler, et la ligne `pas 1` sert de témoin — deux
+    // mailles fines identiques doivent rendre exactement zéro partout.
+    campagne(1, dt, 9, 9, e, 1);
+    console.log(`   ${String(dt).padStart(4)} `
+      + CLES.map((k) => `${med2(e[k]) >= 0 ? '+' : ''}${fmt(med2(e[k]))}`.padStart(10)).join(' '));
   }
 }
 

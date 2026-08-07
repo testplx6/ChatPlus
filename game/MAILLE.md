@@ -27,31 +27,103 @@ la même ville sous les deux mailles) : population médiane **+28 habitants** en
 maille fine, rations +27, caisse −168, **52 villes debout contre 55**.
 
 **La maille seule** — même ville clonée, quarante jours, aucun voisin, aucune
-caravane, aucune guerre :
+caravane, aucune guerre. Le tableau ci-dessous est la **deuxième** version de
+cette mesure ; la première disait le contraire, et pourquoi elle se trompait est
+au moins aussi instructif que le résultat (voir §1 bis).
 
-| | écart (fine − grossière) |
-|---|---:|
-| rations | **0,000** |
-| agitation | **0,000** |
-| caisse | **0,000** |
-| population | −10 |
-| ménages | −39 |
+Quarante villes × huit graines, villes saturées écartées grandeur par grandeur,
+plancher de bruit établi par huit placebos :
 
-Trois grandeurs identiques au millième, deux qui divergent : c'est une
-signature, pas une impression.
+| | exploitables | écart médian | plancher | |
+|---|---:|---:|---:|---|
+| population | 320/320 | −2 | ±3 | sous le plancher |
+| rations | 168/320 | **+54** | ±5,3 | au-dessus |
+| agitation | 8/320 | **−0,578** | ±0,283 | au-dessus |
+| caisse | 210/320 | **+101** | ±11 | au-dessus |
+| ménages | 320/320 | **−40** | ±0,6 | au-dessus |
 
-**Et le signe s'explique**, vérifié plutôt que supposé — 20 clones sur 40
-passent sous le seuil de satiété au bout de quarante jours isolés :
+## 1 bis. Ce que la première mesure disait, et pourquoi elle avait tort
 
-| | écart de population |
-|---|---:|
-| clones affamés (20/40) | **−18** |
-| clones nourris (20/40) | **+30** |
+Elle annonçait : « rations, agitation et caisse identiques au millième ;
+population −10 et ménages −39 ; trois grandeurs invariantes et deux qui
+divergent, c'est une signature ». **Les cinq chiffres étaient faux ou
+inexploitables**, pour deux raisons distinctes.
 
-La maille fine amplifie la branche qui domine. Isolée, la ville s'affame et
-perd plus ; ravitaillée, elle gagne plus.
+**Elle lisait des villes saturées.** Après quarante jours isolés, l'agitation
+est à 1,000 dans trente villes sur quarante et à 0 dans neuf ; les greniers sont
+vides dans dix-neuf, les caisses dans quatorze. La médiane comparait donc, pour
+l'essentiel, des villes assises sur une butée à elles-mêmes. Un écart nul entre
+deux zéros ne dit rien sur le regroupement. Le banc écarte maintenant, pour
+chaque grandeur, les villes dont les deux côtés sont sur la même borne — et il
+affiche combien il en reste, pour qu'on ne relise plus jamais un « 0,000 » sans
+savoir sur combien de villes il porte.
 
-## 2. La cause
+**Elle n'avait pas de plancher.** L'écart médian de quarante villes se promène
+tout seul, et il se promenait précisément de l'ordre de grandeur qu'on croyait
+mesurer : le plancher de bruit du −10 de population valait ±11. Il n'y avait
+donc rien à voir, et on avait vu quelque chose. Mettre huit graines en commun
+divise ce vagabondage par √8 sans toucher à un biais — le plancher tombe à ±3,
+l'écart de population à −2, et la conclusion s'inverse : **la population n'est
+pas le problème.**
+
+Le tableau « affamés −18 / nourris +30 » de la première version tombe avec le
+reste : il découpait le même bruit en deux moitiés sans plancher.
+
+## 2. Les causes — il y en a deux, et la principale n'était pas celle-là
+
+### 2 a. La saturation, poste dominant
+
+**`economy.js:638`** — les ménages font leurs courses :
+
+```js
+const regle = facture > 0 ? Math.min(facture, col.menages || 0) : 0;
+```
+
+`facture` croît avec `dt` : sur vingt-quatre heures, la ville présente une note
+vingt-quatre fois plus grosse. La bourse des ménages, elle, ne croît pas — les
+salaires de la journée sont versés **après**, plus bas dans la même fonction.
+Sur vingt-quatre heures fines, chaque paie horaire est dépensable dès l'heure
+suivante ; sur une tranche, elle arrive trop tard. Le plafond mord donc plus
+fort à la maille grossière, et la ville encaisse moins de ses propres habitants.
+
+Instruit par trois signatures concordantes, pas supposé :
+
+| | |
+|---|---|
+| erreur locale, une journée depuis un état identique | **+4,81 crédits** de caisse par ville, `dt = 24` |
+| proportionnalité au pas | +0,21 / +0,84 / +1,18 / +4,81 pour `dt` = 2 / 4 / 8 / 24 |
+| antisymétrie | ménages **−4,82** en face de caisse +4,81 : c'est un transfert |
+| villes où le plafond mord | **+293** par jour, contre **+1,71** là où il ne mord jamais |
+
+Sur quarante jours, 4,81 × 40 ≈ 192, et la mesure longue relève +229 : le même
+mécanisme, accumulé.
+
+Le tableau complet des erreurs locales, tel que `banc --maille` le sort
+maintenant. La ligne `pas 1` est le témoin — deux mailles fines identiques, qui
+doivent rendre zéro partout, et qui le rendent :
+
+| pas | pop | rations | agitation | caisse | ménages |
+|---:|---:|---:|---:|---:|---:|
+| 1 | 0,000 | 0,000 | 0,000 | 0,000 | 0,000 |
+| 2 | 0,000 | −0,224 | −0,000 | +0,212 | −0,156 |
+| 4 | 0,000 | −0,448 | −0,001 | +0,841 | −0,802 |
+| 8 | 0,000 | −0,448 | −0,011 | +1,180 | −1,110 |
+| 24 | 0,000 | **−7,200** | −0,034 | **+4,810** | **−4,818** |
+
+Les rations ont donc, elles aussi, une erreur locale — corrigée d'une erreur de
+lecture de plus : mesurée sur les quarante villes, elle sortait à 0,00, parce
+que dix-neuf greniers vides tiraient la médiane à zéro. Villes saturées
+écartées, elle vaut −7,2 à `dt = 24`. **La population, elle, a une erreur locale
+strictement nulle à tous les pas** : son défaut est bien le tirage quantifié de
+§2 b, qui ne se déclenche que quelques fois par mois et ne peut pas se voir sur
+une seule journée.
+
+Reste, dans les villes où le plafond ne mord jamais, **1,71 crédit par jour**
+qui ne s'expliquent pas par lui : d'autres non-linéarités plus petites
+(`min(veut, enRayon)`, les prix relus une fois par tranche au lieu de vingt-
+quatre). Elles sont notées, pas encore instruites.
+
+### 2 b. Le compte, poste secondaire mais réel
 
 `economy.js:719-730` :
 
@@ -67,10 +139,12 @@ d'occurrences**. Vingt-quatre heures fines autorisent vingt-quatre naissances
 ou vingt-quatre départs ; une tranche de vingt-quatre n'en autorise qu'**un
 seul**, de la même ampleur.
 
-D'où la règle générale, déjà inscrite dans `METHODE.md` §3 : **une probabilité
-se regroupe, un compte ne se regroupe pas.** Tout ce qui est un *taux* — les
-stocks, l'agitation, les salaires — se regroupe exactement, et c'est mesuré à
-zéro. Tout ce qui est un *événement quantifié* ne se regroupe pas.
+D'où la règle générale, inscrite dans `METHODE.md` §3 : **une probabilité se
+regroupe, un compte ne se regroupe pas.** Et sa jumelle, découverte depuis et
+plus coûteuse : **une saturation ne se regroupe pas non plus.** Ce qui se
+regroupe exactement, c'est un taux constant sur la tranche — rien d'autre. La
+mesure d'erreur locale le confirme grandeur par grandeur : rations 0,00,
+agitation 0,00, caisse +4,81.
 
 ## 3. Ce qu'on propose
 
@@ -147,13 +221,20 @@ ce qui peut passer sans être dit, pas ce que la simulation a le droit d'être.
 
 ## 5. Les cibles mesurables
 
-| cible | comment on la mesure |
-|---|---|
-| invariance | `banc --maille`, partie 2 : les cinq écarts médians **sous le plancher de bruit**, mesuré par placebo comme dans la cartographie. « À zéro » était une cible mal posée : corriger le compte supprime le biais systématique, il reste l'écart de deux tirages honnêtes — et exiger l'impossible, c'est ne rien vérifier |
-| invariance dans le monde | `banc --maille`, partie 1 : population médiane à ±3 habitants et villes debout à ±1 |
-| coût | la garde de vitesse : rapport à la livraison précédente. Estimé ~3 % ; au-delà de ×1,08 la variante approchée passe devant l'exacte |
-| le monde tient | les dix gardes de `CIBLES.json`, resserrées après coup sur l'état mesuré |
-| l'invariant comptable | exact, comme toujours |
+| cible | comment on la mesure | état |
+|---|---|---|
+| invariance | `banc --maille`, partie 2 : les cinq écarts médians **sous le plancher de bruit** établi par placebo. « À zéro » était une cible mal posée : deux tirages honnêtes ne rendent jamais la même ville, et exiger l'impossible, c'est ne rien vérifier | 1 sur 5 tenue |
+| erreur locale | l'erreur d'**une journée** depuis un état identique, grandeur par grandeur et pas par pas. C'est le critère net : il ne mélange pas le défaut de maille avec ce que quarante jours de chaos en font, et il porte son propre témoin (`pas 1` doit rendre zéro) | caisse +4,81 et rations −7,20 → viser sous 0,1 |
+| invariance dans le monde | `banc --maille`, partie 1 : population médiane à ±3 habitants et villes debout à ±1 | +28 et 52/55 |
+| coût | la garde de vitesse : rapport à la livraison précédente. Au-delà de ×1,08 la variante approchée passe devant l'exacte | à mesurer |
+| le monde tient | les dix gardes de `CIBLES.json`, resserrées après coup sur l'état mesuré | à remesurer |
+| l'invariant comptable | exact, comme toujours | tenu |
+
+**L'erreur locale est le bon critère, et c'est une leçon de ce chantier.**
+Mesurer après quarante jours mélange le défaut qu'on corrige avec l'amplification
+chaotique qu'il subit ensuite ; l'écart d'une journée depuis un état identique
+isole le défaut lui-même, et il se lit à trois décimales là où l'autre se noie
+dans un plancher de ±3.
 
 ## 6. Ce qu'on ne fait pas
 
@@ -162,8 +243,12 @@ ce qui peut passer sans être dit, pas ce que la simulation a le droit d'être.
   gelé, à la différence de Kenshi. Ce qu'on corrige, c'est qu'il **biaise**.
 - On ne rend pas la maille uniforme « en attendant » : ce serait payer le coût
   maximal pour ne rien régler du problème de fond.
-- On ne touche à aucun autre mécanisme dans ce chantier. La cause est
-  identifiée et localisée ; élargir le périmètre, c'est perdre le témoin.
+- On ne touche à aucun mécanisme dont le défaut de maille n'a pas été
+  **mesuré** — une correction par ville, un témoin par correction. La phrase
+  qui tenait ici, « la cause est identifiée et localisée », était fausse : elle
+  désignait deux tirages quantifiés et ignorait le poste dominant. Ce n'est pas
+  le périmètre qu'il fallait garder étroit, c'est la mesure qu'il fallait faire
+  avant de l'annoncer.
 - **On ne corrige pas l'ampleur ici.** Voir juste en dessous : c'est une règle
   de jeu, pas un défaut de maille, et les deux ne se mesurent pas ensemble.
 
@@ -199,10 +284,25 @@ villes à la maille fine coûteraient environ trois fois le budget du tick, et
 une campagne de mille parties passerait de vingt minutes à une heure. **On
 garde le niveau de détail ; on corrige seulement qu'il biaise.**
 
-## 7. Le recensement — fait
+## 7. Le recensement — à refaire, et pourquoi
 
-Tout ce qui reçoit un `dt`, et ce que chacun en fait. **Deux seulement sont
-atteints**, et c'est une bonne nouvelle : le périmètre est petit.
+La première version de cette section concluait : « deux seulement sont atteints,
+le périmètre est petit ». Elle cherchait **une seule forme de défaut** — le
+tirage quantifié — et elle s'appuyait, pour écarter tout le reste, sur des
+écarts mesurés à zéro qui l'étaient pour cause de saturation. Les deux erreurs
+se renforçaient : on ne cherchait qu'un défaut, et on avait une mesure
+complaisante pour dire que le reste allait bien.
+
+Ce qu'il faut chercher, ce sont **trois formes**, et seule la troisième se
+regroupe :
+
+| forme | se regroupe ? | exemple |
+|---|---|---|
+| un compte d'événements | **non** | `rng.chance(surDt(p))` puis `pop -= irange(1, 3)` |
+| une saturation (`min`, `max`, un plafond) | **non** | `min(facture, col.menages)` — poste dominant |
+| un taux constant sur la tranche | oui, exactement | les stocks, les salaires, l'agitation |
+
+Le recensement des tirages quantifiés reste valable tel quel :
 
 | mécanisme | reçoit `dt` | événement quantifié ? |
 |---|---|---|
@@ -220,10 +320,11 @@ atteints**, et c'est une bonne nouvelle : le périmètre est petit.
 Une ville lointaine ne peut donc changer de chef qu'une fois par tranche de
 vingt-quatre heures, une ville proche vingt-quatre fois.
 
-**Ce que le recensement écarte, et qu'il fallait vérifier** : les stocks, les
-salaires, l'agitation, l'ordre public, la geôle et les secteurs sont des
-*taux*. Ils se regroupent exactement — c'est déjà mesuré à zéro par
-`banc --maille`, et ça confirme le recensement au lieu de le supposer.
+**Le recensement des saturations, lui, reste à faire** : c'est la tâche M0. Il
+ne se fait pas à la lecture — un `min` peut être inoffensif s'il ne mord jamais.
+Il se fait par l'erreur locale, mécanisme par mécanisme, avec le mouchard qui a
+servi ici : compter les fois où le plafond mord et ce qu'il retient, à `dt = 1`
+puis à `dt = 24`.
 
 ## 8. Les tâches
 
@@ -234,12 +335,32 @@ salaires, l'agitation, l'ordre public, la geôle et les secteurs sont des
   à `dt = 24` l'espérance vaut `24 p` à 5 % près sur quatre mille tirages, pour
   `p` valant 0,01, 0,05 et 0,12. Un test garde la trace du biais corrigé :
   l'ancienne forme plafonnait à 0,71 départ là où il en part 1,20.
-- [ ] **M2.** Brancher `economy.js:719-730` (naissance, départ). Mesurer :
-  `banc --maille` partie 2, l'écart de population doit tomber sous le plancher.
-- [ ] **M3.** Brancher `notables.js:233` (relève d'une charge). Même mesure.
-- [ ] **M4.** Le plancher de bruit lui-même : ajouter à `banc --maille` un
-  placebo — deux mailles fines de graines voisines — sans quoi « sous le
-  plancher » ne veut rien dire.
+- [x] **M4.** *(fait avant M2 : son critère est « sous le plancher », et le
+  plancher n'existait pas.)* `banc --maille` partie 2 mesure maintenant huit
+  graines mises en commun contre un plancher établi par huit placebos (deux
+  mailles fines, protocole identique), et écarte grandeur par grandeur les
+  villes dont les deux côtés sont sur la même borne. Coût : 27 s.
+  **Il a renversé le diagnostic du chantier** — voir §1 bis et §2 a.
+- [ ] **M0.** *(nouveau, et prioritaire : M2 et M3 ne sont plus le poste
+  principal.)* Corriger `economy.js:638`, la note des ménages. Les salaires de
+  la tranche doivent être versés avant les courses, ou les courses réparties sur
+  la tranche — à trancher au banc, pas à l'avis. Critère : l'erreur locale de
+  caisse passe de **+4,81** à moins de 0,1 crédit par ville et par jour, et
+  l'antisymétrie ménages/caisse reste exacte.
+- [ ] **M0 bis.** Le recensement des saturations (§7), par l'erreur locale et
+  le mouchard, mécanisme par mécanisme. Plus le résidu de 1,71 crédit par jour
+  des villes où le plafond ne mord pas.
+- [ ] **M2.** Brancher `combienDeFois` sur `economy.js:719-730` (naissance,
+  départ). **Le critère est à trouver, et c'est un blocage à part entière** :
+  l'écart de population sur quarante jours est sous le plancher (−2 pour ±3), et
+  son erreur locale est nulle à tous les pas parce que l'événement est trop rare
+  pour se voir en un jour. Le défaut est réel — il se démontre au tableau, pas à
+  la mesure — mais aucun des deux instruments existants ne le voit. Il faut donc
+  d'abord **un instrument qui le voie** : l'erreur locale sur une fenêtre plus
+  longue qu'un jour et plus courte que quarante, ou le simple comptage des
+  départs et naissances par ville et par mois sous les deux mailles. Le second
+  est plus direct et se mesure sans plancher : `24 p` contre `1 − (1−p)^24`.
+- [ ] **M3.** Brancher `notables.js:233` (relève d'une charge). Même critère.
 - [ ] **M5.** Livraison : `CIBLES.json` resserré sur l'état mesuré, coût du tick
   chiffré contre la livraison précédente, et le résidu de rétroaction écrit
   noir sur blanc plutôt que passé sous silence.

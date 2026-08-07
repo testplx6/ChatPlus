@@ -281,10 +281,41 @@ fois par tranche est donc simulé différemment selon la maille — et la maille
 dépend de la distance au joueur.
 
 > **Incident.** Mesuré par `banc --maille`, la même ville clonée sur quarante
-> jours : rations, agitation et caisse **identiques au millième** sous les deux
-> mailles ; population et ménages, non. La cause est `rng.chance(surDt(p))`
-> suivi de `pop += irange(0, 2)` — une seule occurrence par tranche, de même
-> ampleur, là où vingt-quatre heures fines en autorisent vingt-quatre.
+> jours : population et ménages divergent entre les deux mailles. La cause est
+> `rng.chance(surDt(p))` suivi de `pop += irange(0, 2)` — une seule occurrence
+> par tranche, de même ampleur, là où vingt-quatre heures fines en autorisent
+> vingt-quatre.
+
+**Une saturation ne se regroupe pas non plus, et elle coûte plus cher.** Un
+plafond, un plancher, un `min` ou un `max` posé une fois par tranche ne rend pas
+ce que le même plafond rend vingt-quatre fois de suite — parce qu'entre deux
+heures, ce qui bute a le temps de se regarnir.
+
+> **Incident.** Le même chantier annonçait « la cause est identifiée et
+> localisée » : deux tirages quantifiés, rien d'autre. Faux, et le plancher de
+> bruit l'a montré. Le vrai poste dominant est `min(facture, col.menages)` dans
+> `economy.js` : les ménages achètent une fois par tranche, plafonnés à ce
+> qu'ils ont *au début* de la tranche, et les salaires de la journée n'arrivent
+> qu'après — trop tard pour être dépensés. Erreur locale mesurée : **4,81
+> crédits par ville et par jour** à `dt = 24`, proportionnelle au pas (0,21 à
+> `dt = 2`), exactement antisymétrique entre caisse et ménages puisque c'est un
+> transfert, et **293 crédits par jour dans les villes où le plafond mord
+> contre 1,71 là où il ne mord jamais**. Trois signatures concordantes, aucune
+> supposition.
+
+**Une grandeur collée à sa borne rend un écart nul qui ne prouve rien.**
+Avant de lire « identique au millième » comme une invariance, il faut compter
+combien des deux côtés sont assis sur la même butée.
+
+> **Incident.** Ce même `banc --maille` annonçait rations, agitation et caisse
+> « identiques au millième » sous les deux mailles, et on en avait tiré que les
+> taux se regroupent exactement. Relevé après coup sur les quarante villes de la
+> mesure : l'agitation était à 1,000 dans trente d'entre elles et à 0 dans neuf,
+> les greniers vides dans dix-neuf, les caisses dans quatorze. La médiane
+> comparait des villes saturées à elles-mêmes. Villes saturées écartées, trois
+> de ces grandeurs sortent du plancher de bruit. Le banc écarte désormais,
+> grandeur par grandeur, les villes dont les deux côtés sont sur la même borne,
+> et affiche combien il en reste.
 
 **Chercher la cause, pas la corrélation.** La population avait chuté de 28 % après
 un changement d'économie. L'hypothèse commode — « il part moins de convois » —
