@@ -386,37 +386,38 @@ minutes.
 
 ## Blocages
 
-### Le niveau de détail n'est pas neutre — cause instruite, correctif à décider
+### La garde de vitesse est rouge, et elle l'était avant le travail du jour
 
-`node tools/banc.js --maille` mesure ce que la maille fait à une ville. Deux
-relevés, et c'est le second qui tranche.
+`verifier --complet` refuse : **×1,135 contre la livraison précédente**, pour un
+seuil de ×1,08. Rien n'est donc poussé — M1 et M4 sont commités et restent sur
+la branche locale.
 
-**Le monde entier** (3 graines × 2 000 h, 48 villes appariées, la même ville
-sous les deux mailles) : population médiane **+28 habitants** en maille fine,
-rations +27, caisse −168, agitation nulle, et **52 villes debout en maille fine
-contre 55 en grossière**.
+**Ce n'est pas le travail du jour.** Trois relevés de HEAD contre `b5d59cf`, le
+dernier commit d'avant : **×1,055 / ×1,024 / ×0,943**. Ils encadrent 1,00 ; les
+deux commits du jour ne coûtent rien de mesurable, ce qui était attendu — la
+seule modification de `src/` est une fonction exportée que le moteur n'appelle
+pas encore.
 
-**La maille seule** — même ville clonée, quarante jours, aucun voisin, aucune
-caravane : rations, agitation et caisse **identiques au millième**. Seules la
-population (−10) et les ménages (−39) divergent.
+**Le seuil était déjà franchi.** `b5d59cf` contre le témoin `ab6312f` de
+`CIBLES.json` : **×1,089**. La régression est donc antérieure et n'a jamais été
+attribuée. Elle appartient au travail d'avant, pas à celui-ci.
 
-**La cause, nommée** : `surDt(p) = 1 − (1−p)^dt` convertit correctement *la
-probabilité qu'un événement arrive* sur la tranche — mais **pas son nombre
-d'occurrences**. `economy.js:719-730` : sur vingt-quatre heures fines, la ville
-peut gagner ou perdre des habitants **vingt-quatre fois** ; sur une tranche de
-vingt-quatre, **une seule fois**, et de la même ampleur. Tout ce qui est un
-*taux* (agitation, stocks, salaires) se regroupe exactement — c'est mesuré à
-zéro. Tout ce qui est un *événement quantifié* ne se regroupe pas.
+**Et la machine ne sait plus conclure finement.** Dispersion des rapports sur
+les quatre relevés : 11 %, 17 %, 26 %, 39 %, pour un `dispersionMax` de 25 %.
+Deux relevés sur quatre auraient dû être refusés comme instables. Le coût brut
+du tick est de 148 à 152 µs quand la référence de `CIBLES.json` en annonce 107 ;
+`test/perf.js` documente déjà que cette machine varie du simple au double au
+repos sans que l'étalon arithmétique le voie.
 
-Le signe s'explique alors : isolée, la ville s'affame et c'est la branche de
-départ qui domine — la maille fine perd plus. Dans le monde, les villes sont
-ravitaillées, c'est la croissance qui domine — la maille fine gagne plus.
+**Ce qu'il faut, dans l'ordre** :
 
-**Correctif possible, non appliqué** : tirer le *nombre* d'occurrences sur la
-tranche (loi binomiale, ou espérance `p × dt` appliquée à l'ampleur) au lieu
-d'un seul tirage. Ce n'est pas un réglage, c'est une règle de jeu — combien de
-gens une ville peut-elle perdre en un jour ? — donc une décision du
-propriétaire, et un lot à part entière.
+1. remesurer sur une machine calme, ou avec plus de passes, pour savoir si le
+   ×1,089 antérieur est réel ou du bruit ;
+2. s'il est réel, le dater — la cartographie et les lots récents sont les
+   suspects, et `banc --profil` sait dire où part le temps ;
+3. seulement ensuite décider : corriger, ou avancer le témoin de `CIBLES.json`
+   en disant ce qu'on accepte et pourquoi. **Élargir le seuil pour faire passer
+   la mesure n'est pas une option** — c'est cette section-ci qui existe pour ça.
 
 
 ### Lot 3b — INACHEVÉ : deux étapes rouges, commité mais NON POUSSÉ
