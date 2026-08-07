@@ -386,33 +386,28 @@ minutes.
 
 ## Blocages
 
-### La colonne qui se débande ne se débande jamais — 0 sur six graines
+### ~~La colonne qui se débande ne se débande jamais~~ — tranché
 
-Le lot 6 du chantier `INDIVIDUS.md` demande que les deux issues extrêmes d'une
-colonne impayée surviennent au moins une fois sur les six graines. Les
-retournements y sont (3). **Les débandades sont à zéro, et ce n'est pas un
-problème de réglage.**
+**Décision du propriétaire, août 2026** : « il faut que ce soit possible peu
+importe que ce soit rare, c'est une simulation. »
 
-Instruit plutôt que supposé. Sur **790 colonnes vues au conseil** (3 graines ×
-6 000 h), 3 seulement portent une ardoise — 0,4 %. Les trois dépassent la
-grâce, et les trois trouvent un ennemi solvable qui les rachète. La branche
-« fondre puis se débander » n'est donc jamais exécutée. Le balayage le confirme
-sans ambiguïté : `COLONNE.attrition` à 0,012, 0,03 ou 0,06 ne fait bouger
-**aucun** chiffre du banc.
+Le critère du lot 6 était donc mal posé. Il demandait que les deux issues
+extrêmes **surviennent** sur six graines ; ce qu'il faut exiger, c'est qu'elles
+soient **atteignables**. Une simulation n'a pas à produire chaque événement à
+chaque partie — elle doit pouvoir les produire quand la situation s'y prête.
 
-La cause est en amont : une faction paie ses colonnes une centaine de crédits
-par conseil, contre un trésor médian de 19 000. Elle n'est pratiquement jamais
-à sec au mauvais moment.
+Ce qui est vérifié, et par des tests et non par un compte au banc : un pays à
+sec voit ses colonnes fondre puis se débander ; le même pays avec un ennemi
+solvable les voit changer de drapeau. Les deux branches s'exécutent, les textes
+sortent, les comptes tiennent.
 
-Ce qu'il faut décider, et ce n'est pas un réglage : **est-ce qu'une faction doit
-pouvoir se retrouver à sec en pleine guerre ?** Aujourd'hui, non — et le
-mécanisme de la colonne sans solde est donc un décor de luxe qui attend son
-heure. Trois pistes, aucune prise : rendre la guerre plus chère, rendre les
-trésors plus fragiles, ou accepter que ce soit un événement rare et le dire.
-
-La fourchette n'est pas élargie et les constantes ne sont pas forcées pour
-fabriquer du drame. Les deux compteurs sont maintenant au banc : le jour où
-l'économie change, on le verra.
+Ce que le banc en dit reste consigné, parce que c'est une mesure du **monde**
+et pas du mécanisme : sur 790 colonnes vues au conseil, 3 portent une ardoise et
+les 3 trouvent un payeur. Une faction paie ses colonnes une centaine de crédits
+par conseil contre un trésor médian de 19 000 — elle n'est presque jamais à sec
+au mauvais moment. Les deux compteurs sont au banc : le jour où l'économie
+change, le monde produira ces drames tout seul, et on le verra sans rien
+retoucher.
 
 ### L'économie est calibrée dans un monde faussé — `nourries` tombe à 299 pour un minimum de 320
 

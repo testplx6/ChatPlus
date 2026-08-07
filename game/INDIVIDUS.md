@@ -1,7 +1,7 @@
 # Chantier « Individus » — l'unité de Dwarf Fortress sans en payer le prix
 
-✅ **Chantier démarré** (accord du propriétaire, août 2026), le lot F du chantier
-économie étant livré.
+✅ **Chantier livré** (août 2026). Les six lots sont faits ; ce qui reste ouvert
+est consigné aux Blocages de `CHANTIER.md` et n'appartient pas à ce chantier.
 Recommandé **avant** le lot E : ce chantier retouche le monde, E pose
 l'interface dessus — l'ordre inverse ferait tout retoucher deux fois.
 
@@ -500,11 +500,19 @@ sinon :
   ardoise (0,4 %), les 3 dépassent la grâce, et les 3 trouvent un payeur
   solvable. La branche « fondre puis se débander » ne s'exécute donc jamais.
 
-  La cible du lot — les deux compteurs > 0 sur six graines — est **tenue pour
-  les retournements (3), pas pour les débandades (0)**. Elle n'est pas
-  contournée : le blocage est consigné. Ce n'est pas une constante à régler,
-  c'est que les factions paient presque toujours leurs colonnes (une centaine
-  de crédits par conseil contre des trésors médians de 19 000).
+  **La cible était mal posée, et le propriétaire l'a tranché** : « il faut que
+  ce soit possible peu importe que ce soit rare, c'est une simulation. » Ce
+  qu'on exige n'est donc pas que les deux issues *surviennent* sur six graines,
+  mais qu'elles soient **atteignables** — et ça se prouve par test, pas par un
+  compte au banc. Un pays à sec voit ses colonnes fondre puis se débander ; le
+  même avec un ennemi solvable les voit changer de drapeau. Les deux branches
+  s'exécutent, les textes sortent, les comptes tiennent.
+
+  Ce que le banc mesure reste vrai et reste consigné, mais c'est une mesure du
+  *monde* et non du mécanisme : les factions paient presque toujours leurs
+  colonnes, une centaine de crédits par conseil contre des trésors médians de
+  19 000. Le jour où l'économie change, le monde produira ces drames tout seul,
+  et les deux compteurs le diront sans qu'on retouche une constante.
 
   Vérifié au passage, parce que `enGuerre` rend vrai pour l'Essaim contre tout
   le monde : les trois payeurs sont de vraies factions — Rouilleurs, Ombrelle,
@@ -528,16 +536,24 @@ sinon :
   des constantes : `COLONNE` (lot 6) entre dans la carte automatiquement —
   c'est voulu.
 
-## 6. Les cibles du chantier, mesurables à la fin
+## 6. Les cibles du chantier — mesurées à la livraison
 
-| cible | comment on la mesure |
-|---|---|
-| regarder ne tire plus, les villes ne se contaminent plus | tests I2.4 et I3.1-I3.2 verts : le flux principal ignore `bancDerive`, et les tirages d'une ville ne décalent plus ceux d'une autre (l'indépendance *totale* au trajet est la décision « lot 3b », §8) |
-| zéro coût au tick | vitesse contre témoin `82636d8` : le rapport ne monte pas d'un lot à l'autre (`verifier --complet`) |
-| zéro croissance d'état non bornée | grep : chaque liste nouvelle (`vivier`, `bancPris`) a sa borne en constante à côté ; sauvegarde 4 000 h ≤ poids actuel + 2 Ko |
-| le drame a des visages | les quatre événements du lot 5 nomment ; les guerres longues produisent retournements et débandades (compteurs banc > 0) |
-| l'argent reste exact | `auditer` = 0 partout, y compris à travers le retournement de colonne |
-| les comptes du monde tiennent | gardes `CIBLES.json` inchangées et tenues après chaque lot |
+| cible | comment on la mesure | résultat |
+|---|---|---|
+| regarder ne tire plus, les villes ne se contaminent plus | tests I2.4, I3.1-I3.2 | **tenue** |
+| le monde ne tire plus que du global | I3b.5, compté sans sonde | **tenue** — 277 heures sur 300 à zéro tirage, 23 à deux, rien d'autre |
+| zéro coût au tick | vitesse contre témoin | **non mesurable** — l'instrument ne résout plus (dispersions de 13 à 184 %). Consigné aux Blocages |
+| zéro croissance d'état non bornée | grep + poids de sauvegarde | **tenue** — `vivier` borné à 3, `bancPris` à une époque ; sauvegarde à 4 000 h : 391 Ko |
+| le drame a des visages | les quatre textes du lot 5, plus la colonne | **tenue** — et 5 à 11 effondrements, 63 à 87 saisies, 158 à 236 captures, 40 à 56 sécessions par partie, tous nommés |
+| les issues de la colonne sont atteignables | tests du lot 6 | **tenue** — les quatre branches s'exécutent. Le banc n'en voit que 3 en jeu naturel, et c'est une mesure du monde, pas du mécanisme (décision du propriétaire) |
+| l'argent reste exact | `auditer` = 0 partout | **tenue**, y compris à travers le retournement de colonne |
+| les comptes du monde tiennent | gardes `CIBLES.json` | **une garde rouge**, `nourries` — et elle vient du chantier de maille, pas de celui-ci. Consignée aux Blocages |
+
+**Ce que le chantier a coûté en état**, et c'était son enjeu : deux clés
+(`col.vivier`, `a.impayees`), toutes deux bornées, plus la suppression de
+`col.banc` qui en était une. Le solde est nul à un champ près. Aucun individu
+n'est persistant : le banc de recrutement, les acteurs des drames et les
+capitaines de colonne se recalculent tous depuis une graine dérivée.
 
 ## 7. Ce qu'on ne fait pas
 
