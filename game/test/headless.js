@@ -11,6 +11,7 @@ import { lireRapport, MARQUANTS_MAX } from '../src/rapport.js';
 import { serialiser, deserialiser } from '../src/save.js';
 import {
   COMMODITY_KEYS, DIPLO_FACTIONS, FACTIONS, drapeauDe as identiteDe,
+  couleurNeuve, teinteDe, satDe,
 } from '../src/data.js';
 import {
   genererBande, resoudreCombat, TACTIQUES, TACTIQUE_KEYS, apercuTactique,
@@ -8118,6 +8119,35 @@ section('27. Un drapeau qui n’était pas là au départ');
     'et ses comptes sont vérifiés comme ceux des autres');
   ok(pireN < 1e-6, 'et l’invariant comptable tient pour tout le monde',
     `écart maximal ${pireN.toExponential(2)}`);
+
+  // --- La couleur, calculée et non tirée ----------------------------------
+  //
+  // C'est le seul trait d'un drapeau qui ne peut pas sortir d'une graine : deux
+  // couleurs voisines rendent la carte illisible, et le hasard en produit sans
+  // effort. Les sept d'origine occupent les teintes 0, 30, 53, 136, 188 et 275
+  // — l'Essaim est gris, donc hors concours. Une couleur neuve se place dans le
+  // plus grand vide.
+  const sC = nouvellePartie(3131, { maintenant: 0 });
+  const c1 = couleurNeuve(sC.world);
+  ok(/^#[0-9a-f]{6}$/.test(c1), 'la couleur neuve est une couleur', c1);
+  ok(couleurNeuve(sC.world) === c1, 'et elle est calculée, pas tirée — deux appels, même résultat');
+
+  const ecartTeinte = (a, b) => {
+    const d = Math.abs(teinteDe(a) - teinteDe(b));
+    return Math.min(d, 360 - d);
+  };
+  const anciennes = Object.values(FACTIONS).filter((f) => f.couleur).map((f) => f.couleur);
+  const pireEcart = Math.min(...anciennes
+    .filter((c) => satDe(c) > 0.2)
+    .map((c) => ecartTeinte(c, c1)));
+  ok(pireEcart >= 30, 'et elle se distingue de toutes les anciennes',
+    `${Math.round(pireEcart)}° de la plus proche`);
+
+  // Deux factions neuves ne doivent pas se ressembler non plus.
+  sC.world.drapeaux.a = { nom: 'A', couleur: c1 };
+  const c2 = couleurNeuve(sC.world);
+  ok(ecartTeinte(c1, c2) >= 30, 'et deux drapeaux nés l’un après l’autre se distinguent aussi',
+    `${c1} puis ${c2}, ${Math.round(ecartTeinte(c1, c2))}° d’écart`);
 }
 
 // ===========================================================================

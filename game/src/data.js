@@ -1434,3 +1434,82 @@ export const VOCATION_STYLE = {
   commune: { paysan: 1.8, medecin: 0.5 },
   essaim: { milicien: 1.5 },
 };
+
+// ---------------------------------------------------------------------------
+// La couleur d'un drapeau neuf
+// ---------------------------------------------------------------------------
+//
+// C'est le seul trait d'une faction qui ne se dérive pas d'une graine, et c'est
+// délibéré. Tout le reste peut être tiré : un nom, une devise, un tempérament.
+// Une couleur, non — deux teintes voisines rendent la carte illisible, et le
+// hasard en produit sans le moindre effort. Elle se **calcule** : on prend la
+// teinte qui s'éloigne le plus de toutes celles déjà en usage.
+//
+// Les sept d'origine occupent les teintes 0, 30, 53, 136, 188 et 275, à
+// saturation 65-73 % et luminosité 54-65 %. L'Essaim est gris — saturation 7 %
+// — et sort donc du concours : deux gris se ressemblent quelle que soit leur
+// teinte, et lui en donner une reviendrait à réserver un secteur du cercle pour
+// rien.
+
+/** La teinte d'une couleur `#rrggbb`, en degrés. */
+export function teinteDe(hex) {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const mx = Math.max(r, g, b);
+  const d = mx - Math.min(r, g, b);
+  if (d === 0) return 0;
+  const h = mx === r ? ((g - b) / d + (g < b ? 6 : 0))
+    : mx === g ? ((b - r) / d + 2) : ((r - g) / d + 4);
+  return h * 60;
+}
+
+/** Sa saturation, de 0 à 1. Sert à écarter les gris du calcul de teinte. */
+export function satDe(hex) {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const mx = Math.max(r, g, b);
+  const mn = Math.min(r, g, b);
+  const l = (mx + mn) / 2;
+  return mx === mn ? 0 : (mx - mn) / (1 - Math.abs(2 * l - 1));
+}
+
+function hexDeHsl(h, s, l) {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  const t = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x]
+    : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  return `#${t.map((v) => Math.round((v + m) * 255).toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** Saturation et luminosité de la famille : un drapeau neuf ressemble aux autres. */
+const SAT_DRAPEAU = 0.66;
+const LUM_DRAPEAU = 0.6;
+
+/**
+ * La couleur du prochain drapeau : celle qui s'éloigne le plus des autres.
+ *
+ * Le cercle des teintes est balayé au degré près, et on garde celui dont la
+ * distance circulaire à la teinte occupée la plus proche est la plus grande.
+ * C'est exact, c'est déterministe, et ça coûte trois cent soixante comparaisons
+ * une fois dans la vie d'une faction.
+ */
+export function couleurNeuve(world) {
+  const prises = [];
+  for (const f of Object.values(FACTIONS)) {
+    if (f.couleur && satDe(f.couleur) > 0.2) prises.push(teinteDe(f.couleur));
+  }
+  for (const f of Object.values((world && world.drapeaux) || {})) {
+    if (f.couleur && satDe(f.couleur) > 0.2) prises.push(teinteDe(f.couleur));
+  }
+  if (!prises.length) return hexDeHsl(0, SAT_DRAPEAU, LUM_DRAPEAU);
+  let meilleure = 0;
+  let mieux = -1;
+  for (let h = 0; h < 360; h++) {
+    let proche = 360;
+    for (const p of prises) {
+      const d = Math.abs(h - p);
+      proche = Math.min(proche, Math.min(d, 360 - d));
+    }
+    if (proche > mieux) { mieux = proche; meilleure = h; }
+  }
+  return hexDeHsl(meilleure, SAT_DRAPEAU, LUM_DRAPEAU);
+}

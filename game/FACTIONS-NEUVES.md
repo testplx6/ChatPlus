@@ -314,9 +314,18 @@ identiques octet pour octet. Les règles de jeu n'arrivent qu'à N5.
   tolérant, il les livre tous. Et une faction montée à la main fait dériver
   l'audit de trente-trois mille crédits : il faut la monter avec `transferer` et
   `transfererVille`, sinon on accuse le moteur de ce que la fixture a inventé.
-- [ ] **N4. La couleur, calculée.** Distance maximale aux couleurs existantes.
-  Test : deux factions neuves ne se ressemblent pas, et aucune ne ressemble aux
-  sept d'origine.
+- [x] **N4. La couleur, calculée.** Le cercle des teintes est balayé au degré
+  près ; on garde celui dont la distance à la teinte occupée la plus proche est
+  la plus grande. Déterministe, sans un tirage, et trois cent soixante
+  comparaisons une fois dans la vie d'une faction.
+
+  Les sept d'origine occupent 0, 30, 53, 136, 188 et 275 degrés. L'Essaim est
+  gris — saturation 7 % — et sort du concours : deux gris se ressemblent quelle
+  que soit leur teinte, et lui réserver un secteur du cercle serait le perdre
+  pour rien.
+
+  Six drapeaux nés l'un après l'autre : 232, 318, 95, 162, 210, 254. Chacun
+  comble le plus grand vide restant.
 - [ ] **N5. `reconnue(world, cle, par)`** (§4.1), et ses trois effets. Tests :
   une faction neuve n'est reconnue de personne ; le premier geste d'un voisin la
   fait reconnaître ; un accord ne se signe pas avec une inconnue.
