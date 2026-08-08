@@ -11,7 +11,7 @@ import { lireRapport, MARQUANTS_MAX } from '../src/rapport.js';
 import { serialiser, deserialiser } from '../src/save.js';
 import {
   COMMODITY_KEYS, DIPLO_FACTIONS, FACTIONS, drapeauDe as identiteDe,
-  couleurNeuve, teinteDe, satDe,
+  couleurNeuve, teinteDe, satDe, diploDe, reconnue,
 } from '../src/data.js';
 import {
   genererBande, resoudreCombat, TACTIQUES, TACTIQUE_KEYS, apercuTactique,
@@ -42,7 +42,9 @@ import {
   peutTraiter, chiffrerOrdre, ESTIME_COMPTOIR, resumeBourses, PAS_COTATION,
   OUVRENT_BOURSE, SIGNENT_ACCORD, veutAccord,
 } from '../src/bourse.js';
-import { distanceMorale, enGuerre, COLONNE } from '../src/factions.js';
+import {
+  distanceMorale, enGuerre, COLONNE, declarerGuerre,
+} from '../src/factions.js';
 import {
   recenser, elasticite, planchers, significatif, asymetrique, ecarts,
 } from '../tools/cartographie.js';
@@ -8148,6 +8150,50 @@ section('27. Un drapeau qui n’était pas là au départ');
   const c2 = couleurNeuve(sC.world);
   ok(ecartTeinte(c1, c2) >= 30, 'et deux drapeaux nés l’un après l’autre se distinguent aussi',
     `${c1} puis ${c2}, ${Math.round(ecartTeinte(c1, c2))}° d’écart`);
+
+  // --- La reconnaissance, qui ne se stocke pas ----------------------------
+  //
+  // Règle du propriétaire : « n'importe qui peut créer une faction mais elle ne
+  // sera pas forcément reconnue par ses pairs ; à partir du moment où une autre
+  // faction interagit avec, se positionne sur les ententes de paix guerre
+  // commerciaux etc. avec elle, elle la reconnaît forcément comme telle. »
+  //
+  // Elle ne demande donc **aucun mécanisme nouveau** : la reconnaissance est
+  // une lecture de ce qui existe déjà, pas un état de plus. Fonder un drapeau
+  // ne demande la permission de personne, et la reconnaissance arrive par le
+  // fait, jamais par un vote.
+  const sR = nouvellePartie(5151, { maintenant: 0 });
+  sR.world.drapeaux.venue = {
+    nom: 'La Venue', court: 'VEN', pluriel: false,
+    datif: 'à la Venue', genitif: 'de la Venue', couleur: couleurNeuve(sR.world),
+    devise: 'On verra bien.', agression: 0.4, cupidite: 0.5,
+    style: 'commune', biomes: ['friche'],
+  };
+  sR.world.factions.venue = {
+    colonies: [], dirigeant: null, tresor: 0, masse: 0, cours: 1,
+    gageRef: 0, emissions: 0, bourse: false, relations: {}, lois: null,
+    agression: 0.4, armees: [],
+  };
+  const pairs = diploDe(sR.world).filter((k) => k !== 'venue');
+  ok(pairs.length >= 5, 'le monde a des pairs pour la reconnaître', `${pairs.length}`);
+  ok(pairs.every((k) => !reconnue(sR.world, 'venue', k)),
+    'une faction qui vient de naître n’est reconnue de personne');
+  ok(!reconnue(sR.world, 'venue', pairs[0]) && !reconnue(sR.world, pairs[0], 'venue'),
+    'et la méconnaissance va dans les deux sens');
+
+  // Le premier geste vaut reconnaissance. Une guerre suffit — se battre, c'est
+  // admettre qu'il y a quelqu'un en face.
+  declarerGuerre(sR.world, pairs[0], 'venue', 0, () => {});
+  ok(reconnue(sR.world, 'venue', pairs[0]),
+    'déclarer la guerre à quelqu’un, c’est le reconnaître');
+  ok(pairs.slice(1).every((k) => !reconnue(sR.world, 'venue', k)),
+    'et les autres ne l’ont toujours pas vue');
+
+  // L'effet : on ne signe pas d'accord avec une inconnue.
+  ok(!signerAccord(sR.world, pairs[1], 'venue', 0),
+    'on ne signe pas d’accord avec une faction qu’on ne reconnaît pas');
+  ok(signerAccord(sR.world, pairs[0], 'venue', 0),
+    'mais avec celle à qui l’on fait la guerre, oui — on sait qu’elle existe');
 }
 
 // ===========================================================================

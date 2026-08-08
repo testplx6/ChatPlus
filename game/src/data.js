@@ -303,6 +303,41 @@ export function diploDe(world) {
   return clesDe(world).filter((k) => k !== 'essaim');
 }
 
+/**
+ * B a-t-il déjà eu à se situer par rapport à A ? Alors il le reconnaît.
+ *
+ * La règle est du propriétaire, et elle est plus fine qu'elle en a l'air : « à
+ * partir du moment où une autre faction interagit avec, se positionne sur les
+ * ententes de paix guerre commerciaux etc. avec elle, elle la reconnaît
+ * forcément comme telle ».
+ *
+ * Autrement dit la reconnaissance **n'est pas un état** — ni un champ à
+ * stocker, ni un vote à organiser, ni une file de demandes. C'est une lecture
+ * de ce que le monde porte déjà : une guerre déclarée, un accord signé, une
+ * relation qui n'est plus neutre. Fonder un drapeau ne demande donc la
+ * permission de personne, et une faction née hier existe : elle est seulement
+ * **seule** tant que personne n'a eu affaire à elle.
+ *
+ * Elle vit ici plutôt que dans `factions.js` parce que `bourse.js` en a besoin
+ * et précède `factions.js` — piège n°3 de `game/CLAUDE.md`. Elle ne lit que le
+ * monde, donc elle n'a rien à demander à personne.
+ *
+ * **L'Essaim n'est pas traité à part, et c'est voulu.** `enGuerre` le dit en
+ * guerre contre tout le monde sans qu'aucune guerre soit déclarée ; ici on lit
+ * les guerres réelles. Un fléau ne reconnaît personne et n'est reconnu de
+ * personne — il ne signe rien, il ne cote rien.
+ */
+export function reconnue(world, cle, par) {
+  if (!world || !cle || !par || cle === par) return false;
+  const f = world.factions && world.factions[par];
+  if (!f) return false;
+  if ((world.guerres || []).some(
+    (g) => (g.a === par && g.b === cle) || (g.a === cle && g.b === par))) return true;
+  if ((world.accords || []).some(
+    (x) => (x.a === par && x.b === cle) || (x.a === cle && x.b === par))) return true;
+  return (f.relations || {})[cle] !== undefined;
+}
+
 export function drapeauDe(world, cle) {
   return (world && world.drapeaux && world.drapeaux[cle]) || FACTIONS[cle];
 }

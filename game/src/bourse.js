@@ -20,7 +20,7 @@
 // tournerait côté serveur en multijoueur. Rien ici ne connaît le joueur.
 
 import {
-  COMMODITY_KEYS, COMMODITIES, FACTIONS, DIPLO_FACTIONS, diploDe, drapeauDe,} from './data.js';
+  COMMODITY_KEYS, COMMODITIES, FACTIONS, DIPLO_FACTIONS, diploDe, reconnue, drapeauDe,} from './data.js';
 import { prixUnitaire } from './economy.js';
 import { avantage } from './allegeance.js';
 import { depenser } from './monnaie.js';
@@ -263,6 +263,19 @@ export function partenairePossible(world, key) {
 
 export function signerAccord(world, a, b, t) {
   if (accordEntre(world, a, b)) return false;
+  // On ne signe pas avec quelqu'un qu'on ne reconnaît pas : il faut être deux,
+  // et l'un des deux ne sait pas encore que l'autre existe. C'est le pendant de
+  // la règle de reconnaissance — `reconnue` dit *quand* on reconnaît, ceci dit
+  // ce que la méconnaissance empêche. Sans effet, la règle serait un ornement.
+  //
+  // Ce que ça n'empêche pas, et c'est voulu : être attaqué, être pillé, et
+  // commercer de fait par caravane. La violence et le troc n'ont jamais demandé
+  // de reconnaissance.
+  //
+  // Le garde est ici et pas chez l'appelant : le conseil signe, le joueur signe
+  // aussi (`influence.js`), et une règle posée à un seul des deux endroits est
+  // une règle qu'on contourne sans le vouloir.
+  if (!reconnue(world, b, a) && !reconnue(world, a, b)) return false;
   if (!world.accords) world.accords = [];
   world.accords.push({ a, b, depuis: t });
   return true;
