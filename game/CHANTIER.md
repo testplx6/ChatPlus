@@ -409,6 +409,29 @@ au mauvais moment. Les deux compteurs sont au banc : le jour où l'économie
 change, le monde produira ces drames tout seul, et on le verra sans rien
 retoucher.
 
+### Un pays qui n'a plus rien continue de se donner des chefs
+
+Mesuré en poussant le monde à trente drapeaux (`ETAT.parSoldat = 50`, 6 000 h) :
+vingt-trois factions naissent, **une seule tient des villes**, et les vingt-deux
+autres n'ont ni ville ni colonne. Elles devraient s'éteindre — la règle du
+propriétaire est claire, « une faction doit au moins avoir des membres qui la
+composent ».
+
+Elles ne s'éteignent pas. `tickDirigeant` fabrique un chef à toute faction qui
+n'en a pas, y compris à celle qui ne possède rien, et un chef seul suffit à
+tenir un pays en vie — c'est l'autre règle du propriétaire, « un dirigeant seul
+peut essayer de se refaire ». Les deux règles sont appliquées fidèlement ; c'est
+leur rencontre avec un mécanisme d'avant qui produit un monde de fantômes.
+
+**Ce n'est pas une question technique, et elle n'est pas tranchée** : un pays qui
+n'a plus rien doit-il continuer de se donner des chefs ? Deux issues cohérentes.
+Soit un chef seul peut vraiment se refaire, et il lui faut alors les moyens —
+fonder un hameau, lever une troupe, un mécanisme à spécifier. Soit le chef d'un
+pays sans rien n'est pas remplacé à sa mort, et le pays s'éteint avec lui.
+
+Rien n'est codé avant la réponse. En attendant, les drapeaux s'accumulent :
+inertes, mais comptés, et le tick le paie — ×2 à trente drapeaux.
+
 ### L'économie est calibrée dans un monde faussé — `nourries` tombe à 299 pour un minimum de 320
 
 Le chantier de maille (`MAILLE.md`) corrige la date des prix : une tranche

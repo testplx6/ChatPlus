@@ -390,9 +390,41 @@ identiques octet pour octet. Les règles de jeu n'arrivent qu'à N5.
 - [ ] **N7 bis. Calibrer `COLONNE.patience` et `COLONNE.assez`** au balayage, et
   mesurer ce que la mort des factions fait au monde sur six graines. Les deux
   compteurs sont au banc (`nés`, `morts`).
-- [ ] **N8. Le monde à vingt drapeaux.** Pas pour décider d'un plafond — il n'y
-  en a pas — mais pour savoir ce que coûte la diplomatie en `n²`, et corriger
-  le code si elle coûte trop.
+- [x] **N8. Le monde à trente drapeaux, mesuré.** Un monde où la solde est
+  impayable (`ETAT.parSoldat = 50`) sur 6 000 heures :
+
+  | | |
+  |---|---:|
+  | drapeaux, au départ | 7 |
+  | drapeaux, à la fin | **30**, et le compte plafonne dès h3500 |
+  | coût du tick | **×2** (4,2 s contre 2,1 s pour la même partie) |
+  | écart comptable | 1,6 × 10⁻⁸ |
+
+  Pas d'emballement, et le coût est celui qu'on attendait d'une diplomatie en
+  `n²` : doubler le nombre de drapeaux double le tick. Il n'y a pas de plafond à
+  poser — la règle du propriétaire est « pas de maximum » — mais il y a un
+  chiffre à connaître, et le voilà.
+
+  **Ce que la mesure révèle et qui n'était pas prévu : plus rien ne meurt.**
+  Vingt-trois drapeaux naissent, **un seul tient des villes** (cinq, tout de
+  même), et les vingt-deux autres n'ont ni ville ni colonne. Ils devraient donc
+  s'éteindre — et ils ne s'éteignent pas, parce que `tickDirigeant` **fabrique
+  un chef** à toute faction qui n'en a pas, y compris à celle qui ne possède
+  rien. Or un chef seul suffit à tenir un pays en vie (§4.3 bis).
+
+  La règle est appliquée fidèlement ; c'est sa rencontre avec un mécanisme
+  d'avant qui produit un monde de fantômes. **Question au propriétaire**, et
+  elle n'est pas technique : un pays qui n'a plus rien doit-il continuer de se
+  donner des chefs ? Deux issues cohérentes —
+
+  - *un chef seul peut se refaire* implique qu'on lui en donne les **moyens** :
+    fonder un hameau, lever une troupe. C'est un mécanisme à spécifier ;
+  - *ou* le chef d'un pays sans rien n'est pas remplacé à sa mort, et le pays
+    s'éteint avec lui.
+
+  Rien n'est codé avant la réponse. En attendant, les drapeaux s'accumulent —
+  inertes, mais comptés, et le tick le paie.
+
 - [ ] **N9. Livraison.** `CIBLES.json` repensé : le « /36 » des écrasées ne
   survit pas à un nombre de factions variable. Coût du tick chiffré, écran
   vérifié au navigateur.
