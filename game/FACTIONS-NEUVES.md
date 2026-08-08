@@ -1,7 +1,7 @@
 # Chantier « Naissance et mort des factions »
 
-⚠️ **Proposé, non démarré.** Ce document prépare le travail, il ne l'autorise
-pas. Format : `METHODE.md` §9.
+✅ **Démarré.** Les cinq règles de jeu ont été tranchées par le propriétaire
+(§4) ; ce qui restait à décider est décidé. Format : `METHODE.md` §9.
 
 **L'exigence, telle qu'elle a été dite** (propriétaire, août 2026) : « y a aucun
 problème à ce que des factions soient éliminées, en plus de nouvelles doivent
@@ -95,30 +95,87 @@ proches à l'écran rendent la carte illisible. Elle se choisit dans l'espace
 teinte-saturation à distance minimale de toutes les couleurs existantes — un
 calcul, pas un tirage.
 
-## 4. Les questions qui appartiennent au propriétaire
+## 4. Les règles, tranchées par le propriétaire
 
-Elles sont posées ici parce que **ce sont des règles de jeu, et qu'on ne les
-invente pas**. Aucune ligne ne s'écrit avant qu'elles soient tranchées.
+Consignées telles qu'elles ont été dites, août 2026.
 
-1. **D'où naît une faction ?** Trois sources plausibles, et elles ne racontent
-   pas la même chose :
-   - une **colonne sans solde** qui prend son indépendance (le lot 6 la
-     réclame) ;
-   - une **sécession** de ville qui ne rejoint personne — aujourd'hui elle
-     rejoint toujours un drapeau existant ;
-   - un **schisme** : un dirigeant écarté emmène ses villes.
-2. **Que faut-il pour tenir debout ?** Une ville ? Une armée ? Un trésor ? Et
-   que se passe-t-il si la fondation échoue le mois suivant ?
-3. **Qu'est-ce qu'une faction morte ?** Aujourd'hui une faction sans ville
-   existe encore. Doit-elle disparaître des tableaux, ou rester comme un nom
-   qu'on se rappelle ? La question compte pour l'écran autant que pour le
-   moteur.
-4. **Combien de drapeaux au maximum ?** Non pour brider la simulation, mais
-   parce que l'écran, la diplomatie en `n²` et les bourses ont un coût qui
-   croît. À défaut de limite, il faut savoir ce que le monde fait à vingt
-   factions — c'est mesurable au banc avant de décider.
-5. **D'où viennent les noms ?** Composition à partir de listes existantes, ou
-   nouvelle liste dédiée ?
+### 4.1 La reconnaissance — et c'est elle qui change la conception
+
+> « n'importe qui peut créer une faction mais elle ne sera pas forcément
+> reconnue par ses pairs, mais on peut dire qu'à partir du moment où une autre
+> faction interagit avec, se positionne sur les ententes de paix guerre
+> commerciaux etc. avec elle, elle la reconnaît forcément comme telle. »
+
+C'est la règle la plus intéressante du lot, parce qu'elle **ne demande aucun
+mécanisme nouveau**. La reconnaissance n'est pas un état à stocker ni une
+décision à prendre : c'est une **lecture** de ce qui existe déjà. B reconnaît A
+si le monde porte trace d'un positionnement de B envers A — une guerre, une
+paix, un accord commercial, une relation qui n'est plus neutre.
+
+```js
+/** B a-t-il déjà eu à se situer par rapport à A ? Alors il le reconnaît. */
+export function reconnue(world, cle, par) {
+  return enGuerre(world, par, cle)
+    || (world.accords || []).some((a) => impliquent(a, par, cle))
+    || (world.factions[par].relations || {})[cle] !== undefined;
+}
+```
+
+Fonder un drapeau ne demande donc la permission de personne, et la
+reconnaissance arrive par le fait, jamais par un vote. Une faction née hier
+existe ; elle est seulement **seule** tant que personne n'a eu affaire à elle.
+
+**Ce qui reste à trancher, et c'est le pendant de la règle** : la règle dit
+*quand* on reconnaît, pas *ce que la non-reconnaissance empêche*. Sans effet,
+elle serait un ornement. Proposition, tirée de ce qui existe et à corriger si
+elle se trompe — une faction non reconnue par B :
+
+- ne peut pas **signer d'accord** avec B (il faut être deux, et B ne la voit
+  pas encore) ;
+- n'a pas de **cours** coté chez B, donc pas de change ;
+- **peut** être attaquée, pillée, et commercer de fait par caravane — la
+  violence et le troc n'ont jamais demandé de reconnaissance.
+
+Le premier de ces trois gestes vaut reconnaissance et ouvre les deux autres.
+
+### 4.2 Ce qu'il faut pour tenir debout
+
+> « peu importe tant que ça fonctionne »
+
+Délégué. Retenu, et c'est le plus simple qui marche : une faction naît avec ce
+que lui donne son événement fondateur — les hommes de la colonne, la ville qui
+a fait sécession — et rien de plus. Pas de dot, pas de seuil d'entrée.
+
+### 4.3 Ce qu'est une faction morte
+
+> « une faction doit au moins avoir des membres qui la composent je suppose. »
+
+Une faction vit tant que **quelqu'un la compose** : une ville tenue, ou une
+colonne en campagne. Ni l'un ni l'autre, elle s'éteint.
+
+C'est un changement pour les sept d'origine autant que pour les neuves :
+aujourd'hui une faction sans ville reste au tableau, avec son drapeau et sa
+ligne, indéfiniment. Le banc en compte quatre sur trente-six dans cet état. Ce
+sont des morts qui n'ont jamais été enterrés.
+
+### 4.4 Combien de drapeaux
+
+> « pas de maximum »
+
+Aucun plafond. La conséquence n'est pas annulée pour autant : la diplomatie est
+en `n²` et l'écran a ses limites. Ce n'est donc plus une décision mais une
+**mesure** — N7 dira ce que coûte un monde à vingt drapeaux, et si ça coûte
+trop, c'est le code qui change, pas la règle.
+
+### 4.5 Les noms
+
+> « peu importe c'est une simulation, chaque faction aura une origine
+> différente et propre au monde généré »
+
+Le nom se **dérive de l'origine**, pas d'une liste tirée au sort : le lieu de
+la fondation, le nom de qui l'a fondée, la circonstance. Une colonne qui prend
+son indépendance ne s'appelle pas comme une ville qui fait sécession, et les
+deux disent d'où elles viennent.
 
 ## 5. Ce que ça casse, dit d'avance
 
@@ -141,27 +198,61 @@ invente pas**. Aucune ligne ne s'écrit avant qu'elles soient tranchées.
   faction neuve peut atteindre. Une modification aveugle est une modification
   qu'on ne peut pas relire.
 
-## 7. Les tâches, si le chantier démarre
+## 7. Les tâches
 
-- [ ] **N1. Le recensement, par la mesure.** Quels sites peuvent voir une clé
-  absente de `FACTIONS` ? Se trouve en instrumentant `FACTIONS[...]` sur une
-  partie longue avec une clé fantôme, pas en lisant 141 lignes.
+Les trois premières ne changent **rien** au monde : ce sont des remaniements, et
+le critère de chacune est que deux mondes joués à graine égale restent
+identiques octet pour octet. Les règles de jeu n'arrivent qu'à N5.
+
+- [x] **N1. Le recensement, par la mesure — 17 sites, pas 141.**
+
+  Méthode : `FACTIONS` enveloppé dans un `Proxy` qui note chaque lecture d'une
+  clé inconnue avec sa pile d'appel, et une faction fantôme posée dans le monde
+  avec deux villes et une colonne. Un `Proxy` qui **plante** ne dit qu'un site
+  à la fois — il a fallu le rendre tolérant, en rendant une identité de
+  remplacement, pour que la partie continue et les livre tous d'un coup.
+  Autrement dit : le premier instrument ne mesurait qu'une chose, et c'est en
+  le voyant s'arrêter à `factions.js:346` qu'on l'a su.
+
+  | site | lectures | ce que c'est |
+  |---|---:|---|
+  | `economy.js:1266`, `economy.js:255` | 240 | le **style** d'une faction, qui commande les prix et les métiers d'une ville |
+  | `credit.js:176, 366, 367, 369` | 95 | faillite et saisie |
+  | `factions.js:346, 441, 252, 163, 845, 378, 182, 503, 405` | 117 | capture, siège, levée, guerre, trêve, fondation, choc, dispersion |
+  | `caravanes.js:705` | 7 | convoi pillé |
+  | `sim.js:546` | 6 | sécession |
+
+  **Quinze des dix-sept ne sont que du texte de journal** — un nom, un pluriel,
+  un génitif. Les deux qui comptent sont `economy.js:255` et `1266` : ils lisent
+  le `style`, et une faction sans style verrait sa ville se comporter comme une
+  commune sans drapeau. C'est le seul endroit où l'identité change le monde et
+  pas seulement la phrase.
+
+  **Ce que ce recensement ne couvre pas** : `ui.js` et ses 37 lectures, qui ne
+  tournent pas sans navigateur. Elles seront recensées au même instrument dans
+  `test/navigateur.js`, à N9.
 - [ ] **N2. `drapeau(world, cle)` et `world.drapeaux`.** Tests rouges :
   aller-retour JSON exact, `normaliser` rattrape les vieilles parties, une
   identité inventée à la main se lit partout où la lecture est branchée.
-- [ ] **N3. `FACTION_KEYS`/`DIPLO_FACTIONS` en fonctions du monde.** 44 sites,
-  et le monde doit rester identique octet pour octet à la graine près : c'est
-  un remaniement, pas un changement de règle. Test : deux mondes joués 2 000 h
-  avant/après sont identiques.
-- [ ] **N4. La couleur, calculée.** Distance minimale aux couleurs existantes.
+- [ ] **N3. `FACTION_KEYS`/`DIPLO_FACTIONS` en fonctions du monde.** 44 sites.
+  Test : deux mondes joués 2 000 h avant/après sont identiques.
+- [ ] **N4. La couleur, calculée.** Distance maximale aux couleurs existantes.
   Test : deux factions neuves ne se ressemblent pas, et aucune ne ressemble aux
   sept d'origine.
-- [ ] **N5. La fondation**, selon la source tranchée en §4. Test rouge : dans
-  une situation où la règle dit qu'une faction naît, elle naît, elle a un
-  drapeau lisible, et l'invariant comptable tient — le trésor d'un pays neuf
-  vient de quelque part.
-- [ ] **N6. La mort**, selon la règle tranchée en §4.
-- [ ] **N7. Le monde à vingt factions.** Mesurer au banc avant de décider d'un
-  plafond : coût du tick, guerres, bourses, lisibilité de l'écran.
-- [ ] **N8. Livraison.** `CIBLES.json` repensé — le « /36 » des écrasées ne
-  survit pas —, coût du tick chiffré, et l'écran vérifié au navigateur.
+- [ ] **N5. `reconnue(world, cle, par)`** (§4.1), et ses trois effets. Tests :
+  une faction neuve n'est reconnue de personne ; le premier geste d'un voisin la
+  fait reconnaître ; un accord ne se signe pas avec une inconnue.
+- [ ] **N6. La naissance.** Une colonne sans solde qui ne trouve pas de payeur
+  fonde son pays plutôt que de se débander — c'est la cinquième issue du lot 6
+  d'`INDIVIDUS.md`, restée en suspens. Nom dérivé de l'origine (§4.5). Test
+  rouge : dans une situation où la règle dit qu'une faction naît, elle naît,
+  elle a un drapeau lisible, et l'invariant comptable tient.
+- [ ] **N7. La mort** (§4.3) : ni ville ni colonne, la faction s'éteint. Vaut
+  aussi pour les sept d'origine — quatre sur trente-six sont aujourd'hui des
+  morts jamais enterrés. Mesurer ce que ça fait au monde avant de conclure.
+- [ ] **N8. Le monde à vingt drapeaux.** Pas pour décider d'un plafond — il n'y
+  en a pas — mais pour savoir ce que coûte la diplomatie en `n²`, et corriger
+  le code si elle coûte trop.
+- [ ] **N9. Livraison.** `CIBLES.json` repensé : le « /36 » des écrasées ne
+  survit pas à un nombre de factions variable. Coût du tick chiffré, écran
+  vérifié au navigateur.
