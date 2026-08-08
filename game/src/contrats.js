@@ -5,7 +5,9 @@
 // Tout se résout automatiquement (livrer, ramener, compter les victoires), donc
 // un contrat continue d'avancer pendant que le joueur est hors ligne.
 
-import { COMMODITIES, COMMODITY_KEYS, FACTIONS, DIPLO_FACTIONS } from './data.js';
+import {
+  COMMODITIES, COMMODITY_KEYS, FACTIONS, DIPLO_FACTIONS, diploDe, drapeauDe,
+} from './data.js';
 import { colonieParId, distance, nomRegion, coordonnee } from './world.js';
 import { idDepuisRng } from './characters.js';
 import { crediter, estAuService } from './allegeance.js';
@@ -141,7 +143,7 @@ function contratLivraison(rng, state, col, t) {
 
 function contratPrime(rng, state, col, t) {
   // On paie pour taper sur un ennemi, ou sur les pillards par défaut.
-  const ennemis = DIPLO_FACTIONS.filter((k) => {
+  const ennemis = diploDe(state.world).filter((k) => {
     if (k === col.faction) return false;
     const f = state.world.factions[col.faction];
     return f && (f.relations[k] ?? 0) < 15;
@@ -159,7 +161,7 @@ function contratPrime(rng, state, col, t) {
     recompense: Math.round(victoires * rng.irange(220, 460)),
     reputation: rng.irange(7, 16),
     duree: rng.irange(240, 500),
-    titre: `${victoires} victoire${victoires > 1 ? 's' : ''} contre ${cible === 'bandits' ? 'les pillards' : FACTIONS[cible].nom}`,
+    titre: `${victoires} victoire${victoires > 1 ? 's' : ''} contre ${cible === 'bandits' ? 'les pillards' : drapeauDe(state.world, cible).nom}`,
   };
 }
 

@@ -3,7 +3,7 @@
 // ville assise sur une mine brade son minerai.
 
 import {
-  COMMODITIES, COMMODITY_KEYS, BIOMES, ITEMS, FACTIONS,
+  COMMODITIES, COMMODITY_KEYS, BIOMES, ITEMS, FACTIONS, drapeauDe,
   ETAL_PAR_STYLE, PALIERS_ITEM, MENAGES,
 } from './data.js';
 import { comp, gagnerXp, portage, XP_PRATIQUE } from './characters.js';
@@ -252,7 +252,8 @@ export function actifs(col) {
  */
 export function emploisInitiaux(world, col, rng) {
   const biome = world.regions[col.regionId].biome;
-  const style = col.faction && FACTIONS[col.faction] ? FACTIONS[col.faction].style : null;
+  const style = col.faction && drapeauDe(world, col.faction)
+    ? drapeauDe(world, col.faction).style : null;
   const poids = {};
   // Tout le monde a un peu de tout — mais pas la même part de tout : voir
   // POIDS_BASE, et la mesure qui l'a rendu nécessaire.
@@ -1263,7 +1264,7 @@ export function valeurLot(lot) {
 const DUREE_ETAL = 180; // heures avant renouvellement
 
 export function genererEtal(rng, world, col, t, bonusPalier = 0) {
-  const style = FACTIONS[col.faction] ? FACTIONS[col.faction].style : 'commune';
+  const style = drapeauDe(world, col.faction) ? drapeauDe(world, col.faction).style : 'commune';
   const catalogue = ETAL_PAR_STYLE[style] || ETAL_PAR_STYLE.commune;
   const palierMax = Math.min(3, (col.taille >= 3 ? 3 : col.taille >= 2 ? 2 : 1) + bonusPalier);
   const possibles = catalogue.filter((k) => (PALIERS_ITEM[k] ?? 0) <= palierMax);

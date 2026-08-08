@@ -11,7 +11,7 @@
 // perd sa place quand il perd ses villes, la politique d'une faction change au
 // cours d'une partie sans que rien d'autre n'ait bougé.
 
-import { FACTIONS, NOMS_PERSO } from './data.js';
+import { FACTIONS, NOMS_PERSO, drapeauDe } from './data.js';
 import { loisDe } from './lois.js';
 import { idDepuisRng } from './characters.js';
 import { HEURES_PAR_AN } from './climat.js';
@@ -104,8 +104,8 @@ const APRES = {
   faiblesse: ['conquerant', 'rancunier', 'rapace', 'methodique'],
 };
 
-export function creerDirigeant(rng, key, t, apres) {
-  const style = FACTIONS[key] ? FACTIONS[key].style : null;
+export function creerDirigeant(rng, key, t, apres, world = null) {
+  const style = drapeauDe(world, key) ? drapeauDe(world, key).style : null;
   const penchant = APRES[apres] || PENCHANT[style] || TEMPERAMENT_KEYS;
   // Deux fois sur trois on prend quelqu'un dans la ligne de la maison ; sinon
   // n'importe qui, et c'est là que les factions se surprennent elles-mêmes.
@@ -217,7 +217,7 @@ export function etatDuBut(world, guerre, key) {
 export function tickDirigeant(world, key, rng, dt, t, log, grogne = 0) {
   const f = world.factions[key];
   if (!f) return;
-  if (!f.dirigeant) { f.dirigeant = creerDirigeant(rng, key, t); return; }
+  if (!f.dirigeant) { f.dirigeant = creerDirigeant(rng, key, t, undefined, world); return; }
   const d = f.dirigeant;
   // Une année de jeu, c'est quatre saisons de trente jours — pas 360 jours.
   // L'erreur faisait vieillir les chefs trois fois trop lentement, donc aucun
@@ -249,12 +249,12 @@ export function tickDirigeant(world, key, rng, dt, t, log, grogne = 0) {
   const cause = parLePays ? 'renversé par son propre conseil'
     : ecarte ? 'écarté' : 'remplacé';
   const neuf = creerDirigeant(rng, key, t,
-    ecarte ? (parLePays ? 'grogne' : 'faiblesse') : null);
+    ecarte ? (parLePays ? 'grogne' : 'faiblesse') : null, world);
   f.dirigeant = neuf;
   if (log) {
     log({
       type: 'dirigeant',
-      texte: `${FACTIONS[key].nom} : ${sortant.titre} ${sortant.nom} est ${cause}. `
+      texte: `${drapeauDe(world, key).nom} : ${sortant.titre} ${sortant.nom} est ${cause}. `
         + `${neuf.titre} ${neuf.nom} prend la suite — ${TEMPERAMENTS[neuf.temperament].nom.toLowerCase()}. `
         + `« ${TEMPERAMENTS[neuf.temperament].mot} »`,
       factions: [key],

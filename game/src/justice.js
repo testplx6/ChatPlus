@@ -19,7 +19,7 @@
 // bras pour les garder, ils mangent, ils ralentissent, et ceux qu'on ne
 // surveille pas s'en vont — parfois en emportant quelque chose.
 
-import { FACTIONS, DIPLO_FACTIONS } from './data.js';
+import { FACTIONS, DIPLO_FACTIONS, diploDe, drapeauDe} from './data.js';
 import { estVivant, estDebout, comp } from './characters.js';
 import { colonieDe } from './world.js';
 import { enGuerre } from './factions.js';
@@ -315,7 +315,7 @@ function retirerCaptif(g, c) {
 }
 
 function noterReputation(state, faction, delta) {
-  if (!faction || !FACTIONS[faction] || faction === 'bandits') return;
+  if (!faction || !drapeauDe(state.world, faction) || faction === 'bandits') return;
   state.player.reputation[faction] = Math.max(-100, Math.min(100,
     (state.player.reputation[faction] || 0) + delta));
 }
@@ -410,7 +410,7 @@ export function disposer(state, g, captifId, quoi, log) {
     if (log) {
       log({
         type: 'prisonnier',
-        texte: `${FACTIONS[cap.faction].nom} rachète ${c.nom} pour ${prix} cr.`,
+        texte: `${drapeauDe(state.world, cap.faction).nom} rachète ${c.nom} pour ${prix} cr.`,
         important: true,
         regionId: col.regionId,
         groupe: g.id,
@@ -428,7 +428,7 @@ export function disposer(state, g, captifId, quoi, log) {
     // Ça se sait. Auprès des siens d'abord, et auprès de tous ceux qui l'ont
     // interdit chez eux — ce qui donne son poids à la loi d'en face.
     noterReputation(state, cap.faction, -14);
-    for (const k of DIPLO_FACTIONS) {
+    for (const k of diploDe(state.world)) {
       if (k === col.faction || k === cap.faction) continue;
       if (!loisDe(state.world, k).esclavage) noterReputation(state, k, -4);
     }

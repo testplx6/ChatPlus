@@ -128,6 +128,10 @@ export function normaliser(state) {
     if (w.factions[k].consigne !== undefined) delete w.factions[k].consigne;
   }
   if (!w.meteo) w.meteo = { type: 'couvert', restant: 4 };
+  // Avant que des factions puissent naître, aucune identité ne vivait dans la
+  // sauvegarde. Registre vide : les sept d'origine sont dans `data.js` et n'y
+  // ont jamais été.
+  if (!w.drapeaux) w.drapeaux = {};
   // Avant la colonne sans solde, une armée était payée ou ne l'était pas, et
   // personne ne comptait. Ardoise vierge : les heures d'avant n'ont pas été
   // comptées, et les inventer donnerait des désertions rétroactives.

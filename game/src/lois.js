@@ -12,7 +12,7 @@
 // constantes et qui précède tout le monde. Il fallait bien savoir de quel
 // drapeau on parle pour dire sous quel régime il commence.
 
-import { FACTIONS } from './data.js';
+import { FACTIONS, drapeauDe } from './data.js';
 
 /**
  * Ce qu'un Commandeur peut décider, et ce que ça fait. Aucune loi n'est
@@ -205,8 +205,8 @@ export const REGIME_PAR_STYLE = {
   commune: 'commune',
 };
 
-export function regimeInitial(faction) {
-  const f = FACTIONS[faction];
+export function regimeInitial(faction, world = null) {
+  const f = drapeauDe(world, faction);
   return (f && REGIME_PAR_STYLE[f.style]) || 'charte';
 }
 
@@ -231,7 +231,7 @@ export function loisDe(world, faction) {
       impot: 0.05,
       // Le régime, lui, préexiste au joueur : une faction gouverne déjà d'une
       // certaine manière le jour où il arrive.
-      regime: regimeInitial(faction),
+      regime: regimeInitial(faction, world),
       // Et le loyer de l'argent, que son chef a fixé selon son caractère. Posé
       // à l'ordinaire ici : le premier conseil le corrigera au tempérament du
       // dirigeant, qui n'existe pas encore quand ces lois se créent.
@@ -239,7 +239,7 @@ export function loisDe(world, faction) {
     };
   }
   // Les parties commencées avant les régimes n'en ont pas.
-  if (!f.lois.regime) f.lois.regime = regimeInitial(faction);
+  if (!f.lois.regime) f.lois.regime = regimeInitial(faction, world);
   // Ni avant le taux directeur.
   if (f.lois.directeur === undefined) f.lois.directeur = DIRECTEURS[1].taux;
   return f.lois;

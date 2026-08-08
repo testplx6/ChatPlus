@@ -3,7 +3,7 @@
 // côté serveur en multijoueur), `state.player` / `state.base` la moitié privée.
 
 import { Rng, grainDe } from './rng.js';
-import { FACTIONS, DIPLO_FACTIONS } from './data.js';
+import { FACTIONS, DIPLO_FACTIONS, drapeauDe } from './data.js';
 import { genererMonde, decouvrir, colonieParId, nomRegion, distance } from './world.js';
 import { makeCharacter, idDepuisRng, ARCHETYPE_KEYS } from './characters.js';
 import {
@@ -331,7 +331,7 @@ export function nouvellePartie(seed, opts = {}) {
   // qui n'a pas de politique : il déferle. On pose quand même la clé, sinon
   // recharger une partie l'ajoute et l'aller-retour JSON n'est plus exact.
   for (const k of Object.keys(world.factions)) {
-    world.factions[k].dirigeant = k === 'essaim' ? null : creerDirigeant(rng, k, 0);
+    world.factions[k].dirigeant = k === 'essaim' ? null : creerDirigeant(rng, k, 0, undefined, world);
   }
   // Et la monnaie de chacun : la masse émise vaut exactement ce qui existe, si
   // bien que l'invariant comptable naît vrai. Tout ce qui le brisera ensuite est
@@ -520,8 +520,8 @@ export function tick(state) {
         crediterDirigeant(state.world, ancienne, 'perte');
         log({
           type: 'revolte',
-          texte: `${col.nom} se soulève et chasse ${FACTIONS[ancienne].nom}. `
-            + `La ville revient ${FACTIONS[r.rendue].datif}.`,
+          texte: `${col.nom} se soulève et chasse ${drapeauDe(state.world, ancienne).nom}. `
+            + `La ville revient ${drapeauDe(state.world, r.rendue).datif}.`,
           regionId: col.regionId,
           important: true,
           factions: [ancienne, r.rendue].filter(Boolean),
@@ -542,8 +542,9 @@ export function tick(state) {
       log({
         type: 'secession',
         texte: (r.renaissance
-          ? `${col.nom} se soulève : ${FACTIONS[r.rendue].nom} renaît de ses cendres.`
-          : `${col.nom} chasse ${FACTIONS[r.ancienne].nom} et rejoint ${FACTIONS[r.rendue].nom}.`)
+          ? `${col.nom} se soulève : ${drapeauDe(state.world, r.rendue).nom} renaît de ses cendres.`
+          : `${col.nom} chasse ${drapeauDe(state.world, r.ancienne).nom} `
+            + `et rejoint ${drapeauDe(state.world, r.rendue).nom}.`)
           + ` C’est ${nommerActeur(state.world, 'secession', col.id)} qui a décroché l’ancien drapeau.`,
         regionId: col.regionId,
         important: true,
@@ -564,7 +565,7 @@ export function tick(state) {
       } else {
         log({
           type: 'effondrement',
-          texte: `${col.nom} est abandonnée${ancienne ? ` par ${FACTIONS[ancienne].nom}` : ''}. `
+          texte: `${col.nom} est abandonnée${ancienne ? ` par ${drapeauDe(state.world, ancienne).nom}` : ''}. `
             + `Il n’en reste que des ruines. La famille de ${nommerActeur(state.world, 'ruine', col.id)} `
             + `est partie la première ; les autres ont suivi.`,
           regionId: col.regionId,
@@ -753,14 +754,14 @@ export function resumeMonde(state) {
   const w = state.world;
   return {
     guerres: w.guerres.map((g) => ({
-      a: FACTIONS[g.a].nom,
-      b: FACTIONS[g.b].nom,
+      a: drapeauDe(state.world, g.a).nom,
+      b: drapeauDe(state.world, g.b).nom,
       depuis: g.depuis,
       batailles: g.batailles,
     })),
     armees: w.armees.map((a) => ({
-      faction: FACTIONS[a.faction].nom,
-      couleur: FACTIONS[a.faction].couleur,
+      faction: drapeauDe(state.world, a.faction).nom,
+      couleur: drapeauDe(state.world, a.faction).couleur,
       force: a.force,
       etat: a.etat,
       lieu: nomRegion(w, a.regionId),

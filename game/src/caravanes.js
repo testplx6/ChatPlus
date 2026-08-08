@@ -3,7 +3,7 @@
 // des régions dangereuses. C'est ce qui relie l'économie à la carte — et ce qui
 // donne au joueur autre chose à faire que ramasser des cailloux.
 
-import { COMMODITIES, COMMODITY_KEYS, FACTIONS } from './data.js';
+import { COMMODITIES, COMMODITY_KEYS, FACTIONS, drapeauDe } from './data.js';
 import { Rng, grainDe } from './rng.js';
 import { chemin, colonieParId, colonieDe, nomRegion, distance, damer } from './world.js';
 import {
@@ -625,7 +625,7 @@ function pillee(state, car, par, log) {
   }
   log({
     type: 'caravane',
-    texte: `Une caravane ${FACTIONS[car.faction].genitif} est pillée en ${nomRegion(world, car.regionId)}${par ? ` par ${par}` : ''}.`,
+    texte: `Une caravane ${drapeauDe(state.world, car.faction).genitif} est pillée en ${nomRegion(world, car.regionId)}${par ? ` par ${par}` : ''}.`,
     regionId: car.regionId,
     important: true,
   });
@@ -702,7 +702,7 @@ export function tickCaravanes(state, log, ctx) {
       // ici le trésor du pillard fabriquait de la monnaie à chaque convoi
       // intercepté — c'était la dernière planche à billets du moteur.
 
-      pillee(state, car, FACTIONS[armee.faction].nom, log);
+      pillee(state, car, drapeauDe(state.world, armee.faction).nom, log);
       continue;
     }
 
@@ -806,11 +806,11 @@ export function attaquerCaravane(state, car, rng, log, combatContre, genererBand
   const g = groupe || groupeActif(state);
   const escorteTaille = Math.max(1, Math.min(6, Math.round(car.escorte / 9)));
   const bande = genererBande(rng, car.faction, escorteTaille, Math.min(2, Math.floor(state.temps / 2500)));
-  bande.nom = `Escorte ${FACTIONS[car.faction].genitif}`;
+  bande.nom = `Escorte ${drapeauDe(state.world, car.faction).genitif}`;
 
   log({
     type: 'caravane',
-    texte: `Embuscade sur une caravane ${FACTIONS[car.faction].genitif}.`,
+    texte: `Embuscade sur une caravane ${drapeauDe(state.world, car.faction).genitif}.`,
     important: true,
     regionId: car.regionId,
   });

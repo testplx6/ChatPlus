@@ -70,7 +70,7 @@ naître, elle ne l'est plus : son identité doit être *dans la sauvegarde*, et
 
 ```js
 /** L'identité d'une faction : celle du monde si elle y est, celle du jeu sinon. */
-export function drapeau(world, cle) {
+export function drapeauDe(world, cle) {
   return (world && world.drapeaux && world.drapeaux[cle]) || FACTIONS[cle];
 }
 ```
@@ -158,6 +158,47 @@ aujourd'hui une faction sans ville reste au tableau, avec son drapeau et sa
 ligne, indéfiniment. Le banc en compte quatre sur trente-six dans cet état. Ce
 sont des morts qui n'ont jamais été enterrés.
 
+### 4.3 bis Le dirigeant seul, et le trésor d'un pays mort
+
+> « un dirigeant seul peut essayer de se refaire, rien ne l'interdit. »
+
+Une faction sans ville et sans colonne, mais avec un chef, **existe encore**.
+C'est une permission, pas une obligation : on n'écrit pas un mécanisme de
+reconquête, on s'interdit seulement de fermer la porte. Elle s'éteint quand il
+ne reste plus personne du tout — ni ville, ni colonne, ni dirigeant.
+
+> « quand la faction s'éteint le trésor reste à l'endroit physique où il se
+> trouve, il est donc pillable ou trouvable. »
+
+L'argent d'un pays mort ne s'évapore pas et ne tombe pas dans la poche du
+vainqueur : **il reste où il était**, et quelqu'un le trouvera. C'est cohérent
+avec ce que le monde sait déjà faire — les régions portent des `site` qu'on
+fouille (`fouillerSite`), et une ville prise transmet déjà sa caisse.
+
+**La conséquence sur l'invariant comptable, et elle demande du soin.** `auditer`
+est **par faction** : pour chaque drapeau, ce qui existe (trésor + caisses +
+ménages de ses villes) doit égaler sa masse émise. Un trésor qui quitte la
+faction sans quitter le monde brise donc l'égalité des deux côtés à la fois —
+sauf si le magot abandonné est **compté quelque part**.
+
+Trois façons, et une seule respecte la règle telle qu'elle est dite :
+
+| | l'argent | l'invariant |
+|---|---|---|
+| le vainqueur hérite | change de mains | tenu, mais **contraire à la règle** |
+| on le détruit | disparaît | tenu si `masse` baisse d'autant, mais **contraire à la règle** |
+| **un magot posé sur la carte** | reste où il est | tenu **si le magot entre dans `existe`** de la faction morte |
+
+Retenu : le troisième. Un magot est donc un troisième registre à côté du trésor
+et des caisses, et `auditer` doit le lire — sans quoi le premier pays mort
+ferait dériver les comptes, et on chercherait le bug ailleurs.
+
+Une question qui en découle et qui n'est pas tranchée : **de la monnaie d'un
+pays qui n'existe plus vaut-elle encore quelque chose ?** Le moteur cote chaque
+monnaie (`cours`, `gage`) et sait déjà convertir (`convertirMasse`, `taux`).
+Trouver le trésor des Rouilleurs le jour où les Rouilleurs n'existent plus, ce
+n'est pas trouver des crédits — c'est trouver des billets. À poser avant N7.
+
 ### 4.4 Combien de drapeaux
 
 > « pas de maximum »
@@ -231,11 +272,48 @@ identiques octet pour octet. Les règles de jeu n'arrivent qu'à N5.
   **Ce que ce recensement ne couvre pas** : `ui.js` et ses 37 lectures, qui ne
   tournent pas sans navigateur. Elles seront recensées au même instrument dans
   `test/navigateur.js`, à N9.
-- [ ] **N2. `drapeau(world, cle)` et `world.drapeaux`.** Tests rouges :
-  aller-retour JSON exact, `normaliser` rattrape les vieilles parties, une
-  identité inventée à la main se lit partout où la lecture est branchée.
-- [ ] **N3. `FACTION_KEYS`/`DIPLO_FACTIONS` en fonctions du monde.** 44 sites.
-  Test : deux mondes joués 2 000 h avant/après sont identiques.
+- [x] **N2. `drapeauDe(world, cle)` et `world.drapeaux`.** Le registre est vide au
+  départ : les sept d'origine restent dans `data.js`, les recopier mettrait sept
+  descriptions identiques dans chaque sauvegarde. `normaliser` rattrape les
+  vieilles parties, l'aller-retour JSON est exact.
+- [x] **N3. Le monde comme source, et non le jeu.** `clesDe(world)` et
+  `diploDe(world)` lisent `world.factions`, la liste qui fait autorité. Les deux
+  constantes restent pour la génération du monde, où la question porte vraiment
+  sur les sept d'origine.
+
+  **Ce n'était pas cosmétique, et c'est mesuré.** Une faction posée dans un
+  monde sans être dans `DIPLO_FACTIONS` vit très bien — huit villes, une
+  colonne, sept relations, une monnaie cotée — mais `auditer` ne la voit pas, et
+  **les comptes des *autres* dérivent de 4 440 crédits** en mille cinq cents
+  heures. L'invariant comptable, la garde la plus sûre du moteur, tombe en
+  silence.
+
+  Une fois branché : écart maximal **1,2 × 10⁻⁹** avec une faction neuve dans le
+  monde.
+
+  Quatre-vingts lectures basculées au total, et le recensement de N1 a dû être
+  relancé trois fois : chaque correction faisait vivre la fantôme plus
+  longtemps, et lui faisait donc atteindre des sites que la précédente n'avait
+  pas révélés. 17, puis 6, puis 1. **Un recensement n'est pas fini quand il ne
+  rend plus rien — il est fini quand ce qu'il rend n'est plus un défaut** : la
+  dernière lecture est `FACTIONS[null]`, une ville sans drapeau qui retombe
+  correctement sur « commune ».
+
+  Bit-identité vérifiée à chaque étape : trois graines × 2 000 heures, mondes
+  identiques octet pour octet avant et après. C'est un remaniement, pas un
+  changement de règle.
+
+  **La fonction s'appelle `drapeauDe` et non `drapeau`**, et c'est le
+  vérificateur de symboles qui l'a imposé : le mot « drapeau » apparaît en
+  français dans les textes de `ui.js` (« Reprendre son drapeau »), et un export
+  portant ce nom déclenchait un faux positif à chaque relecture. Renommer coûte
+  moins cher qu'affaiblir un garde.
+
+  **Deux pièges de fixture**, tous deux déjà rencontrés ailleurs et tous deux
+  reproduits ici. Un `Proxy` qui plante ne rend qu'un site à la fois — rendu
+  tolérant, il les livre tous. Et une faction montée à la main fait dériver
+  l'audit de trente-trois mille crédits : il faut la monter avec `transferer` et
+  `transfererVille`, sinon on accuse le moteur de ce que la fixture a inventé.
 - [ ] **N4. La couleur, calculée.** Distance maximale aux couleurs existantes.
   Test : deux factions neuves ne se ressemblent pas, et aucune ne ressemble aux
   sept d'origine.
@@ -247,9 +325,13 @@ identiques octet pour octet. Les règles de jeu n'arrivent qu'à N5.
   d'`INDIVIDUS.md`, restée en suspens. Nom dérivé de l'origine (§4.5). Test
   rouge : dans une situation où la règle dit qu'une faction naît, elle naît,
   elle a un drapeau lisible, et l'invariant comptable tient.
-- [ ] **N7. La mort** (§4.3) : ni ville ni colonne, la faction s'éteint. Vaut
-  aussi pour les sept d'origine — quatre sur trente-six sont aujourd'hui des
-  morts jamais enterrés. Mesurer ce que ça fait au monde avant de conclure.
+- [ ] **N7. La mort** (§4.3, §4.3 bis) : ni ville, ni colonne, ni dirigeant, la
+  faction s'éteint — un chef seul suffit à la tenir en vie. Son trésor reste où
+  il est, sous forme d'un magot posé sur la carte, pillable et trouvable. Le
+  magot est un **troisième registre** que `auditer` doit lire, sinon le premier
+  pays mort fait dériver les comptes. Test rouge : une faction éteinte, l'écart
+  comptable reste à zéro, et le magot se fouille. Vaut aussi pour les sept
+  d'origine — quatre sur trente-six sont aujourd'hui des morts jamais enterrés.
 - [ ] **N8. Le monde à vingt drapeaux.** Pas pour décider d'un plafond — il n'y
   en a pas — mais pour savoir ce que coûte la diplomatie en `n²`, et corriger
   le code si elle coûte trop.

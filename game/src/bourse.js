@@ -19,7 +19,8 @@
 // Tout vit dans `world` — c'est la moitié partagée de l'état, celle qui
 // tournerait côté serveur en multijoueur. Rien ici ne connaît le joueur.
 
-import { COMMODITY_KEYS, COMMODITIES, FACTIONS, DIPLO_FACTIONS } from './data.js';
+import {
+  COMMODITY_KEYS, COMMODITIES, FACTIONS, DIPLO_FACTIONS, diploDe, drapeauDe,} from './data.js';
 import { prixUnitaire } from './economy.js';
 import { avantage } from './allegeance.js';
 import { depenser } from './monnaie.js';
@@ -132,7 +133,7 @@ export function tickBourses(world, t) {
 
   const faits = new Set();
   const restants = {};
-  for (const key of DIPLO_FACTIONS) {
+  for (const key of diploDe(world)) {
     if (!aUneBourse(world, key)) continue;
     const membres = reseauDe(world, key);
     const id = idReseau(membres);
@@ -248,7 +249,7 @@ export function partenairePossible(world, key) {
   if (!aUneBourse(world, key)) return null;
   const f = world.factions[key];
   let best = null;
-  for (const autre of DIPLO_FACTIONS) {
+  for (const autre of diploDe(world)) {
     if (autre === key || !aUneBourse(world, autre)) continue;
     if (accordEntre(world, key, autre)) continue;
     if ((world.guerres || []).some(
@@ -287,7 +288,7 @@ export function rompreAccords(world, a, b) {
 export function reseaux(world) {
   const faits = new Set();
   const out = [];
-  for (const key of DIPLO_FACTIONS) {
+  for (const key of diploDe(world)) {
     if (!aUneBourse(world, key)) continue;
     const membres = reseauDe(world, key);
     const id = idReseau(membres);
@@ -302,7 +303,7 @@ export function reseaux(world) {
 export function resumeBourses(world) {
   const out = [];
   const faits = new Set();
-  for (const key of DIPLO_FACTIONS) {
+  for (const key of diploDe(world)) {
     if (!aUneBourse(world, key)) continue;
     const membres = reseauDe(world, key);
     const id = idReseau(membres);
@@ -312,7 +313,7 @@ export function resumeBourses(world) {
     out.push({
       id,
       membres,
-      noms: membres.map((k) => FACTIONS[k].nom),
+      noms: membres.map((k) => drapeauDe(world, k).nom),
       villes: cot ? cot.villes : villesDuReseau(world, membres).length,
       maj: cot ? cot.maj : null,
       prix: cot ? cot.prix : null,
@@ -357,7 +358,7 @@ export function comptoirsPossibles(state) {
   const col = base.colonieId ? world.colonies.find((c) => c.id === base.colonieId) : null;
   const out = [];
   const faits = new Set();
-  for (const key of DIPLO_FACTIONS) {
+  for (const key of diploDe(state.world)) {
     if (!aUneBourse(world, key)) continue;
     const membres = reseauDe(world, key);
     const id = idReseau(membres);

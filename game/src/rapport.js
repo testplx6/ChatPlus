@@ -23,7 +23,7 @@
 // instants et une liste de phrases. C'est ce qui permet de le sérialiser tel
 // quel, et de le retrouver intact si la page se ferme pendant le rattrapage.
 
-import { FACTIONS, COMMODITY_KEYS } from './data.js';
+import { FACTIONS, COMMODITY_KEYS, drapeauDe} from './data.js';
 import { estVivant, estDebout } from './characters.js';
 import { groupes } from './groupes.js';
 
@@ -195,7 +195,7 @@ export function lireRapport(state, r) {
   const estime = [];
   for (const k of Object.keys(b.reputation)) {
     const d = (b.reputation[k] || 0) - (a.reputation[k] || 0);
-    if (Math.abs(d) >= 1 && FACTIONS[k]) estime.push({ faction: k, delta: d });
+    if (Math.abs(d) >= 1 && drapeauDe(state.world, k)) estime.push({ faction: k, delta: d });
   }
   estime.sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));
 

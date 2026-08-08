@@ -3,8 +3,7 @@
 
 import {
   BUILDINGS, RESEARCH, COMMODITY_KEYS, COMMODITIES, METIERS, METIER_KEYS, BIOMES,
-  FACTIONS, RECETTES, ARRET,
-} from './data.js';
+  FACTIONS, RECETTES, ARRET, drapeauDe,} from './data.js';
 import { grainDe } from './rng.js';
 import { rendementRegion } from './world.js';
 import { METEO } from './climat.js';
@@ -1570,7 +1569,7 @@ export function rattacherVille(state, faction, log) {
   if (log) {
     log({
       type: 'base',
-      texte: `${base.nom} prend les couleurs ${FACTIONS[faction].genitif}. `
+      texte: `${base.nom} prend les couleurs ${drapeauDe(state.world, faction).genitif}. `
         + `On la défendra comme les leurs — et l’on y lèvera l’impôt comme chez eux.`,
       regionId: base.regionId,
       important: true,
@@ -1598,7 +1597,7 @@ export function declarerIndependance(state, log) {
   if (log) {
     log({
       type: 'base',
-      texte: `${base.nom} reprend son drapeau. ${FACTIONS[ancienne].nom} `
+      texte: `${base.nom} reprend son drapeau. ${drapeauDe(state.world, ancienne).nom} `
         + `n’oubliera pas ce genre de départ.`,
       regionId: base.regionId,
       important: true,
@@ -1641,7 +1640,7 @@ export function preleverImpot(state, log) {
   if (reste > 0 && log && state.temps % 240 === 0) {
     log({
       type: 'base',
-      texte: `${base.nom} n’a pas de quoi payer l’impôt ${FACTIONS[col.faction].genitif}. `
+      texte: `${base.nom} n’a pas de quoi payer l’impôt ${drapeauDe(state.world, col.faction).genitif}. `
         + `On le note.`,
       regionId: base.regionId,
     });

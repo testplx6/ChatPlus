@@ -2,7 +2,7 @@
 // prennent des colonies, signent des paix. C'est le cœur « vivant » de la sim.
 
 import {
-  FACTIONS, DIPLO_FACTIONS, COMMODITY_KEYS, MENAGES, COMMODITIES,
+  FACTIONS, DIPLO_FACTIONS, COMMODITY_KEYS, MENAGES, COMMODITIES, drapeauDe, diploDe,
 } from './data.js';
 import { Rng, grainDe } from './rng.js';
 import {
@@ -148,7 +148,7 @@ export function declarerGuerre(world, a, b, t, log, but) {
   if (rompreAccords(world, a, b) && log) {
     log({
       type: 'bourse',
-      texte: `L’accord commercial entre ${FACTIONS[a].nom} et ${FACTIONS[b].nom} `
+      texte: `L’accord commercial entre ${drapeauDe(world, a).nom} et ${drapeauDe(world, b).nom} `
         + `est rompu : les cours se débranchent.`,
       factions: [a, b],
       important: true,
@@ -160,7 +160,8 @@ export function declarerGuerre(world, a, b, t, log, but) {
   const d = dirigeant(world, a);
   log({
     type: 'guerre',
-    texte: `${FACTIONS[a].nom} déclare${FACTIONS[a].pluriel ? 'nt' : ''} la guerre ${FACTIONS[b].datif}`
+    texte: `${drapeauDe(world, a).nom} déclare${drapeauDe(world, a).pluriel ? 'nt' : ''} `
+      + `la guerre ${drapeauDe(world, b).datif}`
       + `${but ? ` ${but.texte}` : ''}.${d ? ` ${d.titre} ${d.nom} l’a voulue.` : ''}`,
     factions: [a, b],
   });
@@ -179,7 +180,7 @@ export function signerPaix(world, a, b, t, log, motif) {
   if (motif !== 'atteint' && g.initiateur) crediterDirigeant(world, g.initiateur, 'paix');
   log({
     type: 'paix',
-    texte: `${FACTIONS[a].nom} et ${FACTIONS[b].nom} signent une trêve`
+    texte: `${drapeauDe(world, a).nom} et ${drapeauDe(world, b).nom} signent une trêve`
       + `${motif === 'atteint' && g.but ? ` — l’affaire est réglée ${g.but.texte}` : ''}.`,
     factions: [a, b],
   });
@@ -242,14 +243,15 @@ function leverArmee(world, key, force, depuis, cibleId, log) {
   // de son propre camp.
   log(col.avantPoste ? {
     type: 'armee',
-    texte: `${FACTIONS[key].nom} lève${FACTIONS[key].pluriel ? 'nt' : ''} une colonne de ${force} `
+    texte: `${drapeauDe(world, key).nom} lève${drapeauDe(world, key).pluriel ? 'nt' : ''} une colonne de ${force} `
       + `hommes et la lance sur ${col.nom}. C’est chez vous qu’ils vont.`,
     factions: [key],
     regionId: depuis,
     important: true,
   } : {
     type: 'armee',
-    texte: `${FACTIONS[key].nom} lève${FACTIONS[key].pluriel ? 'nt' : ''} une colonne (${force}) en direction de ${col.nom}.`,
+    texte: `${drapeauDe(world, key).nom} lève${drapeauDe(world, key).pluriel ? 'nt' : ''} `
+      + `une colonne (${force}) en direction de ${col.nom}.`,
     factions: [key],
     regionId: depuis,
   });
@@ -280,8 +282,8 @@ function capturer(world, armee, col, t, log, ctx) {
     // « est tombée » ne disait ni devant qui, ni combien ils étaient. On perd
     // sa place ; on a le droit de savoir devant quoi.
     if (ctx && ctx.perdreAvantPoste) {
-      ctx.perdreAvantPoste(`${col.nom} est tombée : ${FACTIONS[armee.faction].nom} `
-        + `${FACTIONS[armee.faction].pluriel ? 'y sont entrés' : 'y est entré'} `
+      ctx.perdreAvantPoste(`${col.nom} est tombée : ${drapeauDe(world, armee.faction).nom} `
+        + `${drapeauDe(world, armee.faction).pluriel ? 'y sont entrés' : 'y est entré'} `
         + `avec ${armee.force} hommes. Ce qu’on y avait bâti est à eux, désormais. `
         + `Il reste l’escouade, et de la place ailleurs.`);
     }
@@ -343,7 +345,8 @@ function capturer(world, armee, col, t, log, ctx) {
     col.defense = Math.round(col.defenseMax * 0.25);
     log({
       type: 'capture',
-      texte: `${FACTIONS[nouveau].nom} s’empare${FACTIONS[nouveau].pluriel ? 'nt' : ''} de ${col.nom}${ancien ? ` (${FACTIONS[ancien].nom})` : ''}. `
+      texte: `${drapeauDe(world, nouveau).nom} s’empare${drapeauDe(world, nouveau).pluriel ? 'nt' : ''} `
+        + `de ${col.nom}${ancien ? ` (${drapeauDe(world, ancien).nom})` : ''}. `
         + `${nommerActeur(world, 'capture', col.id, col.prises)} a été vu clouant sa porte avant l’assaut.`,
       regionId: col.regionId,
       factions: [nouveau, ancien].filter(Boolean),
@@ -375,7 +378,8 @@ function batailleArmees(world, a, b, t, log, ctx) {
   if (g) g.batailles++;
   log({
     type: 'bataille',
-    texte: `Choc de colonnes : ${FACTIONS[a.faction].nom} (−${pertesA}) contre ${FACTIONS[b.faction].nom} (−${pertesB}).`,
+    texte: `Choc de colonnes : ${drapeauDe(world, a.faction).nom} (−${pertesA}) `
+      + `contre ${drapeauDe(world, b.faction).nom} (−${pertesB}).`,
     regionId: a.regionId,
     factions: [a.faction, b.faction],
   });
@@ -383,7 +387,7 @@ function batailleArmees(world, a, b, t, log, ctx) {
     if (armee.force <= 8) {
       log({
         type: 'armee',
-        texte: `La colonne ${FACTIONS[armee.faction].genitif} est anéantie.`,
+        texte: `La colonne ${drapeauDe(world, armee.faction).genitif} est anéantie.`,
         regionId: armee.regionId,
         factions: [armee.faction],
       });
@@ -402,7 +406,7 @@ function tickArmee(world, armee, t, log, ctx) {
     if (armee.force <= 8) {
       log({
         type: 'armee',
-        texte: `La colonne ${FACTIONS[armee.faction].genitif} se disperse, faute de vivres.`,
+        texte: `La colonne ${drapeauDe(world, armee.faction).genitif} se disperse, faute de vivres.`,
         regionId: armee.regionId,
         factions: [armee.faction],
       });
@@ -426,7 +430,7 @@ function tickArmee(world, armee, t, log, ctx) {
     if (cible.faction === armee.faction) {
       log({
         type: 'armee',
-        texte: `La colonne ${FACTIONS[armee.faction].genitif} rebrousse chemin : ${cible.nom} est déjà tombée.`,
+        texte: `La colonne ${drapeauDe(world, armee.faction).genitif} rebrousse chemin : ${cible.nom} est déjà tombée.`,
         regionId: armee.regionId,
         factions: [armee.faction],
       });
@@ -438,7 +442,8 @@ function tickArmee(world, armee, t, log, ctx) {
       armee.regionId = cible.regionId;
       log({
         type: 'siege',
-        texte: `${FACTIONS[armee.faction].nom} met${FACTIONS[armee.faction].pluriel ? 'tent' : ''} le siège devant ${cible.nom}.`,
+        texte: `${drapeauDe(world, armee.faction).nom} `
+          + `met${drapeauDe(world, armee.faction).pluriel ? 'tent' : ''} le siège devant ${cible.nom}.`,
         regionId: cible.regionId,
         factions: [armee.faction, cible.faction].filter(Boolean),
       });
@@ -500,7 +505,8 @@ function tickArmee(world, armee, t, log, ctx) {
     if (armee.force <= 8) {
       log({
         type: 'siege',
-        texte: `Le siège de ${col.nom} est brisé : ${FACTIONS[armee.faction].nom} recule${FACTIONS[armee.faction].pluriel ? 'nt' : ''}.`,
+        texte: `Le siège de ${col.nom} est brisé : ${drapeauDe(world, armee.faction).nom} `
+          + `recule${drapeauDe(world, armee.faction).pluriel ? 'nt' : ''}.`,
         regionId: col.regionId,
         factions: [armee.faction, col.faction].filter(Boolean),
       });
@@ -519,7 +525,7 @@ function tickArmee(world, armee, t, log, ctx) {
         armee.force = Math.round(armee.force * 0.45);
         log({
           type: 'siege',
-          texte: `${col.nom} tient. ${FACTIONS[col.faction].nom} n’a plus que cette ville, et la défend comme telle.`,
+          texte: `${col.nom} tient. ${drapeauDe(world, col.faction).nom} n’a plus que cette ville, et la défend comme telle.`,
           regionId: col.regionId,
           factions: [col.faction, armee.faction],
           important: true,
@@ -654,9 +660,9 @@ function conseil(world, key, t, log, ctx) {
       if (r.ok) {
         log({
           type: 'bourse',
-          texte: `${FACTIONS[key].nom} rachète${FACTIONS[key].pluriel ? 'nt' : ''} `
+          texte: `${drapeauDe(world, key).nom} rachète${drapeauDe(world, key).pluriel ? 'nt' : ''} `
             + `la dette de ${c.nom} pour ${r.prix} cr. `
-            + `${FACTIONS[r.porteur].nom} ${FACTIONS[r.porteur].pluriel ? 'ont cédé' : 'a cédé'}.`,
+            + `${drapeauDe(world, r.porteur).nom} ${drapeauDe(world, r.porteur).pluriel ? 'ont cédé' : 'a cédé'}.`,
           regionId: c.regionId,
           factions: [key, r.porteur],
           important: true,
@@ -711,11 +717,11 @@ function conseil(world, key, t, log, ctx) {
   const enGuerreAvec = new Set(guerresDe(world, key).map((g) => (g.a === key ? g.b : g.a)));
   // Une cause donne du courage à qui n'en aurait pas eu : un chef que la guerre
   // ne tente pas se décide tout de même contre un régime qu'il réprouve.
-  const indignation = Math.max(...DIPLO_FACTIONS.map(
+  const indignation = Math.max(...diploDe(world).map(
     (k) => (k === key ? 0 : distanceMorale(world, key, k))));
   if (enGuerreAvec.size < 2 && rng.chance(f.agression * 0.5
       * penchant(world, key, 'guerre') * (1 + indignation * 1.8))) {
-    const candidats = DIPLO_FACTIONS.filter(
+    const candidats = diploDe(world).filter(
       (k) => k !== key && !enGuerreAvec.has(k) && coloniesDe(world, k).length > 0
     ).map((k) => {
       const rel = relation(world, key, k);
@@ -842,7 +848,7 @@ function conseil(world, key, t, log, ctx) {
       crediterDirigeant(world, key, 'fondation');
       log({
         type: 'fondation',
-        texte: `${FACTIONS[key].nom} fonde ${col.nom} en terrain vierge.`,
+        texte: `${drapeauDe(world, key).nom} fonde ${col.nom} en terrain vierge.`,
         regionId: r.i,
         factions: [key],
         important: true,
@@ -863,7 +869,7 @@ function conseil(world, key, t, log, ctx) {
     verser(world, key, col, 400);
     log({
       type: 'chantier',
-      texte: `${FACTIONS[key].nom} renforce${FACTIONS[key].pluriel ? 'nt' : ''} les défenses de ${col.nom}.`,
+      texte: `${drapeauDe(world, key).nom} renforce${drapeauDe(world, key).pluriel ? 'nt' : ''} les défenses de ${col.nom}.`,
       regionId: col.regionId,
       factions: [key],
       discret: true,
@@ -969,7 +975,7 @@ export function distanceMorale(world, key, autre) {
  * sous le seuil où une guerre se déclare toute seule.
  */
 function jugerLesAutres(world, key) {
-  for (const autre of DIPLO_FACTIONS) {
+  for (const autre of diploDe(world)) {
     if (autre === key) continue;
     if (!coloniesDe(world, autre).length) continue;
     const d = distanceMorale(world, key, autre);
@@ -1169,7 +1175,7 @@ function legiferer(world, key, t, log, ctx) {
   if (aUneBourse(world, key) && veutAccord(d.temperament)) {
     const part = partenairePossible(world, key);
     if (part && signerAccord(world, key, part.key, t)) {
-      changements.push(`les cours sont branchés sur ceux ${FACTIONS[part.key].genitif}`);
+      changements.push(`les cours sont branchés sur ceux ${drapeauDe(world, part.key).genitif}`);
     }
   }
 
@@ -1218,7 +1224,7 @@ function legiferer(world, key, t, log, ctx) {
   lois.depuis = t;
   log({
     type: 'loi',
-    texte: `${FACTIONS[key].nom} : ${d.titre} ${d.nom} légifère — ${changements.join(', ')}.`,
+    texte: `${drapeauDe(world, key).nom} : ${d.titre} ${d.nom} légifère — ${changements.join(', ')}.`,
     important: true,
     factions: [key],
   });
@@ -1263,7 +1269,7 @@ function jugerColonnes(world, key, heures, t, log) {
         log({
           type: 'colonne',
           texte: `Le capitaine ${nommerActeur(world, 'colonne', a.id)} a retourné sa veste : `
-            + `la solde de ${FACTIONS[payeur].nom} sonnait plus juste.`,
+            + `la solde de ${drapeauDe(world, payeur).nom} sonnait plus juste.`,
           regionId: a.regionId,
           factions: [key, payeur],
           important: true,
@@ -1324,7 +1330,7 @@ export function tickFactions(world, t, log, ctx) {
   // Les chefs vieillissent une fois par jour de jeu, pas vingt-quatre : leur
   // usure se compte en années, pas en heures.
   if (t % 24 === 0) {
-    for (const key of DIPLO_FACTIONS) {
+    for (const key of diploDe(world)) {
       // Un chef répond aussi de l'humeur de son pays, pas seulement de ses
       // guerres : la grogne moyenne entre directement dans sa légitimité.
       const pays = etatDuPays(world, key);
@@ -1354,13 +1360,13 @@ export function tickFactions(world, t, log, ctx) {
   if (t % 24 === 0) {
     let chef = null;
     let chefP = 0;
-    for (const k of DIPLO_FACTIONS) {
+    for (const k of diploDe(world)) {
       if (!world.factions[k].colonies.length) continue;
       const p = puissance(world, k);
       if (p > chefP) { chefP = p; chef = k; }
     }
     if (chef) {
-      for (const k of DIPLO_FACTIONS) {
+      for (const k of diploDe(world)) {
         if (k === chef || !world.factions[k].colonies.length) continue;
         majRelation(world, chef, k, -1.2);
       }
@@ -1369,8 +1375,8 @@ export function tickFactions(world, t, log, ctx) {
 
   // Dérive lente des relations vers la neutralité, sauf en guerre
   if (t % 24 === 0) {
-    for (const a of DIPLO_FACTIONS) {
-      for (const b of DIPLO_FACTIONS) {
+    for (const a of diploDe(world)) {
+      for (const b of diploDe(world)) {
         if (a >= b) continue;
         const v = relation(world, a, b);
         if (enGuerre(world, a, b)) {
@@ -1389,8 +1395,8 @@ export function classement(world) {
     .filter((k) => k !== 'essaim')
     .map((k) => ({
       key: k,
-      nom: FACTIONS[k].nom,
-      couleur: FACTIONS[k].couleur,
+      nom: drapeauDe(world, k).nom,
+      couleur: drapeauDe(world, k).couleur,
       puissance: puissance(world, k),
       colonies: world.factions[k].colonies.length,
       tresor: Math.round(world.factions[k].tresor),

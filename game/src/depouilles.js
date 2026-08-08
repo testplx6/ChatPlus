@@ -21,7 +21,7 @@
 // ralentit la colonne et pèse sur le moral de ceux qui le portent. On peut
 // garder ses morts trois semaines ; on n'en a simplement pas envie.
 
-import { COMMODITIES, FACTIONS, DIPLO_FACTIONS, ITEMS } from './data.js';
+import { COMMODITIES, FACTIONS, DIPLO_FACTIONS, ITEMS, diploDe } from './data.js';
 import { colonieDe } from './world.js';
 import { loiIci, loisDe } from './lois.js';
 
@@ -226,7 +226,7 @@ export function disposerCorps(state, g, id, quoi, log) {
     coute();
     // Ça se sait, comme pour les vivants qu'on vend : auprès de tous ceux qui
     // l'interdisent chez eux.
-    for (const k of DIPLO_FACTIONS) {
+    for (const k of diploDe(state.world)) {
       if (k === col.faction) continue;
       if (loisDe(state.world, k).esclavage) continue;
       state.player.reputation[k] = Math.max(-100, (state.player.reputation[k] || 0) - 5);

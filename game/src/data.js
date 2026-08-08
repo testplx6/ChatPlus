@@ -253,6 +253,59 @@ export const FACTIONS = {
 };
 
 export const FACTION_KEYS = Object.keys(FACTIONS);
+
+/**
+ * L'identité d'une faction : celle du monde si elle y est, celle du jeu sinon.
+ *
+ * Un même mot désignait deux choses, et le moteur n'a jamais eu besoin de les
+ * distinguer tant que la liste des drapeaux était fixe :
+ *
+ *   l'identité   `FACTIONS[clé]` — nom, couleur, génitif, devise, tempérament.
+ *                Donnée de module, la même dans toutes les parties.
+ *   la situation `world.factions[clé]` — trésor, villes, relations. État
+ *                sauvegardé, propre à la partie.
+ *
+ * Dès qu'une faction peut naître en cours de partie, la confusion cesse d'être
+ * gratuite : son identité n'a nulle part où exister. `world.drapeaux` la loge —
+ * **et lui seul**. Les sept d'origine restent ici : les recopier mettrait sept
+ * descriptions identiques dans chaque fichier de sauvegarde, pour rien.
+ *
+ * Le recensement des sites à brancher a été fait à la mesure et non à la
+ * lecture — un `Proxy` sur `FACTIONS` et une faction fantôme posée dans le
+ * monde. Dix-sept sites, sur cent quarante et une lectures. Voir
+ * `FACTIONS-NEUVES.md` §7, N1.
+ */
+/**
+ * Les drapeaux d'un monde donné, et pas ceux du jeu.
+ *
+ * `FACTION_KEYS` et `DIPLO_FACTIONS` sont figés à sept : ils décrivent la partie
+ * qu'on n'a pas encore commencée. Dès qu'une faction peut naître, s'en servir
+ * pour parcourir le monde revient à ignorer les nouvelles venues — et ce n'est
+ * pas cosmétique. **Mesuré** : une faction posée dans un monde sans être dans
+ * `DIPLO_FACTIONS` vit très bien — huit villes, une colonne, des relations, une
+ * monnaie cotée — mais `auditer` ne la voit pas, et les comptes des *autres*
+ * dérivent alors de 4 440 crédits en mille cinq cents heures. L'invariant
+ * comptable, la garde la plus sûre du moteur, tombe en silence.
+ *
+ * `world.factions` est la liste qui fait autorité : elle porte la situation de
+ * chaque drapeau, d'origine ou non.
+ *
+ * Les deux constantes restent, et servent encore là où la question porte
+ * vraiment sur les sept d'origine : la génération du monde, avant qu'aucune
+ * faction n'ait pu naître.
+ */
+export function clesDe(world) {
+  return world && world.factions ? Object.keys(world.factions) : FACTION_KEYS;
+}
+
+/** Les mêmes, sans l'Essaim, qui ne joue pas le jeu diplomatique. */
+export function diploDe(world) {
+  return clesDe(world).filter((k) => k !== 'essaim');
+}
+
+export function drapeauDe(world, cle) {
+  return (world && world.drapeaux && world.drapeaux[cle]) || FACTIONS[cle];
+}
 /** Factions jouant le jeu diplomatique (l'Essaim en est exclu). */
 export const DIPLO_FACTIONS = FACTION_KEYS.filter((k) => k !== 'essaim');
 

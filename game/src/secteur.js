@@ -19,7 +19,7 @@
 // mauvaises rencontres pour tout le monde, joueur compris, et elle saigne la
 // ville dont le secteur dépend. Un secteur qu'on laisse pourrir se sent.
 
-import { FACTIONS } from './data.js';
+import { FACTIONS, drapeauDe} from './data.js';
 import {
   distance, colonieParId, nomRegion, voisins, coord, idx, LARGEUR, HAUTEUR,
 } from './world.js';
@@ -176,7 +176,7 @@ export function confierSecteur(state, g, log) {
   if (log) {
     log({
       type: 'allegeance',
-      texte: `${FACTIONS[all.faction].nom} vous confie les routes autour de ${ville.nom}. `
+      texte: `${drapeauDe(state.world, all.faction).nom} vous confie les routes autour de ${ville.nom}. `
         + `On ne vous dira pas comment faire ; on relèvera l’état du secteur.`,
       important: true,
       groupe: g.id,

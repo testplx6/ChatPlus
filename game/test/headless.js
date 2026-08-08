@@ -9,7 +9,9 @@ import { Rng, grainDe, combienDeFois } from '../src/rng.js';
 import { mesurerTick, CHAUFFE, MESURE } from './perf.js';
 import { lireRapport, MARQUANTS_MAX } from '../src/rapport.js';
 import { serialiser, deserialiser } from '../src/save.js';
-import { COMMODITY_KEYS, DIPLO_FACTIONS, FACTIONS } from '../src/data.js';
+import {
+  COMMODITY_KEYS, DIPLO_FACTIONS, FACTIONS, drapeauDe as identiteDe,
+} from '../src/data.js';
 import {
   genererBande, resoudreCombat, TACTIQUES, TACTIQUE_KEYS, apercuTactique,
   rendementTactique,
@@ -20,7 +22,9 @@ import {
   reserveVille,
 } from '../src/economy.js';
 import { tickCredit, insolvable, veutBatir } from '../src/credit.js';
-import { auditer, emettre, ecartChange } from '../src/monnaie.js';
+import {
+  auditer, emettre, ecartChange, transferer, transfererVille,
+} from '../src/monnaie.js';
 import { prixCession, effetCession, valeurNette } from '../src/credit.js';
 import { BETES } from '../src/betes.js';
 import {
@@ -8008,6 +8012,112 @@ section('26. La colonne sans solde');
   }
   ok(pireEcart < 1e-6, 'et les comptes tiennent à travers les soldes et les retournements',
     `écart maximal ${pireEcart.toExponential(2)}`);
+}
+
+// ===========================================================================
+section('27. Un drapeau qui n’était pas là au départ');
+{
+  // Chantier FACTIONS-NEUVES, N2. Un même mot désignait deux choses : l'identité
+  // d'une faction — nom, couleur, génitif — vit dans `data.js`, partagée par
+  // toutes les parties ; sa situation — trésor, villes, relations — vit dans la
+  // sauvegarde. Tant que la liste est fixe, la confusion est gratuite. Dès
+  // qu'une faction peut naître, elle n'a nulle part où exister.
+  const sD = nouvellePartie(2727, { maintenant: 0 });
+  ok(sD.world.drapeaux && typeof sD.world.drapeaux === 'object',
+    'le monde porte un registre de drapeaux');
+  ok(Object.keys(sD.world.drapeaux).length === 0,
+    'vide au départ — on ne recopie pas les sept d’origine dans chaque sauvegarde',
+    `${Object.keys(sD.world.drapeaux).length} entrées`);
+
+  // La lecture unique : le monde d'abord, le jeu ensuite.
+  ok(identiteDe(sD.world, 'hexa') === FACTIONS.hexa,
+    'une faction d’origine se lit toujours dans data.js');
+  ok(identiteDe(sD.world, 'inconnue') === undefined,
+    'et une clé qui n’existe nulle part ne rend rien');
+
+  sD.world.drapeaux.neuve = {
+    nom: 'La Main Ouverte', court: 'MAIN', pluriel: false,
+    datif: 'à la Main Ouverte', genitif: 'de la Main Ouverte',
+    couleur: '#c8a24a', devise: 'Ce qu’on donne revient.',
+    agression: 0.3, cupidite: 0.4, style: 'commune', biomes: ['friche'],
+  };
+  ok(identiteDe(sD.world, 'neuve').nom === 'La Main Ouverte',
+    'une identité née en cours de partie se lit comme les autres');
+
+  // Et elle survit au tour de sauvegarde, sinon elle n'existe que jusqu'au
+  // prochain rechargement.
+  const relu = deserialiser(serialiser(sD));
+  ok(identiteDe(relu.world, 'neuve') && identiteDe(relu.world, 'neuve').couleur === '#c8a24a',
+    'et elle survit à la sauvegarde');
+  ok(JSON.stringify(deserialiser(serialiser(sD))) === JSON.stringify(sD),
+    'l’aller-retour JSON reste exact');
+
+  // Une vieille partie n'a pas le registre.
+  const vieille = JSON.parse(JSON.stringify(sD));
+  delete vieille.world.drapeaux;
+  const rattrapee = deserialiser(JSON.stringify(vieille));
+  ok(rattrapee.world.drapeaux && Object.keys(rattrapee.world.drapeaux).length === 0,
+    'une partie d’avant le registre en reçoit un vide');
+
+  // --- Un drapeau que le jeu ne connaît pas doit vivre comme les autres ----
+  //
+  // C'est la garde du chantier, et elle vaut mieux qu'une relecture des 141
+  // lectures de `FACTIONS[...]` : on pose une faction que `data.js` ignore, on
+  // lui donne une ville et cinq mille crédits **avec les fonctions du moteur**,
+  // et on joue mille cinq cents heures.
+  //
+  // Le monter à la main serait plus court et ne prouverait rien : une faction
+  // fabriquée de toutes pièces fait dériver l'audit de trente-trois mille
+  // crédits, et on accuserait le moteur de ce que la fixture a inventé. C'est
+  // la leçon du §16, et elle a resservi ici.
+  //
+  // Ce que ce test a attrapé, et qu'aucun grep n'aurait donné : sans
+  // `diploDe`, la faction neuve vit très bien — villes, colonne, relations,
+  // monnaie cotée — mais `auditer` ne la voit pas, et **les comptes des autres
+  // dérivent de 4 440 crédits** en mille cinq cents heures. L'invariant
+  // comptable tombe en silence.
+  const sN = nouvellePartie(2727, { maintenant: 0 });
+  for (let i = 0; i < 300; i++) tick(sN);
+  sN.world.drapeaux.neuve = {
+    nom: 'La Main Ouverte', court: 'MAIN', pluriel: false,
+    datif: 'à la Main Ouverte', genitif: 'de la Main Ouverte',
+    couleur: '#c8a24a', devise: 'Ce qu’on donne revient.',
+    agression: 0.3, cupidite: 0.4, style: 'commune', biomes: ['friche'],
+  };
+  const donneur = Object.keys(sN.world.factions).find(
+    (k) => k !== 'essaim' && sN.world.factions[k].colonies.length >= 3);
+  sN.world.factions.neuve = {
+    ...JSON.parse(JSON.stringify(sN.world.factions[donneur])),
+    colonies: [], dirigeant: null, tresor: 0, masse: 0, cours: 1,
+    gageRef: 0, emissions: 0, bourse: false, relations: {},
+  };
+  const cedees = sN.world.colonies.filter((c) => c.faction === donneur && !c.ruine).slice(0, 2);
+  for (const c of cedees) {
+    sN.world.factions[donneur].colonies = sN.world.factions[donneur].colonies
+      .filter((x) => x !== c.id);
+    sN.world.factions.neuve.colonies.push(c.id);
+    transfererVille(sN.world, c, donneur, 'neuve');
+    c.faction = 'neuve';
+  }
+  transferer(sN.world, donneur, 'neuve', 5000);
+  sN.world.factions.neuve.tresor += 5000;
+  sN.world.factions[donneur].tresor -= 5000;
+
+  let pireN = 0;
+  let creve = null;
+  try {
+    for (let i = 0; i < 1500; i++) {
+      tick(sN);
+      if (i % 100) continue;
+      for (const e of auditer(sN.world)) pireN = Math.max(pireN, Math.abs(e.ecart));
+    }
+  } catch (e) { creve = e; }
+  ok(!creve, 'un drapeau inconnu du jeu traverse mille cinq cents heures sans casser',
+    creve ? creve.message : '');
+  ok(auditer(sN.world).some((e) => e.faction === 'neuve'),
+    'et ses comptes sont vérifiés comme ceux des autres');
+  ok(pireN < 1e-6, 'et l’invariant comptable tient pour tout le monde',
+    `écart maximal ${pireN.toExponential(2)}`);
 }
 
 // ===========================================================================

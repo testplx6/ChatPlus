@@ -4,8 +4,7 @@
 
 import {
   FACTIONS, POSTURES, COMMODITIES, COMMODITY_KEYS, ITEMS, BIOMES,
-  POI, SKILLS, SKILL_KEYS, PALIERS_ITEM, SURNOMS, TRAITS,
-} from './data.js';
+  POI, SKILLS, SKILL_KEYS, PALIERS_ITEM, SURNOMS, TRAITS, drapeauDe,} from './data.js';
 import { colonieDe, voisins, nomRegion, distance } from './world.js';
 import { compterVictoire } from './contrats.js';
 import {
@@ -66,7 +65,7 @@ export function reputation(state, faction, delta) {
   // « bandits » n'est pas une faction : on tape sur des pillards, pas sur une
   // institution. Sans ce garde-fou, la table de réputation se remplit de clés
   // qui n'ont ni nom ni couleur, et tout ce qui la parcourt casse.
-  if (!faction || faction === 'essaim' || !FACTIONS[faction]) return;
+  if (!faction || faction === 'essaim' || !drapeauDe(state.world, faction)) return;
   const r = state.player.reputation;
   r[faction] = Math.max(-100, Math.min(100, (r[faction] || 0) + delta));
 }
@@ -152,7 +151,7 @@ export function combatContre(state, bande, log, ctx, groupe) {
   if (renforts.length) {
     log({
       type: 'renfort',
-      texte: `${renforts.length} homme${renforts.length > 1 ? 's' : ''} ${FACTIONS[g.allegeance.faction].genitif} accourent.`,
+      texte: `${renforts.length} homme${renforts.length > 1 ? 's' : ''} ${drapeauDe(state.world, g.allegeance.faction).genitif} accourent.`,
       regionId: g.regionId,
     });
   }
@@ -398,7 +397,7 @@ export function bandeLocale(state, ctx, groupe) {
     }
     // Une faction visée par contrat peut aussi croiser la route hors de chez elle.
     for (const v of vises) {
-      if (v !== 'bandits' && v !== dominante && FACTIONS[v]) poids.push([v, 2.2]);
+      if (v !== 'bandits' && v !== dominante && drapeauDe(state.world, v)) poids.push([v, 2.2]);
     }
     faction = rng.weighted(poids);
   }
@@ -491,7 +490,7 @@ export function tenterChasseurs(state, log, ctx) {
   }
 
   for (const k of Object.keys(state.player.reputation)) {
-    if (!FACTIONS[k] || k === 'essaim') continue;
+    if (!drapeauDe(state.world, k) || k === 'essaim') continue;
     const rep = state.player.reputation[k];
     const niveau = rep <= -75 ? 2 : rep <= -50 ? 1 : 0;
     if (niveau > (primes[k] || 0)) {
@@ -499,19 +498,19 @@ export function tenterChasseurs(state, log, ctx) {
       log({
         type: 'prime_tete',
         texte: niveau === 2
-          ? `${FACTIONS[k].nom} double la prime sur votre tête. On vous cherche activement.`
-          : `${FACTIONS[k].nom} met une prime sur votre tête.`,
+          ? `${drapeauDe(state.world, k).nom} double la prime sur votre tête. On vous cherche activement.`
+          : `${drapeauDe(state.world, k).nom} met une prime sur votre tête.`,
         important: true,
       });
     } else if (niveau < (primes[k] || 0) && rep > -40) {
       primes[k] = niveau;
       if (niveau === 0) {
-        log({ type: 'prime_tete', texte: `${FACTIONS[k].nom} retire la prime sur votre tête.`, important: true });
+        log({ type: 'prime_tete', texte: `${drapeauDe(state.world, k).nom} retire la prime sur votre tête.`, important: true });
       }
     }
   }
 
-  const traques = Object.keys(primes).filter((k) => primes[k] > 0 && FACTIONS[k]);
+  const traques = Object.keys(primes).filter((k) => primes[k] > 0 && drapeauDe(state.world, k));
   if (!traques.length) return false;
 
   // Le recel : ce que le Syndicat Ombrelle donne aux siens. Ils ne vous
@@ -539,11 +538,11 @@ export function tenterChasseurs(state, log, ctx) {
   const k = rng.pick(traques);
   const taille = 2 + rng.irange(0, primes[k]);
   const bande = genererBande(rng, k, taille, primes[k]);
-  bande.nom = `Chasseurs de prime ${FACTIONS[k].genitif}`;
+  bande.nom = `Chasseurs de prime ${drapeauDe(state.world, k).genitif}`;
   bande.letal = 0.3;
   log({
     type: 'chasseurs',
-    texte: `Des chasseurs de prime ${FACTIONS[k].genitif} ont retrouvé ${cible.nom}.`,
+    texte: `Des chasseurs de prime ${drapeauDe(state.world, k).genitif} ont retrouvé ${cible.nom}.`,
     important: true,
     regionId: cible.regionId,
     groupe: cible.id,
@@ -557,7 +556,7 @@ export function tenterChasseurs(state, log, ctx) {
     state.player.reputation[k] = Math.min(100, (state.player.reputation[k] || 0) + 10);
     log({
       type: 'prime_tete',
-      texte: `${FACTIONS[k].nom} considère l’affaire réglée. La prime retombe.`,
+      texte: `${drapeauDe(state.world, k).nom} considère l’affaire réglée. La prime retombe.`,
       important: true,
     });
   }
@@ -697,7 +696,7 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       if (monGrade && monGrade.index >= 1) {
         log({
           type: 'peage',
-          texte: `Barrage ${FACTIONS[f].genitif} : on vous reconnaît, on vous laisse passer.`,
+          texte: `Barrage ${drapeauDe(state.world, f).genitif} : on vous reconnaît, on vous laisse passer.`,
           regionId,
           discret: true,
         });
@@ -710,11 +709,11 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
         reputation(state, f, 1);
         log({
           type: 'peage',
-          texte: `Péage ${FACTIONS[f] ? FACTIONS[f].nom : 'local'} : ${taxe} cr versés.`,
+          texte: `Péage ${drapeauDe(state.world, f) ? drapeauDe(state.world, f).nom : 'local'} : ${taxe} cr versés.`,
           regionId,
         });
       } else {
-        const bande = genererBande(rng, FACTIONS[f] ? f : 'bandits', rng.irange(2, 4), Math.min(2, Math.floor(state.temps / 900)));
+        const bande = genererBande(rng, drapeauDe(state.world, f) ? f : 'bandits', rng.irange(2, 4), Math.min(2, Math.floor(state.temps / 900)));
         log({ type: 'peage', texte: `${g.nom} : péage refusé. Ça tourne mal.`, regionId, groupe: g.id });
         reputation(state, f, -8);
         combatContre(state, bande, log, ctx, g);

@@ -5,7 +5,7 @@
 // C'est la progression longue du jeu : la réputation était un chiffre, le grade
 // est une position dans le monde.
 
-import { FACTIONS, DIPLO_FACTIONS, COMMODITIES } from './data.js';
+import { FACTIONS, DIPLO_FACTIONS, COMMODITIES, drapeauDe} from './data.js';
 import { colonieParId, distance, coordonnee } from './world.js';
 import { idDepuisRng } from './characters.js';
 import { groupes, groupeActif } from './groupes.js';
@@ -98,8 +98,8 @@ export const ESTIME_ENGAGEMENT = {
 };
 
 /** Ce que cette faction-ci demande avant de vous enrôler. */
-export function estimeEngagement(faction) {
-  const f = FACTIONS[faction];
+export function estimeEngagement(faction, world = null) {
+  const f = drapeauDe(world, faction);
   return (f && ESTIME_ENGAGEMENT[f.style]) || REPUTATION_MINIMALE;
 }
 
@@ -179,8 +179,8 @@ export const SERVICES = {
 };
 
 /** L'avantage propre à ce drapeau, quel que soit votre grade. */
-export function serviceDe(faction) {
-  const f = FACTIONS[faction];
+export function serviceDe(faction, world = null) {
+  const f = drapeauDe(world, faction);
   return (f && SERVICES[f.style]) || null;
 }
 
@@ -421,11 +421,11 @@ export function palierBonus(state, faction) {
 
 export function peutSEngager(state, faction, groupe) {
   const g = groupe || groupeActif(state);
-  if (!FACTIONS[faction] || faction === 'essaim') {
+  if (!drapeauDe(state.world, faction) || faction === 'essaim') {
     return { ok: false, motif: 'Cette faction n’enrôle personne.' };
   }
   if (g && g.allegeance) {
-    return { ok: false, motif: `${g.nom} sert déjà ${FACTIONS[g.allegeance.faction].genitif}.` };
+    return { ok: false, motif: `${g.nom} sert déjà ${drapeauDe(state.world, g.allegeance.faction).genitif}.` };
   }
   // On ne sert pas deux camps en guerre l'un contre l'autre, même avec deux
   // colonnes différentes : ça se sait.
@@ -437,7 +437,7 @@ export function peutSEngager(state, faction, groupe) {
     if (enGuerre) {
       return {
         ok: false,
-        motif: `${autre.nom} sert ${FACTIONS[autre.allegeance.faction].genitif}, en guerre contre eux.`,
+        motif: `${autre.nom} sert ${drapeauDe(state.world, autre.allegeance.faction).genitif}, en guerre contre eux.`,
       };
     }
   }
@@ -446,7 +446,7 @@ export function peutSEngager(state, faction, groupe) {
   if (rep < exige) {
     return {
       ok: false,
-      motif: `${FACTIONS[faction].nom} demande ${exige} d’estime — vous en avez ${Math.round(rep)}.`,
+      motif: `${drapeauDe(state.world, faction).nom} demande ${exige} d’estime — vous en avez ${Math.round(rep)}.`,
     };
   }
   return { ok: true };
@@ -487,7 +487,7 @@ export function sEngager(state, faction, log, groupe) {
 
   log({
     type: 'allegeance',
-    texte: `${g.nom} entre au service ${FACTIONS[faction].genitif}. Rang : ${RANGS[0].nom}.`,
+    texte: `${g.nom} entre au service ${drapeauDe(state.world, faction).genitif}. Rang : ${RANGS[0].nom}.`,
     important: true,
     groupe: g.id,
   });
@@ -503,7 +503,7 @@ export function quitter(state, log, groupe) {
   state.player.reputation[f] = Math.max(-100, (state.player.reputation[f] || 0) - 30);
   log({
     type: 'allegeance',
-    texte: `Vous rompez avec ${FACTIONS[f].nom}. On n’oublie pas ce genre de départ.`,
+    texte: `Vous rompez avec ${drapeauDe(state.world, f).nom}. On n’oublie pas ce genre de départ.`,
     important: true,
   });
   return { ok: true };
@@ -616,7 +616,7 @@ export function droitIntendance(state, col, groupe) {
   const f = state.world.factions[all.faction];
   const cout = Math.round(du * COMMODITIES.rations.prix * 0.6);
   if (!f || f.tresor < cout) {
-    return { ok: false, motif: `${FACTIONS[all.faction].nom} n’a pas de quoi vous ravitailler.` };
+    return { ok: false, motif: `${drapeauDe(state.world, all.faction).nom} n’a pas de quoi vous ravitailler.` };
   }
   // Le plafond est une règle, pas un accident : on le dit à celui qui le
   // touche, plutôt que de le laisser constater que son arriéré ne monte plus.
@@ -662,7 +662,7 @@ export function crediter(state, points, log, motif, groupe) {
   if (apres > avant) {
     log({
       type: 'allegeance',
-      texte: `${FACTIONS[all.faction].nom} vous élève au rang de ${RANGS[apres].nom}. ${RANGS[apres].desc}`,
+      texte: `${drapeauDe(state.world, all.faction).nom} vous élève au rang de ${RANGS[apres].nom}. ${RANGS[apres].desc}`,
       important: true,
     });
   } else if (motif) {
@@ -756,7 +756,7 @@ function fabriquerOrdre(state, rng, g) {
       cibleFaction: cible,
       victoires,
       progres: 0,
-      titre: `${victoires} victoire${victoires > 1 ? 's' : ''} contre ${FACTIONS[cible].nom}`,
+      titre: `${victoires} victoire${victoires > 1 ? 's' : ''} contre ${drapeauDe(state.world, cible).nom}`,
       recompense: Math.round(victoires * rng.irange(300, 560) * (1 + rang.index * 0.25)),
       service: Math.round(victoires * 45 * (1 + rang.index * 0.2)),
       // Une frappe ne demande pas d'aller quelque part de précis, mais de
@@ -938,7 +938,7 @@ function tickEngagement(state, g, log, ctx) {
   if (!f || !f.colonies.length) {
     log({
       type: 'allegeance',
-      texte: `${FACTIONS[all.faction].nom} n’existe plus. L’engagement de ${g.nom} tombe avec elle.`,
+      texte: `${drapeauDe(state.world, all.faction).nom} n’existe plus. L’engagement de ${g.nom} tombe avec elle.`,
       important: true,
       groupe: g.id,
     });
@@ -955,7 +955,7 @@ function tickEngagement(state, g, log, ctx) {
     noterArgent(state, 'solde', rang.def.solde);
     log({
       type: 'solde',
-      texte: `Solde ${FACTIONS[all.faction].genitif} : ${rang.def.solde} cr.`,
+      texte: `Solde ${drapeauDe(state.world, all.faction).genitif} : ${rang.def.solde} cr.`,
       discret: true,
     });
   }
@@ -1036,7 +1036,7 @@ function tickEngagement(state, g, log, ctx) {
         noterFait(all, o, 'annule', state.temps);
         log({
           type: 'allegeance',
-          texte: `Sans nouvelles de vous, ${FACTIONS[all.faction].nom} a confié `
+          texte: `Sans nouvelles de vous, ${drapeauDe(state.world, all.faction).nom} a confié `
             + `« ${o.titre} » à quelqu’un d’autre. Rien à votre dossier.`,
           important: true,
         });
@@ -1072,7 +1072,7 @@ function tickEngagement(state, g, log, ctx) {
       all.ordre = o;
       log({
         type: 'allegeance',
-        texte: `Ordre de mission ${FACTIONS[all.faction].genitif} : ${o.titre} (${o.recompense} cr).`,
+        texte: `Ordre de mission ${drapeauDe(state.world, all.faction).genitif} : ${o.titre} (${o.recompense} cr).`,
         important: true,
       });
     } else {

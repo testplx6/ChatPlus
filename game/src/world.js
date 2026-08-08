@@ -4,8 +4,7 @@
 
 import {
   BIOMES, BIOME_KEYS, FACTIONS, DIPLO_FACTIONS, VILLE_A, VILLE_B, COMMODITY_KEYS,
-  POI, POI_KEYS, MENAGES,
-} from './data.js';
+  POI, POI_KEYS, MENAGES, drapeauDe,} from './data.js';
 import { grainDe } from './rng.js';
 
 // Une carte de 10×8 se traversait de bout en bout en deux jours de jeu : au
@@ -359,6 +358,10 @@ export function genererMonde(rng, graine = 0) {
     regions,
     colonies,
     factions,
+    // Les identités nées en cours de partie, et elles seules : les sept
+    // d'origine vivent dans `data.js` et n'ont pas à peser sur chaque
+    // sauvegarde. Voir `drapeauDe()`.
+    drapeaux: {},
     armees: [],
     guerres: [],
     prochainArmeeId: 1,

@@ -10,7 +10,7 @@
 // C'est le pendant de l'exercice : l'exercice ne forme qu'au corps et aux
 // armes, l'école forme aux métiers.
 
-import { DIPLOMES, DIPLOME_KEYS, FACTIONS, SKILLS } from './data.js';
+import { DIPLOMES, DIPLOME_KEYS, FACTIONS, SKILLS, drapeauDe} from './data.js';
 import { accorderDiplome, estVivant, comp, gagnerXp, XP_PRATIQUE } from './characters.js';
 import { groupes } from './groupes.js';
 import { estAuService } from './allegeance.js';
@@ -19,7 +19,7 @@ import { loiIci } from './lois.js';
 /** Ce qu'une ville enseigne, d'après qui la tient et ce qu'elle pèse. */
 export function ecolesDe(world, col) {
   if (!col || col.ruine || !col.faction) return [];
-  const style = FACTIONS[col.faction] && FACTIONS[col.faction].style;
+  const style = drapeauDe(world, col.faction) && drapeauDe(world, col.faction).style;
   if (!style) return [];
   return DIPLOME_KEYS.filter((k) => {
     const d = DIPLOMES[k];

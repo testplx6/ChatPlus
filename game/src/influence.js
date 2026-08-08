@@ -21,7 +21,7 @@
 // perdue, cela se paie en crédit — et le crédit épuisé, on est rétrogradé. Le
 // pouvoir n'est pas gratuit ; il est simplement réel.
 
-import { FACTIONS, DIPLO_FACTIONS } from './data.js';
+import { FACTIONS, DIPLO_FACTIONS, diploDe, drapeauDe} from './data.js';
 import { rangDe, groupesEngages, RANGS } from './allegeance.js';
 import { dirigeant, crediterDirigeant, butDeGuerre } from './dirigeants.js';
 import {
@@ -151,7 +151,7 @@ export function peutExercer(state, faction, key) {
   const def = PREROGATIVES[key];
   if (!def) return { ok: false, motif: 'Prérogative inconnue.' };
   const charge = chargeAupres(state, faction);
-  if (!charge) return { ok: false, motif: `Vous ne servez pas ${FACTIONS[faction].nom}.` };
+  if (!charge) return { ok: false, motif: `Vous ne servez pas ${drapeauDe(state.world, faction).nom}.` };
   if (charge.index < def.rang) {
     return { ok: false, motif: `Charge de ${RANGS[def.rang].nom} requise.` };
   }
@@ -192,7 +192,7 @@ export function porterFaute(state, faction, quoi, log, n = 1) {
   if (log) {
     log({
       type: 'influence',
-      texte: `On vous impute ${quoi}. Le conseil ${FACTIONS[faction].genitif} en prend note.`,
+      texte: `On vous impute ${quoi}. Le conseil ${drapeauDe(state.world, faction).genitif} en prend note.`,
       important: true,
       factions: [faction],
     });
@@ -234,7 +234,7 @@ export function tickCharges(state, log) {
     all.manques = 0;
     log({
       type: 'allegeance',
-      texte: `${FACTIONS[all.faction].nom} vous retire votre charge. `
+      texte: `${drapeauDe(state.world, all.faction).nom} vous retire votre charge. `
         + `${g.nom} redescend au rang de ${RANGS[rang.index - 1].nom}.`,
       important: true,
       groupe: g.id,
@@ -284,7 +284,7 @@ export function envoyerColonne(state, faction, armeeId, cibleId, log) {
   if (log) {
     log({
       type: 'influence',
-      texte: `Sur votre ordre, une colonne ${FACTIONS[faction].genitif} marche sur ${col.nom}.`,
+      texte: `Sur votre ordre, une colonne ${drapeauDe(state.world, faction).genitif} marche sur ${col.nom}.`,
       important: true,
       factions: [faction],
     });
@@ -338,7 +338,7 @@ export function leverColonne(state, faction, depuisId, cibleId, log) {
   if (log) {
     log({
       type: 'influence',
-      texte: `Sur votre ordre, ${FACTIONS[faction].nom} lève une colonne à ${depuis.nom} `
+      texte: `Sur votre ordre, ${drapeauDe(state.world, faction).nom} lève une colonne à ${depuis.nom} `
         + `pour marcher sur ${cible.nom} (${cout} cr).`,
       important: true,
       factions: [faction],
@@ -397,7 +397,7 @@ export function fonderPoste(state, faction, regionIndex, rng, log) {
   if (log) {
     log({
       type: 'fondation',
-      texte: `Sur votre ordre, ${FACTIONS[faction].nom} plante ${col.nom} `
+      texte: `Sur votre ordre, ${drapeauDe(state.world, faction).nom} plante ${col.nom} `
         + `(${COUT_POSTE} cr). On verra bien si ça tient.`,
       important: true,
       regionId: r.i,
@@ -413,7 +413,7 @@ export function fonderPoste(state, faction, regionIndex, rng, log) {
 
 /** Contre qui l'on peut encore déclarer la guerre. */
 export function cibleGuerre(state, faction) {
-  return DIPLO_FACTIONS.filter((k) => k !== faction
+  return diploDe(state.world).filter((k) => k !== faction
     && !enGuerre(state.world, faction, k)
     && coloniesDe(state.world, k).length > 0);
 }
@@ -477,7 +477,7 @@ export function ouvrirBourseA(state, faction, log) {
   if (log) {
     log({
       type: 'bourse',
-      texte: `Sur votre ordre, ${FACTIONS[faction].nom} ouvre sa bourse : ses villes `
+      texte: `Sur votre ordre, ${drapeauDe(state.world, faction).nom} ouvre sa bourse : ses villes `
         + 'traiteront désormais contre un cours commun.',
       important: true,
       factions: [faction],
@@ -490,7 +490,7 @@ export function ouvrirBourseA(state, faction, log) {
 /** Les factions avec qui l'on peut brancher nos cours. */
 export function accordsPossibles(state, faction) {
   if (!aUneBourse(state.world, faction)) return [];
-  return DIPLO_FACTIONS.filter((k) => k !== faction && partenairePossible(state.world, faction, k));
+  return diploDe(state.world).filter((k) => k !== faction && partenairePossible(state.world, faction, k));
 }
 
 export function signerAccordAvec(state, faction, contre, log) {
@@ -505,7 +505,7 @@ export function signerAccordAvec(state, faction, contre, log) {
   if (log) {
     log({
       type: 'bourse',
-      texte: `Sur votre ordre, ${FACTIONS[faction].nom} et ${FACTIONS[contre].nom} branchent `
+      texte: `Sur votre ordre, ${drapeauDe(state.world, faction).nom} et ${drapeauDe(state.world, contre).nom} branchent `
         + 'leurs bourses l’une sur l’autre.',
       important: true,
       factions: [faction, contre],
@@ -532,8 +532,8 @@ export function rompreAccordAvec(state, faction, contre, log) {
   if (log) {
     log({
       type: 'bourse',
-      texte: `Sur votre ordre, ${FACTIONS[faction].nom} rompt son accord commercial avec `
-        + `${FACTIONS[contre].nom}.`,
+      texte: `Sur votre ordre, ${drapeauDe(state.world, faction).nom} rompt son accord commercial avec `
+        + `${drapeauDe(state.world, contre).nom}.`,
       important: true,
       factions: [faction, contre],
     });
@@ -580,7 +580,7 @@ export function signerPaixAvec(state, faction, contre, log) {
   signerPaix(state.world, faction, contre, state.temps, log, etat === 'atteint' ? 'atteint' : null);
   if (etat === 'atteint') {
     porterMerite(state, faction,
-      `La paix ${FACTIONS[contre].genitif} scelle ce que vous étiez allé chercher.`, 90, log);
+      `La paix ${drapeauDe(state.world, contre).genitif} scelle ce que vous étiez allé chercher.`, 90, log);
   } else if (etat === 'perdu') {
     porterFaute(state, faction, 'une paix signée les mains vides', log);
   }
@@ -736,7 +736,7 @@ export function fixerLoi(state, faction, quoi, valeur, log) {
   if (log) {
     log({
       type: 'influence',
-      texte: `${FACTIONS[faction].nom} promulgue votre loi. ${texte}`,
+      texte: `${drapeauDe(state.world, faction).nom} promulgue votre loi. ${texte}`,
       important: true,
       factions: [faction],
     });
@@ -818,7 +818,7 @@ function juger(state, faction, acte, log) {
     const maintenant = coloniesDe(w, faction).length;
     if (maintenant > acte.villes) {
       porterMerite(state, faction,
-        `Votre guerre ${FACTIONS[acte.contre].genitif} a rapporté une ville.`, 110, log);
+        `Votre guerre ${drapeauDe(state.world, acte.contre).genitif} a rapporté une ville.`, 110, log);
     } else if (maintenant < acte.villes) {
       porterFaute(state, faction, 'une guerre déclarée par vous et payée par les autres', log, 2);
     }

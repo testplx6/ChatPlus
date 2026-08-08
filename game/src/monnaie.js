@@ -12,7 +12,7 @@
 // `auditer` est l'outil qui le vérifie. Il ne tourne pas en jeu : il tourne
 // dans les tests, où il a le droit d'être lent et le devoir d'être intraitable.
 
-import { DIPLO_FACTIONS } from './data.js';
+import { DIPLO_FACTIONS, diploDe } from './data.js';
 import { loisDe } from './lois.js';
 
 /**
@@ -102,7 +102,7 @@ export function coursBrut(world, key, gageDuPays) {
 export function tauxMoyen(world) {
   let somme = 0;
   let n = 0;
-  for (const k of DIPLO_FACTIONS) {
+  for (const k of diploDe(world)) {
     if (!world.factions[k]) continue;
     somme += loisDe(world, k).directeur;
     n += 1;
@@ -314,7 +314,7 @@ export function transfererVille(world, col, de, vers) {
  */
 export function auditer(world) {
   const par = {};
-  for (const k of DIPLO_FACTIONS) {
+  for (const k of diploDe(world)) {
     const f = world.factions[k];
     if (!f) continue;
     par[k] = { existe: f.tresor || 0, masse: f.masse || 0 };

@@ -12,7 +12,7 @@
 // aime bien vous laisse voir les stocks. C'est là que la granularité se paie
 // vraiment, parce qu'on la voit.
 
-import { NOMS_PERSO, SURNOMS, METIERS_VILLE, METIER_VILLE_KEYS, FACTIONS } from './data.js';
+import { NOMS_PERSO, SURNOMS, METIERS_VILLE, METIER_VILLE_KEYS, FACTIONS , drapeauDe} from './data.js';
 import { idDepuisRng } from './characters.js';
 import { Rng, grainDe } from './rng.js';
 import { HEURES_PAR_AN } from './climat.js';
@@ -200,8 +200,8 @@ function trait(p) {
  */
 export const POIDS_CUPIDITE = 0.08;
 
-export function margeFaction(col) {
-  const f = col && col.faction && FACTIONS[col.faction];
+export function margeFaction(col, world = null) {
+  const f = col && col.faction && drapeauDe(world, col.faction);
   if (!f || f.cupidite === undefined) return 0;
   // Centré sur la moyenne des six : une faction moyennement âpre ne change
   // rien, les autres s'en écartent dans les deux sens.

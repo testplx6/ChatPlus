@@ -16,7 +16,7 @@
 // mieux, c'est ce qu'on est quand on a traversé le monde sans y laisser de
 // trace, et c'est très bien aussi.
 
-import { FACTIONS } from './data.js';
+import { FACTIONS, drapeauDe} from './data.js';
 import { estVivant } from './characters.js';
 import { rangDe, RANGS } from './allegeance.js';
 
@@ -211,9 +211,9 @@ export function lignesDe(state) {
     + `${f.captifsRelaches} relâchés.`);
   // Une faction peut avoir disparu de la table entre-temps — un monde qui vit
   // n'a pas à garantir qu'une clé lue ailleurs existe encore.
-  dire(f.grade >= 1 && f.faction && FACTIONS[f.faction] && RANGS[f.grade],
+  dire(f.grade >= 1 && f.faction && drapeauDe(state.world, f.faction) && RANGS[f.grade],
     `${RANGS[f.grade] ? RANGS[f.grade].nom : ''} `
-    + `${FACTIONS[f.faction] ? FACTIONS[f.faction].genitif : ''}.`);
+    + `${drapeauDe(state.world, f.faction) ? drapeauDe(state.world, f.faction).genitif : ''}.`);
   dire(f.prerogatives > 0,
     `${f.prerogatives} ordres donnés au nom d’une faction`
     + `${f.lois > 0 ? `, dont ${f.lois} lois promulguées` : ''}.`);
