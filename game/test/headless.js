@@ -43,7 +43,7 @@ import {
   OUVRENT_BOURSE, SIGNENT_ACCORD, veutAccord,
 } from '../src/bourse.js';
 import {
-  distanceMorale, enGuerre, COLONNE, declarerGuerre, ETAT,
+  distanceMorale, enGuerre, COLONNE, declarerGuerre, ETAT, ramasserMagot,
 } from '../src/factions.js';
 import {
   recenser, elasticite, planchers, significatif, asymetrique, ecarts,
@@ -8295,6 +8295,100 @@ section('27. Un drapeau qui n’était pas là au départ');
     'et il entre dans le jeu diplomatique');
   ok(f6 && f6.pire < 1e-6, 'et l’invariant comptable tient à travers les fondations',
     f6 ? `écart maximal ${f6.pire.toExponential(2)}` : '');
+
+  // --- La mort, et le trésor qui reste sur place --------------------------
+  //
+  // Règles du propriétaire : « une faction doit au moins avoir des membres qui
+  // la composent », « un dirigeant seul peut essayer de se refaire, rien ne
+  // l'interdit », et « quand la faction s'éteint le trésor reste à l'endroit
+  // physique où il se trouve, il est donc pillable ou trouvable ».
+  //
+  // Donc : ni ville, ni colonne, ni dirigeant → elle s'éteint. Avec un chef,
+  // elle tient. Et son argent ne s'évapore pas, il devient un magot sur la
+  // carte — ce qui oblige `auditer` à le compter, sinon le premier pays mort
+  // ferait dériver les comptes et on chercherait le bug ailleurs.
+  const mourir = (avecChef) => {
+    const st = nouvellePartie(6161, { maintenant: 0 });
+    for (let i = 0; i < 200; i++) tick(st);
+    st.world.drapeaux.finie = {
+      nom: 'La Finie', court: 'FIN', pluriel: false,
+      datif: 'à la Finie', genitif: 'de la Finie', couleur: couleurNeuve(st.world),
+      devise: 'C’était bien.', agression: 0.4, cupidite: 0.5,
+      style: 'commune', biomes: ['friche'],
+    };
+    st.world.factions.finie = {
+      key: 'finie', nom: 'La Finie', tresor: 0, agression: 0.4,
+      relations: {}, colonies: [], humeur: 0,
+      prochainConseil: 1, dernierConseil: 0, lois: null,
+      masse: 0, cours: 1, gageRef: 0, emissions: 0, bourse: false,
+      dirigeant: avecChef ? { nom: 'Le Dernier', titre: 'Chef', legitimite: 50, age: 40 } : null,
+      // Une capitale, fût-elle passée à d'autres : un pays qui meurt a bien eu
+      // un siège quelque part, et c'est là que son argent reste. Sans elle, la
+      // fixture décrit un pays qui n'a jamais existé nulle part, et le magot
+      // n'a nulle part où se poser — ce que le premier essai a montré.
+      capitale: st.world.colonies.find((c) => !c.ruine).id,
+    };
+    // Un trésor qui vient de quelque part : on le prend à un vivant, masse
+    // comprise, sinon on fabrique de la monnaie et l'audit le dira.
+    const riche = diploDe(st.world).find((k) => st.world.factions[k].tresor > 3000);
+    transferer(st.world, riche, 'finie', 2000);
+    st.world.factions[riche].tresor -= 2000;
+    st.world.factions.finie.tresor += 2000;
+    let pire = 0;
+    let magotVu = null;
+    for (let i = 0; i < 400; i++) {
+      tick(st);
+      // Le magot se relève au vol : une colonne qui passe le ramasse, et c'est
+      // voulu. Le chercher à la fin, c'est constater qu'il a été trouvé et
+      // conclure qu'il n'a jamais existé — le premier essai de ce test l'a fait.
+      const r = st.world.regions.find((x) => x.magot && x.magot.montant > 0);
+      if (r && !magotVu) magotVu = { i: r.i, faction: r.magot.faction, montant: r.magot.montant };
+      if (i % 50) continue;
+      for (const e of auditer(st.world)) pire = Math.max(pire, Math.abs(e.ecart));
+    }
+    return {
+      st, pire, magotVu,
+      vivante: !!st.world.factions.finie && !st.world.factions.finie.morte,
+    };
+  };
+
+  const orpheline = mourir(false);
+  ok(orpheline && !orpheline.vivante,
+    'ni ville, ni colonne, ni dirigeant : la faction s’éteint');
+  ok(orpheline && orpheline.magotVu && orpheline.magotVu.faction === 'finie',
+    'et son trésor reste sur la carte, à prendre',
+    orpheline && orpheline.magotVu
+      ? `${Math.round(orpheline.magotVu.montant)} cr en région ${orpheline.magotVu.i}`
+      : 'aucun magot vu');
+  ok(orpheline && orpheline.pire < 1e-6,
+    'et l’invariant comptable tient — le magot est compté, pas oublié',
+    orpheline ? `écart maximal ${orpheline.pire.toExponential(2)}` : '');
+
+  const avecChef = mourir(true);
+  ok(avecChef && avecChef.vivante,
+    'un dirigeant seul suffit à la tenir en vie — rien ne lui interdit de se refaire');
+
+  // Et il doit être **prenable**, sinon « pillable ou trouvable » est un
+  // ornement. Une colonne qui passe par là le ramasse : l'argent change de
+  // drapeau, masse comprise, et l'invariant ne bronche pas.
+  const st7 = orpheline.st;
+  const region = st7.world.regions[orpheline.magotVu.i];
+  const preneur = diploDe(st7.world).find((k) => k !== 'finie');
+  // En jeu le magot part vite — une colonne finit toujours par passer. On en
+  // repose donc un, pris à la faction morte pour que rien ne soit inventé.
+  transferer(st7.world, preneur, 'finie', 500);
+  st7.world.factions[preneur].tresor -= 500;
+  region.magot = { faction: 'finie', montant: 500 };
+  const avantT = st7.world.factions[preneur].tresor;
+  const butin = region.magot.montant;
+  ramasserMagot(st7.world, region, preneur, () => {});
+  ok(!region.magot, 'une colonne qui passe ramasse le magot');
+  ok(Math.abs(st7.world.factions[preneur].tresor - (avantT + butin)) < 1e-9,
+    'et l’argent entre en entier dans son trésor',
+    `${Math.round(avantT)} → ${Math.round(st7.world.factions[preneur].tresor)}`);
+  const apresPrise = Math.max(...auditer(st7.world).map((e) => Math.abs(e.ecart)));
+  ok(apresPrise < 1e-6, 'et les comptes tiennent après la prise',
+    `écart maximal ${apresPrise.toExponential(2)}`);
 }
 
 // ===========================================================================

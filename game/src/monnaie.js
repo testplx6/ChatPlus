@@ -12,7 +12,7 @@
 // `auditer` est l'outil qui le vérifie. Il ne tourne pas en jeu : il tourne
 // dans les tests, où il a le droit d'être lent et le devoir d'être intraitable.
 
-import { DIPLO_FACTIONS, diploDe } from './data.js';
+import { DIPLO_FACTIONS, diploDe, clesDe } from './data.js';
 import { loisDe } from './lois.js';
 
 /**
@@ -314,7 +314,11 @@ export function transfererVille(world, col, de, vers) {
  */
 export function auditer(world) {
   const par = {};
-  for (const k of diploDe(world)) {
+  // Les factions mortes sont incluses ici, à la différence de `diploDe` : elles
+  // ne délibèrent plus, mais leur masse émise existe toujours et leur magot
+  // aussi. Un registre qu'on cesse de vérifier parce que son propriétaire est
+  // mort, c'est une fuite qu'on s'interdit de voir.
+  for (const k of clesDe(world).filter((x) => x !== 'essaim')) {
     const f = world.factions[k];
     if (!f) continue;
     par[k] = { existe: f.tresor || 0, masse: f.masse || 0 };
@@ -324,6 +328,15 @@ export function auditer(world) {
     const e = par[col.faction];
     if (!e) continue;
     e.existe += (col.caisse || 0) + (col.menages || 0);
+  }
+  // Les magots des pays morts. Leur argent n'a pas quitté le monde — il est
+  // posé sur une région, et quelqu'un finira par le trouver. S'il n'était pas
+  // compté ici, le premier pays éteint ferait dériver les comptes de tout son
+  // trésor, et on chercherait la fuite dans le circuit des villes.
+  for (const r of world.regions) {
+    if (!r.magot || !(r.magot.montant > 0)) continue;
+    const e = par[r.magot.faction];
+    if (e) e.existe += r.magot.montant;
   }
   const out = [];
   for (const k of Object.keys(par)) {

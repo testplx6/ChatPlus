@@ -91,6 +91,19 @@ export const COLONNE = {
   attrition: 0.012,
   /** En dessous de quoi il ne reste plus une colonne, mais des hommes sur les routes. */
   debandade: 12,
+  /**
+   * Combien de fois la grâce une colonne endure avant de renoncer à son
+   * employeur et de planter son propre drapeau.
+   *
+   * La fondation se déclenchait d'abord au seuil de débandade, et c'était le
+   * mauvais moment : une poignée de dix hommes fondait un pays qui mourait au
+   * conseil suivant, faute de quiconque pour le composer. Une colonne fonde
+   * quand elle est encore une force et qu'elle a cessé d'espérer, pas quand
+   * elle n'est plus rien.
+   */
+  patience: 3,
+  /** Combien de fois le seuil de débandade il faut d'hommes pour faire un pays. */
+  assez: 4,
 };
 
 export function puissance(world, key) {
@@ -460,6 +473,10 @@ function tickArmee(world, armee, t, log, ctx) {
       // Une colonne en marche entretient la route qu'elle emprunte. Le monde
       // n'attend pas le joueur pour se donner des chemins.
       damer(world, prochaine, 2.5);
+      // Et elle ramasse ce qui traîne. Le trésor d'un pays mort est resté sur
+      // place ; il fallait bien que quelqu'un puisse le trouver, sinon
+      // « pillable ou trouvable » n'était qu'une formule.
+      ramasserMagot(world, world.regions[prochaine], armee.faction, log);
       // Rencontre avec une colonne ennemie sur la même case
       const autre = world.armees.find(
         (o) => o !== armee && o.regionId === armee.regionId && o.faction !== armee.faction
@@ -584,13 +601,28 @@ function conseil(world, key, t, log, ctx) {
     return;
   }
 
+  // Un pays n'existe plus quand plus personne ne le compose : ni ville, ni
+  // colonne, ni dirigeant. La règle est du propriétaire — « une faction doit au
+  // moins avoir des membres qui la composent » — et le chef seul suffit à la
+  // tenir : « un dirigeant seul peut essayer de se refaire, rien ne l'interdit ».
+  // On ne lui écrit pas de mécanisme de reconquête ; on s'interdit de fermer la
+  // porte.
+  //
+  // Ce que ça change pour les sept d'origine autant que pour les neuves :
+  // jusqu'ici une faction sans ville gardait sa ligne au tableau
+  // indéfiniment. Le banc en comptait quatre sur trente-six. C'étaient des
+  // morts que personne n'avait enterrés.
+  if (!f.morte && !mesColonies.length && !f.dirigeant
+      && !world.armees.some((a) => a.faction === key)) {
+    eteindre(world, key, t, log);
+    return;
+  }
+
   if (!mesColonies.length) {
-    // Un pays sans ville ne délibère plus — mais ses colonnes, elles, existent
-    // encore et ne sont plus payées par personne. Sans cette ligne elles
-    // restaient au garde-à-vous pour l'éternité : le conseil rendait la main
-    // avant de les juger, et une troupe abandonnée par un pays mort ne se
-    // débandait jamais. Trouvé en cherchant pourquoi la débandade ne survenait
-    // pas là où elle est pourtant la seule issue possible.
+    // Un pays sans ville ne délibère plus — mais ses colonnes existent encore
+    // et personne ne les paie. Sans ces lignes elles restaient au garde-à-vous
+    // pour l'éternité : le conseil rendait la main avant de les juger, et une
+    // troupe abandonnée par un pays mort ne se débandait jamais.
     const heuresMortes = Math.max(1, t - (f.dernierConseil || 0));
     f.dernierConseil = t;
     for (const a of world.armees) {
@@ -1247,6 +1279,98 @@ function legiferer(world, key, t, log, ctx) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Quelqu'un trouve le trésor d'un pays mort.
+ *
+ * L'argent change de drapeau, **masse comprise** : `transferer` déplace la
+ * monnaie émise en même temps que la monnaie détenue, et c'est la seule façon
+ * que l'invariant comptable survive à l'opération. Le débiter d'un côté sans
+ * l'inscrire de l'autre serait exactement la fuite que cet invariant existe
+ * pour attraper.
+ *
+ * Rien ne se convertit : on trouve des pièces frappées par un pays qui n'existe
+ * plus, et elles valent ce que le change en dit. Le moteur cote déjà chaque
+ * monnaie ; savoir si celle d'un mort vaut encore quelque chose est une
+ * question ouverte, consignée au §4.3 bis du chantier.
+ */
+export function ramasserMagot(world, region, preneur, log) {
+  if (!region || !region.magot || !(region.magot.montant > 0)) return 0;
+  const mort = region.magot.faction;
+  if (mort === preneur || !world.factions[preneur]) return 0;
+  const montant = region.magot.montant;
+  transferer(world, mort, preneur, montant);
+  world.factions[preneur].tresor = (world.factions[preneur].tresor || 0) + montant;
+  delete region.magot;
+  if (log) {
+    log({
+      type: 'trouvaille',
+      texte: `Le trésor ${drapeauDe(world, mort).genitif} est retrouvé : `
+        + `${Math.round(montant)} crédits qui n’attendaient plus personne. `
+        + `${drapeauDe(world, preneur).nom} ${drapeauDe(world, preneur).pluriel ? 'les emportent' : 'les emporte'}.`,
+      regionId: region.i,
+      factions: [preneur],
+      important: true,
+    });
+  }
+  return montant;
+}
+
+/**
+ * Un pays s'éteint, et son argent reste où il est.
+ *
+ * Règle du propriétaire : « quand la faction s'éteint le trésor reste à
+ * l'endroit physique où il se trouve, il est donc pillable ou trouvable ». Il
+ * ne tombe donc pas dans la poche du vainqueur et ne s'évapore pas — il devient
+ * un **magot**, posé sur la région où siégeait le pays.
+ *
+ * **La conséquence sur l'invariant comptable demande du soin, et c'est le cœur
+ * de cette fonction.** `auditer` compare, pour chaque drapeau, ce qui existe —
+ * trésor plus caisses et ménages de ses villes — à sa masse émise. Un trésor
+ * qui quitte la faction sans quitter le monde casse l'égalité des deux côtés à
+ * la fois. Le magot est donc **compté dans `existe`** de la faction morte, et
+ * l'entrée de celle-ci reste dans `world.factions` avec sa masse : c'est ce qui
+ * ancre les comptes. Elle est marquée `morte` et sort du jeu diplomatique, mais
+ * elle ne disparaît pas du registre — un pays mort dont l'argent traîne encore
+ * n'est pas rien.
+ *
+ * Trois façons de traiter cet argent avaient été examinées : le donner au
+ * vainqueur, le détruire, ou le laisser sur place. Les deux premières tiennent
+ * l'invariant mais **contredisent la règle**. C'est la troisième qui est ici.
+ */
+function eteindre(world, key, t, log) {
+  const f = world.factions[key];
+  f.morte = t;
+  f.prochainConseil = 1e9;
+  const montant = f.tresor || 0;
+  // Où était son argent : sa capitale si elle en avait une, sinon la dernière
+  // région qu'elle contrôlait. Une région, pas une abstraction — c'est ce que
+  // « à l'endroit physique où il se trouve » veut dire.
+  let ou = null;
+  if (f.capitale) {
+    const cap = colonieParId(world, f.capitale);
+    if (cap) ou = world.regions[cap.regionId];
+  }
+  if (!ou) ou = world.regions.find((r) => r.controle === key);
+  if (montant > 0 && ou) {
+    f.tresor = 0;
+    ou.magot = { faction: key, montant: (ou.magot && ou.magot.faction === key
+      ? ou.magot.montant : 0) + montant };
+  }
+  if (log) {
+    log({
+      type: 'faction',
+      texte: `${drapeauDe(world, key).nom} n’existe plus. `
+        + (montant > 0 && ou
+          ? `Ce qu’${drapeauDe(world, key).pluriel ? 'ils avaient' : 'elle avait'} en caisse `
+            + `est resté sur place, et quelqu’un finira par le trouver.`
+          : `${drapeauDe(world, key).pluriel ? 'Ils ne laissent' : 'Elle ne laisse'} rien.`),
+      regionId: ou ? ou.i : undefined,
+      factions: [key],
+      important: true,
+    });
+  }
+}
+
+/**
  * La cinquième issue : la colonne prend son indépendance.
  *
  * C'est l'exigence du propriétaire — « de nouvelles [factions] doivent pouvoir
@@ -1372,6 +1496,13 @@ function jugerColonnes(world, key, heures, t, log) {
       continue;
     }
 
+    // Issue 5 : planter son propre drapeau. Elle vient avant l'attrition, et
+    // c'est tout l'écart entre une sécession et une agonie : on fonde quand on
+    // est encore une troupe, pas quand il n'en reste rien.
+    if (a.impayees > loyaute * COLONNE.patience
+        && a.force >= COLONNE.debandade * COLONNE.assez
+        && fonderColonne(world, a, key, t, log)) continue;
+
     // Issue 2 : s'affaiblir. La faim mord, et les désertions se comptent.
     const avant = a.force;
     a.force = Math.max(0, a.force * (1 - COLONNE.attrition * heures));
@@ -1385,21 +1516,20 @@ function jugerColonnes(world, key, heures, t, log) {
       });
     }
 
-    // Issue 4 : fonder son pays, ou se disloquer.
+    // Issue 4 : se disloquer. C'est la fin de ceux qui n'ont pas fondé assez
+    // tôt et qui ont fondu jusqu'au bout.
     if (a.force < COLONNE.debandade) {
-      if (!fonderColonne(world, a, key, t, log)) {
-        if (log) {
-          log({
-            type: 'colonne',
-            texte: `La colonne de ${nommerActeur(world, 'colonne', a.id)} s’est débandée, `
-              + `faute de solde. On en reverra certains sur les routes.`,
-            regionId: a.regionId,
-            factions: [key],
-            important: true,
-          });
-        }
-        dissoudre(world, a);
+      if (log) {
+        log({
+          type: 'colonne',
+          texte: `La colonne de ${nommerActeur(world, 'colonne', a.id)} s’est débandée, `
+            + `faute de solde. On en reverra certains sur les routes.`,
+          regionId: a.regionId,
+          factions: [key],
+          important: true,
+        });
       }
+      dissoudre(world, a);
     }
   }
 }

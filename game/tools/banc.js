@@ -124,6 +124,11 @@ function jouer({ sim, data, eco, eco2 }, graine, horizon) {
   // sépare pas — et ce sont elles, pas le type, que le lot 6 doit calibrer.
   let retournements = 0;
   let debandades = 0;
+  // Les drapeaux qui naissent et ceux qui s'éteignent. Le monde n'était pas
+  // capable de recomposer sa carte politique ; ces deux nombres disent s'il le
+  // fait vraiment ou seulement en théorie.
+  let fondations = 0;
+  let extinctions = 0;
   for (let t = 0; t < horizon; t++) {
     sim.tick(s);
     const j = s.journal || [];
@@ -133,6 +138,9 @@ function jouer({ sim, data, eco, eco2 }, graine, horizon) {
       if (j[i].type === 'colonne') {
         if (j[i].texte.includes('retourné sa veste')) retournements += 1;
         else if (j[i].texte.includes('faute de solde')) debandades += 1;
+        else if (j[i].texte.includes('plante son propre drapeau')) fondations += 1;
+      } else if (j[i].type === 'faction' && j[i].texte.includes('n’existe plus')) {
+        extinctions += 1;
       }
     }
     const cars = s.world.caravanes || [];
@@ -196,6 +204,9 @@ function jouer({ sim, data, eco, eco2 }, graine, horizon) {
     armees: (s.world.armees || []).length,
     retournements,
     debandades,
+    fondations,
+    extinctions,
+    drapeaux: Object.keys(s.world.drapeaux || {}).length,
     duree: Math.round(duree),
     usParTick: duree / horizon * 1000,
   };
@@ -289,6 +300,8 @@ function agreger(cfg) {
     auPlancher: som(cfg, 'auPlancher'),
     retournements: som(cfg, 'retournements'),
     debandades: som(cfg, 'debandades'),
+    fondations: som(cfg, 'fondations'),
+    extinctions: som(cfg, 'extinctions'),
     evts: cfg.parties.reduce((a, p) => {
       for (const [k, v] of Object.entries(p.evts || {})) a[k] = (a[k] || 0) + v;
       return a;
@@ -310,6 +323,7 @@ const COLONNES = [
   ['cours', 'cours', 11], ['ecart', 'écart', 6], ['creances', 'créances', 9],
   ['paliers', 'taux %', 12],
   ['retournements', 'vestes', 7], ['debandades', 'débandes', 9],
+  ['fondations', 'nés', 5], ['extinctions', 'morts', 6],
   ['usParTick', 'µs/tick', 7],
 ];
 

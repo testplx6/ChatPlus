@@ -361,13 +361,35 @@ identiques octet pour octet. Les règles de jeu n'arrivent qu'à N5.
   ville, donc ses colonnes n'étaient **jamais jugées**. Une troupe abandonnée
   par un pays mort restait au garde-à-vous pour l'éternité. Corrigé — un pays
   sans ville ne délibère pas, mais ses colonnes comptent leurs impayés.
-- [ ] **N7. La mort** (§4.3, §4.3 bis) : ni ville, ni colonne, ni dirigeant, la
-  faction s'éteint — un chef seul suffit à la tenir en vie. Son trésor reste où
-  il est, sous forme d'un magot posé sur la carte, pillable et trouvable. Le
-  magot est un **troisième registre** que `auditer` doit lire, sinon le premier
-  pays mort fait dériver les comptes. Test rouge : une faction éteinte, l'écart
-  comptable reste à zéro, et le magot se fouille. Vaut aussi pour les sept
-  d'origine — quatre sur trente-six sont aujourd'hui des morts jamais enterrés.
+- [x] **N7. La mort, et le trésor d'un pays mort.** Ni ville, ni colonne, ni
+  dirigeant : la faction s'éteint. Un chef seul suffit à la tenir — on ne lui
+  écrit pas de mécanisme de reconquête, on s'interdit de fermer la porte.
+
+  Son trésor **reste où il était** : un magot posé sur la région où elle
+  siégeait, que la première colonne qui passe ramasse. `auditer` le compte, et
+  la faction morte reste dans le registre avec sa masse — sans ça, le premier
+  pays éteint ferait dériver les comptes de tout son trésor et on chercherait la
+  fuite dans le circuit des villes. `diploDe` l'exclut du jeu diplomatique,
+  `auditer` continue de la regarder : un registre qu'on cesse de vérifier parce
+  que son propriétaire est mort, c'est une fuite qu'on s'interdit de voir.
+
+  **La fondation a dû être déplacée.** Elle se déclenchait au seuil de
+  débandade : une poignée de dix hommes fondait un pays qui mourait au conseil
+  suivant, faute de quiconque pour le composer — et le test « il entre dans le
+  jeu diplomatique » est passé au rouge en le montrant. Elle vient maintenant
+  **avant** l'attrition, quand la colonne est encore une force et qu'elle a
+  cessé d'espérer : deux constantes calibrables, `COLONNE.patience` et
+  `COLONNE.assez`, à balayer. Les deux branches vivent alors — sur 1 500 heures
+  de solde impayable, **12 fondations et 13 débandades**.
+
+  **Et une régression de vitesse causée par N3, trouvée ici.** Remplacer la
+  constante `DIPLO_FACTIONS` par une fonction qui filtre a mis un `Object.keys`
+  et un `filter` dans des boucles appelées des dizaines de fois par heure. Le
+  résultat est mis en cache dans une `WeakMap` — pas sur le monde, qui doit
+  rester sérialisable à l'identique.
+- [ ] **N7 bis. Calibrer `COLONNE.patience` et `COLONNE.assez`** au balayage, et
+  mesurer ce que la mort des factions fait au monde sur six graines. Les deux
+  compteurs sont au banc (`nés`, `morts`).
 - [ ] **N8. Le monde à vingt drapeaux.** Pas pour décider d'un plafond — il n'y
   en a pas — mais pour savoir ce que coûte la diplomatie en `n²`, et corriger
   le code si elle coûte trop.

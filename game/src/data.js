@@ -298,9 +298,18 @@ export function clesDe(world) {
   return world && world.factions ? Object.keys(world.factions) : FACTION_KEYS;
 }
 
-/** Les mêmes, sans l'Essaim, qui ne joue pas le jeu diplomatique. */
+/**
+ * Les mêmes, sans l'Essaim qui ne joue pas le jeu diplomatique, et **sans les
+ * pays éteints**.
+ *
+ * Un pays mort ne délibère plus, ne fait plus la guerre, n'ouvre plus de
+ * bourse. Il reste pourtant dans `world.factions` : sa masse émise existe
+ * toujours, et son magot traîne quelque part. C'est `auditer` qui continue de
+ * le regarder — voir le commentaire là-bas.
+ */
 export function diploDe(world) {
-  return clesDe(world).filter((k) => k !== 'essaim');
+  const f = (world && world.factions) || {};
+  return clesDe(world).filter((k) => k !== 'essaim' && !(f[k] && f[k].morte));
 }
 
 /**
