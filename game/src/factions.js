@@ -3,6 +3,7 @@
 
 import {
   FACTIONS, DIPLO_FACTIONS, COMMODITY_KEYS, MENAGES, COMMODITIES, drapeauDe, diploDe,
+  couleurNeuve,
 } from './data.js';
 import { Rng, grainDe } from './rng.js';
 import {
@@ -584,8 +585,19 @@ function conseil(world, key, t, log, ctx) {
   }
 
   if (!mesColonies.length) {
-    // Faction éteinte : elle ne délibère plus.
-    f.prochainConseil = 400;
+    // Un pays sans ville ne délibère plus — mais ses colonnes, elles, existent
+    // encore et ne sont plus payées par personne. Sans cette ligne elles
+    // restaient au garde-à-vous pour l'éternité : le conseil rendait la main
+    // avant de les juger, et une troupe abandonnée par un pays mort ne se
+    // débandait jamais. Trouvé en cherchant pourquoi la débandade ne survenait
+    // pas là où elle est pourtant la seule issue possible.
+    const heuresMortes = Math.max(1, t - (f.dernierConseil || 0));
+    f.dernierConseil = t;
+    for (const a of world.armees) {
+      if (a.faction === key) a.impayees = (a.impayees || 0) + heuresMortes;
+    }
+    jugerColonnes(world, key, heuresMortes, t, log);
+    f.prochainConseil = 60;
     return;
   }
 
@@ -1235,6 +1247,88 @@ function legiferer(world, key, t, log, ctx) {
 // ---------------------------------------------------------------------------
 
 /**
+ * La cinquième issue : la colonne prend son indépendance.
+ *
+ * C'est l'exigence du propriétaire — « de nouvelles [factions] doivent pouvoir
+ * être créées » — et le point du lot 6 d'`INDIVIDUS.md` qui était resté en
+ * suspens faute de savoir fabriquer un drapeau.
+ *
+ * **Elle ne fonde que si elle a quelque chose à quitter.** Une colonne dont le
+ * pays ne tient plus une seule ville se débande : sans ce garde, la même troupe
+ * fonderait un pays par conseil, indéfiniment, et le monde se remplirait de
+ * drapeaux d'un homme. On ne fait pas sécession de rien.
+ *
+ * Ce qu'elle emporte, et rien de plus (§4.2 du chantier) : ses hommes. Pas de
+ * trésor, pas de ville, pas de dot. Sa masse monétaire est donc nulle et elle
+ * le reste tant que personne ne lui verse rien — l'invariant comptable n'a rien
+ * à voir dans cette naissance, et c'est ce qui la rend sûre.
+ *
+ * Elle n'est reconnue de personne au départ, par construction : `relations`
+ * vide, aucune guerre, aucun accord. Le premier voisin qui se positionne la
+ * reconnaît, et c'est la règle §4.1.
+ *
+ * Le nom se dérive de l'origine, comme le veut §4.5 : la ville d'où la colonne
+ * a été levée, ou le nom de son capitaine si elle n'en a plus.
+ */
+function fonderColonne(world, a, key, t, log) {
+  const f = world.factions[key];
+  if (!f || !f.colonies || f.colonies.length === 0) return false;
+
+  const capitaine = nommerActeur(world, 'colonne', a.id);
+  const berceau = colonieDepart(world, key, a.regionId);
+  const nom = berceau ? `Les Affranchis de ${berceau.nom}` : `La Compagnie de ${capitaine}`;
+  const cle = `libre${a.id}`;
+  if (world.factions[cle]) return false;
+
+  world.drapeaux[cle] = {
+    nom,
+    court: nom.slice(0, 5).toUpperCase(),
+    pluriel: !!berceau,
+    datif: berceau ? `aux Affranchis de ${berceau.nom}` : `à la Compagnie de ${capitaine}`,
+    genitif: berceau ? `des Affranchis de ${berceau.nom}` : `de la Compagnie de ${capitaine}`,
+    couleur: couleurNeuve(world),
+    devise: 'On ne nous paie plus. On ne sert plus.',
+    // Un tempérament dérivé de l'événement, pas tiré du flux principal.
+    agression: Number((0.35 + (a.id % 5) * 0.08).toFixed(2)),
+    cupidite: Number((0.4 + (a.id % 4) * 0.12).toFixed(2)),
+    style: 'commune',
+    biomes: [world.regions[a.regionId].biome],
+  };
+  world.factions[cle] = {
+    key: cle,
+    nom,
+    tresor: 0,
+    agression: world.drapeaux[cle].agression,
+    relations: {},
+    colonies: [],
+    capitale: null,
+    humeur: 0,
+    prochainConseil: 0,
+    dernierConseil: t,
+    lois: null,
+    masse: 0,
+    cours: 1,
+    gageRef: 0,
+    emissions: 0,
+    bourse: false,
+  };
+  a.faction = cle;
+  a.impayees = 0;
+  if (log) {
+    log({
+      type: 'colonne',
+      texte: `Le capitaine ${capitaine} plante son propre drapeau : ${nom}. `
+        + `${drapeauDe(world, key).nom} ${drapeauDe(world, key).pluriel ? 'perdent' : 'perd'} `
+        + `une colonne et ${drapeauDe(world, key).pluriel ? 'gagnent' : 'gagne'} un voisin.`,
+      regionId: a.regionId,
+      factions: [key, cle],
+      important: true,
+    });
+  }
+  return true;
+}
+
+/**
  * Ce que décide une colonne qu'on ne paie plus. Quatre issues, dans cet ordre.
  *
  * **La loyauté n'est pas un état** : elle se dérive de la légitimité du
@@ -1291,19 +1385,21 @@ function jugerColonnes(world, key, heures, t, log) {
       });
     }
 
-    // Issue 4 : se disloquer.
+    // Issue 4 : fonder son pays, ou se disloquer.
     if (a.force < COLONNE.debandade) {
-      if (log) {
-        log({
-          type: 'colonne',
-          texte: `La colonne de ${nommerActeur(world, 'colonne', a.id)} s’est débandée, `
-            + `faute de solde. On en reverra certains sur les routes.`,
-          regionId: a.regionId,
-          factions: [key],
-          important: true,
-        });
+      if (!fonderColonne(world, a, key, t, log)) {
+        if (log) {
+          log({
+            type: 'colonne',
+            texte: `La colonne de ${nommerActeur(world, 'colonne', a.id)} s’est débandée, `
+              + `faute de solde. On en reverra certains sur les routes.`,
+            regionId: a.regionId,
+            factions: [key],
+            important: true,
+          });
+        }
+        dissoudre(world, a);
       }
-      dissoudre(world, a);
     }
   }
 }

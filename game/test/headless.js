@@ -43,7 +43,7 @@ import {
   OUVRENT_BOURSE, SIGNENT_ACCORD, veutAccord,
 } from '../src/bourse.js';
 import {
-  distanceMorale, enGuerre, COLONNE, declarerGuerre,
+  distanceMorale, enGuerre, COLONNE, declarerGuerre, ETAT,
 } from '../src/factions.js';
 import {
   recenser, elasticite, planchers, significatif, asymetrique, ecarts,
@@ -7990,12 +7990,53 @@ section('26. La colonne sans solde');
   };
 
   const sansPayeur = campagne(false);
-  ok(sansPayeur && sansPayeur.lignes.some((l) => l.includes('faute de solde')),
-    'une colonne qu’on ne paie plus finit par se débander',
-    sansPayeur ? `${sansPayeur.lignes.filter((l) => l.includes('faute de solde')).length} débandades` : 'rien');
   ok(sansPayeur && sansPayeur.lignes.some((l) => l.includes('fond à vue d’œil')),
-    'et avant ça elle fond',
+    'une colonne qu’on ne paie plus fond',
     sansPayeur ? `${sansPayeur.lignes.filter((l) => l.includes('fond à vue d’œil')).length} lignes` : 'rien');
+
+  // La débandade ne s'observe **que** chez une colonne sans terre, et c'est le
+  // chantier des factions neuves qui l'a rendue rare : une troupe dont le pays
+  // tient encore une ville fonde le sien plutôt que de se dissoudre (N6). Sur
+  // mille cinq cents heures de solde impayable, vingt et une fondations et zéro
+  // débandade — le mécanisme n'est pas mort, il est devenu le second choix.
+  //
+  // On construit donc le cas où il s'applique : une faction qui n'a qu'une
+  // colonne et pas une ville. Trésor et masse à zéro des deux côtés, donc rien
+  // n'est créé ni détruit.
+  const sansTerre = () => {
+    const st = nouvellePartie(4141, { maintenant: 0 });
+    for (let i = 0; i < 600; i++) tick(st);
+    const a0 = (st.world.armees || [])[0];
+    if (!a0) return null;
+    st.world.drapeaux.errants = {
+      nom: 'Les Errants', court: 'ERR', pluriel: true,
+      datif: 'aux Errants', genitif: 'des Errants', couleur: couleurNeuve(st.world),
+      devise: 'Nulle part.', agression: 0.4, cupidite: 0.5,
+      style: 'commune', biomes: ['friche'],
+    };
+    st.world.factions.errants = {
+      key: 'errants', nom: 'Les Errants', tresor: 0, agression: 0.4,
+      relations: {}, colonies: [], capitale: null, humeur: 0,
+      prochainConseil: 0, dernierConseil: 0, lois: null,
+      masse: 0, cours: 1, gageRef: 0, emissions: 0, bourse: false,
+    };
+    a0.faction = 'errants';
+    a0.impayees = 0;
+    const lignes = [];
+    const solde = ETAT.parSoldat;
+    ETAT.parSoldat = 50;
+    for (let i = 0; i < 900; i++) {
+      tick(st);
+      for (const e of st.journal || []) if (e.texte) lignes.push(e.texte);
+      st.journal = [];
+    }
+    ETAT.parSoldat = solde;
+    return lignes;
+  };
+  const errants = sansTerre();
+  ok(errants && errants.some((l) => l.includes('faute de solde')),
+    'et une colonne sans terre, elle, se débande — on ne fait pas sécession de rien',
+    errants ? `${errants.filter((l) => l.includes('faute de solde')).length} débandades` : 'rien');
 
   const avecPayeur = campagne(true);
   ok(avecPayeur && avecPayeur.lignes.some((l) => l.includes('retourné sa veste')),
@@ -8194,6 +8235,66 @@ section('27. Un drapeau qui n’était pas là au départ');
     'on ne signe pas d’accord avec une faction qu’on ne reconnaît pas');
   ok(signerAccord(sR.world, pairs[0], 'venue', 0),
     'mais avec celle à qui l’on fait la guerre, oui — on sait qu’elle existe');
+
+  // --- La cinquième issue : la colonne fonde son pays ---------------------
+  //
+  // C'est le point du lot 6 d'`INDIVIDUS.md` qui était resté en suspens, faute
+  // de savoir fabriquer un drapeau. Une colonne qu'on ne paie plus, et que
+  // personne ne rachète, ne se débande plus systématiquement : elle prend son
+  // indépendance.
+  //
+  // Elle ne fonde que si elle a quelque chose à quitter — une faction qui tient
+  // encore une ville. Une colonne déjà sans terre se débande, sinon la même
+  // troupe fonderait un pays par conseil, indéfiniment.
+  const fonder = () => {
+    const st = nouvellePartie(4141, { maintenant: 0 });
+    for (let i = 0; i < 600; i++) tick(st);
+    const a0 = (st.world.armees || [])[0];
+    if (!a0) return null;
+    const lignes = [];
+    const avant = Object.keys(st.world.factions).length;
+    let pire = 0;
+    // Deux fixtures écartées avant celle-ci, et les deux échecs valent d'être
+    // dits. Vider les trésors (`f.tresor = 0`) retire de l'argent du monde sans
+    // retirer la masse émise : l'audit accuse alors le moteur de ce que le
+    // décor a détruit — 49 700 crédits, mesurés. Et gonfler une seule colonne à
+    // cinquante mille hommes la rend invincible : elle prend sa cible en moins
+    // de cent heures et se dissout avant d'avoir eu faim.
+    //
+    // Ce qui marche est plus simple et ne trafique rien : on rend le soldat
+    // cher. `ETAT.parSoldat` est une constante calibrable ; à cinquante crédits
+    // l'heure, aucun trésor du monde ne suit, et personne ne peut racheter
+    // personne. Aucun crédit n'est créé ni détruit.
+    const solde = ETAT.parSoldat;
+    ETAT.parSoldat = 50;
+    for (let i = 0; i < 900; i++) {
+      tick(st);
+      for (const e of st.journal || []) if (e.texte) lignes.push(e.texte);
+      st.journal = [];
+      if (i % 100 === 0) {
+        for (const e of auditer(st.world)) pire = Math.max(pire, Math.abs(e.ecart));
+      }
+    }
+    ETAT.parSoldat = solde;
+    return { st, lignes, avant, apres: Object.keys(st.world.factions).length, pire };
+  };
+  const f6 = fonder();
+  ok(f6 && f6.lignes.some((l) => l.includes('plante son propre drapeau')),
+    'une colonne que personne ne paie et que personne ne rachète fonde son pays',
+    f6 ? (f6.lignes.filter((l) => l.includes('plante son propre drapeau'))[0] || 'aucune')
+      : 'pas de colonne');
+  ok(f6 && f6.apres > f6.avant, 'et le monde compte un drapeau de plus',
+    f6 ? `${f6.avant} → ${f6.apres}` : '');
+
+  const nes = f6 ? Object.keys(f6.st.world.drapeaux) : [];
+  ok(nes.length > 0 && nes.every((k) => identiteDe(f6.st.world, k).nom
+    && identiteDe(f6.st.world, k).couleur),
+  'chaque drapeau neuf a un nom et une couleur',
+  nes.map((k) => `${identiteDe(f6.st.world, k).nom} ${identiteDe(f6.st.world, k).couleur}`).join(' · '));
+  ok(f6 && nes.every((k) => diploDe(f6.st.world).includes(k)),
+    'et il entre dans le jeu diplomatique');
+  ok(f6 && f6.pire < 1e-6, 'et l’invariant comptable tient à travers les fondations',
+    f6 ? `écart maximal ${f6.pire.toExponential(2)}` : '');
 }
 
 // ===========================================================================

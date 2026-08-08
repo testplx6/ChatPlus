@@ -326,14 +326,41 @@ identiques octet pour octet. Les règles de jeu n'arrivent qu'à N5.
 
   Six drapeaux nés l'un après l'autre : 232, 318, 95, 162, 210, 254. Chacun
   comble le plus grand vide restant.
-- [ ] **N5. `reconnue(world, cle, par)`** (§4.1), et ses trois effets. Tests :
-  une faction neuve n'est reconnue de personne ; le premier geste d'un voisin la
-  fait reconnaître ; un accord ne se signe pas avec une inconnue.
-- [ ] **N6. La naissance.** Une colonne sans solde qui ne trouve pas de payeur
-  fonde son pays plutôt que de se débander — c'est la cinquième issue du lot 6
-  d'`INDIVIDUS.md`, restée en suspens. Nom dérivé de l'origine (§4.5). Test
-  rouge : dans une situation où la règle dit qu'une faction naît, elle naît,
-  elle a un drapeau lisible, et l'invariant comptable tient.
+- [x] **N5. `reconnue(world, cle, par)`.** Dans `data.js` et non `factions.js` :
+  `bourse.js` en a besoin et le précède. Elle ne lit que le monde. L'Essaim
+  n'est pas traité à part — un fléau ne reconnaît personne et n'est reconnu de
+  personne. L'effet est dans `signerAccord` et pas chez l'appelant, parce que le
+  conseil signe et le joueur aussi : une règle posée à un seul des deux endroits
+  se contourne sans le vouloir. Monde identique octet pour octet.
+- [x] **N6. La naissance.** Une colonne que personne ne paie et que personne ne
+  rachète plante son propre drapeau. Elle ne fonde que si elle a **quelque chose
+  à quitter** — un pays qui tient encore une ville : sans ce garde, la même
+  troupe fonderait un pays par conseil et le monde se remplirait de drapeaux
+  d'un homme. Elle emporte ses hommes et rien d'autre (§4.2), donc trésor et
+  masse à zéro : l'invariant comptable n'a rien à voir dans cette naissance, et
+  c'est ce qui la rend sûre.
+
+  Sur mille cinq cents heures de solde impayable : **vingt et une fondations**.
+  « Le capitaine Solen plante son propre drapeau : Les Affranchis de
+  Fort-Sablon. Syndicat Ombrelle perd une colonne et gagne un voisin. »
+
+  **Trois fixtures écartées avant la bonne**, et les trois échecs valent d'être
+  dits. Vider les trésors retire de l'argent du monde sans retirer la masse
+  émise — l'audit accuse alors le moteur de ce que le décor a détruit, 49 700
+  crédits mesurés. Gonfler une colonne à cinquante mille hommes la rend
+  invincible : elle prend sa cible en moins de cent heures et se dissout avant
+  d'avoir eu faim. Ce qui marche ne trafique rien : on rend le soldat cher,
+  `ETAT.parSoldat` est calibrable, et à cinquante crédits l'heure aucun trésor
+  ne suit.
+
+  **Et un mécanisme mort découvert au passage.** La débandade ne survenait plus
+  jamais — vingt et une fondations, zéro débandade — ce qui était attendu : une
+  colonne qui a un pays à quitter fonde. Mais en construisant le cas où elle
+  s'applique, une colonne *sans terre*, elle ne se débandait pas non plus. La
+  cause : `conseil` rendait la main dès la première ligne pour un pays sans
+  ville, donc ses colonnes n'étaient **jamais jugées**. Une troupe abandonnée
+  par un pays mort restait au garde-à-vous pour l'éternité. Corrigé — un pays
+  sans ville ne délibère pas, mais ses colonnes comptent leurs impayés.
 - [ ] **N7. La mort** (§4.3, §4.3 bis) : ni ville, ni colonne, ni dirigeant, la
   faction s'éteint — un chef seul suffit à la tenir en vie. Son trésor reste où
   il est, sous forme d'un magot posé sur la carte, pillable et trouvable. Le
