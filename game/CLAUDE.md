@@ -71,6 +71,7 @@ quelqu'un d'autre.
 | `FACTIONS-NEUVES.md` | **le chantier en cours** : naissance et mort des factions — les cinq règles sont tranchées |
 | `CARTOGRAPHIE.md` | ce que chaque constante commande — produit par la mesure, à lire avant de régler |
 | `CIBLES.json` | les gardes du monde vérifiées par `verifier --complet` |
+| `PISTES.md` | des idées consignées, pas des chantiers — rien n'y est engagé |
 | `README.md` | le projet, les tests, l'architecture |
 
 ## Commits
