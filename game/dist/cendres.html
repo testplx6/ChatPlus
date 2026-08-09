@@ -10727,6 +10727,49 @@ function valeurBourse(world, player) {
   return v;
 }
 
+// ---------------------------------------------------------------------------
+// Qui paie dans quelle monnaie
+// ---------------------------------------------------------------------------
+//
+// La table d'`ECONOMIE.md` §7.2, en code. C'est **elle** le vrai travail du lot
+// E, et pas la substitution des quatre-vingt-six lectures de `player.credits` :
+// chacune doit savoir dans quelle monnaie elle paie, et le savoir d'une seule
+// façon. Une règle écrite une fois ici, c'est quatre-vingt-six sites qui n'ont
+// plus qu'à l'appeler — et une règle qui change se change à un endroit.
+//
+// Aucune de ces fonctions ne rend « la monnaie du joueur » : il n'y en a pas.
+// Le joueur détient ce qu'on lui a donné, là où on le lui a donné.
+
+/** Au marché d'une ville, on paie dans la monnaie de qui la tient. */
+function monnaieMarche(col) {
+  return (col && col.faction) || null;
+}
+
+/**
+ * Une ville sans drapeau prend toutes les monnaies, au cours du jour et sans
+ * écart. C'est l'avantage d'un endroit sans loi, et ça donne une raison d'y
+ * passer — voir `ecartChange`, qui ne prélève rien là-bas non plus.
+ */
+function accepteToutes(col) {
+  return !!col && !col.faction;
+}
+
+/** La solde, les primes et les contrats : la monnaie de qui vous emploie. */
+function monnaieSolde(groupe) {
+  return (groupe && groupe.allegeance && groupe.allegeance.faction) || null;
+}
+
+/**
+ * Le butin sur un cadavre : la monnaie de son drapeau.
+ *
+ * Un mort sans drapeau ne porte la monnaie de personne — ce qu'on lui prend se
+ * troque, il ne se compte pas.
+ */
+function monnaieButin(mort) {
+  return (mort && mort.captif && mort.captif.faction)
+    || (mort && mort.faction) || null;
+}
+
 // ===== src/caravanes.js ==============================================
 // Caravanes marchandes. Les villes ne vivent pas en vase clos : ce qu'une
 // colonie a en trop part chez celle qui en manque, sur des routes qui traversent

@@ -240,6 +240,16 @@ Ce fichier prépare le travail, il ne l'autorise pas.
   est à deux endroits est la garantie qu'un site oublié lira le mauvais.
 
   Essayé, mesuré, remis en place le jour même. La primitive reste, testée.
+- [x] **E1 ter. La table d'ECONOMIE §7.2, en code.** `monnaieMarche`,
+  `accepteToutes`, `monnaieSolde`, `monnaieButin`. C'est **elle** le vrai
+  travail du lot, pas la substitution : chacun des quatre-vingt-six sites doit
+  savoir dans quelle monnaie il paie, et le savoir d'une seule façon. Une règle
+  écrite une fois, c'est quatre-vingt-six sites qui n'ont plus qu'à l'appeler —
+  et une règle qui change se change à un endroit.
+
+  Aucune de ces fonctions ne rend « la monnaie du joueur » : il n'y en a pas.
+  Une ville sans drapeau ne rend `null` — elle prend tout, au cours du jour et
+  sans écart, comme `ecartChange` le fait déjà de son côté.
 - [ ] **E1 bis + E2, d'un bloc.** Les quatre-vingt-six sites, la suppression de
   `player.credits`, la migration dans `normaliser` (l'argent devient un solde
   dans la monnaie de là où le joueur se trouve — on ne peut pas inventer un

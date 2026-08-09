@@ -26,6 +26,7 @@ import { tickCredit, insolvable, veutBatir } from '../src/credit.js';
 import {
   auditer, emettre, ecartChange, transferer, transfererVille,
   solde, crediterBourse, debiterBourse, valeurBourse,
+  monnaieMarche, accepteToutes, monnaieSolde, monnaieButin,
 } from '../src/monnaie.js';
 import { prixCession, effetCession, valeurNette } from '../src/credit.js';
 import { BETES } from '../src/betes.js';
@@ -8441,6 +8442,36 @@ section('28. Le portefeuille — la primitive, avant les quatre-vingt-six sites'
     - valeurBourse(sB.world, { bourse: { hexa: 100 } }) * 2) < 1e-9,
   'et il compte proportionnellement');
   ok(valeurBourse(sB.world, {}) === 0, 'un portefeuille vide ne vaut rien');
+
+  // --- Qui paie dans quelle monnaie -------------------------------------
+  //
+  // La table d'`ECONOMIE.md` §7.2, en code. C'est **elle** le vrai travail du
+  // lot, pas la substitution des quatre-vingt-six sites : chacun doit savoir
+  // dans quelle monnaie il paie, et le savoir d'une seule façon. Une règle
+  // écrite une fois ici, c'est quatre-vingt-six sites qui n'ont plus qu'à
+  // l'appeler.
+  const villeA = sB.world.colonies.find((c) => c.faction && !c.ruine);
+  ok(monnaieMarche(villeA) === villeA.faction,
+    'au marché d’une ville, on paie dans la monnaie de qui la tient',
+    `${monnaieMarche(villeA)}`);
+
+  // Une ville sans drapeau prend tout, au cours du jour et sans écart. C'est
+  // l'avantage d'un endroit sans loi, et ça donne une raison d'y passer.
+  const libreV = { faction: null, ruine: false };
+  ok(monnaieMarche(libreV) === null && accepteToutes(libreV),
+    'une ville libre n’impose aucune monnaie — elle les prend toutes');
+  ok(!accepteToutes(villeA), 'une ville tenue, si');
+
+  // La solde est dans la monnaie de qui vous emploie, le butin dans celle du
+  // mort, l'impôt de votre camp dans celle de votre protecteur. Trois sources
+  // différentes pour trois situations, et aucune n'est « la monnaie du joueur ».
+  ok(monnaieSolde({ allegeance: { faction: 'cendre' } }) === 'cendre',
+    'la solde d’un engagement est dans la monnaie de l’employeur');
+  ok(monnaieSolde({}) === null, 'et sans engagement, il n’y a pas de solde à verser');
+  ok(monnaieButin({ captif: { faction: 'signal' } }) === 'signal',
+    'le butin sur un mort est dans la monnaie de son drapeau');
+  ok(monnaieButin({}) === null,
+    'un mort sans drapeau ne porte la monnaie de personne — le troc, pas la pièce');
 }
 
 // ===========================================================================
