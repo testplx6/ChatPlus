@@ -13,7 +13,7 @@ import { groupes, groupeActif } from './groupes.js';
 import { garnison, avantage } from './allegeance.js';
 import { estSurveillee } from './connaissance.js';
 import { noterArgent } from './rapport.js';
-import { depenser, entrerDehors , gagner, regler, soldeIci} from './monnaie.js';
+import { depenser, entrerDehors, gagner, regler, soldeIci, signeIci } from './monnaie.js';
 
 export function creerBase() {
   const stock = {};
@@ -1743,7 +1743,7 @@ export function visiteMarchand(state, rng, log) {
     log({
       type: 'marchand',
       texte: `Un colporteur s’arrête à ${base.nom}`
-        + `${vendu ? ` : il prend ${vendu} unités du surplus pour ${credits} cr` : ''}`
+        + `${vendu ? ` : il prend ${vendu} unités du surplus pour ${credits} ${signeIci(state)}` : ''}`
         + `${achete ? `${vendu ? ' et laisse' : ' : il laisse'} ${achete} unités` : ''}.`,
       regionId: base.regionId,
       important: vendu >= 40,

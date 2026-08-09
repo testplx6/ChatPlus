@@ -1,4 +1,4 @@
-import { soldeIci } from './monnaie.js';
+import { soldeIci, signeIci } from './monnaie.js';
 // Ce que la partie a fait de vous.
 //
 // Le jeu n'a pas de condition de victoire, et il n'en aura pas : on ne gagne
@@ -165,6 +165,7 @@ export function faitsDe(state) {
     combatsGagnes: st.combatsGagnes || 0,
     defaites: st.defaites || 0,
     credits: Math.round(soldeIci(state) || 0),
+    signe: signeIci(state),
     recolte: Math.round(st.recolte || 0),
     sites: st.sitesFouilles || 0,
     contrats: st.contratsRemplis || 0,
@@ -225,6 +226,6 @@ export function lignesDe(state) {
   dire(f.services > 0, `${f.services} services rendus à des gens qui s’en souviennent.`);
   dire(f.caravanes > 0, `${f.caravanes} caravanes pillées.`);
   dire(f.sites > 0, `${f.sites} sites fouillés jusqu’à l’os.`);
-  dire(f.credits >= 1000, `${f.credits} crédits en poche.`);
+  dire(f.credits >= 1000, `${f.credits} ${f.signe || '¤'} en poche.`);
   return out;
 }

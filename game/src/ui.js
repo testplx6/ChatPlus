@@ -1,9 +1,9 @@
-import { soldeIci } from './monnaie.js';
+import { soldeIci, monnaieIci, monnaieSolde, valeurBourse } from './monnaie.js';
 // Interface : rendu HTML + carte pixel sur canvas. C'est le SEUL module qui
 // touche au DOM — tout le reste du dossier src/ tourne aussi bien sous Node.
 
 import {
-  BIOMES, FACTIONS, DIPLO_FACTIONS, drapeauDe, diploDe,
+  BIOMES, FACTIONS, DIPLO_FACTIONS, drapeauDe, diploDe, symboleDe,
   COMMODITIES, COMMODITY_KEYS, BUILDINGS, BUILDING_KEYS,
   RESEARCH, RESEARCH_KEYS, ITEMS, SKILLS, SKILL_KEYS, BODY_PARTS, BODY_KEYS,
   POSTURES, POSTURE_KEYS, TRAITS, POI, CONTRATS, DIPLOMES, METIERS, METIER_KEYS,
@@ -176,6 +176,22 @@ function e(s) {
 function n(v, dec = 0) {
   if (!Number.isFinite(v)) return '—';
   return v.toLocaleString('fr-FR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+
+/**
+ * Le signe de la monnaie qu'on affiche. Sans argument : celle du lieu où l'on
+ * est. Avec un drapeau : la sienne — le trésor d'un pays, la solde d'un
+ * employeur, le cours d'une bourse ne sont pas dans la monnaie d'ici.
+ *
+ * ECONOMIE §10 : « Tout prix s'écrit dans la seule monnaie du lieu, avec le
+ * symbole propre à la faction. Rien entre parenthèses. » Le « cr » qui traînait
+ * à cinquante et un endroits de cet écran était le dernier vestige du crédit
+ * universel : il faisait croire que la somme affichée dans une ville valait
+ * autant que la même somme dans la ville d'à côté.
+ */
+function sym(cle) {
+  if (!S) return '¤';
+  return symboleDe(S.world, cle === undefined ? monnaieIci(S) : cle);
 }
 
 function jauge(pct, cls = '', couleur) {
@@ -1169,7 +1185,7 @@ function blocCaravanes() {
     const rep = S.player.reputation[car.faction] || 0;
     return `<div class="article">
       <div class="ligne"><span class="k" style="color:${couleurFaction(car.faction)}">${e(drapeauDe(S.world, car.faction).nom)}</span>
-        <span class="v ambre">~${n(valeurCargaison(car))} cr de marchandise</span></div>
+        <span class="v ambre">~${n(valeurCargaison(car))} ${sym()} de marchandise</span></div>
       <div class="aide">${e(de ? de.nom : '?')} → ${e(vers ? vers.nom : '?')} ·
         escorte ${n(car.escorte)} ·
         ${Object.keys(car.cargaison).map((k) => `${n(car.cargaison[k])} ${COMMODITIES[k].nom.toLowerCase()}`).join(', ')}</div>
@@ -1920,7 +1936,7 @@ function blocPrisonniers() {
           ${e(apercu(c).skill)} ${apercu(c).comp}</div>
         ${opts.map((o) => `<button class="act mini" style="margin-top:4px;text-align:left"
           data-a="captif" data-c="${e(c.id)}" data-k="${o.key}">${e(o.nom)}${
-  o.prix ? ` — ${n(o.prix)} cr` : ''}<br><span class="aide">${e(o.aide)}</span></button>`).join('')}
+  o.prix ? ` — ${n(o.prix)} ${sym()}` : ''}<br><span class="aide">${e(o.aide)}</span></button>`).join('')}
       </details>`;
   }).join('')}
   </section>`;
@@ -1954,7 +1970,7 @@ function blocDepouilles() {
           <span class="v aide">${e(c.archetypeNom || '')}</span></summary>
         ${rites.map((o) => `<button class="act mini" style="margin-top:4px;text-align:left"
           data-a="corps" data-c="${e(c.id)}" data-k="${o.key}">${e(o.nom)}${
-  o.gain ? ` — ${n(o.gain)} cr` : ''}<br><span class="aide">${e(o.aide)}</span></button>`).join('')}
+  o.gain ? ` — ${n(o.gain)} ${sym()}` : ''}<br><span class="aide">${e(o.aide)}</span></button>`).join('')}
       </details>`;
   }).join('')}
     ${col && !col.ruine ? '' : '<div class="aide">Hors ville : le trafic d’organes attendra.</div>'}
@@ -2689,7 +2705,7 @@ function blocComptoir() {
         <span class="aide">${e(nomRegion(S.world, o.regionId))} · garde ${n(o.escorte)}${
   o.escorteGroupe ? ' + escouade' : ''}</span></span>
       <span class="v">${o.reste} case${o.reste > 1 ? 's' : ''}${o.sens === 'vente'
-    ? `<br><span class="aide">${n(o.paiement)} cr à l’arrivée</span>` : ''}</span>
+    ? `<br><span class="aide">${n(o.paiement)} ${sym()} à l’arrivée</span>` : ''}</span>
     </div>`;
   }).join('');
   const suivi = c.ordres.length ? `<div class="sep"></div>
@@ -2723,7 +2739,7 @@ function blocComptoir() {
     // en page redevient celle d'un texte ordinaire.
     return `<button class="act mini ${ordreKey === k ? 'primaire' : ''}"
       data-a="ordre-k" data-k="${k}"><span>${e(COMMODITIES[k].nom)}<br>
-      <span class="aide">${n(cours[k], 1)} cr${l && l.ecart
+      <span class="aide">${n(cours[k], 1)} ${sym()}${l && l.ecart
   ? ` <span class="${l.ecart > 0 ? 'alerte' : 'ok'}">${l.ecart > 0 ? '+' : ''}${
     Math.round(l.ecart * 100)} %</span>` : ''}</span></span></button>`;
   }).join('');
@@ -2780,17 +2796,17 @@ function blocComptoir() {
     <div class="sep"></div>
     ${devis.ok ? `<div class="ligne"><span class="k">${ordreSens === 'achat'
     ? 'Cours à l’achat' : 'Cours à la vente'}</span>
-      <span class="v">${n(devis.unite, 1)} cr l’unité</span></div>
+      <span class="v">${n(devis.unite, 1)} ${sym()} l’unité</span></div>
     <div class="ligne"><span class="k">Lot</span>
       <span class="v">${n(devis.qte)} ${e(COMMODITIES[ordreKey].nom.toLowerCase())}
-        · ${n(devis.brut)} cr</span></div>
+        · ${n(devis.brut)} ${sym()}</span></div>
     <div class="ligne"><span class="k">Commission</span>
-      <span class="v">${n(devis.frais)} cr <span class="aide">(${
+      <span class="v">${n(devis.frais)} ${sym()} <span class="aide">(${
   Math.round(devis.part * 100)} %)</span></span></div>
     ${fraisEsc ? `<div class="ligne"><span class="k">Escorte</span>
-      <span class="v">${n(fraisEsc)} cr</span></div>` : ''}
+      <span class="v">${n(fraisEsc)} ${sym()}</span></div>` : ''}
     <div class="ligne"><span class="k">${ordreSens === 'achat' ? 'À payer' : 'Vous touchez'}</span>
-      <span class="v ${ordreSens === 'achat' ? 'alerte' : 'ok'}">${n(du)} cr</span></div>
+      <span class="v ${ordreSens === 'achat' ? 'alerte' : 'ok'}">${n(du)} ${sym()}</span></div>
     <div class="aide">${ordreSens === 'achat'
     ? 'Débité maintenant, livré à l’entrepôt quand le convoi arrive.'
     : `Sorti de l’entrepôt maintenant (${n(stockIci)} en stock), payé à l’arrivée. `
@@ -3095,7 +3111,7 @@ function ligneContrat(c, enCours) {
     <div class="ligne">
       <span class="k"><span class="puce" style="border-color:${couleurFaction(c.faction)};color:${couleurFaction(c.faction)}">${e(CONTRATS[c.type].nom)}</span>${
   presse ? ' <span class="puce mal">urgent</span>' : ''}</span>
-      <span class="v ambre">${n(c.recompense)} cr · rép +${gainEstime(S, c)}</span>
+      <span class="v ambre">${n(c.recompense)} ${sym()} · rép +${gainEstime(S, c)}</span>
     </div>
     <div class="contrat-t">${e(c.titre)}</div>
     ${p ? `${jauge(p.total ? p.fait / p.total : 0, p.pret ? 'vert' : '')}
@@ -3251,7 +3267,7 @@ function ciblesCharge(faction, k) {
     const paye = w.factions[faction].tresor >= cout;
     return villesVisables(faction).slice(0, 6).map((c) => ({
       val: c.id,
-      texte: `${FORCE_LEVEE} hommes sur ${c.nom} — ${n(cout)} cr${paye ? '' : ' (trésor court)'}`,
+      texte: `${FORCE_LEVEE} hommes sur ${c.nom} — ${n(cout)} ${sym(faction)}${paye ? '' : ' (trésor court)'}`,
     }));
   }
   if (k === 'fonder') {
@@ -3262,7 +3278,7 @@ function ciblesCharge(faction, k) {
     sites.sort((a, b) => proche(a) - proche(b));
     return sites.slice(0, 6).map((r) => ({
       val: String(r.i),
-      texte: `Poste en ${lieuAvecCoord(w, r.i)} — ${n(COUT_POSTE)} cr`,
+      texte: `Poste en ${lieuAvecCoord(w, r.i)} — ${n(COUT_POSTE)} ${sym(faction)}`,
     }));
   }
   if (k === 'bourse') {
@@ -3270,7 +3286,7 @@ function ciblesCharge(faction, k) {
     if (!v.ok) return [];
     return [{
       val: faction,
-      texte: `Ouvrir la bourse ${e(drapeauDe(S.world, faction).genitif)} — ${n(TRESOR_BOURSE)} cr d’amorce`,
+      texte: `Ouvrir la bourse ${e(drapeauDe(S.world, faction).genitif)} — ${n(TRESOR_BOURSE)} ${sym(faction)} d’amorce`,
     }];
   }
   if (k === 'accord') {
@@ -3293,8 +3309,8 @@ function ciblesCharge(faction, k) {
     return [{
       val: col.id,
       texte: k === 'garnison'
-        ? `Relever les murs de ${col.nom} (${col.murs} murs) — ${n(cout)} cr`
-        : `Nourrir ${col.nom} (grogne ${Math.round((col.unrest || 0) * 100)} %) — ${n(cout)} cr`,
+        ? `Relever les murs de ${col.nom} (${col.murs} murs) — ${n(cout)} ${sym(faction)}`
+        : `Nourrir ${col.nom} (grogne ${Math.round((col.unrest || 0) * 100)} %) — ${n(cout)} ${sym(faction)}`,
     }];
   }
   if (k === 'loi') {
@@ -3494,7 +3510,7 @@ function blocFeuilleService(all) {
     // Ce que ça a rapporté ou coûté. Un dossier qui dit « honoré » sans dire
     // combien ne sert qu'à moitié.
     const bilan = [
-      f.cr ? `${f.cr > 0 ? '+' : ''}${n(f.cr)} cr` : '',
+      f.cr ? `${f.cr > 0 ? '+' : ''}${n(f.cr)} ${sym()}` : '',
       f.pts ? `${f.pts > 0 ? '+' : ''}${n(f.pts)} pts` : '',
       f.rep ? `${f.rep > 0 ? '+' : ''}${n(f.rep)} estime` : '',
     ].filter(Boolean).join(' · ');
@@ -3508,7 +3524,7 @@ function blocFeuilleService(all) {
     cr: a.cr + (f.cr || 0), pts: a.pts + (f.pts || 0), rep: a.rep + (f.rep || 0),
   }), { cr: 0, pts: 0, rep: 0 });
   const cumul = [
-    total.cr ? `${total.cr > 0 ? '+' : ''}${n(total.cr)} cr` : '',
+    total.cr ? `${total.cr > 0 ? '+' : ''}${n(total.cr)} ${sym()}` : '',
     total.pts ? `${total.pts > 0 ? '+' : ''}${n(total.pts)} points de service` : '',
     total.rep ? `${total.rep > 0 ? '+' : ''}${n(total.rep)} d’estime` : '',
   ].filter(Boolean).join(' · ');
@@ -3584,7 +3600,7 @@ function blocAllegeance() {
     <div class="sep"></div>
     <div class="grille2">
       <div class="ligne"><span class="k">Remise</span><span class="v">${(rang.def.remise * 100).toFixed(0)} %</span></div>
-      <div class="ligne"><span class="k">Solde</span><span class="v">${n(rang.def.solde)} cr/jour</span></div>
+      <div class="ligne"><span class="k">Solde</span><span class="v">${n(rang.def.solde)} ${sym(faction)}/jour</span></div>
       <div class="ligne"><span class="k">Barrages</span><span class="v">${rang.index >= 1 ? 'libres' : 'payants'}</span></div>
       <div class="ligne"><span class="k">Renforts</span><span class="v">${rang.index >= 3 ? 'oui, chez eux' : 'non'}</span></div>
       <div class="ligne"><span class="k">Intendance</span>
@@ -3598,7 +3614,7 @@ function blocAllegeance() {
     ${o ? `<div class="titre">Ordre de mission</div>
       <div class="contrat-t">${e(o.titre)}</div>
       ${jauge(p && p.total ? p.fait / p.total : 0, p && p.pret ? 'vert' : '')}
-      <div class="aide">${e(p ? p.texte : '')} · ${n(o.recompense)} cr ·
+      <div class="aide">${e(p ? p.texte : '')} · ${n(o.recompense)} ${sym()} ·
         ${o.echeance
     ? `<span class="${o.echeance - S.temps < 48 ? 'alerte' : ''}">${
       dureeTexte(Math.max(0, o.echeance - S.temps))} restantes</span>`
@@ -3635,7 +3651,7 @@ function blocDossierContrats() {
   const lignes = dossier.map((f) => {
     const [cls, txt] = mot[f.issue] || ['att', f.issue];
     const bilan = [
-      f.cr ? `${f.cr > 0 ? '+' : ''}${n(f.cr)} cr` : '',
+      f.cr ? `${f.cr > 0 ? '+' : ''}${n(f.cr)} ${sym()}` : '',
       f.rep ? `${f.rep > 0 ? '+' : ''}${n(f.rep)} d’estime` : '',
     ].filter(Boolean).join(' · ');
     return `<div class="ligne souple">
@@ -3653,7 +3669,7 @@ function blocDossierContrats() {
     ].filter(Boolean).join(' · ')
     : '';
   const cumul = b && (b.cr || b.rep)
-    ? [b.cr ? `${b.cr > 0 ? '+' : ''}${n(b.cr)} cr` : '',
+    ? [b.cr ? `${b.cr > 0 ? '+' : ''}${n(b.cr)} ${sym()}` : '',
       b.rep ? `${b.rep > 0 ? '+' : ''}${n(b.rep)} d’estime` : ''].filter(Boolean).join(' · ')
     : '';
   return `<section class="panneau">
@@ -3853,7 +3869,7 @@ function ecranMonde() {
       ${d.pertes} perdue(s).</div>`;
   })()}
       <div class="aide">${f.colonies} colonie(s) · ${crypto
-    ? `trésor ${n(f.tresor)} cr`
+    ? `trésor ${n(f.tresor)} ${sym(f.key)}`
     : 'trésor inconnu'} · ${e(drapeauDe(S.world, f.key).devise)}</div>
       ${(() => {
     // Comment on gouverne chez eux. C'est ce qui fait de « qui servir » un
@@ -3977,7 +3993,7 @@ function ecranMonde() {
     const vers = colonieParId(S.world, c.versId);
     return `<div class="ligne">
         <span class="k" style="color:${couleurFaction(c.faction)}">${e(drapeauDe(S.world, c.faction).court)}</span>
-        <span class="v">${e(de ? de.nom : '?')} → ${e(vers ? vers.nom : '?')} · ${n(valeurCargaison(c))} cr</span></div>`;
+        <span class="v">${e(de ? de.nom : '?')} → ${e(vers ? vers.nom : '?')} · ${n(valeurCargaison(c))} ${sym()}</span></div>`;
   }).join('') : '<div class="aide">Aucune caravane sur les routes. Mauvais signe.</div>'}
   </section>
 
@@ -4103,7 +4119,7 @@ function modaleSauvegardes() {
       <div class="ligne souple"><span class="k">${e(x.nom)}</span>
         <span class="v aide">${e(quandTexte(x.quand))}</span></div>
       <div class="aide">Jour ${n(r.jour || 0)} · ${n(r.gens || 0)} vivant(s) ·
-        ${n(r.credits || 0)} cr${r.base ? ` · ${e(r.nomBase || 'un camp')}` : ' · sans camp'}
+        ${n(r.argent || 0)} ${e(r.signe || '¤')}${r.base ? ` · ${e(r.nomBase || 'un camp')}` : ' · sans camp'}
         · graine ${e(String(r.seed ?? '?'))}</div>
       <div class="taches" style="margin-top:5px">
         ${deuxTemps('charger-emp', x.id, 'Charger', 'primaire')}
@@ -4135,7 +4151,7 @@ function modaleSauvegardes() {
     est alors remplacée.</div>
   ${r ? `<div class="sep"></div>
     <div class="ligne"><span class="k">Partie en cours</span>
-      <span class="v">Jour ${n(r.jour)} · ${n(r.gens)} vivant(s) · ${n(r.credits)} cr</span></div>
+      <span class="v">Jour ${n(r.jour)} · ${n(r.gens)} vivant(s) · ${n(r.argent)} ${e(r.signe || '¤')}</span></div>
     <label class="aide" for="nom-sauvegarde">Nom de la copie (facultatif)</label>
     <input id="nom-sauvegarde" type="text" autocomplete="off"
       placeholder="Jour ${n(r.jour)}" value="">
@@ -4337,7 +4353,7 @@ function modaleRapport() {
   // Le solde, puis d'où il vient. « −2 877 cr » sans rien d'autre est une
   // accusation sans dossier : on ne sait pas si l'on s'est fait détrousser, si
   // le camp a acheté du carburant, ou si un impôt a couru trois cents jours.
-  const argent = ligne('Crédits', `${r.argent > 0 ? '+' : ''}${n(r.argent)} cr`,
+  const argent = ligne('Argent', `${r.argent > 0 ? '+' : ''}${n(r.argent)} ${sym()}`,
     r.argent < 0 ? 'alerte' : '')
     + (r.causes.length
       ? `<div class="aide">${r.causes.map((c) => `<span class="${c.delta < 0 ? 'alerte' : 'cyan'}">${
@@ -4437,9 +4453,9 @@ function modaleMarche() {
         <span class="aide">ville ${n(stock)} · sac ${n(aMoi)} · ${n(p.achat, 1)} / ${n(p.vente, 1)}
         ${gene ? `<span class="rouge">· ${gene}</span>` : ''}</span></span>
       <button class="act" data-a="acheter" data-k="${k}" data-q="${qteMarche}" ${a.qte < 1 ? 'disabled' : ''}>
-        ${a.qte < 1 ? '—' : `+${n(a.qte)}<br><span class="aide">${n(a.cout)} cr</span>`}</button>
+        ${a.qte < 1 ? '—' : `+${n(a.qte)}<br><span class="aide">${n(a.cout)} ${sym()}</span>`}</button>
       <button class="act" data-a="vendre" data-k="${k}" data-q="${qteMarche}" ${v.qte < 1 ? 'disabled' : ''}>
-        ${v.qte < 1 ? '—' : `−${n(v.qte)}<br><span class="aide">${n(v.gain)} cr</span>`}</button>
+        ${v.qte < 1 ? '—' : `−${n(v.qte)}<br><span class="aide">${n(v.gain)} ${sym()}</span>`}</button>
     </div>`;
   }).join('');
 
@@ -4447,7 +4463,7 @@ function modaleMarche() {
   // faut le dire, sinon le joueur croit à une erreur de prix.
   const reg = loiIci(S, col).regime;
   return `<h2 class="titre">Marché de ${e(col.nom)}
-    <span class="droite">${n(soldeIci(S))} cr</span></h2>
+    <span class="droite">${n(soldeIci(S))} ${sym()}</span></h2>
   <div class="aide">Négociateur : ${negoc ? `${e(negoc.nom)} (commerce ${hab.toFixed(0)})` : 'aucun'}.
     Une bonne réputation et un bon commerçant resserrent la marge. Le prix bouge
     à chaque unité : les montants affichés tiennent compte de tout le lot.
@@ -4476,15 +4492,15 @@ function modaleCoffre() {
 
   if (!coffre) {
     return `<h2 class="titre">Coffre à ${e(col.nom)}
-      <span class="droite">${n(soldeIci(S))} cr</span></h2>
+      <span class="droite">${n(soldeIci(S))} ${sym()}</span></h2>
     <div class="aide">De la place qui reste ici pendant que vous marchez.</div>
     <div class="sep"></div>
     <button class="act${vL.ok ? ' primaire' : ''}" data-a="coffre-louer" ${vL.ok ? '' : 'disabled'}>
-      Louer — ${LOYER} cr le mois, ${CAPACITE_LOUEE} kg
+      Louer — ${LOYER} ${sym()} le mois, ${CAPACITE_LOUEE} kg
       ${vL.ok ? '' : `<br><span class="aide">${e(vL.motif)}</span>`}</button>
     <div style="height:6px"></div>
     <button class="act" data-a="coffre-acheter" ${vA.ok ? '' : 'disabled'}>
-      Acheter — ${n(PRIX_COFFRE)} cr, ${CAPACITE_ACHETEE} kg, plus de loyer
+      Acheter — ${n(PRIX_COFFRE)} ${sym()}, ${CAPACITE_ACHETEE} kg, plus de loyer
       ${vA.ok ? '' : `<br><span class="aide">${e(vA.motif)}</span>`}</button>
     <div class="aide" style="margin-top:6px">${(() => {
     // Ce texte annonçait un seuil en dur, écrit avant les régimes : il promettait
@@ -4525,11 +4541,11 @@ function modaleCoffre() {
   ${jauge(pl.total ? pl.pris / pl.total : 0, pl.pris / pl.total > 0.95 ? 'rouge' : '')}
   <div class="aide">${coffre.achete
     ? 'À vous. Pas de loyer.'
-    : `Loué : prochain loyer de ${LOYER} cr dans ${dureeTexte(Math.max(0, coffre.jusqu - S.temps))}.
+    : `Loué : prochain loyer de ${LOYER} ${sym()} dans ${dureeTexte(Math.max(0, coffre.jusqu - S.temps))}.
        Sans quoi le bailleur se remboursera sur ce qu’il garde.`}</div>
   ${!coffre.achete && vA.ok
     ? `<div style="height:6px"></div><button class="act" data-a="coffre-acheter">
-        L’acheter — ${n(PRIX_COFFRE)} cr, ${CAPACITE_ACHETEE} kg</button>` : ''}
+        L’acheter — ${n(PRIX_COFFRE)} ${sym()}, ${CAPACITE_ACHETEE} kg</button>` : ''}
   <div class="taches" style="margin-top:6px">Quantité ${choixQuantite('qte-transfert', qteTransfert)}</div>
   <div class="sep"></div>${lignes || '<div class="aide">Rien ici, rien dans le sac.</div>'}`;
 }
@@ -4563,7 +4579,7 @@ function modaleEtal() {
     const trop = soldeIci(S) < p.achat;
     return `<div class="article">
       <div class="ligne"><span class="k">${e(it.nom)}</span>
-        <span class="v ambre">${n(p.achat)} cr${ligne.qte > 1 ? ` ×${ligne.qte}` : ''}</span></div>
+        <span class="v ambre">${n(p.achat)} ${sym()}${ligne.qte > 1 ? ` ×${ligne.qte}` : ''}</span></div>
       <div class="aide">${e(decrire(it))}</div>
       <button class="act mini ${trop ? '' : 'primaire'}" data-a="acheter-item" data-i="${i}"
         ${ligne.qte < 1 || trop ? 'disabled' : ''}>${ligne.qte < 1 ? 'Épuisé' : trop ? 'Trop cher' : 'Acheter'}</button>
@@ -4575,13 +4591,13 @@ function modaleEtal() {
     const p = prixItem(col, key, 1, hab, repu);
     return `<div class="marche-l">
       <span class="nm">${e(it.nom)}<br><span class="aide">${e(decrire(it))}</span></span>
-      <span class="px">${n(p.vente)} cr</span>
+      <span class="px">${n(p.vente)} ${sym()}</span>
       <button class="act" data-a="vendre-item" data-i="${i}">Vendre</button>
     </div>`;
   }).join('') || '<div class="aide">Rien à revendre.</div>';
 
   return `<h2 class="titre">Armurier de ${e(col.nom)}
-    <span class="droite">${n(soldeIci(S))} cr</span></h2>
+    <span class="droite">${n(soldeIci(S))} ${sym()}</span></h2>
   <div class="aide">Le stock se renouvelle. Ce que vous ne prenez pas aujourd’hui ne sera
     peut-être plus là demain.</div>
   <div class="sep"></div>
@@ -4748,7 +4764,7 @@ function modaleEcole() {
         <span class="v">${dureeTexte(d.heures)}</span></div>
       <div class="ligne"><span class="k">Prix</span>
         <span class="v ${soldeIci(S) >= prix ? '' : 'alerte'}">${prix
-    ? `${n(prix)} cr${remise ? ' (remise)' : ''}`
+    ? `${n(prix)} ${sym()}${remise ? ' (remise)' : ''}`
     : `gratuit — ${e(regime.nom)}`}</span></div>
       ${candidats.length
     ? `<div class="taches">${candidats.map((c) => `<button class="act mini"
@@ -4826,7 +4842,7 @@ function modaleVille() {
     const demandeHtml = att ? `<div class="sep"></div>
       <div class="aide">« ${e(att.demande.texte)} »</div>
       <div class="ligne"><span class="k">Il vous reste</span>
-        <span class="v">${Math.round(reste / 24)} j · ${n(att.demande.prime)} cr</span></div>
+        <span class="v">${Math.round(reste / 24)} j · ${n(att.demande.prime)} ${sym()}</span></div>
       <button class="act${att.pret ? ' primaire' : ''}" data-a="honorer"
         data-c="${e(col.id)}" data-n="${e(p.id)}" ${att.pret ? '' : 'disabled'}>
         ${att.pret ? 'Lui remettre' : `Il faut ${att.demande.quantite} ${e(COMMODITIES[att.demande.res].nom.toLowerCase())}`}
@@ -4899,20 +4915,20 @@ function modaleAttelage() {
     const auDela = miennes.length >= conduite(g);
     return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
       <div class="ligne"><span class="k">${e(def.nom)}</span>
-        <span class="v">${n(prix)} cr</span></div>
+        <span class="v">${n(prix)} ${sym()}</span></div>
       <div class="aide">${e(def.desc)}</div>
       <div class="aide">+${def.portage} kg · ${def.appetit
     ? `mange ${(def.appetit * 24).toFixed(1)} biomasse/jour` : 'ne mange rien'}
         · −${(def.lenteur * 100).toFixed(0)} % de vitesse</div>
       <button class="act mini${auDela ? '' : ' primaire'}" data-a="acheter-bete" data-k="${k}"
         style="margin-top:4px" ${soldeIci(S) < prix ? 'disabled' : ''}>
-        ${soldeIci(S) < prix ? 'Crédits insuffisants'
+        ${soldeIci(S) < prix ? 'Bourse trop courte'
     : auDela ? 'Acheter — personne pour la mener' : 'Acheter'}</button>
     </div>`;
   }).join('') : '<div class="aide">On n’achète pas une bête au milieu du désert.</div>';
 
   return `<h2 class="titre">Attelage de ${e(g.nom)}
-    <span class="droite">${n(soldeIci(S))} cr</span></h2>
+    <span class="droite">${n(soldeIci(S))} ${sym()}</span></h2>
   <div class="aide">Une bête porte à votre place, mange ce que personne ne mange,
     et ralentit le convoi. Elle maigrit si on l’oublie, et les pillards
     l’emmènent avant le reste.</div>
@@ -4955,17 +4971,17 @@ function modaleRecrutement() {
         <span class="v">${c.diplomes.map((d) => e(DIPLOMES[d] ? DIPLOMES[d].nom : d)).join(', ')}</span></div>` : ''}
       ${(c.traits || []).length ? `<div class="aide">${c.traits.map((t) =>
     e(TRAITS[t] ? TRAITS[t].nom : t)).join(' · ')}</div>` : ''}
-      <div class="ligne"><span class="k">Prime</span><span class="v">${n(prix)} cr</span></div>
+      <div class="ligne"><span class="k">Prime</span><span class="v">${n(prix)} ${sym()}</span></div>
       <button class="act mini${soldeIci(S) >= prix ? ' primaire' : ''}"
         data-a="recruter" data-i="${e(c.id)}" style="margin-top:4px"
         ${soldeIci(S) < prix ? 'disabled' : ''}>
-        ${soldeIci(S) < prix ? 'Crédits insuffisants' : 'Engager'}</button>
+        ${soldeIci(S) < prix ? 'Bourse trop courte' : 'Engager'}</button>
     </div>`;
   }).join('') : '<div class="aide">Personne ne cherche à partir d’ici en ce moment.</div>';
 
   const tension = tensionRecrutement(col);
   return `<h2 class="titre">Recrutement à ${e(col.nom)}
-    <span class="droite">${n(soldeIci(S))} cr</span></h2>
+    <span class="droite">${n(soldeIci(S))} ${sym()}</span></h2>
   <div class="aide">${tension < 0.8
     ? 'La ville va mal. Beaucoup de gens veulent s’en aller, et pour pas cher.'
     : tension > 1.15
@@ -5216,7 +5232,7 @@ function surClic(ev) {
     case 'acheter-item': {
       const col = colonieDe(S.world, G().regionId);
       const r = acheterItem(S, col, Number(el.dataset.i));
-      toast(r.ok ? `${r.nom} acheté pour ${r.prix} cr.` : r.motif, !r.ok);
+      toast(r.ok ? `${r.nom} acheté pour ${r.prix} ${sym()}.` : r.motif, !r.ok);
       rendreModale();
       rafraichir(true);
       break;
@@ -5225,7 +5241,7 @@ function surClic(ev) {
     case 'vendre-item': {
       const col = colonieDe(S.world, G().regionId);
       const r = vendreItem(S, col, Number(el.dataset.i));
-      toast(r.ok ? `${r.nom} vendu ${r.prix} cr.` : r.motif, !r.ok);
+      toast(r.ok ? `${r.nom} vendu ${r.prix} ${sym()}.` : r.motif, !r.ok);
       rendreModale();
       rafraichir(true);
       break;
@@ -5291,7 +5307,7 @@ function surClic(ev) {
     case 'corps': {
       const r = ACTIONS.disposerCorps(el.dataset.c, el.dataset.k);
       toast(r.ok
-        ? (r.prix ? `${r.prix} cr.` : r.rations ? `${r.rations} rations.`
+        ? (r.prix ? `${r.prix} ${sym()}.` : r.rations ? `${r.rations} rations.`
           : r.biomasse ? `${r.biomasse} de biomasse.` : 'C’est fait.')
         : r.motif, !r.ok);
       rafraichir(true);
@@ -5314,7 +5330,7 @@ function surClic(ev) {
     case 'acheter': {
       const col = colonieDe(S.world, G().regionId);
       const r = acheter(S, col, el.dataset.k, Number(el.dataset.q));
-      toast(r.ok ? `${r.qte} acheté(s) pour ${r.cout} cr.` : r.motif, !r.ok);
+      toast(r.ok ? `${r.qte} acheté(s) pour ${r.cout} ${sym()}.` : r.motif, !r.ok);
       rendreModale();
       rafraichir(true);
       break;
@@ -5323,7 +5339,7 @@ function surClic(ev) {
     case 'vendre': {
       const col = colonieDe(S.world, G().regionId);
       const r = vendre(S, col, el.dataset.k, Number(el.dataset.q));
-      toast(r.ok ? `${r.qte} vendu(s) pour ${r.gain} cr.` : r.motif, !r.ok);
+      toast(r.ok ? `${r.qte} vendu(s) pour ${r.gain} ${sym()}.` : r.motif, !r.ok);
       rendreModale();
       rafraichir(true);
       break;
@@ -5452,7 +5468,7 @@ function surClic(ev) {
 
     case 'vendre-bete': {
       const r = ACTIONS.vendreBete(el.dataset.b);
-      toast(r.ok ? `Cédée pour ${r.prix} cr.` : r.motif, !r.ok);
+      toast(r.ok ? `Cédée pour ${r.prix} ${sym()}.` : r.motif, !r.ok);
       rendreModale();
       break;
     }
@@ -5485,7 +5501,7 @@ function surClic(ev) {
     case 'captif': {
       const r = ACTIONS.disposerPrisonnier(el.dataset.c, el.dataset.k);
       toast(r.ok
-        ? (r.prix ? `C’est réglé. ${r.prix} cr.` : 'C’est réglé.')
+        ? (r.prix ? `C’est réglé. ${r.prix} ${sym()}.` : 'C’est réglé.')
         : r.motif, !r.ok);
       rafraichir(true);
       break;

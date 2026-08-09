@@ -3,7 +3,7 @@
 
 import {
   FACTIONS, DIPLO_FACTIONS, COMMODITY_KEYS, MENAGES, COMMODITIES, drapeauDe, diploDe,
-  couleurNeuve,
+  couleurNeuve, symboleNeuf,
 } from './data.js';
 import { Rng, grainDe } from './rng.js';
 import {
@@ -1411,6 +1411,7 @@ function fonderColonne(world, a, key, t, log) {
     datif: berceau ? `aux Affranchis de ${berceau.nom}` : `à la Compagnie de ${capitaine}`,
     genitif: berceau ? `des Affranchis de ${berceau.nom}` : `de la Compagnie de ${capitaine}`,
     couleur: couleurNeuve(world),
+    symbole: symboleNeuf(world),
     devise: 'On ne nous paie plus. On ne sert plus.',
     // Un tempérament dérivé de l'événement, pas tiré du flux principal.
     agression: Number((0.35 + (a.id % 5) * 0.08).toFixed(2)),

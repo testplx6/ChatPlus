@@ -1041,6 +1041,7 @@ const FACTIONS = {
     datif: 'au Consortium Hexa',
     genitif: 'du Consortium Hexa',
     couleur: '#4fd0e3',
+    symbole: '⬡',
     devise: 'Le contrat prime sur le sang.',
     agression: 0.42,
     cupidite: 0.9,
@@ -1054,6 +1055,7 @@ const FACTIONS = {
     datif: 'aux Rouilleurs',
     genitif: 'des Rouilleurs',
     couleur: '#d98a3a',
+    symbole: '⚙',
     devise: 'Tout se démonte, même toi.',
     agression: 0.5,
     cupidite: 0.55,
@@ -1067,6 +1069,7 @@ const FACTIONS = {
     datif: 'à l’Église du Signal',
     genitif: 'de l’Église du Signal',
     couleur: '#b06be0',
+    symbole: '✷',
     devise: 'La statique parle à qui écoute.',
     agression: 0.62,
     cupidite: 0.3,
@@ -1080,6 +1083,7 @@ const FACTIONS = {
     datif: 'au Syndicat Ombrelle',
     genitif: 'du Syndicat Ombrelle',
     couleur: '#6be08a',
+    symbole: '☂',
     devise: 'Rien n’est interdit, tout est tarifé.',
     agression: 0.52,
     cupidite: 0.95,
@@ -1093,6 +1097,7 @@ const FACTIONS = {
     datif: 'à la Milice de Cendre',
     genitif: 'de la Milice de Cendre',
     couleur: '#e05b5b',
+    symbole: '▲',
     devise: 'L’ordre, ou la cendre.',
     agression: 0.78,
     cupidite: 0.4,
@@ -1106,6 +1111,7 @@ const FACTIONS = {
     datif: 'aux Communes Libres',
     genitif: 'des Communes Libres',
     couleur: '#e0d36b',
+    symbole: '✿',
     devise: 'On ne rend de comptes qu’à la récolte.',
     agression: 0.18,
     cupidite: 0.35,
@@ -1119,6 +1125,7 @@ const FACTIONS = {
     datif: 'à l’Essaim',
     genitif: 'de l’Essaim',
     couleur: '#8a8f9a',
+    symbole: '✳',
     devise: '—',
     agression: 0.95,
     cupidite: 0,
@@ -2411,6 +2418,51 @@ const LUM_DRAPEAU = 0.6;
  * C'est exact, c'est déterministe, et ça coûte trois cent soixante comparaisons
  * une fois dans la vie d'une faction.
  */
+/**
+ * Le signe d'une monnaie. `ECONOMIE.md` §10 : un prix s'écrit dans la monnaie
+ * du lieu et rien d'autre — « 128 ⌂ », pas de parenthèses, pas de conversion.
+ *
+ * Ce signe n'est donc pas de la décoration : sans lui, deux villes afficheraient
+ * « 128 » pour deux sommes sans rapport et le joueur n'aurait aucun moyen de le
+ * voir. C'est la contrepartie du choix d'afficher en monnaie locale seule.
+ *
+ * Un drapeau qu'on ne connaît pas rend le signe générique plutôt que rien : une
+ * monnaie inconnue s'affiche, elle ne casse pas la ligne.
+ */
+function symboleDe(world, cle) {
+  const d = drapeauDe(world, cle);
+  return (d && d.symbole) || '¤';
+}
+
+/**
+ * La réserve de signes pour les drapeaux qui naissent en cours de partie.
+ *
+ * Même logique que `couleurNeuve` : on prend celui qui reste, jamais un tirage.
+ * Un pays fondé en jeu ne doit pas décaler le flux scellé (piège n° 1), et deux
+ * pays voisins qui porteraient le même signe rendraient l'affichage menteur —
+ * ce que le signe est justement là pour empêcher.
+ */
+const SIGNES_LIBRES = [
+  '⌂', '◈', '❖', '✜', '⊕', '⌾', '✱', '⊗', '▣', '✤',
+  '⌬', '⍟', '✧', '⊞', '◍', '⎔', '✥', '⊛', '▩', '❆',
+];
+
+/**
+ * Le premier signe que personne ne porte. Si la réserve est épuisée — vingt
+ * pays nés dans la même partie, jamais vu au banc — on rend le générique : deux
+ * monnaies confondues à l'écran valent mieux qu'une exception au milieu d'un
+ * conseil.
+ */
+function symboleNeuf(world) {
+  const pris = new Set();
+  for (const f of Object.values(FACTIONS)) if (f.symbole) pris.add(f.symbole);
+  for (const f of Object.values((world && world.drapeaux) || {})) {
+    if (f.symbole) pris.add(f.symbole);
+  }
+  for (const c of SIGNES_LIBRES) if (!pris.has(c)) return c;
+  return '¤';
+}
+
 function couleurNeuve(world) {
   const prises = [];
   for (const f of Object.values(FACTIONS)) {
@@ -5506,7 +5558,7 @@ function acheterBete(state, col, key, rng, log, groupe) {
   }
   const prix = prixBete(col, key);
   if (soldeIci(state) < prix) {
-    return { ok: false, motif: `Il manque ${prix - soldeIci(state)} cr.` };
+    return { ok: false, motif: `Il manque ${prix - soldeIci(state)} ${signeIci(state)}.` };
   }
   regler(state, prix);
   if (!g.betes) g.betes = [];
@@ -5515,7 +5567,7 @@ function acheterBete(state, col, key, rng, log, groupe) {
   if (log) {
     log({
       type: 'bete',
-      texte: `${def.nom} ${def.objet ? 'achetée' : `— ${b.nom} — achetée`} à ${col.nom} pour ${prix} cr.`,
+      texte: `${def.nom} ${def.objet ? 'achetée' : `— ${b.nom} — achetée`} à ${col.nom} pour ${prix} ${signeIci(state)}.`,
       important: true,
       regionId: col.regionId,
       groupe: g.id,
@@ -5536,7 +5588,7 @@ function vendreBete(state, col, beteId, log, groupe) {
   const prix = Math.round(prixBete(col, b.key) * 0.5 * (0.4 + 0.6 * (b.sante / 100)));
   gagner(state, prix);
   g.betes.splice(i, 1);
-  if (log) log({ type: 'bete', texte: `${b.nom} cédée à ${col.nom} pour ${prix} cr.`, regionId: col.regionId });
+  if (log) log({ type: 'bete', texte: `${b.nom} cédée à ${col.nom} pour ${prix} ${signeIci(state)}.`, regionId: col.regionId });
   return { ok: true, prix };
 }
 
@@ -7018,7 +7070,7 @@ function tickEngagement(state, g, log, ctx) {
     noterArgent(state, 'solde', rang.def.solde);
     log({
       type: 'solde',
-      texte: `Solde ${drapeauDe(state.world, all.faction).genitif} : ${rang.def.solde} cr.`,
+      texte: `Solde ${drapeauDe(state.world, all.faction).genitif} : ${rang.def.solde} ${symboleDe(state.world, all.faction)}.`,
       discret: true,
     });
   }
@@ -7078,7 +7130,7 @@ function tickEngagement(state, g, log, ctx) {
       });
       log({
         type: 'allegeance',
-        texte: `Ordre exécuté : ${o.titre}. ${o.recompense} cr.`,
+        texte: `Ordre exécuté : ${o.titre}. ${o.recompense} ${signeIci(state)}.`,
         important: true,
       });
     } else if (all.ordre.echeance && state.temps > all.ordre.echeance) {
@@ -7135,7 +7187,7 @@ function tickEngagement(state, g, log, ctx) {
       all.ordre = o;
       log({
         type: 'allegeance',
-        texte: `Ordre de mission ${drapeauDe(state.world, all.faction).genitif} : ${o.titre} (${o.recompense} cr).`,
+        texte: `Ordre de mission ${drapeauDe(state.world, all.faction).genitif} : ${o.titre} (${o.recompense} ${signeIci(state)}).`,
         important: true,
       });
     } else {
@@ -9770,7 +9822,7 @@ function acheter(state, col, key, qte, groupe) {
   // et le prix payé ne peuvent pas diverger.
   const sim = simulerAchat(state, col, key, qte, g);
   if (sim.qte === 0) {
-    const motifs = { 'sac plein': 'Sac plein.', 'étal vide': 'L’étal est vide.', credits: 'Pas assez de crédits.' };
+    const motifs = { 'sac plein': 'Sac plein.', 'étal vide': 'L’étal est vide.', credits: 'Bourse trop courte.' };
     return { ok: false, motif: motifs[sim.borne] || 'Rien à acheter à ce prix.', qte: 0, cout: 0 };
   }
   col.stock[key] = Math.max(0, (col.stock[key] || 0) - sim.qte);
@@ -9885,7 +9937,7 @@ function acheterItem(state, col, index, groupe) {
   const hab = negoc ? comp(negoc, 'commerce') : 0;
   const repu = state.player.reputation[col.faction] || 0;
   const p = prixItem(col, ligne.key, ligne.coef, hab, repu, remiseDe(state, col.faction)).achat;
-  if (soldeIci(state) < p) return { ok: false, motif: `Il manque ${p - soldeIci(state)} cr.` };
+  if (soldeIci(state) < p) return { ok: false, motif: `Il manque ${p - soldeIci(state)} ${signeIci(state)}.` };
 
   regler(state, p);
   ligne.qte -= 1;
@@ -10075,7 +10127,7 @@ function tickCredit(world, key, colonies, heures, log) {
           if (log) {
             log({
               type: 'faillite',
-              texte: `${col.nom} fait défaut : ${Math.round(perdu)} crédits partis en fumée, `
+              texte: `${col.nom} fait défaut : ${Math.round(perdu)} ${symboleDe(world, key)} partis en fumée, `
                 + `et ${drapeauDe(world, key).nom} ${drapeauDe(world, key).pluriel ? 'n’en verront' : 'n’en verra'} `
                 + `jamais la couleur. La ville gronde.`,
               regionId: col.regionId,
@@ -10189,7 +10241,7 @@ function racheterCreance(world, col, acheteur, t) {
   const a = world.factions[acheteur];
   const porteur = col.creancier;
   if (!a || a.tresor < prix) {
-    return { ok: false, motif: `Il faut ${prix} cr, il y en a ${Math.round(a ? a.tresor : 0)}.` };
+    return { ok: false, motif: `Il faut ${prix} ${symboleDe(world, acheteur)}, il y en a ${Math.round(a ? a.tresor : 0)}.` };
   }
   // On paie dans sa monnaie, le porteur encaisse dans la sienne : c'est un
   // change, pas un virement. L'écrire comme un transfert à montant égal cassait
@@ -10842,6 +10894,18 @@ function regler(state, montant, monnaie) {
   return debiterBourse(state && state.player, monnaie || monnaieIci(state), montant);
 }
 
+/**
+ * Le signe de la monnaie d'ici, pour les lignes de journal du moteur.
+ *
+ * L'interface a son propre raccourci ; le moteur en a besoin aussi, parce que
+ * la moitié des sommes que le joueur lit ne sont pas sur un écran mais dans le
+ * journal — « Il manque 86 cr », « Livraison honorée : 240 cr encaissés ». Ce
+ * « cr » disait un crédit universel qui n'existe plus.
+ */
+function signeIci(state) {
+  return symboleDe(state && state.world, monnaieIci(state));
+}
+
 // ===== src/caravanes.js ==============================================
 // Caravanes marchandes. Les villes ne vivent pas en vase clos : ce qu'une
 // colonie a en trop part chez celle qui en manque, sur des routes qui traversent
@@ -11243,7 +11307,7 @@ function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEscorte) 
   if (sens === 'achat') {
     const du = devis.total + fraisEscorte;
     if (soldeIci(state) < du) {
-      return { ok: false, motif: `Il manque ${du - soldeIci(state)} cr.` };
+      return { ok: false, motif: `Il manque ${du - soldeIci(state)} ${signeIci(state)}.` };
     }
     regler(state, du);
     // Ce que vous payez ne s'évapore pas : la ville qui vous fournit l'encaisse,
@@ -11256,7 +11320,7 @@ function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEscorte) 
       return { ok: false, motif: `L’entrepôt n’a que ${dispo} ${COMMODITIES[key].nom.toLowerCase()}.` };
     }
     if (soldeIci(state) < fraisEscorte) {
-      return { ok: false, motif: `L’escorte coûte ${fraisEscorte} cr d’avance.` };
+      return { ok: false, motif: `L’escorte coûte ${fraisEscorte} ${signeIci(state)} d’avance.` };
     }
     regler(state, fraisEscorte);
     base.stock[key] = dispo - devis.qte;
@@ -11303,9 +11367,9 @@ function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEscorte) 
       type: 'bourse',
       texte: sens === 'achat'
         ? `Ordre passé : ${devis.qte} ${COMMODITIES[key].nom.toLowerCase()} depuis ${place.nom}, `
-          + `${devis.total + fraisEscorte} cr. Le convoi est en route.`
+          + `${devis.total + fraisEscorte} ${signeIci(state)}. Le convoi est en route.`
         : `Ordre passé : ${devis.qte} ${COMMODITIES[key].nom.toLowerCase()} vers ${place.nom}, `
-          + `${devis.total} cr à l’arrivée. Le convoi part.`,
+          + `${devis.total} ${signeIci(state)} à l’arrivée. Le convoi part.`,
       regionId: base.regionId,
       important: true,
     });
@@ -11389,7 +11453,7 @@ function arriver(state, car, log) {
       if (log) {
         log({
           type: 'bourse',
-          texte: `Livraison honorée : ${car.paiement || 0} cr encaissés.`,
+          texte: `Livraison honorée : ${car.paiement || 0} ${signeIci(state)} encaissés.`,
           regionId: car.regionId,
           important: true,
         });
@@ -13094,6 +13158,7 @@ function fonderColonne(world, a, key, t, log) {
     datif: berceau ? `aux Affranchis de ${berceau.nom}` : `à la Compagnie de ${capitaine}`,
     genitif: berceau ? `des Affranchis de ${berceau.nom}` : `de la Compagnie de ${capitaine}`,
     couleur: couleurNeuve(world),
+    symbole: symboleNeuf(world),
     devise: 'On ne nous paie plus. On ne sert plus.',
     // Un tempérament dérivé de l'événement, pas tiré du flux principal.
     agression: Number((0.35 + (a.id % 5) * 0.08).toFixed(2)),
@@ -14903,7 +14968,7 @@ function disposerCorps(state, g, id, quoi, log) {
       state.player.reputation[k] = Math.max(-100, (state.player.reputation[k] || 0) - 5);
     }
     state.stats.organesVendus = (state.stats.organesVendus || 0) + 1;
-    dire(`Ce qui était encore bon chez ${c.nom} est parti à ${col.nom} pour ${prix} cr.`);
+    dire(`Ce qui était encore bon chez ${c.nom} est parti à ${col.nom} pour ${prix} ${signeIci(state)}.`);
     return { ok: true, prix };
   }
 
@@ -17014,7 +17079,7 @@ function visiteMarchand(state, rng, log) {
     log({
       type: 'marchand',
       texte: `Un colporteur s’arrête à ${base.nom}`
-        + `${vendu ? ` : il prend ${vendu} unités du surplus pour ${credits} cr` : ''}`
+        + `${vendu ? ` : il prend ${vendu} unités du surplus pour ${credits} ${signeIci(state)}` : ''}`
         + `${achete ? `${vendu ? ' et laisse' : ' : il laisse'} ${achete} unités` : ''}.`,
       regionId: base.regionId,
       important: vendu >= 40,
@@ -17349,7 +17414,7 @@ function peutLouer(state, col) {
     return { ok: false, motif: `${reg.nom} : on n’y loue rien à un étranger.` };
   }
   if (soldeIci(state) < LOYER) {
-    return { ok: false, motif: `Le premier mois se paie d’avance : ${LOYER} cr.` };
+    return { ok: false, motif: `Le premier mois se paie d’avance : ${LOYER} ${signeIci(state)}.` };
   }
   return { ok: true };
 }
@@ -17382,7 +17447,7 @@ function peutAcheter(state, col) {
     }
   }
   if (soldeIci(state) < PRIX_COFFRE) {
-    return { ok: false, motif: `Il manque ${PRIX_COFFRE - soldeIci(state)} cr.` };
+    return { ok: false, motif: `Il manque ${PRIX_COFFRE - soldeIci(state)} ${signeIci(state)}.` };
   }
   return { ok: true };
 }
@@ -17409,7 +17474,7 @@ function louerCoffre(state, col, log) {
   if (log) {
     log({
       type: 'coffre',
-      texte: `Un coffre loué à ${col.nom} : ${LOYER} cr le mois, ${CAPACITE_LOUEE} kg.`,
+      texte: `Un coffre loué à ${col.nom} : ${LOYER} ${signeIci(state)} le mois, ${CAPACITE_LOUEE} kg.`,
       important: true,
       regionId: col.regionId,
     });
@@ -17491,7 +17556,7 @@ function tickCoffres(state, log) {
       if (log) {
         log({
           type: 'coffre',
-          texte: `Loyer du coffre de ${coffre.nom} : ${LOYER} cr.`,
+          texte: `Loyer du coffre de ${coffre.nom} : ${LOYER} ${signeIci(state)}.`,
           discret: true,
         });
       }
@@ -17843,7 +17908,7 @@ function accepter(state, col, id, log, groupe) {
   state.player.contrats.push(c);
   log({
     type: 'contrat',
-    texte: `Contrat accepté : ${c.titre} (${c.recompense} cr).`,
+    texte: `Contrat accepté : ${c.titre} (${c.recompense} ${signeIci(state)}).`,
     important: true,
     regionId: col.regionId,
   });
@@ -18033,7 +18098,7 @@ function recompenser(state, c, log) {
   });
   log({
     type: 'contrat',
-    texte: `Contrat rempli : ${c.titre}. ${c.recompense} cr, réputation +${gagne}.`,
+    texte: `Contrat rempli : ${c.titre}. ${c.recompense} ${signeIci(state)}, réputation +${gagne}.`,
     important: true,
   });
 }
@@ -18338,7 +18403,7 @@ function combatContre(state, bande, log, ctx, groupe) {
     // Ceux qui sont à terre sans être morts. On ne les laisse plus s'évaporer :
     // c'est la seule question du jeu à laquelle le butin ne répond pas.
     const pris = fairePrisonniers(state, g, bande, capturables(g, bande), log);
-    texte = `${bande.nom} mis en déroute à ${lieu} — ${ramasse} unités et ${b.credits} cr récupérés`
+    texte = `${bande.nom} mis en déroute à ${lieu} — ${ramasse} unités et ${b.credits} ${signeIci(state)} récupérés`
       + `${pris.length ? `, ${pris.length} prisonnier${pris.length > 1 ? 's' : ''}` : ''}.`;
   } else if (res.vainqueur === 'B') {
     texte = perdreCombat(state, bande, log, ctx, lieu, g);
@@ -18460,7 +18525,7 @@ function perdreCombat(state, bande, log, ctx, lieu, g) {
     c.sang = Math.min(c.sang, 6);
     if (c.etat === 'ko') c.koHeures = Math.max(c.koHeures, rng.irange(4, 12));
   }
-  return `${g.nom} battu à ${lieu} : ${perdu} unités et ${cr} cr perdus, réveil à ${nomRegion(state.world, g.regionId)}.`;
+  return `${g.nom} battu à ${lieu} : ${perdu} unités et ${cr} ${signeIci(state)} perdus, réveil à ${nomRegion(state.world, g.regionId)}.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -18738,7 +18803,7 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       for (const c of debout) gagnerXp(c, 'ingenierie', XP_PRATIQUE * 1.2);
       log({
         type: 'trouvaille',
-        texte: `Épave fouillée : ${pris} ${COMMODITIES[k].nom.toLowerCase()}${cr ? ` et ${cr} cr` : ''}.`,
+        texte: `Épave fouillée : ${pris} ${COMMODITIES[k].nom.toLowerCase()}${cr ? ` et ${cr} ${signeIci(state)}` : ''}.`,
         regionId,
       });
       return true;
@@ -18754,7 +18819,7 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       if (!state.player.politique.recruter || soldeIci(state) < prix) {
         log({
           type: 'rencontre',
-          texte: `Un errant propose ses services (${prix} cr). Décliné.`,
+          texte: `Un errant propose ses services (${prix} ${signeIci(state)}). Décliné.`,
           regionId,
           discret: true,
         });
@@ -18766,7 +18831,7 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       g.membres.push(c);
       log({
         type: 'recrue',
-        texte: `${c.nom} (${c.archetypeNom}) rejoint ${g.nom} pour ${prix} cr.`,
+        texte: `${c.nom} (${c.archetypeNom}) rejoint ${g.nom} pour ${prix} ${signeIci(state)}.`,
         regionId,
         important: true,
         groupe: g.id,
@@ -18795,7 +18860,7 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.8);
       log({
         type: 'commerce',
-        texte: `Caravane : ${q} ${COMMODITIES[k].nom.toLowerCase()} vendus pour ${prix} cr.`,
+        texte: `Caravane : ${q} ${COMMODITIES[k].nom.toLowerCase()} vendus pour ${prix} ${signeIci(state)}.`,
         regionId,
       });
       return true;
@@ -18821,7 +18886,7 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
         reputation(state, f, 1);
         log({
           type: 'peage',
-          texte: `Péage ${drapeauDe(state.world, f) ? drapeauDe(state.world, f).nom : 'local'} : ${taxe} cr versés.`,
+          texte: `Péage ${drapeauDe(state.world, f) ? drapeauDe(state.world, f).nom : 'local'} : ${taxe} ${signeIci(state)} versés.`,
           regionId,
         });
       } else {
@@ -18966,7 +19031,7 @@ function fouillerSite(state, rng, log, groupe) {
   for (const c of debout) gagnerXp(c, 'ingenierie', XP_PRATIQUE * 3);
   state.stats.sitesFouilles = (state.stats.sitesFouilles || 0) + 1;
 
-  const resume = [pris.join(', '), cr ? `${cr} cr` : null, objets.length ? objets.join(', ') : null]
+  const resume = [pris.join(', '), cr ? `${cr} ${signeIci(state)}` : null, objets.length ? objets.join(', ') : null]
     .filter(Boolean).join(' · ') || 'rien d’exploitable';
   // On garde ce qu'on en a tiré sur le site lui-même.
   //
@@ -20106,6 +20171,7 @@ function faitsDe(state) {
     combatsGagnes: st.combatsGagnes || 0,
     defaites: st.defaites || 0,
     credits: Math.round(soldeIci(state) || 0),
+    signe: signeIci(state),
     recolte: Math.round(st.recolte || 0),
     sites: st.sitesFouilles || 0,
     contrats: st.contratsRemplis || 0,
@@ -20166,7 +20232,7 @@ function lignesDe(state) {
   dire(f.services > 0, `${f.services} services rendus à des gens qui s’en souviennent.`);
   dire(f.caravanes > 0, `${f.caravanes} caravanes pillées.`);
   dire(f.sites > 0, `${f.sites} sites fouillés jusqu’à l’os.`);
-  dire(f.credits >= 1000, `${f.credits} crédits en poche.`);
+  dire(f.credits >= 1000, `${f.credits} ${f.signe || '¤'} en poche.`);
   return out;
 }
 
@@ -20577,7 +20643,11 @@ function resumeSauvegarde(state) {
     temps: state.temps || 0,
     jour: Math.floor((state.temps || 0) / 24) + 1,
     gens,
-    credits: Math.round(valeurBourse(state.world, state.player)),
+    // Ce qu'on a **là où l'on est**, avec son signe — pas un total. Il n'existe
+    // pas d'unité pour écrire la somme de six monnaies, et `valeurBourse` ne
+    // sort qu'au bureau de change (ECONOMIE §10).
+    argent: Math.round(soldeIci(state)),
+    signe: symboleDe(state.world, monnaieIci(state)),
     base: !!(state.base && state.base.fonde),
     nomBase: state.base && state.base.fonde ? state.base.nom : null,
     depart: state.depart || null,
@@ -21531,6 +21601,22 @@ function e(s) {
 function n(v, dec = 0) {
   if (!Number.isFinite(v)) return '—';
   return v.toLocaleString('fr-FR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+
+/**
+ * Le signe de la monnaie qu'on affiche. Sans argument : celle du lieu où l'on
+ * est. Avec un drapeau : la sienne — le trésor d'un pays, la solde d'un
+ * employeur, le cours d'une bourse ne sont pas dans la monnaie d'ici.
+ *
+ * ECONOMIE §10 : « Tout prix s'écrit dans la seule monnaie du lieu, avec le
+ * symbole propre à la faction. Rien entre parenthèses. » Le « cr » qui traînait
+ * à cinquante et un endroits de cet écran était le dernier vestige du crédit
+ * universel : il faisait croire que la somme affichée dans une ville valait
+ * autant que la même somme dans la ville d'à côté.
+ */
+function sym(cle) {
+  if (!S) return '¤';
+  return symboleDe(S.world, cle === undefined ? monnaieIci(S) : cle);
 }
 
 function jauge(pct, cls = '', couleur) {
@@ -22524,7 +22610,7 @@ function blocCaravanes() {
     const rep = S.player.reputation[car.faction] || 0;
     return `<div class="article">
       <div class="ligne"><span class="k" style="color:${couleurFaction(car.faction)}">${e(drapeauDe(S.world, car.faction).nom)}</span>
-        <span class="v ambre">~${n(valeurCargaison(car))} cr de marchandise</span></div>
+        <span class="v ambre">~${n(valeurCargaison(car))} ${sym()} de marchandise</span></div>
       <div class="aide">${e(de ? de.nom : '?')} → ${e(vers ? vers.nom : '?')} ·
         escorte ${n(car.escorte)} ·
         ${Object.keys(car.cargaison).map((k) => `${n(car.cargaison[k])} ${COMMODITIES[k].nom.toLowerCase()}`).join(', ')}</div>
@@ -23275,7 +23361,7 @@ function blocPrisonniers() {
           ${e(apercu(c).skill)} ${apercu(c).comp}</div>
         ${opts.map((o) => `<button class="act mini" style="margin-top:4px;text-align:left"
           data-a="captif" data-c="${e(c.id)}" data-k="${o.key}">${e(o.nom)}${
-  o.prix ? ` — ${n(o.prix)} cr` : ''}<br><span class="aide">${e(o.aide)}</span></button>`).join('')}
+  o.prix ? ` — ${n(o.prix)} ${sym()}` : ''}<br><span class="aide">${e(o.aide)}</span></button>`).join('')}
       </details>`;
   }).join('')}
   </section>`;
@@ -23309,7 +23395,7 @@ function blocDepouilles() {
           <span class="v aide">${e(c.archetypeNom || '')}</span></summary>
         ${rites.map((o) => `<button class="act mini" style="margin-top:4px;text-align:left"
           data-a="corps" data-c="${e(c.id)}" data-k="${o.key}">${e(o.nom)}${
-  o.gain ? ` — ${n(o.gain)} cr` : ''}<br><span class="aide">${e(o.aide)}</span></button>`).join('')}
+  o.gain ? ` — ${n(o.gain)} ${sym()}` : ''}<br><span class="aide">${e(o.aide)}</span></button>`).join('')}
       </details>`;
   }).join('')}
     ${col && !col.ruine ? '' : '<div class="aide">Hors ville : le trafic d’organes attendra.</div>'}
@@ -24044,7 +24130,7 @@ function blocComptoir() {
         <span class="aide">${e(nomRegion(S.world, o.regionId))} · garde ${n(o.escorte)}${
   o.escorteGroupe ? ' + escouade' : ''}</span></span>
       <span class="v">${o.reste} case${o.reste > 1 ? 's' : ''}${o.sens === 'vente'
-    ? `<br><span class="aide">${n(o.paiement)} cr à l’arrivée</span>` : ''}</span>
+    ? `<br><span class="aide">${n(o.paiement)} ${sym()} à l’arrivée</span>` : ''}</span>
     </div>`;
   }).join('');
   const suivi = c.ordres.length ? `<div class="sep"></div>
@@ -24078,7 +24164,7 @@ function blocComptoir() {
     // en page redevient celle d'un texte ordinaire.
     return `<button class="act mini ${ordreKey === k ? 'primaire' : ''}"
       data-a="ordre-k" data-k="${k}"><span>${e(COMMODITIES[k].nom)}<br>
-      <span class="aide">${n(cours[k], 1)} cr${l && l.ecart
+      <span class="aide">${n(cours[k], 1)} ${sym()}${l && l.ecart
   ? ` <span class="${l.ecart > 0 ? 'alerte' : 'ok'}">${l.ecart > 0 ? '+' : ''}${
     Math.round(l.ecart * 100)} %</span>` : ''}</span></span></button>`;
   }).join('');
@@ -24135,17 +24221,17 @@ function blocComptoir() {
     <div class="sep"></div>
     ${devis.ok ? `<div class="ligne"><span class="k">${ordreSens === 'achat'
     ? 'Cours à l’achat' : 'Cours à la vente'}</span>
-      <span class="v">${n(devis.unite, 1)} cr l’unité</span></div>
+      <span class="v">${n(devis.unite, 1)} ${sym()} l’unité</span></div>
     <div class="ligne"><span class="k">Lot</span>
       <span class="v">${n(devis.qte)} ${e(COMMODITIES[ordreKey].nom.toLowerCase())}
-        · ${n(devis.brut)} cr</span></div>
+        · ${n(devis.brut)} ${sym()}</span></div>
     <div class="ligne"><span class="k">Commission</span>
-      <span class="v">${n(devis.frais)} cr <span class="aide">(${
+      <span class="v">${n(devis.frais)} ${sym()} <span class="aide">(${
   Math.round(devis.part * 100)} %)</span></span></div>
     ${fraisEsc ? `<div class="ligne"><span class="k">Escorte</span>
-      <span class="v">${n(fraisEsc)} cr</span></div>` : ''}
+      <span class="v">${n(fraisEsc)} ${sym()}</span></div>` : ''}
     <div class="ligne"><span class="k">${ordreSens === 'achat' ? 'À payer' : 'Vous touchez'}</span>
-      <span class="v ${ordreSens === 'achat' ? 'alerte' : 'ok'}">${n(du)} cr</span></div>
+      <span class="v ${ordreSens === 'achat' ? 'alerte' : 'ok'}">${n(du)} ${sym()}</span></div>
     <div class="aide">${ordreSens === 'achat'
     ? 'Débité maintenant, livré à l’entrepôt quand le convoi arrive.'
     : `Sorti de l’entrepôt maintenant (${n(stockIci)} en stock), payé à l’arrivée. `
@@ -24450,7 +24536,7 @@ function ligneContrat(c, enCours) {
     <div class="ligne">
       <span class="k"><span class="puce" style="border-color:${couleurFaction(c.faction)};color:${couleurFaction(c.faction)}">${e(CONTRATS[c.type].nom)}</span>${
   presse ? ' <span class="puce mal">urgent</span>' : ''}</span>
-      <span class="v ambre">${n(c.recompense)} cr · rép +${gainEstime(S, c)}</span>
+      <span class="v ambre">${n(c.recompense)} ${sym()} · rép +${gainEstime(S, c)}</span>
     </div>
     <div class="contrat-t">${e(c.titre)}</div>
     ${p ? `${jauge(p.total ? p.fait / p.total : 0, p.pret ? 'vert' : '')}
@@ -24606,7 +24692,7 @@ function ciblesCharge(faction, k) {
     const paye = w.factions[faction].tresor >= cout;
     return villesVisables(faction).slice(0, 6).map((c) => ({
       val: c.id,
-      texte: `${FORCE_LEVEE} hommes sur ${c.nom} — ${n(cout)} cr${paye ? '' : ' (trésor court)'}`,
+      texte: `${FORCE_LEVEE} hommes sur ${c.nom} — ${n(cout)} ${sym(faction)}${paye ? '' : ' (trésor court)'}`,
     }));
   }
   if (k === 'fonder') {
@@ -24617,7 +24703,7 @@ function ciblesCharge(faction, k) {
     sites.sort((a, b) => proche(a) - proche(b));
     return sites.slice(0, 6).map((r) => ({
       val: String(r.i),
-      texte: `Poste en ${lieuAvecCoord(w, r.i)} — ${n(COUT_POSTE)} cr`,
+      texte: `Poste en ${lieuAvecCoord(w, r.i)} — ${n(COUT_POSTE)} ${sym(faction)}`,
     }));
   }
   if (k === 'bourse') {
@@ -24625,7 +24711,7 @@ function ciblesCharge(faction, k) {
     if (!v.ok) return [];
     return [{
       val: faction,
-      texte: `Ouvrir la bourse ${e(drapeauDe(S.world, faction).genitif)} — ${n(TRESOR_BOURSE)} cr d’amorce`,
+      texte: `Ouvrir la bourse ${e(drapeauDe(S.world, faction).genitif)} — ${n(TRESOR_BOURSE)} ${sym(faction)} d’amorce`,
     }];
   }
   if (k === 'accord') {
@@ -24648,8 +24734,8 @@ function ciblesCharge(faction, k) {
     return [{
       val: col.id,
       texte: k === 'garnison'
-        ? `Relever les murs de ${col.nom} (${col.murs} murs) — ${n(cout)} cr`
-        : `Nourrir ${col.nom} (grogne ${Math.round((col.unrest || 0) * 100)} %) — ${n(cout)} cr`,
+        ? `Relever les murs de ${col.nom} (${col.murs} murs) — ${n(cout)} ${sym(faction)}`
+        : `Nourrir ${col.nom} (grogne ${Math.round((col.unrest || 0) * 100)} %) — ${n(cout)} ${sym(faction)}`,
     }];
   }
   if (k === 'loi') {
@@ -24849,7 +24935,7 @@ function blocFeuilleService(all) {
     // Ce que ça a rapporté ou coûté. Un dossier qui dit « honoré » sans dire
     // combien ne sert qu'à moitié.
     const bilan = [
-      f.cr ? `${f.cr > 0 ? '+' : ''}${n(f.cr)} cr` : '',
+      f.cr ? `${f.cr > 0 ? '+' : ''}${n(f.cr)} ${sym()}` : '',
       f.pts ? `${f.pts > 0 ? '+' : ''}${n(f.pts)} pts` : '',
       f.rep ? `${f.rep > 0 ? '+' : ''}${n(f.rep)} estime` : '',
     ].filter(Boolean).join(' · ');
@@ -24863,7 +24949,7 @@ function blocFeuilleService(all) {
     cr: a.cr + (f.cr || 0), pts: a.pts + (f.pts || 0), rep: a.rep + (f.rep || 0),
   }), { cr: 0, pts: 0, rep: 0 });
   const cumul = [
-    total.cr ? `${total.cr > 0 ? '+' : ''}${n(total.cr)} cr` : '',
+    total.cr ? `${total.cr > 0 ? '+' : ''}${n(total.cr)} ${sym()}` : '',
     total.pts ? `${total.pts > 0 ? '+' : ''}${n(total.pts)} points de service` : '',
     total.rep ? `${total.rep > 0 ? '+' : ''}${n(total.rep)} d’estime` : '',
   ].filter(Boolean).join(' · ');
@@ -24939,7 +25025,7 @@ function blocAllegeance() {
     <div class="sep"></div>
     <div class="grille2">
       <div class="ligne"><span class="k">Remise</span><span class="v">${(rang.def.remise * 100).toFixed(0)} %</span></div>
-      <div class="ligne"><span class="k">Solde</span><span class="v">${n(rang.def.solde)} cr/jour</span></div>
+      <div class="ligne"><span class="k">Solde</span><span class="v">${n(rang.def.solde)} ${sym(faction)}/jour</span></div>
       <div class="ligne"><span class="k">Barrages</span><span class="v">${rang.index >= 1 ? 'libres' : 'payants'}</span></div>
       <div class="ligne"><span class="k">Renforts</span><span class="v">${rang.index >= 3 ? 'oui, chez eux' : 'non'}</span></div>
       <div class="ligne"><span class="k">Intendance</span>
@@ -24953,7 +25039,7 @@ function blocAllegeance() {
     ${o ? `<div class="titre">Ordre de mission</div>
       <div class="contrat-t">${e(o.titre)}</div>
       ${jauge(p && p.total ? p.fait / p.total : 0, p && p.pret ? 'vert' : '')}
-      <div class="aide">${e(p ? p.texte : '')} · ${n(o.recompense)} cr ·
+      <div class="aide">${e(p ? p.texte : '')} · ${n(o.recompense)} ${sym()} ·
         ${o.echeance
     ? `<span class="${o.echeance - S.temps < 48 ? 'alerte' : ''}">${
       dureeTexte(Math.max(0, o.echeance - S.temps))} restantes</span>`
@@ -24990,7 +25076,7 @@ function blocDossierContrats() {
   const lignes = dossier.map((f) => {
     const [cls, txt] = mot[f.issue] || ['att', f.issue];
     const bilan = [
-      f.cr ? `${f.cr > 0 ? '+' : ''}${n(f.cr)} cr` : '',
+      f.cr ? `${f.cr > 0 ? '+' : ''}${n(f.cr)} ${sym()}` : '',
       f.rep ? `${f.rep > 0 ? '+' : ''}${n(f.rep)} d’estime` : '',
     ].filter(Boolean).join(' · ');
     return `<div class="ligne souple">
@@ -25008,7 +25094,7 @@ function blocDossierContrats() {
     ].filter(Boolean).join(' · ')
     : '';
   const cumul = b && (b.cr || b.rep)
-    ? [b.cr ? `${b.cr > 0 ? '+' : ''}${n(b.cr)} cr` : '',
+    ? [b.cr ? `${b.cr > 0 ? '+' : ''}${n(b.cr)} ${sym()}` : '',
       b.rep ? `${b.rep > 0 ? '+' : ''}${n(b.rep)} d’estime` : ''].filter(Boolean).join(' · ')
     : '';
   return `<section class="panneau">
@@ -25208,7 +25294,7 @@ function ecranMonde() {
       ${d.pertes} perdue(s).</div>`;
   })()}
       <div class="aide">${f.colonies} colonie(s) · ${crypto
-    ? `trésor ${n(f.tresor)} cr`
+    ? `trésor ${n(f.tresor)} ${sym(f.key)}`
     : 'trésor inconnu'} · ${e(drapeauDe(S.world, f.key).devise)}</div>
       ${(() => {
     // Comment on gouverne chez eux. C'est ce qui fait de « qui servir » un
@@ -25332,7 +25418,7 @@ function ecranMonde() {
     const vers = colonieParId(S.world, c.versId);
     return `<div class="ligne">
         <span class="k" style="color:${couleurFaction(c.faction)}">${e(drapeauDe(S.world, c.faction).court)}</span>
-        <span class="v">${e(de ? de.nom : '?')} → ${e(vers ? vers.nom : '?')} · ${n(valeurCargaison(c))} cr</span></div>`;
+        <span class="v">${e(de ? de.nom : '?')} → ${e(vers ? vers.nom : '?')} · ${n(valeurCargaison(c))} ${sym()}</span></div>`;
   }).join('') : '<div class="aide">Aucune caravane sur les routes. Mauvais signe.</div>'}
   </section>
 
@@ -25458,7 +25544,7 @@ function modaleSauvegardes() {
       <div class="ligne souple"><span class="k">${e(x.nom)}</span>
         <span class="v aide">${e(quandTexte(x.quand))}</span></div>
       <div class="aide">Jour ${n(r.jour || 0)} · ${n(r.gens || 0)} vivant(s) ·
-        ${n(r.credits || 0)} cr${r.base ? ` · ${e(r.nomBase || 'un camp')}` : ' · sans camp'}
+        ${n(r.argent || 0)} ${e(r.signe || '¤')}${r.base ? ` · ${e(r.nomBase || 'un camp')}` : ' · sans camp'}
         · graine ${e(String(r.seed ?? '?'))}</div>
       <div class="taches" style="margin-top:5px">
         ${deuxTemps('charger-emp', x.id, 'Charger', 'primaire')}
@@ -25490,7 +25576,7 @@ function modaleSauvegardes() {
     est alors remplacée.</div>
   ${r ? `<div class="sep"></div>
     <div class="ligne"><span class="k">Partie en cours</span>
-      <span class="v">Jour ${n(r.jour)} · ${n(r.gens)} vivant(s) · ${n(r.credits)} cr</span></div>
+      <span class="v">Jour ${n(r.jour)} · ${n(r.gens)} vivant(s) · ${n(r.argent)} ${e(r.signe || '¤')}</span></div>
     <label class="aide" for="nom-sauvegarde">Nom de la copie (facultatif)</label>
     <input id="nom-sauvegarde" type="text" autocomplete="off"
       placeholder="Jour ${n(r.jour)}" value="">
@@ -25692,7 +25778,7 @@ function modaleRapport() {
   // Le solde, puis d'où il vient. « −2 877 cr » sans rien d'autre est une
   // accusation sans dossier : on ne sait pas si l'on s'est fait détrousser, si
   // le camp a acheté du carburant, ou si un impôt a couru trois cents jours.
-  const argent = ligne('Crédits', `${r.argent > 0 ? '+' : ''}${n(r.argent)} cr`,
+  const argent = ligne('Argent', `${r.argent > 0 ? '+' : ''}${n(r.argent)} ${sym()}`,
     r.argent < 0 ? 'alerte' : '')
     + (r.causes.length
       ? `<div class="aide">${r.causes.map((c) => `<span class="${c.delta < 0 ? 'alerte' : 'cyan'}">${
@@ -25792,9 +25878,9 @@ function modaleMarche() {
         <span class="aide">ville ${n(stock)} · sac ${n(aMoi)} · ${n(p.achat, 1)} / ${n(p.vente, 1)}
         ${gene ? `<span class="rouge">· ${gene}</span>` : ''}</span></span>
       <button class="act" data-a="acheter" data-k="${k}" data-q="${qteMarche}" ${a.qte < 1 ? 'disabled' : ''}>
-        ${a.qte < 1 ? '—' : `+${n(a.qte)}<br><span class="aide">${n(a.cout)} cr</span>`}</button>
+        ${a.qte < 1 ? '—' : `+${n(a.qte)}<br><span class="aide">${n(a.cout)} ${sym()}</span>`}</button>
       <button class="act" data-a="vendre" data-k="${k}" data-q="${qteMarche}" ${v.qte < 1 ? 'disabled' : ''}>
-        ${v.qte < 1 ? '—' : `−${n(v.qte)}<br><span class="aide">${n(v.gain)} cr</span>`}</button>
+        ${v.qte < 1 ? '—' : `−${n(v.qte)}<br><span class="aide">${n(v.gain)} ${sym()}</span>`}</button>
     </div>`;
   }).join('');
 
@@ -25802,7 +25888,7 @@ function modaleMarche() {
   // faut le dire, sinon le joueur croit à une erreur de prix.
   const reg = loiIci(S, col).regime;
   return `<h2 class="titre">Marché de ${e(col.nom)}
-    <span class="droite">${n(soldeIci(S))} cr</span></h2>
+    <span class="droite">${n(soldeIci(S))} ${sym()}</span></h2>
   <div class="aide">Négociateur : ${negoc ? `${e(negoc.nom)} (commerce ${hab.toFixed(0)})` : 'aucun'}.
     Une bonne réputation et un bon commerçant resserrent la marge. Le prix bouge
     à chaque unité : les montants affichés tiennent compte de tout le lot.
@@ -25831,15 +25917,15 @@ function modaleCoffre() {
 
   if (!coffre) {
     return `<h2 class="titre">Coffre à ${e(col.nom)}
-      <span class="droite">${n(soldeIci(S))} cr</span></h2>
+      <span class="droite">${n(soldeIci(S))} ${sym()}</span></h2>
     <div class="aide">De la place qui reste ici pendant que vous marchez.</div>
     <div class="sep"></div>
     <button class="act${vL.ok ? ' primaire' : ''}" data-a="coffre-louer" ${vL.ok ? '' : 'disabled'}>
-      Louer — ${LOYER} cr le mois, ${CAPACITE_LOUEE} kg
+      Louer — ${LOYER} ${sym()} le mois, ${CAPACITE_LOUEE} kg
       ${vL.ok ? '' : `<br><span class="aide">${e(vL.motif)}</span>`}</button>
     <div style="height:6px"></div>
     <button class="act" data-a="coffre-acheter" ${vA.ok ? '' : 'disabled'}>
-      Acheter — ${n(PRIX_COFFRE)} cr, ${CAPACITE_ACHETEE} kg, plus de loyer
+      Acheter — ${n(PRIX_COFFRE)} ${sym()}, ${CAPACITE_ACHETEE} kg, plus de loyer
       ${vA.ok ? '' : `<br><span class="aide">${e(vA.motif)}</span>`}</button>
     <div class="aide" style="margin-top:6px">${(() => {
     // Ce texte annonçait un seuil en dur, écrit avant les régimes : il promettait
@@ -25880,11 +25966,11 @@ function modaleCoffre() {
   ${jauge(pl.total ? pl.pris / pl.total : 0, pl.pris / pl.total > 0.95 ? 'rouge' : '')}
   <div class="aide">${coffre.achete
     ? 'À vous. Pas de loyer.'
-    : `Loué : prochain loyer de ${LOYER} cr dans ${dureeTexte(Math.max(0, coffre.jusqu - S.temps))}.
+    : `Loué : prochain loyer de ${LOYER} ${sym()} dans ${dureeTexte(Math.max(0, coffre.jusqu - S.temps))}.
        Sans quoi le bailleur se remboursera sur ce qu’il garde.`}</div>
   ${!coffre.achete && vA.ok
     ? `<div style="height:6px"></div><button class="act" data-a="coffre-acheter">
-        L’acheter — ${n(PRIX_COFFRE)} cr, ${CAPACITE_ACHETEE} kg</button>` : ''}
+        L’acheter — ${n(PRIX_COFFRE)} ${sym()}, ${CAPACITE_ACHETEE} kg</button>` : ''}
   <div class="taches" style="margin-top:6px">Quantité ${choixQuantite('qte-transfert', qteTransfert)}</div>
   <div class="sep"></div>${lignes || '<div class="aide">Rien ici, rien dans le sac.</div>'}`;
 }
@@ -25918,7 +26004,7 @@ function modaleEtal() {
     const trop = soldeIci(S) < p.achat;
     return `<div class="article">
       <div class="ligne"><span class="k">${e(it.nom)}</span>
-        <span class="v ambre">${n(p.achat)} cr${ligne.qte > 1 ? ` ×${ligne.qte}` : ''}</span></div>
+        <span class="v ambre">${n(p.achat)} ${sym()}${ligne.qte > 1 ? ` ×${ligne.qte}` : ''}</span></div>
       <div class="aide">${e(decrire(it))}</div>
       <button class="act mini ${trop ? '' : 'primaire'}" data-a="acheter-item" data-i="${i}"
         ${ligne.qte < 1 || trop ? 'disabled' : ''}>${ligne.qte < 1 ? 'Épuisé' : trop ? 'Trop cher' : 'Acheter'}</button>
@@ -25930,13 +26016,13 @@ function modaleEtal() {
     const p = prixItem(col, key, 1, hab, repu);
     return `<div class="marche-l">
       <span class="nm">${e(it.nom)}<br><span class="aide">${e(decrire(it))}</span></span>
-      <span class="px">${n(p.vente)} cr</span>
+      <span class="px">${n(p.vente)} ${sym()}</span>
       <button class="act" data-a="vendre-item" data-i="${i}">Vendre</button>
     </div>`;
   }).join('') || '<div class="aide">Rien à revendre.</div>';
 
   return `<h2 class="titre">Armurier de ${e(col.nom)}
-    <span class="droite">${n(soldeIci(S))} cr</span></h2>
+    <span class="droite">${n(soldeIci(S))} ${sym()}</span></h2>
   <div class="aide">Le stock se renouvelle. Ce que vous ne prenez pas aujourd’hui ne sera
     peut-être plus là demain.</div>
   <div class="sep"></div>
@@ -26103,7 +26189,7 @@ function modaleEcole() {
         <span class="v">${dureeTexte(d.heures)}</span></div>
       <div class="ligne"><span class="k">Prix</span>
         <span class="v ${soldeIci(S) >= prix ? '' : 'alerte'}">${prix
-    ? `${n(prix)} cr${remise ? ' (remise)' : ''}`
+    ? `${n(prix)} ${sym()}${remise ? ' (remise)' : ''}`
     : `gratuit — ${e(regime.nom)}`}</span></div>
       ${candidats.length
     ? `<div class="taches">${candidats.map((c) => `<button class="act mini"
@@ -26181,7 +26267,7 @@ function modaleVille() {
     const demandeHtml = att ? `<div class="sep"></div>
       <div class="aide">« ${e(att.demande.texte)} »</div>
       <div class="ligne"><span class="k">Il vous reste</span>
-        <span class="v">${Math.round(reste / 24)} j · ${n(att.demande.prime)} cr</span></div>
+        <span class="v">${Math.round(reste / 24)} j · ${n(att.demande.prime)} ${sym()}</span></div>
       <button class="act${att.pret ? ' primaire' : ''}" data-a="honorer"
         data-c="${e(col.id)}" data-n="${e(p.id)}" ${att.pret ? '' : 'disabled'}>
         ${att.pret ? 'Lui remettre' : `Il faut ${att.demande.quantite} ${e(COMMODITIES[att.demande.res].nom.toLowerCase())}`}
@@ -26254,20 +26340,20 @@ function modaleAttelage() {
     const auDela = miennes.length >= conduite(g);
     return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
       <div class="ligne"><span class="k">${e(def.nom)}</span>
-        <span class="v">${n(prix)} cr</span></div>
+        <span class="v">${n(prix)} ${sym()}</span></div>
       <div class="aide">${e(def.desc)}</div>
       <div class="aide">+${def.portage} kg · ${def.appetit
     ? `mange ${(def.appetit * 24).toFixed(1)} biomasse/jour` : 'ne mange rien'}
         · −${(def.lenteur * 100).toFixed(0)} % de vitesse</div>
       <button class="act mini${auDela ? '' : ' primaire'}" data-a="acheter-bete" data-k="${k}"
         style="margin-top:4px" ${soldeIci(S) < prix ? 'disabled' : ''}>
-        ${soldeIci(S) < prix ? 'Crédits insuffisants'
+        ${soldeIci(S) < prix ? 'Bourse trop courte'
     : auDela ? 'Acheter — personne pour la mener' : 'Acheter'}</button>
     </div>`;
   }).join('') : '<div class="aide">On n’achète pas une bête au milieu du désert.</div>';
 
   return `<h2 class="titre">Attelage de ${e(g.nom)}
-    <span class="droite">${n(soldeIci(S))} cr</span></h2>
+    <span class="droite">${n(soldeIci(S))} ${sym()}</span></h2>
   <div class="aide">Une bête porte à votre place, mange ce que personne ne mange,
     et ralentit le convoi. Elle maigrit si on l’oublie, et les pillards
     l’emmènent avant le reste.</div>
@@ -26310,17 +26396,17 @@ function modaleRecrutement() {
         <span class="v">${c.diplomes.map((d) => e(DIPLOMES[d] ? DIPLOMES[d].nom : d)).join(', ')}</span></div>` : ''}
       ${(c.traits || []).length ? `<div class="aide">${c.traits.map((t) =>
     e(TRAITS[t] ? TRAITS[t].nom : t)).join(' · ')}</div>` : ''}
-      <div class="ligne"><span class="k">Prime</span><span class="v">${n(prix)} cr</span></div>
+      <div class="ligne"><span class="k">Prime</span><span class="v">${n(prix)} ${sym()}</span></div>
       <button class="act mini${soldeIci(S) >= prix ? ' primaire' : ''}"
         data-a="recruter" data-i="${e(c.id)}" style="margin-top:4px"
         ${soldeIci(S) < prix ? 'disabled' : ''}>
-        ${soldeIci(S) < prix ? 'Crédits insuffisants' : 'Engager'}</button>
+        ${soldeIci(S) < prix ? 'Bourse trop courte' : 'Engager'}</button>
     </div>`;
   }).join('') : '<div class="aide">Personne ne cherche à partir d’ici en ce moment.</div>';
 
   const tension = tensionRecrutement(col);
   return `<h2 class="titre">Recrutement à ${e(col.nom)}
-    <span class="droite">${n(soldeIci(S))} cr</span></h2>
+    <span class="droite">${n(soldeIci(S))} ${sym()}</span></h2>
   <div class="aide">${tension < 0.8
     ? 'La ville va mal. Beaucoup de gens veulent s’en aller, et pour pas cher.'
     : tension > 1.15
@@ -26571,7 +26657,7 @@ function surClic(ev) {
     case 'acheter-item': {
       const col = colonieDe(S.world, G().regionId);
       const r = acheterItem(S, col, Number(el.dataset.i));
-      toast(r.ok ? `${r.nom} acheté pour ${r.prix} cr.` : r.motif, !r.ok);
+      toast(r.ok ? `${r.nom} acheté pour ${r.prix} ${sym()}.` : r.motif, !r.ok);
       rendreModale();
       rafraichir(true);
       break;
@@ -26580,7 +26666,7 @@ function surClic(ev) {
     case 'vendre-item': {
       const col = colonieDe(S.world, G().regionId);
       const r = vendreItem(S, col, Number(el.dataset.i));
-      toast(r.ok ? `${r.nom} vendu ${r.prix} cr.` : r.motif, !r.ok);
+      toast(r.ok ? `${r.nom} vendu ${r.prix} ${sym()}.` : r.motif, !r.ok);
       rendreModale();
       rafraichir(true);
       break;
@@ -26646,7 +26732,7 @@ function surClic(ev) {
     case 'corps': {
       const r = ACTIONS.disposerCorps(el.dataset.c, el.dataset.k);
       toast(r.ok
-        ? (r.prix ? `${r.prix} cr.` : r.rations ? `${r.rations} rations.`
+        ? (r.prix ? `${r.prix} ${sym()}.` : r.rations ? `${r.rations} rations.`
           : r.biomasse ? `${r.biomasse} de biomasse.` : 'C’est fait.')
         : r.motif, !r.ok);
       rafraichir(true);
@@ -26669,7 +26755,7 @@ function surClic(ev) {
     case 'acheter': {
       const col = colonieDe(S.world, G().regionId);
       const r = acheter(S, col, el.dataset.k, Number(el.dataset.q));
-      toast(r.ok ? `${r.qte} acheté(s) pour ${r.cout} cr.` : r.motif, !r.ok);
+      toast(r.ok ? `${r.qte} acheté(s) pour ${r.cout} ${sym()}.` : r.motif, !r.ok);
       rendreModale();
       rafraichir(true);
       break;
@@ -26678,7 +26764,7 @@ function surClic(ev) {
     case 'vendre': {
       const col = colonieDe(S.world, G().regionId);
       const r = vendre(S, col, el.dataset.k, Number(el.dataset.q));
-      toast(r.ok ? `${r.qte} vendu(s) pour ${r.gain} cr.` : r.motif, !r.ok);
+      toast(r.ok ? `${r.qte} vendu(s) pour ${r.gain} ${sym()}.` : r.motif, !r.ok);
       rendreModale();
       rafraichir(true);
       break;
@@ -26807,7 +26893,7 @@ function surClic(ev) {
 
     case 'vendre-bete': {
       const r = ACTIONS.vendreBete(el.dataset.b);
-      toast(r.ok ? `Cédée pour ${r.prix} cr.` : r.motif, !r.ok);
+      toast(r.ok ? `Cédée pour ${r.prix} ${sym()}.` : r.motif, !r.ok);
       rendreModale();
       break;
     }
@@ -26840,7 +26926,7 @@ function surClic(ev) {
     case 'captif': {
       const r = ACTIONS.disposerPrisonnier(el.dataset.c, el.dataset.k);
       toast(r.ok
-        ? (r.prix ? `C’est réglé. ${r.prix} cr.` : 'C’est réglé.')
+        ? (r.prix ? `C’est réglé. ${r.prix} ${sym()}.` : 'C’est réglé.')
         : r.motif, !r.ok);
       rafraichir(true);
       break;

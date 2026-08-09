@@ -1,4 +1,4 @@
-import { gagner } from './monnaie.js';
+import { gagner, signeIci } from './monnaie.js';
 // Ce qu'on fait de ses morts.
 //
 // `justice.js` demande ce qu'on fait des gens qu'on n'a pas tués. Voici la
@@ -233,7 +233,7 @@ export function disposerCorps(state, g, id, quoi, log) {
       state.player.reputation[k] = Math.max(-100, (state.player.reputation[k] || 0) - 5);
     }
     state.stats.organesVendus = (state.stats.organesVendus || 0) + 1;
-    dire(`Ce qui était encore bon chez ${c.nom} est parti à ${col.nom} pour ${prix} cr.`);
+    dire(`Ce qui était encore bon chez ${c.nom} est parti à ${col.nom} pour ${prix} ${signeIci(state)}.`);
     return { ok: true, prix };
   }
 

@@ -166,6 +166,7 @@ export const FACTIONS = {
     datif: 'au Consortium Hexa',
     genitif: 'du Consortium Hexa',
     couleur: '#4fd0e3',
+    symbole: '⬡',
     devise: 'Le contrat prime sur le sang.',
     agression: 0.42,
     cupidite: 0.9,
@@ -179,6 +180,7 @@ export const FACTIONS = {
     datif: 'aux Rouilleurs',
     genitif: 'des Rouilleurs',
     couleur: '#d98a3a',
+    symbole: '⚙',
     devise: 'Tout se démonte, même toi.',
     agression: 0.5,
     cupidite: 0.55,
@@ -192,6 +194,7 @@ export const FACTIONS = {
     datif: 'à l’Église du Signal',
     genitif: 'de l’Église du Signal',
     couleur: '#b06be0',
+    symbole: '✷',
     devise: 'La statique parle à qui écoute.',
     agression: 0.62,
     cupidite: 0.3,
@@ -205,6 +208,7 @@ export const FACTIONS = {
     datif: 'au Syndicat Ombrelle',
     genitif: 'du Syndicat Ombrelle',
     couleur: '#6be08a',
+    symbole: '☂',
     devise: 'Rien n’est interdit, tout est tarifé.',
     agression: 0.52,
     cupidite: 0.95,
@@ -218,6 +222,7 @@ export const FACTIONS = {
     datif: 'à la Milice de Cendre',
     genitif: 'de la Milice de Cendre',
     couleur: '#e05b5b',
+    symbole: '▲',
     devise: 'L’ordre, ou la cendre.',
     agression: 0.78,
     cupidite: 0.4,
@@ -231,6 +236,7 @@ export const FACTIONS = {
     datif: 'aux Communes Libres',
     genitif: 'des Communes Libres',
     couleur: '#e0d36b',
+    symbole: '✿',
     devise: 'On ne rend de comptes qu’à la récolte.',
     agression: 0.18,
     cupidite: 0.35,
@@ -244,6 +250,7 @@ export const FACTIONS = {
     datif: 'à l’Essaim',
     genitif: 'de l’Essaim',
     couleur: '#8a8f9a',
+    symbole: '✳',
     devise: '—',
     agression: 0.95,
     cupidite: 0,
@@ -1536,6 +1543,51 @@ const LUM_DRAPEAU = 0.6;
  * C'est exact, c'est déterministe, et ça coûte trois cent soixante comparaisons
  * une fois dans la vie d'une faction.
  */
+/**
+ * Le signe d'une monnaie. `ECONOMIE.md` §10 : un prix s'écrit dans la monnaie
+ * du lieu et rien d'autre — « 128 ⌂ », pas de parenthèses, pas de conversion.
+ *
+ * Ce signe n'est donc pas de la décoration : sans lui, deux villes afficheraient
+ * « 128 » pour deux sommes sans rapport et le joueur n'aurait aucun moyen de le
+ * voir. C'est la contrepartie du choix d'afficher en monnaie locale seule.
+ *
+ * Un drapeau qu'on ne connaît pas rend le signe générique plutôt que rien : une
+ * monnaie inconnue s'affiche, elle ne casse pas la ligne.
+ */
+export function symboleDe(world, cle) {
+  const d = drapeauDe(world, cle);
+  return (d && d.symbole) || '¤';
+}
+
+/**
+ * La réserve de signes pour les drapeaux qui naissent en cours de partie.
+ *
+ * Même logique que `couleurNeuve` : on prend celui qui reste, jamais un tirage.
+ * Un pays fondé en jeu ne doit pas décaler le flux scellé (piège n° 1), et deux
+ * pays voisins qui porteraient le même signe rendraient l'affichage menteur —
+ * ce que le signe est justement là pour empêcher.
+ */
+const SIGNES_LIBRES = [
+  '⌂', '◈', '❖', '✜', '⊕', '⌾', '✱', '⊗', '▣', '✤',
+  '⌬', '⍟', '✧', '⊞', '◍', '⎔', '✥', '⊛', '▩', '❆',
+];
+
+/**
+ * Le premier signe que personne ne porte. Si la réserve est épuisée — vingt
+ * pays nés dans la même partie, jamais vu au banc — on rend le générique : deux
+ * monnaies confondues à l'écran valent mieux qu'une exception au milieu d'un
+ * conseil.
+ */
+export function symboleNeuf(world) {
+  const pris = new Set();
+  for (const f of Object.values(FACTIONS)) if (f.symbole) pris.add(f.symbole);
+  for (const f of Object.values((world && world.drapeaux) || {})) {
+    if (f.symbole) pris.add(f.symbole);
+  }
+  for (const c of SIGNES_LIBRES) if (!pris.has(c)) return c;
+  return '¤';
+}
+
 export function couleurNeuve(world) {
   const prises = [];
   for (const f of Object.values(FACTIONS)) {

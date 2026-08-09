@@ -1,4 +1,4 @@
-import { gagner, regler, soldeIci } from './monnaie.js';
+import { gagner, regler, soldeIci, signeIci } from './monnaie.js';
 // Ce qui porte à votre place.
 //
 // Le banc a fini par chiffrer ce que le jeu était devenu : soixante-dix pour
@@ -192,7 +192,7 @@ export function acheterBete(state, col, key, rng, log, groupe) {
   }
   const prix = prixBete(col, key);
   if (soldeIci(state) < prix) {
-    return { ok: false, motif: `Il manque ${prix - soldeIci(state)} cr.` };
+    return { ok: false, motif: `Il manque ${prix - soldeIci(state)} ${signeIci(state)}.` };
   }
   regler(state, prix);
   if (!g.betes) g.betes = [];
@@ -201,7 +201,7 @@ export function acheterBete(state, col, key, rng, log, groupe) {
   if (log) {
     log({
       type: 'bete',
-      texte: `${def.nom} ${def.objet ? 'achetée' : `— ${b.nom} — achetée`} à ${col.nom} pour ${prix} cr.`,
+      texte: `${def.nom} ${def.objet ? 'achetée' : `— ${b.nom} — achetée`} à ${col.nom} pour ${prix} ${signeIci(state)}.`,
       important: true,
       regionId: col.regionId,
       groupe: g.id,
@@ -222,7 +222,7 @@ export function vendreBete(state, col, beteId, log, groupe) {
   const prix = Math.round(prixBete(col, b.key) * 0.5 * (0.4 + 0.6 * (b.sante / 100)));
   gagner(state, prix);
   g.betes.splice(i, 1);
-  if (log) log({ type: 'bete', texte: `${b.nom} cédée à ${col.nom} pour ${prix} cr.`, regionId: col.regionId });
+  if (log) log({ type: 'bete', texte: `${b.nom} cédée à ${col.nom} pour ${prix} ${signeIci(state)}.`, regionId: col.regionId });
   return { ok: true, prix };
 }
 

@@ -23,7 +23,7 @@ import { retenirEnVille } from './services.js';
 import { avantage } from './allegeance.js';
 import {
   transferer, convertirMasse, ecartChange, taux,
-  gagner, regler, soldeIci} from './monnaie.js';
+  gagner, regler, soldeIci, signeIci } from './monnaie.js';
 
 /**
  * Le plafond du commerce d'opportunité — celui que le hasard tire, par
@@ -414,7 +414,7 @@ export function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEs
   if (sens === 'achat') {
     const du = devis.total + fraisEscorte;
     if (soldeIci(state) < du) {
-      return { ok: false, motif: `Il manque ${du - soldeIci(state)} cr.` };
+      return { ok: false, motif: `Il manque ${du - soldeIci(state)} ${signeIci(state)}.` };
     }
     regler(state, du);
     // Ce que vous payez ne s'évapore pas : la ville qui vous fournit l'encaisse,
@@ -427,7 +427,7 @@ export function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEs
       return { ok: false, motif: `L’entrepôt n’a que ${dispo} ${COMMODITIES[key].nom.toLowerCase()}.` };
     }
     if (soldeIci(state) < fraisEscorte) {
-      return { ok: false, motif: `L’escorte coûte ${fraisEscorte} cr d’avance.` };
+      return { ok: false, motif: `L’escorte coûte ${fraisEscorte} ${signeIci(state)} d’avance.` };
     }
     regler(state, fraisEscorte);
     base.stock[key] = dispo - devis.qte;
@@ -474,9 +474,9 @@ export function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEs
       type: 'bourse',
       texte: sens === 'achat'
         ? `Ordre passé : ${devis.qte} ${COMMODITIES[key].nom.toLowerCase()} depuis ${place.nom}, `
-          + `${devis.total + fraisEscorte} cr. Le convoi est en route.`
+          + `${devis.total + fraisEscorte} ${signeIci(state)}. Le convoi est en route.`
         : `Ordre passé : ${devis.qte} ${COMMODITIES[key].nom.toLowerCase()} vers ${place.nom}, `
-          + `${devis.total} cr à l’arrivée. Le convoi part.`,
+          + `${devis.total} ${signeIci(state)} à l’arrivée. Le convoi part.`,
       regionId: base.regionId,
       important: true,
     });
@@ -560,7 +560,7 @@ function arriver(state, car, log) {
       if (log) {
         log({
           type: 'bourse',
-          texte: `Livraison honorée : ${car.paiement || 0} cr encaissés.`,
+          texte: `Livraison honorée : ${car.paiement || 0} ${signeIci(state)} encaissés.`,
           regionId: car.regionId,
           important: true,
         });

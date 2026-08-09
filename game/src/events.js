@@ -1,4 +1,4 @@
-import { gagner, regler, soldeIci } from './monnaie.js';
+import { gagner, regler, soldeIci, signeIci } from './monnaie.js';
 // Journal de bord et rencontres. Tout se résout automatiquement selon la
 // posture et les consignes de l'escouade : c'est ce qui permet à la simulation
 // de tourner pendant que le joueur est hors ligne.
@@ -227,7 +227,7 @@ export function combatContre(state, bande, log, ctx, groupe) {
     // Ceux qui sont à terre sans être morts. On ne les laisse plus s'évaporer :
     // c'est la seule question du jeu à laquelle le butin ne répond pas.
     const pris = fairePrisonniers(state, g, bande, capturables(g, bande), log);
-    texte = `${bande.nom} mis en déroute à ${lieu} — ${ramasse} unités et ${b.credits} cr récupérés`
+    texte = `${bande.nom} mis en déroute à ${lieu} — ${ramasse} unités et ${b.credits} ${signeIci(state)} récupérés`
       + `${pris.length ? `, ${pris.length} prisonnier${pris.length > 1 ? 's' : ''}` : ''}.`;
   } else if (res.vainqueur === 'B') {
     texte = perdreCombat(state, bande, log, ctx, lieu, g);
@@ -349,7 +349,7 @@ function perdreCombat(state, bande, log, ctx, lieu, g) {
     c.sang = Math.min(c.sang, 6);
     if (c.etat === 'ko') c.koHeures = Math.max(c.koHeures, rng.irange(4, 12));
   }
-  return `${g.nom} battu à ${lieu} : ${perdu} unités et ${cr} cr perdus, réveil à ${nomRegion(state.world, g.regionId)}.`;
+  return `${g.nom} battu à ${lieu} : ${perdu} unités et ${cr} ${signeIci(state)} perdus, réveil à ${nomRegion(state.world, g.regionId)}.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -627,7 +627,7 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       for (const c of debout) gagnerXp(c, 'ingenierie', XP_PRATIQUE * 1.2);
       log({
         type: 'trouvaille',
-        texte: `Épave fouillée : ${pris} ${COMMODITIES[k].nom.toLowerCase()}${cr ? ` et ${cr} cr` : ''}.`,
+        texte: `Épave fouillée : ${pris} ${COMMODITIES[k].nom.toLowerCase()}${cr ? ` et ${cr} ${signeIci(state)}` : ''}.`,
         regionId,
       });
       return true;
@@ -643,7 +643,7 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       if (!state.player.politique.recruter || soldeIci(state) < prix) {
         log({
           type: 'rencontre',
-          texte: `Un errant propose ses services (${prix} cr). Décliné.`,
+          texte: `Un errant propose ses services (${prix} ${signeIci(state)}). Décliné.`,
           regionId,
           discret: true,
         });
@@ -655,7 +655,7 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       g.membres.push(c);
       log({
         type: 'recrue',
-        texte: `${c.nom} (${c.archetypeNom}) rejoint ${g.nom} pour ${prix} cr.`,
+        texte: `${c.nom} (${c.archetypeNom}) rejoint ${g.nom} pour ${prix} ${signeIci(state)}.`,
         regionId,
         important: true,
         groupe: g.id,
@@ -684,7 +684,7 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.8);
       log({
         type: 'commerce',
-        texte: `Caravane : ${q} ${COMMODITIES[k].nom.toLowerCase()} vendus pour ${prix} cr.`,
+        texte: `Caravane : ${q} ${COMMODITIES[k].nom.toLowerCase()} vendus pour ${prix} ${signeIci(state)}.`,
         regionId,
       });
       return true;
@@ -710,7 +710,7 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
         reputation(state, f, 1);
         log({
           type: 'peage',
-          texte: `Péage ${drapeauDe(state.world, f) ? drapeauDe(state.world, f).nom : 'local'} : ${taxe} cr versés.`,
+          texte: `Péage ${drapeauDe(state.world, f) ? drapeauDe(state.world, f).nom : 'local'} : ${taxe} ${signeIci(state)} versés.`,
           regionId,
         });
       } else {
@@ -855,7 +855,7 @@ export function fouillerSite(state, rng, log, groupe) {
   for (const c of debout) gagnerXp(c, 'ingenierie', XP_PRATIQUE * 3);
   state.stats.sitesFouilles = (state.stats.sitesFouilles || 0) + 1;
 
-  const resume = [pris.join(', '), cr ? `${cr} cr` : null, objets.length ? objets.join(', ') : null]
+  const resume = [pris.join(', '), cr ? `${cr} ${signeIci(state)}` : null, objets.length ? objets.join(', ') : null]
     .filter(Boolean).join(' · ') || 'rien d’exploitable';
   // On garde ce qu'on en a tiré sur le site lui-même.
   //

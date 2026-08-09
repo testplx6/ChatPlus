@@ -19,7 +19,7 @@
 // son intérêt — qui est calculable. Un plafond en crédits par habitant serait un
 // décret : voir le principe de réglage en tête de METHODE.md.
 
-import { COMMODITIES, COMMODITY_KEYS, drapeauDe } from './data.js';
+import { COMMODITIES, COMMODITY_KEYS, drapeauDe, symboleDe } from './data.js';
 import { loisDe } from './lois.js';
 import { nommerActeur } from './notables.js';
 import { transferer, convertirMasse, taux } from './monnaie.js';
@@ -172,7 +172,7 @@ export function tickCredit(world, key, colonies, heures, log) {
           if (log) {
             log({
               type: 'faillite',
-              texte: `${col.nom} fait défaut : ${Math.round(perdu)} crédits partis en fumée, `
+              texte: `${col.nom} fait défaut : ${Math.round(perdu)} ${symboleDe(world, key)} partis en fumée, `
                 + `et ${drapeauDe(world, key).nom} ${drapeauDe(world, key).pluriel ? 'n’en verront' : 'n’en verra'} `
                 + `jamais la couleur. La ville gronde.`,
               regionId: col.regionId,
@@ -286,7 +286,7 @@ export function racheterCreance(world, col, acheteur, t) {
   const a = world.factions[acheteur];
   const porteur = col.creancier;
   if (!a || a.tresor < prix) {
-    return { ok: false, motif: `Il faut ${prix} cr, il y en a ${Math.round(a ? a.tresor : 0)}.` };
+    return { ok: false, motif: `Il faut ${prix} ${symboleDe(world, acheteur)}, il y en a ${Math.round(a ? a.tresor : 0)}.` };
   }
   // On paie dans sa monnaie, le porteur encaisse dans la sienne : c'est un
   // change, pas un virement. L'écrire comme un transfert à montant égal cassait

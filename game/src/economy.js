@@ -20,7 +20,10 @@ import {
 import { tickServices } from './services.js';
 import { portageAttelage } from './betes.js';
 import { loiIci, loisDe } from './lois.js';
-import { sortirDuCircuit, transfererVille, coursMonnaie , gagner, regler, soldeIci} from './monnaie.js';
+import {
+  sortirDuCircuit, transfererVille, coursMonnaie,
+  gagner, regler, soldeIci, signeIci,
+} from './monnaie.js';
 
 /**
  * La caisse d'une ville.
@@ -1196,7 +1199,7 @@ export function acheter(state, col, key, qte, groupe) {
   // et le prix payé ne peuvent pas diverger.
   const sim = simulerAchat(state, col, key, qte, g);
   if (sim.qte === 0) {
-    const motifs = { 'sac plein': 'Sac plein.', 'étal vide': 'L’étal est vide.', credits: 'Pas assez de crédits.' };
+    const motifs = { 'sac plein': 'Sac plein.', 'étal vide': 'L’étal est vide.', credits: 'Bourse trop courte.' };
     return { ok: false, motif: motifs[sim.borne] || 'Rien à acheter à ce prix.', qte: 0, cout: 0 };
   }
   col.stock[key] = Math.max(0, (col.stock[key] || 0) - sim.qte);
@@ -1311,7 +1314,7 @@ export function acheterItem(state, col, index, groupe) {
   const hab = negoc ? comp(negoc, 'commerce') : 0;
   const repu = state.player.reputation[col.faction] || 0;
   const p = prixItem(col, ligne.key, ligne.coef, hab, repu, remiseDe(state, col.faction)).achat;
-  if (soldeIci(state) < p) return { ok: false, motif: `Il manque ${p - soldeIci(state)} cr.` };
+  if (soldeIci(state) < p) return { ok: false, motif: `Il manque ${p - soldeIci(state)} ${signeIci(state)}.` };
 
   regler(state, p);
   ligne.qte -= 1;

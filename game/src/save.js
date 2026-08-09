@@ -1,4 +1,5 @@
-import { valeurBourse } from './monnaie.js';
+import { soldeIci, monnaieIci } from './monnaie.js';
+import { symboleDe } from './data.js';
 // Sauvegarde locale. L'état est du JSON pur : pas de classes, pas de
 // références circulaires, pas de fonctions. C'est ce qui rend possible à la
 // fois la persistance navigateur et, plus tard, un envoi au serveur.
@@ -409,7 +410,11 @@ export function resumeSauvegarde(state) {
     temps: state.temps || 0,
     jour: Math.floor((state.temps || 0) / 24) + 1,
     gens,
-    credits: Math.round(valeurBourse(state.world, state.player)),
+    // Ce qu'on a **là où l'on est**, avec son signe — pas un total. Il n'existe
+    // pas d'unité pour écrire la somme de six monnaies, et `valeurBourse` ne
+    // sort qu'au bureau de change (ECONOMIE §10).
+    argent: Math.round(soldeIci(state)),
+    signe: symboleDe(state.world, monnaieIci(state)),
     base: !!(state.base && state.base.fonde),
     nomBase: state.base && state.base.fonde ? state.base.nom : null,
     depart: state.depart || null,

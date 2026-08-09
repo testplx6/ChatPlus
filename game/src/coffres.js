@@ -1,4 +1,4 @@
-import { regler, soldeIci } from './monnaie.js';
+import { regler, soldeIci, signeIci } from './monnaie.js';
 // Un coffre en ville : de la place qui ne marche pas avec vous.
 //
 // Tout ce qu'on possède tenait dans deux endroits : le sac, borné par ce que les
@@ -98,7 +98,7 @@ export function peutLouer(state, col) {
     return { ok: false, motif: `${reg.nom} : on n’y loue rien à un étranger.` };
   }
   if (soldeIci(state) < LOYER) {
-    return { ok: false, motif: `Le premier mois se paie d’avance : ${LOYER} cr.` };
+    return { ok: false, motif: `Le premier mois se paie d’avance : ${LOYER} ${signeIci(state)}.` };
   }
   return { ok: true };
 }
@@ -131,7 +131,7 @@ export function peutAcheter(state, col) {
     }
   }
   if (soldeIci(state) < PRIX_COFFRE) {
-    return { ok: false, motif: `Il manque ${PRIX_COFFRE - soldeIci(state)} cr.` };
+    return { ok: false, motif: `Il manque ${PRIX_COFFRE - soldeIci(state)} ${signeIci(state)}.` };
   }
   return { ok: true };
 }
@@ -158,7 +158,7 @@ export function louerCoffre(state, col, log) {
   if (log) {
     log({
       type: 'coffre',
-      texte: `Un coffre loué à ${col.nom} : ${LOYER} cr le mois, ${CAPACITE_LOUEE} kg.`,
+      texte: `Un coffre loué à ${col.nom} : ${LOYER} ${signeIci(state)} le mois, ${CAPACITE_LOUEE} kg.`,
       important: true,
       regionId: col.regionId,
     });
@@ -240,7 +240,7 @@ export function tickCoffres(state, log) {
       if (log) {
         log({
           type: 'coffre',
-          texte: `Loyer du coffre de ${coffre.nom} : ${LOYER} cr.`,
+          texte: `Loyer du coffre de ${coffre.nom} : ${LOYER} ${signeIci(state)}.`,
           discret: true,
         });
       }

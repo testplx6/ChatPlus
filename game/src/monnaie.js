@@ -12,7 +12,7 @@
 // `auditer` est l'outil qui le vérifie. Il ne tourne pas en jeu : il tourne
 // dans les tests, où il a le droit d'être lent et le devoir d'être intraitable.
 
-import { DIPLO_FACTIONS, diploDe, clesDe } from './data.js';
+import { DIPLO_FACTIONS, diploDe, clesDe, symboleDe } from './data.js';
 import { loisDe } from './lois.js';
 
 /**
@@ -535,4 +535,16 @@ export function gagner(state, montant, monnaie) {
 /** Vous payez. Rend ce qui a réellement été pris, jamais plus que ce qu'on a. */
 export function regler(state, montant, monnaie) {
   return debiterBourse(state && state.player, monnaie || monnaieIci(state), montant);
+}
+
+/**
+ * Le signe de la monnaie d'ici, pour les lignes de journal du moteur.
+ *
+ * L'interface a son propre raccourci ; le moteur en a besoin aussi, parce que
+ * la moitié des sommes que le joueur lit ne sont pas sur un écran mais dans le
+ * journal — « Il manque 86 cr », « Livraison honorée : 240 cr encaissés ». Ce
+ * « cr » disait un crédit universel qui n'existe plus.
+ */
+export function signeIci(state) {
+  return symboleDe(state && state.world, monnaieIci(state));
 }

@@ -5,13 +5,13 @@
 // C'est la progression longue du jeu : la réputation était un chiffre, le grade
 // est une position dans le monde.
 
-import { FACTIONS, DIPLO_FACTIONS, COMMODITIES, drapeauDe} from './data.js';
+import { FACTIONS, DIPLO_FACTIONS, COMMODITIES, drapeauDe, symboleDe } from './data.js';
 import { colonieParId, distance, coordonnee } from './world.js';
 import { idDepuisRng } from './characters.js';
 import { groupes, groupeActif } from './groupes.js';
 import { loisDe, REGIMES } from './lois.js';
 import { noterArgent } from './rapport.js';
-import { depenser , gagner, soldeIci} from './monnaie.js';
+import { depenser, gagner, soldeIci, signeIci } from './monnaie.js';
 
 export const RANGS = [
   {
@@ -955,7 +955,7 @@ function tickEngagement(state, g, log, ctx) {
     noterArgent(state, 'solde', rang.def.solde);
     log({
       type: 'solde',
-      texte: `Solde ${drapeauDe(state.world, all.faction).genitif} : ${rang.def.solde} cr.`,
+      texte: `Solde ${drapeauDe(state.world, all.faction).genitif} : ${rang.def.solde} ${symboleDe(state.world, all.faction)}.`,
       discret: true,
     });
   }
@@ -1015,7 +1015,7 @@ function tickEngagement(state, g, log, ctx) {
       });
       log({
         type: 'allegeance',
-        texte: `Ordre exécuté : ${o.titre}. ${o.recompense} cr.`,
+        texte: `Ordre exécuté : ${o.titre}. ${o.recompense} ${signeIci(state)}.`,
         important: true,
       });
     } else if (all.ordre.echeance && state.temps > all.ordre.echeance) {
@@ -1072,7 +1072,7 @@ function tickEngagement(state, g, log, ctx) {
       all.ordre = o;
       log({
         type: 'allegeance',
-        texte: `Ordre de mission ${drapeauDe(state.world, all.faction).genitif} : ${o.titre} (${o.recompense} cr).`,
+        texte: `Ordre de mission ${drapeauDe(state.world, all.faction).genitif} : ${o.titre} (${o.recompense} ${signeIci(state)}).`,
         important: true,
       });
     } else {

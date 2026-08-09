@@ -1,4 +1,4 @@
-import { gagner, soldeIci } from './monnaie.js';
+import { gagner, soldeIci, signeIci } from './monnaie.js';
 // Contrats : ce que les villes vous demandent de faire. C'est ce qui donne un
 // but à court terme entre deux ordres de récolte, et une raison de traverser la
 // carte plutôt que de camper.
@@ -323,7 +323,7 @@ export function accepter(state, col, id, log, groupe) {
   state.player.contrats.push(c);
   log({
     type: 'contrat',
-    texte: `Contrat accepté : ${c.titre} (${c.recompense} cr).`,
+    texte: `Contrat accepté : ${c.titre} (${c.recompense} ${signeIci(state)}).`,
     important: true,
     regionId: col.regionId,
   });
@@ -513,7 +513,7 @@ function recompenser(state, c, log) {
   });
   log({
     type: 'contrat',
-    texte: `Contrat rempli : ${c.titre}. ${c.recompense} cr, réputation +${gagne}.`,
+    texte: `Contrat rempli : ${c.titre}. ${c.recompense} ${signeIci(state)}, réputation +${gagne}.`,
     important: true,
   });
 }

@@ -121,6 +121,7 @@ import {
   comp as compPerso,
 } from '../src/characters.js';
 import { DIPLOMES, DIPLOME_KEYS } from '../src/data.js';
+import { FACTION_KEYS, symboleDe, symboleNeuf } from '../src/data.js';
 import {
   ecolesDe, inscrire, enFormation, ecolesAvantPoste, enseignerChezSoi,
   occupeParEcole, MARGE_INSTRUCTEUR, prixFormation, peutSInscrire,
@@ -8522,6 +8523,45 @@ section('28. Le portefeuille — la primitive, avant les quatre-vingt-six sites'
   ok(dehors && sM.world.factions[dehors],
     'hors de toute ville, c’est celle qui circule alentour — jamais « rien »',
     `${dehors}`);
+}
+
+// ---------------------------------------------------------------------------
+section('E2 bis. Chaque monnaie a son signe');
+// ---------------------------------------------------------------------------
+//
+// ECONOMIE §10 : « Tout prix s'écrit dans la seule monnaie du lieu, avec le
+// symbole propre à la faction : `128 ⌂`. Rien entre parenthèses. » Sans signe,
+// afficher les prix en monnaie locale seule serait un piège : deux villes
+// afficheraient « 128 » pour deux sommes qui n'ont rien à voir, et le joueur
+// n'aurait aucun moyen de le voir.
+{
+  const sSym = nouvellePartie(20260809);
+  const signes = FACTION_KEYS.map((k) => symboleDe(sSym.world, k));
+  ok(signes.every((x) => typeof x === 'string' && x.length > 0),
+    'chacune des factions du jeu a un signe', signes.join(' '));
+  ok(new Set(signes).size === signes.length,
+    'et deux factions ne partagent pas le même', `${new Set(signes).size}/${signes.length}`);
+
+  // Une faction née en cours de partie en reçoit un aussi, et pas au hasard :
+  // le drapeau est fabriqué sans toucher au flux scellé (piège n° 1).
+  const avant = sSym.world.rngState;
+  sSym.world.drapeaux.libre42 = {
+    nom: 'Les Affranchis d’Essai', court: 'ESSAI', pluriel: true,
+    datif: 'aux Affranchis', genitif: 'des Affranchis',
+    couleur: couleurNeuve(sSym.world), devise: '—',
+    symbole: symboleNeuf(sSym.world),
+    agression: 0.4, cupidite: 0.4, style: 'commune', biomes: ['steppe'],
+  };
+  const neuf = symboleDe(sSym.world, 'libre42');
+  ok(neuf && !signes.includes(neuf),
+    'un drapeau neuf reçoit un signe qui n’est pris par personne', neuf);
+  ok(sSym.world.rngState === avant,
+    'et le fabriquer ne consomme aucun tirage');
+
+  // Un pays qu'on n'a jamais vu ne doit pas faire tomber l'affichage.
+  ok(typeof symboleDe(sSym.world, 'inconnue') === 'string',
+    'un drapeau inconnu rend un signe, pas « undefined »',
+    symboleDe(sSym.world, 'inconnue'));
 }
 
 // ===========================================================================
