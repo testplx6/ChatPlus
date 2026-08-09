@@ -1,3 +1,4 @@
+import { soldeIci } from './monnaie.js';
 // Ce que la partie a fait de vous.
 //
 // Le jeu n'a pas de condition de victoire, et il n'en aura pas : on ne gagne
@@ -163,7 +164,7 @@ export function faitsDe(state) {
     combats: st.combats || 0,
     combatsGagnes: st.combatsGagnes || 0,
     defaites: st.defaites || 0,
-    credits: Math.round(state.player.credits || 0),
+    credits: Math.round(soldeIci(state) || 0),
     recolte: Math.round(st.recolte || 0),
     sites: st.sitesFouilles || 0,
     contrats: st.contratsRemplis || 0,

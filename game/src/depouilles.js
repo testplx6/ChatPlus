@@ -1,3 +1,4 @@
+import { gagner } from './monnaie.js';
 // Ce qu'on fait de ses morts.
 //
 // `justice.js` demande ce qu'on fait des gens qu'on n'a pas tués. Voici la
@@ -221,7 +222,7 @@ export function disposerCorps(state, g, id, quoi, log) {
     if (!col || col.ruine) return { ok: false, motif: 'Il faut être en ville.' };
     const prix = prixOrganes(state, col, c);
     if (prix <= 0) return { ok: false, motif: 'On n’achète pas ça ici.' };
-    state.player.credits += prix;
+    gagner(state, prix);
     retirerDuGroupe(g, c);
     coute();
     // Ça se sait, comme pour les vivants qu'on vend : auprès de tous ceux qui

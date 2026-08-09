@@ -27,6 +27,7 @@ import {
   auditer, emettre, ecartChange, transferer, transfererVille,
   solde, crediterBourse, debiterBourse, valeurBourse,
   monnaieMarche, accepteToutes, monnaieSolde, monnaieButin, monnaieIci,
+  soldeIci, aDeQuoi, gagner, regler,
 } from '../src/monnaie.js';
 import { prixCession, effetCession, valeurNette } from '../src/credit.js';
 import { BETES } from '../src/betes.js';
@@ -165,6 +166,27 @@ import { distance } from '../src/world.js';
 import { conditions } from '../src/climat.js';
 import { pousserAuVivier, VIVIER_MAX } from '../src/justice.js';
 import { pourvoirCharges, tickNotables, nommerActeur } from '../src/notables.js';
+
+/**
+ * Poser une somme dans la poche du joueur, dans la monnaie de là où il est.
+ *
+ * Les tests écrivaient `state.player.credits = 5000`. Il n'y a plus de crédit
+ * universel : le joueur tient une bourse par drapeau, et « avoir cinq mille »
+ * ne veut rien dire tant qu'on n'a pas dit cinq mille de quoi. Ici, c'est
+ * toujours la monnaie du lieu — celle dans laquelle les prix de la ville sont
+ * déjà libellés (`prixUnitaire` divise par le cours).
+ *
+ * La fonction refuse plutôt que de rendre zéro : une fixture posée dans un
+ * monde où aucune monnaie ne circule verrait sa bourse avalée en silence, et le
+ * test échouerait dix lignes plus bas sur un symptôme sans rapport.
+ */
+function poser(st, montant) {
+  const m = monnaieIci(st);
+  if (!m) throw new Error('poser : aucune monnaie ne circule ici');
+  st.player.bourse = { [m]: montant };
+  return montant;
+}
+
 
 let echecs = 0;
 let total = 0;
@@ -405,17 +427,17 @@ ok(s1.world.colonies.every((c) => c.faction), 'toute colonie a un propriétaire'
     'et le porter coûte quelque chose tant qu’on n’a rien décidé',
     `${Math.round(lenteurDepouilles(gn) * 100)} % de marche en moins`);
   ok(gn.objets.length === 0, 'rien en réserve non plus');
-  ok(nu.player.credits < 100 && (gn.inventaire.rations || 0) < 20,
+  ok(soldeIci(nu) < 100 && (gn.inventaire.rations || 0) < 20,
     'de quoi tenir quelques jours, pas davantage',
-    `${nu.player.credits} cr · ${gn.inventaire.rations} rations`);
+    `${soldeIci(nu)} cr · ${gn.inventaire.rations} rations`);
   // Un peu d'aléa : deux parties ne commencent pas au caractère près.
   const autre = nouvellePartie(654321, { maintenant: 0 });
-  ok(autre.player.credits !== nu.player.credits
+  ok(soldeIci(autre) !== soldeIci(nu)
     || autre.player.groupes[0].inventaire.rations !== gn.inventaire.rations
     || autre.player.groupes[0].membres[0].archetype !== gn.membres[0].archetype,
     'et deux départs ne se ressemblent pas',
-    `${nu.player.credits}/${gn.inventaire.rations}/${gn.membres[0].archetype} vs `
-    + `${autre.player.credits}/${autre.player.groupes[0].inventaire.rations}/`
+    `${soldeIci(nu)}/${gn.inventaire.rations}/${gn.membres[0].archetype} vs `
+    + `${soldeIci(autre)}/${autre.player.groupes[0].inventaire.rations}/`
     + `${autre.player.groupes[0].membres[0].archetype}`);
 }
 ok(s1.world.regions.some((r) => r.biome === 'relais'), 'un Relais Orbital existe');
@@ -483,14 +505,14 @@ ok(serialiser(s3) === serialiser(s3b), 'la sim reprend à l’identique après r
   const cm = m.world.colonies.find((c) => !c.ruine && (c.stock.ferraille || 0) > 30);
   if (cm) {
     gm.regionId = cm.regionId;
-    m.player.credits = 5000;
+    poser(m, 5000);
     const simA = simulerAchat(m, cm, 'ferraille', 25, gm);
-    const crAvant = m.player.credits;
+    const crAvant = soldeIci(m);
     const ra = acheter(m, cm, 'ferraille', 25, gm);
     ok(ra.qte === simA.qte && ra.cout === simA.cout,
       'un achat coûte exactement ce qui était annoncé',
       `annoncé ${simA.qte}/${simA.cout} cr, payé ${ra.qte}/${ra.cout} cr`);
-    ok(crAvant - m.player.credits === simA.cout, 'et la bourse bouge d’autant');
+    ok(crAvant - soldeIci(m) === simA.cout, 'et la bourse bouge d’autant');
 
     const simV = simulerVente(m, cm, 'ferraille', 9999, gm);
     const rv = vendre(m, cm, 'ferraille', 9999, gm);
@@ -597,7 +619,7 @@ section('4 ter. Un coffre en ville');
   const gc = groupeActif(cf);
   const ville = cf.world.colonies.find((c) => !c.ruine && c.faction && c.faction !== 'essaim');
   gc.regionId = ville.regionId;
-  cf.player.credits = 5000;
+  poser(cf, 5000);
   cf.player.reputation[ville.faction] = 0;
 
   ok(!coffreDe(cf, ville.id), 'on n’a pas de coffre au départ');
@@ -605,9 +627,9 @@ section('4 ter. Un coffre en ville');
     'une faction ne vend pas de murs à un inconnu', peutAcheter(cf, ville).motif);
   ok(peutLouer(cf, ville).ok, 'mais elle en loue à qui veut');
 
-  const crAvant = cf.player.credits;
+  const crAvant = soldeIci(cf);
   ok(louerCoffre(cf, ville, () => {}).ok, 'on loue');
-  ok(cf.player.credits === crAvant - LOYER, 'le premier mois est payé d’avance');
+  ok(soldeIci(cf) === crAvant - LOYER, 'le premier mois est payé d’avance');
   const coffre = coffreDe(cf, ville.id);
   ok(!!coffre && !coffre.achete, 'le coffre existe, et il est loué');
 
@@ -627,11 +649,11 @@ section('4 ter. Un coffre en ville');
   gc.regionId = ville.regionId;
 
   // Le loyer court, et le bailleur se rembourse s'il le faut.
-  cf.player.credits = LOYER * 2;
+  poser(cf, LOYER * 2);
   cf.temps = coffre.jusqu;
   tickCoffres(cf, () => {});
-  ok(cf.player.credits === LOYER, 'le loyer se prélève tout seul');
-  cf.player.credits = 0;
+  ok(soldeIci(cf) === LOYER, 'le loyer se prélève tout seul');
+  poser(cf, 0);
   cf.temps = coffre.jusqu;
   const avantSaisie = coffre.contenu.ferraille;
   tickCoffres(cf, () => {});
@@ -643,16 +665,16 @@ section('4 ter. Un coffre en ville');
 
   // Acheter : possible dès qu'on est estimé, et le loyer s'arrête.
   cf.player.reputation[ville.faction] = ESTIME_PROPRIETE + 5;
-  cf.player.credits = PRIX_COFFRE + 10;
+  poser(cf, PRIX_COFFRE + 10);
   ok(peutAcheter(cf, ville).ok, 'estimé, on peut acheter');
   ok(acheterCoffre(cf, ville, () => {}).ok, 'et l’on achète');
   ok(coffreDe(cf, ville.id).achete, 'le coffre est à nous');
   ok(coffreDe(cf, ville.id).contenu.ferraille > 0, 'et son contenu ne s’est pas évaporé');
   ok(capaciteCoffre(coffreDe(cf, ville.id)) > CAPACITE_LOUEE, 'il tient davantage');
-  const crAv2 = cf.player.credits;
+  const crAv2 = soldeIci(cf);
   cf.temps += PERIODE_LOYER * 3;
   tickCoffres(cf, () => {});
-  ok(cf.player.credits === crAv2, 'et plus aucun loyer ne court');
+  ok(soldeIci(cf) === crAv2, 'et plus aucun loyer ne court');
 
   // Une ville libre n'a personne pour interdire de posséder.
   const cf2 = nouvellePartie(4547, { maintenant: 0, depart: 'ville', equipe: 3 });
@@ -660,7 +682,7 @@ section('4 ter. Un coffre en ville');
   const libre2 = cf2.world.colonies.find((c) => !c.ruine && c.faction && c.faction !== 'essaim');
   libre2.faction = null;
   g2c.regionId = libre2.regionId;
-  cf2.player.credits = PRIX_COFFRE + 10;
+  poser(cf2, PRIX_COFFRE + 10);
   ok(peutAcheter(cf2, libre2).ok,
     'une ville libre ne demande d’estime à personne', peutAcheter(cf2, libre2).motif);
 }
@@ -719,9 +741,9 @@ section('4 bis. Ce qu’on fait de ses morts');
   loisDe(d3.world, col3.faction).esclavage = true;
   ok(prixOrganes(d3, col3, corps3) > 0, 'là où l’on achète des vivants, on prend les morts',
     `${prixOrganes(d3, col3, corps3)} cr`);
-  const crAvant3 = d3.player.credits;
+  const crAvant3 = soldeIci(d3);
   const rO = disposerCorps(d3, g3, corps3.id, 'organes', () => {});
-  ok(rO.ok && d3.player.credits > crAvant3, 'et ça paie', `+${d3.player.credits - crAvant3} cr`);
+  ok(rO.ok && soldeIci(d3) > crAvant3, 'et ça paie', `+${soldeIci(d3) - crAvant3} cr`);
   ok(depouillesDe(g3).length === 0, 'le corps ne revient pas');
 }
 
@@ -941,9 +963,9 @@ col6.stock.rations = 5000;
 const bonMarche = prixJoueur(col6, 'rations', 0, 0);
 ok(cher.achat > bonMarche.achat * 1.5, 'la pénurie fait monter les prix', `${cher.achat} vs ${bonMarche.achat}`);
 col6.stock.ferraille = 400;
-s6.player.credits = 5000;
+poser(s6, 5000);
 const ach = acheter(s6, col6, 'ferraille', 30);
-ok(ach.ok && ach.qte > 0 && s6.player.credits < 5000, 'achat débité et livré');
+ok(ach.ok && ach.qte > 0 && soldeIci(s6) < 5000, 'achat débité et livré');
 const ven = vendre(s6, col6, 'ferraille', ach.qte);
 ok(ven.ok && ven.gain > 0 && ven.gain < ach.cout, 'revente à perte immédiate (marge)');
 
@@ -1152,7 +1174,7 @@ ok((s8.base.stock.rations || 0) > rationsAvant, 'l’hydroponie produit des rati
   `${rationsAvant.toFixed(1)} → ${(s8.base.stock.rations || 0).toFixed(1)}`);
 lancerConstruction(s8, 'antenne');
 avancer(s8, 120);
-s8.player.credits = 9000;
+poser(s8, 9000);
 s8.base.stock.composant = 200;
 const rr = lancerRecherche(s8, 'logistique');
 ok(rr.ok, 'lancement d’une recherche', rr.motif);
@@ -1551,10 +1573,10 @@ section('9 ter bis. Six drapeaux, six extras, une seule base');
         defenseMax: 0, contrats: [], notables: [], ruine: false,
       });
       st.base.stock = { ferraille: 500 };
-      st.player.credits = 30000;
-      const avant = st.player.credits;
+      poser(st, 30000);
+      const avant = soldeIci(st);
       const r = passerOrdre(st, 'vente', 'ferraille', 200, 'lourde', new Rng(3), () => {}, null);
-      return { r, paye: avant - st.player.credits };
+      return { r, paye: avant - soldeIci(st) };
     };
     const sansFret = passer(false);
     const avecFret = passer(true);
@@ -2044,14 +2066,14 @@ ok(!!ville9r && ecolesDe(s9r.world, ville9r).length > 0, 'des villes tiennent de
 const offre = ecolesDe(s9r.world, ville9r)[0];
 const eleve = g9r.membres[0];
 const skillOffre = DIPLOMES[offre].skill;
-s9r.player.credits = 5000;
+poser(s9r, 5000);
 // Une Commune instruit gratuitement et un Domaine n'instruit que les siens : on
 // veut ici une ville qui vend son école, sinon le test ne mesure plus rien.
 loisDe(s9r.world, ville9r.faction).regime = 'charte';
-const creditsAvant = s9r.player.credits;
+const creditsAvant = soldeIci(s9r);
 const insc = inscrire(s9r, ville9r, eleve, offre, () => {});
 ok(insc.ok, 'on peut inscrire quelqu’un', insc.motif);
-ok(s9r.player.credits < creditsAvant, 'la formation se paie', `${creditsAvant} → ${s9r.player.credits}`);
+ok(soldeIci(s9r) < creditsAvant, 'la formation se paie', `${creditsAvant} → ${soldeIci(s9r)}`);
 ok(enFormation(eleve), 'l’élève est en formation');
 ok(!debout(g9r).includes(eleve), 'et n’est plus disponible pour le travail');
 ok(debout(g9r).length === 2, 'les autres continuent', `${debout(g9r).length} debout`);
@@ -2151,10 +2173,10 @@ const offresMaison = ecolesAvantPoste(s9s);
 ok(offresMaison.some((o) => o.key === 'medecine'), 'un vétéran rend la matière enseignable',
   offresMaison.map((o) => o.key).join(', '));
 
-const creditsAvantMaison = s9s.player.credits;
+const creditsAvantMaison = soldeIci(s9s);
 const rMaison = enseignerChezSoi(s9s, eleveS, 'medecine', () => {});
 ok(rMaison.ok, 'on peut former chez soi', rMaison.motif);
-ok(s9s.player.credits === creditsAvantMaison, 'et ça ne coûte pas un crédit');
+ok(soldeIci(s9s) === creditsAvantMaison, 'et ça ne coûte pas un crédit');
 ok(occupeParEcole(maitre) && occupeParEcole(eleveS), 'le maître aussi est immobilisé');
 ok(debout(g9s).length === 1, 'deux personnes en moins sur le terrain', `${debout(g9s).length} debout`);
 ok(rMaison.heures > DIPLOMES.medecine.heures, 'c’est plus lent qu’une vraie école',
@@ -2475,13 +2497,13 @@ ok(gPol.allegeance.actes.some((a) => a.type === 'guerre'),
 // joueur, et la colonne existe vraiment.
 pol.world.factions[fPol].tresor = 5000;
 const avantTresor = pol.world.factions[fPol].tresor;
-const avantCredits = pol.player.credits;
+const avantCredits = soldeIci(pol);
 const cibleLevee = pol.world.colonies.find((c) => !c.ruine && c.faction === ennemi);
 const lev = leverColonne(pol, fPol, null, cibleLevee.id, () => {});
 ok(lev.ok, 'la colonne est levée sans qu’on demande la permission', lev.motif);
 ok(pol.world.factions[fPol].tresor === avantTresor - coutLevee(),
   'le trésor de la faction paie');
-ok(pol.player.credits === avantCredits, 'et pas la bourse du joueur');
+ok(soldeIci(pol) === avantCredits, 'et pas la bourse du joueur');
 ok(pol.world.armees.some((a) => a.id === lev.armee.id && a.cible === cibleLevee.id),
   'la colonne est sur les routes, avec sa cible');
 ok(lev.armee.route.length > 0 || lev.armee.regionId === cibleLevee.regionId,
@@ -2706,11 +2728,11 @@ ok(evades > 0, 'et ce qu’on ne surveille pas finit par s’en aller', `${evade
 
 // Livrer : une prime, une geôle qui se remplit, et des pistes plus sûres.
 const brigand = prisonniersDe(gJus)[0];
-const crAvantJus = jus.player.credits;
+const crAvantJus = soldeIci(jus);
 const livr = disposer(jus, gJus, brigand.id, 'livrer', () => {});
 ok(livr.ok, 'on livre un brigand à la justice de la ville', livr.motif);
-ok(jus.player.credits > crAvantJus, 'la prime est versée',
-  `${crAvantJus} → ${jus.player.credits}`);
+ok(soldeIci(jus) > crAvantJus, 'la prime est versée',
+  `${crAvantJus} → ${soldeIci(jus)}`);
 ok(geoleDe(villeJus).detenus.length === 1, 'et la geôle se remplit');
 ok(apaisementGeole(villeJus) > 0,
   'un détenu, c’est quelqu’un qui ne coupe plus les routes');
@@ -3687,11 +3709,11 @@ function campMarchand(piste) {
   t.base.pop = 10;
   Object.assign(t.base.stock, { ferraille: 900, rations: 600, polymere: 0, carburant: 0 });
   t.world.regions[t.base.regionId].piste = piste;
-  t.player.credits = 4000;
+  poser(t, 4000);
   return t;
 }
 const halte = campMarchand(0.8);
-const crAvantM = halte.player.credits;
+const crAvantM = soldeIci(halte);
 const ferrailleAvant = halte.base.stock.ferraille;
 avancer(halte, 600);
 ok(halte.base.stock.ferraille < ferrailleAvant,
@@ -3720,7 +3742,7 @@ ok(surRoute > auBoutDuMonde,
   `${surRoute} contre ${auBoutDuMonde} passages`);
 
 // Le prix de la commodité : on vend au gros et l'on achète au détail.
-ok(halte.player.credits !== crAvantM, 'le commerce se solde en crédits');
+ok(soldeIci(halte) !== crAvantM, 'le commerce se solde en crédits');
 const sansCommerce = campMarchand(0.8);
 sansCommerce.base.commerce = false;
 avancer(sansCommerce, 600);
@@ -3831,17 +3853,17 @@ ok(Math.abs(maVille.pop - monBourg.base.pop) <= 1,
 loisDe(monBourg.world, patron).impot = 0.15;
 // L'impôt se prélève au prorata des habitants : sans habitants, rien à mesurer.
 monBourg.base.pop = Math.max(monBourg.base.pop, POP_RECONNUE + 20);
-monBourg.player.credits = 5000;
+poser(monBourg, 5000);
 const caisseAvant = drawTresor(monBourg, patron);
-const bourseAvant = monBourg.player.credits;
+const bourseAvant = soldeIci(monBourg);
 // On appelle le prélèvement directement, plutôt que de laisser tourner
 // soixante-douze heures : une ville qui porte des couleurs hérite des guerres
 // qui vont avec, et selon le tirage elle se faisait prendre avant la fin de la
 // mesure — le test tombait alors sur un camp qui n'existait plus, ce qui est le
 // fonctionnement voulu mais pas ce qu'on cherche à vérifier ici.
 preleverImpot(monBourg, () => {});
-ok(monBourg.player.credits < bourseAvant, 'porter des couleurs se paie en impôt',
-  `${bourseAvant} → ${monBourg.player.credits}`);
+ok(soldeIci(monBourg) < bourseAvant, 'porter des couleurs se paie en impôt',
+  `${bourseAvant} → ${soldeIci(monBourg)}`);
 ok(drawTresor(monBourg, patron) > caisseAvant, 'et ce qu’on paie va dans leur trésor');
 
 // Et l'on peut reprendre son drapeau, ce qui ne s'oublie pas.
@@ -3901,10 +3923,10 @@ ok(titreAvec((t) => {
 }) === 'seigneur', 'quarante batailles et un bon bras font un seigneur de guerre');
 ok(titreAvec((t) => { t.stats.combatsGagnes = 60; }) !== 'seigneur',
   'les batailles seules ne suffisent pas');
-ok(titreAvec((t) => { t.player.credits = 9000; }) === 'marchand',
+ok(titreAvec((t) => { poser(t, 9000); }) === 'marchand',
   'faire fortune sans se battre fait une maison marchande');
 ok(titreAvec((t) => {
-  t.player.credits = 9000;
+  poser(t, 9000);
   t.stats.combatsGagnes = 60;
   for (const c of groupeActif(t).membres) c.skills.melee = 60;
 }) === 'seigneur', 'la faire en se battant fait autre chose');
@@ -3974,7 +3996,7 @@ ok(tensionRecrutement(memeVille) < aiseRec * 0.9,
 // Engager : la personne quitte le banc et rejoint le groupe.
 const avantRec = gRec.membres.length;
 const choisi = bancDerive(colRec, rec.temps, rec.world.graine).gens[0];
-rec.player.credits = 99999;
+poser(rec, 99999);
 const engagement = engager(rec, colRec, choisi.id, () => {}, gRec);
 ok(engagement.ok, 'on engage quelqu’un de précis', engagement.motif);
 ok(gRec.membres.length === avantRec + 1
@@ -4040,7 +4062,7 @@ const att = nouvellePartie(8181, { maintenant: 0, depart: 'ville', equipe: 3 });
 const gAtt = groupeActif(att);
 const colAtt = att.world.colonies.find((c) => !c.ruine);
 gAtt.regionId = colAtt.regionId;
-att.player.credits = 5000;
+poser(att, 5000);
 const capSeul = capacitePortage(att, gAtt);
 ok(betesDe(gAtt).length === 0, 'on part sans rien qui porte');
 const rngAtt = new Rng(4242);
@@ -4070,7 +4092,7 @@ ok(betesDe(gAtt).length === 0 || capacitePortage(att, gAtt) < capPleine,
 const att2 = nouvellePartie(8282, { maintenant: 0, depart: 'ville', equipe: 3 });
 const gAtt2 = groupeActif(att2);
 gAtt2.regionId = att2.world.colonies.find((c) => !c.ruine).regionId;
-att2.player.credits = 5000;
+poser(att2, 5000);
 acheterBete(att2, att2.world.colonies.find((c) => !c.ruine), 'mulet', new Rng(7), () => {}, gAtt2);
 gAtt2.inventaire.biomasse = 900;
 for (let i = 0; i < 400; i++) tickBetes(gAtt2, new Rng(i + 1), () => {});
@@ -4085,7 +4107,7 @@ const tropS = nouvellePartie(8383, { maintenant: 0, depart: 'ville', equipe: 3 }
 const gTrop = groupeActif(tropS);
 const colTrop = tropS.world.colonies.find((c) => !c.ruine);
 gTrop.regionId = colTrop.regionId;
-tropS.player.credits = 90000;
+poser(tropS, 90000);
 const bras = conduite(gTrop);
 ok(bras >= 4, 'trois personnes savent mener plusieurs bêtes', `${bras}`);
 const rngT = new Rng(99);
@@ -4553,13 +4575,13 @@ ok(demandesIci(s9z, colZ).some((d) => d.notable.id === chefZ.id && !d.pret),
 const quantiteZ = chefZ.demande.quantite;
 const primeZ = chefZ.demande.prime;
 const opinionAvantZ = chefZ.opinion;
-const creditsAvantZ = s9z.player.credits;
+const creditsAvantZ = soldeIci(s9z);
 gZ.inventaire.rations = quantiteZ + 5;
 const okZ = honorer(s9z, colZ.id, chefZ.id, noteZ);
 ok(okZ.ok, 'sur place avec la marchandise, ça passe');
 ok(Math.round(gZ.inventaire.rations) === 5, 'la marchandise quitte le sac',
   `reste ${gZ.inventaire.rations}`);
-ok(s9z.player.credits === creditsAvantZ + primeZ, 'la prime est versée', `+${primeZ} cr`);
+ok(soldeIci(s9z) === creditsAvantZ + primeZ, 'la prime est versée', `+${primeZ} cr`);
 ok(chefZ.opinion > opinionAvantZ + 15, 'il vous en sait gré',
   `${opinionAvantZ} → ${Math.round(chefZ.opinion)}`);
 ok(souvenirs(chefZ).length === 1 && /apporté/.test(souvenirs(chefZ)[0]),
@@ -4652,7 +4674,7 @@ section('9 terdecies. Les régimes : ce qu’on a le droit de faire chez eux');
 
   // Ce qu'on peut posséder : le régime décide, plus un seuil en dur.
   lois.regime = 'commune';
-  sr.player.credits = 9000;
+  poser(sr, 9000);
   sr.player.reputation[colR.faction] = 100;
   ok(!peutAcheter(sr, colR).ok, 'on ne possède rien dans une Commune, même adoré',
     peutAcheter(sr, colR).motif);
@@ -4707,9 +4729,9 @@ section('9 terdecies. Les régimes : ce qu’on a le droit de faire chez eux');
 
   // Le prélèvement est réellement encaissé, pas seulement affiché.
   lois.regime = 'commune';
-  const avoirAvant = sr.player.credits;
+  const avoirAvant = soldeIci(sr);
   const venteR = vendre(sr, colR, 'ferraille', 40, gr);
-  ok(sr.player.credits - avoirAvant === venteR.gain,
+  ok(soldeIci(sr) - avoirAvant === venteR.gain,
     'on encaisse exactement ce qui était annoncé, retenue déduite',
     `${venteR.brut} brut − ${venteR.taxe} = ${venteR.gain}`);
 
@@ -4843,8 +4865,8 @@ section('9 quindecies. Le rapport d’absence');
   for (const g of sr.player.groupes) g.inventaire.rations = 4000;
   sr.vitesse = 1;
   sr.dernierReel = 1;
-  const creditsAvant = sr.player.credits;
-  sr.player.credits += 0; // repère explicite : on veut voir le delta, pas la valeur
+  const creditsAvant = soldeIci(sr);
+  gagner(sr, 0); // repère explicite : on veut voir le delta, pas la valeur
   rattraper(sr, 1 + TICK_MS * 1200);
   ok(!!sr.rapport, 'une absence laisse un rapport derrière elle');
   ok(!!sr.rapport.apres, 'et il est refermé : les deux photos sont prises');
@@ -4853,7 +4875,7 @@ section('9 quindecies. Le rapport d’absence');
   ok(!!lu && lu.heures >= 1000, 'il couvre bien la durée de l’absence',
     lu ? `${lu.heures} h` : 'illisible');
   ok(lu.jours === Math.floor(lu.heures / 24), 'et la dit en jours', `${lu.jours} j`);
-  ok(lu.argent === sr.player.credits - creditsAvant,
+  ok(lu.argent === soldeIci(sr) - creditsAvant,
     'le mouvement de la bourse est celui qu’on a réellement subi',
     `${lu.argent} cr`);
   ok(lu.marquants.length > 0, 'des faits marquants ont été retenus',
@@ -5016,7 +5038,7 @@ section('9 sexdecies. Un camp neuf dit ce qu’il lui manque');
     sc.base.stock.ferraille = 400;
     sc.base.stock.polymere = 300;
     sc.base.stock.composant = 40;
-    sc.player.credits = 5000;
+    poser(sc, 5000);
     ok(lancerConstruction(sc, 'bassins').ok === false,
       'on ne bâtit pas des bassins qu’on n’a pas inventés');
     sc.base.batiments.antenne = 1;
@@ -5623,7 +5645,7 @@ section('9 quinvicies ter. Le courant qu’on ne brûle pas, et le carburant qu�
   se.base.stock.polymere = 300;
   se.base.stock.alliage = 100;
   se.base.stock.composant = 60;
-  se.player.credits = 5000;
+  poser(se, 5000);
   ok(!lancerConstruction(se, 'solaire').ok, 'on ne capte pas ce qu’on n’a pas inventé');
   se.base.batiments.antenne = 1;
   ok(lancerRecherche(se, 'renouvelable').ok, 'la Captation libre s’ouvre avec une antenne');
@@ -5733,7 +5755,7 @@ section('9 quinvicies quater. La pyrolyse, isolée de tout le reste');
     s.base.stock.minerai = 3000;
     s.base.stock.carburant = 0;
     s.base.commerce = false;
-    s.player.credits = 0;
+    poser(s, 0);
     if (avecPyro) {
       s.base.recherche.pyrolyse = 1;
       // Les consignes s'excluent : avoir la recherche ne suffit pas, il faut
@@ -5773,7 +5795,7 @@ section('9 quinvicies quater. La pyrolyse, isolée de tout le reste');
     s.base.stock.biomasse = 3000;
     s.base.stock.carburant = 0;
     s.base.commerce = false;
-    s.player.credits = 0;
+    poser(s, 0);
     const avant = s.base.stock.biomasse;
     for (let i = 0; i < 600; i++) tick(s);
     return { bioAvant: avant, bioApres: Math.round(s.base.stock.biomasse || 0) };
@@ -5812,7 +5834,7 @@ section('9 quinvicies septies. On donne des consignes aux chaînes');
     s.base.stock.minerai = 600;
     s.base.stock.ferraille = 600;
     s.base.commerce = false;
-    s.player.credits = 0;
+    poser(s, 0);
     // Les raids n'ont rien à faire ici : ce qu'on mesure, c'est ce que les
     // chaînes de production consomment, et une razzia emporte un tiers des
     // stocks d'un coup. Le décor est resté muet là-dessus pendant longtemps
@@ -5905,7 +5927,7 @@ section('9 quinvicies nonies. Aux travaux, on mange à la cantine');
     Object.assign(s.base.batiments, { entrepot: 6, solaire: 4, eolienne: 4 });
     s.base.stock.rations = reservesDuCamp;
     s.base.commerce = false;
-    s.player.credits = 0;
+    poser(s, 0);
     // Ni razzia : une colonne de pillards emporte un tiers des réserves, et le
     // test accuserait alors la cantine. Voir le décor de la raffinerie.
     s.base.derniereAttaque = 1e9;
@@ -6010,7 +6032,7 @@ section('9 quinvicies octies. Un plancher qu’aucune chaîne n’entame');
       { fonderie: 2, entrepot: 8, solaire: 4, eolienne: 4, baraquement: 1 });
     s.base.stock.minerai = 500;
     s.base.commerce = false;
-    s.player.credits = 0;
+    poser(s, 0);
     // Pas de razzia : voir le décor de la raffinerie plus haut. Un plancher de
     // réserve ne peut rien contre des pillards, et ce n'est pas la question.
     s.base.derniereAttaque = 1e9;
@@ -6074,7 +6096,7 @@ section('9 quinvicies quinquies. Changer la terre');
   st.base.stock.alliage = 100;
   st.base.stock.ferraille = 600;
   st.base.stock.polymere = 300;
-  st.player.credits = 20000;
+  poser(st, 20000);
 
   // L'arbre est un arbre : on ne saute pas les branches.
   ok(!lancerRecherche(st, 'terraformation').ok,
@@ -6154,7 +6176,7 @@ section('9 quinvicies sexies. La station ne travaille que ce qu’on lui dit');
     // « à sec » n'était pas à sec, et la station tournait quand même. On coupe
     // le commerce et la bourse, sinon le témoin ne témoigne de rien.
     s.base.commerce = false;
-    s.player.credits = 0;
+    poser(s, 0);
     s.base.stock.composant = 4000;
     s.base.stock.biomasse = 9000;
     s.base.terraforme = cible;
@@ -6494,7 +6516,7 @@ section('9 sexvicies quater. Le comptoir : traiter sans bouger de chez soi');
       defense: 0, defenseMax: 0, contrats: [], notables: [], ruine: false,
     });
     st.base.stock = { rations: 400, ferraille: 200 };
-    st.player.credits = 20000;
+    poser(st, 20000);
     return { st, w, riche, sienne };
   };
 
@@ -6537,12 +6559,12 @@ section('9 sexvicies quater. Le comptoir : traiter sans bouger de chez soi');
     ok(v.ok, 'un camp neuf et vide traite dès qu’il a son comptoir', v.motif || '');
     const r = passerOrdre(st, 'vente', 'ferraille', 100, 'aucune', new Rng(3), () => {}, null);
     ok(r.ok, 'et il peut vendre sans être inscrit sur les cartes', r.motif || '');
-    const avant = st.player.credits;
+    const avant = soldeIci(st);
     const car = ordresEnCours(st)[0];
     if (car) car.escorte = 9999;
     for (let i = 0; i < 900 && ordresEnCours(st).length; i++) tick(st);
-    ok(st.player.credits > avant, 'et il est payé à l’arrivée',
-      `${avant} → ${st.player.credits}`);
+    ok(soldeIci(st) > avant, 'et il est payé à l’arrivée',
+      `${avant} → ${soldeIci(st)}`);
 
     // Ce qu'il faut vraiment : le bâtiment, et une porte d'entrée. Rien d'autre.
     ok(RESEARCH.cotation.exige === undefined,
@@ -6584,13 +6606,13 @@ section('9 sexvicies quater. Le comptoir : traiter sans bouger de chez soi');
   {
     const { st, riche } = monteComptoir(2024);
     st.player.reputation[riche] = 80;
-    const avantCr = st.player.credits;
+    const avantCr = soldeIci(st);
     const avantStock = st.base.stock.rations;
     const rng = new Rng(9);
     const r = passerOrdre(st, 'achat', 'rations', 100, 'aucune', rng, () => {}, null);
     ok(r.ok, 'l’ordre d’achat passe', r.motif || '');
-    ok(st.player.credits < avantCr, 'et il est débité tout de suite',
-      `${avantCr} → ${st.player.credits}`);
+    ok(soldeIci(st) < avantCr, 'et il est débité tout de suite',
+      `${avantCr} → ${soldeIci(st)}`);
     ok(st.base.stock.rations === avantStock,
       'mais rien n’est encore arrivé : la marchandise est sur la route');
     ok(ordresEnCours(st).length === 1, 'le convoi se suit');
@@ -6608,19 +6630,19 @@ section('9 sexvicies quater. Le comptoir : traiter sans bouger de chez soi');
   {
     const { st, riche } = monteComptoir(2024);
     st.player.reputation[riche] = 80;
-    const avantCr = st.player.credits;
+    const avantCr = soldeIci(st);
     const rng = new Rng(9);
     const r = passerOrdre(st, 'vente', 'ferraille', 100, 'aucune', rng, () => {}, null);
     ok(r.ok, 'l’ordre de vente passe', r.motif || '');
     ok(Math.round(st.base.stock.ferraille) === 100,
       'la marchandise quitte l’entrepôt tout de suite',
       `${Math.round(st.base.stock.ferraille)}`);
-    ok(st.player.credits === avantCr, 'et rien n’est encore payé');
+    ok(soldeIci(st) === avantCr, 'et rien n’est encore payé');
     const car = ordresEnCours(st)[0];
     car.escorte = 9999;
     for (let i = 0; i < 900 && ordresEnCours(st).length; i++) tick(st);
-    ok(st.player.credits > avantCr, 'on est payé à l’arrivée, pas au départ',
-      `${avantCr} → ${st.player.credits}`);
+    ok(soldeIci(st) > avantCr, 'on est payé à l’arrivée, pas au départ',
+      `${avantCr} → ${soldeIci(st)}`);
   }
 
   // --- Le convoi pillé. C'est ce qui empêche le comptoir d'être un
@@ -6630,7 +6652,7 @@ section('9 sexvicies quater. Le comptoir : traiter sans bouger de chez soi');
     st.player.reputation[riche] = 80;
     const rng = new Rng(9);
     passerOrdre(st, 'vente', 'ferraille', 100, 'aucune', rng, () => {}, null);
-    const avantCr = st.player.credits;
+    const avantCr = soldeIci(st);
     const car = ordresEnCours(st)[0];
     // On force le pillage : la région devient un coupe-gorge et le convoi n'a
     // aucune garde.
@@ -6641,7 +6663,7 @@ section('9 sexvicies quater. Le comptoir : traiter sans bouger de chez soi');
     while (ordresEnCours(st).length && tours < 900) { tick(st); tours++; }
     ok(!ordresEnCours(st).length, 'un convoi sans garde en terre hostile ne va pas loin',
       `${tours} h`);
-    ok(st.player.credits === avantCr,
+    ok(soldeIci(st) === avantCr,
       'et personne ne paie pour une livraison qui n’est jamais arrivée');
     ok(Math.round(st.base.stock.ferraille) === 100,
       'la marchandise, elle, est bien perdue');
@@ -6664,7 +6686,7 @@ section('9 sexvicies quater. Le comptoir : traiter sans bouger de chez soi');
         // mesurer un seul jet de dé vingt-quatre fois.
         st.rngState = new Rng(500 + n).save();
         for (let i = 0; i < 900 && ordresEnCours(st).length; i++) tick(st);
-        if (st.player.credits > 20000) vivants++;
+        if (soldeIci(st) > 20000) vivants++;
       }
       return vivants;
     };
@@ -7385,7 +7407,7 @@ section('20. Le banc de recrutement, vue dérivée au lieu d’état');
   const colE = sE.world.colonies.find((c) => !c.ruine && c.faction && !c.avantPoste);
   const gE = sE.player.groupes[0];
   gE.regionId = colE.regionId;
-  sE.player.credits = 99999;
+  poser(sE, 99999);
   const cible = bancDerive(colE, sE.temps, sE.world.graine).gens[0];
 
   const rE = engager(sE, colE, cible.id, null, gE);

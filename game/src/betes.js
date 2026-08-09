@@ -1,3 +1,4 @@
+import { gagner, regler, soldeIci } from './monnaie.js';
 // Ce qui porte à votre place.
 //
 // Le banc a fini par chiffrer ce que le jeu était devenu : soixante-dix pour
@@ -190,10 +191,10 @@ export function acheterBete(state, col, key, rng, log, groupe) {
     return { ok: false, motif: 'Il faut être en ville.' };
   }
   const prix = prixBete(col, key);
-  if (state.player.credits < prix) {
-    return { ok: false, motif: `Il manque ${prix - state.player.credits} cr.` };
+  if (soldeIci(state) < prix) {
+    return { ok: false, motif: `Il manque ${prix - soldeIci(state)} cr.` };
   }
-  state.player.credits -= prix;
+  regler(state, prix);
   if (!g.betes) g.betes = [];
   const b = creerBete(rng, key);
   g.betes.push(b);
@@ -219,7 +220,7 @@ export function vendreBete(state, col, beteId, log, groupe) {
   const b = g.betes[i];
   // On récupère la moitié, au prorata de l'état : personne n'achète une carne.
   const prix = Math.round(prixBete(col, b.key) * 0.5 * (0.4 + 0.6 * (b.sante / 100)));
-  state.player.credits += prix;
+  gagner(state, prix);
   g.betes.splice(i, 1);
   if (log) log({ type: 'bete', texte: `${b.nom} cédée à ${col.nom} pour ${prix} cr.`, regionId: col.regionId });
   return { ok: true, prix };

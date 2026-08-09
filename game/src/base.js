@@ -13,7 +13,7 @@ import { groupes, groupeActif } from './groupes.js';
 import { garnison, avantage } from './allegeance.js';
 import { estSurveillee } from './connaissance.js';
 import { noterArgent } from './rapport.js';
-import { depenser, entrerDehors } from './monnaie.js';
+import { depenser, entrerDehors , gagner, regler, soldeIci} from './monnaie.js';
 
 export function creerBase() {
   const stock = {};
@@ -899,10 +899,10 @@ export function lancerRecherche(state, key) {
   if (niveauRech(base, key) + enFile >= r.max) return { ok: false, motif: 'Niveau maximum atteint.' };
   if (base.fileRech.length >= 3) return { ok: false, motif: 'File pleine (3).' };
   const cout = coutRecherche(base, key);
-  const stockEtCredits = Object.assign({}, base.stock, { credits: state.player.credits });
+  const stockEtCredits = Object.assign({}, base.stock, { credits: soldeIci(state) });
   if (!peutPayer(stockEtCredits, cout)) return { ok: false, motif: 'Ressources insuffisantes.' };
   for (const k of Object.keys(cout)) {
-    if (k === 'credits') state.player.credits -= cout[k];
+    if (k === 'credits') regler(state, cout[k]);
     else base.stock[k] -= cout[k];
   }
   const total = tempsRecherche(base, key, state);
@@ -1624,8 +1624,8 @@ export function preleverImpot(state, log) {
   if (du <= 0) return 0;
   // On paie d'abord en crédits ; à défaut, en vivres, ce qui revient au même
   // pour une garnison.
-  const enCredits = Math.min(state.player.credits, du);
-  state.player.credits -= enCredits;
+  const enCredits = Math.min(soldeIci(state), du);
+  regler(state, enCredits);
   noterArgent(state, 'impôt sur l’avant-poste', -enCredits);
   let reste = du - enCredits;
   if (reste > 0) {
@@ -1719,17 +1719,17 @@ export function visiteMarchand(state, rng, log) {
     credits += Math.round(qte * prix);
     vendu += qte;
   }
-  state.player.credits += credits;
+  gagner(state, credits);
   noterArgent(state, 'colporteurs (ventes)', credits);
 
   for (const k of Object.keys(ACHATS)) {
     const manque = ACHATS[k] - (base.stock[k] || 0);
     if (manque < 10) continue;
     const prix = COMMODITIES[k].prix * 1.35 * rng.range(0.9, 1.15);
-    const peut = Math.floor(state.player.credits / prix);
+    const peut = Math.floor(soldeIci(state) / prix);
     const qte = Math.min(manque, peut, Math.round(manque * rng.range(0.4, 0.9)));
     if (qte < 5) continue;
-    state.player.credits -= Math.round(qte * prix);
+    regler(state, Math.round(qte * prix));
     noterArgent(state, 'colporteurs (achats pour le camp)', -Math.round(qte * prix));
     ajouter(state, k, qte);
     achete += qte;

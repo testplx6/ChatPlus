@@ -11,7 +11,7 @@ import { idDepuisRng } from './characters.js';
 import { groupes, groupeActif } from './groupes.js';
 import { loisDe, REGIMES } from './lois.js';
 import { noterArgent } from './rapport.js';
-import { depenser } from './monnaie.js';
+import { depenser , gagner, soldeIci} from './monnaie.js';
 
 export const RANGS = [
   {
@@ -951,7 +951,7 @@ function tickEngagement(state, g, log, ctx) {
   // Solde versée tous les jours, à partir du grade d'Agent.
   if (rang.def.solde > 0 && state.temps - all.derniereSolde >= 24) {
     all.derniereSolde = state.temps;
-    state.player.credits += rang.def.solde;
+    gagner(state, rang.def.solde);
     noterArgent(state, 'solde', rang.def.solde);
     log({
       type: 'solde',
@@ -997,10 +997,10 @@ function tickEngagement(state, g, log, ctx) {
       }
       // On relève les compteurs avant et après : ce qu'on inscrit au dossier
       // est ce qui s'est réellement passé, pas ce que l'ordre promettait.
-      const crAvant = state.player.credits;
+      const crAvant = soldeIci(state);
       const repAvant = state.player.reputation[all.faction] || 0;
       const ptsAvant = all.points;
-      state.player.credits += o.recompense;
+      gagner(state, o.recompense);
       noterArgent(state, 'missions honorées', o.recompense);
       state.player.reputation[all.faction] = Math.min(100, repAvant + 5);
       all.ordre = null;
@@ -1009,7 +1009,7 @@ function tickEngagement(state, g, log, ctx) {
       all.ordresHonores = (all.ordresHonores || 0) + 1;
       crediter(state, o.service, log, null, g);
       noterFait(all, o, 'honore', state.temps, {
-        cr: state.player.credits - crAvant,
+        cr: soldeIci(state) - crAvant,
         pts: all.points - ptsAvant,
         rep: (state.player.reputation[all.faction] || 0) - repAvant,
       });

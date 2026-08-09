@@ -256,7 +256,10 @@ export function nouvellePartie(seed, opts = {}) {
       // graine divergeaient parce qu'il avait marché ailleurs. Et `player` est
       // privé par construction : son hasard n'a rien à faire dans `world`.
       rngEtat: grainDe('joueur', seed, rng.save()),
-      credits: scen.equipe ? 450 : rng.irange(20, 70),
+      // Le portefeuille, et non plus un solde. On ne commence pas avec du crédit
+      // universel : on commence avec la monnaie de l'endroit où l'on est, parce
+      // qu'il n'y a pas d'autre façon d'y être arrivé. Voir `monnaie.js`.
+      bourse: { [hote.faction || 'hexa']: scen.equipe ? 450 : rng.irange(20, 70) },
       // Les gens et ce qu'ils portent vivent dans les groupes ; le reste, ici.
       groupes: [premier],
       groupeActif: premier.id,

@@ -1,3 +1,4 @@
+import { gagner } from './monnaie.js';
 // Ce que les gens vous demandent, en personne.
 //
 // Le panneau d'affichage d'une ville est anonyme : il paie en crédits, il bouge
@@ -215,7 +216,7 @@ export function honorer(state, colId, notableId, log) {
 
   g.inventaire[d.res] -= d.quantite;
   col.stock[d.res] = (col.stock[d.res] || 0) + d.quantite;
-  state.player.credits += d.prime;
+  gagner(state, d.prime);
 
   p.opinion = Math.min(100, (p.opinion || 0) + GAIN_OPINION);
   retenir(p, 'service', d.res, state.temps);

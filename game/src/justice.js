@@ -25,7 +25,7 @@ import { colonieDe } from './world.js';
 import { enGuerre } from './factions.js';
 import { crediter } from './allegeance.js';
 import { loisDe, loiIci, PEINES } from './lois.js';
-import { depenser } from './monnaie.js';
+import { depenser , gagner} from './monnaie.js';
 
 /** Combien de prisonniers une paire de bras surveille sans y penser. */
 export const PAR_GARDIEN = 1.5;
@@ -374,7 +374,7 @@ export function disposer(state, g, captifId, quoi, log) {
     const prime = primeLivraison(state, col, c);
     if (prime <= 0) return { ok: false, motif: 'La justice d’ici n’a rien à lui reprocher.' };
     retirerCaptif(g, c);
-    state.player.credits += prime;
+    gagner(state, prime);
     state.stats.captifsLivres = (state.stats.captifsLivres || 0) + 1;
     ecrouer(state, col, c, loi);
     noterReputation(state, col.faction, 2);
@@ -403,7 +403,7 @@ export function disposer(state, g, captifId, quoi, log) {
     if (prix <= 0) return { ok: false, motif: 'Personne ne paiera pour lui.' };
     retirerCaptif(g, c);
     depenser(state.world, cap.faction, prix);
-    state.player.credits += prix;
+    gagner(state, prix);
     // On rend un homme : c'est mieux vu que de le vendre, moins bien que de
     // l'avoir laissé tranquille.
     noterReputation(state, cap.faction, 3);
@@ -423,7 +423,7 @@ export function disposer(state, g, captifId, quoi, log) {
     const prix = prixEsclave(state, col, c);
     if (prix <= 0) return { ok: false, motif: 'On ne vend pas d’hommes ici.' };
     retirerCaptif(g, c);
-    state.player.credits += prix;
+    gagner(state, prix);
     state.stats.captifsVendus = (state.stats.captifsVendus || 0) + 1;
     // Ça se sait. Auprès des siens d'abord, et auprès de tous ceux qui l'ont
     // interdit chez eux — ce qui donne son poids à la loi d'en face.

@@ -503,3 +503,36 @@ export function monnaieIci(state) {
   }
   return proche;
 }
+
+// ---------------------------------------------------------------------------
+// Payer et être payé, sans jamais nommer la monnaie
+// ---------------------------------------------------------------------------
+//
+// Les quatre-vingt-six endroits où le joueur donnait ou recevait de l'argent
+// écrivaient `state.player.credits += x`. Ils écrivent maintenant `gagner(state,
+// x)` : la monnaie est celle de l'endroit, et personne n'a à y penser. Les
+// quelques sites qui paient dans une AUTRE monnaie — la solde d'un employeur,
+// le butin d'un mort — la passent en troisième argument.
+//
+// C'est ce qui rend la bascule mécanique. Une règle écrite une fois dans
+// `monnaieIci`, et quatre-vingt-six sites qui l'appellent sans la connaître.
+
+/** Ce qu'on a, dans la monnaie d'ici. */
+export function soldeIci(state) {
+  return solde(state && state.player, monnaieIci(state));
+}
+
+/** A-t-on de quoi payer ici ? */
+export function aDeQuoi(state, montant, monnaie) {
+  return solde(state && state.player, monnaie || monnaieIci(state)) >= montant;
+}
+
+/** On vous paie. Rend ce qui a été versé. */
+export function gagner(state, montant, monnaie) {
+  return crediterBourse(state && state.player, monnaie || monnaieIci(state), montant);
+}
+
+/** Vous payez. Rend ce qui a réellement été pris, jamais plus que ce qu'on a. */
+export function regler(state, montant, monnaie) {
+  return debiterBourse(state && state.player, monnaie || monnaieIci(state), montant);
+}

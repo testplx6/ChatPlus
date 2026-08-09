@@ -20,7 +20,7 @@ import {
 import { tickServices } from './services.js';
 import { portageAttelage } from './betes.js';
 import { loiIci, loisDe } from './lois.js';
-import { sortirDuCircuit, transfererVille, coursMonnaie } from './monnaie.js';
+import { sortirDuCircuit, transfererVille, coursMonnaie , gagner, regler, soldeIci} from './monnaie.js';
 
 /**
  * La caisse d'une ville.
@@ -1151,7 +1151,7 @@ export function simulerAchat(state, col, key, qte, groupe) {
   while (restant > 0) {
     if (stock < 1) { borne = borne || 'étal vide'; break; }
     const p = prixJoueur(col, key, hab, repu, remise, stock, state.world).achat;
-    if (state.player.credits - cout < p) { borne = borne || 'crédits'; break; }
+    if (soldeIci(state) - cout < p) { borne = borne || 'crédits'; break; }
     cout += p;
     stock -= 1;
     achetes += 1;
@@ -1200,7 +1200,7 @@ export function acheter(state, col, key, qte, groupe) {
     return { ok: false, motif: motifs[sim.borne] || 'Rien à acheter à ce prix.', qte: 0, cout: 0 };
   }
   col.stock[key] = Math.max(0, (col.stock[key] || 0) - sim.qte);
-  state.player.credits -= sim.cout;
+  regler(state, sim.cout);
   // Ce que vous payez entre en caisse chez qui vous a servi, impôt compris.
   encaisser(state.world, col, sim.cout);
   g.inventaire[key] = (g.inventaire[key] || 0) + sim.qte;
@@ -1215,7 +1215,7 @@ export function vendre(state, col, key, qte, groupe) {
   if (sim.qte === 0) return { ok: false, motif: 'Rien à vendre.', qte: 0, gain: 0 };
   col.stock[key] = (col.stock[key] || 0) + sim.qte;
   g.inventaire[key] -= sim.qte;
-  state.player.credits += sim.gain;
+  gagner(state, sim.gain);
   // La ville règle sur sa caisse. Elle vous paie en entier même si elle n'a pas
   // le compte : le prix était affiché, on ne le renégocie pas au comptoir. Ce
   // qu'elle sort ici, elle ne l'aura plus pour se ravitailler — vendre son butin
@@ -1311,9 +1311,9 @@ export function acheterItem(state, col, index, groupe) {
   const hab = negoc ? comp(negoc, 'commerce') : 0;
   const repu = state.player.reputation[col.faction] || 0;
   const p = prixItem(col, ligne.key, ligne.coef, hab, repu, remiseDe(state, col.faction)).achat;
-  if (state.player.credits < p) return { ok: false, motif: `Il manque ${p - state.player.credits} cr.` };
+  if (soldeIci(state) < p) return { ok: false, motif: `Il manque ${p - soldeIci(state)} cr.` };
 
-  state.player.credits -= p;
+  regler(state, p);
   ligne.qte -= 1;
   g.objets.push(ligne.key);
   if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 1.2);
@@ -1329,7 +1329,7 @@ export function vendreItem(state, col, indexObjet, groupe) {
   const repu = state.player.reputation[col.faction] || 0;
   const p = prixItem(col, key, 1, hab, repu, remiseDe(state, col.faction)).vente;
   g.objets.splice(indexObjet, 1);
-  state.player.credits += p;
+  gagner(state, p);
   if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.9);
   return { ok: true, prix: p, nom: ITEMS[key].nom };
 }

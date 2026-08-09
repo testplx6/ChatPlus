@@ -1,3 +1,4 @@
+import { regler, soldeIci } from './monnaie.js';
 // Les écoles : ce qui s'apprend ailleurs qu'à l'usage.
 //
 // Un diplôme n'accélère pas la partie, il la réoriente. Il coûte de l'argent,
@@ -67,10 +68,10 @@ export function inscrire(state, col, perso, key, log) {
   // colonnes engagée chez eux suffit à vous ouvrir le tarif.
   const remise = estAuService(state, col.faction) ? 0.15 : 0;
   const prix = prixFormation(col, key, remise, loiIci(state, col).regime);
-  if (state.player.credits < prix) {
-    return { ok: false, motif: `Il manque ${prix - state.player.credits} cr.` };
+  if (soldeIci(state) < prix) {
+    return { ok: false, motif: `Il manque ${prix - soldeIci(state)} cr.` };
   }
-  state.player.credits -= prix;
+  regler(state, prix);
   perso.formation = {
     key,
     colonieId: col.id,

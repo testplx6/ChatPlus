@@ -1,3 +1,4 @@
+import { soldeIci } from './monnaie.js';
 // Interface : rendu HTML + carte pixel sur canvas. C'est le SEUL module qui
 // touche au DOM — tout le reste du dossier src/ tourne aussi bien sous Node.
 
@@ -2947,7 +2948,7 @@ function ecranBase() {
     const niv = niveauRech(b, k);
     const enFile = b.fileRech.filter((x) => x.key === k).length;
     const cout = coutRecherche(b, k);
-    const dispo = Object.keys(cout).every((c) => (c === 'credits' ? S.player.credits : (b.stock[c] || 0)) >= cout[c]);
+    const dispo = Object.keys(cout).every((c) => (c === 'credits' ? soldeIci(S) : (b.stock[c] || 0)) >= cout[c]);
     const plein = niv + enFile >= rd.max;
     const sansAntenne = nivBat(b, 'antenne') < 1;
     // Cinq recherches en exigent une autre, et rien ne le disait : le bouton
@@ -4446,7 +4447,7 @@ function modaleMarche() {
   // faut le dire, sinon le joueur croit à une erreur de prix.
   const reg = loiIci(S, col).regime;
   return `<h2 class="titre">Marché de ${e(col.nom)}
-    <span class="droite">${n(S.player.credits)} cr</span></h2>
+    <span class="droite">${n(soldeIci(S))} cr</span></h2>
   <div class="aide">Négociateur : ${negoc ? `${e(negoc.nom)} (commerce ${hab.toFixed(0)})` : 'aucun'}.
     Une bonne réputation et un bon commerçant resserrent la marge. Le prix bouge
     à chaque unité : les montants affichés tiennent compte de tout le lot.
@@ -4475,7 +4476,7 @@ function modaleCoffre() {
 
   if (!coffre) {
     return `<h2 class="titre">Coffre à ${e(col.nom)}
-      <span class="droite">${n(S.player.credits)} cr</span></h2>
+      <span class="droite">${n(soldeIci(S))} cr</span></h2>
     <div class="aide">De la place qui reste ici pendant que vous marchez.</div>
     <div class="sep"></div>
     <button class="act${vL.ok ? ' primaire' : ''}" data-a="coffre-louer" ${vL.ok ? '' : 'disabled'}>
@@ -4559,7 +4560,7 @@ function modaleEtal() {
   const achats = etal.items.map((ligne, i) => {
     const it = ITEMS[ligne.key];
     const p = prixItem(col, ligne.key, ligne.coef, hab, repu);
-    const trop = S.player.credits < p.achat;
+    const trop = soldeIci(S) < p.achat;
     return `<div class="article">
       <div class="ligne"><span class="k">${e(it.nom)}</span>
         <span class="v ambre">${n(p.achat)} cr${ligne.qte > 1 ? ` ×${ligne.qte}` : ''}</span></div>
@@ -4580,7 +4581,7 @@ function modaleEtal() {
   }).join('') || '<div class="aide">Rien à revendre.</div>';
 
   return `<h2 class="titre">Armurier de ${e(col.nom)}
-    <span class="droite">${n(S.player.credits)} cr</span></h2>
+    <span class="droite">${n(soldeIci(S))} cr</span></h2>
   <div class="aide">Le stock se renouvelle. Ce que vous ne prenez pas aujourd’hui ne sera
     peut-être plus là demain.</div>
   <div class="sep"></div>
@@ -4746,13 +4747,13 @@ function modaleEcole() {
       <div class="ligne"><span class="k">Durée sur place</span>
         <span class="v">${dureeTexte(d.heures)}</span></div>
       <div class="ligne"><span class="k">Prix</span>
-        <span class="v ${S.player.credits >= prix ? '' : 'alerte'}">${prix
+        <span class="v ${soldeIci(S) >= prix ? '' : 'alerte'}">${prix
     ? `${n(prix)} cr${remise ? ' (remise)' : ''}`
     : `gratuit — ${e(regime.nom)}`}</span></div>
       ${candidats.length
     ? `<div class="taches">${candidats.map((c) => `<button class="act mini"
         data-a="inscrire" data-k="${k}" data-c="${e(c.id)}"
-        ${S.player.credits >= prix ? '' : 'disabled'}>Inscrire ${e(c.nom)}
+        ${soldeIci(S) >= prix ? '' : 'disabled'}>Inscrire ${e(c.nom)}
         <span class="aide">(${Math.round(comp(c, d.skill))})</span></button>`).join('')}</div>`
     : '<div class="aide">Personne du groupe ne peut s’y inscrire — déjà diplômé, déjà en formation, ou en sait plus que l’école.</div>'}
     </div>`;
@@ -4904,14 +4905,14 @@ function modaleAttelage() {
     ? `mange ${(def.appetit * 24).toFixed(1)} biomasse/jour` : 'ne mange rien'}
         · −${(def.lenteur * 100).toFixed(0)} % de vitesse</div>
       <button class="act mini${auDela ? '' : ' primaire'}" data-a="acheter-bete" data-k="${k}"
-        style="margin-top:4px" ${S.player.credits < prix ? 'disabled' : ''}>
-        ${S.player.credits < prix ? 'Crédits insuffisants'
+        style="margin-top:4px" ${soldeIci(S) < prix ? 'disabled' : ''}>
+        ${soldeIci(S) < prix ? 'Crédits insuffisants'
     : auDela ? 'Acheter — personne pour la mener' : 'Acheter'}</button>
     </div>`;
   }).join('') : '<div class="aide">On n’achète pas une bête au milieu du désert.</div>';
 
   return `<h2 class="titre">Attelage de ${e(g.nom)}
-    <span class="droite">${n(S.player.credits)} cr</span></h2>
+    <span class="droite">${n(soldeIci(S))} cr</span></h2>
   <div class="aide">Une bête porte à votre place, mange ce que personne ne mange,
     et ralentit le convoi. Elle maigrit si on l’oublie, et les pillards
     l’emmènent avant le reste.</div>
@@ -4955,16 +4956,16 @@ function modaleRecrutement() {
       ${(c.traits || []).length ? `<div class="aide">${c.traits.map((t) =>
     e(TRAITS[t] ? TRAITS[t].nom : t)).join(' · ')}</div>` : ''}
       <div class="ligne"><span class="k">Prime</span><span class="v">${n(prix)} cr</span></div>
-      <button class="act mini${S.player.credits >= prix ? ' primaire' : ''}"
+      <button class="act mini${soldeIci(S) >= prix ? ' primaire' : ''}"
         data-a="recruter" data-i="${e(c.id)}" style="margin-top:4px"
-        ${S.player.credits < prix ? 'disabled' : ''}>
-        ${S.player.credits < prix ? 'Crédits insuffisants' : 'Engager'}</button>
+        ${soldeIci(S) < prix ? 'disabled' : ''}>
+        ${soldeIci(S) < prix ? 'Crédits insuffisants' : 'Engager'}</button>
     </div>`;
   }).join('') : '<div class="aide">Personne ne cherche à partir d’ici en ce moment.</div>';
 
   const tension = tensionRecrutement(col);
   return `<h2 class="titre">Recrutement à ${e(col.nom)}
-    <span class="droite">${n(S.player.credits)} cr</span></h2>
+    <span class="droite">${n(soldeIci(S))} cr</span></h2>
   <div class="aide">${tension < 0.8
     ? 'La ville va mal. Beaucoup de gens veulent s’en aller, et pour pas cher.'
     : tension > 1.15

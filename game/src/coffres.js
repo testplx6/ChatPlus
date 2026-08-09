@@ -1,3 +1,4 @@
+import { regler, soldeIci } from './monnaie.js';
 // Un coffre en ville : de la place qui ne marche pas avec vous.
 //
 // Tout ce qu'on possède tenait dans deux endroits : le sac, borné par ce que les
@@ -96,7 +97,7 @@ export function peutLouer(state, col) {
   if (reg.propriete === null && reg.ecole === 'maison') {
     return { ok: false, motif: `${reg.nom} : on n’y loue rien à un étranger.` };
   }
-  if (state.player.credits < LOYER) {
+  if (soldeIci(state) < LOYER) {
     return { ok: false, motif: `Le premier mois se paie d’avance : ${LOYER} cr.` };
   }
   return { ok: true };
@@ -129,8 +130,8 @@ export function peutAcheter(state, col) {
       };
     }
   }
-  if (state.player.credits < PRIX_COFFRE) {
-    return { ok: false, motif: `Il manque ${PRIX_COFFRE - state.player.credits} cr.` };
+  if (soldeIci(state) < PRIX_COFFRE) {
+    return { ok: false, motif: `Il manque ${PRIX_COFFRE - soldeIci(state)} cr.` };
   }
   return { ok: true };
 }
@@ -152,7 +153,7 @@ function creer(state, col, achete) {
 export function louerCoffre(state, col, log) {
   const v = peutLouer(state, col);
   if (!v.ok) return v;
-  state.player.credits -= LOYER;
+  regler(state, LOYER);
   creer(state, col, false);
   if (log) {
     log({
@@ -168,7 +169,7 @@ export function louerCoffre(state, col, log) {
 export function acheterCoffre(state, col, log) {
   const v = peutAcheter(state, col);
   if (!v.ok) return v;
-  state.player.credits -= PRIX_COFFRE;
+  regler(state, PRIX_COFFRE);
   creer(state, col, true);
   if (log) {
     log({
@@ -233,8 +234,8 @@ export function tickCoffres(state, log) {
     if (coffre.achete) continue;
     if (state.temps < coffre.jusqu) continue;
     coffre.jusqu = state.temps + PERIODE_LOYER;
-    if (state.player.credits >= LOYER) {
-      state.player.credits -= LOYER;
+    if (soldeIci(state) >= LOYER) {
+      regler(state, LOYER);
       noterArgent(state, 'loyers de coffre', -LOYER);
       if (log) {
         log({

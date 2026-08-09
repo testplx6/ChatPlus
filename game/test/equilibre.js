@@ -31,6 +31,7 @@
 
 import { nouvellePartie, tick } from '../src/sim.js';
 import { Rng } from '../src/rng.js';
+import { soldeIci, monnaieIci, gagner, regler } from '../src/monnaie.js';
 import {
   groupeActif, groupes, scinder, fusionner, tousLesMembres, noyau,
   rendementCohesion,
@@ -651,7 +652,7 @@ function tenirAvantPoste(state, g, memo) {
     if (process.env.TRACE_BASE) {
       console.log('  t', state.temps, 'inv',
         Object.keys(COUT_FONDATION).map((k) => k + ':' + Math.floor(g.inventaire[k] || 0)).join(' '),
-        'cr', Math.round(state.player.credits), 'ordre', g.ordre.type);
+        'cr', Math.round(soldeIci(state)), 'ordre', g.ordre.type);
     }
     const ici = state.world.regions[g.regionId];
     if (!ici.colonie) {
@@ -1963,7 +1964,7 @@ for (let n = 0; n < PARTIES; n++) {
     }
     for (const gg of groupes(state)) if (gg.allegeance) TRACE.hEngage++;
     for (const gg of groupes(state)) if (gg.ordre.type === 'patrouille') TRACE.hPatrouille++;
-    const crAvant = state.player.credits;
+    const crAvant = soldeIci(state);
     const defAvant = state.stats.defaites;
     const captifsAvant = groupes(state).reduce((t, x) => t + prisonniersDe(x).length, 0);
     // Les ordres de mission naissent et meurent pendant le tick : on relève
@@ -2033,7 +2034,7 @@ for (let n = 0; n < PARTIES; n++) {
     }
     if (state.stats.defaites > defAvant) {
       TRACE.defaites += state.stats.defaites - defAvant;
-      TRACE.crPilles += Math.max(0, crAvant - state.player.credits);
+      TRACE.crPilles += Math.max(0, crAvant - soldeIci(state));
     }
   }
   if (process.env.NECRO) {
@@ -2170,7 +2171,7 @@ for (let n = 0; n < PARTIES; n++) {
     fin: state.fin || '—',
     viv: `${viv.length}/${tousLesMembres(state).length}`,
     detach: memo.detachements,
-    cr: state.player.credits,
+    cr: soldeIci(state),
     wl: `${state.stats.combatsGagnes}/${state.stats.defaites}`,
     recolte: state.stats.recolte,
     comp: skills,

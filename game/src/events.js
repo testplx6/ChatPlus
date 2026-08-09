@@ -1,3 +1,4 @@
+import { gagner, regler, soldeIci } from './monnaie.js';
 // Journal de bord et rencontres. Tout se résout automatiquement selon la
 // posture et les consignes de l'escouade : c'est ce qui permet à la simulation
 // de tourner pendant que le joueur est hors ligne.
@@ -198,7 +199,7 @@ export function combatContre(state, bande, log, ctx, groupe) {
     const b = butin(bande, rng);
     let ramasse = 0;
     for (const k of Object.keys(b.loot)) ramasse += ajouterAuSac(state, k, b.loot[k], g);
-    state.player.credits += b.credits;
+    gagner(state, b.credits);
     noterArgent(state, 'butin', b.credits);
     for (const o of b.objets) {
       if (g.objets.length < 30) g.objets.push(o);
@@ -327,8 +328,8 @@ function perdreCombat(state, bande, log, ctx, lieu, g) {
   }
   // On garde de quoi repartir : tout rafler à chaque défaite interdit
   // définitivement de s'équiper, donc de cesser de perdre.
-  const cr = Math.round(state.player.credits * rng.range(0.25, 0.55));
-  state.player.credits -= cr;
+  const cr = Math.round(soldeIci(state) * rng.range(0.25, 0.55));
+  regler(state, cr);
   noterArgent(state, 'détroussé après une défaite', -cr);
   if (g.objets.length && rng.chance(0.6)) {
     g.objets.splice(rng.int(g.objets.length), 1);
@@ -622,7 +623,7 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       const q = rng.irange(3, 14);
       const pris = ajouterAuSac(state, k, q, g);
       const cr = rng.irange(0, 60);
-      state.player.credits += cr;
+      gagner(state, cr);
       for (const c of debout) gagnerXp(c, 'ingenierie', XP_PRATIQUE * 1.2);
       log({
         type: 'trouvaille',
@@ -639,7 +640,7 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       // pas une règle qui refuse. Le baraquement et les gens sociables agrandis-
       // sent ce noyau : c'est là qu'est la décision.
       const prix = rng.irange(120, 420);
-      if (!state.player.politique.recruter || state.player.credits < prix) {
+      if (!state.player.politique.recruter || soldeIci(state) < prix) {
         log({
           type: 'rencontre',
           texte: `Un errant propose ses services (${prix} cr). Décliné.`,
@@ -649,7 +650,7 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
         return true;
       }
       const c = makeCharacter(rng, { niveau: rng.irange(0, 1) });
-      state.player.credits -= prix;
+      regler(state, prix);
       noterArgent(state, 'recrues engagées en route', -prix);
       g.membres.push(c);
       log({
@@ -679,7 +680,7 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       const bonus = negoc ? comp(negoc, 'commerce') / 260 : 0;
       const prix = Math.round(COMMODITIES[k].prix * (1.15 + bonus) * q);
       g.inventaire[k] -= q;
-      state.player.credits += prix;
+      gagner(state, prix);
       if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.8);
       log({
         type: 'commerce',
@@ -703,8 +704,8 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
         return true;
       }
       const agressif = state.player.posture === 'agressif';
-      if (!agressif && state.player.credits >= taxe && state.player.politique.payerPeage) {
-        state.player.credits -= taxe;
+      if (!agressif && soldeIci(state) >= taxe && state.player.politique.payerPeage) {
+        regler(state, taxe);
         noterArgent(state, 'péages', -taxe);
         reputation(state, f, 1);
         log({
@@ -823,7 +824,7 @@ export function fouillerSite(state, rng, log, groupe) {
     if (reel > 0) pris.push(`${reel} ${COMMODITIES[k].nom.toLowerCase()}`);
   }
   const cr = rng.irange(def.credits[0], def.credits[1]);
-  state.player.credits += cr;
+  gagner(state, cr);
 
   const objets = [];
   for (let i = 0; i < (def.objet || 0); i++) {

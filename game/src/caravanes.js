@@ -23,7 +23,7 @@ import { retenirEnVille } from './services.js';
 import { avantage } from './allegeance.js';
 import {
   transferer, convertirMasse, ecartChange, taux,
-} from './monnaie.js';
+  gagner, regler, soldeIci} from './monnaie.js';
 
 /**
  * Le plafond du commerce d'opportunité — celui que le hasard tire, par
@@ -413,10 +413,10 @@ export function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEs
 
   if (sens === 'achat') {
     const du = devis.total + fraisEscorte;
-    if (state.player.credits < du) {
-      return { ok: false, motif: `Il manque ${du - state.player.credits} cr.` };
+    if (soldeIci(state) < du) {
+      return { ok: false, motif: `Il manque ${du - soldeIci(state)} cr.` };
     }
-    state.player.credits -= du;
+    regler(state, du);
     // Ce que vous payez ne s'évapore pas : la ville qui vous fournit l'encaisse,
     // et sa faction prélève sa part. Votre négoce laisse enfin une trace dans le
     // monde au lieu de ne bouger que vos propres crédits.
@@ -426,10 +426,10 @@ export function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEs
     if (dispo < devis.qte) {
       return { ok: false, motif: `L’entrepôt n’a que ${dispo} ${COMMODITIES[key].nom.toLowerCase()}.` };
     }
-    if (state.player.credits < fraisEscorte) {
+    if (soldeIci(state) < fraisEscorte) {
       return { ok: false, motif: `L’escorte coûte ${fraisEscorte} cr d’avance.` };
     }
-    state.player.credits -= fraisEscorte;
+    regler(state, fraisEscorte);
     base.stock[key] = dispo - devis.qte;
   }
 
@@ -438,8 +438,8 @@ export function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEs
   const route = chemin(world, de, vers);
   if (!route || !route.length) {
     // On rend ce qu'on a pris : un ordre qu'on ne peut pas honorer ne se paie pas.
-    if (sens === 'achat') state.player.credits += devis.total + fraisEscorte;
-    else { base.stock[key] = (base.stock[key] || 0) + devis.qte; state.player.credits += fraisEscorte; }
+    if (sens === 'achat') gagner(state, devis.total + fraisEscorte);
+    else { base.stock[key] = (base.stock[key] || 0) + devis.qte; gagner(state, fraisEscorte); }
     return { ok: false, motif: 'Aucune route entre votre camp et le réseau.' };
   }
 
@@ -549,7 +549,7 @@ function arriver(state, car, log) {
         });
       }
     } else {
-      state.player.credits += car.paiement || 0;
+      gagner(state, car.paiement || 0);
       // La ville qui vous a acheté règle sur sa caisse. Elle vous paie en
       // entier — le prix était convenu à la commande, et un ordre honoré se
       // paie ; ce qu'elle n'a pas, elle ne l'aura simplement plus pour se

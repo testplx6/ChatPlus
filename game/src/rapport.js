@@ -1,3 +1,4 @@
+import { soldeIci } from './monnaie.js';
 // Ce qui s'est passé pendant que vous n'étiez pas là.
 //
 // Le jeu rejouait deux cents jours en silence, affichait une barre de
@@ -72,7 +73,7 @@ export function photo(state) {
   }
   return {
     t: state.temps,
-    credits: Math.round(state.player.credits),
+    credits: Math.round(soldeIci(state)),
     vivants,
     debout,
     sac,

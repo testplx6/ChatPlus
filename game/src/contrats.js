@@ -1,3 +1,4 @@
+import { gagner, soldeIci } from './monnaie.js';
 // Contrats : ce que les villes vous demandent de faire. C'est ce qui donne un
 // but à court terme entre deux ordres de récolte, et une raison de traverser la
 // carte plutôt que de camper.
@@ -496,9 +497,9 @@ export function noterContrat(state, c, issue, bilan) {
 }
 
 function recompenser(state, c, log) {
-  const crAvant = state.player.credits;
+  const crAvant = soldeIci(state);
   const repAvant = state.player.reputation[c.faction] || 0;
-  state.player.credits += c.recompense;
+  gagner(state, c.recompense);
   // Un contrat rempli pour les siens compte double : il paie et il fait monter.
   if (estAuService(state, c.faction)) {
     crediter(state, Math.round(c.recompense / 7) + 10, log, 'Contrat honoré pour les vôtres');
@@ -507,7 +508,7 @@ function recompenser(state, c, log) {
   state.player.reputation[c.faction] = Math.min(100, repAvant + gagne);
   state.stats.contratsRemplis = (state.stats.contratsRemplis || 0) + 1;
   noterContrat(state, c, 'honore', {
-    cr: state.player.credits - crAvant,
+    cr: soldeIci(state) - crAvant,
     rep: (state.player.reputation[c.faction] || 0) - repAvant,
   });
   log({

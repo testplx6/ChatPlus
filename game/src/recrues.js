@@ -1,3 +1,4 @@
+import { regler, soldeIci } from './monnaie.js';
 // Qui accepte de partir avec vous, et pour combien.
 //
 // La prime d'engagement montait de quatre-vingt-dix crédits par membre déjà
@@ -111,10 +112,10 @@ export function engager(state, col, id, log, groupe) {
   const c = banc.gens.find((x) => x.id === id);
   if (!c) return { ok: false, motif: 'Cette personne s’est placée ailleurs.' };
   const prix = primeDe(state, col, c);
-  if (state.player.credits < prix) {
-    return { ok: false, motif: `Il manque ${prix - state.player.credits} cr.` };
+  if (soldeIci(state) < prix) {
+    return { ok: false, motif: `Il manque ${prix - soldeIci(state)} cr.` };
   }
-  state.player.credits -= prix;
+  regler(state, prix);
   // La promotion par le toucher : c'est ici, et seulement ici, qu'un individu
   // dérivé entre dans l'état. Le registre est remis à zéro quand l'époque
   // tourne — on ne garde pas la mémoire de gens qui ne sont plus là.

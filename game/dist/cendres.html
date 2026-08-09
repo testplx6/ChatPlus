@@ -5140,7 +5140,7 @@ function photo(state) {
   }
   return {
     t: state.temps,
-    credits: Math.round(state.player.credits),
+    credits: Math.round(soldeIci(state)),
     vivants,
     debout,
     sac,
@@ -5505,10 +5505,10 @@ function acheterBete(state, col, key, rng, log, groupe) {
     return { ok: false, motif: 'Il faut être en ville.' };
   }
   const prix = prixBete(col, key);
-  if (state.player.credits < prix) {
-    return { ok: false, motif: `Il manque ${prix - state.player.credits} cr.` };
+  if (soldeIci(state) < prix) {
+    return { ok: false, motif: `Il manque ${prix - soldeIci(state)} cr.` };
   }
-  state.player.credits -= prix;
+  regler(state, prix);
   if (!g.betes) g.betes = [];
   const b = creerBete(rng, key);
   g.betes.push(b);
@@ -5534,7 +5534,7 @@ function vendreBete(state, col, beteId, log, groupe) {
   const b = g.betes[i];
   // On récupère la moitié, au prorata de l'état : personne n'achète une carne.
   const prix = Math.round(prixBete(col, b.key) * 0.5 * (0.4 + 0.6 * (b.sante / 100)));
-  state.player.credits += prix;
+  gagner(state, prix);
   g.betes.splice(i, 1);
   if (log) log({ type: 'bete', texte: `${b.nom} cédée à ${col.nom} pour ${prix} cr.`, regionId: col.regionId });
   return { ok: true, prix };
@@ -5740,10 +5740,10 @@ function engager(state, col, id, log, groupe) {
   const c = banc.gens.find((x) => x.id === id);
   if (!c) return { ok: false, motif: 'Cette personne s’est placée ailleurs.' };
   const prix = primeDe(state, col, c);
-  if (state.player.credits < prix) {
-    return { ok: false, motif: `Il manque ${prix - state.player.credits} cr.` };
+  if (soldeIci(state) < prix) {
+    return { ok: false, motif: `Il manque ${prix - soldeIci(state)} cr.` };
   }
-  state.player.credits -= prix;
+  regler(state, prix);
   // La promotion par le toucher : c'est ici, et seulement ici, qu'un individu
   // dérivé entre dans l'état. Le registre est remis à zéro quand l'époque
   // tourne — on ne garde pas la mémoire de gens qui ne sont plus là.
@@ -5984,7 +5984,7 @@ function honorer(state, colId, notableId, log) {
 
   g.inventaire[d.res] -= d.quantite;
   col.stock[d.res] = (col.stock[d.res] || 0) + d.quantite;
-  state.player.credits += d.prime;
+  gagner(state, d.prime);
 
   p.opinion = Math.min(100, (p.opinion || 0) + GAIN_OPINION);
   retenir(p, 'service', d.res, state.temps);
@@ -7014,7 +7014,7 @@ function tickEngagement(state, g, log, ctx) {
   // Solde versée tous les jours, à partir du grade d'Agent.
   if (rang.def.solde > 0 && state.temps - all.derniereSolde >= 24) {
     all.derniereSolde = state.temps;
-    state.player.credits += rang.def.solde;
+    gagner(state, rang.def.solde);
     noterArgent(state, 'solde', rang.def.solde);
     log({
       type: 'solde',
@@ -7060,10 +7060,10 @@ function tickEngagement(state, g, log, ctx) {
       }
       // On relève les compteurs avant et après : ce qu'on inscrit au dossier
       // est ce qui s'est réellement passé, pas ce que l'ordre promettait.
-      const crAvant = state.player.credits;
+      const crAvant = soldeIci(state);
       const repAvant = state.player.reputation[all.faction] || 0;
       const ptsAvant = all.points;
-      state.player.credits += o.recompense;
+      gagner(state, o.recompense);
       noterArgent(state, 'missions honorées', o.recompense);
       state.player.reputation[all.faction] = Math.min(100, repAvant + 5);
       all.ordre = null;
@@ -7072,7 +7072,7 @@ function tickEngagement(state, g, log, ctx) {
       all.ordresHonores = (all.ordresHonores || 0) + 1;
       crediter(state, o.service, log, null, g);
       noterFait(all, o, 'honore', state.temps, {
-        cr: state.player.credits - crAvant,
+        cr: soldeIci(state) - crAvant,
         pts: all.points - ptsAvant,
         rep: (state.player.reputation[all.faction] || 0) - repAvant,
       });
@@ -7477,10 +7477,10 @@ function inscrire(state, col, perso, key, log) {
   // colonnes engagée chez eux suffit à vous ouvrir le tarif.
   const remise = estAuService(state, col.faction) ? 0.15 : 0;
   const prix = prixFormation(col, key, remise, loiIci(state, col).regime);
-  if (state.player.credits < prix) {
-    return { ok: false, motif: `Il manque ${prix - state.player.credits} cr.` };
+  if (soldeIci(state) < prix) {
+    return { ok: false, motif: `Il manque ${prix - soldeIci(state)} cr.` };
   }
-  state.player.credits -= prix;
+  regler(state, prix);
   perso.formation = {
     key,
     colonieId: col.id,
@@ -9725,7 +9725,7 @@ function simulerAchat(state, col, key, qte, groupe) {
   while (restant > 0) {
     if (stock < 1) { borne = borne || 'étal vide'; break; }
     const p = prixJoueur(col, key, hab, repu, remise, stock, state.world).achat;
-    if (state.player.credits - cout < p) { borne = borne || 'crédits'; break; }
+    if (soldeIci(state) - cout < p) { borne = borne || 'crédits'; break; }
     cout += p;
     stock -= 1;
     achetes += 1;
@@ -9774,7 +9774,7 @@ function acheter(state, col, key, qte, groupe) {
     return { ok: false, motif: motifs[sim.borne] || 'Rien à acheter à ce prix.', qte: 0, cout: 0 };
   }
   col.stock[key] = Math.max(0, (col.stock[key] || 0) - sim.qte);
-  state.player.credits -= sim.cout;
+  regler(state, sim.cout);
   // Ce que vous payez entre en caisse chez qui vous a servi, impôt compris.
   encaisser(state.world, col, sim.cout);
   g.inventaire[key] = (g.inventaire[key] || 0) + sim.qte;
@@ -9789,7 +9789,7 @@ function vendre(state, col, key, qte, groupe) {
   if (sim.qte === 0) return { ok: false, motif: 'Rien à vendre.', qte: 0, gain: 0 };
   col.stock[key] = (col.stock[key] || 0) + sim.qte;
   g.inventaire[key] -= sim.qte;
-  state.player.credits += sim.gain;
+  gagner(state, sim.gain);
   // La ville règle sur sa caisse. Elle vous paie en entier même si elle n'a pas
   // le compte : le prix était affiché, on ne le renégocie pas au comptoir. Ce
   // qu'elle sort ici, elle ne l'aura plus pour se ravitailler — vendre son butin
@@ -9885,9 +9885,9 @@ function acheterItem(state, col, index, groupe) {
   const hab = negoc ? comp(negoc, 'commerce') : 0;
   const repu = state.player.reputation[col.faction] || 0;
   const p = prixItem(col, ligne.key, ligne.coef, hab, repu, remiseDe(state, col.faction)).achat;
-  if (state.player.credits < p) return { ok: false, motif: `Il manque ${p - state.player.credits} cr.` };
+  if (soldeIci(state) < p) return { ok: false, motif: `Il manque ${p - soldeIci(state)} cr.` };
 
-  state.player.credits -= p;
+  regler(state, p);
   ligne.qte -= 1;
   g.objets.push(ligne.key);
   if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 1.2);
@@ -9903,7 +9903,7 @@ function vendreItem(state, col, indexObjet, groupe) {
   const repu = state.player.reputation[col.faction] || 0;
   const p = prixItem(col, key, 1, hab, repu, remiseDe(state, col.faction)).vente;
   g.objets.splice(indexObjet, 1);
-  state.player.credits += p;
+  gagner(state, p);
   if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.9);
   return { ok: true, prix: p, nom: ITEMS[key].nom };
 }
@@ -10809,6 +10809,39 @@ function monnaieIci(state) {
   return proche;
 }
 
+// ---------------------------------------------------------------------------
+// Payer et être payé, sans jamais nommer la monnaie
+// ---------------------------------------------------------------------------
+//
+// Les quatre-vingt-six endroits où le joueur donnait ou recevait de l'argent
+// écrivaient `state.player.credits += x`. Ils écrivent maintenant `gagner(state,
+// x)` : la monnaie est celle de l'endroit, et personne n'a à y penser. Les
+// quelques sites qui paient dans une AUTRE monnaie — la solde d'un employeur,
+// le butin d'un mort — la passent en troisième argument.
+//
+// C'est ce qui rend la bascule mécanique. Une règle écrite une fois dans
+// `monnaieIci`, et quatre-vingt-six sites qui l'appellent sans la connaître.
+
+/** Ce qu'on a, dans la monnaie d'ici. */
+function soldeIci(state) {
+  return solde(state && state.player, monnaieIci(state));
+}
+
+/** A-t-on de quoi payer ici ? */
+function aDeQuoi(state, montant, monnaie) {
+  return solde(state && state.player, monnaie || monnaieIci(state)) >= montant;
+}
+
+/** On vous paie. Rend ce qui a été versé. */
+function gagner(state, montant, monnaie) {
+  return crediterBourse(state && state.player, monnaie || monnaieIci(state), montant);
+}
+
+/** Vous payez. Rend ce qui a réellement été pris, jamais plus que ce qu'on a. */
+function regler(state, montant, monnaie) {
+  return debiterBourse(state && state.player, monnaie || monnaieIci(state), montant);
+}
+
 // ===== src/caravanes.js ==============================================
 // Caravanes marchandes. Les villes ne vivent pas en vase clos : ce qu'une
 // colonie a en trop part chez celle qui en manque, sur des routes qui traversent
@@ -11209,10 +11242,10 @@ function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEscorte) 
 
   if (sens === 'achat') {
     const du = devis.total + fraisEscorte;
-    if (state.player.credits < du) {
-      return { ok: false, motif: `Il manque ${du - state.player.credits} cr.` };
+    if (soldeIci(state) < du) {
+      return { ok: false, motif: `Il manque ${du - soldeIci(state)} cr.` };
     }
-    state.player.credits -= du;
+    regler(state, du);
     // Ce que vous payez ne s'évapore pas : la ville qui vous fournit l'encaisse,
     // et sa faction prélève sa part. Votre négoce laisse enfin une trace dans le
     // monde au lieu de ne bouger que vos propres crédits.
@@ -11222,10 +11255,10 @@ function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEscorte) 
     if (dispo < devis.qte) {
       return { ok: false, motif: `L’entrepôt n’a que ${dispo} ${COMMODITIES[key].nom.toLowerCase()}.` };
     }
-    if (state.player.credits < fraisEscorte) {
+    if (soldeIci(state) < fraisEscorte) {
       return { ok: false, motif: `L’escorte coûte ${fraisEscorte} cr d’avance.` };
     }
-    state.player.credits -= fraisEscorte;
+    regler(state, fraisEscorte);
     base.stock[key] = dispo - devis.qte;
   }
 
@@ -11234,8 +11267,8 @@ function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEscorte) 
   const route = chemin(world, de, vers);
   if (!route || !route.length) {
     // On rend ce qu'on a pris : un ordre qu'on ne peut pas honorer ne se paie pas.
-    if (sens === 'achat') state.player.credits += devis.total + fraisEscorte;
-    else { base.stock[key] = (base.stock[key] || 0) + devis.qte; state.player.credits += fraisEscorte; }
+    if (sens === 'achat') gagner(state, devis.total + fraisEscorte);
+    else { base.stock[key] = (base.stock[key] || 0) + devis.qte; gagner(state, fraisEscorte); }
     return { ok: false, motif: 'Aucune route entre votre camp et le réseau.' };
   }
 
@@ -11345,7 +11378,7 @@ function arriver(state, car, log) {
         });
       }
     } else {
-      state.player.credits += car.paiement || 0;
+      gagner(state, car.paiement || 0);
       // La ville qui vous a acheté règle sur sa caisse. Elle vous paie en
       // entier — le prix était convenu à la commande, et un ordre honoré se
       // paie ; ce qu'elle n'a pas, elle ne l'aura simplement plus pour se
@@ -14483,7 +14516,7 @@ function disposer(state, g, captifId, quoi, log) {
     const prime = primeLivraison(state, col, c);
     if (prime <= 0) return { ok: false, motif: 'La justice d’ici n’a rien à lui reprocher.' };
     retirerCaptif(g, c);
-    state.player.credits += prime;
+    gagner(state, prime);
     state.stats.captifsLivres = (state.stats.captifsLivres || 0) + 1;
     ecrouer(state, col, c, loi);
     noterReputation(state, col.faction, 2);
@@ -14512,7 +14545,7 @@ function disposer(state, g, captifId, quoi, log) {
     if (prix <= 0) return { ok: false, motif: 'Personne ne paiera pour lui.' };
     retirerCaptif(g, c);
     depenser(state.world, cap.faction, prix);
-    state.player.credits += prix;
+    gagner(state, prix);
     // On rend un homme : c'est mieux vu que de le vendre, moins bien que de
     // l'avoir laissé tranquille.
     noterReputation(state, cap.faction, 3);
@@ -14532,7 +14565,7 @@ function disposer(state, g, captifId, quoi, log) {
     const prix = prixEsclave(state, col, c);
     if (prix <= 0) return { ok: false, motif: 'On ne vend pas d’hommes ici.' };
     retirerCaptif(g, c);
-    state.player.credits += prix;
+    gagner(state, prix);
     state.stats.captifsVendus = (state.stats.captifsVendus || 0) + 1;
     // Ça se sait. Auprès des siens d'abord, et auprès de tous ceux qui l'ont
     // interdit chez eux — ce qui donne son poids à la loi d'en face.
@@ -14859,7 +14892,7 @@ function disposerCorps(state, g, id, quoi, log) {
     if (!col || col.ruine) return { ok: false, motif: 'Il faut être en ville.' };
     const prix = prixOrganes(state, col, c);
     if (prix <= 0) return { ok: false, motif: 'On n’achète pas ça ici.' };
-    state.player.credits += prix;
+    gagner(state, prix);
     retirerDuGroupe(g, c);
     coute();
     // Ça se sait, comme pour les vivants qu'on vend : auprès de tous ceux qui
@@ -16137,10 +16170,10 @@ function lancerRecherche(state, key) {
   if (niveauRech(base, key) + enFile >= r.max) return { ok: false, motif: 'Niveau maximum atteint.' };
   if (base.fileRech.length >= 3) return { ok: false, motif: 'File pleine (3).' };
   const cout = coutRecherche(base, key);
-  const stockEtCredits = Object.assign({}, base.stock, { credits: state.player.credits });
+  const stockEtCredits = Object.assign({}, base.stock, { credits: soldeIci(state) });
   if (!peutPayer(stockEtCredits, cout)) return { ok: false, motif: 'Ressources insuffisantes.' };
   for (const k of Object.keys(cout)) {
-    if (k === 'credits') state.player.credits -= cout[k];
+    if (k === 'credits') regler(state, cout[k]);
     else base.stock[k] -= cout[k];
   }
   const total = tempsRecherche(base, key, state);
@@ -16862,8 +16895,8 @@ function preleverImpot(state, log) {
   if (du <= 0) return 0;
   // On paie d'abord en crédits ; à défaut, en vivres, ce qui revient au même
   // pour une garnison.
-  const enCredits = Math.min(state.player.credits, du);
-  state.player.credits -= enCredits;
+  const enCredits = Math.min(soldeIci(state), du);
+  regler(state, enCredits);
   noterArgent(state, 'impôt sur l’avant-poste', -enCredits);
   let reste = du - enCredits;
   if (reste > 0) {
@@ -16957,17 +16990,17 @@ function visiteMarchand(state, rng, log) {
     credits += Math.round(qte * prix);
     vendu += qte;
   }
-  state.player.credits += credits;
+  gagner(state, credits);
   noterArgent(state, 'colporteurs (ventes)', credits);
 
   for (const k of Object.keys(ACHATS)) {
     const manque = ACHATS[k] - (base.stock[k] || 0);
     if (manque < 10) continue;
     const prix = COMMODITIES[k].prix * 1.35 * rng.range(0.9, 1.15);
-    const peut = Math.floor(state.player.credits / prix);
+    const peut = Math.floor(soldeIci(state) / prix);
     const qte = Math.min(manque, peut, Math.round(manque * rng.range(0.4, 0.9)));
     if (qte < 5) continue;
-    state.player.credits -= Math.round(qte * prix);
+    regler(state, Math.round(qte * prix));
     noterArgent(state, 'colporteurs (achats pour le camp)', -Math.round(qte * prix));
     ajouter(state, k, qte);
     achete += qte;
@@ -17315,7 +17348,7 @@ function peutLouer(state, col) {
   if (reg.propriete === null && reg.ecole === 'maison') {
     return { ok: false, motif: `${reg.nom} : on n’y loue rien à un étranger.` };
   }
-  if (state.player.credits < LOYER) {
+  if (soldeIci(state) < LOYER) {
     return { ok: false, motif: `Le premier mois se paie d’avance : ${LOYER} cr.` };
   }
   return { ok: true };
@@ -17348,8 +17381,8 @@ function peutAcheter(state, col) {
       };
     }
   }
-  if (state.player.credits < PRIX_COFFRE) {
-    return { ok: false, motif: `Il manque ${PRIX_COFFRE - state.player.credits} cr.` };
+  if (soldeIci(state) < PRIX_COFFRE) {
+    return { ok: false, motif: `Il manque ${PRIX_COFFRE - soldeIci(state)} cr.` };
   }
   return { ok: true };
 }
@@ -17371,7 +17404,7 @@ function creer(state, col, achete) {
 function louerCoffre(state, col, log) {
   const v = peutLouer(state, col);
   if (!v.ok) return v;
-  state.player.credits -= LOYER;
+  regler(state, LOYER);
   creer(state, col, false);
   if (log) {
     log({
@@ -17387,7 +17420,7 @@ function louerCoffre(state, col, log) {
 function acheterCoffre(state, col, log) {
   const v = peutAcheter(state, col);
   if (!v.ok) return v;
-  state.player.credits -= PRIX_COFFRE;
+  regler(state, PRIX_COFFRE);
   creer(state, col, true);
   if (log) {
     log({
@@ -17452,8 +17485,8 @@ function tickCoffres(state, log) {
     if (coffre.achete) continue;
     if (state.temps < coffre.jusqu) continue;
     coffre.jusqu = state.temps + PERIODE_LOYER;
-    if (state.player.credits >= LOYER) {
-      state.player.credits -= LOYER;
+    if (soldeIci(state) >= LOYER) {
+      regler(state, LOYER);
       noterArgent(state, 'loyers de coffre', -LOYER);
       if (log) {
         log({
@@ -17984,9 +18017,9 @@ function noterContrat(state, c, issue, bilan) {
 }
 
 function recompenser(state, c, log) {
-  const crAvant = state.player.credits;
+  const crAvant = soldeIci(state);
   const repAvant = state.player.reputation[c.faction] || 0;
-  state.player.credits += c.recompense;
+  gagner(state, c.recompense);
   // Un contrat rempli pour les siens compte double : il paie et il fait monter.
   if (estAuService(state, c.faction)) {
     crediter(state, Math.round(c.recompense / 7) + 10, log, 'Contrat honoré pour les vôtres');
@@ -17995,7 +18028,7 @@ function recompenser(state, c, log) {
   state.player.reputation[c.faction] = Math.min(100, repAvant + gagne);
   state.stats.contratsRemplis = (state.stats.contratsRemplis || 0) + 1;
   noterContrat(state, c, 'honore', {
-    cr: state.player.credits - crAvant,
+    cr: soldeIci(state) - crAvant,
     rep: (state.player.reputation[c.faction] || 0) - repAvant,
   });
   log({
@@ -18277,7 +18310,7 @@ function combatContre(state, bande, log, ctx, groupe) {
     const b = butin(bande, rng);
     let ramasse = 0;
     for (const k of Object.keys(b.loot)) ramasse += ajouterAuSac(state, k, b.loot[k], g);
-    state.player.credits += b.credits;
+    gagner(state, b.credits);
     noterArgent(state, 'butin', b.credits);
     for (const o of b.objets) {
       if (g.objets.length < 30) g.objets.push(o);
@@ -18406,8 +18439,8 @@ function perdreCombat(state, bande, log, ctx, lieu, g) {
   }
   // On garde de quoi repartir : tout rafler à chaque défaite interdit
   // définitivement de s'équiper, donc de cesser de perdre.
-  const cr = Math.round(state.player.credits * rng.range(0.25, 0.55));
-  state.player.credits -= cr;
+  const cr = Math.round(soldeIci(state) * rng.range(0.25, 0.55));
+  regler(state, cr);
   noterArgent(state, 'détroussé après une défaite', -cr);
   if (g.objets.length && rng.chance(0.6)) {
     g.objets.splice(rng.int(g.objets.length), 1);
@@ -18701,7 +18734,7 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       const q = rng.irange(3, 14);
       const pris = ajouterAuSac(state, k, q, g);
       const cr = rng.irange(0, 60);
-      state.player.credits += cr;
+      gagner(state, cr);
       for (const c of debout) gagnerXp(c, 'ingenierie', XP_PRATIQUE * 1.2);
       log({
         type: 'trouvaille',
@@ -18718,7 +18751,7 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       // pas une règle qui refuse. Le baraquement et les gens sociables agrandis-
       // sent ce noyau : c'est là qu'est la décision.
       const prix = rng.irange(120, 420);
-      if (!state.player.politique.recruter || state.player.credits < prix) {
+      if (!state.player.politique.recruter || soldeIci(state) < prix) {
         log({
           type: 'rencontre',
           texte: `Un errant propose ses services (${prix} cr). Décliné.`,
@@ -18728,7 +18761,7 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
         return true;
       }
       const c = makeCharacter(rng, { niveau: rng.irange(0, 1) });
-      state.player.credits -= prix;
+      regler(state, prix);
       noterArgent(state, 'recrues engagées en route', -prix);
       g.membres.push(c);
       log({
@@ -18758,7 +18791,7 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       const bonus = negoc ? comp(negoc, 'commerce') / 260 : 0;
       const prix = Math.round(COMMODITIES[k].prix * (1.15 + bonus) * q);
       g.inventaire[k] -= q;
-      state.player.credits += prix;
+      gagner(state, prix);
       if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.8);
       log({
         type: 'commerce',
@@ -18782,8 +18815,8 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
         return true;
       }
       const agressif = state.player.posture === 'agressif';
-      if (!agressif && state.player.credits >= taxe && state.player.politique.payerPeage) {
-        state.player.credits -= taxe;
+      if (!agressif && soldeIci(state) >= taxe && state.player.politique.payerPeage) {
+        regler(state, taxe);
         noterArgent(state, 'péages', -taxe);
         reputation(state, f, 1);
         log({
@@ -18902,7 +18935,7 @@ function fouillerSite(state, rng, log, groupe) {
     if (reel > 0) pris.push(`${reel} ${COMMODITIES[k].nom.toLowerCase()}`);
   }
   const cr = rng.irange(def.credits[0], def.credits[1]);
-  state.player.credits += cr;
+  gagner(state, cr);
 
   const objets = [];
   for (let i = 0; i < (def.objet || 0); i++) {
@@ -20072,7 +20105,7 @@ function faitsDe(state) {
     combats: st.combats || 0,
     combatsGagnes: st.combatsGagnes || 0,
     defaites: st.defaites || 0,
-    credits: Math.round(state.player.credits || 0),
+    credits: Math.round(soldeIci(state) || 0),
     recolte: Math.round(st.recolte || 0),
     sites: st.sitesFouilles || 0,
     contrats: st.contratsRemplis || 0,
@@ -20171,6 +20204,25 @@ function normaliser(state) {
     state.player.rngEtat = grainDe(state.seed || 0, 'joueur', state.rngState || 0);
   }
   const p = state.player;
+
+  // Le portefeuille. Avant lui, `credits` était un nombre : un crédit universel
+  // que tout le monde acceptait, alors que le moteur cote six monnaies. On ne
+  // peut pas inventer un passé — cet argent devient un solde dans la monnaie de
+  // là où le joueur se trouve, parce qu'il n'y a pas d'autre façon d'y être
+  // arrivé.
+  //
+  // L'ancien champ est **supprimé**, pas laissé à côté : deux sources de vérité
+  // pour une même somme, c'est la garantie qu'un site oublié lira la mauvaise.
+  if (p && !p.bourse) {
+    const g = (p.groupes || [])[0];
+    const ici = g && state.world
+      ? state.world.colonies.find((c) => c.regionId === g.regionId && !c.ruine) : null;
+    const monnaie = (ici && ici.faction)
+      || (state.world && Object.keys(state.world.factions || {})[0]) || 'hexa';
+    p.bourse = {};
+    if (p.credits > 0) p.bourse[monnaie] = p.credits;
+  }
+  if (p && p.credits !== undefined) delete p.credits;
 
   // Avant les groupes, l'escouade était un bloc unique posé sur `player`.
   // On la reconstitue en un premier groupe : une partie en cours ne se jette
@@ -20525,7 +20577,7 @@ function resumeSauvegarde(state) {
     temps: state.temps || 0,
     jour: Math.floor((state.temps || 0) / 24) + 1,
     gens,
-    credits: Math.round((state.player && state.player.credits) || 0),
+    credits: Math.round(valeurBourse(state.world, state.player)),
     base: !!(state.base && state.base.fonde),
     nomBase: state.base && state.base.fonde ? state.base.nom : null,
     depart: state.depart || null,
@@ -20887,7 +20939,10 @@ function nouvellePartie(seed, opts = {}) {
       // graine divergeaient parce qu'il avait marché ailleurs. Et `player` est
       // privé par construction : son hasard n'a rien à faire dans `world`.
       rngEtat: grainDe('joueur', seed, rng.save()),
-      credits: scen.equipe ? 450 : rng.irange(20, 70),
+      // Le portefeuille, et non plus un solde. On ne commence pas avec du crédit
+      // universel : on commence avec la monnaie de l'endroit où l'on est, parce
+      // qu'il n'y a pas d'autre façon d'y être arrivé. Voir `monnaie.js`.
+      bourse: { [hote.faction || 'hexa']: scen.equipe ? 450 : rng.irange(20, 70) },
       // Les gens et ce qu'ils portent vivent dans les groupes ; le reste, ici.
       groupes: [premier],
       groupeActif: premier.id,
@@ -24248,7 +24303,7 @@ function ecranBase() {
     const niv = niveauRech(b, k);
     const enFile = b.fileRech.filter((x) => x.key === k).length;
     const cout = coutRecherche(b, k);
-    const dispo = Object.keys(cout).every((c) => (c === 'credits' ? S.player.credits : (b.stock[c] || 0)) >= cout[c]);
+    const dispo = Object.keys(cout).every((c) => (c === 'credits' ? soldeIci(S) : (b.stock[c] || 0)) >= cout[c]);
     const plein = niv + enFile >= rd.max;
     const sansAntenne = nivBat(b, 'antenne') < 1;
     // Cinq recherches en exigent une autre, et rien ne le disait : le bouton
@@ -25747,7 +25802,7 @@ function modaleMarche() {
   // faut le dire, sinon le joueur croit à une erreur de prix.
   const reg = loiIci(S, col).regime;
   return `<h2 class="titre">Marché de ${e(col.nom)}
-    <span class="droite">${n(S.player.credits)} cr</span></h2>
+    <span class="droite">${n(soldeIci(S))} cr</span></h2>
   <div class="aide">Négociateur : ${negoc ? `${e(negoc.nom)} (commerce ${hab.toFixed(0)})` : 'aucun'}.
     Une bonne réputation et un bon commerçant resserrent la marge. Le prix bouge
     à chaque unité : les montants affichés tiennent compte de tout le lot.
@@ -25776,7 +25831,7 @@ function modaleCoffre() {
 
   if (!coffre) {
     return `<h2 class="titre">Coffre à ${e(col.nom)}
-      <span class="droite">${n(S.player.credits)} cr</span></h2>
+      <span class="droite">${n(soldeIci(S))} cr</span></h2>
     <div class="aide">De la place qui reste ici pendant que vous marchez.</div>
     <div class="sep"></div>
     <button class="act${vL.ok ? ' primaire' : ''}" data-a="coffre-louer" ${vL.ok ? '' : 'disabled'}>
@@ -25860,7 +25915,7 @@ function modaleEtal() {
   const achats = etal.items.map((ligne, i) => {
     const it = ITEMS[ligne.key];
     const p = prixItem(col, ligne.key, ligne.coef, hab, repu);
-    const trop = S.player.credits < p.achat;
+    const trop = soldeIci(S) < p.achat;
     return `<div class="article">
       <div class="ligne"><span class="k">${e(it.nom)}</span>
         <span class="v ambre">${n(p.achat)} cr${ligne.qte > 1 ? ` ×${ligne.qte}` : ''}</span></div>
@@ -25881,7 +25936,7 @@ function modaleEtal() {
   }).join('') || '<div class="aide">Rien à revendre.</div>';
 
   return `<h2 class="titre">Armurier de ${e(col.nom)}
-    <span class="droite">${n(S.player.credits)} cr</span></h2>
+    <span class="droite">${n(soldeIci(S))} cr</span></h2>
   <div class="aide">Le stock se renouvelle. Ce que vous ne prenez pas aujourd’hui ne sera
     peut-être plus là demain.</div>
   <div class="sep"></div>
@@ -26047,13 +26102,13 @@ function modaleEcole() {
       <div class="ligne"><span class="k">Durée sur place</span>
         <span class="v">${dureeTexte(d.heures)}</span></div>
       <div class="ligne"><span class="k">Prix</span>
-        <span class="v ${S.player.credits >= prix ? '' : 'alerte'}">${prix
+        <span class="v ${soldeIci(S) >= prix ? '' : 'alerte'}">${prix
     ? `${n(prix)} cr${remise ? ' (remise)' : ''}`
     : `gratuit — ${e(regime.nom)}`}</span></div>
       ${candidats.length
     ? `<div class="taches">${candidats.map((c) => `<button class="act mini"
         data-a="inscrire" data-k="${k}" data-c="${e(c.id)}"
-        ${S.player.credits >= prix ? '' : 'disabled'}>Inscrire ${e(c.nom)}
+        ${soldeIci(S) >= prix ? '' : 'disabled'}>Inscrire ${e(c.nom)}
         <span class="aide">(${Math.round(comp(c, d.skill))})</span></button>`).join('')}</div>`
     : '<div class="aide">Personne du groupe ne peut s’y inscrire — déjà diplômé, déjà en formation, ou en sait plus que l’école.</div>'}
     </div>`;
@@ -26205,14 +26260,14 @@ function modaleAttelage() {
     ? `mange ${(def.appetit * 24).toFixed(1)} biomasse/jour` : 'ne mange rien'}
         · −${(def.lenteur * 100).toFixed(0)} % de vitesse</div>
       <button class="act mini${auDela ? '' : ' primaire'}" data-a="acheter-bete" data-k="${k}"
-        style="margin-top:4px" ${S.player.credits < prix ? 'disabled' : ''}>
-        ${S.player.credits < prix ? 'Crédits insuffisants'
+        style="margin-top:4px" ${soldeIci(S) < prix ? 'disabled' : ''}>
+        ${soldeIci(S) < prix ? 'Crédits insuffisants'
     : auDela ? 'Acheter — personne pour la mener' : 'Acheter'}</button>
     </div>`;
   }).join('') : '<div class="aide">On n’achète pas une bête au milieu du désert.</div>';
 
   return `<h2 class="titre">Attelage de ${e(g.nom)}
-    <span class="droite">${n(S.player.credits)} cr</span></h2>
+    <span class="droite">${n(soldeIci(S))} cr</span></h2>
   <div class="aide">Une bête porte à votre place, mange ce que personne ne mange,
     et ralentit le convoi. Elle maigrit si on l’oublie, et les pillards
     l’emmènent avant le reste.</div>
@@ -26256,16 +26311,16 @@ function modaleRecrutement() {
       ${(c.traits || []).length ? `<div class="aide">${c.traits.map((t) =>
     e(TRAITS[t] ? TRAITS[t].nom : t)).join(' · ')}</div>` : ''}
       <div class="ligne"><span class="k">Prime</span><span class="v">${n(prix)} cr</span></div>
-      <button class="act mini${S.player.credits >= prix ? ' primaire' : ''}"
+      <button class="act mini${soldeIci(S) >= prix ? ' primaire' : ''}"
         data-a="recruter" data-i="${e(c.id)}" style="margin-top:4px"
-        ${S.player.credits < prix ? 'disabled' : ''}>
-        ${S.player.credits < prix ? 'Crédits insuffisants' : 'Engager'}</button>
+        ${soldeIci(S) < prix ? 'disabled' : ''}>
+        ${soldeIci(S) < prix ? 'Crédits insuffisants' : 'Engager'}</button>
     </div>`;
   }).join('') : '<div class="aide">Personne ne cherche à partir d’ici en ce moment.</div>';
 
   const tension = tensionRecrutement(col);
   return `<h2 class="titre">Recrutement à ${e(col.nom)}
-    <span class="droite">${n(S.player.credits)} cr</span></h2>
+    <span class="droite">${n(soldeIci(S))} cr</span></h2>
   <div class="aide">${tension < 0.8
     ? 'La ville va mal. Beaucoup de gens veulent s’en aller, et pour pas cher.'
     : tension > 1.15

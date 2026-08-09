@@ -1,3 +1,4 @@
+import { valeurBourse } from './monnaie.js';
 // Sauvegarde locale. L'état est du JSON pur : pas de classes, pas de
 // références circulaires, pas de fonctions. C'est ce qui rend possible à la
 // fois la persistance navigateur et, plus tard, un envoi au serveur.
@@ -35,6 +36,25 @@ export function normaliser(state) {
     state.player.rngEtat = grainDe(state.seed || 0, 'joueur', state.rngState || 0);
   }
   const p = state.player;
+
+  // Le portefeuille. Avant lui, `credits` était un nombre : un crédit universel
+  // que tout le monde acceptait, alors que le moteur cote six monnaies. On ne
+  // peut pas inventer un passé — cet argent devient un solde dans la monnaie de
+  // là où le joueur se trouve, parce qu'il n'y a pas d'autre façon d'y être
+  // arrivé.
+  //
+  // L'ancien champ est **supprimé**, pas laissé à côté : deux sources de vérité
+  // pour une même somme, c'est la garantie qu'un site oublié lira la mauvaise.
+  if (p && !p.bourse) {
+    const g = (p.groupes || [])[0];
+    const ici = g && state.world
+      ? state.world.colonies.find((c) => c.regionId === g.regionId && !c.ruine) : null;
+    const monnaie = (ici && ici.faction)
+      || (state.world && Object.keys(state.world.factions || {})[0]) || 'hexa';
+    p.bourse = {};
+    if (p.credits > 0) p.bourse[monnaie] = p.credits;
+  }
+  if (p && p.credits !== undefined) delete p.credits;
 
   // Avant les groupes, l'escouade était un bloc unique posé sur `player`.
   // On la reconstitue en un premier groupe : une partie en cours ne se jette
@@ -389,7 +409,7 @@ export function resumeSauvegarde(state) {
     temps: state.temps || 0,
     jour: Math.floor((state.temps || 0) / 24) + 1,
     gens,
-    credits: Math.round((state.player && state.player.credits) || 0),
+    credits: Math.round(valeurBourse(state.world, state.player)),
     base: !!(state.base && state.base.fonde),
     nomBase: state.base && state.base.fonde ? state.base.nom : null,
     depart: state.depart || null,
