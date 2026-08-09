@@ -409,6 +409,32 @@ au mauvais moment. Les deux compteurs sont au banc : le jour où l'économie
 change, le monde produira ces drames tout seul, et on le verra sans rien
 retoucher.
 
+### Une compagnie franche n'a pas de quoi manger — 48 heures de vie
+
+Tranché par le propriétaire : « un chef a le droit d'essayer de se refaire, un
+autre a bien sûr le droit de le remplacer ou de prendre sa place, c'est une
+simulation, tout est possible. » On ne ferme donc aucune porte.
+
+Mais le droit d'essayer sans moyen d'essayer n'est pas un droit, et la cause
+n'est pas où on la cherchait. Ce n'est pas la solde : une colonne dont le pays
+ne tient aucune ville ne compte plus d'impayés désormais — il n'y a pas d'État
+distinct des hommes. Ça n'a rien changé.
+
+C'est le **ravitaillement**. Relevé sur une colonne fondée à la 552ᵉ heure avec
+58 hommes et 49 de vivres : 49, puis 9, puis disparue. **Quarante-huit heures.**
+Elle ne se débande pas, elle n'est pas battue : elle meurt de faim, parce que le
+ravitaillement se refait dans les villes de son drapeau et qu'un drapeau neuf
+n'en a aucune.
+
+**Comment une compagnie franche se nourrit-elle ?** C'est une règle de jeu.
+Trois façons, toutes déjà à moitié dans le moteur : elle vit sur le pays qu'elle
+traverse ; elle se fait payer en nature par la ville qu'elle protège ou menace ;
+ou elle ne survit qu'en prenant une ville vite — ce qui est l'état actuel, sauf
+qu'il ne lui laisse que deux jours pour y arriver. La troisième ne demande rien
+qu'un peu de temps ; les deux autres sont des mécanismes à écrire.
+
+Rien n'est codé avant la réponse.
+
 ### Un pays qui n'a plus rien continue de se donner des chefs
 
 Mesuré en poussant le monde à trente drapeaux (`ETAT.parSoldat = 50`, 6 000 h) :

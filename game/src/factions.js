@@ -1468,8 +1468,25 @@ function fonderColonne(world, a, key, t, log) {
 function jugerColonnes(world, key, heures, t, log) {
   const chef = dirigeant(world, key);
   const loyaute = COLONNE.grace * Math.max(0.2, (chef ? chef.legitimite : 50) / 50);
+  // Un pays sans ville n'a pas de solde à devoir : il n'y a pas d'État distinct
+  // des hommes qui le composent. Des gens qui se battent sous leur propre
+  // bannière n'attendent pas de paie — ils *sont* la bannière.
+  //
+  // Sans cette ligne, une colonne qui vient de fonder son pays le perdait en
+  // quelques conseils : elle ne pouvait pas se payer elle-même, elle fondait,
+  // elle se débandait, et le drapeau restait sur la carte avec un chef et rien
+  // d'autre. Mesuré sur vingt-trois fondations : **zéro** gardait sa colonne,
+  // vingt-deux n'avaient plus qu'un chef. Le droit de se refaire existait sur
+  // le papier et nulle part ailleurs.
+  //
+  // Ce que ça ne rend pas immortel : la bataille, le ravitaillement et le siège
+  // tuent des colonnes sans rien demander à la solde.
+  const sansTerre = !world.colonies.some((c) => c.faction === key && !c.ruine);
+
   for (const a of world.armees.slice()) {
-    if (a.faction !== key || !(a.impayees > loyaute)) continue;
+    if (a.faction !== key) continue;
+    if (sansTerre) { a.impayees = 0; continue; }
+    if (!(a.impayees > loyaute)) continue;
 
     // Issue 3 : se faire payer par une autre. Il faut un ennemi de son pays qui
     // puisse réellement solder l'ardoise — promettre ne suffit pas.

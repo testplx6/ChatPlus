@@ -8033,10 +8033,20 @@ section('26. La colonne sans solde');
     ETAT.parSoldat = solde;
     return lignes;
   };
+  // Ce que devient une colonne sans terre a changé deux fois, et la version
+  // finale n'est pas celle qu'on croyait. Elle ne se débande **pas** faute de
+  // solde : un pays sans ville n'a pas d'État distinct de ses hommes, donc pas
+  // de solde due — des gens qui se battent sous leur propre bannière
+  // n'attendent pas de paie. Elle meurt de **faim**, et c'est le mécanisme de
+  // ravitaillement qui s'en charge, pas celui de la solde.
+  //
+  // Le test d'avant disait « elle se débande » et passait en comptant les
+  // débandades de tout le monde — les autres pays étaient fauchés aussi. Il
+  // affirmait donc quelque chose de faux tout en étant vert.
   const errants = sansTerre();
-  ok(errants && errants.some((l) => l.includes('faute de solde')),
-    'et une colonne sans terre, elle, se débande — on ne fait pas sécession de rien',
-    errants ? `${errants.filter((l) => l.includes('faute de solde')).length} débandades` : 'rien');
+  ok(errants && errants.some((l) => l.includes('se disperse, faute de vivres')),
+    'une colonne sans terre ne se débande pas : elle meurt de faim',
+    errants ? `${errants.filter((l) => l.includes('faute de vivres')).length} dispersions` : 'rien');
 
   const avecPayeur = campagne(true);
   ok(avecPayeur && avecPayeur.lignes.some((l) => l.includes('retourné sa veste')),

@@ -413,18 +413,49 @@ identiques octet pour octet. Les règles de jeu n'arrivent qu'à N5.
   rien. Or un chef seul suffit à tenir un pays en vie (§4.3 bis).
 
   La règle est appliquée fidèlement ; c'est sa rencontre avec un mécanisme
-  d'avant qui produit un monde de fantômes. **Question au propriétaire**, et
-  elle n'est pas technique : un pays qui n'a plus rien doit-il continuer de se
-  donner des chefs ? Deux issues cohérentes —
+  d'avant qui produit un monde de fantômes.
 
-  - *un chef seul peut se refaire* implique qu'on lui en donne les **moyens** :
-    fonder un hameau, lever une troupe. C'est un mécanisme à spécifier ;
-  - *ou* le chef d'un pays sans rien n'est pas remplacé à sa mort, et le pays
-    s'éteint avec lui.
+  **Tranché par le propriétaire** : « un chef a le droit d'essayer de se
+  refaire, un autre a bien sûr le droit de le remplacer ou de prendre sa place,
+  c'est une simulation, tout est possible. » On ne ferme donc aucune porte, et
+  le chef fabriqué à un pays sans rien reste.
 
-  Rien n'est codé avant la réponse. En attendant, les drapeaux s'accumulent —
-  inertes, mais comptés, et le tick le paie.
+  Mais **le droit d'essayer sans moyen d'essayer n'est pas un droit**. Et la
+  cause n'est pas où on la cherchait : ce n'est pas que les fondations naissent
+  démunies, c'est qu'elles **perdent leur colonne**. Mesuré sur les vingt-trois
+  drapeaux nés — un tient des villes, **zéro** garde sa colonne, vingt-deux
+  n'ont plus qu'un chef. La troupe fond toujours, parce qu'un pays sans ville ne
+  peut pas la solder.
 
+  Or des hommes qui se battent sous leur propre bannière n'attendent pas de
+  paie : ils *sont* l'État. C'est ce que N8 ter corrige.
+
+- [~] **N8 ter. Le verrou n'est pas la solde, c'est le ravitaillement.**
+
+  La compagnie franche est écrite — une colonne dont la faction ne tient aucune
+  ville ne compte plus d'impayés, parce qu'il n'y a pas d'État distinct des
+  hommes. C'est juste en soi, et ça n'a **rien changé** : les vingt-trois
+  drapeaux nés perdent toujours leur colonne, et le relevé dit pourquoi.
+
+  Une colonne fondée à la 552ᵉ heure avec 58 hommes et 49 de ravitaillement :
+  49 → 9 → disparue, **quarante-huit heures**. Elle ne se débande pas, elle
+  n'est pas battue : elle meurt de faim. Le ravitaillement se refait dans les
+  villes de son drapeau, et un drapeau neuf n'en a aucune.
+
+  **Ce qui reste à trancher, et c'est une règle de jeu.** Comment une compagnie
+  franche se nourrit-elle ? Elle ne peut pas ne pas manger. Trois façons, toutes
+  déjà à moitié dans le moteur :
+
+  - **elle vit sur le pays** — elle se ravitaille en traversant, comme les
+    caravanes se font piller ;
+  - **elle se fait payer en nature** par la ville qu'elle protège ou menace ;
+  - **elle ne survit qu'en prenant une ville vite**, et celles qui n'y arrivent
+    pas meurent — c'est l'état actuel, sauf qu'il ne laisse que quarante-huit
+    heures pour y arriver.
+
+  La troisième est déjà là et ne demande rien ; il suffirait peut-être de lui
+  laisser le temps. Les deux autres sont des mécanismes. Rien n'est codé avant
+  la réponse.
 - [ ] **N9. Livraison.** `CIBLES.json` repensé : le « /36 » des écrasées ne
   survit pas à un nombre de factions variable. Coût du tick chiffré, écran
   vérifié au navigateur.
