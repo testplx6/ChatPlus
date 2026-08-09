@@ -464,3 +464,42 @@ export function monnaieButin(mort) {
   return (mort && mort.captif && mort.captif.faction)
     || (mort && mort.faction) || null;
 }
+
+/**
+ * La monnaie de là où le joueur se trouve.
+ *
+ * C'est elle qui couvre la grande majorité des lieux où le joueur paie ou est
+ * payé : le marché, l'armurier, l'école, le médecin, la bête qu'on achète, le
+ * coffre qu'on loue, le convoi qu'on commande. Aucun de ces endroits n'a de
+ * monnaie « à lui » — ils ont celle de l'endroit. Un seul appel les couvre
+ * tous, et c'est ce qui rend la bascule du lot E mécanique au lieu d'être un
+ * jugement par ligne.
+ *
+ * **Le cas qu'`ECONOMIE.md` §7.2 ne tranche pas**, et la lecture retenue : dans
+ * un endroit sans drapeau, on sait ce qu'on peut *donner* — tout, c'est
+ * l'avantage d'un endroit sans loi — mais pas ce qu'on *reçoit*. On reçoit ce
+ * qui circule, c'est-à-dire la monnaie de la ville à drapeau la plus proche.
+ * Même logique que la migration des vieilles sauvegardes, et aucune constante
+ * inventée : la carte décide.
+ */
+export function monnaieIci(state) {
+  const world = state && state.world;
+  const g = state && state.player && (state.player.groupes || [])[0];
+  if (!world || !g) return null;
+  const regions = world.regions || [];
+  const ici = world.colonies.find((c) => c.regionId === g.regionId && !c.ruine);
+  if (ici && ici.faction) return ici.faction;
+  // Rien ici, ou rien sous drapeau : ce qui circule alentour.
+  const r0 = regions[g.regionId];
+  if (!r0) return null;
+  let proche = null;
+  let mieux = Infinity;
+  for (const c of world.colonies) {
+    if (c.ruine || !c.faction) continue;
+    const r = regions[c.regionId];
+    if (!r) continue;
+    const d = Math.max(Math.abs(r.x - r0.x), Math.abs(r.y - r0.y));
+    if (d < mieux) { mieux = d; proche = c.faction; }
+  }
+  return proche;
+}

@@ -250,6 +250,31 @@ Ce fichier prépare le travail, il ne l'autorise pas.
   Aucune de ces fonctions ne rend « la monnaie du joueur » : il n'y en a pas.
   Une ville sans drapeau ne rend `null` — elle prend tout, au cours du jour et
   sans écart, comme `ecartChange` le fait déjà de son côté.
+- [x] **E1 quater. `monnaieIci(state)`.** La grande majorité des
+  quatre-vingt-six sites n'a pas de monnaie « à elle » : le marché, l'armurier,
+  l'école, le médecin, la bête, le coffre, le convoi paient tous dans celle de
+  l'endroit. Un seul appel les couvre, et c'est ce qui rend la bascule mécanique
+  au lieu d'être un jugement par ligne.
+
+  **Un cas qu'`ECONOMIE.md` §7.2 ne tranche pas, et la lecture retenue** : dans
+  un endroit sans drapeau, on sait ce qu'on peut *donner* — tout — mais pas ce
+  qu'on *reçoit*. On reçoit ce qui circule : la monnaie de la ville à drapeau la
+  plus proche. Même logique que la migration des vieilles sauvegardes, aucune
+  constante inventée, la carte décide.
+
+### La contrainte de séquence, découverte en préparant la bascule
+
+**E1 bis, E2 et E3 doivent être livrés ensemble**, et ce n'est pas une
+préférence.
+
+Aujourd'hui `state.player.credits < prix` veut dire « ai-je de quoi ». Demain ce
+sera « ai-je de quoi **dans cette monnaie-là** ». Un joueur qui arrive dans une
+ville étrangère avec cinq cents crédits de son pays ne pourra donc plus rien
+acheter — c'est exactement la friction voulue par §7.1, et elle n'est jouable
+que si le bureau de change existe pour la lever.
+
+Livrer E2 sans E3, c'est livrer un jeu où l'argent qu'on a ne sert à rien et où
+rien ne permet d'y remédier. Les trois lots n'en font qu'un.
 - [ ] **E1 bis + E2, d'un bloc.** Les quatre-vingt-six sites, la suppression de
   `player.credits`, la migration dans `normaliser` (l'argent devient un solde
   dans la monnaie de là où le joueur se trouve — on ne peut pas inventer un

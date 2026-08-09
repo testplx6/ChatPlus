@@ -26,7 +26,7 @@ import { tickCredit, insolvable, veutBatir } from '../src/credit.js';
 import {
   auditer, emettre, ecartChange, transferer, transfererVille,
   solde, crediterBourse, debiterBourse, valeurBourse,
-  monnaieMarche, accepteToutes, monnaieSolde, monnaieButin,
+  monnaieMarche, accepteToutes, monnaieSolde, monnaieButin, monnaieIci,
 } from '../src/monnaie.js';
 import { prixCession, effetCession, valeurNette } from '../src/credit.js';
 import { BETES } from '../src/betes.js';
@@ -8472,6 +8472,34 @@ section('28. Le portefeuille — la primitive, avant les quatre-vingt-six sites'
     'le butin sur un mort est dans la monnaie de son drapeau');
   ok(monnaieButin({}) === null,
     'un mort sans drapeau ne porte la monnaie de personne — le troc, pas la pièce');
+
+  // --- La monnaie de là où l'on est --------------------------------------
+  //
+  // La plupart des quatre-vingt-six sites n'ont pas de monnaie « à eux » : ils
+  // paient là où le joueur se trouve. Un seul appel suffit donc à les couvrir,
+  // et c'est ce qui rend la bascule mécanique au lieu d'être un jugement par
+  // ligne.
+  //
+  // Le cas qu'`ECONOMIE.md` §7.2 ne tranche pas : dans un endroit sans drapeau,
+  // on sait ce qu'on peut *donner* — tout — mais pas ce qu'on *reçoit*. On
+  // reçoit ce qui circule, c'est-à-dire la monnaie de la ville drapeau la plus
+  // proche. C'est la même logique que la migration des vieilles sauvegardes, et
+  // ça n'invente aucune constante.
+  const sM = nouvellePartie(2929, { maintenant: 0, depart: 'ville' });
+  const gM = sM.player.groupes[0];
+  const villeM = sM.world.colonies.find((c) => c.regionId === gM.regionId);
+  ok(monnaieIci(sM) === (villeM && villeM.faction),
+    'en ville, on paie et on est payé dans la monnaie du drapeau qui la tient',
+    `${monnaieIci(sM)}`);
+
+  // En rase campagne, ou dans un bourg libre : celle qui circule alentour.
+  const loin = sM.world.regions.find(
+    (r) => !sM.world.colonies.some((c) => c.regionId === r.i));
+  gM.regionId = loin.i;
+  const dehors = monnaieIci(sM);
+  ok(dehors && sM.world.factions[dehors],
+    'hors de toute ville, c’est celle qui circule alentour — jamais « rien »',
+    `${dehors}`);
 }
 
 // ===========================================================================
