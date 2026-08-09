@@ -2593,6 +2593,57 @@ console.log('\n8 undecies bis. Le jeu enfermé dans une page isolée');
   }
 }
 
+console.log('\n8 ter. Un drapeau né en cours de partie s’affiche');
+{
+  // Chantier FACTIONS-NEUVES, N9. Le moteur sait fabriquer des drapeaux ; il
+  // restait à vérifier que l'écran sait les montrer. Les 39 lectures de
+  // `FACTIONS[clé]` dans `ui.js` ne tournent pas sous Node — c'est ici, et
+  // seulement ici, qu'on peut le savoir.
+  //
+  // Une faction posée dans une sauvegarde, avec une ville et une couleur que
+  // `data.js` ignore. Si l'interface lisait encore la table du jeu, la carte
+  // afficherait un trou et la console crierait.
+  const neuf = nouvellePartie(4242, { maintenant: Date.now(), depart: 'ville' });
+  const g = groupeActif(neuf);
+  const ville = neuf.world.colonies.find((c) => c.regionId === g.regionId && !c.ruine);
+  const ancienne = ville.faction;
+  neuf.world.drapeaux.venue = {
+    nom: 'La Main Ouverte', court: 'MAIN', pluriel: false,
+    datif: 'à la Main Ouverte', genitif: 'de la Main Ouverte',
+    couleur: '#c8a24a', devise: 'Ce qu’on donne revient.',
+    agression: 0.3, cupidite: 0.4, style: 'commune', biomes: ['friche'],
+  };
+  neuf.world.factions.venue = {
+    key: 'venue', nom: 'La Main Ouverte', tresor: 500, agression: 0.3,
+    relations: {}, colonies: [ville.id], capitale: ville.id, humeur: 0,
+    prochainConseil: 40, dernierConseil: 0, lois: null,
+    masse: 0, cours: 1, gageRef: 0, emissions: 0, bourse: false, dirigeant: null,
+  };
+  if (ancienne) {
+    const a = neuf.world.factions[ancienne];
+    a.colonies = a.colonies.filter((x) => x !== ville.id);
+  }
+  ville.faction = 'venue';
+  neuf.world.regions[ville.regionId].controle = 'venue';
+
+  const errNeuf = [];
+  page.on('pageerror', (e) => errNeuf.push(e.message));
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => {
+    localStorage.setItem('cendres.save.v1', txt);
+  }, serialiser(neuf));
+  await page.click('[data-a="continuer"]');
+  await page.waitForTimeout(600);
+
+  const vu = await page.evaluate(() => document.body.textContent);
+  ok(vu.includes('La Main Ouverte'),
+    'le nom du drapeau neuf apparaît à l’écran');
+  ok(!/undefined/.test(vu),
+    'et l’écran ne montre pas « undefined » là où il devrait montrer un pays');
+  ok(errNeuf.length === 0, 'aucune erreur de page sur un drapeau inconnu du jeu',
+    errNeuf.join(' | '));
+}
+
 console.log('\n9. Fichier unique ouvert en file://');
 const { existsSync } = await import('node:fs');
 const chemin = join(RACINE, 'dist', 'cendres.html');

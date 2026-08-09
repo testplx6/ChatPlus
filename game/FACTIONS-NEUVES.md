@@ -461,6 +461,13 @@ identiques octet pour octet. Les règles de jeu n'arrivent qu'à N5.
 
   Ce qui est acquis et gardé : le constat, chiffré, et le principe, écrit.
 
-- [ ] **N9. Livraison.** `CIBLES.json` repensé : le « /36 » des écrasées ne
-  survit pas à un nombre de factions variable. Coût du tick chiffré, écran
-  vérifié au navigateur.
+- [~] **N9. Livraison — l'écran d'abord.** Les 39 lectures de `FACTIONS[clé]`
+  d'`ui.js` sont branchées sur le monde, et les cinq de `DIPLO_FACTIONS` aussi.
+  Elles ne tournent pas sous Node : c'est `test/navigateur.js` qui le vérifie,
+  en posant dans une sauvegarde une faction que `data.js` ignore, avec une ville
+  et une couleur à elle. Son nom s'affiche, l'écran ne montre pas « undefined »
+  là où il devrait montrer un pays, et la console reste muette.
+
+  Reste à faire : `CIBLES.json`, dont le « /36 » des factions écrasées ne
+  survit pas à un nombre de drapeaux variable — six factions × six graines
+  n'est plus un dénominateur.

@@ -21368,7 +21368,7 @@ function dureeTexte(h) {
 }
 
 function couleurFaction(k) {
-  return (FACTIONS[k] && FACTIONS[k].couleur) || '#7b8699';
+  return (drapeauDe(S.world, k) && drapeauDe(S.world, k).couleur) || '#7b8699';
 }
 
 // ---------------------------------------------------------------------------
@@ -22250,7 +22250,7 @@ function blocSituation() {
   // perdre entièrement sans avoir joué : elle met des centaines d'heures à
   // arriver, et l'on n'en était averti que par l'épitaphe.
   for (const m of menacesSurLaBase(S)) {
-    const t = `${FACTIONS[m.faction].nom} marche sur ${S.base.nom} — ${m.vue
+    const t = `${drapeauDe(S.world, m.faction).nom} marche sur ${S.base.nom} — ${m.vue
       ? `${n(m.force)} hommes` : 'nombre inconnu'}, `
       + `${m.cases <= 0 ? 'ils y sont' : `${m.cases} région${m.cases > 1 ? 's' : ''}`}`;
     if (m.cases <= 4) urgences.push(`${t}.`);
@@ -22323,7 +22323,7 @@ function blocCaravanes() {
     const vers = colonieParId(S.world, car.versId);
     const rep = S.player.reputation[car.faction] || 0;
     return `<div class="article">
-      <div class="ligne"><span class="k" style="color:${couleurFaction(car.faction)}">${e(FACTIONS[car.faction].nom)}</span>
+      <div class="ligne"><span class="k" style="color:${couleurFaction(car.faction)}">${e(drapeauDe(S.world, car.faction).nom)}</span>
         <span class="v ambre">~${n(valeurCargaison(car))} cr de marchandise</span></div>
       <div class="aide">${e(de ? de.nom : '?')} → ${e(vers ? vers.nom : '?')} ·
         escorte ${n(car.escorte)} ·
@@ -22453,7 +22453,7 @@ function blocRegionCourante() {
     <div class="ligne"><span class="k">Ciel</span>
       <span class="v" style="color:${conditions(S.world, S.temps).meteo.couleur}">${e(conditions(S.world, S.temps).meteo.nom)}</span></div>
     ${r.controle ? `<div class="ligne"><span class="k">Territoire</span>
-      <span class="v" style="color:${couleurFaction(r.controle)}">${e(FACTIONS[r.controle].nom)}</span></div>
+      <span class="v" style="color:${couleurFaction(r.controle)}">${e(drapeauDe(S.world, r.controle).nom)}</span></div>
       ${(() => {
     // Sur les terres de quelqu'un, ce qu'il pense de vous décide de ce qui
     // sort du bois. C'est l'information la plus utile de tout le panneau, et
@@ -22491,14 +22491,14 @@ function blocRegionCourante() {
  */
 function blocColonie(col) {
   if (!col || col.ruine) return '';
-  const libre = !FACTIONS[col.faction];
+  const libre = !drapeauDe(S.world, col.faction);
   const repu = libre ? 0 : (S.player.reputation[col.faction] || 0);
   const cls = couleurEstime(repu);
   return `
   <section class="panneau">
     <h2 class="titre">${e(col.nom)}
       <span class="droite" style="color:${couleurFaction(col.faction)}">${libre
-    ? 'ville libre' : e(FACTIONS[col.faction].nom)}</span></h2>
+    ? 'ville libre' : e(drapeauDe(S.world, col.faction).nom)}</span></h2>
     <div class="grille2">
       <div class="ligne"><span class="k">Population</span><span class="v">${n(col.pop)}</span></div>
       <div class="ligne"><span class="k">Défense</span><span class="v">${n(col.defense)}</span></div>
@@ -22645,7 +22645,7 @@ function blocEngagement(col) {
   }
   if (all) return '';
   // Une ville libre ne recrute personne à son service : il n'y a pas de service.
-  if (!FACTIONS[col.faction]) {
+  if (!drapeauDe(S.world, col.faction)) {
     return `<div class="sep"></div>
       <div class="aide">Personne ne commande ici : il n’y a pas d’engagement à prendre.</div>`;
   }
@@ -22657,7 +22657,7 @@ function blocEngagement(col) {
       on choisit ce qu’on gagne.</div>
     <div class="sep"></div>
     <button class="act mini" data-a="engager" data-k="${e(col.faction)}" ${v.ok ? '' : 'disabled'}>
-      ${v.ok ? `Entrer au service ${e(FACTIONS[col.faction].genitif)}`
+      ${v.ok ? `Entrer au service ${e(drapeauDe(S.world, col.faction).genitif)}`
     : `Engagement refusé — estime ${Math.round(rep)}/${estimeEngagement(col.faction)}`}</button>`;
 }
 
@@ -22687,7 +22687,7 @@ function blocSelection() {
     ? '<div class="aide">Une ville, d’après la carte. On n’y a jamais mis les pieds.</div>'
     : `${su.frais ? '' : `<div class="aide">Relevé ${e(ageTexte(su.depuis))}${su.perime ? ' — probablement caduc' : ''}.</div>`}
       <div class="ligne"><span class="k">Tenue par</span>
-      <span class="v" style="color:${couleurFaction(su.faction)}">${e(su.faction ? FACTIONS[su.faction].nom : 'sans maître')}</span></div>
+      <span class="v" style="color:${couleurFaction(su.faction)}">${e(su.faction ? drapeauDe(S.world, su.faction).nom : 'sans maître')}</span></div>
       <div class="ligne"><span class="k">Population</span><span class="v">${n(su.pop)}</span></div>
       <div class="ligne"><span class="k">Défense</span><span class="v">${n(su.defense)}</span></div>`) : ''}
     <div class="ligne"><span class="k">Distance</span><span class="v">${distance(G().regionId, selection)} cases</span></div>
@@ -22704,7 +22704,7 @@ function armeesIci(rid) {
   const as = S.world.armees.filter((a) => a.regionId === rid);
   if (!as.length) return '';
   return as.map((a) => `<div class="ligne"><span class="k">Colonne</span>
-    <span class="v" style="color:${couleurFaction(a.faction)}">${e(FACTIONS[a.faction].nom)} · ${n(a.force)} · ${e(a.etat)}</span></div>`).join('');
+    <span class="v" style="color:${couleurFaction(a.faction)}">${e(drapeauDe(S.world, a.faction).nom)} · ${n(a.force)} · ${e(a.etat)}</span></div>`).join('');
 }
 
 function ecranCarte() {
@@ -22718,7 +22718,7 @@ function ecranCarte() {
     ${groupes(S).length > 1 ? '<span><i style="border:1px solid #f2f6fb"></i>autre groupe</span>' : ''}
     <span><i style="border:1px solid #4fd0e3"></i>avant-poste</span>
     ${classement(S.world).slice(0, 6).map((f) =>
-    `<span><i style="background:${f.couleur}"></i>${e(FACTIONS[f.key].court)}</span>`).join('')}
+    `<span><i style="background:${f.couleur}"></i>${e(drapeauDe(S.world, f.key).court)}</span>`).join('')}
   </div>
   ${groupes(S).length > 1 ? barreGroupes() : ''}
   ${blocSituation()}
@@ -22982,19 +22982,19 @@ function blocDrapeau(b) {
   if (col.faction) {
     const l = loisDe(S.world, col.faction);
     return `<div class="aide">${e(b.nom)} porte les couleurs
-      <span style="color:${couleurFaction(col.faction)}">${e(FACTIONS[col.faction].nom)}</span> :
+      <span style="color:${couleurFaction(col.faction)}">${e(drapeauDe(S.world, col.faction).nom)}</span> :
       on la défend comme les leurs, on y lève leur impôt
       (${Math.round(l.impot * 100)} %), et l’on hérite de leurs guerres.</div>
       <button class="act mini danger" data-a="independance" style="margin-bottom:6px">
         Reprendre son drapeau (−35 de réputation)</button>`;
   }
-  const possibles = DIPLO_FACTIONS.filter((k) => peutRattacher(S, k).ok);
+  const possibles = diploDe(S.world).filter((k) => peutRattacher(S, k).ok);
   return `<div class="aide">${e(b.nom)} est écrite sur les cartes et ne porte les
     couleurs de personne : on ne vient pas la prendre tant qu’on n’a rien à vous
     reprocher. C’est tenable, et c’est fragile.</div>
     ${possibles.map((k) => `<button class="act mini" data-a="rattacher" data-k="${e(k)}"
       style="margin-bottom:4px;text-align:left">Prendre les couleurs
-      ${e(FACTIONS[k].genitif)}<br><span class="aide">Défendue comme les leurs,
+      ${e(drapeauDe(S.world, k).genitif)}<br><span class="aide">Défendue comme les leurs,
       impôt ${Math.round(loisDe(S.world, k).impot * 100)} %, et leurs guerres deviennent
       les vôtres.</span></button>`).join('')
     || `<div class="aide">Aucune faction ne vous estime assez pour vous prendre sous
@@ -23070,7 +23070,7 @@ function blocPrisonniers() {
         style="border-bottom:1px solid #1b2029;padding:5px 0">
         <summary class="ligne"><span class="k">${e(c.nom)}</span>
           <span class="v">${e(cap.brigandage ? 'brigand'
-      : cap.faction ? FACTIONS[cap.faction].nom : 'inconnu')}</span></summary>
+      : cap.faction ? drapeauDe(S.world, cap.faction).nom : 'inconnu')}</span></summary>
         <div class="aide">${e(c.archetypeNom || '')} · ${Math.round(pvTotal(c).pct * 100)} % · 
           ${e(apercu(c).skill)} ${apercu(c).comp}</div>
         ${opts.map((o) => `<button class="act mini" style="margin-top:4px;text-align:left"
@@ -23867,7 +23867,7 @@ function blocComptoir() {
   const choixReseau = c.reseaux.length > 1 ? `<div class="taches" style="margin-top:5px">
     ${c.reseaux.map((r) => `<button class="act mini ${r.id === act.id ? 'primaire' : ''}"
       data-a="comptoir-reseau" data-r="${e(r.id)}">${e(r.membres.map(
-    (k) => FACTIONS[k].nom).join(' + '))}</button>`).join('')}
+    (k) => drapeauDe(S.world, k).nom).join(' + '))}</button>`).join('')}
   </div>` : '';
 
   const lignesCours = COMMODITY_KEYS.filter((k) => cours[k] > 0).map((k) => {
@@ -23895,7 +23895,7 @@ function blocComptoir() {
 
   return `<section class="panneau">
     <h2 class="titre">Comptoir
-      <span class="droite">${e(act.membres.map((k) => FACTIONS[k].nom).join(' + '))}</span></h2>
+      <span class="droite">${e(act.membres.map((k) => drapeauDe(S.world, k).nom).join(' + '))}</span></h2>
     <div class="aide">${act.sien
     ? 'Vous portez leurs couleurs : la commission est celle des leurs.'
     : `Vous n’êtes pas des leurs — ${act.estime} d’estime, et ${Math.round(
@@ -23993,7 +23993,7 @@ function ecranBase() {
     <h2 class="titre">On marche sur ${e(b.nom)}
       <span class="droite alerte">${menaces.length}</span></h2>
     ${menaces.map((m) => `<div class="ligne"><span class="k"
-      style="color:${couleurFaction(m.faction)}">${e(FACTIONS[m.faction].nom)}</span>
+      style="color:${couleurFaction(m.faction)}">${e(drapeauDe(S.world, m.faction).nom)}</span>
       <span class="v ${m.cases <= 3 ? 'alerte' : ''}">${m.vue
     ? `${n(m.force)} hommes` : '<span class="aide">nombre inconnu</span>'} · ${
   m.cases <= 0 ? 'ils y sont' : `${m.cases} région${m.cases > 1 ? 's' : ''}`}</span></div>`).join('')}
@@ -24330,7 +24330,7 @@ function blocInfluence(faction) {
 
   return `<div class="sep"></div>
   <div class="titre">Votre charge</div>
-  <div class="ligne"><span class="k">Crédit auprès ${e(FACTIONS[faction].genitif)}</span>
+  <div class="ligne"><span class="k">Crédit auprès ${e(drapeauDe(S.world, faction).genitif)}</span>
     <span class="v ${cr < 40 ? 'alerte' : ''}">${n(cr)}</span></div>
   <div class="aide">${e(d.titre)} ${e(d.nom)}, ${e(TEMPERAMENTS[d.temperament].nom.toLowerCase())}.
     Vous n’avez rien à lui demander : ce que votre grade permet, vous l’ordonnez.
@@ -24425,20 +24425,20 @@ function ciblesCharge(faction, k) {
     if (!v.ok) return [];
     return [{
       val: faction,
-      texte: `Ouvrir la bourse ${e(FACTIONS[faction].genitif)} — ${n(TRESOR_BOURSE)} cr d’amorce`,
+      texte: `Ouvrir la bourse ${e(drapeauDe(S.world, faction).genitif)} — ${n(TRESOR_BOURSE)} cr d’amorce`,
     }];
   }
   if (k === 'accord') {
     return accordsPossibles(S, faction).map((autre) => ({
       val: autre,
-      texte: `Brancher nos cours sur ceux ${FACTIONS[autre].genitif} (${
+      texte: `Brancher nos cours sur ceux ${drapeauDe(S.world, autre).genitif} (${
         villesDeFaction(autre)} villes)`,
     }));
   }
   if (k === 'rompre') {
     return accordsRompables(S, faction).map((autre) => ({
       val: autre,
-      texte: `Débrancher nos cours de ceux ${FACTIONS[autre].genitif}`,
+      texte: `Débrancher nos cours de ceux ${drapeauDe(S.world, autre).genitif}`,
     }));
   }
   if (k === 'garnison' || k === 'grenier') {
@@ -24475,7 +24475,7 @@ function ciblesCharge(faction, k) {
     }
     // On dit le prix avant la signature : combien de voisins l'interdisent chez
     // eux, et se le rappelleront. Une loi vaut aussi vers l'extérieur.
-    const abolitionnistes = DIPLO_FACTIONS.filter(
+    const abolitionnistes = diploDe(S.world).filter(
       (k) => k !== faction && !loisDe(w, k).esclavage
         && w.colonies.some((c) => !c.ruine && c.faction === k)).length;
     out.push(lois.esclavage
@@ -24493,13 +24493,13 @@ function ciblesCharge(faction, k) {
   if (k === 'guerre') {
     return cibleGuerre(S, faction).map((f) => ({
       val: f,
-      texte: `La guerre ${FACTIONS[f].datif}`,
+      texte: `La guerre ${drapeauDe(S.world, f).datif}`,
     }));
   }
   if (k === 'paix') {
     return guerresArretables(S, faction).map((g) => ({
       val: g.contre,
-      texte: `La paix ${FACTIONS[g.contre].datif} (${g.guerre.batailles} bataille${g.guerre.batailles > 1 ? 's' : ''})`,
+      texte: `La paix ${drapeauDe(S.world, g.contre).datif} (${g.guerre.batailles} bataille${g.guerre.batailles > 1 ? 's' : ''})`,
     }));
   }
   return [];
@@ -24543,8 +24543,8 @@ function blocCibleContrat(c, reste) {
       .sort((a, b) => distance(a.i, g.regionId) - distance(b.i, g.regionId))[0];
     if (chez) cible = { regionId: chez.i, quoi: 'on les croise chez eux' };
     else {
-      return `<div class="aide">On ne connaît aucune terre ${e(FACTIONS[c.cibleFaction]
-        ? FACTIONS[c.cibleFaction].genitif : '')} par ici : il faudra les croiser en chemin.</div>`;
+      return `<div class="aide">On ne connaît aucune terre ${e(drapeauDe(S.world, c.cibleFaction)
+        ? drapeauDe(S.world, c.cibleFaction).genitif : '')} par ici : il faudra les croiser en chemin.</div>`;
     }
   } else if (c.type === 'collecte') {
     // Rien à situer : ça se ramasse partout. On dit au moins où le rendre.
@@ -24599,7 +24599,7 @@ function blocCibleOrdre(o) {
       .sort((a, b) => distance(a.i, g.regionId) - distance(b.i, g.regionId))[0];
     if (chez) cible = { regionId: chez.i, quoi: `leurs terres les plus proches` };
     else {
-      return `<div class="aide">On ne connaît aucune terre ${e(FACTIONS[o.cibleFaction].genitif)}
+      return `<div class="aide">On ne connaît aucune terre ${e(drapeauDe(S.world, o.cibleFaction).genitif)}
         par ici. Il faudra les croiser en chemin, ou explorer.</div>`;
     }
   }
@@ -24721,7 +24721,7 @@ function blocAllegeance() {
   }
 
   const rang = rangDe(all);
-  const f = FACTIONS[all.faction];
+  const f = drapeauDe(S.world, all.faction);
   const versSuivant = rang.suivant
     ? (all.points - rang.def.points) / (rang.suivant.points - rang.def.points)
     : 1;
@@ -24796,7 +24796,7 @@ function blocDossierContrats() {
     return `<div class="ligne souple">
       <span class="k">${e(f.titre)}<br>
         <span class="aide">${dureeTexte(Math.max(0, S.temps - f.t))} plus tôt${f.faction
-  && FACTIONS[f.faction] ? ` · ${e(FACTIONS[f.faction].nom)}` : ''}</span></span>
+  && drapeauDe(S.world, f.faction) ? ` · ${e(drapeauDe(S.world, f.faction).nom)}` : ''}</span></span>
       <span class="v"><span class="puce ${cls}">${txt}</span>${bilan
     ? `<br><span class="aide ${f.rep < 0 ? 'alerte' : ''}">${bilan}</span>` : ''}</span></div>`;
   }).join('');
@@ -24874,7 +24874,7 @@ function ecranContrats() {
  * qu'on a que l'ennemi qu'on s'est fait.
  */
 function blocOuVousEnEtes() {
-  const rangs = DIPLO_FACTIONS
+  const rangs = diploDe(S.world)
     .filter((k) => S.world.colonies.some((c) => !c.ruine && c.faction === k))
     .map((k) => ({ k, ef: effetsEstime(S, k) }))
     .sort((a, b) => b.ef.rep - a.ef.rep);
@@ -24886,7 +24886,7 @@ function blocOuVousEnEtes() {
     const quoi = ef.perdu[0] || ef.acquis[ef.acquis.length - 1]
       || 'on ne vous connaît pas encore';
     return `<div class="ligne souple">
-      <span class="k" style="color:${couleurFaction(k)}">${e(FACTIONS[k].nom)}<br>
+      <span class="k" style="color:${couleurFaction(k)}">${e(drapeauDe(S.world, k).nom)}<br>
         <span class="aide">${e(quoi)}</span></span>
       <span class="v"><span class="puce ${cls}">${ef.rep > 0 ? '+' : ''}${n(ef.rep)}
         ${e(ef.palier.nom.toLowerCase())}</span></span></div>`;
@@ -24972,7 +24972,7 @@ function blocBourses() {
     <div class="sep"></div>
     ${lignes}
     <div class="aide" style="margin-top:6px">${monReseau
-    ? `Vous traitez avec ${e(monReseau.membres.map((k) => FACTIONS[k].nom).join(' + '))}${
+    ? `Vous traitez avec ${e(monReseau.membres.map((k) => drapeauDe(S.world, k).nom).join(' + '))}${
       monReseau.sien ? ', comme un des leurs' : ` (${Math.round(monReseau.commission * 100)} % de commission)`}.`
     : 'Vous ne traitez avec aucun : il faut un comptoir au camp, et leurs couleurs ou leur estime.'}</div>
   </section>`;
@@ -25009,7 +25009,7 @@ function ecranMonde() {
   })()}
       <div class="aide">${f.colonies} colonie(s) · ${crypto
     ? `trésor ${n(f.tresor)} cr`
-    : 'trésor inconnu'} · ${e(FACTIONS[f.key].devise)}</div>
+    : 'trésor inconnu'} · ${e(drapeauDe(S.world, f.key).devise)}</div>
       ${(() => {
     // Comment on gouverne chez eux. C'est ce qui fait de « qui servir » un
     // choix informé plutôt qu'un tirage entre six drapeaux de couleurs.
@@ -25017,7 +25017,7 @@ function ecranMonde() {
     const imp = IMPOTS.reduce((a, b) => (Math.abs(b.taux - l.impot) < Math.abs(a.taux - l.impot) ? b : a));
     // Et ce que ça leur coûte auprès des autres : une loi vaut aussi vers
     // l'extérieur, et le joueur doit pouvoir voir arriver la guerre.
-    const facheurs = DIPLO_FACTIONS.filter(
+    const facheurs = diploDe(S.world).filter(
       (k) => k !== f.key && distanceMorale(S.world, k, f.key) > 0.45
         && S.world.colonies.some((c) => !c.ruine && c.faction === k)).length;
     const reg = REGIMES[l.regime] || REGIMES.charte;
@@ -25034,8 +25034,8 @@ function ecranMonde() {
   const guerres = S.world.guerres.length
     ? S.world.guerres.map((g) => `<div style="border-bottom:1px solid #1b2029;padding:4px 0">
         <div class="ligne">
-          <span class="k"><span style="color:${couleurFaction(g.a)}">${e(FACTIONS[g.a].court)}</span>
-            ✕ <span style="color:${couleurFaction(g.b)}">${e(FACTIONS[g.b].court)}</span></span>
+          <span class="k"><span style="color:${couleurFaction(g.a)}">${e(drapeauDe(S.world, g.a).court)}</span>
+            ✕ <span style="color:${couleurFaction(g.b)}">${e(drapeauDe(S.world, g.b).court)}</span></span>
           <span class="v">${dureeTexte(S.temps - g.depuis)} · ${g.batailles} bataille(s)</span></div>
         ${g.but ? `<div class="aide">Déclarée ${e(g.but.texte)}.</div>` : ''}
       </div>`).join('')
@@ -25046,7 +25046,7 @@ function ecranMonde() {
   const vues = crypto ? S.world.armees : S.world.armees.filter((a) => estSurveillee(S, a.regionId));
   const armees = vues.length
     ? vues.map((a) => `<div class="ligne">
-        <span class="k" style="color:${couleurFaction(a.faction)}">${e(FACTIONS[a.faction].court)} · ${n(a.force)}</span>
+        <span class="k" style="color:${couleurFaction(a.faction)}">${e(drapeauDe(S.world, a.faction).court)} · ${n(a.force)}</span>
         <span class="v">${e(a.etat)} → ${e((colonieParId(S.world, a.cible) || {}).nom || '—')}</span></div>`).join('')
     : `<div class="aide">${S.world.armees.length
       ? 'Rien en vue. Ce qui ne veut pas dire qu’il ne se passe rien.'
@@ -25063,7 +25063,7 @@ function ecranMonde() {
         <span class="k">${e(v.nom)}${v.frais ? '' : ` <span class="aide">${e(ageTexte(v.depuis))}</span>`}</span>
         ${v.ruine
     ? '<span class="v" style="color:var(--texte-3)">en ruines</span>'
-    : `<span class="v" style="color:${couleurFaction(v.faction)}">${e(v.faction ? FACTIONS[v.faction].court : '—')} · rang ${v.taille} · ${n(v.pop)} hab.</span>`}
+    : `<span class="v" style="color:${couleurFaction(v.faction)}">${e(v.faction ? drapeauDe(S.world, v.faction).court : '—')} · rang ${v.taille} · ${n(v.pop)} hab.</span>`}
       </div>`).join('')
     : '<div class="aide">Aucune ville relevée. Il faut aller voir de ses yeux.</div>';
 
@@ -25131,7 +25131,7 @@ function ecranMonde() {
     const de = colonieParId(S.world, c.deId);
     const vers = colonieParId(S.world, c.versId);
     return `<div class="ligne">
-        <span class="k" style="color:${couleurFaction(c.faction)}">${e(FACTIONS[c.faction].court)}</span>
+        <span class="k" style="color:${couleurFaction(c.faction)}">${e(drapeauDe(S.world, c.faction).court)}</span>
         <span class="v">${e(de ? de.nom : '?')} → ${e(vers ? vers.nom : '?')} · ${n(valeurCargaison(c))} cr</span></div>`;
   }).join('') : '<div class="aide">Aucune caravane sur les routes. Mauvais signe.</div>'}
   </section>
@@ -25505,7 +25505,7 @@ function modaleRapport() {
     : '<div class="aide">Les stocks n’ont pas bougé.</div>';
 
   const estime = r.estime.length
-    ? r.estime.map((x) => ligne(FACTIONS[x.faction].nom,
+    ? r.estime.map((x) => ligne(drapeauDe(S.world, x.faction).nom,
       `${x.delta > 0 ? '+' : ''}${n(x.delta)}`, x.delta < 0 ? 'alerte' : '')).join('')
     : '';
 
