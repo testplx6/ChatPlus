@@ -426,14 +426,24 @@ Elle ne se débande pas, elle n'est pas battue : elle meurt de faim, parce que l
 ravitaillement se refait dans les villes de son drapeau et qu'un drapeau neuf
 n'en a aucune.
 
-**Comment une compagnie franche se nourrit-elle ?** C'est une règle de jeu.
-Trois façons, toutes déjà à moitié dans le moteur : elle vit sur le pays qu'elle
-traverse ; elle se fait payer en nature par la ville qu'elle protège ou menace ;
-ou elle ne survit qu'en prenant une ville vite — ce qui est l'état actuel, sauf
-qu'il ne lui laisse que deux jours pour y arriver. La troisième ne demande rien
-qu'un peu de temps ; les deux autres sont des mécanismes à écrire.
+**Et le constat est plus large que les factions neuves : le ravitaillement ne
+remonte JAMAIS.** Il part de `60 + force/4` et descend d'un par heure, pour
+toutes les colonnes du monde et quoi qu'elles fassent. Prendre une ville riche
+ne nourrit pas mieux que traverser un désert. C'est ce qui donne à une colonne
+soixante et une heures de vie en médiane, mesuré sur 709 d'entre elles, et ce
+n'est pas un réglage : c'est un mécanisme qui manque.
 
-Rien n'est codé avant la réponse.
+Le principe est donné par le propriétaire : « il y a autant de façons que ce que
+les membres peuvent faire, récolter, marchander, travailler, se faire payer,
+voler, etc. — c'est une simulation. » Pas une règle par cas donc, mais une
+capacité : des hommes prennent ce qu'il y a là où ils sont.
+
+Une première version a été écrite et **retirée le jour même**, non parce qu'elle
+échoue mais parce qu'elle réussit trop largement : trois décors tombent d'un
+coup, dont la mesure d'erreur locale du chantier de maille et un test de crédit.
+Une colonne qui ne meurt plus de faim, c'est une guerre qui dure, une ville qu'on
+vide, une économie qui bouge. **C'est un lot avec son calibrage et son témoin,
+pas une queue de séance.**
 
 ### Un pays qui n'a plus rien continue de se donner des chefs
 

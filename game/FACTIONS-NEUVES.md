@@ -430,32 +430,37 @@ identiques octet pour octet. Les règles de jeu n'arrivent qu'à N5.
   Or des hommes qui se battent sous leur propre bannière n'attendent pas de
   paie : ils *sont* l'État. C'est ce que N8 ter corrige.
 
-- [~] **N8 ter. Le verrou n'est pas la solde, c'est le ravitaillement.**
+- [ ] **N8 ter. Le ravitaillement ne se refait jamais — et c'est un lot à part.**
 
-  La compagnie franche est écrite — une colonne dont la faction ne tient aucune
-  ville ne compte plus d'impayés, parce qu'il n'y a pas d'État distinct des
-  hommes. C'est juste en soi, et ça n'a **rien changé** : les vingt-trois
-  drapeaux nés perdent toujours leur colonne, et le relevé dit pourquoi.
+  La compagnie franche est écrite : une colonne dont la faction ne tient aucune
+  ville ne compte plus d'impayés. C'est juste, et ça n'a **rien changé**.
 
-  Une colonne fondée à la 552ᵉ heure avec 58 hommes et 49 de ravitaillement :
-  49 → 9 → disparue, **quarante-huit heures**. Elle ne se débande pas, elle
-  n'est pas battue : elle meurt de faim. Le ravitaillement se refait dans les
-  villes de son drapeau, et un drapeau neuf n'en a aucune.
+  Le verrou est ailleurs, et il est plus gros que ce chantier. **Le
+  ravitaillement d'une colonne ne remonte jamais** : il part de `60 + force/4`
+  et descend d'un par heure, quoi qu'elle fasse. Une mèche qui brûle. Prendre
+  une ville riche ne nourrit pas mieux que traverser un désert, et une colonne
+  vit **soixante et une heures en médiane** — mesuré sur 709 d'entre elles.
+  Relevé sur un drapeau neuf : fondé à h552 avec 58 hommes et 49 de vivres,
+  disparu quarante-huit heures plus tard.
 
-  **Ce qui reste à trancher, et c'est une règle de jeu.** Comment une compagnie
-  franche se nourrit-elle ? Elle ne peut pas ne pas manger. Trois façons, toutes
-  déjà à moitié dans le moteur :
+  **Le principe est donné par le propriétaire** : « il y a autant de façons que
+  ce que les membres peuvent faire, récolter, marchander, travailler, se faire
+  payer, voler, etc. — c'est une simulation. » Ce n'est donc pas une règle par
+  cas qu'il faut écrire, c'est une **capacité** : des hommes prennent ce qu'il y
+  a là où ils sont. La terre selon son biome et sa richesse
+  (`rendementRegion` sait déjà le dire), les greniers d'une ville de leur
+  drapeau, le marché s'ils ont de quoi payer, le pillage s'ils n'ont plus rien.
 
-  - **elle vit sur le pays** — elle se ravitaille en traversant, comme les
-    caravanes se font piller ;
-  - **elle se fait payer en nature** par la ville qu'elle protège ou menace ;
-  - **elle ne survit qu'en prenant une ville vite**, et celles qui n'y arrivent
-    pas meurent — c'est l'état actuel, sauf qu'il ne laisse que quarante-huit
-    heures pour y arriver.
+  **Essayé, et remis à sa place.** Une première version — glane sur la terre
+  plus réquisition en ville — a été écrite et retirée le jour même. Pas parce
+  qu'elle échoue : parce qu'elle réussit trop largement. Trois décors tombent
+  d'un coup, dont la mesure d'erreur locale du chantier de maille et un test de
+  crédit. Une colonne qui ne meurt plus de faim, c'est une guerre qui dure, une
+  ville qu'on vide, une économie qui bouge. **Ça mérite son lot, son calibrage
+  et son témoin**, pas la fin d'une séance.
 
-  La troisième est déjà là et ne demande rien ; il suffirait peut-être de lui
-  laisser le temps. Les deux autres sont des mécanismes. Rien n'est codé avant
-  la réponse.
+  Ce qui est acquis et gardé : le constat, chiffré, et le principe, écrit.
+
 - [ ] **N9. Livraison.** `CIBLES.json` repensé : le « /36 » des écrasées ne
   survit pas à un nombre de factions variable. Coût du tick chiffré, écran
   vérifié au navigateur.
