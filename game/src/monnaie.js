@@ -358,3 +358,66 @@ export function poserMasseInitiale(world) {
     world.factions[e.faction].emissions = 0;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Le portefeuille du joueur
+// ---------------------------------------------------------------------------
+//
+// `state.player.credits` était un nombre : un crédit universel que tout le
+// monde acceptait, alors que le moteur cote six monnaies depuis le lot C. Le
+// joueur détient maintenant ce qu'on lui a payé, dans la monnaie où on l'a
+// payé — et c'est à lui de décider quoi garder. On conserve la forte, on se
+// débarrasse de la faible avant qu'elle tombe.
+//
+// **Aucune conversion cachée.** Une somme est dans une monnaie ou n'est pas.
+// Le seul endroit du jeu qui montre un total, donc qui convertit, est le bureau
+// de change — c'est précisément son sujet. Ailleurs l'écran ne dit jamais ce
+// que vaut le portefeuille, et cette friction est voulue : chaque pays est un
+// monde, et savoir si le prix qu'on vous fait à l'étranger est bon demande d'y
+// avoir réfléchi.
+
+/** Ce qu'on a dans cette monnaie-là. Zéro si on n'en a pas — jamais `undefined`. */
+export function solde(player, monnaie) {
+  if (!player || !player.bourse || !monnaie) return 0;
+  return player.bourse[monnaie] || 0;
+}
+
+/** On vous paie. */
+export function crediterBourse(player, monnaie, montant) {
+  if (!player || !monnaie || !(montant > 0)) return 0;
+  if (!player.bourse) player.bourse = {};
+  player.bourse[monnaie] = (player.bourse[monnaie] || 0) + montant;
+  return montant;
+}
+
+/**
+ * Vous payez, et vous ne payez que ce que vous avez.
+ *
+ * Rend ce qui a réellement été pris — comme `debourser` et `verser` côté monde,
+ * et pour la même raison : un appelant qui suppose que le paiement est passé
+ * fabrique de l'argent, et l'invariant comptable finit par le dire.
+ */
+export function debiterBourse(player, monnaie, montant) {
+  if (!player || !player.bourse || !monnaie || !(montant > 0)) return 0;
+  const a = player.bourse[monnaie] || 0;
+  const pris = Math.min(montant, a);
+  if (pris <= 0) return 0;
+  player.bourse[monnaie] = a - pris;
+  return pris;
+}
+
+/**
+ * Ce que le tout vaut, en unité de compte du moteur.
+ *
+ * **À n'appeler que depuis le bureau de change.** Partout ailleurs, afficher un
+ * total reviendrait à rendre les monnaies interchangeables à l'écran, et tout
+ * le lot n'aurait servi à rien.
+ */
+export function valeurBourse(world, player) {
+  if (!player || !player.bourse) return 0;
+  let v = 0;
+  for (const k of Object.keys(player.bourse)) {
+    v += (player.bourse[k] || 0) / Math.max(0.001, coursMonnaie(world, k));
+  }
+  return v;
+}

@@ -25,6 +25,7 @@ import {
 import { tickCredit, insolvable, veutBatir } from '../src/credit.js';
 import {
   auditer, emettre, ecartChange, transferer, transfererVille,
+  solde, crediterBourse, debiterBourse, valeurBourse,
 } from '../src/monnaie.js';
 import { prixCession, effetCession, valeurNette } from '../src/credit.js';
 import { BETES } from '../src/betes.js';
@@ -8399,6 +8400,47 @@ section('27. Un drapeau qui n’était pas là au départ');
   const apresPrise = Math.max(...auditer(st7.world).map((e) => Math.abs(e.ecart)));
   ok(apresPrise < 1e-6, 'et les comptes tiennent après la prise',
     `écart maximal ${apresPrise.toExponential(2)}`);
+}
+
+// ===========================================================================
+section('28. Le portefeuille — la primitive, avant les quatre-vingt-six sites');
+{
+  // Chantier économie, lot E1. `player.credits` est un nombre : un crédit
+  // universel que tout le monde accepte, alors que le moteur cote six monnaies
+  // depuis le lot C. Le joueur devra détenir ce qu'on lui a payé, dans la
+  // monnaie où on l'a payé.
+  //
+  // **La primitive est posée ; l'état ne bouge pas encore, et c'est délibéré.**
+  // Basculer `credits` vers `bourse` casse quatre-vingt-six sites d'un coup —
+  // mesuré : vingt-sept tests rouges — et chacun demande de savoir *dans quelle
+  // monnaie* il paie. Ce n'est pas mécanique : c'est la table d'`ECONOMIE.md`
+  // §7.2, le marché dans la monnaie de la ville, la solde dans celle de
+  // l'employeur, le butin dans celle du mort. Ça se fait d'un bloc ou pas du
+  // tout, sinon le jeu passe par un état où l'argent est à deux endroits.
+  const sac = {};
+  ok(solde(sac, 'hexa') === 0,
+    'une monnaie qu’on ne détient pas vaut zéro, elle ne vaut pas « undefined »');
+  crediterBourse(sac, 'hexa', 100);
+  crediterBourse(sac, 'hexa', 50);
+  ok(solde(sac, 'hexa') === 150, 'deux versements s’additionnent', `${solde(sac, 'hexa')}`);
+  const pris = debiterBourse(sac, 'hexa', 200);
+  ok(pris === 150 && solde(sac, 'hexa') === 0,
+    'on ne peut pas dépenser ce qu’on n’a pas, et on ne descend pas sous zéro',
+    `${pris} pris, ${solde(sac, 'hexa')} restant`);
+  ok(debiterBourse(sac, 'cendre', 10) === 0,
+    'et payer dans une monnaie qu’on n’a pas ne prend rien');
+
+  // Le total n'existe qu'en un seul endroit : le bureau de change. Ailleurs
+  // l'écran ne montre jamais d'équivalent — friction voulue, pas oubli.
+  const sB = nouvellePartie(2828, { maintenant: 0, depart: 'ville' });
+  const deux = { bourse: { hexa: 100, cendre: 100 } };
+  ok(valeurBourse(sB.world, deux) > 0,
+    'le bureau de change sait dire ce que vaut le tout',
+    `${Math.round(valeurBourse(sB.world, deux))}`);
+  ok(Math.abs(valeurBourse(sB.world, { bourse: { hexa: 200 } })
+    - valeurBourse(sB.world, { bourse: { hexa: 100 } }) * 2) < 1e-9,
+  'et il compte proportionnellement');
+  ok(valeurBourse(sB.world, {}) === 0, 'un portefeuille vide ne vaut rien');
 }
 
 // ===========================================================================

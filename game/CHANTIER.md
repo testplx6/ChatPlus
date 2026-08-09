@@ -220,11 +220,32 @@ Ce fichier prépare le travail, il ne l'autorise pas.
   factions écrasées. Voir le lot F.
 ## Lot E — le joueur (ECONOMIE §7, §10)
 
-- [ ] **E1. `player.bourse`** multi-monnaies ; migration des sauvegardes
-  (crédits → monnaie de la faction la plus proche, au cours du jour, dans
-  `normaliser`).
-- [ ] **E2. Tout prix affiché en monnaie locale seule**, symbole par faction ;
-  qui paie quoi dans quelle monnaie : la table d'ECONOMIE §7.2.
+- [~] **E1. `player.bourse`** — **la primitive est posée, la bascule ne l'est
+  pas, et c'est délibéré.**
+
+  `solde`, `crediterBourse`, `debiterBourse` et `valeurBourse` vivent dans
+  `monnaie.js` avec leurs tests. `debiterBourse` rend ce qui a réellement été
+  pris, comme `debourser` et `verser` côté monde et pour la même raison : un
+  appelant qui suppose que le paiement est passé fabrique de l'argent.
+  `valeurBourse` est **à n'appeler que depuis le bureau de change** — ailleurs,
+  afficher un total rendrait les monnaies interchangeables à l'écran et tout le
+  lot n'aurait servi à rien.
+
+  **Ce que la bascule coûte, mesuré plutôt qu'estimé** : `player.credits` est lu
+  à **quatre-vingt-six endroits**, et le remplacer casse **vingt-sept tests**
+  d'un coup. Ce n'est pas mécanique : chaque site doit savoir *dans quelle
+  monnaie* il paie — la table d'`ECONOMIE.md` §7.2, le marché dans celle de la
+  ville, la solde dans celle de l'employeur, le butin dans celle du mort. Ça se
+  fait d'un bloc, avec E2, ou pas du tout : un état intermédiaire où l'argent
+  est à deux endroits est la garantie qu'un site oublié lira le mauvais.
+
+  Essayé, mesuré, remis en place le jour même. La primitive reste, testée.
+- [ ] **E1 bis + E2, d'un bloc.** Les quatre-vingt-six sites, la suppression de
+  `player.credits`, la migration dans `normaliser` (l'argent devient un solde
+  dans la monnaie de là où le joueur se trouve — on ne peut pas inventer un
+  passé), et l'affichage en monnaie locale seule avec son symbole. La table
+  d'ECONOMIE §7.2 dit qui paie quoi dans quelle monnaie ; c'est elle le vrai
+  travail, pas la substitution.
 - [ ] **E3. L'écran du change + le portefeuille** (R6 ; l'ancien crédit ne
   paraît qu'au bureau de change).
 - [ ] **E4. Les prérogatives** : taux directeur, émettre, accorder un crédit,
