@@ -27,6 +27,7 @@ import { verifierExercice } from './squad.js';
 import { honorer as honorerService } from './services.js';
 import { acheterBete, vendreBete } from './betes.js';
 import { disposerCorps } from './depouilles.js';
+import { changer as changerA } from './economy.js';
 import {
   louerCoffre as louerCoffreA, acheterCoffre as acheterCoffreA,
   deposerAuCoffre, retirerDuCoffre,
@@ -238,6 +239,14 @@ const API = {
 
   quitterService() {
     const r = quitter(state, creerLogger(state));
+    sauver();
+    return r;
+  },
+
+  /** Le bureau de change. Voir economy.js, ECONOMIE §5. */
+  changer(colId, de, vers, montant) {
+    const col = state.world.colonies.find((c) => c.id === colId);
+    const r = changerA(state, col, de, vers, montant);
     sauver();
     return r;
   },

@@ -3,7 +3,7 @@ import { soldeIci, monnaieIci, monnaieSolde, valeurBourse } from './monnaie.js';
 // touche au DOM — tout le reste du dossier src/ tourne aussi bien sous Node.
 
 import {
-  BIOMES, FACTIONS, DIPLO_FACTIONS, drapeauDe, diploDe, symboleDe,
+  BIOMES, FACTIONS, DIPLO_FACTIONS, drapeauDe, diploDe, symboleDe, clesDe,
   COMMODITIES, COMMODITY_KEYS, BUILDINGS, BUILDING_KEYS,
   RESEARCH, RESEARCH_KEYS, ITEMS, SKILLS, SKILL_KEYS, BODY_PARTS, BODY_KEYS,
   POSTURES, POSTURE_KEYS, TRAITS, POI, CONTRATS, DIPLOMES, METIERS, METIER_KEYS,
@@ -26,6 +26,7 @@ import {
 import {
   prixJoueur, acheter, vendre, poidsInventaire, capacitePortage, meilleurCommercant,
   prixItem, acheterItem, vendreItem, actifs, emploi, simulerAchat, simulerVente,
+  bureauDe, devisChange,
 } from './economy.js';
 import {
   populationMax, mainDoeuvre, placesMetier, affectes, manoeuvres, affecter,
@@ -1380,6 +1381,7 @@ function blocColonie(col) {
       <button class="act mini" data-a="modale" data-m="attelage">Attelage${betesDe(G()).length ? ` (${betesDe(G()).length})` : ''}</button>
       <button class="act mini" data-a="modale" data-m="coffre">Coffre${coffreDe(S, col.id)
     ? ` (${Math.round(placeCoffre(coffreDe(S, col.id)).pris)} kg)` : ''}</button>
+      ${bureauDe(col) ? `<button class="act mini" data-a="modale" data-m="change">Change</button>` : ''}
       ${ecolesDe(S.world, col).length
     ? `<button class="act mini" style="grid-column:1/-1" data-a="modale" data-m="ecole">
         Écoles (${ecolesDe(S.world, col).length})</button>` : ''}
@@ -3600,7 +3602,7 @@ function blocAllegeance() {
     <div class="sep"></div>
     <div class="grille2">
       <div class="ligne"><span class="k">Remise</span><span class="v">${(rang.def.remise * 100).toFixed(0)} %</span></div>
-      <div class="ligne"><span class="k">Solde</span><span class="v">${n(rang.def.solde)} ${sym(faction)}/jour</span></div>
+      <div class="ligne"><span class="k">Solde</span><span class="v">${n(rang.def.solde)} ${sym(all.faction)}/jour</span></div>
       <div class="ligne"><span class="k">Barrages</span><span class="v">${rang.index >= 1 ? 'libres' : 'payants'}</span></div>
       <div class="ligne"><span class="k">Renforts</span><span class="v">${rang.index >= 3 ? 'oui, chez eux' : 'non'}</span></div>
       <div class="ligne"><span class="k">Intendance</span>
@@ -4311,6 +4313,7 @@ function contenuModale() {
     case 'ville': return modaleVille() + fermer;
     case 'attelage': return modaleAttelage() + fermer;
     case 'coffre': return modaleCoffre() + fermer;
+    case 'change': return modaleChange() + fermer;
     case 'equipement': return modaleEquipement() + fermer;
     case 'entrainement': return modaleEntrainement() + fermer;
     case 'recrutement': return modaleRecrutement() + fermer;
@@ -4428,6 +4431,83 @@ let qteTransfert = 10;
 function choixQuantite(action, courante) {
   return QUANTITES.map((q) => `<button class="act mini" data-a="${action}" data-q="${q}"
     aria-pressed="${courante === q}">${q === 9999 ? 'tout' : `×${q}`}</button>`).join('');
+}
+
+/**
+ * Le bureau de change (ECONOMIE §5, §10).
+ *
+ * Le seul endroit du jeu où deux monnaies se regardent. Ailleurs, un prix est
+ * dans la monnaie du lieu et rien ne dit ce qu'il vaut ailleurs : c'est la
+ * friction choisie, et elle n'est jouable que parce que cet écran existe.
+ *
+ * Le portefeuille tient en haut, la monnaie d'ici d'abord et le reste ensuite,
+ * **sans total** — il n'existe pas d'unité pour écrire la somme de six
+ * monnaies, et en afficher une les rendrait interchangeables à l'œil, ce qui
+ * viderait tout le lot de son sens.
+ */
+let changeVers = null;
+let changeQte = 100;
+
+function modaleChange() {
+  const col = colonieDe(S.world, G().regionId);
+  if (!bureauDe(col)) return '<div class="aide">Pas de bureau ici.</div>';
+  const locale = col.faction || null;
+  const b = (S.player && S.player.bourse) || {};
+  // Le portefeuille : ce qu'on tient, la monnaie d'ici en tête.
+  const tenues = Object.keys(b).filter((k) => b[k] > 0.005)
+    .sort((x, y) => (x === locale ? -1 : y === locale ? 1 : b[y] - b[x]));
+  const poche = tenues.length
+    ? tenues.map((k) => `<div class="ligne"><span class="k" style="color:${couleurFaction(k)}">${
+      e(drapeauDe(S.world, k).court)}</span>
+      <span class="v">${n(b[k], 2)} ${e(symboleDe(S.world, k))}</span></div>`).join('')
+    : '<div class="aide">Vous n’avez rien sur vous.</div>';
+
+  // Ce qu'on peut coter ici : la monnaie du lieu contre le reste du monde, et
+  // rien d'autre (§5.1). Un bourg sans drapeau, lui, prend tout et sans écart.
+  const cles = clesDe(S.world).filter((k) => k !== 'essaim');
+  const paires = [];
+  for (const k of cles) {
+    if (locale) {
+      if (k === locale) continue;
+      paires.push([locale, k]);
+      if (b[k] > 0.005) paires.push([k, locale]);
+    } else if (b[k] > 0.005) {
+      for (const v of cles) if (v !== k) paires.push([k, v]);
+    }
+  }
+  if (!changeVers || !paires.some(([d, v]) => `${d}>${v}` === changeVers)) {
+    changeVers = paires.length ? `${paires[0][0]}>${paires[0][1]}` : null;
+  }
+  if (!changeVers) return '<div class="aide">Rien à changer ici.</div>';
+  const [de, vers] = changeVers.split('>');
+  const dispo = b[de] || 0;
+  const montant = Math.min(changeQte, dispo);
+  const devis = devisChange(S.world, col, de, vers, montant);
+
+  const choix = paires.map(([d, v]) => {
+    const k = `${d}>${v}`;
+    return `<button class="act mini${k === changeVers ? ' primaire' : ''}"
+      data-a="change-paire" data-k="${k}" aria-pressed="${k === changeVers}">${
+  e(symboleDe(S.world, d))} → ${e(symboleDe(S.world, v))}</button>`;
+  }).join('');
+
+  return `<h2 class="titre">Change à ${e(col.nom)}</h2>
+  <div class="grille2">${poche}</div>
+  <div class="sep"></div>
+  <div class="aide">1 ${e(symboleDe(S.world, de))} vaut ${n(devis.taux, 2)} ${
+  e(symboleDe(S.world, vers))} · écart ${(devis.ecart * 100).toFixed(0)} %${
+  devis.ecart === 0 ? ' — ici, personne ne prend rien' : ''}</div>
+  <div class="taches" style="margin-top:5px">${choix}</div>
+  <div class="sep"></div>
+  <div class="taches">${[50, 100, 500, 9999].map((q) => `<button class="act mini"
+    data-a="change-qte" data-q="${q}" aria-pressed="${changeQte === q}">${
+  q === 9999 ? 'tout' : n(q)}</button>`).join('')}</div>
+  <div class="ligne"><span class="k">Vous donnez</span>
+    <span class="v">${n(montant, 2)} ${e(symboleDe(S.world, de))}</span></div>
+  <div class="ligne"><span class="k">Vous recevez</span>
+    <span class="v ambre">${n(devis.recu, 2)} ${e(symboleDe(S.world, vers))}</span></div>
+  <button class="act primaire" data-a="change-faire" ${montant > 0 ? '' : 'disabled'}
+    style="margin-top:6px">Changer</button>`;
 }
 
 function modaleMarche() {
@@ -5271,6 +5351,29 @@ function surClic(ev) {
     case 'chercher': {
       const r = lancerRecherche(S, el.dataset.k);
       if (!r.ok) toast(r.motif, true);
+      rafraichir(true);
+      break;
+    }
+
+    case 'change-paire':
+      changeVers = el.dataset.k;
+      rendreModale();
+      break;
+
+    case 'change-qte':
+      changeQte = Number(el.dataset.q);
+      rendreModale();
+      break;
+
+    case 'change-faire': {
+      const col = colonieDe(S.world, G().regionId);
+      const [de, vers] = (changeVers || '>').split('>');
+      const dispo = ((S.player && S.player.bourse) || {})[de] || 0;
+      const r = ACTIONS.changer(col && col.id, de, vers, Math.min(changeQte, dispo));
+      toast(r.ok
+        ? `${n(r.sorti, 2)} ${symboleDe(S.world, de)} → ${n(r.recu, 2)} ${symboleDe(S.world, vers)}`
+        : r.motif, !r.ok);
+      rendreModale();
       rafraichir(true);
       break;
     }

@@ -865,6 +865,7 @@ const progresContrat = progres;
 const creditInfluence = credit;
 const toucherRationsA = toucherRations;
 const honorerService = honorer;
+const changerA = changer;
 const louerCoffreA = louerCoffre;
 const acheterCoffreA = acheterCoffre;
 const envoyerColonneA = envoyerColonne;
@@ -9958,6 +9959,92 @@ function vendreItem(state, col, indexObjet, groupe) {
   gagner(state, p);
   if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.9);
   return { ok: true, prix: p, nom: ITEMS[key].nom };
+}
+
+// ---------------------------------------------------------------------------
+// Le bureau de change (ECONOMIE §5)
+// ---------------------------------------------------------------------------
+//
+// C'est la pièce sans laquelle le lot E rend le jeu injouable. Depuis la
+// bascule, ce qu'on a est libellé : arriver à l'étranger avec la monnaie de
+// chez soi, c'est ne pouvoir rien acheter. La friction est voulue — ECONOMIE
+// §7.1 — mais elle n'est jouable que parce qu'il existe un endroit pour la
+// lever, et qu'y passer coûte quelque chose.
+//
+// Il vit ici plutôt que dans `monnaie.js` parce qu'il est une action du joueur
+// sur un marché, au même titre qu'`acheter` et `vendre` — même forme de retour,
+// même façon de refuser, et `monnaie.js` passe avant `economy.js` dans l'ordre
+// des modules (`tools/bundle.js`), donc ne peut pas appeler l'inverse.
+
+/**
+ * Une ville tient-elle un bureau ? ECONOMIE §5.1 : « dans toute ville dont le
+ * marché existe et qui n'est pas en révolte ».
+ *
+ * Il n'y a pas de champ `col.change` : toute ville debout tient un marché dans
+ * ce moteur, et l'écrire dans l'état serait une clé de plus à migrer pour une
+ * information qui se déduit. Un avant-poste est exclu — c'est un camp, pas une
+ * place.
+ */
+function bureauDe(col) {
+  return !!col && !col.ruine && !col.avantPoste && (col.unrest || 0) <= SEUIL_REVOLTE;
+}
+
+/**
+ * Ce qu'on recevrait, sans rien engager. L'écran doit pouvoir l'afficher avant
+ * qu'on décide — c'est tout l'intérêt d'un bureau qu'on lit avant d'y entrer.
+ *
+ * L'estime du chef local entre dans l'écart (§5.2) : être bien vu ici se paie
+ * en monnaie, pas seulement en contrats.
+ */
+function devisChange(world, col, de, vers, montant) {
+  const t = taux(world, de, vers);
+  const e = ecartChange(world, col, de, vers, estime(col, 'chef'));
+  return { taux: t, ecart: e, recu: montant * t * (1 - e) };
+}
+
+/**
+ * Changer. Une des deux monnaies doit être celle du lieu (§5.1) : le bureau
+ * cote sa monnaie contre le monde, pas le monde contre lui-même. Sans cette
+ * règle, le comptoir d'un village perdu deviendrait une place de change
+ * universelle et le cours local n'aurait plus aucune importance.
+ *
+ * Une ville sans drapeau n'a pas de monnaie à elle : elle les prend toutes, et
+ * ne prend aucun écart. C'est l'avantage d'un endroit sans loi, et ça donne une
+ * raison d'y passer.
+ *
+ * **Ce que l'écart devient n'est pas écrit ici, et c'est délibéré.** §5.3 le
+ * fait encaisser par la ville pour les caravanes, et `caravanes.js` le fait
+ * déjà. Côté joueur, le porter en caisse creuserait le trou comptable déjà
+ * consigné dans CHANTIER.md : sa bourse n'est pas dans le circuit audité, donc
+ * tout ce qui passe de sa poche à une caisse fabrique de la monnaie que
+ * `masse` ne connaît pas. Une seule fuite documentée vaut mieux qu'une
+ * deuxième inventée pour faire joli.
+ */
+function changer(state, col, de, vers, montant) {
+  const world = state.world;
+  if (!bureauDe(col)) return { ok: false, motif: 'Pas de bureau ici.' };
+  if (!de || !vers || de === vers) {
+    return { ok: false, motif: 'Changer une monnaie contre elle-même ne mène nulle part.' };
+  }
+  if (col.faction && de !== col.faction && vers !== col.faction) {
+    return {
+      ok: false,
+      motif: `Ici on ne cote que le ${drapeauDe(world, col.faction).nom} : `
+        + 'l’une des deux doit être la monnaie du lieu.',
+    };
+  }
+  if (!(montant > 0)) return { ok: false, motif: 'Rien à changer.' };
+  const a = solde(state.player, de);
+  if (a < montant) {
+    return {
+      ok: false,
+      motif: `Il manque ${Math.ceil(montant - a)} ${symboleDe(world, de)}.`,
+    };
+  }
+  const devis = devisChange(world, col, de, vers, montant);
+  const sorti = debiterBourse(state.player, de, montant);
+  const recu = crediterBourse(state.player, vers, sorti * devis.taux * (1 - devis.ecart));
+  return { ok: true, sorti, recu, taux: devis.taux, ecart: devis.ecart };
 }
 
 // ===== src/credit.js =================================================
@@ -22805,6 +22892,7 @@ function blocColonie(col) {
       <button class="act mini" data-a="modale" data-m="attelage">Attelage${betesDe(G()).length ? ` (${betesDe(G()).length})` : ''}</button>
       <button class="act mini" data-a="modale" data-m="coffre">Coffre${coffreDe(S, col.id)
     ? ` (${Math.round(placeCoffre(coffreDe(S, col.id)).pris)} kg)` : ''}</button>
+      ${bureauDe(col) ? `<button class="act mini" data-a="modale" data-m="change">Change</button>` : ''}
       ${ecolesDe(S.world, col).length
     ? `<button class="act mini" style="grid-column:1/-1" data-a="modale" data-m="ecole">
         Écoles (${ecolesDe(S.world, col).length})</button>` : ''}
@@ -25025,7 +25113,7 @@ function blocAllegeance() {
     <div class="sep"></div>
     <div class="grille2">
       <div class="ligne"><span class="k">Remise</span><span class="v">${(rang.def.remise * 100).toFixed(0)} %</span></div>
-      <div class="ligne"><span class="k">Solde</span><span class="v">${n(rang.def.solde)} ${sym(faction)}/jour</span></div>
+      <div class="ligne"><span class="k">Solde</span><span class="v">${n(rang.def.solde)} ${sym(all.faction)}/jour</span></div>
       <div class="ligne"><span class="k">Barrages</span><span class="v">${rang.index >= 1 ? 'libres' : 'payants'}</span></div>
       <div class="ligne"><span class="k">Renforts</span><span class="v">${rang.index >= 3 ? 'oui, chez eux' : 'non'}</span></div>
       <div class="ligne"><span class="k">Intendance</span>
@@ -25736,6 +25824,7 @@ function contenuModale() {
     case 'ville': return modaleVille() + fermer;
     case 'attelage': return modaleAttelage() + fermer;
     case 'coffre': return modaleCoffre() + fermer;
+    case 'change': return modaleChange() + fermer;
     case 'equipement': return modaleEquipement() + fermer;
     case 'entrainement': return modaleEntrainement() + fermer;
     case 'recrutement': return modaleRecrutement() + fermer;
@@ -25853,6 +25942,83 @@ let qteTransfert = 10;
 function choixQuantite(action, courante) {
   return QUANTITES.map((q) => `<button class="act mini" data-a="${action}" data-q="${q}"
     aria-pressed="${courante === q}">${q === 9999 ? 'tout' : `×${q}`}</button>`).join('');
+}
+
+/**
+ * Le bureau de change (ECONOMIE §5, §10).
+ *
+ * Le seul endroit du jeu où deux monnaies se regardent. Ailleurs, un prix est
+ * dans la monnaie du lieu et rien ne dit ce qu'il vaut ailleurs : c'est la
+ * friction choisie, et elle n'est jouable que parce que cet écran existe.
+ *
+ * Le portefeuille tient en haut, la monnaie d'ici d'abord et le reste ensuite,
+ * **sans total** — il n'existe pas d'unité pour écrire la somme de six
+ * monnaies, et en afficher une les rendrait interchangeables à l'œil, ce qui
+ * viderait tout le lot de son sens.
+ */
+let changeVers = null;
+let changeQte = 100;
+
+function modaleChange() {
+  const col = colonieDe(S.world, G().regionId);
+  if (!bureauDe(col)) return '<div class="aide">Pas de bureau ici.</div>';
+  const locale = col.faction || null;
+  const b = (S.player && S.player.bourse) || {};
+  // Le portefeuille : ce qu'on tient, la monnaie d'ici en tête.
+  const tenues = Object.keys(b).filter((k) => b[k] > 0.005)
+    .sort((x, y) => (x === locale ? -1 : y === locale ? 1 : b[y] - b[x]));
+  const poche = tenues.length
+    ? tenues.map((k) => `<div class="ligne"><span class="k" style="color:${couleurFaction(k)}">${
+      e(drapeauDe(S.world, k).court)}</span>
+      <span class="v">${n(b[k], 2)} ${e(symboleDe(S.world, k))}</span></div>`).join('')
+    : '<div class="aide">Vous n’avez rien sur vous.</div>';
+
+  // Ce qu'on peut coter ici : la monnaie du lieu contre le reste du monde, et
+  // rien d'autre (§5.1). Un bourg sans drapeau, lui, prend tout et sans écart.
+  const cles = clesDe(S.world).filter((k) => k !== 'essaim');
+  const paires = [];
+  for (const k of cles) {
+    if (locale) {
+      if (k === locale) continue;
+      paires.push([locale, k]);
+      if (b[k] > 0.005) paires.push([k, locale]);
+    } else if (b[k] > 0.005) {
+      for (const v of cles) if (v !== k) paires.push([k, v]);
+    }
+  }
+  if (!changeVers || !paires.some(([d, v]) => `${d}>${v}` === changeVers)) {
+    changeVers = paires.length ? `${paires[0][0]}>${paires[0][1]}` : null;
+  }
+  if (!changeVers) return '<div class="aide">Rien à changer ici.</div>';
+  const [de, vers] = changeVers.split('>');
+  const dispo = b[de] || 0;
+  const montant = Math.min(changeQte, dispo);
+  const devis = devisChange(S.world, col, de, vers, montant);
+
+  const choix = paires.map(([d, v]) => {
+    const k = `${d}>${v}`;
+    return `<button class="act mini${k === changeVers ? ' primaire' : ''}"
+      data-a="change-paire" data-k="${k}" aria-pressed="${k === changeVers}">${
+  e(symboleDe(S.world, d))} → ${e(symboleDe(S.world, v))}</button>`;
+  }).join('');
+
+  return `<h2 class="titre">Change à ${e(col.nom)}</h2>
+  <div class="grille2">${poche}</div>
+  <div class="sep"></div>
+  <div class="aide">1 ${e(symboleDe(S.world, de))} vaut ${n(devis.taux, 2)} ${
+  e(symboleDe(S.world, vers))} · écart ${(devis.ecart * 100).toFixed(0)} %${
+  devis.ecart === 0 ? ' — ici, personne ne prend rien' : ''}</div>
+  <div class="taches" style="margin-top:5px">${choix}</div>
+  <div class="sep"></div>
+  <div class="taches">${[50, 100, 500, 9999].map((q) => `<button class="act mini"
+    data-a="change-qte" data-q="${q}" aria-pressed="${changeQte === q}">${
+  q === 9999 ? 'tout' : n(q)}</button>`).join('')}</div>
+  <div class="ligne"><span class="k">Vous donnez</span>
+    <span class="v">${n(montant, 2)} ${e(symboleDe(S.world, de))}</span></div>
+  <div class="ligne"><span class="k">Vous recevez</span>
+    <span class="v ambre">${n(devis.recu, 2)} ${e(symboleDe(S.world, vers))}</span></div>
+  <button class="act primaire" data-a="change-faire" ${montant > 0 ? '' : 'disabled'}
+    style="margin-top:6px">Changer</button>`;
 }
 
 function modaleMarche() {
@@ -26700,6 +26866,29 @@ function surClic(ev) {
       break;
     }
 
+    case 'change-paire':
+      changeVers = el.dataset.k;
+      rendreModale();
+      break;
+
+    case 'change-qte':
+      changeQte = Number(el.dataset.q);
+      rendreModale();
+      break;
+
+    case 'change-faire': {
+      const col = colonieDe(S.world, G().regionId);
+      const [de, vers] = (changeVers || '>').split('>');
+      const dispo = ((S.player && S.player.bourse) || {})[de] || 0;
+      const r = ACTIONS.changer(col && col.id, de, vers, Math.min(changeQte, dispo));
+      toast(r.ok
+        ? `${n(r.sorti, 2)} ${symboleDe(S.world, de)} → ${n(r.recu, 2)} ${symboleDe(S.world, vers)}`
+        : r.motif, !r.ok);
+      rendreModale();
+      rafraichir(true);
+      break;
+    }
+
     case 'coffre-louer': {
       const col = colonieDe(S.world, G().regionId);
       const r = ACTIONS.louerCoffre(col && col.id);
@@ -27403,6 +27592,14 @@ const API = {
 
   quitterService() {
     const r = quitter(state, creerLogger(state));
+    sauver();
+    return r;
+  },
+
+  /** Le bureau de change. Voir economy.js, ECONOMIE §5. */
+  changer(colId, de, vers, montant) {
+    const col = state.world.colonies.find((c) => c.id === colId);
+    const r = changerA(state, col, de, vers, montant);
     sauver();
     return r;
   },

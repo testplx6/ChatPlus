@@ -3,7 +3,7 @@
 // ville assise sur une mine brade son minerai.
 
 import {
-  COMMODITIES, COMMODITY_KEYS, BIOMES, ITEMS, FACTIONS, drapeauDe,
+  COMMODITIES, COMMODITY_KEYS, BIOMES, ITEMS, FACTIONS, drapeauDe, symboleDe,
   ETAL_PAR_STYLE, PALIERS_ITEM, MENAGES,
 } from './data.js';
 import { comp, gagnerXp, portage, XP_PRATIQUE } from './characters.js';
@@ -17,12 +17,13 @@ import {
 import {
   pourvoirCharges, tickNotables, rendementNotables, margeMarchand, ordreDe,
 } from './notables.js';
-import { tickServices } from './services.js';
+import { tickServices, estime } from './services.js';
 import { portageAttelage } from './betes.js';
 import { loiIci, loisDe } from './lois.js';
 import {
   sortirDuCircuit, transfererVille, coursMonnaie,
   gagner, regler, soldeIci, signeIci,
+  solde, crediterBourse, debiterBourse, taux, ecartChange,
 } from './monnaie.js';
 
 /**
@@ -1335,4 +1336,90 @@ export function vendreItem(state, col, indexObjet, groupe) {
   gagner(state, p);
   if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.9);
   return { ok: true, prix: p, nom: ITEMS[key].nom };
+}
+
+// ---------------------------------------------------------------------------
+// Le bureau de change (ECONOMIE §5)
+// ---------------------------------------------------------------------------
+//
+// C'est la pièce sans laquelle le lot E rend le jeu injouable. Depuis la
+// bascule, ce qu'on a est libellé : arriver à l'étranger avec la monnaie de
+// chez soi, c'est ne pouvoir rien acheter. La friction est voulue — ECONOMIE
+// §7.1 — mais elle n'est jouable que parce qu'il existe un endroit pour la
+// lever, et qu'y passer coûte quelque chose.
+//
+// Il vit ici plutôt que dans `monnaie.js` parce qu'il est une action du joueur
+// sur un marché, au même titre qu'`acheter` et `vendre` — même forme de retour,
+// même façon de refuser, et `monnaie.js` passe avant `economy.js` dans l'ordre
+// des modules (`tools/bundle.js`), donc ne peut pas appeler l'inverse.
+
+/**
+ * Une ville tient-elle un bureau ? ECONOMIE §5.1 : « dans toute ville dont le
+ * marché existe et qui n'est pas en révolte ».
+ *
+ * Il n'y a pas de champ `col.change` : toute ville debout tient un marché dans
+ * ce moteur, et l'écrire dans l'état serait une clé de plus à migrer pour une
+ * information qui se déduit. Un avant-poste est exclu — c'est un camp, pas une
+ * place.
+ */
+export function bureauDe(col) {
+  return !!col && !col.ruine && !col.avantPoste && (col.unrest || 0) <= SEUIL_REVOLTE;
+}
+
+/**
+ * Ce qu'on recevrait, sans rien engager. L'écran doit pouvoir l'afficher avant
+ * qu'on décide — c'est tout l'intérêt d'un bureau qu'on lit avant d'y entrer.
+ *
+ * L'estime du chef local entre dans l'écart (§5.2) : être bien vu ici se paie
+ * en monnaie, pas seulement en contrats.
+ */
+export function devisChange(world, col, de, vers, montant) {
+  const t = taux(world, de, vers);
+  const e = ecartChange(world, col, de, vers, estime(col, 'chef'));
+  return { taux: t, ecart: e, recu: montant * t * (1 - e) };
+}
+
+/**
+ * Changer. Une des deux monnaies doit être celle du lieu (§5.1) : le bureau
+ * cote sa monnaie contre le monde, pas le monde contre lui-même. Sans cette
+ * règle, le comptoir d'un village perdu deviendrait une place de change
+ * universelle et le cours local n'aurait plus aucune importance.
+ *
+ * Une ville sans drapeau n'a pas de monnaie à elle : elle les prend toutes, et
+ * ne prend aucun écart. C'est l'avantage d'un endroit sans loi, et ça donne une
+ * raison d'y passer.
+ *
+ * **Ce que l'écart devient n'est pas écrit ici, et c'est délibéré.** §5.3 le
+ * fait encaisser par la ville pour les caravanes, et `caravanes.js` le fait
+ * déjà. Côté joueur, le porter en caisse creuserait le trou comptable déjà
+ * consigné dans CHANTIER.md : sa bourse n'est pas dans le circuit audité, donc
+ * tout ce qui passe de sa poche à une caisse fabrique de la monnaie que
+ * `masse` ne connaît pas. Une seule fuite documentée vaut mieux qu'une
+ * deuxième inventée pour faire joli.
+ */
+export function changer(state, col, de, vers, montant) {
+  const world = state.world;
+  if (!bureauDe(col)) return { ok: false, motif: 'Pas de bureau ici.' };
+  if (!de || !vers || de === vers) {
+    return { ok: false, motif: 'Changer une monnaie contre elle-même ne mène nulle part.' };
+  }
+  if (col.faction && de !== col.faction && vers !== col.faction) {
+    return {
+      ok: false,
+      motif: `Ici on ne cote que le ${drapeauDe(world, col.faction).nom} : `
+        + 'l’une des deux doit être la monnaie du lieu.',
+    };
+  }
+  if (!(montant > 0)) return { ok: false, motif: 'Rien à changer.' };
+  const a = solde(state.player, de);
+  if (a < montant) {
+    return {
+      ok: false,
+      motif: `Il manque ${Math.ceil(montant - a)} ${symboleDe(world, de)}.`,
+    };
+  }
+  const devis = devisChange(world, col, de, vers, montant);
+  const sorti = debiterBourse(state.player, de, montant);
+  const recu = crediterBourse(state.player, vers, sorti * devis.taux * (1 - devis.ecart));
+  return { ok: true, sorti, recu, taux: devis.taux, ecart: devis.ecart };
 }

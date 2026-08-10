@@ -275,14 +275,31 @@ que si le bureau de change existe pour la lever.
 
 Livrer E2 sans E3, c'est livrer un jeu où l'argent qu'on a ne sert à rien et où
 rien ne permet d'y remédier. Les trois lots n'en font qu'un.
-- [ ] **E1 bis + E2, d'un bloc.** Les quatre-vingt-six sites, la suppression de
+- [x] **E1 bis + E2, d'un bloc.** Les quatre-vingt-six sites, la suppression de
   `player.credits`, la migration dans `normaliser` (l'argent devient un solde
   dans la monnaie de là où le joueur se trouve — on ne peut pas inventer un
   passé), et l'affichage en monnaie locale seule avec son symbole. La table
   d'ECONOMIE §7.2 dit qui paie quoi dans quelle monnaie ; c'est elle le vrai
   travail, pas la substitution.
-- [ ] **E3. L'écran du change + le portefeuille** (R6 ; l'ancien crédit ne
+- [x] **E3. L'écran du change + le portefeuille** (R6 ; l'ancien crédit ne
   paraît qu'au bureau de change).
+
+  `bureauDe(col)` — toute ville debout qui n'est pas en révolte (§5.1). Pas de
+  champ `col.change` : l'information se déduit, et une clé de plus serait une
+  migration de plus pour rien. `devisChange` rend le taux, l'écart et ce qu'on
+  reçoit sans rien engager, parce qu'un bureau se lit avant qu'on y entre.
+
+  **La règle de §5.1 est tenue** : une des deux monnaies doit être celle du
+  lieu. Sans elle, le comptoir d'un village perdu coterait le monde entier et le
+  cours local n'aurait plus d'importance.
+
+  Le portefeuille est en tête de l'écran, monnaie d'ici d'abord, **sans total** —
+  il n'existe pas d'unité pour écrire la somme de six monnaies, et en afficher
+  une les rendrait interchangeables à l'œil.
+
+  Le test qui dit que le lot sert à quelque chose est le dernier de la section :
+  à l'étranger, la monnaie de chez soi n'achète rien ; on passe au bureau ; on
+  achète. La friction de §7.1 est levée, pas supprimée.
 - [ ] **E4. Les prérogatives** : taux directeur, émettre, accorder un crédit,
   racheter une créance — même mécanisme que les PNJ, coûts au trésor,
   grades d'ECONOMIE §7.3.
@@ -442,6 +459,41 @@ minutes.
 
 ## Blocages
 
+### La poche du joueur n'est dans aucun registre — trouvé en livrant le lot E
+
+`auditer` compare, pays par pays, ce qui existe (trésor + caisses + ménages +
+magots) à ce qui a été émis (`masse`). La bourse du joueur n'y est pas, et ne
+peut pas y être : `auditer(world)` ne voit pas `state.player`, et c'est la règle
+du projet — le monde est partagé, le joueur est privé.
+
+Conséquence, qui n'est pas nouvelle mais que le lot E rend enfin réparable :
+**tout ce qui passe de la poche du joueur à une caisse fabrique de la monnaie
+que `masse` ne connaît pas**, et l'inverse en détruit. `acheter` appelle
+`encaisser` sans rien émettre ; `vendre` appelle `debourser` sans rien retirer.
+Un seul site s'en préoccupe aujourd'hui — l'impôt du camp, dans `base.js`, via
+`entrerDehors` — et son commentaire dit exactement pourquoi : « tant que son
+portefeuille n'est pas libellé par monnaie (lot E) ». Il l'est désormais.
+
+Ce n'est pas mesuré à zéro : c'est **non mesuré**. Les tests d'audit font
+tourner un monde sans joueur qui commerce (`headless.js`, section 26), donc
+l'écart ne s'y voit pas. Le banc non plus : son bot joue, mais l'invariant n'y
+est relevé que sur les factions.
+
+Pourquoi ce n'est pas corrigé ici : la réparation demande de trancher, pour
+chacun des quatre-vingt-six sites, si l'argent vient du **circuit** ou du
+**dehors**. Vendre à une ville, oui : sa caisse baisse, la masse doit baisser.
+Fouiller un cadavre, non : les poches d'un individu ne sont dans aucun registre,
+et décrémenter la masse y détruirait de la monnaie qui n'y a jamais été. C'est
+une passe de classement sur tous les sites, pas un correctif — et elle changera
+les cours, donc le monde. Elle mérite son propre lot.
+
+Ce que le bureau de change en tire, en attendant : **l'écart qu'il prend ne va
+nulle part**. §5.3 le fait encaisser par la ville, et `caravanes.js` le fait
+déjà pour les convois — mais côté joueur, le porter en caisse creuserait ce
+trou-là d'un site de plus. Une fuite documentée vaut mieux qu'une deuxième
+inventée pour faire joli.
+
+
 ### ~~La colonne qui se débande ne se débande jamais~~ — tranché
 
 **Décision du propriétaire, août 2026** : « il faut que ce soit possible peu
@@ -571,6 +623,24 @@ qu'espéré :
 **Et l'instrument a cessé de résoudre en cours de route.** Les relevés du soir
 donnent des dispersions de 13, 23, 26 et même 184 % pour un `dispersionMax` de
 25 %, sur une machine passée de 145 à 220 µs de tick brut sur du code inchangé.
+
+**Le lot E n'y ajoute rien de mesurable — et l'instrument le dit encore moins
+bien qu'avant.** Six paires alternées entre le code livré et `df79cb6`, le
+commit d'avant la bascule :
+
+| | | | | | |
+|---|---|---|---|---|---|
+| 0,832 | 0,810 | 1,129 | 0,951 | 0,942 | 1,130 |
+
+Médiane 0,95, dispersion **39 %** pour un maximum de 25 %. Le seul verdict
+honnête est « on ne sait pas », et il vaut dans les deux sens : rien ne prouve
+que la bascule coûte, rien ne prouverait qu'elle ne coûte pas. Le profil, lui,
+ne montre ni `monnaieIci` ni `signeIci` — les deux fonctions ajoutées au chemin
+du joueur n'apparaissent dans aucune ligne à plus de 0,5 %.
+
+Deux passages de `--complet` sur le **même arbre** rendent ×1,348 puis ×1,237.
+Un instrument qui varie de neuf points sur du code identique ne peut pas
+arbitrer un seuil à huit points.
 Les composants mesurés séparément (×1,04 puis ×1,04) ne se recomposent pas avec
 le total mesuré (×1,10 à ×1,17). **On ne sait donc pas ce que le chantier coûte
 à mieux que « entre 5 et 17 % ».** C'est une mesure manquante, pas une mesure

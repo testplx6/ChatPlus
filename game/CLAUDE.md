@@ -68,7 +68,8 @@ quelqu'un d'autre.
 | `ECONOMIE.md` | le cahier des charges du chantier économie |
 | `MAILLE.md` | l'invariance à la maille — M0, M0 bis et M4 faits, M2/M3 en attente d'un instrument |
 | `INDIVIDUS.md` | **livré** : les individus sans payer le prix de Dwarf Fortress, six lots sur six |
-| `FACTIONS-NEUVES.md` | **le chantier en cours** : naissance et mort des factions — les cinq règles sont tranchées |
+| `FACTIONS-NEUVES.md` | **livré** : naissance et mort des factions — les cinq règles sont tranchées |
+| `CHANTIER.md` §Lot E | **le chantier en cours** : la monnaie du joueur — E1 à E3 faits, E4 à E6 restants |
 | `CARTOGRAPHIE.md` | ce que chaque constante commande — produit par la mesure, à lire avant de régler |
 | `CIBLES.json` | les gardes du monde vérifiées par `verifier --complet` |
 | `PISTES.md` | des idées consignées, pas des chantiers — rien n'y est engagé |

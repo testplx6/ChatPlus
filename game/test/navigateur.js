@@ -23,6 +23,7 @@ import { capturables, fairePrisonniers } from '../src/justice.js';
 import { loisDe } from '../src/lois.js';
 import { genererBande } from '../src/combat.js';
 import { Rng } from '../src/rng.js';
+import { monnaieIci } from '../src/monnaie.js';
 import { makeCharacter } from '../src/characters.js';
 import { ouvrirBourse, tickBourses, signerAccord } from '../src/bourse.js';
 import { DIPLO_FACTIONS, BUILDINGS, RESEARCH } from '../src/data.js';
@@ -92,7 +93,7 @@ function partieAvancee() {
     ferraille: 320, polymere: 140, composant: 45, minerai: 130,
     carburant: 90, biomasse: 160, alliage: 35, rations: 40,
   });
-  s.player.credits = 6000;
+  s.player.bourse = { [monnaieIci(s)]: 6000 };
   lancerConstruction(s, 'generateur');
   avancer(s, 40);
   lancerConstruction(s, 'hydroponie');
@@ -354,7 +355,7 @@ console.log('\n8 bis. Contenu de jeu : contrats, étal, sites');
       gens: g.membres.filter((c) => c.etat !== 'mort').length,
       armes: g.membres.filter((c) => c.etat !== 'mort' && c.equip && c.equip.arme).length,
       objets: (g.objets || []).length,
-      cr: s2.player.credits,
+      cr: Object.values((s2.player.bourse) || {}).reduce((a, b) => a + b, 0),
       rations: Math.floor(g.inventaire.rations || 0),
     };
   });
@@ -664,6 +665,39 @@ if ((await page.locator('[data-a="coffre-louer"]:not([disabled])').count()) > 0)
 await page.click('[data-a="fermer"]');
 await page.waitForTimeout(200);
 
+// Le bureau de change (ECONOMIE §5 et §10). Sans cet écran, la bascule du lot E
+// rend le jeu injouable : on arrive à l'étranger avec la monnaie de chez soi et
+// rien ne permet d'y remédier. C'est le seul endroit du jeu où deux monnaies se
+// regardent, et il ne doit jamais afficher de total.
+if ((await page.locator('[data-a="modale"][data-m="change"]').count()) > 0) {
+  await page.click('[data-a="modale"][data-m="change"]');
+  await page.waitForTimeout(400);
+  const txtCh = await page.locator('#modale').innerText();
+  ok(/vaut/.test(txtCh) && /écart/.test(txtCh),
+    'le bureau annonce le taux et son écart',
+    txtCh.split('\n').find((l) => /vaut/.test(l)) || txtCh.slice(0, 120));
+  ok(!/\bcr\b/.test(txtCh), 'et plus un seul « cr » nulle part');
+  ok((await page.locator('[data-a="change-paire"]').count()) > 0,
+    'on choisit la paire à coter');
+  await page.screenshot({ path: join(CAPTURES, '09f-change.png') });
+
+  const bouton = page.locator('[data-a="change-faire"]:not([disabled])');
+  if (await bouton.count()) {
+    const avant = await page.evaluate(
+      () => JSON.parse(localStorage.getItem('cendres.save.v1')).player.bourse);
+    await bouton.click();
+    await page.waitForTimeout(450);
+    const apres = await page.evaluate(
+      () => JSON.parse(localStorage.getItem('cendres.save.v1')).player.bourse);
+    const bougé = Object.keys({ ...avant, ...apres })
+      .filter((k) => Math.abs((apres[k] || 0) - (avant[k] || 0)) > 0.001);
+    ok(bougé.length === 2, 'un change fait bouger deux monnaies, et deux seulement',
+      bougé.join(' / ') || 'aucune');
+  }
+  await page.click('[data-a="fermer"]');
+  await page.waitForTimeout(200);
+}
+
 // Étal d'équipement : le catalogue existait, rien n'était achetable.
 await page.click('[data-a="modale"][data-m="etal"]');
 await page.waitForTimeout(400);
@@ -739,7 +773,7 @@ await page.waitForTimeout(300);
     vuD.slice(0, 200).replace(/\n+/g, ' | '));
   ok(/honoré/i.test(vuD) && /échu/i.test(vuD),
     'avec l’issue de chacun');
-  ok(/640 cr/.test(vuD), 'et ce que chacun a rapporté');
+  ok(/640 \S/.test(vuD), 'et ce que chacun a rapporté');
   await page.screenshot({ path: join(CAPTURES, '11b-dossier.png'), fullPage: true });
 }
 
@@ -889,11 +923,11 @@ await page.screenshot({ path: join(CAPTURES, '09b-marche.png') });
   ok(avant !== apres, 'changer la quantité change ce qui est annoncé',
     `${avant.replace(/\n/g, ' ')} → ${apres.replace(/\n/g, ' ')}`);
   // Le montant affiché doit être celui qu'on paie réellement.
-  const promis = Number((apres.match(/([0-9]+)\s*cr/) || [])[1] || 0);
-  const crAvant = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).player.credits);
+  const promis = Number((apres.match(/([0-9]+)\s+\S+\s*$/) || [])[1] || 0);
+  const crAvant = await page.evaluate(() => { const s2 = JSON.parse(localStorage.getItem('cendres.save.v1')); return Object.values((s2.player.bourse) || {}).reduce((a, b) => a + b, 0); });
   await page.click('[data-a="acheter"]:not([disabled])');
   await page.waitForTimeout(500);
-  const crApres = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).player.credits);
+  const crApres = await page.evaluate(() => { const s2 = JSON.parse(localStorage.getItem('cendres.save.v1')); return Object.values((s2.player.bourse) || {}).reduce((a, b) => a + b, 0); });
   ok(promis > 0 && Math.abs((crAvant - crApres) - promis) <= 1,
     'et le prix annoncé est exactement le prix payé',
     `annoncé ${promis}, payé ${crAvant - crApres}`);
@@ -1335,7 +1369,7 @@ ok(await page.locator('[data-a="captif"]').count() >= 2,
 await page.screenshot({ path: join(CAPTURES, '26-prisonniers.png'), fullPage: true });
 
 const crAvantCap = await page.evaluate(
-  () => JSON.parse(localStorage.getItem('cendres.save.v1')).player.credits
+  () => { const s2 = JSON.parse(localStorage.getItem('cendres.save.v1')); return Object.values((s2.player.bourse) || {}).reduce((a, b) => a + b, 0); }
 );
 // On ouvre TOUS les panneaux, pas seulement le premier : le bouton « livrer »
 // n'appartient pas forcément au premier captif, et replié il existe dans le
@@ -1351,7 +1385,7 @@ if (await livrable.count()) {
   const apresCap = await page.evaluate(() => {
     const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
     const col = s2.world.colonies.find((c) => c.geole && c.geole.detenus.length);
-    return { cr: s2.player.credits, geole: col ? col.geole.detenus.length : 0 };
+    return { cr: Object.values((s2.player.bourse) || {}).reduce((a, b) => a + b, 0), geole: col ? col.geole.detenus.length : 0 };
   });
   ok(apresCap.cr > crAvantCap, 'livrer un brigand paie', `${crAvantCap} → ${apresCap.cr}`);
   ok(apresCap.geole > 0, 'et la geôle de la ville se remplit');
@@ -1549,14 +1583,15 @@ await page.waitForTimeout(200);
 await page.screenshot({ path: join(CAPTURES, '23-service.png'), fullPage: true });
 ok(await page.locator('[data-a="honorer"]:not([disabled])').count() > 0,
   'on peut lui remettre la marchandise puisqu’on l’a');
-const creditsAv = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).player.credits);
+const creditsAv = await page.evaluate(() => { const s2 = JSON.parse(localStorage.getItem('cendres.save.v1')); return Object.values((s2.player.bourse) || {}).reduce((a, b) => a + b, 0); });
 await page.click('[data-a="honorer"]');
 await page.waitForTimeout(500);
 const apresServ = await page.evaluate(() => {
   const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
   const c = s.world.colonies.find((x) => x.notables && x.notables.some((p) => p.memoire && p.memoire.length));
   const p = c.notables.find((x) => x.memoire && x.memoire.length);
-  return { credits: s.player.credits, opinion: p.opinion, demande: !!p.demande, memoire: p.memoire.length };
+  return { credits: Object.values(s.player.bourse || {}).reduce((a, b) => a + b, 0),
+    opinion: p.opinion, demande: !!p.demande, memoire: p.memoire.length };
 });
 ok(apresServ.credits > creditsAv && !apresServ.demande && apresServ.opinion > 0,
   'le service rendu paie, close la demande et change ce qu’il pense de vous',
@@ -1582,7 +1617,7 @@ console.log('\n8 vicies quater. Tout bâtiment se voit et se bâtit');
     ferraille: 9000, polymere: 9000, composant: 9000, alliage: 9000,
     isotope: 9000, minerai: 9000, carburant: 9000, biomasse: 9000,
   });
-  bat.player.credits = 999999;
+  bat.player.bourse = { [monnaieIci(bat)]: 999999 };
   bat.dernierReel = Date.now();
   await page.reload({ waitUntil: 'networkidle' });
   await page.evaluate((t) => localStorage.setItem('cendres.save.v1', t), serialiser(bat));
@@ -1614,7 +1649,7 @@ console.log('\n8 vicies quater. Tout bâtiment se voit et se bâtit');
   fonderBase(neuf, () => {});
   neuf.base.batiments.antenne = 1;
   Object.assign(neuf.base.stock, { composant: 9000, isotope: 9000, ferraille: 9000 });
-  neuf.player.credits = 999999;
+  neuf.player.bourse = { [monnaieIci(neuf)]: 999999 };
   neuf.dernierReel = Date.now();
   await page.reload({ waitUntil: 'networkidle' });
   await page.evaluate((t) => localStorage.setItem('cendres.save.v1', t), serialiser(neuf));
@@ -1705,7 +1740,7 @@ console.log('\n8 vicies bis. Toutes les fiches, pas seulement celle qu’on a si
   const gv = groupeActif(ville);
   const rngv = new Rng(9);
   for (let i = 0; i < 14; i++) gv.membres.push(makeCharacter(rngv, {}));
-  ville.player.credits = 90000;
+  ville.player.bourse = { [monnaieIci(ville)]: 90000 };
   Object.assign(gv.inventaire, { ferraille: 300, rations: 300, polymere: 100, minerai: 100, medkit: 20 });
   avancer(ville, 30);
   ville.dernierReel = Date.now();
@@ -1945,7 +1980,7 @@ console.log('\n8 nonies quater. Le comptoir, à l’écran');
   ouvrirBourse(cp.world, riche, 0);
   tickBourses(cp.world, 0);
   cp.player.reputation[riche] = 80;
-  cp.player.credits = 30000;
+  cp.player.bourse = { [monnaieIci(cp)]: 30000 };
   cp.base.batiments.comptoir = 1;
   cp.base.colonieId = 'poste-joueur';
   cp.world.colonies.push({
@@ -2001,13 +2036,13 @@ console.log('\n8 nonies quater. Le comptoir, à l’écran');
   ok(/Escorte/.test(devis), 'et ce que la garde coûte aussi');
 
   const crAvant = await page.evaluate(
-    () => JSON.parse(localStorage.getItem('cendres.save.v1')).player.credits);
+    () => { const s2 = JSON.parse(localStorage.getItem('cendres.save.v1')); return Object.values((s2.player.bourse) || {}).reduce((a, b) => a + b, 0); });
   await page.click('[data-a="passer-ordre"]');
   await page.waitForTimeout(600);
   const apresOrdre = await page.evaluate(() => {
     const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
     return {
-      credits: s.player.credits,
+      credits: Object.values(s.player.bourse || {}).reduce((a, b) => a + b, 0),
       ferraille: Math.round(s.base.stock.ferraille || 0),
       convois: (s.world.caravanes || []).filter((c) => c.pour === 'joueur').length,
       texte: document.querySelector('#ecran').textContent,
@@ -2179,7 +2214,7 @@ gEc.regionId = villeEcole.regionId;
 // Un Domaine réserve son école à ceux qui servent la maison : on veut ici une
 // ville qui l'ouvre à tout le monde, sinon on teste le refus, pas l'écran.
 loisDe(ecolier.world, villeEcole.faction).regime = 'charte';
-ecolier.player.credits = 9000;
+ecolier.player.bourse = { [monnaieIci(ecolier)]: 9000 };
 avancer(ecolier, 3);
 ecolier.dernierReel = Date.now();
 await page.reload({ waitUntil: 'networkidle' });
@@ -2206,7 +2241,7 @@ const apresInscription = await page.evaluate(() => {
   const gens = s.player.groupes.flatMap((g) => g.membres);
   return {
     enFormation: gens.filter((c) => c.formation).length,
-    credits: s.player.credits,
+    credits: Object.values(s.player.bourse || {}).reduce((a, b) => a + b, 0),
   };
 });
 ok(apresInscription.enFormation === 1, 'l’élève est inscrit', `${apresInscription.enFormation}`);

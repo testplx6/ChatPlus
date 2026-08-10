@@ -122,6 +122,7 @@ import {
 } from '../src/characters.js';
 import { DIPLOMES, DIPLOME_KEYS } from '../src/data.js';
 import { FACTION_KEYS, symboleDe, symboleNeuf } from '../src/data.js';
+import { bureauDe, devisChange, changer } from '../src/economy.js';
 import {
   ecolesDe, inscrire, enFormation, ecolesAvantPoste, enseignerChezSoi,
   occupeParEcole, MARGE_INSTRUCTEUR, prixFormation, peutSInscrire,
@@ -8562,6 +8563,92 @@ section('E2 bis. Chaque monnaie a son signe');
   ok(typeof symboleDe(sSym.world, 'inconnue') === 'string',
     'un drapeau inconnu rend un signe, pas « undefined »',
     symboleDe(sSym.world, 'inconnue'));
+}
+
+// ---------------------------------------------------------------------------
+section('E3. Le bureau de change');
+// ---------------------------------------------------------------------------
+//
+// Sans lui, la bascule du lot E rend le jeu injouable : on arrive à l'étranger
+// avec la monnaie de chez soi, tout est trop cher, et rien ne permet d'y
+// remédier. C'est la contrainte de séquence inscrite dans CHANTIER.md — E1 bis,
+// E2 et E3 n'en font qu'un.
+//
+// ECONOMIE §5.1 : « Dans toute ville dont le marché existe et qui n'est pas en
+// révolte. Le bureau change la monnaie locale contre n'importe quelle autre,
+// pas n'importe quelle paire contre n'importe quelle autre. »
+{
+  const sCh = nouvellePartie(777001);
+  const villes = sCh.world.colonies.filter((c) => !c.ruine && !c.avantPoste && c.faction);
+  const ville = villes[0];
+  const etrangere = villes.find((c) => c.faction !== ville.faction);
+  const locale = ville.faction;
+  const autre = etrangere.faction;
+
+  ok(bureauDe(ville), 'une ville debout tient un bureau');
+  const enFeu = { ...ville, unrest: 0.99 };
+  ok(!bureauDe(enFeu), 'une ville en révolte, non', `grogne ${enFeu.unrest}`);
+  ok(!bureauDe({ ...ville, ruine: true }), 'une ruine non plus');
+
+  // Le devis avant l'opération : on doit pouvoir lire ce qu'on va recevoir.
+  const d = devisChange(sCh.world, ville, locale, autre, 100);
+  ok(d.taux > 0, 'le devis donne un taux', `1 pour ${d.taux.toFixed(3)}`);
+  ok(d.ecart > 0 && d.ecart < 1, 'et l’écart que prend le bureau',
+    `${(d.ecart * 100).toFixed(1)} %`);
+  ok(Math.abs(d.recu - 100 * d.taux * (1 - d.ecart)) < 1e-9,
+    'ce qu’on reçoit, c’est montant × taux × (1 − écart)', `${d.recu.toFixed(2)}`);
+  ok(d.recu < 100 * d.taux, 'donc strictement moins que le taux pur');
+
+  // On ne change que ce qu'on a.
+  sCh.player.bourse = {};
+  const vide = changer(sCh, ville, locale, autre, 100);
+  ok(!vide.ok, 'on ne change pas une monnaie qu’on n’a pas', vide.motif);
+
+  sCh.player.bourse = { [locale]: 250 };
+  const trop = changer(sCh, ville, locale, autre, 400);
+  ok(!trop.ok, 'ni plus qu’on n’en a', trop.motif);
+
+  const r = changer(sCh, ville, locale, autre, 100);
+  ok(r.ok, 'un change qui passe', `${r.sorti} → ${r.recu.toFixed(2)}`);
+  ok(solde(sCh.player, locale) === 150, 'la somme quitte la bourse de départ',
+    `${solde(sCh.player, locale)}`);
+  ok(Math.abs(solde(sCh.player, autre) - r.recu) < 1e-9,
+    'et arrive dans celle d’arrivée', `${solde(sCh.player, autre).toFixed(2)}`);
+
+  // §5.1 : on passe par la monnaie du lieu. Une paire qui ne la touche pas est
+  // refusée — sinon le bureau d'un village perdu coterait le monde entier.
+  const tierce = villes.find((c) => c.faction !== locale && c.faction !== autre);
+  const croisee = changer(sCh, ville, autre, tierce.faction, 10);
+  ok(!croisee.ok, 'une paire qui ne passe pas par la monnaie du lieu est refusée',
+    croisee.motif);
+
+  // Et le sens inverse — rentrer chez soi avec de la monnaie étrangère.
+  const retour = changer(sCh, ville, autre, locale, 5);
+  ok(retour.ok, 'l’étranger vers le local passe aussi', `${retour.recu.toFixed(2)}`);
+
+  // Changer une monnaie contre elle-même ne veut rien dire.
+  ok(!changer(sCh, ville, locale, locale, 10).ok, 'et une monnaie contre elle-même, non');
+
+  // Un bourg sans drapeau ne prend rien : c'est l'avantage d'un endroit sans loi
+  // (ECONOMIE §5.2, `ecartChange` le fait déjà pour les caravanes).
+  const libre = sCh.world.colonies.find((c) => !c.ruine && !c.faction && !c.avantPoste);
+  if (libre) {
+    const dl = devisChange(sCh.world, libre, locale, autre, 100);
+    ok(dl.ecart === 0, 'un bourg sans drapeau ne prend aucun écart');
+    ok(Math.abs(dl.recu - 100 * dl.taux) < 1e-9, 'on y change au taux pur');
+  }
+
+  // Ce que tout le lot sert à faire : arriver à l'étranger et pouvoir acheter.
+  const gCh = sCh.player.groupes[0];
+  gCh.regionId = etrangere.regionId;
+  sCh.player.bourse = { [locale]: 3000 };
+  const avant = acheter(sCh, etrangere, 'rations', 1, gCh);
+  ok(!avant.ok, 'à l’étranger, la monnaie de chez soi n’achète rien', avant.motif);
+  const change = changer(sCh, etrangere, locale, autre, 2000);
+  ok(change.ok, 'on passe au bureau');
+  const apres = acheter(sCh, etrangere, 'rations', 1, gCh);
+  ok(apres.ok, 'et on achète — la friction de §7.1 est levée, pas supprimée',
+    `${apres.qte} pour ${apres.cout}`);
 }
 
 // ===========================================================================
