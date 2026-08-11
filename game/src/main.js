@@ -37,6 +37,7 @@ import {
   envoyerColonne as envoyerColonneA, leverColonne as leverColonneA,
   fonderPoste as fonderPosteA, declarerGuerreA, signerPaixAvec,
   renforcerGarnison, ouvrirGreniers, fixerLoi as fixerLoiA,
+  accorderCredit as accorderCreditA, battreMonnaie as battreMonnaieA,
   ouvrirBourseA, signerAccordAvec, rompreAccordAvec,
 } from './influence.js';
 import { disposer } from './justice.js';
@@ -460,6 +461,19 @@ const API = {
   },
 
   /** Promulguer. Le paramètre porte « quoi:valeur » : peine:ferme, impot:lourd… */
+  /** Les prérogatives monétaires : ECONOMIE §6.5, §7.3. */
+  accorderCredit(faction, colId, montant) {
+    const r = accorderCreditA(state, faction, colId, montant, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  battreMonnaie(faction, montant) {
+    const r = battreMonnaieA(state, faction, montant, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
   fixerLoi(faction, spec) {
     const [quoi, brut] = String(spec).split(':');
     const valeur = quoi === 'esclavage' ? brut === 'oui' : brut;

@@ -872,6 +872,8 @@ const envoyerColonneA = envoyerColonne;
 const leverColonneA = leverColonne;
 const fonderPosteA = fonderPoste;
 const fixerLoiA = fixerLoi;
+const accorderCreditA = accorderCredit;
+const battreMonnaieA = battreMonnaie;
 
 // ===== src/data.js ===================================================
 // Données statiques du monde : marchandises, biomes, factions, bâtiments,
@@ -13575,6 +13577,18 @@ const PREROGATIVES = {
     rang: 4,
     charge: 'Une paix qui rend une ville se retient longtemps.',
   },
+  crediter: {
+    nom: 'Accorder un crédit',
+    desc: 'Prêter le trésor à une de vos villes, au-delà de ce que le conseil ose.',
+    rang: 4, // Commandeur
+    charge: 'Une ville qu’on a nourrie à crédit fait défaut sur votre nom.',
+  },
+  emettre: {
+    nom: 'Battre monnaie',
+    desc: 'Créer des unités et les verser au trésor. Rien à payer — c’est le problème.',
+    rang: 4, // Commandeur
+    charge: 'Chacun de ceux qui en détiennent perdra ce que vous aurez imprimé.',
+  },
   loi: {
     nom: 'Fixer la loi',
     desc: 'La sévérité des peines, l’esclavage, l’impôt. Pour toute la faction.',
@@ -14157,6 +14171,89 @@ function ouvrirGreniers(state, faction, log) {
  * remplit le trésor et fait gronder les villes, la peine expéditive tient les
  * routes et fait peur, l'esclavage enrichit et fait de vous ce qu'on dit.
  */
+/**
+ * Accorder un crédit à une de ses villes (ECONOMIE §6.5, §7.3).
+ *
+ * Le conseil prête déjà tout seul — `tickCredit` étape 3 — mais avec prudence :
+ * jamais plus de `CREDIT.partDuTresor` du trésor par ville, et seulement à qui
+ * est en détresse. L'officier passe outre les deux, et c'est exactement ce que
+ * veut dire décider : nourrir une ville que le conseil laisserait tomber, ou la
+ * gaver de dette pour la tenir.
+ *
+ * L'argent va **chez les gens**, pas dans la caisse. C'est la nuance qui décide
+ * de tout, et elle est déjà écrite dans `tickCredit` : une ville affamée a de la
+ * marchandise, ce sont ses habitants qui n'ont pas de quoi l'acheter. Prêter à
+ * la caisse permettait d'importer du grain qui restait sur l'étal.
+ *
+ * Rien ne se crée : le trésor sort ce que les ménages reçoivent, dans la même
+ * monnaie et pour le même montant. L'invariant ne bouge pas d'un centième.
+ */
+function accorderCredit(state, faction, colId, montant, log) {
+  const v = peutExercer(state, faction, 'crediter');
+  if (!v.ok) return v;
+  const f = state.world.factions[faction];
+  const col = colonieParId(state.world, colId);
+  if (!col || col.ruine) return { ok: false, motif: 'Cette ville n’existe plus.' };
+  if (col.faction !== faction) return { ok: false, motif: 'On ne prête qu’aux siens.' };
+  if (col.avantPoste) return { ok: false, motif: 'Un poste n’emprunte pas.' };
+  const pret = Math.round(montant);
+  if (!(pret > 0)) return { ok: false, motif: 'Rien à prêter.' };
+  if (f.tresor < pret) {
+    return {
+      ok: false,
+      motif: `Le trésor ne suit pas : ${Math.round(f.tresor)} / ${pret} ${symboleDe(state.world, faction)}.`,
+    };
+  }
+  f.tresor -= pret;
+  col.menages = (col.menages || 0) + pret;
+  col.dette = (col.dette || 0) + pret;
+  if (!col.creancier) col.creancier = faction;
+  inscrireActe(state, faction, { type: 'credit', ville: colId, montant: pret, t: state.temps });
+  if (log) {
+    log({
+      type: 'influence',
+      texte: `Sur votre ordre, ${drapeauDe(state.world, faction).nom} prête ${pret} `
+        + `${symboleDe(state.world, faction)} à ${col.nom}. Elle le doit.`,
+      important: true,
+      regionId: col.regionId,
+      factions: [faction],
+    });
+  }
+  return { ok: true, montant: pret };
+}
+
+/**
+ * Battre monnaie (ECONOMIE §7.3 : « rien, et c'est le problème »).
+ *
+ * Rien à payer, en effet : c'est la seule prérogative du jeu qui remplit le
+ * trésor au lieu de le vider. Le coût est ailleurs, et il est réel — la masse
+ * monte, donc le gage par unité baisse, donc le cours tombe au conseil suivant,
+ * donc tout ce qui est libellé dans cette monnaie perd, le portefeuille du
+ * joueur compris. Un officier peut financer une guerre en une décision et
+ * ruiner ses propres soldes en trois conseils.
+ *
+ * `emettre` tient déjà les trois écritures. La prérogative n'ajoute que la
+ * charge : on répond de ce qu'on a imprimé.
+ */
+function battreMonnaie(state, faction, montant, log) {
+  const v = peutExercer(state, faction, 'emettre');
+  if (!v.ok) return v;
+  const m = Math.round(montant);
+  if (!(m > 0)) return { ok: false, motif: 'Rien à battre.' };
+  emettre(state.world, faction, m);
+  inscrireActe(state, faction, { type: 'emission', montant: m, t: state.temps });
+  if (log) {
+    log({
+      type: 'influence',
+      texte: `Sur votre ordre, ${drapeauDe(state.world, faction).nom} bat ${m} `
+        + `${symboleDe(state.world, faction)}. Le cours s’en souviendra au prochain conseil.`,
+      important: true,
+      factions: [faction],
+    });
+  }
+  return { ok: true, montant: m };
+}
+
 function fixerLoi(state, faction, quoi, valeur, log) {
   const v = peutExercer(state, faction, 'loi');
   if (!v.ok) return v;
@@ -14196,6 +14293,16 @@ function fixerLoi(state, faction, quoi, valeur, log) {
     for (const col of coloniesDe(state.world, faction)) {
       col.unrest = Math.max(0, Math.min(1, (col.unrest || 0) + ecart));
     }
+  } else if (quoi === 'directeur') {
+    // §7.3 le range comme une prérogative à part ; il vit ici, avec l'impôt,
+    // parce que c'est le même geste au même grade sur le même objet — la loi
+    // d'un pays. La table du cahier des charges liste des pouvoirs, pas des
+    // fonctions.
+    const palier = DIRECTEURS.find((x) => x.key === valeur);
+    if (!palier) return { ok: false, motif: 'Ce palier n’existe pas.' };
+    if (lois.directeur === palier.taux) return { ok: false, motif: 'C’est déjà la loi.' };
+    lois.directeur = palier.taux;
+    texte = `Taux directeur ${palier.nom.toLowerCase()} : ${palier.desc}`;
   } else {
     return { ok: false, motif: 'On ne légifère pas là-dessus.' };
   }
@@ -24752,6 +24859,8 @@ function cibleVide(k) {
     garnison: 'Aucune ville ne vous est confiée — il faut un secteur.',
     grenier: 'Aucune ville ne vous est confiée — il faut un secteur.',
     loi: 'La loi est déjà celle que vous vouliez.',
+    crediter: 'Ce pays ne tient plus une ville à qui prêter.',
+    emettre: 'Il n’y a plus de pays pour battre monnaie.',
     guerre: 'Vous êtes déjà en guerre avec tout le monde qui compte.',
     paix: 'Vous n’êtes en guerre avec personne.',
   }[k] || '—';
@@ -24837,6 +24946,16 @@ function ciblesCharge(faction, k) {
       if (lois.impot === imp.taux) continue;
       out.push({ val: `impot:${imp.key}`, texte: `Impôt ${imp.nom.toLowerCase()} (${Math.round(imp.taux * 100)} %) — ${imp.desc}` });
     }
+    // Le taux directeur : le prix auquel le pays prête à ses villes. Monter,
+    // c'est défendre la caisse et étrangler le pays ; baisser, c'est nourrir
+    // les villes et vider le trésor.
+    for (const d of DIRECTEURS) {
+      if (lois.directeur === d.taux) continue;
+      out.push({
+        val: `directeur:${d.key}`,
+        texte: `Taux directeur ${d.nom.toLowerCase()} (${(d.taux * 100).toFixed(0)} %) — ${d.desc}`,
+      });
+    }
     // Le régime : la seule loi qui vous concerne, vous, et pas seulement leurs
     // sujets. On dit donc ce qu'elle changerait pour vous, en clair.
     for (const key of REGIME_KEYS) {
@@ -24863,6 +24982,39 @@ function ciblesCharge(faction, k) {
           + ' chez elles, et vous le feront payer',
       });
     return out;
+  }
+  if (k === 'crediter') {
+    // Les villes qui en ont besoin d'abord, et on dit de combien : une ville en
+    // détresse est une ville dont les habitants n'ont pas de quoi manger ce
+    // qu'elle a sur l'étal. Les autres suivent, parce que gaver de dette une
+    // ville qui va bien est aussi une décision — c'est comme ça qu'on la tient.
+    const f = w.factions[faction];
+    return w.colonies
+      .filter((c) => !c.ruine && !c.avantPoste && c.faction === faction)
+      .map((c) => ({ c, besoin: Math.round(detresse(w, c)) }))
+      .sort((x, y) => y.besoin - x.besoin)
+      .slice(0, 8)
+      .map(({ c, besoin }) => {
+        const montant = Math.min(Math.round(f.tresor), besoin > 0 ? besoin : 500);
+        return {
+          val: c.id,
+          val2: String(montant),
+          texte: `${c.nom} — ${n(montant)} ${sym(faction)}${besoin > 0
+            ? ` (il lui en manque ${n(besoin)})` : ' (elle n’en a pas besoin)'}${
+  c.dette > 0 ? ` · doit déjà ${n(Math.round(c.dette))}` : ''}`,
+        };
+      });
+  }
+  if (k === 'emettre') {
+    // Des montants tirés de la masse du pays, pas d'une table : ce qui compte
+    // n'est pas le chiffre mais la part qu'il ajoute à ce qui circule, puisque
+    // c'est elle qui décide de la chute du cours.
+    const m = Math.max(1000, Math.round(masse(w, faction)));
+    return [0.05, 0.15, 0.4].map((part) => ({
+      val: String(Math.round(m * part)),
+      texte: `${n(Math.round(m * part))} ${sym(faction)} — ${Math.round(part * 100)} % `
+        + `de ce qui circule ; le cours perdra à peu près autant`,
+    }));
   }
   if (k === 'guerre') {
     return cibleGuerre(S, faction).map((f) => ({
@@ -27098,6 +27250,8 @@ function surClic(ev) {
         case 'garnison': r = ACTIONS.garnison(f); break;
         case 'grenier': r = ACTIONS.grenier(f); break;
         case 'loi': r = ACTIONS.fixerLoi(f, cible); break;
+        case 'crediter': r = ACTIONS.accorderCredit(f, cible, Number(el.dataset.b)); break;
+        case 'emettre': r = ACTIONS.battreMonnaie(f, Number(cible)); break;
         case 'lever': r = ACTIONS.leverColonne(f, null, cible); break;
         case 'fonder': r = ACTIONS.fonderPoste(f, cible); break;
         case 'guerre': r = ACTIONS.declarerGuerre(f, cible); break;
@@ -27813,6 +27967,19 @@ const API = {
   },
 
   /** Promulguer. Le paramètre porte « quoi:valeur » : peine:ferme, impot:lourd… */
+  /** Les prérogatives monétaires : ECONOMIE §6.5, §7.3. */
+  accorderCredit(faction, colId, montant) {
+    const r = accorderCreditA(state, faction, colId, montant, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  battreMonnaie(faction, montant) {
+    const r = battreMonnaieA(state, faction, montant, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
   fixerLoi(faction, spec) {
     const [quoi, brut] = String(spec).split(':');
     const valeur = quoi === 'esclavage' ? brut === 'oui' : brut;

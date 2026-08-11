@@ -1,4 +1,4 @@
-import { soldeIci, monnaieIci, monnaieSolde, valeurBourse } from './monnaie.js';
+import { soldeIci, monnaieIci, monnaieSolde, valeurBourse, masse } from './monnaie.js';
 // Interface : rendu HTML + carte pixel sur canvas. C'est le SEUL module qui
 // touche au DOM — tout le reste du dossier src/ tourne aussi bien sous Node.
 
@@ -81,9 +81,10 @@ import {
   LOYER, PRIX_COFFRE, CAPACITE_LOUEE, CAPACITE_ACHETEE, ESTIME_PROPRIETE,
 } from './coffres.js';
 import {
-  PEINES, PEINE_KEYS, IMPOTS, REGIMES, REGIME_KEYS, loisDe, loiIci,
+  PEINES, PEINE_KEYS, IMPOTS, REGIMES, REGIME_KEYS, DIRECTEURS, loisDe, loiIci,
 } from './lois.js';
 import { distanceMorale } from './factions.js';
+import { detresse } from './credit.js';
 import {
   resumeSecteur, casesDe, dansSonSecteur, motEtat, NIVEAU_ORDINAIRE,
   SEUIL_FAUTE, SEUIL_MERITE, RANG_SECTEUR,
@@ -3241,6 +3242,8 @@ function cibleVide(k) {
     garnison: 'Aucune ville ne vous est confiée — il faut un secteur.',
     grenier: 'Aucune ville ne vous est confiée — il faut un secteur.',
     loi: 'La loi est déjà celle que vous vouliez.',
+    crediter: 'Ce pays ne tient plus une ville à qui prêter.',
+    emettre: 'Il n’y a plus de pays pour battre monnaie.',
     guerre: 'Vous êtes déjà en guerre avec tout le monde qui compte.',
     paix: 'Vous n’êtes en guerre avec personne.',
   }[k] || '—';
@@ -3326,6 +3329,16 @@ function ciblesCharge(faction, k) {
       if (lois.impot === imp.taux) continue;
       out.push({ val: `impot:${imp.key}`, texte: `Impôt ${imp.nom.toLowerCase()} (${Math.round(imp.taux * 100)} %) — ${imp.desc}` });
     }
+    // Le taux directeur : le prix auquel le pays prête à ses villes. Monter,
+    // c'est défendre la caisse et étrangler le pays ; baisser, c'est nourrir
+    // les villes et vider le trésor.
+    for (const d of DIRECTEURS) {
+      if (lois.directeur === d.taux) continue;
+      out.push({
+        val: `directeur:${d.key}`,
+        texte: `Taux directeur ${d.nom.toLowerCase()} (${(d.taux * 100).toFixed(0)} %) — ${d.desc}`,
+      });
+    }
     // Le régime : la seule loi qui vous concerne, vous, et pas seulement leurs
     // sujets. On dit donc ce qu'elle changerait pour vous, en clair.
     for (const key of REGIME_KEYS) {
@@ -3352,6 +3365,39 @@ function ciblesCharge(faction, k) {
           + ' chez elles, et vous le feront payer',
       });
     return out;
+  }
+  if (k === 'crediter') {
+    // Les villes qui en ont besoin d'abord, et on dit de combien : une ville en
+    // détresse est une ville dont les habitants n'ont pas de quoi manger ce
+    // qu'elle a sur l'étal. Les autres suivent, parce que gaver de dette une
+    // ville qui va bien est aussi une décision — c'est comme ça qu'on la tient.
+    const f = w.factions[faction];
+    return w.colonies
+      .filter((c) => !c.ruine && !c.avantPoste && c.faction === faction)
+      .map((c) => ({ c, besoin: Math.round(detresse(w, c)) }))
+      .sort((x, y) => y.besoin - x.besoin)
+      .slice(0, 8)
+      .map(({ c, besoin }) => {
+        const montant = Math.min(Math.round(f.tresor), besoin > 0 ? besoin : 500);
+        return {
+          val: c.id,
+          val2: String(montant),
+          texte: `${c.nom} — ${n(montant)} ${sym(faction)}${besoin > 0
+            ? ` (il lui en manque ${n(besoin)})` : ' (elle n’en a pas besoin)'}${
+  c.dette > 0 ? ` · doit déjà ${n(Math.round(c.dette))}` : ''}`,
+        };
+      });
+  }
+  if (k === 'emettre') {
+    // Des montants tirés de la masse du pays, pas d'une table : ce qui compte
+    // n'est pas le chiffre mais la part qu'il ajoute à ce qui circule, puisque
+    // c'est elle qui décide de la chute du cours.
+    const m = Math.max(1000, Math.round(masse(w, faction)));
+    return [0.05, 0.15, 0.4].map((part) => ({
+      val: String(Math.round(m * part)),
+      texte: `${n(Math.round(m * part))} ${sym(faction)} — ${Math.round(part * 100)} % `
+        + `de ce qui circule ; le cours perdra à peu près autant`,
+    }));
   }
   if (k === 'guerre') {
     return cibleGuerre(S, faction).map((f) => ({
@@ -5587,6 +5633,8 @@ function surClic(ev) {
         case 'garnison': r = ACTIONS.garnison(f); break;
         case 'grenier': r = ACTIONS.grenier(f); break;
         case 'loi': r = ACTIONS.fixerLoi(f, cible); break;
+        case 'crediter': r = ACTIONS.accorderCredit(f, cible, Number(el.dataset.b)); break;
+        case 'emettre': r = ACTIONS.battreMonnaie(f, Number(cible)); break;
         case 'lever': r = ACTIONS.leverColonne(f, null, cible); break;
         case 'fonder': r = ACTIONS.fonderPoste(f, cible); break;
         case 'guerre': r = ACTIONS.declarerGuerre(f, cible); break;

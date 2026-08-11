@@ -123,6 +123,10 @@ import {
 import { DIPLOMES, DIPLOME_KEYS } from '../src/data.js';
 import { FACTION_KEYS, symboleDe, symboleNeuf } from '../src/data.js';
 import { bureauDe, devisChange, changer } from '../src/economy.js';
+import { battreMonnaie, accorderCredit } from '../src/influence.js';
+import { CREDIT } from '../src/credit.js';
+import { majCours, MONNAIE, coursMonnaie } from '../src/monnaie.js';
+import { coloniesDe } from '../src/factions.js';
 import {
   ecolesDe, inscrire, enFormation, ecolesAvantPoste, enseignerChezSoi,
   occupeParEcole, MARGE_INSTRUCTEUR, prixFormation, peutSInscrire,
@@ -8649,6 +8653,116 @@ section('E3. Le bureau de change');
   const apres = acheter(sCh, etrangere, 'rations', 1, gCh);
   ok(apres.ok, 'et on achète — la friction de §7.1 est levée, pas supprimée',
     `${apres.qte} pour ${apres.cout}`);
+}
+
+// ---------------------------------------------------------------------------
+section('E4. Les prérogatives monétaires');
+// ---------------------------------------------------------------------------
+//
+// ECONOMIE §6.5 : « Nourrir une ville en faisant tomber la monnaie du pays, ou
+// étrangler le pays pour tenir sa monnaie, est exactement le genre de décision
+// que ce jeu doit poser. » §7.3 les range par grade.
+//
+// Le principe d'`influence.js` tient tel quel : le décideur ordonne, c'est
+// exécuté. Aucune condition de monde, aucun dé — seul le coût peut manquer.
+{
+  const sP = nouvellePartie(515151, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const gP = groupeActif(sP);
+  const vP = sP.world.colonies.find((c) => !c.ruine && c.faction && c.faction !== 'essaim');
+  gP.regionId = vP.regionId;
+  sP.player.reputation[vP.faction] = 60;
+  sEngager(sP, vP.faction, () => {}, gP);
+  const fP = vP.faction;
+
+  gP.allegeance.points = RANGS[3].points; // Capitaine
+  ok(!peutExercer(sP, fP, 'emettre').ok, 'un capitaine ne bat pas monnaie',
+    peutExercer(sP, fP, 'emettre').motif);
+  ok(!peutExercer(sP, fP, 'crediter').ok, 'ni n’accorde de crédit');
+
+  gP.allegeance.points = RANGS[4].points; // Commandeur
+  ok(peutExercer(sP, fP, 'emettre').ok, 'un commandeur, si');
+
+  // Battre monnaie : le trésor monte, et la masse aussi. C'est tout le
+  // problème — le pays s'enrichit d'un chiffre, et sa monnaie le paiera au
+  // conseil suivant.
+  const f = sP.world.factions[fP];
+  // Le cours ne veut rien dire tant que le premier conseil n'est pas passé :
+  // `majCours` prend au premier appel le rapport gage/masse comme origine, et
+  // rendrait donc 1,000 quoi qu'on ait imprimé avant. On l'établit d'abord.
+  const gageDe = () => {
+    let v = 0;
+    for (const c of coloniesDe(sP.world, fP)) {
+      const p2 = productionColonie(sP.world, c);
+      for (const k of COMMODITY_KEYS) v += (p2[k] || 0) * COMMODITIES[k].prix;
+    }
+    return v;
+  };
+  majCours(sP.world, fP, gageDe());
+  const coursAvant = coursMonnaie(sP.world, fP);
+  const tresorAvant = f.tresor;
+  const masseAvant = f.masse;
+  const em = battreMonnaie(sP, fP, 5000, () => {});
+  ok(em.ok, 'on bat monnaie', `${Math.round(tresorAvant)} → ${Math.round(f.tresor)}`);
+  ok(Math.round(f.tresor - tresorAvant) === 5000, 'le trésor monte d’autant');
+  ok(Math.round(f.masse - masseAvant) === 5000,
+    'et la masse aussi — sans quoi l’argent viendrait de nulle part');
+  ok(f.emissions >= 1, 'l’émission est comptée, pour le journal et l’écran');
+  ok(Math.max(...auditer(sP.world).map((x) => Math.abs(x.ecart))) < 1e-6,
+    'et les comptes tiennent', 'invariant exact');
+
+  // Et le cours en pâtit au conseil suivant : c'est le coût réel, et il n'est
+  // pas immédiat. Une émission qui ne se verrait nulle part serait de l'argent
+  // gratuit.
+  majCours(sP.world, fP, gageDe());
+  ok(coursMonnaie(sP.world, fP) < coursAvant || coursAvant <= MONNAIE.coursMin,
+    'et le cours baisse au conseil suivant',
+    `${coursAvant.toFixed(3)} → ${coursMonnaie(sP.world, fP).toFixed(3)}`);
+
+  // Accorder un crédit. Le conseil, lui, se limite à `CREDIT.partDuTresor` de
+  // son trésor par ville ; l'officier passe outre, et c'est précisément ce que
+  // veut dire décider.
+  const cible = coloniesDe(sP.world, fP).find((c) => !c.avantPoste && !c.ruine);
+  cible.dette = 0;
+  cible.creancier = null;
+  const menagesAvant = cible.menages || 0;
+  const tresor2 = f.tresor;
+  const plafondConseil = f.tresor * CREDIT.partDuTresor;
+  const pret = Math.round(plafondConseil * 1.5);
+  const cr = accorderCredit(sP, fP, cible.id, pret, () => {});
+  ok(cr.ok, 'un commandeur accorde un crédit', `${pret}`);
+  ok(Math.round(cible.menages - menagesAvant) === pret,
+    'et l’argent va chez les gens, pas dans la caisse',
+    `${Math.round(menagesAvant)} → ${Math.round(cible.menages)}`);
+  ok(Math.round(cible.dette) === pret, 'la ville le doit');
+  ok(cible.creancier === fP, 'à sa propre faction');
+  ok(Math.round(tresor2 - f.tresor) === pret, 'le trésor le sort');
+  ok(pret > plafondConseil, 'et cela passe outre la prudence du conseil',
+    `${pret} > ${Math.round(plafondConseil)}`);
+  ok(Math.max(...auditer(sP.world).map((x) => Math.abs(x.ecart))) < 1e-6,
+    'les comptes tiennent encore');
+
+  ok(!accorderCredit(sP, fP, cible.id, f.tresor * 10, () => {}).ok,
+    'on ne prête pas ce qu’on n’a pas');
+  const ailleurs = sP.world.colonies.find((c) => !c.ruine && c.faction && c.faction !== fP);
+  ok(!accorderCredit(sP, fP, ailleurs.id, 100, () => {}).ok,
+    'ni à la ville d’un autre pays');
+
+  // Le taux directeur : rien à payer, et tout le pays le sent.
+  const loisP = loisDe(sP.world, fP);
+  const vise = DIRECTEURS.find((d) => d.taux !== loisP.directeur);
+  loisP.depuis = -99999;
+  const td = fixerLoi(sP, fP, 'directeur', vise.key, () => {});
+  ok(td.ok, 'un commandeur fixe le taux directeur', `${vise.nom}`);
+  ok(loisDe(sP.world, fP).directeur === vise.taux, 'et le taux est celui qu’il a dit',
+    `${loisDe(sP.world, fP).directeur}`);
+  ok(!fixerLoi(sP, fP, 'directeur', 'inexistant', () => {}).ok,
+    'un palier qu’on invente est refusé');
+
+  // On répond de tout ça : chaque acte est au dossier.
+  ok((gP.allegeance.actes || []).some((a) => a.type === 'emission'),
+    'battre monnaie est inscrit au dossier');
+  ok((gP.allegeance.actes || []).some((a) => a.type === 'credit'),
+    'accorder un crédit aussi');
 }
 
 // ===========================================================================

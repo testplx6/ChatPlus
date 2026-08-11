@@ -300,9 +300,35 @@ rien ne permet d'y remédier. Les trois lots n'en font qu'un.
   Le test qui dit que le lot sert à quelque chose est le dernier de la section :
   à l'étranger, la monnaie de chez soi n'achète rien ; on passe au bureau ; on
   achète. La friction de §7.1 est levée, pas supprimée.
-- [ ] **E4. Les prérogatives** : taux directeur, émettre, accorder un crédit,
+- [~] **E4. Les prérogatives** : taux directeur, émettre, accorder un crédit,
   racheter une créance — même mécanisme que les PNJ, coûts au trésor,
   grades d'ECONOMIE §7.3.
+
+  **Trois sur six, livrées.** `crediter` et `emettre` entrent dans la table de
+  `PREROGATIVES` au grade de Commandeur ; le taux directeur devient la quatrième
+  branche de `fixerLoi`, avec l'impôt, parce que c'est le même geste au même
+  grade sur le même objet — §7.3 liste des pouvoirs, pas des fonctions, et il
+  range d'ailleurs l'impôt à côté en le notant « déjà en place ».
+
+  Ce qu'`accorderCredit` ajoute au moteur : rien. `tickCredit` prête déjà, mais
+  avec prudence — jamais plus de `CREDIT.partDuTresor` du trésor par ville, et
+  seulement à qui est en détresse. L'officier passe outre les deux. C'est ce que
+  veut dire décider : nourrir une ville que le conseil laisserait tomber, ou la
+  gaver de dette pour la tenir. L'argent va **chez les gens**, pas dans la
+  caisse, comme le fait déjà le conseil et pour la même raison.
+
+  `battreMonnaie` ne coûte rien et c'est le sujet : le trésor monte, la masse
+  aussi, le cours tombe au conseil suivant, et tout ce qui est libellé dans
+  cette monnaie perd — le portefeuille du joueur compris. Mesuré dans le test :
+  5 000 émis, invariant exact, cours en baisse au conseil suivant.
+
+  **Les trois autres sont bloquées, et pour deux raisons distinctes** — voir
+  Blocages.
+
+- [ ] **E4 bis. Les deux prérogatives de Maréchal**, quand le grade existera :
+  racheter la dette d'une ville étrangère (`racheterCreance` est écrit et
+  testé), retirer de la monnaie (`retirerMonnaie` aussi). Il ne manque que la
+  charge.
 - [ ] **E5. Le bandeau de dévaluation** (> 10 % de perte sur une monnaie
   détenue) + journal des émissions/taux/rachats/défauts.
 - [ ] **E6. Le banc-bot survit** : une partie complète de `test/equilibre.js`
@@ -458,6 +484,40 @@ minutes.
 écrasées), ECONOMIE §13 à remesurer.
 
 ## Blocages
+
+### §7.3 demande un grade de Maréchal, et il n'y en a pas
+
+`RANGS` s'arrête à Commandeur, cinq échelons. La table des prérogatives
+d'`ECONOMIE.md` §7.3 en range deux au grade de **Maréchal** : racheter la dette
+d'une ville étrangère, et retirer de la monnaie.
+
+Les deux mécanismes sont écrits et testés — `racheterCreance` et
+`retirerMonnaie`. Il ne manque que la charge qui y donne droit, et l'ajouter
+demande d'inventer quatre nombres : le seuil de points, la remise, la solde et
+la ration d'un sixième rang. Ce sont des réglages de jeu, pas de code, et le
+banc n'a rien à en dire tant que personne n'a décidé ce que ce grade *est*.
+
+Ce qui manque pour débloquer : la définition du grade. Le reste est déjà là.
+
+### « Ouvrir un bureau de change » — §5.1 et §7.3 se contredisent
+
+§5.1 : « Dans **toute** ville dont le marché existe et qui n'est pas en révolte. »
+§7.3 : « Ouvrir un bureau de change dans une ville — Capitaine — trésor. »
+§9 prévoit le champ `col.change : boolean` pour la seconde lecture.
+
+Les deux ne peuvent pas être vraies. Si les bureaux existent partout, la
+prérogative n'a pas d'objet ; s'il faut les ouvrir, le monde commence sans
+aucun bureau et le lot E rend le jeu injouable jusqu'à ce qu'une faction en
+ouvre un — ce qu'aucun conseil ne sait faire aujourd'hui.
+
+E3 a retenu §5.1, parce que c'est la règle opératoire et la seule des deux qui
+laisse le jeu jouable au premier tour. La prérogative n'est donc pas livrée, et
+`col.change` n'existe pas dans l'état.
+
+Ce qui manque pour débloquer : dire laquelle des deux lectures fait foi. Si
+c'est §7.3, il faut aussi dire quels bureaux existent au premier jour, et ce
+que le conseil d'une faction décide tout seul.
+
 
 ### La poche du joueur n'est dans aucun registre — trouvé en livrant le lot E
 

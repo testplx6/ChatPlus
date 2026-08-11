@@ -1239,6 +1239,12 @@ const prerogs = await page.evaluate(() => {
 ok(prerogs.ouvrables >= 2, 'plusieurs prérogatives lui sont ouvertes',
   `${prerogs.ouvrables} dépliables`);
 
+// Les prérogatives monétaires du lot E4. Elles sont au-dessus du grade de ce
+// décor — c'est ce qu'on vérifie : elles existent, et l'écran dit ce qui manque
+// plutôt que de les cacher.
+ok(/Battre monnaie/.test(prerogs.texte), 'battre monnaie figure à la table des charges');
+ok(/Accorder un crédit/.test(prerogs.texte), 'accorder un crédit aussi');
+
 // Ordonner : ça part, et ça ne coûte pas un point de service.
 const avantOrdre = await page.evaluate(() => {
   const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
