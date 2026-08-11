@@ -361,8 +361,41 @@ rien ne permet d'y remédier. Les trois lots n'en font qu'un.
   son état, masse en circulation, nombre d'émissions, taux directeur en toutes
   lettres. Réservé à qui lit leurs transmissions — un cours et une masse
   monétaire ne traînent pas sur les places.
-- [ ] **E6. Le banc-bot survit** : une partie complète de `test/equilibre.js`
+- [x] **E6. Le banc-bot survit** : une partie complète de `test/equilibre.js`
   sans ruine par accident de change ; tests navigateur pour chaque écran neuf.
+
+  **Le critère est tenu, et le banc a d'abord dû cesser de mentir.** Il lisait
+  encore `p.credits` à vingt-quatre endroits — un champ supprimé par E1 bis.
+  Résultat : `undefined > 200` valant faux, le bot n'achetait plus une seule
+  ration de la partie, et le rapport affichait `+NaN de ventes` sans que rien
+  ne s'en émeuve. Une mesure fausse est pire qu'une mesure absente.
+
+  Contre le témoin `df79cb6`, le commit d'avant la bascule, 30 parties de
+  4 000 h chacune :
+
+  | | témoin | lot E livré |
+  |---|---:|---:|
+  | escouades vivantes à 4 000 h | 27/30 | 26–27/30 |
+  | bourse moyenne | 570 | 399 |
+  | ventes par partie | +5 477 | +6 177 |
+  | cargaisons de négoce | 0,0 | 0,0 |
+
+  Aucune ruine par accident de change : les quatre extinctions sont les mêmes
+  qu'au témoin, à 1 500–2 000 h, et pour les mêmes raisons.
+
+  **Mais le relevé neuf dit autre chose, et c'est un blocage** — voir plus bas.
+  Le bot tient **45,5 %** de sa bourse dans une monnaie qui n'a pas cours là où
+  il est, et sur 1 811 fois où il a de quoi manger *ailleurs* sans pouvoir
+  acheter *ici*, le bureau de change n'ouvre que 87 fois.
+
+  Le banc sait maintenant passer au bureau — `changerPourManger`, la chose la
+  plus bête possible : on change la plus grosse monnaie étrangère contre celle
+  d'ici. L'objet n'est pas de mesurer un joueur optimal, c'est de savoir si le
+  change **suffit**.
+
+  Navigateur : 282 vérifications, dont l'écran du change, le bandeau de
+  dévaluation d'un onglet à l'autre, la ligne monétaire d'une faction et les
+  prérogatives neuves.
 
 ## Lot F — livraison générale
 
@@ -514,6 +547,35 @@ minutes.
 écrasées), ECONOMIE §13 à remesurer.
 
 ## Blocages
+
+### Le bureau de change est fermé presque partout — parce que le monde gronde
+
+Mesuré au banc d'équilibrage, 30 parties de 4 000 h. Sur **1 811** fois où le
+bot a de quoi manger dans une autre monnaie et rien dans celle d'ici :
+
+| pourquoi le change ne se fait pas | fois |
+|---|---:|
+| la ville est au-dessus du seuil de révolte | **1 527** |
+| la ville est en ruine | 197 |
+| le change réussit | 87 |
+
+`ECONOMIE.md` §5.1 ferme le bureau d'une ville en révolte, et c'est une règle
+raisonnable. Elle devient invalidante dans un monde dont la **grogne moyenne
+est de 0,73** pour un `SEUIL_REVOLTE` à 0,86 : la moitié des villes sont au-delà
+en permanence. Le joueur qui traverse une frontière n'a donc, en pratique,
+presque jamais d'endroit où changer — la friction de §7.1 n'est plus une
+friction, c'est un mur.
+
+**Ce n'est pas un défaut du lot E, et il ne se corrige pas dans le lot E.** La
+grogne à 0,73 est la même cause que `nourries=291` : l'économie est calibrée
+dans un monde faussé, ce qui est déjà consigné plus bas. Élargir le seuil pour
+le bureau serait exactement ce que `CLAUDE.md` interdit — élargir un critère
+pour faire passer une mesure.
+
+Ce qu'il faut : recalibrer, puis **remesurer ce relevé-là**. Il est au banc, il
+tourne à chaque passage, et le jour où la grogne redescend on verra le chiffre
+bouger sans avoir rien retouché.
+
 
 ### §7.3 demande un grade de Maréchal, et il n'y en a pas
 

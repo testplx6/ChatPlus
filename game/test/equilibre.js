@@ -32,6 +32,69 @@
 import { nouvellePartie, tick } from '../src/sim.js';
 import { Rng } from '../src/rng.js';
 import { soldeIci, monnaieIci, gagner, regler } from '../src/monnaie.js';
+
+/**
+ * Ce que la bourse par drapeau coûte au bot, relevé là où il achète.
+ *
+ * Le critère du lot E6 est « une partie complète sans ruine par accident de
+ * change ». Un accident de change ne se voit pas dans le compte des morts : il
+ * se voit ici, quand on a l'argent ailleurs et pas ici. Sans ce relevé, on ne
+ * saurait dire si les cinq escouades éteintes le sont pour cette raison ou pour
+ * les mêmes que d'habitude.
+ */
+function releverChange(state) {
+  const ici = monnaieIci(state);
+  const b = state.player.bourse || {};
+  let total = 0;
+  for (const k of Object.keys(b)) total += b[k] || 0;
+  TRACE.bourseTotale += total;
+  TRACE.bourseEtrangere += total - (ici ? (b[ici] || 0) : 0);
+}
+
+/** Tout ce qu'on tient, toutes monnaies confondues. Pour décider, pas pour afficher. */
+function bourseTotale(state) {
+  const b = state.player.bourse || {};
+  let t = 0;
+  for (const k of Object.keys(b)) t += b[k] || 0;
+  return t;
+}
+
+/**
+ * Le bot passe au bureau. Il change la plus grosse de ses monnaies étrangères
+ * contre celle d'ici — ce que ferait n'importe qui, et rien de plus malin :
+ * l'objet du relevé est de savoir si le change **suffit**, pas de mesurer un
+ * joueur optimal.
+ */
+function changerPourManger(state, col) {
+  const ici = monnaieIci(state);
+  if (!ici) { TRACE.pasDeChange.sansMonnaie++; return false; }
+  if (!bureauDe(col)) {
+    const quoi = !col ? 'pasDeVille'
+      : col.avantPoste ? 'chezSoi'
+        : col.ruine ? 'ruine' : 'enRevolte';
+    TRACE.pasDeChange[quoi]++;
+    return false;
+  }
+  const b = state.player.bourse || {};
+  let pire = null;
+  for (const k of Object.keys(b)) {
+    if (k === ici) continue;
+    if (!(b[k] > 1)) continue;
+    if (!pire || b[k] > b[pire]) pire = k;
+  }
+  if (!pire) { TRACE.pasDeChange.rienAChanger++; return false; }
+  const r = changer(state, col, pire, ici, b[pire]);
+  if (!r.ok) TRACE.pasDeChange.refuse++;
+  return r.ok;
+}
+
+/** Poser une somme dans la poche du bot, dans la monnaie de là où il est. */
+function poserB(state, montant) {
+  const m = monnaieIci(state);
+  if (!m) return 0;
+  state.player.bourse = { [m]: montant };
+  return montant;
+}
 import {
   groupeActif, groupes, scinder, fusionner, tousLesMembres, noyau,
   rendementCohesion,
@@ -41,7 +104,7 @@ import { estVivant, estDebout, comp, pvTotal } from '../src/characters.js';
 import { colonieDe, colonieParId, distance } from '../src/world.js';
 import {
   acheter, vendre, poidsInventaire, capacitePortage, acheterItem, prixItem, prixJoueur,
-  prixUnitaire, cibleStock,
+  prixUnitaire, cibleStock, bureauDe, changer,
 } from '../src/economy.js';
 import {
   accepter, progres as progresContrat, MAX_CONTRATS, OPINION_ECHU,
@@ -97,7 +160,17 @@ const TRACE = {
   coutLot: {}, primeLot: {}, nLot: {}, bourse: 0, nBourse: 0,
   // Où va l'argent. Sans ce détail, « le bot est pauvre » ne dit rien de ce
   // qu'il faut corriger.
-  gagneVente: 0, retenu: 0, villesFin: [], echusParType: {}, echusParVille: new Map(), joursPanneau: 0, joursPanneauFerme: 0, contratsPris: 0, contratsEchus: 0, contratsRemplis: 0, gagneContrat: 0, payeVivres: 0, payeSoins: 0, payeMateriel: 0,
+  gagneVente: 0, retenu: 0,
+  // Lot E : ce que la bourse par drapeau fait au bot. `bourseEtrangere` est
+  // la part qu'il tient dans une autre monnaie que celle du lieu où il est ;
+  // `bloques` compte les fois où il a de quoi payer — ailleurs, et vraiment
+  // ailleurs : la poche d'ici est vide ET l'étranger suffirait. La première
+  // version comptait aussi la pauvreté ordinaire, ce qui gonflait le chiffre
+  // de deux mille sans rien dire du change. C'est le critère d'E6 : une ruine
+  // par accident de change se verrait là, et nulle part ailleurs.
+  bourseEtrangere: 0, bourseTotale: 0, bloquesChange: 0, changesFaits: 0,
+  pasDeChange: { sansMonnaie: 0, pasDeVille: 0, chezSoi: 0, ruine: 0, enRevolte: 0, rienAChanger: 0, refuse: 0 },
+ villesFin: [], echusParType: {}, echusParVille: new Map(), joursPanneau: 0, joursPanneauFerme: 0, contratsPris: 0, contratsEchus: 0, contratsRemplis: 0, gagneContrat: 0, payeVivres: 0, payeSoins: 0, payeMateriel: 0,
   // Ce que l'intendance donne : la voie du service se lit là.
   rationsTouchees: 0,
   betes: 0,
@@ -543,7 +616,7 @@ function sEquiper(state, g, colIci) {
       // Mesuré, le bot vivait en permanence à trois cents crédits en poche — il
       // dépensait tout en équipement dès qu'il vendait — et refusait donc les
       // lots à cinq cents. Ce n'était pas un problème de prix mais de trésorerie.
-      if (prix > p.credits - (BIENFAITEUR ? 1200 : 250)) return;
+      if (prix > soldeIci(state) - (BIENFAITEUR ? 1200 : 250)) return;
       if (d > gain) { gain = d; meilleur = i; prixRetenu = prix; }
     });
     if (meilleur < 0 || prixRetenu <= 0) break;
@@ -812,10 +885,11 @@ function servir(state, g, colIci, memo) {
         TRACE.coutLot[pr.res] = (TRACE.coutLot[pr.res] || 0) + cout;
         TRACE.primeLot[pr.res] = (TRACE.primeLot[pr.res] || 0) + pr.prime;
         TRACE.nLot[pr.res] = (TRACE.nLot[pr.res] || 0) + 1;
-        TRACE.bourse += p.credits; TRACE.nBourse++;
+        TRACE.bourse += soldeIci(state); TRACE.nBourse++;
+        releverChange(state);
         const garde = BIENFAITEUR ? cout + 350 : cout * 1.5;
         if (cout > plafond) TRACE.achatsChers++;
-        else if (p.credits <= garde) TRACE.achatsPauvre++;
+        else if (soldeIci(state) <= garde) TRACE.achatsPauvre++;
         else if (acheter(state, colIci, pr.res, manque, g).ok) TRACE.achatsFaits++;
       }
     }
@@ -1025,9 +1099,9 @@ function jouerPrincipal(state, g, memo) {
       if (k === 'rations' || k === 'medkit' || reserves.has(k)) continue;
       const q = g.inventaire[k] || 0;
       if (q > 0) {
-        const av = p.credits;
+        const av = soldeIci(state);
         const vte = vendre(state, colIci, k, q, g);
-        TRACE.gagneVente += p.credits - av;
+        TRACE.gagneVente += soldeIci(state) - av;
         // Ce que le régime a retenu au passage. Mesuré ici plutôt que déduit
         // d'un A/B : deux parties dont l'une est 6 % plus riche ne prouvent
         // rien quand une seule graine sur trente pèse dix fois la médiane.
@@ -1037,7 +1111,7 @@ function jouerPrincipal(state, g, memo) {
         // n'étant qu'une estimation sur un relevé daté.
         if (MARCHAND && memo.affaire && memo.affaire.k === k
           && memo.affaire.destId === colIci.id) {
-          TRACE.recetteTotale += p.credits - av;
+          TRACE.recetteTotale += soldeIci(state) - av;
         }
       }
     }
@@ -1045,9 +1119,9 @@ function jouerPrincipal(state, g, memo) {
     // pas tout : rester solvable fait partie du métier.
     if (MARCHAND) {
       if (memo.affaire && memo.affaire.destId === colIci.id) memo.affaire = null;
-      if (!memo.affaire && p.credits > 600) {
+      if (!memo.affaire && soldeIci(state) > 600) {
         const aff = meilleureAffaire(state, g, colIci);
-        if (aff && aff.cout < p.credits * 0.7) {
+        if (aff && aff.cout < soldeIci(state) * 0.7) {
           const r = acheter(state, colIci, aff.k, aff.qte, g);
           if (r.ok && r.qte > 0) {
             TRACE.payeMateriel += r.cout;
@@ -1075,15 +1149,29 @@ function jouerPrincipal(state, g, memo) {
 
     // On voit venir la saison : on ne part pas en hiver avec trois boîtes.
     const cible = saison(state.temps).key === 'pluies' || saison(state.temps).key === 'accalmie' ? 190 : 120;
-    if (rations < cible && p.credits > 200) {
-      const av = p.credits;
-      acheter(state, colIci, 'rations', cible - rations, g);
-      TRACE.payeVivres += av - p.credits;
+    if (rations < cible) {
+      releverChange(state);
+      if (soldeIci(state) > 200) {
+        const av = soldeIci(state);
+        acheter(state, colIci, 'rations', cible - rations, g);
+        TRACE.payeVivres += av - soldeIci(state);
+      } else if (bourseTotale(state) - soldeIci(state) > 200) {
+        // L'accident de change, s'il existe : on a de quoi manger, ailleurs.
+        // Le bot va donc au bureau — c'est exactement ce que le lot E rend
+        // possible, et ce qu'E6 doit vérifier autrement qu'en le supposant.
+        TRACE.bloquesChange++;
+        if (changerPourManger(state, colIci)) {
+          TRACE.changesFaits++;
+          const av = soldeIci(state);
+          acheter(state, colIci, 'rations', cible - rations, g);
+          TRACE.payeVivres += av - soldeIci(state);
+        }
+      }
     }
-    if ((g.inventaire.medkit || 0) < 3 && p.credits > 400) {
-      const av = p.credits;
+    if ((g.inventaire.medkit || 0) < 3 && soldeIci(state) > 400) {
+      const av = soldeIci(state);
       acheter(state, colIci, 'medkit', 2, g);
-      TRACE.payeSoins += av - p.credits;
+      TRACE.payeSoins += av - soldeIci(state);
     }
 
     // Compléter une collecte au marché plutôt que d'attendre que le biome la
@@ -1100,7 +1188,7 @@ function jouerPrincipal(state, g, memo) {
       const unitaire = prixJoueur(colIci, c.ressource, negoc ? comp(negoc, 'commerce') : 0,
         p.reputation[colIci.faction] || 0).achat;
       const cout = unitaire * manque;
-      if (cout > c.recompense * 0.55 || p.credits < cout * 1.4) continue;
+      if (cout > c.recompense * 0.55 || soldeIci(state) < cout * 1.4) continue;
       acheter(state, colIci, c.ressource, manque, g);
     }
 
@@ -1116,12 +1204,12 @@ function jouerPrincipal(state, g, memo) {
       const vise = process.env.GROS ? Number(process.env.GROS) : noyau(state, g);
       // En mode témoin on paie la prime quoi qu'il arrive : sinon c'est le prix
       // du recrutement qu'on mesure, pas la cohésion.
-      if (process.env.GROS && ici < vise) p.credits = Math.max(p.credits, prixR + 950);
-      if (ici < vise && p.credits > prixR + 900) {
+      if (process.env.GROS && ici < vise) poserB(state, Math.max(soldeIci(state), prixR + 950));
+      if (ici < vise && soldeIci(state) > prixR + 900) {
         const rngR = new Rng(state.rngState);
         const nouveau = makeCharacter(rngR, { niveau: rngR.irange(0, 2) });
         state.rngState = rngR.save();
-        p.credits -= prixR;
+        regler(state, prixR);
         g.membres.push(nouveau);
         TRACE.recrues++;
       }
@@ -1142,7 +1230,7 @@ function jouerPrincipal(state, g, memo) {
       if (poidsInventaire(g.inventaire) / Math.max(1, cap) > 0.6) {
         for (const k of ['mulet', 'charrette', 'brahmine']) {
           const prix = prixBete(colIci, k);
-          if (p.credits < prix + 400) continue;
+          if (soldeIci(state) < prix + 400) continue;
           const rngB = new Rng(state.rngState);
           const r = acheterBete(state, colIci, k, rngB, () => {}, g);
           state.rngState = rngB.save();
@@ -1174,11 +1262,11 @@ function jouerPrincipal(state, g, memo) {
         }
         // On garde de quoi manger : fonder un avant-poste et mourir de faim
         // dedans serait une drôle de stratégie.
-        if (achats.length && cout + 150 <= p.credits) {
+        if (achats.length && cout + 150 <= soldeIci(state)) {
           for (const [k, q] of achats) acheter(state, colIci, k, q, g);
         }
       }
-      if (S_base(state).fonde && p.credits > 500
+      if (S_base(state).fonde && soldeIci(state) > 500
           && (S_base(state).stock.carburant || 0) + (g.inventaire.carburant || 0) < 150) {
         acheter(state, colIci, 'carburant', 120, g);
       }
@@ -1187,7 +1275,7 @@ function jouerPrincipal(state, g, memo) {
       // d'autre : sans polymère ni composant acheté en ville, tout ce qui en
       // réclame échoue en silence, et le camp bâtit un générateur et un mur au
       // lieu d'un baraquement. Mesuré : quatre habitants maximum, toujours.
-      if (S_base(state).fonde && p.credits > 400) {
+      if (S_base(state).fonde && soldeIci(state) > 400) {
         for (const k of ['polymere', 'composant']) {
           const stock = (S_base(state).stock[k] || 0) + (g.inventaire[k] || 0);
           const veut = k === 'polymere' ? 120 : 40;
@@ -1472,7 +1560,7 @@ function jouerPrincipal(state, g, memo) {
   }
 
   // Sac plein, ou réserves au plus bas et de quoi payer : on rentre en ville.
-  const besoinVille = charge > 0.85 || (rations < 45 && p.credits > 300);
+  const besoinVille = charge > 0.85 || (rations < 45 && soldeIci(state) > 300);
   if (besoinVille && !colIci) {
     const col = colonieLaPlusProche(state, g);
     if (col && g.ordre.type !== 'voyage') {
@@ -2240,6 +2328,14 @@ console.log(`Temps : ${Math.round(100 * TRACE.voyage / totH)} % en marche · `
 console.log(`Recrues engagées : ${(TRACE.recrues / PARTIES).toFixed(1)} par partie`);
 console.log(`Intendance : ${Math.round(TRACE.rationsTouchees / PARTIES)} rations touchées par partie`
   + ` — bêtes achetées : ${(TRACE.betes / PARTIES).toFixed(1)} par partie`);
+console.log('Change : '
+  + `${(100 * TRACE.bourseEtrangere / Math.max(1, TRACE.bourseTotale)).toFixed(1)} % `
+  + 'de la bourse dans une monnaie qui n’a pas cours là où l’on est · '
+  + `${TRACE.bloquesChange} achat(s) refusés faute d’avoir la bonne monnaie, `
+  + `${TRACE.changesFaits} passage(s) au bureau`);
+console.log('  quand le change ne se fait pas : '
+  + Object.entries(TRACE.pasDeChange).filter(([, v]) => v)
+    .map(([k, v]) => `${k} ${v}`).join(' · '));
 console.log(`Argent : +${Math.round(TRACE.gagneVente / PARTIES)} de ventes · `
   + `−${Math.round(TRACE.payeVivres / PARTIES)} de vivres · −${Math.round(TRACE.payeSoins / PARTIES)} de soins `
   + `· −${Math.round(TRACE.payeMateriel / PARTIES)} d'équipement `
