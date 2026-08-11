@@ -22,7 +22,7 @@ import { creerLogger } from './events.js';
 import { VERSION } from './save.js';
 import { groupeVide } from './groupes.js';
 import { creerConnaissance, observer, estSurveillee } from './connaissance.js';
-import { poserMasseInitiale } from './monnaie.js';
+import { poserMasseInitiale, veillerMonnaies } from './monnaie.js';
 import { pourvoirCharges, nommerActeur } from './notables.js';
 import { creerDirigeant, crediterDirigeant } from './dirigeants.js';
 import { tickFormation } from './formation.js';
@@ -260,6 +260,9 @@ export function nouvellePartie(seed, opts = {}) {
       // universel : on commence avec la monnaie de l'endroit où l'on est, parce
       // qu'il n'y a pas d'autre façon d'y être arrivé. Voir `monnaie.js`.
       bourse: { [hote.faction || 'hexa']: scen.equipe ? 450 : rng.irange(20, 70) },
+      // Le repère de la veille des monnaies : vide, il se pose au premier tick.
+      coursVu: {},
+      alertesMonnaie: [],
       // Les gens et ce qu'ils portent vivent dans les groupes ; le reste, ici.
       groupes: [premier],
       groupeActif: premier.id,
@@ -619,6 +622,9 @@ export function tick(state) {
   if (!state.fin) jugerActes(state, log);
   if (!state.fin) tickCharges(state, log);
   if (!state.fin) tickFormation(state, log);
+  // Et ce que le monde a fait à votre argent pendant ce temps. En dernier :
+  // les cours ne bougent qu'au conseil, mais on relève après que tout a bougé.
+  if (!state.fin) veillerMonnaies(state, log);
 
   state.player.rngEtat = rngJoueur.save();
   ctx.rng = rng;

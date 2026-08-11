@@ -56,6 +56,10 @@ export function normaliser(state) {
     if (p.credits > 0) p.bourse[monnaie] = p.credits;
   }
   if (p && p.credits !== undefined) delete p.credits;
+  // Le repère de la veille des monnaies (ECONOMIE §10). Vide, il se pose tout
+  // seul au premier tick : on ne peut pas inventer ce que le joueur a vu.
+  if (p && !p.coursVu) p.coursVu = {};
+  if (p && !Array.isArray(p.alertesMonnaie)) p.alertesMonnaie = [];
 
   // Avant les groupes, l'escouade était un bloc unique posé sur `player`.
   // On la reconstitue en un premier groupe : une partie en cours ne se jette

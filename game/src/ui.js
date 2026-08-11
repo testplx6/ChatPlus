@@ -1,4 +1,6 @@
-import { soldeIci, monnaieIci, monnaieSolde, valeurBourse, masse } from './monnaie.js';
+import {
+  soldeIci, monnaieIci, monnaieSolde, valeurBourse, masse, coursMonnaie, MONNAIE,
+} from './monnaie.js';
 // Interface : rendu HTML + carte pixel sur canvas. C'est le SEUL module qui
 // touche au DOM — tout le reste du dossier src/ tourne aussi bien sous Node.
 
@@ -464,7 +466,7 @@ export function rafraichir(force) {
   // bouge même quand le texte autour ne bouge pas.
   let ecrit = true;
   try {
-    const html = rendu();
+    const html = bandeauDevaluation() + rendu();
     if (html === dernierHtml && memeEcran) ecrit = false;
     else { dernierHtml = html; ecran.innerHTML = html; }
   } catch (err) {
@@ -1569,6 +1571,35 @@ function armeesIci(rid) {
   if (!as.length) return '';
   return as.map((a) => `<div class="ligne"><span class="k">Colonne</span>
     <span class="v" style="color:${couleurFaction(a.faction)}">${e(drapeauDe(S.world, a.faction).nom)} · ${n(a.force)} · ${e(a.etat)}</span></div>`).join('');
+}
+
+/**
+ * Le bandeau de dévaluation (ECONOMIE §10).
+ *
+ * Il est **au-dessus de tous les écrans**, et pas dans un onglet : une monnaie
+ * qui s'effondre ne se range pas sous « monde » ou sous « escouade ». C'est le
+ * contrepoids assumé du choix d'afficher les prix en monnaie locale seule —
+ * sans lui, on se ferait laminer sans jamais rien voir venir, parce qu'aucun
+ * écran ne dit plus ce que vaut le portefeuille.
+ *
+ * Il ne s'efface pas tout seul. Une alerte qu'on rate parce qu'on avait fermé
+ * l'onglet est une alerte qui n'a servi à rien, et c'est exactement le reproche
+ * qu'on fait au journal, où la ligne défile derrière quatre cents autres.
+ */
+function bandeauDevaluation() {
+  const a = (S && S.player && S.player.alertesMonnaie) || [];
+  if (!a.length) return '';
+  return `<section class="panneau urgent">
+    <h2 class="titre alerte">Votre argent a fondu
+      <span class="droite">${a.length}</span></h2>
+    ${a.map((x) => `<div class="ligne"><span class="k"
+      style="color:${couleurFaction(x.faction)}">${e(drapeauDe(S.world, x.faction).nom)}</span>
+      <span class="v alerte">−${Math.round(x.perte * 100)} % · il vous en reste
+        ${n(Math.round(x.solde))} ${e(symboleDe(S.world, x.faction))}</span></div>`).join('')}
+    <div class="aide">Les prix d’ici n’ont pas bougé : c’est ce que vous tenez qui
+      en achète moins. Au bureau de change, on vous dira ce que ça vaut ailleurs.</div>
+    <button class="act mini" data-a="devaluation-vue" style="margin-top:6px">J’ai vu</button>
+  </section>`;
 }
 
 function ecranCarte() {
@@ -3937,6 +3968,30 @@ function ecranMonde() {
       ? ` <span class="alerte">${facheurs} faction(s) ne le supportent pas.</span>` : ''}
       <br>Pour vous : ${e(reg.desc.toLowerCase())}</div>`;
   })()}
+      ${(() => {
+    // Leur monnaie (ECONOMIE §10). Le cours d'abord — c'est le seul chiffre du
+    // jeu qui dise si leur argent vaut quelque chose —, puis de quoi comprendre
+    // pourquoi : ce qui circule, combien de fois ils ont imprimé, et le loyer
+    // qu'ils font payer à leurs villes.
+    //
+    // C'est réservé à qui les écoute. Un cours et une masse monétaire ne
+    // traînent pas sur les places : on les lit dans leurs transmissions.
+    if (!crypto) {
+      return '<div class="aide">Leur monnaie : on n’en sait rien. Il faudrait '
+        + 'lire ce qu’ils s’écrivent.</div>';
+    }
+    const l2 = loisDe(S.world, f.key);
+    const dir = DIRECTEURS.reduce(
+      (a2, b2) => (Math.abs(b2.taux - l2.directeur) < Math.abs(a2.taux - l2.directeur) ? b2 : a2));
+    const c = coursMonnaie(S.world, f.key);
+    const etat = c <= MONNAIE.coursMin ? 'au plancher'
+      : c >= MONNAIE.coursMax ? 'au plafond'
+        : c < 0.85 ? 'faible' : c > 1.2 ? 'forte' : 'tenue';
+    return `<div class="aide">Monnaie ${e(symboleDe(S.world, f.key))} : cours
+      ${n(c, 2)} — ${e(etat)}. ${n(Math.round(masse(S.world, f.key)))} en circulation,
+      ${f.emissions || 0} émission(s). Loyer de l’argent :
+      ${e(dir.nom.toLowerCase())} (${(l2.directeur * 100).toFixed(0)} %).</div>`;
+  })()}
     </div>`;
   }).join('');
 
@@ -5400,6 +5455,11 @@ function surClic(ev) {
       rafraichir(true);
       break;
     }
+
+    case 'devaluation-vue':
+      ACTIONS.alertesVues();
+      rafraichir(true);
+      break;
 
     case 'change-paire':
       changeVers = el.dataset.k;

@@ -461,6 +461,13 @@ const API = {
   },
 
   /** Promulguer. Le paramètre porte « quoi:valeur » : peine:ferme, impot:lourd… */
+  /** Le bandeau de dévaluation est lu : on l'efface, et ça se sauvegarde. */
+  alertesVues() {
+    state.player.alertesMonnaie = [];
+    sauver();
+    return { ok: true };
+  },
+
   /** Les prérogatives monétaires : ECONOMIE §6.5, §7.3. */
   accorderCredit(faction, colId, montant) {
     const r = accorderCreditA(state, faction, colId, montant, creerLogger(state));

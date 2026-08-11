@@ -12,7 +12,7 @@
 // `auditer` est l'outil qui le vérifie. Il ne tourne pas en jeu : il tourne
 // dans les tests, où il a le droit d'être lent et le devoir d'être intraitable.
 
-import { DIPLO_FACTIONS, diploDe, clesDe, symboleDe } from './data.js';
+import { DIPLO_FACTIONS, diploDe, clesDe, symboleDe, drapeauDe } from './data.js';
 import { loisDe } from './lois.js';
 
 /**
@@ -547,4 +547,85 @@ export function regler(state, montant, monnaie) {
  */
 export function signeIci(state) {
   return symboleDe(state && state.world, monnaieIci(state));
+}
+
+// ---------------------------------------------------------------------------
+// La veille du portefeuille (ECONOMIE §10)
+// ---------------------------------------------------------------------------
+
+/**
+ * À partir de quelle perte on dérange le joueur, et en dessous de quel solde on
+ * ne le dérange pas.
+ *
+ * Le seuil vient du cahier des charges : « plus de 10 % ». Le plancher, lui,
+ * n'y est pas et il n'invente rien — c'est le même que celui du bureau de
+ * change pour décider qu'une monnaie est « tenue » : quelques centièmes
+ * d'unité oubliés dans un coin ne sont pas une position, et un bandeau qui se
+ * lève pour zéro virgule quatre est un bandeau qu'on apprend à ignorer.
+ */
+export const DEVALUATION = { seuil: 0.10, plancher: 1 };
+
+/**
+ * Ce qui a fondu depuis la dernière fois qu'on vous l'a dit.
+ *
+ * C'est le contrepoids du choix d'afficher les prix en monnaie locale seule.
+ * Puisqu'aucun écran ne dit plus ce que vaut votre portefeuille, une monnaie
+ * peut s'effondrer sous vos yeux sans qu'un chiffre bouge nulle part : les prix
+ * de la ville sont divisés par le cours, donc ils montent, et rien ne dit que
+ * c'est votre argent qui a maigri plutôt que le marchand qui se moque de vous.
+ *
+ * **La référence ne se remet pas à chaque relevé**, et c'est tout le mécanisme.
+ * Une monnaie qui perd six pour cent par conseil tomberait indéfiniment sans
+ * jamais rien déclencher si l'on comparait au relevé précédent : chaque pas
+ * serait sous le seuil, et la somme des pas ne serait mesurée nulle part. On
+ * compare donc au dernier cours **dont on vous a parlé**, et on ne le remet
+ * qu'en deux occasions : quand on vient de vous prévenir, et quand la monnaie
+ * remonte — sans quoi une chute depuis un sommet se mesurerait depuis un creux
+ * ancien et passerait sous le seuil.
+ *
+ * Rend la liste des alertes ; l'interface en fait un bandeau, le journal une
+ * ligne. Aucun tirage, aucune allocation dans le cas courant.
+ */
+export function veillerMonnaies(state, log) {
+  const p = state.player;
+  if (!p) return [];
+  if (!p.coursVu) p.coursVu = {};
+  const b = p.bourse || {};
+  const alertes = [];
+  for (const k of Object.keys(b)) {
+    if (!(b[k] > DEVALUATION.plancher)) continue;
+    const c = coursMonnaie(state.world, k);
+    const vu = p.coursVu[k];
+    if (!(vu > 0)) { p.coursVu[k] = c; continue; }
+    if (c >= vu) { p.coursVu[k] = c; continue; }
+    const perte = 1 - c / vu;
+    if (perte <= DEVALUATION.seuil) continue;
+    p.coursVu[k] = c;
+    const alerte = { faction: k, perte, cours: c, avant: vu, solde: b[k], t: state.temps || 0 };
+    alertes.push(alerte);
+    // Le bandeau survit au rechargement, et il ne s'efface que quand le joueur
+    // l'a vu. Une alerte qu'on rate parce qu'on a fermé l'onglet est une alerte
+    // qui n'a servi à rien — et c'est justement le reproche qu'on faisait au
+    // journal, où la ligne défile derrière quatre cents autres.
+    if (!p.alertesMonnaie) p.alertesMonnaie = [];
+    p.alertesMonnaie = p.alertesMonnaie.filter((x) => x.faction !== k);
+    p.alertesMonnaie.unshift(alerte);
+    if (p.alertesMonnaie.length > 6) p.alertesMonnaie.length = 6;
+    if (log) {
+      log({
+        type: 'monnaie',
+        texte: `${drapeauDe(state.world, k).nom} : la monnaie perd `
+          + `${Math.round(perte * 100)} %. Vous en tenez ${Math.round(b[k])} `
+          + `${symboleDe(state.world, k)}, qui valent d’autant moins.`,
+        important: true,
+        factions: [k],
+      });
+    }
+  }
+  // Ce qu'on ne tient plus ne mérite plus de repère : sans ça, un retour de
+  // voyage dix ans plus tard se mesurerait depuis un cours oublié.
+  for (const k of Object.keys(p.coursVu)) {
+    if (!(b[k] > DEVALUATION.plancher)) delete p.coursVu[k];
+  }
+  return alertes;
 }

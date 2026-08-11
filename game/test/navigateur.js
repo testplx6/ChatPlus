@@ -665,6 +665,49 @@ if ((await page.locator('[data-a="coffre-louer"]:not([disabled])').count()) > 0)
 await page.click('[data-a="fermer"]');
 await page.waitForTimeout(200);
 
+// Le bandeau de dévaluation (ECONOMIE §10). Il est au-dessus de tous les
+// écrans, il survit au rechargement, et il ne s'efface que quand on l'a vu :
+// une alerte ratée parce qu'on avait fermé l'onglet n'a servi à rien.
+{
+  // On recharge AVANT d'écrire : tant qu'une partie tourne, sa sauvegarde
+  // automatique repasse par-dessus ce qu'on vient de poser, et le décor est
+  // effacé avant même d'avoir servi.
+  await page.reload({ waitUntil: 'networkidle' });
+  const posee = await page.evaluate(() => {
+    const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const k = Object.keys(s2.player.bourse || {})[0]
+      || Object.keys(s2.world.factions).find((x) => x !== 'essaim');
+    s2.player.bourse = { [k]: 900 };
+    s2.player.alertesMonnaie = [{ faction: k, perte: 0.23, cours: 0.6, avant: 0.78, solde: 900, t: 0 }];
+    localStorage.setItem('cendres.save.v1', JSON.stringify(s2));
+    return k;
+  });
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.waitForTimeout(400);
+  const vu = await page.evaluate(() => document.querySelector('#ecran').textContent);
+  ok(/Votre argent a fondu/.test(vu), 'le bandeau de dévaluation se lève', posee);
+  ok(/−23 %/.test(vu), 'et dit de combien', (vu.match(/−\d+ %[^·]*/) || ['—'])[0]);
+  // Sur un autre onglet aussi : une monnaie qui s'effondre ne se range pas
+  // sous « monde » ou sous « escouade ».
+  await page.click('[data-a="onglet"][data-k="escouade"]');
+  await page.waitForTimeout(300);
+  ok(/Votre argent a fondu/.test(
+    await page.evaluate(() => document.querySelector('#ecran').textContent)),
+  'et il suit d’un écran à l’autre');
+  await page.screenshot({ path: join(CAPTURES, '09g-devaluation.png') });
+  await page.click('[data-a="devaluation-vue"]');
+  await page.waitForTimeout(400);
+  ok(!/Votre argent a fondu/.test(
+    await page.evaluate(() => document.querySelector('#ecran').textContent)),
+  'une fois vu, il s’efface');
+  const reste = await page.evaluate(
+    () => JSON.parse(localStorage.getItem('cendres.save.v1')).player.alertesMonnaie.length);
+  ok(reste === 0, 'et ça tient dans la sauvegarde', `${reste}`);
+  await page.click('[data-a="onglet"][data-k="carte"]');
+  await page.waitForTimeout(300);
+}
+
 // Le bureau de change (ECONOMIE §5 et §10). Sans cet écran, la bascule du lot E
 // rend le jeu injouable : on arrive à l'étranger avec la monnaie de chez soi et
 // rien ne permet d'y remédier. C'est le seul endroit du jeu où deux monnaies se
@@ -1098,6 +1141,13 @@ ok(/Directeur|Commandant|Parrain|Porte-parole|Voix du Signal|Chef de convoi/.tes
 ok(/conquérant|prudent|bâtisseur|rancunier|conciliateur|rapace|méthodique/i.test(textePol),
   'avec son tempérament');
 ok(/ville\(s\) prise\(s\)/.test(textePol), 'et son bilan');
+// ECONOMIE §10 : l'écran d'une faction dit sa monnaie. Réservé à qui lit leurs
+// transmissions — un cours et une masse monétaire ne traînent pas sur les places.
+ok(/Monnaie .* : cours/.test(textePol), 'et le cours de sa monnaie',
+  (textePol.match(/Monnaie [^.]*\./) || ['—'])[0]);
+ok(/en circulation/.test(textePol) && /émission\(s\)/.test(textePol),
+  'ce qui circule et combien de fois ils ont imprimé');
+ok(/Loyer de l’argent/.test(textePol), 'et le taux directeur, en toutes lettres');
 await page.screenshot({ path: join(CAPTURES, '22-politique.png'), fullPage: true });
 const guerresAffichees = await page.evaluate(() => {
   const s = JSON.parse(localStorage.getItem('cendres.save.v1'));

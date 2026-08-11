@@ -329,8 +329,38 @@ rien ne permet d'y remédier. Les trois lots n'en font qu'un.
   racheter la dette d'une ville étrangère (`racheterCreance` est écrit et
   testé), retirer de la monnaie (`retirerMonnaie` aussi). Il ne manque que la
   charge.
-- [ ] **E5. Le bandeau de dévaluation** (> 10 % de perte sur une monnaie
+- [x] **E5. Le bandeau de dévaluation** (> 10 % de perte sur une monnaie
   détenue) + journal des émissions/taux/rachats/défauts.
+
+  **La référence est tout le mécanisme, et elle ne se remet pas à chaque
+  relevé.** Comparer au cours de l'heure d'avant laisserait une monnaie tomber
+  indéfiniment sans jamais rien déclencher : six pour cent par conseil, chaque
+  pas sous le seuil, et la somme des pas mesurée nulle part. On compare donc au
+  dernier cours **dont on a parlé au joueur**, et on ne le remet qu'en deux
+  occasions — quand on vient de le prévenir, et quand la monnaie remonte, sans
+  quoi une chute depuis un sommet se mesurerait depuis un creux ancien.
+
+  Le bandeau est **au-dessus de tous les écrans**, pas dans un onglet : une
+  monnaie qui s'effondre ne se range pas sous « monde » ou sous « escouade ».
+  Il survit au rechargement et ne s'efface que quand on l'a vu — une alerte
+  ratée parce qu'on avait fermé l'onglet est une alerte qui n'a servi à rien, et
+  c'est précisément le reproche qu'on fait au journal, où la ligne défile
+  derrière quatre cents autres.
+
+  Le plancher d'un solde — on ne crie pas pour quelques piécettes — est le seul
+  nombre qui ne vienne pas du cahier des charges. Il vaut une unité, pas un
+  centième : c'est le même seuil que celui du bureau de change pour décider
+  qu'une monnaie est « tenue ».
+
+  Côté journal, l'essentiel existait déjà : les changements de taux passent par
+  les `changements` du conseil, les défauts et les cessions ont leur ligne. Ce
+  qui manquait, ce sont les émissions — et il n'y en avait aucune, puisque
+  aucun conseil ne bat monnaie. E4 en a ouvert la première.
+
+  L'écran d'une faction gagne au passage la ligne que §10 demandait : cours et
+  son état, masse en circulation, nombre d'émissions, taux directeur en toutes
+  lettres. Réservé à qui lit leurs transmissions — un cours et une masse
+  monétaire ne traînent pas sur les places.
 - [ ] **E6. Le banc-bot survit** : une partie complète de `test/equilibre.js`
   sans ruine par accident de change ; tests navigateur pour chaque écran neuf.
 

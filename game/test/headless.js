@@ -8,7 +8,7 @@ import {
 import { Rng, grainDe, combienDeFois } from '../src/rng.js';
 import { mesurerTick, CHAUFFE, MESURE } from './perf.js';
 import { lireRapport, MARQUANTS_MAX } from '../src/rapport.js';
-import { serialiser, deserialiser } from '../src/save.js';
+import { serialiser, deserialiser, normaliser } from '../src/save.js';
 import {
   COMMODITY_KEYS, DIPLO_FACTIONS, FACTIONS, drapeauDe as identiteDe,
   couleurNeuve, teinteDe, satDe, diploDe, reconnue,
@@ -121,11 +121,11 @@ import {
   comp as compPerso,
 } from '../src/characters.js';
 import { DIPLOMES, DIPLOME_KEYS } from '../src/data.js';
-import { FACTION_KEYS, symboleDe, symboleNeuf } from '../src/data.js';
+import { FACTION_KEYS, symboleDe, symboleNeuf, clesDe } from '../src/data.js';
 import { bureauDe, devisChange, changer } from '../src/economy.js';
 import { battreMonnaie, accorderCredit } from '../src/influence.js';
 import { CREDIT } from '../src/credit.js';
-import { majCours, MONNAIE, coursMonnaie } from '../src/monnaie.js';
+import { majCours, MONNAIE, coursMonnaie, veillerMonnaies, DEVALUATION } from '../src/monnaie.js';
 import { coloniesDe } from '../src/factions.js';
 import {
   ecolesDe, inscrire, enFormation, ecolesAvantPoste, enseignerChezSoi,
@@ -8763,6 +8763,99 @@ section('E4. Les prérogatives monétaires');
     'battre monnaie est inscrit au dossier');
   ok((gP.allegeance.actes || []).some((a) => a.type === 'credit'),
     'accorder un crédit aussi');
+}
+
+// ---------------------------------------------------------------------------
+section('E5. On ne découvre pas une dévaluation en relisant ses comptes');
+// ---------------------------------------------------------------------------
+//
+// ECONOMIE §10 : « Un bandeau quand une monnaie que vous détenez perd plus de
+// 10 %. C'est le contrepoids du choix d'afficher les prix en monnaie locale
+// seule — sans lui, on se ferait laminer sans jamais rien voir venir. »
+//
+// La référence est la clé du mécanisme. Elle ne se remet **pas** à chaque
+// relevé : sinon une monnaie qui perd six pour cent par conseil tomberait
+// indéfiniment sans jamais rien déclencher, chaque pas étant sous le seuil.
+{
+  const sD = nouvellePartie(626200);
+  const cle = clesDe(sD.world).find((k) => k !== 'essaim' && sD.world.factions[k]);
+  const f = sD.world.factions[cle];
+  f.cours = 1;
+  sD.player.coursVu = {};
+  sD.player.bourse = {};
+
+  const dits = [];
+  const dire = (l) => dits.push(l);
+
+  // Rien en poche : rien à dire. Une monnaie qu'on ne détient pas peut
+  // s'effondrer, ça ne nous regarde pas.
+  f.cours = 0.5;
+  veillerMonnaies(sD, dire);
+  ok(dits.length === 0, 'une monnaie qu’on ne détient pas ne prévient de rien');
+
+  // On en prend, et la référence se pose sans rien crier.
+  f.cours = 1;
+  sD.player.bourse[cle] = 800;
+  veillerMonnaies(sD, dire);
+  ok(dits.length === 0, 'en prendre ne déclenche rien — on note le cours, c’est tout');
+  ok(Math.abs(sD.player.coursVu[cle] - 1) < 1e-9, 'et la référence est posée',
+    `${sD.player.coursVu[cle]}`);
+
+  // Cinq pour cent : on ne dérange personne.
+  f.cours = 0.95;
+  veillerMonnaies(sD, dire);
+  ok(dits.length === 0, 'cinq pour cent de moins ne réveille personne');
+
+  // Mais la référence n'a pas bougé — donc cinq de plus déclenchent.
+  f.cours = 0.89;
+  const alertes = veillerMonnaies(sD, dire);
+  ok(dits.length === 1, 'onze pour cent en deux fois, si : la perte se cumule',
+    dits[0] && dits[0].texte);
+  ok(alertes.length === 1 && alertes[0].faction === cle,
+    'et le bandeau sait de quelle monnaie il parle');
+  ok(alertes[0].perte > 0.1, 'avec ce qu’elle a perdu', `${(alertes[0].perte * 100).toFixed(1)} %`);
+  ok(dits[0].important, 'la ligne est marquée : ça ne se lit pas en diagonale');
+  ok((sD.player.alertesMonnaie || []).length === 1,
+    'et le bandeau tient dans la sauvegarde — une alerte ratée ne sert à rien');
+
+  // Une fois dit, la référence se remet : on ne répète pas la même chute à
+  // chaque heure.
+  veillerMonnaies(sD, dire);
+  ok(dits.length === 1, 'et on ne le redit pas à chaque heure');
+
+  // Une monnaie qui remonte remet la référence en haut, sinon une chute depuis
+  // le sommet passerait sous le seuil.
+  f.cours = 1.4;
+  veillerMonnaies(sD, dire);
+  ok(Math.abs(sD.player.coursVu[cle] - 1.4) < 1e-9,
+    'une remontée relève la référence', `${sD.player.coursVu[cle]}`);
+  f.cours = 1.24;
+  veillerMonnaies(sD, dire);
+  ok(dits.length === 2, 'et la chute suivante se mesure depuis le sommet',
+    `${(alertes.length)} → ${dits.length}`);
+
+  // Ce qu'on n'a presque plus ne mérite pas un bandeau.
+  sD.player.bourse[cle] = 0.4;
+  sD.player.coursVu[cle] = 2;
+  f.cours = 1;
+  veillerMonnaies(sD, dire);
+  ok(dits.length === 2, 'et quelques piécettes ne valent pas qu’on crie');
+
+  // La veille tourne dans le jeu, pas seulement dans ce test.
+  const sJ = nouvellePartie(626201);
+  const cleJ = monnaieIci(sJ);
+  sJ.player.bourse = { [cleJ]: 2000 };
+  tick(sJ);
+  ok(sJ.player.coursVu && sJ.player.coursVu[cleJ] > 0,
+    'un tick suffit à poser la référence', `${sJ.player.coursVu[cleJ]}`);
+
+  // Et une vieille sauvegarde ne casse pas.
+  const vieux = JSON.parse(JSON.stringify(sJ));
+  delete vieux.player.coursVu;
+  normaliser(vieux);
+  ok(vieux.player.coursVu && typeof vieux.player.coursVu === 'object',
+    'une partie d’avant le bandeau en reçoit un');
+  ok(Array.isArray(vieux.player.alertesMonnaie), 'et une liste d’alertes vide');
 }
 
 // ===========================================================================
