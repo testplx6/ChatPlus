@@ -2007,10 +2007,25 @@ console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit
     const cible = Math.min(Math.floor(mesures.h / 2), mesures.h - mesures.vue - 400);
     await page.evaluate((y) => { document.querySelector('#ecran').scrollTop = y; }, cible);
     await page.waitForTimeout(300);
+    // On compare **la ligne**, pas ce qui s'y accroche : les chiffres sont
+    // gommés et les clauses ajoutées après un « · » coupées.
+    //
+    // C'est le sujet de la mesure qui l'exige. On cherche un *déplacement* —
+    // « ce qu'on lit reste sous les yeux ». Or à soixante fois la vitesse la
+    // même ligne gagne et perd des morceaux sans bouger d'un pixel :
+    // « 1 blessé(s) sérieux » devient « 2 blessé(s) sérieux · sac plein : » et
+    // redevient elle-même. Relevé à la sonde, huit lectures d'affilée :
+    // `scrollTop` vaut 746 aux huit, et le décor comptait trois déplacements.
+    // Il accusait l'ancre d'un défaut qui n'était pas le sien.
+    //
+    // Ça s'est vu le jour où les colonnes ont su se nourrir — plus de campagnes
+    // vivantes, donc une escouade qui se blesse et se charge pendant les trois
+    // secondes de la mesure. Le décor était faux avant, il ne le montrait pas.
     const lu = () => page.evaluate(() => {
       const ec = document.querySelector('#ecran');
       const el = document.elementFromPoint(200, ec.getBoundingClientRect().top + 10);
-      return (el ? el.textContent : '').slice(0, 34).replace(/\s+/g, ' ');
+      return (el ? el.textContent : '').slice(0, 34)
+        .replace(/\s+/g, ' ').replace(/\d+/g, '#').split(' · ')[0];
     });
     const debut = await lu();
     let bouges = 0;

@@ -430,36 +430,80 @@ identiques octet pour octet. Les règles de jeu n'arrivent qu'à N5.
   Or des hommes qui se battent sous leur propre bannière n'attendent pas de
   paie : ils *sont* l'État. C'est ce que N8 ter corrige.
 
-- [ ] **N8 ter. Le ravitaillement ne se refait jamais — et c'est un lot à part.**
+- [x] **N8 ter. Une colonne se nourrit de ce qu'il y a là où elle est.**
 
-  La compagnie franche est écrite : une colonne dont la faction ne tient aucune
-  ville ne compte plus d'impayés. C'est juste, et ça n'a **rien changé**.
+  Le ravitaillement ne remontait **jamais** : il partait de `60 + force/4` et
+  descendait d'un par heure, quoi que la colonne fasse. Une mèche qui brûle.
+  Prendre une ville riche ne nourrissait pas mieux que traverser un désert, et
+  une colonne vivait soixante et une heures en médiane sur les 709 mesurées. Une
+  compagnie franche avait quarante-huit heures à vivre : elle ne se débandait
+  pas, elle n'était pas battue, elle mourait de faim.
 
-  Le verrou est ailleurs, et il est plus gros que ce chantier. **Le
-  ravitaillement d'une colonne ne remonte jamais** : il part de `60 + force/4`
-  et descend d'un par heure, quoi qu'elle fasse. Une mèche qui brûle. Prendre
-  une ville riche ne nourrit pas mieux que traverser un désert, et une colonne
-  vit **soixante et une heures en médiane** — mesuré sur 709 d'entre elles.
-  Relevé sur un drapeau neuf : fondé à h552 avec 58 hommes et 49 de vivres,
-  disparu quarante-huit heures plus tard.
+  **Écrit comme une capacité, pas comme une règle par cas** — décision du
+  propriétaire, mot pour mot : « il y a autant de façons que ce que les membres
+  peuvent faire, récolter, marchander, travailler, se faire payer, voler, etc.
+  C'est une simulation. » Quatre sources, dans l'ordre où des hommes y
+  penseraient, et la carte décide du reste :
 
-  **Le principe est donné par le propriétaire** : « il y a autant de façons que
-  ce que les membres peuvent faire, récolter, marchander, travailler, se faire
-  payer, voler, etc. — c'est une simulation. » Ce n'est donc pas une règle par
-  cas qu'il faut écrire, c'est une **capacité** : des hommes prennent ce qu'il y
-  a là où ils sont. La terre selon son biome et sa richesse
-  (`rendementRegion` sait déjà le dire), les greniers d'une ville de leur
-  drapeau, le marché s'ils ont de quoi payer, le pillage s'ils n'ont plus rien.
+  | | ce qui se passe |
+  |---|---|
+  | la terre | toujours, et elle vaut ce que vaut le sol — un marais nourrit, les dalles ne rendent rien |
+  | les siens | on se sert au grenier, **et l'État paie sa propre ville** |
+  | le marché | chez un voisin en paix, on achète ; la ville encaisse dans SA monnaie, au cours du jour |
+  | le reste | sans un sou ou chez un ennemi, on prend — et la ville s'en souvient |
 
-  **Essayé, et remis à sa place.** Une première version — glane sur la terre
-  plus réquisition en ville — a été écrite et retirée le jour même. Pas parce
-  qu'elle échoue : parce qu'elle réussit trop largement. Trois décors tombent
-  d'un coup, dont la mesure d'erreur locale du chantier de maille et un test de
-  crédit. Une colonne qui ne meurt plus de faim, c'est une guerre qui dure, une
-  ville qu'on vide, une économie qui bouge. **Ça mérite son lot, son calibrage
-  et son témoin**, pas la fin d'une séance.
+  **Aucun tirage** : tout se dérive du sol, du grenier et du trésor. Une colonne
+  qui mange ne décale pas le flux du monde (piège n° 1), et le test le vérifie.
 
-  Ce qui est acquis et gardé : le constat, chiffré, et le principe, écrit.
+  ### Les deux erreurs de conception, trouvées à la mesure
+
+  **1. On ne charge pas un convoi en une heure.** Première version : une colonne
+  comblait ses soixante-quinze heures manquantes d'un coup, donc prenait
+  soixante-quinze fois sa ration au grenier. Les villes se vidaient, empruntaient
+  pour racheter du grain, faisaient défaut, se faisaient saisir — **créances de
+  67 à 85** sur six graines, +25 % confirmé sur huit autres. D'où
+  `chargeParHeure` : on se refait en une journée de halte, pas en une heure.
+
+  **2. Une réquisition gratuite ruine son propre pays.** Même avec le plafond,
+  les créances restaient à 75. Ce n'était plus le débit : c'était la gratuité.
+  Une ville dont l'armée vide le grenier sans payer doit racheter du grain, donc
+  emprunter. L'État paie désormais sa propre ville — l'argent ne quitte pas le
+  pays, du trésor à une caisse, la masse ne bouge pas d'une unité.
+
+  ### Ce que ça donne, contre `c4a210a`
+
+  | | témoin | avec | | témoin (8 graines) | avec |
+  |---|---:|---:|---|---:|---:|
+  | satiété | 0,752 | **0,834** | | 0,790 | **0,825** |
+  | villes à la diète | 59 % | **49 %** | | 54 % | **51 %** |
+  | villes cédées | 67 | 70 | | 84 | **82** |
+  | villes debout | 459 | 447 | | 591 | 570 |
+  | retournements | 3 | 7 | | 11 | 17 |
+
+  Le monde mange nettement mieux, et il bouge plus : les colonnes vivent, donc
+  les guerres se décident au lieu de s'éteindre de faim. Le compteur `débandes`
+  du banc s'allume pour la première fois.
+
+  ### Le calibrage, et son honnêteté
+
+  Les trois constantes ont été balayées. **Le banc ne les discrimine pas** à six
+  graines — `créances` rend 77 / 70 / 68 / 74 pour `chargeParHeure` de 2 à 16, et
+  75 / 70 / 64 pour `parBras`. Les valeurs retenues le sont donc sur leur
+  *sens*, ce qui est dit plutôt que caché :
+
+  - `parBras = 0,006` — un soldat qui fourrage rend moins de la moitié d'un
+    paysan sur une terre travaillée (`paysans × 0,02` dans `productionColonie`).
+  - `chargeParHeure = 4` — un plein de soixante-quinze heures demande environ
+    dix-neuf heures de halte, soit une journée.
+
+  ### Un décor rendu déterministe au passage
+
+  Le test « la colonne sans solde » jouait six cents heures, prenait la première
+  colonne venue et espérait qu'elle vive les neuf cents suivantes. Le jour où
+  les colonnes ont su se nourrir, celle-ci est morte au combat et **trois
+  mesures sont tombées à zéro d'un coup** sans que le mécanisme mesuré ait
+  bougé. Le décor plante maintenant une colonne quand le pays n'en a plus. Sa
+  non-complaisance est vérifiée : l'ardoise neutralisée, il crie.
 
 - [~] **N9. Livraison — l'écran d'abord.** Les 39 lectures de `FACTIONS[clé]`
   d'`ui.js` sont branchées sur le monde, et les cinq de `DIPLO_FACTIONS` aussi.

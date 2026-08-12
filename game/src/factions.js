@@ -2,7 +2,7 @@
 // prennent des colonies, signent des paix. C'est le cœur « vivant » de la sim.
 
 import {
-  FACTIONS, DIPLO_FACTIONS, COMMODITY_KEYS, MENAGES, COMMODITIES, drapeauDe, diploDe,
+  FACTIONS, DIPLO_FACTIONS, COMMODITY_KEYS, MENAGES, COMMODITIES, BIOMES, drapeauDe, diploDe,
   couleurNeuve, symboleNeuf,
 } from './data.js';
 import { Rng, grainDe } from './rng.js';
@@ -17,13 +17,16 @@ import {
 } from './dirigeants.js';
 import {
   effondrer, emploisInitiaux, remonterCaisses, verser, productionColonie,
+  prixUnitaire, encaisser,
 } from './economy.js';
 import {
   tickCredit, veutBatir, racheterCreance, valeurNette,
 } from './credit.js';
-import { transferer, transfererVille, annuler, majCours } from './monnaie.js';
+import {
+  transferer, transfererVille, annuler, majCours, taux, convertirMasse,
+} from './monnaie.js';
 import { pourvoirCharges, nommerActeur } from './notables.js';
-import { chemin, colonieParId, distance, voisins, damer } from './world.js';
+import { chemin, colonieDe, colonieParId, distance, voisins, damer } from './world.js';
 import {
   loisDe, pressionFiscale, IMPOTS, PEINES, REGIMES, DIRECTEURS, directeurInitial,
 } from './lois.js';
@@ -241,7 +244,7 @@ function leverArmee(world, key, force, depuis, cibleId, log) {
     etape: 0,
     progres: 0,
     etat: 'marche',
-    ravitaillement: 60 + Math.round(force / 4),
+    ravitaillement: ravitaillementMax(force),
     // Les heures de solde qu'on lui doit. Voir la solde, plus bas : une colonne
     // qu'on ne paie plus ne reste pas indéfiniment au garde-à-vous.
     impayees: 0,
@@ -410,10 +413,163 @@ function batailleArmees(world, a, b, t, log, ctx) {
   }
 }
 
+/**
+ * Ce qu'une colonne emporte quand on la lève, et le plafond de ce qu'elle peut
+ * porter. Soixante heures de base, plus ce que des bras de plus permettent de
+ * transporter.
+ */
+export function ravitaillementMax(force) {
+  return 60 + Math.round(force / 4);
+}
+
+/**
+ * Les réglages du ravitaillement. Calibrables, donc dans un objet mutable.
+ */
+export const FOURRAGE = {
+  /** Ce qu'un homme glane par heure, pour un sol qui rend 1 de biomasse. */
+  parBras: 0.006,
+  /**
+   * Combien d'heures de vivres une colonne charge en une heure.
+   *
+   * C'est le garde-fou qui manquait à la première version, et son absence
+   * n'était pas un détail de réglage : une colonne comblait ses soixante-quinze
+   * heures manquantes **en une seule heure**, donc prenait soixante-quinze fois
+   * sa ration au grenier de la ville. Les villes se vidaient, empruntaient pour
+   * racheter du grain, faisaient défaut, et se faisaient saisir — les créances
+   * montaient de 25 % sur deux jeux de graines. On ne charge pas un convoi
+   * comme ça : on se refait en une journée de halte, pas en une heure.
+   */
+  chargeParHeure: 4,
+  /** Ce qu'une colonne peut tirer d'un grenier en une heure, en part du stock. */
+  partVille: 0.05,
+  /** Ce que se faire vider son grenier ajoute de grogne, par heure. */
+  grognePillage: 0.02,
+};
+
+/** Ce que la terre d'ici rend à qui la glane, sans allouer. */
+function solNourricier(world, regionId) {
+  const r = world.regions[regionId];
+  if (!r) return 0;
+  const base = (BIOMES[r.biome].yields || {}).biomasse || 0;
+  const a = r.amendement && r.amendement.biomasse;
+  return base + (a > 0 ? a : 0);
+}
+
+/**
+ * Une colonne se nourrit de ce qu'il y a là où elle est.
+ *
+ * **C'est une capacité, pas une règle par cas** — et c'est la décision du
+ * propriétaire, mot pour mot : « il y a autant de façons que ce que les membres
+ * peuvent faire, récolter, marchander, travailler, se faire payer, voler, etc.
+ * C'est une simulation. » On n'écrit donc pas « une colonne en garnison reçoit
+ * tant » : on écrit ce que des hommes savent faire, et la carte décide du
+ * reste.
+ *
+ * Avant ce lot, `ravitaillement` ne remontait **jamais**. Il partait de
+ * `60 + force/4` et descendait d'un par heure, quoi que la colonne fasse : une
+ * mèche qui brûle. Prendre une ville riche ne nourrissait pas mieux que
+ * traverser un désert, et une colonne vivait soixante et une heures en médiane
+ * sur les 709 mesurées. Une compagnie franche — un drapeau neuf, donc aucune
+ * ville — avait quarante-huit heures à vivre : elle ne se débandait pas, elle
+ * n'était pas battue, elle mourait de faim.
+ *
+ * Quatre sources, dans l'ordre où des hommes y penseraient :
+ *
+ *   la terre     toujours, et elle vaut ce que vaut le sol. Un marais nourrit,
+ *                les dalles ne rendent rien. C'est le biome qui décide.
+ *   les siens    on se sert dans le grenier de sa propre ville. Le grenier le
+ *                sent : la réquisition n'invente pas de vivres.
+ *   le marché    chez un voisin en paix, on achète, et le trésor paie. La ville
+ *                encaisse — c'est un marché, pas un vol.
+ *   le reste     sans un sou, ou chez un ennemi, on prend quand même. Et la
+ *                ville s'en souvient.
+ *
+ * **Aucun tirage.** Une colonne qui mange ne doit pas décaler le flux du monde
+ * (piège n° 1) : tout se dérive du sol, du grenier et du trésor.
+ */
+export function ravitailler(world, armee) {
+  const max = ravitaillementMax(armee.force);
+  if (armee.ravitaillement >= max) return 0;
+  // Le même besoin par tête qu'une ville : une colonne n'est qu'une population
+  // qui marche, et deux règles de faim pour un seul monde finiraient par
+  // diverger.
+  const besoin = armee.force * 0.014;
+  if (!(besoin > 0)) return 0;
+
+  // 1. La terre.
+  const glane = armee.force * FOURRAGE.parBras * solNourricier(world, armee.regionId);
+  let gagne = glane / besoin;
+
+  // 2, 3, 4. Ce qu'une ville a sur place, et à quel titre on le prend.
+  const col = colonieDe(world, armee.regionId);
+  if (col && !col.ruine && !col.avantPoste) {
+    const manque = Math.min(
+      Math.max(0, max - armee.ravitaillement - gagne), FOURRAGE.chargeParHeure);
+    const veut = manque * besoin;
+    const offert = Math.min(veut, (col.stock.rations || 0) * FOURRAGE.partVille);
+    if (offert > 0) {
+      let pris = offert;
+      if (col.faction === armee.faction) {
+        // Chez soi, l'État paie son propre grenier. Ce n'est pas une politesse :
+        // une réquisition gratuite vide la ville, qui emprunte pour racheter du
+        // grain, fait défaut, et se fait saisir. Mesuré sans ce versement, les
+        // villes cédées à leur créancier montent de 67 à 75 sur six graines.
+        // L'argent ne quitte pas le pays — du trésor à la caisse d'une de ses
+        // villes —, donc la masse ne bouge pas d'une unité.
+        const f = world.factions[armee.faction];
+        if (f) {
+          const prix = prixUnitaire(col, 'rations', undefined, world);
+          const payable = prix > 0 ? Math.max(0, f.tresor) / prix : 0;
+          pris = Math.min(offert, payable);
+          const du = pris * prix;
+          f.tresor -= du;
+          encaisser(world, col, du);
+        }
+      } else {
+        const f = world.factions[armee.faction];
+        const hostile = !col.faction || enGuerre(world, armee.faction, col.faction);
+        if (!hostile && f && f.tresor > 0) {
+          // Le marché : on paie le prix du lieu, et la ville encaisse.
+          //
+          // Dans SA monnaie à elle, pas dans la nôtre. Verser le même nombre
+          // d'unités des deux côtés fabrique de l'argent à chaque achat —
+          // écrit ainsi la première fois, l'invariant dérivait de sept cents
+          // crédits en deux mille heures. C'est le même geste que le
+          // remboursement d'une créance étrangère (`tickCredit`), et pour la
+          // même raison : un paiement d'un pays à l'autre est un change.
+          const prix = prixUnitaire(col, 'rations', undefined, world);
+          const payable = prix > 0 ? f.tresor / prix : 0;
+          pris = Math.min(offert, payable);
+          const du = pris * prix;
+          const recu = du * taux(world, armee.faction, col.faction);
+          f.tresor -= du;
+          encaisser(world, col, recu);
+          convertirMasse(world, armee.faction, col.faction, du, recu);
+        } else {
+          // On se sert. Une ville qu'on vide ne l'oublie pas.
+          col.unrest = Math.min(1, (col.unrest || 0) + FOURRAGE.grognePillage);
+        }
+      }
+      if (pris > 0) {
+        col.stock.rations = Math.max(0, (col.stock.rations || 0) - pris);
+        gagne += pris / besoin;
+      }
+    }
+  }
+
+  if (gagne <= 0) return 0;
+  const avant = armee.ravitaillement;
+  armee.ravitaillement = Math.min(max, armee.ravitaillement + gagne);
+  return armee.ravitaillement - avant;
+}
+
 function tickArmee(world, armee, t, log, ctx) {
   const rng = ctx.rng;
 
-  // Ravitaillement : une colonne loin de chez elle finit par se déliter
+  // Ravitaillement : ce qu'on trouve d'abord, ce qu'on consomme ensuite. Une
+  // colonne loin de tout et sur une mauvaise terre se délite toujours — c'est
+  // l'ordre du monde —, mais elle a désormais de quoi y faire quelque chose.
+  ravitailler(world, armee);
   armee.ravitaillement -= 1;
   if (armee.ravitaillement <= 0) {
     armee.force -= Math.max(1, Math.round(armee.force * 0.02));

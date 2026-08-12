@@ -264,16 +264,42 @@ function cleUnique(vus, cle) {
   return n > 1 ? `${cle}#${n}` : cle;
 }
 
+/**
+ * De quoi nommer un encart qui n'a pas de titre — et surtout, pas par son rang.
+ *
+ * Le rang était le repli d'origine, et il tient tant que rien ne s'insère
+ * au-dessus. Le bandeau de dévaluation du lot E5, lui, apparaît en tête de
+ * **tous** les écrans dès qu'une monnaie qu'on détient s'effondre : le jour où
+ * il se lève, tous les encarts sans titre changent de nom d'un coup et l'ancre
+ * de défilement ne les retrouve plus.
+ *
+ * **Trouvé en cherchant autre chose, et corrigé pour lui-même.** Le décor qui
+ * avait mis sur cette piste — « ce qu'on lit reste sous les yeux » — accusait
+ * en fait l'ancre à tort : `scrollTop` valait 746 aux huit relevés, rien
+ * n'avait bougé, c'était la ligne lue qui gagnait une clause. Ce défaut-ci est
+ * donc réel mais latent : aucune mesure ne l'attrape aujourd'hui, et il faut le
+ * dire plutôt que de laisser croire qu'un test le garde.
+ *
+ * L'identifiant ou les classes ne bougent pas, eux : `carte-boite`, `legende`,
+ * `carte-pied` sont les mêmes à tous les rendus, quoi qu'on insère au-dessus.
+ */
+function cleSansTitre(sec, i) {
+  if (sec.id) return `#${sec.id}`;
+  const cls = sec.getAttribute && sec.getAttribute('class');
+  if (cls) return `.${cls.trim().split(/\s+/).join('.')}`;
+  return `s${i}`;
+}
+
 function cleSection(sec, i) {
   const h = sec.querySelector('h2.titre');
-  if (!h) return `s${i}`;
+  if (!h) return cleSansTitre(sec, i);
   const c = h.cloneNode(true);
   // Tout ce qui porte des valeurs qui bougent : la partie droite, les puces, et
   // le résumé de barre repliée. Oublier ce dernier faisait changer la clé d'un
   // encart chaque fois que son résumé changeait — donc le pli ne tenait plus, et
   // l'ancre de défilement cherchait un encart qui n'existait pas sous ce nom.
   for (const d of c.querySelectorAll('.droite, .puce, .resume')) d.remove();
-  return c.textContent.trim().slice(0, 48) || `s${i}`;
+  return c.textContent.trim().slice(0, 48) || cleSansTitre(sec, i);
 }
 
 /** Position d'un élément dans le conteneur défilant, en pixels depuis le haut. */

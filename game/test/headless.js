@@ -55,6 +55,7 @@ import { verdict } from '../tools/vitesse.js';
 import { loiIci } from '../src/lois.js';
 import { primeLivraison, prixEsclave } from '../src/justice.js';
 import { classement, puissance } from '../src/factions.js';
+import { ravitailler, ravitaillementMax, FOURRAGE } from '../src/factions.js';
 import {
   donnerOrdre, verifierExercice, COMPETENCES_EXERCICE, consommationGroupe, autonomie,
   apercuEscouade, rendementPrevu,
@@ -7692,6 +7693,111 @@ section('23. Une probabilité se regroupe, un compte ne se regroupe pas');
 }
 
 // ===========================================================================
+section('N8 ter. Une colonne se nourrit de ce qu’il y a là où elle est');
+{
+  // Le ravitaillement ne remontait jamais : il partait de `60 + force/4` et
+  // descendait d'un par heure, quoi que la colonne fasse. Une mèche qui brûle.
+  // Prendre une ville riche ne nourrissait pas mieux que traverser un désert,
+  // et une colonne vivait soixante et une heures en médiane sur 709 mesurées.
+  //
+  // Le principe est tranché par le propriétaire : « il y a autant de façons que
+  // ce que les membres peuvent faire — récolter, marchander, travailler, se
+  // faire payer, voler. C'est une simulation. » Ce n'est donc pas une règle par
+  // cas, c'est une **capacité** : des hommes prennent ce qu'il y a là où ils
+  // sont. La terre selon son biome, les greniers des leurs, le marché s'ils ont
+  // de quoi payer, le reste s'ils n'ont plus rien.
+  const sR = nouvellePartie(88123, { maintenant: 0 });
+  const w = sR.world;
+  const colonne = (regionId, faction, force = 60) => ({
+    id: `atest${regionId}`, faction, regionId, force, forceMax: force,
+    cible: null, route: [], etape: 0, progres: 0, etat: 'marche',
+    ravitaillement: 20, impayees: 0,
+  });
+
+  // La terre : un marais nourrit, les dalles non. C'est le biome qui décide,
+  // pas une table de cas.
+  const marais = w.regions.find((r) => r.biome === 'marais' && !r.colonie);
+  const sterile = w.regions.find((r) => r.biome === 'dalles' && !r.colonie);
+  const aM = colonne(marais.i, 'hexa');
+  const aS = colonne(sterile.i, 'hexa');
+  const avantR = w.rngState;
+  ravitailler(w, aM);
+  ravitailler(w, aS);
+  ok(aM.ravitaillement > 20, 'sur une terre grasse, la glane rapporte',
+    `${aM.ravitaillement.toFixed(2)} h`);
+  ok(aS.ravitaillement === 20, 'sur la pierre, elle ne rapporte rien',
+    `${aS.ravitaillement.toFixed(2)} h`);
+  ok(w.rngState === avantR, 'et se nourrir ne consomme aucun tirage');
+
+  // Chez soi : on se sert, et le grenier le sent.
+  const sienne = w.colonies.find((c) => !c.ruine && !c.avantPoste && c.faction && c.pop > 100);
+  sienne.stock.rations = 4000;
+  const aC = colonne(sienne.regionId, sienne.faction);
+  const grenierAvant = sienne.stock.rations;
+  ravitailler(w, aC);
+  // Vite, mais pas d'un coup : on charge `chargeParHeure` heures de vivres par
+  // heure de halte. Sans ce plafond, une colonne comblait ses soixante-quinze
+  // heures manquantes en une seule et vidait le grenier — mesuré, +25 % de
+  // villes saisies pour dette sur deux jeux de graines.
+  ok(aC.ravitaillement >= 20 + FOURRAGE.chargeParHeure - 1e-9,
+    'dans une ville des siens, on se refait — une journée de halte, pas une heure',
+    `${aC.ravitaillement.toFixed(1)} h`);
+  ok(sienne.stock.rations < grenierAvant,
+    'et le grenier de la ville le sent — la réquisition n’invente rien',
+    `${Math.round(grenierAvant)} → ${Math.round(sienne.stock.rations)}`);
+
+  // Chez un voisin en paix : on achète, et le trésor paie.
+  const etrangere = w.colonies.find(
+    (c) => !c.ruine && !c.avantPoste && c.faction && c.faction !== sienne.faction && c.pop > 100);
+  etrangere.stock.rations = 4000;
+  const f = w.factions[sienne.faction];
+  f.tresor = 50000;
+  const aE = colonne(etrangere.regionId, sienne.faction);
+  const tresorAvant = f.tresor;
+  const caisseAvant = etrangere.caisse || 0;
+  ravitailler(w, aE);
+  ok(aE.ravitaillement >= 20 + FOURRAGE.chargeParHeure - 1e-9,
+    'chez un voisin en paix, on achète', `${aE.ravitaillement.toFixed(1)} h`);
+  ok(f.tresor < tresorAvant, 'et le trésor paie', `−${Math.round(tresorAvant - f.tresor)}`);
+  ok((etrangere.caisse || 0) > caisseAvant, 'la ville encaisse : c’est un marché, pas un vol');
+
+  // Sans un sou, on prend quand même — et ça se paie en grogne.
+  f.tresor = 0;
+  etrangere.stock.rations = 4000;
+  etrangere.unrest = 0.2;
+  const aP = colonne(etrangere.regionId, sienne.faction);
+  const grogneAvant = etrangere.unrest;
+  const stockAvant = etrangere.stock.rations;
+  ravitailler(w, aP);
+  ok(aP.ravitaillement >= 20 + FOURRAGE.chargeParHeure - 1e-9,
+    'sans un sou, on se sert quand même', `${aP.ravitaillement.toFixed(1)} h`);
+  ok(etrangere.stock.rations < stockAvant, 'le grenier y passe');
+  ok(etrangere.unrest > grogneAvant, 'et la ville s’en souvient',
+    `grogne ${grogneAvant.toFixed(2)} → ${etrangere.unrest.toFixed(2)}`);
+
+  // Le plafond tient : on ne stocke pas six mois de vivres sur le dos.
+  const aPlein = colonne(sienne.regionId, sienne.faction);
+  sienne.stock.rations = 90000;
+  for (let i = 0; i < 200; i++) ravitailler(w, aPlein);
+  ok(aPlein.ravitaillement <= ravitaillementMax(aPlein.force) + 1e-9,
+    'et le plafond tient', `${aPlein.ravitaillement.toFixed(1)} h`);
+
+  // Ce que tout ce lot sert à faire : une compagnie franche, sans une ville au
+  // monde, vit plus de quarante-huit heures.
+  const sF = nouvellePartie(88124, { maintenant: 0 });
+  const rM = sF.world.regions.find((r) => r.biome === 'marais' && !r.colonie);
+  const libre = {
+    id: 'alibre', faction: 'libres', regionId: rM.i, force: 58, forceMax: 58,
+    cible: null, route: [], etape: 0, progres: 0, etat: 'marche',
+    ravitaillement: 49, impayees: 0,
+  };
+  let heures = 0;
+  while (libre.ravitaillement > 0 && heures < 400) { ravitailler(sF.world, libre); libre.ravitaillement -= 1; heures += 1; }
+  ok(heures > 48, 'une compagnie franche vit plus de quarante-huit heures',
+    `${heures} h sur une terre grasse`);
+}
+
+// ===========================================================================
 section('24. Le vivier — la ville promeut qui a déjà une histoire');
 {
   // Chantier INDIVIDUS, lot 4. Une charge qui se libère tirait toujours un nom
@@ -7944,6 +8050,34 @@ section('26. La colonne sans solde');
   // où son ardoise devient positive, et le compteur n'est jamais observable
   // depuis l'extérieur. On mesurerait alors la conséquence en croyant mesurer
   // la cause. Les quatre issues sont vérifiées juste en dessous, à leur place.
+  // Une colonne du pays suivi, plantée s'il n'en a plus.
+  //
+  // Le décor dépendait d'une trajectoire : il jouait six cents heures, prenait
+  // la première colonne venue et espérait qu'elle vive les neuf cents
+  // suivantes. Le jour où les colonnes ont su se nourrir, celle-ci est morte au
+  // combat et les trois mesures sont tombées à zéro d'un coup — sans que rien
+  // du mécanisme mesuré n'ait bougé. Un décor doit **produire** la situation
+  // qu'il teste, pas la tirer au sort.
+  const planter = (st, key) => {
+    if ((st.world.armees || []).some((a) => a.faction === key)) return;
+    const chez = st.world.colonies.find((c) => !c.ruine && c.faction === key);
+    if (!chez) return;
+    st.world.armees.push({
+      id: `aplant${st.temps}`,
+      faction: key,
+      regionId: chez.regionId,
+      force: 60,
+      forceMax: 60,
+      cible: chez.id,
+      route: [],
+      etape: 0,
+      progres: 0,
+      etat: 'marche',
+      ravitaillement: 60,
+      impayees: 0,
+    });
+  };
+
   const pireArdoise = (tresor) => {
     const grace = COLONNE.grace;
     COLONNE.grace = 1e9;
@@ -7964,6 +8098,7 @@ section('26. La colonne sans solde');
       if (tresor === 0) {
         for (const c of st.world.colonies) if (c.faction === key) c.caisse = 0;
       }
+      planter(st, key);
       tick(st);
       for (const a of st.world.armees || []) {
         if (a.faction !== key) continue;
@@ -8012,6 +8147,7 @@ section('26. La colonne sans solde');
       for (const e of ennemis) {
         st.world.factions[e].tresor = avecPayeur ? 900000 : 0;
       }
+      planter(st, key);
       tick(st);
       for (const e of st.journal || []) jrn(e);
       st.journal = [];
