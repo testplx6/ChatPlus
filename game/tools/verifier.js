@@ -15,7 +15,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { verdict } from './vitesse.js';
+import { verdict, comparer } from './vitesse.js';
 import { srcDeRevision, TEMOIN } from './revision.js';
 
 const ICI = dirname(fileURLToPath(import.meta.url));
@@ -132,24 +132,12 @@ if (COMPLET) {
     // A,B,B,A — l'alternance n'est pas une coquetterie : mesurer toujours le
     // courant en premier donnait ×1,17 sur du code identique. Alterné et pris
     // au minimum de six, le même essai rend ×0,998, machine lente comprise.
-    const courants = [];
-    const temoins = [];
-    const rapports = [];
-    for (let i = 0; i < 3; i++) {
-      const a1 = une(SRC); const b1 = une(temoinSrc);
-      const b2 = une(temoinSrc); const a2 = une(SRC);
-      courants.push(a1, a2); temoins.push(b1, b2);
-      rapports.push(a1 / b1, a2 / b2);
-    }
-    const courant = Math.min(...courants);
-    // La dispersion se mesure sur les RAPPORTS, pas sur les mesures brutes.
-    // Sur cette machine, les mesures brutes s'écartent de 23 % sans que le
-    // verdict en souffre — le minimum de chaque côté converge à ±2 % — et la
-    // garde refusait alors de conclure sur une mesure parfaitement bonne. Une
-    // garde doit surveiller ce qu'on juge, pas ce qui se trouve à côté.
-    const dispersion = (Math.max(...rapports) - Math.min(...rapports)) / Math.min(...rapports);
+    // Le protocole vit dans `vitesse.js` : `vitesse --sur` s'en sert aussi, et
+    // deux copies qui dérivent, c'est deux verdicts qui ne disent plus la même
+    // chose.
+    const { courant, temoin, dispersion } = comparer(SRC, temoinSrc, une);
     const v = verdict({
-      courant, temoin: Math.min(...temoins), dispersion, rattrapageMax,
+      courant, temoin, dispersion, rattrapageMax,
       usReference: reglage.us, rapportMax: reglage.rapportMax,
       plafondMs: reglage.plafondMs, dispersionMax: reglage.dispersionMax,
     });

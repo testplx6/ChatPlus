@@ -55,15 +55,108 @@ export async function mesurer(src, passes = 3, graine = 777) {
   return (ms * 1000) / MESURE;
 }
 
+/**
+ * Le protocole A,B,B,A, en un seul endroit.
+ *
+ * Il vivait dans `verifier.js`, et `--sur` en aurait fait une deuxième copie.
+ * Deux protocoles qui dérivent, c'est deux verdicts qui ne veulent pas dire la
+ * même chose — la raison même pour laquelle `srcDeRevision` est partagé.
+ *
+ * `unProcessus` est fourni par l'appelant parce que le lanceur diffère : le
+ * vérificateur a le sien, avec ses délais et sa capture.
+ */
+export function comparer(srcA, srcB, unProcessus, tours = 3) {
+  const a = [];
+  const b = [];
+  const rapports = [];
+  for (let i = 0; i < tours; i++) {
+    const a1 = unProcessus(srcA); const b1 = unProcessus(srcB);
+    const b2 = unProcessus(srcB); const a2 = unProcessus(srcA);
+    a.push(a1, a2); b.push(b1, b2);
+    rapports.push(a1 / b1, a2 / b2);
+  }
+  return {
+    courant: Math.min(...a),
+    temoin: Math.min(...b),
+    dispersion: ecartMedian(rapports),
+    rapports,
+  };
+}
+
+/**
+ * De combien les rapports s'écartent de leur milieu — l'écart médian, pas
+ * l'étendue.
+ *
+ * La dispersion se mesure sur les RAPPORTS, pas sur les mesures brutes : ça,
+ * c'était déjà juste. Mais elle se mesurait en `(max − min) / min`, et une
+ * étendue sur six valeurs est décidée par une seule d'entre elles. Sur cette
+ * machine, une passe sur six part régulièrement de 10 % — le voisin qui se
+ * réveille — et l'étendue s'envole pendant que le verdict, lui, ne bouge pas :
+ * il est pris sur les minimums, que rien ne peut tirer vers le bas.
+ *
+ * Éprouvé là où la réponse est connue d'avance, quatre relevés du code contre
+ * lui-même, verdict attendu ×1,000 :
+ *
+ *     verdict rendu    étendue      écart médian
+ *        1,005          ±17 %          ±5 %
+ *        1,025          ±16 %          ±6 %
+ *        0,978           ±9 %          ±3 %
+ *        0,965          ±13 %          ±3 %
+ *
+ * Le verdict est bon à 3 % dans les quatre cas. L'étendue en refusait deux sur
+ * quatre au seuil de 15 %, et le quatrième un jour sur deux au seuil de 25 % —
+ * elle interdisait de conclure sur des mesures parfaitement bonnes, et c'est
+ * ainsi qu'une garde devient du bruit qu'on apprend à ignorer. L'écart médian
+ * suit ce que le verdict vaut vraiment.
+ *
+ * Ce n'est pas un seuil qu'on desserre : c'est un indicateur qu'on remplace,
+ * parce que celui d'avant ne mesurait pas ce qu'on lui demandait.
+ */
+export function ecartMedian(valeurs) {
+  const med = (a) => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
+  const m = med(valeurs);
+  return m > 0 ? med(valeurs.map((x) => Math.abs(x - m))) / m : 0;
+}
+
 // Lancé comme commande : une mesure, un processus, un nombre. C'est nécessaire,
 // pas décoratif — mesurer les deux révisions dans le même processus les fait se
 // réchauffer l'une l'autre. Relevé : 216, 157, 132 µs pour trois mesures
 // identiques du même code, dans l'ordre, sans que rien ne change. Le compilateur
 // à la volée garde de l'élan d'une mesure à l'autre et la seconde révision
 // mesurée en profite.
+//
+// `--sur rev1,rev2,…` fait autre chose : il mesure chaque révision contre le
+// témoin de `CIBLES.json`, avec le même protocole, et rend la colonne. C'est
+// l'outil d'attribution — savoir *quelle livraison* a coûté quoi, plutôt que
+// constater une dette cumulée sans propriétaire. Il n'existait pas, et c'est
+// pour ça qu'un ×1,24 a pu s'accumuler sur vingt-huit commits sans que personne
+// ne puisse dire d'où il venait.
 if (process.argv[1] && process.argv[1].endsWith('vitesse.js') && process.argv[2]) {
-  const us = await mesurer(process.argv[2]);
-  console.log(`${us.toFixed(1)} ${rattrapageMaxLu()}`);
+  if (process.argv[2] === '--sur') {
+    const { execFileSync } = await import('node:child_process');
+    const { readFileSync } = await import('node:fs');
+    const { srcDeRevision } = await import('./revision.js');
+    const ici = new URL('.', import.meta.url).pathname;
+    const cibles = JSON.parse(readFileSync(join(ici, '..', 'CIBLES.json'), 'utf8'));
+    const base = srcDeRevision((cibles.vitesse || {}).temoin || '82636d8');
+    const un = (src) => {
+      const sortie = execFileSync('node', [join(ici, 'vitesse.js'), src], { encoding: 'utf8' });
+      return Number(sortie.trim().split(/\s+/)[0]);
+    };
+    console.log(`témoin ${base.rev}\n`);
+    console.log('  révision   rapport  dispersion  ce qu’elle a livré');
+    for (const rev of (process.argv[3] || '').split(',').filter(Boolean)) {
+      const { src, rev: court } = srcDeRevision(rev);
+      const r = comparer(src, base.src, un);
+      const titre = execFileSync('git', ['-C', join(ici, '..', '..'), 'log', '-1',
+        '--format=%s', court], { encoding: 'utf8' }).trim().slice(0, 46);
+      console.log(`  ${court.padEnd(9)} ×${(r.courant / r.temoin).toFixed(3)}`
+        + `     ±${Math.round(r.dispersion * 100)} %      ${titre}`);
+    }
+  } else {
+    const us = await mesurer(process.argv[2]);
+    console.log(`${us.toFixed(1)} ${rattrapageMaxLu()}`);
+  }
 }
 
 /**

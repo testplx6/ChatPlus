@@ -810,69 +810,61 @@ après ». Elle est échue.
 de 70) et sont revenues à 70 après M0 bis. Elles restent la dette signalée par
 `CIBLES.json`, à instruire et non à masquer.
 
-### La garde de vitesse est rouge, et elle l'était avant le travail du jour
+### RÉSOLU — la garde de vitesse mesurait une dette sans propriétaire
 
-`verifier --complet` refuse : **×1,157 contre la livraison précédente**, pour un
-seuil de ×1,08.
+Elle était rouge à chaque passage depuis des mois, donc ignorée, ce qui est le
+pire état d'une garde. Deux défauts, tous deux réparés, aucun en desserrant
+quoi que ce soit.
 
-**Le seuil était déjà franchi avant ce chantier.** `b5d59cf`, le dernier commit
-d'avant, contre le témoin `ab6312f` de `CIBLES.json` : **×1,089**. La régression
-est antérieure et n'a jamais été attribuée. Elle appartient au travail d'avant.
+**1. Le témoin n'avait jamais été avancé.** `CIBLES.json` le prescrit pourtant
+noir sur blanc — « avancer les deux ensemble, délibérément, à chaque
+livraison » — et il était resté sur `ab6312f` pendant vingt-huit livraisons. La
+garde ne mesurait donc plus une régression mais une dette cumulée que personne
+ne pouvait attribuer.
 
-**Et ce chantier n'y ajoute presque rien**, mesuré à chaque étape plutôt
-qu'espéré :
+`vitesse.js --sur rev1,rev2,…` répare ça pour de bon : il mesure chaque
+révision contre le témoin, avec le même protocole, et rend la colonne. Il
+n'existait pas, et c'est pour ça qu'un ×1,24 a pu s'accumuler sans propriétaire.
 
-| | rapport contre le code d'avant |
-|---|---|
-| M1 (la primitive, non branchée) | ×1,055 / ×1,024 / ×0,943 — encadrent 1,00 |
-| M0 en boucle naïve | ×1,095 / ×1,148 / ×1,101 — refusé, réécrit |
-| M0 livré (forme close + boucle inlinée) | **×0,996 / ×1,039 / ×1,041** |
-| M0 bis (une seconde passe de prix) | ×1,044, puis ×1,119 — **l'instrument ne tranche plus** |
-| le chantier entier | ×1,096 / ×1,129 / ×1,174 / ×1,175 |
+| révision | rapport | livraison |
+|---|---:|---|
+| `ab6312f` | ×1,000 | le témoin |
+| `fe909c3` | **×1,110** | lot 3b — déjà consigné à l'époque |
+| `797b307` | **×1,245** | **M0 bis — douze points, son commit en annonçait quatre** |
+| `dd5aefe` | ×1,263 | lot 6 |
+| `d1a1346` | ×1,267 | N9 |
+| `df79cb6` | ×1,245 | E1 quater |
+| `59cccf3` | ×1,297 | E3 |
+| `3316a66` | ×1,272 | M0 ter (médiane de quatre relevés) |
 
-**Et l'instrument a cessé de résoudre en cours de route.** Les relevés du soir
-donnent des dispersions de 13, 23, 26 et même 184 % pour un `dispersionMax` de
-25 %, sur une machine passée de 145 à 220 µs de tick brut sur du code inchangé.
+Deux responsables, et vingt commits qui tiennent dans le bruit. Le second
+n'était pas connu : **M0 bis coûte douze points, pas quatre**. Il l'a été mesuré
+contre le code de la veille, où il ne pesait que ×1,044 — un incrément juste,
+sur une base déjà alourdie. C'est l'argument le plus fort contre le sous-pas de
+M0 ter : une seule passe de prix de plus a coûté ça.
 
-**Le lot E n'y ajoute rien de mesurable — et l'instrument le dit encore moins
-bien qu'avant.** Six paires alternées entre le code livré et `df79cb6`, le
-commit d'avant la bascule :
+**2. La dispersion mesurait la mauvaise chose.** Elle valait `(max − min) / min`
+sur six rapports — une étendue décidée par une seule valeur. Éprouvé là où la
+réponse est connue, le code contre lui-même :
 
-| | | | | | |
-|---|---|---|---|---|---|
-| 0,832 | 0,810 | 1,129 | 0,951 | 0,942 | 1,130 |
+| verdict rendu | étendue | écart médian |
+|---:|---:|---:|
+| 1,005 | ±17 % | ±5 % |
+| 1,025 | ±16 % | ±6 % |
+| 0,978 | ±9 % | ±3 % |
+| 0,965 | ±13 % | ±3 % |
 
-Médiane 0,95, dispersion **39 %** pour un maximum de 25 %. Le seul verdict
-honnête est « on ne sait pas », et il vaut dans les deux sens : rien ne prouve
-que la bascule coûte, rien ne prouverait qu'elle ne coûte pas. Le profil, lui,
-ne montre ni `monnaieIci` ni `signeIci` — les deux fonctions ajoutées au chemin
-du joueur n'apparaissent dans aucune ligne à plus de 0,5 %.
+Le verdict est bon à 3 % dans les quatre cas ; l'étendue en refusait la moitié.
+Remplacée par l'écart médian, et le seuil **resserré** de 0,25 à 0,15 — un
+indicateur qu'on change, pas un seuil qu'on desserre.
 
-Deux passages de `--complet` sur le **même arbre** rendent ×1,348 puis ×1,237.
-Un instrument qui varie de neuf points sur du code identique ne peut pas
-arbitrer un seuil à huit points.
-Les composants mesurés séparément (×1,04 puis ×1,04) ne se recomposent pas avec
-le total mesuré (×1,10 à ×1,17). **On ne sait donc pas ce que le chantier coûte
-à mieux que « entre 5 et 17 % ».** C'est une mesure manquante, pas une mesure
-rassurante, et elle attend une machine calme au même titre que la régression
-antérieure.
+Résultat : `temoin` = `3316a66`, `us` = 136, et la garde rend **×1,011,
+rattrapage 2,34 s** pour un plafond de 2,5. Verte, et de nouveau capable de
+dire quelque chose.
 
-**Et la machine ne sait plus conclure finement.** Dispersion des rapports :
-10 à 39 % selon les relevés, pour un `dispersionMax` de 25 %. Le coût brut du
-tick est de 145 à 168 µs quand la référence de `CIBLES.json` en annonce 107 ;
-`test/perf.js` documente déjà que cette machine varie du simple au double au
-repos sans que l'étalon arithmétique le voie.
-
-**Ce qu'il faut, dans l'ordre** :
-
-1. remesurer sur une machine calme, ou avec plus de passes, pour savoir si le
-   ×1,089 antérieur est réel ou du bruit ;
-2. s'il est réel, le dater — la cartographie et les lots récents sont les
-   suspects, et `banc --profil` sait dire où part le temps ;
-3. seulement ensuite décider : corriger, ou avancer le témoin de `CIBLES.json`
-   en disant ce qu'on accepte et pourquoi. **Élargir le seuil pour faire passer
-   la mesure n'est pas une option** — c'est cette section-ci qui existe pour ça.
-
+**Ce qui reste, et qu'il faut savoir** : le monde tourne bel et bien 27 % plus
+lentement qu'à `ab6312f`, et la marge sous le plafond vécu n'est plus que de
+7 %. La prochaine livraison qui coûte dix points le crèvera.
 
 ### Lot 3b — INACHEVÉ : deux étapes rouges, commité mais NON POUSSÉ
 

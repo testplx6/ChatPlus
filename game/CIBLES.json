@@ -46,11 +46,11 @@
     ]
   },
   "vitesse": {
-    "_note": "Deux gardes, toutes deux adossées au RAPPORT à la livraison précédente — parce que cette machine ralentit du simple au double toute seule (109 puis 200 µs sur le même code, au repos) et que l'étalon arithmétique ne le voit pas. « temoin » est la révision de la livraison précédente, mesurée dans la même minute que la courante, en alternance ; « us » est son coût relevé AU CALME, qui sert à estimer le coût absolu d'aujourd'hui via le rapport. Avancer les deux ensemble, délibérément, à chaque livraison. Voir tools/vitesse.js pour les trois protocoles essayés et ce qu'ils rendent sur du code identique. La dispersion porte sur les rapports par paire (relevé typique : 12 %), pas sur les mesures brutes (23 % sans que le verdict en souffre) : le minimum de chaque côté converge à ±2 %.",
-    "temoin": "ab6312f",
-    "us": 107,
+    "_note": "Deux gardes, toutes deux adossées au RAPPORT à la livraison précédente — parce que cette machine ralentit du simple au double toute seule (109 puis 200 µs sur le même code, au repos) et que l'étalon arithmétique ne le voit pas. « temoin » est la révision de la livraison précédente, mesurée dans la même minute que la courante, en alternance ; « us » est son coût relevé AU CALME, qui sert à estimer le coût absolu d'aujourd'hui via le rapport. Avancer les deux ensemble, délibérément, à chaque livraison. Voir tools/vitesse.js pour les trois protocoles essayés et ce qu'ils rendent sur du code identique. La dispersion porte sur les rapports par paire (relevé typique : 12 %), pas sur les mesures brutes (23 % sans que le verdict en souffre) : le minimum de chaque côté converge à ±2 %. AVANC\u00c9 en ao\u00fbt 2026, pour la premi\u00e8re fois depuis son \u00e9criture, et c'est l\u00e0 le d\u00e9faut : le t\u00e9moin \u00e9tait rest\u00e9 sur « ab6312f » pendant vingt-huit livraisons, si bien que la garde ne mesurait plus une r\u00e9gression mais une dette cumul\u00e9e sans propri\u00e9taire — rouge \u00e0 chaque passage, donc ignor\u00e9e. L'attribution, faite avec « vitesse.js --sur », donne deux responsables : le lot 3b (\u00d71,11, d\u00e9j\u00e0 consign\u00e9 \u00e0 l'\u00e9poque) et M0 bis (\u00d71,11 \u2192 \u00d71,25, soit douze points l\u00e0 o\u00f9 son commit en annon\u00e7ait quatre). Le reste — vingt commits — tient dans la dispersion. « us » suit le t\u00e9moin : 136 \u00b5s, estim\u00e9 par le rapport \u00d71,27 appliqu\u00e9 aux 107 \u00b5s relev\u00e9s au calme sur ab6312f, parce que la mesure brute de cette machine ne vaut rien et que le rapport, lui, r\u00e9sout \u00e0 3 %.",
+    "temoin": "3316a66",
+    "us": 136,
     "rapportMax": 1.08,
     "plafondMs": 2500,
-    "dispersionMax": 0.25
+    "dispersionMax": 0.15
   }
 }
