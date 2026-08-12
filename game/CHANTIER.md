@@ -690,40 +690,53 @@ La friction de §7.1 est plus dure qu'avant, et c'est le prix assumé de la
 décision. Le levier est unique et lisible si l'on veut l'adoucir : le seuil de
 taille, dans `world.js`. À 1, on retrouve §5.1 exactement.
 
-### La poche du joueur n'est dans aucun registre — trouvé en livrant le lot E
+### RÉSOLU — la poche du joueur entre et sort du circuit
 
 `auditer` compare, pays par pays, ce qui existe (trésor + caisses + ménages +
-magots) à ce qui a été émis (`masse`). La bourse du joueur n'y est pas, et ne
-peut pas y être : `auditer(world)` ne voit pas `state.player`, et c'est la règle
-du projet — le monde est partagé, le joueur est privé.
+magots) à ce qui a été émis. La bourse du joueur n'y est pas et ne peut pas y
+être : `auditer(world)` ne voit pas `state.player`, et c'est la règle du projet.
 
-Conséquence, qui n'est pas nouvelle mais que le lot E rend enfin réparable :
-**tout ce qui passe de la poche du joueur à une caisse fabrique de la monnaie
-que `masse` ne connaît pas**, et l'inverse en détruit. `acheter` appelle
-`encaisser` sans rien émettre ; `vendre` appelle `debourser` sans rien retirer.
-Un seul site s'en préoccupe aujourd'hui — l'impôt du camp, dans `base.js`, via
-`entrerDehors` — et son commentaire dit exactement pourquoi : « tant que son
-portefeuille n'est pas libellé par monnaie (lot E) ». Il l'est désormais.
+**Ce que ça coûtait, mesuré** : deux cents achats dans une ville, et l'écart de
+l'audit passe de 0,000000 à **1 657,00** — exactement ce qui a été dépensé.
+L'argent sortait de la poche, entrait dans la caisse, et personne ne l'avait
+émis. Le symétrique valait pour la vente : 887 détruits en quarante ventes.
 
-Ce n'est pas mesuré à zéro : c'est **non mesuré**. Les tests d'audit font
-tourner un monde sans joueur qui commerce (`headless.js`, section 26), donc
-l'écart ne s'y voit pas. Le banc non plus : son bot joue, mais l'invariant n'y
-est relevé que sur les factions.
+**La règle, une fois posée : la masse bouge exactement de ce que la caisse a
+bougé.** Ce qui ne touche ni caisse ni trésor ne la regarde pas — les poches
+d'un mort ne sont dans aucun registre, et en décrémenter la masse détruirait de
+l'argent qui n'y a jamais été.
 
-Pourquoi ce n'est pas corrigé ici : la réparation demande de trancher, pour
-chacun des quatre-vingt-six sites, si l'argent vient du **circuit** ou du
-**dehors**. Vendre à une ville, oui : sa caisse baisse, la masse doit baisser.
-Fouiller un cadavre, non : les poches d'un individu ne sont dans aucun registre,
-et décrémenter la masse y détruirait de la monnaie qui n'y a jamais été. C'est
-une passe de classement sur tous les sites, pas un correctif — et elle changera
-les cours, donc le monde. Elle mérite son propre lot.
+**Le classement a été beaucoup plus court que prévu.** Le chantier annonçait
+« quatre-vingt-six sites à trancher un par un ». Il y en avait quatre-vingt-six
+*lectures* de `player.credits`, mais seulement **trente-six mouvements** — et
+sur ces trente-six, **trois** touchent une caisse ou un trésor :
 
-Ce que le bureau de change en tire, en attendant : **l'écart qu'il prend ne va
-nulle part**. §5.3 le fait encaisser par la ville, et `caravanes.js` le fait
-déjà pour les convois — mais côté joueur, le porter en caisse creuserait ce
-trou-là d'un site de plus. Une fuite documentée vaut mieux qu'une deuxième
-inventée pour faire joli.
+| site | ce qui bouge | ce qu'il fallait |
+|---|---|---|
+| `economy.acheter` | `encaisser` | émettre d'autant |
+| `economy.vendre` | `debourser` | retirer ce qui a **réellement** été versé |
+| `caravanes.passerOrdre` | `encaisser` | émettre d'autant |
+| `base` (impôt du camp) | `entrerDehors` | déjà juste |
+| `justice` (rançon) | `depenser` | déjà juste — il baisse trésor et masse ensemble |
 
+Les trente et un autres — la solde, le butin d'un mort, une prime de contrat, le
+loyer d'un coffre, l'armurier — ne touchent aucun registre. Leur argent ne vient
+de nulle part et ne va nulle part : la masse n'a rien à y voir.
+
+Pour `vendre`, le montant à retirer est **ce que `debourser` a rendu**, pas le
+prix affiché : une ville exsangue ne paie que ce qu'elle a, et retirer le prix
+annoncé détruirait de l'argent qu'elle n'a jamais versé.
+
+### Et la garde qui manquait
+
+Le défaut a tenu si longtemps parce que **les deux instruments regardaient à
+côté** : les tests d'audit font tourner un monde sans joueur qui commerce, et le
+banc du monde n'a pas de joueur du tout. Le banc d'**équilibrage**, lui, a un
+bot qui achète et vend — il ne relevait simplement pas l'invariant.
+
+Il le relève désormais, et le relevé n'est pas complaisant : émission coupée, il
+annonce **5 653** d'écart ; rétablie, **exact** sur trente parties de quatre
+mille heures.
 
 ### ~~La colonne qui se débande ne se débande jamais~~ — tranché
 

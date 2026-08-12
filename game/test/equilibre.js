@@ -31,7 +31,7 @@
 
 import { nouvellePartie, tick } from '../src/sim.js';
 import { Rng } from '../src/rng.js';
-import { soldeIci, monnaieIci, gagner, regler } from '../src/monnaie.js';
+import { soldeIci, monnaieIci, gagner, regler, auditer } from '../src/monnaie.js';
 
 /**
  * Ce que la bourse par drapeau coûte au bot, relevé là où il achète.
@@ -170,6 +170,14 @@ const TRACE = {
   // de deux mille sans rien dire du change. C'est le critère d'E6 : une ruine
   // par accident de change se verrait là, et nulle part ailleurs.
   bourseEtrangere: 0, bourseTotale: 0, bloquesChange: 0, changesFaits: 0,
+  // L'invariant comptable, relevé là où il y a un joueur qui commerce.
+  //
+  // C'est la garde qui manquait, et son absence a laissé passer un défaut
+  // entier : la poche du joueur n'était dans aucun registre, si bien que
+  // chaque achat émettait de la monnaie en douce. Les tests d'audit font
+  // tourner un monde SANS joueur, et le banc du monde n'en a pas non plus —
+  // deux instruments qui regardaient à côté du seul endroit où ça se voyait.
+  pireEcart: 0,
   pasDeChange: {
     sansMonnaie: 0, pasDeVille: 0, chezSoi: 0, ruine: 0, sansComptoir: 0,
     enRevolte: 0, rienAChanger: 0, refuse: 0,
@@ -2204,6 +2212,12 @@ for (let n = 0; n < PARTIES; n++) {
     }
   }
   {
+    // L'invariant comptable, à la fin d'une partie où un joueur a commercé.
+    for (const e of auditer(state.world)) {
+      TRACE.pireEcart = Math.max(TRACE.pireEcart, Math.abs(e.ecart));
+    }
+  }
+  {
     // Ce que la partie a fait du joueur. Un titre qu'aucune partie ne décroche
     // est un titre décoratif : la chronique doit se lire sur ce qui arrive.
     const t = titreDe(state).nom;
@@ -2335,6 +2349,8 @@ console.log(`Temps : ${Math.round(100 * TRACE.voyage / totH)} % en marche · `
 console.log(`Recrues engagées : ${(TRACE.recrues / PARTIES).toFixed(1)} par partie`);
 console.log(`Intendance : ${Math.round(TRACE.rationsTouchees / PARTIES)} rations touchées par partie`
   + ` — bêtes achetées : ${(TRACE.betes / PARTIES).toFixed(1)} par partie`);
+console.log(`Invariant comptable, joueur compris : écart maximal `
+  + `${TRACE.pireEcart < 1e-6 ? 'exact' : TRACE.pireEcart.toFixed(2)}`);
 console.log('Change : '
   + `${(100 * TRACE.bourseEtrangere / Math.max(1, TRACE.bourseTotale)).toFixed(1)} % `
   + 'de la bourse dans une monnaie qui n’a pas cours là où l’on est · '

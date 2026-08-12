@@ -8798,6 +8798,84 @@ section('E3. Le bureau de change');
 }
 
 // ---------------------------------------------------------------------------
+section('E7. La poche du joueur entre et sort du circuit');
+// ---------------------------------------------------------------------------
+//
+// Chaque pays tient un invariant : la somme de tout ce qui existe en sa monnaie
+// — trésor, caisses, poches des habitants, magots — vaut exactement ce qu'il a
+// émis. C'est le filet qui a attrapé 2,17 millions de crédits fantômes
+// fabriqués par les caravanes.
+//
+// **Il ne voyait pas le joueur.** Mesuré : deux cents achats dans une ville, et
+// l'écart de l'audit passe de 0,000000 à 1 657,00 — exactement ce qui a été
+// dépensé. L'argent sortait de sa poche, entrait dans la caisse, et personne ne
+// l'avait émis. Le symétrique valait pour la vente.
+//
+// Personne ne l'avait vu parce que les tests d'audit font tourner un monde sans
+// joueur qui commerce, et que le banc ne relève l'invariant que sur les
+// factions. Ce n'était pas mesuré à zéro : c'était **non mesuré**.
+//
+// La règle est simple une fois posée : **la masse doit bouger exactement de ce
+// que la caisse a bougé.** Ce qui ne touche ni caisse ni trésor ne la regarde
+// pas — les poches d'un mort ne sont dans aucun registre, et en décrémenter la
+// masse détruirait de l'argent qui n'y a jamais été.
+{
+  const sQ = nouvellePartie(2024, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const gQ = groupeActif(sQ);
+  const colQ = sQ.world.colonies.find(
+    (c) => !c.ruine && !c.avantPoste && c.faction && c.change);
+  gQ.regionId = colQ.regionId;
+  const pire = () => Math.max(...auditer(sQ.world).map((x) => Math.abs(x.ecart)));
+  ok(pire() < 1e-6, 'un monde neuf est exact', pire().toExponential(2));
+
+  // Acheter : la caisse monte, la masse doit monter d'autant.
+  sQ.player.bourse = { [colQ.faction]: 20000 };
+  let depense = 0;
+  for (let i = 0; i < 200; i++) {
+    const r = acheter(sQ, colQ, 'ferraille', 5, gQ);
+    if (r.ok) depense += r.cout;
+    gQ.inventaire.ferraille = 0;
+  }
+  ok(depense > 200, 'le joueur a bien acheté', `${Math.round(depense)} dépensés`);
+  ok(pire() < 1e-6, 'et les comptes tiennent : ce qu’il verse est émis',
+    pire().toFixed(6));
+
+  // Vendre : la caisse baisse, la masse doit baisser d’autant — et de ce que la
+  // ville a **réellement** sorti, pas de ce qui était affiché : elle ne paie que
+  // ce qu’elle a.
+  gQ.inventaire.ferraille = 400;
+  let gagne = 0;
+  for (let i = 0; i < 40; i++) {
+    const r = vendre(sQ, colQ, 'ferraille', 10, gQ);
+    if (r.ok) gagne += r.gain;
+  }
+  ok(gagne > 0, 'et bien vendu', `${Math.round(gagne)} encaissés`);
+  ok(pire() < 1e-6, 'les comptes tiennent aussi dans ce sens', pire().toFixed(6));
+
+  // Ce qui ne touche aucun registre ne doit RIEN faire à la masse. Fouiller un
+  // mort, toucher une solde : cet argent n’était dans aucune caisse.
+  const f = sQ.world.factions[colQ.faction];
+  const masseAvant = f.masse;
+  gagner(sQ, 5000, colQ.faction);
+  regler(sQ, 1200, colQ.faction);
+  ok(f.masse === masseAvant,
+    'ce qui ne vient d’aucun registre n’y entre pas non plus',
+    `${Math.round(masseAvant)} → ${Math.round(f.masse)}`);
+  ok(pire() < 1e-6, 'et l’invariant n’en souffre pas');
+
+  // Une ville sans drapeau n’est dans aucun registre : y commercer ne doit rien
+  // émettre. Le cas est réel — `auditer` saute les villes sans faction.
+  const libreQ = sQ.world.colonies.find((c) => !c.ruine && !c.avantPoste && !c.faction);
+  if (libreQ) {
+    gQ.regionId = libreQ.regionId;
+    const avant = pire();
+    sQ.player.bourse[monnaieIci(sQ)] = 9000;
+    for (let i = 0; i < 30; i++) { acheter(sQ, libreQ, 'ferraille', 5, gQ); gQ.inventaire.ferraille = 0; }
+    ok(Math.abs(pire() - avant) < 1e-6, 'et un bourg libre ne fait rien émettre');
+  }
+}
+
+// ---------------------------------------------------------------------------
 section('E3 bis. Le bureau de change s’ouvre, il n’est pas partout');
 // ---------------------------------------------------------------------------
 //

@@ -22,8 +22,9 @@ import { idDepuisRng, estDebout, comp } from './characters.js';
 import { retenirEnVille } from './services.js';
 import { avantage } from './allegeance.js';
 import {
-  transferer, convertirMasse, ecartChange, taux,
-  gagner, regler, soldeIci, signeIci } from './monnaie.js';
+  transferer, convertirMasse, ecartChange, taux, entrerDehors,
+  gagner, regler, soldeIci, signeIci,
+} from './monnaie.js';
 
 /**
  * Le plafond du commerce d'opportunité — celui que le hasard tire, par
@@ -419,8 +420,11 @@ export function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEs
     regler(state, du);
     // Ce que vous payez ne s'évapore pas : la ville qui vous fournit l'encaisse,
     // et sa faction prélève sa part. Votre négoce laisse enfin une trace dans le
-    // monde au lieu de ne bouger que vos propres crédits.
+    // monde au lieu de ne bouger que vos propres crédits. Et comme il vient
+    // d'une poche que le registre ne connaît pas, il faut l'émettre — voir
+    // `entrerDehors`.
     encaisser(world, place, devis.total);
+    entrerDehors(world, place.faction, devis.total);
   } else {
     const dispo = Math.floor(base.stock[key] || 0);
     if (dispo < devis.qte) {

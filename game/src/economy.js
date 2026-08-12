@@ -22,7 +22,7 @@ import { portageAttelage } from './betes.js';
 import { loiIci, loisDe } from './lois.js';
 import {
   sortirDuCircuit, transfererVille, coursMonnaie,
-  gagner, regler, soldeIci, signeIci,
+  gagner, regler, soldeIci, signeIci, entrerDehors, sortirDehors,
   solde, crediterBourse, debiterBourse, taux, ecartChange,
 } from './monnaie.js';
 
@@ -1274,8 +1274,12 @@ export function acheter(state, col, key, qte, groupe) {
   }
   col.stock[key] = Math.max(0, (col.stock[key] || 0) - sim.qte);
   regler(state, sim.cout);
-  // Ce que vous payez entre en caisse chez qui vous a servi, impôt compris.
+  // Ce que vous payez entre en caisse chez qui vous a servi, impôt compris —
+  // et il faut l'émettre, parce qu'il vient d'une poche que le registre du pays
+  // ne connaît pas. Voir `entrerDehors` : sans cette ligne, deux cents achats
+  // creusaient l'invariant de 1 657 crédits.
   encaisser(state.world, col, sim.cout);
+  entrerDehors(state.world, col.faction, sim.cout);
   g.inventaire[key] = (g.inventaire[key] || 0) + sim.qte;
   const negoc = meilleurCommercant(g.membres);
   if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.5 + sim.qte * 0.3);
@@ -1293,7 +1297,10 @@ export function vendre(state, col, key, qte, groupe) {
   // le compte : le prix était affiché, on ne le renégocie pas au comptoir. Ce
   // qu'elle sort ici, elle ne l'aura plus pour se ravitailler — vendre son butin
   // dans un bourg exsangue l'assèche pour de bon.
-  debourser(col, sim.brut);
+  // Et de ce qu'elle a **réellement** sorti, pas de ce qui était affiché : une
+  // ville exsangue ne paie que ce qu'elle a, et retirer de la masse le prix
+  // annoncé détruirait de l'argent qu'elle n'a jamais versé.
+  sortirDehors(state.world, col.faction, debourser(col, sim.brut));
   const negoc = meilleurCommercant(g.membres);
   if (negoc) gagnerXp(negoc, 'commerce', XP_PRATIQUE * 0.5 + sim.qte * 0.3);
   return { ok: true, qte: sim.qte, gain: sim.gain, taxe: sim.taxe, brut: sim.brut };

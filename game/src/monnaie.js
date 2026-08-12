@@ -255,15 +255,44 @@ export function depenser(world, key, montant) {
 
 /**
  * De la monnaie entre dans le pays depuis l'extérieur du circuit — la poche du
- * joueur, pour l'essentiel. Tant que son portefeuille n'est pas libellé par
- * monnaie (lot E), ce qu'il verse est une émission de fait : autant le compter
- * comme telle plutôt que de laisser l'invariant mentir.
+ * joueur, pour l'essentiel.
+ *
+ * `auditer` compare ce qui existe en monnaie d'un pays à ce qu'il a émis, et la
+ * bourse du joueur n'y est pas : elle ne peut pas y être, `auditer(world)` ne
+ * voit pas `state.player` et c'est la règle du projet. Tout ce qui passe de sa
+ * poche à une caisse est donc, pour le registre, une **émission de fait** — et
+ * il vaut mieux la compter que laisser l'invariant mentir.
+ *
+ * Ce qu'il en coûtait de ne pas le faire, mesuré : deux cents achats dans une
+ * ville, et l'écart de l'audit passe de 0,000000 à **1 657,00** — exactement ce
+ * qui a été dépensé. Personne ne l'avait vu parce que les tests d'audit font
+ * tourner un monde sans joueur qui commerce.
  */
 export function entrerDehors(world, key, montant) {
   const f = world.factions[key];
   if (!f || !(montant > 0)) return 0;
   f.masse = (f.masse || 0) + montant;
   return montant;
+}
+
+/**
+ * Et le chemin inverse : de la monnaie quitte le circuit pour le dehors.
+ *
+ * Le miroir exact d'`entrerDehors`. Une ville qui paie le joueur sort de sa
+ * caisse un argent qui n'est plus nulle part dans le registre — il faut donc
+ * le retirer de la masse, sans quoi le pays déclare émis ce qui n'existe plus.
+ *
+ * **La règle des deux, une fois posée : la masse bouge exactement de ce que la
+ * caisse a bougé.** Ce qui ne touche ni caisse ni trésor ne la regarde pas — les
+ * poches d'un mort ne sont dans aucun registre, et en décrémenter la masse
+ * détruirait de l'argent qui n'y a jamais été.
+ */
+export function sortirDehors(world, key, montant) {
+  const f = world.factions[key];
+  if (!f || !(montant > 0)) return 0;
+  const sorti = Math.min(montant, f.masse || 0);
+  f.masse = (f.masse || 0) - sorti;
+  return sorti;
 }
 
 /**
