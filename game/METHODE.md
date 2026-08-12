@@ -220,6 +220,22 @@ disent le contraire.
 > qui affamait le monde. Il a fallu écrire `col.satiete` — un nombre qui existait
 > dans le moteur depuis toujours, que rien n'exposait — pour le voir.
 
+**Un témoin négatif ne sait pas attribuer un coût.** Il sait dire si un
+mécanisme porte un *défaut* — on le coupe, l'écart bouge ou non. Il ne sait pas
+dire ce qu'il *coûte*, parce que couper du travail dans une simulation change le
+monde, et un monde plus pauvre demande moins de travail partout ailleurs.
+
+> **Incident.** Pour trouver où passait le temps, on a coupé `tickColonie` : le
+> tick tombe à ×0,26, donc « il pèse 74 % ». Puis `ajusterEmplois` : ×0,56, donc
+> « 44 % ». Les deux chiffres sont faux. Sans `ajusterEmplois`, aucune ville n'a
+> d'emplois, donc plus rien ne produit, donc tout le reste devient gratuit. Le
+> contrôle a été refait en ne coupant que le corps de la reconversion, en gardant
+> l'initialisation : ×0,58 encore — et **84 villes debout contre 102**. Le monde
+> avait maigri, pas le code. Le profil, lui, donne la vérité : le coût est
+> *étalé* — 16 % dans `tickColonie`, 15 % dans `tick`, 7 % aux départs de
+> convois, 6 % au chemin, 5 % au ramasse-miettes. Il n'y avait pas de gros
+> poisson.
+
 **Un chiffre qu'on ne peut pas voir est un chiffre contre lequel on ne peut pas
 calibrer.** Quand un mécanisme « commande tout le reste », son nombre doit sortir
 au banc avant qu'on touche à ce qui le commande.

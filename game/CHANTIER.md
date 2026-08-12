@@ -837,11 +837,51 @@ n'existait pas, et c'est pour ça qu'un ×1,24 a pu s'accumuler sans propriétai
 | `59cccf3` | ×1,297 | E3 |
 | `3316a66` | ×1,272 | M0 ter (médiane de quatre relevés) |
 
-Deux responsables, et vingt commits qui tiennent dans le bruit. Le second
-n'était pas connu : **M0 bis coûte douze points, pas quatre**. Il l'a été mesuré
-contre le code de la veille, où il ne pesait que ×1,044 — un incrément juste,
-sur une base déjà alourdie. C'est l'argument le plus fort contre le sous-pas de
-M0 ter : une seule passe de prix de plus a coûté ça.
+Deux responsables, et vingt commits qui tiennent dans le bruit.
+
+**Correction, mesurée le lendemain sur une machine calme** (dispersion ±2 % au
+lieu de ±13 à 23 %) : le saut de treize points attribué plus haut à `797b307`
+couvre en réalité **trois commits**, M1, M0 et M0 bis, parce que la première
+passe ne les avait pas séparés. Repris un par un contre le témoin courant :
+
+| | rapport | pas à pas |
+|---|---:|---:|
+| `fe909c3` lot 3b | ×0,933 | — |
+| `c7f2cc8` M1, primitive non branchée | ×0,901 | ×0,97 — rien, comme attendu |
+| `c67a3ce` M0, les ménages heure par heure | ×0,919 | **×1,02** |
+| `797b307` M0 bis, le prix du milieu | ×0,985 | **×1,07** |
+
+**M0 bis coûte donc sept points, pas douze** — une seconde passe de prix sur dix
+marchandises par tranche. C'est toujours le poste le plus cher de tout le
+chantier de maille, et toujours l'argument le plus fort contre le sous-pas de
+M0 ter, qui en demanderait six.
+
+### La carte de la vitesse — il n'y a pas de gros poisson
+
+Cherchée pour donner de l'air à M0 ter, elle dit surtout qu'il n'y en a pas.
+Profil sur six graines, le seul instrument valable ici (voir `METHODE.md` §3 :
+un témoin négatif ne sait pas attribuer un coût) :
+
+| | propre |
+|---|---:|
+| `tickColonie` | 16 % |
+| `tick` lui-même | 15 % |
+| `departsDuReseau` | 7 % |
+| `chemin` | 6 % |
+| ramasse-miettes | 5 % |
+| `prixUnitaire` | 4 % |
+| `productionColonie` | 3 % |
+
+Le coût est étalé. Trouver les trente points qu'il faudrait pour payer le
+sous-pas de M0 ter n'est pas une séance de réglage : c'est un chantier
+d'optimisation à part entière, et il faudra le poser comme tel.
+
+**Un gain quand même, exact et pris au passage** : `prixUnitaire` élevait
+`tension^0,85` puis bornait le résultat à [0,45 ; 3,2]. Hors de la fenêtre où la
+borne ne mord pas, l'exponentielle ne sert à rien — `0,39^0,85 = 0,4492 < 0,45`
+et `4^0,85 = 3,249 > 3,2`, avec de la marge des deux côtés. Le raccourci est
+exact et le monde reste identique au bit près (459 villes, 79 955 habitants,
+satiété 0,752, à la graine près). **×0,97 sur le tick**, pour trois lignes.
 
 **2. La dispersion mesurait la mauvaise chose.** Elle valait `(max − min) / min`
 sur six rapports — une étendue décidée par une seule valeur. Éprouvé là où la

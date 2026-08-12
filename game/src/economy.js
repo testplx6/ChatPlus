@@ -175,7 +175,15 @@ export function prixUnitaire(col, key, stockSimule, world, ctx) {
   // Rapport stock/demande → facteur borné [0.45, 3.2]
   const c = ctx || contextePrix(col, world);
   const tension = cible * c.sol / (stock + cible * 0.35);
-  const f = Math.max(0.45, Math.min(3.2, Math.pow(tension, 0.85)));
+  // Le `pow` ne sert que dans la fenêtre où il change quelque chose. Hors
+  // d'elle, la borne l'avale — et c'est **exact**, pas approché :
+  // `0,39^0,85 = 0,4492 < 0,45` et `4^0,85 = 3,249 > 3,2`, avec de la marge des
+  // deux côtés. Une ville dont l'étal déborde ou dont l'étal est vide n'a donc
+  // plus d'exponentielle à payer, et il y en a beaucoup — c'est le chemin le
+  // plus chaud du moteur, vingt appels par ville et par tranche.
+  const f = tension <= 0.39 ? 0.45
+    : tension >= 4 ? 3.2
+      : Math.max(0.45, Math.min(3.2, Math.pow(tension, 0.85)));
   // Et ce que vaut la monnaie du lieu. Une monnaie faible fait des prix locaux
   // élevés : l'inflation se lit sur l'écran du marché sans qu'on l'explique.
   // `cours` vaut 1 tant que le conseil n'est pas passé, et pour une ville sans
