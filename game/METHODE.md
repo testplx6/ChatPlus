@@ -203,6 +203,27 @@ chiffre d'à côté, celui de la version qu'on remplace.
 numérateur.** Un pourcentage qui monte parce que la population s'effondre n'est
 pas une amélioration.
 
+**Un stock n'est pas un flux, et confondre les deux fait calibrer à l'envers.**
+Avant de régler quoi que ce soit contre une mesure, il faut savoir si elle
+compte ce qui *reste* ou ce qui *passe*. Les deux se ressemblent à l'écran et
+disent le contraire.
+
+> **Incident.** `nourries` compte les villes dont le grenier tient une demi-ration
+> par tête. On l'a prise trente chantiers durant pour la mesure du bien-être. Elle
+> mesure l'inverse : un grenier reste plein précisément quand les habitants n'ont
+> pas de quoi l'acheter. Deux leviers indépendants, balayés sur deux jeux de
+> graines, le montrent monotone et opposé — `SOLVABILITE.plancher` de 0,35 à 1,20
+> fait passer `nourries` de 291 à 396 pendant que la satiété tombe de 0,752 à
+> 0,608 ; `CAISSE.partSalariale` de 0,40 à 0,70 fait tomber `nourries` de 449 à
+> 370 pendant que la satiété monte de 0,681 à 0,845 **et que le monde gagne
+> trente mille habitants**. Le réglage qui faisait passer la garde était celui
+> qui affamait le monde. Il a fallu écrire `col.satiete` — un nombre qui existait
+> dans le moteur depuis toujours, que rien n'exposait — pour le voir.
+
+**Un chiffre qu'on ne peut pas voir est un chiffre contre lequel on ne peut pas
+calibrer.** Quand un mécanisme « commande tout le reste », son nombre doit sortir
+au banc avant qu'on touche à ce qui le commande.
+
 **Trois graines, c'est du bruit.** Sur trois parties, le nombre de villes debout
 rebondissait entre 163 et 194 sans ordre en faisant varier un seul coefficient.
 Six graines minimum pour un balayage, et on regarde la médiane autant que

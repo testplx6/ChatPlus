@@ -194,6 +194,23 @@ function jouer({ sim, data, eco, eco2 }, graine, horizon) {
     // Les villes qui manquent vraiment : moins d'un cinquième de ration par
     // tête. C'est la mesure de la faim, celle que « bien nourries » ne dit pas.
     affamees: cols.filter((c) => (c.stock.rations || 0) < c.pop * 0.2).length,
+    // Et ce que les gens ont vraiment mangé.
+    //
+    // `nourries` et `affamees` comptent des **stocks**. Une ville dont les
+    // habitants n'ont pas un sou garde un grenier plein et passe pour bien
+    // nourrie — si bien que renchérir tout améliore les deux chiffres en
+    // affamant le monde. Le piège est déjà écrit noir sur blanc pour
+    // `MONNAIE.coursMin` : « plus le plancher est bas, mieux le monde mange et
+    // moins il compte de monde ». Sans la satiété, on calibre à l'envers sans
+    // le voir. Pondérée par la population : cent villages rassasiés ne
+    // compensent pas une capitale qui crève.
+    satiete: cols.length
+      ? cols.reduce((a2, c) => a2 + (c.satiete === undefined ? 1 : c.satiete) * c.pop, 0)
+        / Math.max(1, cols.reduce((a2, c) => a2 + c.pop, 0))
+      : 1,
+    // Et la queue de la distribution : la moyenne cache une ville sur dix à
+    // 0,3 derrière neuf villes à 1,0.
+    creve: cols.filter((c) => (c.satiete === undefined ? 1 : c.satiete) < 0.8).length,
     dette: Math.round(cols.reduce((a2, c) => a2 + (c.dette || 0), 0)),
     evts,
     // Les monnaies collées au plancher. « Cours < 0,4 » était une cible qui
@@ -294,6 +311,14 @@ function agreger(cfg) {
     ecart: Math.round(som(cfg, 'ecart')),
     creances: som(cfg, 'creances'),
     affamees: `${som(cfg, 'affamees')} (${Math.round(som(cfg, 'affamees') / Math.max(1, som(cfg, 'villes')) * 100)} %)`,
+    // La satiété se moyenne sur les parties en pondérant par leur population :
+    // une graine qui rend un monde de dix mille âmes ne pèse pas comme une qui
+    // en rend cent mille.
+    satiete: (() => {
+      const tot = cfg.parties.reduce((a4, p2) => a4 + p2.pop, 0) || 1;
+      return (cfg.parties.reduce((a4, p2) => a4 + p2.satiete * p2.pop, 0) / tot).toFixed(3);
+    })(),
+    creve: `${som(cfg, 'creve')} (${Math.round(som(cfg, 'creve') / Math.max(1, som(cfg, 'villes')) * 100)} %)`,
     paliers: [...new Set(cfg.parties.flatMap((p2) => p2.paliers))]
       .sort((a4, b4) => a4 - b4).map((x) => `${Math.round(x * 100)}`).join('/'),
     dette: som(cfg, 'dette'),
@@ -320,6 +345,7 @@ const COLONNES = [
   ['guerres', 'guerres', 7], ['balance', 'prod/cons', 9],
   ['masse', 'masse', 9], ['ou', 'caisses/ménages/trésors', 22],
   ['endettees', 'endettées', 9], ['affamees', 'affamées', 11],
+  ['satiete', 'satiété', 8], ['creve', 'à la diète', 11],
   ['cours', 'cours', 11], ['ecart', 'écart', 6], ['creances', 'créances', 9],
   ['paliers', 'taux %', 12],
   ['retournements', 'vestes', 7], ['debandades', 'débandes', 9],

@@ -852,6 +852,15 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
   const servi = Math.min(besoin * part, disponible);
   col.stock.rations = Math.max(0, disponible - servi);
   const satiete = besoin > 0 ? servi / besoin : 1;
+  // On l'écrit dans la ville. Elle « commande tout le reste » — la grogne, le
+  // départ des gens, la croissance — et elle n'était visible nulle part : ni à
+  // l'écran, ni au banc, ni dans les gardes. On calibrait donc sur `nourries`
+  // et `affamées`, qui comptent des **stocks**. Une ville dont les habitants
+  // n'ont pas un sou garde un grenier plein et passe pour bien nourrie ; monter
+  // les prix améliore les deux chiffres en affamant les gens. C'est le même
+  // piège que celui déjà relevé sur `MONNAIE.coursMin`, et il a failli faire
+  // choisir une constante à l'envers.
+  col.satiete = satiete;
 
   // Surextension : une faction qui tient trop de villes, trop loin de sa
   // capitale, les tient mal.

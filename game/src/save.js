@@ -201,6 +201,9 @@ export function normaliser(state) {
     // Avant le vivier, une ville ne se souvenait de personne. Vide, donc : lui
     // inventer des souvenirs qu'elle n'a pas eus serait pire que rien.
     if (!Array.isArray(c.vivier)) c.vivier = [];
+    // La satiété : rassasiée jusqu'à preuve du contraire. Le premier tick la
+    // corrige, et une partie déjà commencée ne doit pas naître affamée.
+    if (typeof c.satiete !== 'number') c.satiete = 1;
     // Le flux propre de la ville : dérivé de son nom, donc identique à celui
     // qu'une partie neuve lui aurait donné. Pas un tirage.
     if (typeof c.rngEtat !== 'number') c.rngEtat = grainDe(state.world.graine || 0, 'colonie', c.id);

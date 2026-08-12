@@ -205,6 +205,11 @@ function genererColonies(rng, regions, graine) {
       // connus tombaient d'un coup — sans qu'aucune ne parle d'argent.
       caisse: 0,
       prises: 0,
+      // Rassasiée à la naissance. Présente dès la création, comme `declin` et
+      // pour la même raison : absente, `normaliser` l'ajouterait au
+      // rechargement et l'aller-retour JSON d'une partie neuve ne serait plus
+      // exact — un invariant déclaré du projet.
+      satiete: 1,
       // Présent dès la naissance, à zéro. Absent, `normaliser` l'ajoutait au
       // rechargement — et l'aller-retour JSON d'une partie neuve n'était donc
       // pas exact, alors que c'est un invariant déclaré du projet. Le défaut

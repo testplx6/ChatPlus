@@ -3177,6 +3177,11 @@ function genererColonies(rng, regions, graine) {
       // connus tombaient d'un coup — sans qu'aucune ne parle d'argent.
       caisse: 0,
       prises: 0,
+      // Rassasiée à la naissance. Présente dès la création, comme `declin` et
+      // pour la même raison : absente, `normaliser` l'ajouterait au
+      // rechargement et l'aller-retour JSON d'une partie neuve ne serait plus
+      // exact — un invariant déclaré du projet.
+      satiete: 1,
       // Présent dès la naissance, à zéro. Absent, `normaliser` l'ajoutait au
       // rechargement — et l'aller-retour JSON d'une partie neuve n'était donc
       // pas exact, alors que c'est un invariant déclaré du projet. Le défaut
@@ -9477,6 +9482,15 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
   const servi = Math.min(besoin * part, disponible);
   col.stock.rations = Math.max(0, disponible - servi);
   const satiete = besoin > 0 ? servi / besoin : 1;
+  // On l'écrit dans la ville. Elle « commande tout le reste » — la grogne, le
+  // départ des gens, la croissance — et elle n'était visible nulle part : ni à
+  // l'écran, ni au banc, ni dans les gardes. On calibrait donc sur `nourries`
+  // et `affamées`, qui comptent des **stocks**. Une ville dont les habitants
+  // n'ont pas un sou garde un grenier plein et passe pour bien nourrie ; monter
+  // les prix améliore les deux chiffres en affamant les gens. C'est le même
+  // piège que celui déjà relevé sur `MONNAIE.coursMin`, et il a failli faire
+  // choisir une constante à l'envers.
+  col.satiete = satiete;
 
   // Surextension : une faction qui tient trop de villes, trop loin de sa
   // capitale, les tient mal.
@@ -20709,6 +20723,9 @@ function normaliser(state) {
     // Avant le vivier, une ville ne se souvenait de personne. Vide, donc : lui
     // inventer des souvenirs qu'elle n'a pas eus serait pire que rien.
     if (!Array.isArray(c.vivier)) c.vivier = [];
+    // La satiété : rassasiée jusqu'à preuve du contraire. Le premier tick la
+    // corrige, et une partie déjà commencée ne doit pas naître affamée.
+    if (typeof c.satiete !== 'number') c.satiete = 1;
     // Le flux propre de la ville : dérivé de son nom, donc identique à celui
     // qu'une partie neuve lui aurait donné. Pas un tirage.
     if (typeof c.rngEtat !== 'number') c.rngEtat = grainDe(state.world.graine || 0, 'colonie', c.id);

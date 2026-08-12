@@ -8858,6 +8858,57 @@ section('E5. On ne découvre pas une dévaluation en relisant ses comptes');
   ok(Array.isArray(vieux.player.alertesMonnaie), 'et une liste d’alertes vide');
 }
 
+// ---------------------------------------------------------------------------
+section('F0 bis. La satiété d’une ville se voit');
+// ---------------------------------------------------------------------------
+//
+// « La satiété commande tout le reste » — c'est écrit dans `tickColonie`, et
+// c'était vrai depuis toujours : elle décide de la grogne, du départ des gens,
+// de la croissance. Elle n'était nulle part. On calibrait donc sur `nourries`
+// et `affamées`, qui comptent des **stocks** : une ville dont les habitants
+// n'ont pas de quoi acheter garde un grenier plein et compte comme « bien
+// nourrie ». Monter les prix améliore les deux chiffres en affamant les gens,
+// et c'est exactement le piège déjà relevé sur `MONNAIE.coursMin` — « plus le
+// plancher est bas, mieux le monde mange et moins il compte de monde ».
+//
+// Un chiffre qu'on ne peut pas voir est un chiffre contre lequel on ne peut
+// pas calibrer.
+{
+  const sS = nouvellePartie(303030);
+  const ville = sS.world.colonies.find((c) => !c.ruine && !c.avantPoste && c.pop > 60);
+  tick(sS);
+  ok(typeof ville.satiete === 'number' && ville.satiete >= 0 && ville.satiete <= 1,
+    'une ville debout dit ce qu’elle a mangé', `${ville.satiete}`);
+
+  // Un grenier plein n'est pas une ville qui mange : la différence entre les
+  // deux est tout le sujet.
+  const grenier = sS.world.colonies.find((c) => !c.ruine && !c.avantPoste && c.pop > 60);
+  grenier.stock.rations = grenier.pop * 5;
+  // On vide les poches **et** la caisse : vider les seules poches ne prouve
+  // rien, le salaire de l'heure suivante les remplit et la satiété remonte à
+  // 0,96. C'est la caisse qui paie les salaires — tant qu'elle a de quoi, la
+  // ville mange.
+  for (let i = 0; i < 30; i++) {
+    grenier.menages = 0;
+    grenier.caisse = 0;
+    grenier.stock.rations = grenier.pop * 5;
+    tick(sS);
+  }
+  ok(grenier.stock.rations >= grenier.pop * 0.5,
+    'un grenier plein reste plein quand personne ne peut payer',
+    `${Math.round(grenier.stock.rations)} pour ${grenier.pop} habitants`);
+  ok(grenier.satiete < 0.8,
+    'et pourtant la ville a faim — c’est ce que « nourries » ne dit pas',
+    `satiété ${grenier.satiete.toFixed(2)}`);
+
+  // Une vieille sauvegarde ne casse pas.
+  const vieille = JSON.parse(JSON.stringify(sS));
+  for (const c of vieille.world.colonies) delete c.satiete;
+  normaliser(vieille);
+  ok(vieille.world.colonies.every((c) => typeof c.satiete === 'number'),
+    'et une partie d’avant en reçoit une');
+}
+
 // ===========================================================================
 console.log('\n' + '='.repeat(42));
 console.log(`${total - echecs}/${total} tests passés`);
