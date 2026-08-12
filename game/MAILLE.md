@@ -428,6 +428,22 @@ que l'étal vide les bourses pour des marchandises qui n'existent pas.
   `facture`. Elle ne pèse que −0,09 par jour, et **la retirer fait exploser
   l'erreur à +315** (témoin négatif mesuré) — elle est porteuse, il faudrait
   l'intégrer, pas la supprimer.
+
+  **Ce que M0 ter coûte de ne pas faire, chiffré en août 2026** : douze points
+  de satiété et trente mille habitants. Le recalibrage de l'économie a trouvé
+  son réglage — `CAISSE.partSalariale` de 0,55 à 0,70, satiété 0,752 → 0,843,
+  villes à la diète 59 % → 48 % — et n'a pas pu le livrer. À 0,70, l'erreur
+  locale sur les rations passe de −0,010 à **−0,314** pour une cible à 0,1, et
+  l'agitation sur quarante jours de +0,065 à +0,367 pour un plancher de bruit de
+  ±0,141.
+
+  La cause est le résidu que M0 bis a réduit sans l'éliminer : `facture` est
+  calculée **deux fois** par tranche, au début et au milieu. Le terme qui reste
+  est d'ordre deux, donc il grandit comme le carré de l'amplitude horaire —
+  doubler ce qui passe dans les poches chaque heure le quadruple. Tant qu'il est
+  là, l'économie ne peut pas être calibrée là où elle devrait l'être.
+
+  M0 ter n'est donc plus une tâche d'hygiène. C'est ce qui débloque le monde.
 - [ ] **M2.** Brancher `combienDeFois` sur `economy.js:719-730` (naissance,
   départ). **Le critère est à trouver, et c'est un blocage à part entière** :
   l'écart de population sur quarante jours est sous le plancher (−2 pour ±3), et

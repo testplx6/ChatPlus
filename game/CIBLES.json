@@ -1,5 +1,5 @@
 {
-  "_note": "Les gardes du monde, vérifiées par tools/verifier.js --complet via le banc. Ce ne sont PAS les cibles d'un chantier (elles vivent dans son cahier des charges, cf. ECONOMIE.md §13) : ce sont les fourchettes larges en dessous desquelles le monde s'est effondré sans que personne ne le voie. Resserrées à la livraison du lot F sur l'état mesuré — 517 villes, 57 893 habitants, 387 nourries, 16 % d'affamées, 35 bourses, 21 accords, 47 créances, invariant comptable exact, cours de 0,40 à 3,49, 15 monnaies sur 36 au plancher. La fourchette des factions écrasées reste basse et celle des créances haute : ce sont les deux dettes consignées dans ECONOMIE §13, à instruire par un chantier propre, pas à masquer en resserrant une garde. Clés = colonnes agrégées du banc ; les valeurs x/36 sont comparées sur leur numérateur.",
+  "_note": "Les gardes du monde, vérifiées par tools/verifier.js --complet via le banc. Ce ne sont PAS les cibles d'un chantier (elles vivent dans son cahier des charges, cf. ECONOMIE.md §13) : ce sont les fourchettes larges en dessous desquelles le monde s'est effondré sans que personne ne le voie. Resserrées à la livraison du lot F sur l'état mesuré — 517 villes, 57 893 habitants, 387 nourries, 16 % d'affamées, 35 bourses, 21 accords, 47 créances, invariant comptable exact, cours de 0,40 à 3,49, 15 monnaies sur 36 au plancher. La fourchette des factions écrasées reste basse et celle des créances haute : ce sont les deux dettes consignées dans ECONOMIE §13, à instruire par un chantier propre, pas à masquer en resserrant une garde. Clés = colonnes agrégées du banc ; les valeurs x/36 sont comparées sur leur numérateur. REMPLACEMENT, ao\u00fbt 2026 : « nourries » a \u00e9t\u00e9 retir\u00e9e des gardes et remplac\u00e9e par « satiete ». Elle comptait les greniers demi-pleins, et un grenier reste plein pr\u00e9cis\u00e9ment quand les habitants n'ont pas de quoi l'acheter : deux leviers ind\u00e9pendants, balay\u00e9s sur deux jeux de graines, la montrent monotone et OPPOS\u00c9E \u00e0 la sati\u00e9t\u00e9 r\u00e9elle. Elle faisait donc choisir les r\u00e9glages qui affament le monde. Voir CHANTIER.md \u00a7Blocages et METHODE.md \u00a73. La fourchette de « satiete » est large et non une cible : 0,61 est le monde clairement affam\u00e9 mesur\u00e9 au balayage, 0,84 l'\u00e9tat courant.",
   "temoin": "82636d8",
   "graines": "11,42,77,103,251,909",
   "horizon": 6000,
@@ -12,9 +12,9 @@
       45000,
       90000
     ],
-    "nourries": [
-      320,
-      460
+    "satiete": [
+      0.7,
+      0.95
     ],
     "ecrasees": [
       0,

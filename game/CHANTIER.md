@@ -548,60 +548,42 @@ minutes.
 
 ## Blocages
 
-### `nourries` mesure l'inverse du bien-être — la garde ne peut pas être tenue
+### Le bon réglage de la satiété est prêt, et M0 ter le bloque
 
-Le lot de recalibrage s'ouvre sur une découverte qui le referme : **la garde
-contre laquelle on devait calibrer est anti-corrélée à ce qu'elle est censée
-protéger.**
+**Ce qui est fait.** `nourries` a été retirée des gardes et remplacée par
+`satiete` dans `CIBLES.json`. Elle comptait les greniers demi-pleins, et un
+grenier reste plein précisément quand les habitants n'ont pas de quoi l'acheter :
+deux leviers indépendants, balayés sur deux jeux de graines, la montrent
+monotone et **opposée** à la satiété réelle.
 
-`nourries` compte les villes dont le grenier tient une demi-ration par tête.
-Mais un grenier reste plein **précisément quand les habitants n'ont pas de quoi
-l'acheter** — `servi = besoin × part`, où `part` est la fraction de la facture
-que les ménages ont pu régler. Renchérir tout améliore `nourries` en affamant
-le monde. Le piège était déjà écrit noir sur blanc pour `MONNAIE.coursMin` —
-« plus le plancher est bas, mieux le monde mange et moins il compte de monde » —
-sans que personne n'en tire la conséquence pour la garde elle-même.
+| levier | | nourries | satiété | pop |
+|---|---|---:|---:|---:|
+| `SOLVABILITE.plancher` | 0,20 → 1,20 | 280 → 396 | **0,780 → 0,608** | 79 720 → 54 650 |
+| `CAISSE.partSalariale` | 0,40 → 0,70 | 449 → 370 | **0,681 → 0,845** | 91 437 → **121 800** |
 
-**Deux leviers, deux jeux de graines, monotone et opposé dans les deux sens.**
+Tout réglage qui faisait passer l'ancienne garde affamait le monde.
 
-`SOLVABILITE.plancher`, 6 graines × 6 000 h :
+**Ce qui reste bloqué.** Le bon réglage est `CAISSE.partSalariale = 0,70` :
+satiété 0,752 → 0,843, villes à la diète 59 % → 48 %, et trente mille habitants
+de plus sur le jeu de graines indépendant. Il n'est pas appliqué parce qu'il
+**casse l'invariance à la maille**, mesuré à `banc --maille` :
 
-| plancher | nourries | affamées | **satiété** | à la diète | pop |
-|---:|---:|---:|---:|---:|---:|
-| 0,20 | 280 | 28 % | **0,780** | 55 % | 79 720 |
-| **0,35** (courant) | **291** | 29 % | **0,752** | 59 % | 79 955 |
-| 0,55 | 323 ✔ | 26 % | 0,746 | 65 % | 72 524 |
-| 0,70 | 364 ✔ | 17 % | 0,659 | 72 % | 60 030 |
-| 1,20 | 396 ✔ | 10 % | **0,608** | 76 % | 54 650 |
+|  | rations | agitation (40 j) | caisse |
+|---|---:|---:|---:|
+| 0,55 | −0,010 | +0,065 (bruit ±0,033) | +0,000 |
+| 0,70 | **−0,314** | **+0,367** (bruit ±0,141) | +0,104 |
 
-`CAISSE.partSalariale`, 8 graines indépendantes × 6 000 h :
+Cible de `MAILLE.md` §5 : 0,1. Trente fois dépassée sur les rations.
 
-| partSalariale | nourries | **satiété** | à la diète | pop |
-|---:|---:|---:|---:|---:|
-| 0,40 | 449 | 0,681 | 66 % | 91 437 |
-| **0,55** (courant) | 393 | 0,790 | 54 % | 107 131 |
-| 0,70 | 370 | **0,845** | 43 % | **121 800** |
+Ce n'est pas une bascule de fixture — l'instrument dédié le confirme sur
+40 villes × 8 graines, avec ses placebos. C'est le résidu que **M0 bis** a réduit
+sans l'éliminer : `facture` est calculée deux fois par tranche, au début et au
+milieu, et le terme d'ordre deux grandit comme le carré de l'amplitude horaire.
+Doubler ce qui passe dans les poches chaque heure quadruple le reste.
 
-Lisez la dernière ligne : à 0,70, le monde porte **trente mille habitants de
-plus, mieux nourris**, et `nourries` *baisse*. Tout réglage qui fait passer la
-garde affame le monde ; tout réglage qui nourrit le monde fait échouer la garde.
-
-**Ce qui a été livré, et pourquoi ça s'arrête là.** `col.satiete` existe
-désormais — le nombre était calculé dans `tickColonie` depuis toujours, aucun
-écran, aucun banc, aucune garde ne l'exposait, et c'est ce qui a permis à
-l'erreur de tenir. Le banc rend maintenant `satiété` (moyenne pondérée par la
-population) et `à la diète` (villes sous 0,8). État courant : **0,752 et 59 %**.
-
-Aucune constante n'a été touchée. Choisir `partSalariale = 0,70` améliorerait
-tout ce qui compte et ferait échouer une garde déclarée ; remplacer `nourries`
-par `satiete` dans `CIBLES.json` est une décision de cahier des charges, pas un
-réglage. `CLAUDE.md` est explicite : une garde ne se retouche pas pour faire
-passer une mesure, c'est un blocage à remonter.
-
-**Ce qu'il faut trancher, en une phrase** : est-ce que `nourries` reste une
-garde, ou est-ce que `satiete` la remplace ? Si elle la remplace, la fourchette
-se lit dans les tableaux ci-dessus et le levier est prêt.
-
+**C'est la première fois que M0 ter a un prix chiffré** : douze points de
+satiété et trente mille habitants. Ce n'était jusqu'ici qu'une tâche en attente
+sans motif.
 
 ### Le bureau de change est fermé presque partout — parce que le monde gronde
 

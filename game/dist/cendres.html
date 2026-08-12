@@ -8684,7 +8684,54 @@ function ligneCours(prix, key) {
 const CAISSE = {
   marge: 0.10,
   parTete: 12,
-  /** La part de ce que la ville produit qui repart en salaires, chez ses gens. */
+  /**
+   * La part de ce que la ville produit qui repart en salaires, chez ses gens.
+   *
+   * **0,55 → 0,70, et c'est la mesure de la satiété qui l'a dicté.** Tant qu'on
+   * réglait contre `nourries`, tout poussait dans l'autre sens : baisser la part
+   * salariale appauvrit les habitants, donc ils achètent moins, donc les greniers
+   * restent pleins, donc « villes bien nourries » monte. On calibrait à l'envers
+   * sans le voir, faute d'un chiffre qui dise ce que les gens ont réellement
+   * mangé.
+   *
+   * Balayé sur six graines et six mille heures, une fois `col.satiete` visible :
+   *
+   *     part    villes    pop      satiété   à la diète   caisse méd
+   *     0,55      459    79 955     0,752       59 %         435
+   *     0,60      406    79 527     0,794       51 %         243
+   *     0,65      443    82 924     0,796       52 %         223
+   *     0,70      453    84 047     0,843       48 %         117
+   *     0,75      415    86 390     0,830       47 %           0
+   *     0,80      431    82 592     0,785       49 %           0
+   *
+   * Confirmé sur huit graines indépendantes : 0,55 → 0,70 fait passer la satiété
+   * de 0,790 à 0,845 **et la population de 107 131 à 121 800**. Plus de monde,
+   * mieux nourri : ce n'est pas un arbitrage, c'est un réglage qui était faux.
+   *
+   * 0,70 est aussi la dernière valeur sûre côté caisse. Au-delà, la caisse
+   * médiane des villes tombe à zéro — elles vident leur fonds de roulement en
+   * salaires et ne rachètent plus rien. C'est un bord de falaise, pas une pente.
+   *
+   * **Et pourtant la valeur reste à 0,55, parce que 0,70 casse l'invariance à la
+   * maille.** Mesuré à `banc --maille`, erreur locale sur une journée depuis un
+   * état identique :
+   *
+   *     pas 24        rations    agitation    caisse    ménages
+   *     0,55           -0,010       0,000     +0,000     +0,000
+   *     0,70           -0,314       0,000     +0,104     -0,007
+   *
+   * Trente fois pire sur les rations, pour une cible à 0,1 (`MAILLE.md` §5). Sur
+   * quarante jours, l'agitation passe de +0,065 à +0,367 pour un plancher de
+   * bruit de ±0,141. Ce n'est pas une bascule de fixture : c'est le résidu que
+   * M0 bis a réduit sans l'éliminer — `facture` est calculée deux fois par
+   * tranche, au début et au milieu, et le terme d'ordre deux grandit comme le
+   * carré de l'amplitude horaire. Doubler ce qui passe dans les poches chaque
+   * heure quadruple le reste.
+   *
+   * Le réglage est donc **prêt et bloqué par M0 ter**, pas abandonné. C'est la
+   * première fois que M0 ter a un prix chiffré : douze points de satiété et
+   * trente mille habitants.
+   */
   partSalariale: 0.55,
   /** Ce que coûte une paie qu'on ne peut pas verser, par heure de retard. */
   grogneImpayes: 0.0025,
