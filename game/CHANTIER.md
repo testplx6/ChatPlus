@@ -585,6 +585,27 @@ Doubler ce qui passe dans les poches chaque heure quadruple le reste.
 satiété et trente mille habitants. Ce n'était jusqu'ici qu'une tâche en attente
 sans motif.
 
+**Le recensement de M0 ter est fait, et il tient en trois lignes** (détail et
+code dans `MAILLE.md`) :
+
+1. Un **bug**, sans rapport avec la maille : les rations étaient exclues de la
+   production en rayon, si bien qu'une ville qui récolte sans grenier mangeait
+   gratuitement — ménages qui montent de 1 476 à 1 683 pendant que la caisse se
+   vide. Corrigé, mesuré.
+2. Le **plafond de l'étal** se regroupait au lieu de s'intégrer. Forme close
+   trouvée et vérifiée exacte à 1e-13 : l'erreur de caisse passe de +0,101 à
+   +0,003, celle des ménages de −0,101 à +0,000.
+3. Le **résidu** vient de `facture`, qui dépend de trois grandeurs bouclées les
+   unes sur les autres. Aucune forme close. La seule issue mesurée est le
+   sous-pas : l'erreur est **nulle à `dt = 4`** et n'apparaît qu'à 8.
+
+Ce qui bloque le point 3 est un coût, pas une inconnue : six sous-passes sur le
+bloc qui pèse 14 % du tick en propre, alors que la garde de vitesse est
+incapable de trancher sur cette machine (±28 % de dispersion). Le code des
+points 1 et 2 est écrit et mesuré ; il attend le sous-pas pour être livré d'un
+bloc, parce que les livrer séparément fait passer l'erreur de −0,010 à +0,987 —
+l'ancien code portait plusieurs erreurs qui se compensaient.
+
 ### Le bureau de change est fermé presque partout — parce que le monde gronde
 
 Mesuré au banc d'équilibrage, 30 parties de 4 000 h. Sur **1 811** fois où le

@@ -444,6 +444,110 @@ que l'étal vide les bourses pour des marchandises qui n'existent pas.
   là, l'économie ne peut pas être calibrée là où elle devrait l'être.
 
   M0 ter n'est donc plus une tâche d'hygiène. C'est ce qui débloque le monde.
+
+  ### Le recensement, fait — trois saturations, deux corrigées, une chiffrée
+
+  Mené par témoin négatif, comme le prescrit §7 : neutraliser un plafond à la
+  fois et lire l'erreur locale. Résultat, à `partSalariale = 0,55` sauf mention.
+
+  **1. Les rations étaient exclues de la production en rayon — et c'est un bug,
+  pas un défaut de maille.** `facture` comptait `stock + production × dt` pour
+  tout, sauf pour les rations où elle comptait le stock seul. Or la récolte du
+  jour entre bel et bien dans ce qui est servi (`disponible`). Une ville qui
+  récolte et n'a plus de grenier mangeait donc **sans que personne ne paie** :
+  mesuré sur trente heures, les ménages *montent* de 1 476 à 1 683 pendant que
+  la caisse se vide de 5 904 à 5 654. La moitié du circuit manquait.
+
+  **2. Le plafond de l'étal se regroupait au lieu de s'intégrer.** Heure par
+  heure la ville sert `min(c, stock + p)` ; la tranche écrivait
+  `min(c·dt, stock + p·dt)` — la somme des minimums remplacée par le minimum des
+  sommes. L'intégrale est close, et vérifiée exacte à 1e-13 contre la boucle sur
+  200 000 tirages :
+
+  ```js
+  function servable(stock, parHeure, veutParHeure, dt) {
+    if (dt === 1) {
+      const dispo = stock + parHeure;
+      return veutParHeure < dispo ? veutParHeure : dispo;
+    }
+    const manque = veutParHeure - parHeure;
+    const tout = veutParHeure * dt;
+    if (manque <= 0) return tout;
+    const tenu = manque * dt;
+    return parHeure * dt + (stock < tenu ? stock : tenu);
+  }
+  ```
+
+  Appliquée aux deux passes de `facture` et au service des vivres, elle met
+  l'erreur locale de **caisse à +0,003 et de ménages à +0,000** (contre +0,101 et
+  −0,101). À `dt = 1` elle rend exactement ce que rendait l'ancien code pour tout
+  ce qui n'est pas des rations : la maille fine ne bouge pas d'un bit.
+
+  **3. Ce qui reste, et pourquoi ça s'arrête là.** Corriger 1 et 2 fait passer
+  l'erreur sur les rations de −0,010 à **+0,987** — pire qu'avant. Ce n'est pas
+  une régression : **l'ancien code portait plusieurs erreurs qui se
+  compensaient**, et n'en redresser qu'une partie découvre les autres. C'est
+  aussi ce qui explique que le défaut ait triplé en passant à
+  `partSalariale = 0,70` : la compensation était fortuite, donc fragile.
+
+  Le résidu a été localisé par témoin négatif : forcer `part = 1` le fait tomber
+  de +0,987 à −0,154. Il vient donc de `facture`, qui dépend des prix, du
+  serrage de ceinture et de la bourse des ménages — **trois grandeurs qui bougent
+  dans la journée**. Le point milieu en corrige le premier ordre ; il en reste un
+  second, et aucune forme close ne s'en sort parce que les trois se bouclent
+  l'une sur l'autre.
+
+  **La seule issue mesurée est le sous-pas.** L'erreur locale sur les rations
+  vaut **+0,000 à `dt = 2` et `dt = 4`**, +0,669 à 8, +0,987 à 24. Le circuit des
+  vivres ne supporte pas une tranche de vingt-quatre heures : il lui faut son
+  propre pas, plafonné à quatre.
+
+  Ce n'est pas fait, et pour une raison qu'il faut dire : ça coûte. Six
+  sous-passes pour une ville lointaine, sur le bloc qui pèse 14 % du tick en
+  propre — et la garde de vitesse est actuellement **incapable de trancher** sur
+  cette machine (±28 % de dispersion). Livrer une multiplication par trois du
+  chemin le plus chaud sans pouvoir la mesurer serait pire que d'attendre.
+
+  Le code des points 1 et 2 est écrit, testé et mesuré ; il attend le sous-pas
+  pour être livré d'un bloc. Le test qui démontre le bug n° 1 :
+
+  ```js
+    // Chantier MAILLE, M0 ter : le recensement des saturations. Celle-ci a été
+    // trouvée par témoin négatif, en cherchant pourquoi le bon réglage de la
+    // satiété cassait l'invariance à la maille.
+    //
+    // `facture` ne compte que ce qui peut être servi — c'est juste, facturer le
+    // besoin plutôt que l'étal viderait les poches pour des marchandises
+    // inexistantes. Mais pour les rations, et pour elles seules, l'étal était
+    // réduit au **stock d'avant la tranche** : la récolte de la journée n'y
+    // entrait pas. Or elle entre bel et bien dans ce qui est servi (`disponible`,
+    // plus bas dans la même fonction).
+    //
+    // Une ville qui produit de quoi manger et n'a plus de grenier mangeait donc
+    // sans que personne ne paie : les ménages ne se vidaient pas, la caisse ne se
+    // remplissait pas, et la moitié du circuit disparaissait.
+    const sM0 = nouvellePartie(4242, { maintenant: 0 });
+    const ville = sM0.world.colonies.find(
+      (c) => !c.ruine && !c.avantPoste && c.pop > 200
+        && productionColonie(sM0.world, c).rations > 0.5);
+    // Trente heures, pas une : cette ville est loin du joueur, elle avance par
+    // tranches de vingt-quatre. Un seul tick ne la faisait pas tourner du tout —
+    // et le décor semblait alors prouver le défaut alors qu'il ne prouvait rien.
+    const menagesAvant = ville.menages;
+    const caisseAvant = ville.caisse;
+    for (let i = 0; i < 30; i++) {
+      ville.stock.rations = 0;
+      tick(sM0);
+    }
+    ok(ville.satiete > 0.9, 'une ville qui récolte mange, grenier vide ou non',
+      `satiété ${ville.satiete.toFixed(3)}`);
+    ok(menagesAvant - ville.menages > 0,
+      'et elle le paie — la récolte du jour n’est pas gratuite',
+      `ménages ${Math.round(menagesAvant)} → ${Math.round(ville.menages)}`);
+    ok(ville.caisse > caisseAvant,
+      'ce qui sort des poches entre en caisse : le circuit se boucle',
+      `caisse ${Math.round(caisseAvant)} → ${Math.round(ville.caisse)}`);
+  ```
 - [ ] **M2.** Brancher `combienDeFois` sur `economy.js:719-730` (naissance,
   départ). **Le critère est à trouver, et c'est un blocage à part entière** :
   l'écart de population sur quarante jours est sous le plancher (−2 pour ±3), et
