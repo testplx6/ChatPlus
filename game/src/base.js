@@ -1471,6 +1471,11 @@ export function reconnaitreAvantPoste(state, log) {
     emplois: null,
     notables: [],
     declin: 0,
+    // Un camp n'est pas une place : on n'y change pas de monnaie. Présent à la
+    // création plutôt qu'ajouté par `normaliser`, sinon l'aller-retour JSON
+    // d'une partie neuve cesse d'être exact.
+    change: false,
+    satiete: 1,
     // Ce qui la distingue de toutes les autres : elle est à vous, et sa vérité
     // est ailleurs.
     avantPoste: true,

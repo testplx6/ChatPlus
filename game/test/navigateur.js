@@ -594,8 +594,18 @@ const colonnes = (p) => p.evaluate(() => {
   // dans le désert : on injecte donc explicitement un départ en ville.
   await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
   await page.reload({ waitUntil: 'networkidle' });
-  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt),
-    serialiser(nouvellePartie(20260729, { maintenant: Date.now(), depart: 'ville' })));
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), (() => {
+    // Et elle tient un comptoir : le bloc du bureau de change, plus bas, en a
+    // besoin. Posé ici plutôt qu'en rechargeant la page au milieu du script —
+    // un rechargement en cours de route repart d'un état neuf et casse tout ce
+    // qui suit, ce qui a coûté deux vérifications sans rapport.
+    const st = nouvellePartie(20260729, { maintenant: Date.now(), depart: 'ville' });
+    const g0 = groupeActif(st);
+    const r0 = st.world.regions[g0.regionId];
+    const ici = st.world.colonies.find((c) => c.id === (r0 && r0.colonie));
+    if (ici) ici.change = true;
+    return serialiser(st);
+  })());
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await page.waitForTimeout(600);
@@ -712,7 +722,14 @@ await page.waitForTimeout(200);
 // rend le jeu injouable : on arrive à l'étranger avec la monnaie de chez soi et
 // rien ne permet d'y remédier. C'est le seul endroit du jeu où deux monnaies se
 // regardent, et il ne doit jamais afficher de total.
-if ((await page.locator('[data-a="modale"][data-m="change"]').count()) > 0) {
+{
+  // Le comptoir est ouvert à la création du décor, plus haut. Le bloc n'est donc
+  // plus conditionnel : depuis E3 bis une ville ne tient un bureau que si elle
+  // est assez grande, celle-ci ne l'était pas, et le bloc entier se sautait tout
+  // seul — cinq vérifications disparues du compte sans que rien ne le dise.
+  // Une mesure qui se saute en silence ne mesure rien.
+  const aBureau = await page.locator('[data-a="modale"][data-m="change"]').count();
+  ok(aBureau > 0, 'une ville qui tient un comptoir propose le change');
   await page.click('[data-a="modale"][data-m="change"]');
   await page.waitForTimeout(400);
   const txtCh = await page.locator('#modale').innerText();

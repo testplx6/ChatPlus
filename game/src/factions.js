@@ -1118,6 +1118,11 @@ export function fonderColonie(world, key, region, rng, t) {
     vivier: [],
     geole: null,
     declin: 0,
+    satiete: 1,
+    // Un poste neuf est un hameau : pas de bureau de change. Présent à la
+    // création plutôt qu'ajouté par `normaliser`, sinon l'aller-retour JSON
+    // cesse d'être exact dès la première fondation.
+    change: false,
     fondeeA: t,
     factionOrigine: key,
   };

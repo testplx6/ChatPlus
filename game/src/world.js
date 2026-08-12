@@ -210,6 +210,11 @@ function genererColonies(rng, regions, graine) {
       // rechargement et l'aller-retour JSON d'une partie neuve ne serait plus
       // exact — un invariant déclaré du projet.
       satiete: 1,
+      // Un bureau de change (ECONOMIE §5.1 et §7.3). Les grandes places en
+      // tiennent un dès le premier jour, les hameaux non — c'est le seuil que
+      // §5.2 emploie déjà pour la remise, « on change mieux dans une vraie
+      // ville ». Pas un tirage : la taille est déjà tirée.
+      change: taille >= 2,
       // Présent dès la naissance, à zéro. Absent, `normaliser` l'ajoutait au
       // rechargement — et l'aller-retour JSON d'une partie neuve n'était donc
       // pas exact, alors que c'est un invariant déclaré du projet. Le défaut

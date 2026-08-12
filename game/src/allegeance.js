@@ -13,26 +13,45 @@ import { loisDe, REGIMES } from './lois.js';
 import { noterArgent } from './rapport.js';
 import { depenser, gagner, soldeIci, signeIci } from './monnaie.js';
 
+/**
+ * Les six charges, et ce qu'elles donnent.
+ *
+ * **L'échelle a été raccourcie en août 2026, en même temps qu'on lui ajoutait un
+ * sixième échelon.** Les deux vont ensemble : `ECONOMIE.md` §7.3 range deux
+ * prérogatives monétaires au grade de Maréchal, et poser un sixième barreau
+ * au-dessus d'un cinquième que personne n'atteint aurait été écrire du code
+ * mort. Mesuré au banc d'équilibrage avant l'ajout, sur trente parties de
+ * quatre mille heures : **Commandeur atteint zéro fois**, Capitaine une seule,
+ * pour une carrière médiane de 415 points en fin de service.
+ *
+ * L'ancienne échelle valait 0 / 130 / 380 / 850 / 1 700. La nouvelle garde la
+ * même forme — chaque barreau vaut à peu près deux fois le précédent — et rentre
+ * dans une carrière qu'on peut réellement mener.
+ */
 export const RANGS = [
   {
     nom: 'Affilié', points: 0, remise: 0.05, solde: 10, ration: 3,
     desc: 'On vous laisse entrer par la porte de service, et on vous nourrit.',
   },
   {
-    nom: 'Agent', points: 130, remise: 0.10, solde: 30, ration: 6,
+    nom: 'Agent', points: 90, remise: 0.10, solde: 30, ration: 6,
     desc: 'On vous connaît. Les péages ne vous concernent plus.',
   },
   {
-    nom: 'Lieutenant', points: 380, remise: 0.16, solde: 75, ration: 10,
+    nom: 'Lieutenant', points: 240, remise: 0.16, solde: 75, ration: 10,
     desc: 'Les armuriers vous sortent ce qu’ils gardent derrière, et leurs villes vous logent.',
   },
   {
-    nom: 'Capitaine', points: 850, remise: 0.22, solde: 160, ration: 15,
+    nom: 'Capitaine', points: 500, remise: 0.22, solde: 160, ration: 15,
     desc: 'On vous soigne sans compter, et on vient parfois à votre secours.',
   },
   {
-    nom: 'Commandeur', points: 1700, remise: 0.30, solde: 300, ration: 22,
+    nom: 'Commandeur', points: 900, remise: 0.30, solde: 300, ration: 22,
     desc: 'Votre nom vaut un ordre écrit.',
+  },
+  {
+    nom: 'Maréchal', points: 1500, remise: 0.38, solde: 520, ration: 30,
+    desc: 'On vous confie la bourse du pays, et l’on vous répond des deux mains.',
   },
 ];
 

@@ -325,10 +325,26 @@ rien ne permet d'y remédier. Les trois lots n'en font qu'un.
   **Les trois autres sont bloquées, et pour deux raisons distinctes** — voir
   Blocages.
 
-- [ ] **E4 bis. Les deux prérogatives de Maréchal**, quand le grade existera :
-  racheter la dette d'une ville étrangère (`racheterCreance` est écrit et
-  testé), retirer de la monnaie (`retirerMonnaie` aussi). Il ne manque que la
-  charge.
+- [x] **E4 bis. Les deux prérogatives de Maréchal.** Le grade existe, et
+  l'échelle a été raccourcie en même temps — les deux vont ensemble, parce
+  qu'un sixième barreau au-dessus d'un cinquième que personne n'atteint aurait
+  été du code mort.
+
+  L'ancienne échelle valait 0 / 130 / 380 / 850 / 1 700, et le banc
+  d'équilibrage y atteignait **Commandeur zéro fois** sur trente parties. La
+  nouvelle vaut 0 / 90 / 240 / 500 / 900 / 1 500, garde la même forme — chaque
+  barreau vaut à peu près deux fois le précédent — et **le Maréchal est atteint
+  une fois sur trente**. Un sommet jamais gravi est devenu un sommet rare.
+
+  Au passage, le compteur du banc était en dur à cinq cases : il affichait
+  « Maréchal NaN », et c'est ce qui a d'abord fait croire que le grade n'était
+  pas atteint. Il se dérive de l'échelle maintenant.
+
+  `racheterDette` et `retirerDeLaMonnaie` n'ajoutent aucun mécanisme :
+  `racheterCreance` et `retirerMonnaie` existaient depuis le lot D, il ne
+  manquait que la charge. §7.3 met le coût du retrait sur « la réserve de
+  change » : elle n'existe pas dans le moteur — `f.reserve` est listé au §9 et
+  n'a jamais été écrit —, donc c'est le trésor qui paie, au prix fort.
 - [x] **E5. Le bandeau de dévaluation** (> 10 % de perte sur une monnaie
   détenue) + journal des émissions/taux/rachats/défauts.
 
@@ -635,39 +651,44 @@ tourne à chaque passage, et le jour où la grogne redescend on verra le chiffre
 bouger sans avoir rien retouché.
 
 
-### §7.3 demande un grade de Maréchal, et il n'y en a pas
+### RÉSOLU — le grade de Maréchal existe, et l'échelle a été raccourcie avec lui
 
-`RANGS` s'arrête à Commandeur, cinq échelons. La table des prérogatives
-d'`ECONOMIE.md` §7.3 en range deux au grade de **Maréchal** : racheter la dette
-d'une ville étrangère, et retirer de la monnaie.
+`RANGS` s'arrêtait à Commandeur, cinq échelons, et §7.3 rangeait deux
+prérogatives à un sixième qui n'existait pas. **Tranché par le propriétaire :
+ajouter Maréchal, et raccourcir l'échelle** — parce que le banc atteignait
+Commandeur zéro fois sur trente parties, si bien qu'un barreau au-dessus aurait
+été décoratif.
 
-Les deux mécanismes sont écrits et testés — `racheterCreance` et
-`retirerMonnaie`. Il ne manque que la charge qui y donne droit, et l'ajouter
-demande d'inventer quatre nombres : le seuil de points, la remise, la solde et
-la ration d'un sixième rang. Ce sont des réglages de jeu, pas de code, et le
-banc n'a rien à en dire tant que personne n'a décidé ce que ce grade *est*.
+0 / 130 / 380 / 850 / 1 700 devient 0 / 90 / 240 / 500 / 900 / 1 500. Même
+forme, carrière réellement menable : **Maréchal atteint une fois sur trente**.
 
-Ce qui manque pour débloquer : la définition du grade. Le reste est déjà là.
+### RÉSOLU — « ouvrir un bureau de change » : les deux textes, réconciliés
 
-### « Ouvrir un bureau de change » — §5.1 et §7.3 se contredisent
+§5.1 mettait un bureau dans toute ville debout, §7.3 en faisait une prérogative
+de Capitaine, §9 prévoyait le champ `col.change`. **Tranché par le
+propriétaire : §7.3, avec des bureaux au départ.**
 
-§5.1 : « Dans **toute** ville dont le marché existe et qui n'est pas en révolte. »
-§7.3 : « Ouvrir un bureau de change dans une ville — Capitaine — trésor. »
-§9 prévoit le champ `col.change : boolean` pour la seconde lecture.
+Les deux textes cessent alors de se contredire : §5.1 dit *où un bureau peut
+exister* — une ville debout, hors révolte, et pas un camp —, §7.3 dit *comment
+on en ouvre un de plus*. Les grandes places en tiennent un dès la génération du
+monde, au seuil que §5.2 emploie déjà pour la remise de change (« on change
+mieux dans une vraie ville ») : taille 2 ou 3, soit la moitié des villes.
+Aucune capitale n'y échappe — elles sont toutes de taille 2 ou 3, vérifié sur
+trois graines. Et une place qui grandit finit par coter, sans quoi le nombre de
+bureaux du monde ne pourrait que décroître.
 
-Les deux ne peuvent pas être vraies. Si les bureaux existent partout, la
-prérogative n'a pas d'objet ; s'il faut les ouvrir, le monde commence sans
-aucun bureau et le lot E rend le jeu injouable jusqu'à ce qu'une faction en
-ouvre un — ce qu'aucun conseil ne sait faire aujourd'hui.
+**Ce que ça coûte, mesuré** — le relevé du banc, avant et après :
 
-E3 a retenu §5.1, parce que c'est la règle opératoire et la seule des deux qui
-laisse le jeu jouable au premier tour. La prérogative n'est donc pas livrée, et
-`col.change` n'existe pas dans l'état.
+| | bureaux partout | bureaux à ouvrir |
+|---|---:|---:|
+| passages au bureau réussis | 87 | **50** |
+| refus : la ville n'a pas de comptoir | — | **1 350** |
+| refus : la ville est en révolte | 1 527 | 807 |
+| bourse en monnaie sans cours ici | 45,5 % | **54,9 %** |
 
-Ce qui manque pour débloquer : dire laquelle des deux lectures fait foi. Si
-c'est §7.3, il faut aussi dire quels bureaux existent au premier jour, et ce
-que le conseil d'une faction décide tout seul.
-
+La friction de §7.1 est plus dure qu'avant, et c'est le prix assumé de la
+décision. Le levier est unique et lisible si l'on veut l'adoucir : le seuil de
+taille, dans `world.js`. À 1, on retrouve §5.1 exactement.
 
 ### La poche du joueur n'est dans aucun registre — trouvé en livrant le lot E
 

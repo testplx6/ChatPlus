@@ -1024,6 +1024,11 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
   if (col.pop > col.taille * 620 && col.unrest < 0.3 && col.taille < 3) {
     col.taille += 1;
     col.murs += 2;
+    // Une place qui grandit finit par coter. La règle est « les grandes places
+    // tiennent un bureau », pas « celles qui l'étaient au premier jour » : sans
+    // cette ligne, un hameau devenu vraie ville restait sans comptoir pour
+    // toujours, et le nombre de bureaux du monde ne pouvait que décroître.
+    if (col.taille >= 2) col.change = true;
     return { evenement: 'croissance' };
   }
   if (col.declin > 900) {
@@ -1418,16 +1423,23 @@ export function vendreItem(state, col, indexObjet, groupe) {
 // des modules (`tools/bundle.js`), donc ne peut pas appeler l'inverse.
 
 /**
- * Une ville tient-elle un bureau ? ECONOMIE §5.1 : « dans toute ville dont le
- * marché existe et qui n'est pas en révolte ».
+ * Une ville tient-elle un bureau de change ?
  *
- * Il n'y a pas de champ `col.change` : toute ville debout tient un marché dans
- * ce moteur, et l'écrire dans l'état serait une clé de plus à migrer pour une
- * information qui se déduit. Un avant-poste est exclu — c'est un camp, pas une
- * place.
+ * `ECONOMIE.md` se contredisait — §5.1 en met un dans toute ville debout, §7.3
+ * en fait une prérogative de Capitaine à ouvrir, §9 prévoit le champ
+ * `col.change`. E3 avait retenu §5.1, la seule lecture qui laissait le jeu
+ * jouable au premier tour, et l'avait consigné comme blocage.
+ *
+ * **Tranché : les deux, et ils ne se contredisent plus.** §5.1 dit *où un
+ * bureau peut exister* — une ville debout, hors révolte, et pas un camp ; §7.3
+ * dit *comment on en ouvre un de plus*. Les grandes places en tiennent un dès
+ * la génération du monde (`world.js`), sans quoi la monnaie étrangère serait
+ * inutilisable jusqu'au premier Capitaine — atteint une fois sur trente parties
+ * au banc.
  */
 export function bureauDe(col) {
-  return !!col && !col.ruine && !col.avantPoste && (col.unrest || 0) <= SEUIL_REVOLTE;
+  return !!col && !!col.change && !col.ruine && !col.avantPoste
+    && (col.unrest || 0) <= SEUIL_REVOLTE;
 }
 
 /**

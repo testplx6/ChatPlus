@@ -124,7 +124,9 @@ import {
 import { DIPLOMES, DIPLOME_KEYS } from '../src/data.js';
 import { FACTION_KEYS, symboleDe, symboleNeuf, clesDe } from '../src/data.js';
 import { bureauDe, devisChange, changer } from '../src/economy.js';
-import { battreMonnaie, accorderCredit } from '../src/influence.js';
+import {
+  battreMonnaie, accorderCredit, racheterDette, retirerDeLaMonnaie, ouvrirChange,
+} from '../src/influence.js';
 import { CREDIT } from '../src/credit.js';
 import { majCours, MONNAIE, coursMonnaie, veillerMonnaies, DEVALUATION } from '../src/monnaie.js';
 import { coloniesDe } from '../src/factions.js';
@@ -8719,7 +8721,10 @@ section('E3. Le bureau de change');
 // pas n'importe quelle paire contre n'importe quelle autre. »
 {
   const sCh = nouvellePartie(777001);
-  const villes = sCh.world.colonies.filter((c) => !c.ruine && !c.avantPoste && c.faction);
+  // Des villes qui tiennent un bureau : depuis E3 bis, elles ne le tiennent plus
+  // toutes. Un hameau sans comptoir ne dit rien sur le change.
+  const villes = sCh.world.colonies.filter(
+    (c) => !c.ruine && !c.avantPoste && c.faction && c.change);
   const ville = villes[0];
   const etrangere = villes.find((c) => c.faction !== ville.faction);
   const locale = ville.faction;
@@ -8771,7 +8776,8 @@ section('E3. Le bureau de change');
 
   // Un bourg sans drapeau ne prend rien : c'est l'avantage d'un endroit sans loi
   // (ECONOMIE §5.2, `ecartChange` le fait déjà pour les caravanes).
-  const libre = sCh.world.colonies.find((c) => !c.ruine && !c.faction && !c.avantPoste);
+  const libre = sCh.world.colonies.find(
+    (c) => !c.ruine && !c.faction && !c.avantPoste && c.change);
   if (libre) {
     const dl = devisChange(sCh.world, libre, locale, autre, 100);
     ok(dl.ecart === 0, 'un bourg sans drapeau ne prend aucun écart');
@@ -8789,6 +8795,78 @@ section('E3. Le bureau de change');
   const apres = acheter(sCh, etrangere, 'rations', 1, gCh);
   ok(apres.ok, 'et on achète — la friction de §7.1 est levée, pas supprimée',
     `${apres.qte} pour ${apres.cout}`);
+}
+
+// ---------------------------------------------------------------------------
+section('E3 bis. Le bureau de change s’ouvre, il n’est pas partout');
+// ---------------------------------------------------------------------------
+//
+// `ECONOMIE.md` se contredisait : §5.1 met un bureau dans toute ville debout,
+// §7.3 en fait une prérogative de Capitaine à ouvrir, et §9 prévoit le champ
+// `col.change`. E3 avait retenu §5.1 — la seule lecture qui laissait le jeu
+// jouable au premier tour — et l'avait consigné comme blocage.
+//
+// **Tranché par le propriétaire : §7.3, avec des bureaux au départ.** Les deux
+// textes se réconcilient alors sans rien inventer : §5.1 dit *où un bureau peut
+// exister* — une ville debout, hors révolte —, §7.3 dit *comment on en ouvre un
+// de plus*. Et les grandes places en tiennent un dès la génération du monde,
+// sans quoi la monnaie étrangère serait inutilisable jusqu'au premier
+// Capitaine, atteint une fois sur trente parties.
+//
+// Le seuil est celui que §5.2 emploie déjà pour la remise de change : « on
+// change mieux dans une vraie ville ». Une place de taille 2 ou 3 en tient un,
+// un hameau non. Aucune capitale n'y échappe — elles sont toutes de taille 2
+// ou 3, vérifié sur trois graines.
+{
+  const sB = nouvellePartie(313131);
+  const debout = sB.world.colonies.filter((c) => !c.ruine && !c.avantPoste);
+  ok(debout.filter((c) => c.taille >= 2).every((c) => c.change),
+    'toute grande place tient un bureau dès le premier jour',
+    `${debout.filter((c) => c.change).length} sur ${debout.length}`);
+  ok(debout.filter((c) => c.taille < 2).every((c) => !c.change),
+    'un hameau, non');
+  const caps = Object.values(sB.world.factions)
+    .map((f) => f.capitale && colonieParId(sB.world, f.capitale)).filter(Boolean);
+  ok(caps.length > 0 && caps.every((c) => c.change),
+    'et aucune capitale n’en est privée', `${caps.length} capitales`);
+
+  const sans = debout.find((c) => !c.change && c.faction);
+  ok(!bureauDe(sans), 'là où il n’y en a pas, on ne change pas — même debout et calme');
+  ok(bureauDe(debout.find((c) => c.change)), 'là où il y en a un, si');
+
+  // La prérogative. C'est un Capitaine, et ça coûte au trésor.
+  const gB = groupeActif(sB);
+  gB.regionId = sans.regionId;
+  sB.player.reputation[sans.faction] = 60;
+  sEngager(sB, sans.faction, () => {}, gB);
+  gB.allegeance.points = RANGS[2].points; // Lieutenant
+  ok(!peutExercer(sB, sans.faction, 'change').ok,
+    'un lieutenant n’ouvre pas de bureau de change');
+  gB.allegeance.points = RANGS[3].points; // Capitaine
+  const f = sB.world.factions[sans.faction];
+  f.tresor = 200000;
+  const tresorAvant = f.tresor;
+  const r = ouvrirChange(sB, sans.faction, sans.id, () => {});
+  ok(r.ok, 'un capitaine, si', r.motif);
+  ok(sans.change === true, 'et le bureau existe');
+  ok(bureauDe(sans), 'on peut y changer');
+  ok(f.tresor < tresorAvant, 'le trésor l’a payé', `−${Math.round(tresorAvant - f.tresor)}`);
+  ok(!ouvrirChange(sB, sans.faction, sans.id, () => {}).ok,
+    'on n’en ouvre pas deux au même endroit');
+  const ailleurs = debout.find((c) => !c.change && c.faction !== sans.faction);
+  if (ailleurs) {
+    ok(!ouvrirChange(sB, sans.faction, ailleurs.id, () => {}).ok,
+      'ni chez le voisin');
+  }
+
+  // Une vieille sauvegarde n’a pas le champ : elle doit en recevoir un, et le
+  // même que si le monde venait d’être créé.
+  const vieille = JSON.parse(JSON.stringify(sB));
+  for (const c of vieille.world.colonies) delete c.change;
+  normaliser(vieille);
+  ok(vieille.world.colonies.filter((c) => !c.ruine && !c.avantPoste)
+    .every((c) => c.change === (c.taille >= 2)),
+  'une partie d’avant en reçoit un dans ses grandes places');
 }
 
 // ---------------------------------------------------------------------------
@@ -8899,6 +8977,93 @@ section('E4. Les prérogatives monétaires');
     'battre monnaie est inscrit au dossier');
   ok((gP.allegeance.actes || []).some((a) => a.type === 'credit'),
     'accorder un crédit aussi');
+}
+
+// ---------------------------------------------------------------------------
+section('E4 bis. Le Maréchal, et les deux prérogatives qui l’attendaient');
+// ---------------------------------------------------------------------------
+//
+// ECONOMIE §7.3 range deux prérogatives au grade de Maréchal — racheter la
+// dette d'une ville étrangère, retirer de la monnaie. Les deux mécanismes
+// étaient écrits et testés depuis le lot D ; il manquait la charge.
+//
+// **Et l'échelle a été raccourcie en même temps, parce qu'un sixième échelon
+// au-dessus d'un cinquième que personne n'atteint est du code mort.** Mesuré au
+// banc d'équilibrage avant : sur trente parties, Commandeur atteint **zéro
+// fois** et Capitaine une seule.
+{
+  const sM = nouvellePartie(717171, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const gM = groupeActif(sM);
+  const vM = sM.world.colonies.find((c) => !c.ruine && c.faction && c.faction !== 'essaim');
+  gM.regionId = vM.regionId;
+  sM.player.reputation[vM.faction] = 60;
+  sEngager(sM, vM.faction, () => {}, gM);
+  const fM = vM.faction;
+
+  ok(RANGS.length === 6 && RANGS[5].nom === 'Maréchal',
+    'l’échelle compte six échelons, et le dernier est le Maréchal',
+    RANGS.map((r) => `${r.nom} ${r.points}`).join(' · '));
+  ok(RANGS.every((r, i) => i === 0 || r.points > RANGS[i - 1].points),
+    'et elle monte toujours');
+  ok(RANGS.every((r, i) => i === 0
+    || (r.remise > RANGS[i - 1].remise && r.solde > RANGS[i - 1].solde)),
+  'chaque échelon vaut mieux que le précédent');
+
+  gM.allegeance.points = RANGS[4].points; // Commandeur
+  ok(!peutExercer(sM, fM, 'racheter').ok, 'un commandeur ne rachète pas la dette d’un voisin',
+    peutExercer(sM, fM, 'racheter').motif);
+  ok(!peutExercer(sM, fM, 'retirer').ok, 'ni ne retire de la monnaie');
+
+  gM.allegeance.points = RANGS[5].points; // Maréchal
+  ok(peutExercer(sM, fM, 'racheter').ok, 'un maréchal, si');
+
+  // Retirer de la monnaie : le contraire exact de battre monnaie. Le trésor
+  // rachète ses propres unités et les brûle — la masse baisse, donc le cours
+  // remonte au conseil suivant, et tous ceux qui en détiennent y gagnent.
+  const f = sM.world.factions[fM];
+  // On bat monnaie pour remplir le trésor, on ne l'écrit pas à la main : poser
+  // quarante mille crédits dans un trésor sans toucher à la masse, c'est casser
+  // l'invariant soi-même et l'accuser ensuite. La leçon du §16 vaut ici aussi —
+  // on n'audite pas un monde qu'on a trafiqué.
+  gM.allegeance.points = RANGS[5].points;
+  battreMonnaie(sM, fM, 40000, () => {});
+  const ecartAvant = Math.max(...auditer(sM.world).map((x) => Math.abs(x.ecart)));
+  const masseAvant = f.masse;
+  const tresorAvant = f.tresor;
+  const r = retirerDeLaMonnaie(sM, fM, 9000, () => {});
+  ok(r.ok, 'on retire de la monnaie', `${Math.round(masseAvant)} → ${Math.round(f.masse)}`);
+  ok(Math.round(masseAvant - f.masse) === 9000, 'la masse baisse d’autant');
+  ok(Math.round(tresorAvant - f.tresor) === 9000, 'et le trésor la paie au prix fort');
+  ok(Math.abs(Math.max(...auditer(sM.world).map((x) => Math.abs(x.ecart))) - ecartAvant) < 1e-6,
+    'les comptes tiennent : on détruit, on ne perd pas');
+  ok(!retirerDeLaMonnaie(sM, fM, f.tresor * 10, () => {}).ok,
+    'on ne brûle pas ce qu’on n’a pas');
+
+  // Racheter la dette d'une ville étrangère : la conquête par l'argent, mise
+  // dans la main du joueur.
+  const dehors = sM.world.colonies.find(
+    (c) => !c.ruine && !c.avantPoste && c.faction && c.faction !== fM);
+  const porteur = dehors.faction;
+  dehors.dette = 3000;
+  dehors.creancier = porteur;
+  dehors.cession = null;
+  battreMonnaie(sM, fM, 500000, () => {});
+  const ecartAvant2 = Math.max(...auditer(sM.world).map((x) => Math.abs(x.ecart)));
+  const rr = racheterDette(sM, fM, dehors.id, () => {});
+  if (rr.ok) {
+    ok(dehors.creancier === fM, 'la créance change de main', `${porteur} → ${dehors.creancier}`);
+    ok(!!dehors.cession, 'et la cession est inscrite');
+    ok(Math.abs(Math.max(...auditer(sM.world).map((x) => Math.abs(x.ecart))) - ecartAvant2) < 1e-6,
+      'les comptes tiennent aussi de ce côté');
+  } else {
+    // Le porteur peut refuser — `prixCession` rend `null` quand la ville lui
+    // vaut encore quelque chose. C'est une issue légitime, pas un échec : ce
+    // qu'on vérifie alors, c'est qu'elle est *dite*.
+    ok(/cède pas|Il faut/.test(rr.motif), 'ou le porteur refuse, et il le dit', rr.motif);
+  }
+
+  ok((gM.allegeance.actes || []).some((a) => a.type === 'retrait'),
+    'retirer de la monnaie est inscrit au dossier');
 }
 
 // ---------------------------------------------------------------------------

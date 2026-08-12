@@ -35,7 +35,8 @@ import {
   aUneBourse, ouvrirBourse, signerAccord, rompreAccords, partenairePossible,
   VILLES_BOURSE, TRESOR_BOURSE,
 } from './bourse.js';
-import { depenser, emettre } from './monnaie.js';
+import { depenser, emettre, retirerMonnaie } from './monnaie.js';
+import { racheterCreance } from './credit.js';
 
 /**
  * Ce que chaque charge permet. `rang` est l'indice minimal dans RANGS.
@@ -72,6 +73,13 @@ export const PREROGATIVES = {
     desc: 'Faire acheter du grain pour votre ville. Une ville qui mange se tait.',
     rang: 3,
     charge: 'Nourrir aujourd’hui ce qu’on n’a pas produit hier se paie demain.',
+  },
+  change: {
+    nom: 'Ouvrir un bureau de change',
+    desc: 'Faire coter votre monnaie dans une de vos villes qui n’en cote pas. '
+      + 'Ce qui vient de dehors peut alors s’y échanger, et la ville y gagne.',
+    rang: 3, // Capitaine
+    charge: 'Ça s’amorce sur le trésor, et un comptoir ouvert attire ce qu’il attire.',
   },
   bourse: {
     nom: 'Ouvrir une bourse',
@@ -116,6 +124,20 @@ export const PREROGATIVES = {
     desc: 'Créer des unités et les verser au trésor. Rien à payer — c’est le problème.',
     rang: 4, // Commandeur
     charge: 'Chacun de ceux qui en détiennent perdra ce que vous aurez imprimé.',
+  },
+  racheter: {
+    nom: 'Racheter une créance',
+    desc: 'Reprendre au porteur la dette d’une ville étrangère. Elle vous devra, et '
+      + 'ce qu’elle doit finit par se payer en drapeau.',
+    rang: 5, // Maréchal
+    charge: 'Une ville qu’on achète à crédit peut faire défaut sur votre nom.',
+  },
+  retirer: {
+    nom: 'Retirer de la monnaie',
+    desc: 'Racheter vos propres unités et les brûler. Le contraire exact de battre '
+      + 'monnaie : le cours remonte, et tous ceux qui en tiennent y gagnent.',
+    rang: 5,
+    charge: 'On paie au prix fort une monnaie qu’on a soi-même fait tomber.',
   },
   loi: {
     nom: 'Fixer la loi',
@@ -780,6 +802,131 @@ export function battreMonnaie(state, faction, montant, log) {
     });
   }
   return { ok: true, montant: m };
+}
+
+/** Ce que coûte l'ouverture d'un bureau de change, au trésor. */
+export const COUT_CHANGE = 2200;
+
+/**
+ * Ouvrir un bureau de change dans une de ses villes (ECONOMIE §7.3).
+ *
+ * C'est la moitié de §7.3 qui manquait, et elle ne se comprend qu'avec l'autre :
+ * les grandes places en tiennent un dès la génération du monde, celle-ci en
+ * ajoute là où il n'y en a pas. Sans les deux, ou bien la prérogative n'a pas
+ * d'objet, ou bien le monde commence sans un seul endroit où changer.
+ *
+ * Le coût est au trésor, comme la bourse et le poste. Il n'y a pas d'autre
+ * condition : le principe d'`influence.js` tient — le décideur ordonne, c'est
+ * exécuté, et seul le coût peut manquer.
+ */
+export function ouvrirChange(state, faction, colId, log) {
+  const v = peutExercer(state, faction, 'change');
+  if (!v.ok) return v;
+  const col = colonieParId(state.world, colId);
+  if (!col || col.ruine) return { ok: false, motif: 'Cette ville n’existe plus.' };
+  if (col.faction !== faction) return { ok: false, motif: 'On n’ouvre un comptoir que chez soi.' };
+  if (col.avantPoste) return { ok: false, motif: 'Un camp n’est pas une place.' };
+  if (col.change) return { ok: false, motif: 'Il y en a déjà un.' };
+  const f = state.world.factions[faction];
+  if (!f || f.tresor < COUT_CHANGE) {
+    return {
+      ok: false,
+      motif: `Le trésor ne suit pas : ${Math.round(f ? f.tresor : 0)} / ${COUT_CHANGE} `
+        + `${symboleDe(state.world, faction)}.`,
+    };
+  }
+  depenser(state.world, faction, COUT_CHANGE);
+  col.change = true;
+  inscrireActe(state, faction, { type: 'change', ville: colId, t: state.temps });
+  if (log) {
+    log({
+      type: 'influence',
+      texte: `Sur votre ordre, ${col.nom} ouvre un bureau de change. `
+        + `Ce qui vient de dehors peut désormais s’y échanger.`,
+      important: true,
+      regionId: col.regionId,
+      factions: [faction],
+    });
+  }
+  return { ok: true };
+}
+
+/**
+ * Racheter au porteur la dette d'une ville étrangère (ECONOMIE §6.5, §7.3).
+ *
+ * C'est la conquête par l'argent, mise dans la main du joueur. Le mécanisme
+ * existe depuis le lot D et les factions s'en servent entre elles ; il ne
+ * manquait que la charge qui y donne droit. `racheterCreance` tient déjà le
+ * change — on paie dans sa monnaie, le porteur encaisse dans la sienne — et le
+ * refus du porteur, qui est une issue légitime : une ville qui vaut encore
+ * quelque chose à celui qui la tient ne se vend pas.
+ */
+export function racheterDette(state, faction, colId, log) {
+  const v = peutExercer(state, faction, 'racheter');
+  if (!v.ok) return v;
+  const col = colonieParId(state.world, colId);
+  if (!col || col.ruine) return { ok: false, motif: 'Cette ville n’existe plus.' };
+  if (col.faction === faction) return { ok: false, motif: 'On ne rachète pas sa propre dette.' };
+  if (!(col.dette > 0) || !col.creancier) {
+    return { ok: false, motif: 'Cette ville ne doit rien à personne.' };
+  }
+  if (col.creancier === faction) return { ok: false, motif: 'Vous la tenez déjà.' };
+  const r = racheterCreance(state.world, col, faction, state.temps);
+  if (!r.ok) return r;
+  inscrireActe(state, faction, { type: 'rachat', ville: colId, prix: r.prix, t: state.temps });
+  if (log) {
+    log({
+      type: 'influence',
+      texte: `Sur votre ordre, ${drapeauDe(state.world, faction).nom} rachète la dette de `
+        + `${col.nom} ${drapeauDe(state.world, r.porteur).datif} pour ${Math.round(r.prix)} `
+        + `${symboleDe(state.world, faction)}. Elle vous doit désormais.`,
+      important: true,
+      regionId: col.regionId,
+      factions: [faction, r.porteur],
+    });
+  }
+  return { ok: true, prix: r.prix, porteur: r.porteur };
+}
+
+/**
+ * Retirer de la monnaie (ECONOMIE §7.3).
+ *
+ * Le contraire exact de battre monnaie, et la seule façon de défendre son cours
+ * sans toucher au taux directeur : le trésor rachète ses propres unités et les
+ * brûle. La masse baisse, donc le gage par unité monte, donc le cours remonte au
+ * conseil suivant — et tous ceux qui en détiennent y gagnent, le joueur compris.
+ *
+ * §7.3 en met le coût sur « la réserve de change ». Elle n'existe pas dans le
+ * moteur : `f.reserve` est listé au §9 et n'a jamais été écrit. Le coût tombe
+ * donc sur le trésor, ce que fait déjà `retirerMonnaie`, et c'est le prix fort —
+ * on rachète cash ce qu'on a émis pour rien.
+ */
+export function retirerDeLaMonnaie(state, faction, montant, log) {
+  const v = peutExercer(state, faction, 'retirer');
+  if (!v.ok) return v;
+  const f = state.world.factions[faction];
+  const m = Math.round(montant);
+  if (!(m > 0)) return { ok: false, motif: 'Rien à retirer.' };
+  if (!f || f.tresor < m) {
+    return {
+      ok: false,
+      motif: `Le trésor ne suit pas : ${Math.round(f ? f.tresor : 0)} / ${m} `
+        + `${symboleDe(state.world, faction)}.`,
+    };
+  }
+  const brule = retirerMonnaie(state.world, faction, m);
+  inscrireActe(state, faction, { type: 'retrait', montant: brule, t: state.temps });
+  if (log) {
+    log({
+      type: 'influence',
+      texte: `Sur votre ordre, ${drapeauDe(state.world, faction).nom} rachète et brûle `
+        + `${Math.round(brule)} ${symboleDe(state.world, faction)}. Le cours s’en `
+        + `souviendra au prochain conseil, dans le bon sens cette fois.`,
+      important: true,
+      factions: [faction],
+    });
+  }
+  return { ok: true, montant: brule };
 }
 
 export function fixerLoi(state, faction, quoi, valeur, log) {

@@ -71,7 +71,8 @@ function changerPourManger(state, col) {
   if (!bureauDe(col)) {
     const quoi = !col ? 'pasDeVille'
       : col.avantPoste ? 'chezSoi'
-        : col.ruine ? 'ruine' : 'enRevolte';
+        : col.ruine ? 'ruine'
+          : !col.change ? 'sansComptoir' : 'enRevolte';
     TRACE.pasDeChange[quoi]++;
     return false;
   }
@@ -169,7 +170,10 @@ const TRACE = {
   // de deux mille sans rien dire du change. C'est le critère d'E6 : une ruine
   // par accident de change se verrait là, et nulle part ailleurs.
   bourseEtrangere: 0, bourseTotale: 0, bloquesChange: 0, changesFaits: 0,
-  pasDeChange: { sansMonnaie: 0, pasDeVille: 0, chezSoi: 0, ruine: 0, enRevolte: 0, rienAChanger: 0, refuse: 0 },
+  pasDeChange: {
+    sansMonnaie: 0, pasDeVille: 0, chezSoi: 0, ruine: 0, sansComptoir: 0,
+    enRevolte: 0, rienAChanger: 0, refuse: 0,
+  },
  villesFin: [], echusParType: {}, echusParVille: new Map(), joursPanneau: 0, joursPanneauFerme: 0, contratsPris: 0, contratsEchus: 0, contratsRemplis: 0, gagneContrat: 0, payeVivres: 0, payeSoins: 0, payeMateriel: 0,
   // Ce que l'intendance donne : la voie du service se lit là.
   rationsTouchees: 0,
@@ -198,7 +202,10 @@ const TRACE = {
   mortsCombat: 0, koSubis: 0, piste: 0, pisteVues: 0, reconnus: 0, popCamp: 0,
   // Ce que les conseils votent quand personne ne les tient.
   impots: {}, peines: {}, esclavagistes: 0, factionsVues: 0,
-  rangs: [0, 0, 0, 0, 0],
+  // Un compteur par échelon, dérivé de l'échelle plutôt que recopié : le jour
+  // où le Maréchal est arrivé, le tableau en comptait cinq et le rapport
+  // affichait « Maréchal NaN ».
+  rangs: RANGS.map(() => 0),
   // Qui l'on courtise, qui l'on finit par servir, et jusqu'où l'estime monte.
   // Les trois séparément : viser l'Église et servir la Commune faute de mieux
   // n'est pas la même partie que viser la Commune, et une moyenne des deux ne

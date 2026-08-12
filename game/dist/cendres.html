@@ -3182,6 +3182,11 @@ function genererColonies(rng, regions, graine) {
       // rechargement et l'aller-retour JSON d'une partie neuve ne serait plus
       // exact — un invariant déclaré du projet.
       satiete: 1,
+      // Un bureau de change (ECONOMIE §5.1 et §7.3). Les grandes places en
+      // tiennent un dès le premier jour, les hameaux non — c'est le seuil que
+      // §5.2 emploie déjà pour la remise, « on change mieux dans une vraie
+      // ville ». Pas un tirage : la taille est déjà tirée.
+      change: taille >= 2,
       // Présent dès la naissance, à zéro. Absent, `normaliser` l'ajoutait au
       // rechargement — et l'aller-retour JSON d'une partie neuve n'était donc
       // pas exact, alors que c'est un invariant déclaré du projet. Le défaut
@@ -6136,26 +6141,45 @@ function villesOuvertes(state) {
 // est une position dans le monde.
 
 
+/**
+ * Les six charges, et ce qu'elles donnent.
+ *
+ * **L'échelle a été raccourcie en août 2026, en même temps qu'on lui ajoutait un
+ * sixième échelon.** Les deux vont ensemble : `ECONOMIE.md` §7.3 range deux
+ * prérogatives monétaires au grade de Maréchal, et poser un sixième barreau
+ * au-dessus d'un cinquième que personne n'atteint aurait été écrire du code
+ * mort. Mesuré au banc d'équilibrage avant l'ajout, sur trente parties de
+ * quatre mille heures : **Commandeur atteint zéro fois**, Capitaine une seule,
+ * pour une carrière médiane de 415 points en fin de service.
+ *
+ * L'ancienne échelle valait 0 / 130 / 380 / 850 / 1 700. La nouvelle garde la
+ * même forme — chaque barreau vaut à peu près deux fois le précédent — et rentre
+ * dans une carrière qu'on peut réellement mener.
+ */
 const RANGS = [
   {
     nom: 'Affilié', points: 0, remise: 0.05, solde: 10, ration: 3,
     desc: 'On vous laisse entrer par la porte de service, et on vous nourrit.',
   },
   {
-    nom: 'Agent', points: 130, remise: 0.10, solde: 30, ration: 6,
+    nom: 'Agent', points: 90, remise: 0.10, solde: 30, ration: 6,
     desc: 'On vous connaît. Les péages ne vous concernent plus.',
   },
   {
-    nom: 'Lieutenant', points: 380, remise: 0.16, solde: 75, ration: 10,
+    nom: 'Lieutenant', points: 240, remise: 0.16, solde: 75, ration: 10,
     desc: 'Les armuriers vous sortent ce qu’ils gardent derrière, et leurs villes vous logent.',
   },
   {
-    nom: 'Capitaine', points: 850, remise: 0.22, solde: 160, ration: 15,
+    nom: 'Capitaine', points: 500, remise: 0.22, solde: 160, ration: 15,
     desc: 'On vous soigne sans compter, et on vient parfois à votre secours.',
   },
   {
-    nom: 'Commandeur', points: 1700, remise: 0.30, solde: 300, ration: 22,
+    nom: 'Commandeur', points: 900, remise: 0.30, solde: 300, ration: 22,
     desc: 'Votre nom vaut un ordre écrit.',
+  },
+  {
+    nom: 'Maréchal', points: 1500, remise: 0.38, solde: 520, ration: 30,
+    desc: 'On vous confie la bourse du pays, et l’on vous répond des deux mains.',
   },
 ];
 
@@ -9654,6 +9678,11 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
   if (col.pop > col.taille * 620 && col.unrest < 0.3 && col.taille < 3) {
     col.taille += 1;
     col.murs += 2;
+    // Une place qui grandit finit par coter. La règle est « les grandes places
+    // tiennent un bureau », pas « celles qui l'étaient au premier jour » : sans
+    // cette ligne, un hameau devenu vraie ville restait sans comptoir pour
+    // toujours, et le nombre de bureaux du monde ne pouvait que décroître.
+    if (col.taille >= 2) col.change = true;
     return { evenement: 'croissance' };
   }
   if (col.declin > 900) {
@@ -10048,16 +10077,23 @@ function vendreItem(state, col, indexObjet, groupe) {
 // des modules (`tools/bundle.js`), donc ne peut pas appeler l'inverse.
 
 /**
- * Une ville tient-elle un bureau ? ECONOMIE §5.1 : « dans toute ville dont le
- * marché existe et qui n'est pas en révolte ».
+ * Une ville tient-elle un bureau de change ?
  *
- * Il n'y a pas de champ `col.change` : toute ville debout tient un marché dans
- * ce moteur, et l'écrire dans l'état serait une clé de plus à migrer pour une
- * information qui se déduit. Un avant-poste est exclu — c'est un camp, pas une
- * place.
+ * `ECONOMIE.md` se contredisait — §5.1 en met un dans toute ville debout, §7.3
+ * en fait une prérogative de Capitaine à ouvrir, §9 prévoit le champ
+ * `col.change`. E3 avait retenu §5.1, la seule lecture qui laissait le jeu
+ * jouable au premier tour, et l'avait consigné comme blocage.
+ *
+ * **Tranché : les deux, et ils ne se contredisent plus.** §5.1 dit *où un
+ * bureau peut exister* — une ville debout, hors révolte, et pas un camp ; §7.3
+ * dit *comment on en ouvre un de plus*. Les grandes places en tiennent un dès
+ * la génération du monde (`world.js`), sans quoi la monnaie étrangère serait
+ * inutilisable jusqu'au premier Capitaine — atteint une fois sur trente parties
+ * au banc.
  */
 function bureauDe(col) {
-  return !!col && !col.ruine && !col.avantPoste && (col.unrest || 0) <= SEUIL_REVOLTE;
+  return !!col && !!col.change && !col.ruine && !col.avantPoste
+    && (col.unrest || 0) <= SEUIL_REVOLTE;
 }
 
 /**
@@ -13101,6 +13137,11 @@ function fonderColonie(world, key, region, rng, t) {
     vivier: [],
     geole: null,
     declin: 0,
+    satiete: 1,
+    // Un poste neuf est un hameau : pas de bureau de change. Présent à la
+    // création plutôt qu'ajouté par `normaliser`, sinon l'aller-retour JSON
+    // cesse d'être exact dès la première fondation.
+    change: false,
     fondeeA: t,
     factionOrigine: key,
   };
@@ -13848,6 +13889,13 @@ const PREROGATIVES = {
     rang: 3,
     charge: 'Nourrir aujourd’hui ce qu’on n’a pas produit hier se paie demain.',
   },
+  change: {
+    nom: 'Ouvrir un bureau de change',
+    desc: 'Faire coter votre monnaie dans une de vos villes qui n’en cote pas. '
+      + 'Ce qui vient de dehors peut alors s’y échanger, et la ville y gagne.',
+    rang: 3, // Capitaine
+    charge: 'Ça s’amorce sur le trésor, et un comptoir ouvert attire ce qu’il attire.',
+  },
   bourse: {
     nom: 'Ouvrir une bourse',
     desc: 'Faire de vos villes un marché commun : un cours publié, et des convois '
@@ -13891,6 +13939,20 @@ const PREROGATIVES = {
     desc: 'Créer des unités et les verser au trésor. Rien à payer — c’est le problème.',
     rang: 4, // Commandeur
     charge: 'Chacun de ceux qui en détiennent perdra ce que vous aurez imprimé.',
+  },
+  racheter: {
+    nom: 'Racheter une créance',
+    desc: 'Reprendre au porteur la dette d’une ville étrangère. Elle vous devra, et '
+      + 'ce qu’elle doit finit par se payer en drapeau.',
+    rang: 5, // Maréchal
+    charge: 'Une ville qu’on achète à crédit peut faire défaut sur votre nom.',
+  },
+  retirer: {
+    nom: 'Retirer de la monnaie',
+    desc: 'Racheter vos propres unités et les brûler. Le contraire exact de battre '
+      + 'monnaie : le cours remonte, et tous ceux qui en tiennent y gagnent.',
+    rang: 5,
+    charge: 'On paie au prix fort une monnaie qu’on a soi-même fait tomber.',
   },
   loi: {
     nom: 'Fixer la loi',
@@ -14555,6 +14617,131 @@ function battreMonnaie(state, faction, montant, log) {
     });
   }
   return { ok: true, montant: m };
+}
+
+/** Ce que coûte l'ouverture d'un bureau de change, au trésor. */
+const COUT_CHANGE = 2200;
+
+/**
+ * Ouvrir un bureau de change dans une de ses villes (ECONOMIE §7.3).
+ *
+ * C'est la moitié de §7.3 qui manquait, et elle ne se comprend qu'avec l'autre :
+ * les grandes places en tiennent un dès la génération du monde, celle-ci en
+ * ajoute là où il n'y en a pas. Sans les deux, ou bien la prérogative n'a pas
+ * d'objet, ou bien le monde commence sans un seul endroit où changer.
+ *
+ * Le coût est au trésor, comme la bourse et le poste. Il n'y a pas d'autre
+ * condition : le principe d'`influence.js` tient — le décideur ordonne, c'est
+ * exécuté, et seul le coût peut manquer.
+ */
+function ouvrirChange(state, faction, colId, log) {
+  const v = peutExercer(state, faction, 'change');
+  if (!v.ok) return v;
+  const col = colonieParId(state.world, colId);
+  if (!col || col.ruine) return { ok: false, motif: 'Cette ville n’existe plus.' };
+  if (col.faction !== faction) return { ok: false, motif: 'On n’ouvre un comptoir que chez soi.' };
+  if (col.avantPoste) return { ok: false, motif: 'Un camp n’est pas une place.' };
+  if (col.change) return { ok: false, motif: 'Il y en a déjà un.' };
+  const f = state.world.factions[faction];
+  if (!f || f.tresor < COUT_CHANGE) {
+    return {
+      ok: false,
+      motif: `Le trésor ne suit pas : ${Math.round(f ? f.tresor : 0)} / ${COUT_CHANGE} `
+        + `${symboleDe(state.world, faction)}.`,
+    };
+  }
+  depenser(state.world, faction, COUT_CHANGE);
+  col.change = true;
+  inscrireActe(state, faction, { type: 'change', ville: colId, t: state.temps });
+  if (log) {
+    log({
+      type: 'influence',
+      texte: `Sur votre ordre, ${col.nom} ouvre un bureau de change. `
+        + `Ce qui vient de dehors peut désormais s’y échanger.`,
+      important: true,
+      regionId: col.regionId,
+      factions: [faction],
+    });
+  }
+  return { ok: true };
+}
+
+/**
+ * Racheter au porteur la dette d'une ville étrangère (ECONOMIE §6.5, §7.3).
+ *
+ * C'est la conquête par l'argent, mise dans la main du joueur. Le mécanisme
+ * existe depuis le lot D et les factions s'en servent entre elles ; il ne
+ * manquait que la charge qui y donne droit. `racheterCreance` tient déjà le
+ * change — on paie dans sa monnaie, le porteur encaisse dans la sienne — et le
+ * refus du porteur, qui est une issue légitime : une ville qui vaut encore
+ * quelque chose à celui qui la tient ne se vend pas.
+ */
+function racheterDette(state, faction, colId, log) {
+  const v = peutExercer(state, faction, 'racheter');
+  if (!v.ok) return v;
+  const col = colonieParId(state.world, colId);
+  if (!col || col.ruine) return { ok: false, motif: 'Cette ville n’existe plus.' };
+  if (col.faction === faction) return { ok: false, motif: 'On ne rachète pas sa propre dette.' };
+  if (!(col.dette > 0) || !col.creancier) {
+    return { ok: false, motif: 'Cette ville ne doit rien à personne.' };
+  }
+  if (col.creancier === faction) return { ok: false, motif: 'Vous la tenez déjà.' };
+  const r = racheterCreance(state.world, col, faction, state.temps);
+  if (!r.ok) return r;
+  inscrireActe(state, faction, { type: 'rachat', ville: colId, prix: r.prix, t: state.temps });
+  if (log) {
+    log({
+      type: 'influence',
+      texte: `Sur votre ordre, ${drapeauDe(state.world, faction).nom} rachète la dette de `
+        + `${col.nom} ${drapeauDe(state.world, r.porteur).datif} pour ${Math.round(r.prix)} `
+        + `${symboleDe(state.world, faction)}. Elle vous doit désormais.`,
+      important: true,
+      regionId: col.regionId,
+      factions: [faction, r.porteur],
+    });
+  }
+  return { ok: true, prix: r.prix, porteur: r.porteur };
+}
+
+/**
+ * Retirer de la monnaie (ECONOMIE §7.3).
+ *
+ * Le contraire exact de battre monnaie, et la seule façon de défendre son cours
+ * sans toucher au taux directeur : le trésor rachète ses propres unités et les
+ * brûle. La masse baisse, donc le gage par unité monte, donc le cours remonte au
+ * conseil suivant — et tous ceux qui en détiennent y gagnent, le joueur compris.
+ *
+ * §7.3 en met le coût sur « la réserve de change ». Elle n'existe pas dans le
+ * moteur : `f.reserve` est listé au §9 et n'a jamais été écrit. Le coût tombe
+ * donc sur le trésor, ce que fait déjà `retirerMonnaie`, et c'est le prix fort —
+ * on rachète cash ce qu'on a émis pour rien.
+ */
+function retirerDeLaMonnaie(state, faction, montant, log) {
+  const v = peutExercer(state, faction, 'retirer');
+  if (!v.ok) return v;
+  const f = state.world.factions[faction];
+  const m = Math.round(montant);
+  if (!(m > 0)) return { ok: false, motif: 'Rien à retirer.' };
+  if (!f || f.tresor < m) {
+    return {
+      ok: false,
+      motif: `Le trésor ne suit pas : ${Math.round(f ? f.tresor : 0)} / ${m} `
+        + `${symboleDe(state.world, faction)}.`,
+    };
+  }
+  const brule = retirerMonnaie(state.world, faction, m);
+  inscrireActe(state, faction, { type: 'retrait', montant: brule, t: state.temps });
+  if (log) {
+    log({
+      type: 'influence',
+      texte: `Sur votre ordre, ${drapeauDe(state.world, faction).nom} rachète et brûle `
+        + `${Math.round(brule)} ${symboleDe(state.world, faction)}. Le cours s’en `
+        + `souviendra au prochain conseil, dans le bon sens cette fois.`,
+      important: true,
+      factions: [faction],
+    });
+  }
+  return { ok: true, montant: brule };
 }
 
 function fixerLoi(state, faction, quoi, valeur, log) {
@@ -17304,6 +17491,11 @@ function reconnaitreAvantPoste(state, log) {
     emplois: null,
     notables: [],
     declin: 0,
+    // Un camp n'est pas une place : on n'y change pas de monnaie. Présent à la
+    // création plutôt qu'ajouté par `normaliser`, sinon l'aller-retour JSON
+    // d'une partie neuve cesse d'être exact.
+    change: false,
+    satiete: 1,
     // Ce qui la distingue de toutes les autres : elle est à vous, et sa vérité
     // est ailleurs.
     avantPoste: true,
@@ -20934,6 +21126,10 @@ function normaliser(state) {
     // La satiété : rassasiée jusqu'à preuve du contraire. Le premier tick la
     // corrige, et une partie déjà commencée ne doit pas naître affamée.
     if (typeof c.satiete !== 'number') c.satiete = 1;
+    // Le bureau de change : les grandes places en tiennent un, comme dans un
+    // monde neuf. Une partie d'avant ne doit pas se retrouver sans un seul
+    // endroit où changer de monnaie.
+    if (typeof c.change !== 'boolean') c.change = !c.avantPoste && (c.taille || 1) >= 2;
     // Le flux propre de la ville : dérivé de son nom, donc identique à celui
     // qu'une partie neuve lui aurait donné. Pas un tirage.
     if (typeof c.rngEtat !== 'number') c.rngEtat = grainDe(state.world.graine || 0, 'colonie', c.id);
