@@ -22738,8 +22738,8 @@ function rendreBarreHaut() {
       <div class="hd-bloc" title="${e(cl.saison.def.nom)} — ${e(cl.meteo.nom)}">
         <span class="hd-val hd-saison" style="color:${cl.saison.def.couleur}"
           aria-label="${e(cl.saison.def.nom)}">◆</span></div>
-      <div class="hd-bloc"><span class="hd-eti">cr</span>
-        <span class="hd-val ambre">${n(p.credits)}</span></div>
+      <div class="hd-bloc"><span class="hd-eti">${e(sym())}</span>
+        <span class="hd-val ambre">${n(soldeIci(S))}</span></div>
       <div class="hd-bloc"><span class="hd-eti">sac</span>
         <span class="hd-val ${charge > 0.95 ? 'rouge' : ''}">${n(poids)}/${n(cap)}</span></div>
       <div class="hd-bloc" title="${e(g.nom)}"><span class="hd-eti">${e(groupes(S).length > 1 ? g.nom.slice(0, 3) : 'esc')}</span>
@@ -26788,11 +26788,17 @@ function modaleChange() {
   const montant = Math.min(changeQte, dispo);
   const devis = devisChange(S.world, col, de, vers, montant);
 
+  // Le signe **et** le nom. Le signe seul est illisible tant qu'on ne l'a pas
+  // appris : « ▲ → ⬡ » ne dit pas qu'on vend de la Milice pour acheter de
+  // l'Hexa. Le portefeuille au-dessus fait la correspondance, mais on ne lit
+  // pas un bouton en remontant à une ligne trois centimètres plus haut. Vu à
+  // l'écran, pas au code — c'est ce que les captures servent à trouver.
   const choix = paires.map(([d, v]) => {
     const k = `${d}>${v}`;
     return `<button class="act mini${k === changeVers ? ' primaire' : ''}"
       data-a="change-paire" data-k="${k}" aria-pressed="${k === changeVers}">${
-  e(symboleDe(S.world, d))} → ${e(symboleDe(S.world, v))}</button>`;
+  e(symboleDe(S.world, d))} ${e(drapeauDe(S.world, d).court)} → ${
+  e(symboleDe(S.world, v))} ${e(drapeauDe(S.world, v).court)}</button>`;
   }).join('');
 
   return `<h2 class="titre">Change à ${e(col.nom)}</h2>

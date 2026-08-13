@@ -368,6 +368,21 @@ console.log('\n8 bis. Contenu de jeu : contrats, étal, sites');
     premierEcran.slice(0, 340).replace(/\n+/g, ' | '));
   ok(debut.cr < 100 && debut.rations < 20,
     'avec de quoi tenir quelques jours, pas davantage', JSON.stringify(debut));
+  // Le bandeau montre la bourse, et il la montre dans la monnaie du lieu.
+  //
+  // Il affichait « CR — » : le libellé était resté au crédit universel et la
+  // valeur lisait un champ supprimé par le lot E. Mille trois cents
+  // vérifications moteur et deux cent quatre-vingts navigateur ne l'ont pas vu,
+  // parce qu'aucune ne regardait le seul chiffre que le joueur a sous les yeux
+  // en permanence. Il a fallu ouvrir une capture d'écran.
+  {
+    const barre = await page.locator('#barre-haut').innerText();
+    ok(!/\bcr\b/i.test(barre), 'le bandeau ne parle plus de « cr »',
+      barre.replace(/\n+/g, ' | ').slice(0, 90));
+    ok(/\d/.test(barre.split('sac')[0] || ''),
+      'et il affiche un nombre là où est la bourse, pas un tiret',
+      (barre.split('sac')[0] || '').replace(/\n+/g, ' | '));
+  }
   ok(/1\/1/.test(await page.locator('#barre-haut').innerText()),
     'et le bandeau le dit sans détour',
     (await page.locator('#barre-haut').innerText()).replace(/\n+/g, ' | '));
