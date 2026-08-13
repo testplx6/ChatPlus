@@ -220,8 +220,12 @@ Ce fichier prépare le travail, il ne l'autorise pas.
   factions écrasées. Voir le lot F.
 ## Lot E — le joueur (ECONOMIE §7, §10)
 
-- [~] **E1. `player.bourse`** — **la primitive est posée, la bascule ne l'est
-  pas, et c'est délibéré.**
+- [x] **E1. `player.bourse`** — la primitive, puis la bascule (E1 bis + E2).
+  Ce qui suit était écrit quand seule la primitive existait ; on le garde parce
+  que le raisonnement qui a fait différer la bascule d'un jour reste juste.
+
+  **Ancienne note :** la primitive est posée, la bascule ne l'est pas, et c'est
+  délibéré.
 
   `solde`, `crediterBourse`, `debiterBourse` et `valeurBourse` vivent dans
   `monnaie.js` avec leurs tests. `debiterBourse` rend ce qui a réellement été
@@ -300,11 +304,13 @@ rien ne permet d'y remédier. Les trois lots n'en font qu'un.
   Le test qui dit que le lot sert à quelque chose est le dernier de la section :
   à l'étranger, la monnaie de chez soi n'achète rien ; on passe au bureau ; on
   achète. La friction de §7.1 est levée, pas supprimée.
-- [~] **E4. Les prérogatives** : taux directeur, émettre, accorder un crédit,
+- [x] **E4. Les prérogatives** : taux directeur, émettre, accorder un crédit,
   racheter une créance — même mécanisme que les PNJ, coûts au trésor,
-  grades d'ECONOMIE §7.3.
+  grades d'ECONOMIE §7.3. **Les six sont livrées** : trois d'abord, les trois
+  autres avec E3 bis et E4 bis une fois les deux contradictions du cahier des
+  charges tranchées.
 
-  **Trois sur six, livrées.** `crediter` et `emettre` entrent dans la table de
+  **Les trois premières.** `crediter` et `emettre` entrent dans la table de
   `PREROGATIVES` au grade de Commandeur ; le taux directeur devient la quatrième
   branche de `fixerLoi`, avec l'impôt, parce que c'est le même geste au même
   grade sur le même objet — §7.3 liste des pouvoirs, pas des fonctions, et il
