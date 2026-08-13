@@ -570,6 +570,49 @@ minutes.
 
 ## Blocages
 
+### M2 est juste, et il sort le monde de deux gardes
+
+`combienDeFois` branchée sur la naissance et le départ (voir `MAILLE.md` M2)
+corrige un défaut mesuré à **−40,3 %** : une ville lointaine remuait quarante
+pour cent de gens en moins qu'une ville proche dans le même état. Après
+correction, −2,0 %.
+
+**Le monde qui en sort n'est pas le même**, mesuré contre `6dac9dc` sur six
+graines :
+
+| | témoin | avec M2 |
+|---|---:|---:|
+| population | 83 804 | **105 932** |
+| villes debout | 447 | 460 |
+| caisse médiane | 400 | **35** |
+| trésor médian | 19 577 | **4 716** |
+| villes affamées | 25 % | **38 %** |
+| satiété | 0,834 | 0,807 |
+| production / consommation | 1,18 | **1,25** |
+| villes cédées | 70 | 74 |
+
+Deux gardes sautent : `pop = 105 932` pour un plafond de 90 000, et
+`creances = 74` pour 70.
+
+**Ce n'est pas une régression, c'est une béquille retirée.** Le monde d'avant
+était tenu par le défaut : il naissait quarante pour cent de gens en moins qu'il
+n'aurait dû, et toute l'économie a été calibrée sur ce monde-là. La vraie
+natalité arrive, et l'économie ne sait pas la nourrir — les caisses des villes
+tombent de 400 à 35, les trésors de 19 577 à 4 716, et une ville sur trois a
+faim.
+
+C'est le même constat qu'au matin, en plus fort : **l'économie doit être
+recalibrée**, et cette fois deux gardes le disent au lieu d'une. Élargir `pop`
+serait masquer exactement ce qu'on vient de découvrir.
+
+Ce qu'il faut trancher : est-ce que le monde doit porter cent mille habitants —
+auquel cas il faut nourrir cent mille habitants —, ou est-ce que la natalité
+elle-même est trop haute maintenant qu'elle compte pour de vrai ? Le levier de
+la seconde lecture est la probabilité de naissance, `0,03 + abondance × 0,05`
+dans `tickColonie`, qui n'a jamais été balayée parce qu'elle ne servait qu'un
+quart du temps.
+
+
 ### Le bon réglage de la satiété est prêt, et M0 ter le bloque
 
 **Ce qui est fait.** `nourries` a été retirée des gardes et remplacée par

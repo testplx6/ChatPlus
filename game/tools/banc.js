@@ -902,6 +902,53 @@ async function mesurerMaille(graines, horizon) {
     console.log(`   ${String(dt).padStart(4)} `
       + CLES.map((k) => `${med2(e[k]) >= 0 ? '+' : ''}${fmt(med2(e[k]))}`.padStart(10)).join(' '));
   }
+
+  // 4. Le comptage des événements — l'instrument qui manquait à M2 et M3
+  // -------------------------------------------------------------------------
+  //
+  // Les deux mesures ci-dessus ne voient pas le défaut des **comptes**, et
+  // `MAILLE.md` le dit depuis des semaines : l'écart de population sur quarante
+  // jours est sous le plancher de bruit, et l'erreur locale sur une journée est
+  // nulle parce que l'événement est trop rare pour se voir en un jour. Le défaut
+  // est réel — il se démontre au tableau — mais aucun instrument ne le voyait,
+  // et c'est ce qui bloquait M2.
+  //
+  // Celui-ci le voit, et **sans plancher de bruit** : on ne compare pas deux
+  // trajectoires, on compte ce qui arrive. Un départ fait perdre un à trois
+  // habitants, une naissance en fait gagner zéro à deux ; on somme donc les
+  // mouvements de population en valeur absolue sur un mois, sous les deux
+  // mailles, à partir du même état. Vingt-quatre chances horaires contre une
+  // seule chance de tranche : la maille grossière doit en produire moins, et de
+  // combien est exactement ce qu'on cherche.
+  //
+  // Aucun appariement de trajectoire n'est nécessaire — on mesure un volume,
+  // pas une différence de ville à ville. Le bruit se moyenne sur quarante villes
+  // et huit graines ; le biais, lui, ne se moyenne pas.
+  console.log('\n4. Les comptes — départs et naissances sur un mois\n');
+  const volume = (dt, base) => {
+    let total = 0;
+    for (let rep = 0; rep < REPETITIONS; rep++) {
+      for (const c0 of villes) {
+        const c = JSON.parse(JSON.stringify(c0));
+        const r = new rngMod.Rng(base + rep);
+        for (let jour = 0; jour < 30; jour++) {
+          for (let h = 0; h < 24; h += dt) {
+            const avant = c.pop;
+            eco.tickColonie(s.world, c, r, cond, dt, 0, null, s.temps + jour * 24 + h);
+            total += Math.abs(c.pop - avant);
+          }
+        }
+      }
+    }
+    return total / (REPETITIONS * villes.length);
+  };
+  const vFin = volume(1, 5150);
+  const vGros = volume(24, 5150);
+  const ecartV = vFin > 0 ? (vGros - vFin) / vFin : 0;
+  console.log(`   maille fine       ${vFin.toFixed(2)} habitants remués par ville et par mois`);
+  console.log(`   maille grossière  ${vGros.toFixed(2)}`);
+  console.log(`   écart             ${ecartV >= 0 ? '+' : ''}${(ecartV * 100).toFixed(1)} %`
+    + `${Math.abs(ecartV) < 0.05 ? '  — sous les cinq pour cent' : '  AU-DESSUS'}`);
 }
 
 // ---------------------------------------------------------------------------

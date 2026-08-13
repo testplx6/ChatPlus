@@ -548,17 +548,46 @@ que l'étal vide les bourses pour des marchandises qui n'existent pas.
       'ce qui sort des poches entre en caisse : le circuit se boucle',
       `caisse ${Math.round(caisseAvant)} → ${Math.round(ville.caisse)}`);
   ```
-- [ ] **M2.** Brancher `combienDeFois` sur `economy.js:719-730` (naissance,
-  départ). **Le critère est à trouver, et c'est un blocage à part entière** :
-  l'écart de population sur quarante jours est sous le plancher (−2 pour ±3), et
-  son erreur locale est nulle à tous les pas parce que l'événement est trop rare
-  pour se voir en un jour. Le défaut est réel — il se démontre au tableau, pas à
-  la mesure — mais aucun des deux instruments existants ne le voit. Il faut donc
-  d'abord **un instrument qui le voie** : l'erreur locale sur une fenêtre plus
-  longue qu'un jour et plus courte que quarante, ou le simple comptage des
-  départs et naissances par ville et par mois sous les deux mailles. Le second
-  est plus direct et se mesure sans plancher : `24 p` contre `1 − (1−p)^24`.
-- [ ] **M3.** Brancher `notables.js:233` (relève d'une charge). Même critère.
+- [x] **M2. `combienDeFois` est branchée sur la naissance et le départ.**
+
+  **L'instrument d'abord, parce que c'était lui le blocage.** Les deux mesures
+  existantes ne voyaient rien : l'écart de population sur quarante jours est
+  sous le plancher de bruit, et l'erreur locale sur une journée est nulle parce
+  que l'événement est trop rare pour se voir en un jour. Le défaut se démontrait
+  au tableau et nulle part ailleurs.
+
+  Celui qui manquait est la partie 4 de `banc --maille`, et c'est la seconde
+  piste que cette tâche proposait : **on compte les mouvements au lieu de
+  comparer deux trajectoires**. Un départ fait perdre un à trois habitants, une
+  naissance en fait gagner zéro à deux ; on somme donc les mouvements de
+  population en valeur absolue sur un mois, sous les deux mailles, depuis le
+  même état. C'est un volume, pas une différence de ville à ville — **donc
+  aucun plancher de bruit à franchir**.
+
+  Ce qu'il a rendu tout de suite :
+
+  | | habitants remués par ville et par mois |
+  |---|---:|
+  | maille fine | 39,40 |
+  | maille grossière | 23,51 |
+  | écart | **−40,3 %** |
+
+  Une ville lointaine remuait quarante pour cent de gens en moins qu'une ville
+  proche dans le même état. Après branchement : **−2,0 %**, sous le seuil de
+  cinq pour cent que l'instrument s'est donné.
+
+- [x] **M3. `notables.js` — mesuré, et laissé tel quel.**
+
+  Même forme de défaut, mais `q` vaut `0,00006 + vieillesse × 0,0006` : à ces
+  valeurs, `24 q` et `1 − (1−q)^24` diffèrent de **moins d'un pour cent**.
+  Mesuré sur trois mois, six répétitions, une ville à deux notables : les deux
+  mailles relèvent le même nombre de charges, et le test le vérifie.
+
+  Le brancher coûterait vingt-quatre tirages par notable et par tranche là où un
+  seul suffit, et décalerait tout le flux du monde — pour corriger un demi
+  pour cent d'un événement qui arrive une fois par décennie de jeu. **On ne le
+  branche pas, et c'est mesuré plutôt que supposé.** Le test reste, lui : le
+  jour où quelqu'un monte `q`, il tombera.
 - [ ] **M5.** Livraison : `CIBLES.json` resserré sur l'état mesuré, coût du tick
   chiffré contre la livraison précédente, et le résidu de rétroaction écrit
   noir sur blanc plutôt que passé sous silence.

@@ -4660,9 +4660,16 @@ ok(demandes9 > 0, 'des gens attendent quelque chose de vous quelque part', `${de
 // Une ville lointaine n'avance que par journées (voir PAS_LOIN) : sa demande
 // périmée est balayée au passage suivant, donc jusqu'à une journée plus tard.
 // Ce qu'on vérifie, c'est qu'aucune ne s'installe.
-ok(s9bb.world.colonies.every((c) => (c.notables || []).every(
+//
+// Les ruines sont hors du compte, et ce n'est pas une commodité : `tickColonie`
+// rend la main tout de suite pour une ville détruite, donc ses gens sont figés
+// avec ce qu'ils avaient au dernier instant. Une demande périmée dans une ruine
+// n'est pas une demande qui s'installe, c'est une ville morte. Le décor ne le
+// disait pas, et il a fini par tomber dessus — une seule, dans Enclos-Givre,
+// cent dix-neuf heures après l'échéance.
+ok(s9bb.world.colonies.filter((c) => !c.ruine).every((c) => (c.notables || []).every(
   (p) => !p.demande || p.demande.echeance > s9bb.temps - 30)),
-  'aucune demande périmée ne s’installe');
+'aucune demande périmée ne s’installe dans une ville qui vit');
 verifierCoherence(s9bb, 'après une année de vie sociale');
 
 section('9 terdecies. Les régimes : ce qu’on a le droit de faire chez eux');
@@ -6119,8 +6126,18 @@ section('9 quinvicies quinquies. Changer la terre');
   avancer(st, 600);
   ok(niveauRech(st.base, 'insemination') >= 1, 'et elle aboutit',
     `${niveauRech(st.base, 'insemination')}`);
+  // On regarnit avant de demander la suivante. Ce décor vérifie que l'arbre est
+  // un arbre — qu'une branche en ouvre une autre — et pas que le camp a de quoi.
+  // Six cents heures de vie mangent le stock posé au départ, et le jour où elles
+  // en ont mangé un peu plus, la mesure a rendu « ressources insuffisantes » en
+  // ayant l'air de dire que la Terraformation restait fermée.
+  Object.assign(st.base.stock, {
+    composant: 200, isotope: 100, alliage: 100, ferraille: 600, polymere: 300,
+  });
+  poser(st, 20000);
   ok(lancerRecherche(st, 'terraformation').ok,
-    'qui ouvre à son tour la Terraformation');
+    'qui ouvre à son tour la Terraformation',
+    lancerRecherche(st, 'terraformation').motif);
 
   // Ce que la terre rend, avant qu'on y touche.
   const avant = rendementRegion(st.world, fri.i);
@@ -7800,6 +7817,78 @@ section('N8 ter. Une colonne se nourrit de ce qu’il y a là où elle est');
 }
 
 // ===========================================================================
+section('23 ter. M2 et M3 — un compte ne se regroupe pas non plus');
+{
+  // `combienDeFois` existait depuis M1 et n'était branchée nulle part : les deux
+  // sites que `MAILLE.md` §7 recense — le départ ou la naissance d'habitants
+  // (`economy.js`) et la relève d'une charge (`notables.js`) — tiraient encore
+  // `rng.chance(surDt(p))` puis n'agissaient **qu'une fois**. Vingt-quatre
+  // heures fines autorisent vingt-quatre départs, une tranche de vingt-quatre
+  // n'en autorisait qu'un.
+  //
+  // Le blocage n'était pas le correctif, c'était la mesure : l'écart de
+  // population sur quarante jours est sous le plancher de bruit, et l'erreur
+  // locale sur une journée est nulle parce que l'événement est trop rare pour se
+  // voir en un jour. L'instrument qui manquait compte les mouvements plutôt que
+  // de comparer deux trajectoires — `banc --maille`, partie 4 — et il donnait
+  // **−40,3 %** avant ce lot.
+  const sC = nouvellePartie(4646, { maintenant: 0 });
+  for (let i = 0; i < 300; i++) tick(sC);
+  const modele = sC.world.colonies.find(
+    (c) => !c.ruine && !c.avantPoste && c.faction && c.pop > 300);
+
+  // Un mois, la même ville, les deux mailles, depuis le même état. On compte ce
+  // qui bouge en valeur absolue : un volume, pas une différence de trajectoire,
+  // donc pas de plancher de bruit à franchir.
+  const remue = (dt) => {
+    let total = 0;
+    for (let rep = 0; rep < 6; rep++) {
+      const c = JSON.parse(JSON.stringify(modele));
+      const r = new Rng(9000 + rep);
+      for (let h = 0; h < 720; h += dt) {
+        const avant = c.pop;
+        tickColonie(sC.world, c, r, null, dt, 0, null, sC.temps + h);
+        total += Math.abs(c.pop - avant);
+      }
+    }
+    return total / 6;
+  };
+  const finM = remue(1);
+  const grosM = remue(24);
+  const ecartM = finM > 0 ? Math.abs(grosM - finM) / finM : 0;
+  ok(finM > 5, 'la ville remue assez de monde pour qu’on mesure quelque chose',
+    `${finM.toFixed(1)} habitants par mois en maille fine`);
+  ok(ecartM < 0.15, 'une tranche de 24 h remue autant de gens que 24 heures fines',
+    `${finM.toFixed(1)} contre ${grosM.toFixed(1)} — ${(ecartM * 100).toFixed(1)} %`);
+
+  // Et la relève d'une charge, même défaut, même correctif (M3).
+  const avecNotables = sC.world.colonies.find(
+    (c) => !c.ruine && !c.avantPoste && (c.notables || []).length >= 2);
+  const releves = (dt) => {
+    let n = 0;
+    for (let rep = 0; rep < 6; rep++) {
+      const c = JSON.parse(JSON.stringify(avecNotables));
+      const r = new Rng(4400 + rep);
+      const noms = () => (c.notables || []).map((x) => x.nom).join('|');
+      let avant = noms();
+      for (let h = 0; h < 24 * 90; h += dt) {
+        tickNotables(c, r, dt, 0, null, sC.temps + h);
+        const apres = noms();
+        if (apres !== avant) n += 1;
+        avant = apres;
+      }
+    }
+    return n / 6;
+  };
+  const rFin = releves(1);
+  const rGros = releves(24);
+  ok(rFin > 0, 'des charges se relèvent en maille fine', `${rFin.toFixed(1)} en trois mois`);
+  ok(Math.abs(rGros - rFin) <= Math.max(1, rFin * 0.35),
+    'et une tranche de 24 h en relève autant',
+    `${rFin.toFixed(1)} contre ${rGros.toFixed(1)}`);
+}
+
+// ===========================================================================
 section('24. Le vivier — la ville promeut qui a déjà une histoire');
 {
   // Chantier INDIVIDUS, lot 4. Une charge qui se libère tirait toujours un nom
@@ -8060,6 +8149,15 @@ section('26. La colonne sans solde');
   // combat et les trois mesures sont tombées à zéro d'un coup — sans que rien
   // du mécanisme mesuré n'ait bougé. Un décor doit **produire** la situation
   // qu'il teste, pas la tirer au sort.
+  // La colonne plantée est **grosse**, et ce n'est pas de la démesure : la
+  // solde vaut `force × 0,03 × heures`, soit une centaine de crédits pour
+  // soixante hommes entre deux conseils. Un pays qu'on croit fauché encaisse
+  // toujours ça — ses villes gagnent pendant le tick, avant que le conseil ne
+  // paie —, si bien que l'ardoise restait à zéro et que la mesure ne mesurait
+  // rien. Il faut une armée dont la solde dépasse ce qu'un pays d'une ville
+  // peut trouver, c'est-à-dire l'armée qu'un pays fauché ne peut pas tenir :
+  // exactement la situation que ce décor nomme.
+  const FORCE_PLANTEE = 1200;
   const planter = (st, key) => {
     if ((st.world.armees || []).some((a) => a.faction === key)) return;
     const chez = st.world.colonies.find((c) => !c.ruine && c.faction === key);
@@ -8068,8 +8166,8 @@ section('26. La colonne sans solde');
       id: `aplant${st.temps}`,
       faction: key,
       regionId: chez.regionId,
-      force: 60,
-      forceMax: 60,
+      force: FORCE_PLANTEE,
+      forceMax: FORCE_PLANTEE,
       cible: chez.id,
       route: [],
       etape: 0,
