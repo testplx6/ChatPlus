@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Wallke X3 Pro Max — Console BLE</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0e1116;
+    --panel: #161b22;
+    --line: #262d38;
+    --fg: #e6edf3;
+    --muted: #8b949e;
+    --accent: #4ea1ff;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --err: #f85149;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 16px; max-width: 900px; margin-inline: auto;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+  section {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 14px; margin-bottom: 14px;
+  }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
+       color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+  button {
+    background: var(--accent); color: #061018; border: 0; border-radius: 7px;
+    padding: 9px 14px; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  button.ghost { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  input, select {
+    background: #0d1117; color: var(--fg); border: 1px solid var(--line);
+    border-radius: 7px; padding: 8px 10px; font-family: var(--mono); font-size: 13px;
+  }
+  input { flex: 1 1 200px; min-width: 0; }
+  #log, #gatt, #analysis {
+    font-family: var(--mono); font-size: 12px; white-space: pre-wrap;
+    word-break: break-all; max-height: 45vh; overflow: auto; margin: 0;
+  }
+  .status { font-size: 13px; color: var(--muted); }
+  .status.ok { color: var(--ok); }
+  .status.err { color: var(--err); }
+  .rx { color: var(--ok); }
+  .tx { color: var(--accent); }
+  .meta { color: var(--muted); }
+  .chip {
+    display: inline-block; border: 1px solid var(--line); border-radius: 999px;
+    padding: 2px 9px; font-size: 12px; font-family: var(--mono); margin: 2px 4px 2px 0;
+  }
+  .chip.sel { border-color: var(--accent); color: var(--accent); }
+  .warn { color: var(--warn); }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<h1>Wallke X3 Pro Max — Console BLE (afficheur Yolin)</h1>
+<p class="sub">
+  Outil de rétro-ingénierie du lien Bluetooth de <em>ton</em> vélo : scan GATT,
+  capture des trames, envoi de commandes, analyse du checksum.
+  Chrome/Edge sur Android ou desktop, en HTTPS ou localhost.
+</p>
+
+<section>
+  <h2>1 · Connexion</h2>
+  <div class="row">
+    <button id="btnConnect">Chercher un appareil</button>
+    <button id="btnDisconnect" class="ghost" disabled>Déconnecter</button>
+    <span id="status" class="status">Non connecté</span>
+  </div>
+  <p id="unsupported" class="warn" hidden>
+    Web Bluetooth n'est pas disponible dans ce navigateur. Utilise Chrome/Edge
+    (Android, Windows, macOS, Linux). iOS : voir le README.
+  </p>
+</section>
+
+<section>
+  <h2>2 · Services &amp; caractéristiques</h2>
+  <pre id="gatt">—</pre>
+  <div class="row">
+    <select id="selWrite"><option value="">— caractéristique d'écriture —</option></select>
+  </div>
+</section>
+
+<section>
+  <h2>3 · Trames reçues</h2>
+  <div class="row" style="margin-bottom:10px">
+    <input id="txHex" placeholder="Trame à envoyer en hex, ex : 3A 1A 01 04 ..." />
+    <button id="btnSend" disabled>Envoyer</button>
+  </div>
+  <div class="row" style="margin-bottom:10px">
+    <button id="btnClear" class="ghost">Vider</button>
+    <button id="btnExport" class="ghost">Exporter JSON</button>
+    <button id="btnAnalyse" class="ghost">Analyser</button>
+    <label class="status"><input type="checkbox" id="chkAscii" style="flex:0" /> ASCII</label>
+  </div>
+  <pre id="log">En attente de notifications…</pre>
+</section>
+
+<section>
+  <h2>4 · Analyse</h2>
+  <pre id="analysis">Capture au moins une vingtaine de trames, puis clique « Analyser ».</pre>
+</section>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>
