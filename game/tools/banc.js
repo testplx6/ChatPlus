@@ -129,6 +129,15 @@ function jouer({ sim, data, eco, eco2 }, graine, horizon) {
   // fait vraiment ou seulement en théorie.
   let fondations = 0;
   let extinctions = 0;
+  // Les villes **reprises par leur créancier**, c'est-à-dire saisies sans qu'une
+  // colonne ait marché. C'est le nombre dont `ECONOMIE.md` §13 parle — « 2 à
+  // 10 » — et il n'était compté nulle part. La garde `creances` de
+  // `CIBLES.json`, elle, compte les villes dont la **dette a changé de main**
+  // (`col.cession`), ce qui n'est pas du tout la même chose : une créance
+  // rachetée est une menace, une saisie est un drapeau qui tombe. On a comparé
+  // pendant des mois une intention et une mesure qui ne parlaient pas du même
+  // objet.
+  let saisies = 0;
   for (let t = 0; t < horizon; t++) {
     sim.tick(s);
     const j = s.journal || [];
@@ -141,6 +150,8 @@ function jouer({ sim, data, eco, eco2 }, graine, horizon) {
         else if (j[i].texte.includes('plante son propre drapeau')) fondations += 1;
       } else if (j[i].type === 'faction' && j[i].texte.includes('n’existe plus')) {
         extinctions += 1;
+      } else if (j[i].type === 'cession') {
+        saisies += 1;
       }
     }
     const cars = s.world.caravanes || [];
@@ -220,6 +231,7 @@ function jouer({ sim, data, eco, eco2 }, graine, horizon) {
       (k) => (s.world.factions[k].cours || 1) <= 0.4001).length,
     armees: (s.world.armees || []).length,
     retournements,
+    saisies,
     debandades,
     fondations,
     extinctions,
@@ -324,6 +336,7 @@ function agreger(cfg) {
     dette: som(cfg, 'dette'),
     auPlancher: som(cfg, 'auPlancher'),
     retournements: som(cfg, 'retournements'),
+    saisies: som(cfg, 'saisies'),
     debandades: som(cfg, 'debandades'),
     fondations: som(cfg, 'fondations'),
     extinctions: som(cfg, 'extinctions'),
@@ -348,7 +361,8 @@ const COLONNES = [
   ['satiete', 'satiété', 8], ['creve', 'à la diète', 11],
   ['cours', 'cours', 11], ['ecart', 'écart', 6], ['creances', 'créances', 9],
   ['paliers', 'taux %', 12],
-  ['retournements', 'vestes', 7], ['debandades', 'débandes', 9],
+  ['retournements', 'vestes', 7], ['saisies', 'saisies', 8],
+  ['debandades', 'débandes', 9],
   ['fondations', 'nés', 5], ['extinctions', 'morts', 6],
   ['usParTick', 'µs/tick', 7],
 ];

@@ -570,29 +570,41 @@ minutes.
 
 ## Blocages
 
-### Les créances passent de 70 à 76 — et personne n'a jamais instruit ce mécanisme
+### La garde des créances et §13 ne parlaient pas du même objet — et le vrai chiffre est 738
 
-M2 corrige la natalité, donc le monde porte plus de monde, donc plus de villes
-s'endettent et se font saisir. Mesuré sur **quatre jeux de graines
-indépendants** — 74, 76, 74, 78 — pour un plafond de 70. Ce n'est pas du bruit.
+En préparant la question à poser au propriétaire, un doute : la garde
+`creances` et la ligne d'`ECONOMIE.md` §13 mesurent-elles la même chose ?
+**Non.**
 
-**Pourquoi je n'ai pas retiré ce plafond-là, alors que j'ai retiré celui de la
-population.** Le principe du propriétaire — « tous les types de mondes devraient
-pouvoir exister, ça ne devrait pas être à nous de le coder en dur » — s'applique
-à une *forme* de monde. Or `ECONOMIE.md` §13 ne décrit pas une forme, il déclare
-une **intention** : « villes reprises par leur créancier : 2 à 10 ». On en compte
-74. Le mécanisme tourne dix fois plus vite que ce que son cahier des charges
-annonce, et ça, c'est un écart entre l'intention et le monde, pas un monde qui a
-le droit d'être ce qu'il est.
+- `creances` compte `col.cession`, posé par `racheterCreance` : une ville dont
+  la **dette a changé de main**. C'est une menace, pas un drapeau qui tombe.
+- §13 dit « villes **reprises** par leur créancier : 2 à 10 ». La reprise, c'est
+  `saisir`, appelé sur défaut quand le porteur est étranger.
 
-La note de `CIBLES.json` le dit depuis le lot F : « la fourchette des créances
-reste haute : c'est une des deux dettes consignées dans ECONOMIE §13, à instruire
-par un chantier propre, pas à masquer en resserrant une garde ». La desserrer
-serait la masquer dans l'autre sens.
+Le second n'était **compté nulle part**. On a donc comparé pendant des mois une
+intention à une mesure qui ne parlait pas du même objet, et la garde à 70 donnait
+l'illusion qu'on surveillait quelque chose.
 
-**Ce qu'il faut trancher** : est-ce que §13 dit encore ce qu'on veut ? Si oui, la
-conquête par la dette est dix fois trop fréquente et il faut la freiner. Si non,
-la ligne de §13 est à réécrire et la garde avec.
+Le compteur existe désormais au banc (`saisies`). Ce qu'il rend :
+
+| | villes | saisies sur 6 000 h |
+|---|---:|---:|
+| six graines | 460 | **738** |
+| six autres, indépendantes | 436 | **588** |
+
+Une ville et demie saisie par ville, par partie. §13 en annonce **2 à 10** au
+total. Le mécanisme tourne à peu près **cent fois** son intention déclarée, et
+personne ne pouvait le voir.
+
+**Ce qu'il faut trancher, et ce n'est plus la même question qu'avant ce
+comptage** : la carte du monde se redessine aujourd'hui par l'argent, en
+permanence. Est-ce le monde qu'on veut — auquel cas §13 est à réécrire et la
+garde à déplacer de `creances` vers `saisies` — ou faut-il freiner ?
+
+Le frein n'est pas gratuit : le crédit est ce qui nourrit les villes en
+détresse. `CREDIT.partDuTresor` est le levier le plus puissant du monde sur la
+famine (−75,9 % de villes affamées à ×0,7 dans `CARTOGRAPHIE.md`). Le serrer
+sauve des drapeaux et affame des gens.
 
 ### La masse monétaire s'emballe au-delà de douze mille heures
 
