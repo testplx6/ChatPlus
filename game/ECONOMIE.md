@@ -784,7 +784,7 @@ livraison du lot F.
 | écart monnaie forte / faible | — | ≥ ×2 | **×8,7** (0,40–3,49) | ✔ |
 | monnaies au plancher | — | ≥ 1 | **15/36** | ✔ |
 | villes en défaut | — | 5 à 25 | **5 579 faillites** | ✘ voir plus bas |
-| villes reprises par leur créancier | — | 2 à 10 | **47** | ✘ voir plus bas |
+| villes reprises par leur créancier | — | **le monde s'achète** | **738** | ✔ voir plus bas |
 | paliers de taux directeur employés | — | les quatre | **1/2/4/7** | ✔ |
 | accords commerciaux | 0,88/partie | ≥ 2/partie | **3,5/partie** | ✔ |
 | invariant comptable | — | exact | **0,000000** | ✔ |
@@ -814,14 +814,33 @@ descendre en dessous et la cible ne pouvait rien vérifier — jamais. Elle est
 remplacée par « monnaies **au plancher** », qui mesure ce qu'elle voulait dire :
 **15 sur 36**, soit près d'une monnaie sur deux effondrée à la fin d'une partie.
 
-**Deux cibles sont dépassées d'un ordre de grandeur, et c'est le vrai reste à
-faire.** 5 579 faillites pour une fourchette de 5 à 25 : la faillite n'est pas
-l'événement rare que le cahier des charges imaginait, c'est un régime
-permanent — une ville sur trois est endettée en fin de partie (342 sur 517).
-Et 47 villes reprises par leur créancier pour 2 à 10 : la conquête par l'argent
-est devenue la règle au lieu d'être une manœuvre. La piste consignée reste la
-même — un prix de cession qui monte avec le nombre de villes déjà prises ainsi,
-pas un plafond. Les deux sont à instruire par un chantier propre.
+**La conquête par l'argent est devenue la règle, et c'est désormais assumé.**
+
+La fourchette « 2 à 10 » a été écrite avant que le mécanisme tourne, et elle
+imaginait la saisie comme une manœuvre rare. Deux choses ont changé cette ligne.
+
+**D'abord, on mesurait le mauvais objet** — pendant des mois. La garde de
+`CIBLES.json` comptait `col.cession`, une ville dont la *dette* a changé de
+main : une menace. Cette ligne-ci parle des villes *reprises*, c'est-à-dire de
+`saisir`, un drapeau qui tombe. Le second n'était compté nulle part. Le vrai
+chiffre, relevé le jour où le compteur a été écrit : **738 saisies sur six
+parties de six mille heures**, et 588 sur six autres graines. Une ville et demie
+saisie par ville et par partie. Cent fois l'intention, invisible.
+
+**Ensuite, la décision du propriétaire** : « tous les types de mondes devraient
+pouvoir exister, ça ne devrait pas être à nous de le coder en dur. » Un monde
+dont la carte se redessine par l'argent est un monde légitime — les guerres y
+pèsent moins, les créanciers y pèsent plus, et rien de tout ça n'est une panne.
+
+La cible n'est donc plus un nombre : c'est que le mécanisme **existe et se
+voie**. La garde a suivi — `creances` est remplacée par `saisies`, avec un
+plancher (la conquête par l'argent doit rester possible) et pas de plafond (sa
+fréquence est une forme de monde, pas une avarie).
+
+Reste vraie l'autre ligne : **5 579 faillites pour une fourchette de 5 à 25.**
+La faillite n'est pas l'événement rare que le cahier des charges imaginait,
+c'est un régime permanent — une ville sur trois est endettée en fin de partie.
+Elle est à instruire par un chantier propre.
 
 **Deux cibles n'ont pas pu être mesurées** faute d'événement journalisé : les
 créances cédées de plein gré et les refus de vendre opposés aux rachats. Le

@@ -606,10 +606,9 @@ détresse. `CREDIT.partDuTresor` est le levier le plus puissant du monde sur la
 famine (−75,9 % de villes affamées à ×0,7 dans `CARTOGRAPHIE.md`). Le serrer
 sauve des drapeaux et affame des gens.
 
-### La masse monétaire s'emballe au-delà de douze mille heures
+### La masse monétaire s'emballe au-delà de douze mille heures — et on la laisse
 
-Trouvé en regardant les horizons longs pour la question de la population, et
-sans rapport avec elle. Six graines :
+Six graines, horizons longs :
 
 | horizon | masse | dont ménages | villes à la diète |
 |---:|---:|---:|---:|
@@ -618,18 +617,26 @@ sans rapport avec elle. Six graines :
 | 20 000 h | **3 800 M** | 3 792 M | 70 % |
 
 Mille six cents fois en huit mille heures. **L'invariant comptable reste exact**
-— écart 0 —, donc cet argent est « réel » : il a bien été émis quelque part. Les
-deux bornes du cours sont saturées (0,40–4,00), et c'est probablement le fond de
-l'affaire : une monnaie qui ne peut plus tomber sous 0,40 cesse de refléter sa
-masse, donc le change continue d'en fabriquer sans que le prix ne corrige.
+— écart 0 —, donc cet argent est réel : il a bien été émis quelque part.
 
-Suspects à instruire, dans l'ordre : `convertirMasse` (le change entre deux
-monnaies crée des unités de la faible), `coursMin` qui plafonne la correction, et
-le crédit qui compose par-dessus.
+**Décision du propriétaire : « c'est une simulation, tout doit être possible ».**
+On ne pose donc **aucune garde** qui plafonne la masse. Un monde qui part en
+hyperinflation est un monde, et le lui interdire serait exactement le « plafond
+arbitraire » que le principe de réglage de ce dépôt s'interdit depuis la
+première ligne d'`ECONOMIE.md`.
 
-Ce n'est pas dans l'horizon des gardes (6 000 h) ni dans celui d'une partie
-jouée, mais c'est un vrai défaut et il mérite son chantier.
+**Mais il reste une chose à instruire, et elle va dans le même sens.** Les deux
+bornes du cours sont saturées à 20 000 h — 0,40 et 4,00. Or `MONNAIE.coursMin`
+est précisément un plafond arbitraire au sens du principe : une monnaie qui ne
+peut pas tomber sous 0,40 **cesse de refléter sa masse**, donc les prix cessent
+de corriger, donc rien n'arrête l'emballement. Ce n'est pas la masse qu'il
+faudrait brider, c'est ce plancher-là qu'il faudrait lever pour que la
+simulation dise la vérité.
 
+Le lever n'est pas gratuit : `coursMin` est calibré et documenté, avec sa table
+— « plus le plancher est bas, mieux le monde mange et moins il compte de monde ».
+C'est donc un chantier, pas un réglage, et il commence par la question : qu'est-ce
+que ce plancher protège vraiment, et le protège-t-il encore ?
 
 ### M2 est juste, et il sort le monde de deux gardes
 
