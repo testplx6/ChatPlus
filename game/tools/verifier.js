@@ -171,10 +171,19 @@ if (COMPLET) {
       const sortie = JSON.parse(r.sortie.trim().split('\n').pop());
       const a = sortie.configs[0].agregats;
       const hors = [];
+      // Une borne à `null` veut dire « pas de borne de ce côté », et ce n'est pas
+      // une commodité : une garde doit dire qu'une chose est **cassée**, pas
+      // qu'un monde a une forme particulière. Décision du propriétaire, août
+      // 2026 : « tous les types de mondes devraient pouvoir exister, ça ne
+      // devrait pas être à nous de le coder en dur. »
       for (const [cle, [mini, maxi]] of Object.entries(cibles.gardes)) {
         const brut = a[cle];
         const val = typeof brut === 'string' ? Number(brut.split('/')[0]) : brut;
-        if (val < mini || val > maxi) hors.push(`${cle}=${brut} hors [${mini}, ${maxi}]`);
+        const bas = mini !== null && val < mini;
+        const haut = maxi !== null && val > maxi;
+        if (bas || haut) {
+          hors.push(`${cle}=${brut} hors [${mini === null ? '—' : mini}, ${maxi === null ? '—' : maxi}]`);
+        }
       }
       if (hors.length) throw new Error(hors.join(' ; '));
       return `${Object.keys(cibles.gardes).length} gardes tenues`;

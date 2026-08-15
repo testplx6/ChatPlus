@@ -570,6 +570,55 @@ minutes.
 
 ## Blocages
 
+### Les créances passent de 70 à 76 — et personne n'a jamais instruit ce mécanisme
+
+M2 corrige la natalité, donc le monde porte plus de monde, donc plus de villes
+s'endettent et se font saisir. Mesuré sur **quatre jeux de graines
+indépendants** — 74, 76, 74, 78 — pour un plafond de 70. Ce n'est pas du bruit.
+
+**Pourquoi je n'ai pas retiré ce plafond-là, alors que j'ai retiré celui de la
+population.** Le principe du propriétaire — « tous les types de mondes devraient
+pouvoir exister, ça ne devrait pas être à nous de le coder en dur » — s'applique
+à une *forme* de monde. Or `ECONOMIE.md` §13 ne décrit pas une forme, il déclare
+une **intention** : « villes reprises par leur créancier : 2 à 10 ». On en compte
+74. Le mécanisme tourne dix fois plus vite que ce que son cahier des charges
+annonce, et ça, c'est un écart entre l'intention et le monde, pas un monde qui a
+le droit d'être ce qu'il est.
+
+La note de `CIBLES.json` le dit depuis le lot F : « la fourchette des créances
+reste haute : c'est une des deux dettes consignées dans ECONOMIE §13, à instruire
+par un chantier propre, pas à masquer en resserrant une garde ». La desserrer
+serait la masquer dans l'autre sens.
+
+**Ce qu'il faut trancher** : est-ce que §13 dit encore ce qu'on veut ? Si oui, la
+conquête par la dette est dix fois trop fréquente et il faut la freiner. Si non,
+la ligne de §13 est à réécrire et la garde avec.
+
+### La masse monétaire s'emballe au-delà de douze mille heures
+
+Trouvé en regardant les horizons longs pour la question de la population, et
+sans rapport avec elle. Six graines :
+
+| horizon | masse | dont ménages | villes à la diète |
+|---:|---:|---:|---:|
+| 6 000 h | 2,4 M | 676 k | 59 % |
+| 12 000 h | **31,8 M** | 29,3 M | 36 % |
+| 20 000 h | **3 800 M** | 3 792 M | 70 % |
+
+Mille six cents fois en huit mille heures. **L'invariant comptable reste exact**
+— écart 0 —, donc cet argent est « réel » : il a bien été émis quelque part. Les
+deux bornes du cours sont saturées (0,40–4,00), et c'est probablement le fond de
+l'affaire : une monnaie qui ne peut plus tomber sous 0,40 cesse de refléter sa
+masse, donc le change continue d'en fabriquer sans que le prix ne corrige.
+
+Suspects à instruire, dans l'ordre : `convertirMasse` (le change entre deux
+monnaies crée des unités de la faible), `coursMin` qui plafonne la correction, et
+le crédit qui compose par-dessus.
+
+Ce n'est pas dans l'horizon des gardes (6 000 h) ni dans celui d'une partie
+jouée, mais c'est un vrai défaut et il mérite son chantier.
+
+
 ### M2 est juste, et il sort le monde de deux gardes
 
 `combienDeFois` branchée sur la naissance et le départ (voir `MAILLE.md` M2)
