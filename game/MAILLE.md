@@ -445,6 +445,30 @@ que l'étal vide les bourses pour des marchandises qui n'existent pas.
 
   M0 ter n'est donc plus une tâche d'hygiène. C'est ce qui débloque le monde.
 
+  **Deuxième chantier bloqué par le même résidu, août 2026 : H1.** Indexer les
+  revenus sur le cours (CHANTIER §Lot H) multiplie par 1,1 à 2,1 ce qui passe
+  dans les poches chaque heure, et l'erreur locale à `dt = 24` passe de
+  0,000 / 0,006 à −0,271 / +0,697. Deux chantiers indépendants butent donc
+  maintenant sur ce terme d'ordre deux, et c'est lui qui interdit à une monnaie
+  de pouvoir s'effondrer — ce que le propriétaire a demandé explicitement.
+
+  **Et une chose découverte en le mesurant : la garde est verte en un seul
+  point.** Le moteur tel qu'il est livré, même monde, même instrument :
+
+  | | `dt` = 2 | `dt` = 4 | `dt` = 8 | `dt` = 24 |
+  |---|---:|---:|---:|---:|
+  | cours du monde | −0,172 / +0,181 | **−0,289 / +0,300** | −0,095 / +0,100 | **0,000 / +0,006** |
+  | tous cours à 1 | −0,306 / +0,308 | −0,230 / +0,257 | −0,218 / +0,304 | **−0,661 / +0,662** |
+
+  La suite n'assure que la case en bas à droite de la première ligne. À
+  `dt = 4` le moteur en est à trois fois le seuil de §5 ; dans un monde dont les
+  cours valent 1 — c'est-à-dire au début de chaque partie — il en est à six
+  fois, au pas même que la garde surveille. Le commentaire du test affirme que
+  l'erreur « reste à 0,000 pour `dt` valant 2, 4 et 8 » : ce n'est plus vrai, et
+  rien ne dit quand ça a cessé de l'être, puisque aucune garde ne regardait ces
+  trois pas. M0 ter doit donc livrer aussi la garde aux quatre pas — plus
+  stricte, pas plus large.
+
   ### Le recensement, fait — trois saturations, deux corrigées, une chiffrée
 
   Mené par témoin négatif, comme le prescrit §7 : neutraliser un plafond à la

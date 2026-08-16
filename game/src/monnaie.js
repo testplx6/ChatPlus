@@ -27,21 +27,35 @@ export const MONNAIE = {
    * Jusqu'où une monnaie a le droit de s'effondrer, et de s'apprécier.
    *
    * Ce n'est pas de la timidité : le cours divise les prix locaux, si bien
-   * qu'une monnaie à 0,06 les multiplie par seize et vide la ville de ses
-   * habitants. Balayé sur trois graines et six mille heures :
+   * qu'une monnaie à 0,06 les multiplie par seize.
    *
-   *     plancher   villes    pop     nourries   affamées   écart des cours
-   *       0,05      248     23 765     229        4 %      0,06 – 2,07
-   *       0,30      253     24 429     225        6 %      0,30 – 1,21
-   *       0,40      voir ci-dessous
-   *       0,50      256     30 821     192       15 %      0,50 – 1,05
-   *       0,70      209     39 385     127       32 %      0,70 – 1,83
+   * **La table qui tenait cette place disait l'inverse de la vérité, et il faut
+   * le dire ici plutôt que dans un coin.** Elle concluait « plus le plancher
+   * est bas, mieux le monde mange », sur la foi de `nourries` et `affamees` —
+   * deux comptages de **stocks**. Or un grenier reste plein exactement quand
+   * personne n'a de quoi l'acheter : c'est le piège que ce dépôt a fini par
+   * nommer, et il était déjà cité dans ce commentaire-ci sans qu'on voie qu'il
+   * s'appliquait d'abord à lui. Rebalayé avec la satiété — ce que les gens ont
+   * réellement mangé —, six graines, six mille heures :
    *
-   * Le compromis se lit : plus le plancher est bas, mieux le monde mange et
-   * moins il compte de monde — une monnaie effondrée renchérit tout, donc on
-   * consomme peu, donc les stocks restent pleins et la population fond. Zéro
-   * quarante garde une monnaie qu'on peut dire effondrée sans que le pays
-   * concerné cesse d'exister.
+   *     plancher    villes      pop    satiété   à la diète   masse
+   *      0,40        460      105 932   0,807      57 %        2,8 M
+   *      0,15        490       84 810   0,633      70 %      477 M
+   *      0,05        477       83 531   0,688      69 %    5 896 M
+   *      0,01        476       77 171   0,628      73 %       23 M
+   *      0,000001    493       75 737   0,577      75 %       85 M
+   *
+   * Les deux indicateurs s'accordent enfin, et dans l'autre sens : **plus le
+   * plancher est bas, plus le monde a faim, et moins il compte de monde.**
+   *
+   * Reste que ce plancher est un plafond arbitraire au sens du principe de
+   * réglage de ce dépôt — quinze monnaies sur trente-six finissent collées
+   * dessus, donc il est l'état normal de la moitié du monde, et `ECONOMIE.md`
+   * §14 exige depuis le premier jour qu'« au moins une monnaie s'effondre par
+   * lot de six parties », ce que cette borne rend invérifiable. Le lever
+   * demande d'abord de réparer une erreur d'unité qui fait qu'un effondrement
+   * monétaire affame mécaniquement le pays : voir CHANTIER §Lot H, où le
+   * correctif est écrit, mesuré, et bloqué sur M0 ter.
    */
   coursMin: 0.4,
   coursMax: 4,

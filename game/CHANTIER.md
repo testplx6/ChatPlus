@@ -525,6 +525,233 @@ autre » est un marché, donc un prix. Aujourd'hui, une colonne non payée survi
 et ne coûte rien — c'est le comportement par défaut, il est cohérent mais il
 n'est pas celui-là.
 
+## Lot H — une économie doit pouvoir s'effondrer (décision du propriétaire)
+
+> « une économie doit pouvoir s'effondrer aussi »
+
+Aujourd'hui elle ne peut pas : `MONNAIE.coursMin = 0,40` interdit à une monnaie
+de perdre plus de soixante pour cent de sa valeur, pour toujours. Ce n'est pas
+un garde-fou rare — **quinze monnaies sur trente-six finissent collées à ce
+plancher**, il est donc l'état normal de la moitié du monde. Et `ECONOMIE.md`
+§14, lot C, exigeait déjà « au moins une monnaie s'effondre par lot de six
+parties » : la borne rendait ce critère invérifiable depuis le premier jour.
+
+- [x] **H0 bis — deux défauts trouvés en instruisant le lot, sans rapport avec
+      lui.** Livrés à part, verts, avec leur test rouge.
+
+  **1. Toute compagnie franche naissait avec un tempérament NaN.** Une armée
+  s'appelle `a184` ; `fonderColonne` dérivait l'agression et la cupidité de son
+  drapeau neuf de `a.id % 5` et `a.id % 4`, c'est-à-dire de `'a184' % 5`, qui
+  vaut NaN. Le NaN contamine tout ce qui le multiplie et `JSON.stringify`
+  l'écrit `null` dans la sauvegarde. Corrigé par `numeroColonne`, qui lit le
+  nombre dans l'identifiant. Aucun des mille trois cents tests ne passait par
+  là : c'est le vérificateur d'état qui a crié, le jour où une correction sans
+  rapport a fait naître une de ces factions sur le chemin d'un test.
+
+  **2. Un décor de test partait d'un monde impossible.** La section 27 prenait
+  5 000 crédits au trésor d'un pays qui en tenait 664, laissant derrière elle
+  un pays qui **doit** 4 336 crédits. L'audit tenait tant que ce pays gardait
+  des villes ; mille heures plus tard, sans plus rien, `existe` passait sous
+  zéro pendant que `transferer` bornait la masse à zéro, et l'audit accusait le
+  moteur d'un écart de 266 crédits que le décor avait posé lui-même. Il ne cède
+  plus que ce que le trésor a.
+
+### H0 — ce que le balayage a dit, et pourquoi la table de `coursMin` était fausse
+
+Six graines, six mille heures, cinq planchers :
+
+| plancher | villes | pop | **satiété** | à la diète | affamées | masse | où est la masse |
+|---:|---:|---:|---:|---:|---:|---:|---|
+| 0,40 | 460 | 105 932 | **0,807** | 263 (57 %) | 38 % | 2,8 M | ménages |
+| 0,15 | 490 | 84 810 | 0,633 | 344 (70 %) | 27 % | **477 M** | ménages |
+| 0,05 | 477 | 83 531 | 0,688 | 329 (69 %) | 25 % | **5 896 M** | ménages |
+| 0,01 | 476 | 77 171 | 0,628 | 349 (73 %) | 17 % | 23 M | trésors |
+| 0,000001 | 493 | 75 737 | **0,577** | 371 (75 %) | 18 % | 85 M | **trésors** |
+
+**La table écrite dans `monnaie.js` disait l'inverse de la vérité.** Elle
+concluait « plus le plancher est bas, mieux le monde mange » — parce qu'elle
+lisait `nourries` et `affamees`, deux comptages de **stocks**, et qu'un grenier
+reste plein exactement quand personne n'a de quoi l'acheter. C'est le piège déjà
+consigné deux fois dans ce cahier. Avec la satiété, les deux indicateurs
+s'accordent enfin : **plus le plancher est bas, plus le monde a faim** —
+0,807 → 0,577, et les villes à la diète passent de 57 % à 75 %.
+
+Donc lever le plancher tel quel affame le monde. Reste à savoir **pourquoi**,
+parce que c'est là qu'est le vrai défaut.
+
+### H1 — les revenus sont libellés dans une monnaie qui n'existe plus
+
+Le moteur mélange deux unités, et la borne du cours masquait le mélange :
+
+| | libellé en | où |
+|---|---|---|
+| ce qu'une ville **achète** | monnaie locale (`/cours`) | `prixUnitaire`, ligne 192 |
+| ce qu'une ville **verse en salaires** | **ancien crédit** | `valeurCourante(prod) * partSalariale` |
+| le fonds de roulement qu'elle garde | **ancien crédit** | `reserveVille` : `pop * CAISSE.parTete` |
+| l'échelle de sa solvabilité | **ancien crédit** | `solvabiliteDe` : `pop * MENAGES.parTete` |
+
+`valeurCourante` somme des `COMMODITIES[k].prix`, c'est-à-dire les prix de
+référence, ceux d'avant l'effondrement. Les prix payés, eux, sont divisés par le
+cours. Quand une monnaie tombe à 0,05, les gens paient vingt fois plus et
+gagnent exactement autant : leur salaire réel tombe à zéro en une heure, la
+ville ne peut plus rien acheter, et son fonds de roulement — fixe, lui aussi —
+devient négligeable, donc le trésor lui prend tout. **C'est très précisément ce
+que montre la colonne « où est la masse » : sous 0,01, quatre-vingt-seize pour
+cent de la monnaie est dans les trésors et les villes n'ont plus rien.**
+
+Un effondrement monétaire n'a donc pas besoin de règle nouvelle pour affamer le
+monde : il l'affame par une erreur d'unité. Ce n'est pas une règle de jeu à
+inventer, c'est la convention déjà appliquée aux prix, à appliquer aux revenus.
+
+- [ ] **H1** — indexer sur le cours les trois références nominales : le salaire
+      horaire, `reserveVille`, l'échelle de `solvabiliteDe`. Les *stocks* de
+      monnaie ne sont pas réindexés — une inflation doit continuer de ruiner
+      l'épargne, c'est le flux qui doit suivre. **Écrit, mesuré, rouge sur la
+      garde de maille : BLOQUÉ sur M0 ter.** Voir ci-dessous.
+- [ ] **H2** — retirer `MONNAIE.coursMin` (ne garder qu'un epsilon numérique :
+      `coursMonnaie` rend 1 pour un cours nul, et un `Infinity` ne survit pas au
+      `JSON.stringify` de la sauvegarde). Rebalayer H0 après H1.
+- [ ] **H3** — le banc : `auPlancher` code en dur `<= 0,4001` et ne veut plus
+      rien dire sans plancher. Le remplacer par un comptage d'effondrées à
+      définition fixe, et suivre dans `CIBLES.json`.
+- [ ] **H4** — `MONNAIE.coursMax = 4` est la borne symétrique, et elle sature
+      elle aussi (3,87 à 3,97 dans les cinq configurations). À instruire après
+      H2, pas avant : une seule borne à la fois, sinon on ne saura pas laquelle
+      a fait quoi.
+
+### H1 — le correctif est écrit et il marche ; il bute sur la même chose que `partSalariale`
+
+Le test rouge, deux mondes qui ne diffèrent que par le cours, mêmes villes
+clonées, six cents heures chacun, satiété médiane :
+
+| | avant H1 | avec H1 |
+|---|---:|---:|
+| cours au pair | 0,514 | témoin |
+| cours au quart | **0,414** | à moins de 0,05 du témoin ✔ |
+| cours au quadruple | dans la marge | dans la marge ✔ |
+
+Le correctif tient en quatre divisions :
+
+```js
+// economy.js — contextePrix : un seul appel, le cours sert aussi à la paie
+const cours = coursMonnaie(world, col.faction);
+return { sol: solvabilite(col, cours), humeur: 1 + col.unrest * 0.35, cours };
+
+// economy.js — solvabiliteDe(col, menages, cours = 1)
+const ordinaire = col.pop * MENAGES.parTete / cours;
+
+// economy.js — reserveVille(col, taux, cours = 1)
+return (col.pop || 0) * CAISSE.parTete * facteurReserve(taux) / cours;
+
+// economy.js — tickColonie : le salaire de l'heure, et son estimation à mi-tranche
+const duHeure = col.avantPoste
+  ? 0 : valeurCourante(prod) * CAISSE.partSalariale / ctx.cours;
+```
+
+Les appelants qui ont un `world` sous la main passent le cours (`remonterCaisses`,
+`capaciteRemboursement` dans `credit.js`, `ctxMid`) ; `sim.js` et les décors de
+test gardent le défaut à 1, où rien ne change.
+
+Le test, à remettre dans `test/headless.js` le jour où M0 ter tombe :
+
+```js
+  const sH = nouvellePartie(11, { maintenant: 0 });
+  for (let i = 0; i < 400; i++) tick(sH);
+  const condH = conditions(sH.world, sH.temps);
+  const villesH = sH.world.colonies.filter(
+    (c) => !c.ruine && !c.avantPoste && c.faction && c.pop > 60 && (c.caisse || 0) > 0)
+    .slice(0, 30);
+  // Deux mondes clonés de la même source : comparer un monde neuf à un monde
+  // recopié ferait porter l'écart à la recopie.
+  const monde = (facteur) => {
+    const w = JSON.parse(JSON.stringify(sH.world));
+    for (const k of Object.keys(w.factions)) w.factions[k].cours = (w.factions[k].cours || 1) * facteur;
+    return w;
+  };
+  const satieteApres = (w) => {
+    const s = [];
+    for (const c0 of villesH) {
+      const c = JSON.parse(JSON.stringify(c0));
+      const r = new Rng(9);
+      for (let h = 0; h < 600; h++) tickColonie(w, c, r, condH, 1, 0, null, sH.temps + h);
+      s.push(c.satiete === undefined ? 1 : c.satiete);
+    }
+    s.sort((a, b) => a - b);
+    return s[Math.floor(s.length / 2)];
+  };
+  const ref = satieteApres(monde(1));
+  ok(Math.abs(satieteApres(monde(1)) - ref) < 1e-12,
+    'témoin : à cours égal, deux mondes rendent exactement la même satiété');
+  ok(ref > 0.5, 'et le décor n’est pas mort d’avance — ces villes-là mangent');
+  ok(Math.abs(satieteApres(monde(0.25)) - ref) < 0.05,
+    'une monnaie au quart ne change pas ce que les gens mangent');
+  ok(Math.abs(satieteApres(monde(4)) - ref) < 0.05, 'une monnaie au quadruple non plus');
+```
+
+**Ce qui bloque.** La garde de maille du moteur (`test/headless.js`, erreur
+locale à `dt = 24`) passe de 0,000 / 0,006 à **−0,271 / +0,697** pour un critère
+à 0,1. La cause est écrite noir sur blanc dans `MAILLE.md` §M0 ter : « le terme
+qui reste est d'ordre deux, donc il grandit comme le carré de l'amplitude
+horaire — doubler ce qui passe dans les poches chaque heure le quadruple ». Les
+cours du monde valant 0,47 à 0,90, H1 multiplie par 1,1 à 2,1 ce qui passe dans
+les poches chaque heure. **C'est exactement le mur qui bloque déjà
+`CAISSE.partSalariale = 0,70`** — même résidu, même tâche pour le lever, même
+sous-pas à livrer, et donc la même dépendance au chantier de vitesse.
+
+Deux mesures à garder, parce qu'elles nuancent le verdict :
+
+- **H1 améliore la maille partout ailleurs qu'au point que la garde regarde.**
+  À `dt` valant 2, 4 et 8 l'erreur baisse ou ne bouge pas, et dans un monde dont
+  tous les cours valent 1 elle passe de −0,661 / +0,662 à **+0,093 / +0,077**.
+- **Le point que la garde regarde n'est pas représentatif** : voir la section
+  suivante. Ce n'est pas une raison de livrer H1 — un critère ne s'élargit pas
+  parce qu'il est mal posé, il se répare — mais c'en est une de ne pas conclure
+  que H1 dégrade le moteur.
+
+**Ce que H1 coûtera par ailleurs, et qui n'est pas mesuré.** Le monde d'après ne
+sera pas le même, et `partSalariale` devra probablement être recalibrée derrière
+— elle l'est déjà pour d'autres raisons, cf. « Le bon réglage de la satiété est
+prêt ».
+
+### La garde de maille est verte en un seul point, et ce point n'est pas représentatif
+
+Trouvé en instruisant H1, vérifié sur le moteur **tel qu'il est livré**, monde
+du banc (graine 11, 400 h), quarante villes, erreur locale médiane caisse /
+ménages, critère `MAILLE.md` §5 à 0,1 :
+
+| | `dt` = 2 | `dt` = 4 | `dt` = 8 | `dt` = 24 |
+|---|---:|---:|---:|---:|
+| cours du monde | −0,172 / +0,181 | **−0,289 / +0,300** | −0,095 / +0,100 | **0,000 / +0,006** |
+| tous cours à 1 | −0,306 / +0,308 | −0,230 / +0,257 | −0,218 / +0,304 | **−0,661 / +0,662** |
+
+La suite n'assure que la case en bas à droite de la première ligne, et c'est la
+seule qui tienne le critère. À `dt = 4` le moteur en est à trois fois le seuil ;
+dans un monde dont les cours valent 1 — c'est-à-dire au début de chaque partie —
+il en est à six fois, **au pas même que la garde surveille**.
+
+Le commentaire du test affirme aujourd'hui que l'erreur « reste à 0,000 pour
+`dt` valant 2, 4 et 8 ». Ce n'est plus vrai, et rien ne dit quand ça a cessé de
+l'être : aucune garde ne regardait ces trois pas.
+
+**Ce qu'il faut en faire, et ce qu'il ne faut pas.** Ne pas élargir le critère :
+il est juste, c'est la mesure qui est partielle. La réparation est d'assurer les
+quatre pas et le monde à cours unitaire — donc une garde **plus stricte**, que
+le moteur d'aujourd'hui ne tient pas. Elle appartient donc à M0 ter, avec le
+reste.
+
+### H0 bis — la masse n'est pas monotone, et ce n'est pas expliqué
+
+2,8 M → 477 M → 5 896 M → 23 M → 85 M. L'emballement ne suit pas le plancher :
+il culmine **au milieu**, à 0,15 et 0,05, et il est intégralement dans les
+ménages ; aux planchers extrêmes les ménages sont normaux et l'argent est au
+trésor. La lecture plausible — la seule création de monnaie hors joueur est
+l'asymétrie de `convertirMasse`, qui fabrique `cours(A)/cours(B)` unités par
+unité changée, donc il faut une monnaie assez faible pour multiplier et un
+commerce assez vivant pour changer ; sous 0,01 les prix explosent, le commerce
+s'arrête, et la spirale meurt avec le monde. **Ce n'est pas vérifié.** À
+instrumenter (compteur de volume changé et de monnaie créée par le change dans
+`jouer()`) avant d'en écrire un mot ailleurs que dans ce paragraphe.
+
 ## Leviers actionnables — mesurés, prêts, non appliqués
 
 Ce que la cartographie a trouvé et que le balayage direct a confirmé, gardé ici

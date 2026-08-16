@@ -8419,9 +8419,19 @@ section('27. Un drapeau qui n’était pas là au départ');
     transfererVille(sN.world, c, donneur, 'neuve');
     c.faction = 'neuve';
   }
-  transferer(sN.world, donneur, 'neuve', 5000);
-  sN.world.factions.neuve.tresor += 5000;
-  sN.world.factions[donneur].tresor -= 5000;
+  // Ce que le donneur a vraiment, et pas un rond de plus. Le décor prenait
+  // 5 000 crédits à un trésor qui en tenait 664, et laissait donc derrière lui
+  // un pays qui **doit** 4 336 crédits — un état que le moteur ne sait pas
+  // produire. Tant que ce pays gardait des villes, l'audit tenait quand même :
+  // ses caisses couvraient le trou. Le jour où il s'est retrouvé sans rien,
+  // `existe` est passé sous zéro pendant que `transferer` bornait sa masse à
+  // zéro — et l'audit accusait le moteur d'un écart de 266 crédits que le décor
+  // avait posé lui-même mille heures plus tôt. Un décor doit partir d'un monde
+  // possible.
+  const dote = Math.min(5000, sN.world.factions[donneur].tresor);
+  transferer(sN.world, donneur, 'neuve', dote);
+  sN.world.factions.neuve.tresor += dote;
+  sN.world.factions[donneur].tresor -= dote;
 
   let pireN = 0;
   let creve = null;
@@ -9384,6 +9394,59 @@ section('F0 bis. La satiété d’une ville se voit');
   normaliser(vieille);
   ok(vieille.world.colonies.every((c) => typeof c.satiete === 'number'),
     'et une partie d’avant en reçoit une');
+}
+
+// ---------------------------------------------------------------------------
+section('H0. Une compagnie franche naissait avec un tempérament NaN');
+// ---------------------------------------------------------------------------
+//
+// Une armée s'appelle `a184`. Or `fonderColonne` dérivait le tempérament de son
+// drapeau neuf de `a.id % 5` et `a.id % 4` — c'est-à-dire de `'a184' % 5`, qui
+// vaut NaN. **Toute compagnie franche fondée depuis l'écriture de ces deux
+// lignes portait une agression et une cupidité NaN**, qui contaminent tout ce
+// qui les multiplie et que `JSON.stringify` écrit `null` dans la sauvegarde.
+//
+// Trouvé de biais : en mesurant tout autre chose (CHANTIER §Lot H), une
+// correction a changé la trajectoire d'un monde de test, une colonne y a planté
+// son drapeau, et le vérificateur d'état a crié. Personne ne le cherchait, et
+// aucun des mille trois cents tests ne passait par là.
+{
+  const sQ = nouvellePartie(4141, { maintenant: 0 });
+  for (let i = 0; i < 200; i++) tick(sQ);
+  const cle = Object.keys(sQ.world.factions).find(
+    (k) => k !== 'essaim' && sQ.world.factions[k].colonies.length > 0);
+  const chez = sQ.world.colonies.find((c) => !c.ruine && c.faction === cle);
+
+  // Le décor doit **produire** la sécession, pas l'espérer : une colonne assez
+  // grosse pour faire un pays, une ardoise assez vieille pour qu'elle renonce,
+  // et un pays assez fauché pour qu'elle ne soit jamais payée — trésor et
+  // caisses, parce que le conseil remonte les caisses avant de payer.
+  // `garnison`, et pas `marche` : une colonne en marche sans destination est
+  // retirée dès le premier tick, et le décor ne mesurait alors plus rien.
+  const FORCE = COLONNE.debandade * COLONNE.assez * 4;
+  sQ.world.armees.push({
+    id: 'a184', faction: cle, regionId: chez.regionId, force: FORCE, forceMax: FORCE,
+    cible: null, route: [], etape: 0, progres: 0, etat: 'garnison',
+    ravitaillement: 60, impayees: 100000,
+  });
+  for (let i = 0; i < 300 && !sQ.world.drapeaux.librea184; i++) {
+    sQ.world.factions[cle].tresor = 0;
+    for (const c of sQ.world.colonies) if (c.faction === cle) c.caisse = 0;
+    const a = (sQ.world.armees || []).find((x) => x.id === 'a184');
+    // On la remet debout à chaque tour : l'attrition la réduit à rien avant le
+    // conseil suivant, et une colonne morte ne fonde rien.
+    if (a) { a.impayees = 100000; a.force = FORCE; a.ravitaillement = 60; }
+    tick(sQ);
+  }
+  const neuf = sQ.world.drapeaux.librea184;
+  ok(!!neuf, 'la colonne finit par planter son propre drapeau',
+    neuf ? neuf.nom : 'aucun drapeau neuf');
+  ok(neuf && Number.isFinite(neuf.agression) && Number.isFinite(neuf.cupidite),
+    'et son tempérament est un nombre, pas NaN',
+    neuf ? `agression ${neuf.agression}, cupidité ${neuf.cupidite}` : '—');
+  ok(neuf && Number.isFinite(sQ.world.factions.librea184.agression),
+    'la faction porte le même, et la sauvegarde peut donc l’écrire',
+    neuf ? `${sQ.world.factions.librea184.agression}` : '—');
 }
 
 // ===========================================================================

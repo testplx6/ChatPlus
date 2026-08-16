@@ -1531,6 +1531,12 @@ function eteindre(world, key, t, log) {
   }
 }
 
+/** Le numéro d'une colonne, en nombre : `a184` rend 184, et le reste rend 0. */
+function numeroColonne(a) {
+  const n = parseInt(String((a && a.id) || '').replace(/\D/g, ''), 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
 /**
  * La cinquième issue : la colonne prend son indépendance.
  *
@@ -1575,8 +1581,15 @@ function fonderColonne(world, a, key, t, log) {
     symbole: symboleNeuf(world),
     devise: 'On ne nous paie plus. On ne sert plus.',
     // Un tempérament dérivé de l'événement, pas tiré du flux principal.
-    agression: Number((0.35 + (a.id % 5) * 0.08).toFixed(2)),
-    cupidite: Number((0.4 + (a.id % 4) * 0.12).toFixed(2)),
+    //
+    // `numeroColonne`, et pas `a.id` : une armée s'appelle « a184 », et
+    // `'a184' % 5` vaut NaN. Toute compagnie franche fondée depuis l'écriture
+    // de ces deux lignes portait donc un tempérament NaN, qui se propage à
+    // tout ce qui le multiplie et que la sauvegarde ne sait pas écrire. Le
+    // vérificateur d'état l'a attrapé le jour où une autre correction a fait
+    // naître une de ces factions sur le chemin d'un test.
+    agression: Number((0.35 + (numeroColonne(a) % 5) * 0.08).toFixed(2)),
+    cupidite: Number((0.4 + (numeroColonne(a) % 4) * 0.12).toFixed(2)),
     style: 'commune',
     biomes: [world.regions[a.regionId].biome],
   };
