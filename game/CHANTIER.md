@@ -754,14 +754,30 @@ manquait et qui a été ajouté au banc à cette occasion — huit placebos, deu
 mailles fines à graines différentes — vaut **±0,010 sur les rations** et ±3,000
 sur la population. Le −0,173 est dix-sept fois le plancher.
 
-**La cause probable, à instruire :** la probabilité de départ vaut
-`0,05 × (0,8 − satiété) / 0,8` et elle est calculée **une fois par tranche**, sur
-la satiété du début. `combienDeFois` corrige le *nombre* de tirages, pas la
-*probabilité* qui les gouverne — et cette probabilité-là bouge dans la journée.
-C'est la troisième forme du recensement de `MAILLE.md` §7, appliquée à un
-paramètre au lieu d'une quantité, et personne ne l'avait cherchée là. La médiane
-de population est décalée de −2,000 exactement, à tous les pas et sur les
-quarante villes : c'est systématique, pas aléatoire.
+**La cause était bien là, mais la correction évidente est fausse — mesuré.**
+
+L'hypothèse : `satiete < 0,8` est un **seuil**, et un seuil ne se regroupe pas.
+Une ville qui oscille autour de 0,8 dans la journée perd des gens à certaines
+heures et se calme aux autres ; la tranche ne voit que la moyenne et tranche une
+fois pour toutes. Troisième forme du recensement de `MAILLE.md` §7, appliquée à
+un **paramètre** au lieu d'une quantité — personne ne l'avait cherchée là.
+
+Le correctif correspondant a été écrit : mémoriser la satiété et le grenier
+heure par heure sur la tranche (deux ardoises au module, comme les prix), puis
+tirer départ et naissance **par heure** avec la satiété de cette heure-là. Le
+flux d'aléa consomme le même nombre de tirages.
+
+**Résultat mesuré : l'erreur des rations passe de −0,173 à −0,447.** Deux fois
+et demie pire. La correction est donc rejetée, et la porte est fermée : ce n'est
+pas le seuil sur la satiété moyenne qui porte le résidu, ou pas lui seul.
+
+**Ce que la mesure dit encore, et qui reste à expliquer.** Le plancher de bruit
+de la population vaut ±3,000 et l'écart observé −2,000 : la population est donc
+**sous son propre plancher**. Mais les rations, elles, sont à dix-sept fois le
+leur. Une divergence de population dans le bruit qui produit un écart de rations
+hors bruit : les deux ne se recollent pas, et c'est là qu'il faut chercher.
+Piste non instruite : l'écart n'est peut-être porté que par deux ou trois villes
+parmi les dix-sept, auquel cas c'est la médiane qu'il faut regarder autrement.
 
 ### Deux choses à trancher avant de livrer H1
 
