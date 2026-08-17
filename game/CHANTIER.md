@@ -603,12 +603,14 @@ Un effondrement monétaire n'a donc pas besoin de règle nouvelle pour affamer l
 monde : il l'affame par une erreur d'unité. Ce n'est pas une règle de jeu à
 inventer, c'est la convention déjà appliquée aux prix, à appliquer aux revenus.
 
-- [ ] **H1** — indexer sur le cours les trois références nominales : le salaire
-      horaire, `reserveVille`, l'échelle de `solvabiliteDe`. Les *stocks* de
-      monnaie ne sont pas réindexés — une inflation doit continuer de ruiner
-      l'épargne, c'est le flux qui doit suivre. **Le correctif est écrit et
-      mesuré ; il était bloqué par M0 ter, qui est livré. À REPRENDRE et à
-      remesurer en premier.** Voir ci-dessous.
+- [ ] **H1** — indexer sur le cours **toutes** les sommes nominales : salaire
+      horaire des villes, `reserveVille`, échelle de `solvabiliteDe`, et les
+      salaires de l'État (`ETAT.parDefense`, `parMur`, `parSoldat`). Les *stocks*
+      de monnaie ne sont pas réindexés — une inflation doit continuer de ruiner
+      l'épargne, c'est le flux qui doit suivre. **Écrit, complété, remesuré :
+      neuf gardes sur dix, satiété 0,881, vitesse ×0,923. Reste un seul
+      obstacle, nommé — la probabilité de départ, calculée une fois par
+      tranche.** Voir ci-dessous.
 - [ ] **H2** — retirer `MONNAIE.coursMin` (ne garder qu'un epsilon numérique :
       `coursMonnaie` rend 1 pour un cours nul, et un `Infinity` ne survit pas au
       `JSON.stringify` de la sauvegarde). Rebalayer H0 après H1.
@@ -647,6 +649,18 @@ return (col.pop || 0) * CAISSE.parTete * facteurReserve(taux) / cours;
 // economy.js — tickColonie : le salaire de l'heure, et son estimation à mi-tranche
 const duHeure = col.avantPoste
   ? 0 : valeurCourante(prod) * CAISSE.partSalariale / ctx.cours;
+```
+
+Et les salaires de l'État, qui manquaient au premier jet — c'est eux qui
+faisaient perdre 78 villes et cinq factions :
+
+```js
+// factions.js — la garnison et les murs
+const du = (col.defense * ETAT.parDefense + col.murs * ETAT.parMur)
+  * heures / coursMonnaie(world, key);
+// factions.js — la solde d'une colonne, et l'ardoise qu'elle accumule
+const du = a.force * ETAT.parSoldat * heures / coursMonnaie(world, key);
+const dette = a.force * ETAT.parSoldat * a.impayees / coursMonnaie(world, key);
 ```
 
 Les appelants qui ont un `world` sous la main passent le cours (`remonterCaisses`,
@@ -698,13 +712,75 @@ cours du monde valant 0,47 à 0,90, H1 multiplie par 1,1 à 2,1 ce qui passe dan
 les poches chaque heure. **C'est exactement le mur qui bloque déjà
 `CAISSE.partSalariale = 0,70`.**
 
-**⚠️ CE BLOCAGE EST LEVÉ — M0 ter est livré.** Le plan de bataille de `MAILLE.md`
-était faux (le sous-pas n'atteint pas le critère et coûte le double du tick),
-mais le vrai correctif a été trouvé : la facture de tranche **s'intègre** au lieu
-de s'échantillonner. Les cinq grandeurs sont sous le plancher de bruit, l'erreur
-locale des rations vaut +0,000, et le monde y gagne 64 villes et 3 points de
-satiété. **H1 est donc à reprendre** : le résidu d'ordre deux qui le bloquait
-n'existe plus, et il faut simplement remesurer. Voir `MAILLE.md` §M0 ter.
+**⚠️ CE BLOCAGE-CI EST LEVÉ — M0 ter est livré**, et le résidu d'ordre deux qui
+bloquait H1 n'existe plus. H1 a donc été repris, complété et remesuré. Ce qui
+suit remplace le diagnostic ci-dessus.
+
+### H1, deuxième passage — l'indexation était incomplète, et le monde le disait
+
+**Le correctif d'hier ne couvrait que la moitié des sommes nominales.** Salaires
+des villes, fonds de roulement et échelle de solvabilité étaient indexés ; les
+**salaires de l'État** ne l'étaient pas — garnisons (`ETAT.parDefense`), murs
+(`parMur`) et solde des colonnes (`parSoldat`) restaient chiffrés en ancien
+crédit. Un pays dont la monnaie s'effondrait payait donc ses gardes une misère
+sans l'avoir décidé, ses défenses fondaient, et il perdait ses villes. Mesuré :
+
+| | témoin (M0 ter) | H1 à moitié | H1 complet |
+|---|---:|---:|---:|
+| villes | 524 | **446** | 473 |
+| factions écrasées | 3 | **8** | 3 |
+| bureaux de change | 33 | **26** (garde rouge) | 29 |
+| habitants | 112 495 | 132 714 | 129 621 |
+| **satiété** | 0,839 | 0,857 | **0,881** |
+| **villes à la diète** | 54 % | 49 % | **45 %** |
+| vitesse | — | — | **×0,923** (plus rapide) |
+
+**Satiété 0,881 et 45 % de villes à la diète sont les deux meilleurs chiffres
+jamais mesurés sur ce monde**, et ils arrivent sans toucher à une seule
+constante de calibrage. Neuf gardes sur dix passent.
+
+### Ce qui reste, et il n'en reste qu'un — nommé et localisé
+
+`banc --maille`, erreur locale des rations à `dt` = 24 : **−0,173** pour un
+critère à 0,1. Le reste est propre — caisse +0,002, ménages +0,000,
+agitation +0,000.
+
+**Le témoin négatif est sans appel : départs et naissances gelés, les cinq
+erreurs locales tombent à exactement 0,000, à tous les pas.** H1 n'introduit donc
+**aucun** biais de regroupement. Tout le résidu passe par la population.
+
+Et ce n'est pas du bruit : le plancher de bruit de cette mesure, qui lui
+manquait et qui a été ajouté au banc à cette occasion — huit placebos, deux
+mailles fines à graines différentes — vaut **±0,010 sur les rations** et ±3,000
+sur la population. Le −0,173 est dix-sept fois le plancher.
+
+**La cause probable, à instruire :** la probabilité de départ vaut
+`0,05 × (0,8 − satiété) / 0,8` et elle est calculée **une fois par tranche**, sur
+la satiété du début. `combienDeFois` corrige le *nombre* de tirages, pas la
+*probabilité* qui les gouverne — et cette probabilité-là bouge dans la journée.
+C'est la troisième forme du recensement de `MAILLE.md` §7, appliquée à un
+paramètre au lieu d'une quantité, et personne ne l'avait cherchée là. La médiane
+de population est décalée de −2,000 exactement, à tous les pas et sur les
+quarante villes : c'est systématique, pas aléatoire.
+
+### Deux choses à trancher avant de livrer H1
+
+1. **Le résidu de population.** Est-ce qu'on instruit la probabilité de départ
+   (un M0 quater, sur le modèle de ce qui vient d'être fait), ou est-ce qu'on
+   accepte −0,173 sur une médiane qui ne porte que sur dix-sept villes ?
+2. **La garde `auPlancher` n'a plus de sens avec H1.** Elle compte les monnaies
+   collées à 0,40, et il n'en reste **qu'une sur trente-six** au lieu de six à
+   trente. Ce n'est pas une panne, c'est le contraire : indexer l'économie sur
+   le cours rend la monnaie **auto-correctrice** — une monnaie qui baisse fait
+   monter les prix locaux, donc la valeur de la production qui la gage, donc le
+   cours remonte. Le plancher cesse d'être atteint, ce qui est exactement la
+   condition pour le retirer (H2). La garde doit donc être remplacée par
+   « monnaies effondrées, cours ≤ 0,1 », plancher 1 comme le veut `ECONOMIE.md`
+   §14 — mais cette garde-là restera rouge tant que `coursMin` vaut 0,40.
+   **H1 et H2 doivent donc être livrés ensemble.**
+
+Le correctif complet est dans `git show` de ce commit, section « le patch H1 »
+ci-dessous, et son test rouge est conservé plus bas.
 
 Deux mesures à garder, parce qu'elles nuancent le verdict :
 

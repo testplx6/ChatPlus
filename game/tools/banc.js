@@ -905,17 +905,60 @@ async function mesurerMaille(graines, horizon) {
   // fabrique est qu'il **croît avec le pas** : un biais de tranche est
   // proportionnel à la tranche, un hasard ne l'est pas. D'où la colonne par pas
   // plutôt qu'un chiffre unique.
+  //
+  // **Et le nombre de villes qui portent chaque chiffre**, comme la partie 2 le
+  // fait depuis §1 bis. Sans lui, une médiane prise sur douze villes se lit
+  // comme une médiane prise sur quarante, et on a déjà payé cette erreur-là une
+  // fois : elle avait fait conclure « rations identiques au millième » alors que
+  // dix-neuf greniers vides tiraient la médiane à zéro.
   console.log('\n3. L\'erreur locale — une journée, depuis un état identique\n');
   console.log(`   ${'pas'.padStart(4)} ${CLES.map((k) => k.padStart(10)).join(' ')}`);
+  const portees = [];
   for (const dt of [1, 2, 4, 8, 24]) {
     const e = vide();
     // Même graine des deux côtés : sur une seule journée, il n'y a pas de
     // trajectoire à décorréler, et la ligne `pas 1` sert de témoin — deux
     // mailles fines identiques doivent rendre exactement zéro partout.
     campagne(1, dt, 9, 9, e, 1);
+    portees.push([dt, CLES.map((k) => (e[k] || []).length)]);
     console.log(`   ${String(dt).padStart(4)} `
       + CLES.map((k) => `${med2(e[k]) >= 0 ? '+' : ''}${fmt(med2(e[k]))}`.padStart(10)).join(' '));
   }
+  console.log('\n   sur combien de villes chaque médiane porte :\n');
+  console.log(`   ${'pas'.padStart(4)} ${CLES.map((k) => k.padStart(10)).join(' ')}`);
+  for (const [dt, n] of portees) {
+    console.log(`   ${String(dt).padStart(4)} ${n.map((v) => String(v).padStart(10)).join(' ')}`);
+  }
+
+  // --- Le plancher de bruit de cette mesure-là, qui lui manquait.
+  //
+  // La partie 2 a le sien depuis §1 bis, et la leçon y est écrite : « un écart
+  // sans plancher ne dit rien ». La partie 3 n'en avait pas, et sa ligne
+  // `pas 1` — deux mailles fines à graine identique — ne prouve que le
+  // déterminisme, pas l'absence de bruit.
+  //
+  // Or il y en a, et il est irréductible : `combienDeFois` tire `dt` fois par
+  // appel, donc deux mailles ne consomment pas le flux d'aléa au même endroit,
+  // donc un départ tombe d'un côté et pas de l'autre. Une ville de deux
+  // habitants de moins mange moins, et son grenier reste plus plein. C'est
+  // exactement ce que §5 dit déjà : « deux tirages honnêtes ne rendent jamais
+  // la même ville, et exiger l'impossible, c'est ne rien vérifier ».
+  //
+  // Le placebo : deux mailles **fines** à graines différentes. Aucun défaut de
+  // regroupement possible, rien que le flux d'aléa.
+  const placebos = [];
+  for (const g of [10, 11, 12, 13, 14, 15, 16, 17]) {
+    const e = vide();
+    campagne(1, 1, 9, g, e, 1);
+    placebos.push(e);
+  }
+  console.log('\n   plancher de bruit — huit placebos, deux mailles fines à graines différentes\n');
+  console.log(`   ${'    '} ${CLES.map((k) => k.padStart(10)).join(' ')}`);
+  const plancher3 = {};
+  for (const k of CLES) {
+    plancher3[k] = Math.max(...placebos.map((e) => Math.abs(med2(e[k]))));
+  }
+  console.log(`   ${'±   '} ${CLES.map((k) => fmt(plancher3[k]).padStart(10)).join(' ')}`);
 
   // 4. Le comptage des événements — l'instrument qui manquait à M2 et M3
   // -------------------------------------------------------------------------
