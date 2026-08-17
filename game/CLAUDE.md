@@ -66,7 +66,7 @@ quelqu'un d'autre.
 | `CHANTIER.md` | la file de tâches du chantier économie — livré, gardé pour ses mesures et ses leviers |
 | `RECETTES.md` | les opérations récurrentes, pas à pas, avec leurs pièges |
 | `ECONOMIE.md` | le cahier des charges du chantier économie |
-| `MAILLE.md` | l'invariance à la maille — M0, M0 bis et M4 faits, M2/M3 en attente d'un instrument |
+| `MAILLE.md` | l'invariance à la maille — **livré** : les cinq grandeurs sont sous le plancher de bruit |
 | `INDIVIDUS.md` | **livré** : les individus sans payer le prix de Dwarf Fortress, six lots sur six |
 | `FACTIONS-NEUVES.md` | **livré** : naissance et mort des factions — les cinq règles sont tranchées |
 | `CHANTIER.md` §Lot E | la monnaie du joueur — **E1 à E6 faits**, sauf trois prérogatives bloquées par le cahier des charges |

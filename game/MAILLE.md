@@ -257,11 +257,11 @@ par `CIBLES.json`.
 
 | cible | comment on la mesure | état |
 |---|---|---|
-| invariance | `banc --maille`, partie 2 : les cinq écarts médians **sous le plancher de bruit** établi par placebo. « À zéro » était une cible mal posée : deux tirages honnêtes ne rendent jamais la même ville, et exiger l'impossible, c'est ne rien vérifier | **2 sur 5** (pop, agitation) — était 1 sur 5 |
-| erreur locale | l'erreur d'**une journée** depuis un état identique, grandeur par grandeur et pas par pas. C'est le critère net : il ne mélange pas le défaut de maille avec ce que quarante jours de chaos en font, et il porte son propre témoin (`pas 1` doit rendre zéro) | **3 sur 5** sous 0,1 ; reste caisse +1,11 et ménages −0,91 |
-| invariance dans le monde | `banc --maille`, partie 1 : population médiane à ±3 habitants et villes debout à ±1 | +15 (était +28) et 43/48 |
-| coût | la garde de vitesse : rapport à la livraison précédente | **×1,03** pour M0 — tenu |
-| le monde tient | les dix gardes de `CIBLES.json`, resserrées après coup sur l'état mesuré | à remesurer |
+| invariance | `banc --maille`, partie 2 : les cinq écarts médians **sous le plancher de bruit** établi par placebo. « À zéro » était une cible mal posée : deux tirages honnêtes ne rendent jamais la même ville, et exiger l'impossible, c'est ne rien vérifier | ✅ **5 sur 5** après M0 ter — était 2 sur 5 |
+| erreur locale | l'erreur d'**une journée** depuis un état identique, grandeur par grandeur et pas par pas. C'est le critère net : il ne mélange pas le défaut de maille avec ce que quarante jours de chaos en font, et il porte son propre témoin (`pas 1` doit rendre zéro) | ✅ **5 sur 5** sous 0,1 après M0 ter — rations +0,000, caisse +0,001 |
+| invariance dans le monde | `banc --maille`, partie 1 : population médiane à ±3 habitants et villes debout à ±1 | ✅ +0 habitant après M0 ter ; villes debout 48/56, toujours au-dessus de ±1 |
+| coût | la garde de vitesse : rapport à la livraison précédente | ✅ **×1,056** pour M0 ter (plafond 1,08) — tenu |
+| le monde tient | les dix gardes de `CIBLES.json`, resserrées après coup sur l'état mesuré | ✅ 10 sur 10 après M0 ter |
 | l'invariant comptable | exact, comme toujours | tenu |
 
 **L'erreur locale est le bon critère, et c'est une leçon de ce chantier.**
@@ -423,205 +423,136 @@ que l'étal vide les bourses pour des marchandises qui n'existent pas.
   un clone joué douze heures), l'erreur tombait à −0,055. Le prédicteur réel
   fait aussi bien. Sans cette borne, on aurait pu écrire trois cents lignes pour
   découvrir que l'idée ne valait rien.
-- [ ] **M0 ter.** Le recensement des saturations (§7), par l'erreur locale et le
-  mouchard. Une est déjà connue et laissée en place : `min(veut, enRayon)` dans
-  `facture`. Elle ne pèse que −0,09 par jour, et **la retirer fait exploser
-  l'erreur à +315** (témoin négatif mesuré) — elle est porteuse, il faudrait
-  l'intégrer, pas la supprimer.
+- [x] **M0 ter — le recensement des saturations, fait, et les cinq correctifs
+  livrés.** Août 2026.
 
-  ### ⛔ AOÛT 2026 — LE SOUS-PAS EST MORT, ET C'EST MESURÉ
+  **Le critère est tenu sur les cinq grandeurs, et c'est la première fois.**
 
-  **Le plan de bataille de cette tâche ne marche pas.** Il tenait en une
-  phrase — « la seule issue mesurée est le sous-pas » — et le seul obstacle
-  supposé était son prix. La tâche a été menée jusqu'au bout, quatre correctifs
-  écrits et mesurés, et la conclusion est ailleurs : **même gratuit, le sous-pas
-  n'atteindrait pas le critère à un pas de quatre, et à un pas de deux il coûte
-  environ le double du tick.** Il faut une autre idée. Ce qui suit est tout ce
-  qu'il faut pour la chercher sans refaire le chemin.
+  | | avant | après |
+  |---|---|---|
+  | invariance (§5, partie 2) | **2 / 5** sous le plancher | **5 / 5** |
+  | erreur locale à `dt` = 24 | rations −0,010 · caisse +0,000 | rations **+0,000** · caisse **+0,001** |
+  | comptes remués (partie 4) | −2,0 % | −2,8 % |
+  | coût | — | **×1,056** de la livraison précédente (plafond 1,08) |
 
-  **Ce qui a été livré dans le code, mesuré, puis retiré.** Rien n'est poussé :
-  le correctif complet vit ici, parce qu'il laisse la garde des rations rouge.
+  Et le monde, six graines × six mille heures, contre la révision d'avant :
+  **524 villes contre 460, 112 495 habitants contre 105 932, satiété 0,839
+  contre 0,807, villes à la diète 54 % contre 57 %, trésor médian 46 370 contre
+  4 716.** L'invariant comptable reste exact. Le monde n'est pas seulement plus
+  régulier, il est plus riche — parce qu'une ville qui mangeait sans payer
+  n'enrichissait personne.
 
-  | | rations à `dt` = 24 | caisse | ménages | invariance §5 (partie 2) |
-  |---|---:|---:|---:|---|
-  | avant | −0,010 | +0,000 | +0,000 | **2 / 5** sous le plancher |
-  | après les quatre correctifs | **+0,533** | +0,001 | +0,000 | **4 / 5** sous le plancher |
+  ### Le plan d'origine était faux, et c'est la leçon principale
 
-  Les deux critères de §5 bougent **en sens contraire**, et c'est la décision
-  qu'il faut prendre : l'invariance dans le monde passe de deux grandeurs sur
-  cinq à quatre, pendant que l'erreur locale des rations passe de 3 sur 5 à
-  2 sur 5. Le −0,010 d'avant n'était pas une réussite : c'était la somme
-  d'erreurs qui s'annulaient, et cette page le disait déjà — « l'ancien code
-  portait plusieurs erreurs qui se compensaient ». On échange un zéro fortuit
-  contre un demi honnête, et quatre bugs en moins.
+  Cette tâche disait : « la seule issue mesurée est le sous-pas », et tenait son
+  prix pour le seul obstacle. **Les deux moitiés de la phrase étaient fausses.**
 
-  #### Les quatre correctifs, et ce que chacun a rendu
+  Le relevé qui la fondait — « l'erreur locale sur les rations vaut +0,000 à
+  `dt` = 2 et `dt` = 4 » — avait été pris **avant** les correctifs 1 et 2,
+  c'est-à-dire quand plusieurs erreurs se compensaient encore. Correctifs
+  appliqués, le sous-pas rendait +0,017 à un pas de deux et **+0,109 à un pas de
+  quatre**, donc hors critère ; et il coûtait vingt-quatre passes de prix là où
+  il y en a deux, soit de l'ordre de **+95 % de tick** pour un budget de 17 %.
 
-  Chacun a été attribué par témoin négatif avant d'être écrit, jamais l'inverse.
+  Il ne fallait pas plus de budget. Il fallait arrêter d'échantillonner.
 
-  | | correctif | rations à `dt` = 24 |
+  ### Les cinq correctifs, et ce que chacun a rendu
+
+  Chacun a été attribué par témoin négatif **avant** d'être écrit, jamais
+  l'inverse. L'erreur locale des rations à `dt` = 24, correctif après correctif :
+
+  | | correctif | rations |
   |---|---|---:|
-  | départ | (état livré) | −0,010 « vert » |
+  | départ | (état livré, erreurs compensées) | −0,010 |
   | 1 | la récolte du jour entre dans l'étal facturé | +2,331 |
   | 2 | `servable` : l'intégrale close du plafond de l'étal | +2,331 |
-  | 3a | les vivres servies heure par heure dans la boucle du circuit | +2,264 |
-  | 3b | `servable` tient compte de la part réellement emportée | +1,382 |
-  | 3c | la part prédite compte **les salaires qui tombent** | +0,650 |
-  | 3d | la reconversion des métiers déplacée en fin de tick | +0,544 |
-  | — | Gauss à deux points sur le prix (essayé, **rejeté**) | +0,533 |
+  | 3 | les vivres servies heure par heure dans la boucle du circuit | +2,264 |
+  | 4a | `servable` tient compte de la part réellement emportée | +1,382 |
+  | 4b | la part prédite compte **les salaires qui tombent** | +0,650 |
+  | 4c | la reconversion des métiers déplacée en fin de tick | +0,544 |
+  | 5 | `valeurTranche` : la facture intégrée au lieu d'être échantillonnée | **+0,000** |
 
-  **1 et 2** sont ceux que cette page décrivait déjà ; leur code est plus haut et
-  il est juste. `servable` a été vérifiée exacte contre la boucle sur vingt-huit
-  mille tirages et sept pas, à 1e-9.
+  **1 et 2** sont ceux que le recensement ci-dessous avait déjà trouvés.
+  `servable` est vérifiée exacte contre la boucle sur vingt-huit mille tirages
+  et sept pas, à 1e-9.
 
-  **3b — l'étal qu'on n'achète qu'à moitié se vide deux fois moins vite.** La
-  forme close vidait le grenier au rythme de la demande entière. Une ville dont
-  les gens ne peuvent payer que 42 % de la note n'en voit partir que 42 %, garde
-  donc de quoi vendre bien plus longtemps, et facture davantage. Le grenier tient
-  `stock / (veut × part − arrivage)` heures :
+  **3** — les vivres se servent dans le circuit, pas après lui. Le témoin
+  négatif était sans ambiguïté : forcer `part` à 1 faisait tomber l'erreur de
+  +2,331 à −0,011. Ce n'était ni les prix, ni le serrage de ceinture (gelé, il
+  ne rendait que 2,331 → 2,032), ni la population. C'était que la part servie
+  était une **moyenne de tranche** appliquée à un service qui sature.
 
-  ```js
-  export function servable(stock, parHeure, veutParHeure, dt, part = 1) {
-    if (dt === 1) { const d = stock + parHeure; return veutParHeure < d ? veutParHeure : d; }
-    const manque = veutParHeure - parHeure;
-    const tout = veutParHeure * dt;
-    if (manque <= 0) return tout;
-    if (part >= 1) {
-      const tenu = manque * dt;
-      return parHeure * dt + (stock < tenu ? stock : tenu);
-    }
-    const vide = veutParHeure * part - parHeure;
-    if (vide <= 0) return tout;
-    const tenu = stock / vide;
-    return tenu >= dt ? tout : veutParHeure * tenu + parHeure * (dt - tenu);
-  }
-  ```
+  **4a** — un étal qu'on n'achète qu'à moitié se vide deux fois moins vite, donc
+  il reste à vendre deux fois plus longtemps, donc la ville facture davantage.
 
-  **3c — la part prédite ignorait les salaires.** `min(1, menages / facture)`
-  regarde la bourse du matin. Or une ville fauchée vit de la paie de l'heure :
-  sur la ville tracée, 1 604 crédits dépensés dans la journée pour une bourse
-  de départ presque vide. Remplacé par
-  `min(1, (menages + salaireHoraire × dt) / facture)` : **c'est le correctif le
-  plus rentable des quatre**, de +1,382 à +0,650 pour une addition.
+  **4b** — la part prédite regardait la bourse du matin. Or une ville fauchée vit
+  de la paie de l'heure : 1 604 crédits dépensés dans la journée sur la ville
+  tracée, pour une bourse de départ presque vide. Une addition, et le correctif
+  le plus rentable des sept.
 
-  **3d — la reconversion des métiers était un pur décalage de phase.**
+  **4c** — la reconversion des métiers était un pur décalage de phase.
   `PERIODE_EMPLOIS` vaut vingt-quatre heures et `ajusterEmplois` était appelée
-  **en tête** de `tickColonie`. À la maille fine la reconversion tombe donc au
+  **en tête** de `tickColonie` : à la maille fine la reconversion tombe donc au
   vingt-quatrième appel, une fois la journée produite aux anciens métiers ; à la
   maille grossière elle tombait au premier instant, et les vingt-quatre heures
   étaient produites aux **nouveaux**. Vingt-trois heures sur vingt-quatre du
-  mauvais côté du changement. Sur une ville : 186,65 rations récoltées à la
-  maille fine contre 180,76 à la grossière — tout l'écart de cette ville-là.
-  Le correctif est de la déplacer après `productionColonie`, et il ne coûte
-  rien.
+  mauvais côté du changement. Déplacée après `productionColonie`.
 
-  **Il ne tient pas debout tout seul, et c'est mesuré, pas supposé.** Livré
-  isolément — sans les points 1, 2 et 3 — il fait passer l'erreur locale de
-  caisse de +0,000 à **+0,575** et casse deux décors de plus. Il corrige un
-  défaut réel, mais l'ancien code s'appuyait dessus pour en compenser d'autres.
-  Il part donc avec le bloc, ou il ne part pas.
+  ### 5. La facture s'intègre — c'est le correctif qui débloque tout
 
-  #### Ce qui reste, attribué au crédit près
-
-  Le résidu a été découpé sur les villes les plus fautives, en séparant la
-  quantité facturée du prix :
+  Le résidu a été découpé en séparant la quantité facturée du prix :
 
   | ville | facture fine / grossière | quantité | prix moyen |
   |---|---|---|---|
   | Nœud-Dix-Sept | 3 609 / 3 289 | 198,3 / 196,1 | **18,196 / 16,774** |
   | Relais-Zéro | 1 557 / 1 384 | 132,7 / 130,6 | **11,738 / 10,599** |
 
-  **Les quantités sont bonnes à un pour cent près. C'est le prix moyen qui est
-  huit à dix pour cent trop bas.** Le prix se lit sur un état projeté — bourse
-  et étal à mi-tranche — et cette projection est **droite** là où la réalité
-  **sature** : une bourse fauchée ne descend pas linéairement vers zéro, elle
-  oscille entre zéro et la paie de l'heure.
+  Les quantités concordent à un pour cent. C'est le **prix moyen** qui est huit à
+  dix pour cent trop bas.
 
-  Deux idées essayées là-dessus, deux échecs mesurés, et ils valent d'être dits
-  parce qu'ils ferment des portes :
+  **L'idée a été bornée avant d'être écrite**, comme M0 bis : en donnant à la
+  tranche le vrai prix moyen de la journée — obtenu en trichant, par un clone
+  joué heure par heure —, l'erreur des rations tombait de +0,533 à **+0,067**. Le
+  prix était donc toute l'histoire restante, et il valait la peine de l'intégrer.
+
+  **Deux fausses pistes, écartées par la mesure, et elles valent d'être dites :**
 
   - **Gauss à deux points au lieu du point milieu** : +0,544 → +0,533. Deux pour
     cent, pour une passe de prix de plus. Une quadrature d'ordre supérieur ne
-    sert à rien quand c'est la **trajectoire** qui est fausse et non le point où
-    on l'évalue. Rejeté.
-  - **Plancher de la bourse projetée à une demi-heure de salaire** : aucun effet,
-    au chiffre près. `SOLVABILITE.plancher` mord déjà dans ces villes-là, donc
-    la solvabilité est identique des deux côtés — le prix ne vient pas de la
-    bourse mais de l'étal. Rejeté.
+    sert à rien quand le problème n'est pas *où* on échantillonne.
+  - **Le prix moyen dans le temps, intégré exactement** : +0,533 → **+0,634**,
+    donc *pire*. Il donne le même poids à l'heure où la ville sert sa pleine
+    demande à bas prix et à l'heure où elle ne sert plus que son arrivage au
+    prix plafond. Intégrer exactement la mauvaise quantité fait pire
+    qu'échantillonner grossièrement la bonne.
 
-  #### Et voilà pourquoi le sous-pas est mort
+  Ce qu'il fallait, c'est l'intégrale de **la quantité par le prix**.
+  `prixUnitaire` vaut `base × f(tension) × humeur / cours` avec
+  `tension = cible × solvabilité / (stock + 0,35 cible)`. Sur la tranche seul le
+  stock bouge, et il bouge droit : en posant `u = stock + 0,35 cible`, le facteur
+  vaut `(A/u)^0,85` et sa primitive en `u` est `A^0,85 × u^0,15 / 0,15`. Les deux
+  bornes du facteur se franchissent au plus une fois chacune puisque `u` est
+  monotone, donc l'intégrale se découpe en trois morceaux au plus. C'est
+  `integreFacteur`, et `valeurTranche` la pondère par la quantité servie sur
+  chacune des deux phases — pleine demande tant que le grenier tient, puis
+  arrivage seul.
 
-  L'erreur des rations, correctifs appliqués, pas par pas :
+  **Et une dernière marchandise résistait : les rations, à 0,90 du prix vrai
+  quand les huit autres étaient déjà à 1,00.** La cause : le grenier se vide de
+  ce que la ville **sert** — le besoin entier — alors que la facture porte sur ce
+  que les habitants **achètent**, serrage de ceinture compris. Confondre les deux
+  laissait l'étal des vivres trop plein dans la projection, donc leur prix trop
+  bas. `valeurTranche` reçoit donc la vidange réelle à part de la demande
+  facturée. C'est cette distinction qui fait passer l'erreur de +0,538 à +0,000.
 
-  | pas | 2 | 4 | 8 | 24 |
-  |---|---:|---:|---:|---:|
-  | rations | **+0,017** | +0,109 | +0,185 | +0,533 |
+  ### Ce qu'il ne faut pas « corriger »
 
-  Un sous-pas à quatre **ne tient pas le critère** (0,109 pour 0,1). Il faut
-  descendre à deux. Or le coût se compte : la seconde passe de prix, à elle
-  seule, vaut ×1,044 du tick. Un sous-pas à deux, c'est douze tranches de deux
-  heures à deux passes chacune, soit **vingt-quatre passes de prix là où il y en
-  a deux** — de l'ordre de **+95 % de tick**. À quatre : douze passes, +44 %, et
-  le critère toujours pas tenu. Le budget disponible est de 17 %.
+  Après épuisement du grenier, `servable` rend l'arrivage. Une lecture naturelle
+  dit que le régime d'équilibre devrait être `arrivage / part`, puisque l'étal ne
+  perd que ce qu'on lui achète. **Écrit et mesuré : l'erreur des rations passe de
+  +0,000 à +0,205.** Le grenier du moteur se vide de ce qu'il *sert*, pas de ce
+  qu'on lui achète. Un test grave la ligne pour que personne ne la retourne.
 
-  La phrase « la seule issue mesurée est le sous-pas » de la version précédente
-  reposait sur un relevé pris **avant** les correctifs 1 et 2, quand les erreurs
-  se compensaient encore et que le pas de deux rendait 0,000. Elle est fausse.
-
-  #### Ce qu'il faudrait chercher à la place
-
-  Une seule chose manque : **un prix de tranche qui ne passe pas par une
-  trajectoire projetée.** Trois pistes, aucune instruite, aucune engagée :
-
-  - la moyenne réalisée de la tranche précédente, pondérée par les quantités —
-    un état de plus par ville et par marchandise, et un retard d'une tranche ;
-  - une forme close du prix moyen sur la tranche, en intégrant `tension^0,85`
-    analytiquement le long de la trajectoire de l'étal, qui est connue ;
-  - accepter que le prix de tranche soit approché et **facturer au prix moyen
-    réalisé** plutôt que de le prédire, en réordonnant le circuit.
-
-  La deuxième est la plus proche de ce que ce chantier sait faire — `servable`
-  est déjà exactement ça, mais sur la quantité au lieu du prix.
-
-  **Ce que M0 ter coûte de ne pas faire, chiffré en août 2026** : douze points
-  de satiété et trente mille habitants. Le recalibrage de l'économie a trouvé
-  son réglage — `CAISSE.partSalariale` de 0,55 à 0,70, satiété 0,752 → 0,843,
-  villes à la diète 59 % → 48 % — et n'a pas pu le livrer. À 0,70, l'erreur
-  locale sur les rations passe de −0,010 à **−0,314** pour une cible à 0,1, et
-  l'agitation sur quarante jours de +0,065 à +0,367 pour un plancher de bruit de
-  ±0,141.
-
-  La cause est le résidu que M0 bis a réduit sans l'éliminer : `facture` est
-  calculée **deux fois** par tranche, au début et au milieu. Le terme qui reste
-  est d'ordre deux, donc il grandit comme le carré de l'amplitude horaire —
-  doubler ce qui passe dans les poches chaque heure le quadruple. Tant qu'il est
-  là, l'économie ne peut pas être calibrée là où elle devrait l'être.
-
-  M0 ter n'est donc plus une tâche d'hygiène. C'est ce qui débloque le monde.
-
-  **Deuxième chantier bloqué par le même résidu, août 2026 : H1.** Indexer les
-  revenus sur le cours (CHANTIER §Lot H) multiplie par 1,1 à 2,1 ce qui passe
-  dans les poches chaque heure, et l'erreur locale à `dt = 24` passe de
-  0,000 / 0,006 à −0,271 / +0,697. Deux chantiers indépendants butent donc
-  maintenant sur ce terme d'ordre deux, et c'est lui qui interdit à une monnaie
-  de pouvoir s'effondrer — ce que le propriétaire a demandé explicitement.
-
-  **Et une chose découverte en le mesurant : la garde est verte en un seul
-  point.** Le moteur tel qu'il est livré, même monde, même instrument :
-
-  | | `dt` = 2 | `dt` = 4 | `dt` = 8 | `dt` = 24 |
-  |---|---:|---:|---:|---:|
-  | cours du monde | −0,172 / +0,181 | **−0,289 / +0,300** | −0,095 / +0,100 | **0,000 / +0,006** |
-  | tous cours à 1 | −0,306 / +0,308 | −0,230 / +0,257 | −0,218 / +0,304 | **−0,661 / +0,662** |
-
-  La suite n'assure que la case en bas à droite de la première ligne. À
-  `dt = 4` le moteur en est à trois fois le seuil de §5 ; dans un monde dont les
-  cours valent 1 — c'est-à-dire au début de chaque partie — il en est à six
-  fois, au pas même que la garde surveille. Le commentaire du test affirme que
-  l'erreur « reste à 0,000 pour `dt` valant 2, 4 et 8 » : ce n'est plus vrai, et
-  rien ne dit quand ça a cessé de l'être, puisque aucune garde ne regardait ces
-  trois pas. M0 ter doit donc livrer aussi la garde aux quatre pas — plus
-  stricte, pas plus large.
 
   ### Le recensement, fait — trois saturations, deux corrigées, une chiffrée
 

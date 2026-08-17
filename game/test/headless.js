@@ -20,6 +20,7 @@ import {
 import { titreDe, lignesDe, faitsDe, RENOMMEES } from '../src/chronique.js';
 import {
   faireRevolte, SEUIL_REVOLTE, SUREXTENSION, tickColonie, prixUnitaire, verser,
+  servable, valeurTranche,
   reserveVille,
 } from '../src/economy.js';
 import { tickCredit, insolvable, veutBatir } from '../src/credit.js';
@@ -9447,6 +9448,214 @@ section('H0. Une compagnie franche naissait avec un tempérament NaN');
   ok(neuf && Number.isFinite(sQ.world.factions.librea184.agression),
     'la faction porte le même, et la sauvegarde peut donc l’écrire',
     neuf ? `${sQ.world.factions.librea184.agression}` : '—');
+}
+
+// ---------------------------------------------------------------------------
+section('M0 ter — 1. La récolte du jour n’était pas dans l’étal');
+// ---------------------------------------------------------------------------
+//
+// Chantier MAILLE, M0 ter, premier des quatre correctifs. `facture` ne compte
+// que ce qui peut être servi — c'est juste, facturer le besoin plutôt que
+// l'étal viderait les poches pour des marchandises inexistantes. Mais pour les
+// rations, et pour elles seules, l'étal était réduit au **stock d'avant la
+// tranche** : la récolte de la journée n'y entrait pas, alors qu'elle entre
+// bel et bien dans ce qui est servi.
+//
+// Une ville qui produit de quoi manger et n'a plus de grenier mangeait donc
+// sans que personne ne paie : les ménages ne se vidaient pas, la caisse ne se
+// remplissait pas, et la moitié du circuit disparaissait.
+{
+  const sM0 = nouvellePartie(4242, { maintenant: 0 });
+  const ville = sM0.world.colonies.find(
+    (c) => !c.ruine && !c.avantPoste && c.pop > 200
+      && productionColonie(sM0.world, c).rations > 0.5);
+  // Trente heures, pas une : cette ville est loin du joueur, elle avance par
+  // tranches de vingt-quatre. Un seul tick ne la faisait pas tourner du tout —
+  // et le décor semblait alors prouver le défaut alors qu'il ne prouvait rien.
+  const menagesAvant = ville.menages;
+  const caisseAvant = ville.caisse;
+  for (let i = 0; i < 30; i++) {
+    ville.stock.rations = 0;
+    tick(sM0);
+  }
+  ok(ville.satiete > 0.85, 'une ville qui récolte mange, grenier vide ou non',
+    `satiété ${ville.satiete.toFixed(3)}`);
+  ok(menagesAvant - ville.menages > 0,
+    'et elle le paie — la récolte du jour n’est pas gratuite',
+    `ménages ${Math.round(menagesAvant)} → ${Math.round(ville.menages)}`);
+  ok(ville.caisse > caisseAvant,
+    'ce qui sort des poches entre en caisse : le circuit se boucle',
+    `caisse ${Math.round(caisseAvant)} → ${Math.round(ville.caisse)}`);
+}
+
+// ---------------------------------------------------------------------------
+section('M0 ter — 2. Le plafond de l’étal s’intègre, il ne se regroupe pas');
+// ---------------------------------------------------------------------------
+//
+// Heure par heure, une ville sert `min(veut, stock + production)`. La tranche
+// écrivait `min(veut × dt, stock + production × dt)` — **la somme des minimums
+// remplacée par le minimum des sommes**, deuxième des trois formes recensées
+// par `MAILLE.md` §7, et celle-là ne se regroupe pas.
+{
+  // Le témoin est la boucle elle-même : on ne compare pas la forme close à ce
+  // qu'on croit qu'elle vaut, mais à ce que fait le moteur heure par heure.
+  const boucle = (stock, parHeure, veutParHeure, dt, part) => {
+    let s = stock;
+    let total = 0;
+    for (let h = 0; h < dt; h++) {
+      const dispo = s + parHeure;
+      const servi = Math.min(veutParHeure, dispo);
+      total += servi;
+      s = dispo - servi * part;
+    }
+    return total;
+  };
+  const rS = new Rng(20260816);
+  let pire = 0;
+  let cas = 0;
+  for (const dt of [1, 2, 3, 4, 8, 24, 28]) {
+    for (let n = 0; n < 4000; n++) {
+      const veut = rS.range(0, 40);
+      const parHeure = rS.range(0, 60);
+      const stock = rS.range(0, 400);
+      const e = Math.abs(servable(stock, parHeure, veut, dt) - boucle(stock, parHeure, veut, dt, 1));
+      if (e > pire) pire = e;
+      cas += 1;
+    }
+  }
+  ok(cas === 28000, 'la forme close est éprouvée sur sept pas et vingt-huit mille tirages',
+    `${cas} cas`);
+  ok(pire < 1e-9, 'et elle rend exactement ce que rend la boucle',
+    `écart maximal ${pire.toExponential(2)}`);
+
+  ok(servable(0, 5, 3, 24) === 72, 'l’arrivage couvre tout : rien ne sort du grenier');
+  ok(servable(10, 0, 3, 24) === 10, 'le grenier lâche : on ne sert que ce qu’il y avait');
+  ok(servable(100, 1, 3, 24) === 24 + 48,
+    'entre les deux : l’arrivage plus ce que le grenier a tenu');
+  ok(servable(37.5, 2.25, 4.75, 1) === Math.min(4.75, 37.5 + 2.25),
+    'à dt = 1 elle rend exactement `min(veut, stock + production)`');
+
+  // --- Et la part réellement emportée.
+  //
+  // Un étal qu'on n'achète qu'à moitié se vide deux fois moins vite, donc il
+  // reste à vendre deux fois plus longtemps, donc la ville facture davantage.
+  // C'est ce qui manquait à la première version, et ça valait +1,382 → +0,650
+  // d'erreur locale.
+  ok(servable(10, 1, 3, 24, 0.5) > servable(10, 1, 3, 24, 1),
+    'à part réduite, la ville a plus à vendre',
+    `${servable(10, 1, 3, 24, 0.5).toFixed(1)} contre ${servable(10, 1, 3, 24, 1).toFixed(1)}`);
+  ok(servable(10, 1, 3, 24, 1) === 24 + 10,
+    'à part pleine, l’arrivage plus tout le grenier');
+  ok(Math.abs(servable(10, 1, 3, 24, 0.5) - (3 * 20 + 1 * 4)) < 1e-9,
+    'à demi-part, le grenier tient vingt heures au lieu de cinq');
+
+  // **Ce que cette branche ne prétend pas.** Après épuisement du grenier, elle
+  // rend l'arrivage. C'est un modèle, pas une identité : dans une boucle où
+  // l'étal ne perd que ce qu'on lui achète, le régime d'équilibre serait
+  // `arrivage / part`. La variante « exacte » a été écrite et mesurée — elle
+  // porte l'erreur des rations de +0,000 à **+0,205**, parce que le grenier du
+  // moteur se vide de ce qu'il **sert** et non de ce qu'on lui achète. C'est
+  // donc bien l'arrivage qu'il faut, et cette ligne le grave pour que personne
+  // ne « corrige » le contraire.
+  ok(Math.abs(servable(0, 2, 8, 10, 0.5) - 20) < 1e-9,
+    'grenier vide : on sert l’arrivage, pas l’arrivage divisé par la part',
+    `${servable(0, 2, 8, 10, 0.5)}`);
+  // Monotone en la part, sur tout le domaine : moins on achète, plus il reste à
+  // vendre. Une inversion serait le signe que la borne se trompe de côté.
+  let inversions = 0;
+  for (let n = 0; n < 8000; n++) {
+    const veut = rS.range(0.1, 40);
+    const parHeure = rS.range(0, 20);
+    const stock = rS.range(0, 400);
+    const p1 = rS.range(0.05, 0.9);
+    const p2 = Math.min(1, p1 + rS.range(0.05, 0.1));
+    if (servable(stock, parHeure, veut, 24, p1)
+      < servable(stock, parHeure, veut, 24, p2) - 1e-9) inversions += 1;
+  }
+  ok(inversions === 0, 'et elle est monotone en la part sur huit mille tirages',
+    `${inversions} inversion(s)`);
+}
+
+// ---------------------------------------------------------------------------
+section('M0 ter — 4. Le prix de la tranche s’intègre au lieu de s’échantillonner');
+// ---------------------------------------------------------------------------
+//
+// Le dernier des quatre correctifs, et celui qui a demandé le plus de mesures.
+// Le point milieu annule le terme d'ordre un ; il ne fait rien à l'ordre deux,
+// et `prixUnitaire` est en `tension^0,85`, donc convexe. Mesuré sur deux villes
+// fauchées : prix moyen de 18,20 et 11,74 à la maille fine contre 16,77 et
+// 10,60 à la grossière, pour des quantités identiques à un pour cent près.
+//
+// Deux fausses pistes, écartées par la mesure avant celle-ci : Gauss à deux
+// points ne rend que deux pour cent — une meilleure quadrature ne sauve pas une
+// trajectoire mal découpée — et le prix moyen **dans le temps** fait pire que
+// le point milieu, parce qu'il donne le même poids à l'heure où la ville sert
+// sa pleine demande et à l'heure où elle ne sert plus que son arrivage.
+//
+// Ce qu'il fallait, c'est l'intégrale de **la quantité par le prix**.
+{
+  const facteur = (t) => {
+    const bas = Math.pow(0.45, 1 / 0.85);
+    const haut = Math.pow(3.2, 1 / 0.85);
+    return t <= bas ? 0.45 : t >= haut ? 3.2 : Math.pow(t, 0.85);
+  };
+  // Le témoin : la même trajectoire, sommée finement. Il ne juge pas le modèle
+  // — il juge que la forme close intègre bien ce qu'elle prétend intégrer.
+  const somme = (cible, sol, stock0, arriveH, veutH, videH, dt, n) => {
+    const socle = cible * 0.35;
+    const A = cible * sol;
+    const pente = arriveH - videH;
+    const pas = dt / n;
+    let s = 0;
+    for (let i = 0; i < n; i++) {
+      const tau = (i + 0.5) * pas;
+      const brut = stock0 + pente * tau;
+      const stock = brut > 0 ? brut : 0;
+      const q = (pente >= 0 || veutH <= arriveH || brut > 0) ? veutH : arriveH;
+      s += q * facteur(A / (stock + socle)) * pas;
+    }
+    return s;
+  };
+  const rV = new Rng(4242424);
+  let pire = 0;
+  let cas = 0;
+  for (const dt of [2, 4, 8, 24, 28]) {
+    for (let n = 0; n < 1200; n++) {
+      const cible = rV.range(20, 900);
+      const sol = rV.range(0.35, 20);
+      const stock0 = rV.range(0, 1500);
+      const arriveH = rV.range(0, 20);
+      const veutH = rV.range(0, 25);
+      const videH = veutH * rV.range(0.05, 1);
+      const close = valeurTranche(cible, sol, stock0, arriveH, veutH, videH, dt);
+      const ref = somme(cible, sol, stock0, arriveH, veutH, videH, dt, 6000);
+      const e = Math.abs(close - ref) / Math.max(1e-6, Math.abs(ref));
+      if (e > pire) pire = e;
+      cas += 1;
+    }
+  }
+  ok(cas === 6000, 'la forme close est éprouvée sur cinq pas et six mille tirages',
+    `${cas} cas`);
+  ok(pire < 0.002, 'et elle rend l’intégrale à deux millièmes près',
+    `écart relatif maximal ${(pire * 100).toFixed(3)} %`);
+
+  // Les trois régimes, à la main : la borne haute quand l'étal est vide, la
+  // borne basse quand il déborde, la courbe entre les deux.
+  ok(valeurTranche(100, 1, 0, 0, 5, 5, 24) === 0,
+    'étal vide et rien qui arrive : rien à vendre, donc rien à facturer');
+  // Étal vide, mais réapprovisionné : la tension vaut `solvabilité / 0,35`, donc
+  // il faut une bourse bien garnie pour taper le plafond. À 2, elle vaut 5,71.
+  ok(Math.abs(valeurTranche(100, 2, 0, 5, 5, 5, 24) - 5 * 24 * 3.2) < 1e-9,
+    'étal vide et bourses pleines : la borne haute, sur toute la tranche');
+  ok(Math.abs(valeurTranche(100, 1, 100000, 0, 5, 5, 24) - 5 * 24 * 0.45) < 1e-6,
+    'étal qui déborde : la borne basse, sur toute la tranche');
+  // Et à dt = 1, on doit retrouver exactement ce que fait `prixUnitaire`.
+  const cible1 = 300;
+  const sol1 = 1.4;
+  const stock1 = 210;
+  const attendu = facteur(cible1 * sol1 / (stock1 + cible1 * 0.35)) * 7;
+  ok(Math.abs(valeurTranche(cible1, sol1, stock1, 2, 7, 5, 1) - attendu) < 1e-12,
+    'à dt = 1, elle rend le prix de l’instant × la quantité de l’heure');
 }
 
 // ===========================================================================

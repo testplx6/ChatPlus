@@ -9148,6 +9148,139 @@ function consommationColonie(col) {
 }
 
 /**
+ * Ce qu'une ville sert d'une marchandise sur `dt` heures, sans le simuler.
+ *
+ * Heure par heure, elle sert `min(veut, stock + arrivage)` puis garde le reste.
+ * La tranche écrivait `min(veut × dt, stock + arrivage × dt)` — la **somme des
+ * minimums** remplacée par le **minimum des sommes**, ce qui n'est pas la même
+ * chose et ne l'est jamais. C'est la deuxième des trois formes recensées par
+ * `MAILLE.md` §7 : une saturation ne se regroupe pas.
+ *
+ * L'intégrale est close. Tant que la demande horaire dépasse l'arrivage, la
+ * ville puise `veut − arrivage` par heure dans son grenier, jusqu'à l'épuiser :
+ * il n'y a donc rien à approcher et aucun sous-pas à payer. Vérifié contre la
+ * boucle sur vingt-huit mille tirages et sept pas, à 1e-9 près.
+ *
+ * **`part` : ce que les habitants emportent réellement de ce qu'on leur
+ * présente.** Sans lui, la forme close vide le grenier au rythme de la demande
+ * entière — alors qu'une ville dont les gens ne peuvent payer que 42 % de la
+ * note ne voit partir que 42 % de son étal, donc en garde à vendre bien plus
+ * longtemps, donc facture davantage. C'est le dernier résidu de M0 ter, et il
+ * était gros : facture de 3 632 à la maille fine contre 3 134 à la grossière
+ * sur la même ville, d'où une part servie de 0,44 contre 0,51 et seize rations
+ * d'écart en une journée. Le grenier tient `stock / (veut × part − arrivage)`
+ * heures ; au-delà, la ville ne sert plus que ce qui arrive.
+ */
+// Deux ardoises de travail pour le point fixe de la part servie, dans le
+// chemin le plus chaud du moteur : les prix et les arrivages d'une tranche.
+// Au module parce qu'une allocation par ville et par heure se paierait.
+/**
+ * Les deux tensions où `prixUnitaire` quitte sa courbe pour une de ses bornes.
+ * Ce ne sont pas des réglages : ce sont les antécédents exacts de 0,45 et 3,2
+ * par `t^0,85`, et c'est ce qui permet de découper l'intégrale au bon endroit.
+ */
+const TENSION_BASSE = Math.pow(0.45, 1 / 0.85);
+const TENSION_HAUTE = Math.pow(3.2, 1 / 0.85);
+
+/** Le facteur de prix d'une tension, à l'identique de `prixUnitaire`. */
+function facteurTension(t) {
+  return t <= TENSION_BASSE ? 0.45 : t >= TENSION_HAUTE ? 3.2 : Math.pow(t, 0.85);
+}
+
+/**
+ * L'intégrale du facteur de prix sur `duree` heures, l'étal évoluant droit.
+ *
+ * `u = stock + 0,35 cible` bouge linéairement, le facteur vaut `(A/u)^0,85`
+ * entre ses deux bornes, et la primitive de `u^-0,85` est `u^0,15 / 0,15`. Les
+ * bornes se franchissent au plus une fois chacune puisque `u` est monotone : on
+ * découpe donc en trois morceaux au plus, et rien n'est approché.
+ */
+function integreFacteur(A, u0, pente, duree) {
+  if (duree <= 0) return 0;
+  if (pente === 0) return facteurTension(A / u0) * duree;
+  const u1 = u0 + pente * duree;
+  const bas = u0 < u1 ? u0 : u1;
+  const haut = u0 < u1 ? u1 : u0;
+  const vitesse = pente < 0 ? -pente : pente;
+  // `u` grand veut dire étal fourni, donc tension basse, donc borne basse.
+  const uPlafond = A / TENSION_BASSE;
+  const uPlancher = A / TENSION_HAUTE;
+  let somme = 0;
+  const finHaute = haut < uPlancher ? haut : uPlancher;
+  if (finHaute > bas) somme += 3.2 * (finHaute - bas) / vitesse;
+  const c1 = bas > uPlancher ? bas : uPlancher;
+  const c2 = haut < uPlafond ? haut : uPlafond;
+  if (c2 > c1) {
+    somme += Math.pow(A, 0.85) * (Math.pow(c2, 0.15) - Math.pow(c1, 0.15))
+      / (0.15 * vitesse);
+  }
+  const debutBasse = bas > uPlafond ? bas : uPlafond;
+  if (haut > debutBasse) somme += 0.45 * (haut - debutBasse) / vitesse;
+  return somme;
+}
+
+/**
+ * Ce qu'une marchandise vaut sur la tranche entière, en facteurs de prix :
+ * l'intégrale de **la quantité servie par le prix de l'instant**, et non le
+ * produit de la quantité totale par un prix moyen.
+ *
+ * La distinction n'est pas cosmétique, elle a été mesurée. Le prix moyen **dans
+ * le temps** donne le même poids à l'heure où la ville sert sa pleine demande à
+ * bas prix et à l'heure où elle ne sert plus que son arrivage au prix plafond.
+ * Il surpondère donc les heures chères et maigres : l'erreur des rations passe
+ * de +0,533 à +0,634 quand on l'emploie, c'est-à-dire qu'intégrer exactement la
+ * mauvaise quantité fait pire qu'échantillonner grossièrement la bonne.
+ *
+ * `videH` est ce dont l'étal se vide par heure, et il n'est **pas** égal à
+ * `veutH × part` pour les vivres : la ville facture ce que ses habitants
+ * achètent, serrage de ceinture compris, mais son grenier se vide de ce qu'elle
+ * *sert*, qui est le besoin entier. Confondre les deux laissait le prix des
+ * rations dix pour cent trop bas — et c'était, une fois tout le reste corrigé,
+ * la dernière marchandise en écart : les huit autres concordaient déjà à un
+ * pour cent près avec le prix vrai.
+ *
+ * La trajectoire est celle de `servable`, et pas une autre — les deux doivent
+ * raconter la même journée. Tant que le grenier tient, la ville sert sa demande
+ * et l'étal se vide de `demande × part − arrivage` par heure ; après, elle ne
+ * sert plus que ce qui arrive, sur un étal à zéro, donc à prix constant.
+ */
+function valeurTranche(cible, sol, stock0, arriveH, veutH, videH, dt) {
+  const socle = cible * 0.35;
+  const A = cible * sol;
+  const s0 = stock0 > 0 ? stock0 : 0;
+  if (dt <= 1) return veutH * facteurTension(A / (s0 + socle));
+  const pente = arriveH - videH;
+  if (pente >= 0 || veutH <= arriveH) {
+    return veutH * integreFacteur(A, s0 + socle, pente, dt);
+  }
+  const tZero = s0 / -pente;
+  if (tZero >= dt) return veutH * integreFacteur(A, s0 + socle, pente, dt);
+  return veutH * integreFacteur(A, s0 + socle, pente, tZero)
+    + arriveH * (dt - tZero) * facteurTension(A / socle);
+}
+
+const PRIX_TRANCHE = new Float64Array(COMMODITY_KEYS.length);
+const ARRIVEE_TRANCHE = new Float64Array(COMMODITY_KEYS.length);
+
+function servable(stock, parHeure, veutParHeure, dt, part = 1) {
+  if (dt === 1) {
+    const dispo = stock + parHeure;
+    return veutParHeure < dispo ? veutParHeure : dispo;
+  }
+  const manque = veutParHeure - parHeure;
+  const tout = veutParHeure * dt;
+  if (manque <= 0) return tout;
+  if (part >= 1) {
+    const tenu = manque * dt;
+    return parHeure * dt + (stock < tenu ? stock : tenu);
+  }
+  const vide = veutParHeure * part - parHeure;
+  if (vide <= 0) return tout;
+  const tenu = stock / vide;
+  return tenu >= dt ? tout : veutParHeure * tenu + parHeure * (dt - tenu);
+}
+
+/**
  * La valeur d'un lot, sans rien allouer. `valeurLot` passe par `Object.keys`,
  * qui construit un tableau à chaque appel — sans conséquence pour un butin
  * chiffré une fois, pas dans le tick de cinq cents villes.
@@ -9329,12 +9462,26 @@ function estVivante(col) {
  */
 function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null, t = 0, present = false) {
   if (col.ruine) return null;
-  ajusterEmplois(world, col, rng, dt);
   pourvoirCharges(col, rng, t, log);
   tickNotables(col, rng, dt, reputation, log, t);
   tickServices(col, rng, dt, t);
   const prod = productionColonie(world, col);
   const cons = consommationColonie(col);
+  // --- La reconversion se décide sur ce qui vient de se passer, pas avant.
+  //
+  // Elle était appelée en tête, et c'était un pur décalage de phase entre les
+  // deux mailles. `PERIODE_EMPLOIS` vaut vingt-quatre heures : à la maille
+  // fine, la reconversion tombe donc au vingt-quatrième appel, une fois la
+  // journée produite aux anciens métiers ; à la maille grossière, elle tombait
+  // au premier instant de la tranche, et les vingt-quatre heures étaient
+  // produites aux **nouveaux**. Vingt-trois heures sur vingt-quatre du mauvais
+  // côté du changement. Mesuré sur une ville : 186,65 rations récoltées à la
+  // maille fine contre 180,76 à la grossière, pour un écart de stock de 5,64 —
+  // c'est-à-dire tout l'écart de cette ville.
+  //
+  // Déplacée ici, elle voit la même journée des deux côtés. Le coût est nul :
+  // c'est le même appel, à la même fréquence.
+  ajusterEmplois(world, col, rng, dt);
   // `dt` : nombre d'heures couvertes par cet appel. Une économie de colonie n'a
   // aucun besoin d'une résolution horaire ; la traiter par tranches divise le
   // coût du tick sans que rien ne se voie en jeu. Une probabilité horaire p
@@ -9349,6 +9496,14 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
   // lieu d'apparaître. Et comme le prix tient compte de ce qu'ils ont en poche
   // (voir `solvabilite`), une ville pauvre brade et une ville riche surenchérit
   // — le marché se vide dans les deux cas au lieu de se bloquer.
+  // La récolte du jour, amortie comme elle l'est plus bas au service des
+  // vivres. Elle est hissée ici parce que la facture en a besoin : c'est le
+  // point 1 de M0 ter.
+  const amortiVivres = climat ? 1 + (climat.rendement('rations') - 1) * 0.45 : 1;
+  // Ce que la ville sert par heure — le besoin entier, sans le serrage de
+  // ceinture qui, lui, ne s'applique qu'à ce qu'on achète. C'est de ça que le
+  // grenier se vide, et c'est donc ça qui commande le prix des vivres.
+  const besoinVivresH = col.pop * 0.014 * (cons.cantine || 1);
   let facture = 0;
   if (!col.avantPoste) {
     const ctx = contextePrix(col, world);
@@ -9358,8 +9513,18 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
       if (veut <= 0) continue;
       // On ne facture que ce qui peut être servi : facturer le besoin plutôt
       // que l'étal vidait les poches pour des marchandises inexistantes.
-      const enRayon = (col.stock[k] || 0) + (k === 'rations' ? 0 : (prod[k] || 0) * dt);
-      facture += Math.min(veut, enRayon) * prixUnitaire(col, k, undefined, world, ctx);
+      //
+      // **Les rations y échappaient, et c'était un bug, pas un défaut de
+      // maille.** Leur étal était réduit au stock d'avant la tranche, alors que
+      // la récolte du jour entre bel et bien dans ce qui est servi (voir
+      // `disponible`, plus bas dans cette fonction). Une ville qui récoltait et
+      // n'avait plus de grenier mangeait donc sans que personne ne paie :
+      // mesuré sur trente heures, les ménages *montaient* de 1 476 à 1 683
+      // pendant que la caisse se vidait de 5 904 à 5 654. La moitié du circuit
+      // manquait.
+      const arriveH = k === 'rations' ? (prod.rations || 0) * amortiVivres : (prod[k] || 0);
+      facture += servable(col.stock[k] || 0, arriveH, cons[k] || 0, dt)
+        * prixUnitaire(col, k, undefined, world, ctx);
     }
 
     // --- Le prix du milieu de la tranche, et non celui du premier instant.
@@ -9386,21 +9551,86 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
     // seconde passe de prix par tranche, et rien à `dt = 1`.
     if (dt > 1 && facture > 0) {
       const demi = dt / 2;
-      const partP = Math.min(1, (col.menages || 0) / facture);
-      const mMid = Math.max(0, (col.menages || 0)
-        + (valeurCourante(prod) * CAISSE.partSalariale - facture / dt) * demi);
-      const ctxMid = { sol: solvabiliteDe(col, mMid), humeur: ctx.humeur, cours: ctx.cours };
+      // Ce que les habitants auront à dépenser sur la tranche : leur bourse
+      // **plus les salaires qui tombent pendant**. Sans eux, une ville dont les
+      // poches sont vides au matin passe pour ne rien pouvoir acheter de la
+      // journée, alors qu'elle vit précisément de la paie de l'heure — et la
+      // part servie se retrouve fausse d'un facteur deux.
+      const aDepenser = (col.menages || 0)
+        + (col.avantPoste ? 0 : valeurCourante(prod) * CAISSE.partSalariale) * dt;
+      const partP = Math.min(1, aDepenser / facture);
+      // --- Le prix moyen de la tranche, intégré au lieu d'être échantillonné.
+      //
+      // Le point milieu annule le terme d'ordre un, et M0 bis l'a mesuré. Il ne
+      // fait rien au terme d'ordre deux, et sur cette courbe-là il est gros :
+      // `prixUnitaire` est en `tension^0,85` avec deux bornes, donc convexe en
+      // ce qui reste sur l'étal. Mesuré sur deux villes fauchées : prix moyen de
+      // 18,20 et 11,74 à la maille fine contre 16,77 et 10,60 à la grossière,
+      // pour des quantités identiques à un pour cent près. **Huit à dix pour
+      // cent de facture manquante, et rien d'autre.**
+      //
+      // L'idée a été bornée avant d'être écrite, comme M0 bis : en donnant à la
+      // tranche le **vrai** prix moyen de la journée — obtenu en trichant, par
+      // un clone joué heure par heure —, l'erreur des rations tombe de +0,533 à
+      // **+0,067**. Le prix est donc toute l'histoire restante, et il vaut la
+      // peine de l'intégrer pour de bon.
+      //
+      // Et il s'intègre : l'étal évolue linéairement sur la tranche, le facteur
+      // est une puissance de son inverse, et la primitive de `u^-0,85` est
+      // `u^0,15 / 0,15`. Deux échantillons de Gauss ne rendaient que deux pour
+      // cent — une meilleure quadrature ne sauve pas une trajectoire mal
+      // découpée par des bornes. La forme close, elle, découpe aux bornes.
+      const salaireH = col.avantPoste ? 0 : valeurCourante(prod) * CAISSE.partSalariale;
+      const mMid = Math.max(0, (col.menages || 0) + (salaireH - facture / dt) * demi);
+      const solMid = solvabiliteDe(col, mMid);
+      const echelle = ctx.humeur / ctx.cours;
       facture = 0;
       for (let i = 0; i < COMMODITY_KEYS.length; i++) {
         const k = COMMODITY_KEYS[i];
         const veut = (cons[k] || 0) * dt;
+        PRIX_TRANCHE[i] = 0;
         if (veut <= 0) continue;
-        const enRayon = (col.stock[k] || 0) + (k === 'rations' ? 0 : (prod[k] || 0) * dt);
-        const brut = climat ? climat.rendement(k) : 1;
-        const amorti = k === 'rations' ? 1 : 1 + (brut - 1) * 0.45;
-        const sMid = Math.max(0, (col.stock[k] || 0)
-          + ((prod[k] || 0) * amorti - (cons[k] || 0) * partP) * demi);
-        facture += Math.min(veut, enRayon) * prixUnitaire(col, k, sMid, world, ctxMid);
+        // Même arrivage que le service des vivres, pour les rations comme pour
+        // le reste : la projection de l'étal à mi-tranche mentait d'autant que
+        // la saison écartait le rendement de un.
+        const amorti = k === 'rations'
+          ? amortiVivres : 1 + ((climat ? climat.rendement(k) : 1) - 1) * 0.45;
+        const arriveH = k === 'rations' ? (prod.rations || 0) * amortiVivres : (prod[k] || 0);
+        void amorti;
+        const qTranche = servable(col.stock[k] || 0, arriveH, cons[k] || 0, dt, partP);
+        const videH = (k === 'rations' ? besoinVivresH : (cons[k] || 0)) * partP;
+        const valeur = COMMODITIES[k].prix * echelle * valeurTranche(
+          Math.max(1, cibleStock(col, k)), solMid, col.stock[k] || 0,
+          arriveH, cons[k] || 0, videH, dt);
+        // Le point fixe plus bas raisonne en prix unitaire : on lui rend celui
+        // qui, multiplié par la quantité, redonne exactement cette valeur-là.
+        PRIX_TRANCHE[i] = qTranche > 0 ? valeur / qTranche : 0;
+        ARRIVEE_TRANCHE[i] = arriveH;
+        facture += valeur;
+      }
+
+      // --- Le point fixe de la part servie.
+      //
+      // La part dépend de la facture — ce qu'on peut payer sur ce qu'on doit —
+      // et la facture dépend de la part, puisqu'un étal qu'on n'achète qu'à
+      // moitié se vide deux fois moins vite et reste donc à vendre deux fois
+      // plus longtemps. Une seule évaluation part d'une part trop haute et
+      // sous-corrige.
+      //
+      // Deux itérations suffisent, et elles ne coûtent rien : les prix de la
+      // tranche sont déjà calculés, on ne refait que les quantités. Aucun appel
+      // à `prixUnitaire`, aucune allocation — c'est pour ça que les deux
+      // tableaux vivent au module.
+      for (let it = 0; it < 2; it++) {
+        const p2 = Math.min(1, aDepenser / Math.max(1e-9, facture));
+        let f2 = 0;
+        for (let i = 0; i < COMMODITY_KEYS.length; i++) {
+          if (PRIX_TRANCHE[i] <= 0) continue;
+          const k = COMMODITY_KEYS[i];
+          f2 += servable(col.stock[k] || 0, ARRIVEE_TRANCHE[i], cons[k] || 0, dt, p2)
+            * PRIX_TRANCHE[i];
+        }
+        facture = f2;
       }
     }
   }
@@ -9445,6 +9675,29 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
   const duHeure = col.avantPoste ? 0 : valeurCourante(prod) * CAISSE.partSalariale;
   let regle = 0;
   let paye = 0;
+  // --- Les vivres se servent dans le circuit, pas après lui.
+  //
+  // Point 3 de M0 ter, et c'est le dernier morceau. Après les points 1 et 2,
+  // quatre grandeurs sur cinq passaient sous le plancher de bruit et il ne
+  // restait que les rations : +2,331 à `dt = 24` pour un critère à 0,1.
+  //
+  // Le témoin négatif désigne un seul coupable et sans ambiguïté : forcer
+  // `part` à 1 fait tomber l'erreur de **+2,331 à −0,011**. Ce n'est ni les
+  // prix, ni le serrage de ceinture (gelé, il ne rend que 2,331 → 2,032), ni la
+  // population. C'est que la part servie est une **moyenne de tranche** appliquée
+  // à un service qui sature : vingt-quatre heures où l'on peut payer la moitié
+  // ne nourrissent pas comme une journée où l'on peut payer la moitié.
+  //
+  // Et il n'y a pas de sous-pas à payer pour ça : la boucle horaire existe
+  // déjà, plus bas, pour les tranches où un plafond mord — soit exactement les
+  // tranches où `part` varie. Là où la voie rapide passe, `part` vaut un à
+  // chaque heure par construction, donc la moyenne est exacte. On sert donc les
+  // vivres heure par heure là où la boucle tourne, et en forme close ailleurs.
+  const arrivageH = (prod.rations || 0) * amortiVivres;
+  const besoinH = besoinVivresH;
+  let stockVivres = col.stock.rations || 0;
+  let servi = 0;
+  let vivresServies = false;
   const impot = col.faction && world.factions[col.faction]
     ? loisDe(world, col.faction).impot : 0;
   // Ce que chaque bourse gagne ou perd par heure si rien ne bute.
@@ -9494,6 +9747,7 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
     let menages = m0;
     let caisse = c0;
     for (let h = 0; h < dt; h++) {
+      let achatH = 0;
       if (factureHeure > 0) {
         const achat = factureHeure < menages ? factureHeure : menages;
         if (achat > 0) {
@@ -9502,6 +9756,7 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
           if (fisc) fisc.tresor += pris;
           caisse += achat - pris;
           regle += achat;
+          achatH = achat;
         }
       }
       if (duHeure > 0) {
@@ -9510,11 +9765,23 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
         menages += verse;
         paye += verse;
       }
+      // Ce que la ville sert à manger cette heure-ci, avec la part que cette
+      // heure-ci pouvait payer.
+      if (besoinH > 0) {
+        const partH = factureHeure > 0 ? achatH / factureHeure : 1;
+        const dispo = stockVivres + arrivageH;
+        const veutH = besoinH * partH;
+        const sH = veutH < dispo ? veutH : dispo;
+        servi += sH;
+        stockVivres = dispo - sH;
+      }
     }
     col.menages = menages;
     col.caisse = caisse;
+    vivresServies = true;
   }
   const part = facture > 0 ? regle / facture : 1;
+
 
   for (const k of COMMODITY_KEYS) {
     if (k === 'rations') continue; // traité à part, c'est la survie
@@ -9552,14 +9819,21 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
   }
 
   // --- Vivres. On sert ce qu'on peut ; la satiété commande tout le reste.
-  const amortiVivant = climat ? 1 + (climat.rendement('rations') - 1) * 0.45 : 1;
-  const arrivage = (prod.rations || 0) * amortiVivant * dt;
-  const besoin = col.pop * 0.014 * (cons.cantine || 1) * dt;
-  const disponible = (col.stock.rations || 0) + arrivage;
-  // On ne sert que ce qui est là *et* ce qui se paie : une population sans un
-  // sou ne mange pas, fût-ce sur un grenier plein.
-  const servi = Math.min(besoin * part, disponible);
-  col.stock.rations = Math.max(0, disponible - servi);
+  //
+  // La boucle du circuit les a déjà servies heure par heure quand elle a
+  // tourné. Sinon, la part vaut un à chaque heure de la tranche et la forme
+  // close de `servable` rend exactement la même chose, sans boucler.
+  //
+  // `servable` et non `min` : c'est ici, au service des vivres, que la somme
+  // des minimums comptait le plus. Une ville qui récolte chaque heure et n'a
+  // pas de grenier sert vingt-quatre fois sa récolte horaire ; le `min` d'une
+  // tranche lui en servait une seule fois vingt-quatre.
+  const besoin = besoinH * dt;
+  if (!vivresServies) {
+    servi = servable(col.stock.rations || 0, arrivageH, besoinH * part, dt);
+    stockVivres = (col.stock.rations || 0) + arrivageH * dt - servi;
+  }
+  col.stock.rations = stockVivres > 0 ? stockVivres : 0;
   const satiete = besoin > 0 ? servi / besoin : 1;
   // On l'écrit dans la ville. Elle « commande tout le reste » — la grogne, le
   // départ des gens, la croissance — et elle n'était visible nulle part : ni à

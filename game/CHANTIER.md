@@ -606,8 +606,9 @@ inventer, c'est la convention déjà appliquée aux prix, à appliquer aux reven
 - [ ] **H1** — indexer sur le cours les trois références nominales : le salaire
       horaire, `reserveVille`, l'échelle de `solvabiliteDe`. Les *stocks* de
       monnaie ne sont pas réindexés — une inflation doit continuer de ruiner
-      l'épargne, c'est le flux qui doit suivre. **Écrit, mesuré, rouge sur la
-      garde de maille : BLOQUÉ sur M0 ter.** Voir ci-dessous.
+      l'épargne, c'est le flux qui doit suivre. **Le correctif est écrit et
+      mesuré ; il était bloqué par M0 ter, qui est livré. À REPRENDRE et à
+      remesurer en premier.** Voir ci-dessous.
 - [ ] **H2** — retirer `MONNAIE.coursMin` (ne garder qu'un epsilon numérique :
       `coursMonnaie` rend 1 pour un cours nul, et un `Infinity` ne survit pas au
       `JSON.stringify` de la sauvegarde). Rebalayer H0 après H1.
@@ -697,14 +698,13 @@ cours du monde valant 0,47 à 0,90, H1 multiplie par 1,1 à 2,1 ce qui passe dan
 les poches chaque heure. **C'est exactement le mur qui bloque déjà
 `CAISSE.partSalariale = 0,70`.**
 
-**Et M0 ter a depuis été mené jusqu'au bout : son plan de bataille ne marche
-pas.** Quatre correctifs écrits, mesurés, attribués un par un — puis retirés,
-parce qu'ils laissent la garde des rations rouge. Le sous-pas que `MAILLE.md`
-donnait pour « la seule issue mesurée » n'atteint pas le critère à un pas de
-quatre, et coûte environ le double du tick à un pas de deux. Le résidu est
-maintenant localisé au crédit près : **le prix de tranche se lit sur une
-trajectoire projetée droite là où la réalité sature.** Tout est consigné dans
-`MAILLE.md` §M0 ter, code compris. Il faut une idée neuve, pas plus de budget.
+**⚠️ CE BLOCAGE EST LEVÉ — M0 ter est livré.** Le plan de bataille de `MAILLE.md`
+était faux (le sous-pas n'atteint pas le critère et coûte le double du tick),
+mais le vrai correctif a été trouvé : la facture de tranche **s'intègre** au lieu
+de s'échantillonner. Les cinq grandeurs sont sous le plancher de bruit, l'erreur
+locale des rations vaut +0,000, et le monde y gagne 64 villes et 3 points de
+satiété. **H1 est donc à reprendre** : le résidu d'ordre deux qui le bloquait
+n'existe plus, et il faut simplement remesurer. Voir `MAILLE.md` §M0 ter.
 
 Deux mesures à garder, parce qu'elles nuancent le verdict :
 
