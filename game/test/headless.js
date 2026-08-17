@@ -7666,7 +7666,20 @@ section('23. Une probabilité se regroupe, un compte ne se regroupe pas');
       // côtés rend un écart nul qui ne prouve rien.
       if (!((A.caisse || 0) <= 0 && (B.caisse || 0) <= 0)) d.caisse.push((A.caisse || 0) - (B.caisse || 0));
       if (!((A.menages || 0) <= 0 && (B.menages || 0) <= 0)) d.menages.push((A.menages || 0) - (B.menages || 0));
-      if (!((A.stock.rations || 0) <= 0 && (B.stock.rations || 0) <= 0)) {
+      // Et pour les rations seules : les villes dont la POPULATION a divergé
+      // entre les deux mailles sont écartées. Ce n'est pas un élargissement du
+      // critère, c'est retirer un facteur confondant, comme la borne ci-dessus :
+      // les deux mailles consomment le flux d'aléa à des endroits différents,
+      // donc un départ tombe d'un côté et pas de l'autre — c'est du bruit, pas
+      // du regroupement — et deux habitants d'écart font ±0,4 ration par jour,
+      // exactement l'ordre du « résidu » qu'on a cherché pendant une journée.
+      // Mesuré au banc (--maille, « la médiane ouverte ») : villes à population
+      // identique −0,012, villes divergées −0,173 avec des signes des deux
+      // côtés (+7,20 / −7,15). Le défaut de COMPTE de population, lui, a son
+      // propre instrument, qui ne passe pas par une différence de trajectoires :
+      // la partie 4 du banc.
+      if (A.pop === B.pop
+        && !((A.stock.rations || 0) <= 0 && (B.stock.rations || 0) <= 0)) {
         d.rations.push((A.stock.rations || 0) - (B.stock.rations || 0));
       }
       const borne = (c) => c.unrest <= 0 || c.unrest >= 1;

@@ -960,6 +960,48 @@ async function mesurerMaille(graines, horizon) {
   }
   console.log(`   ${'±   '} ${CLES.map((k) => fmt(plancher3[k]).padStart(10)).join(' ')}`);
 
+  // --- La médiane, ouverte : chaque ville avec son écart de population ET son
+  // écart de rations, côte à côte.
+  //
+  // Ajouté le jour où la partie 3 a rendu deux chiffres qui ne se recollaient
+  // pas : population **sous** son plancher (−2 pour ±3) et rations à dix-sept
+  // fois le leur (−0,173 pour ±0,010). Or le témoin négatif — départs et
+  // naissances gelés — prouvait que les rations ne bougent QUE par la
+  // population. Une divergence dans le bruit qui produit un écart hors bruit :
+  // l'un des deux chiffres ne disait pas ce qu'on croyait, et une médiane ne
+  // permet pas de savoir lequel. La distribution, si : elle sépare les villes
+  // où la population a divergé (l'écart de rations y est du bruit propagé) de
+  // celles où elle n'a pas bougé (l'écart y est un vrai défaut de maille).
+  {
+    const paires = [];
+    for (const c0 of villes) {
+      const A = JSON.parse(JSON.stringify(c0));
+      const B = JSON.parse(JSON.stringify(c0));
+      const rA = new rngMod.Rng(9); const rB = new rngMod.Rng(9);
+      for (let h = 0; h < 24; h += 1) eco.tickColonie(s.world, A, rA, cond, 1, 0, null, s.temps + h);
+      eco.tickColonie(s.world, B, rB, cond, 24, 0, null, s.temps);
+      if ((A.stock.rations || 0) <= 0 && (B.stock.rations || 0) <= 0) continue;
+      paires.push({
+        nom: c0.nom,
+        dPop: A.pop - B.pop,
+        dRations: (A.stock.rations || 0) - (B.stock.rations || 0),
+      });
+    }
+    const memePop = paires.filter((x) => x.dPop === 0).map((x) => x.dRations);
+    const popDiverge = paires.filter((x) => x.dPop !== 0).map((x) => x.dRations);
+    console.log('\n   la médiane des rations, ouverte — dt 24, une journée, même graine\n');
+    console.log(`   population identique   ${String(memePop.length).padStart(3)} villes` 
+      + `   écart médian de rations ${fmt(med2(memePop))}`);
+    console.log(`   population divergée    ${String(popDiverge.length).padStart(3)} villes`
+      + `   écart médian de rations ${fmt(med2(popDiverge))}`);
+    const pires = paires.slice().sort((a, b) => Math.abs(b.dRations) - Math.abs(a.dRations));
+    console.log('\n   les cinq pires, pour voir qui porte le chiffre :');
+    for (const x of pires.slice(0, 5)) {
+      console.log(`     ${x.nom.padEnd(20)} pop ${x.dPop >= 0 ? '+' : ''}${x.dPop}`
+        + `   rations ${x.dRations >= 0 ? '+' : ''}${x.dRations.toFixed(2)}`);
+    }
+  }
+
   // 4. Le comptage des événements — l'instrument qui manquait à M2 et M3
   // -------------------------------------------------------------------------
   //
