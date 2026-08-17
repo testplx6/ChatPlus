@@ -695,8 +695,16 @@ qui reste est d'ordre deux, donc il grandit comme le carré de l'amplitude
 horaire — doubler ce qui passe dans les poches chaque heure le quadruple ». Les
 cours du monde valant 0,47 à 0,90, H1 multiplie par 1,1 à 2,1 ce qui passe dans
 les poches chaque heure. **C'est exactement le mur qui bloque déjà
-`CAISSE.partSalariale = 0,70`** — même résidu, même tâche pour le lever, même
-sous-pas à livrer, et donc la même dépendance au chantier de vitesse.
+`CAISSE.partSalariale = 0,70`.**
+
+**Et M0 ter a depuis été mené jusqu'au bout : son plan de bataille ne marche
+pas.** Quatre correctifs écrits, mesurés, attribués un par un — puis retirés,
+parce qu'ils laissent la garde des rations rouge. Le sous-pas que `MAILLE.md`
+donnait pour « la seule issue mesurée » n'atteint pas le critère à un pas de
+quatre, et coûte environ le double du tick à un pas de deux. Le résidu est
+maintenant localisé au crédit près : **le prix de tranche se lit sur une
+trajectoire projetée droite là où la réalité sature.** Tout est consigné dans
+`MAILLE.md` §M0 ter, code compris. Il faut une idée neuve, pas plus de budget.
 
 Deux mesures à garder, parce qu'elles nuancent le verdict :
 
