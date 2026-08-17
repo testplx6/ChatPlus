@@ -24,40 +24,35 @@ import { loisDe } from './lois.js';
 export const MONNAIE = {
   horizonGage: 720,
   /**
-   * Jusqu'où une monnaie a le droit de s'effondrer, et de s'apprécier.
+   * Le plancher du cours est **levé** — il ne reste qu'un epsilon numérique.
    *
-   * Ce n'est pas de la timidité : le cours divise les prix locaux, si bien
-   * qu'une monnaie à 0,06 les multiplie par seize.
+   * « Une économie doit pouvoir s'effondrer aussi » (le propriétaire), et
+   * `ECONOMIE.md` §14 l'exigeait depuis le premier jour : au moins une monnaie
+   * effondrée par lot de six parties. À 0,40, aucun cours ne pouvait jamais
+   * passer dessous — quinze monnaies sur trente-six finissaient collées au
+   * plancher, qui était donc l'état normal de la moitié du monde et rendait le
+   * critère invérifiable.
    *
-   * **La table qui tenait cette place disait l'inverse de la vérité, et il faut
-   * le dire ici plutôt que dans un coin.** Elle concluait « plus le plancher
-   * est bas, mieux le monde mange », sur la foi de `nourries` et `affamees` —
-   * deux comptages de **stocks**. Or un grenier reste plein exactement quand
-   * personne n'a de quoi l'acheter : c'est le piège que ce dépôt a fini par
-   * nommer, et il était déjà cité dans ce commentaire-ci sans qu'on voie qu'il
-   * s'appliquait d'abord à lui. Rebalayé avec la satiété — ce que les gens ont
-   * réellement mangé —, six graines, six mille heures :
+   * **Pourquoi il a existé, et pourquoi il peut partir** : le plancher
+   * protégeait le monde d'une erreur d'unité, pas d'une règle. Les prix
+   * étaient en monnaie locale mais les revenus en ancien crédit, si bien
+   * qu'une monnaie au quart faisait payer les gens quatre fois plus cher à
+   * salaire égal — l'effondrement du cours affamait mécaniquement le pays.
+   * Deux tables successives ont « calibré » cette borne dans ce monde-là, la
+   * première en lisant des stocks à l'envers, la seconde avec la satiété ;
+   * toutes deux calibraient en réalité la gravité du bug. Depuis le lot H,
+   * les revenus suivent le cours comme les prix (salaires des villes, fonds
+   * de roulement, solvabilité, garnisons, soldes) et la monnaie est devenue
+   * auto-correctrice : elle baisse, les prix locaux montent, la valeur de la
+   * production qui la gage monte, le cours remonte. Mesuré : une seule
+   * monnaie sur trente-six touche encore 0,40 — le garde-fou ne gardait plus
+   * rien.
    *
-   *     plancher    villes      pop    satiété   à la diète   masse
-   *      0,40        460      105 932   0,807      57 %        2,8 M
-   *      0,15        490       84 810   0,633      70 %      477 M
-   *      0,05        477       83 531   0,688      69 %    5 896 M
-   *      0,01        476       77 171   0,628      73 %       23 M
-   *      0,000001    493       75 737   0,577      75 %       85 M
-   *
-   * Les deux indicateurs s'accordent enfin, et dans l'autre sens : **plus le
-   * plancher est bas, plus le monde a faim, et moins il compte de monde.**
-   *
-   * Reste que ce plancher est un plafond arbitraire au sens du principe de
-   * réglage de ce dépôt — quinze monnaies sur trente-six finissent collées
-   * dessus, donc il est l'état normal de la moitié du monde, et `ECONOMIE.md`
-   * §14 exige depuis le premier jour qu'« au moins une monnaie s'effondre par
-   * lot de six parties », ce que cette borne rend invérifiable. Le lever
-   * demande d'abord de réparer une erreur d'unité qui fait qu'un effondrement
-   * monétaire affame mécaniquement le pays : voir CHANTIER §Lot H, où le
-   * correctif est écrit, mesuré, et bloqué sur M0 ter.
+   * L'epsilon n'est pas un réglage : c'est la garantie qu'un cours reste un
+   * nombre strictement positif — les prix divisent par lui, et un zéro les
+   * rendrait infinis.
    */
-  coursMin: 0.4,
+  coursMin: 0.000001,
   coursMax: 4,
   /** Le lissage : un cours ne saute pas parce qu'une ville a changé de mains. */
   inertie: 0.7,

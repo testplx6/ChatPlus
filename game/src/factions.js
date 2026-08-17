@@ -23,7 +23,7 @@ import {
   tickCredit, veutBatir, racheterCreance, valeurNette,
 } from './credit.js';
 import {
-  transferer, transfererVille, annuler, majCours, taux, convertirMasse,
+  transferer, transfererVille, annuler, majCours, taux, convertirMasse, coursMonnaie,
 } from './monnaie.js';
 import { pourvoirCharges, nommerActeur } from './notables.js';
 import { chemin, colonieDe, colonieParId, distance, voisins, damer } from './world.js';
@@ -815,7 +815,13 @@ function conseil(world, key, t, log, ctx) {
   const heures = Math.max(1, t - (f.dernierConseil || 0));
   f.dernierConseil = t;
   for (const col of mesColonies) {
-    const du = (col.defense * ETAT.parDefense + col.murs * ETAT.parMur) * heures;
+    // Divisé par le cours, comme les salaires des villes : ce que coûte une
+    // garnison est un salaire, et `ETAT` le chiffre en ancien crédit. Sans
+    // l'indexation, un pays dont la monnaie s'effondre paie ses gardes une
+    // misère sans l'avoir décidé, ses défenses fondent, et il perd ses villes.
+    // Voir CHANTIER §Lot H.
+    const du = (col.defense * ETAT.parDefense + col.murs * ETAT.parMur)
+      * heures / coursMonnaie(world, key);
     const paye = verser(world, key, col, du);
     if (paye < du * 0.999 && col.defense > 0) {
       col.defense = Math.max(0, col.defense * (1 - ETAT.desertion * heures));
@@ -831,7 +837,7 @@ function conseil(world, key, t, log, ctx) {
   // déserter des colonnes parfaitement payées.
   for (const a of world.armees) {
     if (a.faction !== key) continue;
-    const du = a.force * ETAT.parSoldat * heures;
+    const du = a.force * ETAT.parSoldat * heures / coursMonnaie(world, key);
     const paye = verser(world, key, colonieDepart(world, key, a.regionId), du);
     if (du <= 0 || paye >= du * 0.999) a.impayees = 0;
     else a.impayees = (a.impayees || 0) + heures;
@@ -1665,7 +1671,7 @@ function jugerColonnes(world, key, heures, t, log) {
 
     // Issue 3 : se faire payer par une autre. Il faut un ennemi de son pays qui
     // puisse réellement solder l'ardoise — promettre ne suffit pas.
-    const dette = a.force * ETAT.parSoldat * a.impayees;
+    const dette = a.force * ETAT.parSoldat * a.impayees / coursMonnaie(world, key);
     const payeur = Object.keys(world.factions).find(
       (k) => k !== key && k !== 'essaim' && enGuerre(world, k, key)
         && world.factions[k].tresor >= dette);

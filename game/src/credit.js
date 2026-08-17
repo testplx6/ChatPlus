@@ -22,7 +22,7 @@
 import { COMMODITIES, COMMODITY_KEYS, drapeauDe, symboleDe } from './data.js';
 import { loisDe } from './lois.js';
 import { nommerActeur } from './notables.js';
-import { transferer, convertirMasse, taux } from './monnaie.js';
+import { transferer, convertirMasse, taux, coursMonnaie } from './monnaie.js';
 import {
   cibleStock, reserveVille, prixUnitaire, productionColonie,
 } from './economy.js';
@@ -66,7 +66,8 @@ export function interetHoraire(world, col) {
  */
 export function capaciteRemboursement(world, col) {
   if (!col.faction) return 0;
-  return Math.max(0, (col.caisse || 0) - reserveVille(col, loisDe(world, col.faction).impot));
+  return Math.max(0, (col.caisse || 0) - reserveVille(
+    col, loisDe(world, col.faction).impot, coursMonnaie(world, col.faction)));
 }
 
 /**

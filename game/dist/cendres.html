@@ -8857,10 +8857,11 @@ function prixUnitaire(col, key, stockSimule, world, ctx) {
  * la graine près.
  */
 function contextePrix(col, world) {
+  const cours = coursMonnaie(world, col.faction);
   return {
-    sol: solvabilite(col),
+    sol: solvabilite(col, cours),
     humeur: 1 + col.unrest * 0.35,
-    cours: coursMonnaie(world, col.faction),
+    cours,
   };
 }
 
@@ -8884,8 +8885,8 @@ function contextePrix(col, world) {
  * Un seul nombre par ville, sans allocation : ce facteur est lu dans le chemin
  * le plus chaud du moteur.
  */
-function solvabilite(col) {
-  return solvabiliteDe(col, col.menages || 0);
+function solvabilite(col, cours = 1) {
+  return solvabiliteDe(col, col.menages || 0, cours);
 }
 
 /**
@@ -8897,11 +8898,17 @@ function solvabilite(col) {
  * sans quoi les deux se mettraient à diverger un jour sans que personne ne le
  * voie.
  */
-function solvabiliteDe(col, menages) {
+function solvabiliteDe(col, menages, cours = 1) {
   // Votre camp n'a pas de ménages : sa vérité est dans votre poche, et son étal
   // ne doit pas s'effondrer parce qu'un champ vaut zéro.
   if (col.avantPoste || !(col.pop > 0)) return 1;
-  const ordinaire = col.pop * MENAGES.parTete;
+  // `cours` : l'échelle de référence est en **ancien crédit** — trois unités par
+  // tête, mesurées au lot A6 dans un monde où une unité valait une unité. La
+  // bourse qu'on lui compare, elle, est en monnaie locale. Sans la division, un
+  // pays dont la monnaie tombe au quart voit ses ménages passer pour quatre
+  // fois plus pauvres qu'ils ne sont, donc ses prix s'effondrer, donc ses
+  // villes cesser d'encaisser. Voir CHANTIER §Lot H.
+  const ordinaire = col.pop * MENAGES.parTete / cours;
   const a = menages / ordinaire;
   return a < SOLVABILITE.plancher ? SOLVABILITE.plancher
     : (a > SOLVABILITE.plafond ? SOLVABILITE.plafond : a);
@@ -9414,8 +9421,18 @@ function facteurReserve(taux) {
   return Math.max(0.2, 1 + (0.05 - taux) * 8);
 }
 
-function reserveVille(col, taux) {
-  return (col.pop || 0) * CAISSE.parTete * facteurReserve(taux);
+/**
+ * `cours` : douze unités par tête est une somme en **ancien crédit**, et la
+ * caisse à laquelle on la compare est en monnaie locale. Sans la division, un
+ * pays dont la monnaie s'effondre garde un fonds de roulement nominal fixe
+ * pendant que ses prix sont multipliés — donc négligeable, donc le trésor
+ * ramasse tout et les villes ne peuvent plus rien acheter. C'est ce que
+ * montrait la colonne « où est la masse » du balayage : sous un plancher de
+ * 0,01, quatre-vingt-seize pour cent de la monnaie du monde était au trésor.
+ * Voir CHANTIER §Lot H.
+ */
+function reserveVille(col, taux, cours = 1) {
+  return (col.pop || 0) * CAISSE.parTete * facteurReserve(taux) / cours;
 }
 
 /**
@@ -9428,9 +9445,10 @@ function remonterCaisses(world, key, colonies) {
   const f = world.factions[key];
   if (!f) return 0;
   const taux = loisDe(world, key).impot;
+  const cours = coursMonnaie(world, key);
   let leve = 0;
   for (const col of colonies) {
-    const surplus = (col.caisse || 0) - reserveVille(col, taux);
+    const surplus = (col.caisse || 0) - reserveVille(col, taux, cours);
     if (surplus <= 0) continue;
     col.caisse -= surplus;
     leve += surplus;
@@ -9505,8 +9523,10 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
   // grenier se vide, et c'est donc ça qui commande le prix des vivres.
   const besoinVivresH = col.pop * 0.014 * (cons.cantine || 1);
   let facture = 0;
+  // Sorti du bloc : la paie s'en sert aussi, plus bas, et un second appel à
+  // `coursMonnaie` dans le chemin le plus chaud du moteur ne s'écrit pas.
+  const ctx = col.avantPoste ? null : contextePrix(col, world);
   if (!col.avantPoste) {
-    const ctx = contextePrix(col, world);
     for (let i = 0; i < COMMODITY_KEYS.length; i++) {
       const k = COMMODITY_KEYS[i];
       const veut = (cons[k] || 0) * dt;
@@ -9557,7 +9577,7 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
       // journée, alors qu'elle vit précisément de la paie de l'heure — et la
       // part servie se retrouve fausse d'un facteur deux.
       const aDepenser = (col.menages || 0)
-        + (col.avantPoste ? 0 : valeurCourante(prod) * CAISSE.partSalariale) * dt;
+        + (col.avantPoste ? 0 : valeurCourante(prod) * CAISSE.partSalariale / ctx.cours) * dt;
       const partP = Math.min(1, aDepenser / facture);
       // --- Le prix moyen de la tranche, intégré au lieu d'être échantillonné.
       //
@@ -9580,9 +9600,10 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
       // `u^0,15 / 0,15`. Deux échantillons de Gauss ne rendaient que deux pour
       // cent — une meilleure quadrature ne sauve pas une trajectoire mal
       // découpée par des bornes. La forme close, elle, découpe aux bornes.
-      const salaireH = col.avantPoste ? 0 : valeurCourante(prod) * CAISSE.partSalariale;
+      const salaireH = col.avantPoste
+        ? 0 : valeurCourante(prod) * CAISSE.partSalariale / ctx.cours;
       const mMid = Math.max(0, (col.menages || 0) + (salaireH - facture / dt) * demi);
-      const solMid = solvabiliteDe(col, mMid);
+      const solMid = solvabiliteDe(col, mMid, ctx.cours);
       const echelle = ctx.humeur / ctx.cours;
       facture = 0;
       for (let i = 0; i < COMMODITY_KEYS.length; i++) {
@@ -9672,7 +9693,15 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
   // comparaisons suffisent. Quand l'une des deux mord, on retombe sur la
   // boucle, qui reste la vérité.
   const factureHeure = facture / dt;
-  const duHeure = col.avantPoste ? 0 : valeurCourante(prod) * CAISSE.partSalariale;
+  // `valeurCourante` somme des `COMMODITIES[k].prix`, c'est-à-dire les prix de
+  // référence d'avant l'effondrement : un salaire calculé là-dessus est libellé
+  // en **ancien crédit**, alors que la note que ces mêmes gens vont payer est
+  // divisée par le cours. Le pays dont la monnaie tombe au quart payait donc
+  // quatre fois plus cher en gagnant exactement autant, et son salaire réel
+  // tombait à zéro en une heure — sans qu'aucune règle ne l'ait décidé. Voir
+  // CHANTIER §Lot H.
+  const duHeure = col.avantPoste
+    ? 0 : valeurCourante(prod) * CAISSE.partSalariale / ctx.cours;
   let regle = 0;
   let paye = 0;
   // --- Les vivres se servent dans le circuit, pas après lui.
@@ -10507,7 +10536,8 @@ function interetHoraire(world, col) {
  */
 function capaciteRemboursement(world, col) {
   if (!col.faction) return 0;
-  return Math.max(0, (col.caisse || 0) - reserveVille(col, loisDe(world, col.faction).impot));
+  return Math.max(0, (col.caisse || 0) - reserveVille(
+    col, loisDe(world, col.faction).impot, coursMonnaie(world, col.faction)));
 }
 
 /**
@@ -10867,40 +10897,35 @@ const COUT_MUR = 400;
 const MONNAIE = {
   horizonGage: 720,
   /**
-   * Jusqu'où une monnaie a le droit de s'effondrer, et de s'apprécier.
+   * Le plancher du cours est **levé** — il ne reste qu'un epsilon numérique.
    *
-   * Ce n'est pas de la timidité : le cours divise les prix locaux, si bien
-   * qu'une monnaie à 0,06 les multiplie par seize.
+   * « Une économie doit pouvoir s'effondrer aussi » (le propriétaire), et
+   * `ECONOMIE.md` §14 l'exigeait depuis le premier jour : au moins une monnaie
+   * effondrée par lot de six parties. À 0,40, aucun cours ne pouvait jamais
+   * passer dessous — quinze monnaies sur trente-six finissaient collées au
+   * plancher, qui était donc l'état normal de la moitié du monde et rendait le
+   * critère invérifiable.
    *
-   * **La table qui tenait cette place disait l'inverse de la vérité, et il faut
-   * le dire ici plutôt que dans un coin.** Elle concluait « plus le plancher
-   * est bas, mieux le monde mange », sur la foi de `nourries` et `affamees` —
-   * deux comptages de **stocks**. Or un grenier reste plein exactement quand
-   * personne n'a de quoi l'acheter : c'est le piège que ce dépôt a fini par
-   * nommer, et il était déjà cité dans ce commentaire-ci sans qu'on voie qu'il
-   * s'appliquait d'abord à lui. Rebalayé avec la satiété — ce que les gens ont
-   * réellement mangé —, six graines, six mille heures :
+   * **Pourquoi il a existé, et pourquoi il peut partir** : le plancher
+   * protégeait le monde d'une erreur d'unité, pas d'une règle. Les prix
+   * étaient en monnaie locale mais les revenus en ancien crédit, si bien
+   * qu'une monnaie au quart faisait payer les gens quatre fois plus cher à
+   * salaire égal — l'effondrement du cours affamait mécaniquement le pays.
+   * Deux tables successives ont « calibré » cette borne dans ce monde-là, la
+   * première en lisant des stocks à l'envers, la seconde avec la satiété ;
+   * toutes deux calibraient en réalité la gravité du bug. Depuis le lot H,
+   * les revenus suivent le cours comme les prix (salaires des villes, fonds
+   * de roulement, solvabilité, garnisons, soldes) et la monnaie est devenue
+   * auto-correctrice : elle baisse, les prix locaux montent, la valeur de la
+   * production qui la gage monte, le cours remonte. Mesuré : une seule
+   * monnaie sur trente-six touche encore 0,40 — le garde-fou ne gardait plus
+   * rien.
    *
-   *     plancher    villes      pop    satiété   à la diète   masse
-   *      0,40        460      105 932   0,807      57 %        2,8 M
-   *      0,15        490       84 810   0,633      70 %      477 M
-   *      0,05        477       83 531   0,688      69 %    5 896 M
-   *      0,01        476       77 171   0,628      73 %       23 M
-   *      0,000001    493       75 737   0,577      75 %       85 M
-   *
-   * Les deux indicateurs s'accordent enfin, et dans l'autre sens : **plus le
-   * plancher est bas, plus le monde a faim, et moins il compte de monde.**
-   *
-   * Reste que ce plancher est un plafond arbitraire au sens du principe de
-   * réglage de ce dépôt — quinze monnaies sur trente-six finissent collées
-   * dessus, donc il est l'état normal de la moitié du monde, et `ECONOMIE.md`
-   * §14 exige depuis le premier jour qu'« au moins une monnaie s'effondre par
-   * lot de six parties », ce que cette borne rend invérifiable. Le lever
-   * demande d'abord de réparer une erreur d'unité qui fait qu'un effondrement
-   * monétaire affame mécaniquement le pays : voir CHANTIER §Lot H, où le
-   * correctif est écrit, mesuré, et bloqué sur M0 ter.
+   * L'epsilon n'est pas un réglage : c'est la garantie qu'un cours reste un
+   * nombre strictement positif — les prix divisent par lui, et un zéro les
+   * rendrait infinis.
    */
-  coursMin: 0.4,
+  coursMin: 0.000001,
   coursMax: 4,
   /** Le lissage : un cours ne saute pas parce qu'une ville a changé de mains. */
   inertie: 0.7,
@@ -13172,7 +13197,13 @@ function conseil(world, key, t, log, ctx) {
   const heures = Math.max(1, t - (f.dernierConseil || 0));
   f.dernierConseil = t;
   for (const col of mesColonies) {
-    const du = (col.defense * ETAT.parDefense + col.murs * ETAT.parMur) * heures;
+    // Divisé par le cours, comme les salaires des villes : ce que coûte une
+    // garnison est un salaire, et `ETAT` le chiffre en ancien crédit. Sans
+    // l'indexation, un pays dont la monnaie s'effondre paie ses gardes une
+    // misère sans l'avoir décidé, ses défenses fondent, et il perd ses villes.
+    // Voir CHANTIER §Lot H.
+    const du = (col.defense * ETAT.parDefense + col.murs * ETAT.parMur)
+      * heures / coursMonnaie(world, key);
     const paye = verser(world, key, col, du);
     if (paye < du * 0.999 && col.defense > 0) {
       col.defense = Math.max(0, col.defense * (1 - ETAT.desertion * heures));
@@ -13188,7 +13219,7 @@ function conseil(world, key, t, log, ctx) {
   // déserter des colonnes parfaitement payées.
   for (const a of world.armees) {
     if (a.faction !== key) continue;
-    const du = a.force * ETAT.parSoldat * heures;
+    const du = a.force * ETAT.parSoldat * heures / coursMonnaie(world, key);
     const paye = verser(world, key, colonieDepart(world, key, a.regionId), du);
     if (du <= 0 || paye >= du * 0.999) a.impayees = 0;
     else a.impayees = (a.impayees || 0) + heures;
@@ -14022,7 +14053,7 @@ function jugerColonnes(world, key, heures, t, log) {
 
     // Issue 3 : se faire payer par une autre. Il faut un ennemi de son pays qui
     // puisse réellement solder l'ardoise — promettre ne suffit pas.
-    const dette = a.force * ETAT.parSoldat * a.impayees;
+    const dette = a.force * ETAT.parSoldat * a.impayees / coursMonnaie(world, key);
     const payeur = Object.keys(world.factions).find(
       (k) => k !== key && k !== 'essaim' && enGuerre(world, k, key)
         && world.factions[k].tresor >= dette);
@@ -26488,7 +26519,10 @@ function ecranMonde() {
     const dir = DIRECTEURS.reduce(
       (a2, b2) => (Math.abs(b2.taux - l2.directeur) < Math.abs(a2.taux - l2.directeur) ? b2 : a2));
     const c = coursMonnaie(S.world, f.key);
-    const etat = c <= MONNAIE.coursMin ? 'au plancher'
+    // « Effondrée » sous 0,1 : le plancher du cours est levé (lot H), une
+    // monnaie peut tomber aussi bas que sa masse le vaut, et l'écran doit
+    // savoir le dire.
+    const etat = c <= 0.1 ? 'effondrée'
       : c >= MONNAIE.coursMax ? 'au plafond'
         : c < 0.85 ? 'faible' : c > 1.2 ? 'forte' : 'tenue';
     return `<div class="aide">Monnaie ${e(symboleDe(S.world, f.key))} : cours

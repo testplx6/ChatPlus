@@ -204,10 +204,11 @@ export function prixUnitaire(col, key, stockSimule, world, ctx) {
  * la graine près.
  */
 export function contextePrix(col, world) {
+  const cours = coursMonnaie(world, col.faction);
   return {
-    sol: solvabilite(col),
+    sol: solvabilite(col, cours),
     humeur: 1 + col.unrest * 0.35,
-    cours: coursMonnaie(world, col.faction),
+    cours,
   };
 }
 
@@ -231,8 +232,8 @@ export function contextePrix(col, world) {
  * Un seul nombre par ville, sans allocation : ce facteur est lu dans le chemin
  * le plus chaud du moteur.
  */
-export function solvabilite(col) {
-  return solvabiliteDe(col, col.menages || 0);
+export function solvabilite(col, cours = 1) {
+  return solvabiliteDe(col, col.menages || 0, cours);
 }
 
 /**
@@ -244,11 +245,17 @@ export function solvabilite(col) {
  * sans quoi les deux se mettraient à diverger un jour sans que personne ne le
  * voie.
  */
-export function solvabiliteDe(col, menages) {
+export function solvabiliteDe(col, menages, cours = 1) {
   // Votre camp n'a pas de ménages : sa vérité est dans votre poche, et son étal
   // ne doit pas s'effondrer parce qu'un champ vaut zéro.
   if (col.avantPoste || !(col.pop > 0)) return 1;
-  const ordinaire = col.pop * MENAGES.parTete;
+  // `cours` : l'échelle de référence est en **ancien crédit** — trois unités par
+  // tête, mesurées au lot A6 dans un monde où une unité valait une unité. La
+  // bourse qu'on lui compare, elle, est en monnaie locale. Sans la division, un
+  // pays dont la monnaie tombe au quart voit ses ménages passer pour quatre
+  // fois plus pauvres qu'ils ne sont, donc ses prix s'effondrer, donc ses
+  // villes cesser d'encaisser. Voir CHANTIER §Lot H.
+  const ordinaire = col.pop * MENAGES.parTete / cours;
   const a = menages / ordinaire;
   return a < SOLVABILITE.plancher ? SOLVABILITE.plancher
     : (a > SOLVABILITE.plafond ? SOLVABILITE.plafond : a);
@@ -761,8 +768,18 @@ export function facteurReserve(taux) {
   return Math.max(0.2, 1 + (0.05 - taux) * 8);
 }
 
-export function reserveVille(col, taux) {
-  return (col.pop || 0) * CAISSE.parTete * facteurReserve(taux);
+/**
+ * `cours` : douze unités par tête est une somme en **ancien crédit**, et la
+ * caisse à laquelle on la compare est en monnaie locale. Sans la division, un
+ * pays dont la monnaie s'effondre garde un fonds de roulement nominal fixe
+ * pendant que ses prix sont multipliés — donc négligeable, donc le trésor
+ * ramasse tout et les villes ne peuvent plus rien acheter. C'est ce que
+ * montrait la colonne « où est la masse » du balayage : sous un plancher de
+ * 0,01, quatre-vingt-seize pour cent de la monnaie du monde était au trésor.
+ * Voir CHANTIER §Lot H.
+ */
+export function reserveVille(col, taux, cours = 1) {
+  return (col.pop || 0) * CAISSE.parTete * facteurReserve(taux) / cours;
 }
 
 /**
@@ -775,9 +792,10 @@ export function remonterCaisses(world, key, colonies) {
   const f = world.factions[key];
   if (!f) return 0;
   const taux = loisDe(world, key).impot;
+  const cours = coursMonnaie(world, key);
   let leve = 0;
   for (const col of colonies) {
-    const surplus = (col.caisse || 0) - reserveVille(col, taux);
+    const surplus = (col.caisse || 0) - reserveVille(col, taux, cours);
     if (surplus <= 0) continue;
     col.caisse -= surplus;
     leve += surplus;
@@ -852,8 +870,10 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
   // grenier se vide, et c'est donc ça qui commande le prix des vivres.
   const besoinVivresH = col.pop * 0.014 * (cons.cantine || 1);
   let facture = 0;
+  // Sorti du bloc : la paie s'en sert aussi, plus bas, et un second appel à
+  // `coursMonnaie` dans le chemin le plus chaud du moteur ne s'écrit pas.
+  const ctx = col.avantPoste ? null : contextePrix(col, world);
   if (!col.avantPoste) {
-    const ctx = contextePrix(col, world);
     for (let i = 0; i < COMMODITY_KEYS.length; i++) {
       const k = COMMODITY_KEYS[i];
       const veut = (cons[k] || 0) * dt;
@@ -904,7 +924,7 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
       // journée, alors qu'elle vit précisément de la paie de l'heure — et la
       // part servie se retrouve fausse d'un facteur deux.
       const aDepenser = (col.menages || 0)
-        + (col.avantPoste ? 0 : valeurCourante(prod) * CAISSE.partSalariale) * dt;
+        + (col.avantPoste ? 0 : valeurCourante(prod) * CAISSE.partSalariale / ctx.cours) * dt;
       const partP = Math.min(1, aDepenser / facture);
       // --- Le prix moyen de la tranche, intégré au lieu d'être échantillonné.
       //
@@ -927,9 +947,10 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
       // `u^0,15 / 0,15`. Deux échantillons de Gauss ne rendaient que deux pour
       // cent — une meilleure quadrature ne sauve pas une trajectoire mal
       // découpée par des bornes. La forme close, elle, découpe aux bornes.
-      const salaireH = col.avantPoste ? 0 : valeurCourante(prod) * CAISSE.partSalariale;
+      const salaireH = col.avantPoste
+        ? 0 : valeurCourante(prod) * CAISSE.partSalariale / ctx.cours;
       const mMid = Math.max(0, (col.menages || 0) + (salaireH - facture / dt) * demi);
-      const solMid = solvabiliteDe(col, mMid);
+      const solMid = solvabiliteDe(col, mMid, ctx.cours);
       const echelle = ctx.humeur / ctx.cours;
       facture = 0;
       for (let i = 0; i < COMMODITY_KEYS.length; i++) {
@@ -1019,7 +1040,15 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
   // comparaisons suffisent. Quand l'une des deux mord, on retombe sur la
   // boucle, qui reste la vérité.
   const factureHeure = facture / dt;
-  const duHeure = col.avantPoste ? 0 : valeurCourante(prod) * CAISSE.partSalariale;
+  // `valeurCourante` somme des `COMMODITIES[k].prix`, c'est-à-dire les prix de
+  // référence d'avant l'effondrement : un salaire calculé là-dessus est libellé
+  // en **ancien crédit**, alors que la note que ces mêmes gens vont payer est
+  // divisée par le cours. Le pays dont la monnaie tombe au quart payait donc
+  // quatre fois plus cher en gagnant exactement autant, et son salaire réel
+  // tombait à zéro en une heure — sans qu'aucune règle ne l'ait décidé. Voir
+  // CHANTIER §Lot H.
+  const duHeure = col.avantPoste
+    ? 0 : valeurCourante(prod) * CAISSE.partSalariale / ctx.cours;
   let regle = 0;
   let paye = 0;
   // --- Les vivres se servent dans le circuit, pas après lui.

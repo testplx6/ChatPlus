@@ -8176,17 +8176,25 @@ section('26. La colonne sans solde');
     if ((st.world.armees || []).some((a) => a.faction === key)) return;
     const chez = st.world.colonies.find((c) => !c.ruine && c.faction === key);
     if (!chez) return;
+    // `garnison` et pas `marche` : plantée sur sa propre cible, une colonne en
+    // marche « arrive » au premier tick et fusionne avec la ville — elle ne vit
+    // donc jamais jusqu'à un conseil, et son ardoise reste à zéro quoi qu'il
+    // arrive. Le décor a tenu tant que des colonnes naturelles traînaient dans
+    // la fenêtre de mesure et portaient l'ardoise à sa place ; l'indexation des
+    // salaires (lot H) a changé la trajectoire à graine égale, il n'y en a
+    // plus, et le décor mesurait le vide. Même piège, même réparation que le
+    // décor de la sécession (section H0).
     st.world.armees.push({
       id: `aplant${st.temps}`,
       faction: key,
       regionId: chez.regionId,
       force: FORCE_PLANTEE,
       forceMax: FORCE_PLANTEE,
-      cible: chez.id,
+      cible: null,
       route: [],
       etape: 0,
       progres: 0,
-      etat: 'marche',
+      etat: 'garnison',
       ravitaillement: 60,
       impayees: 0,
     });
@@ -8591,8 +8599,18 @@ section('27. Un drapeau qui n’était pas là au départ');
     && identiteDe(f6.st.world, k).couleur),
   'chaque drapeau neuf a un nom et une couleur',
   nes.map((k) => `${identiteDe(f6.st.world, k).nom} ${identiteDe(f6.st.world, k).couleur}`).join(' · '));
-  ok(f6 && nes.every((k) => diploDe(f6.st.world).includes(k)),
-    'et il entre dans le jeu diplomatique');
+  // Les vivants seulement : une compagnie franche peut mourir pendant les neuf
+  // cents heures de la mesure — `morte` porte alors la date — et une faction
+  // morte sort du jeu diplomatique par construction, c'est `diploDe` qui
+  // filtre. Le décor l'exigeait de toutes, mortes comprises, et il a tenu tant
+  // que le hasard faisait survivre les cinq ; l'indexation des salaires (lot H)
+  // a changé la trajectoire à graine égale et l'une d'elles meurt à 1 250.
+  ok(f6 && nes.every((k) => f6.st.world.factions[k].morte
+    || diploDe(f6.st.world).includes(k)),
+  'et il entre dans le jeu diplomatique tant qu’il est debout');
+  ok(f6 && nes.filter((k) => f6.st.world.factions[k].morte)
+    .every((k) => !diploDe(f6.st.world).includes(k)),
+  'et un drapeau mort en sort');
   ok(f6 && f6.pire < 1e-6, 'et l’invariant comptable tient à travers les fondations',
     f6 ? `écart maximal ${f6.pire.toExponential(2)}` : '');
 
@@ -9669,6 +9687,137 @@ section('M0 ter — 4. Le prix de la tranche s’intègre au lieu de s’échant
   const attendu = facteur(cible1 * sol1 / (stock1 + cible1 * 0.35)) * 7;
   ok(Math.abs(valeurTranche(cible1, sol1, stock1, 2, 7, 5, 1) - attendu) < 1e-12,
     'à dt = 1, elle rend le prix de l’instant × la quantité de l’heure');
+}
+
+// ---------------------------------------------------------------------------
+section('H1. Une monnaie qui chute ne doit pas affamer le pays par erreur d’unité');
+// ---------------------------------------------------------------------------
+//
+// CHANTIER §Lot H. Le propriétaire : « une économie doit pouvoir s'effondrer
+// aussi ». La cause qui l'interdisait n'était pas une règle manquante, c'était
+// un mélange d'unités : une ville **achète** en monnaie locale — `prixUnitaire`
+// divise par le cours — mais elle **versait ses salaires** en ancien crédit,
+// `valeurCourante` sommant les prix de référence d'avant l'effondrement. Même
+// chose pour le fonds de roulement (`reserveVille`), l'échelle de solvabilité
+// (`solvabiliteDe`), et les salaires de l'État — garnisons, murs, solde.
+//
+// Conséquence mesurée : un pays dont la monnaie vaut le quart payait quatre
+// fois plus cher en gagnant exactement autant. Son salaire réel tombait à zéro
+// en une heure, sans qu'aucune règle ne l'ait décidé.
+//
+// Ce que ce test ne demande PAS : que l'inflation soit indolore. Les *stocks*
+// de monnaie gardent leur valeur nominale et perdent donc leur valeur réelle —
+// une inflation doit continuer de ruiner l'épargne. C'est le *flux* qui doit
+// suivre le cours, comme les prix le font déjà.
+{
+  const sH = nouvellePartie(11, { maintenant: 0 });
+  for (let i = 0; i < 400; i++) tick(sH);
+  const condH = conditions(sH.world, sH.temps);
+  // Des villes debout ET qui mangent : le décor doit partir de villes dont la
+  // satiété peut bouger dans les deux sens. Une ville déjà à la diète rend le
+  // même creux des deux côtés et ne prouve rien.
+  const villesH = sH.world.colonies.filter(
+    (c) => !c.ruine && !c.avantPoste && c.faction && c.pop > 60
+      && (c.caisse || 0) > 0 && (c.satiete === undefined ? 1 : c.satiete) > 0.9)
+    .slice(0, 30);
+
+  // Deux mondes qui ne diffèrent que par le cours. On les clone tous les deux
+  // depuis la même source : comparer un monde neuf à un monde recopié ferait
+  // porter l'écart à la recopie.
+  const monde = (facteur) => {
+    const w = JSON.parse(JSON.stringify(sH.world));
+    for (const k of Object.keys(w.factions)) {
+      w.factions[k].cours = (w.factions[k].cours || 1) * facteur;
+    }
+    return w;
+  };
+
+  // La satiété médiane des mêmes villes après quatre cents heures. Le `Rng`
+  // repart de la même graine à chaque ville : deux passes du même monde doivent
+  // rendre exactement le même nombre.
+  const satieteApres = (w) => {
+    const s = [];
+    for (const c0 of villesH) {
+      const c = JSON.parse(JSON.stringify(c0));
+      const r = new Rng(9);
+      for (let h = 0; h < 400; h++) tickColonie(w, c, r, condH, 1, 0, null, sH.temps + h);
+      s.push(c.satiete === undefined ? 1 : c.satiete);
+    }
+    s.sort((a, b) => a - b);
+    return s[Math.floor(s.length / 2)];
+  };
+
+  // Le témoin d'abord : deux mondes au même cours doivent rendre le même
+  // chiffre, sinon l'instrument mesure du bruit et non le cours.
+  const ref = satieteApres(monde(1));
+  ok(villesH.length >= 15, 'le décor trouve assez de villes qui mangent',
+    `${villesH.length} villes`);
+  ok(Math.abs(satieteApres(monde(1)) - ref) < 1e-12,
+    'témoin : à cours égal, deux mondes rendent exactement la même satiété',
+    `${ref.toFixed(4)}`);
+  ok(ref > 0.5,
+    'et le décor n’est pas mort d’avance — ces villes-là mangent',
+    `satiété médiane ${ref.toFixed(3)}`);
+
+  // Puis le pays dont la monnaie a chuté des trois quarts.
+  const chute = satieteApres(monde(0.25));
+  ok(Math.abs(chute - ref) < 0.05,
+    'une monnaie au quart ne change pas ce que les gens mangent',
+    `${ref.toFixed(3)} au pair contre ${chute.toFixed(3)} au quart`);
+
+  // Et la symétrie : une monnaie qui s'apprécie n'enrichit pas non plus en
+  // vrai. Sans cette moitié-là, on pourrait indexer à moitié et croire que ça
+  // tient.
+  const envol = satieteApres(monde(4));
+  ok(Math.abs(envol - ref) < 0.05,
+    'une monnaie au quadruple non plus',
+    `${ref.toFixed(3)} au pair contre ${envol.toFixed(3)} au quadruple`);
+}
+
+// ---------------------------------------------------------------------------
+section('H2. Une monnaie peut s’effondrer — le plancher du cours est levé');
+// ---------------------------------------------------------------------------
+//
+// « Une économie doit pouvoir s'effondrer aussi » — décision du propriétaire,
+// et `ECONOMIE.md` §14 l'exigeait depuis le premier jour : « au moins une
+// monnaie s'effondre par lot de six parties ». `MONNAIE.coursMin = 0,40`
+// rendait ce critère invérifiable — aucun cours ne pouvait passer dessous,
+// jamais.
+//
+// Le plancher datait d'un monde où l'effondrement du cours affamait
+// mécaniquement le pays, par l'erreur d'unité que H1 corrige. Ce monde-là
+// n'existe plus : les revenus suivent le cours comme les prix, et une monnaie
+// qui tombe n'emporte plus les gens avec elle. Le garde-fou n'a plus rien à
+// garder.
+{
+  const sE = nouvellePartie(626300);
+  const cle = clesDe(sE.world).find((k) => k !== 'essaim' && sE.world.factions[k]);
+  const fE = sE.world.factions[cle];
+
+  // La référence du cours se pose au premier conseil : on l'établit, puis on
+  // noie la monnaie sous les émissions. Dix fois la masse existante : c'est la
+  // planche à billets d'un pays aux abois, et c'est précisément le scénario
+  // que le jeu doit savoir raconter.
+  const gageDe = 1000;
+  majCours(sE.world, cle, gageDe);
+  emettre(sE.world, cle, Math.max(1, fE.masse) * 10);
+  fE.tresor += Math.max(1, fE.masse);
+  // Le cours est lissé (`inertie` 0,7) : on laisse plusieurs conseils
+  // l'encaisser, comme en jeu.
+  for (let i = 0; i < 30; i++) majCours(sE.world, cle, gageDe);
+  ok(coursMonnaie(sE.world, cle) < 0.1,
+    'dix fois la masse émise : la monnaie s’effondre pour de bon',
+    `cours ${coursMonnaie(sE.world, cle).toFixed(4)}`);
+  ok(coursMonnaie(sE.world, cle) > 0,
+    'mais elle cote toujours un nombre — pas un zéro qui casserait les prix',
+    `${coursMonnaie(sE.world, cle)}`);
+
+  // Et la sauvegarde survit à une monnaie effondrée : un cours minuscule reste
+  // un nombre JSON.
+  const copie = JSON.parse(JSON.stringify(sE));
+  ok(typeof copie.world.factions[cle].cours === 'number'
+    && copie.world.factions[cle].cours > 0,
+  'et l’aller-retour JSON la garde telle quelle');
 }
 
 // ===========================================================================

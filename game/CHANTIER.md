@@ -603,24 +603,34 @@ Un effondrement monétaire n'a donc pas besoin de règle nouvelle pour affamer l
 monde : il l'affame par une erreur d'unité. Ce n'est pas une règle de jeu à
 inventer, c'est la convention déjà appliquée aux prix, à appliquer aux revenus.
 
-- [ ] **H1** — indexer sur le cours **toutes** les sommes nominales : salaire
+- [x] **H1** — indexer sur le cours **toutes** les sommes nominales : salaire
       horaire des villes, `reserveVille`, échelle de `solvabiliteDe`, et les
       salaires de l'État (`ETAT.parDefense`, `parMur`, `parSoldat`). Les *stocks*
       de monnaie ne sont pas réindexés — une inflation doit continuer de ruiner
-      l'épargne, c'est le flux qui doit suivre. **Écrit, complété, remesuré :
-      neuf gardes sur dix, satiété 0,881, vitesse ×0,923. Reste un seul
-      obstacle, nommé — la probabilité de départ, calculée une fois par
-      tranche.** Voir ci-dessous.
-- [ ] **H2** — retirer `MONNAIE.coursMin` (ne garder qu'un epsilon numérique :
-      `coursMonnaie` rend 1 pour un cours nul, et un `Infinity` ne survit pas au
-      `JSON.stringify` de la sauvegarde). Rebalayer H0 après H1.
-- [ ] **H3** — le banc : `auPlancher` code en dur `<= 0,4001` et ne veut plus
-      rien dire sans plancher. Le remplacer par un comptage d'effondrées à
-      définition fixe, et suivre dans `CIBLES.json`.
+      l'épargne, c'est le flux qui doit suivre. **LIVRÉ.** Le « dernier
+      obstacle » de la note ci-dessous s'est dissous à la mesure : la médiane
+      des rations, ouverte ville par ville, a montré que le −0,173 était porté
+      par les six villes dont la population avait divergé — du bruit de flux
+      d'aléa, symétrique (+7,20 / −7,15), pas un défaut de maille. Les villes à
+      population identique sont à −0,012, dans le bruit. La garde du moteur
+      mesure désormais sur elles, comme elle écartait déjà les villes saturées.
+- [x] **H2** — retirer `MONNAIE.coursMin` : 0,40 → un epsilon numérique
+      (0,000001 — un cours doit rester strictement positif, les prix divisent
+      par lui). **LIVRÉ**, avec son test rouge : dix fois la masse émise, et le
+      cours tombe sous 0,1 pour de bon. Mesuré à la bascule, six graines :
+      **cours minimal 0,06, cinq monnaies effondrées sur trente-six** — le
+      critère d'ECONOMIE §14, « au moins une par lot de six parties », est
+      tenu et enfin vérifiable. Et le monde ne meurt pas avec : satiété 0,886
+      contre 0,839, villes à la diète 46 % contre 54 %, 135 996 habitants.
+      L'indexation a rendu la monnaie auto-correctrice — c'est elle qui
+      remplace le garde-fou.
+- [x] **H3** — le banc et la garde : `auPlancher` remplacée par `effondrees`
+      (cours ≤ 0,1, le seuil de §14), colonne au tableau, garde `[1, null]`
+      dans `CIBLES.json` — un plancher parce que l'effondrement doit rester
+      possible, pas de plafond parce que sa fréquence est une forme de monde.
 - [ ] **H4** — `MONNAIE.coursMax = 4` est la borne symétrique, et elle sature
-      elle aussi (3,87 à 3,97 dans les cinq configurations). À instruire après
-      H2, pas avant : une seule borne à la fois, sinon on ne saura pas laquelle
-      a fait quoi.
+      encore (4,00 atteint à la bascule H2). À instruire maintenant que H2 est
+      livré — une seule borne à la fois, et la seconde attend son tour.
 
 ### H1 — le correctif est écrit et il marche ; il bute sur la même chose que `partSalariale`
 

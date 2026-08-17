@@ -814,6 +814,14 @@ descendre en dessous et la cible ne pouvait rien vérifier — jamais. Elle est
 remplacée par « monnaies **au plancher** », qui mesure ce qu'elle voulait dire :
 **15 sur 36**, soit près d'une monnaie sur deux effondrée à la fin d'une partie.
 
+*Mise à jour, lot H (août 2026) : le plancher lui-même est levé.* Il ne
+protégeait que d'une erreur d'unité — prix en monnaie locale, revenus en ancien
+crédit — corrigée par l'indexation des revenus sur le cours. Depuis, la cible
+d'origine est redevenue mesurable telle qu'elle était écrite, en plus sévère
+(cours ≤ 0,1) : **5 monnaies effondrées sur 36, cours minimal 0,06**, et le
+critère du §14 — au moins une par lot de six parties — est tenu. Détail au
+CHANTIER, §Lot H.
+
 **La conquête par l'argent est devenue la règle, et c'est désormais assumé.**
 
 La fourchette « 2 à 10 » a été écrite avant que le mécanisme tourne, et elle

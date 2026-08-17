@@ -4010,7 +4010,10 @@ function ecranMonde() {
     const dir = DIRECTEURS.reduce(
       (a2, b2) => (Math.abs(b2.taux - l2.directeur) < Math.abs(a2.taux - l2.directeur) ? b2 : a2));
     const c = coursMonnaie(S.world, f.key);
-    const etat = c <= MONNAIE.coursMin ? 'au plancher'
+    // « Effondrée » sous 0,1 : le plancher du cours est levé (lot H), une
+    // monnaie peut tomber aussi bas que sa masse le vaut, et l'écran doit
+    // savoir le dire.
+    const etat = c <= 0.1 ? 'effondrée'
       : c >= MONNAIE.coursMax ? 'au plafond'
         : c < 0.85 ? 'faible' : c > 1.2 ? 'forte' : 'tenue';
     return `<div class="aide">Monnaie ${e(symboleDe(S.world, f.key))} : cours

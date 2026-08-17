@@ -224,11 +224,17 @@ function jouer({ sim, data, eco, eco2 }, graine, horizon) {
     creve: cols.filter((c) => (c.satiete === undefined ? 1 : c.satiete) < 0.8).length,
     dette: Math.round(cols.reduce((a2, c) => a2 + (c.dette || 0), 0)),
     evts,
-    // Les monnaies collées au plancher. « Cours < 0,4 » était une cible qui
-    // interrogeait une valeur impossible : `coursMin` vaut 0,4, aucun cours ne
-    // descend dessous — la cible ne pouvait donc jamais rien vérifier.
-    auPlancher: data.DIPLO_FACTIONS.filter(
-      (k) => (s.world.factions[k].cours || 1) <= 0.4001).length,
+    // Les monnaies effondrées — cours au dixième de l'ancien crédit ou moins.
+    //
+    // Cette colonne a compté deux choses avant celle-ci, et les deux étaient
+    // fausses de la même façon : « cours < 0,4 » interrogeait une valeur
+    // impossible (le plancher valait exactement 0,4), puis « au plancher »
+    // comptait les monnaies collées à une borne qui n'existe plus depuis que
+    // le lot H l'a levée. Le dixième est le seuil d'ECONOMIE §14 — « au moins
+    // une monnaie s'effondre par lot de six parties » — et il est enfin
+    // atteignable, donc vérifiable.
+    effondrees: data.DIPLO_FACTIONS.filter(
+      (k) => (s.world.factions[k].cours || 1) <= 0.1).length,
     armees: (s.world.armees || []).length,
     retournements,
     saisies,
@@ -334,7 +340,7 @@ function agreger(cfg) {
     paliers: [...new Set(cfg.parties.flatMap((p2) => p2.paliers))]
       .sort((a4, b4) => a4 - b4).map((x) => `${Math.round(x * 100)}`).join('/'),
     dette: som(cfg, 'dette'),
-    auPlancher: som(cfg, 'auPlancher'),
+    effondrees: som(cfg, 'effondrees'),
     retournements: som(cfg, 'retournements'),
     saisies: som(cfg, 'saisies'),
     debandades: som(cfg, 'debandades'),
@@ -359,7 +365,8 @@ const COLONNES = [
   ['masse', 'masse', 9], ['ou', 'caisses/ménages/trésors', 22],
   ['endettees', 'endettées', 9], ['affamees', 'affamées', 11],
   ['satiete', 'satiété', 8], ['creve', 'à la diète', 11],
-  ['cours', 'cours', 11], ['ecart', 'écart', 6], ['creances', 'créances', 9],
+  ['cours', 'cours', 11], ['effondrees', 'effondrées', 10],
+  ['ecart', 'écart', 6], ['creances', 'créances', 9],
   ['paliers', 'taux %', 12],
   ['retournements', 'vestes', 7], ['saisies', 'saisies', 8],
   ['debandades', 'débandes', 9],
