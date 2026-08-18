@@ -53,7 +53,21 @@ export const MONNAIE = {
    * rendrait infinis.
    */
   coursMin: 0.000001,
-  coursMax: 4,
+  /**
+   * Le plafond du cours est levé lui aussi — la borne symétrique de H2, tombée
+   * pour la même raison. Un pays qui garde ses villes pendant que sa monnaie se
+   * raréfie — la masse fond au fil des conquêtes qui l'emportent, des rachats,
+   * des retraits — doit coter ce que le rapport dit, pas s'arrêter à quatre.
+   * Le balayage de H2 montrait la borne saturée : 4,00 atteint.
+   *
+   * Le million qui reste est un plafond **numérique**, pas économique : prix,
+   * salaires et réserves divisent par le cours et `JSON.stringify` écrit
+   * `null` pour `Infinity` — aucun chemin ne doit pouvoir coter l'infini. Le
+   * mécanisme borne déjà de lui-même bien avant : `majCours` divise par
+   * `max(1, masse)`, donc un cours ne dépasse jamais le gage du pays rapporté
+   * à sa référence d'origine.
+   */
+  coursMax: 1000000,
   /** Le lissage : un cours ne saute pas parce qu'une ville a changé de mains. */
   inertie: 0.7,
   /**
@@ -94,18 +108,11 @@ export function gage(world, key, valeurProduction) {
   return Math.max(1, valeurProduction * MONNAIE.horizonGage);
 }
 
-/**
- * Le cours : ce qu'une unité vaut, en ancien crédit — la monnaie d'avant
- * l'effondrement, que plus personne n'émet et dont plus une pièce ne circule.
- * Elle ne sert qu'à comparer, et c'est pour ça qu'elle n'apparaît qu'au bureau
- * de change.
- */
-export function coursBrut(world, key, gageDuPays) {
-  const m = masse(world, key);
-  if (!(m > 0)) return MONNAIE.coursMax;
-  const brut = gageDuPays / m;
-  return Math.max(MONNAIE.coursMin, Math.min(MONNAIE.coursMax, brut));
-}
+// `coursBrut` vivait ici et n'avait aucun appelant — nulle part, ni moteur, ni
+// écran, ni tests. Son cas « pas de masse → rendre le plafond » devenait un
+// non-sens avec le plafond levé (une faction sans monnaie aurait coté un
+// million), et du code mort qui rend des non-sens finit toujours par trouver un
+// appelant. Retiré au lot H4 ; `majCours` est la seule voie de cotation.
 
 /** La moyenne des taux directeurs du monde, pour situer le sien. */
 export function tauxMoyen(world) {

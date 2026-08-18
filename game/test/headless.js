@@ -9820,6 +9820,59 @@ section('H2. Une monnaie peut s’effondrer — le plancher du cours est levé')
   'et l’aller-retour JSON la garde telle quelle');
 }
 
+// ---------------------------------------------------------------------------
+section('H4. Une monnaie peut s’envoler — le plafond du cours est levé aussi');
+// ---------------------------------------------------------------------------
+//
+// La borne symétrique de H2, et le même principe du propriétaire : « tous les
+// types de mondes devraient pouvoir exister ». Un pays qui garde ses villes et
+// sa production pendant que sa monnaie se raréfie — la masse fond au fil des
+// conquêtes qui l'emportent, des rachats, des retraits — doit voir son cours
+// monter aussi haut que le rapport le dit, pas s'arrêter à quatre parce qu'une
+// constante l'a décidé. Le balayage de H2 montrait déjà la borne saturée :
+// 4,00 atteint, des monnaies collées dessous.
+//
+// Ce qui reste : un plafond **numérique**, un million, qui ne garde que la
+// sauvegarde — aucun chemin ne doit produire un cours infini, parce que les
+// prix, les salaires et les réserves divisent par lui et que `JSON.stringify`
+// écrit `null` pour `Infinity`.
+{
+  const sV = nouvellePartie(626400);
+  const cle = clesDe(sV.world).find((k) => k !== 'essaim' && sV.world.factions[k]);
+  const fV = sV.world.factions[cle];
+
+  // La référence se pose au premier conseil, puis la monnaie se raréfie : le
+  // pays produit autant, il circule cent fois moins d'unités. C'est l'inverse
+  // exact de la planche à billets de H2.
+  const gageDe = 1000;
+  majCours(sV.world, cle, gageDe);
+  fV.masse = Math.max(1, fV.masse * 0.01);
+  for (let i = 0; i < 40; i++) majCours(sV.world, cle, gageDe);
+  ok(coursMonnaie(sV.world, cle) > 4,
+    'cent fois moins d’unités en circulation : le cours passe la vieille borne',
+    `cours ${coursMonnaie(sV.world, cle).toFixed(2)}`);
+  ok(Number.isFinite(coursMonnaie(sV.world, cle)),
+    'et il reste un nombre fini — les prix divisent par lui');
+
+  // Une ville de ce pays cote alors des prix minuscules, et des salaires
+  // minuscules avec : la déflation est symétrique de l'inflation, personne ne
+  // s'enrichit en vrai. C'est H1 qui le garantit, on le revérifie ici du côté
+  // fort.
+  const ville = sV.world.colonies.find((c) => c.faction === cle && !c.ruine && !c.avantPoste);
+  if (ville) {
+    const prix = prixUnitaire(ville, 'rations', undefined, sV.world);
+    ok(prix > 0 && prix < COMMODITIES.rations.prix,
+      'ses prix locaux sont minuscules mais pas nuls',
+      `${prix.toFixed(5)} contre ${COMMODITIES.rations.prix} en ancien crédit`);
+  }
+
+  // Et l'aller-retour JSON, toujours : une monnaie envolée se sauvegarde.
+  const copie = JSON.parse(JSON.stringify(sV));
+  ok(typeof copie.world.factions[cle].cours === 'number'
+    && Number.isFinite(copie.world.factions[cle].cours),
+  'l’aller-retour JSON la garde telle quelle');
+}
+
 // ===========================================================================
 console.log('\n' + '='.repeat(42));
 console.log(`${total - echecs}/${total} tests passés`);

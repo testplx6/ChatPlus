@@ -1,5 +1,5 @@
 import {
-  soldeIci, monnaieIci, monnaieSolde, valeurBourse, masse, coursMonnaie, MONNAIE,
+  soldeIci, monnaieIci, monnaieSolde, valeurBourse, masse, coursMonnaie,
 } from './monnaie.js';
 // Interface : rendu HTML + carte pixel sur canvas. C'est le SEUL module qui
 // touche au DOM — tout le reste du dossier src/ tourne aussi bien sous Node.
@@ -4010,11 +4010,12 @@ function ecranMonde() {
     const dir = DIRECTEURS.reduce(
       (a2, b2) => (Math.abs(b2.taux - l2.directeur) < Math.abs(a2.taux - l2.directeur) ? b2 : a2));
     const c = coursMonnaie(S.world, f.key);
-    // « Effondrée » sous 0,1 : le plancher du cours est levé (lot H), une
-    // monnaie peut tomber aussi bas que sa masse le vaut, et l'écran doit
-    // savoir le dire.
+    // « Effondrée » sous 0,1, « envolée » au-dessus de 10 : les deux bornes du
+    // cours sont levées (lot H), une monnaie vaut ce que sa masse dit, et
+    // l'écran doit savoir nommer les deux extrêmes — dix pour un est le miroir
+    // exact d'un pour dix.
     const etat = c <= 0.1 ? 'effondrée'
-      : c >= MONNAIE.coursMax ? 'au plafond'
+      : c >= 10 ? 'envolée'
         : c < 0.85 ? 'faible' : c > 1.2 ? 'forte' : 'tenue';
     return `<div class="aide">Monnaie ${e(symboleDe(S.world, f.key))} : cours
       ${n(c, 2)} — ${e(etat)}. ${n(Math.round(masse(S.world, f.key)))} en circulation,

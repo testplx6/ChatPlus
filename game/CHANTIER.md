@@ -628,9 +628,25 @@ inventer, c'est la convention déjà appliquée aux prix, à appliquer aux reven
       (cours ≤ 0,1, le seuil de §14), colonne au tableau, garde `[1, null]`
       dans `CIBLES.json` — un plancher parce que l'effondrement doit rester
       possible, pas de plafond parce que sa fréquence est une forme de monde.
-- [ ] **H4** — `MONNAIE.coursMax = 4` est la borne symétrique, et elle sature
-      encore (4,00 atteint à la bascule H2). À instruire maintenant que H2 est
-      livré — une seule borne à la fois, et la seconde attend son tour.
+- [x] **H4** — `MONNAIE.coursMax` : 4 → un million, plafond **numérique** et
+      non économique (les prix divisent par le cours, et `JSON.stringify`
+      écrit `null` pour `Infinity` ; le mécanisme borne déjà de lui-même,
+      `majCours` divisant par `max(1, masse)`). **LIVRÉ**, test rouge à
+      l'appui : cent fois moins d'unités en circulation, et le cours passe la
+      vieille borne au lieu d'y rester collé. `coursBrut` — code mort sans un
+      seul appelant, dont le cas « pas de masse → rendre le plafond » devenait
+      un non-sens — est retiré.
+
+      Mesuré à la bascule, six graines contre H2 : **une monnaie monte à
+      67,07**, trois restent effondrées (la garde tient), et le monde paie la
+      borne levée de cinq points de satiété — 0,886 → 0,836, le niveau d'avant
+      H1 — avec 51 % de villes à la diète contre 46. **Le symptôme est net et
+      il désigne le prochain de la liste : les ménages du pays à monnaie forte
+      thésaurisent** (5 919 k contre 1 176 k dans le monde entier), parce que
+      `SOLVABILITE.plafond = 20` sature — l'échelle de solvabilité divisée par
+      un cours de 67 rend toute bourse « vingt fois l'ordinaire », le prix
+      plafonne à ×3,2, et l'argent ne repart plus. La borne suivante est déjà
+      en train de faire ce que `coursMin` faisait : cacher un monde possible.
 
 ### H1 — le correctif est écrit et il marche ; il bute sur la même chose que `partSalariale`
 
