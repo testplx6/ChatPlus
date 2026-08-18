@@ -984,7 +984,48 @@ l'instant et étal de l'instant, toutes marchandises. C'est le sous-pas, mais
 seulement pour les villes qui en ont besoin. L'erreur de caisse passe de
 −1 195 à −96 sur la pire ville, et la médiane de −47,9 à +1,06.
 
-**Les trois blocages, dans l'ordre où il faudra les prendre :**
+**Le chantier de vitesse a été mené (deuxième passage, août 2026), et il
+change la nature du blocage.** Trois optimisations livrées dans le patch v2
+(`scratchpad/lotIbis2.diff`) : le point fixe à une itération de prix ; le
+chemin exact quand la dérive de solvabilité est sous le millième ; et surtout
+un **routage à trois voies** — la moitié des tranches entraient en boucle pour
+la seule caisse (salaires bornés, ménages sains, mesuré : 50 % contre 3 % de
+ménages bornés) et y payaient le reprix horaire pour rien ; elles ont retrouvé
+la boucle simple d'avant, sans un pow de l'heure. Et la frontière du régime
+non linéaire a été trouvée en ouvrant la médiane de la caisse par voie : les
+villes fautives (jusqu'à −510 en une journée) étaient sur la voie RAPIDE, et
+leur signature est **la bourse qui tourne en moins d'un jour** — la paie
+quotidienne dépasse ce que les poches contiennent, la trajectoire de la bourse
+est concave, et tout modèle linéaire la surestime. Routées au reprix, elles
+tombent à ±50.
+
+Le résultat net, mesuré à chaque pas :
+
+| variante | caisse (erreur locale, plancher ±0,23) | vitesse |
+|---|---:|---:|
+| reprix partout (v1) | +1,06 | ×1,48 |
+| + point fixe réduit + chemin exact + pré-filtre | — | ×1,36 |
+| + trois voies, pente au salaire tenable | −3,26 | — |
+| + frontière « la bourse tourne » | **+1,99** | **×1,53** |
+
+**La conclusion, et elle vaut plus que le chiffre : chaque gain de précision
+route plus de villes vers l'heure par heure, et chaque gain de vitesse les en
+retire.** Les bornes de prix n'étaient pas des constantes de jeu — elles
+étaient la CONDITION DE VALIDITÉ du niveau de détail : écrêter la solvabilité,
+c'est garantir que la journée d'une ville est assez linéaire pour se raconter
+en une tranche. Sans elles, une grande part des villes vit des journées non
+linéaires qui exigent la résolution horaire. Ce n'est pas de l'ingénierie qui
+manque, c'est un choix d'architecture à faire :
+
+- **payer** — ×1,3 à ×1,5 de tick pour le monde à prix libres (satiété 0,977),
+  ce qui demande de relever le budget de vitesse, décision du propriétaire ;
+- **redessiner le niveau de détail** — un pas ADAPTATIF par ville : les villes
+  en régime linéaire gardent la tranche de vingt-quatre, celles en régime non
+  linéaire descendent à deux-quatre heures. C'est le vrai chantier (« M6 »),
+  et la frontière de régime est maintenant connue et mesurable ;
+- **renoncer** aux prix libres — contraire à la décision du propriétaire.
+
+**Les trois blocages d'origine, dans l'ordre où il faudra les prendre :**
 
 1. **La vitesse : ×1,40 pour un budget de ×1,08.** Le profil est net :
    `tickColonie` 21,8 % en propre (la boucle horaire, ~7 pow par

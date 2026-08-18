@@ -8691,10 +8691,16 @@ section('27. Un drapeau qui n’était pas là au départ');
   // ornement. Une colonne qui passe par là le ramasse : l'argent change de
   // drapeau, masse comprise, et l'invariant ne bronche pas.
   const st7 = orpheline.st;
-  const region = st7.world.regions[orpheline.magotVu.i];
+  // Une région SANS magot : ce décor reposait le sien dans la région du magot
+  // d'origine, en pariant qu'une colonne l'aurait ramassé entre-temps — « une
+  // colonne finit toujours par passer ». C'est un pari sur la trajectoire, et
+  // le jour où une variante du moteur l'a changée, personne n'était passé :
+  // `region.magot = …` écrasait alors 2 000 crédits d'existant sans toucher la
+  // masse, et l'audit accusait le moteur du vol commis par le décor. Un décor
+  // n'écrase jamais un avoir : il pose le sien ailleurs.
+  const region = st7.world.regions.find((r) => !r.magot && !r.colonie);
   const preneur = diploDe(st7.world).find((k) => k !== 'finie');
-  // En jeu le magot part vite — une colonne finit toujours par passer. On en
-  // repose donc un, pris à la faction morte pour que rien ne soit inventé.
+  // On en repose un, pris à la faction morte pour que rien ne soit inventé.
   transferer(st7.world, preneur, 'finie', 500);
   st7.world.factions[preneur].tresor -= 500;
   region.magot = { faction: 'finie', montant: 500 };
