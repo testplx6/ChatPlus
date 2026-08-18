@@ -2053,20 +2053,65 @@ console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit
     // Ça s'est vu le jour où les colonnes ont su se nourrir — plus de campagnes
     // vivantes, donc une escouade qui se blesse et se charge pendant les trois
     // secondes de la mesure. Le décor était faux avant, il ne le montrait pas.
+    // La sonde lit aussi `scrollTop` : sans lui, un échec ne dit pas si l'ancre
+    // a bougé le défilement (elle a agi, mal) ou si le contenu a glissé sous un
+    // défilement immobile (elle n'a pas agi du tout). Les deux pannes ont des
+    // coupables différents, et on a déjà accusé l'ancre d'un défaut de décor
+    // une fois — la sonde est ce qui a permis de le voir.
     const lu = () => page.evaluate(() => {
       const ec = document.querySelector('#ecran');
       const el = document.elementFromPoint(200, ec.getBoundingClientRect().top + 10);
-      return (el ? el.textContent : '').slice(0, 34)
+      const texte = (el ? el.textContent : '').slice(0, 34)
         .replace(/\s+/g, ' ').replace(/\d+/g, '#').split(' · ')[0];
+      return { texte, haut: Math.round(ec.scrollTop) };
     });
+    // Une ligne évincée n'est pas une ligne déplacée. Le journal ne garde que
+    // ses `LOG_MAX` (400) dernières entrées ; à soixante fois la vitesse sur
+    // une machine rapide, cent quatre-vingt-dix heures de jeu défilent pendant
+    // les trois secondes de mesure, et la ligne lue peut vieillir hors du
+    // journal avant le huitième relevé. L'ancre ne peut pas garder ce qui
+    // n'existe plus — la sonde l'a montré : le défilement suivait pas à pas
+    // (7431 → 8841) et le texte a tenu six relevés, jusqu'à l'éviction. C'est
+    // la troisième fois que ce décor accuse l'ancre du comportement d'un
+    // autre : d'abord un `scrollTop` immobile lu comme un déplacement, puis la
+    // même ligne qui gagnait des morceaux sans bouger, maintenant la rétention
+    // du journal. On arrête donc la mesure à l'éviction — les relevés d'avant
+    // comptent, ceux d'après n'ont plus d'objet.
     const debut = await lu();
+    // L'aiguille est le texte entier, coupe du `slice(0, 34)` comprise : pour
+    // une recherche de sous-chaîne, un mot tronqué reste contenu dans le mot
+    // plein. La première version retirait le dernier mot par prudence — et le
+    // dernier mot était le seul distinctif : « J# #:# » sans « Puits-Vespe »
+    // se trouve dans chaque ligne du journal, et l'éviction devenait
+    // indétectable.
+    const aiguille = debut.texte.trim();
+    // On compte les TRANSITIONS, pas les relevés. L'écran se rend toutes les
+    // huit cents millisecondes environ et la sonde lit toutes les quatre
+    // cents : chaque paire de relevés voit donc le même rendu (7807 7807,
+    // 8486 8486… — relevé à la sonde), et un accroc unique au dernier rendu
+    // comptait double. « Deux relevés déplacés » mesurait la fréquence
+    // d'échantillonnage du décor, pas la stabilité de l'écran. Un vrai
+    // vacillement — la ligne qui saute à chaque rendu — compte toujours :
+    // chaque saut est une transition.
     let bouges = 0;
-    for (let i = 0; i < 8; i++) {
+    let evincee = false;
+    let precedent = debut.texte;
+    const releves = [];
+    for (let i = 0; i < 8 && !evincee; i++) {
       await page.waitForTimeout(400);
-      if (await lu() !== debut) bouges++;
+      const r = await lu();
+      releves.push(r);
+      if (r.texte !== precedent) {
+        const la = await page.evaluate((n) => document.querySelector('#ecran').textContent
+          .replace(/\s+/g, ' ').replace(/\d+/g, '#').includes(n), aiguille);
+        if (!la) { evincee = true; releves[releves.length - 1].e = true; continue; }
+        bouges++;
+        precedent = r.texte;
+      }
     }
     ok(bouges <= 1, `écran ${tab} : ce qu’on lit reste sous les yeux`,
-      `${bouges}/8 relevés déplacés · « ${debut} »`);
+      `${bouges} transition(s) sur ${releves.length} relevés · « ${debut.texte} » (haut ${debut.haut}) · `
+      + releves.map((r) => `${r.haut}${r.e ? '†' : r.texte === debut.texte ? '' : '≠'}`).join(' '));
     await page.click('[data-a="vitesse"][data-v="1"]');
   }
 }
