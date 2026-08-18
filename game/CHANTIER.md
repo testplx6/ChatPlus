@@ -923,6 +923,93 @@ minutes.
 
 ## Blocages
 
+### Lot I bis — les bornes de prix levées font le meilleur monde jamais mesuré, à un prix que le moteur ne sait pas encore payer
+
+**« Tout doit être possible »** — la dernière famille de bornes : le facteur de
+prix [0,45, 3,2], la solvabilité [0,35, 20], le plafond de stock (cible × 4).
+Toutes trois levées, quatre tests rouges passés au vert, deux mécanismes
+réparés en chemin — et le lot N'EST PAS livré : la garde de maille reste rouge
+et la vitesse coûte ×1,40 pour un plafond à ×1,08. Le patch complet est
+conservé (`scratchpad/lotIbis.diff` de la session, 649 lignes) et tout ce qui a
+été appris est ici.
+
+**Ce que le monde y gagne, mesuré (6 graines × 6 000 h, contre edefe7d) :**
+
+| | avec bornes | sans bornes |
+|---|---:|---:|
+| satiété | 0,867 | **0,977** |
+| à la diète | 32 % | **15 %** |
+| villes | 318 | **378** |
+| habitants | 117 588 | **155 699** |
+| µs/tick | 405 | **567 (×1,40)** |
+
+Toutes les gardes du monde tiennent. La satiété 0,977 est de très loin le
+meilleur chiffre jamais relevé : le plafond de prix à ×3,2 rationnait la
+circulation de l'argent — mesuré dès H4 par la thésaurisation (5,9 M dans les
+ménages d'un pays à monnaie forte) — et sa levée remet l'argent en mouvement,
+donc la nourriture.
+
+**Les deux mécanismes que les bornes portaient, réparés dans le patch :**
+
+1. **Le crédit.** `detresse` dimensionnait le prêt « au prix qu'elle
+   paierait » — au prix de sa misère : sans plancher de solvabilité, le prix
+   d'une ville aux poches vides tend vers zéro, donc le besoin estimé aussi,
+   donc plus personne ne prêtait à ceux qui en avaient le plus besoin,
+   précisément parce qu'ils en avaient besoin. Corrigé : le prêt s'évalue au
+   prix de la solvabilité ordinaire — l'état qu'il vise à restaurer.
+2. **Le décor de surextension** mesurait à 200 h, où la ville surchargée
+   sature à 1,000 depuis que la boucle grogne → prix → faim → grogne n'est
+   plus écrêtée. Mesuré : ×1,7 à 100 h, ×2,4 à 150 h, butée à 200 h. Le décor
+   mesure à 150 h — troisième fois que cette butée-là piège ce décor-là.
+
+**Le vrai chantier découvert : le régime à deux temps des villes pauvres.**
+Sans plancher de solvabilité, une ville aux poches vides vit des journées que
+la tranche ne sait pas raconter : les prix sont quasi nuls le matin (personne
+n'a rien), la paie s'accumule dans les poches, la solvabilité remonte, et les
+prix montent EN COURS DE JOURNÉE jusqu'à ce que l'argent reparte. Deux régimes
+dans une tranche. Trois modèles de prix de tranche essayés et mesurés à
+l'erreur locale de caisse (critère 0,1) :
+
+| modèle | caisse à `dt` = 24 |
+|---|---:|
+| point milieu (l'existant) | −7,7 |
+| pente de solvabilité intégrée (Gauss par segments) | −6,4 |
+| pente nulle en régime borné | −47,9 (instable : le régime commute dans le point fixe) |
+| **le prix de l'heure dans la boucle horaire** | **+1,06** |
+
+Le quatrième est le bon et il est dans le patch : la boucle horaire du circuit
+— qui existait déjà pour les villes où un plafond mord, 37 % des tranches —
+recalcule le prix de chaque heure comme la maille fine le lit, solvabilité de
+l'instant et étal de l'instant, toutes marchandises. C'est le sous-pas, mais
+seulement pour les villes qui en ont besoin. L'erreur de caisse passe de
+−1 195 à −96 sur la pire ville, et la médiane de −47,9 à +1,06.
+
+**Les trois blocages, dans l'ordre où il faudra les prendre :**
+
+1. **La vitesse : ×1,40 pour un budget de ×1,08.** Le profil est net :
+   `tickColonie` 21,8 % en propre (la boucle horaire, ~7 pow par
+   ville-heure) et `valeurTranche` 10,1 % (trois passes de Gauss par tranche —
+   la passe 2 plus deux itérations du point fixe qui recalculent les prix).
+   Pistes non instruites : réduire le point fixe à une itération de prix ;
+   basculer sur l'intégrale exacte quand la dérive de solvabilité est
+   négligeable (seuil numérique, pas économique) ; et surtout mesurer si la
+   voie rapide peut reprendre une partie des 37 % de tranches en boucle.
+2. **Le résidu de caisse : +1,06 pour un plancher de bruit à ±0,23.** La piste
+   est nommée : la boucle horaire prend l'humeur (`1 + grogne × 0,35`) au
+   début de tranche, alors que la maille fine la voit évoluer heure par heure
+   — mais la répliquer tire l'agitation, donc les départs, donc l'ordre des
+   tirages. À instruire au témoin négatif avant d'écrire une ligne.
+3. **Le critère de maille lui-même : 0,1 est devenu inatteignable par
+   construction.** Le plancher de bruit du placebo — deux mailles fines à
+   graines différentes, une seule journée — est passé de ±0,010 à **±0,55 de
+   rations et ±0,23 de caisse** : le monde aux prix libres est plus chaotique
+   par nature, et deux tirages honnêtes n'y rendent plus jamais la même
+   ville à 0,1 près. Les rations mesurées (−0,447) sont SOUS leur plancher.
+   Le critère juste est probablement celui de la partie 2 — « sous le
+   plancher de bruit établi par placebo » — mais un critère ne se change pas
+   pour faire passer une mesure : à trancher en ouvrant `MAILLE.md` §5, pas
+   en le contournant.
+
 ### RÉSOLU — Lot I : les planchers démographiques sont levés, et le monde a le droit de rétrécir
 
 **« Tout doit être possible »** (le propriétaire, en réponse au point sur les
