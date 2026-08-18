@@ -985,6 +985,41 @@ planchers démographiques doivent revenir sous une autre forme ?**
 Le patch est conservé (`scratchpad/lotI.diff` de la session, et il se réécrit
 en dix minutes depuis cette note) ; les quatre décors de test avec.
 
+**« Mesure plus grand d'abord » (le propriétaire) — fait, à 20 000 et
+40 000 heures. La mesure longue renverse la charge de la preuve : c'est le
+monde AVEC planchers qui casse à long terme.**
+
+| horizon | villes avec / sans | satiété avec / sans | affamées avec / sans | masse avec / sans |
+|---|---|---|---|---|
+| 6 000 h | 484 / 318 | 0,836 / **0,867** | 44 % / 21 % | 8,9 M / 4,7 M |
+| 12 000 h | 584 / 275 | 0,730 / **0,863** | 34 % / 4 % | 45 716 Md / 46 Md |
+| 20 000 h | 659 / 259 | 0,791 / **0,832** | 36 % / 2 % | 33×10¹⁵ / 2 251 Md |
+| 40 000 h | 689 / 242 | 0,754 / **0,827** | 46 % / **1 %** | 1,2×10¹⁴ / 333 Md |
+
+Trois faits, et ils sont sans appel :
+
+- **La trajectoire sans planchers converge.** −166 villes, puis −43, −16, −17 :
+  le monde se stabilise autour de 240 villes. Ce n'est pas une spirale, c'est
+  une taille d'équilibre.
+- **Le monde avec planchers grossit en pourrissant.** 689 villes à 40 000 h —
+  et 46 % d'affamées, 65 % à la diète, **36 monnaies sur 36 effondrées**
+  (cours 0,00–0,01 : plus une seule monnaie ne vaut rien nulle part), masse
+  à 1,2×10¹⁴. Les villes-zombies commercent sans pouvoir mourir et nourrissent
+  l'hyperinflation sans fin.
+- **À ces échelles, même la comptabilité perd pied.** L'écart d'audit au monde
+  à planchers vaut 177 à 20 000 h et 82 861 à 40 000 h — soit 7×10⁻¹⁰ de la
+  masse : ce n'est pas une fuite, c'est l'arrondi flottant d'une masse qui n'a
+  plus de sens physique. Le monde sans planchers garde un écart de **zéro
+  exact** aux deux horizons, parce que sa masse reste dans le domaine où
+  compter veut dire quelque chose.
+
+La question au propriétaire reste celle du paragraphe précédent, mais la
+mesure longue la reformule : ce ne sont pas « deux gardes contre un monde
+plus sain » — c'est **le monde à planchers qui est le monde cassé**, et les
+deux gardes qui le protègent. `villes [430, 600]` et `bourses [28, 36]`
+encodent la taille du monde d'avant ; l'état stable mesuré sans planchers est
+de 240–320 villes et 27–35 bourses selon l'horizon.
+
 ### La garde des créances et §13 ne parlaient pas du même objet — et le vrai chiffre est 738
 
 En préparant la question à poser au propriétaire, un doute : la garde
