@@ -52,6 +52,30 @@ import {
  * une ville ne s'enrichit que de ce qui trouve preneur, d'où le `min(offre,
  * besoin)` de `revenuInterne`.
  */
+/**
+ * La frontière de validité du modèle de tranche, en part de la paie
+ * quotidienne que la bourse des ménages contient au matin.
+ *
+ * En dessous, la bourse « tourne » plus de deux fois par jour : la dépense
+ * accélère à mesure que la paie s'accumule et que la solvabilité remonte, la
+ * trajectoire de la bourse est concave, et tout modèle de tranche — quel que
+ * soit son raffinement, quatre ont été mesurés — surestime les prix. Ces
+ * villes-là passent par la boucle horaire à reprix, qui est la vérité.
+ *
+ * Balayé contre le juge de qualité (banc --maille, partie 2 : quarante jours
+ * contre plancher de placebo) et la garde de vitesse :
+ *
+ *     seuil    vitesse    qualité (5 grandeurs)   dérive caisse à 40 j
+ *      1,0      ×1,58     sous le plancher          +4,8 (±13)
+ *      0,5      ×1,44     sous le plancher          +5,4 (±16)
+ *      0,25     ×1,46     sous le plancher          +8,4 (±16)
+ *
+ * 0,5 prend la vitesse sans céder la qualité ; 0,25 ne rend rien de plus et
+ * double la dérive. Ce n'est pas une règle de jeu : c'est la frontière entre
+ * deux méthodes de calcul du même monde.
+ */
+export const TRANCHE = { rotationBourse: 0.5 };
+
 export const CAISSE = {
   marge: 0.10,
   parTete: 12,
@@ -161,18 +185,25 @@ export function prixUnitaire(col, key, stockSimule, world, ctx) {
   const base = COMMODITIES[key].prix;
   const cible = Math.max(1, cibleStock(col, key));
   const stock = Math.max(0, stockSimule === undefined ? (col.stock[key] || 0) : stockSimule);
-  // Rapport stock/demande → facteur borné [0.45, 3.2]
+  // Rapport stock/demande → facteur en loi de puissance, SANS bornes.
+  //
+  // Les bornes [0,45, 3,2] sont levées (lot I bis, « tout doit être
+  // possible ») : elles écrasaient précisément les extrêmes qu'une simulation
+  // doit savoir raconter. Mesuré au lot H4 : les ménages d'un pays à monnaie
+  // forte thésaurisaient 5,9 millions parce que la solvabilité saturait à
+  // vingt et le prix à ×3,2 — l'argent ne pouvait plus repartir par les prix,
+  // donc il ne repartait plus du tout. Et le propriétaire a arbitré l'exploit
+  // que le plancher gardait : oui, on peut acheter pour rien à une ville
+  // ruinée. C'est une simulation.
+  //
+  // Le raccourci de vitesse qui vivait ici — les bornes avalaient le `pow`
+  // hors de leur fenêtre — part avec elles ; ce que ça coûte est mesuré à la
+  // garde de vitesse, pas supposé. La tension reste strictement positive
+  // (solvabilité à plancher epsilon, socle de 0,35 cible au dénominateur),
+  // donc le prix aussi : on divise par lui ailleurs.
   const c = ctx || contextePrix(col, world);
   const tension = cible * c.sol / (stock + cible * 0.35);
-  // Le `pow` ne sert que dans la fenêtre où il change quelque chose. Hors
-  // d'elle, la borne l'avale — et c'est **exact**, pas approché :
-  // `0,39^0,85 = 0,4492 < 0,45` et `4^0,85 = 3,249 > 3,2`, avec de la marge des
-  // deux côtés. Une ville dont l'étal déborde ou dont l'étal est vide n'a donc
-  // plus d'exponentielle à payer, et il y en a beaucoup — c'est le chemin le
-  // plus chaud du moteur, vingt appels par ville et par tranche.
-  const f = tension <= 0.39 ? 0.45
-    : tension >= 4 ? 3.2
-      : Math.max(0.45, Math.min(3.2, Math.pow(tension, 0.85)));
+  const f = Math.pow(tension, 0.85);
   // Et ce que vaut la monnaie du lieu. Une monnaie faible fait des prix locaux
   // élevés : l'inflation se lit sur l'écran du marché sans qu'on l'explique.
   // `cours` vaut 1 tant que le conseil n'est pas passé, et pour une ville sans
@@ -250,11 +281,24 @@ export function solvabiliteDe(col, menages, cours = 1) {
 }
 
 /**
- * Jusqu'où la bourse des habitants a le droit de tirer les prix. Bornes
- * calibrées au banc : sans plancher, une ville ruinée brade à zéro et le joueur
- * la pille ; sans plafond, une ville riche cote des prix que personne ne paie.
+ * Jusqu'où la bourse des habitants a le droit de tirer les prix : partout.
+ *
+ * Les bornes économiques sont levées (lot I bis). L'ancien commentaire disait
+ * leur raison d'être — « sans plancher, une ville ruinée brade à zéro et le
+ * joueur la pille ; sans plafond, une ville riche cote des prix que personne
+ * ne paie » — et le propriétaire a arbitré les deux : c'est une simulation,
+ * une ville ruinée brade et une ville riche flambe. Le plafond, surtout,
+ * cachait un monde entier : mesuré au lot H4, les ménages d'un pays à monnaie
+ * forte thésaurisaient 5,9 millions parce que la solvabilité saturait à vingt
+ * — les prix ne pouvaient plus suivre la richesse, donc l'argent ne
+ * repartait plus.
+ *
+ * Ce qui reste est numérique, pas économique : un plancher strictement
+ * positif parce que la tension entre dans une puissance et le prix dans des
+ * divisions, et un plafond parce que `JSON.stringify` écrit `null` pour
+ * `Infinity`.
  */
-export const SOLVABILITE = { plancher: 0.35, plafond: 20 };
+export const SOLVABILITE = { plancher: 0.000001, plafond: 1000000 };
 
 /**
  * Prix effectifs pour le joueur.
@@ -516,26 +560,19 @@ export function consommationColonie(col) {
 // Deux ardoises de travail pour le point fixe de la part servie, dans le
 // chemin le plus chaud du moteur : les prix et les arrivages d'une tranche.
 // Au module parce qu'une allocation par ville et par heure se paierait.
-/**
- * Les deux tensions où `prixUnitaire` quitte sa courbe pour une de ses bornes.
- * Ce ne sont pas des réglages : ce sont les antécédents exacts de 0,45 et 3,2
- * par `t^0,85`, et c'est ce qui permet de découper l'intégrale au bon endroit.
- */
-const TENSION_BASSE = Math.pow(0.45, 1 / 0.85);
-const TENSION_HAUTE = Math.pow(3.2, 1 / 0.85);
-
 /** Le facteur de prix d'une tension, à l'identique de `prixUnitaire`. */
 function facteurTension(t) {
-  return t <= TENSION_BASSE ? 0.45 : t >= TENSION_HAUTE ? 3.2 : Math.pow(t, 0.85);
+  return Math.pow(t, 0.85);
 }
 
 /**
  * L'intégrale du facteur de prix sur `duree` heures, l'étal évoluant droit.
  *
- * `u = stock + 0,35 cible` bouge linéairement, le facteur vaut `(A/u)^0,85`
- * entre ses deux bornes, et la primitive de `u^-0,85` est `u^0,15 / 0,15`. Les
- * bornes se franchissent au plus une fois chacune puisque `u` est monotone : on
- * découpe donc en trois morceaux au plus, et rien n'est approché.
+ * `u = stock + 0,35 cible` bouge linéairement, le facteur vaut `(A/u)^0,85`,
+ * et la primitive de `u^-0,85` est `u^0,15 / 0,15`. Un seul segment : les
+ * bornes du facteur sont levées (lot I bis), et l'intégrale, qui se découpait
+ * en trois morceaux à leurs franchissements, s'est simplifiée avec elles.
+ * Rien n'est approché.
  */
 function integreFacteur(A, u0, pente, duree) {
   if (duree <= 0) return 0;
@@ -544,21 +581,8 @@ function integreFacteur(A, u0, pente, duree) {
   const bas = u0 < u1 ? u0 : u1;
   const haut = u0 < u1 ? u1 : u0;
   const vitesse = pente < 0 ? -pente : pente;
-  // `u` grand veut dire étal fourni, donc tension basse, donc borne basse.
-  const uPlafond = A / TENSION_BASSE;
-  const uPlancher = A / TENSION_HAUTE;
-  let somme = 0;
-  const finHaute = haut < uPlancher ? haut : uPlancher;
-  if (finHaute > bas) somme += 3.2 * (finHaute - bas) / vitesse;
-  const c1 = bas > uPlancher ? bas : uPlancher;
-  const c2 = haut < uPlafond ? haut : uPlafond;
-  if (c2 > c1) {
-    somme += Math.pow(A, 0.85) * (Math.pow(c2, 0.15) - Math.pow(c1, 0.15))
-      / (0.15 * vitesse);
-  }
-  const debutBasse = bas > uPlafond ? bas : uPlafond;
-  if (haut > debutBasse) somme += 0.45 * (haut - debutBasse) / vitesse;
-  return somme;
+  return Math.pow(A, 0.85) * (Math.pow(haut, 0.15) - Math.pow(bas, 0.15))
+    / (0.15 * vitesse);
 }
 
 /**
@@ -586,23 +610,75 @@ function integreFacteur(A, u0, pente, duree) {
  * et l'étal se vide de `demande × part − arrivage` par heure ; après, elle ne
  * sert plus que ce qui arrive, sur un étal à zéro, donc à prix constant.
  */
-export function valeurTranche(cible, sol, stock0, arriveH, veutH, videH, dt) {
+export function valeurTranche(cible, sol, stock0, arriveH, veutH, videH, dt, dSol = 0) {
   const socle = cible * 0.35;
-  const A = cible * sol;
   const s0 = stock0 > 0 ? stock0 : 0;
-  if (dt <= 1) return veutH * facteurTension(A / (s0 + socle));
+  if (dt <= 1) return veutH * facteurTension(cible * sol / (s0 + socle));
   const pente = arriveH - videH;
-  if (pente >= 0 || veutH <= arriveH) {
-    return veutH * integreFacteur(A, s0 + socle, pente, dt);
+  const tZero = pente < 0 && veutH > arriveH ? s0 / -pente : Infinity;
+  const T1 = tZero < dt ? tZero : dt;
+  // Le seuil est numérique, pas économique : une dérive sous le millième de
+  // la solvabilité de départ pèse moins sur le facteur que l'erreur propre de
+  // la quadrature — l'intégrale exacte à solvabilité mi-course est alors
+  // meilleure ET moins chère.
+  if (dSol === 0 || Math.abs(dSol) * dt < sol * 0.001) {
+    sol += dSol * dt * 0.5;
+    // Solvabilité constante : l'intégrale exacte d'un seul segment de
+    // puissance, comme avant. C'est le chemin des tests-témoins, et celui des
+    // tranches où la bourse ne bouge pas.
+    const A = cible * sol;
+    if (T1 >= dt) return veutH * integreFacteur(A, s0 + socle, pente, dt);
+    return veutH * integreFacteur(A, s0 + socle, pente, T1)
+      + arriveH * (dt - T1) * facteurTension(A / socle);
   }
-  const tZero = s0 / -pente;
-  if (tZero >= dt) return veutH * integreFacteur(A, s0 + socle, pente, dt);
-  return veutH * integreFacteur(A, s0 + socle, pente, tZero)
-    + arriveH * (dt - tZero) * facteurTension(A / socle);
+  // --- La solvabilité bouge aussi, et elle bouge droit.
+  //
+  // Les bornes levées (lot I bis), la solvabilité est redevenue LINÉAIRE dans
+  // la bourse — plus de plafond à vingt qui l'écrêtait — et la bourse évolue
+  // d'un pas constant par heure. Tenir la solvabilité constante à mi-tranche
+  // coûtait alors cher : `sol^0,85` est concave, la moyenne d'une concave est
+  // sous la fonction de la moyenne, et la tranche surfacturait — mesuré,
+  // caisse à −7,7 crédits d'erreur locale pour un critère à 0,1.
+  //
+  // L'intégrande `(sol(t))^0,85 × (u(t))^-0,85` à deux trajectoires linéaires
+  // n'a pas de primitive élémentaire ; on l'intègre par Gauss-Legendre à deux
+  // points PAR SEGMENT LISSE. La quadrature qui avait échoué au lot M0 ter
+  // échouait parce que la trajectoire était fausse ; ici les deux trajectoires
+  // sont exactes et découpées à leurs cassures — l'épuisement du grenier, la
+  // bourse qui touche son plancher — et Gauss ne voit que du lisse.
+  const solEn = (t) => {
+    const v = sol + dSol * t;
+    return v > SOLVABILITE.plancher ? v : SOLVABILITE.plancher;
+  };
+  const coupes = [0, T1, dt];
+  if (dSol < 0) {
+    const tS = (SOLVABILITE.plancher - sol) / dSol;
+    if (tS > 0 && tS < dt) coupes.push(tS);
+  }
+  coupes.sort((a, b) => a - b);
+  const G = 0.5 / Math.sqrt(3);
+  let somme = 0;
+  for (let i = 1; i < coupes.length; i++) {
+    const a = coupes[i - 1];
+    const L = coupes[i] - a;
+    if (L <= 1e-12) continue;
+    const phase1 = coupes[i] <= T1 + 1e-9;
+    const q = phase1 ? veutH : arriveH;
+    if (q <= 0) continue;
+    const t1 = a + L * (0.5 - G);
+    const t2 = a + L * (0.5 + G);
+    const u1 = (phase1 ? s0 + pente * t1 : 0) + socle;
+    const u2 = (phase1 ? s0 + pente * t2 : 0) + socle;
+    somme += q * L * 0.5 * (Math.pow(cible * solEn(t1) / u1, 0.85)
+      + Math.pow(cible * solEn(t2) / u2, 0.85));
+  }
+  return somme;
 }
 
 const PRIX_TRANCHE = new Float64Array(COMMODITY_KEYS.length);
 const ARRIVEE_TRANCHE = new Float64Array(COMMODITY_KEYS.length);
+const CIBLE_TRANCHE = new Float64Array(COMMODITY_KEYS.length);
+const STOCK_TRANCHE = new Float64Array(COMMODITY_KEYS.length);
 
 export function servable(stock, parHeure, veutParHeure, dt, part = 1) {
   if (dt === 1) {
@@ -904,7 +980,35 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
     // placer le prix. Elle ne clone rien — `prixUnitaire` sait déjà recevoir un
     // stock simulé, et `solvabiliteDe` une bourse. Coût mesuré : ×1,044, une
     // seconde passe de prix par tranche, et rien à `dt = 1`.
-    if (dt > 1 && facture > 0) {
+    // --- La branche se pré-décide ici, sur l'estimation de la première
+    // passe — parce que la boucle horaire recalcule ses prix elle-même et
+    // JETTE la facture de tranche. Lui offrir deux passes de Gauss et un
+    // point fixe, c'était 37 % des tranches qui payaient le raffinement pour
+    // rien — mesuré au compteur de voies. Le pré-filtre est conservateur :
+    // il n'envoie en boucle que ce que l'estimation condamne déjà, et la
+    // décision finale, après raffinement, revérifie comme avant.
+    const duH0 = col.avantPoste
+      ? 0 : valeurCourante(prod) * CAISSE.partSalariale / ctx.cours;
+    const bouclePlausible = dt > 1 && (() => {
+      const fH0 = facture / dt;
+      const dM0 = duH0 - fH0;
+      // Deux raisons d'aller au reprix horaire : la bourse bute (le minimum
+      // linéaire passe sous la note de l'heure), ou la bourse TOURNE en moins
+      // d'une journée — la paie du jour dépasse ce qu'elle contient. Dans ce
+      // second régime la trajectoire de la bourse est concave (la dépense
+      // accélère à mesure que la solvabilité remonte) et tout modèle linéaire
+      // la surestime : mesuré, jusqu'à −510 de caisse sur une ville en une
+      // journée. Ce n'est pas une règle de jeu, c'est la frontière de validité
+      // du modèle de tranche — au-delà, la boucle horaire est la vérité.
+      const imp0 = col.faction && world.factions[col.faction]
+        ? loisDe(world, col.faction).impot : 0;
+      const dC0 = fH0 * (1 - imp0) - duH0;
+      const mT = Math.min(col.menages || 0, (col.menages || 0) + (dt - 1) * dM0) >= fH0;
+      const cT = Math.min(col.caisse || 0, (col.caisse || 0) + (dt - 1) * dC0)
+        + fH0 * (1 - imp0) >= duH0;
+      return !mT || (col.menages || 0) < duH0 * dt * TRANCHE.rotationBourse;
+    })();
+    if (dt > 1 && facture > 0 && !bouclePlausible) {
       const demi = dt / 2;
       // Ce que les habitants auront à dépenser sur la tranche : leur bourse
       // **plus les salaires qui tombent pendant**. Sans eux, une ville dont les
@@ -937,9 +1041,63 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
       // découpée par des bornes. La forme close, elle, découpe aux bornes.
       const salaireH = col.avantPoste
         ? 0 : valeurCourante(prod) * CAISSE.partSalariale / ctx.cours;
-      const mMid = Math.max(0, (col.menages || 0) + (salaireH - facture / dt) * demi);
-      const solMid = solvabiliteDe(col, mMid, ctx.cours);
-      const echelle = ctx.humeur / ctx.cours;
+      // La solvabilité de DÉPART et sa pente, plus un point milieu : depuis la
+      // levée des bornes (lot I bis) elle est linéaire dans la bourse, donc sa
+      // trajectoire est connue exactement, et `valeurTranche` l'intègre comme
+      // elle intègre l'étal. Le point milieu qui vivait ici surfacturait —
+      // `sol^0,85` est concave, la moyenne d'une concave est sous la fonction
+      // de la moyenne — et l'erreur locale de caisse valait −7,7 pour un
+      // critère à 0,1.
+      const sol0 = solvabiliteDe(col, col.menages || 0, ctx.cours);
+      const ordinaireSol = (col.pop || 0) * MENAGES.parTete / ctx.cours;
+      // --- L'humeur du MILIEU de tranche, pas celle du départ.
+      //
+      // La grogne évolue dans la journée — elle retombe quand on mange, elle
+      // monte quand on a faim — et la maille fine relit l'humeur à chaque
+      // heure. Le modèle de tranche la figeait au départ : un dixième de
+      // grogne en moins sur la journée, c'est 3,5 % de prix, et c'était la
+      // signature exacte des dernières villes fautives de la voie rapide —
+      // ±40 à ±50 crédits par jour, sans qu'aucun plafond ne morde. L'humeur
+      // entre LINÉAIREMENT dans le prix : sa moyenne exacte sur la tranche est
+      // sa valeur à mi-course, il n'y a rien à intégrer.
+      //
+      // Le sens de sa pente se prédit avec ce qu'on a déjà : la satiété
+      // attendue de la tranche — ce que l'étal des vivres peut servir à la
+      // part que les bourses paieront.
+      const arrRat0 = (prod.rations || 0) * amortiVivres;
+      const sEst = besoinVivresH > 0
+        ? servable(col.stock.rations || 0, arrRat0, besoinVivresH * partP, dt)
+          / (besoinVivresH * dt)
+        : 1;
+      const u0h = col.unrest || 0;
+      const unrestMid = sEst < 0.8
+        ? Math.min(1, u0h + 0.004 * (0.8 - sEst) / 0.8 * (dt / 2))
+        : Math.max(0, u0h - (0.0035 + ordreDe(col) * 0.006) * (dt / 2));
+      const humeurMid = 1 + unrestMid * 0.35;
+      // La pente de la bourse s'estime sur la facture de la PREMIÈRE passe —
+      // comme le point milieu le faisait — parce que celle de la seconde est
+      // précisément en train de se construire : la lire pendant qu'on
+      // l'accumule rendait une pente différente par marchandise, selon l'ordre
+      // de la boucle. Le point fixe plus bas la réestime avec la facture
+      // aboutie.
+      // Cette pente n'est exacte que là où rien ne bute — et c'est exactement
+      // là qu'elle sert : la voie rapide. Les villes où un plafond mord
+      // passent par la boucle horaire, qui recalcule le prix de l'heure et n'a
+      // pas besoin de ce modèle.
+      // Le salaire de la pente est celui que la CAISSE peut suivre, pas celui
+      // qui est dû : dans une ville où la caisse borne la paie — la moitié des
+      // tranches du monde —, ce qui entre vraiment dans les poches chaque
+      // heure est ce que la caisse encaisse, l'impôt déduit, plus ce qu'elle
+      // avait d'avance. Prendre le salaire plein surestimait la pente, donc
+      // les prix, donc la facture — mesuré : caisse à −3,26 d'erreur locale.
+      const impot0 = col.faction && world.factions[col.faction]
+        ? loisDe(world, col.faction).impot : 0;
+      const salaireTenable = Math.min(salaireH,
+        (facture / dt) * (1 - impot0) + Math.max(0, col.caisse || 0) / dt);
+      const dSol0 = ordinaireSol > 0
+        ? (salaireTenable - facture / dt) / ordinaireSol : 0;
+      const echelle = humeurMid / ctx.cours;
+      void demi;
       facture = 0;
       for (let i = 0; i < COMMODITY_KEYS.length; i++) {
         const k = COMMODITY_KEYS[i];
@@ -956,12 +1114,13 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
         const qTranche = servable(col.stock[k] || 0, arriveH, cons[k] || 0, dt, partP);
         const videH = (k === 'rations' ? besoinVivresH : (cons[k] || 0)) * partP;
         const valeur = COMMODITIES[k].prix * echelle * valeurTranche(
-          Math.max(1, cibleStock(col, k)), solMid, col.stock[k] || 0,
-          arriveH, cons[k] || 0, videH, dt);
+          Math.max(1, cibleStock(col, k)), sol0, col.stock[k] || 0,
+          arriveH, cons[k] || 0, videH, dt, dSol0);
         // Le point fixe plus bas raisonne en prix unitaire : on lui rend celui
         // qui, multiplié par la quantité, redonne exactement cette valeur-là.
         PRIX_TRANCHE[i] = qTranche > 0 ? valeur / qTranche : 0;
         ARRIVEE_TRANCHE[i] = arriveH;
+        CIBLE_TRANCHE[i] = Math.max(1, cibleStock(col, k));
         facture += valeur;
       }
 
@@ -977,14 +1136,30 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
       // tranche sont déjà calculés, on ne refait que les quantités. Aucun appel
       // à `prixUnitaire`, aucune allocation — c'est pour ça que les deux
       // tableaux vivent au module.
-      for (let it = 0; it < 2; it++) {
+      // Et la facture nourrit la pente de la bourse, qui nourrit les prix, qui
+      // nourrissent la facture : les deux itérations recalculent donc AUSSI la
+      // valeur intégrée, pas seulement les quantités. Le surcoût est mesuré à
+      // la garde de vitesse, pas supposé.
+      // Une seule itération de prix : la deuxième corrigeait sous le pour
+      // cent — mesuré à l'erreur locale, identique au dixième près — et
+      // coûtait une passe de Gauss entière par tranche.
+      for (let it = 0; it < 1; it++) {
         const p2 = Math.min(1, aDepenser / Math.max(1e-9, facture));
+        const salaireTenable2 = Math.min(salaireH,
+          (facture / dt) * (1 - impot0) + Math.max(0, col.caisse || 0) / dt);
+        const dSol2 = ordinaireSol > 0
+          ? (salaireTenable2 - facture / dt) / ordinaireSol : 0;
         let f2 = 0;
         for (let i = 0; i < COMMODITY_KEYS.length; i++) {
           if (PRIX_TRANCHE[i] <= 0) continue;
           const k = COMMODITY_KEYS[i];
-          f2 += servable(col.stock[k] || 0, ARRIVEE_TRANCHE[i], cons[k] || 0, dt, p2)
-            * PRIX_TRANCHE[i];
+          const videH2 = (k === 'rations' ? besoinVivresH : (cons[k] || 0)) * p2;
+          const q2 = servable(col.stock[k] || 0, ARRIVEE_TRANCHE[i], cons[k] || 0, dt, p2);
+          const v2 = COMMODITIES[k].prix * echelle * valeurTranche(
+            CIBLE_TRANCHE[i], sol0, col.stock[k] || 0,
+            ARRIVEE_TRANCHE[i], cons[k] || 0, videH2, dt, dSol2);
+          PRIX_TRANCHE[i] = q2 > 0 ? v2 / q2 : 0;
+          f2 += v2;
         }
         facture = f2;
       }
@@ -1062,6 +1237,7 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
   let stockVivres = col.stock.rations || 0;
   let servi = 0;
   let vivresServies = false;
+  let partDejaServie = false;
   const impot = col.faction && world.factions[col.faction]
     ? loisDe(world, col.faction).impot : 0;
   // Ce que chaque bourse gagne ou perd par heure si rien ne bute.
@@ -1074,7 +1250,10 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
   // là qu'on lui demande de payer.
   const caisseTient = Math.min(c0, c0 + (dt - 1) * dCaisse)
     + factureHeure * (1 - impot) >= duHeure;
-  if (dt === 1 || (menagesTient && caisseTient)) {
+  // La bourse qui tourne en moins d'un jour va au reprix, comme au
+  // pré-filtre : même frontière, même raison.
+  const bourseTourne = dt > 1 && !col.avantPoste && m0 < duHeure * dt * TRANCHE.rotationBourse;
+  if (dt === 1 || (menagesTient && caisseTient && !bourseTourne)) {
     if (facture > 0) {
       // `menagesTient` dit que la bourse ne bute jamais **au fil de la
       // tranche**, salaires compris : la note passe donc en entier, même
@@ -1094,19 +1273,16 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
       paye = debourser(col, duHeure * dt);
       col.menages = (col.menages || 0) + paye;
     }
-  } else {
-    // La boucle, quand un plafond mord pour de bon. Elle n'appelle ni
-    // `encaisser` ni `debourser` : les deux se réduisent ici à trois lignes
-    // d'arithmétique sur des variables locales. Ce n'est pas de la coquetterie
-    // — la même boucle écrite avec ses deux appels coûtait **7,4 % du tick à
-    // elle seule**, mesuré contre une variante sans boucle du tout ; tout le
-    // reste du correctif ne coûte que 1,3 %.
+  } else if (menagesTient && !bourseTourne) {
+    // --- La boucle simple : la caisse borne, pas les ménages.
     //
-    // L'impôt est versé **à chaque heure** et non cumulé pour un versement
-    // unique, bien qu'il soit proportionnel : cumuler change l'ordre de
-    // sommation, et deux mondes joués deux mille heures divergeaient alors au
-    // seizième chiffre puis pour de bon. Une optimisation qui change le monde
-    // n'est pas une optimisation.
+    // La moitié des tranches du monde passent ici (mesuré : 50 % pour la
+    // caisse seule, 3 % pour les ménages). Quand seuls les salaires butent
+    // sur la caisse, la bourse des habitants ne touche jamais zéro : sa
+    // trajectoire reste celle que la forme close intègre, les prix de tranche
+    // sont bons, et le reprix horaire ne changerait rien — vérifié au juge de
+    // qualité (partie 2 du banc, quarante jours contre placebo) : mêmes cinq
+    // verdicts sous le plancher avec ou sans. Seul le coût change.
     const fisc = impot > 0 ? world.factions[col.faction] : null;
     let menages = m0;
     let caisse = c0;
@@ -1129,13 +1305,11 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
         menages += verse;
         paye += verse;
       }
-      // Ce que la ville sert à manger cette heure-ci, avec la part que cette
-      // heure-ci pouvait payer.
       if (besoinH > 0) {
         const partH = factureHeure > 0 ? achatH / factureHeure : 1;
         const dispo = stockVivres + arrivageH;
-        const veutH = besoinH * partH;
-        const sH = veutH < dispo ? veutH : dispo;
+        const veutV = besoinH * partH;
+        const sH = veutV < dispo ? veutV : dispo;
         servi += sH;
         stockVivres = dispo - sH;
       }
@@ -1143,19 +1317,139 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
     col.menages = menages;
     col.caisse = caisse;
     vivresServies = true;
+  } else {
+    const fisc = impot > 0 ? world.factions[col.faction] : null;
+    let menages = m0;
+    let caisse = c0;
+    // --- Le prix de l'heure, dans la boucle de l'heure.
+    //
+    // Depuis la levée des bornes (lot I bis), les villes de cette branche —
+    // celles où un plafond mord — vivent des journées à DEUX régimes : les
+    // poches se remplissent de la paie tant que les prix sont bas, puis les
+    // prix montent avec la solvabilité et l'argent repart. Aucun prix de
+    // tranche, intégré ou non, ne raconte ça : mesuré, l'erreur locale de
+    // caisse restait entre −6,4 et −7,7 pour un critère à 0,1, quelle que soit
+    // la sophistication du modèle — pente partout, pente nulle, Gauss. La
+    // seule vérité de ce régime est le prix de l'heure, et cette boucle
+    // avançait déjà l'argent heure par heure : elle reprend donc aussi les
+    // prix, exactement comme la maille fine les lit — la solvabilité de
+    // l'instant, l'étal de l'instant. Le surcoût ne touche que les villes de
+    // cette branche ; les villes libres gardent la forme close, exacte chez
+    // elles.
+    //
+    // `facture` et `regle` gardent leur sens de tranche : la somme des heures.
+    const nbK = COMMODITY_KEYS.length;
+    if (!col.avantPoste) facture = 0;
+    let stocksServis = false;
+    if (!col.avantPoste) {
+      const ordinaireH = (col.pop || 0) * MENAGES.parTete / ctx.cours;
+      // L'humeur de l'heure, suivie comme la maille fine la vit : la grogne
+      // monte avec la faim de l'heure, retombe quand on mange, et grince quand
+      // la paie manque. Suivi LOCAL, pour les prix seulement — la grogne de la
+      // ville est mise à jour après la tranche, par le même code qu'avant, sur
+      // les mêmes agrégats : rien n'est compté deux fois, et pas un tirage ne
+      // bouge.
+      let unrestH = col.unrest || 0;
+      const retombeeH = 0.0035 + ordreDe(col) * 0.006;
+      for (let i = 0; i < nbK; i++) {
+        const k = COMMODITY_KEYS[i];
+        CIBLE_TRANCHE[i] = Math.max(1, cibleStock(col, k));
+        ARRIVEE_TRANCHE[i] = k === 'rations'
+          ? (prod.rations || 0) * amortiVivres
+          : (prod[k] || 0) * (1 + ((climat ? climat.rendement(k) : 1) - 1) * 0.45);
+        STOCK_TRANCHE[i] = col.stock[k] || 0;
+        PRIX_TRANCHE[i] = COMMODITIES[k].prix;
+      }
+      for (let h = 0; h < dt; h++) {
+        const solH = Math.max(SOLVABILITE.plancher,
+          ordinaireH > 0 ? menages / ordinaireH : 1);
+        const solF = Math.pow(solH, 0.85) * (1 + unrestH * 0.35) / ctx.cours;
+        let fH = 0;
+        for (let i = 0; i < nbK; i++) {
+          const veutK = cons[COMMODITY_KEYS[i]] || 0;
+          if (veutK <= 0) continue;
+          const dispo = STOCK_TRANCHE[i] + ARRIVEE_TRANCHE[i];
+          const sert = veutK < dispo ? veutK : dispo;
+          fH += sert * PRIX_TRANCHE[i] * solF * Math.pow(
+            CIBLE_TRANCHE[i] / (STOCK_TRANCHE[i] + CIBLE_TRANCHE[i] * 0.35), 0.85);
+        }
+        let achatH = 0;
+        if (fH > 0) {
+          const achat = fH < menages ? fH : menages;
+          if (achat > 0) {
+            menages -= achat;
+            const pris = achat * impot;
+            if (fisc) fisc.tresor += pris;
+            caisse += achat - pris;
+            regle += achat;
+            achatH = achat;
+          }
+        }
+        facture += fH;
+        if (duHeure > 0) {
+          const verse = duHeure < caisse ? duHeure : caisse;
+          caisse -= verse;
+          menages += verse;
+          paye += verse;
+        }
+        const partH = fH > 0 ? achatH / fH : 1;
+        // Les étals de l'heure, toutes marchandises : ce qui arrive, moins ce
+        // qui part au rythme que cette heure-ci pouvait payer.
+        for (let i = 0; i < nbK; i++) {
+          const veutK = cons[COMMODITY_KEYS[i]] || 0;
+          const sBrut = STOCK_TRANCHE[i] + ARRIVEE_TRANCHE[i] - veutK * partH;
+          STOCK_TRANCHE[i] = sBrut > 0 ? sBrut : 0;
+        }
+        // Et ce que la ville a servi à manger cette heure-ci.
+        let satH = 1;
+        if (besoinH > 0) {
+          const dispo = stockVivres + arrivageH;
+          const veutV = besoinH * partH;
+          const sH = veutV < dispo ? veutV : dispo;
+          servi += sH;
+          stockVivres = dispo - sH;
+          satH = sH / besoinH;
+        }
+        // L'humeur de l'heure suivante : la faim de celle-ci, dans l'ordre où
+        // la maille fine la vit. La grogne des impayés, elle, reste au compte
+        // de tranche d'après la boucle — même formule, mêmes agrégats.
+        if (satH < 0.8) unrestH = Math.min(1, unrestH + 0.004 * (0.8 - satH) / 0.8);
+        else unrestH = Math.max(0, unrestH - retombeeH);
+      }
+      for (let i = 0; i < nbK; i++) {
+        if (COMMODITY_KEYS[i] === 'rations') continue;
+        col.stock[COMMODITY_KEYS[i]] = STOCK_TRANCHE[i];
+      }
+      stocksServis = true;
+    } else {
+      for (let h = 0; h < dt; h++) {
+        if (duHeure > 0) {
+          const verse = duHeure < caisse ? duHeure : caisse;
+          caisse -= verse;
+          menages += verse;
+          paye += verse;
+        }
+      }
+    }
+    col.menages = menages;
+    col.caisse = caisse;
+    vivresServies = true;
+    if (stocksServis) partDejaServie = true;
   }
   const part = facture > 0 ? regle / facture : 1;
 
 
-  for (const k of COMMODITY_KEYS) {
-    if (k === 'rations') continue; // traité à part, c'est la survie
-    // Une ville encaisse mieux les saisons qu'une escouade : elle a des
-    // réserves, des serres, des habitudes. On amortit donc l'effet de moitié.
-    const brut = climat ? climat.rendement(k) : 1;
-    const amorti = 1 + (brut - 1) * 0.45;
-    const p = (prod[k] || 0) * amorti * dt;
-    const c = (cons[k] || 0) * dt * part;
-    col.stock[k] = Math.max(0, (col.stock[k] || 0) + p - c);
+  if (!partDejaServie) {
+    for (const k of COMMODITY_KEYS) {
+      if (k === 'rations') continue; // traité à part, c'est la survie
+      // Une ville encaisse mieux les saisons qu'une escouade : elle a des
+      // réserves, des serres, des habitudes. On amortit donc l'effet de moitié.
+      const brut = climat ? climat.rendement(k) : 1;
+      const amorti = 1 + (brut - 1) * 0.45;
+      const p = (prod[k] || 0) * amorti * dt;
+      const c = (cons[k] || 0) * dt * part;
+      col.stock[k] = Math.max(0, (col.stock[k] || 0) + p - c);
+    }
   }
 
   // --- Les salaires. La ville paie ceux qui produisent : cet argent sort de sa
@@ -1297,11 +1591,14 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
   }
   col.defenseMax = Math.round(col.pop * 0.09 + col.murs * 12);
 
-  // Plafond de stock : on ne stocke pas l'infini
-  for (const k of COMMODITY_KEYS) {
-    const plafond = cibleStock(col, k) * 4;
-    if (col.stock[k] > plafond) col.stock[k] = plafond;
-  }
+  // Le plafond de stock — « on ne stocke pas l'infini », quatre fois la
+  // cible — est levé (lot I bis) : les années grasses se gardent, et c'est le
+  // prix qui régule désormais l'entassement au lieu d'une coupe silencieuse.
+  // Un étal qui déborde cote de moins en moins (la tension tombe en loi de
+  // puissance, sans plancher depuis la levée des bornes), donc il attire les
+  // caravanes et n'attire plus la production — le grenier plein se vide par
+  // l'économie, pas par une ligne qui jetait le surplus sans que personne ne
+  // le décide.
 
   // --- Une ville n'est pas un décor : elle grandit ou elle meurt. Mais
   // l'effondrement doit rester un événement marquant, pas la norme : il faut

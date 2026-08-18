@@ -24,7 +24,7 @@ import { loisDe } from './lois.js';
 import { nommerActeur } from './notables.js';
 import { transferer, convertirMasse, taux, coursMonnaie } from './monnaie.js';
 import {
-  cibleStock, reserveVille, prixUnitaire, productionColonie,
+  cibleStock, reserveVille, prixUnitaire, productionColonie, contextePrix,
 } from './economy.js';
 import { FACTIONS } from './data.js';
 
@@ -89,9 +89,21 @@ export function detresse(world, col) {
   const parTete = (col.stock.rations || 0) / Math.max(1, col.pop);
   if (parTete >= CREDIT.seuilDetresse) return 0;
   const manque = (CREDIT.seuilDetresse - parTete) * col.pop;
-  // Au prix qu'elle paierait, pas au prix du catalogue : c'est ce qu'il lui
-  // faut réellement en poche.
-  return manque * prixUnitaire(col, 'rations', undefined, world);
+  // Au prix qu'elle paierait UNE FOIS SECOURUE, pas au prix de sa misère.
+  //
+  // Le prêt va dans les poches pour restaurer le pouvoir d'achat — c'est
+  // écrit vingt lignes plus bas. Le dimensionner au prix courant marchait
+  // tant que la solvabilité avait un plancher à 0,35 : le prix d'une ville
+  // ruinée restait un prix. Les bornes levées (lot I bis), la solvabilité
+  // d'une ville aux poches vides tend vers zéro et son prix local avec —
+  // donc le besoin estimé tombait à rien, donc plus personne ne prêtait à
+  // ceux qui en avaient le plus besoin, précisément parce qu'ils en avaient
+  // besoin. On évalue donc au prix de la solvabilité ordinaire (un), qui est
+  // l'état que le prêt vise ; une ville plus riche que l'ordinaire garde son
+  // prix à elle, comme avant.
+  const ctx = contextePrix(col, world);
+  if (ctx.sol < 1) ctx.sol = 1;
+  return manque * prixUnitaire(col, 'rations', undefined, world, ctx);
 }
 
 /**

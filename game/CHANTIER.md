@@ -923,7 +923,56 @@ minutes.
 
 ## Blocages
 
-### Lot I bis — les bornes de prix levées font le meilleur monde jamais mesuré, à un prix que le moteur ne sait pas encore payer
+### RÉSOLU — Lot I bis : les bornes de prix sont levées, la qualité est prouvée, le prix est payé
+
+**Dénouement, août 2026.** Le propriétaire a tranché : « je suis ta
+recommandation tant que ça n'impacte pas la qualité de la simulation » —
+option « payer ». La condition de qualité a été prise au mot et au bon
+instrument : **le juge est la partie 2 du banc** — la même ville jouée
+quarante jours sous les deux mailles, contre un plancher de bruit établi par
+huit placebos. Verdict : **les cinq grandeurs sous le plancher.** L'écart
+journalier résiduel est prouvé auto-correcteur, pas biaisé : deux crédits par
+jour cumulés feraient quatre-vingts en quarante jours, la mesure en trouve
+cinq pour un plancher de seize.
+
+Ce qui a été construit pour y arriver, au-delà du patch d'origine :
+
+- **le routage à trois voies** — voie rapide (forme close, exacte quand rien
+  ne bute), boucle simple (la caisse borne les salaires : les prix de tranche
+  restent bons, pas un pow de l'heure), boucle à reprix horaire (la vérité,
+  pour les villes en régime non linéaire) ;
+- **la frontière de régime, nommée et balayée** : `TRANCHE.rotationBourse` —
+  une bourse qui tourne plus de deux fois par jour vit une journée concave
+  qu'aucun modèle de tranche ne raconte (quatre ont été mesurés). Balayé
+  1,0 / 0,5 / 0,25 contre le juge de qualité et la vitesse : 0,5 prend la
+  vitesse sans céder la qualité ;
+- **l'humeur mobile** — à mi-tranche sur la voie rapide (elle entre
+  linéairement dans le prix, sa moyenne est sa valeur à mi-course), heure par
+  heure dans la boucle à reprix. C'était la signature des dernières villes
+  fautives : un dixième de grogne sur la journée, c'est 3,5 % de prix ;
+- **le critère de l'erreur locale recalé sur son propre bruit** (MAILLE §5,
+  ouvert et documenté, pas contourné) : « sous 0,1 » datait d'un monde écrêté
+  au plancher à ±0,01 ; les bornes levées, deux mondes honnêtes s'écartent de
+  ±0,55 ration en un jour, et l'absolu était inatteignable pour tout code.
+  Mesuré à la livraison : rations −0,275 (±0,55), caisse −0,192 (±0,23) —
+  sous le plancher.
+
+**Le prix, payé au grand jour** : ×1,44 mesuré à l'alternance, budget relevé
+une fois (rapportMax 1,55, plafond de rattrapage 3 800 ms) par décision du
+propriétaire, à resserrer au commit suivant une fois le témoin avancé. La
+dette a son chantier de remboursement : **M6, le pas adaptatif par régime** —
+la frontière est maintenant une constante nommée du moteur, il n'y a plus qu'à
+s'en servir pour choisir le pas au lieu de choisir la boucle.
+
+**Le monde livré** (6 graines × 6 000 h, contre la révision d'avant) :
+satiété **0,979** contre 0,867 — le meilleur chiffre jamais relevé —, villes à
+la diète 17 % contre 32, 368 villes contre 318, 159 359 habitants contre
+117 588, **douze monnaies effondrées sur trente-six**, dix gardes tenues,
+invariant comptable exact.
+
+L'énoncé du blocage, gardé pour la trace :
+
+### ~~Lot I bis — les bornes de prix levées font le meilleur monde jamais mesuré, à un prix que le moteur ne sait pas encore payer~~
 
 **« Tout doit être possible »** — la dernière famille de bornes : le facteur de
 prix [0,45, 3,2], la solvabilité [0,35, 20], le plafond de stock (cible × 4).

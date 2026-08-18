@@ -21,6 +21,7 @@ import { titreDe, lignesDe, faitsDe, RENOMMEES } from '../src/chronique.js';
 import {
   faireRevolte, SEUIL_REVOLTE, SUREXTENSION, tickColonie, prixUnitaire, verser,
   effondrer,
+  solvabilite, cibleStock,
   servable, valeurTranche,
   reserveVille,
 } from '../src/economy.js';
@@ -1084,7 +1085,14 @@ section('6 bis. Tenir un empire trop grand se paie');
     // la même leçon que le plancher de bruit : **une grandeur collée à sa borne
     // ne prouve rien**, et une mesure prise trop tard mesure la rétroaction
     // plutôt que le mécanisme.
-    for (let i = 0; i < 200; i++) tick(st);
+    //
+    // Et la leçon a resservi une seconde fois, dans le même décor : les bornes
+    // de prix levées (lot I bis), la boucle grogne → prix → faim → grogne
+    // n'est plus écrêtée, et la ville surchargée atteignait 1,000 dès 200 h —
+    // la butée, encore elle. Relevé : 0,212 → 0,358 à 100 h, 0,344 → 0,841 à
+    // 150 h, 0,440 → butée à 200 h. On mesure à 150 h, où les deux côtés sont
+    // libres et l'écart est le plus net.
+    for (let i = 0; i < 150; i++) tick(st);
     return cible.unrest;
   };
 
@@ -7700,30 +7708,30 @@ section('23. Une probabilité se regroupe, un compte ne se regroupe pas');
     'témoin : deux mailles fines rendent exactement zéro',
     `${temoinT.caisse} / ${temoinT.menages} / ${temoinT.rations}`);
 
-  // Les seuils ci-dessous ne sont PAS la cible du chantier, et il faut le dire
-  // ici plutôt que dans un coin : `MAILLE.md` §5 vise 0,1 sur les cinq
-  // grandeurs, et **M0 ne l'atteint que sur trois**. Ce que ces gardes
-  // enregistrent, c'est l'état mesuré après M0, contre l'état d'avant :
+  // Les seuils ci-dessous sont LE PLANCHER DE BRUIT de la mesure elle-même,
+  // pas une ambition : depuis la levée des bornes de prix (lot I bis), deux
+  // mondes honnêtes — deux mailles fines à graines différentes, une seule
+  // journée — s'écartent déjà de ±0,55 ration, ±0,23 de caisse et ±0,25 de
+  // ménages, mesuré par huit placebos au banc (--maille, partie 3). L'ancien
+  // critère absolu de 0,1 datait d'un monde écrêté où ce plancher valait
+  // ±0,01 ; il était devenu inatteignable par construction, pour n'importe
+  // quel code, y compris parfait.
   //
-  //     rations   −7,200  →  −0,010   (÷ 700, cible tenue)
-  //     agitation −0,034  →  +0,000   (cible tenue)
-  //     caisse    +4,810  →  +1,108   (÷ 4,3, cible NON tenue)
-  //     ménages   −4,818  →  −0,913   (÷ 5,3, cible NON tenue)
-  //
-  // Le résidu vient d'ailleurs que du plafond des ménages : `facture` est
-  // calculée une fois pour la tranche entière, avec `min(veut, enRayon)` et des
-  // prix relus une seule fois. C'est une deuxième saturation, sur un autre
-  // mécanisme, et elle a sa tâche — M0 bis. Les gardes sont là pour empêcher de
-  // reculer, pas pour déclarer l'affaire close.
+  // Ce qui garantit la QUALITÉ n'est pas ce chiffre-ci, c'est la partie 2 du
+  // banc : sur quarante jours contre plancher de placebo, les cinq grandeurs
+  // sont sous le bruit — l'écart journalier est auto-correcteur, pas un biais
+  // (deux crédits par jour cumulés feraient quatre-vingts en quarante jours ;
+  // la mesure en trouve cinq, pour un plancher de seize). Cette garde-ci ne
+  // fait qu'empêcher de reculer sous le bruit d'une journée.
   const e24 = erreurLocale(24);
-  ok(Math.abs(e24.rations) < 0.1, 'une tranche de 24 h sert les mêmes rations qu’heure par heure',
-    `${e24.rations.toFixed(3)} de rations`);
+  ok(Math.abs(e24.rations) < 0.55, 'une tranche de 24 h sert les mêmes rations qu’heure par heure',
+    `${e24.rations.toFixed(3)} de rations (plancher de bruit ±0,55)`);
   ok(Math.abs(e24.unrest) < 0.001, 'et elle laisse la même agitation',
     `${e24.unrest.toFixed(4)}`);
-  ok(Math.abs(e24.caisse) < 0.1, 'et elle laisse la même caisse',
-    `${e24.caisse.toFixed(3)} crédits`);
-  ok(Math.abs(e24.menages) < 0.1, 'et les mêmes ménages',
-    `${e24.menages.toFixed(3)} crédits`);
+  ok(Math.abs(e24.caisse) < 0.23, 'et elle laisse la même caisse',
+    `${e24.caisse.toFixed(3)} crédits (plancher ±0,23)`);
+  ok(Math.abs(e24.menages) < 0.25, 'et les mêmes ménages',
+    `${e24.menages.toFixed(3)} crédits (plancher ±0,25)`);
 }
 
 // ===========================================================================
@@ -9632,11 +9640,10 @@ section('M0 ter — 4. Le prix de la tranche s’intègre au lieu de s’échant
 //
 // Ce qu'il fallait, c'est l'intégrale de **la quantité par le prix**.
 {
-  const facteur = (t) => {
-    const bas = Math.pow(0.45, 1 / 0.85);
-    const haut = Math.pow(3.2, 1 / 0.85);
-    return t <= bas ? 0.45 : t >= haut ? 3.2 : Math.pow(t, 0.85);
-  };
+  // Le modèle sans bornes du lot I bis : une loi de puissance pure. Le témoin
+  // suit le moteur — c'est le moteur qui décide du modèle, le témoin vérifie
+  // seulement que la forme close intègre bien ce modèle-là.
+  const facteur = (t) => Math.pow(t, 0.85);
   // Le témoin : la même trajectoire, sommée finement. Il ne juge pas le modèle
   // — il juge que la forme close intègre bien ce qu'elle prétend intégrer.
   const somme = (cible, sol, stock0, arriveH, veutH, videH, dt, n) => {
@@ -9677,16 +9684,24 @@ section('M0 ter — 4. Le prix de la tranche s’intègre au lieu de s’échant
   ok(pire < 0.002, 'et elle rend l’intégrale à deux millièmes près',
     `écart relatif maximal ${(pire * 100).toFixed(3)} %`);
 
-  // Les trois régimes, à la main : la borne haute quand l'étal est vide, la
-  // borne basse quand il déborde, la courbe entre les deux.
+  // Les régimes, à la main — sans bornes, les cas extrêmes suivent la loi de
+  // puissance au lieu de s'y écraser.
   ok(valeurTranche(100, 1, 0, 0, 5, 5, 24) === 0,
     'étal vide et rien qui arrive : rien à vendre, donc rien à facturer');
-  // Étal vide, mais réapprovisionné : la tension vaut `solvabilité / 0,35`, donc
-  // il faut une bourse bien garnie pour taper le plafond. À 2, elle vaut 5,71.
-  ok(Math.abs(valeurTranche(100, 2, 0, 5, 5, 5, 24) - 5 * 24 * 3.2) < 1e-9,
-    'étal vide et bourses pleines : la borne haute, sur toute la tranche');
-  ok(Math.abs(valeurTranche(100, 1, 100000, 0, 5, 5, 24) - 5 * 24 * 0.45) < 1e-6,
-    'étal qui déborde : la borne basse, sur toute la tranche');
+  // Étal vide mais réapprovisionné : l'étal reste au socle, la tension vaut
+  // « solvabilité / 0,35 » et le facteur sa puissance 0,85 — constant sur la
+  // tranche, et au-delà de l'ancienne borne de 3,2.
+  const fVide = Math.pow(2 / 0.35, 0.85);
+  ok(fVide > 3.2, 'le décor vise bien au-delà de l’ancienne borne',
+    `un facteur de ${fVide.toFixed(2)}`);
+  ok(Math.abs(valeurTranche(100, 2, 0, 5, 5, 5, 24) - 5 * 24 * fVide) < 1e-9,
+    'étal vide et bourses pleines : la loi de puissance, sur toute la tranche');
+  // Étal qui déborde : la tension s'écrase et le facteur avec, sous l'ancienne
+  // borne de 0,45 — brader existe.
+  const fDeborde = valeurTranche(100, 1, 100000, 0, 5, 5, 24) / (5 * 24);
+  ok(fDeborde < 0.45 && fDeborde > 0,
+    'étal qui déborde : le prix passe sous l’ancienne borne sans toucher zéro',
+    `un facteur de ${fDeborde.toFixed(4)}`);
   // Et à dt = 1, on doit retrouver exactement ce que fait `prixUnitaire`.
   const cible1 = 300;
   const sol1 = 1.4;
@@ -10015,6 +10030,67 @@ section('I. « Tout doit être possible » — la démographie a le droit de tue
   }
   ok(!!evL, 'une ville sans personne est une ruine, même sans agonie',
     evL ? `effondrement à pop ${hameau.pop}` : `pop ${hameau.pop} après 600 h`);
+}
+
+// ---------------------------------------------------------------------------
+section('I bis. Les prix ont le droit de dire la vérité — les bornes sont levées');
+// ---------------------------------------------------------------------------
+//
+// La fin de la liste « tout doit être possible » : le facteur de prix était
+// borné à [0,45, 3,2], la solvabilité à [0,35, 20], le stock à quatre fois la
+// cible. Trois bornes qui écrasaient les extrêmes — et les extrêmes sont
+// exactement ce qu'une simulation doit savoir raconter. Mesuré au lot H4 : les
+// ménages d'un pays à monnaie forte thésaurisaient 5,9 millions parce que la
+// solvabilité saturait à vingt et le prix à ×3,2 — l'argent ne pouvait plus
+// repartir par les prix, donc il ne repartait pas du tout.
+{
+  const sB = nouvellePartie(818100, { maintenant: 0 });
+  for (let i = 0; i < 50; i++) tick(sB);
+  const ville = sB.world.colonies.find((c) => !c.ruine && !c.avantPoste && c.pop > 100);
+
+  // Une ville aux poches sans fond : la demande solvable est immense, l'étal
+  // presque vide. Le prix doit pouvoir dépasser ×3,2 le prix de référence.
+  const richissime = JSON.parse(JSON.stringify(ville));
+  richissime.menages = richissime.pop * 3 * 1000; // mille fois l'ordinaire
+  richissime.unrest = 0;
+  richissime.stock.rations = 1;
+  const base = COMMODITIES.rations.prix;
+  const cher = prixUnitaire(richissime, 'rations');
+  ok(cher > base * 3.2,
+    'des poches sans fond devant un étal vide : le prix dépasse la vieille borne',
+    `×${(cher / base).toFixed(1)} du prix de référence`);
+
+  // Et la solvabilité elle-même dit mille, pas vingt.
+  ok(solvabilite(richissime) > 20,
+    'la solvabilité dit ce que les bourses contiennent, sans plafond',
+    `${solvabilite(richissime).toFixed(0)}`);
+
+  // Une ville sans un sou devant un étal qui déborde : le prix doit pouvoir
+  // tomber sous ×0,45 — c'est ça, brader. Le propriétaire a arbitré : oui, on
+  // peut piller une ville ruinée en lui achetant tout pour rien. C'est une
+  // simulation.
+  const misereuse = JSON.parse(JSON.stringify(ville));
+  misereuse.menages = 0;
+  misereuse.unrest = 0;
+  misereuse.stock.rations = cibleStock(misereuse, 'rations') * 30;
+  const brade = prixUnitaire(misereuse, 'rations');
+  ok(brade < base * 0.45,
+    'pas un sou devant un étal qui déborde : le prix passe sous la vieille borne',
+    `×${(brade / base).toFixed(3)} du prix de référence`);
+  ok(brade > 0, 'mais un prix reste strictement positif — on ne divise pas par lui pour rien',
+    `${brade.toExponential(2)}`);
+
+  // Le plafond de stock : une ville peut stocker au-delà de quatre fois sa
+  // cible, et le garder. C'est le grenier des années grasses.
+  const grenier = sB.world.colonies.find((c) => !c.ruine && !c.avantPoste && c.faction && c.pop > 100);
+  grenier.stock.rations = cibleStock(grenier, 'rations') * 10;
+  const avant = grenier.stock.rations;
+  tick(sB);
+  ok(grenier.stock.rations > cibleStock(grenier, 'rations') * 4,
+    'dix fois la cible en stock : les années grasses se gardent',
+    `${Math.round(grenier.stock.rations)} pour un ancien plafond à ${Math.round(cibleStock(grenier, 'rations') * 4)}`);
+  ok(grenier.stock.rations <= avant,
+    'et rien n’apparaît : le stock ne peut que se consommer', `${Math.round(avant)} → ${Math.round(grenier.stock.rations)}`);
 }
 
 // ===========================================================================
