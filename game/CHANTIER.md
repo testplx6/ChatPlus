@@ -923,7 +923,7 @@ minutes.
 
 ## Blocages
 
-### Lot I — les planchers démographiques sont levés, le monde est plus sain, et deux gardes cassent
+### RÉSOLU — Lot I : les planchers démographiques sont levés, et le monde a le droit de rétrécir
 
 **« Tout doit être possible »** (le propriétaire, en réponse au point sur les
 limites en dur). Le lot I lève les trois planchers démographiques — le correctif
@@ -1019,6 +1019,26 @@ plus sain » — c'est **le monde à planchers qui est le monde cassé**, et les
 deux gardes qui le protègent. `villes [430, 600]` et `bourses [28, 36]`
 encodent la taille du monde d'avant ; l'état stable mesuré sans planchers est
 de 240–320 villes et 27–35 bourses selon l'horizon.
+
+**TRANCHÉ par le propriétaire — « A »** (après la mesure longue, options et
+enjeux posés : monde plus petit mais vivant et sain, contre monde grand mais
+zombie). Le lot est donc livré tel que mesuré, et trois gardes sont recalées
+sur l'état mesuré **avec les mêmes marges relatives que le calage du lot F** —
+recaler n'est pas élargir quand la forme légitime du monde a changé par
+décision du propriétaire, et le précédent est le plafond de population :
+
+| garde | avant | mesuré à la bascule | après |
+|---|---|---|---|
+| villes | [430, 600] | 318 | [260, 430] — le plafond est l'ancien plancher, à dessein : un monde qui re-grossit à 430+ est un monde où les villes ont recommencé à ne plus pouvoir mourir |
+| bourses | [28, 36] | 27 | [24, 36] |
+| endettées | [250, 430] | 229 | [160, 280] — la part de villes endettées ne bouge pas (72 % contre 73 %), c'est le nombre de villes qui a changé |
+
+La troisième garde n'avait pas été signalée dans la première note : `endettees`
+229 pour [250, 430]. Elle cassait pour la même raison exacte que les deux
+autres — moins de villes, même proportion d'endettées — et elle a été vue en
+relisant la ligne de mesure colonne par colonne avant de livrer, pas par un
+passage rouge. Une note de blocage doit lister TOUTES les gardes qui sortent,
+sinon la décision du propriétaire est prise sur un dossier incomplet.
 
 ### La garde des créances et §13 ne parlaient pas du même objet — et le vrai chiffre est 738
 

@@ -20,6 +20,7 @@ import {
 import { titreDe, lignesDe, faitsDe, RENOMMEES } from '../src/chronique.js';
 import {
   faireRevolte, SEUIL_REVOLTE, SUREXTENSION, tickColonie, prixUnitaire, verser,
+  effondrer,
   servable, valeurTranche,
   reserveVille,
 } from '../src/economy.js';
@@ -9871,6 +9872,143 @@ section('H4. Une monnaie peut s’envoler — le plafond du cours est levé auss
   ok(typeof copie.world.factions[cle].cours === 'number'
     && Number.isFinite(copie.world.factions[cle].cours),
   'l’aller-retour JSON la garde telle quelle');
+}
+
+// ---------------------------------------------------------------------------
+section('I. « Tout doit être possible » — la démographie a le droit de tuer');
+// ---------------------------------------------------------------------------
+//
+// La règle du propriétaire, donnée trois fois sous trois formes : « tous les
+// types de mondes devraient pouvoir exister », « c'est une simulation, tout
+// doit être possible », « une économie doit pouvoir s'effondrer aussi ». Le lot
+// H a levé les deux bornes du cours ; celui-ci lève les trois planchers
+// démographiques — les trois derniers endroits où le moteur écrivait « ça
+// n'arrivera pas » à la place de la simulation.
+{
+  // --- I1. La capitale immortelle.
+  //
+  // « Une capitale acculée reçoit du renfort des siens : elle ne meurt pas » —
+  // pop remontée à 60, grogne essuyée, déclin remis à 600. Une faction ne
+  // pouvait donc littéralement pas mourir de faim : la mort par la démographie
+  // était interdite d'en haut, alors que la mort par l'épée existe depuis le
+  // premier jour. Le décor : une faction réduite à sa dernière ville, la ville
+  // au bout de l'agonie — c'est le chemin que `FACTIONS-NEUVES.md` sait déjà
+  // finir, `effondrer` puis `morte`.
+  const sI = nouvellePartie(717100, { maintenant: 0 });
+  for (let i = 0; i < 100; i++) tick(sI);
+  const cleI = clesDe(sI.world).find((k) => k !== 'essaim'
+    && sI.world.factions[k] && sI.world.factions[k].colonies.length >= 1);
+  const fI = sI.world.factions[cleI];
+  // On la réduit à une seule ville, proprement : les autres passent en ruine
+  // par le mécanisme du moteur, pas par des affectations sauvages — sinon le
+  // décor casse l'invariant comptable et accuse le moteur de son propre trou.
+  const garder = fI.colonies[0];
+  for (const id of fI.colonies.slice(1)) {
+    const c = sI.world.colonies.find((x) => x.id === id);
+    if (c) effondrer(sI.world, c);
+  }
+  const capitale = sI.world.colonies.find((x) => x.id === garder);
+  const rngI = new Rng(7);
+  const condI = conditions(sI.world, sI.temps);
+  capitale.pop = 50;
+  capitale.unrest = 0.9;
+  capitale.declin = 950;
+  let evI = null;
+  for (let i = 0; i < 40 && !evI; i++) {
+    capitale.pop = Math.min(capitale.pop, 50);
+    capitale.unrest = Math.max(capitale.unrest, 0.9);
+    const r = tickColonie(sI.world, capitale, rngI, condI, 1, 0, null, sI.temps + i);
+    if (r && r.evenement === 'effondrement') evI = r;
+  }
+  ok(!!evI, 'I1 — la dernière ville d’une faction peut mourir de faim',
+    evI ? 'effondrement rendu' : `pop ${capitale.pop}, déclin ${Math.round(capitale.declin)}`);
+
+  // --- I2. Le socle de villes.
+  //
+  // « On ne vide pas la carte » : sous soixante pour cent de villes vivantes,
+  // plus rien ne s'effondrait — le sursis était éternel et silencieux. Un monde
+  // doit pouvoir se vider ; c'est la garde `villes` de CIBLES.json qui dit si
+  // le monde ORDINAIRE se porte bien, pas une règle cachée dans le tick.
+  const sJ = nouvellePartie(717200, { maintenant: 0 });
+  for (let i = 0; i < 100; i++) tick(sJ);
+  // On ruine 70 % du monde par le mécanisme du moteur, pour passer sous le
+  // socle — le décor fabrique le monde moribond qu'il prétend mesurer.
+  const debout = sJ.world.colonies.filter((c) => !c.ruine);
+  for (const c of debout.slice(0, Math.ceil(debout.length * 0.7))) effondrer(sJ.world, c);
+  const cleJ = clesDe(sJ.world).find((k) => k !== 'essaim'
+    && sJ.world.factions[k] && sJ.world.factions[k].colonies.length >= 2);
+  ok(!!cleJ, 'le décor garde une faction à deux villes', cleJ || 'aucune');
+  const mourante = sJ.world.colonies.find(
+    (x) => x.faction === cleJ && !x.ruine && sJ.world.factions[cleJ].colonies.length >= 2);
+  const rngJ = new Rng(7);
+  const condJ = conditions(sJ.world, sJ.temps);
+  mourante.pop = 50;
+  mourante.unrest = 0.9;
+  mourante.declin = 950;
+  let evJ = null;
+  for (let i = 0; i < 40 && !evJ; i++) {
+    mourante.pop = Math.min(mourante.pop, 50);
+    mourante.unrest = Math.max(mourante.unrest, 0.9);
+    const r = tickColonie(sJ.world, mourante, rngJ, condJ, 1, 0, null, sJ.temps + i);
+    if (r && r.evenement === 'effondrement') evJ = r;
+  }
+  ok(!!evJ, 'I2 — un monde aux deux tiers ruiné peut continuer de se vider',
+    evJ ? 'effondrement rendu' : `déclin ${Math.round(mourante.declin)}`);
+
+  // --- I3. Le plancher de vingt-cinq habitants.
+  //
+  // `pop = max(25, pop − irange(1, 3))` : un village affamé se vidait jusqu'à
+  // vingt-cinq âmes, puis plus personne ne partait, jamais — vingt-cinq
+  // habitants qui meurent de faim sur place et n'ont pas le droit de s'en
+  // aller. Et en dessous de tout : une ville sans personne est une ruine, pas
+  // une ville de zéro habitant qui tournerait pour toujours.
+  const sK = nouvellePartie(717300, { maintenant: 0 });
+  for (let i = 0; i < 100; i++) tick(sK);
+  const village = sK.world.colonies.find(
+    (c) => !c.ruine && !c.avantPoste && c.faction && c.pop > 25 && c.pop < 200);
+  const rngK = new Rng(7);
+  const condK = conditions(sK.world, sK.temps);
+  let evK = null;
+  let sous25 = false;
+  for (let i = 0; i < 3000 && !evK; i++) {
+    // Une famine totale, entretenue : rien à manger, rien pour en acheter.
+    village.stock.rations = 0;
+    village.menages = 0;
+    village.caisse = 0;
+    const r = tickColonie(sK.world, village, rngK, condK, 1, 0, null, sK.temps + i);
+    if (village.pop < 25) sous25 = true;
+    if (r && r.evenement === 'effondrement') evK = r;
+  }
+  ok(sous25, 'I3 — la famine peut vider un village sous vingt-cinq âmes',
+    `pop ${village.pop}`);
+  ok(!!evK, 'et une ville vidée finit en ruine, pas en ville fantôme',
+    evK ? `effondrement à pop ${village.pop}` : `pop ${village.pop} après 3000 h`);
+
+  // Et la règle du vide isolée de l'agonie : une ville dont les derniers
+  // habitants s'en vont SANS gronder — le déclin ne monte que si la grogne
+  // dépasse 0,75 — doit devenir une ruine quand même. Sans cette règle, elle
+  // resterait une ville de zéro habitant qui tourne pour toujours : besoin
+  // nul, satiété parfaite, grogne qui retombe — le fantôme parfait, invisible
+  // de toutes les autres gardes.
+  const sL = nouvellePartie(717400, { maintenant: 0 });
+  for (let i = 0; i < 100; i++) tick(sL);
+  const hameau = sL.world.colonies.find(
+    (c) => !c.ruine && !c.avantPoste && c.faction && c.pop > 25);
+  const rngL = new Rng(7);
+  const condL = conditions(sL.world, sL.temps);
+  hameau.pop = 3;
+  let evL = null;
+  for (let i = 0; i < 600 && !evL; i++) {
+    hameau.stock.rations = 0;
+    hameau.menages = 0;
+    hameau.caisse = 0;
+    hameau.unrest = 0; // pas d'agonie : seul le vide peut la tuer
+    hameau.declin = 0;
+    const r = tickColonie(sL.world, hameau, rngL, condL, 1, 0, null, sL.temps + i);
+    if (r && r.evenement === 'effondrement') evL = r;
+  }
+  ok(!!evL, 'une ville sans personne est une ruine, même sans agonie',
+    evL ? `effondrement à pop ${hameau.pop}` : `pop ${hameau.pop} après 600 h`);
 }
 
 // ===========================================================================

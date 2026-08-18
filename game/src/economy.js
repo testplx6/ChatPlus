@@ -1262,7 +1262,13 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
     col.unrest = Math.min(1, col.unrest + 0.004 * (0.8 - satiete) / 0.8 * dt);
     const partis = combienDeFois(rng, 0.05 * (0.8 - satiete) / 0.8, dt);
     for (let n = 0; n < partis; n++) {
-      col.pop = Math.max(25, col.pop - rng.irange(1, 3));
+      // Zéro, plus vingt-cinq : le plancher est levé (lot I, « tout doit être
+      // possible »). Il gardait vingt-cinq habitants assignés à mourir de faim
+      // sur place sans le droit de partir — et il REMONTAIT à vingt-cinq un
+      // hameau qui n'en avait plus que trois, mesuré au décor du lot. La garde
+      // `pop` de CIBLES.json continue de dire si le monde ordinaire se vide ;
+      // ce n'est pas le travail d'un plancher caché dans le tick.
+      col.pop = Math.max(0, col.pop - rng.irange(1, 3));
     }
   } else {
     // Le chef de la ville pèse sur ce que l'agitation retombe ou non : un dur
@@ -1274,6 +1280,13 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
     for (let n = 0; n < nes; n++) col.pop += rng.irange(0, 2);
   }
   col.pop = Math.min(col.taille * 900, col.pop);
+
+  // Une ville sans personne est une ruine — c'est une définition, pas une
+  // règle de plus. Sans elle, le plancher levé fabriquait le fantôme parfait :
+  // une ville de zéro habitant a un besoin nul, donc une satiété parfaite,
+  // donc une grogne qui retombe, donc un déclin qui n'arrive jamais — elle
+  // tournait pour toujours et aucune garde ne pouvait la voir.
+  if (col.pop < 1) return { evenement: 'effondrement' };
 
   // Reconstruction de la défense
   // Les ouvriers montent et remontent les murs. Sans eux une ville qui a pris
@@ -1346,21 +1359,19 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
     if (col.taille >= 2) col.change = true;
     return { evenement: 'croissance' };
   }
-  if (col.declin > 900) {
-    const vivantes = world.colonies.filter((c) => !c.ruine).length;
-    const socle = Math.max(6, Math.round(world.colonies.length * 0.6));
-    // On n'abandonne pas la dernière ville d'une faction : ce serait la rayer
-    // de la carte par la démographie après l'avoir protégée des armées.
-    const derniere = col.faction && world.factions[col.faction]
-      && world.factions[col.faction].colonies.length <= 1;
-    if (vivantes > socle && !derniere) return { evenement: 'effondrement' };
-    col.declin = 600; // en sursis : on ne vide pas la carte
-    if (derniere) {
-      // Une capitale acculée reçoit du renfort des siens : elle ne meurt pas.
-      col.unrest = Math.max(0, col.unrest - 0.02);
-      col.pop = Math.max(col.pop, 60);
-    }
-  }
+  // Neuf cents heures d'agonie, et la ville tombe — quelle qu'elle soit.
+  //
+  // Deux exceptions vivaient ici, et le lot I les a levées (« tout doit être
+  // possible », le propriétaire). Le **socle** gardait soixante pour cent du
+  // monde en sursis éternel : sous ce seuil, plus rien ne s'effondrait jamais,
+  // et un monde ne pouvait pas se vider — c'est la garde `villes` de
+  // CIBLES.json qui dit si le monde ordinaire se porte bien, pas une règle
+  // cachée dans le tick. Et la **capitale immortelle** — renfort, grogne
+  // essuyée, population remontée à soixante — interdisait à une faction de
+  // mourir de faim, alors qu'elle sait mourir par l'épée depuis le premier
+  // jour et que `FACTIONS-NEUVES.md` sait finir le chemin : `effondrer`, puis
+  // `morte`, et le magot qui ancre les comptes.
+  if (col.declin > 900) return { evenement: 'effondrement' };
   return null;
 }
 
