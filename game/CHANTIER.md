@@ -923,6 +923,68 @@ minutes.
 
 ## Blocages
 
+### Lot I — les planchers démographiques sont levés, le monde est plus sain, et deux gardes cassent
+
+**« Tout doit être possible »** (le propriétaire, en réponse au point sur les
+limites en dur). Le lot I lève les trois planchers démographiques — le correctif
+est écrit, ses quatre tests rouges passent au vert, et il n'est PAS livré parce
+que deux gardes de `CIBLES.json` sortent de leur fourchette. Une garde ne se
+retouche pas pour faire passer une mesure : la décision est remontée.
+
+**Ce qui est levé** (le patch complet tient en trois endroits d'`economy.js`) :
+
+1. **La capitale immortelle** — « une capitale acculée reçoit du renfort des
+   siens : elle ne meurt pas » (grogne essuyée, population remontée à 60).
+   Une faction ne pouvait littéralement pas mourir de faim.
+2. **Le socle de villes** — sous 60 % de villes vivantes, plus rien ne
+   s'effondrait jamais : le sursis était éternel et silencieux.
+3. **Le plancher de 25 habitants** aux départs — qui REMONTAIT à 25 un hameau
+   de 3, mesuré au décor. Plus la définition qui le remplace : une ville qui
+   passe sous un habitant est une ruine — sans elle, une ville de zéro
+   habitant a un besoin nul donc une satiété parfaite donc une grogne qui
+   retombe : le fantôme parfait, invisible de toutes les gardes.
+
+**Ce que la mesure dit** (6 graines, contre la révision c7abf2f) :
+
+| | 6 000 h avant | 6 000 h après | 12 000 h avant | 12 000 h après |
+|---|---:|---:|---:|---:|
+| villes | 484 | **318** | 584 | **275** |
+| habitants | 137 392 | 117 588 | 120 172 | 115 508 |
+| satiété | 0,836 | **0,867** | 0,730 | **0,863** |
+| à la diète | 51 % | **32 %** | 54 % | **25 %** |
+| affamées | 44 % | 21 % | 34 % | **4 %** |
+| écrasées | 4/36 | 10/36 | 0/36 | 12/36 |
+| masse | 8,9 M | 4,7 M | **45 716 Md** | **46 Md** |
+| bourses | 31 | 27 | 36 | 30 |
+
+Trois lectures, dans l'ordre d'importance :
+
+- **Ce n'est pas une spirale.** −166 villes sur les six premiers milliers
+  d'heures, −43 sur les six suivants, population stable : le monde se tasse et
+  se stabilise, il ne se vide pas.
+- **Le monde survivant est le plus sain jamais mesuré, et de loin.** 4 %
+  de villes affamées à 12 000 h contre 34 % avec les planchers. Les planchers
+  gardaient en vie des villes non viables qui tiraient tout le monde vers le
+  bas ; sans eux, elles meurent, et les vivantes mangent.
+- **L'emballement monétaire est divisé par mille** à 12 000 h (45 716 → 46
+  milliards). Le blocage « la masse s'emballe au-delà de douze mille heures »,
+  consigné plus bas et assumé faute de cause, avait donc les planchers
+  démographiques parmi ses causes : des villes-zombies qui commercent sans
+  jamais pouvoir mourir fabriquent du change sans fin.
+
+**Ce qui casse** : `villes` 318 pour [430, 600] et `bourses` 27 pour [28, 36].
+Les deux fourchettes ont été « resserrées à la livraison du lot F sur l'état
+mesuré » — elles encodent la forme du monde d'alors, planchers compris, pas une
+panne. La question au propriétaire est donc exactement celle du plafond de
+population (tranchée en août 2026 par « tous les types de mondes devraient
+pouvoir exister ») : **un monde plus petit, stable et mieux nourri est-il un
+monde légitime — auquel cas les deux gardes se rebasent sur l'état mesuré — ou
+le plancher de 430 villes est-il une exigence de gameplay, auquel cas les
+planchers démographiques doivent revenir sous une autre forme ?**
+
+Le patch est conservé (`scratchpad/lotI.diff` de la session, et il se réécrit
+en dix minutes depuis cette note) ; les quatre décors de test avec.
+
 ### La garde des créances et §13 ne parlaient pas du même objet — et le vrai chiffre est 738
 
 En préparant la question à poser au propriétaire, un doute : la garde
