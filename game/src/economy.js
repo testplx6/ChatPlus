@@ -58,50 +58,38 @@ export const CAISSE = {
   /**
    * La part de ce que la ville produit qui repart en salaires, chez ses gens.
    *
-   * **0,55 → 0,70, et c'est la mesure de la satiété qui l'a dicté.** Tant qu'on
-   * réglait contre `nourries`, tout poussait dans l'autre sens : baisser la part
-   * salariale appauvrit les habitants, donc ils achètent moins, donc les greniers
-   * restent pleins, donc « villes bien nourries » monte. On calibrait à l'envers
-   * sans le voir, faute d'un chiffre qui dise ce que les gens ont réellement
-   * mangé.
+   * **0,55 → 0,70, et c'est la mesure de la satiété qui l'a dicté** — dans un
+   * monde qui n'existe plus. L'histoire tient en trois actes, et elle vaut
+   * d'être gardée parce qu'elle montre un réglage qui MEURT quand le monde
+   * change.
    *
-   * Balayé sur six graines et six mille heures, une fois `col.satiete` visible :
+   * Acte un : tant qu'on réglait contre `nourries`, tout poussait à baisser la
+   * part — les greniers d'affamés restent pleins. Acte deux : la satiété
+   * visible, le balayage donnait 0,70 (+12 points de satiété, +30 000
+   * habitants), et le réglage est resté des semaines « prêt et bloqué par
+   * M0 ter » — à 0,70, le résidu d'ordre deux de la maille explosait.
    *
-   *     part    villes    pop      satiété   à la diète   caisse méd
-   *     0,55      459    79 955     0,752       59 %         435
-   *     0,60      406    79 527     0,794       51 %         243
-   *     0,65      443    82 924     0,796       52 %         223
-   *     0,70      453    84 047     0,843       48 %         117
-   *     0,75      415    86 390     0,830       47 %           0
-   *     0,80      431    82 592     0,785       49 %           0
+   * Acte trois, août 2026 : M0 ter livré (le blocage est levé, l'erreur locale
+   * à 0,70 vaut +0,001 de caisse), le balayage a été refait sur le monde
+   * d'après les lots H et I — revenus indexés sur le cours, bornes du cours
+   * levées, démographie mortelle. **Et le levier ne commande plus rien** :
    *
-   * Confirmé sur huit graines indépendantes : 0,55 → 0,70 fait passer la satiété
-   * de 0,790 à 0,845 **et la population de 107 131 à 121 800**. Plus de monde,
-   * mieux nourri : ce n'est pas un arbitrage, c'est un réglage qui était faux.
+   *     part      satiété (graines 11…909)   satiété (graines 7…777)
+   *     0,55            0,867                      0,875
+   *     0,62            0,899                      0,842
+   *     0,66            0,896                      0,877
+   *     0,70            0,879                      —
+   *     0,78            0,878                      —
    *
-   * 0,70 est aussi la dernière valeur sûre côté caisse. Au-delà, la caisse
-   * médiane des villes tombe à zéro — elles vident leur fonds de roulement en
-   * salaires et ne rachètent plus rien. C'est un bord de falaise, pas une pente.
+   * Le « pic » à 0,62 du premier jeu de graines est le creux du second : tout
+   * l'effet tient dans ±0,03, la dispersion entre jeux de graines. C'est
+   * l'indexation de H1 qui a tué le levier, et c'est logique : un salaire plus
+   * gros en monnaie locale fait des prix plus gros en monnaie locale, et le
+   * salaire réel ne bouge pas. La part salariale décide désormais de qui porte
+   * la monnaie — la caisse ou les poches — pas de qui mange.
    *
-   * **Et pourtant la valeur reste à 0,55, parce que 0,70 casse l'invariance à la
-   * maille.** Mesuré à `banc --maille`, erreur locale sur une journée depuis un
-   * état identique :
-   *
-   *     pas 24        rations    agitation    caisse    ménages
-   *     0,55           -0,010       0,000     +0,000     +0,000
-   *     0,70           -0,314       0,000     +0,104     -0,007
-   *
-   * Trente fois pire sur les rations, pour une cible à 0,1 (`MAILLE.md` §5). Sur
-   * quarante jours, l'agitation passe de +0,065 à +0,367 pour un plancher de
-   * bruit de ±0,141. Ce n'est pas une bascule de fixture : c'est le résidu que
-   * M0 bis a réduit sans l'éliminer — `facture` est calculée deux fois par
-   * tranche, au début et au milieu, et le terme d'ordre deux grandit comme le
-   * carré de l'amplitude horaire. Doubler ce qui passe dans les poches chaque
-   * heure quadruple le reste.
-   *
-   * Le réglage est donc **prêt et bloqué par M0 ter**, pas abandonné. C'est la
-   * première fois que M0 ter a un prix chiffré : douze points de satiété et
-   * trente mille habitants.
+   * La valeur reste donc à 0,55 : on ne bouge pas une constante sans une
+   * mesure qui le justifie, et il n'y en a plus.
    */
   partSalariale: 0.55,
   /** Ce que coûte une paie qu'on ne peut pas verser, par heure de retard. */

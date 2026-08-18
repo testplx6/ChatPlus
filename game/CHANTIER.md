@@ -1238,7 +1238,23 @@ dans `tickColonie`, qui n'a jamais été balayée parce qu'elle ne servait qu'un
 quart du temps.
 
 
-### Le bon réglage de la satiété est prêt, et M0 ter le bloque
+### RÉSOLU — le « bon réglage » de la satiété est mort avec le monde où il avait été mesuré
+
+**Dénouement, août 2026.** M0 ter livré, le blocage est levé — l'erreur locale
+à `partSalariale = 0,70` vaut +0,001 de caisse et −0,013 de rations, contre
++0,104 et −0,314 au moment du blocage. Le balayage a donc été refait sur le
+monde d'aujourd'hui (lots H et I livrés), sur DEUX jeux de graines, et le
+verdict est : **le levier ne commande plus la satiété.** Le pic du premier jeu
+(0,62 → 0,899) est le creux du second (0,62 → 0,842) ; tout l'effet tient dans
+la dispersion entre jeux de graines (±0,03). C'est l'indexation de H1 qui a tué
+le levier : un salaire plus gros en monnaie locale fait des prix plus gros en
+monnaie locale, et le salaire réel ne bouge pas. La constante reste à 0,55 — on
+ne bouge pas un réglage sans une mesure qui le justifie, et il n'y en a plus.
+La table complète est dans `economy.js`, sur la constante.
+
+L'énoncé d'origine, gardé pour la trace :
+
+### ~~Le bon réglage de la satiété est prêt, et M0 ter le bloque~~
 
 **Ce qui est fait.** `nourries` a été retirée des gardes et remplacée par
 `satiete` dans `CIBLES.json`. Elle comptait les greniers demi-pleins, et un
