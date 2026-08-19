@@ -77,9 +77,10 @@ train de devenir.
   et seulement pour les villes relevées — la carte reste un carnet ; la
   légende passe de `.court` à `.nom` ; le pied dit « secteur G6 » et plus
   « 24 px/secteur ». Constat : `captures/01f-carte-noms.png`.
-- [ ] **U3. L'arc : un cap entre l'accueil et la chronique.** Bloqué par une
-  décision de conception — voir ci-dessous. Rien ne s'écrit avant qu'elle
-  soit tranchée.
+- [ ] **U3. L'arc : un cap entre l'accueil et la chronique.** **Ajourné par
+  le propriétaire, août 2026 : « pour l'instant rien, chantier suivant ».**
+  Les trois options restent instruites ci-dessous pour le jour où il
+  rouvrira la question. Rien ne s'écrit d'ici là.
 
 ## U3 — la décision à trancher
 
