@@ -1380,6 +1380,66 @@ function blocRegionCourante() {
  * choses se négocient. On ne saute plus que sur les ruines, et l'absence de
  * drapeau s'affiche au lieu de tout emporter.
  */
+/**
+ * Le mot qui dit l'état d'un cours, avec les bornes d'`ecranMonde` et pas
+ * d'autres. « Effondrée » sous 0,1, « envolée » au-dessus de 10 : les deux
+ * extrêmes existent depuis le lot H, et deux écrans qui les nommeraient avec
+ * des seuils différents referaient l'incident des cinq couleurs d'estime.
+ */
+function etatCours(c) {
+  return c <= 0.1 ? 'effondrée'
+    : c >= 10 ? 'envolée'
+      : c < 0.85 ? 'faible' : c > 1.2 ? 'forte' : 'tenue';
+}
+
+/**
+ * Une porte de ville : le libellé, et dessous le fait qui dit ce qu'il y a
+ * derrière. Neuf boutons typographiquement identiques ne disaient ni si les
+ * vivres étaient chers, ni si quelqu'un voulait partir, ni que la monnaie
+ * s'était effondrée — tout était derrière le clic (INTERFACE.md, U1).
+ */
+function porte(m, libelle, fait, opts = {}) {
+  return `<button class="act mini porte${opts.primaire ? ' primaire' : ''}"
+    ${opts.large ? 'style="grid-column:1/-1"' : ''} data-a="modale" data-m="${m}">
+    ${libelle}<span class="fait${opts.alerte ? ' alerte' : ''}">${fait}</span></button>`;
+}
+
+/** Les neuf portes, chacune avec son fait — tout sort de fonctions du moteur. */
+function portesDeVille(col, libre, repu) {
+  const negoc = meilleurCommercant(G().membres);
+  const habC = negoc ? comp(negoc, 'commerce') : 0;
+  const vivres = prixJoueur(col, 'rations', habC, repu, 0, undefined, S.world);
+  const etal = col.etal && col.etal.items ? col.etal.items.length : 0;
+  const affiches = col.contrats ? col.contrats.length : 0;
+  const banc = bancDerive(col, S.temps, S.world.graine).gens.length;
+  const betes = betesDe(G()).length;
+  const coffre = coffreDe(S, col.id);
+  const ecoles = ecolesDe(S.world, col).length;
+  const c = col.faction ? coursMonnaie(S.world, col.faction) : 1;
+  const etatC = etatCours(c);
+  return [
+    porte('marche', 'Marché', `vivres ${n(vivres.achat, 1)} ${sym()}`, { primaire: true }),
+    porte('etal', 'Équipement', etal ? `${etal} article${etal > 1 ? 's' : ''}` : 'étal vide',
+      { primaire: true }),
+    porte('panneau', 'Contrats', affiches
+      ? `${affiches} affiche${affiches > 1 ? 's' : ''}` : 'rien d’affiché'),
+    porte('recrutement', 'Recruter', banc
+      ? `${banc} candidat${banc > 1 ? 's' : ''}` : 'personne ne part'),
+    porte('attelage', 'Attelage', betes
+      ? `${betes} bête${betes > 1 ? 's' : ''}` : 'rien d’attelé'),
+    porte('coffre', 'Coffre', coffre
+      ? `${Math.round(placeCoffre(coffre).pris)} kg dedans` : 'à louer'),
+    bureauDe(col) ? porte('change', 'Change',
+      libre ? 'toutes monnaies' : `monnaie ${etatC} · ${n(c, 2)}`,
+      { alerte: etatC === 'effondrée' || etatC === 'envolée' }) : '',
+    ecoles ? porte('ecole', 'Écoles',
+      `${ecoles} porte${ecoles > 1 ? 's' : ''} ouverte${ecoles > 1 ? 's' : ''}`,
+      { large: true }) : '',
+    porte('ville', 'Qui vit ici',
+      `${n(col.pop)} habitants · ${n(actifs(col))} actifs`, { large: true }),
+  ].join('');
+}
+
 function blocColonie(col) {
   if (!col || col.ruine) return '';
   const libre = !drapeauDe(S.world, col.faction);
@@ -1403,19 +1463,7 @@ function blocColonie(col) {
     ${blocRegime(col)}
     <div class="sep"></div>
     <div class="grille2" style="gap:5px">
-      <button class="act mini primaire" data-a="modale" data-m="marche">Marché</button>
-      <button class="act mini primaire" data-a="modale" data-m="etal">Équipement</button>
-      <button class="act mini" data-a="modale" data-m="panneau">Contrats${col.contrats && col.contrats.length ? ` (${col.contrats.length})` : ''}</button>
-      <button class="act mini" data-a="modale" data-m="recrutement">Recruter</button>
-      <button class="act mini" data-a="modale" data-m="attelage">Attelage${betesDe(G()).length ? ` (${betesDe(G()).length})` : ''}</button>
-      <button class="act mini" data-a="modale" data-m="coffre">Coffre${coffreDe(S, col.id)
-    ? ` (${Math.round(placeCoffre(coffreDe(S, col.id)).pris)} kg)` : ''}</button>
-      ${bureauDe(col) ? `<button class="act mini" data-a="modale" data-m="change">Change</button>` : ''}
-      ${ecolesDe(S.world, col).length
-    ? `<button class="act mini" style="grid-column:1/-1" data-a="modale" data-m="ecole">
-        Écoles (${ecolesDe(S.world, col).length})</button>` : ''}
-      <button class="act mini" style="grid-column:1/-1" data-a="modale" data-m="ville">
-        Qui vit ici</button>
+      ${portesDeVille(col, libre, repu)}
     </div>
     ${blocEngagement(col)}
   </section>`;
@@ -4010,13 +4058,10 @@ function ecranMonde() {
     const dir = DIRECTEURS.reduce(
       (a2, b2) => (Math.abs(b2.taux - l2.directeur) < Math.abs(a2.taux - l2.directeur) ? b2 : a2));
     const c = coursMonnaie(S.world, f.key);
-    // « Effondrée » sous 0,1, « envolée » au-dessus de 10 : les deux bornes du
-    // cours sont levées (lot H), une monnaie vaut ce que sa masse dit, et
-    // l'écran doit savoir nommer les deux extrêmes — dix pour un est le miroir
-    // exact d'un pour dix.
-    const etat = c <= 0.1 ? 'effondrée'
-      : c >= 10 ? 'envolée'
-        : c < 0.85 ? 'faible' : c > 1.2 ? 'forte' : 'tenue';
+    // Les bornes du cours sont levées (lot H) : l'écran nomme les deux
+    // extrêmes avec les mêmes mots et les mêmes seuils que les portes de
+    // ville — voir etatCours.
+    const etat = etatCours(c);
     return `<div class="aide">Monnaie ${e(symboleDe(S.world, f.key))} : cours
       ${n(c, 2)} — ${e(etat)}. ${n(Math.round(masse(S.world, f.key)))} en circulation,
       ${f.emissions || 0} émission(s). Loyer de l’argent :

@@ -791,6 +791,33 @@ ok(!abordable || objetsApres > objetsAvant, 'un achat d’équipement arrive dan
 await page.click('[data-a="fermer"]');
 await page.waitForTimeout(300);
 
+// U1 (INTERFACE.md) — l'écran de ville : des portes qui parlent. Neuf boutons
+// typographiquement identiques ne disent pas si les vivres sont chers, si
+// quelqu'un veut partir, si la monnaie s'est effondrée. Chaque porte doit
+// porter un fait vivant tiré du moteur — et le test échoue si l'une d'elles
+// redevient muette.
+{
+  const portes = ['marche', 'etal', 'panneau', 'recrutement', 'attelage',
+    'coffre', 'change', 'ecole', 'ville'];
+  const nues = [];
+  for (const m of portes) {
+    const b = page.locator(`button[data-a="modale"][data-m="${m}"]`).first();
+    if (!(await b.count())) continue; // change et écoles n'existent pas partout
+    const fait = await b.locator('.fait').textContent().catch(() => null);
+    if (!fait || !fait.trim()) nues.push(m);
+  }
+  ok(nues.length === 0, 'chaque porte de la ville annonce ce qu’il y a derrière',
+    nues.length ? `muettes : ${nues.join(', ')}` : '');
+  const fMarche = await page.locator('button[data-m="marche"] .fait')
+    .textContent().catch(() => '');
+  ok(/\d/.test(fMarche || ''), 'le marché affiche le prix des vivres', fMarche || 'rien');
+  const fVille = await page.locator('button[data-m="ville"] .fait')
+    .textContent().catch(() => '');
+  ok(/actif/.test(fVille || ''), '« Qui vit ici » compte les habitants et les actifs',
+    fVille || 'rien');
+  await page.screenshot({ path: join(CAPTURES, '01e-portes.png') });
+}
+
 // Une ville affranchie garde son marché.
 //
 // Le panneau entier — marché, recrutement, contrats, armurier — disparaissait

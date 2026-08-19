@@ -249,6 +249,13 @@ button.act:active { background: var(--bord); }
 button.act[disabled] { opacity: .38; cursor: not-allowed; }
 button.act[aria-pressed="true"] { border-color: var(--cyan); color: var(--cyan); }
 button.act.mini { min-height: 30px; padding: 4px 7px; font-size: 11px; text-align: center; }
+/* Une porte de ville : le libellé, et dessous le fait qui dit ce qu'il y a
+   derrière (INTERFACE.md, U1). Aligné à gauche : deux lignes centrées se
+   lisent comme un bloc, deux lignes à gauche comme une entrée de menu. */
+button.act.mini.porte { text-align: left; min-height: 40px; }
+.porte .fait { display: block; font-size: 10px; color: var(--texte-3);
+  letter-spacing: 0; margin-top: 2px; }
+.porte .fait.alerte { color: var(--rouge); }
 button.act.primaire { border-color: var(--cyan); color: var(--cyan); }
 button.act.danger { border-color: var(--rouge); color: var(--rouge); }
 
