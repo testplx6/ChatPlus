@@ -697,6 +697,34 @@ que l'étal vide les bourses pour des marchandises qui n'existent pas.
   pour cent d'un événement qui arrive une fois par décennie de jeu. **On ne le
   branche pas, et c'est mesuré plutôt que supposé.** Le test reste, lui : le
   jour où quelqu'un monte `q`, il tombera.
-- [ ] **M5.** Livraison : `CIBLES.json` resserré sur l'état mesuré, coût du tick
+- [x] **M5.** Livraison : `CIBLES.json` resserré sur l'état mesuré, coût du tick
   chiffré contre la livraison précédente, et le résidu de rétroaction écrit
   noir sur blanc plutôt que passé sous silence.
+
+  **Les cibles, resserrées sur le monde mesuré** (6 graines × 6 000 h, à la
+  livraison des prix libres) : villes 368 ∈ [260, 430], bourses 31 ∈ [24, 36],
+  endettées 244 ∈ [160, 280], écrasées 10/36, satiété 0,979, effondrées 12,
+  saisies 782, convois 15 823, guerres 18 — toutes les fourchettes rebasées
+  aux lots I et I bis couvrent l'état mesuré avec les marges du calage du
+  lot F. Une seule était restée sur l'ancien monde : le plancher de
+  population, 45 000, calé sur les 57 893 habitants du lot F (×0,78) — dans
+  un monde qui en porte 159 359, il ne gardait plus rien. Recalé à
+  **120 000** (×0,75 du mesuré, même logique de marge), plafond toujours
+  absent : la démographie a le droit de tuer, pas de s'effondrer sans témoin.
+
+  **Le coût du tick, chiffré contre la livraison précédente** : 188 µs
+  estimés au protocole calibré (rapport ×1,007 sur le témoin 5cc3766 mesuré
+  dans la même minute), rattrapage maximal vécu 3,20 s pour un plafond de
+  3 600 ms. Le prix payé par la livraison des prix libres — ×1,446 mesuré à
+  l'alternance — est consigné dans la garde de vitesse, et sa dette a son
+  chantier : M6, ci-dessous.
+
+  **Le résidu de rétroaction, noir sur blanc** : la maille grossière ne
+  rejoue pas les heures, elle les intègre — il reste donc un écart. Mesuré au
+  juge de la partie 2 (la même ville, quarante jours, huit placebos) :
+  rations −0,275 par jour pour un plancher de bruit de ±0,55, caisse −0,192
+  pour ±0,23 — et sur quarante jours la dérive cumulée est de **cinq crédits
+  pour un plancher de seize**, là où un biais de deux crédits par jour en
+  aurait accumulé quatre-vingts. Le résidu est **auto-correcteur, pas
+  biaisé** : c'est la propriété qui autorise à jouer loin des villes sans que
+  le monde dépende de l'endroit où l'on se tient.
