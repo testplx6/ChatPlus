@@ -72,6 +72,7 @@ quelqu'un d'autre.
 | `CHANTIER.md` §Lot E | la monnaie du joueur — **E1 à E6 faits**, sauf trois prérogatives bloquées par le cahier des charges |
 | `CARTOGRAPHIE.md` | ce que chaque constante commande — produit par la mesure, à lire avant de régler |
 | `CIBLES.json` | les gardes du monde vérifiées par `verifier --complet` |
+| `INTERFACE.md` | le chantier de ce que le joueur voit — montrer, pas inventer |
 | `PISTES.md` | des idées consignées, pas des chantiers — rien n'y est engagé |
 | `README.md` | le projet, les tests, l'architecture |
 
