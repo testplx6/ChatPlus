@@ -23,7 +23,7 @@ import {
   effondrer,
   solvabilite, cibleStock,
   servable, valeurTranche,
-  reserveVille, VOIES,
+  reserveVille, VOIES, TRANCHE,
 } from '../src/economy.js';
 import { tickCredit, insolvable, veutBatir } from '../src/credit.js';
 import {
@@ -7723,15 +7723,27 @@ section('23. Une probabilité se regroupe, un compte ne se regroupe pas');
   // (deux crédits par jour cumulés feraient quatre-vingts en quarante jours ;
   // la mesure en trouve cinq, pour un plancher de seize). Cette garde-ci ne
   // fait qu'empêcher de reculer sous le bruit d'une journée.
+  //
+  // RECALÉ à M6, et voici la mesure qui l'impose : la médiane de caisse de
+  // cette même comparaison, pour le MODÈLE PUR (tolSaut = 0, identique au
+  // bit au moteur d'avant M6, vérifié ville par ville), vaut selon
+  // l'échauffement du monde-échantillon : −0,683 (396 ticks), −1,351 (398),
+  // −0,683 (400), +0,642 (402), +0,642 (404). L'ancien plancher de ±0,23
+  // mesurait donc la CHANCE DE L'ÉCHANTILLON, pas le modèle — il rejetait le
+  // moteur inchangé sur l'échantillon d'à côté. Le pas adaptatif, lui, rend
+  // des médianes identiques au modèle pur au millième sur les cinq
+  // échantillons. Plancher de caisse porté à la pointe observée du modèle
+  // pur (±1,5) ; ménages porté à ±0,35 — le modèle pur rend −0,119 à −0,267
+  // selon l'échauffement, l'ancien ±0,25 le rejetait aussi.
   const e24 = erreurLocale(24);
   ok(Math.abs(e24.rations) < 0.55, 'une tranche de 24 h sert les mêmes rations qu’heure par heure',
     `${e24.rations.toFixed(3)} de rations (plancher de bruit ±0,55)`);
   ok(Math.abs(e24.unrest) < 0.001, 'et elle laisse la même agitation',
     `${e24.unrest.toFixed(4)}`);
-  ok(Math.abs(e24.caisse) < 0.23, 'et elle laisse la même caisse',
-    `${e24.caisse.toFixed(3)} crédits (plancher ±0,23)`);
-  ok(Math.abs(e24.menages) < 0.25, 'et les mêmes ménages',
-    `${e24.menages.toFixed(3)} crédits (plancher ±0,25)`);
+  ok(Math.abs(e24.caisse) < 1.5, 'et elle laisse la même caisse',
+    `${e24.caisse.toFixed(3)} crédits (plancher ±1,5 — pointe du modèle pur selon l’échantillon)`);
+  ok(Math.abs(e24.menages) < 0.35, 'et les mêmes ménages',
+    `${e24.menages.toFixed(3)} crédits (plancher ±0,35 — pointe du modèle pur selon l’échantillon)`);
 }
 
 // ===========================================================================
@@ -8319,6 +8331,26 @@ section('26. La colonne sans solde');
     };
     a0.faction = 'errants';
     a0.impayees = 0;
+    // Le décor pariait sur la mission que la première colonne du monde avait
+    // par hasard au tick 600 : une garnison s'assied et se dissout sans un
+    // mot, une marche dont la cible tombe rebrousse chemin — autant de
+    // sorties silencieuses qui rendaient le test vert ou rouge selon la
+    // trajectoire du monde. On construit le cas au lieu de le parier : une
+    // colonne presque à sec, sur une route fabriquée à travers des terres
+    // vides — la faim est la seule sortie qui reste, et c'est elle qu'on
+    // teste.
+    const desertR = st.world.regions.filter((r) => !r.colonie && !r.magot)
+      .slice(0, 30).map((r) => r.i);
+    const cibleC = st.world.colonies.find((c) => !c.ruine && c.faction
+      && c.faction !== 'errants');
+    a0.etat = 'marche';
+    a0.cible = cibleC.id;
+    a0.route = desertR;
+    a0.etape = 0;
+    a0.progres = 0;
+    a0.regionId = desertR[0];
+    a0.force = Math.min(a0.force || 40, 12);
+    a0.ravitaillement = 1;
     const lignes = [];
     const solde = ETAT.parSoldat;
     ETAT.parSoldat = 50;
@@ -10101,7 +10133,9 @@ section('M6 — les compteurs de voies disent où va le temps');
   // rejoue une à une. Les compteurs sont des instruments de module, remis à
   // zéro par qui mesure : pas un état de jeu, rien dans la sauvegarde.
   const sV = nouvellePartie(4242);
-  Object.assign(VOIES, { fine: 0, rapide: 0, simple: 0, reprix: 0, heuresReprix: 0 });
+  Object.assign(VOIES, {
+    fine: 0, rapide: 0, simple: 0, reprix: 0, heuresReprix: 0, heuresEstimees: 0,
+  });
   avancer(sV, 200);
   const tot = VOIES.fine + VOIES.rapide + VOIES.simple + VOIES.reprix;
   ok(tot > 0, 'les tranches se comptent quand le monde avance', `${tot} tranches`);
@@ -10110,6 +10144,73 @@ section('M6 — les compteurs de voies disent où va le temps');
     `${VOIES.reprix} tranches à reprix, ${VOIES.heuresReprix} h rejouées`);
   ok(!serialiser(sV).includes('heuresReprix'),
     'les compteurs ne fuient pas dans la sauvegarde');
+}
+
+section('M6 — le pas adaptatif du prix : les pow aux ancres, la pente entre deux');
+{
+  // Le juge de fond reste la partie 2 du banc (quarante jours contre huit
+  // placebos). Ici, le contrat local : sur des villes réelles poussées en
+  // régime de reprix — bourse courte —, la boucle aux fenêtres rend la même
+  // tranche que le reprix intégral à la tolérance près, ET estime
+  // effectivement des prix sans pow. `TRANCHE.tolSaut = 0` re-tarife tout,
+  // c'est la référence.
+  const sJ = nouvellePartie(11, { maintenant: 0 });
+  for (let i = 0; i < 400; i++) tick(sJ);
+  const condJ = conditions(sJ.world, sJ.temps);
+  const villesJ = sJ.world.colonies
+    .filter((c) => !c.ruine && c.faction && !c.avantPoste && c.pop > 60).slice(0, 30);
+  ok(villesJ.length >= 20, 'assez de villes pour juger', `${villesJ.length}`);
+  const avantTol = TRANCHE.tolSaut;
+  const avantSaut = TRANCHE.sautFin;
+  // Le pas adaptatif est COUPÉ par défaut (verdict de mesure, voir TRANCHE et
+  // MAILLE §M6) : ce test vérifie que l'étage des FENÊTRES, lui, reste
+  // correct — on l'allume explicitement, à la tolérance qui a servi aux
+  // mesures, SANS le saut de fin de fenêtre (jugé et écarté au dossier M6 :
+  // il ne paie pas et déplace la queue monétaire).
+  const TOL_ESSAI = 0.002;
+  TRANCHE.sautFin = false;
+  let sautees = 0;
+  // Le juge est LA MÉDIANE, comme au banc : une dérive de 10⁻⁵ relatif — du
+  // réarrangement flottant — suffit à faire basculer un événement à seuil
+  // dans une ville sur trente, et le pire cas ne mesure alors plus le pas
+  // adaptatif mais le chaos, exactement comme pour l'erreur locale (MAILLE
+  // §5). La médiane, elle, dit si le MODÈLE dévie.
+  const ecarts = { caisse: [], menages: [], rations: [], unrest: [] };
+  for (const c0 of villesJ) {
+    // La bourse courte force la boucle à reprix quel que soit l'état tiré.
+    c0.menages = Math.min(c0.menages || 0, (c0.pop || 1) * 0.05);
+    const A = JSON.parse(JSON.stringify(c0));
+    const B = JSON.parse(JSON.stringify(c0));
+    const rA = new Rng(13);
+    const rB = new Rng(13);
+    for (let j = 0; j < 10; j++) {
+      TRANCHE.tolSaut = 0;
+      tickColonie(sJ.world, A, rA, condJ, 48, 0, null, sJ.temps + j * 48);
+      TRANCHE.tolSaut = TOL_ESSAI;
+      Object.assign(VOIES, {
+        fine: 0, rapide: 0, simple: 0, reprix: 0, heuresReprix: 0, heuresEstimees: 0,
+      });
+      tickColonie(sJ.world, B, rB, condJ, 48, 0, null, sJ.temps + j * 48);
+      sautees += VOIES.heuresEstimees;
+    }
+    const rel = (a, b, plancher) => Math.abs((a || 0) - (b || 0))
+      / Math.max(plancher, Math.abs(a || 0), Math.abs(b || 0));
+    ecarts.caisse.push(rel(A.caisse, B.caisse, 50));
+    ecarts.menages.push(rel(A.menages, B.menages, 50));
+    ecarts.rations.push(rel(A.stock.rations, B.stock.rations, 50));
+    ecarts.unrest.push(Math.abs((A.unrest || 0) - (B.unrest || 0)));
+  }
+  TRANCHE.tolSaut = avantTol;
+  TRANCHE.sautFin = avantSaut;
+  const med = (t) => t.slice().sort((a, b) => a - b)[Math.floor(t.length / 2)];
+  ok(sautees > 500, 'le pas adaptatif estime des prix sans payer les pow',
+    `${sautees} heures estimées sur ${villesJ.length * 480}`);
+  ok(med(ecarts.caisse) < 0.005 && med(ecarts.menages) < 0.005
+    && med(ecarts.rations) < 0.005,
+  'la ville estimée est la ville rejouée — médiane sous 0,5 % sur 480 h',
+  `caisse ${(med(ecarts.caisse) * 100).toFixed(3)} % · ménages ${(med(ecarts.menages) * 100).toFixed(3)} % · rations ${(med(ecarts.rations) * 100).toFixed(3)} %`);
+  ok(med(ecarts.unrest) < 0.005, 'et la grogne suit — médiane sous 0,005',
+    med(ecarts.unrest).toFixed(5));
 }
 
 // ===========================================================================

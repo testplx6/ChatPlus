@@ -749,18 +749,59 @@ que l'étal vide les bourses pour des marchandises qui n'existent pas.
   colonne « rapide/simple/reprix » du banc, 6 graines × 6 000 h) : sur les
   tranches à dt > 1, **58 % prennent la voie rapide, 29 % la boucle simple,
   13 % la boucle à reprix — et ces 13 % rejouent 1 929 000 heures une à
-  une**, 86,7 heures par tranche en moyenne : ce sont les villes lointaines,
-  aux pas de 24 heures et plus, qui paient le plein tarif horaire à sept
-  `pow` l'heure. Le poste dominant est donc bien la boucle à reprix, et sa
-  forme est parlante : une ville dont la bourse tourne plus de deux fois par
-  jour traverse son transitoire en moins d'une journée, puis **répète la
-  même heure** — le gros des 86,7 heures est un régime quasi stationnaire
-  rejoué à l'identique. La piste du pas adaptatif : rejouer l'heure tant que
-  les flux bougent, puis, quand deux heures consécutives se ressemblent à
-  l'epsilon près, **sauter en forme close jusqu'au prochain événement**
-  (stock à zéro, caisse à sec, fin de tranche) — et reprendre l'heure si un
-  événement mord. Aucun tirage ne vit dans cette boucle : sauter ne décale
-  pas les dés.
+  une**, 86,7 heures par tranche en moyenne : les villes lointaines, aux pas
+  de 24 heures et plus, au plein tarif horaire. En brut, couper tout le
+  routage au reprix (`rotationBourse=0`) rend 475 µs contre 567 : la boucle
+  pèse **~16 % du tick total** — la supprimer entière ne rendrait donc que
+  ~157 µs estimés, déjà au-dessus du critère. C'était le premier
+  avertissement.
+
+  **(2) et (3) faits — deux étages construits, mesurés, et COUPÉS sur
+  verdict.** L'appareillage vit dans le circuit derrière `TRANCHE.tolSaut`
+  (0 = coupé, défaut) :
+
+  - **les fenêtres de reprix** — les `pow` ne se paient qu'aux ancres, les
+    heures d'une fenêtre prennent le prix extrapolé le long de sa pente
+    dln(fH)/dh (solvabilité, tension de chaque étal — régime demande ET
+    régime pénurie —, grogne), fenêtre bornée par la dérive tolérée, par
+    l'étal qui croiserait sa demande, refermée à toute bascule de régime.
+    **Qualité : indiscernable** — les médianes d'erreur locale sont
+    identiques au millième à celles du reprix intégral sur cinq
+    échantillons, la partie 2 rend cinq sur cinq sous les planchers de
+    placebo. **Vitesse : ×0,98 au protocole calibré — rien.** Les pow ne
+    sont pas le poste dominant de la boucle ; la sortir des denrées mortes
+    (liste des actives, arrivages en forme close — exact au bit) ne suffit
+    pas non plus.
+  - **le saut de fin de fenêtre** (`TRANCHE.sautFin`) — les heures restantes
+    d'une fenêtre au régime d'argent stable (bénin : la note se paie ;
+    épinglé : la ville pauvre au point fixe, la bourse cycle sur la paie)
+    s'appliquent en forme close, prix au trapèze. **Vitesse : ×1,04 —
+    négatif**, l'intendance coûte plus que les heures qu'elle saute. **Et la
+    queue monétaire bouge : 12 monnaies effondrées → 2, sur les mêmes
+    graines, toutes dans le même sens** — pendant que les fenêtres seules en
+    laissent 10~12. Un remboursement qui change ce que le monde a le droit
+    de vivre n'est pas un remboursement.
+
+  **Ce qui reste vrai et livré** : les compteurs d'attribution, la liste des
+  denrées actives et la paie d'avant-poste en forme close (exacts au bit —
+  `tolSaut=0` reproduit le monde de la livraison des prix libres à
+  l'identique, gardes comprises), le décor de la colonne sans terre
+  reconstruit pour tester la faim au lieu de parier sur une trajectoire, et
+  les planchers de l'erreur locale **recalés sur le bruit d'échantillon
+  mesuré** : le modèle PUR rend une médiane de caisse entre −1,351 et +0,642
+  selon que le monde-échantillon s'échauffe 396 ou 404 ticks — l'ancien
+  ±0,23 rejetait le moteur inchangé sur l'échantillon d'à côté (caisse
+  ±0,23 → ±1,5, ménages ±0,25 → ±0,35, rations inchangé, mesures dans le
+  test).
+
+  **BLOCAGE, consigné comme le critère l'exige** : par cette voie — geler ou
+  extrapoler le prix — le remboursement plafonne à ~zéro, loin des 150 µs.
+  La prochaine tentative devra chercher ailleurs : le coût est dans les
+  flux horaires de 1,9 million d'heures et dans ce qui entoure la boucle,
+  pas dans les sept pow. Pistes non explorées : élargir le pas des tranches
+  lointaines (dt au-delà de 24 quand la ville est stable — c'est le niveau
+  de détail lui-même, pas le circuit), et le profil hors-boucle
+  (caravanes 19 %, factions 16 % du tick).
 
   Critère : **us estimé ≤ 150 µs** au protocole calibré (rendre au moins la
   moitié de la dette : 129 → 187 aujourd'hui), partie 2 cinq sur cinq, dix

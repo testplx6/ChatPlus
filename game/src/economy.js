@@ -74,14 +74,41 @@ import {
  * double la dérive. Ce n'est pas une règle de jeu : c'est la frontière entre
  * deux méthodes de calcul du même monde.
  */
-export const TRANCHE = { rotationBourse: 0.5 };
+// `tolSaut` et `fenetreMax` (M6) : le pas adaptatif du PRIX dans la boucle à
+// reprix. Les pow ne se paient qu'aux ancres ; entre deux ancres, le prix de
+// l'heure est extrapolé le long de sa pente dln(fH)/dh, calculée en forme
+// close à partir des trois moteurs (solvabilité, tension des étals, grogne).
+// La fenêtre est dimensionnée pour que la dérive estimée reste sous
+// `tolSaut`, plafonnée à `fenetreMax` heures, et refermée dès qu'un régime
+// bascule. Les flux, eux, restent exacts heure par heure : seul le prix est
+// estimé, jamais un min() ni un écrêtage. `sautFin` ajoute le saut de fin de
+// fenêtre : les heures restantes d'une fenêtre au régime d'argent stable
+// s'appliquent en forme close au lieu de se rejouer.
+//
+// **COUPÉ PAR DÉFAUT (tolSaut: 0), et c'est un verdict de mesure, pas une
+// prudence** — le dossier complet est dans MAILLE §M6. En deux lignes : les
+// fenêtres seules rendent une qualité indiscernable du reprix intégral
+// (médianes identiques au millième sur cinq échantillons) mais ne paient
+// RIEN (×0,98 au protocole calibré — les pow ne sont pas le poste
+// dominant) ; le saut de fin de fenêtre, lui, ne paie pas non plus (×1,04,
+// l'intendance coûte plus que les heures sautées) ET déplace la queue
+// monétaire du monde — 12 effondrées → 2 sur les mêmes graines, toutes dans
+// le même sens. À zéro, le circuit est identique au bit près au moteur
+// d'avant M6, vérifié ville par ville et aux gardes. L'appareillage reste
+// pour le banc (--balaye economy.TRANCHE.tolSaut) et pour la prochaine
+// tentative, qui devra chercher le remboursement AILLEURS que dans le prix.
+export const TRANCHE = {
+  rotationBourse: 0.5, tolSaut: 0, fenetreMax: 12, sautFin: true,
+};
 
 // Instrumentation du chantier M6 (MAILLE.md), lue et remise à zéro par qui
 // mesure — le banc, les tests. Combien de tranches prennent chaque voie du
 // circuit, et combien d'heures la boucle à reprix rejoue une à une : c'est
 // l'attribution du ×1,44 payé au lot I bis, mesurée au lieu de supposée.
 // Compteurs de module, pas un état de jeu : rien n'entre dans la sauvegarde.
-export const VOIES = { fine: 0, rapide: 0, simple: 0, reprix: 0, heuresReprix: 0 };
+export const VOIES = {
+  fine: 0, rapide: 0, simple: 0, reprix: 0, heuresReprix: 0, heuresEstimees: 0,
+};
 
 export const CAISSE = {
   marge: 0.10,
@@ -686,6 +713,14 @@ const PRIX_TRANCHE = new Float64Array(COMMODITY_KEYS.length);
 const ARRIVEE_TRANCHE = new Float64Array(COMMODITY_KEYS.length);
 const CIBLE_TRANCHE = new Float64Array(COMMODITY_KEYS.length);
 const STOCK_TRANCHE = new Float64Array(COMMODITY_KEYS.length);
+// La part de chaque denrée dans la facture de l'heure — le poids qu'il faut
+// pour dériver la pente des prix en forme close dans le pas adaptatif (M6).
+const CONTRIB_TRANCHE = new Float64Array(COMMODITY_KEYS.length);
+// Les denrées vivantes de la tranche : celles que la ville consomme. Les
+// autres ne bougent qu'avec leur arrivage — intégré en forme close à la
+// sortie de la boucle, exactement ce que l'heure par heure rendait — et
+// n'ont rien à faire dans la boucle de l'heure (M6).
+const ACTIF_TRANCHE = new Int32Array(COMMODITY_KEYS.length);
 
 export function servable(stock, parHeure, veutParHeure, dt, part = 1) {
   if (dt === 1) {
@@ -1362,6 +1397,7 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
       // bouge.
       let unrestH = col.unrest || 0;
       const retombeeH = 0.0035 + ordreDe(col) * 0.006;
+      let nbA = 0;
       for (let i = 0; i < nbK; i++) {
         const k = COMMODITY_KEYS[i];
         CIBLE_TRANCHE[i] = Math.max(1, cibleStock(col, k));
@@ -1370,20 +1406,109 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
           : (prod[k] || 0) * (1 + ((climat ? climat.rendement(k) : 1) - 1) * 0.45);
         STOCK_TRANCHE[i] = col.stock[k] || 0;
         PRIX_TRANCHE[i] = COMMODITIES[k].prix;
+        if ((cons[k] || 0) > 0) ACTIF_TRANCHE[nbA++] = i;
       }
+      // --- Le pas adaptatif du prix (M6). Le coût de cette boucle, c'est le
+      // reprix : sept pow par heure, à mille heures du joueur. Or entre deux
+      // heures, les trois moteurs du prix — solvabilité, tension des étals,
+      // grogne — dérivent lentement dans les phases stables, et leur pente
+      // dln(fH)/dh se calcule en forme close. On ne paie donc les pow qu'aux
+      // ANCRES ; les heures d'une fenêtre prennent le prix extrapolé au
+      // premier ordre le long de la pente. Les FLUX, eux, restent exacts
+      // heure par heure — achats, paie, étals, vivres, grogne, tous les min()
+      // et les écrêtages : seul le prix est estimé, jamais le régime. La
+      // fenêtre se dimensionne pour que la dérive estimée reste sous tolSaut,
+      // se referme d'elle-même quand un régime bascule (l'argent vient à
+      // manquer, la paie cesse de passer, la satiété change de côté), et
+      // chaque ancre repart des vrais pow : l'erreur ne se transmet pas d'une
+      // fenêtre à l'autre. Geler les prix SANS la pente biaisait — mesuré,
+      // les monnaies effondrées tombaient de 12 à 4 sur les mêmes graines,
+      // parce que sur une rampe l'erreur est toujours du même signe. Aucun
+      // tirage ne vit ici : estimer un prix ne décale pas les dés.
+      let fBase = 0;
+      let gW = 0;
+      let hAncre = 0;
+      let finFenetre = 0;
+      let dMenPrev = 0;
+      let dUPrev = 0;
+      let partHPrev = 1;
+      let paiePleinePrev = true;
+      let faimPrev = false;
       for (let h = 0; h < dt; h++) {
-        const solH = Math.max(SOLVABILITE.plancher,
-          ordinaireH > 0 ? menages / ordinaireH : 1);
-        const solF = Math.pow(solH, 0.85) * (1 + unrestH * 0.35) / ctx.cours;
-        let fH = 0;
-        for (let i = 0; i < nbK; i++) {
-          const veutK = cons[COMMODITY_KEYS[i]] || 0;
-          if (veutK <= 0) continue;
-          const dispo = STOCK_TRANCHE[i] + ARRIVEE_TRANCHE[i];
-          const sert = veutK < dispo ? veutK : dispo;
-          fH += sert * PRIX_TRANCHE[i] * solF * Math.pow(
-            CIBLE_TRANCHE[i] / (STOCK_TRANCHE[i] + CIBLE_TRANCHE[i] * 0.35), 0.85);
+        const mDebut = menages;
+        const uAvant = unrestH;
+        if (h >= finFenetre) {
+          // L'ancre : les vrais pow, et la pente pour la fenêtre qui s'ouvre.
+          const solH = Math.max(SOLVABILITE.plancher,
+            ordinaireH > 0 ? menages / ordinaireH : 1);
+          const solF = Math.pow(solH, 0.85) * (1 + unrestH * 0.35) / ctx.cours;
+          fBase = 0;
+          for (let a = 0; a < nbA; a++) {
+            const i = ACTIF_TRANCHE[a];
+            const veutK = cons[COMMODITY_KEYS[i]];
+            const dispo = STOCK_TRANCHE[i] + ARRIVEE_TRANCHE[i];
+            const sert = veutK < dispo ? veutK : dispo;
+            const contrib = sert * PRIX_TRANCHE[i] * solF * Math.pow(
+              CIBLE_TRANCHE[i] / (STOCK_TRANCHE[i] + CIBLE_TRANCHE[i] * 0.35), 0.85);
+            CONTRIB_TRANCHE[i] = contrib;
+            fBase += contrib;
+          }
+          gW = 0;
+          let K = 1;
+          if (TRANCHE.tolSaut > 0 && h > 0) {
+            // La pente, moteur par moteur, sur les flux de l'heure d'avant.
+            // La solvabilité ne pèse que si elle vit (au-dessus du plancher) ;
+            // chaque étal pèse de sa part dans la facture de l'ancre. Et la
+            // fenêtre s'arrête AVANT qu'un étal croise sa demande : quand
+            // `sert` bascule de « la demande » à « ce qui reste », le vrai
+            // prix décroche, et l'extrapoler par-dessus surestimait toujours
+            // dans le même sens — mesuré, les monnaies effondrées tombaient
+            // de 12 à 2 sur les mêmes graines tant que cette borne manquait.
+            let borneK = TRANCHE.fenetreMax;
+            if (dMenPrev !== 0 && menages > 0 && solH > SOLVABILITE.plancher) {
+              gW += 0.85 * (dMenPrev / menages);
+            }
+            if (dUPrev !== 0) gW += 0.35 * dUPrev / (1 + unrestH * 0.35);
+            if (fBase > 0) {
+              for (let a = 0; a < nbA; a++) {
+                const i = ACTIF_TRANCHE[a];
+                if (CONTRIB_TRANCHE[i] === 0) continue;
+                const veutK = cons[COMMODITY_KEYS[i]];
+                const st = STOCK_TRANCHE[i];
+                const arr = ARRIVEE_TRANCHE[i];
+                const fl = st <= 0 && arr - veutK * partHPrev <= 0
+                  ? 0 : arr - veutK * partHPrev;
+                if (fl !== 0) {
+                  gW += (CONTRIB_TRANCHE[i] / fBase) * -0.85
+                    * (fl / (st + CIBLE_TRANCHE[i] * 0.35));
+                }
+                const dispo = st + arr;
+                if (veutK < dispo) {
+                  // Régime demande : l'étal croisera-t-il la demande ?
+                  if (fl < 0) borneK = Math.min(borneK, (dispo - veutK) / -fl);
+                } else {
+                  // Régime pénurie : sert = ce qui reste, et il bouge avec le
+                  // flux — la pente doit le porter aussi.
+                  if (fl !== 0 && dispo > 0) {
+                    gW += (CONTRIB_TRANCHE[i] / fBase) * (fl / dispo);
+                    if (fl > 0) borneK = Math.min(borneK, (veutK - dispo) / fl);
+                  }
+                }
+              }
+            }
+            K = Math.max(1, Math.min(
+              TRANCHE.fenetreMax,
+              Math.floor(borneK),
+              gW !== 0 ? Math.floor(TRANCHE.tolSaut / Math.abs(gW)) : TRANCHE.fenetreMax,
+            ));
+          }
+          hAncre = h;
+          finFenetre = h + K;
+        } else {
+          VOIES.heuresEstimees += 1;
         }
+        const fH = h === hAncre ? fBase
+          : Math.max(0, fBase * (1 + gW * (h - hAncre)));
         let achatH = 0;
         if (fH > 0) {
           const achat = fH < menages ? fH : menages;
@@ -1397,50 +1522,171 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
           }
         }
         facture += fH;
+        let verseH = 0;
         if (duHeure > 0) {
-          const verse = duHeure < caisse ? duHeure : caisse;
-          caisse -= verse;
-          menages += verse;
-          paye += verse;
+          verseH = duHeure < caisse ? duHeure : caisse;
+          caisse -= verseH;
+          menages += verseH;
+          paye += verseH;
         }
         const partH = fH > 0 ? achatH / fH : 1;
-        // Les étals de l'heure, toutes marchandises : ce qui arrive, moins ce
-        // qui part au rythme que cette heure-ci pouvait payer.
-        for (let i = 0; i < nbK; i++) {
-          const veutK = cons[COMMODITY_KEYS[i]] || 0;
-          const sBrut = STOCK_TRANCHE[i] + ARRIVEE_TRANCHE[i] - veutK * partH;
+        // Les étals de l'heure — les seules denrées que l'heure concerne :
+        // celles qu'on y consomme. Ce qui arrive, moins ce qui part au rythme
+        // que cette heure-ci pouvait payer.
+        for (let a = 0; a < nbA; a++) {
+          const i = ACTIF_TRANCHE[a];
+          const sBrut = STOCK_TRANCHE[i] + ARRIVEE_TRANCHE[i]
+            - cons[COMMODITY_KEYS[i]] * partH;
           STOCK_TRANCHE[i] = sBrut > 0 ? sBrut : 0;
         }
         // Et ce que la ville a servi à manger cette heure-ci.
         let satH = 1;
+        let sHv = 0;
         if (besoinH > 0) {
           const dispo = stockVivres + arrivageH;
           const veutV = besoinH * partH;
-          const sH = veutV < dispo ? veutV : dispo;
-          servi += sH;
-          stockVivres = dispo - sH;
-          satH = sH / besoinH;
+          sHv = veutV < dispo ? veutV : dispo;
+          servi += sHv;
+          stockVivres = dispo - sHv;
+          satH = sHv / besoinH;
         }
         // L'humeur de l'heure suivante : la faim de celle-ci, dans l'ordre où
         // la maille fine la vit. La grogne des impayés, elle, reste au compte
         // de tranche d'après la boucle — même formule, mêmes agrégats.
         if (satH < 0.8) unrestH = Math.min(1, unrestH + 0.004 * (0.8 - satH) / 0.8);
         else unrestH = Math.max(0, unrestH - retombeeH);
+        // Une bascule de régime rend la pente caduque : la fenêtre se
+        // referme, la prochaine heure ré-ancre sur les vrais pow.
+        const paiePleine = duHeure <= 0 || verseH === duHeure;
+        const faim = satH < 0.8;
+        if ((partH < 1) !== (partHPrev < 1) || paiePleine !== paiePleinePrev
+          || faim !== faimPrev) {
+          finFenetre = h + 1;
+        }
+        dMenPrev = menages - mDebut;
+        dUPrev = unrestH - uAvant;
+        partHPrev = partH;
+        paiePleinePrev = paiePleine;
+        faimPrev = faim;
+
+        // --- Le saut de fin de fenêtre. La fenêtre garantit déjà que les
+        // prix dérivent de moins de tolSaut et qu'aucun étal ne croise sa
+        // demande jusqu'à sa fin. Si en plus le régime de l'argent est stable
+        // — bénin (la note se paie en entier) ou épinglé (la ville pauvre au
+        // point fixe : tout ce que la paie apporte se dépense, la bourse
+        // cycle sur `verse`) — alors les heures restantes de la fenêtre sont
+        // un polynôme, pas une boucle : on les applique d'un coup, prix au
+        // trapèze le long de la pente. La prochaine itération tombe sur
+        // l'ancre suivante et repart des vrais pow.
+        const M = finFenetre - 1 - h;
+        if (TRANCHE.sautFin !== false && M >= 2 && TRANCHE.tolSaut > 0 && paiePleine
+          && !(besoinH > 0 && satH < 1 && Math.abs(satH - 0.8) <= 0.03)) {
+          const tol = TRANCHE.tolSaut;
+          const epingle = partH < 1 && duHeure > 0 && achatH > 0
+            && fH * (1 - 3 * tol) >= verseH
+            && Math.abs(achatH - verseH) <= tol * Math.max(verseH, 1);
+          if (partH === 1 || epingle) {
+            let N = M;
+            const dMen = partH === 1 ? verseH - achatH : 0;
+            const dCai = achatH * (1 - impot) - verseH;
+            const dU = unrestH - uAvant;
+            // L'argent continue de couvrir la note, la caisse la paie, la
+            // grogne ne touche pas d'écrêtage, les vivres ne changent pas de
+            // camp — sinon on raccourcit le saut, et le reste se rejoue.
+            if (partH === 1) {
+              // La note ne doit pas rattraper la bourse pendant le saut : la
+              // bourse avance de dMen par heure, la note de fH·gW — si la
+              // seconde gagne, le vrai régime bascule en épinglé en cours de
+              // route et le saut s'arrête avant.
+              const ecartement = dMen - fH * gW;
+              if (ecartement < 0) {
+                N = Math.min(N, (menages - fH * (1 + 3 * tol)) / -ecartement);
+              }
+            } else {
+              // Épinglé : la note doit rester au-dessus de `verse` — une note
+              // qui fond (gW < 0) finit par repasser sous la paie, et le vrai
+              // régime redevient bénin.
+              if (gW < 0) {
+                N = Math.min(N, (fH * (1 - 3 * tol) - verseH) / (fH * -gW));
+              }
+            }
+            if (duHeure > 0 && dCai < 0) N = Math.min(N, (caisse - duHeure) / -dCai);
+            if (dU > 0) N = Math.min(N, (1 - unrestH) / dU);
+            else if (dU < 0) N = Math.min(N, unrestH / -dU);
+            let flV = 0;
+            if (besoinH > 0) {
+              flV = stockVivres <= 0 && arrivageH - besoinH * partH <= 0
+                ? 0 : arrivageH - besoinH * partH;
+              if (flV < 0) {
+                N = Math.min(N, (stockVivres + arrivageH - besoinH * partH) / -flV);
+              }
+            }
+            N = Math.floor(N);
+            if (N >= 2) {
+              // Les prix des N heures, au trapèze le long de la pente : le
+              // facteur moyen vaut φ à mi-chemin du saut.
+              const phiMid = 1 + gW * (h - hAncre + (N + 1) / 2);
+              const sommeF = N * fBase * (phiMid > 0 ? phiMid : 0);
+              const sommeAchat = partH === 1 ? sommeF : N * verseH;
+              const sommePart = partH === 1
+                ? N : N * (verseH / fH) * (2 - (phiMid > 0 ? phiMid : 0));
+              menages += N * verseH - sommeAchat;
+              caisse += sommeAchat * (1 - impot) - N * verseH;
+              if (fisc) fisc.tresor += sommeAchat * impot;
+              regle += sommeAchat;
+              facture += sommeF;
+              paye += N * verseH;
+              for (let a = 0; a < nbA; a++) {
+                const i = ACTIF_TRANCHE[a];
+                const veutK = cons[COMMODITY_KEYS[i]];
+                if (STOCK_TRANCHE[i] <= 0
+                  && ARRIVEE_TRANCHE[i] - veutK * partH <= 0) continue;
+                STOCK_TRANCHE[i] = Math.max(0,
+                  STOCK_TRANCHE[i] + N * ARRIVEE_TRANCHE[i] - veutK * sommePart);
+              }
+              if (besoinH > 0) {
+                if (stockVivres <= 0 && flV === 0) {
+                  // Garde-manger à sec : chaque heure répétée sert l'arrivage
+                  // seul — pas le fond de stock que cette heure-ci a fini.
+                  servi += N * arrivageH;
+                } else {
+                  servi += besoinH * sommePart;
+                  stockVivres = Math.max(0,
+                    stockVivres + N * arrivageH - besoinH * sommePart);
+                }
+              }
+              unrestH = Math.min(1, Math.max(0, unrestH + N * dU));
+              VOIES.heuresEstimees += N;
+              h += N;
+            }
+          }
+        }
+      }
+      // Les denrées que la ville ne consomme pas n'ont pas vécu la boucle :
+      // leur étal ne bouge qu'avec l'arrivage, intégré ici en forme close —
+      // exactement ce que l'heure par heure rendait (le plancher à zéro ne
+      // mord jamais quand rien ne sort).
+      {
+        let a2 = 0;
+        for (let i = 0; i < nbK; i++) {
+          if (a2 < nbA && ACTIF_TRANCHE[a2] === i) { a2++; continue; }
+          STOCK_TRANCHE[i] += dt * ARRIVEE_TRANCHE[i];
+        }
       }
       for (let i = 0; i < nbK; i++) {
         if (COMMODITY_KEYS[i] === 'rations') continue;
         col.stock[COMMODITY_KEYS[i]] = STOCK_TRANCHE[i];
       }
       stocksServis = true;
-    } else {
-      for (let h = 0; h < dt; h++) {
-        if (duHeure > 0) {
-          const verse = duHeure < caisse ? duHeure : caisse;
-          caisse -= verse;
-          menages += verse;
-          paye += verse;
-        }
-      }
+    } else if (duHeure > 0) {
+      // La paie seule, en forme close — exactement ce que la boucle heure par
+      // heure rendait : la caisse ne fait que descendre, et verser
+      // min(duHeure, caisse) chaque heure pendant dt heures sort
+      // min(dt · duHeure, caisse) en tout, au centime près.
+      const verse = Math.min(dt * duHeure, caisse);
+      caisse -= verse;
+      menages += verse;
+      paye += verse;
     }
     col.menages = menages;
     col.caisse = caisse;

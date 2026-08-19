@@ -115,7 +115,9 @@ function jouer({ sim, data, eco, eco2 }, graine, horizon) {
   // Attribution M6 : quelle voie du circuit prend chaque tranche. Les
   // révisions témoins d'avant le chantier n'ont pas les compteurs — on garde.
   if (eco.VOIES) {
-    Object.assign(eco.VOIES, { fine: 0, rapide: 0, simple: 0, reprix: 0, heuresReprix: 0 });
+    Object.assign(eco.VOIES, {
+      fine: 0, rapide: 0, simple: 0, reprix: 0, heuresReprix: 0, heuresEstimees: 0,
+    });
   }
   const convoisVus = new Set();
   // Les événements par type, comptés au vol. Le journal est borné à 400 entrées
@@ -362,7 +364,9 @@ function agreger(cfg) {
     // les heures que la boucle à reprix rejoue une à une — c'est là que vit
     // le ×1,44. Un témoin d'avant le chantier n'a pas les compteurs : « — ».
     voies: (() => {
-      const t = { fine: 0, rapide: 0, simple: 0, reprix: 0, heuresReprix: 0 };
+      const t = {
+        fine: 0, rapide: 0, simple: 0, reprix: 0, heuresReprix: 0, heuresEstimees: 0,
+      };
       let vu = false;
       for (const p of cfg.parties) {
         if (!p.voies) continue;
@@ -372,7 +376,8 @@ function agreger(cfg) {
       if (!vu) return '—';
       const tot = Math.max(1, t.rapide + t.simple + t.reprix);
       return `${Math.round(t.rapide / tot * 100)}/${Math.round(t.simple / tot * 100)}`
-        + `/${Math.round(t.reprix / tot * 100)} · ${Math.round(t.heuresReprix / 1000)}k h`;
+        + `/${Math.round(t.reprix / tot * 100)} · ${Math.round(t.heuresReprix / 1000)}k h`
+        + ` (${Math.round(t.heuresEstimees / 1000)}k est.)`;
     })(),
     usParTick: Math.round(med(cfg.parties.map((p) => p.usParTick))),
   };
@@ -394,7 +399,7 @@ const COLONNES = [
   ['retournements', 'vestes', 7], ['saisies', 'saisies', 8],
   ['debandades', 'débandes', 9],
   ['fondations', 'nés', 5], ['extinctions', 'morts', 6],
-  ['voies', 'rapide/simple/reprix', 20],
+  ['voies', 'rapide/simple/reprix', 28],
   ['usParTick', 'µs/tick', 7],
 ];
 
