@@ -23656,9 +23656,7 @@ function majPositionCarte() {
   if (!el) return;
   const g = G();
   const r = g ? S.world.regions[g.regionId] : null;
-  el.textContent = r
-    ? `${String.fromCharCode(65 + r.x)}${r.y + 1} · ${Math.round(CELL)} px/secteur`
-    : '';
+  el.textContent = r ? `secteur ${String.fromCharCode(65 + r.x)}${r.y + 1}` : '';
 }
 
 function dessinerCarte(cv) {
@@ -23757,6 +23755,9 @@ function dessinerCarte(cv) {
   // affiche le dernier drapeau *vu*, pas le drapeau réel : une ville prise en
   // votre absence garde ses anciennes couleurs jusqu'à ce que quelqu'un y
   // retourne. C'est le fond du système : la carte est un carnet, pas un satellite.
+  // Les noms s'écrivent en dernier (voir plus bas) pour rester lisibles
+  // par-dessus tout le reste — on les collecte au passage.
+  const noms = [];
   for (const col of w.colonies) {
     const r = w.regions[col.regionId];
     if (!r.decouvert) continue;
@@ -23764,6 +23765,7 @@ function dessinerCarte(cv) {
     if (su.inconnu) continue; // repérée de loin, jamais relevée : pas de drapeau
     const x = r.x * CELL;
     const y = r.y * CELL;
+    if (CELL >= 20) noms.push([su.nom || col.nom, x + CELL / 2, y + CELL + 1, !!su.ruine]);
     const t = 3 + (su.taille || col.taille);
     const ox = x + Math.floor((CELL - t) / 2);
     const oy = y + Math.floor((CELL - t) / 2);
@@ -23872,6 +23874,27 @@ function dessinerCarte(cv) {
     g.strokeStyle = '#f2f6fb';
     g.lineWidth = 1;
     g.strokeRect(r.x * CELL + 0.5, r.y * CELL + 0.5, CELL - 1, CELL - 1);
+  }
+
+  // U2 (INTERFACE.md) : le nom sous le carré, dès que le zoom laisse la
+  // place. On ne pouvait ni s'orienter ni raconter ce qu'on voyait — des
+  // taches sur du noir. La carte reste un carnet : seules les villes
+  // relevées ont un nom, et une ruine le garde en gris, comme son tracé.
+  if (noms.length) {
+    const taille = Math.max(8, Math.round(CELL * 0.36));
+    g.font = `${taille}px ui-monospace, Menlo, Consolas, monospace`;
+    g.textAlign = 'center';
+    g.textBaseline = 'top';
+    g.lineWidth = 3;
+    g.strokeStyle = 'rgba(5,7,10,.85)';
+    for (const [nom, cx, cy, ruine] of noms) {
+      const yy = Math.min(cy, H - taille - 1);
+      g.strokeText(nom, cx, yy);
+      g.fillStyle = ruine ? 'rgba(122,130,146,.85)' : 'rgba(230,236,246,.92)';
+      g.fillText(nom, cx, yy);
+    }
+    g.textAlign = 'left';
+    g.textBaseline = 'alphabetic';
   }
 }
 
@@ -24518,7 +24541,7 @@ function ecranCarte() {
     ${groupes(S).length > 1 ? '<span><i style="border:1px solid #f2f6fb"></i>autre groupe</span>' : ''}
     <span><i style="border:1px solid #4fd0e3"></i>avant-poste</span>
     ${classement(S.world).slice(0, 6).map((f) =>
-    `<span><i style="background:${f.couleur}"></i>${e(drapeauDe(S.world, f.key).court)}</span>`).join('')}
+    `<span><i style="background:${f.couleur}"></i>${e(drapeauDe(S.world, f.key).nom)}</span>`).join('')}
   </div>
   ${groupes(S).length > 1 ? barreGroupes() : ''}
   ${blocSituation()}

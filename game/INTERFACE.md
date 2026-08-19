@@ -65,12 +65,18 @@ train de devenir.
   change nomment le cours avec les mêmes seuils, même leçon que les cinq
   couleurs d'estime ; le fait passe en rouge quand la monnaie est effondrée
   ou envolée. Constat : `captures/01e-portes.png`.
-- [ ] **U2. La carte : lisible d'un regard.** Les villes connues portent leur
+- [x] **U2. La carte : lisible d'un regard.** Les villes connues portent leur
   nom sur la carte au zoom où on les distingue ; la légende écrit les noms
   pleins des factions, pas leurs codes ; le pied technique disparaît ou se
   fait discret. Critère : la légende ne contient plus aucun code tronqué, et
   le dessin écrit au moins un nom de ville quand une ville connue est à
   l'écran (vérifiable en interceptant `fillText` dans le test navigateur).
+
+  Livré : les noms se collectent dans la boucle des colonies et se peignent
+  en dernier (halo sombre, gris pour les ruines), seulement au zoom ≥ 20 px
+  et seulement pour les villes relevées — la carte reste un carnet ; la
+  légende passe de `.court` à `.nom` ; le pied dit « secteur G6 » et plus
+  « 24 px/secteur ». Constat : `captures/01f-carte-noms.png`.
 - [ ] **U3. L'arc : un cap entre l'accueil et la chronique.** Bloqué par une
   décision de conception — voir ci-dessous. Rien ne s'écrit avant qu'elle
   soit tranchée.

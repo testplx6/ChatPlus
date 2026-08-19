@@ -128,6 +128,17 @@ if (!navigateur) {
 }
 
 const page = await navigateur.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+// U2 (INTERFACE.md) — le canevas ne se lit pas dans le DOM : on note ce que la
+// carte écrit (fillText) pour pouvoir vérifier qu'elle écrit les noms des
+// villes relevées. Posé avant la première navigation, survit aux reload.
+await page.addInitScript(() => {
+  window.__peints = [];
+  const brut = CanvasRenderingContext2D.prototype.fillText;
+  CanvasRenderingContext2D.prototype.fillText = function (txt, ...args) {
+    if (window.__peints.length < 800) window.__peints.push(String(txt));
+    return brut.call(this, txt, ...args);
+  };
+});
 const erreurs = [];
 page.on('console', (m) => { if (m.type() === 'error') erreurs.push(m.text()); });
 page.on('pageerror', (e) => erreurs.push(e.message));
@@ -816,6 +827,36 @@ await page.waitForTimeout(300);
   ok(/actif/.test(fVille || ''), '« Qui vit ici » compte les habitants et les actifs',
     fVille || 'rien');
   await page.screenshot({ path: join(CAPTURES, '01e-portes.png') });
+}
+
+// U2 (INTERFACE.md) — la carte : lisible d'un regard. Des taches sur du noir,
+// une légende en codes de cinq lettres, un pied qui parle au développeur
+// (« 24 px/secteur ») : on ne pouvait ni s'orienter ni raconter ce qu'on voit.
+{
+  await page.evaluate(() => { window.__peints.length = 0; });
+  await page.click('[data-a="onglet"][data-k="carte"]');
+  await page.waitForTimeout(900);
+  const attendus = await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    return s.world.colonies
+      .filter((c) => s.world.regions[c.regionId].decouvert && !c.ruine)
+      .map((c) => c.nom);
+  });
+  const peints = await page.evaluate(() => window.__peints.slice());
+  const ecrits = attendus.filter((nom) => peints.some((t) => t.includes(nom)));
+  ok(attendus.length > 0 && ecrits.length > 0,
+    'la carte écrit le nom des villes relevées',
+    `${ecrits.length}/${attendus.length} noms (${peints.length} textes peints)`);
+  const codes = await page.evaluate(() => [...document.querySelectorAll('.legende span')]
+    .map((el) => el.textContent.trim()).filter((t) => /^[A-Z]{3,6}$/.test(t)));
+  ok(codes.length === 0, 'la légende écrit les noms pleins des factions',
+    codes.join(', ') || '');
+  const pied = await page.evaluate(() => (document.getElementById('carte-pos') || {}).textContent || '');
+  ok(!/px\/secteur/.test(pied), 'le pied de carte ne parle plus au développeur', pied);
+  // Le constat se prend carte en haut d'écran, sinon la capture montre le bas.
+  await page.evaluate(() => { document.getElementById('ecran').scrollTop = 0; });
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: join(CAPTURES, '01f-carte-noms.png') });
 }
 
 // Une ville affranchie garde son marché.
