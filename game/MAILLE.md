@@ -728,3 +728,42 @@ que l'étal vide les bourses pour des marchandises qui n'existent pas.
   aurait accumulé quatre-vingts. Le résidu est **auto-correcteur, pas
   biaisé** : c'est la propriété qui autorise à jouer loin des villes sans que
   le monde dépende de l'endroit où l'on se tient.
+- [ ] **M6. Le pas adaptatif par régime — rembourser le ×1,44.** La levée des
+  bornes de prix coûte ×1,446 parce que les villes dont la bourse tourne plus
+  de `TRANCHE.rotationBourse` fois par jour prennent la boucle à reprix : la
+  vérité horaire, vingt-quatre pow par jour et par denrée, même à mille
+  heures du joueur. Or la frontière est une constante nommée du moteur — elle
+  sert aujourd'hui à choisir la boucle, elle doit servir à **choisir le
+  pas** : découper la tranche au point où le régime bascule (l'heure où la
+  caisse mord, calculable en forme close) et intégrer chaque morceau en forme
+  close, au lieu de rejouer toutes les heures une à une.
+
+  Marche à suivre, dans l'ordre : **(1)** mesurer où va le temps — la part de
+  chaque voie (rapide / simple / reprix) en nombre de villes et en
+  microsecondes, métrique ajoutée à `jouer()` dans le banc, pas dans un
+  script à côté ; **(2)** ne s'attaquer qu'au poste dominant ; **(3)** chaque
+  variante jugée par la partie 2 (cinq grandeurs sous le plancher des huit
+  placebos) ET la vitesse à l'alternance, jamais l'un sans l'autre.
+
+  **(1) fait — l'attribution, mesurée** (compteurs `VOIES` dans le circuit,
+  colonne « rapide/simple/reprix » du banc, 6 graines × 6 000 h) : sur les
+  tranches à dt > 1, **58 % prennent la voie rapide, 29 % la boucle simple,
+  13 % la boucle à reprix — et ces 13 % rejouent 1 929 000 heures une à
+  une**, 86,7 heures par tranche en moyenne : ce sont les villes lointaines,
+  aux pas de 24 heures et plus, qui paient le plein tarif horaire à sept
+  `pow` l'heure. Le poste dominant est donc bien la boucle à reprix, et sa
+  forme est parlante : une ville dont la bourse tourne plus de deux fois par
+  jour traverse son transitoire en moins d'une journée, puis **répète la
+  même heure** — le gros des 86,7 heures est un régime quasi stationnaire
+  rejoué à l'identique. La piste du pas adaptatif : rejouer l'heure tant que
+  les flux bougent, puis, quand deux heures consécutives se ressemblent à
+  l'epsilon près, **sauter en forme close jusqu'au prochain événement**
+  (stock à zéro, caisse à sec, fin de tranche) — et reprendre l'heure si un
+  événement mord. Aucun tirage ne vit dans cette boucle : sauter ne décale
+  pas les dés.
+
+  Critère : **us estimé ≤ 150 µs** au protocole calibré (rendre au moins la
+  moitié de la dette : 129 → 187 aujourd'hui), partie 2 cinq sur cinq, dix
+  gardes tenues, invariant exact. Si le remboursement plafonne au-dessus de
+  150, c'est un blocage à consigner avec la mesure — pas un critère à
+  élargir, et pas une raison de céder un point de qualité.

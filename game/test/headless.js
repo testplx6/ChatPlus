@@ -23,7 +23,7 @@ import {
   effondrer,
   solvabilite, cibleStock,
   servable, valeurTranche,
-  reserveVille,
+  reserveVille, VOIES,
 } from '../src/economy.js';
 import { tickCredit, insolvable, veutBatir } from '../src/credit.js';
 import {
@@ -10091,6 +10091,25 @@ section('I bis. Les prix ont le droit de dire la vérité — les bornes sont le
     `${Math.round(grenier.stock.rations)} pour un ancien plafond à ${Math.round(cibleStock(grenier, 'rations') * 4)}`);
   ok(grenier.stock.rations <= avant,
     'et rien n’apparaît : le stock ne peut que se consommer', `${Math.round(avant)} → ${Math.round(grenier.stock.rations)}`);
+}
+
+section('M6 — les compteurs de voies disent où va le temps');
+{
+  // Le chantier M6 rembourse le ×1,44 payé au lot I bis. Première marche :
+  // savoir combien de tranches prennent chaque voie du circuit — voie rapide,
+  // boucle simple, boucle à reprix — et combien d'heures cette dernière
+  // rejoue une à une. Les compteurs sont des instruments de module, remis à
+  // zéro par qui mesure : pas un état de jeu, rien dans la sauvegarde.
+  const sV = nouvellePartie(4242);
+  Object.assign(VOIES, { fine: 0, rapide: 0, simple: 0, reprix: 0, heuresReprix: 0 });
+  avancer(sV, 200);
+  const tot = VOIES.fine + VOIES.rapide + VOIES.simple + VOIES.reprix;
+  ok(tot > 0, 'les tranches se comptent quand le monde avance', `${tot} tranches`);
+  ok(VOIES.reprix === 0 || VOIES.heuresReprix >= VOIES.reprix * 2,
+    'la boucle à reprix compte ses heures rejouées, et il y en a plus d’une par tranche',
+    `${VOIES.reprix} tranches à reprix, ${VOIES.heuresReprix} h rejouées`);
+  ok(!serialiser(sV).includes('heuresReprix'),
+    'les compteurs ne fuient pas dans la sauvegarde');
 }
 
 // ===========================================================================

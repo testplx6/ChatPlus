@@ -112,6 +112,11 @@ async function appliquerRegles(src, regles) {
 function jouer({ sim, data, eco, eco2 }, graine, horizon) {
   const t0 = performance.now();
   const s = sim.nouvellePartie(graine);
+  // Attribution M6 : quelle voie du circuit prend chaque tranche. Les
+  // révisions témoins d'avant le chantier n'ont pas les compteurs — on garde.
+  if (eco.VOIES) {
+    Object.assign(eco.VOIES, { fine: 0, rapide: 0, simple: 0, reprix: 0, heuresReprix: 0 });
+  }
   const convoisVus = new Set();
   // Les événements par type, comptés au vol. Le journal est borné à 400 entrées
   // et les plus vieilles sautent : à la fin d'une partie de six mille heures,
@@ -242,6 +247,7 @@ function jouer({ sim, data, eco, eco2 }, graine, horizon) {
     fondations,
     extinctions,
     drapeaux: Object.keys(s.world.drapeaux || {}).length,
+    voies: eco.VOIES ? { ...eco.VOIES } : null,
     duree: Math.round(duree),
     usParTick: duree / horizon * 1000,
   };
@@ -351,6 +357,23 @@ function agreger(cfg) {
       return a;
     }, {}),
     ou: `${Math.round(som(cfg, 'enCaisses') / 1000)}k/${Math.round(som(cfg, 'enMenages') / 1000)}k/${Math.round(som(cfg, 'enTresors') / 1000)}k`,
+    // L'attribution M6 : part de chaque voie sur les tranches à dt > 1 (la
+    // maille fine est exacte par construction, elle ne se rembourse pas), et
+    // les heures que la boucle à reprix rejoue une à une — c'est là que vit
+    // le ×1,44. Un témoin d'avant le chantier n'a pas les compteurs : « — ».
+    voies: (() => {
+      const t = { fine: 0, rapide: 0, simple: 0, reprix: 0, heuresReprix: 0 };
+      let vu = false;
+      for (const p of cfg.parties) {
+        if (!p.voies) continue;
+        vu = true;
+        for (const k of Object.keys(t)) t[k] += p.voies[k] || 0;
+      }
+      if (!vu) return '—';
+      const tot = Math.max(1, t.rapide + t.simple + t.reprix);
+      return `${Math.round(t.rapide / tot * 100)}/${Math.round(t.simple / tot * 100)}`
+        + `/${Math.round(t.reprix / tot * 100)} · ${Math.round(t.heuresReprix / 1000)}k h`;
+    })(),
     usParTick: Math.round(med(cfg.parties.map((p) => p.usParTick))),
   };
 }
@@ -371,6 +394,7 @@ const COLONNES = [
   ['retournements', 'vestes', 7], ['saisies', 'saisies', 8],
   ['debandades', 'débandes', 9],
   ['fondations', 'nés', 5], ['extinctions', 'morts', 6],
+  ['voies', 'rapide/simple/reprix', 20],
   ['usParTick', 'µs/tick', 7],
 ];
 

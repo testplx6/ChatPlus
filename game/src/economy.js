@@ -76,6 +76,13 @@ import {
  */
 export const TRANCHE = { rotationBourse: 0.5 };
 
+// Instrumentation du chantier M6 (MAILLE.md), lue et remise à zéro par qui
+// mesure — le banc, les tests. Combien de tranches prennent chaque voie du
+// circuit, et combien d'heures la boucle à reprix rejoue une à une : c'est
+// l'attribution du ×1,44 payé au lot I bis, mesurée au lieu de supposée.
+// Compteurs de module, pas un état de jeu : rien n'entre dans la sauvegarde.
+export const VOIES = { fine: 0, rapide: 0, simple: 0, reprix: 0, heuresReprix: 0 };
+
 export const CAISSE = {
   marge: 0.10,
   parTete: 12,
@@ -1254,6 +1261,7 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
   // pré-filtre : même frontière, même raison.
   const bourseTourne = dt > 1 && !col.avantPoste && m0 < duHeure * dt * TRANCHE.rotationBourse;
   if (dt === 1 || (menagesTient && caisseTient && !bourseTourne)) {
+    VOIES[dt === 1 ? 'fine' : 'rapide'] += 1;
     if (facture > 0) {
       // `menagesTient` dit que la bourse ne bute jamais **au fil de la
       // tranche**, salaires compris : la note passe donc en entier, même
@@ -1283,6 +1291,7 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
     // sont bons, et le reprix horaire ne changerait rien — vérifié au juge de
     // qualité (partie 2 du banc, quarante jours contre placebo) : mêmes cinq
     // verdicts sous le plancher avec ou sans. Seul le coût change.
+    VOIES.simple += 1;
     const fisc = impot > 0 ? world.factions[col.faction] : null;
     let menages = m0;
     let caisse = c0;
@@ -1318,6 +1327,8 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
     col.caisse = caisse;
     vivresServies = true;
   } else {
+    VOIES.reprix += 1;
+    VOIES.heuresReprix += dt;
     const fisc = impot > 0 ? world.factions[col.faction] : null;
     let menages = m0;
     let caisse = c0;
