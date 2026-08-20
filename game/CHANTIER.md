@@ -540,6 +540,14 @@ commande.
   visiteur (le jeu complet sur son propre hébergement n'a pas cette
   limite) ; le brancher sur l'API de l'hôte serait un chantier à part.
 
+  **Republié une seconde fois le même jour, sur demande explicite
+  (« republie »)**, après la livraison du chantier HISTOIRE complet et de
+  la revue U4 bis : SHA-256
+  `e2c6db3a58f3f99aa29a2c78dbc262dff6e64f2d69166740c9759468626a554c`,
+  1 249 Ko, étiquette « chantier-histoire ». La version publique porte
+  désormais les chapitres, les dépêches causales, les fils personnels, les
+  figures, la mémoire des lieux, et les accords de la chronique.
+
 ---
 
 ## Lot G — la colonne qu'on ne paie plus (règle donnée par le propriétaire)
