@@ -102,6 +102,54 @@ pas la même chose :
 Recommandation : **A** — c'est la seule qui tienne dans « montrer, pas
 inventer », et elle suffit peut-être.
 
+## Revue du 20 août 2026 — sur captures, écran par écran
+
+Constat fait sur les captures du jour (régénérées par le test navigateur),
+après la livraison de U1 et U2. **Ce qui tient** : la sobriété est une
+identité, pas un manque — la prose d'aide est bonne et chaque écran explique
+sa règle ; les replis sont mémorisés ; les vraies alertes alertent
+(l'entrepôt qui refuse, l'argent qui fond) ; le bandeau du haut dit tout en
+deux lignes ; les portes et les noms de la carte font leur travail.
+
+**Ce qui accroche, classé :**
+
+1. **Casse mécanique** — l'écran des bourses coupe les noms de réseaux au
+   milieu des mots (« Consortiu / m Hexa », le badge ACCORD collé au « S »
+   orphelin) : la colonne est trop étroite pour son contenu
+   (`42-bourses.png`).
+2. **Les codes de faction survivent hors légende** — « CENDR » dans les
+   routes marchandes, et sept usages de `.court` de drapeau encore dans
+   ui.js (guerres, armées, sièges, change). U2 n'a traité que la légende.
+3. **Bavardage généré** — la carte d'un contrat de livraison nomme la même
+   ville cinq fois et dit « sans délai » puis « aucun délai » dans la même
+   carte (`11-contrats.png`) ; « 31 ville(s) », « 2 RÉSEAU(X) »,
+   « 1 blessé(s) » — trente pluriels parenthésés alors que les drapeaux
+   savent s'accorder ; « 0 INCONNU » répété six fois dans l'écran monde là
+   où une ligne « les cinq autres ne vous connaissent pas » suffirait.
+4. **Colonnes muettes** — au marché, « 3,1 / 2,2 » et les deux boutons
+   +10/−10 ne disent nulle part lequel achète et lequel vend : ça s'apprend
+   par position, pas par lecture (`09b-marche.png`). Sur la fiche d'un
+   membre, le « 99 % » à côté du nom n'a pas d'étiquette.
+5. **Le journal crie en permanence** — badge à 47, 58, 99 non lus : à ce
+   niveau, le compteur n'informe plus, il décore.
+6. **Le grand écran gaspille** — sur 1280 px, une colonne de ~600 px et du
+   noir autour (`08-large.png`) ; la carte pourrait vivre à côté des
+   panneaux au lieu d'au-dessus.
+
+**Les lots qui en découlent :**
+
+- [ ] **U4. Les finitions qui se voient** (petit, dense) : bourses qui ne
+  coupent plus les mots, les sept `.court` restants remplacés par les noms
+  pleins, la carte de contrat dédoublonnée, les pluriels accordés, les
+  inconnus regroupés, des en-têtes achat/vente au marché, une étiquette sur
+  le pourcentage de la fiche. Critère : test navigateur — plus aucun texte
+  coupé en milieu de mot dans les bourses, plus aucun code de faction dans
+  un écran, les colonnes du marché nommées.
+- [ ] **U5. Le journal qui compte juste** : le badge dit ce qui mérite
+  l'attention (le marquant), pas le volume. Critère à écrire avec le lot.
+- [ ] **U6. Le grand écran** : au-delà d'une largeur, la carte et les
+  panneaux côte à côte. Critère : à 1280 px, plus de colonne unique.
+
 ## Blocages
 
 Rien pour l'instant.
