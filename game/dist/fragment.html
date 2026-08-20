@@ -4646,6 +4646,24 @@ const APRES = {
   faiblesse: ['conquerant', 'rancunier', 'rapace', 'methodique'],
 };
 
+/**
+ * Le solde d'un règne, en toutes lettres — la dépêche d'une succession le
+ * porte (HISTOIRE.md, lot D). Tout est déjà compté sur le dirigeant :
+ * guerres déclarées, villes prises et perdues, date d'avènement.
+ */
+function bilanRegne(d, t) {
+  // `depuis` peut valoir zéro — l'avènement à la première heure du monde
+  // est un début comme un autre, que `||` avalerait.
+  const debut = Number.isFinite(d.depuis) ? d.depuis : t;
+  const jours = Math.max(1, Math.round((t - debut) / 24));
+  const bouts = [];
+  if (d.guerres) bouts.push(`${d.guerres} guerre${d.guerres > 1 ? 's' : ''}`);
+  if (d.prises) bouts.push(`${d.prises} ville${d.prises > 1 ? 's' : ''} prise${d.prises > 1 ? 's' : ''}`);
+  if (d.perdues) bouts.push(`${d.perdues} perdue${d.perdues > 1 ? 's' : ''}`);
+  return `Dernier bilan : ${bouts.length ? bouts.join(', ') : 'un règne sans bruit'}, `
+    + `en ${jours} jour${jours > 1 ? 's' : ''}.`;
+}
+
 function creerDirigeant(rng, key, t, apres, world = null) {
   const style = drapeauDe(world, key) ? drapeauDe(world, key).style : null;
   const penchant = APRES[apres] || PENCHANT[style] || TEMPERAMENT_KEYS;
@@ -4797,6 +4815,7 @@ function tickDirigeant(world, key, rng, dt, t, log, grogne = 0) {
     log({
       type: 'dirigeant',
       texte: `${drapeauDe(world, key).nom} : ${sortant.titre} ${sortant.nom} est ${cause}. `
+        + `${bilanRegne(sortant, t)} `
         + `${neuf.titre} ${neuf.nom} prend la suite — ${TEMPERAMENTS[neuf.temperament].nom.toLowerCase()}. `
         + `« ${TEMPERAMENTS[neuf.temperament].mot} »`,
       factions: [key],
@@ -5248,6 +5267,51 @@ function ouvrirRapport(state, motif) {
     tus: 0,
   };
   return state.rapport;
+}
+
+// ---------------------------------------------------------------------------
+// Les rencontres qui comptent (HISTOIRE.md, lots B et E). Combien de contrats
+// tenus pour chaque commanditaire, combien d'accrochages avec chaque faction,
+// où chaque groupe se tenait la dernière fois qu'on a regardé. Mémoire du
+// JOUEUR, bornée — le monde n'en sait rien, et c'est la règle du multijoueur.
+// Ici plutôt que dans histoire.js : contrats et combats vivent plus tôt dans
+// l'ordre des modules, et rapport.js est déjà « celui qui retient ».
+// ---------------------------------------------------------------------------
+
+function rencontresDe(state) {
+  const p = state.player;
+  if (!p.rencontres) p.rencontres = {};
+  const r = p.rencontres;
+  if (!r.contrats) r.contrats = {};
+  if (!r.accrochages) r.accrochages = {};
+  if (!r.pos) r.pos = {};
+  return r;
+}
+
+/** Bornée en oubliant le lien le moins marquant, pas le plus ancien. */
+function bornerRencontres(table, max = 60) {
+  const cles = Object.keys(table);
+  if (cles.length <= max) return;
+  let mini = cles[0];
+  for (const k of cles) if (table[k] < table[mini]) mini = k;
+  delete table[mini];
+}
+
+function retenirContrat(state, colonieId) {
+  const r = rencontresDe(state);
+  r.contrats[colonieId] = (r.contrats[colonieId] || 0) + 1;
+  bornerRencontres(r.contrats);
+  return r.contrats[colonieId];
+}
+
+function retenirAccrochage(state, faction) {
+  // Des pillards sans drapeau ne font pas une figure : on retient des
+  // ennemis qui ont un nom.
+  if (!faction || faction === 'bandits') return 0;
+  const r = rencontresDe(state);
+  r.accrochages[faction] = (r.accrochages[faction] || 0) + 1;
+  bornerRencontres(r.accrochages);
+  return r.accrochages[faction];
 }
 
 /**
@@ -12114,10 +12178,20 @@ function veillerMonnaies(state, log) {
     p.alertesMonnaie.unshift(alerte);
     if (p.alertesMonnaie.length > 6) p.alertesMonnaie.length = 6;
     if (log) {
+      // La dépêche dit d'où vient la chute — le moteur le sait : la planche
+      // à billets et la taille du pays sont des faits, pas des adjectifs
+      // (HISTOIRE.md, lot D).
+      const fmon = state.world.factions[k];
+      const nbV = fmon && fmon.colonies ? fmon.colonies.length : 0;
+      const causeM = fmon && (fmon.emissions || 0) > 0
+        ? `leur planche à billets a tourné ${fmon.emissions} fois`
+        : nbV <= 2
+          ? (nbV ? `le pays n’a plus que ${nbV} ville${nbV > 1 ? 's' : ''}` : 'le pays n’a plus une seule ville')
+          : 'le monde lui fait moins crédit';
       log({
         type: 'monnaie',
         texte: `${drapeauDe(state.world, k).nom} : la monnaie perd `
-          + `${Math.round(perte * 100)} %. Vous en tenez ${Math.round(b[k])} `
+          + `${Math.round(perte * 100)} % — ${causeM}. Vous en tenez ${Math.round(b[k])} `
           + `${symboleDe(state.world, k)}, qui valent d’autant moins.`,
         important: true,
         factions: [k],
@@ -13157,6 +13231,28 @@ function declarerGuerre(world, a, b, t, log, but) {
   });
 }
 
+/**
+ * La dépêche d'une prise de ville — avec la cause, que le moteur connaît
+ * (HISTOIRE.md, lot D). À construire sur l'état d'AVANT la prise : la faim,
+ * la grogne et l'état de la garnison disent pourquoi la place est tombée.
+ * `col.prises` n'est pas encore incrémenté à cet instant : l'acteur se nomme
+ * sur la prise qui est en train d'arriver.
+ */
+function depecheChute(world, nouveau, ancien, col) {
+  const cause = (col.stock.rations || 0) < 1
+    ? 'la faim avait fait le gros du travail'
+    : (col.unrest || 0) > 0.6
+      ? 'la ville grondait déjà contre les siens'
+      : (col.defense || 0) < (col.defenseMax || 1) * 0.2
+        ? 'la garnison était à bout'
+        : (col.murs || 0) < 0.5
+          ? 'les murs n’ont pas tenu'
+          : 'la place s’est défendue jusqu’au bout';
+  return `${drapeauDe(world, nouveau).nom} s’empare${drapeauDe(world, nouveau).pluriel ? 'nt' : ''} `
+    + `de ${col.nom}${ancien ? ` (${drapeauDe(world, ancien).nom})` : ''} — ${cause}. `
+    + `${nommerActeur(world, 'capture', col.id, (col.prises || 0) + 1)} a été vu clouant sa porte avant l’assaut.`;
+}
+
 function signerPaix(world, a, b, t, log, motif) {
   const i = world.guerres.findIndex(
     (g) => (g.a === a && g.b === b) || (g.a === b && g.b === a)
@@ -13168,10 +13264,15 @@ function signerPaix(world, a, b, t, log, motif) {
   // Une guerre abandonnée sans avoir obtenu ce qu'on cherchait coûte à celui
   // qui l'a déclarée : c'est la façon la plus nette de faire tomber un chef.
   if (motif !== 'atteint' && g.initiateur) crediterDirigeant(world, g.initiateur, 'paix');
+  // La dépêche dit ce que la guerre a duré et coûté — le moteur le sait
+  // (HISTOIRE.md, lot D) : `depuis` et `batailles` vivent sur la guerre.
+  const joursG = Math.max(1, Math.round((t - (g.depuis || t)) / 24));
   log({
     type: 'paix',
     texte: `${drapeauDe(world, a).nom} et ${drapeauDe(world, b).nom} signent une trêve`
-      + `${motif === 'atteint' && g.but ? ` — l’affaire est réglée ${g.but.texte}` : ''}.`,
+      + ` — ${joursG} jour${joursG > 1 ? 's' : ''} de guerre`
+      + `${g.batailles ? `, ${g.batailles} bataille${g.batailles > 1 ? 's' : ''} rangée${g.batailles > 1 ? 's' : ''}` : ''}`
+      + `${motif === 'atteint' && g.but ? ` ; l’affaire est réglée ${g.but.texte}` : ''}.`,
     factions: [a, b],
   });
 }
@@ -13310,6 +13411,11 @@ function capturer(world, armee, col, t, log, ctx) {
   } else {
     col.faction = nouveau;
     world.factions[nouveau].colonies.push(col.id);
+    // La dépêche se construit sur l'état d'AVANT la prise — la faim, la
+    // grogne, la garnison — parce que c'est lui qui dit pourquoi la ville
+    // est tombée (HISTOIRE.md, lot D). Après les lignes qui suivent, le
+    // pillage a vidé les étals et la défense est déjà réinitialisée.
+    const depeche = depecheChute(world, nouveau, ancien, col);
     world.regions[col.regionId].controle = nouveau;
     for (const v of voisins(col.regionId)) {
       if (world.regions[v].controle === ancien) world.regions[v].controle = nouveau;
@@ -13335,9 +13441,7 @@ function capturer(world, armee, col, t, log, ctx) {
     col.defense = Math.round(col.defenseMax * 0.25);
     log({
       type: 'capture',
-      texte: `${drapeauDe(world, nouveau).nom} s’empare${drapeauDe(world, nouveau).pluriel ? 'nt' : ''} `
-        + `de ${col.nom}${ancien ? ` (${drapeauDe(world, ancien).nom})` : ''}. `
-        + `${nommerActeur(world, 'capture', col.id, col.prises)} a été vu clouant sa porte avant l’assaut.`,
+      texte: depeche,
       regionId: col.regionId,
       factions: [nouveau, ancien].filter(Boolean),
     });
@@ -19758,9 +19862,15 @@ function recompenser(state, c, log) {
     cr: soldeIci(state) - crAvant,
     rep: (state.player.reputation[c.faction] || 0) - repAvant,
   });
+  // La figure du commanditaire (HISTOIRE.md, lot B) : au troisième contrat
+  // tenu pour la même ville, la dépêche le dit — on n'est plus un inconnu.
+  const nTenus = retenirContrat(state, c.colonieId);
+  const donneurC = colonieParId(state.world, c.colonieId);
   log({
     type: 'contrat',
-    texte: `Contrat rempli : ${c.titre}. ${c.recompense} ${signeIci(state)}, réputation +${gagne}.`,
+    texte: `Contrat rempli : ${c.titre}. ${c.recompense} ${signeIci(state)}, réputation +${gagne}.`
+      + (nTenus >= 3 && donneurC
+        ? ` C’est le ${nTenus}e pour ${donneurC.nom} — on ne demande plus votre nom.` : ''),
     important: true,
   });
 }
@@ -19948,6 +20058,10 @@ function inscrireAuMemorial(state, c, cause, lieu) {
     horsCombat: c.horsCombat || 0,
     traits: (c.traits || []).slice(0, 3),
     meilleure: `${SKILLS[meilleure]} ${c.skills[meilleure]}`,
+    // Le fil personnel part avec la stèle (HISTOIRE.md, lot C) : ce qui
+    // reste ouvert se dira au mémorial. Copie simple — le texte se rend à
+    // l'affichage, ce module n'a pas à connaître l'histoire.
+    fil: c.fil || null,
   });
   if (state.memorial.length > 60) state.memorial.shift();
 }
@@ -20125,6 +20239,14 @@ function combatContre(state, bande, log, ctx, groupe) {
   }
 
   annoncerProgres(state, compsAvant, log, g.membres);
+
+  // La figure de l'ennemi récurrent (HISTOIRE.md, lot B) : au troisième
+  // accrochage avec la même faction, la dépêche le dit.
+  const nAcc = retenirAccrochage(state, bande.faction);
+  if (nAcc >= 3) {
+    texte += ` Ce n’est plus un hasard : ${nAcc}e accrochage avec `
+      + `${drapeauDe(state.world, bande.faction).nom}.`;
+  }
 
   log({
     type: 'combat',
@@ -21878,31 +22000,328 @@ function lignesDe(state) {
   const out = [];
   const dire = (cond, texte) => { if (cond) out.push(texte); };
 
-  dire(true, `${f.jours} jours dans les cendres.`);
-  dire(f.vivants > 0, `${f.vivants} des vôtres tiennent encore debout.`);
-  dire(f.morts > 0, `${f.morts} sont restés en route.`);
+  // Les accords, partout : « 1 des vôtres tiennent » et « 1 livrés à la
+  // justice » ont été vus à l'écran. La chronique est le texte le plus relu
+  // du jeu — elle n'a pas le droit de boiter (U4 bis).
+  const s = (n) => (n > 1 ? 's' : '');
+  dire(true, `${f.jours} jour${s(f.jours)} dans les cendres.`);
+  dire(f.vivants > 0,
+    `${f.vivants} des vôtres tien${f.vivants > 1 ? 'nent' : 't'} encore debout.`);
+  dire(f.morts > 0,
+    `${f.morts} ${f.morts > 1 ? 'sont restés' : 'est resté'} en route.`);
   dire(f.combats > 0,
-    `${f.combats} affrontements, ${f.combatsGagnes} gagnés, ${f.defaites} perdus.`);
-  dire(f.captifsPris > 0, `${f.captifsPris} hommes pris vivants — `
-    + `${f.captifsLivres} livrés à la justice, ${f.captifsVendus} vendus, `
-    + `${f.captifsRelaches} relâchés.`);
+    `${f.combats} affrontement${s(f.combats)}, ${f.combatsGagnes} gagné${s(f.combatsGagnes)}, `
+    + `${f.defaites} perdu${s(f.defaites)}.`);
+  dire(f.captifsPris > 0,
+    `${f.captifsPris} homme${s(f.captifsPris)} pris vivant${s(f.captifsPris)} — `
+    + `${f.captifsLivres} livré${s(f.captifsLivres)} à la justice, `
+    + `${f.captifsVendus} vendu${s(f.captifsVendus)}, `
+    + `${f.captifsRelaches} relâché${s(f.captifsRelaches)}.`);
   // Une faction peut avoir disparu de la table entre-temps — un monde qui vit
   // n'a pas à garantir qu'une clé lue ailleurs existe encore.
   dire(f.grade >= 1 && f.faction && drapeauDe(state.world, f.faction) && RANGS[f.grade],
     `${RANGS[f.grade] ? RANGS[f.grade].nom : ''} `
     + `${drapeauDe(state.world, f.faction) ? drapeauDe(state.world, f.faction).genitif : ''}.`);
   dire(f.prerogatives > 0,
-    `${f.prerogatives} ordres donnés au nom d’une faction`
-    + `${f.lois > 0 ? `, dont ${f.lois} lois promulguées` : ''}.`);
+    `${f.prerogatives} ordre${s(f.prerogatives)} donné${s(f.prerogatives)} au nom d’une faction`
+    + `${f.lois > 0 ? `, dont ${f.lois} loi${s(f.lois)} promulguée${s(f.lois)}` : ''}.`);
   dire(f.habitants > 0,
-    `${f.habitants} personnes vivent à ${state.base.nom}`
+    `${f.habitants} personne${s(f.habitants)} ${f.habitants > 1 ? 'vivent' : 'vit'} à ${state.base.nom}`
     + `${f.villeReconnue ? ', qui est écrite sur les cartes' : ''}.`);
-  dire(f.contrats > 0, `${f.contrats} contrats honorés.`);
-  dire(f.services > 0, `${f.services} services rendus à des gens qui s’en souviennent.`);
-  dire(f.caravanes > 0, `${f.caravanes} caravanes pillées.`);
-  dire(f.sites > 0, `${f.sites} sites fouillés jusqu’à l’os.`);
+  dire(f.contrats > 0, `${f.contrats} contrat${s(f.contrats)} honoré${s(f.contrats)}.`);
+  dire(f.services > 0,
+    `${f.services} service${s(f.services)} rendu${s(f.services)} à des gens qui s’en souviennent.`);
+  dire(f.caravanes > 0, `${f.caravanes} caravane${s(f.caravanes)} pillée${s(f.caravanes)}.`);
+  dire(f.sites > 0, `${f.sites} site${s(f.sites)} fouillé${s(f.sites)} jusqu’à l’os.`);
   dire(f.credits >= 1000, `${f.credits} ${f.signe || '¤'} en poche.`);
   return out;
+}
+
+// ===== src/histoire.js ===============================================
+// Les chapitres : la partie se découpe en périodes nommées (HISTOIRE.md,
+// lot A). Pas un script — une fonction pure de l'état : la partie EST dans
+// ce chapitre parce que les faits y sont. Aucun tirage, aucun état côté
+// monde : tout vit dans `state.player`, la règle qui prépare le multijoueur.
+
+
+/**
+ * Les chapitres possibles, par ordre de préséance : le premier dont la
+ * condition est vraie l'emporte. L'ordre raconte ce qui domine une période —
+ * un deuil récent pèse plus que la guerre, la guerre plus que le service,
+ * le service plus que la fortune, la fortune plus que le camp.
+ */
+const CHAPITRES = [
+  {
+    cle: 'deuil',
+    titre: 'Ce qui reste',
+    dit: 'Quelqu’un manque. La colonne marche quand même.',
+    quand: (f, state) => {
+      const m = state.memorial || [];
+      if (!m.length || f.vivants < 1) return false;
+      return state.temps - (m[m.length - 1].t || 0) < 7 * 24;
+    },
+  },
+  {
+    cle: 'sang',
+    titre: 'Le prix du sang',
+    dit: 'Votre pays est en guerre, et vous êtes du pays.',
+    quand: (f, state) => !!f.faction && (state.world.guerres || [])
+      .some((g) => g.a === f.faction || g.b === f.faction),
+  },
+  {
+    cle: 'couleurs',
+    titre: 'Les couleurs',
+    dit: 'On porte le drapeau d’un autre, et il porte votre solde.',
+    quand: (f) => f.grade >= 1 && !!f.faction,
+  },
+  {
+    cle: 'affaires',
+    titre: 'Les affaires',
+    dit: 'L’argent s’est mis à travailler. Les routes comptent plus que les armes.',
+    quand: (f) => f.credits >= 3000,
+  },
+  {
+    cle: 'toit',
+    titre: 'Un toit',
+    dit: 'Un camp à soi : quelque chose que le monde peut prendre, désormais.',
+    quand: (f, state) => !!(state.base && state.base.fonde),
+  },
+  {
+    cle: 'poussiere',
+    titre: 'La poussière',
+    dit: 'On marche, on mange quand on peut, on compte les jours.',
+    quand: () => true,
+  },
+];
+
+function infoChapitre(cle) {
+  return CHAPITRES.find((c) => c.cle === cle) || CHAPITRES[CHAPITRES.length - 1];
+}
+
+/** Le chapitre que l'état raconte, indépendamment de celui qu'on affiche. */
+function chapitreDe(state) {
+  const f = faitsDe(state);
+  for (const c of CHAPITRES) if (c.quand(f, state)) return c;
+  return CHAPITRES[CHAPITRES.length - 1];
+}
+
+/** Chiffres romains — c'est ainsi qu'un chapitre se numérote. */
+function romain(n) {
+  const table = [[1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'],
+    [90, 'XC'], [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']];
+  let reste = Math.max(1, Math.floor(n));
+  let sortie = '';
+  for (const [v, s] of table) {
+    while (reste >= v) { sortie += s; reste -= v; }
+  }
+  return sortie;
+}
+
+// ---------------------------------------------------------------------------
+// Les fils personnels (lot C) : chaque membre porte une histoire, et le
+// monde la tire. Le fil se dérive de la graine du personnage — `grainDe`,
+// jamais le flux scellé — et n'avance que sur des événements VÉCUS : entrer
+// dans une région, visiter des villes, se battre. Tout vit sur le membre,
+// donc côté joueur, donc dans la sauvegarde.
+// ---------------------------------------------------------------------------
+
+/** Le fil d'un membre — créé au premier regard, identique à chaque partie. */
+function garantirFil(state, c) {
+  if (c.fil) return c.fil;
+  const r = new Rng(grainDe(String(state.world.graine), c.id, 'fil'));
+  const type = ['lieu', 'dette', 'quete', 'preuves'][r.int(4)];
+  const fil = { type, etape: 0, regle: false };
+  if (type === 'lieu') {
+    fil.cible = r.int(state.world.regions.length);
+  } else if (type === 'dette') {
+    fil.cible = DIPLO_FACTIONS[r.int(DIPLO_FACTIONS.length)];
+  } else if (type === 'quete') {
+    fil.nom = `${NOMS_PERSO[r.int(NOMS_PERSO.length)]} ${SURNOMS[r.int(SURNOMS.length)]}`;
+    fil.cible = r.int(state.world.regions.length);
+    fil.vues = [];
+  } else {
+    fil.kills0 = c.kills || 0;
+  }
+  c.fil = fil;
+  return fil;
+}
+
+/** Ce que le fil dit sur la fiche : l'histoire, puis où elle en est. */
+function texteFil(state, c) {
+  const fil = c.fil;
+  if (!fil) return null;
+  const lignes = [];
+  if (fil.type === 'lieu') {
+    lignes.push(`${c.nom} parle d’un endroit sans jamais finir ses phrases : `
+      + `${nomRegion(state.world, fil.cible)}. Quelque chose y est resté.`);
+    if (fil.regle) lignes.push('Le retour a eu lieu. On n’en parle plus.');
+  } else if (fil.type === 'dette') {
+    lignes.push(`${c.nom} doit quelque chose ${drapeauDe(state.world, fil.cible).datif} `
+      + '— de l’argent, ou pire. Ça se voit quand leurs couleurs passent.');
+    if (fil.regle) lignes.push('L’affaire est réglée. Personne n’a demandé comment.');
+  } else if (fil.type === 'quete') {
+    lignes.push(`${c.nom} cherche quelqu’un : ${fil.nom}. `
+      + 'Dans chaque ville, les mêmes questions aux mêmes silences.');
+    if (fil.etape >= 1 && !fil.regle) {
+      lignes.push(`À force de demander, une piste : ${nomRegion(state.world, fil.cible)}.`);
+    }
+    if (fil.regle) {
+      lignes.push(`${fil.nom} a été retrouvé. Ce qu’ils se sont dit ne regarde qu’eux.`);
+    }
+  } else {
+    lignes.push(`${c.nom} n’a encore rien prouvé à personne — et se le pardonne mal.`);
+    if (fil.regle) lignes.push('Trois fois au feu, trois fois debout. Ça suffit.');
+  }
+  return { titre: 'Son histoire', lignes };
+}
+
+/** Ce qui reste ouvert quand la mort ferme le fil — la stèle le dit. */
+function texteFilInacheve(state, fil) {
+  if (!fil || fil.regle) return null;
+  if (fil.type === 'lieu') {
+    return `${nomRegion(state.world, fil.cible)} ne sera pas revu.`;
+  }
+  if (fil.type === 'dette') {
+    return `La dette ${drapeauDe(state.world, fil.cible).datif} reste ouverte.`;
+  }
+  if (fil.type === 'quete') return `${fil.nom} attend toujours quelqu’un qui ne viendra pas.`;
+  return 'Il ne restait rien à prouver.';
+}
+
+/**
+ * Le monde tire les fils : une fois l'heure jouée, chaque membre vivant
+ * confronte son affaire à ce qu'il vient de vivre. Aucun tirage — que des
+ * constats sur la position, les villes vues et les combats comptés.
+ */
+function tickFils(state, log) {
+  for (const g of state.player.groupes || []) {
+    for (const c of g.membres || []) {
+      if (!c || !estVivant(c)) continue;
+      const fil = garantirFil(state, c);
+      if (fil.regle) continue;
+      if (fil.type === 'lieu') {
+        if (g.regionId === fil.cible) {
+          fil.regle = true;
+          if (log) {
+            log({
+              type: 'fil',
+              texte: `${c.nom} est de retour à ${nomRegion(state.world, fil.cible)}. `
+                + 'Une longue halte, un peu à l’écart des autres.',
+              regionId: g.regionId,
+              important: true,
+            });
+          }
+        }
+      } else if (fil.type === 'dette') {
+        const col = colonieDe(state.world, g.regionId);
+        if (col && !col.ruine && col.faction === fil.cible) {
+          fil.regle = true;
+          if (log) {
+            log({
+              type: 'fil',
+              texte: `À ${col.nom}, ${c.nom} a disparu quelques heures, puis a `
+                + `rejoint la colonne sans un mot. La vieille affaire ${drapeauDe(state.world, fil.cible).datif} est réglée.`,
+              regionId: g.regionId,
+              important: true,
+            });
+          }
+        }
+      } else if (fil.type === 'quete') {
+        if (fil.etape === 0) {
+          const col = colonieDe(state.world, g.regionId);
+          if (col && !col.ruine && !fil.vues.includes(g.regionId)) {
+            fil.vues.push(g.regionId);
+            if (fil.vues.length >= 3) {
+              fil.etape = 1;
+              if (log) {
+                log({
+                  type: 'fil',
+                  texte: `À force de demander, ${c.nom} tient une piste : ${fil.nom} `
+                    + `aurait été vu vers ${nomRegion(state.world, fil.cible)}.`,
+                  regionId: g.regionId,
+                  important: true,
+                });
+              }
+            }
+          }
+        } else if (g.regionId === fil.cible) {
+          fil.regle = true;
+          if (log) {
+            log({
+              type: 'fil',
+              texte: `${c.nom} a retrouvé ${fil.nom}. Ils ont parlé longtemps, à voix basse. `
+                + 'Au matin, la colonne est repartie au complet.',
+              regionId: g.regionId,
+              important: true,
+            });
+          }
+        }
+      } else if ((c.kills || 0) - (fil.kills0 || 0) >= 3) {
+        fil.regle = true;
+        if (log) {
+          log({
+            type: 'fil',
+            texte: `${c.nom} ne baisse plus les yeux : trois fois au feu, trois fois debout. `
+              + 'Quelque chose s’est tu.',
+            regionId: g.regionId,
+            important: true,
+          });
+        }
+      }
+    }
+  }
+}
+
+/**
+ * La mémoire des lieux (lot E) : entrer dans une ville où l'on a fait
+ * quelque chose de notable produit une ligne d'accueil — une fois par
+ * arrivée, pas tant qu'on y reste. Une ville où rien ne s'est passé ne dit
+ * rien. Les faits viennent de la mémoire des rencontres (rapport.js) :
+ * rien n'est stocké côté monde.
+ */
+function tickMemoireLieux(state, log) {
+  const r = rencontresDe(state);
+  for (const g of state.player.groupes || []) {
+    if (r.pos[g.id] === g.regionId) continue;
+    r.pos[g.id] = g.regionId;
+    const col = colonieDe(state.world, g.regionId);
+    if (!col || col.ruine) continue;
+    const n = r.contrats[col.id] || 0;
+    if (n >= 1 && log) {
+      log({
+        type: 'accueil',
+        texte: `À ${col.nom}, des visages connus — ${n} contrat${n > 1 ? 's' : ''} `
+          + `tenu${n > 1 ? 's' : ''} pour la ville. Des saluts de tête au passage de la colonne.`,
+        regionId: g.regionId,
+      });
+    }
+  }
+}
+
+/**
+ * Tourner la page quand l'état a vraiment changé de nature. L'hystérésis de
+ * quarante-huit heures évite qu'une oscillation — un solde qui passe deux
+ * fois le seuil dans la journée — fasse tourner les pages : un chapitre
+ * tient au moins deux jours, sauf le tout premier.
+ */
+function tickChapitres(state, log) {
+  const ch = chapitreDe(state);
+  const courant = state.player.chapitre;
+  if (courant && courant.cle === ch.cle) return;
+  if (courant && state.temps - (courant.t || 0) < 48) return;
+  state.player.chapitreN = (state.player.chapitreN || 0) + 1;
+  state.player.chapitre = { cle: ch.cle, t: state.temps };
+  if (!state.player.chapitres) state.player.chapitres = [];
+  state.player.chapitres.push({ cle: ch.cle, t: state.temps, n: state.player.chapitreN });
+  if (state.player.chapitres.length > 40) state.player.chapitres.shift();
+  if (log) {
+    log({
+      type: 'chronique',
+      texte: `Chapitre ${romain(state.player.chapitreN)} — ${ch.titre}.`,
+      important: true,
+      vu: true,
+    });
+  }
 }
 
 // ===== src/save.js ===================================================
@@ -22036,6 +22455,15 @@ function normaliser(state) {
     if (g.allegeance.secteur === undefined) g.allegeance.secteur = null;
   }
   if (!state.memorial) state.memorial = [];
+  // Les chapitres (HISTOIRE.md, lot A) : une vieille sauvegarde n'en a pas —
+  // le premier tick après chargement ouvrira celui que son état raconte.
+  if (!state.player.chapitres) state.player.chapitres = [];
+  if (state.player.chapitre === undefined) state.player.chapitre = null;
+  if (!state.player.chapitreN) state.player.chapitreN = 0;
+  // La mémoire des rencontres (HISTOIRE.md, lots B et E).
+  if (!state.player.rencontres) {
+    state.player.rencontres = { contrats: {}, accrochages: {}, pos: {} };
+  }
   if (!state.stats) state.stats = {};
   for (const k of ['contratsRemplis', 'sitesFouilles', 'caravanesPillees', 'distanceParcourue',
     'servicesRendus', 'captifsPris', 'captifsLivres', 'captifsVendus', 'captifsRelaches',
@@ -22717,6 +23145,15 @@ function nouvellePartie(seed, opts = {}) {
       },
       contrats: [],
       primes: {},
+      // Le récit (HISTOIRE.md, lot A) : le premier tick ouvre le chapitre
+      // que l'état raconte. Initialisé ici pour que l'aller-retour JSON
+      // d'une partie neuve soit exact — normaliser pose les mêmes valeurs.
+      chapitre: null,
+      chapitres: [],
+      chapitreN: 0,
+      // La mémoire des rencontres (HISTOIRE.md, lots B et E) — mêmes
+      // valeurs que normaliser, pour un aller-retour JSON exact.
+      rencontres: { contrats: {}, accrochages: {}, pos: {} },
     },
     base: creerBase(),
     journal: [],
@@ -23061,6 +23498,13 @@ function tick(state) {
 
   state.player.rngEtat = rngJoueur.save();
   ctx.rng = rng;
+
+  // La page du récit, une fois l'heure jouée : le chapitre se déduit de
+  // l'état, les fils personnels se confrontent à ce qui vient d'être vécu —
+  // rien ne tire, rien n'écrit côté monde (HISTOIRE.md, lots A et C).
+  tickChapitres(state, log);
+  tickFils(state, log);
+  tickMemoireLieux(state, log);
 
   // En dernier : on relève ce qu'on a sous les yeux, après que tout a bougé.
   observer(state);
@@ -24906,6 +25350,13 @@ function ficheMembre(c) {
       rel.rival ? `Ne supporte pas ${e(rel.rival.nom)} (${Math.round(lien(c, rel.rival))})` : null,
     ].filter(Boolean).join(' · ')}</div><div class="sep"></div>`;
   })()}
+      ${(() => {
+    const fl = texteFil(S, c);
+    if (!fl) return '';
+    return `<div class="titre">Son histoire</div>
+      <div class="aide" style="font-style:italic">${fl.lignes.map(e).join('<br>')}</div>
+      <div class="sep"></div>`;
+  })()}
       ${(c.diplomes || []).length ? `<div class="titre">Diplômes</div>
       <div class="traits">${c.diplomes.map((k) => `<span class="puce ok"
         title="${e(DIPLOMES[k].nom)} — apprend ×${DIPLOMES[k].apprentissage.toFixed(2)} en ${e(SKILLS[DIPLOMES[k].skill])}">${e(DIPLOMES[k].court)}</span>`).join(' ')}</div>
@@ -25087,6 +25538,8 @@ function blocMemorial() {
         <span class="v">${horloge(x.t).texte}</span></div>
       <div class="aide">${e(x.archetype)} · ${e(x.cause)}${x.lieu ? ` · ${e(x.lieu)}` : ''}
         ${x.horsCombat ? ` · ${x.horsCombat} mis hors de combat` : ''} · ${e(x.meilleure)}</div>
+      ${x.fil && !x.fil.regle ? `<div class="aide" style="font-style:italic">${
+  e(texteFilInacheve(S, x.fil) || '')}</div>` : ''}
     </div>`).join('')}
   </section>`;
 }
@@ -26743,8 +27196,12 @@ function blocCibleContrat(c, reste) {
   const tient = heures <= Math.max(0, reste);
   // Sans échéance, on ne dit rien de plus : la carte porte déjà son
   // « sans délai », et « aucun délai » en dessous faisait doublon (U4).
-  return `<div class="aide">${e(cible.quoi)} : ${e(lieuAvecCoord(S.world, cible.regionId))},
-    à ${d} région${d > 1 ? 's' : ''} — ${Number.isFinite(heures) ? dureeTexte(Math.round(heures)) : '?'}
+  // Une livraison porte déjà sa destination dans son titre : la redire ici
+  // faisait nommer la même ville deux fois dans la même carte (U4 bis). Les
+  // autres types, eux, n'ont que cette ligne pour situer.
+  const ou = c.type === 'livraison' ? '' : `${e(cible.quoi)} : ${e(lieuAvecCoord(S.world, cible.regionId))}, `;
+  return `<div class="aide">${ou}à ${d} région${d > 1 ? 's' : ''} — ${
+  Number.isFinite(heures) ? dureeTexte(Math.round(heures)) : '?'}
     ${retour > 0 ? 'aller-retour, le relevé se rend au panneau' : 'de marche'}.
     ${reste == null ? ''
     : `<span class="${tient ? 'cyan' : 'alerte'}">${tient
@@ -27423,13 +27880,23 @@ function ecranJournal() {
 function blocChronique() {
   const t = titreDe(S);
   const lignes = lignesDe(S);
+  // Le chapitre en cours d'abord — c'est lui qui dit où en est l'histoire —
+  // puis la table des chapitres passés : la partie relue comme un livre.
+  const ch = S.player.chapitre ? infoChapitre(S.player.chapitre.cle) : null;
+  const passes = (S.player.chapitres || []).slice(0, -1);
   return `<section class="panneau">
     <h2 class="titre">Chronique <span class="droite ambre">${e(t.nom)}</span></h2>
+    ${ch ? `<div class="ligne"><span class="k">Chapitre ${romain(S.player.chapitreN)}</span>
+      <span class="v ambre">${e(ch.titre)}</span></div>
+    <div class="aide" style="font-style:italic">${e(ch.dit)}</div>
+    <div class="sep"></div>` : ''}
     <div class="aide" style="font-style:italic">${e(t.dit)}</div>
     <div class="sep"></div>
     <div class="pile">
       ${lignes.map((l) => `<div class="aide">${e(l)}</div>`).join('')}
     </div>
+    ${passes.length ? `<div class="sep"></div>
+    <div class="aide">${passes.map((c) => `${romain(c.n)}. ${e(infoChapitre(c.cle).titre)} (J${Math.floor(c.t / 24) + 1})`).join(' · ')}</div>` : ''}
   </section>`;
 }
 
@@ -28053,8 +28520,13 @@ function modalePanneau() {
   const col = colonieDe(S.world, G().regionId);
   if (!col) return '<div class="aide">Aucun panneau ici.</div>';
   const liste = col.contrats || [];
+  // La figure du commanditaire (HISTOIRE.md, lot B) : à trois contrats
+  // tenus, le panneau vous connaît.
+  const nTenus = rencontresDe(S).contrats[col.id] || 0;
   return `<h2 class="titre">Panneau de ${e(col.nom)}
     <span class="droite">${S.player.contrats.length}/${MAX_CONTRATS} en cours</span></h2>
+  ${nTenus >= 3 ? `<div class="aide" style="font-style:italic">On vous connaît ici :
+    ${nTenus} contrats tenus pour la ville. On affiche parfois en pensant à vous.</div>` : ''}
   ${liste.length
     ? liste.map((c) => ligneContrat(c, false)).join('')
     : '<div class="aide">Rien d’affiché. Repassez plus tard.</div>'}`;
