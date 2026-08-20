@@ -79,6 +79,44 @@ changement de paramètres).
 `BluetoothGattCallback`, ou les UUID. Les apps de ce type gardent souvent la
 construction des trames en clair dans une seule classe utilitaire.
 
+## Paramètres exposés par le contrôleur (afficheur Yolin YL81F)
+
+Ce sont les réglages que l'app doit à terme piloter. Ils sont accessibles depuis
+le menu avancé de l'afficheur (maintenir **+** et **−** ~2 s, vélo à l'arrêt),
+ce qui donne un moyen de **vérifier ton décodage** : change un paramètre au
+menu, regarde quelle trame BLE bouge.
+
+| Param | Fonction | Plage |
+|---|---|---|
+| 01P | Luminosité du rétroéclairage | 1–3 |
+| 02P | Unités km/h ou mph | 0 / 1 |
+| 03P | Tension nominale de la batterie | selon système |
+| 04P | Mise en veille automatique | 0–60 min |
+| 05P | Nombre de niveaux d'assistance | 3 ou 5 |
+| 06P | Diamètre de roue | 1–50 pouces |
+| 07P | Limite de courant contrôleur | 1–31,5 A |
+| 08P | **Limite de vitesse** | 1–100 km/h |
+| 09P | Mode de démarrage (zéro / non-zéro) | 0 / 1 |
+| 10P | Mode de conduite (pédalier / accélérateur / les deux) | 0–2 |
+| 11P | Sensibilité du capteur de pédalage | 1–24 |
+| 12P | Puissance d'assistance | 0–5 |
+| 13P | Nombre d'aimants du capteur de pédalage | 5 / 8 / 12 |
+| 14P | Limite de courant contrôleur (2ᵉ jeu) | 1–50 A |
+| 15P | Seuil de sous-tension batterie | selon système |
+| 16P | Remise à zéro de l'odomètre | 0 / 1 |
+
+Mot de passe de démarrage : **1212** par défaut, modifiable (4 chiffres).
+
+Selon la version de firmware, 13P et 14P sont parfois en **lecture seule** dans
+le menu. C'est précisément un cas où le lien BLE peut aller plus loin que
+l'afficheur — l'app d'origine écrivait des paramètres que les boutons ne
+laissent pas modifier.
+
+Spécifique au X3 Pro Max (bi-moteur) : le sélecteur **AWD / FWD / RWD** ne fait
+pas partie du jeu Yolin standard, c'est un ajout Wallke. À repérer dans les
+trames en basculant entre les trois modes — cherche l'octet qui prend
+exactement trois valeurs.
+
 ## Prudence
 
 - Cible uniquement **ton propre vélo**.
