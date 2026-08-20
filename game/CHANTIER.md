@@ -525,8 +525,20 @@ commande.
   **10 gardes** au lieu de 7, dont trois neuves (endettées, créances, monnaies
   au plancher). Le banc compte désormais les événements par type et les
   monnaies au plancher.
-- [ ] **F3.** Artefact republié (fragment identique à `dist/fragment.html`,
+- [x] **F3.** Artefact republié (fragment identique à `dist/fragment.html`,
   SHA vérifié) — seulement sur demande explicite du propriétaire.
+
+  **Fait le 20 août 2026, sur demande explicite** (« Oui, republie »). Le
+  fragment reconstruit par `bundle.js --fragment` — SHA-256
+  `75c058a3ba5158be36ffd3c33b315086faea0adc2c5356f18c2b757f6deff650`,
+  1 229 Ko — remplace la version du 3 août au même artefact. Vérifié sur le
+  contenu servi après publication : la grille du grand écran (U6), les
+  portes de ville (U1) et le correctif des bourses (U4) y sont — c'est bien
+  la version des prix libres et de l'interface neuve. Limite connue et
+  assumée : dans le bac à sable de l'artefact, le bouton « enregistrer une
+  copie » des sauvegardes ne peut pas déclencher de téléchargement chez le
+  visiteur (le jeu complet sur son propre hébergement n'a pas cette
+  limite) ; le brancher sur l'API de l'hôte serait un chantier à part.
 
 ---
 
