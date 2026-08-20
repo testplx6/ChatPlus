@@ -441,11 +441,37 @@ commande.
   pour travailler sur un sous-ensemble sans payer la campagne entière.
   Critère : `--max 2 --graines 11,42 --horizon 400` rend un document lisible en
   moins d'une minute.
-- [ ] **F0.3. La campagne complète** (6 graines, 6 000 h) jouée, et ses trois
+- [x] **F0.3. La campagne complète** (6 graines, 6 000 h) jouée, et ses trois
   listes consignées ici : ce qui commande la population, ce qui commande le
   drame, ce qui ne commande rien. Critère : au moins un levier au-dessus du
   plancher de bruit sur les factions écrasées — ou le constat qu'aucune
   constante plate ne le commande, ce qui oriente le lot autrement.
+
+  **Le critère est tenu** — `MONNAIE.inertie` sort du bruit sur les factions
+  écrasées, confirmé au balayage direct (tableau ci-dessous), et les trois
+  listes sont consignées. Le détail levier par levier vit dans
+  `CARTOGRAPHIE.md` ; ces listes datent de la campagne du lot F (monde
+  d'avant la levée des bornes) et leur conclusion — le drame est monétaire —
+  a depuis été **renforcée** par les lots H et I : le cours libéré fait
+  vivre et mourir les monnaies pour de bon.
+
+  - **Ce qui commande la population** : `MENAGES.parTete` (élasticité 0,27,
+    des deux côtés), `MONNAIE.inertie` (0,56 — le même levier que le drame),
+    les vocations et rendements de biomes (`VOCATION_*`, `BIOMES.*.yields`,
+    ~−0,2 à −0,36), les saisons (`SAISONS.accalmie.mineral`), la sévérité
+    des dirigeants et le palier du régime « domaine » — c'est-à-dire :
+    l'argent des ménages, ce que la terre donne, et ce que l'État prélève.
+  - **Ce qui commande le drame** (factions écrasées) : `MONNAIE.inertie`
+    (élasticité 12,5 — le bouclier monétaire des pays faibles) et
+    `CAISSE.partSalariale` (10,0), loin devant tout levier militaire ;
+    autour, des leviers de subsistance (saisons, rendements des biomes
+    pauvres, part de paysans) qui décident si un pays faible tient debout.
+  - **Ce qui ne commande rien** : vingt-sept champs morts consignés dans
+    CARTOGRAPHIE §Champs morts — dont tout `ESTIME_ENGAGEMENT`, les rangs de
+    service, `ETAT.parDefense` (confirmé mort sur le drame : la carte ne lui
+    trouve d'effet que sur la dette et les convois — l'échec du balayage ×10
+    du lot D cherchait le drame là où il n'est pas). Ne pas les régler :
+    les instruire.
 
   | | mesuré |
   |---|---|
