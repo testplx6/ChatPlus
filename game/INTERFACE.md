@@ -77,10 +77,22 @@ train de devenir.
   et seulement pour les villes relevées — la carte reste un carnet ; la
   légende passe de `.court` à `.nom` ; le pied dit « secteur G6 » et plus
   « 24 px/secteur ». Constat : `captures/01f-carte-noms.png`.
-- [ ] **U3. L'arc : un cap entre l'accueil et la chronique.** **Ajourné par
-  le propriétaire, août 2026 : « pour l'instant rien, chantier suivant ».**
-  Les trois options restent instruites ci-dessous pour le jour où il
-  rouvrira la question. Rien ne s'écrit d'ici là.
+- [x] **U3. L'arc : un cap entre l'accueil et la chronique.** **Ajourné par
+  le propriétaire, août 2026 : « pour l'instant rien, chantier suivant » —
+  puis rouvert et dépassé par le chantier `HISTOIRE.md`**, qui livre bien
+  plus que l'option A : chapitres, dépêches causales, fils personnels,
+  figures récurrentes, mémoire des lieux. Les trois options d'origine
+  restent ci-dessous pour la trace.
+
+  **U4 bis — revue de vérification du 20 août, après le chantier
+  histoire** : les écrans du récit tiennent (chronique avec chapitre
+  courant et table des chapitres, « Son histoire » sur la fiche, dépêches
+  lisibles, panneau muet pour une ville sans souvenir — comme voulu). Deux
+  accrocs vus à l'écran et corrigés : la chronique n'accordait pas ses
+  pluriels (« 1 des vôtres tiennent encore debout », « 1 livrés à la
+  justice » — accords posés partout, deux tests nés rouges), et la carte
+  d'une livraison nommait sa destination deux fois (le titre la porte, la
+  ligne de détail ne dit plus que la distance et la marche).
 
 ## U3 — la décision à trancher
 

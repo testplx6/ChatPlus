@@ -203,29 +203,39 @@ export function lignesDe(state) {
   const out = [];
   const dire = (cond, texte) => { if (cond) out.push(texte); };
 
-  dire(true, `${f.jours} jours dans les cendres.`);
-  dire(f.vivants > 0, `${f.vivants} des vôtres tiennent encore debout.`);
-  dire(f.morts > 0, `${f.morts} sont restés en route.`);
+  // Les accords, partout : « 1 des vôtres tiennent » et « 1 livrés à la
+  // justice » ont été vus à l'écran. La chronique est le texte le plus relu
+  // du jeu — elle n'a pas le droit de boiter (U4 bis).
+  const s = (n) => (n > 1 ? 's' : '');
+  dire(true, `${f.jours} jour${s(f.jours)} dans les cendres.`);
+  dire(f.vivants > 0,
+    `${f.vivants} des vôtres tien${f.vivants > 1 ? 'nent' : 't'} encore debout.`);
+  dire(f.morts > 0,
+    `${f.morts} ${f.morts > 1 ? 'sont restés' : 'est resté'} en route.`);
   dire(f.combats > 0,
-    `${f.combats} affrontements, ${f.combatsGagnes} gagnés, ${f.defaites} perdus.`);
-  dire(f.captifsPris > 0, `${f.captifsPris} hommes pris vivants — `
-    + `${f.captifsLivres} livrés à la justice, ${f.captifsVendus} vendus, `
-    + `${f.captifsRelaches} relâchés.`);
+    `${f.combats} affrontement${s(f.combats)}, ${f.combatsGagnes} gagné${s(f.combatsGagnes)}, `
+    + `${f.defaites} perdu${s(f.defaites)}.`);
+  dire(f.captifsPris > 0,
+    `${f.captifsPris} homme${s(f.captifsPris)} pris vivant${s(f.captifsPris)} — `
+    + `${f.captifsLivres} livré${s(f.captifsLivres)} à la justice, `
+    + `${f.captifsVendus} vendu${s(f.captifsVendus)}, `
+    + `${f.captifsRelaches} relâché${s(f.captifsRelaches)}.`);
   // Une faction peut avoir disparu de la table entre-temps — un monde qui vit
   // n'a pas à garantir qu'une clé lue ailleurs existe encore.
   dire(f.grade >= 1 && f.faction && drapeauDe(state.world, f.faction) && RANGS[f.grade],
     `${RANGS[f.grade] ? RANGS[f.grade].nom : ''} `
     + `${drapeauDe(state.world, f.faction) ? drapeauDe(state.world, f.faction).genitif : ''}.`);
   dire(f.prerogatives > 0,
-    `${f.prerogatives} ordres donnés au nom d’une faction`
-    + `${f.lois > 0 ? `, dont ${f.lois} lois promulguées` : ''}.`);
+    `${f.prerogatives} ordre${s(f.prerogatives)} donné${s(f.prerogatives)} au nom d’une faction`
+    + `${f.lois > 0 ? `, dont ${f.lois} loi${s(f.lois)} promulguée${s(f.lois)}` : ''}.`);
   dire(f.habitants > 0,
-    `${f.habitants} personnes vivent à ${state.base.nom}`
+    `${f.habitants} personne${s(f.habitants)} ${f.habitants > 1 ? 'vivent' : 'vit'} à ${state.base.nom}`
     + `${f.villeReconnue ? ', qui est écrite sur les cartes' : ''}.`);
-  dire(f.contrats > 0, `${f.contrats} contrats honorés.`);
-  dire(f.services > 0, `${f.services} services rendus à des gens qui s’en souviennent.`);
-  dire(f.caravanes > 0, `${f.caravanes} caravanes pillées.`);
-  dire(f.sites > 0, `${f.sites} sites fouillés jusqu’à l’os.`);
+  dire(f.contrats > 0, `${f.contrats} contrat${s(f.contrats)} honoré${s(f.contrats)}.`);
+  dire(f.services > 0,
+    `${f.services} service${s(f.services)} rendu${s(f.services)} à des gens qui s’en souviennent.`);
+  dire(f.caravanes > 0, `${f.caravanes} caravane${s(f.caravanes)} pillée${s(f.caravanes)}.`);
+  dire(f.sites > 0, `${f.sites} site${s(f.sites)} fouillé${s(f.sites)} jusqu’à l’os.`);
   dire(f.credits >= 1000, `${f.credits} ${f.signe || '¤'} en poche.`);
   return out;
 }

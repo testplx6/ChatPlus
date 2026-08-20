@@ -10215,6 +10215,26 @@ section('HISTOIRE C — chaque membre porte un fil, et le monde le tire');
     'et l’inachevé se dit en toutes lettres', texteFilInacheve(sF, stele.fil));
 }
 
+section('U4 bis — la chronique accorde ses pluriels');
+{
+  // Vu à l'écran, pas au code : « 1 des vôtres tiennent encore debout »,
+  // « 1 livrés à la justice ». La chronique est le texte le plus relu du
+  // jeu — elle n'a pas le droit de boiter.
+  const sAcc = nouvellePartie(61, { maintenant: 0 });
+  sAcc.stats.combats = 1;
+  sAcc.stats.combatsGagnes = 1;
+  sAcc.stats.defaites = 0;
+  sAcc.stats.captifsPris = 1;
+  sAcc.stats.captifsLivres = 1;
+  const lignesAcc = lignesDe(sAcc);
+  ok(lignesAcc.some((l) => l.includes('1 des vôtres tient encore debout')),
+    'un seul survivant « tient », il ne « tiennent » pas',
+    lignesAcc.find((l) => l.includes('des vôtres')) || 'rien');
+  ok(!lignesAcc.some((l) => /\b1 (affrontements|gagnés|perdus|hommes|livrés|vendus|relâchés|jours|contrats)\b/.test(l)),
+    'aucun « 1 » suivi d’un pluriel dans la chronique',
+    lignesAcc.filter((l) => /\b1 [a-zé]+s\b/.test(l)).join(' | ') || '');
+}
+
 section('HISTOIRE B et E — le monde vous reconnaît, les lieux se souviennent');
 {
   const sR = nouvellePartie(55, { maintenant: 0 });

@@ -3648,8 +3648,12 @@ function blocCibleContrat(c, reste) {
   const tient = heures <= Math.max(0, reste);
   // Sans échéance, on ne dit rien de plus : la carte porte déjà son
   // « sans délai », et « aucun délai » en dessous faisait doublon (U4).
-  return `<div class="aide">${e(cible.quoi)} : ${e(lieuAvecCoord(S.world, cible.regionId))},
-    à ${d} région${d > 1 ? 's' : ''} — ${Number.isFinite(heures) ? dureeTexte(Math.round(heures)) : '?'}
+  // Une livraison porte déjà sa destination dans son titre : la redire ici
+  // faisait nommer la même ville deux fois dans la même carte (U4 bis). Les
+  // autres types, eux, n'ont que cette ligne pour situer.
+  const ou = c.type === 'livraison' ? '' : `${e(cible.quoi)} : ${e(lieuAvecCoord(S.world, cible.regionId))}, `;
+  return `<div class="aide">${ou}à ${d} région${d > 1 ? 's' : ''} — ${
+  Number.isFinite(heures) ? dureeTexte(Math.round(heures)) : '?'}
     ${retour > 0 ? 'aller-retour, le relevé se rend au panneau' : 'de marche'}.
     ${reste == null ? ''
     : `<span class="${tient ? 'cyan' : 'alerte'}">${tient
