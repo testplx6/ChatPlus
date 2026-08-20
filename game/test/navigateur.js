@@ -1107,6 +1107,96 @@ await page.click('[data-a="onglet"][data-k="contrats"]');
 await page.waitForTimeout(400);
 await page.screenshot({ path: join(CAPTURES, '11-contrats.png'), fullPage: true });
 
+// U4 (INTERFACE.md) — les finitions qui se voient. La revue du 20 août sur
+// captures : cartes de contrat qui nomment la même ville cinq fois, trente
+// pluriels parenthésés, codes de faction survivants, noms de réseaux coupés
+// au milieu des mots, six badges « inconnu », colonnes du marché muettes,
+// pourcentage sans étiquette sur la fiche.
+{
+  // a. La carte d'un contrat ne radote pas. Si le contrat en cours est une
+  // livraison, sa destination apparaît au plus deux fois (le titre, la
+  // flèche) ; et « aucun délai » ne double jamais le « sans délai » que la
+  // carte affiche déjà.
+  const enCours = await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const livr = s.player.contrats.find((c) => c.type === 'livraison');
+    const dest = livr && s.world.colonies.find((c) => c.id === livr.destId);
+    return { dest: dest ? dest.nom : null };
+  });
+  const texteContrats = await page.evaluate(
+    () => document.getElementById('ecran').textContent);
+  if (enCours.dest) {
+    const fois = (texteContrats.match(new RegExp(enCours.dest.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&'), 'g')) || []).length;
+    ok(fois <= 2, 'la carte d’une livraison nomme sa destination au plus deux fois',
+      `${enCours.dest} × ${fois}`);
+  }
+  if (/sans délai/.test(texteContrats)) {
+    const carteEnCours = await page.evaluate(() => {
+      const sec = [...document.querySelectorAll('section')]
+        .find((s2) => /En cours/i.test((s2.querySelector('h2') || {}).textContent || ''));
+      return sec ? sec.textContent : '';
+    });
+    ok(!/aucun délai/.test(carteEnCours),
+      'une carte sans délai ne le dit qu’une fois', carteEnCours.slice(0, 120));
+  }
+  // b. Les pluriels s'accordent — plus de « ville(s) » ni de « réseau(x) ».
+  ok(!/\((?:s|x)\)/.test(texteContrats), 'les pluriels de l’écran contrats s’accordent');
+
+  await page.click('[data-a="onglet"][data-k="monde"]');
+  await page.waitForTimeout(500);
+  const texteMonde = await page.evaluate(
+    () => document.getElementById('ecran').textContent);
+  ok(!/\((?:s|x)\)/.test(texteMonde), 'les pluriels de l’écran monde s’accordent',
+    (texteMonde.match(/[^ ]+\((?:s|x)\)/g) || []).slice(0, 4).join(', '));
+  // c. Plus aucun code de faction hors légende.
+  const codes = await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    return Object.values(s.world.drapeaux).map((d) => d.court).filter(Boolean);
+  });
+  const restants = codes.filter((c) => new RegExp(`(^|[^A-ZÀ-Ý])${c}($|[^A-ZÀ-Ý])`).test(texteMonde));
+  ok(restants.length === 0, 'plus aucun code de faction dans l’écran monde',
+    restants.join(', '));
+  // d. Les noms de réseaux ne se coupent pas au milieu d'un mot.
+  const coupures = await page.evaluate(() => {
+    const sec = [...document.querySelectorAll('section')]
+      .find((s2) => /Bourses/i.test((s2.querySelector('h2') || {}).textContent || ''));
+    if (!sec) return null;
+    return [...sec.querySelectorAll('.ligne .k')]
+      .map((el) => el.innerText)
+      .filter((t) => /[A-Za-zà-ÿÀ-Ý]\n[A-Za-zà-ÿ]/.test(t));
+  });
+  ok(!coupures || coupures.length === 0,
+    'les bourses ne coupent plus les noms au milieu des mots',
+    (coupures || []).join(' | ').replace(/\n/g, '/'));
+  // e. Les factions qui ne vous connaissent pas tiennent sur une ligne.
+  const estimeTxt = await page.evaluate(() => {
+    const sec = [...document.querySelectorAll('section')]
+      .find((s2) => /pense de vous/i.test((s2.querySelector('h2') || {}).textContent || ''));
+    return sec ? sec.textContent : '';
+  });
+  ok((estimeTxt.match(/inconnu/gi) || []).length <= 1,
+    'les factions inconnues sont regroupées, pas répétées',
+    `${(estimeTxt.match(/inconnu/gi) || []).length} badges`);
+
+  // f. La fiche d'un membre étiquette son pourcentage.
+  await page.click('[data-a="onglet"][data-k="escouade"]');
+  await page.waitForTimeout(400);
+  const resume = await page.locator('details.perso summary').first().innerText();
+  ok(/santé/i.test(resume), 'le pourcentage de la fiche porte son nom',
+    resume.replace(/\n/g, ' ').slice(0, 80));
+
+  // g. Le marché nomme ses colonnes.
+  await page.click('[data-a="onglet"][data-k="carte"]');
+  await page.waitForTimeout(400);
+  await page.click('[data-a="modale"][data-m="marche"]');
+  await page.waitForTimeout(400);
+  const marcheTxt = await page.locator('#modale').innerText();
+  ok(/Acheter/i.test(marcheTxt) && /Vendre/i.test(marcheTxt),
+    'le marché dit quelle colonne achète et laquelle vend');
+  await page.click('[data-a="fermer"]');
+  await page.waitForTimeout(300);
+}
+
 // Fil d'actualité sur la carte
 await page.click('[data-a="onglet"][data-k="carte"]');
 await page.waitForTimeout(2500);
@@ -1240,12 +1330,12 @@ ok(/Directeur|Commandant|Parrain|Porte-parole|Voix du Signal|Chef de convoi/.tes
   'chaque faction montre qui la dirige');
 ok(/conquérant|prudent|bâtisseur|rancunier|conciliateur|rapace|méthodique/i.test(textePol),
   'avec son tempérament');
-ok(/ville\(s\) prise\(s\)/.test(textePol), 'et son bilan');
+ok(/villes? prises?/.test(textePol), 'et son bilan');
 // ECONOMIE §10 : l'écran d'une faction dit sa monnaie. Réservé à qui lit leurs
 // transmissions — un cours et une masse monétaire ne traînent pas sur les places.
 ok(/Monnaie .* : cours/.test(textePol), 'et le cours de sa monnaie',
   (textePol.match(/Monnaie [^.]*\./) || ['—'])[0]);
-ok(/en circulation/.test(textePol) && /émission\(s\)/.test(textePol),
+ok(/en circulation/.test(textePol) && /émissions?/.test(textePol),
   'ce qui circule et combien de fois ils ont imprimé');
 ok(/Loyer de l’argent/.test(textePol), 'et le taux directeur, en toutes lettres');
 await page.screenshot({ path: join(CAPTURES, '22-politique.png'), fullPage: true });
@@ -1858,12 +1948,26 @@ console.log('\n8 vicies ter. Les bourses du monde, enfin visibles');
   ok(!!bourses, 'l’écran Monde montre les bourses ouvertes');
   ok(bourses && /réseau/i.test(bourses), 'et combien de réseaux existent',
     (bourses || '').slice(0, 120));
-  ok(bourses && /ville\(s\)/.test(bourses) && /% de la carte/.test(bourses),
-    'avec le poids de chacun sur la carte', (bourses || '').slice(0, 160));
+  ok(bourses && /\d+ villes?\b/.test(bourses) && /% de la carte/.test(bourses),
+    'avec le poids de chacun sur la carte, au pluriel accordé (U4)',
+    (bourses || '').slice(0, 160));
   ok(bourses && /accord/i.test(bourses),
     'et l’accord qui en relie deux se voit', (bourses || '').slice(0, 200));
   ok(bourses && /prix de base/.test(bourses),
     'ainsi que la cherté de leur cours', (bourses || '').slice(0, 200));
+  // U4 — le nom d'un réseau à rallonge (« Consortium Hexa + Les Rouilleurs »)
+  // ne se coupe pas au milieu d'un mot : c'est ce scénario-ci qui produisait
+  // « Consortiu / m Hexa » sur la capture.
+  const coupures42 = await page.evaluate(() => {
+    const sec = [...document.querySelectorAll('#ecran > section')].find((x) => /BOURSES/i.test(x.textContent));
+    if (!sec) return null;
+    return [...sec.querySelectorAll('.ligne .k, .k')]
+      .map((el) => el.innerText)
+      .filter((t) => /[A-Za-zà-ÿÀ-Ý]\n[A-Za-zà-ÿ]/.test(t));
+  });
+  ok(!coupures42 || coupures42.length === 0,
+    'le nom d’un réseau ne se coupe pas au milieu d’un mot',
+    (coupures42 || []).join(' | ').replace(/\n/g, '/'));
   await page.evaluate(() => {
     const sec = [...document.querySelectorAll('#ecran > section')].find((x) => /BOURSES/i.test(x.textContent));
     if (sec) sec.scrollIntoView({ block: 'center' });

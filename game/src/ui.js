@@ -177,6 +177,15 @@ function e(s) {
   ));
 }
 
+/**
+ * Un compte accordé : pl(3, 'ville') → « 3 villes ». Trente écrans écrivaient
+ * « ville(s) » alors que les drapeaux, eux, savent s'accorder depuis
+ * toujours. Le pluriel français commence à 2 — « 1,5 jour », « 2 jours ».
+ */
+function pl(v, un, des = `${un}s`) {
+  return `${n(v)} ${v >= 2 ? des : un}`;
+}
+
 function n(v, dec = 0) {
   if (!Number.isFinite(v)) return '—';
   return v.toLocaleString('fr-FR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
@@ -1126,9 +1135,9 @@ function blocSituation() {
   if (!Number.isFinite(jours)) {
     // Personne ne mange : tout le monde est mort ou l'escouade est vide.
   } else if (jours < 1) {
-    urgences.push(`Plus rien à manger — ${rations} ration(s). On commence à mourir de faim.`);
+    urgences.push(`Plus rien à manger — ${pl(rations, 'ration')}. On commence à mourir de faim.`);
   } else if (jours < 3) {
-    urgences.push(`${jours.toFixed(1)} jour(s) de vivres. Il faut trouver à manger maintenant.`);
+    urgences.push(`${jours.toFixed(1).replace('.', ',')} jour${jours >= 2 ? 's' : ''} de vivres. Il faut trouver à manger maintenant.`);
   } else if (jours < 8) {
     bientot.push(`${Math.round(jours)} jours de vivres`);
   }
@@ -1140,7 +1149,7 @@ function blocSituation() {
       + 'à terre. On ne les porte pas indéfiniment.');
   }
   const amoches = vivants.filter((c) => estDebout(c) && pvTotal(c).pct < 0.5);
-  if (amoches.length) bientot.push(`${amoches.length} blessé(s) sérieux`);
+  if (amoches.length) bientot.push(`${pl(amoches.length, 'blessé sérieux', 'blessés sérieux')}`);
 
   // Les morts qu'on porte encore. Le panneau qui permet d'en décider vit sur
   // l'écran d'escouade, et rien ne renvoyait vers lui : on pouvait traîner un
@@ -1262,7 +1271,8 @@ function blocContratsActifs() {
           <span class="v ${c.echeance && reste < 48 ? 'alerte' : ''}">${c.echeance
     ? dureeTexte(Math.max(0, reste)) : 'sans délai'}</span></div>
         ${jauge(p.total ? p.fait / p.total : 0, p.pret ? 'vert' : '')}
-        <div class="aide">${e(p.texte)} · à rendre à ${e(lieuValidation(S, c))}</div>
+        <div class="aide">${e(p.texte)}${p.texte.includes(lieuValidation(S, c))
+    ? '' : ` · à rendre à ${e(lieuValidation(S, c))}`}</div>
       </div>`;
   }).join('')}
   </section>`;
@@ -1760,7 +1770,7 @@ function ficheMembre(c) {
     <summary>
       <span class="puce ${cls}">${e(et)}</span>
       <span class="nom">${e(c.nom)} <span class="arch">${e(c.archetypeNom)}</span></span>
-      <span class="mono-num" style="color:var(--texte-3)">${(t.pct * 100).toFixed(0)}%</span>
+      <span class="mono-num" style="color:var(--texte-3)">santé ${(t.pct * 100).toFixed(0)} %</span>
     </summary>
     <div class="corps-detail">
       <div class="grille2" style="margin-bottom:8px">
@@ -2232,7 +2242,7 @@ function ecranEscouade() {
 
   <section class="panneau">
     <h2 class="titre">Consignes permanentes
-      <span class="droite">${Object.keys(pol).filter((k) => pol[k]).length} active(s)</span>
+      <span class="droite">${pl(Object.keys(pol).filter((k) => pol[k]).length, 'active')}</span>
       <span class="resume">${e(resumePolitique(pol))}</span></h2>
     <div class="pile">
       ${[
@@ -2458,7 +2468,7 @@ function blocMetiers() {
   }
   if (!ouverts.length) {
     return `<section class="panneau">
-      <h2 class="titre">Métiers <span class="droite">${n(libres)} manœuvre(s)</span></h2>
+      <h2 class="titre">Métiers <span class="droite">${pl(libres, 'manœuvre')}</span></h2>
       <div class="aide">Aucun poste ouvert : ce sont les bâtiments qui créent les places.
         En attendant, tout le monde donne un coup de main partout — ×${mainDoeuvre(b, S).toFixed(2)}
         sur l’ensemble.</div>
@@ -2476,7 +2486,7 @@ function blocMetiers() {
     // qui est tenu aujourd'hui. Les confondre était tout le problème.
     const puce = n0 === veut
       ? `<span class="puce">${veut}/${places}</span>`
-      : `<span class="puce att">${n0} tenu(s) sur ${veut}</span>`;
+      : `<span class="puce att">${n0} tenu${n0 >= 2 ? 's' : ''} sur ${veut}</span>`;
     return `<div style="border-bottom:1px solid #1b2029;padding:7px 0">
       <div class="ligne">
         <span class="k">${e(m.nom)} ${puce}</span>
@@ -2502,7 +2512,7 @@ function blocMetiers() {
   // ni que ça arrivait, ni pourquoi.
   const degarnis = postesDegarnis(b, S);
   const total = brasDisponibles(b, S);
-  const alerte = degarnis > 0 ? `<div class="aide ambre">${n(degarnis)} poste(s) réglé(s)
+  const alerte = degarnis > 0 ? `<div class="aide ambre">${pl(degarnis, 'poste réglé', 'postes réglés')}
     que personne ne tient : il n’y a que ${n(total)} bras ici. Le réglage est gardé —
     les gens reprennent leur place dès qu’il y a du monde. Le manque se répartit sur
     tous les métiers, aucun n’est vidé au profit d’un autre.</div>` : '';
@@ -2510,9 +2520,9 @@ function blocMetiers() {
   return `<section class="panneau">
     <h2 class="titre">Métiers
       <span class="resume">${e(resumeMetiers(b))}${degarnis
-    ? ` · <span class="att">${n(degarnis)} poste(s) sans personne</span>` : ''}</span>
-      <span class="droite">${n(libres)} manœuvre(s) sur ${n(total)}</span></h2>
-    <div class="aide">${n(total)} bras en tout : ${n(Math.floor(b.pop || 0))} habitant(s)${bras
+    ? ` · <span class="att">${pl(degarnis, 'poste')} sans personne</span>` : ''}</span>
+      <span class="droite">${pl(libres, 'manœuvre')} sur ${n(total)}</span></h2>
+    <div class="aide">${n(total)} bras en tout : ${pl(Math.floor(b.pop || 0), 'habitant')}${bras
     ? ` et ${n(bras)} des vôtres aux travaux — ceux-là repartent avec l’escouade`
     : ', et personne de l’escouade (il faut lui donner l’ordre « Travaux », ici)'}.</div>
     ${alerte}
@@ -2572,7 +2582,7 @@ function blocEcoleBase() {
   }).join('');
 
   return `<section class="panneau">
-    <h2 class="titre">Transmission <span class="droite">${offres.length} matière(s)</span></h2>
+    <h2 class="titre">Transmission <span class="droite">${pl(offres.length, 'matière')}</span></h2>
     <div class="aide">Ce que les vôtres savent, ils peuvent l’apprendre aux autres — sans
       payer une ville, mais plus lentement, et à deux immobilisés : l’élève et le maître.
       Il faut un diplômé, ou quelqu’un qui en sait bien plus que le cours.</div>
@@ -3246,8 +3256,17 @@ function ligneContrat(c, enCours) {
     </div>
     <div class="contrat-t">${e(c.titre)}</div>
     ${p ? `${jauge(p.total ? p.fait / p.total : 0, p.pret ? 'vert' : '')}
-      <div class="aide">${e(p.texte)} · à rendre à ${e(lieuValidation(S, c))}
-        · ${presse
+      <div class="aide">${(() => {
+    // La flèche « → X » ne dit rien que la ligne de cible ne dise mieux
+    // (lieu, coordonnées, distance) : on ne la garde que si elle porte un
+    // état en plus — « colis ailleurs », « ville disparue » (U4).
+    const lieu = lieuValidation(S, c);
+    const etat2 = p.texte === `→ ${lieu}` ? '' : e(p.texte);
+    const rendre = p.texte.includes(lieu) || c.type === 'livraison'
+      ? '' : `à rendre à ${e(lieu)}`;
+    const parts = [etat2, rendre].filter(Boolean);
+    return parts.length ? `${parts.join(' · ')} · ` : '';
+  })()}${presse
     ? `<span class="${reste < 48 ? 'alerte' : ''}">${dureeTexte(Math.max(0, reste))} restantes</span>`
     : '<span class="cyan">sans délai</span>'}</div>`
     : `<div class="aide">Commanditaire : ${e(donneur ? donneur.nom : '—')} · ${presse
@@ -3489,7 +3508,7 @@ function ciblesCharge(faction, k) {
       }
       : {
         val: 'esclavage:oui',
-        texte: `Autoriser le commerce d’hommes — ${abolitionnistes} faction(s) l’interdisent`
+        texte: `Autoriser le commerce d’hommes — ${pl(abolitionnistes, 'faction l’interdit', 'factions l’interdisent')}`
           + ' chez elles, et vous le feront payer',
       });
     return out;
@@ -3571,7 +3590,7 @@ function blocCibleContrat(c, reste) {
   let cible = null;
   if (c.type === 'livraison') {
     const dest = colonieParId(S.world, c.destId);
-    if (dest && !dest.ruine) cible = { regionId: dest.regionId, quoi: `à porter à ${dest.nom}` };
+    if (dest && !dest.ruine) cible = { regionId: dest.regionId, quoi: 'à porter' };
   } else if (c.type === 'reconnaissance') {
     cible = { regionId: c.regionId, quoi: 'secteur à lever' };
   } else if (c.type === 'prime' && c.cibleFaction) {
@@ -3603,10 +3622,12 @@ function blocCibleContrat(c, reste) {
     ? 0 : distance(cible.regionId, donneur.regionId) * allure;
   const heures = allure * d + retour;
   const tient = heures <= Math.max(0, reste);
+  // Sans échéance, on ne dit rien de plus : la carte porte déjà son
+  // « sans délai », et « aucun délai » en dessous faisait doublon (U4).
   return `<div class="aide">${e(cible.quoi)} : ${e(lieuAvecCoord(S.world, cible.regionId))},
     à ${d} région${d > 1 ? 's' : ''} — ${Number.isFinite(heures) ? dureeTexte(Math.round(heures)) : '?'}
     ${retour > 0 ? 'aller-retour, le relevé se rend au panneau' : 'de marche'}.
-    ${reste == null ? '<span class="cyan">aucun délai</span>'
+    ${reste == null ? ''
     : `<span class="${tient ? 'cyan' : 'alerte'}">${tient
       ? 'le délai le permet' : 'le délai ne le permet pas'}</span>`}</div>`;
 }
@@ -3736,7 +3757,7 @@ function blocIntendance() {
       à l’intendance de ${e(col.nom)}</button>
     <div class="aide ${d.plafonne ? 'ambre' : ''}">${d.plafonne
     ? `${n(d.jours)} jours sans passer, mais l’intendance ne garde que ${JOURS_INTENDANCE} jours `
-      + `d’arriéré : ${n(d.perdu)} ration(s) sont déjà perdues. Repassez plus souvent.`
+      + `d’arriéré : ${pl(d.perdu, 'ration est', 'rations sont')} déjà ${d.perdu >= 2 ? 'perdues' : 'perdue'}. Repassez plus souvent.`
     : `${n(d.rang.def.ration)} rations par jour à votre grade, cumulables `
       + `${JOURS_INTENDANCE} jours au plus. Au-delà, l’arriéré cesse de monter.`}</div>`;
 }
@@ -3916,7 +3937,14 @@ function blocOuVousEnEtes() {
     .map((k) => ({ k, ef: effetsEstime(S, k) }))
     .sort((a, b) => b.ef.rep - a.ef.rep);
   if (!rangs.length) return '';
-  const lignes = rangs.map(({ k, ef }) => {
+  // Six badges « 0 inconnu » empilés ne disent qu'une chose, six fois. Ceux
+  // qui ne vous connaissent pas tiennent sur une ligne ; les lignes pleines
+  // sont pour ceux avec qui il se passe quelque chose (U4).
+  const anonymes = rangs.filter(({ ef }) => !ef.rep
+    && ef.palier.nom.toLowerCase() === 'inconnu');
+  const connus = anonymes.length >= 2
+    ? rangs.filter((r2) => !anonymes.includes(r2)) : rangs;
+  const lignes = connus.map(({ k, ef }) => {
     const cls = couleurEstime(ef.rep);
     // Ce qui compte le plus à ce niveau-ci : ce qu'on subit d'abord s'il y a
     // quelque chose à subir, ce qu'on a gagné sinon.
@@ -3927,7 +3955,11 @@ function blocOuVousEnEtes() {
         <span class="aide">${e(quoi)}</span></span>
       <span class="v"><span class="puce ${cls}">${ef.rep > 0 ? '+' : ''}${n(ef.rep)}
         ${e(ef.palier.nom.toLowerCase())}</span></span></div>`;
-  }).join('');
+  }).join('') + (anonymes.length >= 2
+    ? `<div class="aide" style="padding-top:5px">Ne vous connaissent pas encore : ${anonymes
+      .map(({ k }) => `<span style="color:${couleurFaction(k)}">${e(drapeauDe(S.world, k).nom)}</span>`)
+      .join(' · ')}.</div>`
+    : '');
   return `<section class="panneau">
     <h2 class="titre">Ce qu’on pense de vous
       <span class="droite">estime</span></h2>
@@ -3982,12 +4014,13 @@ function blocBourses() {
       if (compte) ecart = somme / compte;
     }
     const age = r.maj === null ? null : S.temps - r.maj;
+    // Le nom du réseau a sa ligne à lui : en colonne face aux chiffres, il se
+    // faisait écraser et coupait au milieu des mots — « Consortiu / m Hexa »
+    // sur la capture (U4).
     return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
-      <div class="ligne souple">
-        <span class="k">${e(nom)}${r.membres.length > 1
-    ? ' <span class="puce ok">accord</span>' : ''}</span>
-        <span class="v">${r.villes} ville(s) · ${part} % de la carte</span>
-      </div>
+      <div>${e(nom)}${r.membres.length > 1
+    ? ' <span class="puce ok">accord</span>' : ''}</div>
+      <div class="aide">${pl(r.villes, 'ville')} · ${part} % de la carte</div>
       <div class="aide">${ecart === null
     ? 'Cours pas encore publié.'
     : `Cours ${ecart > 0.02 ? `<span class="alerte">${Math.round(ecart * 100)} % au-dessus`
@@ -4002,7 +4035,7 @@ function blocBourses() {
     <h2 class="titre">Bourses
       <span class="resume">${e(liste.map((r) => `${r.noms.length > 1
     ? r.membres.length + ' unis' : r.noms[0]} ${r.villes} v.`).join(' · '))}</span>
-      <span class="droite">${liste.length} réseau(x)</span></h2>
+      <span class="droite">${pl(liste.length, 'réseau', 'réseaux')}</span></h2>
     <div class="aide">Les villes d’un même réseau s’approvisionnent entre elles en priorité
       et traitent contre un cours commun, republié chaque jour. Un accord relie deux
       réseaux ; une guerre les sépare.</div>
@@ -4041,10 +4074,10 @@ function ecranMonde() {
       : d.legitimite > 75 ? 'bien assis' : 'en place';
     return `<div class="aide"><b>${e(d.titre)} ${e(d.nom)}</b> — ${e(t.nom.toLowerCase())},
       ${e(assise)}${crypto ? ` (légitimité ${Math.round(d.legitimite)})` : ''}.
-      ${d.guerres ? `${d.guerres} guerre(s), ` : ''}${d.prises} ville(s) prise(s),
-      ${d.pertes} perdue(s).</div>`;
+      ${d.guerres ? `${pl(d.guerres, 'guerre')}, ` : ''}${pl(d.prises, 'ville prise', 'villes prises')},
+      ${d.pertes} perdue${d.pertes >= 2 ? 's' : ''}.</div>`;
   })()}
-      <div class="aide">${f.colonies} colonie(s) · ${crypto
+      <div class="aide">${pl(f.colonies, 'colonie')} · ${crypto
     ? `trésor ${n(f.tresor)} ${sym(f.key)}`
     : 'trésor inconnu'} · ${e(drapeauDe(S.world, f.key).devise)}</div>
       ${(() => {
@@ -4062,7 +4095,7 @@ function ecranMonde() {
       impôt ${e(imp.nom.toLowerCase())} (${Math.round(l.impot * 100)} %),
       justice ${e(PEINES[l.peine].nom.toLowerCase())}${l.esclavage
       ? ', <span class="alerte">et l’on y vend des hommes</span>' : ''}.${facheurs
-      ? ` <span class="alerte">${facheurs} faction(s) ne le supportent pas.</span>` : ''}
+      ? ` <span class="alerte">${pl(facheurs, 'faction ne le supporte pas', 'factions ne le supportent pas')}.</span>` : ''}
       <br>Pour vous : ${e(reg.desc.toLowerCase())}</div>`;
   })()}
       ${(() => {
@@ -4087,7 +4120,7 @@ function ecranMonde() {
     const etat = etatCours(c);
     return `<div class="aide">Monnaie ${e(symboleDe(S.world, f.key))} : cours
       ${n(c, 2)} — ${e(etat)}. ${n(Math.round(masse(S.world, f.key)))} en circulation,
-      ${f.emissions || 0} émission(s). Loyer de l’argent :
+      ${pl(f.emissions || 0, 'émission')}. Loyer de l’argent :
       ${e(dir.nom.toLowerCase())} (${(l2.directeur * 100).toFixed(0)} %).</div>`;
   })()}
     </div>`;
@@ -4096,9 +4129,9 @@ function ecranMonde() {
   const guerres = S.world.guerres.length
     ? S.world.guerres.map((g) => `<div style="border-bottom:1px solid #1b2029;padding:4px 0">
         <div class="ligne">
-          <span class="k"><span style="color:${couleurFaction(g.a)}">${e(drapeauDe(S.world, g.a).court)}</span>
-            ✕ <span style="color:${couleurFaction(g.b)}">${e(drapeauDe(S.world, g.b).court)}</span></span>
-          <span class="v">${dureeTexte(S.temps - g.depuis)} · ${g.batailles} bataille(s)</span></div>
+          <span class="k"><span style="color:${couleurFaction(g.a)}">${e(drapeauDe(S.world, g.a).nom)}</span>
+            ✕ <span style="color:${couleurFaction(g.b)}">${e(drapeauDe(S.world, g.b).nom)}</span></span>
+          <span class="v">${dureeTexte(S.temps - g.depuis)} · ${pl(g.batailles, 'bataille')}</span></div>
         ${g.but ? `<div class="aide">Déclarée ${e(g.but.texte)}.</div>` : ''}
       </div>`).join('')
     : '<div class="aide">Paix générale. Ça ne dure jamais.</div>';
@@ -4108,7 +4141,7 @@ function ecranMonde() {
   const vues = crypto ? S.world.armees : S.world.armees.filter((a) => estSurveillee(S, a.regionId));
   const armees = vues.length
     ? vues.map((a) => `<div class="ligne">
-        <span class="k" style="color:${couleurFaction(a.faction)}">${e(drapeauDe(S.world, a.faction).court)} · ${n(a.force)}</span>
+        <span class="k" style="color:${couleurFaction(a.faction)}">${e(drapeauDe(S.world, a.faction).nom)} · ${n(a.force)}</span>
         <span class="v">${e(a.etat)} → ${e((colonieParId(S.world, a.cible) || {}).nom || '—')}</span></div>`).join('')
     : `<div class="aide">${S.world.armees.length
       ? 'Rien en vue. Ce qui ne veut pas dire qu’il ne se passe rien.'
@@ -4193,7 +4226,7 @@ function ecranMonde() {
     const de = colonieParId(S.world, c.deId);
     const vers = colonieParId(S.world, c.versId);
     return `<div class="ligne">
-        <span class="k" style="color:${couleurFaction(c.faction)}">${e(drapeauDe(S.world, c.faction).court)}</span>
+        <span class="k" style="color:${couleurFaction(c.faction)}">${e(drapeauDe(S.world, c.faction).nom)}</span>
         <span class="v">${e(de ? de.nom : '?')} → ${e(vers ? vers.nom : '?')} · ${n(valeurCargaison(c))} ${sym()}</span></div>`;
   }).join('') : '<div class="aide">Aucune caravane sur les routes. Mauvais signe.</div>'}
   </section>
@@ -4319,7 +4352,7 @@ function modaleSauvegardes() {
     return `<div style="border-bottom:1px solid #1b2029;padding:7px 0">
       <div class="ligne souple"><span class="k">${e(x.nom)}</span>
         <span class="v aide">${e(quandTexte(x.quand))}</span></div>
-      <div class="aide">Jour ${n(r.jour || 0)} · ${n(r.gens || 0)} vivant(s) ·
+      <div class="aide">Jour ${n(r.jour || 0)} · ${pl(r.gens || 0, 'vivant')} ·
         ${n(r.argent || 0)} ${e(r.signe || '¤')}${r.base ? ` · ${e(r.nomBase || 'un camp')}` : ' · sans camp'}
         · graine ${e(String(r.seed ?? '?'))}</div>
       <div class="taches" style="margin-top:5px">
@@ -4342,7 +4375,7 @@ function modaleSauvegardes() {
       et.taille ? `, ${(et.taille / 1024).toFixed(0)} Ko` : ''}.</div>`
     : `<div class="panneau urgent"><div class="titre alerte">La sauvegarde ne passe pas</div>
         <div class="aide">${e(et.motif || '')}</div>
-        <div class="aide">${n(et.echecs)} tentative(s) en échec. Exportez la partie en
+        <div class="aide">${pl(et.echecs, 'tentative')} en échec. Exportez la partie en
           fichier tant qu’elle est ouverte : c’est le seul moyen de ne pas la perdre.</div></div>`;
   return `${sante}
   <h2 class="titre">Sauvegardes
@@ -4352,7 +4385,7 @@ function modaleSauvegardes() {
     est alors remplacée.</div>
   ${r ? `<div class="sep"></div>
     <div class="ligne"><span class="k">Partie en cours</span>
-      <span class="v">Jour ${n(r.jour)} · ${n(r.gens)} vivant(s) · ${n(r.argent)} ${e(r.signe || '¤')}</span></div>
+      <span class="v">Jour ${n(r.jour)} · ${pl(r.gens, 'vivant')} · ${n(r.argent)} ${e(r.signe || '¤')}</span></div>
     <label class="aide" for="nom-sauvegarde">Nom de la copie (facultatif)</label>
     <input id="nom-sauvegarde" type="text" autocomplete="off"
       placeholder="Jour ${n(r.jour)}" value="">
@@ -4421,7 +4454,7 @@ function blocAccueilSauvegardes() {
     const r = x.resume || {};
     return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
         <div class="ligne souple"><span class="k">${e(x.nom)}</span>
-          <span class="v aide">jour ${n(r.jour || 0)} · ${n(r.gens || 0)} vivant(s)</span></div>
+          <span class="v aide">jour ${n(r.jour || 0)} · ${pl(r.gens || 0, 'vivant')}</span></div>
         <div class="taches" style="margin-top:4px">
           <button class="act mini primaire" data-a="charger-emp" data-k="${e(x.id)}">Charger</button>
           <button class="act mini danger" data-a="suppr-emp" data-k="${e(x.id)}">Supprimer</button>
@@ -4593,7 +4626,7 @@ function modaleRapport() {
   ${bloc('Ce qu’on pense de vous', estime)}
   ${bloc('Le monde', monde)}
   ${bloc('Ce qui est arrivé', faits ? `<div class="fil">${faits}</div>${r.tus
-    ? `<div class="aide">…et ${n(r.tus)} autre(s) événement(s), au journal.</div>` : ''}` : '')}
+    ? `<div class="aide">…et ${pl(r.tus, 'autre événement', 'autres événements')}, au journal.</div>` : ''}` : '')}
   <div class="sep"></div>
   <button class="act primaire" data-a="rapport-vu">Reprendre les commandes</button>`;
 }
@@ -4657,7 +4690,7 @@ function modaleChange() {
     .sort((x, y) => (x === locale ? -1 : y === locale ? 1 : b[y] - b[x]));
   const poche = tenues.length
     ? tenues.map((k) => `<div class="ligne"><span class="k" style="color:${couleurFaction(k)}">${
-      e(drapeauDe(S.world, k).court)}</span>
+      e(drapeauDe(S.world, k).nom)}</span>
       <span class="v">${n(b[k], 2)} ${e(symboleDe(S.world, k))}</span></div>`).join('')
     : '<div class="aide">Vous n’avez rien sur vous.</div>';
 
@@ -4692,8 +4725,8 @@ function modaleChange() {
     const k = `${d}>${v}`;
     return `<button class="act mini${k === changeVers ? ' primaire' : ''}"
       data-a="change-paire" data-k="${k}" aria-pressed="${k === changeVers}">${
-  e(symboleDe(S.world, d))} ${e(drapeauDe(S.world, d).court)} → ${
-  e(symboleDe(S.world, v))} ${e(drapeauDe(S.world, v).court)}</button>`;
+  e(symboleDe(S.world, d))} ${e(drapeauDe(S.world, d).nom)} → ${
+  e(symboleDe(S.world, v))} ${e(drapeauDe(S.world, v).nom)}</button>`;
   }).join('');
 
   return `<h2 class="titre">Change à ${e(col.nom)}</h2>
@@ -4757,7 +4790,12 @@ function modaleMarche() {
       chaque vente, déjà déduits de ce qui est affiché.</span>`
     : `${e(reg.nom)} : on ne retient rien sur vos ventes ici.`}</div>
   <div class="taches" style="margin-top:6px">Quantité ${choix}</div>
-  <div class="sep"></div>${lignes}`;
+  <div class="sep"></div>
+  <div class="marche-l" style="padding:2px 0">
+    <span class="nm aide">ville · sac · prix (achat / vente)</span>
+    <span class="aide" style="text-align:center">Acheter</span>
+    <span class="aide" style="text-align:center">Vendre</span>
+  </div>${lignes}`;
 }
 
 /**
@@ -5630,7 +5668,7 @@ function surClic(ev) {
     case 'tous-suivent': {
       let n = 0;
       for (const c of G().membres) if (c.tache) { delete c.tache; n++; }
-      toast(n ? `${n} personne(s) reprennent l’ordre du groupe.` : 'Personne n’avait de tâche à soi.');
+      toast(n ? `${n} personne${n >= 2 ? 's reprennent' : ' reprend'} l’ordre du groupe.` : 'Personne n’avait de tâche à soi.');
       rafraichir(true);
       break;
     }
@@ -5643,7 +5681,7 @@ function surClic(ev) {
     case 'acheter': {
       const col = colonieDe(S.world, G().regionId);
       const r = acheter(S, col, el.dataset.k, Number(el.dataset.q));
-      toast(r.ok ? `${r.qte} acheté(s) pour ${r.cout} ${sym()}.` : r.motif, !r.ok);
+      toast(r.ok ? `${r.qte} acheté${r.qte >= 2 ? 's' : ''} pour ${r.cout} ${sym()}.` : r.motif, !r.ok);
       rendreModale();
       rafraichir(true);
       break;
@@ -5652,7 +5690,7 @@ function surClic(ev) {
     case 'vendre': {
       const col = colonieDe(S.world, G().regionId);
       const r = vendre(S, col, el.dataset.k, Number(el.dataset.q));
-      toast(r.ok ? `${r.qte} vendu(s) pour ${r.gain} ${sym()}.` : r.motif, !r.ok);
+      toast(r.ok ? `${r.qte} vendu${r.qte >= 2 ? 's' : ''} pour ${r.gain} ${sym()}.` : r.motif, !r.ok);
       rendreModale();
       rafraichir(true);
       break;

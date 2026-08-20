@@ -623,7 +623,7 @@ export function droitIntendance(state, col, groupe) {
     return {
       ok: false,
       motif: heures > 0
-        ? `Rien à toucher avant ${heures} h : on compte ${parJour} ration(s) par jour.`
+        ? `Rien à toucher avant ${heures} h : on compte ${parJour} ration${parJour >= 2 ? 's' : ''} par jour.`
         : 'Rien à toucher pour l’instant.',
     };
   }

@@ -760,7 +760,7 @@ export function tenterAlea(state, log, ctx, exposition = 1, groupe) {
   if (!touches.length) return false;
   log({
     type: 'alea',
-    texte: `${h.nom} sur ${nomRegion(state.world, regionId)}. ${touches.length} de ${g.nom} touché(s).`,
+    texte: `${h.nom} sur ${nomRegion(state.world, regionId)}. ${touches.length} de ${g.nom} touché${touches.length >= 2 ? 's' : ''}.`,
     regionId,
     groupe: g.id,
   });

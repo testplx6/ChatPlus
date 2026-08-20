@@ -326,7 +326,7 @@ export function sauvegarder(state) {
       ok: false,
       taille: txt.length,
       motif: p.n
-        ? `Écriture refusée : le stockage est plein. Vos ${p.n} sauvegarde(s) `
+        ? `Écriture refusée : le stockage est plein. Vos ${p.n} sauvegarde${p.n >= 2 ? 's' : ''} `
           + `gardées occupent ${(p.octets / 1048576).toFixed(1)} Mo — en supprimer `
           + 'une libérera la place.'
         : 'Écriture refusée : le stockage du navigateur est plein.',

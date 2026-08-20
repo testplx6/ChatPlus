@@ -674,7 +674,7 @@ export function chaineAutonomie(state) {
       fait: places > 0 && rations > 0,
       etat: places === 0
         ? 'aucune place pour dormir : personne ne s’installera jamais'
-        : `${Math.round(base.pop || 0)} habitant(s) sur ${places} places`,
+        : `${Math.round(base.pop || 0)} habitant${Math.round(base.pop || 0) >= 2 ? 's' : ''} sur ${places} places`,
       alerte: places > 0 && rations === 0
         ? 'des lits, mais pas un vivre en réserve : on ne s’installe pas dans un camp '
           + 'où l’on ne mange pas. Déposez-y des rations, ou faites-en pousser.'
@@ -1887,7 +1887,7 @@ export function saccagerAvantPoste(state, log, force) {
     log({
       type: 'raid',
       texte: `L’Essaim tombe sur ${base.nom} : ${force} bêtes, `
-        + `${pris} unités emportées${partis > 0 ? ` et ${partis} habitant(s) en fuite` : ''}. `
+        + `${pris} unités emportées${partis > 0 ? ` et ${partis} habitant${partis >= 2 ? 's' : ''} en fuite` : ''}. `
         + `Les murs tiennent. Ils reviendront.`,
       regionId: base.regionId,
       important: true,

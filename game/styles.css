@@ -205,7 +205,10 @@ body {
 .ligne { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; align-items: baseline; }
 /* La clé ne se coupe jamais en deux ; c'est la valeur qui cède du terrain. */
 .ligne .k { color: var(--texte-2); flex: 0 0 auto; white-space: nowrap; }
-.ligne .v { font-variant-numeric: tabular-nums; text-align: right; flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+/* `break-word` et pas `anywhere` : on ne coupe un mot que s'il ne tient pas
+   seul sur une ligne — `anywhere` coupait « Consortiu / m Hexa » dès que la
+   colonne serrait, alors qu'un retour à l'espace suffisait (U4). */
+.ligne .v { font-variant-numeric: tabular-nums; text-align: right; flex: 1 1 auto; min-width: 0; overflow-wrap: break-word; }
 
 /* Une ligne dont la gauche n'est pas une étiquette mais un texte libre — le
    titre d'une mission, le nom d'un contrat. La règle du dessus s'inverse alors :
@@ -213,7 +216,7 @@ body {
    non, il déborde et il ne reste plus qu'un caractère de large pour la pastille
    de droite, qui se met à descendre lettre par lettre. Ici c'est donc le titre
    qui se coupe et cède du terrain, et la valeur qui ne se coupe jamais. */
-.ligne.souple .k { flex: 1 1 auto; white-space: normal; min-width: 0; overflow-wrap: anywhere; }
+.ligne.souple .k { flex: 1 1 auto; white-space: normal; min-width: 0; overflow-wrap: break-word; }
 .ligne.souple .v { flex: 0 0 auto; }
 
 /* Deux colonnes de couples clé/valeur : sans séparateur elles se lisent comme

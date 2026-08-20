@@ -138,13 +138,25 @@ deux lignes ; les portes et les noms de la carte font leur travail.
 
 **Les lots qui en découlent :**
 
-- [ ] **U4. Les finitions qui se voient** (petit, dense) : bourses qui ne
+- [x] **U4. Les finitions qui se voient** (petit, dense) : bourses qui ne
   coupent plus les mots, les sept `.court` restants remplacés par les noms
   pleins, la carte de contrat dédoublonnée, les pluriels accordés, les
   inconnus regroupés, des en-têtes achat/vente au marché, une étiquette sur
   le pourcentage de la fiche. Critère : test navigateur — plus aucun texte
   coupé en milieu de mot dans les bourses, plus aucun code de faction dans
   un écran, les colonnes du marché nommées.
+
+  Livré : le nom d'un réseau a sa ligne (et `overflow-wrap: anywhere` →
+  `break-word` partout — on ne coupe un mot que s'il ne tient pas seul) ;
+  cinq sites de `.court` de faction passés aux noms pleins (routes,
+  guerres, colonnes, change) ; la carte d'une livraison nomme sa
+  destination au plus deux fois et « aucun délai » ne double plus « sans
+  délai » ; ~40 pluriels accordés (aide `pl()` dans ui.js, accords inline
+  dans rapport, base, events, allegeance, save) ; les factions qui ne vous
+  connaissent pas tiennent sur une ligne de l'écran monde ; le marché a des
+  en-têtes Acheter / Vendre et explique « prix (achat / vente) » ; la fiche
+  écrit « santé 99 % ». Constat : `captures/42-bourses.png`,
+  `11-contrats.png`, `09b-marche.png`.
 - [ ] **U5. Le journal qui compte juste** : le badge dit ce qui mérite
   l'attention (le marquant), pas le volume. Critère à écrire avec le lot.
 - [ ] **U6. Le grand écran** : au-delà d'une largeur, la carte et les

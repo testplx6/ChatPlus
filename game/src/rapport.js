@@ -203,19 +203,19 @@ export function lireRapport(state, r) {
   const monde = [];
   if (b.villes !== a.villes) {
     monde.push(b.villes < a.villes
-      ? `${a.villes - b.villes} ville(s) se sont éteintes`
-      : `${b.villes - a.villes} ville(s) ont été fondées`);
+      ? `${a.villes - b.villes} ville${a.villes - b.villes >= 2 ? 's se sont éteintes' : ' s’est éteinte'}`
+      : `${b.villes - a.villes} ville${b.villes - a.villes >= 2 ? 's ont été fondées' : ' a été fondée'}`);
   }
   if (b.guerres !== a.guerres) {
     monde.push(b.guerres > a.guerres
-      ? `${b.guerres - a.guerres} guerre(s) de plus`
-      : `${a.guerres - b.guerres} guerre(s) se sont terminées`);
+      ? `${b.guerres - a.guerres} guerre${b.guerres - a.guerres >= 2 ? 's' : ''} de plus`
+      : `${a.guerres - b.guerres} guerre${a.guerres - b.guerres >= 2 ? 's se sont terminées' : ' s’est terminée'}`);
   }
   if (a.poste && !b.poste) monde.push('votre avant-poste n’est plus');
   else if (!a.poste && b.poste) monde.push('votre avant-poste est debout');
   else if (a.poste && b.poste && b.poste.pop !== a.poste.pop) {
     const d = b.poste.pop - a.poste.pop;
-    monde.push(`avant-poste : ${d > 0 ? '+' : ''}${d} habitant(s)`);
+    monde.push(`avant-poste : ${d > 0 ? '+' : ''}${d} habitant${Math.abs(d) >= 2 ? 's' : ''}`);
   }
 
   // Le détail de l'argent : les causes relevées, plus le reliquat. Ce reliquat
