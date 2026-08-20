@@ -45,7 +45,7 @@ chantier consiste à tisser ces briques.
 
 ### Premier étage — la narration pure (aucune règle nouvelle)
 
-- [ ] **A. Les chapitres.** La partie se découpe en chapitres nommés — « La
+- [x] **A. Les chapitres.** La partie se découpe en chapitres nommés — « La
   poussière », « Un toit », « Les couleurs », « Le prix du sang »… — déduits
   de l'état du joueur par une fonction pure : pas de script, la partie DevIENT
   ce chapitre parce que les faits y sont. L'ouverture d'un chapitre est un
@@ -55,6 +55,16 @@ chantier consiste à tisser ces briques.
   s'ouvre sur le premier chapitre ; fonder un camp en ouvre un ; les
   chapitres survivent à la sauvegarde ; pas un tirage consommé ; pas de
   bascule intempestive (un chapitre tient au moins deux jours).
+
+  Livré : `src/histoire.js` — six chapitres à préséance (« Ce qui reste »
+  le deuil, « Le prix du sang » la guerre de son pays, « Les couleurs » le
+  service, « Les affaires » la fortune, « Un toit » le camp, « La
+  poussière » le reste), `chapitreDe` pur, hystérésis de 48 h, numérotation
+  en chiffres romains ; branché en fin de tick, état côté joueur seulement,
+  zéro tirage. La chronique du journal affiche le chapitre courant, sa
+  phrase, et la table des chapitres passés avec leurs jours. Huit tests
+  headless nés rouges, un test navigateur (« Chapitre I » lisible en
+  chronique), aller-retour JSON exact préservé.
 - [ ] **D. Les nouvelles racontées.** Les dépêches du monde disent la cause
   et la conséquence, que le moteur connaît déjà : « Fort-Vermeil est tombée »
   devient « Fort-Vermeil est tombée après onze jours de siège — la garnison

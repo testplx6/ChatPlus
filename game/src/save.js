@@ -134,6 +134,11 @@ export function normaliser(state) {
     if (g.allegeance.secteur === undefined) g.allegeance.secteur = null;
   }
   if (!state.memorial) state.memorial = [];
+  // Les chapitres (HISTOIRE.md, lot A) : une vieille sauvegarde n'en a pas —
+  // le premier tick après chargement ouvrira celui que son état raconte.
+  if (!state.player.chapitres) state.player.chapitres = [];
+  if (state.player.chapitre === undefined) state.player.chapitre = null;
+  if (!state.player.chapitreN) state.player.chapitreN = 0;
   if (!state.stats) state.stats = {};
   for (const k of ['contratsRemplis', 'sitesFouilles', 'caravanesPillees', 'distanceParcourue',
     'servicesRendus', 'captifsPris', 'captifsLivres', 'captifsVendus', 'captifsRelaches',

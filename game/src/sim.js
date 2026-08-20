@@ -14,6 +14,7 @@ import {
   reserveVille,
 } from './economy.js';
 import { tickClimat, conditions, saison } from './climat.js';
+import { tickChapitres } from './histoire.js';
 import { tickCaravanes } from './caravanes.js';
 import { tickCoffres } from './coffres.js';
 import { tickFactions } from './factions.js';
@@ -284,6 +285,12 @@ export function nouvellePartie(seed, opts = {}) {
       },
       contrats: [],
       primes: {},
+      // Le récit (HISTOIRE.md, lot A) : le premier tick ouvre le chapitre
+      // que l'état raconte. Initialisé ici pour que l'aller-retour JSON
+      // d'une partie neuve soit exact — normaliser pose les mêmes valeurs.
+      chapitre: null,
+      chapitres: [],
+      chapitreN: 0,
     },
     base: creerBase(),
     journal: [],
@@ -628,6 +635,10 @@ export function tick(state) {
 
   state.player.rngEtat = rngJoueur.save();
   ctx.rng = rng;
+
+  // La page du récit, une fois l'heure jouée : le chapitre se déduit de
+  // l'état, il ne tire rien et n'écrit que côté joueur (HISTOIRE.md, lot A).
+  tickChapitres(state, log);
 
   // En dernier : on relève ce qu'on a sous les yeux, après que tout a bougé.
   observer(state);

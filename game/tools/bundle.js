@@ -69,6 +69,8 @@ const MODULES = [
   'squad.js',
   // Ce que la partie a fait de vous : elle relit tout le reste.
   'chronique.js',
+  // Et comment la partie se raconte : les chapitres lisent la chronique.
+  'histoire.js',
   'save.js',
   'sim.js',
   'ui.js',

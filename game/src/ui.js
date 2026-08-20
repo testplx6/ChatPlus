@@ -44,6 +44,7 @@ import {
 } from './base.js';
 import { classement, enGuerre } from './factions.js';
 import { titreDe, lignesDe } from './chronique.js';
+import { infoChapitre, romain } from './histoire.js';
 import { TACTIQUES, TACTIQUE_KEYS, apercuTactique } from './combat.js';
 import {
   donnerOrdre, ORDRES, rendementPrevu, COMPETENCES_EXERCICE, PAR_LA_PRATIQUE,
@@ -4316,13 +4317,23 @@ function ecranJournal() {
 function blocChronique() {
   const t = titreDe(S);
   const lignes = lignesDe(S);
+  // Le chapitre en cours d'abord — c'est lui qui dit où en est l'histoire —
+  // puis la table des chapitres passés : la partie relue comme un livre.
+  const ch = S.player.chapitre ? infoChapitre(S.player.chapitre.cle) : null;
+  const passes = (S.player.chapitres || []).slice(0, -1);
   return `<section class="panneau">
     <h2 class="titre">Chronique <span class="droite ambre">${e(t.nom)}</span></h2>
+    ${ch ? `<div class="ligne"><span class="k">Chapitre ${romain(S.player.chapitreN)}</span>
+      <span class="v ambre">${e(ch.titre)}</span></div>
+    <div class="aide" style="font-style:italic">${e(ch.dit)}</div>
+    <div class="sep"></div>` : ''}
     <div class="aide" style="font-style:italic">${e(t.dit)}</div>
     <div class="sep"></div>
     <div class="pile">
       ${lignes.map((l) => `<div class="aide">${e(l)}</div>`).join('')}
     </div>
+    ${passes.length ? `<div class="sep"></div>
+    <div class="aide">${passes.map((c) => `${romain(c.n)}. ${e(infoChapitre(c.cle).titre)} (J${Math.floor(c.t / 24) + 1})`).join(' · ')}</div>` : ''}
   </section>`;
 }
 

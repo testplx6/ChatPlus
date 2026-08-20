@@ -10125,6 +10125,46 @@ section('I bis. Les prix ont le droit de dire la vérité — les bornes sont le
     'et rien n’apparaît : le stock ne peut que se consommer', `${Math.round(avant)} → ${Math.round(grenier.stock.rations)}`);
 }
 
+section('HISTOIRE A — les chapitres : la partie se découpe, déduite de l’état');
+{
+  // Pas un script : une fonction pure de l'état. La partie EST dans ce
+  // chapitre parce que les faits y sont — fonder un camp ouvre « Un toit »,
+  // la fortune ouvre « Les affaires » — et un chapitre tient au moins deux
+  // jours, sinon la moindre oscillation d'état ferait tourner les pages.
+  const sHc = nouvellePartie(21, { maintenant: 0 });
+  tick(sHc);
+  ok(sHc.player.chapitre && sHc.player.chapitre.cle === 'poussiere',
+    'une partie neuve s’ouvre sur « La poussière »',
+    sHc.player.chapitre ? sHc.player.chapitre.cle : 'rien');
+  ok((sHc.player.chapitres || []).length === 1, 'le chapitre premier est consigné');
+  ok((sHc.journal || []).some((x) => x.texte && x.texte.includes('Chapitre I')),
+    'et il s’annonce au journal');
+  const videH = sHc.world.regions.find((r) => !r.colonie);
+  groupeActif(sHc).regionId = videH.i;
+  Object.assign(groupeActif(sHc).inventaire,
+    { ferraille: 200, polymere: 60, composant: 10, rations: 200 });
+  fonderBase(sHc, () => {});
+  tick(sHc);
+  ok(sHc.player.chapitre.cle === 'poussiere',
+    'un chapitre tient au moins deux jours — pas de bascule immédiate',
+    sHc.player.chapitre.cle);
+  avancer(sHc, 60);
+  ok(sHc.player.chapitre.cle === 'toit', 'fonder un camp ouvre « Un toit »',
+    sHc.player.chapitre.cle);
+  ok((sHc.journal || []).some((x) => x.texte && x.texte.includes('Chapitre II — Un toit'))
+    || (sHc.player.chapitres || []).length === 2,
+  'le deuxième chapitre est consigné et annoncé',
+  `${(sHc.player.chapitres || []).length} chapitres`);
+  const sHc2 = deserialiser(serialiser(sHc));
+  ok((sHc2.player.chapitres || []).length === (sHc.player.chapitres || []).length
+    && sHc2.player.chapitre && sHc2.player.chapitre.cle === sHc.player.chapitre.cle,
+  'les chapitres survivent à la sauvegarde');
+  sHc.player.bourse = { [monnaieIci(sHc)]: 9000 };
+  avancer(sHc, 60);
+  ok(sHc.player.chapitre.cle === 'affaires', 'la fortune ouvre « Les affaires »',
+    sHc.player.chapitre.cle);
+}
+
 section('U5 — la cloche du journal sonne pour ce qu’on a vécu, pas pour le monde entier');
 {
   // Le badge comptait tout l'« important » : cent douze émetteurs le

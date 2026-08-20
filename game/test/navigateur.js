@@ -1656,6 +1656,10 @@ ok(/CHRONIQUE/i.test(texteChro), 'le journal s’ouvre sur ce qu’on est devenu
 ok(/(Vagabond|Ferrailleur|Officier|Bâtisseur|Fondateur|Négrier|Commandeur|Bienfaiteur|Maison marchande|Chasseur de primes|Seigneur de guerre)/
   .test(texteChro), 'avec un titre qu’on porte');
 ok(/jours dans les cendres/.test(texteChro), 'et les faits qui le justifient');
+// HISTOIRE lot A : le chapitre en cours, en tête de chronique.
+ok(/Chapitre [IVXLC]+/.test(texteChro),
+  'la chronique dit le chapitre où la partie en est',
+  (texteChro.match(/Chapitre [IVXLC]+/) || ['absent'])[0]);
 await page.screenshot({ path: join(CAPTURES, '29-chronique.png'), fullPage: true });
 
 console.log('\n8 septdecies. Une tactique qu’on choisit en sachant ce qu’elle vaut');
