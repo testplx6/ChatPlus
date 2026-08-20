@@ -168,8 +168,16 @@ deux lignes ; les portes et les noms de la carte font leur travail.
   « Marquant » gardent tout : on ne perd rien, on cesse de crier. Critère
   tenu par quatre tests headless (lointain ne sonne pas, vécu sonne,
   sans-lieu sonne, ordinaire jamais).
-- [ ] **U6. Le grand écran** : au-delà d'une largeur, la carte et les
+- [x] **U6. Le grand écran** : au-delà d'une largeur, la carte et les
   panneaux côte à côte. Critère : à 1280 px, plus de colonne unique.
+
+  Livré. Au-delà de 1 100 px et sur l'onglet carte seulement : la racine
+  s'élargit à 1 240 px, l'écran passe en grille — le flanc (carte à hauteur
+  d'écran, collante, avec pied et légende) à gauche, les panneaux à droite.
+  Les enfants de l'écran restent à plat dans le DOM : l'ancre de défilement
+  et les replis n'ont rien senti. Téléphone inchangé. Constat :
+  `captures/08-large.png` ; test navigateur : le premier panneau vit à
+  droite de la carte, pas dessous.
 
 ## Blocages
 

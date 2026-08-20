@@ -131,6 +131,30 @@ body {
   padding: 10px 10px 16px;
 }
 
+/* Le grand écran (INTERFACE.md, U6) : au lieu d'une colonne de 620 px cernée
+   de noir, la carte tient le flanc gauche — collante, à hauteur d'écran — et
+   les panneaux défilent à sa droite. La grille garde les enfants de #ecran à
+   plat : l'ancre de défilement et les replis comptent sur cet ordre-là.
+   Sur téléphone, #flanc-carte est un bloc ordinaire qui empile ses enfants. */
+@media (min-width: 1100px) {
+  #racine.large-carte { max-width: 1240px; }
+  #ecran.deux-colonnes {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 500px);
+    gap: 0 14px;
+    align-items: start;
+    align-content: start;
+  }
+  #ecran.deux-colonnes > * { grid-column: 2; }
+  #ecran.deux-colonnes > #flanc-carte {
+    grid-column: 1;
+    grid-row: 1 / span 400;
+    position: sticky;
+    top: 0;
+  }
+  #ecran.deux-colonnes #carte-boite { height: calc(100dvh - 240px); max-height: none; }
+}
+
 /* ------------------------------------------------------------------ Navigation */
 
 #barre-nav {

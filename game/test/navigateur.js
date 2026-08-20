@@ -325,6 +325,17 @@ await large.waitForTimeout(400);
 await large.screenshot({ path: join(CAPTURES, '08-large.png') });
 ok(!(await large.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)),
   'pas de débordement en écran large');
+// U6 (INTERFACE.md) — à 1280 px, plus de colonne unique : la carte vit à
+// gauche, les panneaux à sa droite — au lieu d'une colonne de 600 px cernée
+// de noir où la carte repousse tout sous le pli.
+{
+  const boite = await large.locator('#carte-boite').boundingBox();
+  const panneau = await large.locator('#ecran section.panneau').first().boundingBox();
+  ok(boite && panneau && panneau.x >= boite.x + boite.width - 8
+    && panneau.y < boite.y + boite.height,
+  'à 1280 px, les panneaux vivent à côté de la carte, pas dessous',
+  boite && panneau ? `carte x=${Math.round(boite.x)}+${Math.round(boite.width)}, panneau x=${Math.round(panneau.x)} y=${Math.round(panneau.y)}` : 'introuvable');
+}
 
 console.log('\n8 bis. Contenu de jeu : contrats, étal, sites');
 // Le vrai premier écran : une partie neuve, celle qu'un joueur lance.

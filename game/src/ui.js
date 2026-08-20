@@ -524,6 +524,12 @@ export function rafraichir(force) {
   // une virgule au texte produit, seulement une classe sur la section. Sauter ce
   // passage quand le HTML est identique rendait le bouton inopérant — le pli
   // était bien noté, il ne s'appliquait qu'au rechargement suivant.
+  // Le grand écran range la carte à gauche et les panneaux à droite — mais
+  // seulement sur l'onglet carte, les autres écrans restent une colonne. La
+  // racine doit s'élargir avec : c'est elle qui portait le 620 px.
+  ecran.classList.toggle('deux-colonnes', onglet === 'carte');
+  const racine = document.getElementById('racine');
+  if (racine) racine.classList.toggle('large-carte', onglet === 'carte');
   appliquerReplis(ecran);
 
   const cv = $('#carte');
@@ -1710,7 +1716,12 @@ function bandeauDevaluation() {
 }
 
 function ecranCarte() {
+  // Le flanc : la carte, son pied et sa légende, groupés pour qu'un grand
+  // écran puisse les tenir à gauche pendant que les panneaux défilent à
+  // droite (INTERFACE.md, U6). Sur téléphone, ce div est transparent — un
+  // bloc qui empile ses enfants, comme avant.
   return `
+  <div id="flanc-carte">
   <div id="carte-boite"><canvas id="carte" aria-label="Carte du monde"></canvas></div>
   <div class="carte-pied"><span id="carte-pos"></span>
     <span class="aide">glisser pour déplacer · molette ou deux doigts pour zoomer ·
@@ -1721,6 +1732,7 @@ function ecranCarte() {
     <span><i style="border:1px solid #4fd0e3"></i>avant-poste</span>
     ${classement(S.world).slice(0, 6).map((f) =>
     `<span><i style="background:${f.couleur}"></i>${e(drapeauDe(S.world, f.key).nom)}</span>`).join('')}
+  </div>
   </div>
   ${groupes(S).length > 1 ? barreGroupes() : ''}
   ${blocSituation()}
