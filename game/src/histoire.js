@@ -7,6 +7,7 @@ import { Rng, grainDe } from './rng.js';
 import { NOMS_PERSO, SURNOMS, DIPLO_FACTIONS, drapeauDe } from './data.js';
 import { colonieDe, nomRegion } from './world.js';
 import { estVivant } from './characters.js';
+import { rencontresDe } from './rapport.js';
 import { faitsDe } from './chronique.js';
 
 /**
@@ -233,6 +234,32 @@ export function tickFils(state, log) {
           });
         }
       }
+    }
+  }
+}
+
+/**
+ * La mémoire des lieux (lot E) : entrer dans une ville où l'on a fait
+ * quelque chose de notable produit une ligne d'accueil — une fois par
+ * arrivée, pas tant qu'on y reste. Une ville où rien ne s'est passé ne dit
+ * rien. Les faits viennent de la mémoire des rencontres (rapport.js) :
+ * rien n'est stocké côté monde.
+ */
+export function tickMemoireLieux(state, log) {
+  const r = rencontresDe(state);
+  for (const g of state.player.groupes || []) {
+    if (r.pos[g.id] === g.regionId) continue;
+    r.pos[g.id] = g.regionId;
+    const col = colonieDe(state.world, g.regionId);
+    if (!col || col.ruine) continue;
+    const n = r.contrats[col.id] || 0;
+    if (n >= 1 && log) {
+      log({
+        type: 'accueil',
+        texte: `À ${col.nom}, des visages connus — ${n} contrat${n > 1 ? 's' : ''} `
+          + `tenu${n > 1 ? 's' : ''} pour la ville. Des saluts de tête au passage de la colonne.`,
+        regionId: g.regionId,
+      });
     }
   }
 }

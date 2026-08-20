@@ -59,7 +59,7 @@ import {
 import {
   horloge, VITESSES, DEPARTS, DEPART_KEYS, DEPART_DEFAUT,
 } from './sim.js';
-import { lireRapport } from './rapport.js';
+import { lireRapport, rencontresDe } from './rapport.js';
 import { conditions, SAISONS, METEO } from './climat.js';
 import {
   RANGS, rangDe, estAuService, peutSEngager, avancementOrdre, REPUTATION_MINIMALE,
@@ -4968,8 +4968,13 @@ function modalePanneau() {
   const col = colonieDe(S.world, G().regionId);
   if (!col) return '<div class="aide">Aucun panneau ici.</div>';
   const liste = col.contrats || [];
+  // La figure du commanditaire (HISTOIRE.md, lot B) : à trois contrats
+  // tenus, le panneau vous connaît.
+  const nTenus = rencontresDe(S).contrats[col.id] || 0;
   return `<h2 class="titre">Panneau de ${e(col.nom)}
     <span class="droite">${S.player.contrats.length}/${MAX_CONTRATS} en cours</span></h2>
+  ${nTenus >= 3 ? `<div class="aide" style="font-style:italic">On vous connaît ici :
+    ${nTenus} contrats tenus pour la ville. On affiche parfois en pensant à vous.</div>` : ''}
   ${liste.length
     ? liste.map((c) => ligneContrat(c, false)).join('')
     : '<div class="aide">Rien d’affiché. Repassez plus tard.</div>'}`;

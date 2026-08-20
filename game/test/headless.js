@@ -42,6 +42,7 @@ import {
   bandeLocale, tenterChasseurs, erosionEstime, EROSION_ESTIME,
 } from '../src/events.js';
 import { texteFil, texteFilInacheve } from '../src/histoire.js';
+import { rencontresDe, retenirContrat, retenirAccrochage } from '../src/rapport.js';
 import { damer, coutTraversee, PISTE_GAIN, rendementRegion } from '../src/world.js';
 import {
   aUneBourse, reseauDe, idReseau, veutOuvrirBourse, ouvrirBourse, signerAccord,
@@ -10212,6 +10213,53 @@ section('HISTOIRE C — chaque membre porte un fil, et le monde le tire');
   ok(stele.fil && stele.fil.type === 'quete', 'la stèle emporte le fil inachevé');
   ok(/Vask la Rouille/.test(texteFilInacheve(sF, stele.fil)),
     'et l’inachevé se dit en toutes lettres', texteFilInacheve(sF, stele.fil));
+}
+
+section('HISTOIRE B et E — le monde vous reconnaît, les lieux se souviennent');
+{
+  const sR = nouvellePartie(55, { maintenant: 0 });
+  tick(sR);
+
+  // La mémoire des rencontres : elle compte, et elle est bornée.
+  for (let i = 0; i < 3; i++) retenirContrat(sR, 'c-test');
+  ok(rencontresDe(sR).contrats['c-test'] === 3, 'trois contrats pour le même commanditaire se comptent');
+  for (let i = 0; i < 70; i++) retenirContrat(sR, `c-bourrage-${i}`);
+  ok(Object.keys(rencontresDe(sR).contrats).length <= 60,
+    'la mémoire des commanditaires est bornée',
+    `${Object.keys(rencontresDe(sR).contrats).length} entrées`);
+  ok(rencontresDe(sR).contrats['c-test'] === 3,
+    'et c’est le moins marquant qui cède la place, pas le plus ancien lien');
+  ok(retenirAccrochage(sR, 'bandits') === 0, 'des pillards sans drapeau ne font pas une figure');
+  retenirAccrochage(sR, 'cendre');
+  retenirAccrochage(sR, 'cendre');
+  ok(retenirAccrochage(sR, 'cendre') === 3, 'trois accrochages avec la même faction se comptent');
+
+  // L'ennemi récurrent est nommé comme tel dans la dépêche du combat.
+  const gR = groupeActif(sR);
+  const bandeR = genererBande(new Rng(9), 'cendre', 1, 0);
+  sR.journal = [];
+  combatContre(sR, bandeR, (x) => sR.journal.push(x), { rng: new Rng(9) }, gR);
+  ok(sR.journal.some((x) => x.texte && /accrochage avec/.test(x.texte)),
+    'le quatrième accrochage se dit — « ce n’est plus un hasard »',
+    (sR.journal.map((x) => x.texte).find((t) => t && /accrochage/.test(t)) || 'rien').slice(0, 110));
+
+  // La mémoire des lieux : revenir dans une ville marquée produit l'accueil,
+  // une ville où rien ne s'est passé ne dit rien.
+  const colsR = sR.world.colonies.filter((c) => !c.ruine && c.faction);
+  const colConnue = colsR[0];
+  const colInconnue = colsR[1];
+  rencontresDe(sR).contrats[colConnue.id] = 2;
+  gR.regionId = colConnue.regionId;
+  sR.journal = [];
+  tick(sR);
+  ok(sR.journal.some((x) => x.texte && x.texte.includes(colConnue.nom) && /contrats tenus/.test(x.texte)),
+    'revenir dans une ville marquée produit la ligne d’accueil',
+    sR.journal.map((x) => x.texte).join(' | ').slice(0, 140));
+  gR.regionId = colInconnue.regionId;
+  sR.journal = [];
+  tick(sR);
+  ok(!sR.journal.some((x) => x.type === 'accueil'),
+    'une ville où rien ne s’est passé ne dit rien');
 }
 
 section('HISTOIRE D — les nouvelles disent la cause, que le moteur connaît');

@@ -14,7 +14,7 @@ import {
   reserveVille,
 } from './economy.js';
 import { tickClimat, conditions, saison } from './climat.js';
-import { tickChapitres, tickFils } from './histoire.js';
+import { tickChapitres, tickFils, tickMemoireLieux } from './histoire.js';
 import { tickCaravanes } from './caravanes.js';
 import { tickCoffres } from './coffres.js';
 import { tickFactions } from './factions.js';
@@ -291,6 +291,9 @@ export function nouvellePartie(seed, opts = {}) {
       chapitre: null,
       chapitres: [],
       chapitreN: 0,
+      // La mémoire des rencontres (HISTOIRE.md, lots B et E) — mêmes
+      // valeurs que normaliser, pour un aller-retour JSON exact.
+      rencontres: { contrats: {}, accrochages: {}, pos: {} },
     },
     base: creerBase(),
     journal: [],
@@ -641,6 +644,7 @@ export function tick(state) {
   // rien ne tire, rien n'écrit côté monde (HISTOIRE.md, lots A et C).
   tickChapitres(state, log);
   tickFils(state, log);
+  tickMemoireLieux(state, log);
 
   // En dernier : on relève ce qu'on a sous les yeux, après que tout a bougé.
   observer(state);

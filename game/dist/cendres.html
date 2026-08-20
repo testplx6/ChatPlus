@@ -5284,6 +5284,51 @@ function ouvrirRapport(state, motif) {
   return state.rapport;
 }
 
+// ---------------------------------------------------------------------------
+// Les rencontres qui comptent (HISTOIRE.md, lots B et E). Combien de contrats
+// tenus pour chaque commanditaire, combien d'accrochages avec chaque faction,
+// où chaque groupe se tenait la dernière fois qu'on a regardé. Mémoire du
+// JOUEUR, bornée — le monde n'en sait rien, et c'est la règle du multijoueur.
+// Ici plutôt que dans histoire.js : contrats et combats vivent plus tôt dans
+// l'ordre des modules, et rapport.js est déjà « celui qui retient ».
+// ---------------------------------------------------------------------------
+
+function rencontresDe(state) {
+  const p = state.player;
+  if (!p.rencontres) p.rencontres = {};
+  const r = p.rencontres;
+  if (!r.contrats) r.contrats = {};
+  if (!r.accrochages) r.accrochages = {};
+  if (!r.pos) r.pos = {};
+  return r;
+}
+
+/** Bornée en oubliant le lien le moins marquant, pas le plus ancien. */
+function bornerRencontres(table, max = 60) {
+  const cles = Object.keys(table);
+  if (cles.length <= max) return;
+  let mini = cles[0];
+  for (const k of cles) if (table[k] < table[mini]) mini = k;
+  delete table[mini];
+}
+
+function retenirContrat(state, colonieId) {
+  const r = rencontresDe(state);
+  r.contrats[colonieId] = (r.contrats[colonieId] || 0) + 1;
+  bornerRencontres(r.contrats);
+  return r.contrats[colonieId];
+}
+
+function retenirAccrochage(state, faction) {
+  // Des pillards sans drapeau ne font pas une figure : on retient des
+  // ennemis qui ont un nom.
+  if (!faction || faction === 'bandits') return 0;
+  const r = rencontresDe(state);
+  r.accrochages[faction] = (r.accrochages[faction] || 0) + 1;
+  bornerRencontres(r.accrochages);
+  return r.accrochages[faction];
+}
+
 /**
  * Note une entrée de journal au rapport en cours, s'il y en a un.
  *
@@ -19832,9 +19877,15 @@ function recompenser(state, c, log) {
     cr: soldeIci(state) - crAvant,
     rep: (state.player.reputation[c.faction] || 0) - repAvant,
   });
+  // La figure du commanditaire (HISTOIRE.md, lot B) : au troisième contrat
+  // tenu pour la même ville, la dépêche le dit — on n'est plus un inconnu.
+  const nTenus = retenirContrat(state, c.colonieId);
+  const donneurC = colonieParId(state.world, c.colonieId);
   log({
     type: 'contrat',
-    texte: `Contrat rempli : ${c.titre}. ${c.recompense} ${signeIci(state)}, réputation +${gagne}.`,
+    texte: `Contrat rempli : ${c.titre}. ${c.recompense} ${signeIci(state)}, réputation +${gagne}.`
+      + (nTenus >= 3 && donneurC
+        ? ` C’est le ${nTenus}e pour ${donneurC.nom} — on ne demande plus votre nom.` : ''),
     important: true,
   });
 }
@@ -20203,6 +20254,14 @@ function combatContre(state, bande, log, ctx, groupe) {
   }
 
   annoncerProgres(state, compsAvant, log, g.membres);
+
+  // La figure de l'ennemi récurrent (HISTOIRE.md, lot B) : au troisième
+  // accrochage avec la même faction, la dépêche le dit.
+  const nAcc = retenirAccrochage(state, bande.faction);
+  if (nAcc >= 3) {
+    texte += ` Ce n’est plus un hasard : ${nAcc}e accrochage avec `
+      + `${drapeauDe(state.world, bande.faction).nom}.`;
+  }
 
   log({
     type: 'combat',
@@ -22219,6 +22278,32 @@ function tickFils(state, log) {
 }
 
 /**
+ * La mémoire des lieux (lot E) : entrer dans une ville où l'on a fait
+ * quelque chose de notable produit une ligne d'accueil — une fois par
+ * arrivée, pas tant qu'on y reste. Une ville où rien ne s'est passé ne dit
+ * rien. Les faits viennent de la mémoire des rencontres (rapport.js) :
+ * rien n'est stocké côté monde.
+ */
+function tickMemoireLieux(state, log) {
+  const r = rencontresDe(state);
+  for (const g of state.player.groupes || []) {
+    if (r.pos[g.id] === g.regionId) continue;
+    r.pos[g.id] = g.regionId;
+    const col = colonieDe(state.world, g.regionId);
+    if (!col || col.ruine) continue;
+    const n = r.contrats[col.id] || 0;
+    if (n >= 1 && log) {
+      log({
+        type: 'accueil',
+        texte: `À ${col.nom}, des visages connus — ${n} contrat${n > 1 ? 's' : ''} `
+          + `tenu${n > 1 ? 's' : ''} pour la ville. Des saluts de tête au passage de la colonne.`,
+        regionId: g.regionId,
+      });
+    }
+  }
+}
+
+/**
  * Tourner la page quand l'état a vraiment changé de nature. L'hystérésis de
  * quarante-huit heures évite qu'une oscillation — un solde qui passe deux
  * fois le seuil dans la journée — fasse tourner les pages : un chapitre
@@ -22380,6 +22465,10 @@ function normaliser(state) {
   if (!state.player.chapitres) state.player.chapitres = [];
   if (state.player.chapitre === undefined) state.player.chapitre = null;
   if (!state.player.chapitreN) state.player.chapitreN = 0;
+  // La mémoire des rencontres (HISTOIRE.md, lots B et E).
+  if (!state.player.rencontres) {
+    state.player.rencontres = { contrats: {}, accrochages: {}, pos: {} };
+  }
   if (!state.stats) state.stats = {};
   for (const k of ['contratsRemplis', 'sitesFouilles', 'caravanesPillees', 'distanceParcourue',
     'servicesRendus', 'captifsPris', 'captifsLivres', 'captifsVendus', 'captifsRelaches',
@@ -23067,6 +23156,9 @@ function nouvellePartie(seed, opts = {}) {
       chapitre: null,
       chapitres: [],
       chapitreN: 0,
+      // La mémoire des rencontres (HISTOIRE.md, lots B et E) — mêmes
+      // valeurs que normaliser, pour un aller-retour JSON exact.
+      rencontres: { contrats: {}, accrochages: {}, pos: {} },
     },
     base: creerBase(),
     journal: [],
@@ -23417,6 +23509,7 @@ function tick(state) {
   // rien ne tire, rien n'écrit côté monde (HISTOIRE.md, lots A et C).
   tickChapitres(state, log);
   tickFils(state, log);
+  tickMemoireLieux(state, log);
 
   // En dernier : on relève ce qu'on a sous les yeux, après que tout a bougé.
   observer(state);
@@ -28428,8 +28521,13 @@ function modalePanneau() {
   const col = colonieDe(S.world, G().regionId);
   if (!col) return '<div class="aide">Aucun panneau ici.</div>';
   const liste = col.contrats || [];
+  // La figure du commanditaire (HISTOIRE.md, lot B) : à trois contrats
+  // tenus, le panneau vous connaît.
+  const nTenus = rencontresDe(S).contrats[col.id] || 0;
   return `<h2 class="titre">Panneau de ${e(col.nom)}
     <span class="droite">${S.player.contrats.length}/${MAX_CONTRATS} en cours</span></h2>
+  ${nTenus >= 3 ? `<div class="aide" style="font-style:italic">On vous connaît ici :
+    ${nTenus} contrats tenus pour la ville. On affiche parfois en pensant à vous.</div>` : ''}
   ${liste.length
     ? liste.map((c) => ligneContrat(c, false)).join('')
     : '<div class="aide">Rien d’affiché. Repassez plus tard.</div>'}`;

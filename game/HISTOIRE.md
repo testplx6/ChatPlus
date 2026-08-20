@@ -117,7 +117,7 @@ chantier consiste à tisser ces briques.
 
 ### Troisième étage — le monde vous connaît
 
-- [ ] **B. Les figures.** Des personnages récurrents que la partie fait
+- [x] **B. Les figures.** Des personnages récurrents que la partie fait
   revenir : le commanditaire dont on a rempli trois contrats, le dirigeant
   qu'on a servi, celui dont on a tué les hommes. Le jeu tient une mémoire
   courte des rencontres (côté joueur), et quand une figure réapparaît — un
@@ -125,13 +125,29 @@ chantier consiste à tisser ces briques.
   Critère : après trois contrats du même commanditaire, le panneau le nomme
   en connaissance ; un ennemi récurrent est nommé comme tel ; mémoire bornée
   (pas de fuite de sauvegarde).
-- [ ] **E. La mémoire des lieux.** Les villes se souviennent : la première
+
+  Livré : la mémoire des rencontres vit dans `rapport.js` — le module qui
+  retient — bornée à soixante entrées en oubliant le lien le moins
+  marquant, pas le plus ancien. Au troisième contrat tenu pour la même
+  ville, la dépêche le dit (« C'est le 3e pour Camp-Ostrande — on ne
+  demande plus votre nom ») et le panneau d'affichage vous reconnaît. Au
+  troisième accrochage avec la même faction, le compte rendu de combat le
+  dit (« Ce n'est plus un hasard : 4e accrochage avec la Milice de
+  Cendre ») — les pillards sans drapeau ne font pas une figure.
+- [x] **E. La mémoire des lieux.** Les villes se souviennent : la première
   fois qu'on revient dans une ville où l'on a fait quelque chose de notable
   (un contrat tenu, une rixe, une vente record), une ligne d'accueil le
   rappelle — depuis les faits déjà consignés (estime, rapport, stats), sans
   rien stocker de plus côté monde. Critère : revenir dans une ville après un
   contrat rempli produit la ligne ; une ville où rien ne s'est passé ne dit
   rien ; état côté joueur seulement.
+
+  Livré : à l'entrée d'une ville où l'on a tenu au moins un contrat, une
+  ligne d'accueil — « À Camp-Ostrande, des visages connus — 2 contrats
+  tenus pour la ville. Des saluts de tête au passage de la colonne. » Une
+  fois par arrivée, pas tant qu'on y reste (la position de chaque groupe
+  est retenue) ; une ville sans souvenir ne dit rien ; tout vit côté
+  joueur. Huit tests nés rouges pour B et E ensemble.
 
 ## Ce que ce chantier ne fait pas
 

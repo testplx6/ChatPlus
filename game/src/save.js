@@ -139,6 +139,10 @@ export function normaliser(state) {
   if (!state.player.chapitres) state.player.chapitres = [];
   if (state.player.chapitre === undefined) state.player.chapitre = null;
   if (!state.player.chapitreN) state.player.chapitreN = 0;
+  // La mémoire des rencontres (HISTOIRE.md, lots B et E).
+  if (!state.player.rencontres) {
+    state.player.rencontres = { contrats: {}, accrochages: {}, pos: {} };
+  }
   if (!state.stats) state.stats = {};
   for (const k of ['contratsRemplis', 'sitesFouilles', 'caravanesPillees', 'distanceParcourue',
     'servicesRendus', 'captifsPris', 'captifsLivres', 'captifsVendus', 'captifsRelaches',

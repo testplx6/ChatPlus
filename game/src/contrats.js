@@ -12,6 +12,7 @@ import {
 import { colonieParId, distance, nomRegion, coordonnee } from './world.js';
 import { idDepuisRng } from './characters.js';
 import { crediter, estAuService } from './allegeance.js';
+import { retenirContrat } from './rapport.js';
 import { groupes, groupeActif } from './groupes.js';
 import { faveurChef } from './services.js';
 
@@ -511,9 +512,15 @@ function recompenser(state, c, log) {
     cr: soldeIci(state) - crAvant,
     rep: (state.player.reputation[c.faction] || 0) - repAvant,
   });
+  // La figure du commanditaire (HISTOIRE.md, lot B) : au troisième contrat
+  // tenu pour la même ville, la dépêche le dit — on n'est plus un inconnu.
+  const nTenus = retenirContrat(state, c.colonieId);
+  const donneurC = colonieParId(state.world, c.colonieId);
   log({
     type: 'contrat',
-    texte: `Contrat rempli : ${c.titre}. ${c.recompense} ${signeIci(state)}, réputation +${gagne}.`,
+    texte: `Contrat rempli : ${c.titre}. ${c.recompense} ${signeIci(state)}, réputation +${gagne}.`
+      + (nTenus >= 3 && donneurC
+        ? ` C’est le ${nTenus}e pour ${donneurC.nom} — on ne demande plus votre nom.` : ''),
     important: true,
   });
 }

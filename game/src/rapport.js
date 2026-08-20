@@ -99,6 +99,51 @@ export function ouvrirRapport(state, motif) {
   return state.rapport;
 }
 
+// ---------------------------------------------------------------------------
+// Les rencontres qui comptent (HISTOIRE.md, lots B et E). Combien de contrats
+// tenus pour chaque commanditaire, combien d'accrochages avec chaque faction,
+// où chaque groupe se tenait la dernière fois qu'on a regardé. Mémoire du
+// JOUEUR, bornée — le monde n'en sait rien, et c'est la règle du multijoueur.
+// Ici plutôt que dans histoire.js : contrats et combats vivent plus tôt dans
+// l'ordre des modules, et rapport.js est déjà « celui qui retient ».
+// ---------------------------------------------------------------------------
+
+export function rencontresDe(state) {
+  const p = state.player;
+  if (!p.rencontres) p.rencontres = {};
+  const r = p.rencontres;
+  if (!r.contrats) r.contrats = {};
+  if (!r.accrochages) r.accrochages = {};
+  if (!r.pos) r.pos = {};
+  return r;
+}
+
+/** Bornée en oubliant le lien le moins marquant, pas le plus ancien. */
+function bornerRencontres(table, max = 60) {
+  const cles = Object.keys(table);
+  if (cles.length <= max) return;
+  let mini = cles[0];
+  for (const k of cles) if (table[k] < table[mini]) mini = k;
+  delete table[mini];
+}
+
+export function retenirContrat(state, colonieId) {
+  const r = rencontresDe(state);
+  r.contrats[colonieId] = (r.contrats[colonieId] || 0) + 1;
+  bornerRencontres(r.contrats);
+  return r.contrats[colonieId];
+}
+
+export function retenirAccrochage(state, faction) {
+  // Des pillards sans drapeau ne font pas une figure : on retient des
+  // ennemis qui ont un nom.
+  if (!faction || faction === 'bandits') return 0;
+  const r = rencontresDe(state);
+  r.accrochages[faction] = (r.accrochages[faction] || 0) + 1;
+  bornerRencontres(r.accrochages);
+  return r.accrochages[faction];
+}
+
 /**
  * Note une entrée de journal au rapport en cours, s'il y en a un.
  *

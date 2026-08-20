@@ -25,7 +25,7 @@ import { groupeActif, groupes, tousLesMembres, debout as deboutDe } from './grou
 import { estSurveillee } from './connaissance.js';
 import { occupeParEcole } from './formation.js';
 import { noterAuRapport } from './rapport.js';
-import { noterArgent } from './rapport.js';
+import { noterArgent, retenirAccrochage } from './rapport.js';
 
 export const LOG_MAX = 400;
 
@@ -291,6 +291,14 @@ export function combatContre(state, bande, log, ctx, groupe) {
   }
 
   annoncerProgres(state, compsAvant, log, g.membres);
+
+  // La figure de l'ennemi récurrent (HISTOIRE.md, lot B) : au troisième
+  // accrochage avec la même faction, la dépêche le dit.
+  const nAcc = retenirAccrochage(state, bande.faction);
+  if (nAcc >= 3) {
+    texte += ` Ce n’est plus un hasard : ${nAcc}e accrochage avec `
+      + `${drapeauDe(state.world, bande.faction).nom}.`;
+  }
 
   log({
     type: 'combat',
