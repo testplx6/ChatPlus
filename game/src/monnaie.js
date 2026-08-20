@@ -657,10 +657,20 @@ export function veillerMonnaies(state, log) {
     p.alertesMonnaie.unshift(alerte);
     if (p.alertesMonnaie.length > 6) p.alertesMonnaie.length = 6;
     if (log) {
+      // La dépêche dit d'où vient la chute — le moteur le sait : la planche
+      // à billets et la taille du pays sont des faits, pas des adjectifs
+      // (HISTOIRE.md, lot D).
+      const fmon = state.world.factions[k];
+      const nbV = fmon && fmon.colonies ? fmon.colonies.length : 0;
+      const causeM = fmon && (fmon.emissions || 0) > 0
+        ? `leur planche à billets a tourné ${fmon.emissions} fois`
+        : nbV <= 2
+          ? (nbV ? `le pays n’a plus que ${nbV} ville${nbV > 1 ? 's' : ''}` : 'le pays n’a plus une seule ville')
+          : 'le monde lui fait moins crédit';
       log({
         type: 'monnaie',
         texte: `${drapeauDe(state.world, k).nom} : la monnaie perd `
-          + `${Math.round(perte * 100)} %. Vous en tenez ${Math.round(b[k])} `
+          + `${Math.round(perte * 100)} % — ${causeM}. Vous en tenez ${Math.round(b[k])} `
           + `${symboleDe(state.world, k)}, qui valent d’autant moins.`,
         important: true,
         factions: [k],

@@ -65,7 +65,7 @@ chantier consiste à tisser ces briques.
   phrase, et la table des chapitres passés avec leurs jours. Huit tests
   headless nés rouges, un test navigateur (« Chapitre I » lisible en
   chronique), aller-retour JSON exact préservé.
-- [ ] **D. Les nouvelles racontées.** Les dépêches du monde disent la cause
+- [x] **D. Les nouvelles racontées.** Les dépêches du monde disent la cause
   et la conséquence, que le moteur connaît déjà : « Fort-Vermeil est tombée »
   devient « Fort-Vermeil est tombée après onze jours de siège — la garnison
   mangeait ses semences depuis des semaines ». S'applique aux événements
@@ -75,6 +75,19 @@ chantier consiste à tisser ces briques.
   sur une campagne de banc, chaque type d'événement marquant porte au moins
   une cause dans son texte ; aucun tirage nouveau ; le coût du tick ne bouge
   pas au protocole calibré.
+
+  Livré, quatre dépêches : la **chute d'une ville** se construit sur l'état
+  d'AVANT la prise — « la faim avait fait le gros du travail », « la ville
+  grondait déjà contre les siens », « la garnison était à bout », « les murs
+  n'ont pas tenu », ou « la place s'est défendue jusqu'au bout »
+  (`depecheChute`, factions.js) ; la **trêve** dit la longueur et le prix —
+  « 20 jours de guerre, 3 batailles rangées » (les champs vivaient déjà sur
+  la guerre) ; la **succession** solde le règne — « Dernier bilan :
+  2 guerres, 4 villes prises, 3 perdues, en 214 jours » (`bilanRegne`,
+  dirigeants.js) ; la **dévaluation** dit d'où vient la chute — la planche
+  à billets qui a tourné, le pays réduit à deux villes, ou le crédit du
+  monde qui s'en va (monnaie.js). Rien d'inventé : chaque clause est un
+  fait que le moteur tenait déjà. Six tests nés rouges, zéro tirage.
 
 ### Deuxième étage — les gens
 

@@ -4661,6 +4661,24 @@ const APRES = {
   faiblesse: ['conquerant', 'rancunier', 'rapace', 'methodique'],
 };
 
+/**
+ * Le solde d'un règne, en toutes lettres — la dépêche d'une succession le
+ * porte (HISTOIRE.md, lot D). Tout est déjà compté sur le dirigeant :
+ * guerres déclarées, villes prises et perdues, date d'avènement.
+ */
+function bilanRegne(d, t) {
+  // `depuis` peut valoir zéro — l'avènement à la première heure du monde
+  // est un début comme un autre, que `||` avalerait.
+  const debut = Number.isFinite(d.depuis) ? d.depuis : t;
+  const jours = Math.max(1, Math.round((t - debut) / 24));
+  const bouts = [];
+  if (d.guerres) bouts.push(`${d.guerres} guerre${d.guerres > 1 ? 's' : ''}`);
+  if (d.prises) bouts.push(`${d.prises} ville${d.prises > 1 ? 's' : ''} prise${d.prises > 1 ? 's' : ''}`);
+  if (d.perdues) bouts.push(`${d.perdues} perdue${d.perdues > 1 ? 's' : ''}`);
+  return `Dernier bilan : ${bouts.length ? bouts.join(', ') : 'un règne sans bruit'}, `
+    + `en ${jours} jour${jours > 1 ? 's' : ''}.`;
+}
+
 function creerDirigeant(rng, key, t, apres, world = null) {
   const style = drapeauDe(world, key) ? drapeauDe(world, key).style : null;
   const penchant = APRES[apres] || PENCHANT[style] || TEMPERAMENT_KEYS;
@@ -4812,6 +4830,7 @@ function tickDirigeant(world, key, rng, dt, t, log, grogne = 0) {
     log({
       type: 'dirigeant',
       texte: `${drapeauDe(world, key).nom} : ${sortant.titre} ${sortant.nom} est ${cause}. `
+        + `${bilanRegne(sortant, t)} `
         + `${neuf.titre} ${neuf.nom} prend la suite — ${TEMPERAMENTS[neuf.temperament].nom.toLowerCase()}. `
         + `« ${TEMPERAMENTS[neuf.temperament].mot} »`,
       factions: [key],
@@ -12129,10 +12148,20 @@ function veillerMonnaies(state, log) {
     p.alertesMonnaie.unshift(alerte);
     if (p.alertesMonnaie.length > 6) p.alertesMonnaie.length = 6;
     if (log) {
+      // La dépêche dit d'où vient la chute — le moteur le sait : la planche
+      // à billets et la taille du pays sont des faits, pas des adjectifs
+      // (HISTOIRE.md, lot D).
+      const fmon = state.world.factions[k];
+      const nbV = fmon && fmon.colonies ? fmon.colonies.length : 0;
+      const causeM = fmon && (fmon.emissions || 0) > 0
+        ? `leur planche à billets a tourné ${fmon.emissions} fois`
+        : nbV <= 2
+          ? (nbV ? `le pays n’a plus que ${nbV} ville${nbV > 1 ? 's' : ''}` : 'le pays n’a plus une seule ville')
+          : 'le monde lui fait moins crédit';
       log({
         type: 'monnaie',
         texte: `${drapeauDe(state.world, k).nom} : la monnaie perd `
-          + `${Math.round(perte * 100)} %. Vous en tenez ${Math.round(b[k])} `
+          + `${Math.round(perte * 100)} % — ${causeM}. Vous en tenez ${Math.round(b[k])} `
           + `${symboleDe(state.world, k)}, qui valent d’autant moins.`,
         important: true,
         factions: [k],
@@ -13172,6 +13201,28 @@ function declarerGuerre(world, a, b, t, log, but) {
   });
 }
 
+/**
+ * La dépêche d'une prise de ville — avec la cause, que le moteur connaît
+ * (HISTOIRE.md, lot D). À construire sur l'état d'AVANT la prise : la faim,
+ * la grogne et l'état de la garnison disent pourquoi la place est tombée.
+ * `col.prises` n'est pas encore incrémenté à cet instant : l'acteur se nomme
+ * sur la prise qui est en train d'arriver.
+ */
+function depecheChute(world, nouveau, ancien, col) {
+  const cause = (col.stock.rations || 0) < 1
+    ? 'la faim avait fait le gros du travail'
+    : (col.unrest || 0) > 0.6
+      ? 'la ville grondait déjà contre les siens'
+      : (col.defense || 0) < (col.defenseMax || 1) * 0.2
+        ? 'la garnison était à bout'
+        : (col.murs || 0) < 0.5
+          ? 'les murs n’ont pas tenu'
+          : 'la place s’est défendue jusqu’au bout';
+  return `${drapeauDe(world, nouveau).nom} s’empare${drapeauDe(world, nouveau).pluriel ? 'nt' : ''} `
+    + `de ${col.nom}${ancien ? ` (${drapeauDe(world, ancien).nom})` : ''} — ${cause}. `
+    + `${nommerActeur(world, 'capture', col.id, (col.prises || 0) + 1)} a été vu clouant sa porte avant l’assaut.`;
+}
+
 function signerPaix(world, a, b, t, log, motif) {
   const i = world.guerres.findIndex(
     (g) => (g.a === a && g.b === b) || (g.a === b && g.b === a)
@@ -13183,10 +13234,15 @@ function signerPaix(world, a, b, t, log, motif) {
   // Une guerre abandonnée sans avoir obtenu ce qu'on cherchait coûte à celui
   // qui l'a déclarée : c'est la façon la plus nette de faire tomber un chef.
   if (motif !== 'atteint' && g.initiateur) crediterDirigeant(world, g.initiateur, 'paix');
+  // La dépêche dit ce que la guerre a duré et coûté — le moteur le sait
+  // (HISTOIRE.md, lot D) : `depuis` et `batailles` vivent sur la guerre.
+  const joursG = Math.max(1, Math.round((t - (g.depuis || t)) / 24));
   log({
     type: 'paix',
     texte: `${drapeauDe(world, a).nom} et ${drapeauDe(world, b).nom} signent une trêve`
-      + `${motif === 'atteint' && g.but ? ` — l’affaire est réglée ${g.but.texte}` : ''}.`,
+      + ` — ${joursG} jour${joursG > 1 ? 's' : ''} de guerre`
+      + `${g.batailles ? `, ${g.batailles} bataille${g.batailles > 1 ? 's' : ''} rangée${g.batailles > 1 ? 's' : ''}` : ''}`
+      + `${motif === 'atteint' && g.but ? ` ; l’affaire est réglée ${g.but.texte}` : ''}.`,
     factions: [a, b],
   });
 }
@@ -13325,6 +13381,11 @@ function capturer(world, armee, col, t, log, ctx) {
   } else {
     col.faction = nouveau;
     world.factions[nouveau].colonies.push(col.id);
+    // La dépêche se construit sur l'état d'AVANT la prise — la faim, la
+    // grogne, la garnison — parce que c'est lui qui dit pourquoi la ville
+    // est tombée (HISTOIRE.md, lot D). Après les lignes qui suivent, le
+    // pillage a vidé les étals et la défense est déjà réinitialisée.
+    const depeche = depecheChute(world, nouveau, ancien, col);
     world.regions[col.regionId].controle = nouveau;
     for (const v of voisins(col.regionId)) {
       if (world.regions[v].controle === ancien) world.regions[v].controle = nouveau;
@@ -13350,9 +13411,7 @@ function capturer(world, armee, col, t, log, ctx) {
     col.defense = Math.round(col.defenseMax * 0.25);
     log({
       type: 'capture',
-      texte: `${drapeauDe(world, nouveau).nom} s’empare${drapeauDe(world, nouveau).pluriel ? 'nt' : ''} `
-        + `de ${col.nom}${ancien ? ` (${drapeauDe(world, ancien).nom})` : ''}. `
-        + `${nommerActeur(world, 'capture', col.id, col.prises)} a été vu clouant sa porte avant l’assaut.`,
+      texte: depeche,
       regionId: col.regionId,
       factions: [nouveau, ancien].filter(Boolean),
     });

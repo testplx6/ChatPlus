@@ -132,7 +132,8 @@ import {
 } from '../src/influence.js';
 import { CREDIT } from '../src/credit.js';
 import { majCours, MONNAIE, coursMonnaie, veillerMonnaies, DEVALUATION } from '../src/monnaie.js';
-import { coloniesDe } from '../src/factions.js';
+import { coloniesDe, signerPaix, depecheChute } from '../src/factions.js';
+import { bilanRegne } from '../src/dirigeants.js';
 import {
   ecolesDe, inscrire, enFormation, ecolesAvantPoste, enseignerChezSoi,
   occupeParEcole, MARGE_INSTRUCTEUR, prixFormation, peutSInscrire,
@@ -10163,6 +10164,59 @@ section('HISTOIRE A — les chapitres : la partie se découpe, déduite de l’�
   avancer(sHc, 60);
   ok(sHc.player.chapitre.cle === 'affaires', 'la fortune ouvre « Les affaires »',
     sHc.player.chapitre.cle);
+}
+
+section('HISTOIRE D — les nouvelles disent la cause, que le moteur connaît');
+{
+  const sD = nouvellePartie(33, { maintenant: 0 });
+  const colD = sD.world.colonies.find((c) => !c.ruine && c.faction && c.faction !== 'essaim');
+
+  // La chute d'une ville : la dépêche se construit sur l'état d'AVANT la
+  // prise — la faim, la grogne, la garnison — pas sur des adjectifs.
+  const affamee = JSON.parse(JSON.stringify(colD));
+  affamee.stock.rations = 0;
+  ok(/faim/.test(depecheChute(sD.world, 'cendre', affamee.faction, affamee)),
+    'une ville affamée tombe par la faim',
+    depecheChute(sD.world, 'cendre', affamee.faction, affamee));
+  const grondante = JSON.parse(JSON.stringify(colD));
+  grondante.stock.rations = 500;
+  grondante.unrest = 0.8;
+  ok(/grondait/.test(depecheChute(sD.world, 'cendre', grondante.faction, grondante)),
+    'une ville en colère tombe de l’intérieur');
+  const tenace = JSON.parse(JSON.stringify(colD));
+  tenace.stock.rations = 500;
+  tenace.unrest = 0;
+  tenace.defense = tenace.defenseMax = 40;
+  tenace.murs = 1;
+  ok(/jusqu’au bout/.test(depecheChute(sD.world, 'cendre', tenace.faction, tenace)),
+    'une place saine est tombée en se défendant');
+
+  // La trêve : la dépêche dit la longueur et le prix de la guerre.
+  sD.world.guerres.push({
+    a: 'cendre', b: 'hexa', depuis: sD.temps - 240, batailles: 3, but: null, initiateur: 'cendre',
+  });
+  const lignesD = [];
+  signerPaix(sD.world, 'cendre', 'hexa', sD.temps + 240, (x) => lignesD.push(x.texte), 'lassitude');
+  ok(lignesD.some((l) => /20 jours de guerre/.test(l) && /3 batailles/.test(l)),
+    'la trêve dit la longueur et le prix de la guerre', lignesD.join(' | '));
+
+  // Le bilan d'un règne, en toutes lettres.
+  const bd = bilanRegne({
+    depuis: sD.temps, guerres: 2, prises: 4, perdues: 3,
+  }, sD.temps + 24 * 100);
+  ok(/100 jours/.test(bd) && /4 villes prises/.test(bd) && /2 guerres/.test(bd),
+    'un règne se solde en toutes lettres', bd);
+
+  // La dévaluation : la dépêche dit d'où vient la chute.
+  sD.player.bourse = { hexa: 200 };
+  sD.player.coursVu = { hexa: 1.0 };
+  sD.world.factions.hexa.cours = 0.5;
+  sD.world.factions.hexa.emissions = 3;
+  const lignesM = [];
+  veillerMonnaies(sD, (x) => lignesM.push(x.texte));
+  ok(lignesM.some((l) => /perd 50 %/.test(l) && /planche à billets/.test(l)),
+    'la dévaluation dit sa cause — la planche à billets a tourné',
+    lignesM.join(' | ') || 'rien');
 }
 
 section('U5 — la cloche du journal sonne pour ce qu’on a vécu, pas pour le monde entier');

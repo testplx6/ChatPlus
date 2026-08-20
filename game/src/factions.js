@@ -184,6 +184,28 @@ export function declarerGuerre(world, a, b, t, log, but) {
   });
 }
 
+/**
+ * La dépêche d'une prise de ville — avec la cause, que le moteur connaît
+ * (HISTOIRE.md, lot D). À construire sur l'état d'AVANT la prise : la faim,
+ * la grogne et l'état de la garnison disent pourquoi la place est tombée.
+ * `col.prises` n'est pas encore incrémenté à cet instant : l'acteur se nomme
+ * sur la prise qui est en train d'arriver.
+ */
+export function depecheChute(world, nouveau, ancien, col) {
+  const cause = (col.stock.rations || 0) < 1
+    ? 'la faim avait fait le gros du travail'
+    : (col.unrest || 0) > 0.6
+      ? 'la ville grondait déjà contre les siens'
+      : (col.defense || 0) < (col.defenseMax || 1) * 0.2
+        ? 'la garnison était à bout'
+        : (col.murs || 0) < 0.5
+          ? 'les murs n’ont pas tenu'
+          : 'la place s’est défendue jusqu’au bout';
+  return `${drapeauDe(world, nouveau).nom} s’empare${drapeauDe(world, nouveau).pluriel ? 'nt' : ''} `
+    + `de ${col.nom}${ancien ? ` (${drapeauDe(world, ancien).nom})` : ''} — ${cause}. `
+    + `${nommerActeur(world, 'capture', col.id, (col.prises || 0) + 1)} a été vu clouant sa porte avant l’assaut.`;
+}
+
 export function signerPaix(world, a, b, t, log, motif) {
   const i = world.guerres.findIndex(
     (g) => (g.a === a && g.b === b) || (g.a === b && g.b === a)
@@ -195,10 +217,15 @@ export function signerPaix(world, a, b, t, log, motif) {
   // Une guerre abandonnée sans avoir obtenu ce qu'on cherchait coûte à celui
   // qui l'a déclarée : c'est la façon la plus nette de faire tomber un chef.
   if (motif !== 'atteint' && g.initiateur) crediterDirigeant(world, g.initiateur, 'paix');
+  // La dépêche dit ce que la guerre a duré et coûté — le moteur le sait
+  // (HISTOIRE.md, lot D) : `depuis` et `batailles` vivent sur la guerre.
+  const joursG = Math.max(1, Math.round((t - (g.depuis || t)) / 24));
   log({
     type: 'paix',
     texte: `${drapeauDe(world, a).nom} et ${drapeauDe(world, b).nom} signent une trêve`
-      + `${motif === 'atteint' && g.but ? ` — l’affaire est réglée ${g.but.texte}` : ''}.`,
+      + ` — ${joursG} jour${joursG > 1 ? 's' : ''} de guerre`
+      + `${g.batailles ? `, ${g.batailles} bataille${g.batailles > 1 ? 's' : ''} rangée${g.batailles > 1 ? 's' : ''}` : ''}`
+      + `${motif === 'atteint' && g.but ? ` ; l’affaire est réglée ${g.but.texte}` : ''}.`,
     factions: [a, b],
   });
 }
@@ -337,6 +364,11 @@ function capturer(world, armee, col, t, log, ctx) {
   } else {
     col.faction = nouveau;
     world.factions[nouveau].colonies.push(col.id);
+    // La dépêche se construit sur l'état d'AVANT la prise — la faim, la
+    // grogne, la garnison — parce que c'est lui qui dit pourquoi la ville
+    // est tombée (HISTOIRE.md, lot D). Après les lignes qui suivent, le
+    // pillage a vidé les étals et la défense est déjà réinitialisée.
+    const depeche = depecheChute(world, nouveau, ancien, col);
     world.regions[col.regionId].controle = nouveau;
     for (const v of voisins(col.regionId)) {
       if (world.regions[v].controle === ancien) world.regions[v].controle = nouveau;
@@ -362,9 +394,7 @@ function capturer(world, armee, col, t, log, ctx) {
     col.defense = Math.round(col.defenseMax * 0.25);
     log({
       type: 'capture',
-      texte: `${drapeauDe(world, nouveau).nom} s’empare${drapeauDe(world, nouveau).pluriel ? 'nt' : ''} `
-        + `de ${col.nom}${ancien ? ` (${drapeauDe(world, ancien).nom})` : ''}. `
-        + `${nommerActeur(world, 'capture', col.id, col.prises)} a été vu clouant sa porte avant l’assaut.`,
+      texte: depeche,
       regionId: col.regionId,
       factions: [nouveau, ancien].filter(Boolean),
     });

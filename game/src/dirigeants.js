@@ -104,6 +104,24 @@ const APRES = {
   faiblesse: ['conquerant', 'rancunier', 'rapace', 'methodique'],
 };
 
+/**
+ * Le solde d'un règne, en toutes lettres — la dépêche d'une succession le
+ * porte (HISTOIRE.md, lot D). Tout est déjà compté sur le dirigeant :
+ * guerres déclarées, villes prises et perdues, date d'avènement.
+ */
+export function bilanRegne(d, t) {
+  // `depuis` peut valoir zéro — l'avènement à la première heure du monde
+  // est un début comme un autre, que `||` avalerait.
+  const debut = Number.isFinite(d.depuis) ? d.depuis : t;
+  const jours = Math.max(1, Math.round((t - debut) / 24));
+  const bouts = [];
+  if (d.guerres) bouts.push(`${d.guerres} guerre${d.guerres > 1 ? 's' : ''}`);
+  if (d.prises) bouts.push(`${d.prises} ville${d.prises > 1 ? 's' : ''} prise${d.prises > 1 ? 's' : ''}`);
+  if (d.perdues) bouts.push(`${d.perdues} perdue${d.perdues > 1 ? 's' : ''}`);
+  return `Dernier bilan : ${bouts.length ? bouts.join(', ') : 'un règne sans bruit'}, `
+    + `en ${jours} jour${jours > 1 ? 's' : ''}.`;
+}
+
 export function creerDirigeant(rng, key, t, apres, world = null) {
   const style = drapeauDe(world, key) ? drapeauDe(world, key).style : null;
   const penchant = APRES[apres] || PENCHANT[style] || TEMPERAMENT_KEYS;
@@ -255,6 +273,7 @@ export function tickDirigeant(world, key, rng, dt, t, log, grogne = 0) {
     log({
       type: 'dirigeant',
       texte: `${drapeauDe(world, key).nom} : ${sortant.titre} ${sortant.nom} est ${cause}. `
+        + `${bilanRegne(sortant, t)} `
         + `${neuf.titre} ${neuf.nom} prend la suite — ${TEMPERAMENTS[neuf.temperament].nom.toLowerCase()}. `
         + `« ${TEMPERAMENTS[neuf.temperament].mot} »`,
       factions: [key],
