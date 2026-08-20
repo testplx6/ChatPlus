@@ -73,6 +73,7 @@ quelqu'un d'autre.
 | `CARTOGRAPHIE.md` | ce que chaque constante commande — produit par la mesure, à lire avant de régler |
 | `CIBLES.json` | les gardes du monde vérifiées par `verifier --complet` |
 | `INTERFACE.md` | le chantier de ce que le joueur voit — montrer, pas inventer |
+| `HISTOIRE.md` | le chantier du récit — l'histoire sort de la simulation, jamais l'inverse |
 | `PISTES.md` | des idées consignées, pas des chantiers — rien n'y est engagé |
 | `README.md` | le projet, les tests, l'architecture |
 
