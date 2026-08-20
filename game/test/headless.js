@@ -10125,6 +10125,31 @@ section('I bis. Les prix ont le droit de dire la vérité — les bornes sont le
     'et rien n’apparaît : le stock ne peut que se consommer', `${Math.round(avant)} → ${Math.round(grenier.stock.rations)}`);
 }
 
+section('U5 — la cloche du journal sonne pour ce qu’on a vécu, pas pour le monde entier');
+{
+  // Le badge comptait tout l'« important » : cent douze émetteurs le
+  // déclarent, guerres lointaines comprises, et après une absence la
+  // pastille disait 99 — un chiffre qui décore au lieu d'informer. La règle
+  // livrée : la cloche sonne pour ce que l'escouade a VU (`vu`, posé par le
+  // logger selon la surveillance) et pour ce qui n'a pas de lieu — la solde,
+  // l'argent, les affaires du joueur. Le journal et le filtre « Marquant »
+  // gardent tout le reste : on ne perd rien, on cesse de crier.
+  const sU = nouvellePartie(31);
+  const { creerLogger } = await import('../src/events.js');
+  const log = creerLogger(sU);
+  sU.nonLus = 0;
+  const ici = groupeActif(sU).regionId;
+  const loin = sU.world.regions.find((r) => !estSurveillee(sU, r.i)).i;
+  log({ type: 'guerre', texte: 'Une guerre au bout du monde.', important: true, regionId: loin });
+  ok(sU.nonLus === 0, 'une nouvelle lointaine ne sonne pas la cloche', `${sU.nonLus}`);
+  log({ type: 'combat', texte: 'Un combat sous vos yeux.', important: true, regionId: ici });
+  ok(sU.nonLus === 1, 'un événement vécu la sonne', `${sU.nonLus}`);
+  log({ type: 'solde', texte: 'La solde est tombée.', important: true });
+  ok(sU.nonLus === 2, 'une affaire du joueur — sans lieu — la sonne aussi', `${sU.nonLus}`);
+  log({ type: 'meteo', texte: 'Un nuage.', regionId: ici });
+  ok(sU.nonLus === 2, 'et l’ordinaire, même vécu, ne sonne toujours pas', `${sU.nonLus}`);
+}
+
 section('M6 — les compteurs de voies disent où va le temps');
 {
   // Le chantier M6 rembourse le ×1,44 payé au lot I bis. Première marche :

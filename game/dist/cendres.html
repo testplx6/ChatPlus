@@ -19869,7 +19869,14 @@ function creerLogger(state) {
     // Le journal oublie — quatre cents lignes, et une longue absence en produit
     // des milliers. Le rapport, lui, retient. Voir rapport.js.
     noterAuRapport(state, e);
-    if (e.important) state.nonLus = (state.nonLus || 0) + 1;
+    // La cloche du journal (la pastille de la barre) ne sonne que pour ce que
+    // l'escouade a VU ou pour ce qui n'a pas de lieu — la solde, l'argent,
+    // les affaires du joueur. Cent douze émetteurs déclarent « important »,
+    // guerres lointaines comprises : compter tout, c'était afficher 99 après
+    // chaque absence, un chiffre qui décore au lieu d'informer. Le journal et
+    // le filtre « Marquant » gardent tout — on ne perd rien, on cesse de
+    // crier (INTERFACE.md, U5).
+    if (e.important && e.vu !== false) state.nonLus = (state.nonLus || 0) + 1;
     return e;
   };
 }

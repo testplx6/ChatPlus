@@ -157,8 +157,17 @@ deux lignes ; les portes et les noms de la carte font leur travail.
   en-têtes Acheter / Vendre et explique « prix (achat / vente) » ; la fiche
   écrit « santé 99 % ». Constat : `captures/42-bourses.png`,
   `11-contrats.png`, `09b-marche.png`.
-- [ ] **U5. Le journal qui compte juste** : le badge dit ce qui mérite
+- [x] **U5. Le journal qui compte juste** : le badge dit ce qui mérite
   l'attention (le marquant), pas le volume. Critère à écrire avec le lot.
+
+  Livré. Le constat précisé : le badge comptait déjà « l'important », mais
+  cent douze émetteurs le déclarent — guerres lointaines comprises — et
+  après une absence la pastille disait 99. La règle livrée : **la cloche ne
+  sonne que pour ce que l'escouade a vu (`vu`) et pour ce qui n'a pas de
+  lieu** — solde, argent, affaires du joueur. Le journal et le filtre
+  « Marquant » gardent tout : on ne perd rien, on cesse de crier. Critère
+  tenu par quatre tests headless (lointain ne sonne pas, vécu sonne,
+  sans-lieu sonne, ordinaire jamais).
 - [ ] **U6. Le grand écran** : au-delà d'une largeur, la carte et les
   panneaux côte à côte. Critère : à 1280 px, plus de colonne unique.
 
