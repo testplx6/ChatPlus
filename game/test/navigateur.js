@@ -184,6 +184,9 @@ await page.click('[data-a="onglet"][data-k="escouade"]');
 await page.locator('details.perso summary').first().click();
 await page.waitForTimeout(2600); // laisse passer plusieurs re-rendus
 ok(await page.locator('details.perso[open]').count() > 0, 'la fiche ouverte le reste après re-rendu');
+// HISTOIRE lot C : chaque membre porte un fil lisible sur sa fiche.
+ok(/Son histoire/.test(await page.evaluate(() => document.querySelector('#ecran').textContent)),
+  'la fiche raconte l’histoire du membre');
 await page.screenshot({ path: join(CAPTURES, '06-fiche.png'), fullPage: true });
 
 console.log('\n5. Mise en page');

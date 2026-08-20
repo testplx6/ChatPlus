@@ -91,7 +91,7 @@ chantier consiste à tisser ces briques.
 
 ### Deuxième étage — les gens
 
-- [ ] **C. Les fils personnels.** Chaque membre de l'escouade porte une
+- [x] **C. Les fils personnels.** Chaque membre de l'escouade porte une
   histoire : d'où il vient (dérivée de son archétype et de sa graine —
   `grainDe`, jamais le flux), et une affaire à régler — un lieu à revoir, une
   dette, quelqu'un à retrouver — qui avance quand les événements vécus la
@@ -101,6 +101,19 @@ chantier consiste à tisser ces briques.
   ce qu'il n'aura pas fini. Critère : chaque recrue a un fil lisible sur sa
   fiche ; au moins une étape franchissable par le jeu normal, vérifiée en
   headless ; les fils survivent à la sauvegarde ; zéro tirage du flux.
+
+  Livré, quatre fils (`garantirFil`/`tickFils`, histoire.js) : **un lieu à
+  revoir** (une région dérivée de sa graine — y entrer règle le fil), **une
+  dette** (une faction — entrer dans une de leurs villes la solde, « il a
+  disparu quelques heures, puis a rejoint la colonne sans un mot »), **
+  quelqu'un à retrouver** (un nom tiré des tables — demander dans trois
+  villes donne une piste, la suivre clôt le fil), **faire ses preuves**
+  (trois combats gagnés depuis l'arrivée). Le fil se lit sur la fiche
+  (« Son histoire »), chaque étape s'écrit au journal en marquant vécu, et
+  la stèle du mémorial dit ce qui reste ouvert — « Vask la Rouille attend
+  toujours quelqu'un qui ne viendra pas ». Dérivation par `grainDe` du
+  personnage : même graine, mêmes histoires, pas un dé du monde déplacé.
+  Huit tests headless nés rouges, un test navigateur.
 
 ### Troisième étage — le monde vous connaît
 

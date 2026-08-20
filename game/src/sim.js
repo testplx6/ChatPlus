@@ -14,7 +14,7 @@ import {
   reserveVille,
 } from './economy.js';
 import { tickClimat, conditions, saison } from './climat.js';
-import { tickChapitres } from './histoire.js';
+import { tickChapitres, tickFils } from './histoire.js';
 import { tickCaravanes } from './caravanes.js';
 import { tickCoffres } from './coffres.js';
 import { tickFactions } from './factions.js';
@@ -637,8 +637,10 @@ export function tick(state) {
   ctx.rng = rng;
 
   // La page du récit, une fois l'heure jouée : le chapitre se déduit de
-  // l'état, il ne tire rien et n'écrit que côté joueur (HISTOIRE.md, lot A).
+  // l'état, les fils personnels se confrontent à ce qui vient d'être vécu —
+  // rien ne tire, rien n'écrit côté monde (HISTOIRE.md, lots A et C).
   tickChapitres(state, log);
+  tickFils(state, log);
 
   // En dernier : on relève ce qu'on a sous les yeux, après que tout a bougé.
   observer(state);

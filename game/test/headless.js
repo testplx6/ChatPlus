@@ -37,10 +37,11 @@ import { BETES } from '../src/betes.js';
 import {
   attaquerCaravane, passerOrdre, ordresEnCours, ESCORTES,
 } from '../src/caravanes.js';
-import { combatContre, fouillerSite } from '../src/events.js';
+import { combatContre, fouillerSite, inscrireAuMemorial } from '../src/events.js';
 import {
   bandeLocale, tenterChasseurs, erosionEstime, EROSION_ESTIME,
 } from '../src/events.js';
+import { texteFil, texteFilInacheve } from '../src/histoire.js';
 import { damer, coutTraversee, PISTE_GAIN, rendementRegion } from '../src/world.js';
 import {
   aUneBourse, reseauDe, idReseau, veutOuvrirBourse, ouvrirBourse, signerAccord,
@@ -10164,6 +10165,53 @@ section('HISTOIRE A — les chapitres : la partie se découpe, déduite de l’�
   avancer(sHc, 60);
   ok(sHc.player.chapitre.cle === 'affaires', 'la fortune ouvre « Les affaires »',
     sHc.player.chapitre.cle);
+}
+
+section('HISTOIRE C — chaque membre porte un fil, et le monde le tire');
+{
+  // Le fil se dérive de la graine du personnage (grainDe), jamais du flux
+  // scellé : deux parties de même graine portent les mêmes histoires, et en
+  // créer une ne décale pas un seul dé du monde.
+  const sF = nouvellePartie(44, { maintenant: 0 });
+  tick(sF);
+  const membresF = groupeActif(sF).membres.filter(estVivant);
+  ok(membresF.length > 0 && membresF.every((c) => c.fil && c.fil.type),
+    'chaque membre a un fil après le premier tick',
+    membresF.map((c) => c.fil ? c.fil.type : 'rien').join(', '));
+  ok(membresF.every((c) => {
+    const tx = texteFil(sF, c);
+    return tx && tx.lignes.length > 0 && tx.lignes[0].includes(c.nom);
+  }), 'le fil se lit, et il parle du membre par son nom');
+  const sF2 = nouvellePartie(44, { maintenant: 0 });
+  tick(sF2);
+  ok(JSON.stringify(groupeActif(sF2).membres.filter(estVivant).map((c) => c.fil))
+    === JSON.stringify(membresF.map((c) => c.fil)),
+  'même graine, mêmes fils — rien ne vient du flux');
+
+  // Une étape se franchit par le jeu : revenir sur SON lieu règle le fil.
+  const cLieu = membresF[0];
+  cLieu.fil = { type: 'lieu', etape: 0, regle: false, cible: groupeActif(sF).regionId === 5 ? 6 : 5 };
+  groupeActif(sF).regionId = cLieu.fil.cible;
+  sF.journal = [];
+  tick(sF);
+  ok(cLieu.fil.regle === true, 'revenir sur son lieu règle le fil');
+  ok((sF.journal || []).some((x) => x.texte && x.texte.includes(cLieu.nom)),
+    'et l’étape s’écrit au journal', (sF.journal || []).map((x) => x.texte).join(' | ').slice(0, 120));
+
+  // La sauvegarde emporte les fils.
+  const sF3 = deserialiser(serialiser(sF));
+  ok(JSON.stringify(groupeActif(sF3).membres.map((c) => c.fil))
+    === JSON.stringify(groupeActif(sF).membres.map((c) => c.fil)),
+  'les fils survivent à la sauvegarde');
+
+  // La mort ferme le fil au mémorial : l'histoire dit ce qui reste ouvert.
+  const cMort = membresF.find((c) => c !== cLieu) || cLieu;
+  cMort.fil = { type: 'quete', etape: 0, regle: false, nom: 'Vask la Rouille', cible: 3, vues: [] };
+  inscrireAuMemorial(sF, cMort, 'test', 'nulle part');
+  const stele = sF.memorial[sF.memorial.length - 1];
+  ok(stele.fil && stele.fil.type === 'quete', 'la stèle emporte le fil inachevé');
+  ok(/Vask la Rouille/.test(texteFilInacheve(sF, stele.fil)),
+    'et l’inachevé se dit en toutes lettres', texteFilInacheve(sF, stele.fil));
 }
 
 section('HISTOIRE D — les nouvelles disent la cause, que le moteur connaît');

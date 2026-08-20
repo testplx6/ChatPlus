@@ -44,7 +44,9 @@ import {
 } from './base.js';
 import { classement, enGuerre } from './factions.js';
 import { titreDe, lignesDe } from './chronique.js';
-import { infoChapitre, romain } from './histoire.js';
+import {
+  infoChapitre, romain, texteFil, texteFilInacheve,
+} from './histoire.js';
 import { TACTIQUES, TACTIQUE_KEYS, apercuTactique } from './combat.js';
 import {
   donnerOrdre, ORDRES, rendementPrevu, COMPETENCES_EXERCICE, PAR_LA_PRATIQUE,
@@ -1800,6 +1802,13 @@ function ficheMembre(c) {
       rel.rival ? `Ne supporte pas ${e(rel.rival.nom)} (${Math.round(lien(c, rel.rival))})` : null,
     ].filter(Boolean).join(' · ')}</div><div class="sep"></div>`;
   })()}
+      ${(() => {
+    const fl = texteFil(S, c);
+    if (!fl) return '';
+    return `<div class="titre">Son histoire</div>
+      <div class="aide" style="font-style:italic">${fl.lignes.map(e).join('<br>')}</div>
+      <div class="sep"></div>`;
+  })()}
       ${(c.diplomes || []).length ? `<div class="titre">Diplômes</div>
       <div class="traits">${c.diplomes.map((k) => `<span class="puce ok"
         title="${e(DIPLOMES[k].nom)} — apprend ×${DIPLOMES[k].apprentissage.toFixed(2)} en ${e(SKILLS[DIPLOMES[k].skill])}">${e(DIPLOMES[k].court)}</span>`).join(' ')}</div>
@@ -1981,6 +1990,8 @@ function blocMemorial() {
         <span class="v">${horloge(x.t).texte}</span></div>
       <div class="aide">${e(x.archetype)} · ${e(x.cause)}${x.lieu ? ` · ${e(x.lieu)}` : ''}
         ${x.horsCombat ? ` · ${x.horsCombat} mis hors de combat` : ''} · ${e(x.meilleure)}</div>
+      ${x.fil && !x.fil.regle ? `<div class="aide" style="font-style:italic">${
+  e(texteFilInacheve(S, x.fil) || '')}</div>` : ''}
     </div>`).join('')}
   </section>`;
 }

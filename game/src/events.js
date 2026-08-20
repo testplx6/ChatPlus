@@ -110,6 +110,10 @@ export function inscrireAuMemorial(state, c, cause, lieu) {
     horsCombat: c.horsCombat || 0,
     traits: (c.traits || []).slice(0, 3),
     meilleure: `${SKILLS[meilleure]} ${c.skills[meilleure]}`,
+    // Le fil personnel part avec la stèle (HISTOIRE.md, lot C) : ce qui
+    // reste ouvert se dira au mémorial. Copie simple — le texte se rend à
+    // l'affichage, ce module n'a pas à connaître l'histoire.
+    fil: c.fil || null,
   });
   if (state.memorial.length > 60) state.memorial.shift();
 }

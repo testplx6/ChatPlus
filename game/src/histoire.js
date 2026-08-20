@@ -3,6 +3,10 @@
 // ce chapitre parce que les faits y sont. Aucun tirage, aucun état côté
 // monde : tout vit dans `state.player`, la règle qui prépare le multijoueur.
 
+import { Rng, grainDe } from './rng.js';
+import { NOMS_PERSO, SURNOMS, DIPLO_FACTIONS, drapeauDe } from './data.js';
+import { colonieDe, nomRegion } from './world.js';
+import { estVivant } from './characters.js';
 import { faitsDe } from './chronique.js';
 
 /**
@@ -76,6 +80,161 @@ export function romain(n) {
     while (reste >= v) { sortie += s; reste -= v; }
   }
   return sortie;
+}
+
+// ---------------------------------------------------------------------------
+// Les fils personnels (lot C) : chaque membre porte une histoire, et le
+// monde la tire. Le fil se dérive de la graine du personnage — `grainDe`,
+// jamais le flux scellé — et n'avance que sur des événements VÉCUS : entrer
+// dans une région, visiter des villes, se battre. Tout vit sur le membre,
+// donc côté joueur, donc dans la sauvegarde.
+// ---------------------------------------------------------------------------
+
+/** Le fil d'un membre — créé au premier regard, identique à chaque partie. */
+export function garantirFil(state, c) {
+  if (c.fil) return c.fil;
+  const r = new Rng(grainDe(String(state.world.graine), c.id, 'fil'));
+  const type = ['lieu', 'dette', 'quete', 'preuves'][r.int(4)];
+  const fil = { type, etape: 0, regle: false };
+  if (type === 'lieu') {
+    fil.cible = r.int(state.world.regions.length);
+  } else if (type === 'dette') {
+    fil.cible = DIPLO_FACTIONS[r.int(DIPLO_FACTIONS.length)];
+  } else if (type === 'quete') {
+    fil.nom = `${NOMS_PERSO[r.int(NOMS_PERSO.length)]} ${SURNOMS[r.int(SURNOMS.length)]}`;
+    fil.cible = r.int(state.world.regions.length);
+    fil.vues = [];
+  } else {
+    fil.kills0 = c.kills || 0;
+  }
+  c.fil = fil;
+  return fil;
+}
+
+/** Ce que le fil dit sur la fiche : l'histoire, puis où elle en est. */
+export function texteFil(state, c) {
+  const fil = c.fil;
+  if (!fil) return null;
+  const lignes = [];
+  if (fil.type === 'lieu') {
+    lignes.push(`${c.nom} parle d’un endroit sans jamais finir ses phrases : `
+      + `${nomRegion(state.world, fil.cible)}. Quelque chose y est resté.`);
+    if (fil.regle) lignes.push('Le retour a eu lieu. On n’en parle plus.');
+  } else if (fil.type === 'dette') {
+    lignes.push(`${c.nom} doit quelque chose ${drapeauDe(state.world, fil.cible).datif} `
+      + '— de l’argent, ou pire. Ça se voit quand leurs couleurs passent.');
+    if (fil.regle) lignes.push('L’affaire est réglée. Personne n’a demandé comment.');
+  } else if (fil.type === 'quete') {
+    lignes.push(`${c.nom} cherche quelqu’un : ${fil.nom}. `
+      + 'Dans chaque ville, les mêmes questions aux mêmes silences.');
+    if (fil.etape >= 1 && !fil.regle) {
+      lignes.push(`À force de demander, une piste : ${nomRegion(state.world, fil.cible)}.`);
+    }
+    if (fil.regle) {
+      lignes.push(`${fil.nom} a été retrouvé. Ce qu’ils se sont dit ne regarde qu’eux.`);
+    }
+  } else {
+    lignes.push(`${c.nom} n’a encore rien prouvé à personne — et se le pardonne mal.`);
+    if (fil.regle) lignes.push('Trois fois au feu, trois fois debout. Ça suffit.');
+  }
+  return { titre: 'Son histoire', lignes };
+}
+
+/** Ce qui reste ouvert quand la mort ferme le fil — la stèle le dit. */
+export function texteFilInacheve(state, fil) {
+  if (!fil || fil.regle) return null;
+  if (fil.type === 'lieu') {
+    return `${nomRegion(state.world, fil.cible)} ne sera pas revu.`;
+  }
+  if (fil.type === 'dette') {
+    return `La dette ${drapeauDe(state.world, fil.cible).datif} reste ouverte.`;
+  }
+  if (fil.type === 'quete') return `${fil.nom} attend toujours quelqu’un qui ne viendra pas.`;
+  return 'Il ne restait rien à prouver.';
+}
+
+/**
+ * Le monde tire les fils : une fois l'heure jouée, chaque membre vivant
+ * confronte son affaire à ce qu'il vient de vivre. Aucun tirage — que des
+ * constats sur la position, les villes vues et les combats comptés.
+ */
+export function tickFils(state, log) {
+  for (const g of state.player.groupes || []) {
+    for (const c of g.membres || []) {
+      if (!c || !estVivant(c)) continue;
+      const fil = garantirFil(state, c);
+      if (fil.regle) continue;
+      if (fil.type === 'lieu') {
+        if (g.regionId === fil.cible) {
+          fil.regle = true;
+          if (log) {
+            log({
+              type: 'fil',
+              texte: `${c.nom} est de retour à ${nomRegion(state.world, fil.cible)}. `
+                + 'Une longue halte, un peu à l’écart des autres.',
+              regionId: g.regionId,
+              important: true,
+            });
+          }
+        }
+      } else if (fil.type === 'dette') {
+        const col = colonieDe(state.world, g.regionId);
+        if (col && !col.ruine && col.faction === fil.cible) {
+          fil.regle = true;
+          if (log) {
+            log({
+              type: 'fil',
+              texte: `À ${col.nom}, ${c.nom} a disparu quelques heures, puis a `
+                + `rejoint la colonne sans un mot. La vieille affaire ${drapeauDe(state.world, fil.cible).datif} est réglée.`,
+              regionId: g.regionId,
+              important: true,
+            });
+          }
+        }
+      } else if (fil.type === 'quete') {
+        if (fil.etape === 0) {
+          const col = colonieDe(state.world, g.regionId);
+          if (col && !col.ruine && !fil.vues.includes(g.regionId)) {
+            fil.vues.push(g.regionId);
+            if (fil.vues.length >= 3) {
+              fil.etape = 1;
+              if (log) {
+                log({
+                  type: 'fil',
+                  texte: `À force de demander, ${c.nom} tient une piste : ${fil.nom} `
+                    + `aurait été vu vers ${nomRegion(state.world, fil.cible)}.`,
+                  regionId: g.regionId,
+                  important: true,
+                });
+              }
+            }
+          }
+        } else if (g.regionId === fil.cible) {
+          fil.regle = true;
+          if (log) {
+            log({
+              type: 'fil',
+              texte: `${c.nom} a retrouvé ${fil.nom}. Ils ont parlé longtemps, à voix basse. `
+                + 'Au matin, la colonne est repartie au complet.',
+              regionId: g.regionId,
+              important: true,
+            });
+          }
+        }
+      } else if ((c.kills || 0) - (fil.kills0 || 0) >= 3) {
+        fil.regle = true;
+        if (log) {
+          log({
+            type: 'fil',
+            texte: `${c.nom} ne baisse plus les yeux : trois fois au feu, trois fois debout. `
+              + 'Quelque chose s’est tu.',
+            regionId: g.regionId,
+            important: true,
+          });
+        }
+      }
+    }
+  }
 }
 
 /**
