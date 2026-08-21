@@ -25535,6 +25535,20 @@ function blocInventaire() {
   </section>`;
 }
 
+/**
+ * La même jauge, quand on est seul : le moteur y met délibérément la tenue
+ * d'une personne (« il tient ou il craque », squad.js), mais les textes de
+ * bande — « on se parle, on se couvre » — étaient absurdes pour un homme
+ * seul. Vu à l'écran (U4 ter). Mots au singulier, mécanique inchangée.
+ */
+function texteTenueSeul(v) {
+  if (v >= 80) return 'La tête est claire. Le moral remonte tout seul.';
+  if (v >= 60) return 'Ça tient. Un pied devant l’autre.';
+  if (v >= 35) return 'La fatigue ronge plus que les coups. Une mauvaise semaine de plus et ça craquera.';
+  if (v >= 15) return 'Les gestes sont machinaux, la tête est ailleurs.';
+  return 'Plus rien ne tient que la marche elle-même.';
+}
+
 function texteCohesion(v) {
   if (v >= 80) return 'Ces gens se feraient tuer les uns pour les autres. Le moral remonte tout seul.';
   if (v >= 60) return 'L’escouade tient. On se parle, on se couvre.';
@@ -25791,7 +25805,7 @@ function ecranEscouade() {
   ${barreGroupes()}
   ${blocQuiFaitQuoi()}
   <section class="panneau">
-    <h2 class="titre">Cohésion de ${e(g.nom)}
+    <h2 class="titre">${nGens === 1 ? 'Tenue' : 'Cohésion'} de ${e(g.nom)}
       <span class="droite"><span class="puce ${cohCls}">${Math.round(g.cohesion ?? 55)} %</span></span></h2>
     ${jauge((g.cohesion ?? 55) / 100, '', rend >= 1 ? '#4fd0e3' : undefined)}
     <div class="grille2">
@@ -25846,9 +25860,11 @@ function ecranEscouade() {
   </section>
 
   <section class="panneau">
-    <h2 class="titre">Cohésion de ${e(g.nom)} <span class="droite">${Math.round(g.cohesion ?? 55)} / 100</span></h2>
+    <h2 class="titre">${vivantsDe(g).length === 1 ? 'Tenue' : 'Cohésion'} de ${e(g.nom)}
+      <span class="droite">${Math.round(g.cohesion ?? 55)} / 100</span></h2>
     ${jauge((g.cohesion ?? 55) / 100, (g.cohesion ?? 55) < 30 ? 'rouge' : (g.cohesion ?? 55) < 60 ? 'ambre' : 'vert')}
-    <div class="aide" style="margin-top:5px">${e(texteCohesion(g.cohesion ?? 55))}</div>
+    <div class="aide" style="margin-top:5px">${e((vivantsDe(g).length === 1
+    ? texteTenueSeul : texteCohesion)(g.cohesion ?? 55))}</div>
   </section>
 
   <section class="panneau">

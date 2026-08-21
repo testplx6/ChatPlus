@@ -94,6 +94,17 @@ train de devenir.
   d'une livraison nommait sa destination deux fois (le titre la porte, la
   ligne de détail ne dit plus que la distance et la marche).
 
+  **U4 ter — la tenue du solitaire** (question du propriétaire : « la
+  cohésion de convoi peut être mauvaise même quand on est seul ? »). Oui,
+  et c'est voulu côté moteur (« il tient ou il craque », squad.js) — mais
+  les textes étaient des phrases de bande, absurdes pour un homme seul :
+  « Ça tient par habitude », « on se parle, on se couvre ». Quand
+  l'escouade compte une personne vivante, les deux encarts s'appellent
+  « Tenue de … » et les textes passent au singulier (« La fatigue ronge
+  plus que les coups ») — mêmes seuils, même jauge, mécanique intacte. La
+  question d'équilibrage (neutraliser le malus de rendement en solo) reste
+  ouverte, à trancher par le propriétaire s'il le juge injuste en jouant.
+
 ## U3 — la décision à trancher
 
 Donner un cap au joueur peut se faire à trois profondeurs, et elles n'engagent

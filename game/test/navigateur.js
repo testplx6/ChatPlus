@@ -181,6 +181,17 @@ for (const [k, nom] of [['escouade', '02-escouade'], ['base', '03-base'], ['mond
 
 console.log('\n4. Fiches de personnage');
 await page.click('[data-a="onglet"][data-k="escouade"]');
+// Seul, la jauge parle de tenue, au singulier : « Ça tient par habitude »,
+// « on se parle, on se couvre » sont des phrases de bande — absurdes pour un
+// homme seul (défaut vu à l'écran, U4 ter).
+{
+  await page.waitForTimeout(300);
+  const txtSolo = await page.evaluate(() => document.querySelector('#ecran').textContent);
+  ok(/Tenue de/.test(txtSolo) && !/Cohésion de/.test(txtSolo),
+    'seul, le panneau s’appelle « Tenue », pas « Cohésion »');
+  ok(!/on se couvre|par habitude|les uns pour les autres/i.test(txtSolo),
+    'et aucun texte de bande ne s’applique à une personne seule');
+}
 await page.locator('details.perso summary').first().click();
 await page.waitForTimeout(2600); // laisse passer plusieurs re-rendus
 ok(await page.locator('details.perso[open]').count() > 0, 'la fiche ouverte le reste après re-rendu');
