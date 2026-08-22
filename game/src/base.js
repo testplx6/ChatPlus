@@ -35,6 +35,9 @@ export function creerBase() {
     // Le raid que la vigie a vu venir et qui n'a pas encore frappé. Voir
     // `raidEnApproche` (SIEGE.md, S2).
     raidImminent: null,
+    // L'état des murs, de 1 (intacts) à 0 (brèche ouverte). Voir
+    // `userMursSiege` (SIEGE.md, S4).
+    brecheEtat: 1,
     // Ce que l'entrepôt n'a pas pu prendre, cumulé. L'écrêtage était muet.
     gaspille: 0,
     gaspilleJour: 0,
@@ -1249,8 +1252,20 @@ export function tickBase(state, log, ctx) {
   }
 
   // Les habitants ne regardent pas un raid les bras croisés — et ceux qui sont
-  // affectés au mur y sont pour de bon.
-  base.defense = niveau(base, 'mur') * 22 * M.milicien + 10 + (base.pop || 0) * 2.5;
+  // affectés au mur y sont pour de bon. Un mur en brèche ne vaut que ce qu'il
+  // en reste (SIEGE.md, S4).
+  base.defense = niveau(base, 'mur') * 22 * M.milicien * (base.brecheEtat ?? 1)
+    + 10 + (base.pop || 0) * 2.5;
+
+  // Les murs se relèvent entre les orages : de l'alliage et des bras — pas
+  // pendant qu'on se bat dessus.
+  if (niveau(base, 'mur') > 0 && (base.brecheEtat ?? 1) < 1 && !siegeEnCours(state)) {
+    const a = consommer(base, 'alliage', MURS.alliage);
+    if (a > 0) {
+      base.brecheEtat = Math.min(1,
+        (base.brecheEtat ?? 1) + MURS.repare * M.batisseur * (a / MURS.alliage));
+    }
+  }
 
   // --- File de construction
   if (base.file.length) {
@@ -1503,7 +1518,7 @@ export function synchroniserVitrine(state) {
   }
   col.defense = Math.round((base.defense || 0) + garnison);
   col.defenseMax = Math.max(col.defense, Math.round((base.defense || 0) + garnison));
-  col.murs = niveau(base, 'mur') * 3;
+  col.murs = niveau(base, 'mur') * 3 * (base.brecheEtat ?? 1);
   col.taille = col.pop >= 90 ? 3 : col.pop >= 45 ? 2 : 1;
   col.nom = base.nom;
 }
@@ -2020,8 +2035,12 @@ export function raidSurLaBase(state, log, ctx, force, guet = 0) {
   const tues = Math.min(Math.floor((base.pop || 0) * 0.25),
     Math.max(1, Math.round(rngRaid.range(RAID.sang[0], RAID.sang[1]) * force)));
   base.pop = Math.max(0, (base.pop || 0) - tues);
-  if (niveau(base, 'mur') > 0 && rng.chance(0.4)) {
-    base.batiments.mur = Math.max(0, base.batiments.mur - 1);
+  // Le sac use les murs de la même encre que le siège — plus de niveau
+  // entier perdu à pile ou face. Le tirage chance(0.4) disparaît du flux :
+  // changement de séquence assumé, documenté au commit S4.
+  if (niveau(base, 'mur') > 0) {
+    base.brecheEtat = Math.max(0,
+      (base.brecheEtat ?? 1) - rngRaid.range(MURS.sac[0], MURS.sac[1]));
   }
   log({
     type: 'raid',
@@ -2031,6 +2050,52 @@ export function raidSurLaBase(state, log, ctx, force, guet = 0) {
     regionId: base.regionId,
     important: true,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Les murs et la brèche (SIEGE.md, S4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Les murs, réglés. Objet mutable, calibrable. `usure` se divise par le
+ * niveau du mur : un rempart épais tient plus d'heures sous le même assaut —
+ * c'est la course que le défenseur lit sur son écran.
+ */
+export const MURS = {
+  usure: 0.0009,     // état perdu par point d'assaut et par heure, ÷ niveau
+  repare: 0.004,     // état regagné par heure de maçon, à pleine ration d'alliage
+  alliage: 0.5,      // l'alliage que la réparation consomme par heure
+  sac: [0.25, 0.5],  // ce qu'un sac de pillards coûte aux murs
+};
+
+/**
+ * L'assaut use les murs du camp — les villes du monde gardent leur attrition
+ * telle quelle, pas un dé ne bouge. Appelée depuis la boucle de siège du
+ * monde via `ctx.usureMurs` (même patron que `renfortAvantPoste`), sans
+ * aucun tirage : l'usure est déterministe, l'assaut l'a déjà été.
+ * La vitrine est mise à jour à l'heure du choc : la tenue du siège lit
+ * `col.murs`, et un mur en brèche ne doit plus rien lui apporter.
+ */
+export function userMursSiege(state, log, assaut) {
+  const base = state.base;
+  const niveauMur = niveau(base, 'mur');
+  if (!base.fonde || niveauMur <= 0) return;
+  if ((base.brecheEtat ?? 1) <= 0) return;
+  base.brecheEtat = Math.max(0,
+    (base.brecheEtat ?? 1) - assaut * MURS.usure / Math.max(1, niveauMur));
+  if (base.colonieId) {
+    const col = state.world.colonies.find((c) => c.id === base.colonieId);
+    if (col) col.murs = niveauMur * 3 * base.brecheEtat;
+  }
+  if (base.brecheEtat <= 0 && log) {
+    log({
+      type: 'siege',
+      texte: `La brèche est ouverte dans les murs de ${base.nom}. `
+        + `Ils n’attendront plus.`,
+      regionId: base.regionId,
+      important: true,
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------

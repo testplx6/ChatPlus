@@ -3211,6 +3211,9 @@ function ecranBase() {
       <div class="ligne"><span class="k">Énergie</span>
         <span class="v ${en.ratio < 1 ? '' : ''}">${n(en.prod)} / ${n(en.conso)}</span></div>
       <div class="ligne"><span class="k">Défense</span><span class="v">${n(b.defense)}</span></div>
+      ${(b.batiments.mur || 0) > 0 ? `<div class="ligne"><span class="k">Murs</span>
+        <span class="v ${(b.brecheEtat ?? 1) < 0.4 ? 'alerte' : ''}">${(b.brecheEtat ?? 1) <= 0
+    ? 'brèche ouverte' : `${Math.round((b.brecheEtat ?? 1) * 100)} %`}</span></div>` : ''}
     </div>
     ${en.ratio < 1 ? `<div class="aide" style="color:var(--ambre)">Production réduite à ${(en.ratio * 100).toFixed(0)} % :
       ${(b.stock.carburant || 0) <= 0 ? 'plus de carburant.' : 'énergie insuffisante.'}</div>` : ''}

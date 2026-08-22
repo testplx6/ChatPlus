@@ -686,6 +686,10 @@ function tickArmee(world, armee, t, log, ctx) {
       && world.factions[col.faction].colonies.length <= 1;
     const acharnement = (estCapitale ? 1.8 : 1) * (derniere ? 1.6 : 1);
     const assaut = armee.force * rng.range(0.5, 1.1);
+    // Les murs du camp du joueur s'usent sous l'assaut (SIEGE.md, S4) — les
+    // villes du monde gardent leur attrition telle quelle, pas un dé ne
+    // bouge : l'usure est déterministe et lit un assaut déjà tiré.
+    if (col.avantPoste && ctx && ctx.usureMurs) ctx.usureMurs(assaut);
     // Ce que vaut l'escouade restée sur place, quand c'est le camp du joueur.
     //
     // Elle comptait déjà contre les pillards (`tickBase`) et pas du tout contre

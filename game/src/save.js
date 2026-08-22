@@ -264,6 +264,8 @@ export function normaliser(state) {
     if (b.terraforme === undefined) b.terraforme = null;
     // Avant, un raid naissait à l'heure où il frappait : rien à annoncer.
     if (b.raidImminent === undefined) b.raidImminent = null;
+    // Avant, les murs ne s'usaient pas : ils tombaient d'un niveau entier.
+    if (b.brecheEtat === undefined) b.brecheEtat = 1;
     if (!b.reserves) b.reserves = {};
     if (!b.recettes) {
       // Les consignes n'existaient pas, et la raffinerie faisait les deux à la

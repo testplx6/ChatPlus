@@ -74,7 +74,7 @@ import {
   manoeuvres, affecter, rendementMetier, mainDoeuvre, niveauRech,
   perdreAvantPoste, saccagerAvantPoste, menacesSurLaBase, rendementLibre, AMENDEMENT_MAX,
   raidSurLaBase, raidEnApproche, siegeEnCours, prixSiege, negocierSiege,
-  sortieContreSiege, evacuerCamp, RANCON,
+  sortieContreSiege, evacuerCamp, RANCON, userMursSiege, MURS,
   recetteDe, recettesDe, reglerRecette, reglerReserve, brasEscouade,
   voulus, tenus, postesDegarnis, brasDisponibles, ORDRE_EMBAUCHE, tempsRecherche,
   deposer,
@@ -10629,6 +10629,63 @@ function decorSiege(graine, faction, force) {
   ok((g.inventaire.composant || 0) > 0,
     'on a emporté le précieux d’abord', `composants ${g.inventaire.composant || 0}`);
   ok(r.emporte > 0, 'et le sac n’est pas parti vide', `${r.emporte} unités`);
+}
+
+// S4 : les murs s'usent, la brèche se lit, la réparation coûte.
+{
+  const { s } = decorSiege(9915, 'hexa', 150);
+  s.base.batiments.mur = 2;
+  synchroniserVitrine(s);
+  const col = s.world.colonies.find((c) => c.id === s.base.colonieId);
+  const mursAvant = col.murs;
+  const jAvant = s.journal.length;
+  userMursSiege(s, creerLogger(s), 150);
+  ok(s.base.brecheEtat < 1, 'un assaut use les murs du camp',
+    `état ${s.base.brecheEtat.toFixed(3)}`);
+  ok(col.murs < mursAvant, 'et la vitrine le dit à l’heure du choc, pas le lendemain',
+    `${mursAvant} → ${col.murs.toFixed(2)}`);
+  let garde = 0;
+  while (s.base.brecheEtat > 0 && garde++ < 500) userMursSiege(s, creerLogger(s), 150);
+  ok(s.base.brecheEtat === 0 && col.murs === 0,
+    'la brèche finit ouverte, et les murs ne valent plus rien');
+  ok(s.journal.slice(jAvant).filter((e) => /brèche/i.test(e.texte || '')).length === 1,
+    'la brèche se crie une fois, pas cinq cents');
+}
+
+// La réparation : de l'alliage et des heures — pas un bouton.
+{
+  const s = nouvellePartie(9916, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const g = groupeActif(s);
+  s.base.fonde = true;
+  s.base.regionId = g.regionId;
+  s.base.pop = 20;
+  s.base.batiments = { mur: 2, entrepot: 2, generateur: 1 };
+  s.base.brecheEtat = 0.3;
+  s.base.stock.alliage = 80;
+  s.base.stock.carburant = 50;
+  const alliageAvant = s.base.stock.alliage;
+  avancer(s, 240);
+  ok(s.base.brecheEtat > 0.3, 'les murs se relèvent avec le temps',
+    `état ${s.base.brecheEtat.toFixed(3)}`);
+  ok(s.base.stock.alliage < alliageAvant, 'et ça se paie en alliage',
+    `${alliageAvant} → ${s.base.stock.alliage.toFixed(1)}`);
+}
+
+// Le sac de bandits n'emporte plus un niveau de mur à pile ou face.
+{
+  const s = nouvellePartie(9917, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const g = groupeActif(s);
+  const ailleurs = s.world.regions.find((r) => r.i !== g.regionId);
+  s.base.fonde = true;
+  s.base.regionId = ailleurs.i;
+  s.base.pop = 20;
+  s.base.batiments = { mur: 2 };
+  s.base.stock.ferraille = 100;
+  s.base.defense = 10;
+  raidSurLaBase(s, creerLogger(s), { rng: new Rng(13), combatContre, genererBande }, 400);
+  ok(s.base.batiments.mur === 2, 'le niveau de mur ne tombe plus au dé');
+  ok(s.base.brecheEtat < 1, 'mais le sac a laissé les murs abîmés',
+    `état ${s.base.brecheEtat.toFixed(3)}`);
 }
 
 // ===========================================================================

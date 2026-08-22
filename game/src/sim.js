@@ -8,6 +8,7 @@ import { genererMonde, decouvrir, colonieParId, nomRegion, distance } from './wo
 import { makeCharacter, idDepuisRng, ARCHETYPE_KEYS } from './characters.js';
 import {
   creerBase, tickBase, perdreAvantPoste, saccagerAvantPoste, forceEscouade,
+  userMursSiege,
 } from './base.js';
 import {
   tickColonie, etalDe, effondrer, faireSecession, faireRevolte, emploisInitiaux,
@@ -427,6 +428,8 @@ export function tick(state) {
   // Ce qui défend le camp au moment du choc : les vôtres restés sur place, et
   // la colonne que la Milice envoie à ceux qui la servent (voir SERVICES).
   ctx.renfortAvantPoste = () => forceEscouade(state) + renfortMilice(state);
+  // Les murs du camp s'usent sous les assauts d'un siège (SIEGE.md, S4).
+  ctx.usureMurs = (assaut) => userMursSiege(state, log, assaut);
   // Le raid se bat pour de bon (SIEGE.md, S1) : base.js précède events.js
   // dans l'ordre des modules et ne peut pas l'importer — la bataille lui est
   // prêtée par ici, comme la caravane l'emprunte via main.js.

@@ -187,7 +187,15 @@ posée sans mesure.
   **évacuer** (`evacuerCamp`, on emporte le précieux d'abord dans la
   charge, la vitrine devient ruine, permis à tout moment), **tenir** =
   ne rien faire. Panneau de siège sur l'écran de base, trois boutons.
-- [ ] S4 — les murs et la brèche
+- [x] S4 — les murs et la brèche — livré : `brecheEtat` (1 → 0), usé
+  par les assauts du siège (`userMursSiege` via `ctx.usureMurs`, hook
+  réservé à `col.avantPoste` — les sièges du monde ne bougent pas d'un
+  dé), lu en direct par la tenue (vitrine à l'heure du choc), affiché
+  sur le panneau de base (« Murs : 62 % » / « brèche ouverte »). La
+  réparation coûte MURS.alliage/h et avance à MURS.repare × bâtisseurs,
+  jamais pendant un siège. Le sac de bandits use les murs de la même
+  encre (le tirage chance(0.4) du niveau entier disparaît — changement
+  de séquence du flux joueur assumé et documenté).
 
 ## Blocages
 
