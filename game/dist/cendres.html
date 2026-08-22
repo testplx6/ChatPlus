@@ -17143,6 +17143,9 @@ function creerBase() {
     stock,
     defense: 0,
     derniereAttaque: -999,
+    // Le raid que la vigie a vu venir et qui n'a pas encore frappé. Voir
+    // `raidEnApproche` (SIEGE.md, S2).
+    raidImminent: null,
     // Ce que l'entrepôt n'a pas pu prendre, cumulé. L'écrêtage était muet.
     gaspille: 0,
     gaspilleJour: 0,
@@ -18413,9 +18416,18 @@ function tickBase(state, log, ctx) {
   // par surprise, et ceux qui passent trouvent les stocks déjà rentrés.
   const guet = niveau(base, 'poste') * M.garde;
   const vigilance = 1 / (1 + guet * 0.22);
-  if (t - base.derniereAttaque > 72 && rng.chance(0.0016 * (1 + reg.danger * 4) * vigilance)) {
+  // L'assaut annoncé par la vigie (SIEGE.md, S2) : l'échéance venue, il a
+  // lieu. Tant qu'une bande est signalée, on n'en tire pas une deuxième.
+  if (base.raidImminent && t >= base.raidImminent.echeance) {
+    const imminent = base.raidImminent;
+    base.raidImminent = null;
+    raidSurLaBase(state, log, ctx, imminent.force, guet);
+  }
+  if (!base.raidImminent
+    && t - base.derniereAttaque > 72
+    && rng.chance(0.0016 * (1 + reg.danger * 4) * vigilance)) {
     const force = rng.irange(20, 45) + Math.floor(t / 600) + Math.round((base.pop || 0) * 1.5);
-    raidSurLaBase(state, log, ctx, force, guet);
+    raidEnApproche(state, log, ctx, force, guet);
   }
 
   // Ce que l'entrepôt n'a pas pu prendre. On ne le dit pas à chaque heure — ce
@@ -18988,6 +19000,8 @@ const RAID = {
   parMilicien: 6,     // un milicien levé pour tant d'habitants
   miliceMax: 6,
   sang: [0.02, 0.06], // morts au camp envahi, en part de la force adverse
+  alerteParGuet: 5,   // heures d'avance de la vigie, par point de guet
+  alerteMax: 18,
 };
 
 /**
@@ -19017,6 +19031,32 @@ function assaillantDe(state) {
  * arrive par `ctx` (combatContre, genererBande) : base.js précède events.js
  * dans l'ordre des modules et ne peut pas l'importer.
  */
+/**
+ * Ce que le poste de garde promet enfin (SIEGE.md, S2) : un raid se voit
+ * venir. Des heures d'avance proportionnelles au guet — le temps de rentrer
+ * un groupe proche, de rentrer les stocks, de choisir comment on se battra.
+ * Sans guet : l'ancien monde, réveillé par le raid. La carence de 72 h court
+ * dès l'alerte, pas à l'assaut — sinon la vigie rapprocherait les raids.
+ */
+function raidEnApproche(state, log, ctx, force, guet = 0) {
+  const base = state.base;
+  const avance = Math.min(RAID.alerteMax, Math.round(RAID.alerteParGuet * guet));
+  if (avance < 1) {
+    raidSurLaBase(state, log, ctx, force, guet);
+    return;
+  }
+  base.derniereAttaque = state.temps;
+  base.raidImminent = { echeance: state.temps + avance, force };
+  log({
+    type: 'raid',
+    texte: `La vigie de ${base.nom} signale une bande en approche — `
+      + `l’assaut d’ici ${avance} heure${avance > 1 ? 's' : ''}. `
+      + `Rentrez ce qui doit l’être.`,
+    regionId: base.regionId,
+    important: true,
+  });
+}
+
 function raidSurLaBase(state, log, ctx, force, guet = 0) {
   const base = state.base;
   const rng = ctx.rng;
@@ -22697,6 +22737,8 @@ function normaliser(state) {
     if (b.dernierGaspillage === undefined) b.dernierGaspillage = -999;
     if (b.dechets === undefined) b.dechets = 0;
     if (b.terraforme === undefined) b.terraforme = null;
+    // Avant, un raid naissait à l'heure où il frappait : rien à annoncer.
+    if (b.raidImminent === undefined) b.raidImminent = null;
     if (!b.reserves) b.reserves = {};
     if (!b.recettes) {
       // Les consignes n'existaient pas, et la raffinerie faisait les deux à la
@@ -24857,6 +24899,12 @@ function blocSituation() {
     if (m.cases <= 4) urgences.push(`${t}.`);
     else bientot.push(t);
   }
+  // La bande que la vigie a vue venir (SIEGE.md, S2) : quelques heures pour agir.
+  if (S.base.fonde && S.base.raidImminent) {
+    const reste = S.base.raidImminent.echeance - S.temps;
+    urgences.push(`La vigie signale une bande sur ${S.base.nom} — assaut `
+      + `${reste <= 0 ? 'imminent' : `d’ici ${dureeTexte(reste)}`}.`);
+  }
 
   // Les échéances : ce qui va se retourner contre vous si vous l'oubliez.
   const all = g.allegeance;
@@ -26838,7 +26886,18 @@ function ecranBase() {
   const stockHtml = COMMODITY_KEYS.map((k) => `<div class="ligne">
     <span class="k">${e(COMMODITIES[k].nom)}</span><span class="v">${n(b.stock[k] || 0)}</span></div>`).join('');
 
+  // La bande vue par la vigie (SIEGE.md, S2) : le temps qu'il reste, en gros.
+  const vigieHtml = b.raidImminent ? `<section class="panneau urgent">
+    <h2 class="titre">La vigie a donné l’alerte</h2>
+    <div class="ligne"><span class="k">Bande en approche</span>
+      <span class="v alerte">assaut ${b.raidImminent.echeance - S.temps <= 0
+    ? 'imminent' : `d’ici ${dureeTexte(b.raidImminent.echeance - S.temps)}`}</span></div>
+    <div class="aide">Le temps de rappeler un groupe, de rentrer ce qui traîne,
+      et de choisir comment on se battra.</div>
+  </section>` : '';
+
   return `
+  ${vigieHtml}
   ${menaceHtml}
   <section class="panneau">
     <h2 class="titre">${e(b.nom)} <span class="droite">${e(lieuAvecCoord(S.world, b.regionId))}</span></h2>

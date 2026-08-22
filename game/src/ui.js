@@ -1188,6 +1188,12 @@ function blocSituation() {
     if (m.cases <= 4) urgences.push(`${t}.`);
     else bientot.push(t);
   }
+  // La bande que la vigie a vue venir (SIEGE.md, S2) : quelques heures pour agir.
+  if (S.base.fonde && S.base.raidImminent) {
+    const reste = S.base.raidImminent.echeance - S.temps;
+    urgences.push(`La vigie signale une bande sur ${S.base.nom} — assaut `
+      + `${reste <= 0 ? 'imminent' : `d’ici ${dureeTexte(reste)}`}.`);
+  }
 
   // Les échéances : ce qui va se retourner contre vous si vous l'oubliez.
   const all = g.allegeance;
@@ -3169,7 +3175,18 @@ function ecranBase() {
   const stockHtml = COMMODITY_KEYS.map((k) => `<div class="ligne">
     <span class="k">${e(COMMODITIES[k].nom)}</span><span class="v">${n(b.stock[k] || 0)}</span></div>`).join('');
 
+  // La bande vue par la vigie (SIEGE.md, S2) : le temps qu'il reste, en gros.
+  const vigieHtml = b.raidImminent ? `<section class="panneau urgent">
+    <h2 class="titre">La vigie a donné l’alerte</h2>
+    <div class="ligne"><span class="k">Bande en approche</span>
+      <span class="v alerte">assaut ${b.raidImminent.echeance - S.temps <= 0
+    ? 'imminent' : `d’ici ${dureeTexte(b.raidImminent.echeance - S.temps)}`}</span></div>
+    <div class="aide">Le temps de rappeler un groupe, de rentrer ce qui traîne,
+      et de choisir comment on se battra.</div>
+  </section>` : '';
+
   return `
+  ${vigieHtml}
   ${menaceHtml}
   <section class="panneau">
     <h2 class="titre">${e(b.nom)} <span class="droite">${e(lieuAvecCoord(S.world, b.regionId))}</span></h2>

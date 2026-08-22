@@ -73,7 +73,7 @@ import {
   declarerIndependance, synchroniserVitrine,
   manoeuvres, affecter, rendementMetier, mainDoeuvre, niveauRech,
   perdreAvantPoste, saccagerAvantPoste, menacesSurLaBase, rendementLibre, AMENDEMENT_MAX,
-  raidSurLaBase,
+  raidSurLaBase, raidEnApproche,
   recetteDe, recettesDe, reglerRecette, reglerReserve, brasEscouade,
   voulus, tenus, postesDegarnis, brasDisponibles, ORDRE_EMBAUCHE, tempsRecherche,
   deposer,
@@ -10496,6 +10496,49 @@ section('S. Le siège — S1, le raid est une bataille (SIEGE.md)');
   const textes = s.journal.slice(jAvant).map((e) => e.texte || '').join(' | ');
   ok(!textes.includes('L’avant-poste est pillé'),
     'et le pillard a un nom', textes.slice(0, 140));
+}
+
+// S2 : le poste tient sa promesse — un raid annoncé n'est pas un raid subi.
+{
+  const s = nouvellePartie(1234, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const g = groupeActif(s);
+  s.base.fonde = true;
+  s.base.nom = 'La Vigie';
+  s.base.regionId = g.regionId;
+  s.base.pop = 18;
+  s.base.batiments = { poste: 2, entrepot: 2 };
+  s.base.stock.ferraille = 150;
+  const jAvant = s.journal.length;
+  const combatsAvant = s.stats.combats;
+  raidEnApproche(s, creerLogger(s), { rng: new Rng(3), combatContre, genererBande }, 50, 2);
+  ok(!!s.base.raidImminent && s.base.raidImminent.echeance > s.temps,
+    'avec un poste, le raid s’annonce avant de frapper',
+    JSON.stringify(s.base.raidImminent));
+  ok(s.stats.combats === combatsAvant, 'et rien ne se bat encore');
+  ok(s.journal.slice(jAvant).some((e) => e.type === 'raid' && e.important),
+    'la vigie l’a crié au journal');
+
+  // L'échéance venue, l'assaut a lieu — c'est la simulation qui s'en charge.
+  const echeance = s.base.raidImminent.echeance;
+  avancer(s, (echeance - s.temps) + 2);
+  ok(!s.base.raidImminent, 'l’échéance venue, l’alerte est consommée');
+  ok(s.stats.combats > combatsAvant,
+    'et l’assaut a bien eu lieu — la bataille s’est jouée',
+    `${s.stats.combats - combatsAvant} combat(s)`);
+}
+
+// Sans poste : pas d'alerte — réveillé par le raid, comme avant.
+{
+  const s = nouvellePartie(1234, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const g = groupeActif(s);
+  s.base.fonde = true;
+  s.base.regionId = g.regionId;
+  s.base.pop = 18;
+  s.base.stock.ferraille = 150;
+  const combatsAvant = s.stats.combats;
+  raidEnApproche(s, creerLogger(s), { rng: new Rng(5), combatContre, genererBande }, 50, 0);
+  ok(!s.base.raidImminent, 'sans guet, aucune alerte');
+  ok(s.stats.combats === combatsAvant + 1, 'le raid frappe tout de suite');
 }
 
 // ===========================================================================

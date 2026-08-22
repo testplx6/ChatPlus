@@ -31,6 +31,9 @@ export function creerBase() {
     stock,
     defense: 0,
     derniereAttaque: -999,
+    // Le raid que la vigie a vu venir et qui n'a pas encore frappé. Voir
+    // `raidEnApproche` (SIEGE.md, S2).
+    raidImminent: null,
     // Ce que l'entrepôt n'a pas pu prendre, cumulé. L'écrêtage était muet.
     gaspille: 0,
     gaspilleJour: 0,
@@ -1301,9 +1304,18 @@ export function tickBase(state, log, ctx) {
   // par surprise, et ceux qui passent trouvent les stocks déjà rentrés.
   const guet = niveau(base, 'poste') * M.garde;
   const vigilance = 1 / (1 + guet * 0.22);
-  if (t - base.derniereAttaque > 72 && rng.chance(0.0016 * (1 + reg.danger * 4) * vigilance)) {
+  // L'assaut annoncé par la vigie (SIEGE.md, S2) : l'échéance venue, il a
+  // lieu. Tant qu'une bande est signalée, on n'en tire pas une deuxième.
+  if (base.raidImminent && t >= base.raidImminent.echeance) {
+    const imminent = base.raidImminent;
+    base.raidImminent = null;
+    raidSurLaBase(state, log, ctx, imminent.force, guet);
+  }
+  if (!base.raidImminent
+    && t - base.derniereAttaque > 72
+    && rng.chance(0.0016 * (1 + reg.danger * 4) * vigilance)) {
     const force = rng.irange(20, 45) + Math.floor(t / 600) + Math.round((base.pop || 0) * 1.5);
-    raidSurLaBase(state, log, ctx, force, guet);
+    raidEnApproche(state, log, ctx, force, guet);
   }
 
   // Ce que l'entrepôt n'a pas pu prendre. On ne le dit pas à chaque heure — ce
@@ -1876,6 +1888,8 @@ export const RAID = {
   parMilicien: 6,     // un milicien levé pour tant d'habitants
   miliceMax: 6,
   sang: [0.02, 0.06], // morts au camp envahi, en part de la force adverse
+  alerteParGuet: 5,   // heures d'avance de la vigie, par point de guet
+  alerteMax: 18,
 };
 
 /**
@@ -1905,6 +1919,32 @@ export function assaillantDe(state) {
  * arrive par `ctx` (combatContre, genererBande) : base.js précède events.js
  * dans l'ordre des modules et ne peut pas l'importer.
  */
+/**
+ * Ce que le poste de garde promet enfin (SIEGE.md, S2) : un raid se voit
+ * venir. Des heures d'avance proportionnelles au guet — le temps de rentrer
+ * un groupe proche, de rentrer les stocks, de choisir comment on se battra.
+ * Sans guet : l'ancien monde, réveillé par le raid. La carence de 72 h court
+ * dès l'alerte, pas à l'assaut — sinon la vigie rapprocherait les raids.
+ */
+export function raidEnApproche(state, log, ctx, force, guet = 0) {
+  const base = state.base;
+  const avance = Math.min(RAID.alerteMax, Math.round(RAID.alerteParGuet * guet));
+  if (avance < 1) {
+    raidSurLaBase(state, log, ctx, force, guet);
+    return;
+  }
+  base.derniereAttaque = state.temps;
+  base.raidImminent = { echeance: state.temps + avance, force };
+  log({
+    type: 'raid',
+    texte: `La vigie de ${base.nom} signale une bande en approche — `
+      + `l’assaut d’ici ${avance} heure${avance > 1 ? 's' : ''}. `
+      + `Rentrez ce qui doit l’être.`,
+    regionId: base.regionId,
+    important: true,
+  });
+}
+
 export function raidSurLaBase(state, log, ctx, force, guet = 0) {
   const base = state.base;
   const rng = ctx.rng;

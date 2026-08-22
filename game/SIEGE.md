@@ -173,7 +173,12 @@ posée sans mesure.
   morts se décomptent, un camp envahi perd des habitants en plus du
   stock. Tout le hasard nouveau dérivé (`grainDe('raid', t)`) ; les
   tirages du flux joueur inchangés (déclenchement, pillage).
-- [ ] S2 — le poste tient sa promesse
+- [x] S2 — le poste tient sa promesse — livré : `raidEnApproche`
+  annonce l'assaut `min(18, 5 × guet)` heures d'avance (journal
+  important, urgences, panneau de base), l'échéance est tenue par
+  `tickBase`, la carence de 72 h court dès l'alerte. Sans poste :
+  réveillé par le raid, comme avant. Clé `raidImminent` née dans
+  `creerBase` et `normaliser`.
 - [ ] S3 — les verbes du siège
 - [ ] S4 — les murs et la brèche
 
