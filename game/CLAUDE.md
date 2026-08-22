@@ -76,6 +76,7 @@ quelqu'un d'autre.
 | `HISTOIRE.md` | le chantier du récit — l'histoire sort de la simulation, jamais l'inverse |
 | `MULTIJOUEUR.md` | l'étude multijoueur — trois architectures, sept modes, décisions au propriétaire |
 | `TECHNOLOGIE.md` | l'arbre technologique et le départ nu — **reporté** : d'abord les mécaniques et les bâtiments, l'arbre les coiffera |
+| `SIEGE.md` | le camp qui se défend — quatre lots, en attente de validation |
 | `PISTES.md` | des idées consignées, pas des chantiers — rien n'y est engagé |
 | `README.md` | le projet, les tests, l'architecture |
 
