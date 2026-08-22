@@ -61,4 +61,6 @@ trajet d'un joueur ne décale plus les dés de personne.
   convertir. Un taux de change entre mondes serait le même objet — ou pas, et
   c'est à décider.
 
-**À réfléchir, comme dit. Rien n'est engagé.**
+**Instruite en août 2026 : l'étude complète vit dans `MULTIJOUEUR.md` —
+trois architectures, une voie proposée en trois crans, décisions au
+propriétaire. Rien n'est engagé tant qu'il n'a pas tranché.**
