@@ -73,7 +73,8 @@ import {
   declarerIndependance, synchroniserVitrine,
   manoeuvres, affecter, rendementMetier, mainDoeuvre, niveauRech,
   perdreAvantPoste, saccagerAvantPoste, menacesSurLaBase, rendementLibre, AMENDEMENT_MAX,
-  raidSurLaBase, raidEnApproche,
+  raidSurLaBase, raidEnApproche, siegeEnCours, prixSiege, negocierSiege,
+  sortieContreSiege, evacuerCamp, RANCON,
   recetteDe, recettesDe, reglerRecette, reglerReserve, brasEscouade,
   voulus, tenus, postesDegarnis, brasDisponibles, ORDRE_EMBAUCHE, tempsRecherche,
   deposer,
@@ -10539,6 +10540,95 @@ section('S. Le siège — S1, le raid est une bataille (SIEGE.md)');
   raidEnApproche(s, creerLogger(s), { rng: new Rng(5), combatContre, genererBande }, 50, 0);
   ok(!s.base.raidImminent, 'sans guet, aucune alerte');
   ok(s.stats.combats === combatsAvant + 1, 'le raid frappe tout de suite');
+}
+
+// S3 : les verbes du siège — tenir, sortir, négocier, évacuer.
+function decorSiege(graine, faction, force) {
+  const s = nouvellePartie(graine, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const g = groupeActif(s);
+  const libre = s.world.regions.find((r) => !r.colonie && r.i !== g.regionId);
+  s.base.fonde = true;
+  s.base.nom = 'Le Môle';
+  s.base.regionId = libre.i;
+  g.regionId = libre.i;
+  s.base.pop = POP_RECONNUE;
+  s.base.batiments = { halle: 1, mur: 2 };
+  reconnaitreAvantPoste(s, () => {});
+  s.world.armees = s.world.armees || [];
+  const armee = {
+    id: 'siegeTest', faction, force, cible: s.base.colonieId,
+    etat: 'siege', regionId: libre.i, route: [], etape: 0, ravitaillement: 60,
+  };
+  s.world.armees.push(armee);
+  return { s, g, armee };
+}
+
+// Négocier : possible, au prix fort — et payer laisse une trace.
+{
+  const { s, armee } = decorSiege(9911, 'hexa', 120);
+  ok(!!siegeEnCours(s), 'la colonne devant les murs est vue comme un siège');
+  const prix1 = prixSiege(s, armee);
+  gagner(s, prix1 + 500);
+  const avant = soldeIci(s);
+  const r = negocierSiege(s, creerLogger(s));
+  ok(r.ok, 'on peut lever un siège contre crédits', r.motif);
+  ok(soldeIci(s) <= avant - r.prix + 0.001, 'le prix est sorti de la poche',
+    `${avant} → ${soldeIci(s)} (prix ${r.prix})`);
+  ok(!siegeEnCours(s), 'et la colonne est partie');
+  ok((s.player.rachats || 0) === 1, 'le paiement est retenu');
+  s.world.armees.push({
+    id: 'siegeTest2', faction: 'hexa', force: 120, cible: s.base.colonieId,
+    etat: 'siege', regionId: s.base.regionId, route: [], etape: 0, ravitaillement: 60,
+  });
+  ok(prixSiege(s, siegeEnCours(s)) > prix1,
+    'on se fait connaître comme payeur : le prix monte',
+    `${prix1} → ${prixSiege(s, siegeEnCours(s))}`);
+}
+
+// L'Essaim ne négocie pas.
+{
+  const { s } = decorSiege(9912, 'essaim', 100);
+  gagner(s, 99999);
+  const r = negocierSiege(s, creerLogger(s));
+  ok(!r.ok, 'l’Essaim ne négocie pas', r.motif);
+}
+
+// Sortir : une bataille rangée qui entame le siège quand on la gagne.
+{
+  const { s, g, armee } = decorSiege(9913, 'hexa', 90);
+  const rngX = new Rng(303);
+  for (let i = 0; i < 5; i++) {
+    const c = makeCharacter(rngX, { niveau: 3 });
+    c.equip.arme = 'verrou';
+    c.equip.armure = 'plaque';
+    g.membres.push(c);
+  }
+  const combatsAvant = s.stats.combats;
+  const r = sortieContreSiege(s, new Rng(11), creerLogger(s), combatContre, genererBande);
+  ok(r.ok, 'la sortie se tente', r.motif);
+  ok(s.stats.combats === combatsAvant + 1, 'et c’est une vraie bataille');
+  ok(r.entame > 0, 'gagnée, elle entame le siège', `entame ${r.entame}`);
+  ok(!siegeEnCours(s) || siegeEnCours(s).force < 90,
+    'la colonne a perdu des hommes — ou reculé',
+    siegeEnCours(s) ? `force ${siegeEnCours(s).force}` : 'colonne partie');
+}
+
+// Évacuer : perdre la place, pas les gens — ni ce qu'on peut porter.
+{
+  const s = nouvellePartie(9914, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const g = groupeActif(s);
+  s.base.fonde = true;
+  s.base.nom = 'Le Môle';
+  s.base.regionId = g.regionId;
+  s.base.pop = 12;
+  s.base.stock.ferraille = 60;
+  s.base.stock.composant = 10;
+  const r = evacuerCamp(s, creerLogger(s));
+  ok(r.ok, 'on peut évacuer le camp', r.motif);
+  ok(!s.base.fonde, 'la place est rendue au désert');
+  ok((g.inventaire.composant || 0) > 0,
+    'on a emporté le précieux d’abord', `composants ${g.inventaire.composant || 0}`);
+  ok(r.emporte > 0, 'et le sac n’est pas parti vide', `${r.emporte} unités`);
 }
 
 // ===========================================================================

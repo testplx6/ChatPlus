@@ -13,6 +13,7 @@ import { groupes, groupeActif } from './groupes.js';
 import { garnison, avantage } from './allegeance.js';
 import { estSurveillee } from './connaissance.js';
 import { noterArgent } from './rapport.js';
+import { capacitePortage, poidsInventaire } from './economy.js';
 import { depenser, entrerDehors, gagner, regler, soldeIci, signeIci } from './monnaie.js';
 
 export function creerBase() {
@@ -2030,6 +2031,159 @@ export function raidSurLaBase(state, log, ctx, force, guet = 0) {
     regionId: base.regionId,
     important: true,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Les verbes du siège (SIEGE.md, S3) : tenir, sortir, négocier, évacuer
+// ---------------------------------------------------------------------------
+
+/** La colonne qui assiège le camp en ce moment, s'il y en a une. */
+export function siegeEnCours(state) {
+  const base = state.base;
+  if (!base.fonde || !base.colonieId) return null;
+  return (state.world.armees || []).find(
+    (a) => a.cible === base.colonieId && a.etat === 'siege'
+  ) || null;
+}
+
+/**
+ * La rançon d'un siège. Objet mutable, calibrable — mais la règle est de la
+ * simulation, pas du réglage : qui paie une fois se fait connaître comme
+ * payeur, et le prix monte à chaque paiement. Sans cette mémoire, négocier
+ * serait le bouton qu'on presse toujours (décision du propriétaire, SIEGE.md).
+ */
+export const RANCON = { parForce: 3, montee: 1.6 };
+
+export function prixSiege(state, armee) {
+  const deja = state.player.rachats || 0;
+  return Math.round(armee.force * RANCON.parForce * Math.pow(RANCON.montee, deja));
+}
+
+/**
+ * Lever le siège contre crédits. L'Essaim ne négocie pas — il ne gouverne
+ * pas, il saigne. La somme suit le chemin comptable de l'impôt : elle sort de
+ * votre poche, entre dans le pays par le dehors, et finit dans son trésor.
+ */
+export function negocierSiege(state, log) {
+  const base = state.base;
+  const armee = siegeEnCours(state);
+  if (!armee) return { ok: false, motif: 'Personne n’assiège le camp.' };
+  if (armee.faction === 'essaim') {
+    return { ok: false, motif: 'L’Essaim ne négocie pas — il ne gouverne pas, il saigne.' };
+  }
+  const prix = prixSiege(state, armee);
+  if (soldeIci(state) < prix) {
+    return { ok: false, motif: `Ils veulent ${prix} ${signeIci(state)} — vous ne les avez pas.` };
+  }
+  regler(state, prix);
+  noterArgent(state, 'siège racheté', -prix);
+  const f = state.world.factions[armee.faction];
+  if (f) {
+    f.tresor += prix;
+    entrerDehors(state.world, armee.faction, prix);
+  }
+  state.player.rachats = (state.player.rachats || 0) + 1;
+  const i = state.world.armees.indexOf(armee);
+  if (i >= 0) state.world.armees.splice(i, 1);
+  log({
+    type: 'siege',
+    texte: `${drapeauDe(state.world, armee.faction).nom} lève le siège de ${base.nom} `
+      + `contre ${prix} ${signeIci(state)}. On se fait connaître comme payeur.`,
+    regionId: base.regionId,
+    important: true,
+  });
+  return { ok: true, prix };
+}
+
+/** Ce que la sortie coûte à la colonne quand elle est gagnée. Calibrable. */
+export const SORTIE = { detParForce: 15, detMin: 3, detMax: 10, entame: 0.35 };
+
+/**
+ * Sortir se battre : une bataille rangée contre un détachement de la colonne,
+ * par le moteur de combat — blessés et morts réels des deux côtés. La gagner
+ * entame la force du siège ; sous 8, la colonne recule (la règle du monde,
+ * reprise à l'identique). La perdre laisse le camp à ses murs. Le combat
+ * arrive en paramètres (combatContre, genererBande) : même patron que
+ * l'embuscade de caravane dans main.js.
+ */
+export function sortieContreSiege(state, rng, log, combatContre, genererBande) {
+  const base = state.base;
+  const armee = siegeEnCours(state);
+  if (!armee) return { ok: false, motif: 'Personne n’assiège le camp.' };
+  const g = groupes(state).find(
+    (x) => x.regionId === base.regionId && x.membres.some(estVivant)
+  );
+  if (!g) return { ok: false, motif: 'Il faut des vôtres au camp pour sortir.' };
+  const taille = Math.max(SORTIE.detMin,
+    Math.min(SORTIE.detMax, Math.round(armee.force / SORTIE.detParForce)));
+  const bande = genererBande(rng, armee.faction, taille,
+    Math.min(2, Math.floor(state.temps / 900)));
+  const res = combatContre(state, bande, log, { rng }, g);
+  if (res.vainqueur !== 'A') return { ok: true, entame: 0 };
+  const entame = Math.max(1, Math.round(armee.force * SORTIE.entame));
+  armee.force -= entame;
+  if (armee.force <= 8) {
+    const i = state.world.armees.indexOf(armee);
+    if (i >= 0) state.world.armees.splice(i, 1);
+    log({
+      type: 'siege',
+      texte: `La sortie a saigné la colonne : ${drapeauDe(state.world, armee.faction).nom} `
+        + `recule${drapeauDe(state.world, armee.faction).pluriel ? 'nt' : ''} devant ${base.nom}.`,
+      regionId: base.regionId,
+      important: true,
+    });
+  } else {
+    log({
+      type: 'siege',
+      texte: `La sortie a porté : ${entame} hommes de moins devant les murs de ${base.nom}.`,
+      regionId: base.regionId,
+      important: true,
+    });
+  }
+  return { ok: true, entame };
+}
+
+/**
+ * Évacuer : perdre la place, pas les gens. On emporte ce que la charge
+ * permet, le précieux d'abord (valeur au poids), et l'on part les murs
+ * debout. Permis à tout moment — abandonner son camp n'attend pas la
+ * permission d'un siège.
+ */
+export function evacuerCamp(state, log) {
+  const base = state.base;
+  if (!base.fonde) return { ok: false, motif: 'Aucun avant-poste.' };
+  const g = groupes(state).find(
+    (x) => x.regionId === base.regionId && x.membres.some(estVivant)
+  );
+  if (!g) return { ok: false, motif: 'Personne au camp pour emporter quoi que ce soit.' };
+  let libre = Math.max(0, capacitePortage(state, g) - poidsInventaire(g.inventaire));
+  const parValeur = COMMODITY_KEYS.slice().sort((a, b) =>
+    (COMMODITIES[b].prix / (COMMODITIES[b].poids || 1))
+    - (COMMODITIES[a].prix / (COMMODITIES[a].poids || 1)));
+  let emporte = 0;
+  for (const k of parValeur) {
+    const poids = COMMODITIES[k].poids || 1;
+    const q = Math.min(Math.floor(base.stock[k] || 0), Math.floor(libre / poids));
+    if (q <= 0) continue;
+    g.inventaire[k] = (g.inventaire[k] || 0) + q;
+    libre -= q * poids;
+    emporte += q;
+  }
+  // La vitrine, si le camp était sur les cartes : la place reste debout,
+  // vide — une ruine de plus dans un monde qui en fabrique.
+  if (base.colonieId) {
+    const col = state.world.colonies.find((c) => c.id === base.colonieId);
+    if (col) {
+      col.avantPoste = false;
+      col.ruine = true;
+      col.pop = 0;
+      col.defense = 0;
+    }
+  }
+  const nom = base.nom;
+  perdreAvantPoste(state, log, `${nom} évacuée : ${emporte} unités emportées, `
+    + `les murs laissés debout. On a perdu la place, pas les gens.`);
+  return { ok: true, emporte };
 }
 
 /**

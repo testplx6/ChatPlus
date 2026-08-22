@@ -22,6 +22,7 @@ import { groupeActif, tousLesMembres, scinder, fusionner, choisirGroupe, assigne
 import {
   reconnaitreAvantPoste, peutReconnaitre, rattacherVille,
   declarerIndependance, reglerRecette, reglerReserve,
+  negocierSiege, sortieContreSiege, evacuerCamp,
 } from './base.js';
 import { verifierExercice } from './squad.js';
 import { honorer as honorerService } from './services.js';
@@ -337,6 +338,32 @@ const API = {
       state, sens, key, Number(qte), escorte, rng, creerLogger(state), groupe || null);
     state.rngState = rng.save();
     if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Sortir se battre contre la colonne qui assiège le camp (SIEGE.md, S3). */
+  sortieSiege() {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    const rng = new Rng(state.rngState);
+    const r = sortieContreSiege(state, rng, creerLogger(state), combatContre, genererBande);
+    state.rngState = rng.save();
+    if (r.ok) sauver();
+    return r;
+  },
+
+  /** Lever le siège contre crédits — et se faire connaître comme payeur. */
+  negocierSiege() {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    const r = negocierSiege(state, creerLogger(state));
+    if (r.ok) sauver();
+    return r;
+  },
+
+  /** Évacuer le camp : perdre la place, pas les gens. */
+  evacuerCamp() {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    const r = evacuerCamp(state, creerLogger(state));
+    if (r.ok) sauver();
     return r;
   },
 

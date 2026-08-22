@@ -40,7 +40,7 @@ import {
   lancerRecherche, annulerConstruction, fonderBase, deposer, retirer,
   COUT_FONDATION, manquePour, apportBatiment, chaineAutonomie, menacesSurLaBase,
   forceEscouade, AMENDABLES, AMENDEMENT_MAX, dechetsMax, recetteDe, recettesDe,
-  brasEscouade, reserveDe,
+  brasEscouade, reserveDe, siegeEnCours, prixSiege,
 } from './base.js';
 import { classement, enGuerre } from './factions.js';
 import { titreDe, lignesDe } from './chronique.js';
@@ -3175,6 +3175,22 @@ function ecranBase() {
   const stockHtml = COMMODITY_KEYS.map((k) => `<div class="ligne">
     <span class="k">${e(COMMODITIES[k].nom)}</span><span class="v">${n(b.stock[k] || 0)}</span></div>`).join('');
 
+  // Les verbes du siège (SIEGE.md, S3) : tenir, sortir, payer, ou partir.
+  const siege = siegeEnCours(S);
+  const siegeHtml = siege ? `<section class="panneau urgent">
+    <h2 class="titre">${e(drapeauDe(S.world, siege.faction).nom)} assiège ${e(b.nom)}
+      <span class="droite alerte">${n(siege.force)} hommes</span></h2>
+    <div class="aide">Tenir ne demande rien — les murs et la garnison font ce
+      qu’ils peuvent, heure après heure. Le reste se décide ici.</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+      <button class="act mini" data-a="sortie-siege">Sortir se battre</button>
+      ${siege.faction === 'essaim'
+    ? '<button class="act mini" disabled>L’Essaim ne négocie pas</button>'
+    : `<button class="act mini" data-a="negocier-siege">Payer ${n(prixSiege(S, siege))} ${e(sym())}</button>`}
+      <button class="act mini danger" data-a="evacuer-camp">Évacuer le camp</button>
+    </div>
+  </section>` : '';
+
   // La bande vue par la vigie (SIEGE.md, S2) : le temps qu'il reste, en gros.
   const vigieHtml = b.raidImminent ? `<section class="panneau urgent">
     <h2 class="titre">La vigie a donné l’alerte</h2>
@@ -3186,6 +3202,7 @@ function ecranBase() {
   </section>` : '';
 
   return `
+  ${siegeHtml}
   ${vigieHtml}
   ${menaceHtml}
   <section class="panneau">
@@ -5670,6 +5687,27 @@ function surClic(ev) {
     case 'chercher': {
       const r = lancerRecherche(S, el.dataset.k);
       if (!r.ok) toast(r.motif, true);
+      rafraichir(true);
+      break;
+    }
+
+    case 'sortie-siege': {
+      const r = ACTIONS.sortieSiege();
+      toast(r.ok ? 'La sortie est faite — le journal raconte.' : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
+    case 'negocier-siege': {
+      const r = ACTIONS.negocierSiege();
+      toast(r.ok ? `Siège levé contre ${n(r.prix)} ${sym()}.` : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
+    case 'evacuer-camp': {
+      const r = ACTIONS.evacuerCamp();
+      toast(r.ok ? `Camp évacué — ${n(r.emporte)} unités emportées.` : r.motif, !r.ok);
       rafraichir(true);
       break;
     }

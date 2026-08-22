@@ -295,6 +295,9 @@ export function nouvellePartie(seed, opts = {}) {
       // La mémoire des rencontres (HISTOIRE.md, lots B et E) — mêmes
       // valeurs que normaliser, pour un aller-retour JSON exact.
       rencontres: { contrats: {}, accrochages: {}, pos: {} },
+      // Les sièges rachetés, en tout : le monde apprend qu'on paie et le
+      // prix monte à chaque fois (SIEGE.md, S3).
+      rachats: 0,
     },
     base: creerBase(),
     journal: [],

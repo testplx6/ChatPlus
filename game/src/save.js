@@ -143,6 +143,8 @@ export function normaliser(state) {
   if (!state.player.rencontres) {
     state.player.rencontres = { contrats: {}, accrochages: {}, pos: {} };
   }
+  // Les sièges rachetés (SIEGE.md, S3) : avant, personne ne payait.
+  if (state.player.rachats === undefined) state.player.rachats = 0;
   if (!state.stats) state.stats = {};
   for (const k of ['contratsRemplis', 'sitesFouilles', 'caravanesPillees', 'distanceParcourue',
     'servicesRendus', 'captifsPris', 'captifsLivres', 'captifsVendus', 'captifsRelaches',

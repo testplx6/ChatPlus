@@ -179,7 +179,14 @@ posée sans mesure.
   `tickBase`, la carence de 72 h court dès l'alerte. Sans poste :
   réveillé par le raid, comme avant. Clé `raidImminent` née dans
   `creerBase` et `normaliser`.
-- [ ] S3 — les verbes du siège
+- [x] S3 — les verbes du siège — livré : `siegeEnCours`, **sortir**
+  (`sortieContreSiege`, bataille rangée contre un détachement, victoire
+  = force −35 %, colonne sous 8 recule — la règle du monde), **négocier**
+  (`negocierSiege`, chemin comptable de l'impôt, l'Essaim refuse, le
+  prix monte à chaque paiement — `player.rachats`, RANCON.montee 1,6),
+  **évacuer** (`evacuerCamp`, on emporte le précieux d'abord dans la
+  charge, la vitrine devient ruine, permis à tout moment), **tenir** =
+  ne rien faire. Panneau de siège sur l'écran de base, trois boutons.
 - [ ] S4 — les murs et la brèche
 
 ## Blocages
