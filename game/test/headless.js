@@ -178,6 +178,7 @@ import {
 } from '../src/allegeance.js';
 import {
   vueColonie, estSurveillee, ageTexte, nouvellesConnues, DELAI_NOUVELLE, observer,
+  carnetPrix, PEREMPTION,
 } from '../src/connaissance.js';
 import { distance } from '../src/world.js';
 import { conditions } from '../src/climat.js';
@@ -10686,6 +10687,43 @@ function decorSiege(graine, faction, force) {
   ok(s.base.batiments.mur === 2, 'le niveau de mur ne tombe plus au dé');
   ok(s.base.brecheEtat < 1, 'mais le sac a laissé les murs abîmés',
     `état ${s.base.brecheEtat.toFixed(3)}`);
+}
+
+// ===========================================================================
+section('U7. Le carnet du négociant (INTERFACE.md)');
+{
+  const s = nouvellePartie(2024, { maintenant: 0, depart: 'ville', equipe: 3 });
+  avancer(s, 8);
+  const g = groupeActif(s);
+  const ici = s.world.colonies.find((c) => c.regionId === g.regionId);
+  const r = s.connaissance.colonies[ici.id];
+  ok(!!(r && r.prix && r.prix.ferraille > 0),
+    'la ville où l’on vit laisse ses prix au carnet',
+    r && r.prix ? `ferraille ${r.prix.ferraille}` : 'pas de prix relevés');
+
+  // Une deuxième ville, relevée moins cher — l'écart devient lisible.
+  const loin = s.world.colonies.find((c) => c.id !== ici.id && !c.ruine);
+  s.connaissance.colonies[loin.id] = Object.assign({}, r, {
+    nom: loin.nom,
+    regionId: loin.regionId,
+    ruine: false,
+    t: s.temps - 5,
+    prix: Object.assign({}, r.prix,
+      { ferraille: Math.max(0.1, r.prix.ferraille - 2) }),
+  });
+  const carnet = carnetPrix(s);
+  ok(!!(carnet.ferraille && carnet.ferraille.achat.colonieId === loin.id),
+    'le carnet sait où c’est le moins cher');
+  ok(!!(carnet.ferraille.vente && carnet.ferraille.vente.colonieId !== loin.id
+    && carnet.ferraille.ecart > 0),
+  'et l’écart se lit entre deux villes',
+  `écart ${carnet.ferraille && carnet.ferraille.ecart}`);
+
+  // Un relevé de quatre saisons n'est plus une information.
+  s.connaissance.colonies[loin.id].t = s.temps - PEREMPTION - 1;
+  const carnet2 = carnetPrix(s);
+  ok(!carnet2.ferraille || carnet2.ferraille.achat.colonieId !== loin.id,
+    'un relevé de quatre saisons ne guide plus personne');
 }
 
 // ===========================================================================

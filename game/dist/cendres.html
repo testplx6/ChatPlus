@@ -7408,7 +7408,7 @@ function regionsVues(state) {
 // Relevés
 // ---------------------------------------------------------------------------
 
-function releverColonie(col, t) {
+function releverColonie(col, t, prix) {
   const stock = {};
   for (const k of COMMODITY_KEYS) stock[k] = Math.round(col.stock[k] || 0);
   return {
@@ -7423,6 +7423,9 @@ function releverColonie(col, t) {
     unrest: Number((col.unrest || 0).toFixed(2)),
     ruine: !!col.ruine,
     stock,
+    // Les prix du moment, si on nous les a donnés (INTERFACE.md, U7) : le
+    // carnet du négociant vit de ces dix nombres datés.
+    prix: prix || null,
   };
 }
 
@@ -7434,7 +7437,7 @@ function releverRegion(r, t) {
  * Met à jour les relevés des lieux sous surveillance. Appelé à chaque heure de
  * jeu : c'est deux ou trois régions en pratique, pas la carte entière.
  */
-function observer(state) {
+function observer(state, prixDe) {
   const c = state.connaissance || (state.connaissance = creerConnaissance(state.temps));
   const t = state.temps;
   for (const rid of regionsVues(state)) {
@@ -7442,7 +7445,10 @@ function observer(state) {
     if (!r) continue;
     c.regions[rid] = releverRegion(r, t);
     const col = state.world.colonies.find((x) => x.regionId === rid);
-    if (col) c.colonies[col.id] = releverColonie(col, t);
+    if (col) {
+      c.colonies[col.id] = releverColonie(col, t,
+        prixDe ? prixDe(col, state.world) : null);
+    }
   }
   // Un contremaître qui vous apprécie assez laisse ses registres ouverts : ses
   // chiffres restent frais même à l'autre bout de la carte. C'est le seul moyen
@@ -7457,10 +7463,53 @@ function observer(state) {
     for (const col of state.world.colonies) {
       if (col.ruine) continue;
       const cm = notable(col, 'contremaitre');
-      if (cm && (cm.opinion || 0) >= REGISTRES_SEUIL) c.colonies[col.id] = releverColonie(col, t);
+      if (cm && (cm.opinion || 0) >= REGISTRES_SEUIL) {
+        c.colonies[col.id] = releverColonie(col, t,
+          prixDe ? prixDe(col, state.world) : null);
+      }
     }
   }
   c.maj = t;
+}
+
+/**
+ * Le carnet du négociant (INTERFACE.md, U7) : par marchandise, où c'est le
+ * moins cher et où ça se vend le mieux, d'après les relevés qu'on possède —
+ * jamais d'après la vérité du monde. L'écart n'a de sens qu'entre deux
+ * villes distinctes, et un relevé au-delà de la péremption ne guide plus
+ * personne. Tout est daté : la date vaut autant que le chiffre.
+ */
+function carnetPrix(state) {
+  const c = state.connaissance;
+  const t = state.temps;
+  const out = {};
+  if (!c) return out;
+  for (const k of COMMODITY_KEYS) {
+    const releves = [];
+    for (const id of Object.keys(c.colonies)) {
+      const r = c.colonies[id];
+      if (!r || r.ruine || !r.prix || r.prix[k] === undefined) continue;
+      if (t - r.t > PEREMPTION) continue;
+      releves.push({
+        colonieId: id, nom: r.nom, regionId: r.regionId,
+        prix: r.prix[k], depuis: t - r.t,
+      });
+    }
+    if (!releves.length) continue;
+    releves.sort((a, b) => a.prix - b.prix);
+    const achat = releves[0];
+    let vente = null;
+    for (let i = releves.length - 1; i >= 0; i--) {
+      if (releves[i].colonieId !== achat.colonieId) { vente = releves[i]; break; }
+    }
+    out[k] = {
+      achat,
+      vente,
+      ecart: vente ? Math.round((vente.prix - achat.prix) * 10) / 10 : 0,
+      releves: releves.length,
+    };
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -9007,6 +9056,23 @@ function prixUnitaire(col, key, stockSimule, world, ctx) {
  * d'économie vérifient déjà, et le monde joué au banc doit rester identique à
  * la graine près.
  */
+/**
+ * Les prix d'une ville tels qu'on les note au carnet (INTERFACE.md, U7) :
+ * dix nombres arrondis au dixième, un contexte calculé une fois. C'est
+ * l'économie qui les connaît ; `connaissance.js`, plus haut dans l'ordre des
+ * modules, ne peut pas l'importer — sim.js les lui fait passer en paramètre
+ * d'`observer`, comme la bataille passe à base.js par le ctx.
+ */
+function prixReleves(col, world) {
+  if (!col || col.avantPoste || col.ruine || !(col.pop > 0)) return null;
+  const ctx = contextePrix(col, world);
+  const prix = {};
+  for (const k of COMMODITY_KEYS) {
+    prix[k] = Math.round(prixUnitaire(col, k, undefined, world, ctx) * 10) / 10;
+  }
+  return prix;
+}
+
 function contextePrix(col, world) {
   const cours = coursMonnaie(world, col.faction);
   return {
@@ -23602,7 +23668,7 @@ function nouvellePartie(seed, opts = {}) {
   poserMasseInitiale(world);
 
   decouvrir(world, regionDepart, 2);
-  observer(state);
+  observer(state, prixReleves);
   tickClimat(world, 0, rng);
   rafraichirPanneaux(state, rng, 0);
   for (const col of world.colonies) etalDe(world, col, rng, 0);
@@ -23901,7 +23967,9 @@ function tick(state) {
   tickMemoireLieux(state, log);
 
   // En dernier : on relève ce qu'on a sous les yeux, après que tout a bougé.
-  observer(state);
+  // Les prix du moment partent au carnet (U7) : economy les calcule,
+  // connaissance les range — l'ordre des modules interdit l'import direct.
+  observer(state, prixReleves);
 
   state.rngState = rng.save();
   return state;
@@ -28253,6 +28321,35 @@ function ecranMonde() {
         <span class="v">${e(de ? de.nom : '?')} → ${e(vers ? vers.nom : '?')} · ${n(valeurCargaison(c))} ${sym()}</span></div>`;
   }).join('') : '<div class="aide">Aucune caravane sur les routes. Mauvais signe.</div>'}
   </section>
+
+  ${(() => {
+    // Le carnet du négociant (INTERFACE.md, U7) : ce qu'on SAIT des prix —
+    // des relevés datés, jamais la vérité du monde. La date vaut le chiffre.
+    const carnet = carnetPrix(S);
+    const lignes = COMMODITY_KEYS.filter((k) => carnet[k]).map((k) => {
+      const cc = carnet[k];
+      return `<div class="ligne">
+        <span class="k">${e(COMMODITIES[k].nom)}</span>
+        <span class="v">${n(cc.achat.prix, 1)} à ${e(cc.achat.nom)}
+          <span class="aide">${e(ageTexte(cc.achat.depuis))}</span>${cc.vente
+    ? ` → ${n(cc.vente.prix, 1)} à ${e(cc.vente.nom)}
+          <span class="aide">${e(ageTexte(cc.vente.depuis))}</span>` : ''}</span></div>`;
+    });
+    const meilleur = COMMODITY_KEYS.reduce((a, k) =>
+      (carnet[k] && carnet[k].vente && (!a || carnet[k].ecart > a.ecart)
+        ? Object.assign({ k }, carnet[k]) : a), null);
+    return `<section class="panneau">
+    <h2 class="titre">Carnet du négociant</h2>
+    ${meilleur && meilleur.ecart > 0 ? `<div class="aide"><b>Le coup du moment :</b>
+      ${e(COMMODITIES[meilleur.k].nom.toLowerCase())} — acheter à ${n(meilleur.achat.prix, 1)}
+      (${e(meilleur.achat.nom)}), revendre à ${n(meilleur.vente.prix, 1)}
+      (${e(meilleur.vente.nom)}) : +${n(meilleur.ecart, 1)} l’unité, d’après des
+      relevés ${e(ageTexte(Math.max(meilleur.achat.depuis, meilleur.vente.depuis)))}.</div>
+      <div class="sep"></div>` : ''}
+    ${lignes.length ? lignes.join('')
+    : '<div class="aide">Le carnet se remplit en voyageant : chaque ville sous vos yeux y laisse ses prix, datés.</div>'}
+  </section>`;
+  })()}
 
   ${blocBourses()}
 

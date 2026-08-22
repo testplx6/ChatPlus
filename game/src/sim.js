@@ -12,7 +12,7 @@ import {
 } from './base.js';
 import {
   tickColonie, etalDe, effondrer, faireSecession, faireRevolte, emploisInitiaux,
-  reserveVille,
+  reserveVille, prixReleves,
 } from './economy.js';
 import { tickClimat, conditions, saison } from './climat.js';
 import { tickChapitres, tickFils, tickMemoireLieux } from './histoire.js';
@@ -360,7 +360,7 @@ export function nouvellePartie(seed, opts = {}) {
   poserMasseInitiale(world);
 
   decouvrir(world, regionDepart, 2);
-  observer(state);
+  observer(state, prixReleves);
   tickClimat(world, 0, rng);
   rafraichirPanneaux(state, rng, 0);
   for (const col of world.colonies) etalDe(world, col, rng, 0);
@@ -659,7 +659,9 @@ export function tick(state) {
   tickMemoireLieux(state, log);
 
   // En dernier : on relève ce qu'on a sous les yeux, après que tout a bougé.
-  observer(state);
+  // Les prix du moment partent au carnet (U7) : economy les calcule,
+  // connaissance les range — l'ordre des modules interdit l'import direct.
+  observer(state, prixReleves);
 
   state.rngState = rng.save();
   return state;

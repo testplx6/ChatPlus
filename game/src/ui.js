@@ -105,7 +105,9 @@ import {
   conduite, surnombre, visibiliteAttelage,
 } from './betes.js';
 import { dirigeant, TEMPERAMENTS, LEGITIMITE_CRITIQUE } from './dirigeants.js';
-import { vueColonie, vueRegion, estSurveillee, ageTexte, nouvellesConnues } from './connaissance.js';
+import {
+  vueColonie, vueRegion, estSurveillee, ageTexte, nouvellesConnues, carnetPrix,
+} from './connaissance.js';
 import {
   groupeActif, groupes, groupeParId, choisirGroupe, tousLesMembres, tacheDe,
   assignerTache, scinder, fusionner, fusionnablesAvec, porteeOrdres, joignable, repartition,
@@ -4311,6 +4313,35 @@ function ecranMonde() {
         <span class="v">${e(de ? de.nom : '?')} → ${e(vers ? vers.nom : '?')} · ${n(valeurCargaison(c))} ${sym()}</span></div>`;
   }).join('') : '<div class="aide">Aucune caravane sur les routes. Mauvais signe.</div>'}
   </section>
+
+  ${(() => {
+    // Le carnet du négociant (INTERFACE.md, U7) : ce qu'on SAIT des prix —
+    // des relevés datés, jamais la vérité du monde. La date vaut le chiffre.
+    const carnet = carnetPrix(S);
+    const lignes = COMMODITY_KEYS.filter((k) => carnet[k]).map((k) => {
+      const cc = carnet[k];
+      return `<div class="ligne">
+        <span class="k">${e(COMMODITIES[k].nom)}</span>
+        <span class="v">${n(cc.achat.prix, 1)} à ${e(cc.achat.nom)}
+          <span class="aide">${e(ageTexte(cc.achat.depuis))}</span>${cc.vente
+    ? ` → ${n(cc.vente.prix, 1)} à ${e(cc.vente.nom)}
+          <span class="aide">${e(ageTexte(cc.vente.depuis))}</span>` : ''}</span></div>`;
+    });
+    const meilleur = COMMODITY_KEYS.reduce((a, k) =>
+      (carnet[k] && carnet[k].vente && (!a || carnet[k].ecart > a.ecart)
+        ? Object.assign({ k }, carnet[k]) : a), null);
+    return `<section class="panneau">
+    <h2 class="titre">Carnet du négociant</h2>
+    ${meilleur && meilleur.ecart > 0 ? `<div class="aide"><b>Le coup du moment :</b>
+      ${e(COMMODITIES[meilleur.k].nom.toLowerCase())} — acheter à ${n(meilleur.achat.prix, 1)}
+      (${e(meilleur.achat.nom)}), revendre à ${n(meilleur.vente.prix, 1)}
+      (${e(meilleur.vente.nom)}) : +${n(meilleur.ecart, 1)} l’unité, d’après des
+      relevés ${e(ageTexte(Math.max(meilleur.achat.depuis, meilleur.vente.depuis)))}.</div>
+      <div class="sep"></div>` : ''}
+    ${lignes.length ? lignes.join('')
+    : '<div class="aide">Le carnet se remplit en voyageant : chaque ville sous vos yeux y laisse ses prix, datés.</div>'}
+  </section>`;
+  })()}
 
   ${blocBourses()}
 

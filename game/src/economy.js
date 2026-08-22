@@ -256,6 +256,23 @@ export function prixUnitaire(col, key, stockSimule, world, ctx) {
  * d'économie vérifient déjà, et le monde joué au banc doit rester identique à
  * la graine près.
  */
+/**
+ * Les prix d'une ville tels qu'on les note au carnet (INTERFACE.md, U7) :
+ * dix nombres arrondis au dixième, un contexte calculé une fois. C'est
+ * l'économie qui les connaît ; `connaissance.js`, plus haut dans l'ordre des
+ * modules, ne peut pas l'importer — sim.js les lui fait passer en paramètre
+ * d'`observer`, comme la bataille passe à base.js par le ctx.
+ */
+export function prixReleves(col, world) {
+  if (!col || col.avantPoste || col.ruine || !(col.pop > 0)) return null;
+  const ctx = contextePrix(col, world);
+  const prix = {};
+  for (const k of COMMODITY_KEYS) {
+    prix[k] = Math.round(prixUnitaire(col, k, undefined, world, ctx) * 10) / 10;
+  }
+  return prix;
+}
+
 export function contextePrix(col, world) {
   const cours = coursMonnaie(world, col.faction);
   return {

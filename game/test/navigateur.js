@@ -1173,6 +1173,12 @@ await page.screenshot({ path: join(CAPTURES, '11-contrats.png'), fullPage: true 
     () => document.getElementById('ecran').textContent);
   ok(!/\((?:s|x)\)/.test(texteMonde), 'les pluriels de l’écran monde s’accordent',
     (texteMonde.match(/[^ ]+\((?:s|x)\)/g) || []).slice(0, 4).join(', '));
+  // Le carnet du négociant (U7) : l'écran existe et cite des relevés — dans
+  // une partie jouée, la ville de départ au moins a laissé ses prix.
+  ok(texteMonde.includes('Carnet du négociant'), 'le carnet du négociant a son écran');
+  ok(/\d+(?:,\d+)? à [^\s]/.test(texteMonde.slice(texteMonde.indexOf('Carnet du négociant')))
+    || texteMonde.includes('Le carnet se remplit en voyageant'),
+  'et il cite un prix relevé dans une ville, ou dit comment s’en procurer');
   // c. Plus aucun code de faction hors légende.
   const codes = await page.evaluate(() => {
     const s = JSON.parse(localStorage.getItem('cendres.save.v1'));

@@ -67,7 +67,7 @@ export function regionsVues(state) {
 // Relevés
 // ---------------------------------------------------------------------------
 
-function releverColonie(col, t) {
+function releverColonie(col, t, prix) {
   const stock = {};
   for (const k of COMMODITY_KEYS) stock[k] = Math.round(col.stock[k] || 0);
   return {
@@ -82,6 +82,9 @@ function releverColonie(col, t) {
     unrest: Number((col.unrest || 0).toFixed(2)),
     ruine: !!col.ruine,
     stock,
+    // Les prix du moment, si on nous les a donnés (INTERFACE.md, U7) : le
+    // carnet du négociant vit de ces dix nombres datés.
+    prix: prix || null,
   };
 }
 
@@ -93,7 +96,7 @@ function releverRegion(r, t) {
  * Met à jour les relevés des lieux sous surveillance. Appelé à chaque heure de
  * jeu : c'est deux ou trois régions en pratique, pas la carte entière.
  */
-export function observer(state) {
+export function observer(state, prixDe) {
   const c = state.connaissance || (state.connaissance = creerConnaissance(state.temps));
   const t = state.temps;
   for (const rid of regionsVues(state)) {
@@ -101,7 +104,10 @@ export function observer(state) {
     if (!r) continue;
     c.regions[rid] = releverRegion(r, t);
     const col = state.world.colonies.find((x) => x.regionId === rid);
-    if (col) c.colonies[col.id] = releverColonie(col, t);
+    if (col) {
+      c.colonies[col.id] = releverColonie(col, t,
+        prixDe ? prixDe(col, state.world) : null);
+    }
   }
   // Un contremaître qui vous apprécie assez laisse ses registres ouverts : ses
   // chiffres restent frais même à l'autre bout de la carte. C'est le seul moyen
@@ -116,10 +122,53 @@ export function observer(state) {
     for (const col of state.world.colonies) {
       if (col.ruine) continue;
       const cm = notable(col, 'contremaitre');
-      if (cm && (cm.opinion || 0) >= REGISTRES_SEUIL) c.colonies[col.id] = releverColonie(col, t);
+      if (cm && (cm.opinion || 0) >= REGISTRES_SEUIL) {
+        c.colonies[col.id] = releverColonie(col, t,
+          prixDe ? prixDe(col, state.world) : null);
+      }
     }
   }
   c.maj = t;
+}
+
+/**
+ * Le carnet du négociant (INTERFACE.md, U7) : par marchandise, où c'est le
+ * moins cher et où ça se vend le mieux, d'après les relevés qu'on possède —
+ * jamais d'après la vérité du monde. L'écart n'a de sens qu'entre deux
+ * villes distinctes, et un relevé au-delà de la péremption ne guide plus
+ * personne. Tout est daté : la date vaut autant que le chiffre.
+ */
+export function carnetPrix(state) {
+  const c = state.connaissance;
+  const t = state.temps;
+  const out = {};
+  if (!c) return out;
+  for (const k of COMMODITY_KEYS) {
+    const releves = [];
+    for (const id of Object.keys(c.colonies)) {
+      const r = c.colonies[id];
+      if (!r || r.ruine || !r.prix || r.prix[k] === undefined) continue;
+      if (t - r.t > PEREMPTION) continue;
+      releves.push({
+        colonieId: id, nom: r.nom, regionId: r.regionId,
+        prix: r.prix[k], depuis: t - r.t,
+      });
+    }
+    if (!releves.length) continue;
+    releves.sort((a, b) => a.prix - b.prix);
+    const achat = releves[0];
+    let vente = null;
+    for (let i = releves.length - 1; i >= 0; i--) {
+      if (releves[i].colonieId !== achat.colonieId) { vente = releves[i]; break; }
+    }
+    out[k] = {
+      achat,
+      vente,
+      ecart: vente ? Math.round((vente.prix - achat.prix) * 10) / 10 : 0,
+      releves: releves.length,
+    };
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

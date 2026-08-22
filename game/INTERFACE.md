@@ -202,6 +202,21 @@ deux lignes ; les portes et les noms de la carte font leur travail.
   `captures/08-large.png` ; test navigateur : le premier panneau vit à
   droite de la carte, pas dessous.
 
+- [x] **U7. Le carnet du négociant** (chantier commerce du plan solo,
+  « go » du propriétaire, août 2026) : montrer, pas inventer — le module
+  connaissance relève déjà les villes (stocks, date), mais **pas leurs
+  prix** : l'arbitrage était un exercice de mémoire du joueur. Le lot :
+  chaque relevé emporte les dix prix du moment (calculés par economy,
+  injectés dans `observer` par sim — l'ordre des modules interdit
+  l'import direct) ; un écran « Carnet du négociant » sur l'onglet
+  monde dit, par marchandise, où c'est le moins cher et où ça se vend
+  le mieux — ville, prix, âge du relevé — et l'écart le plus juteux
+  connu entre deux villes. Un relevé de plus de quatre saisons
+  (`PEREMPTION`) ne guide plus personne. Critères : test headless
+  (relevé de prix, meilleur écart, péremption), test navigateur
+  (l'écran existe et nomme des villes). Raccord à l'arbre reporté : le
+  nœud *carnet* (cotation 1) coiffera cet écran tel quel.
+
 ## Blocages
 
 Rien pour l'instant.
