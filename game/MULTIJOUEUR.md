@@ -168,6 +168,153 @@ temps réel. Pas de serveur qui simule (le relais PORTE, il ne calcule
 pas). Pas de protection contre un joueur qui triche dans SON monde — c'est
 son monde. Pas de réseau dans l'artefact claude.ai.
 
+## 7. Les modes de jeu — ce qu'on y vit, et ce que chacun apporte
+
+Demandé par le propriétaire après la première version de l'étude :
+« explore davantage les différents types de modes multi et les avantages
+de chacun ». Les architectures (§2) sont la tuyauterie ; voici les JEUX
+qu'elle permet, du moins cher au plus cher. Ils se cumulent — ce n'est pas
+un choix exclusif, c'est un ordre d'apparition possible.
+
+### M1. La course — même graine, mondes parallèles
+
+Deux joueurs entrent la même graine : le déterminisme leur donne
+**exactement le même monde**, et chacun y joue sa partie, chez lui, sans
+échanger un octet. On compare ensuite — la chronique, les chapitres, la
+richesse au jour 30, qui a survécu.
+
+- **Ce qu'on y vit** : la course, le récit comparé — « au jour 12 j'avais
+  perdu Renn, et toi ? ». La graine hebdomadaire, le défi entre amis.
+- **Avantages** : ne coûte PRESQUE RIEN (le jeu le permet déjà — il manque
+  seulement un export lisible de la chronique et un écran de comparaison) ;
+  aucune architecture, aucun réseau, aucune triche possible sur le monde
+  (même graine = mêmes cartes pour tous) ; le chantier HISTOIRE vient de
+  rendre les chroniques comparables et racontables.
+- **Limites** : on ne se rencontre pas ; c'est du multijoueur de
+  comparaison, pas d'interaction.
+- **Exige** : rien (architecture) ; un lot d'interface (export/comparaison).
+
+### M2. Le feuilleton — suivre les mondes des autres
+
+Par pli (voie B, P1) : les nouvelles et les cours du monde d'un ami
+arrivent dans votre écran Monde et votre journal, avec le retard du
+transport, racontées comme le lot D sait le faire.
+
+- **Ce qu'on y vit** : « chez Théo, la Milice a pris la capitale et leur
+  monnaie s'effondre » — le monde de l'autre devient une contrée lointaine
+  du vôtre. On se raconte nos mondes sans se les montrer.
+- **Avantages** : le plus petit pli possible (lecture seule, rien ne bouge
+  dans la simulation receveuse — « ce que ça casse » : rien) ; il installe
+  toute l'infrastructure du pli (identité, signature, idempotence) sur
+  laquelle M3 et M5 s'appuient ; asynchrone total.
+- **Limites** : contemplatif — on regarde, on n'agit pas encore.
+- **Exige** : voie B, cran P1.
+
+### M3. Le commerce — des économies qui se parlent
+
+Par pli (voie B, P2) : caravanes inter-mondes, marchandises et monnaie,
+registre comptable entre mondes. C'est le mode OGame de la promesse
+d'origine.
+
+- **Ce qu'on y vit** : l'arbitrage entre DES ÉCONOMIES RÉELLEMENT
+  DIVERGENTES — chez vous l'isotope vaut 22, chez elle 60 parce que sa
+  guerre a coupé les canyons ; sa monnaie s'est effondrée, la vôtre est
+  forte : qui fixe le prix ? Le moteur cote déjà tout — les prix libres
+  (lot I bis) prennent ici leur sens multijoueur : deux mondes n'ont
+  JAMAIS les mêmes prix.
+- **Avantages** : c'est le cœur du jeu (l'économie) qui devient le terrain
+  social ; asynchrone ; l'invariant comptable étendu rend la valeur
+  traçable ; la fraude se voit au registre.
+- **Limites** : la confiance entre inconnus reste un problème déclaré non
+  résolu (§6) ; l'équilibrage inter-mondes est un vrai sujet (un monde
+  riche peut inonder un monde pauvre — et c'est peut-être une histoire
+  qu'on VEUT possible, dans la ligne « tout doit être possible »).
+- **Exige** : voie B, cran P2.
+
+### M4. Le compagnonnage — des gens qui voyagent
+
+Par pli : un membre de VOTRE escouade part vivre une saison dans le monde
+d'un ami — il arrive là-bas comme recrue, avec son nom, ses compétences,
+ses traits, son fil personnel (chantier HISTOIRE lot C). Au retour, il
+rapporte ce qu'il a vécu.
+
+- **Ce qu'on y vit** : « je t'envoie Oria, prends-en soin » — et la stèle
+  si elle meurt là-bas. L'attachement aux individus, déjà construit par
+  INDIVIDUS et HISTOIRE, devient une monnaie d'échange émotionnelle.
+- **Avantages** : unique — aucun jeu ne fait vraiment ça ; techniquement
+  simple (un personnage est un petit objet JSON autoportant, `grainDe`
+  garantit qu'il ne décale aucun dé chez l'hôte) ; asynchrone.
+- **Limites** : règles à trancher (peut-il mourir là-bas ? revenir
+  changé ? qui arbitre un litige ?) — chaque question est une décision de
+  cahier des charges.
+- **Exige** : voie B, P1 suffit techniquement (un personnage est un
+  contenu de pli comme un autre) ; recommandé après M3.
+
+### M5. La guerre par procuration — le conflit sans horloge commune
+
+Par pli : on finance et on envoie une colonne de mercenaires vers le monde
+d'un autre. Elle arrive comme ÉVÉNEMENT chez lui — une colonne hostile de
+plus, résolue par SA simulation, chez lui, à son heure. Le résultat
+revient par pli (butin, prisonniers, nouvelles).
+
+- **Ce qu'on y vit** : le PvP d'OGame — on attaque pendant que l'autre
+  dort — mais résolu par un moteur de simulation honnête, pas par une
+  formule : sa garnison, ses murs, sa famine comptent.
+- **Avantages** : du conflit réel ENTIÈREMENT asynchrone — aucun besoin
+  d'horloge commune ni de bit-exact, puisque le défenseur est seul maître
+  de la résolution ; s'appuie sur des mécanismes finis (colonnes, sièges,
+  batailles, butin).
+- **Limites** : le défenseur simule l'attaque — un tricheur chez lui gagne
+  toujours (même clause de confiance que M3, dite d'avance) ; l'équilibrage
+  attaque/défense entre mondes d'âges différents est un chantier en soi.
+- **Exige** : voie B, cran P2 + un cahier des charges de combat
+  inter-mondes validé par le propriétaire.
+
+### M6. Le spectateur — regarder une partie
+
+Le déterminisme offre le replay gratuit : une graine + la suite des ordres
+du joueur rejouent la partie à l'identique. Partager sa partie, c'est
+partager un petit fichier ; l'autre la REGARDE se rejouer.
+
+- **Ce qu'on y vit** : « regarde comment j'ai survécu au chapitre III » ;
+  l'apprentissage, le spectacle, la preuve (pour les courses de M1 : le
+  replay EST le certificat anti-triche).
+- **Avantages** : quasi gratuit techniquement (le moteur le fait déjà, il
+  manque l'enregistrement des ordres du joueur et un mode lecture) ;
+  complète M1 en le rendant vérifiable.
+- **Limites** : même moteur JS requis pour un replay exact (voir §1) — le
+  certificat vaut entre navigateurs identiques, ou en tolérant l'écart.
+- **Exige** : rien (architecture) ; un lot moteur (journal des ordres).
+
+### M7. Le monde partagé — vivre au même endroit
+
+La voie A (§2) : plusieurs escouades dans UN monde, alliances et
+trahisons directes, la ville que VOUS tenez et que lui convoite.
+
+- **Ce qu'on y vit** : le MMO de simulation — la promesse maximale.
+- **Avantages** : l'interaction totale ; « le monde tourne sans vous »
+  devient littéral (le serveur ne dort jamais).
+- **Limites** : tout ce que §2-A dit — infrastructure, hors-ligne à
+  redéfinir, vitesse de jeu négociée, le plus gros chantier du projet.
+- **Exige** : voie A entière.
+
+### Ce que ça dessine
+
+| mode | interaction | coût | architecture |
+|---|---|---|---|
+| M1 course | comparer | ~nul | aucune |
+| M2 feuilleton | se raconter | petit | B / P1 |
+| M3 commerce | échanger | moyen | B / P2 |
+| M4 compagnonnage | confier | moyen | B / P1-P2 |
+| M5 guerre par pli | s'affronter | moyen+ | B / P2 + cahier |
+| M6 spectateur | montrer | petit | journal d'ordres |
+| M7 monde partagé | vivre ensemble | maximal | A |
+
+L'escalier naturel : **M1 (course) tout de suite** — il ne demande que de
+rendre les chroniques comparables —, puis **M2 → M3** qui posent le pli et
+le commerce, **M4/M5** qui donnent l'émotion et le conflit, **M6** en
+compagnon de M1, et **M7** le jour où le jeu mérite un serveur.
+
 ## Les décisions du propriétaire avant d'ouvrir le chantier
 
 1. **La voie** : B en trois crans (recommandée), ou A directement, ou rien.
