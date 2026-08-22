@@ -7,6 +7,14 @@ apprentissage, même la carte ». Format METHODE §9. **Rien ne se code
 avant que le propriétaire ait validé l'arbre et le départ nu ci-dessous**
 — un nœud de recherche est une règle de jeu.
 
+**Reporté par le propriétaire, août 2026** : « l'arbre des technos vient
+plus tard, d'abord il faut tout le reste de la mécanique et des
+bâtiments ». L'ordre est le bon : l'arbre organise du contenu — il vaut
+ce que valent les mécaniques qu'il verrouille. Ce cahier des charges
+reste la référence pour ce jour-là ; rien n'y est engagé, et chaque
+mécanique nouvelle construite d'ici là devra dire dans son propre
+cahier des charges où elle prendra place dans l'arbre.
+
 ## 1. Le constat, chiffré
 
 Ce qui est donné d'office aujourd'hui, à la première heure de jeu :
