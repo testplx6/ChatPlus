@@ -548,6 +548,11 @@ commande.
   désormais les chapitres, les dépêches causales, les fils personnels, les
   figures, la mémoire des lieux, et les accords de la chronique.
 
+  **Et une troisième fois (« republie »), après U4 ter** : SHA-256
+  `445721358b69b9382c799ae3f8778923fb3142e33481f05b8b453019aed54331`,
+  étiquette « tenue-du-solitaire » — la jauge du joueur seul parle au
+  singulier dans la version publique aussi.
+
 ---
 
 ## Lot G — la colonne qu'on ne paie plus (règle donnée par le propriétaire)
