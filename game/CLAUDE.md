@@ -74,7 +74,8 @@ quelqu'un d'autre.
 | `CIBLES.json` | les gardes du monde vérifiées par `verifier --complet` |
 | `INTERFACE.md` | le chantier de ce que le joueur voit — montrer, pas inventer |
 | `HISTOIRE.md` | le chantier du récit — l'histoire sort de la simulation, jamais l'inverse |
-| `MULTIJOUEUR.md` | l'étude multijoueur — trois architectures, une voie proposée, décisions au propriétaire |
+| `MULTIJOUEUR.md` | l'étude multijoueur — trois architectures, sept modes, décisions au propriétaire |
+| `TECHNOLOGIE.md` | l'arbre technologique et le départ nu — 4 branches, 32 nœuds, en attente de validation |
 | `PISTES.md` | des idées consignées, pas des chantiers — rien n'y est engagé |
 | `README.md` | le projet, les tests, l'architecture |
 
