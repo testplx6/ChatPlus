@@ -146,18 +146,36 @@ côté monde (les colonnes gardent leur attrition). Pas de prisonniers
 ni de rançons — consigné comme piste, pas engagé. Pas de constante
 posée sans mesure.
 
-## Les décisions du propriétaire
+## Les décisions du propriétaire — tranchées, août 2026
 
-1. **Valider ou amender les quatre lots** (S1 raid-bataille, S2
-   l'alerte du poste, S3 les verbes du siège, S4 les murs). L'ordre
-   proposé est l'ordre de livraison.
-2. **La mort des vôtres au camp** : dans un raid perdu *sans* escouade
-   sur place, des habitants peuvent-ils mourir (à la Kenshi), ou
-   seulement fuir comme aujourd'hui ? Et un membre nommé laissé au
-   camp — blessable, mortel, ou intouchable ? C'est le curseur de
-   dureté du jeu entier.
-3. **Négocier avec une faction en guerre contre vous** : possible au
-   prix fort, ou jamais (la guerre ne s'achète pas au pied du mur) ?
+1. **Les quatre lots : validés** (« les lots ont l'air pas mal »),
+   dans l'ordre S1 → S4.
+2. **La mort au camp : simulation pleine.** « Possibilité de mourir,
+   être blessé, KO etc, une vraie simulation quoi. » Partout où ça se
+   bat, les règles de blessure existantes tranchent — membres touchés,
+   KO, achèvement selon la létalité de l'assaillant — jamais un pile
+   ou face hors bataille. Les habitants d'un camp envahi peuvent
+   mourir ; un membre nommé présent au camp se bat comme les autres,
+   donc risque comme les autres.
+3. **La négociation : possible, même en guerre** — « car vraie
+   simulation ». Garde-fou de la même simulation : payer laisse une
+   trace. Qui lève un siège contre crédits se fait connaître comme
+   payeur, et le prix monte à chaque paiement. Sans cette mémoire,
+   négocier serait le bouton qu'on presse toujours.
+
+## L'avancement
+
+- [x] S1 — le raid est une bataille — livré : l'assaillant est nommé
+  (bandits, ou l'Essaim là où il contrôle le secteur — les factions en
+  rancune viendront avec S3), la bataille passe par le moteur de combat
+  quand un groupe est au camp (`raidSurLaBase`, injectée par `ctx` —
+  base.js précède events.js), la milice se lève de la population et ses
+  morts se décomptent, un camp envahi perd des habitants en plus du
+  stock. Tout le hasard nouveau dérivé (`grainDe('raid', t)`) ; les
+  tirages du flux joueur inchangés (déclenchement, pillage).
+- [ ] S2 — le poste tient sa promesse
+- [ ] S3 — les verbes du siège
+- [ ] S4 — les murs et la brèche
 
 ## Blocages
 

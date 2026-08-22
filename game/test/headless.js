@@ -37,7 +37,7 @@ import { BETES } from '../src/betes.js';
 import {
   attaquerCaravane, passerOrdre, ordresEnCours, ESCORTES,
 } from '../src/caravanes.js';
-import { combatContre, fouillerSite, inscrireAuMemorial } from '../src/events.js';
+import { combatContre, fouillerSite, inscrireAuMemorial, creerLogger } from '../src/events.js';
 import {
   bandeLocale, tenterChasseurs, erosionEstime, EROSION_ESTIME,
 } from '../src/events.js';
@@ -73,6 +73,7 @@ import {
   declarerIndependance, synchroniserVitrine,
   manoeuvres, affecter, rendementMetier, mainDoeuvre, niveauRech,
   perdreAvantPoste, saccagerAvantPoste, menacesSurLaBase, rendementLibre, AMENDEMENT_MAX,
+  raidSurLaBase,
   recetteDe, recettesDe, reglerRecette, reglerReserve, brasEscouade,
   voulus, tenus, postesDegarnis, brasDisponibles, ORDRE_EMBAUCHE, tempsRecherche,
   deposer,
@@ -10446,6 +10447,55 @@ section('M6 — le pas adaptatif du prix : les pow aux ancres, la pente entre de
   `caisse ${(med(ecarts.caisse) * 100).toFixed(3)} % · ménages ${(med(ecarts.menages) * 100).toFixed(3)} % · rations ${(med(ecarts.rations) * 100).toFixed(3)} %`);
   ok(med(ecarts.unrest) < 0.005, 'et la grogne suit — médiane sous 0,005',
     med(ecarts.unrest).toFixed(5));
+}
+
+// ===========================================================================
+section('S. Le siège — S1, le raid est une bataille (SIEGE.md)');
+
+// L'escouade au camp : le raid passe par le moteur de combat, pas par un jet.
+{
+  const s = nouvellePartie(4242, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const g = groupeActif(s);
+  s.base.fonde = true;
+  s.base.nom = 'Le Rebut';
+  s.base.regionId = g.regionId;
+  s.base.pop = 24;
+  s.base.batiments = { mur: 1, entrepot: 2 };
+  s.base.stock.ferraille = 200;
+  s.base.stock.rations = 120;
+  s.base.defense = 40;
+  const combatsAvant = s.stats.combats;
+  const jAvant = s.journal.length;
+  raidSurLaBase(s, creerLogger(s), { rng: new Rng(7), combatContre, genererBande }, 40);
+  ok(s.stats.combats === combatsAvant + 1,
+    'l’escouade au camp : le raid se résout par une vraie bataille');
+  const depuis = s.journal.slice(jAvant);
+  ok(depuis.some((e) => e.type === 'combat'),
+    'et la chronique raconte le combat, nom de la bande compris');
+  ok(!depuis.some((e) => /assaillants\)\.$/.test(e.texte || '')),
+    'plus de raid anonyme quand on s’est battu');
+}
+
+// Sans un défenseur sur place : le camp envahi saigne — des habitants meurent.
+{
+  const s = nouvellePartie(4242, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const g = groupeActif(s);
+  const ailleurs = s.world.regions.find((r) => r.i !== g.regionId);
+  s.base.fonde = true;
+  s.base.nom = 'Le Rebut';
+  s.base.regionId = ailleurs.i;
+  s.base.pop = 30;
+  s.base.batiments = { entrepot: 2 };
+  s.base.stock.ferraille = 300;
+  s.base.defense = 15;
+  const jAvant = s.journal.length;
+  raidSurLaBase(s, creerLogger(s), { rng: new Rng(9), combatContre, genererBande }, 400);
+  ok(s.base.pop < 30,
+    'un camp envahi sans défenseurs perd des habitants, pas seulement du stock',
+    `pop ${s.base.pop}`);
+  const textes = s.journal.slice(jAvant).map((e) => e.texte || '').join(' | ');
+  ok(!textes.includes('L’avant-poste est pillé'),
+    'et le pillard a un nom', textes.slice(0, 140));
 }
 
 // ===========================================================================

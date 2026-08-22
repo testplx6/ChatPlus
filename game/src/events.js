@@ -151,8 +151,12 @@ export function combatContre(state, bande, log, ctx, groupe) {
   // Un élève à l'école ne monte pas au feu : il est en ville, pas au campement.
   const combattants = squad.filter((c) => c.etat !== 'mort' && !occupeParEcole(c));
 
+  // La milice du camp (SIEGE.md, S1) : levée sur place par `raidSurLaBase`,
+  // elle se bat cette bataille-là et retourne à ses bacs — ses morts se
+  // décomptent de la population au retour, pas ici.
+  const renforts = ctx.renfortsLocaux ? ctx.renfortsLocaux.slice() : [];
+
   // À partir de Capitaine, les siens viennent prêter main-forte chez eux.
-  const renforts = [];
   const nbRenforts = renfortsDisponibles(state, g);
   for (let i = 0; i < nbRenforts; i++) {
     const allie = makeCharacter(rng, { niveau: 2 });
@@ -160,10 +164,10 @@ export function combatContre(state, bande, log, ctx, groupe) {
     allie.renfort = true;
     renforts.push(allie);
   }
-  if (renforts.length) {
+  if (nbRenforts > 0) {
     log({
       type: 'renfort',
-      texte: `${renforts.length} homme${renforts.length > 1 ? 's' : ''} ${drapeauDe(state.world, g.allegeance.faction).genitif} accourent.`,
+      texte: `${nbRenforts} homme${nbRenforts > 1 ? 's' : ''} ${drapeauDe(state.world, g.allegeance.faction).genitif} accourent.`,
       regionId: g.regionId,
     });
   }

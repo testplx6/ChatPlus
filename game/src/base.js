@@ -4,11 +4,11 @@
 import {
   BUILDINGS, RESEARCH, COMMODITY_KEYS, COMMODITIES, METIERS, METIER_KEYS, BIOMES,
   FACTIONS, RECETTES, ARRET, drapeauDe,} from './data.js';
-import { grainDe } from './rng.js';
+import { Rng, grainDe } from './rng.js';
 import { rendementRegion } from './world.js';
 import { METEO } from './climat.js';
 import { loisDe } from './lois.js';
-import { comp, gagnerXp, estDebout, XP_PRATIQUE } from './characters.js';
+import { comp, gagnerXp, estDebout, estVivant, makeCharacter, XP_PRATIQUE } from './characters.js';
 import { groupes, groupeActif } from './groupes.js';
 import { garnison, avantage } from './allegeance.js';
 import { estSurveillee } from './connaissance.js';
@@ -1302,38 +1302,8 @@ export function tickBase(state, log, ctx) {
   const guet = niveau(base, 'poste') * M.garde;
   const vigilance = 1 / (1 + guet * 0.22);
   if (t - base.derniereAttaque > 72 && rng.chance(0.0016 * (1 + reg.danger * 4) * vigilance)) {
-    base.derniereAttaque = t;
     const force = rng.irange(20, 45) + Math.floor(t / 600) + Math.round((base.pop || 0) * 1.5);
-    // `forceEscouade` ne compte déjà que les gens présents : laisser
-    // l'avant-poste sans personne, c'est le laisser à sa garnison.
-    const defense = base.defense + forceEscouade(state);
-    if (defense > force) {
-      base.defense = Math.max(0, base.defense - force * 0.3);
-      log({
-        type: 'raid',
-        texte: `Raid repoussé sur l’avant-poste (${force} assaillants).`,
-        regionId: base.regionId,
-        important: true,
-      });
-    } else {
-      let vole = 0;
-      const sauve = Math.min(0.7, guet * 0.13);
-      for (const k of COMMODITY_KEYS) {
-        const pris = Math.round((base.stock[k] || 0) * rng.range(0.15, 0.4) * (1 - sauve));
-        base.stock[k] -= pris;
-        vole += pris;
-      }
-      base.defense = 0;
-      if (niveau(base, 'mur') > 0 && rng.chance(0.4)) {
-        base.batiments.mur = Math.max(0, base.batiments.mur - 1);
-      }
-      log({
-        type: 'raid',
-        texte: `L’avant-poste est pillé : ${vole} unités emportées.`,
-        regionId: base.regionId,
-        important: true,
-      });
-    }
+    raidSurLaBase(state, log, ctx, force, guet);
   }
 
   // Ce que l'entrepôt n'a pas pu prendre. On ne le dit pas à chaque heure — ce
@@ -1893,6 +1863,133 @@ export function saccagerAvantPoste(state, log, force) {
       important: true,
     });
   }
+}
+
+/**
+ * Le raid, réglé. Objet mutable : ces valeurs se calibrent en partie jouée
+ * (critères de la section S du headless), pas à la main.
+ */
+export const RAID = {
+  parTete: 9,         // un assaillant généré pour tant de force
+  bandeMin: 3,
+  bandeMax: 9,
+  parMilicien: 6,     // un milicien levé pour tant d'habitants
+  miliceMax: 6,
+  sang: [0.02, 0.06], // morts au camp envahi, en part de la force adverse
+};
+
+/**
+ * Qui frappe. Dérivé de l'état du monde, jamais tiré : l'Essaim là où il
+ * contrôle le secteur, des bandits partout ailleurs. Les factions en rancune
+ * viendront avec S3 — c'est la mémoire de la négociation qui les nommera.
+ */
+export function assaillantDe(state) {
+  const reg = state.world.regions[state.base.regionId];
+  return reg && reg.controle === 'essaim' ? 'essaim' : 'bandits';
+}
+
+/**
+ * Un raid sur l'avant-poste (SIEGE.md, S1). Deux régimes :
+ *
+ * - Un groupe est au camp : la bataille a lieu pour de bon, homme par homme,
+ *   par le moteur de combat — blessés, morts, butin, mémorial, tout compte.
+ *   La milice se lève de la population et se bat aux côtés de l'escouade ;
+ *   ses morts sont des habitants en moins.
+ * - Personne : l'arbitrage chiffré d'avant demeure (défense contre force),
+ *   mais l'assaillant a un nom, et un camp envahi perd des habitants — pas
+ *   seulement du stock. Simulation pleine : décision du propriétaire.
+ *
+ * Tout le hasard nouveau (bande, milice, morts) se dérive de la graine et de
+ * l'heure (`grainDe`) : le flux du joueur garde exactement les tirages
+ * d'avant — déclenchement, pillage — et le monde n'en voit aucun. La bataille
+ * arrive par `ctx` (combatContre, genererBande) : base.js précède events.js
+ * dans l'ordre des modules et ne peut pas l'importer.
+ */
+export function raidSurLaBase(state, log, ctx, force, guet = 0) {
+  const base = state.base;
+  const rng = ctx.rng;
+  const t = state.temps;
+  base.derniereAttaque = t;
+  const rngRaid = new Rng(grainDe(state.world.graine, 'raid', String(t)));
+  const taille = Math.max(RAID.bandeMin,
+    Math.min(RAID.bandeMax, Math.round(force / RAID.parTete)));
+  const bande = ctx.genererBande
+    ? ctx.genererBande(rngRaid, assaillantDe(state), taille, Math.min(2, Math.floor(t / 900)))
+    : null;
+
+  const gIci = groupes(state).find(
+    (g) => g.regionId === base.regionId && g.membres.some(estVivant)
+  );
+  if (bande && gIci && ctx.combatContre) {
+    // La milice se lève : des habitants, pas des soldats — ils comptent, et
+    // ils peuvent mourir.
+    const milice = [];
+    const nMilice = Math.min(RAID.miliceMax,
+      Math.floor((base.pop || 0) / RAID.parMilicien));
+    for (let i = 0; i < nMilice; i++) {
+      const m = makeCharacter(rngRaid, { niveau: 1 });
+      m.renfort = true;
+      milice.push(m);
+    }
+    const res = ctx.combatContre(state, bande, log,
+      { rng: rngRaid, renfortsLocaux: milice }, gIci);
+    const tombes = milice.filter((m) => m.etat === 'mort').length;
+    if (tombes > 0) {
+      base.pop = Math.max(0, (base.pop || 0) - tombes);
+      log({
+        type: 'raid',
+        texte: `${tombes} milicien${tombes > 1 ? 's' : ''} de ${base.nom} `
+          + `${tombes > 1 ? 'sont tombés' : 'est tombé'} en défendant le camp.`,
+        regionId: base.regionId,
+        important: true,
+      });
+    }
+    if (res.vainqueur !== 'B') {
+      base.defense = Math.max(0, base.defense - force * 0.15);
+      return;
+    }
+    // La bataille est perdue : le camp est à eux, le pillage suit.
+  } else {
+    // `forceEscouade` ne compte déjà que les gens présents : laisser
+    // l'avant-poste sans personne, c'est le laisser à sa garnison.
+    const defense = base.defense + forceEscouade(state);
+    if (defense > force) {
+      base.defense = Math.max(0, base.defense - force * 0.3);
+      log({
+        type: 'raid',
+        texte: `Raid de ${bande ? bande.nom : 'pillards'} repoussé sur ${base.nom} `
+          + `(${force} assaillants — la garnison a tenu).`,
+        regionId: base.regionId,
+        important: true,
+      });
+      return;
+    }
+  }
+
+  // Envahi. On emporte, et l'on tue : la vigie sauve une part du stock,
+  // pas les gens.
+  let vole = 0;
+  const sauve = Math.min(0.7, guet * 0.13);
+  for (const k of COMMODITY_KEYS) {
+    const pris = Math.round((base.stock[k] || 0) * rng.range(0.15, 0.4) * (1 - sauve));
+    base.stock[k] -= pris;
+    vole += pris;
+  }
+  base.defense = 0;
+  const tues = Math.min(Math.floor((base.pop || 0) * 0.25),
+    Math.max(1, Math.round(rngRaid.range(RAID.sang[0], RAID.sang[1]) * force)));
+  base.pop = Math.max(0, (base.pop || 0) - tues);
+  if (niveau(base, 'mur') > 0 && rng.chance(0.4)) {
+    base.batiments.mur = Math.max(0, base.batiments.mur - 1);
+  }
+  log({
+    type: 'raid',
+    texte: `${base.nom} mis à sac par ${bande ? bande.nom : 'des pillards'} : `
+      + `${vole} unités emportées`
+      + `${tues > 0 ? `, ${tues} habitant${tues > 1 ? 's' : ''} tué${tues > 1 ? 's' : ''}` : ''}.`,
+    regionId: base.regionId,
+    important: true,
+  });
 }
 
 /**

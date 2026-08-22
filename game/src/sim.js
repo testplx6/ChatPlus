@@ -19,7 +19,8 @@ import { tickCaravanes } from './caravanes.js';
 import { tickCoffres } from './coffres.js';
 import { tickFactions } from './factions.js';
 import { tickSquad } from './squad.js';
-import { creerLogger } from './events.js';
+import { creerLogger, combatContre } from './events.js';
+import { genererBande } from './combat.js';
 import { VERSION } from './save.js';
 import { groupeVide } from './groupes.js';
 import { creerConnaissance, observer, estSurveillee } from './connaissance.js';
@@ -423,6 +424,11 @@ export function tick(state) {
   // Ce qui défend le camp au moment du choc : les vôtres restés sur place, et
   // la colonne que la Milice envoie à ceux qui la servent (voir SERVICES).
   ctx.renfortAvantPoste = () => forceEscouade(state) + renfortMilice(state);
+  // Le raid se bat pour de bon (SIEGE.md, S1) : base.js précède events.js
+  // dans l'ordre des modules et ne peut pas l'importer — la bataille lui est
+  // prêtée par ici, comme la caravane l'emprunte via main.js.
+  ctx.genererBande = genererBande;
+  ctx.combatContre = combatContre;
   // Qui a une raison de venir prendre votre ville : ceux qui vous détestent, et
   // ceux à qui vous faites la guerre en portant d'autres couleurs. Les autres
   // savent qu'elle a un propriétaire et regardent ailleurs.
