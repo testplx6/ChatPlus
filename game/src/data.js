@@ -557,6 +557,16 @@ export const BUILDINGS = {
     energie: -2,
     max: 5,
   },
+  salle: {
+    nom: 'Salle d’exercice',
+    desc: 'Un plancher qui rend les coups, des mannequins lestés, un maître de maison.',
+    cout: { ferraille: 55, alliage: 6 },
+    coutMul: 1.6,
+    heures: 8,
+    tempsMul: 1.4,
+    energie: 0,
+    max: 2,
+  },
   distillerie: {
     nom: 'Distillerie',
     desc: 'Biomasse → carburant, à l’alambic. Rendement de misère — mais la terre paie enfin la route.',

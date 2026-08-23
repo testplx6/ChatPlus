@@ -268,6 +268,9 @@ export function normaliser(state) {
     if (b.brecheEtat === undefined) b.brecheEtat = 1;
     // Avant, rien ne se montait au camp : ni charrette, ni lame.
     if (!b.fileFab) b.fileFab = [];
+    // Avant, la milice était des silhouettes jetables : personne n'y mourait
+    // pour de bon.
+    if (!b.miliceMorts) b.miliceMorts = [];
     if (!b.reserves) b.reserves = {};
     if (!b.recettes) {
       // Les consignes n'existaient pas, et la raffinerie faisait les deux à la

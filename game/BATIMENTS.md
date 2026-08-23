@@ -219,7 +219,15 @@ décisions). Pas de bâtiment « qui donne +X % de tout ».
   achetée perd de l'argent). Consigne « marche/arrêt » comme les autres
   chaînes, réserve de biomasse respectée (`consommer`), les drêches au
   rebut.
-- [ ] B5 — la salle d'exercice
+- [x] B5 — la salle d'exercice — livré : bâtiment `salle` (2 niveaux,
+  famille Se défendre et soigner). Le maître de maison plancher
+  l'entraînement au camp (40 puis 55, jamais 70 — le nœud *instruction*
+  de l'arbre) sans détrôner le mentorat vivant. La milice se lève
+  formée (niveau 2 avec salle 2) et **a des visages** : `leverMilice`
+  dérive chaque milicien de son index d'habitant (`grainDe`), les
+  mêmes reviennent d'un raid à l'autre, les tombés sont nommés au
+  journal et ne reviennent pas (`miliceMorts`, née dans `creerBase` et
+  `normaliser`).
 
 ## Blocages
 

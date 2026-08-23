@@ -3135,7 +3135,7 @@ function ecranBase() {
     { nom: 'Changer la terre', clefs: ['semoir', 'terraformeur'] },
     { nom: 'Alimenter', clefs: ['generateur', 'solaire', 'eolienne'] },
     { nom: 'Produire', clefs: ['entrepot', 'fonderie', 'raffinerie', 'distillerie', 'atelier', 'forge'] },
-    { nom: 'Se défendre et soigner', clefs: ['mur', 'poste', 'infirmerie'] },
+    { nom: 'Se défendre et soigner', clefs: ['mur', 'poste', 'infirmerie', 'salle'] },
     { nom: 'Savoir et commercer', clefs: ['antenne', 'comptoir', 'attelage'] },
   ];
   // Un bâtiment absent de ces listes n'existe pour personne : il ne s'affiche

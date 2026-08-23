@@ -639,6 +639,14 @@ function tickGroupe(state, g, log, ctx) {
             // pas lui-même : on regarde tout le monde debout, pas le paquet.
             let maitre = 0;
             for (const c of debout) maitre = Math.max(maitre, comp(c, skill));
+            // La salle d'exercice (BATIMENTS.md, B5) : un maître de maison
+            // plancher le ton — au camp seulement, et jamais au-delà de 55.
+            // Le 70 est un savoir : il s'apprendra (nœud instruction de
+            // l'arbre). Le mentorat vivant garde sa place au-dessus.
+            if (state.base.fonde && g.regionId === state.base.regionId) {
+              const salle = Math.min(2, nivBat(state.base, 'salle'));
+              if (salle > 0) maitre = Math.max(maitre, salle >= 2 ? 55 : 40);
+            }
             for (const c of paquet.gens) {
               const av = c.skills[skill];
               const ecart = Math.max(0, maitre - comp(c, skill));

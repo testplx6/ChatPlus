@@ -76,7 +76,7 @@ import {
   raidSurLaBase, raidEnApproche, siegeEnCours, prixSiege, negocierSiege,
   sortieContreSiege, evacuerCamp, RANCON, userMursSiege, MURS,
   lancerFabrication, ATTELAGE, FORGE, coutForge, forgeables,
-  facteurClimatRecolte, DISTILLERIE,
+  facteurClimatRecolte, DISTILLERIE, leverMilice,
   recetteDe, recettesDe, reglerRecette, reglerReserve, brasEscouade,
   voulus, tenus, postesDegarnis, brasDisponibles, ORDRE_EMBAUCHE, tempsRecherche,
   deposer,
@@ -10884,6 +10884,52 @@ section('B1. L’attelage — fabriquer et réparer la charrette (BATIMENTS.md)'
   ok(avec.base.stock.carburant > sans.base.stock.carburant,
     'et il en sort du carburant',
     `${avec.base.stock.carburant.toFixed(1)} vs ${sans.base.stock.carburant.toFixed(1)}`);
+}
+
+// B5 : la salle d'exercice — un maître de maison, et une milice qui a des
+// visages.
+{
+  const decor = (salle) => {
+    const s = nouvellePartie(783, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(s);
+    s.base.fonde = true;
+    s.base.regionId = g.regionId;
+    s.base.pop = 10;
+    if (salle) s.base.batiments = { salle };
+    for (const c of g.membres) c.skills.melee = 5;
+    g.inventaire.rations = 200;
+    donnerOrdre(s, { type: 'entrainement', skill: 'melee' }, g);
+    avancer(s, 72);
+    return Math.max(...g.membres.map((c) => c.skills.melee));
+  };
+  const sans = decor(0);
+  const avec = decor(2);
+  ok(avec > sans,
+    'le maître de maison fait progresser même sans vétéran dans le groupe',
+    `mêlée ${sans} sans salle, ${avec} avec`);
+}
+{
+  const s = nouvellePartie(784, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const g = groupeActif(s);
+  s.base.fonde = true;
+  s.base.regionId = g.regionId;
+  s.base.pop = 30;
+  const m1 = leverMilice(s);
+  const m2 = leverMilice(s);
+  ok(m1.length > 0 && m1.every((m, i) => m.nom === m2[i].nom),
+    'la milice a des visages : les mêmes habitants reviennent d’un raid à l’autre',
+    m1.map((m) => m.nom).join(', '));
+  s.base.miliceMorts = [m1[0].milicienIdx];
+  const m3 = leverMilice(s);
+  ok(!m3.some((m) => m.milicienIdx === m1[0].milicienIdx),
+    'un milicien tombé ne revient pas — le camp a sa mémoire');
+  const force = (m) => Object.values(m.skills).reduce((a, b) => a + b, 0);
+  s.base.miliceMorts = [];
+  s.base.batiments = { salle: 2 };
+  const m4 = leverMilice(s);
+  ok(force(m4[0]) > force(m1[0]),
+    'la salle au niveau 2 lève une milice mieux formée',
+    `${force(m1[0])} → ${force(m4[0])}`);
 }
 
 // ===========================================================================

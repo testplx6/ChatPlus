@@ -43,6 +43,9 @@ export function creerBase() {
     // La file de fabrication de l'attelage — et de la forge, plus tard
     // (BATIMENTS.md, B1). Distincte de `file` : on n'y bâtit pas, on y monte.
     fileFab: [],
+    // Les miliciens tombés, par index d'habitant : ils ne reviennent pas
+    // (BATIMENTS.md, B5).
+    miliceMorts: [],
     // Ce que l'entrepôt n'a pas pu prendre, cumulé. L'écrêtage était muet.
     gaspille: 0,
     gaspilleJour: 0,
@@ -577,6 +580,10 @@ export function apportBatiment(base, key, state) {
       return 'Plus de place. Ce qui ne rentre pas dans l’entrepôt est perdu pour de bon.';
     case 'cantine':
       return 'Jusqu’à un tiers de vivres en moins pour les mêmes bouches, et du moral.';
+    case 'salle':
+      return n >= 2
+        ? 'Le maître de maison vaut 55 à l’entraînement, et la milice se lève formée.'
+        : 'Le maître de maison vaut 40 à l’entraînement du camp.';
     case 'distillerie':
       return 'Biomasse → carburant, au cinquième. Respecte la réserve de biomasse.';
     case 'serres':
@@ -2126,6 +2133,35 @@ export function assaillantDe(state) {
 }
 
 /**
+ * La milice du camp (SIEGE.md S1, BATIMENTS.md B5) : des habitants qui
+ * prennent ce que l'entrepôt contient et montent au mur. Chacun se dérive de
+ * la graine et de SON index d'habitant — pas de l'heure du raid : les mêmes
+ * visages reviennent d'un assaut à l'autre, peuvent se faire un nom, et un
+ * tombé ne revient pas (`miliceMorts`). La salle d'exercice au niveau 2 les
+ * lève mieux formés.
+ */
+export function leverMilice(state) {
+  const base = state.base;
+  const nMilice = Math.min(RAID.miliceMax,
+    Math.floor((base.pop || 0) / RAID.parMilicien));
+  const morts = base.miliceMorts || [];
+  const nivMilice = 1 + (Math.min(2, niveau(base, 'salle')) >= 2 ? 1 : 0);
+  const milice = [];
+  for (let idx = 0; milice.length < nMilice
+    && idx < nMilice + morts.length + 8; idx++) {
+    if (morts.includes(idx)) continue;
+    const m = makeCharacter(
+      new Rng(grainDe(state.world.graine, 'milicien', String(idx))),
+      { niveau: nivMilice }
+    );
+    m.renfort = true;
+    m.milicienIdx = idx;
+    milice.push(m);
+  }
+  return milice;
+}
+
+/**
  * Un raid sur l'avant-poste (SIEGE.md, S1). Deux régimes :
  *
  * - Un groupe est au camp : la bataille a lieu pour de bon, homme par homme,
@@ -2184,25 +2220,20 @@ export function raidSurLaBase(state, log, ctx, force, guet = 0) {
     (g) => g.regionId === base.regionId && g.membres.some(estVivant)
   );
   if (bande && gIci && ctx.combatContre) {
-    // La milice se lève : des habitants, pas des soldats — ils comptent, et
-    // ils peuvent mourir.
-    const milice = [];
-    const nMilice = Math.min(RAID.miliceMax,
-      Math.floor((base.pop || 0) / RAID.parMilicien));
-    for (let i = 0; i < nMilice; i++) {
-      const m = makeCharacter(rngRaid, { niveau: 1 });
-      m.renfort = true;
-      milice.push(m);
-    }
+    // La milice se lève : des habitants, pas des soldats — ils comptent,
+    // ils peuvent mourir, et ce sont les mêmes qui reviennent (B5).
+    const milice = leverMilice(state);
     const res = ctx.combatContre(state, bande, log,
       { rng: rngRaid, renfortsLocaux: milice }, gIci);
-    const tombes = milice.filter((m) => m.etat === 'mort').length;
-    if (tombes > 0) {
-      base.pop = Math.max(0, (base.pop || 0) - tombes);
+    const tombes = milice.filter((m) => m.etat === 'mort');
+    if (tombes.length > 0) {
+      base.pop = Math.max(0, (base.pop || 0) - tombes.length);
+      base.miliceMorts = (base.miliceMorts || [])
+        .concat(tombes.map((m) => m.milicienIdx));
       log({
         type: 'raid',
-        texte: `${tombes} milicien${tombes > 1 ? 's' : ''} de ${base.nom} `
-          + `${tombes > 1 ? 'sont tombés' : 'est tombé'} en défendant le camp.`,
+        texte: `${tombes.map((m) => m.nom).join(', ')} — `
+          + `tombé${tombes.length > 1 ? 's' : ''} en défendant ${base.nom}.`,
         regionId: base.regionId,
         important: true,
       });
