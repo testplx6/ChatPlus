@@ -82,10 +82,12 @@ mécanisme existant** — jamais un « +2 % abstrait ». Tout est côté
 base/joueur : le monde partagé n'y touche pas (règle multijoueur
 préservée).
 
-## 4. L'arbre — quatre branches, 32 nœuds
+## 4. L'arbre — quatre branches, 33 nœuds
 
 Les 18 recherches actuelles gardent leurs effets et prennent place ;
-14 nouvelles s'y ajoutent. Notation : *(N)* = nouveau, *(=)* = chaînage
+15 nouvelles s'y ajoutent (dont *instruction*, née du raccord
+BATIMENTS.md — la branche III n'avait rien pour la formation).
+Notation : *(N)* = nouveau, *(=)* = chaînage
 déjà en place. « préreq » se lit : recherche niveau.
 
 ### Branche I — La matière
@@ -99,7 +101,7 @@ déjà en place. « préreq » se lit : recherche niveau.
 | ingenierie | metallurgie 2 | 5 | vitesse de recherche ; **débloque antenne** |
 | *(N)* recuperation | refonte 2 | 3 | le butin rend +15 %/niv de ferraille et composants (dépouilles) |
 | *(N)* automatisation | ingenierie 2 | 3 | chaque niveau libère un poste par chaîne — les mêmes bras produisent plus |
-| *(N)* usinage | ingenierie 3, refonte 2 | 2 | l'atelier fabrique le palier 2, puis le palier 3 (rail, exo, masse) — aujourd'hui introuvables hors des meilleurs étals |
+| *(N)* usinage | ingenierie 3, refonte 2 | 2 | la forge (BATIMENTS.md) fabrique les armures et outillages du palier 3 (exo, masse) — aujourd'hui introuvables hors des meilleurs étals |
 
 ### Branche II — La terre
 
@@ -111,8 +113,8 @@ déjà en place. « préreq » se lit : recherche niveau.
 | terraformation | insemination 2 *(=)* | 5 | station de terraformation — existant |
 | renouvelable | — | 5 | solaire/éoliennes, +12 %/niv — existant |
 | *(N)* conserves | cultures 2 | 3 | la cantine cale mieux : la faim monte −10 %/niv au camp |
-| *(N)* serres | hydroponie_av 2 | 2 | l'hydroponie ignore davantage les saisons (l'amorti climatique double par niveau) |
-| *(N)* distillerie | cultures 3, pyrolyse 1 | 2 | recette biomasse→carburant à la raffinerie — la terre paie la route |
+| *(N)* serres | hydroponie_av 2 | 2 | double l'amorti du bâtiment serres (BATIMENTS.md) |
+| *(N)* distillerie | cultures 3, pyrolyse 1 | 2 | déverrouille le bâtiment distillerie (BATIMENTS.md) — la terre paie la route |
 
 ### Branche III — Le sang
 
@@ -124,7 +126,8 @@ déjà en place. « préreq » se lit : recherche niveau.
 | cybernetique | medecine 2 | 3 | greffes — existant, ENFIN verrouillé par la médecine |
 | optique | — | 3 | +1 case de vue/niv ; **débloque poste de garde** |
 | cryptographie | optique 1 | 2 | transmissions ennemies — existant |
-| *(N)* armurerie | balistique 2 | 2 | l'atelier fabrique les armes palier 2, puis 3 |
+| *(N)* armurerie | balistique 2 | 2 | la forge (BATIMENTS.md) fabrique les armes du palier 3 (rail) |
+| *(N)* instruction | balistique 1, medecine 1 | 1 | le maître de maison de la salle d'exercice (BATIMENTS.md) vaut 70 |
 | *(N)* siege | blindage 2 | 3 | les murs du camp valent +20 %/niv et se réparent plus vite |
 | *(N)* telemetrie | optique 2, balistique 1 | 2 | l'aperçu tactique s'affine (fourchette annoncée resserrée), premier tour de tir avantagé |
 | *(N)* chirurgie | medecine 3, cybernetique 1 | 2 | l'infirmerie pose les greffes (plus besoin d'un armurier de ville), et **un membre perdu se remplace par une prothèse** — le nœud-drapeau de la branche |
