@@ -93,6 +93,15 @@ de travail : celle indiquée par la session, jamais une autre.
 
 ## Ce qu'on ne fait pas
 
+- **Poser une règle d'équilibrage sur le joueur.** C'est un **moteur de
+  simulation** : une stratégie dégénérée se ferme en rendant les agents plus
+  vrais — ce qu'ils savent, ce qu'ils veulent, ce qu'ils peuvent — jamais par
+  une taxe, un malus dirigé ou une règle qui ne vise que le joueur. Dit par le
+  propriétaire, août 2026 : « le voleur prend tout ce qu'il peut trouver et
+  emporter », « les pillards vont là où ils pensent avoir du butin raisonnable
+  par rapport à leur risque, c'est à eux de voir », « c'est une simulation, ce
+  n'est pas moi qui décide ». Avant d'écrire une règle, demander : *quel agent
+  la porte, et que sait-il ?*
 - Coder un mécanisme de jeu non décrit dans le cahier des charges du chantier.
 - Choisir une constante sans balayage au banc (`--balaye`), ni la poser en
   `export const` scalaire si elle est calibrable — objet mutable exporté.

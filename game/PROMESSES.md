@@ -1,141 +1,166 @@
 # Les promesses tenues — le chantier de couture, cahier des charges
 
-Ouvert par le propriétaire sur la revue de game master (REVUE.md,
-« go » d'août 2026). Un chantier de **couture, pas de contenu** : six
-lots, aucune règle nouvelle — on branche ce qui a été promis sur ce
-qui a été livré, et on ferme les trois exploits. Format METHODE §9.
-**Rien ne se code avant que le propriétaire ait validé les six lots.**
+Ouvert par le propriétaire sur la revue de game master (REVUE.md).
+**Réécrit après son rappel de doctrine, août 2026** : « nous
+travaillons sur un moteur de simulation » — les trois lots qui
+fermaient des exploits par des règles d'équilibrage sont respécifiés
+en comportements d'agents : le voleur fouille, le pillard jauge, le
+drapeau a sa discipline. Format METHODE §9. **Rien ne se code avant
+que le propriétaire ait validé les six lots.**
 
 ## 1. Le constat, chiffré (repris de REVUE.md, revérifié dans le code)
 
 - **La milice se bat les mains nues** : SIEGE.md S1 promettait des
   miliciens « armés de ce que l'entrepôt contient » ; `leverMilice`
-  (base.js) les dérive et les nivelle mais ne les équipe de rien. La
-  forge (B2) n'a pas son meilleur client.
+  ne les équipe de rien.
 - **Une seule tactique pour tout le joueur** : `state.player.tactique`
-  est global (main.js:568, lu par events.js:188) — la colonne qui
-  harcèle en marais et celle qui tient les murs se battent pareil,
-  alors que tout le reste (ordres, allégeance) est par groupe.
-- **La défaite ne détrousse que la monnaie d'ici** : events.js:354,
-  `soldeIci(state) × 0,25-0,55`. Toute fortune convertie en devise
-  étrangère est invisible aux pillards : 12 % de change contre
-  25-55 % par défaite — la dureté du jeu devient optionnelle au
-  tableur (exploit n°1 de la revue).
+  est global (main.js:568) — tout le reste est par groupe.
+- **Le détroussage ne lit que la monnaie d'ici** (events.js:354) : le
+  voleur d'aujourd'hui est aveugle aux bourses étrangères — non parce
+  qu'il ne les trouve pas, mais parce que la règle ne les regarde pas.
 - **Perdre contre des chasseurs de prime rend +10 d'estime**
-  (events.js:579) : la réputation négative, seule vraie dette du jeu,
-  s'efface par l'échec simulé (exploit n°2).
-- **La solde est une rente** : versée chaque jour quoi qu'on fasse
-  (allegeance.js:971), et un ordre sans échéance ne presse jamais —
-  un homme seul garé en ville touche solde + intendance à vie en
-  ignorant son unique ordre (exploit n°3).
-- **Les raids ignorent la richesse** : `force = irange(20,45) + t/600
-  + pop × 1,5` (base.js:1547) — ni la fréquence ni la force ne lisent
-  le stock. Un camp-coffre-fort ne risque rien de plus qu'un hangar
-  vide, et la tension de la partie longue s'éteint.
+  (events.js:579) : se faire battre n'a jamais fait aimer personne.
+- **La solde tombe quoi qu'on fasse** (allegeance.js:971), pour les
+  six drapeaux pareil — alors que six cultures de service existent
+  (SERVICES : corpo, militaire, commune, nomade, fanatique, criminel).
+- **Les raids ne jaugent rien** : une chance plate (0,0016 × danger),
+  une force qui lit le temps et la population, jamais le butin ni la
+  défense visible (base.js:1547). Le pillard d'aujourd'hui attaque un
+  hangar vide et un coffre-fort avec le même entrain — aucun vrai
+  pillard ne fait ça.
 
 ## 2. La cause
 
-Chaque chantier a livré son système, tests à l'appui — mais les
-promesses *croisées* (la forge arme la milice, le carnet nourrit la
-route, la richesse attire) n'appartenaient à aucun cahier. C'est le
-prix d'avancer par chantiers ; on le paie ici, une fois.
+Chaque chantier a livré son système ; les coutures entre eux
+n'appartenaient à personne. Et la première version de ce cahier
+pensait par endroits en équilibreur (taxer, plafonner, suspendre) là
+où la maison pense en simulateur : l'agent décide, selon ce qu'il
+sait, veut et peut.
 
 ## 3. Les six lots
 
-### P1 — la milice armée au sac
+### P1 — la milice s'arme à l'arsenal du camp
 
-Au lever de la milice, chaque milicien **emprunte la meilleure pièce
-libre** (arme puis armure) dans les `objets` du groupe présent au
-camp — rendue après la bataille, **perdue s'il tombe** (elle part
-avec le corps, comme tout le reste). Zéro état nouveau, zéro tirage.
-La boucle forge → salle → milice se referme : six machettes à
-~50 crédits transforment la défense d'un camp.
+Des habitants qui montent au mur prennent ce qui traîne : chaque
+milicien levé emprunte la meilleure pièce libre (arme puis armure)
+dans les `objets` du groupe présent. Rendue après la bataille ;
+partie avec le corps s'il tombe. Zéro état nouveau, zéro tirage — et
+la forge trouve son client naturel.
 
-### P2 — la tactique par groupe
+### P2 — la tactique est un pari par colonne
 
-`g.tactique`, repli sur `player.tactique` s'il n'est pas posé —
-clé nouvelle par `normaliser` ET dans la création des groupes. Le
-panneau de tactique règle le groupe affiché. Le pari tactique devient
-un pari par colonne, ce qu'il prétend déjà être.
+`g.tactique`, repli sur le global s'il n'est pas posé (`normaliser`
++ littéral des groupes). Le panneau règle le groupe affiché.
 
-### P3 — le détroussage multi-monnaies
+### P3 — le détroussage est une fouille
 
-Le pillard prend sa part (0,25-0,55, inchangée) de **chaque monnaie
-du portefeuille** — les billets étrangers se revendent très bien. La
-rançon de siège et l'impôt gardent leur règle (on paie dans la
-monnaie d'ici : c'est un prix, pas un pillage). Les coffres en ville
-restent la vraie cachette — c'est leur métier, il redevient utile.
+Le vainqueur fouille le vaincu et **prend ce qu'il trouve** : la
+bourse d'ici (celle qu'on a en main pour vivre) est toujours trouvée
+— part 0,25-0,55 inchangée ; chaque bourse étrangère a une **chance
+d'être trouvée** (dérivée du combat, ~0,5, calibrable) et subit alors
+la même part. Un billet étranger n'est pas un talisman : c'est un
+billet, qu'un fouilleur pressé peut rater. On laisse toujours de quoi
+repartir (règle existante, inchangée). Le coffre en ville reste
+l'abri sûr — c'est son métier : le voleur ne fouille pas ce qui n'est
+pas sur vous.
 
-### P4 — la défaite solde la prime, jamais l'estime
+### P4 — la prime retombe, l'estime ne bouge pas
 
-events.js : la prime retombe (−1, inchangé — ils ont été payés),
-le `+10` de réputation disparaît. Se faire battre n'a jamais fait
-aimer personne.
+La prime retombe à la défaite (inchangé : les chasseurs ont été
+payés, l'affaire est réglée — sinon la chasse ne s'arrête jamais).
+Le +10 d'estime disparaît : rien d'aimable n'est arrivé. C'est la
+simulation qui le dit, pas l'équilibrage.
 
-### P5 — la solde suspendue à l'ordre qui traîne
+### P5 — chaque drapeau a sa discipline de solde
 
-Un ordre d'allégeance en attente au-delà de **trois fois sa durée
-minimale de route** (`dureeMinimale`, contrats.js — la mesure existe)
-suspend la solde ET l'intendance jusqu'à ce qu'il soit rempli ou
-refusé. Le journal le dit une fois : « La solde attend que vous
-fassiez votre part. » On paie un soldat, pas un pensionnaire.
+Pas de règle globale : **la culture du service décide** ce qui arrive
+quand un ordre traîne au-delà de sa route (mesurée par
+`dureeMinimale`). Table proposée, à valider :
 
-### P6 — la richesse attire les prédateurs
+| profil | quand un ordre traîne… | pourquoi (leur logique) |
+|---|---|---|
+| militaire | solde suspendue à 2 × la route | l'armée ne paie pas les absents |
+| fanatique | suspendue à 2 × | la foi ne connaît pas le retard |
+| corpo | suspendue à 3 × | le compte se ferme quand le contrat dort |
+| nomade | suspendue à 3 × | le fret paie au mouvement |
+| commune | **jamais suspendue** | les bras paient tant qu'on est des leurs — c'est leur culture, et un choix de drapeau à faire en connaissance |
+| criminel | jamais suspendue, mais l'estime s'érode au-delà de 3 × | on ne fait pas de paperasse, on retient — et on n'oublie pas |
 
-Le raid lit enfin le stock : fréquence × (1 + totalStock / T1),
-force += totalStock / T2 — T1 et T2 en objet calibrable, **balayés au
-banc** avant d'être posés (ordres de grandeur de la revue :
-T1 ≈ 2000, T2 ≈ 150). L'explication est déjà dans le jeu : les
-colporteurs repartent chargés, et ce qu'ils ont vu se raconte. La
-partie longue retrouve sa question : tenir ce qu'on a bâti.
+La « rente » cesse d'être un exploit : elle devient la description
+exacte de ce que c'est que servir les Communes, avec son revers (la
+solde des Communes est la plus basse du jeu).
+
+### P6 — les pillards jaugent leur coup
+
+La bande n'attaque plus à la chance plate : elle évalue **le butin
+qu'elle croit** contre **le risque qu'elle voit**, et c'est elle qui
+décide.
+
+- *Ce qu'elle croit* : ce qui se voit et se raconte — la vitrine si
+  le camp est sur les cartes, les colporteurs repartis chargés (le
+  compteur `marchands` existe), la taille du camp. Pas le stock réel :
+  les pillards ne lisent pas votre registre.
+- *Ce qu'elle voit* : les murs (× l'état de brèche), la garnison, la
+  population — et la mémoire des raids repoussés : une bande qui sait
+  qu'on s'y casse les dents va voir ailleurs.
+- *Sa décision* : elle vient si le rapport lui paraît raisonnable,
+  passe sinon, et **vient en nombre proportionné au coup** (la force
+  suit le butin espéré, plus seulement le calendrier).
+
+Conséquences vraies : un camp pauvre est plus tranquille
+qu'aujourd'hui ; un camp riche et défendu dissuade ; un camp riche et
+nu est une proie. Les constantes (poids du butin espéré, du risque,
+de la mémoire) en objet calibrable, **balayées au banc** et jugées
+sur une partie témoin.
 
 ## 4. Ce que ça casse, dit d'avance
 
-- **P3 + P6 durcissent le jeu** — c'est le but (« simulation
-  pleine », décision du propriétaire au chantier siège). P6 se mesure
-  en partie témoin : un camp moyen ne doit pas devenir invivable, un
-  camp-coffre-fort doit devenir un choix qu'on assume.
-- **P5 change le revenu des joueurs-rentiers** : c'est l'exploit
-  qu'on ferme. Un joueur honnête en mission longue n'est pas touché
-  (la suspension attend 3 × la route).
+- **P3 et P6 rendent le monde plus vrai, donc plus dur par endroits**
+  — et plus doux à d'autres : le camp pauvre respire, le fouilleur
+  peut rater une bourse. C'est le contrat « simulation pleine ».
+- **P5 change le revenu des rentiers** — sauf chez qui la rente est
+  une culture (Communes), où elle devient un choix de drapeau assumé.
 - **Vieilles sauvegardes** : `g.tactique` par `normaliser` (repli sur
-  le global : rien ne change pour qui ne touche à rien) ; aucune
-  autre clé.
-- Le monde ne bouge pas d'un dé ; gardes du banc identiques.
+  le global) ; rien d'autre.
+- Le monde ne bouge pas d'un dé côté villes/factions ; gardes du banc
+  identiques ; tout le hasard nouveau dérivé.
 
 ## 5. Les cibles mesurables
 
-1. Un test né rouge par lot (le milicien porte la machette du sac et
-   elle disparaît avec lui ; deux groupes, deux tactiques, deux
-   rendements ; la bourse étrangère est détroussée ; la défaite ne
-   rend plus d'estime ; la solde s'arrête à l'ordre qui traîne et
-   reprend quand il est rempli ; à stock double, raids plus lourds).
-2. T1/T2 balayés au banc, partie témoin jouée avant de poser.
+1. Un test né rouge par lot : le milicien porte la machette du sac et
+   elle part avec lui ; deux groupes, deux tactiques, deux
+   rendements ; sur des défaites dérivées, la bourse locale est
+   toujours entamée et l'étrangère parfois ratée ; la défaite ne rend
+   plus d'estime ; l'ordre qui traîne suspend la solde chez un
+   militaire et jamais aux Communes ; à vitrine égale, un camp mieux
+   défendu subit moins de raids, un camp plus riche en subit de plus
+   gros.
+2. Les constantes de P6 et la chance de fouille de P3 balayées au
+   banc, partie témoin jouée avant de poser.
 3. Gardes du monde inchangées, vitesse dans la fourchette.
 
 ## 6. Ce qu'on ne fait pas
 
-Pas de convoi à gages (chantier commerce à part, si le propriétaire
-l'ouvre). Pas d'offre d'engagement des factions, pas de second fil,
+Pas de convoi à gages, pas d'offre d'engagement, pas de second fil,
 pas de carte achetable — consignés dans REVUE.md, pas engagés ici.
-Six coutures, rien d'autre.
+Et plus jamais de règle qui ne vise que le joueur : chaque lot
+ci-dessus est porté par un agent qui a sa logique.
 
 ## Les décisions du propriétaire
 
-1. **Valider ou amender les six lots.**
-2. **P5, le délai de grâce** : 3 × la route (recommandé), ou plus
-   sévère (2 ×), ou plus doux (5 ×) ?
-3. **P4** : la défaite ne rend plus rien du tout (recommandé), ou un
-   reste symbolique (+2) ?
+1. **Valider ou amender les six lots ainsi respécifiés.**
+2. **La table des disciplines (P5)** : six cultures, six lignes — les
+   valider ou en changer. C'est le seul endroit où l'on écrit ce que
+   les drapeaux SONT ; le reste n'est que mesure.
 
 ## L'avancement
 
-- [ ] P1 — la milice armée au sac
-- [ ] P2 — la tactique par groupe
-- [ ] P3 — le détroussage multi-monnaies
-- [ ] P4 — la prime soldée, l'estime intacte
-- [ ] P5 — la solde suspendue à l'ordre qui traîne
-- [ ] P6 — la richesse attire les prédateurs
+- [ ] P1 — la milice s'arme à l'arsenal du camp
+- [ ] P2 — la tactique est un pari par colonne
+- [ ] P3 — le détroussage est une fouille
+- [ ] P4 — la prime retombe, l'estime ne bouge pas
+- [ ] P5 — chaque drapeau a sa discipline de solde
+- [ ] P6 — les pillards jaugent leur coup
 
 ## Blocages
 
