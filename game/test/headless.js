@@ -75,6 +75,7 @@ import {
   perdreAvantPoste, saccagerAvantPoste, menacesSurLaBase, rendementLibre, AMENDEMENT_MAX,
   raidSurLaBase, raidEnApproche, siegeEnCours, prixSiege, negocierSiege,
   sortieContreSiege, evacuerCamp, RANCON, userMursSiege, MURS,
+  lancerFabrication, ATTELAGE,
   recetteDe, recettesDe, reglerRecette, reglerReserve, brasEscouade,
   voulus, tenus, postesDegarnis, brasDisponibles, ORDRE_EMBAUCHE, tempsRecherche,
   deposer,
@@ -121,7 +122,7 @@ import {
 } from '../src/influence.js';
 import {
   acheterBete, betesDe, lenteurAttelage, tickBetes, conduite, surnombre,
-  visibiliteAttelage,
+  visibiliteAttelage, creerBete,
 } from '../src/betes.js';
 import {
   estVivant, makeCharacter, accorderDiplome, apprentissage, tickPerso, resistanceLetale,
@@ -10724,6 +10725,71 @@ section('U7. Le carnet du négociant (INTERFACE.md)');
   const carnet2 = carnetPrix(s);
   ok(!carnet2.ferraille || carnet2.ferraille.achat.colonieId !== loin.id,
     'un relevé de quatre saisons ne guide plus personne');
+}
+
+// ===========================================================================
+section('B1. L’attelage — fabriquer et réparer la charrette (BATIMENTS.md)');
+{
+  const s = nouvellePartie(777, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const g = groupeActif(s);
+  s.base.fonde = true;
+  s.base.regionId = g.regionId;
+  s.base.pop = 10;
+  s.base.stock.alliage = 50;
+  s.base.stock.composant = 10;
+  const refus = lancerFabrication(s, 'charrette');
+  ok(!refus.ok, 'sans attelage, on ne fabrique rien', refus.motif);
+
+  s.base.batiments = { attelage: 1 };
+  const alliageAvant = s.base.stock.alliage;
+  const r = lancerFabrication(s, 'charrette');
+  ok(r.ok, 'avec l’attelage, la charrette se lance', r.motif);
+  ok(s.base.stock.alliage < alliageAvant, 'la matière est débitée au lancement');
+
+  // Les gardes du game master : matière > revente (pas de planche à
+  // billets), matière < étal (fabriquer vaut le coup).
+  const coutCr = Object.keys(ATTELAGE.cout)
+    .reduce((a, k) => a + ATTELAGE.cout[k] * COMMODITIES[k].prix, 0);
+  ok(coutCr > BETES.charrette.prix * 0.5,
+    'le coût matière dépasse la revente — pas de planche à billets',
+    `${coutCr} vs revente ${BETES.charrette.prix * 0.5}`);
+  ok(coutCr < BETES.charrette.prix,
+    'et reste sous le prix d’étal — fabriquer vaut le coup',
+    `${coutCr} vs étal ${BETES.charrette.prix}`);
+
+  avancer(s, ATTELAGE.heures + 30);
+  ok((g.betes || []).some((x) => x.key === 'charrette'),
+    'la charrette neuve rejoint le groupe au camp',
+    `${(g.betes || []).length} bête(s)`);
+}
+
+// La remise (niveau 2) : la charrette qui rentre se répare, et ça se paie.
+{
+  const s = nouvellePartie(778, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const g = groupeActif(s);
+  s.base.fonde = true;
+  s.base.regionId = g.regionId;
+  s.base.pop = 10;
+  s.base.batiments = { attelage: 2 };
+  s.base.stock.ferraille = 100;
+  g.betes = [Object.assign(creerBete(new Rng(5), 'charrette'), { sante: 50 })];
+  avancer(s, 60);
+  ok(g.betes[0].sante > 55, 'au niveau 2, la charrette au camp se répare',
+    `santé ${g.betes[0].sante.toFixed(1)}`);
+  ok(s.base.stock.ferraille < 100, 'et la réparation se paie en ferraille',
+    `ferraille ${s.base.stock.ferraille.toFixed(1)}`);
+
+  const s2 = nouvellePartie(778, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const g2 = groupeActif(s2);
+  s2.base.fonde = true;
+  s2.base.regionId = g2.regionId;
+  s2.base.pop = 10;
+  s2.base.batiments = { attelage: 1 };
+  s2.base.stock.ferraille = 100;
+  g2.betes = [Object.assign(creerBete(new Rng(5), 'charrette'), { sante: 50 })];
+  avancer(s2, 60);
+  ok(g2.betes[0].sante < 50, 'au niveau 1, elle continue de s’user — réparer est le métier du niveau 2',
+    `santé ${g2.betes[0].sante.toFixed(1)}`);
 }
 
 // ===========================================================================

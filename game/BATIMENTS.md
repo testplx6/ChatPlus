@@ -184,7 +184,15 @@ décisions). Pas de bâtiment « qui donne +X % de tout ».
 
 ## L'avancement
 
-- [ ] B1 — l'attelage et la charrette
+- [x] B1 — l'attelage et la charrette — livré : bâtiment `attelage`
+  (2 niveaux, famille Savoir et commercer), `lancerFabrication` monte
+  la charrette de `betes.js` (10 alliage + 2 composants ≈ 200 crédits,
+  36 h au rythme des machinistes, file `fileFab` née dans `creerBase`
+  et `normaliser`) — la pièce finie attend qu'un groupe passe la
+  prendre ; niveau 2, la remise répare les charrettes au camp
+  (0,5 santé/h contre de la ferraille, jamais en route). Gardes du
+  game master tenues par test : coût matière > revente (200 > 170) et
+  < étal (340). Bouton et jauge sur l'écran BASE.
 - [ ] B2 — la forge
 - [ ] B3 — les serres
 - [ ] B4 — la distillerie

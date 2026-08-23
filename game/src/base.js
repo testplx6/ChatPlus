@@ -14,6 +14,7 @@ import { garnison, avantage } from './allegeance.js';
 import { estSurveillee } from './connaissance.js';
 import { noterArgent } from './rapport.js';
 import { capacitePortage, poidsInventaire } from './economy.js';
+import { BETES, creerBete } from './betes.js';
 import { depenser, entrerDehors, gagner, regler, soldeIci, signeIci } from './monnaie.js';
 
 export function creerBase() {
@@ -38,6 +39,9 @@ export function creerBase() {
     // L'état des murs, de 1 (intacts) à 0 (brèche ouverte). Voir
     // `userMursSiege` (SIEGE.md, S4).
     brecheEtat: 1,
+    // La file de fabrication de l'attelage — et de la forge, plus tard
+    // (BATIMENTS.md, B1). Distincte de `file` : on n'y bâtit pas, on y monte.
+    fileFab: [],
     // Ce que l'entrepôt n'a pas pu prendre, cumulé. L'écrêtage était muet.
     gaspille: 0,
     gaspilleJour: 0,
@@ -572,6 +576,10 @@ export function apportBatiment(base, key, state) {
       return 'Plus de place. Ce qui ne rentre pas dans l’entrepôt est perdu pour de bon.';
     case 'cantine':
       return 'Jusqu’à un tiers de vivres en moins pour les mêmes bouches, et du moral.';
+    case 'attelage':
+      return n >= 2
+        ? 'Monte des charrettes, et la remise répare celles qui rentrent.'
+        : 'Monte des charrettes — celles de la piste, qui portent et qui cassent.';
     case 'fonderie': return 'Minerai → alliage, la première pièce de tout ce qui se fabrique.';
     case 'raffinerie': return 'Polymère → carburant, ce que brûle le générateur.'
       + (niveauRech(base, 'pyrolyse') > 0
@@ -874,6 +882,39 @@ export function lancerConstruction(state, key) {
   payer(base.stock, cout);
   const total = tempsBatiment(base, key);
   base.file.push({ key, niveau: niveau(base, key) + 1 + enFile, restant: total, total });
+  return { ok: true };
+}
+
+/**
+ * L'attelage, réglé (BATIMENTS.md, B1). Objet mutable, calibrable. Le coût
+ * matière vaut ≈ 200 crédits (10 alliage à 14 + 2 composants à 30) : au-dessus
+ * de la revente d'une charrette (170 à pleine santé), au-dessous de l'étal
+ * (340) — la garde du game master, tenue par test.
+ */
+export const ATTELAGE = {
+  cout: { alliage: 10, composant: 2 },
+  heures: 36,
+  repare: 0.5,            // santé rendue par heure à la remise (niveau 2)
+  ferrailleParHeure: 0.08, // ce que la réparation consomme
+};
+
+/**
+ * Monter une pièce à l'attelage — la charrette de `betes.js`, la seule au
+ * monde : le bâtiment répond à « où je me la procure », pas « quel objet
+ * nouveau j'invente ». La matière se paie au lancement, comme un chantier.
+ */
+export function lancerFabrication(state, key) {
+  const base = state.base;
+  if (!base.fonde) return { ok: false, motif: 'Aucun avant-poste.' };
+  if (key !== 'charrette') return { ok: false, motif: 'On ne fabrique pas ça ici.' };
+  if (niveau(base, 'attelage') < 1) return { ok: false, motif: 'Il faut un attelage.' };
+  if (!base.fileFab) base.fileFab = [];
+  if (base.fileFab.length >= 3) return { ok: false, motif: 'File pleine (3).' };
+  if (!peutPayer(base.stock, ATTELAGE.cout)) {
+    return { ok: false, motif: 'Ressources insuffisantes.' };
+  }
+  payer(base.stock, ATTELAGE.cout);
+  base.fileFab.push({ key: 'charrette', restant: ATTELAGE.heures, total: ATTELAGE.heures });
   return { ok: true };
 }
 
@@ -1295,6 +1336,49 @@ export function tickBase(state, log, ctx) {
         texte: `${BUILDINGS[item.key].nom} niveau ${base.batiments[item.key]} opérationnel.`,
         regionId: base.regionId,
       });
+    }
+  }
+
+  // --- File de fabrication (BATIMENTS.md, B1) : l'attelage monte des
+  // charrettes, au rythme des machinistes. La pièce finie attend qu'un
+  // groupe passe la prendre — un hangar n'est pas un convoi.
+  if (base.fileFab && base.fileFab.length) {
+    const piece = base.fileFab[0];
+    if (piece.restant > 0) piece.restant -= M.machiniste;
+    if (piece.restant <= 0) {
+      const preneur = groupes(state).find(
+        (g) => g.regionId === base.regionId && g.membres.some(estVivant)
+      );
+      if (preneur) {
+        base.fileFab.shift();
+        // Le hasard de l'identifiant se dérive : rien ne bouge dans le flux.
+        const rngFab = new Rng(grainDe(state.world.graine, 'fab', String(state.temps)));
+        if (!preneur.betes) preneur.betes = [];
+        preneur.betes.push(creerBete(rngFab, piece.key));
+        log({
+          type: 'bete',
+          texte: `Une charrette neuve sort de l’attelage de ${base.nom} — ${preneur.nom} l’emporte.`,
+          regionId: base.regionId,
+          important: true,
+          groupe: preneur.id,
+        });
+      }
+    }
+  }
+
+  // --- La remise (attelage niveau 2) : les charrettes qui rentrent se
+  // réparent — de la ferraille et des heures, jamais en route.
+  if (niveau(base, 'attelage') >= 2) {
+    for (const g of groupes(state)) {
+      if (g.regionId !== base.regionId) continue;
+      for (const bete of g.betes || []) {
+        const def = BETES[bete.key];
+        if (!def || !def.objet || bete.sante >= 100) continue;
+        const fer = consommer(base, 'ferraille', ATTELAGE.ferrailleParHeure);
+        if (fer <= 0) break;
+        bete.sante = Math.min(100,
+          bete.sante + ATTELAGE.repare * (fer / ATTELAGE.ferrailleParHeure));
+      }
     }
   }
 

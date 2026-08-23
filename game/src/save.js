@@ -266,6 +266,8 @@ export function normaliser(state) {
     if (b.raidImminent === undefined) b.raidImminent = null;
     // Avant, les murs ne s'usaient pas : ils tombaient d'un niveau entier.
     if (b.brecheEtat === undefined) b.brecheEtat = 1;
+    // Avant, rien ne se montait au camp : ni charrette, ni lame.
+    if (!b.fileFab) b.fileFab = [];
     if (!b.reserves) b.reserves = {};
     if (!b.recettes) {
       // Les consignes n'existaient pas, et la raffinerie faisait les deux à la

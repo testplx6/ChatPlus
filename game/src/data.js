@@ -557,6 +557,16 @@ export const BUILDINGS = {
     energie: -2,
     max: 5,
   },
+  attelage: {
+    nom: 'Attelage',
+    desc: 'Un hangar, un établi, du suif. On y monte des charrettes — et on y répare celles qui rentrent.',
+    cout: { ferraille: 70, alliage: 8, composant: 2 },
+    coutMul: 1.6,
+    heures: 10,
+    tempsMul: 1.4,
+    energie: 0,
+    max: 2,
+  },
   infirmerie: {
     nom: 'Infirmerie',
     desc: 'Soigne l’escouade au repos, produit des medkits.',

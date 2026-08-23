@@ -40,7 +40,7 @@ import {
   lancerRecherche, annulerConstruction, fonderBase, deposer, retirer,
   COUT_FONDATION, manquePour, apportBatiment, chaineAutonomie, menacesSurLaBase,
   forceEscouade, AMENDABLES, AMENDEMENT_MAX, dechetsMax, recetteDe, recettesDe,
-  brasEscouade, reserveDe, siegeEnCours, prixSiege,
+  brasEscouade, reserveDe, siegeEnCours, prixSiege, lancerFabrication, ATTELAGE,
 } from './base.js';
 import { classement, enGuerre } from './factions.js';
 import { titreDe, lignesDe } from './chronique.js';
@@ -3099,6 +3099,21 @@ function ecranBase() {
       <button class="act mini" data-a="annuler" data-i="${i}" style="margin-top:4px">Annuler (70 % remboursé)</button>
     </div>`).join('') : '<div class="aide">Rien en construction.</div>';
 
+  // L'établi de l'attelage (BATIMENTS.md, B1) : monter une charrette — la
+  // seule au monde, celle de la piste — et voir où en est la pièce en cours.
+  const fabHtml = (b.batiments.attelage || 0) >= 1 ? `
+    <div class="sep"></div>
+    ${(b.fileFab || []).map((it) => `
+      <div class="ligne"><span class="k">Charrette en montage</span>
+        <span class="v">${dureeTexte(Math.max(0, it.restant))}</span></div>
+      ${jauge(1 - Math.max(0, it.restant) / it.total, 'cyan')}
+      ${it.restant <= 0 ? '<div class="aide">Finie — elle attend qu’un groupe passe la prendre.</div>' : ''}`).join('')}
+    <button class="act mini" data-a="fabriquer-charrette" style="margin-top:4px">
+      Monter une charrette (${e(coutTexte(ATTELAGE.cout))} · ${dureeTexte(ATTELAGE.heures)})</button>
+    ${(b.batiments.attelage || 0) >= 2
+    ? '<div class="aide">La remise répare les charrettes qui rentrent — de la ferraille et des heures.</div>'
+    : ''}` : '';
+
   // Les bâtiments par ce qu'ils font, et non dans l'ordre du fichier de
   // données. Le baraquement y arrivait en dernier alors que c'est lui qui
   // décide si quelqu'un peut vivre là ; la halle et l'hydroponie — récolter et
@@ -3109,7 +3124,7 @@ function ecranBase() {
     { nom: 'Alimenter', clefs: ['generateur', 'solaire', 'eolienne'] },
     { nom: 'Produire', clefs: ['entrepot', 'fonderie', 'raffinerie', 'atelier'] },
     { nom: 'Se défendre et soigner', clefs: ['mur', 'poste', 'infirmerie'] },
-    { nom: 'Savoir et commercer', clefs: ['antenne', 'comptoir'] },
+    { nom: 'Savoir et commercer', clefs: ['antenne', 'comptoir', 'attelage'] },
   ];
   // Un bâtiment absent de ces listes n'existe pour personne : il ne s'affiche
   // nulle part, donc il ne se construit pas. Le comptoir est resté invisible
@@ -3278,6 +3293,7 @@ function ecranBase() {
     : 'rien en chantier'}</span>
       <span class="droite">${b.file.length}/5</span></h2>
     ${fileHtml}
+    ${fabHtml}
   </section>
 
   <section class="panneau">
@@ -5742,6 +5758,13 @@ function surClic(ev) {
     case 'evacuer-camp': {
       const r = ACTIONS.evacuerCamp();
       toast(r.ok ? `Camp évacué — ${n(r.emporte)} unités emportées.` : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
+    case 'fabriquer-charrette': {
+      const r = lancerFabrication(S, 'charrette');
+      toast(r.ok ? 'Charrette en montage à l’attelage.' : r.motif, !r.ok);
       rafraichir(true);
       break;
     }
