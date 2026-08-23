@@ -193,7 +193,16 @@ décisions). Pas de bâtiment « qui donne +X % de tout ».
   (0,5 santé/h contre de la ferraille, jamais en route). Gardes du
   game master tenues par test : coût matière > revente (200 > 170) et
   < étal (340). Bouton et jauge sur l'écran BASE.
-- [ ] B2 — la forge
+- [x] B2 — la forge — livré : bâtiment `forge` (2 niveaux, famille
+  Produire, −3 d'énergie), `lancerFabrication` étendu à toutes les
+  armes et armures des paliers 0–2 (`forgeables`, `coutForge`), palier
+  2 au niveau 2, palier 3 refusé (« ça s'apprendra » — l'arbre). Coût
+  matière visé 0,55 × l'étal avec **plancher structurel à 0,45** (la
+  garde du game master : l'arrondi ne passe jamais sous la décote de
+  revente 0,42 — le cuir y tombait, corrigé), vérifié pièce par pièce
+  par test. Heures = prix/12, min 6, au rythme des machinistes. Les
+  pièces sortent dans le sac du groupe au camp ; boutons par pièce sur
+  l'écran BASE.
 - [ ] B3 — les serres
 - [ ] B4 — la distillerie
 - [ ] B5 — la salle d'exercice

@@ -1469,6 +1469,16 @@ const BUILDINGS = {
     energie: -2,
     max: 5,
   },
+  forge: {
+    nom: 'Forge',
+    desc: 'L’alliage y devient lame ou plaque. Ce qu’on ne trouve plus aux étals, on le bat soi-même.',
+    cout: { ferraille: 90, alliage: 15, composant: 4 },
+    coutMul: 1.7,
+    heures: 14,
+    tempsMul: 1.5,
+    energie: -3,
+    max: 2,
+  },
   attelage: {
     nom: 'Attelage',
     desc: 'Un hangar, un établi, du suif. On y monte des charrettes — et on y répare celles qui rentrent.',
@@ -17766,6 +17776,10 @@ function apportBatiment(base, key, state) {
       return 'Plus de place. Ce qui ne rentre pas dans l’entrepôt est perdu pour de bon.';
     case 'cantine':
       return 'Jusqu’à un tiers de vivres en moins pour les mêmes bouches, et du moral.';
+    case 'forge':
+      return n >= 2
+        ? 'Bat les armes et armures jusqu’au palier 2 — katana, verrou, kevlar.'
+        : 'Bat les armes et armures simples. Le palier 2 demande le niveau 2.';
     case 'attelage':
       return n >= 2
         ? 'Monte des charrettes, et la remise répare celles qui rentrent.'
@@ -18089,22 +18103,87 @@ const ATTELAGE = {
 };
 
 /**
- * Monter une pièce à l'attelage — la charrette de `betes.js`, la seule au
- * monde : le bâtiment répond à « où je me la procure », pas « quel objet
- * nouveau j'invente ». La matière se paie au lancement, comme un chantier.
+ * La forge, réglée (BATIMENTS.md, B2). `partMatiere` est LA garde du game
+ * master : la revente d'un objet vaut 0,42 × son prix de base — un coût
+ * matière au-dessous ouvrirait une planche à billets. 0,55 laisse 13 points
+ * de marge, et le test vérifie chaque pièce forgeable une à une.
+ */
+const FORGE = {
+  partMatiere: 0.55,
+  heuresParPrix: 1 / 12,
+  heuresMin: 6,
+};
+
+/** La matière d'une pièce : de l'alliage surtout, du composant pour le reste. */
+function coutForge(key) {
+  const it = ITEMS[key];
+  if (!it) return null;
+  const vise = it.prix * FORGE.partMatiere;
+  const cout = {
+    alliage: Math.max(1, Math.round((vise * 0.65) / COMMODITIES.alliage.prix)),
+  };
+  const composant = Math.round((vise * 0.35) / COMMODITIES.composant.prix);
+  if (composant > 0) cout.composant = composant;
+  // L'arrondi ne doit jamais passer sous la décote de revente (0,42) : la
+  // garde est structurelle, pas un vœu — le cuir tombait à 0,40 par arrondi.
+  let total = Object.keys(cout)
+    .reduce((a, k) => a + cout[k] * COMMODITIES[k].prix, 0);
+  while (total < it.prix * 0.45) {
+    cout.alliage += 1;
+    total += COMMODITIES.alliage.prix;
+  }
+  return cout;
+}
+
+/** Ce que la forge du camp sait battre, à son niveau d'aujourd'hui. */
+function forgeables(base) {
+  const niv = niveau(base, 'forge');
+  if (niv < 1) return [];
+  const plafond = niv >= 2 ? 2 : 1;
+  return Object.keys(ITEMS).filter((k) => {
+    const it = ITEMS[k];
+    if (it.type !== 'arme' && it.type !== 'armure') return false;
+    return (PALIERS_ITEM[k] ?? 3) <= plafond;
+  });
+}
+
+/**
+ * Monter une pièce — la charrette de `betes.js` à l'attelage, une arme ou une
+ * armure à la forge. Une seule file (`fileFab`) : on n'y bâtit pas, on y
+ * monte, et la matière se paie au lancement, comme un chantier. Le palier 3
+ * (rail, exo, masse) reste introuvable ici : il attend l'arbre (usinage,
+ * armurerie).
  */
 function lancerFabrication(state, key) {
   const base = state.base;
   if (!base.fonde) return { ok: false, motif: 'Aucun avant-poste.' };
-  if (key !== 'charrette') return { ok: false, motif: 'On ne fabrique pas ça ici.' };
-  if (niveau(base, 'attelage') < 1) return { ok: false, motif: 'Il faut un attelage.' };
   if (!base.fileFab) base.fileFab = [];
   if (base.fileFab.length >= 3) return { ok: false, motif: 'File pleine (3).' };
-  if (!peutPayer(base.stock, ATTELAGE.cout)) {
-    return { ok: false, motif: 'Ressources insuffisantes.' };
+
+  let cout;
+  let heures;
+  if (key === 'charrette') {
+    if (niveau(base, 'attelage') < 1) return { ok: false, motif: 'Il faut un attelage.' };
+    cout = ATTELAGE.cout;
+    heures = ATTELAGE.heures;
+  } else if (ITEMS[key] && (ITEMS[key].type === 'arme' || ITEMS[key].type === 'armure')) {
+    if (niveau(base, 'forge') < 1) return { ok: false, motif: 'Il faut une forge.' };
+    const palier = PALIERS_ITEM[key] ?? 3;
+    if (palier >= 3) {
+      return { ok: false, motif: 'Personne ici ne sait battre ça — ça s’apprendra.' };
+    }
+    if (palier === 2 && niveau(base, 'forge') < 2) {
+      return { ok: false, motif: 'Le palier 2 demande une forge au niveau 2.' };
+    }
+    cout = coutForge(key);
+    heures = Math.max(FORGE.heuresMin, Math.round(ITEMS[key].prix * FORGE.heuresParPrix));
+  } else {
+    return { ok: false, motif: 'On ne fabrique pas ça ici.' };
   }
-  payer(base.stock, ATTELAGE.cout);
-  base.fileFab.push({ key: 'charrette', restant: ATTELAGE.heures, total: ATTELAGE.heures });
+
+  if (!peutPayer(base.stock, cout)) return { ok: false, motif: 'Ressources insuffisantes.' };
+  payer(base.stock, cout);
+  base.fileFab.push({ key, restant: heures, total: heures });
   return { ok: true };
 }
 
@@ -18539,7 +18618,7 @@ function tickBase(state, log, ctx) {
       const preneur = groupes(state).find(
         (g) => g.regionId === base.regionId && g.membres.some(estVivant)
       );
-      if (preneur) {
+      if (preneur && piece.key === 'charrette') {
         base.fileFab.shift();
         // Le hasard de l'identifiant se dérive : rien ne bouge dans le flux.
         const rngFab = new Rng(grainDe(state.world.graine, 'fab', String(state.temps)));
@@ -18548,6 +18627,16 @@ function tickBase(state, log, ctx) {
         log({
           type: 'bete',
           texte: `Une charrette neuve sort de l’attelage de ${base.nom} — ${preneur.nom} l’emporte.`,
+          regionId: base.regionId,
+          important: true,
+          groupe: preneur.id,
+        });
+      } else if (preneur && ITEMS[piece.key] && preneur.objets.length < 30) {
+        base.fileFab.shift();
+        preneur.objets.push(piece.key);
+        log({
+          type: 'base',
+          texte: `${ITEMS[piece.key].nom} sort de la forge de ${base.nom} — ${preneur.nom} l’emporte.`,
           regionId: base.regionId,
           important: true,
           groupe: preneur.id,
@@ -27202,20 +27291,31 @@ function ecranBase() {
       <button class="act mini" data-a="annuler" data-i="${i}" style="margin-top:4px">Annuler (70 % remboursé)</button>
     </div>`).join('') : '<div class="aide">Rien en construction.</div>';
 
-  // L'établi de l'attelage (BATIMENTS.md, B1) : monter une charrette — la
-  // seule au monde, celle de la piste — et voir où en est la pièce en cours.
-  const fabHtml = (b.batiments.attelage || 0) >= 1 ? `
+  // L'établi (BATIMENTS.md, B1-B2) : ce que l'attelage et la forge montent,
+  // la matière au lancement, la pièce au sac du groupe qui passe.
+  const aAtelage = (b.batiments.attelage || 0) >= 1;
+  const aForge = (b.batiments.forge || 0) >= 1;
+  const fabHtml = aAtelage || aForge ? `
     <div class="sep"></div>
     ${(b.fileFab || []).map((it) => `
-      <div class="ligne"><span class="k">Charrette en montage</span>
+      <div class="ligne"><span class="k">${it.key === 'charrette'
+    ? 'Charrette' : e((ITEMS[it.key] || {}).nom || it.key)} en montage</span>
         <span class="v">${dureeTexte(Math.max(0, it.restant))}</span></div>
       ${jauge(1 - Math.max(0, it.restant) / it.total, 'cyan')}
       ${it.restant <= 0 ? '<div class="aide">Finie — elle attend qu’un groupe passe la prendre.</div>' : ''}`).join('')}
-    <button class="act mini" data-a="fabriquer-charrette" style="margin-top:4px">
+    ${aAtelage ? `<button class="act mini" data-a="fabriquer-charrette" style="margin-top:4px">
       Monter une charrette (${e(coutTexte(ATTELAGE.cout))} · ${dureeTexte(ATTELAGE.heures)})</button>
     ${(b.batiments.attelage || 0) >= 2
     ? '<div class="aide">La remise répare les charrettes qui rentrent — de la ferraille et des heures.</div>'
-    : ''}` : '';
+    : ''}` : ''}
+    ${aForge ? `<div class="aide" style="margin-top:6px">La forge bat ${(b.batiments.forge || 0) >= 2
+    ? 'jusqu’au palier 2' : 'les pièces simples'} :</div>
+    ${forgeables(b).map((k) => {
+    const c = coutForge(k);
+    const h = Math.max(FORGE.heuresMin, Math.round(ITEMS[k].prix * FORGE.heuresParPrix));
+    return `<button class="act mini" data-a="forger" data-k="${k}" style="margin:2px 2px 0 0">
+        ${e(ITEMS[k].nom)} · ${e(coutTexte(c))} · ${dureeTexte(h)}</button>`;
+  }).join('')}` : ''}` : '';
 
   // Les bâtiments par ce qu'ils font, et non dans l'ordre du fichier de
   // données. Le baraquement y arrivait en dernier alors que c'est lui qui
@@ -27225,7 +27325,7 @@ function ecranBase() {
     { nom: 'Tenir sur place', clefs: ['baraquement', 'halle', 'bassins', 'hydroponie', 'cantine'] },
     { nom: 'Changer la terre', clefs: ['semoir', 'terraformeur'] },
     { nom: 'Alimenter', clefs: ['generateur', 'solaire', 'eolienne'] },
-    { nom: 'Produire', clefs: ['entrepot', 'fonderie', 'raffinerie', 'atelier'] },
+    { nom: 'Produire', clefs: ['entrepot', 'fonderie', 'raffinerie', 'atelier', 'forge'] },
     { nom: 'Se défendre et soigner', clefs: ['mur', 'poste', 'infirmerie'] },
     { nom: 'Savoir et commercer', clefs: ['antenne', 'comptoir', 'attelage'] },
   ];
@@ -29861,6 +29961,13 @@ function surClic(ev) {
     case 'evacuer-camp': {
       const r = ACTIONS.evacuerCamp();
       toast(r.ok ? `Camp évacué — ${n(r.emporte)} unités emportées.` : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
+    case 'forger': {
+      const r = lancerFabrication(S, el.dataset.k);
+      toast(r.ok ? `${ITEMS[el.dataset.k].nom} au feu de forge.` : r.motif, !r.ok);
       rafraichir(true);
       break;
     }

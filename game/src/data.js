@@ -557,6 +557,16 @@ export const BUILDINGS = {
     energie: -2,
     max: 5,
   },
+  forge: {
+    nom: 'Forge',
+    desc: 'L’alliage y devient lame ou plaque. Ce qu’on ne trouve plus aux étals, on le bat soi-même.',
+    cout: { ferraille: 90, alliage: 15, composant: 4 },
+    coutMul: 1.7,
+    heures: 14,
+    tempsMul: 1.5,
+    energie: -3,
+    max: 2,
+  },
   attelage: {
     nom: 'Attelage',
     desc: 'Un hangar, un établi, du suif. On y monte des charrettes — et on y répare celles qui rentrent.',

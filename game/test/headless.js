@@ -75,13 +75,14 @@ import {
   perdreAvantPoste, saccagerAvantPoste, menacesSurLaBase, rendementLibre, AMENDEMENT_MAX,
   raidSurLaBase, raidEnApproche, siegeEnCours, prixSiege, negocierSiege,
   sortieContreSiege, evacuerCamp, RANCON, userMursSiege, MURS,
-  lancerFabrication, ATTELAGE,
+  lancerFabrication, ATTELAGE, FORGE, coutForge, forgeables,
   recetteDe, recettesDe, reglerRecette, reglerReserve, brasEscouade,
   voulus, tenus, postesDegarnis, brasDisponibles, ORDRE_EMBAUCHE, tempsRecherche,
   deposer,
 } from '../src/base.js';
 import {
   METIER_KEYS, METIERS, SKILLS, BIOMES, BUILDINGS, RESEARCH, POSTURES, COMMODITIES,
+  ITEMS,
 } from '../src/data.js';
 import {
   accepter, abandonner, peutRendre, progres as progresContrat,
@@ -10790,6 +10791,47 @@ section('B1. L’attelage — fabriquer et réparer la charrette (BATIMENTS.md)'
   avancer(s2, 60);
   ok(g2.betes[0].sante < 50, 'au niveau 1, elle continue de s’user — réparer est le métier du niveau 2',
     `santé ${g2.betes[0].sante.toFixed(1)}`);
+}
+
+// B2 : la forge — l'alliage devient lame, jamais au-dessous de la décote.
+{
+  const s = nouvellePartie(779, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const g = groupeActif(s);
+  s.base.fonde = true;
+  s.base.regionId = g.regionId;
+  s.base.pop = 10;
+  s.base.stock.alliage = 200;
+  s.base.stock.composant = 40;
+
+  const refus = lancerFabrication(s, 'machette');
+  ok(!refus.ok, 'sans forge, pas de lame', refus.motif);
+
+  s.base.batiments = { forge: 1 };
+  ok(lancerFabrication(s, 'machette').ok, 'forge niveau 1 : le palier 1 se bat');
+  const refus2 = lancerFabrication(s, 'verrou');
+  ok(!refus2.ok, 'mais pas le palier 2', refus2.motif);
+
+  s.base.batiments = { forge: 2 };
+  ok(lancerFabrication(s, 'verrou').ok, 'forge niveau 2 : le palier 2 se bat');
+  const refus3 = lancerFabrication(s, 'rail');
+  ok(!refus3.ok, 'le palier 3 reste introuvable — il attend l’arbre', refus3.motif);
+
+  // La garde du game master, pour CHAQUE pièce forgeable : le coût matière
+  // au-dessus de la décote de revente (0,42), au-dessous de l'étal.
+  let bornes = true;
+  let pire = '';
+  for (const k of forgeables(s.base)) {
+    const c = coutForge(k);
+    const cr = Object.keys(c).reduce((a, x) => a + c[x] * COMMODITIES[x].prix, 0);
+    const ratio = cr / ITEMS[k].prix;
+    if (ratio < 0.45 || ratio > 0.75) { bornes = false; pire = `${k} ${ratio.toFixed(2)}`; }
+  }
+  ok(bornes, 'chaque pièce coûte entre 0,45 et 0,75 de son prix d’étal — pas de planche à billets', pire);
+
+  avancer(s, 80);
+  ok(g.objets.includes('machette') && g.objets.includes('verrou'),
+    'les pièces finies rejoignent le sac du groupe au camp',
+    g.objets.join(', '));
 }
 
 // ===========================================================================

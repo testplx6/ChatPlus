@@ -41,6 +41,7 @@ import {
   COUT_FONDATION, manquePour, apportBatiment, chaineAutonomie, menacesSurLaBase,
   forceEscouade, AMENDABLES, AMENDEMENT_MAX, dechetsMax, recetteDe, recettesDe,
   brasEscouade, reserveDe, siegeEnCours, prixSiege, lancerFabrication, ATTELAGE,
+  FORGE, coutForge, forgeables,
 } from './base.js';
 import { classement, enGuerre } from './factions.js';
 import { titreDe, lignesDe } from './chronique.js';
@@ -3099,20 +3100,31 @@ function ecranBase() {
       <button class="act mini" data-a="annuler" data-i="${i}" style="margin-top:4px">Annuler (70 % remboursé)</button>
     </div>`).join('') : '<div class="aide">Rien en construction.</div>';
 
-  // L'établi de l'attelage (BATIMENTS.md, B1) : monter une charrette — la
-  // seule au monde, celle de la piste — et voir où en est la pièce en cours.
-  const fabHtml = (b.batiments.attelage || 0) >= 1 ? `
+  // L'établi (BATIMENTS.md, B1-B2) : ce que l'attelage et la forge montent,
+  // la matière au lancement, la pièce au sac du groupe qui passe.
+  const aAtelage = (b.batiments.attelage || 0) >= 1;
+  const aForge = (b.batiments.forge || 0) >= 1;
+  const fabHtml = aAtelage || aForge ? `
     <div class="sep"></div>
     ${(b.fileFab || []).map((it) => `
-      <div class="ligne"><span class="k">Charrette en montage</span>
+      <div class="ligne"><span class="k">${it.key === 'charrette'
+    ? 'Charrette' : e((ITEMS[it.key] || {}).nom || it.key)} en montage</span>
         <span class="v">${dureeTexte(Math.max(0, it.restant))}</span></div>
       ${jauge(1 - Math.max(0, it.restant) / it.total, 'cyan')}
       ${it.restant <= 0 ? '<div class="aide">Finie — elle attend qu’un groupe passe la prendre.</div>' : ''}`).join('')}
-    <button class="act mini" data-a="fabriquer-charrette" style="margin-top:4px">
+    ${aAtelage ? `<button class="act mini" data-a="fabriquer-charrette" style="margin-top:4px">
       Monter une charrette (${e(coutTexte(ATTELAGE.cout))} · ${dureeTexte(ATTELAGE.heures)})</button>
     ${(b.batiments.attelage || 0) >= 2
     ? '<div class="aide">La remise répare les charrettes qui rentrent — de la ferraille et des heures.</div>'
-    : ''}` : '';
+    : ''}` : ''}
+    ${aForge ? `<div class="aide" style="margin-top:6px">La forge bat ${(b.batiments.forge || 0) >= 2
+    ? 'jusqu’au palier 2' : 'les pièces simples'} :</div>
+    ${forgeables(b).map((k) => {
+    const c = coutForge(k);
+    const h = Math.max(FORGE.heuresMin, Math.round(ITEMS[k].prix * FORGE.heuresParPrix));
+    return `<button class="act mini" data-a="forger" data-k="${k}" style="margin:2px 2px 0 0">
+        ${e(ITEMS[k].nom)} · ${e(coutTexte(c))} · ${dureeTexte(h)}</button>`;
+  }).join('')}` : ''}` : '';
 
   // Les bâtiments par ce qu'ils font, et non dans l'ordre du fichier de
   // données. Le baraquement y arrivait en dernier alors que c'est lui qui
@@ -3122,7 +3134,7 @@ function ecranBase() {
     { nom: 'Tenir sur place', clefs: ['baraquement', 'halle', 'bassins', 'hydroponie', 'cantine'] },
     { nom: 'Changer la terre', clefs: ['semoir', 'terraformeur'] },
     { nom: 'Alimenter', clefs: ['generateur', 'solaire', 'eolienne'] },
-    { nom: 'Produire', clefs: ['entrepot', 'fonderie', 'raffinerie', 'atelier'] },
+    { nom: 'Produire', clefs: ['entrepot', 'fonderie', 'raffinerie', 'atelier', 'forge'] },
     { nom: 'Se défendre et soigner', clefs: ['mur', 'poste', 'infirmerie'] },
     { nom: 'Savoir et commercer', clefs: ['antenne', 'comptoir', 'attelage'] },
   ];
@@ -5758,6 +5770,13 @@ function surClic(ev) {
     case 'evacuer-camp': {
       const r = ACTIONS.evacuerCamp();
       toast(r.ok ? `Camp évacué — ${n(r.emporte)} unités emportées.` : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
+    case 'forger': {
+      const r = lancerFabrication(S, el.dataset.k);
+      toast(r.ok ? `${ITEMS[el.dataset.k].nom} au feu de forge.` : r.motif, !r.ok);
       rafraichir(true);
       break;
     }
