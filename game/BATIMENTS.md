@@ -229,6 +229,21 @@ décisions). Pas de bâtiment « qui donne +X % de tout ».
   journal et ne reviennent pas (`miliceMorts`, née dans `creerBase` et
   `normaliser`).
 
+## Ce qui reste dit honnêtement
+
+- La vérification navigateur des cinq fiches demanderait un décor avec
+  camp fondé — le décor actuel est une partie neuve. Les cinq passent
+  par `FAMILLES` (le mécanisme qui a réparé le comptoir invisible) et
+  chaque effet est tenu par test headless ; la fiche à l'écran reste à
+  voir en jouant.
+- Les lignes de chronique vivent où vivent les événements : la
+  charrette qui sort, la pièce forgée, les miliciens tombés nommés.
+  Les chaînes continues (serres, distillerie) restent muettes comme
+  leurs pareilles — bassins, raffinerie.
+- Le « triangle » forge-carnet-étal en partie témoin (cible 2, garde 3)
+  est une mesure de banc à faire en jouant ; les deux gardes
+  arithmétiques qui l'encadrent sont, elles, des tests.
+
 ## Blocages
 
 Rien pour l'instant.

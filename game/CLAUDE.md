@@ -77,7 +77,7 @@ quelqu'un d'autre.
 | `MULTIJOUEUR.md` | l'étude multijoueur — trois architectures, sept modes, décisions au propriétaire |
 | `TECHNOLOGIE.md` | l'arbre technologique et le départ nu — **reporté** : d'abord les mécaniques et les bâtiments, l'arbre les coiffera |
 | `SIEGE.md` | le camp qui se défend — **livré**, quatre lots sur quatre |
-| `BATIMENTS.md` | cinq bâtiments nouveaux — en attente de validation |
+| `BATIMENTS.md` | cinq bâtiments nouveaux — **livré**, cinq sur cinq, amendé sur avis de game master |
 | `PISTES.md` | des idées consignées, pas des chantiers — rien n'y est engagé |
 | `README.md` | le projet, les tests, l'architecture |
 
