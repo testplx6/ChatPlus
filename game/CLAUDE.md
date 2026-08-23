@@ -78,6 +78,7 @@ quelqu'un d'autre.
 | `TECHNOLOGIE.md` | l'arbre technologique et le départ nu — **reporté** : d'abord les mécaniques et les bâtiments, l'arbre les coiffera |
 | `SIEGE.md` | le camp qui se défend — **livré**, quatre lots sur quatre |
 | `BATIMENTS.md` | cinq bâtiments nouveaux — **livré**, cinq sur cinq, amendé sur avis de game master |
+| `REVUE.md` | la revue de game master du jeu entier — verdicts, top 5, exploits, ordre des chantiers proposé |
 | `PISTES.md` | des idées consignées, pas des chantiers — rien n'y est engagé |
 | `README.md` | le projet, les tests, l'architecture |
 
