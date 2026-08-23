@@ -577,6 +577,8 @@ export function apportBatiment(base, key, state) {
       return 'Plus de place. Ce qui ne rentre pas dans l’entrepôt est perdu pour de bon.';
     case 'cantine':
       return 'Jusqu’à un tiers de vivres en moins pour les mêmes bouches, et du moral.';
+    case 'serres':
+      return `Le mauvais ciel sur la récolte vivante fond de ${Math.round(30 * Math.min(2, n))} % — le beau passe entier.`;
     case 'forge':
       return n >= 2
         ? 'Bat les armes et armures jusqu’au palier 2 — katana, verrou, kevlar.'
@@ -868,6 +870,23 @@ export function peutPayer(stock, cout) {
 
 export function payer(stock, cout) {
   for (const k of Object.keys(cout)) stock[k] -= cout[k];
+}
+
+/**
+ * Le ciel sur la récolte du camp, denrée par denrée — amorti à 0,6 comme
+ * toujours (un treuil sous l'orage vaut mieux qu'un dos). Les serres
+ * (BATIMENTS.md, B3) n'amortissent que le MAUVAIS ciel, de 30 % par niveau
+ * (2 max), et seulement sur ce qui vit : le beau temps passe entier — on ne
+ * punit pas la canicule d'avoir construit — et la ferraille n'a jamais eu
+ * froid. Le facteur terrain, lui, ne passe pas par ici : c'est la terre,
+ * pas le ciel.
+ */
+export function facteurClimatRecolte(climat, k, serres = 0) {
+  let fc = climat ? 1 + (climat.rendement(k) - 1) * 0.6 : 1;
+  if (serres > 0 && k === 'biomasse' && fc < 1) {
+    fc = 1 - (1 - fc) * (1 - 0.3 * Math.min(2, serres));
+  }
+  return fc;
 }
 
 export function lancerConstruction(state, key) {
@@ -1331,9 +1350,13 @@ export function tickBase(state, log, ctx) {
     // Le courant aide encore — un treuil vaut mieux qu'un dos — mais il ne
     // conditionne plus la récolte.
     const bras = 0.75 + 0.45 * r;
-    const taux = 1.1 * halle * bras * mo * M.recoltant * regHalle.richesse
-      * (ctx.climat ? 1 + (ctx.climat.rendement('ferraille') - 1) * 0.6 : 1);
-    for (const k of Object.keys(y)) ajouter(state, k, y[k] * taux);
+    const taux = 1.1 * halle * bras * mo * M.recoltant * regHalle.richesse;
+    // Chaque denrée subit SON ciel — la biomasse ne gèle plus au facteur de
+    // la ferraille — et les serres abritent ce qui vit (BATIMENTS.md, B3).
+    const serres = niveau(base, 'serres');
+    for (const k of Object.keys(y)) {
+      ajouter(state, k, y[k] * taux * facteurClimatRecolte(ctx.climat, k, serres));
+    }
   }
 
   // Les bassins : de la biomasse qui ne demande rien au terrain.

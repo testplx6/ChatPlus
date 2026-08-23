@@ -557,6 +557,16 @@ export const BUILDINGS = {
     energie: -2,
     max: 5,
   },
+  serres: {
+    nom: 'Serres',
+    desc: 'Des bâches, des arceaux, des heures. Le mauvais ciel s’arrête dehors — le beau entre.',
+    cout: { ferraille: 45, polymere: 25 },
+    coutMul: 1.55,
+    heures: 8,
+    tempsMul: 1.4,
+    energie: 0,
+    max: 2,
+  },
   forge: {
     nom: 'Forge',
     desc: 'L’alliage y devient lame ou plaque. Ce qu’on ne trouve plus aux étals, on le bat soi-même.',

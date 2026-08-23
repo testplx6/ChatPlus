@@ -76,6 +76,7 @@ import {
   raidSurLaBase, raidEnApproche, siegeEnCours, prixSiege, negocierSiege,
   sortieContreSiege, evacuerCamp, RANCON, userMursSiege, MURS,
   lancerFabrication, ATTELAGE, FORGE, coutForge, forgeables,
+  facteurClimatRecolte,
   recetteDe, recettesDe, reglerRecette, reglerReserve, brasEscouade,
   voulus, tenus, postesDegarnis, brasDisponibles, ORDRE_EMBAUCHE, tempsRecherche,
   deposer,
@@ -10832,6 +10833,24 @@ section('B1. L’attelage — fabriquer et réparer la charrette (BATIMENTS.md)'
   ok(g.objets.includes('machette') && g.objets.includes('verrou'),
     'les pièces finies rejoignent le sac du groupe au camp',
     g.objets.join(', '));
+}
+
+// B3 : les serres — on s'abrite du mauvais ciel, on s'ouvre au beau.
+{
+  const mauvais = { rendement: (k) => (k === 'biomasse' ? 0.5 : 1) };
+  const beau = { rendement: (k) => (k === 'biomasse' ? 1.35 : 1) };
+  const sans = facteurClimatRecolte(mauvais, 'biomasse', 0);
+  const s1 = facteurClimatRecolte(mauvais, 'biomasse', 1);
+  const s2 = facteurClimatRecolte(mauvais, 'biomasse', 2);
+  ok(sans < 1 && s1 > sans && s2 > s1,
+    'le mauvais ciel s’amortit sous serre, niveau par niveau',
+    `${sans.toFixed(2)} → ${s1.toFixed(2)} → ${s2.toFixed(2)}`);
+  ok(Math.abs(facteurClimatRecolte(beau, 'biomasse', 2)
+    - facteurClimatRecolte(beau, 'biomasse', 0)) < 1e-9,
+  'le beau temps passe entier — la serre ne punit pas la canicule');
+  ok(Math.abs(facteurClimatRecolte(mauvais, 'ferraille', 2)
+    - facteurClimatRecolte(mauvais, 'ferraille', 0)) < 1e-9,
+  'et la serre n’abrite que ce qui vit — jamais la ferraille');
 }
 
 // ===========================================================================

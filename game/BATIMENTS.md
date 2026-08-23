@@ -203,7 +203,15 @@ décisions). Pas de bâtiment « qui donne +X % de tout ».
   par test. Heures = prix/12, min 6, au rythme des machinistes. Les
   pièces sortent dans le sac du groupe au camp ; boutons par pièce sur
   l'écran BASE.
-- [ ] B3 — les serres
+- [x] B3 — les serres — livré, avec une correction de constat : la
+  météo ne touche pas les bassins (sous lampes, c'est leur identité),
+  elle touche **la halle** — et y appliquait le facteur de la ferraille
+  à tout, même au vivant. `facteurClimatRecolte` donne à chaque denrée
+  son ciel (amorti 0,6 inchangé), et les serres (2 niveaux, famille
+  Tenir sur place) n'amortissent que le mauvais ciel, de 30 %/niveau,
+  sur la biomasse seulement — le beau temps passe entier, la ferraille
+  n'a jamais eu froid (les deux asymétries du game master, tenues par
+  test).
 - [ ] B4 — la distillerie
 - [ ] B5 — la salle d'exercice
 

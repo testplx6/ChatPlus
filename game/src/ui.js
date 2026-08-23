@@ -3131,7 +3131,7 @@ function ecranBase() {
   // décide si quelqu'un peut vivre là ; la halle et l'hydroponie — récolter et
   // manger — étaient noyées entre la fonderie et la raffinerie.
   const FAMILLES = [
-    { nom: 'Tenir sur place', clefs: ['baraquement', 'halle', 'bassins', 'hydroponie', 'cantine'] },
+    { nom: 'Tenir sur place', clefs: ['baraquement', 'halle', 'bassins', 'hydroponie', 'cantine', 'serres'] },
     { nom: 'Changer la terre', clefs: ['semoir', 'terraformeur'] },
     { nom: 'Alimenter', clefs: ['generateur', 'solaire', 'eolienne'] },
     { nom: 'Produire', clefs: ['entrepot', 'fonderie', 'raffinerie', 'atelier', 'forge'] },
