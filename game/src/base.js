@@ -577,6 +577,8 @@ export function apportBatiment(base, key, state) {
       return 'Plus de place. Ce qui ne rentre pas dans l’entrepôt est perdu pour de bon.';
     case 'cantine':
       return 'Jusqu’à un tiers de vivres en moins pour les mêmes bouches, et du moral.';
+    case 'distillerie':
+      return 'Biomasse → carburant, au cinquième. Respecte la réserve de biomasse.';
     case 'serres':
       return `Le mauvais ciel sur la récolte vivante fond de ${Math.round(30 * Math.min(2, n))} % — le beau passe entier.`;
     case 'forge':
@@ -915,6 +917,14 @@ export function lancerConstruction(state, key) {
  * de la revente d'une charrette (170 à pleine santé), au-dessous de l'étal
  * (340) — la garde du game master, tenue par test.
  */
+/**
+ * La distillerie, réglée (BATIMENTS.md, B4). La garde du game master, en
+ * arithmétique : biomasse 4 cr → carburant 12 cr, tout rendement au-dessus
+ * de 0,33 ferait d'« acheter, distiller, revendre » une pompe à crédits.
+ * 0,22 : la terre paie la route, pas le casino. Tenu par test.
+ */
+export const DISTILLERIE = { rendement: 0.22 };
+
 export const ATTELAGE = {
   cout: { alliage: 10, composant: 2 },
   heures: 36,
@@ -1357,6 +1367,16 @@ export function tickBase(state, log, ctx) {
     for (const k of Object.keys(y)) {
       ajouter(state, k, y[k] * taux * facteurClimatRecolte(ctx.climat, k, serres));
     }
+  }
+
+  // La distillerie (BATIMENTS.md, B4) : la biomasse devient carburant —
+  // médiocrement, par conception. Elle respecte les réserves (`consommer`) :
+  // une réserve de biomasse protège la nourriture avant la route.
+  const dist = niveau(base, 'distillerie');
+  if (dist > 0 && recetteDe(base, 'distillerie') !== ARRET) {
+    const bio = consommer(base, 'biomasse', 0.8 * dist * r * mo * M.raffineur);
+    ajouter(state, 'carburant', bio * DISTILLERIE.rendement);
+    rebuter(base, bio * 0.15); // les drêches
   }
 
   // Les bassins : de la biomasse qui ne demande rien au terrain.

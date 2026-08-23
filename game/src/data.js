@@ -557,6 +557,16 @@ export const BUILDINGS = {
     energie: -2,
     max: 5,
   },
+  distillerie: {
+    nom: 'Distillerie',
+    desc: 'Biomasse → carburant, à l’alambic. Rendement de misère — mais la terre paie enfin la route.',
+    cout: { ferraille: 70, alliage: 10, composant: 2 },
+    coutMul: 1.6,
+    heures: 10,
+    tempsMul: 1.4,
+    energie: -1,
+    max: 2,
+  },
   serres: {
     nom: 'Serres',
     desc: 'Des bâches, des arceaux, des heures. Le mauvais ciel s’arrête dehors — le beau entre.',
@@ -879,6 +889,11 @@ export const RECETTES = {
       recherche: 'refonte',
     },
   ],
+  distillerie: [{
+    id: 'marche',
+    nom: 'Biomasse → carburant',
+    aide: 'Au cinquième — la terre paie la route. La réserve de biomasse est respectée.',
+  }],
   raffinerie: [
     { id: 'carburant', nom: 'Polymère → carburant', aide: 'Ce que brûle le générateur.' },
     {

@@ -212,7 +212,13 @@ décisions). Pas de bâtiment « qui donne +X % de tout ».
   sur la biomasse seulement — le beau temps passe entier, la ferraille
   n'a jamais eu froid (les deux asymétries du game master, tenues par
   test).
-- [ ] B4 — la distillerie
+- [x] B4 — la distillerie — livré : bâtiment `distillerie` (2 niveaux,
+  famille Produire, −1 d'énergie), chaîne continue biomasse → carburant
+  à `DISTILLERIE.rendement = 0,22` — les deux gardes du game master
+  tenues par test (≤ 0,25, et 0,22 × 12 < 4 : distiller de la biomasse
+  achetée perd de l'argent). Consigne « marche/arrêt » comme les autres
+  chaînes, réserve de biomasse respectée (`consommer`), les drêches au
+  rebut.
 - [ ] B5 — la salle d'exercice
 
 ## Blocages

@@ -3134,7 +3134,7 @@ function ecranBase() {
     { nom: 'Tenir sur place', clefs: ['baraquement', 'halle', 'bassins', 'hydroponie', 'cantine', 'serres'] },
     { nom: 'Changer la terre', clefs: ['semoir', 'terraformeur'] },
     { nom: 'Alimenter', clefs: ['generateur', 'solaire', 'eolienne'] },
-    { nom: 'Produire', clefs: ['entrepot', 'fonderie', 'raffinerie', 'atelier', 'forge'] },
+    { nom: 'Produire', clefs: ['entrepot', 'fonderie', 'raffinerie', 'distillerie', 'atelier', 'forge'] },
     { nom: 'Se défendre et soigner', clefs: ['mur', 'poste', 'infirmerie'] },
     { nom: 'Savoir et commercer', clefs: ['antenne', 'comptoir', 'attelage'] },
   ];

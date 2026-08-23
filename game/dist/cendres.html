@@ -1469,6 +1469,16 @@ const BUILDINGS = {
     energie: -2,
     max: 5,
   },
+  distillerie: {
+    nom: 'Distillerie',
+    desc: 'Biomasse → carburant, à l’alambic. Rendement de misère — mais la terre paie enfin la route.',
+    cout: { ferraille: 70, alliage: 10, composant: 2 },
+    coutMul: 1.6,
+    heures: 10,
+    tempsMul: 1.4,
+    energie: -1,
+    max: 2,
+  },
   serres: {
     nom: 'Serres',
     desc: 'Des bâches, des arceaux, des heures. Le mauvais ciel s’arrête dehors — le beau entre.',
@@ -1791,6 +1801,11 @@ const RECETTES = {
       recherche: 'refonte',
     },
   ],
+  distillerie: [{
+    id: 'marche',
+    nom: 'Biomasse → carburant',
+    aide: 'Au cinquième — la terre paie la route. La réserve de biomasse est respectée.',
+  }],
   raffinerie: [
     { id: 'carburant', nom: 'Polymère → carburant', aide: 'Ce que brûle le générateur.' },
     {
@@ -17786,6 +17801,8 @@ function apportBatiment(base, key, state) {
       return 'Plus de place. Ce qui ne rentre pas dans l’entrepôt est perdu pour de bon.';
     case 'cantine':
       return 'Jusqu’à un tiers de vivres en moins pour les mêmes bouches, et du moral.';
+    case 'distillerie':
+      return 'Biomasse → carburant, au cinquième. Respecte la réserve de biomasse.';
     case 'serres':
       return `Le mauvais ciel sur la récolte vivante fond de ${Math.round(30 * Math.min(2, n))} % — le beau passe entier.`;
     case 'forge':
@@ -18124,6 +18141,14 @@ function lancerConstruction(state, key) {
  * de la revente d'une charrette (170 à pleine santé), au-dessous de l'étal
  * (340) — la garde du game master, tenue par test.
  */
+/**
+ * La distillerie, réglée (BATIMENTS.md, B4). La garde du game master, en
+ * arithmétique : biomasse 4 cr → carburant 12 cr, tout rendement au-dessus
+ * de 0,33 ferait d'« acheter, distiller, revendre » une pompe à crédits.
+ * 0,22 : la terre paie la route, pas le casino. Tenu par test.
+ */
+const DISTILLERIE = { rendement: 0.22 };
+
 const ATTELAGE = {
   cout: { alliage: 10, composant: 2 },
   heures: 36,
@@ -18566,6 +18591,16 @@ function tickBase(state, log, ctx) {
     for (const k of Object.keys(y)) {
       ajouter(state, k, y[k] * taux * facteurClimatRecolte(ctx.climat, k, serres));
     }
+  }
+
+  // La distillerie (BATIMENTS.md, B4) : la biomasse devient carburant —
+  // médiocrement, par conception. Elle respecte les réserves (`consommer`) :
+  // une réserve de biomasse protège la nourriture avant la route.
+  const dist = niveau(base, 'distillerie');
+  if (dist > 0 && recetteDe(base, 'distillerie') !== ARRET) {
+    const bio = consommer(base, 'biomasse', 0.8 * dist * r * mo * M.raffineur);
+    ajouter(state, 'carburant', bio * DISTILLERIE.rendement);
+    rebuter(base, bio * 0.15); // les drêches
   }
 
   // Les bassins : de la biomasse qui ne demande rien au terrain.
@@ -27358,7 +27393,7 @@ function ecranBase() {
     { nom: 'Tenir sur place', clefs: ['baraquement', 'halle', 'bassins', 'hydroponie', 'cantine', 'serres'] },
     { nom: 'Changer la terre', clefs: ['semoir', 'terraformeur'] },
     { nom: 'Alimenter', clefs: ['generateur', 'solaire', 'eolienne'] },
-    { nom: 'Produire', clefs: ['entrepot', 'fonderie', 'raffinerie', 'atelier', 'forge'] },
+    { nom: 'Produire', clefs: ['entrepot', 'fonderie', 'raffinerie', 'distillerie', 'atelier', 'forge'] },
     { nom: 'Se défendre et soigner', clefs: ['mur', 'poste', 'infirmerie'] },
     { nom: 'Savoir et commercer', clefs: ['antenne', 'comptoir', 'attelage'] },
   ];

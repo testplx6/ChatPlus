@@ -76,7 +76,7 @@ import {
   raidSurLaBase, raidEnApproche, siegeEnCours, prixSiege, negocierSiege,
   sortieContreSiege, evacuerCamp, RANCON, userMursSiege, MURS,
   lancerFabrication, ATTELAGE, FORGE, coutForge, forgeables,
-  facteurClimatRecolte,
+  facteurClimatRecolte, DISTILLERIE,
   recetteDe, recettesDe, reglerRecette, reglerReserve, brasEscouade,
   voulus, tenus, postesDegarnis, brasDisponibles, ORDRE_EMBAUCHE, tempsRecherche,
   deposer,
@@ -10851,6 +10851,39 @@ section('B1. L’attelage — fabriquer et réparer la charrette (BATIMENTS.md)'
   ok(Math.abs(facteurClimatRecolte(mauvais, 'ferraille', 2)
     - facteurClimatRecolte(mauvais, 'ferraille', 0)) < 1e-9,
   'et la serre n’abrite que ce qui vit — jamais la ferraille');
+}
+
+// B4 : la distillerie — la terre paie la route, pas le casino.
+{
+  ok(DISTILLERIE.rendement <= 0.25,
+    'le rendement reste sous 0,25 — la garde du game master',
+    String(DISTILLERIE.rendement));
+  ok(DISTILLERIE.rendement * COMMODITIES.carburant.prix < COMMODITIES.biomasse.prix,
+    'distiller de la biomasse achetée perd de l’argent — pas de pompe à crédits',
+    `${(DISTILLERIE.rendement * COMMODITIES.carburant.prix).toFixed(2)} < ${COMMODITIES.biomasse.prix}`);
+
+  const decor = (avecDistillerie) => {
+    const s = nouvellePartie(781, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(s);
+    s.base.fonde = true;
+    s.base.regionId = g.regionId;
+    s.base.pop = 12;
+    s.base.batiments = avecDistillerie
+      ? { distillerie: 1, generateur: 1, entrepot: 2 }
+      : { generateur: 1, entrepot: 2 };
+    s.base.stock.biomasse = 150;
+    s.base.stock.carburant = 60;
+    avancer(s, 48);
+    return s;
+  };
+  const avec = decor(true);
+  const sans = decor(false);
+  ok(avec.base.stock.biomasse < sans.base.stock.biomasse,
+    'la distillerie mange de la biomasse',
+    `${avec.base.stock.biomasse.toFixed(1)} vs ${sans.base.stock.biomasse.toFixed(1)}`);
+  ok(avec.base.stock.carburant > sans.base.stock.carburant,
+    'et il en sort du carburant',
+    `${avec.base.stock.carburant.toFixed(1)} vs ${sans.base.stock.carburant.toFixed(1)}`);
 }
 
 // ===========================================================================
