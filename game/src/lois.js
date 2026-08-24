@@ -19,6 +19,32 @@ import { FACTIONS, drapeauDe } from './data.js';
  * gratuite : chacune achète quelque chose et se paie ailleurs. C'est tout
  * l'intérêt d'avoir le grade qui les fixe.
  */
+/**
+ * La discipline de solde (PROMESSES.md, P5) : ce qu'un pays fait d'un soldat
+ * qui laisse traîner son ordre. Une loi comme les autres — elle naît de la
+ * culture du drapeau et vit ensuite sa vie (conseils, législateur).
+ * `patience` en multiples de la route de la mission ; null = on paie
+ * toujours. `rancune` : au-delà, on n'oublie pas — l'estime s'érode.
+ */
+export const DISCIPLINES = {
+  stricte: { nom: 'Stricte', patience: 2, texte: 'l’armée ne paie pas les absents' },
+  comptable: { nom: 'Comptable', patience: 3, texte: 'le compte se ferme quand le contrat dort' },
+  tolerante: { nom: 'Tolérante', patience: null, texte: 'la paie tombe tant qu’on est des leurs' },
+  rancuniere: { nom: 'Rancunière', patience: null, rancune: 3, texte: 'on ne suspend rien — on n’oublie pas' },
+};
+
+/** Le point de départ culturel — la loi vivra sa vie ensuite. */
+export function disciplineInitiale(style) {
+  return {
+    militaire: 'stricte',
+    fanatique: 'stricte',
+    corpo: 'comptable',
+    nomade: 'comptable',
+    commune: 'tolerante',
+    criminel: 'rancuniere',
+  }[style] || 'comptable';
+}
+
 export const PEINES = {
   legere: {
     nom: 'Clémente',
@@ -242,6 +268,12 @@ export function loisDe(world, faction) {
   if (!f.lois.regime) f.lois.regime = regimeInitial(faction, world);
   // Ni avant le taux directeur.
   if (f.lois.directeur === undefined) f.lois.directeur = DIRECTEURS[1].taux;
+  // Ni avant la discipline de solde (P5) : elle naît de la culture — le
+  // style vit sur le drapeau, pas sur l'entrée de la faction.
+  if (!f.lois.discipline) {
+    const drapeau = drapeauDe(world, faction);
+    f.lois.discipline = disciplineInitiale(drapeau && drapeau.style);
+  }
   return f.lois;
 }
 

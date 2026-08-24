@@ -102,6 +102,7 @@ import {
 } from '../src/justice.js';
 import {
   loisDe, pressionFiscale, PEINES, REGIMES, DIRECTEURS, directeurInitial,
+  DISCIPLINES, disciplineInitiale,
 } from '../src/lois.js';
 import {
   depouillesDe, lenteurDepouilles, poidsMoral, disposerCorps, prixOrganes,
@@ -181,6 +182,7 @@ import {
   droitIntendance, toucherRations, garnison, RANG_GARNISON, JOURS_INTENDANCE,
   bilanService, noterFait, FEUILLE_MAX, palierBonus, effetsEstime, PALIERS_ESTIME,
   estimeEngagement, SERVICES, avantage, renfortMilice, URGENCE_ORDRE,
+  disciplineDe,
 } from '../src/allegeance.js';
 import {
   vueColonie, estSurveillee, ageTexte, nouvellesConnues, DELAI_NOUVELLE, observer,
@@ -11031,6 +11033,41 @@ section('P. Les promesses tenues — P1, la milice s’arme à l’arsenal (PROM
   ok(prises > 0 && ratees > 0,
     'la bourse étrangère se cache mieux : parfois prise, parfois ratée',
     `${prises} prises, ${ratees} ratées sur 30`);
+}
+
+// P5 : la discipline de solde est une loi du pays — six cultures, six
+// points de départ, et la loi vivra sa vie.
+{
+  ok(disciplineInitiale('militaire') === 'stricte'
+    && disciplineInitiale('fanatique') === 'stricte'
+    && disciplineInitiale('corpo') === 'comptable'
+    && disciplineInitiale('nomade') === 'comptable'
+    && disciplineInitiale('commune') === 'tolerante'
+    && disciplineInitiale('criminel') === 'rancuniere',
+  'six cultures, six points de départ');
+
+  const s = nouvellePartie(789, { maintenant: 0, depart: 'ville', equipe: 3 });
+  ok(loisDe(s.world, 'cendre').discipline === 'stricte'
+    && loisDe(s.world, 'libres').discipline === 'tolerante'
+    && loisDe(s.world, 'ombrelle').discipline === 'rancuniere',
+  'la discipline est née dans la loi du pays, selon sa culture');
+
+  const fab = (faction, t0, route) => ({
+    faction, ordre: { t: t0, routeH: route, titre: 'x' },
+  });
+  s.temps = 150;
+  ok(!disciplineDe(s, fab('cendre', 0, 100)).suspendue,
+    'militaire : à une route et demie de retard, la paie tombe encore');
+  s.temps = 250;
+  ok(disciplineDe(s, fab('cendre', 0, 100)).suspendue,
+    'à deux routes et demie, l’armée ne paie plus les absents');
+  ok(!disciplineDe(s, fab('libres', 0, 100)).suspendue,
+    'les Communes paient à vie — c’est leur culture, et leur solde est la plus basse');
+  const dOmb = disciplineDe(s, fab('ombrelle', 0, 60));
+  ok(!dOmb.suspendue && dOmb.rancune,
+    'l’Ombrelle ne suspend rien — elle retient');
+  ok(!disciplineDe(s, { faction: 'cendre', ordre: null }).suspendue,
+    'sans ordre en attente, rien à reprocher à personne');
 }
 
 // ===========================================================================

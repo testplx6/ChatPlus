@@ -187,7 +187,17 @@ ci-dessus est porté par un agent qui a sa logique.
   Le coffre en ville reste l'abri sûr.
 - [x] P4 — la prime retombe, l'estime ne bouge pas — livré :
   `solderPrime` (le +10 disparaît), deux tests nés rouges.
-- [ ] P5 — chaque drapeau a sa discipline de solde
+- [x] P5 — la discipline de solde est une loi du pays — livré :
+  `DISCIPLINES` + `disciplineInitiale` (lois.js, née du style du
+  drapeau), `disciplineDe` (allegeance.js) jugée sur l'estampille des
+  ordres (`o.t`, `o.routeH` — les ordres d'avant ne sont pas jugés :
+  on ne juge pas sur des registres qu'on n'a pas tenus), suspension
+  de la solde ET de l'intendance avec dépêche à la transition,
+  l'Ombrelle retient (−0,02 d'estime/h au-delà de 3 routes), et **la
+  loi vit** : le législateur la durcit caisse vide et l'assouplit
+  prospère (même moteur que le loyer de l'argent), les rancuniers ne
+  légifèrent pas leur mémoire. La fiche de chaque drapeau (écran
+  monde) la dit. Sept tests nés rouges.
 - [ ] P6 — les pillards jaugent leur coup
 
 ## Blocages

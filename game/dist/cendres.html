@@ -2816,6 +2816,32 @@ function resumeClimat(world, t) {
  * gratuite : chacune achète quelque chose et se paie ailleurs. C'est tout
  * l'intérêt d'avoir le grade qui les fixe.
  */
+/**
+ * La discipline de solde (PROMESSES.md, P5) : ce qu'un pays fait d'un soldat
+ * qui laisse traîner son ordre. Une loi comme les autres — elle naît de la
+ * culture du drapeau et vit ensuite sa vie (conseils, législateur).
+ * `patience` en multiples de la route de la mission ; null = on paie
+ * toujours. `rancune` : au-delà, on n'oublie pas — l'estime s'érode.
+ */
+const DISCIPLINES = {
+  stricte: { nom: 'Stricte', patience: 2, texte: 'l’armée ne paie pas les absents' },
+  comptable: { nom: 'Comptable', patience: 3, texte: 'le compte se ferme quand le contrat dort' },
+  tolerante: { nom: 'Tolérante', patience: null, texte: 'la paie tombe tant qu’on est des leurs' },
+  rancuniere: { nom: 'Rancunière', patience: null, rancune: 3, texte: 'on ne suspend rien — on n’oublie pas' },
+};
+
+/** Le point de départ culturel — la loi vivra sa vie ensuite. */
+function disciplineInitiale(style) {
+  return {
+    militaire: 'stricte',
+    fanatique: 'stricte',
+    corpo: 'comptable',
+    nomade: 'comptable',
+    commune: 'tolerante',
+    criminel: 'rancuniere',
+  }[style] || 'comptable';
+}
+
 const PEINES = {
   legere: {
     nom: 'Clémente',
@@ -3039,6 +3065,12 @@ function loisDe(world, faction) {
   if (!f.lois.regime) f.lois.regime = regimeInitial(faction, world);
   // Ni avant le taux directeur.
   if (f.lois.directeur === undefined) f.lois.directeur = DIRECTEURS[1].taux;
+  // Ni avant la discipline de solde (P5) : elle naît de la culture — le
+  // style vit sur le drapeau, pas sur l'entrée de la faction.
+  if (!f.lois.discipline) {
+    const drapeau = drapeauDe(world, faction);
+    f.lois.discipline = disciplineInitiale(drapeau && drapeau.style);
+  }
   return f.lois;
 }
 
@@ -6861,6 +6893,28 @@ function garnison(state, regionId, groupe) {
  * ne rend donc pas la place imprenable — ça change l'issue d'un siège serré,
  * ce qui est exactement ce qu'un allié doit faire.
  */
+/**
+ * Ce que la loi du pays dit d'un ordre qui traîne (PROMESSES.md, P5).
+ * Retourne { suspendue, rancune, traine } — `traine` en multiples de la
+ * route de la mission. Sans ordre en attente, rien à reprocher à personne ;
+ * un ordre d'avant l'estampille (`o.t`) non plus : on ne juge pas sur des
+ * registres qu'on n'a pas tenus.
+ */
+function disciplineDe(state, all) {
+  const rien = { suspendue: false, rancune: false, traine: 0 };
+  if (!all || !all.faction) return rien;
+  const o = all.ordre;
+  if (!o || o.t === undefined) return rien;
+  const d = DISCIPLINES[loisDe(state.world, all.faction).discipline]
+    || DISCIPLINES.comptable;
+  const traine = (state.temps - o.t) / Math.max(1, o.routeH || 300);
+  return {
+    suspendue: d.patience != null && traine > d.patience,
+    rancune: d.rancune != null && traine > d.rancune,
+    traine,
+  };
+}
+
 const RENFORT_MILICE = 40;
 
 function renfortMilice(state) {
@@ -7260,8 +7314,35 @@ function tickEngagement(state, g, log, ctx) {
 
   const rang = rangDe(all);
 
+  // La discipline de solde (PROMESSES.md, P5) : ce que le pays fait d'un
+  // ordre qui traîne, c'est SA loi — l'armée ne paie pas les absents, les
+  // Communes paient à vie, l'Ombrelle retient. On paie un soldat selon la
+  // culture qui l'emploie, pas selon une règle du jeu.
+  const disc = disciplineDe(state, all);
+  if (disc.suspendue && !all.soldeSuspendue) {
+    all.soldeSuspendue = true;
+    log({
+      type: 'allegeance',
+      texte: `${drapeauDe(state.world, all.faction).nom} : la solde attend que `
+        + `vous fassiez votre part (« ${all.ordre.titre} »).`,
+      important: true,
+    });
+  } else if (!disc.suspendue && all.soldeSuspendue) {
+    all.soldeSuspendue = false;
+  }
+  if (disc.suspendue) {
+    // L'intendance non plus ne nourrit pas les absents : les jours suspendus
+    // ne s'accumulent pas.
+    all.intendance = Math.min(state.temps, (all.intendance || 0) + 1);
+  }
+  if (disc.rancune) {
+    // On ne fait pas de paperasse, on retient.
+    state.player.reputation[all.faction] = Math.max(-100,
+      (state.player.reputation[all.faction] || 0) - 0.02);
+  }
+
   // Solde versée tous les jours, à partir du grade d'Agent.
-  if (rang.def.solde > 0 && state.temps - all.derniereSolde >= 24) {
+  if (!disc.suspendue && rang.def.solde > 0 && state.temps - all.derniereSolde >= 24) {
     all.derniereSolde = state.temps;
     gagner(state, rang.def.solde);
     noterArgent(state, 'solde', rang.def.solde);
@@ -7376,6 +7457,10 @@ function tickEngagement(state, g, log, ctx) {
   } else if (state.temps >= all.prochainOrdre && !(ctx && ctx.absent)) {
     const o = fabriquerOrdre(state, rng, g);
     if (o) {
+      // L'estampille de la discipline (P5) : quand l'ordre est tombé, et ce
+      // que sa route vaut — c'est là-dessus que la loi du pays jugera.
+      o.t = state.temps;
+      o.routeH = o.duree || 300;
       // Le délai est l'exception, et il se paie. Voir `delai` au-dessus.
       o.urgent = rng.chance(PART_URGENTE_ORDRE);
       if (o.urgent) o.recompense = Math.round(o.recompense * URGENCE_ORDRE.prime);
@@ -14601,6 +14686,24 @@ function legiferer(world, key, t, log, ctx) {
   if (reg !== lois.regime) {
     lois.regime = reg;
     changements.push(`le régime devient ${REGIMES[reg].nom.toLowerCase()}`);
+  }
+
+  // La discipline de solde (PROMESSES.md, P5) vit comme les autres lois, au
+  // même moteur que le loyer de l'argent : une caisse vide ne paie pas les
+  // absents, la prospérité tolère. Les rancuniers, eux, ne légifèrent pas
+  // leur mémoire — c'est leur nature, pas une loi.
+  if (lois.discipline && lois.discipline !== 'rancuniere') {
+    const echelle = ['stricte', 'comptable', 'tolerante'];
+    const cran = echelle.indexOf(lois.discipline);
+    let vise = lois.discipline;
+    if (pays.caisse < 700 && cran > 0) vise = echelle[cran - 1];
+    else if (pays.caisse > 3200 && cran < 2) vise = echelle[cran + 1];
+    if (vise !== lois.discipline) {
+      const durci = echelle.indexOf(vise) < cran;
+      lois.discipline = vise;
+      changements.push(`la discipline de solde ${durci ? 'se durcit' : 's’assouplit'} `
+        + `— ${DISCIPLINES[vise].texte}`);
+    }
   }
 
   // La bourse : une faction qui tient assez de villes et dont la caisse suit
@@ -28610,7 +28713,9 @@ function ecranMonde() {
     const reg = REGIMES[l.regime] || REGIMES.charte;
     return `<div class="aide">Chez eux : ${e(reg.nom.toLowerCase())},
       impôt ${e(imp.nom.toLowerCase())} (${Math.round(l.impot * 100)} %),
-      justice ${e(PEINES[l.peine].nom.toLowerCase())}${l.esclavage
+      justice ${e(PEINES[l.peine].nom.toLowerCase())},
+      solde ${e((DISCIPLINES[l.discipline] || DISCIPLINES.comptable).nom.toLowerCase())}
+      (${e((DISCIPLINES[l.discipline] || DISCIPLINES.comptable).texte)})${l.esclavage
       ? ', <span class="alerte">et l’on y vend des hommes</span>' : ''}.${facheurs
       ? ` <span class="alerte">${pl(facheurs, 'faction ne le supporte pas', 'factions ne le supportent pas')}.</span>` : ''}
       <br>Pour vous : ${e(reg.desc.toLowerCase())}</div>`;

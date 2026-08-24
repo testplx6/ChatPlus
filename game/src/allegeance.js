@@ -9,7 +9,7 @@ import { FACTIONS, DIPLO_FACTIONS, COMMODITIES, drapeauDe, symboleDe } from './d
 import { colonieParId, distance, coordonnee } from './world.js';
 import { idDepuisRng } from './characters.js';
 import { groupes, groupeActif } from './groupes.js';
-import { loisDe, REGIMES } from './lois.js';
+import { loisDe, REGIMES, DISCIPLINES } from './lois.js';
 import { noterArgent } from './rapport.js';
 import { depenser, gagner, soldeIci, signeIci } from './monnaie.js';
 
@@ -568,6 +568,28 @@ export function garnison(state, regionId, groupe) {
  * ne rend donc pas la place imprenable — ça change l'issue d'un siège serré,
  * ce qui est exactement ce qu'un allié doit faire.
  */
+/**
+ * Ce que la loi du pays dit d'un ordre qui traîne (PROMESSES.md, P5).
+ * Retourne { suspendue, rancune, traine } — `traine` en multiples de la
+ * route de la mission. Sans ordre en attente, rien à reprocher à personne ;
+ * un ordre d'avant l'estampille (`o.t`) non plus : on ne juge pas sur des
+ * registres qu'on n'a pas tenus.
+ */
+export function disciplineDe(state, all) {
+  const rien = { suspendue: false, rancune: false, traine: 0 };
+  if (!all || !all.faction) return rien;
+  const o = all.ordre;
+  if (!o || o.t === undefined) return rien;
+  const d = DISCIPLINES[loisDe(state.world, all.faction).discipline]
+    || DISCIPLINES.comptable;
+  const traine = (state.temps - o.t) / Math.max(1, o.routeH || 300);
+  return {
+    suspendue: d.patience != null && traine > d.patience,
+    rancune: d.rancune != null && traine > d.rancune,
+    traine,
+  };
+}
+
 export const RENFORT_MILICE = 40;
 
 export function renfortMilice(state) {
@@ -967,8 +989,35 @@ function tickEngagement(state, g, log, ctx) {
 
   const rang = rangDe(all);
 
+  // La discipline de solde (PROMESSES.md, P5) : ce que le pays fait d'un
+  // ordre qui traîne, c'est SA loi — l'armée ne paie pas les absents, les
+  // Communes paient à vie, l'Ombrelle retient. On paie un soldat selon la
+  // culture qui l'emploie, pas selon une règle du jeu.
+  const disc = disciplineDe(state, all);
+  if (disc.suspendue && !all.soldeSuspendue) {
+    all.soldeSuspendue = true;
+    log({
+      type: 'allegeance',
+      texte: `${drapeauDe(state.world, all.faction).nom} : la solde attend que `
+        + `vous fassiez votre part (« ${all.ordre.titre} »).`,
+      important: true,
+    });
+  } else if (!disc.suspendue && all.soldeSuspendue) {
+    all.soldeSuspendue = false;
+  }
+  if (disc.suspendue) {
+    // L'intendance non plus ne nourrit pas les absents : les jours suspendus
+    // ne s'accumulent pas.
+    all.intendance = Math.min(state.temps, (all.intendance || 0) + 1);
+  }
+  if (disc.rancune) {
+    // On ne fait pas de paperasse, on retient.
+    state.player.reputation[all.faction] = Math.max(-100,
+      (state.player.reputation[all.faction] || 0) - 0.02);
+  }
+
   // Solde versée tous les jours, à partir du grade d'Agent.
-  if (rang.def.solde > 0 && state.temps - all.derniereSolde >= 24) {
+  if (!disc.suspendue && rang.def.solde > 0 && state.temps - all.derniereSolde >= 24) {
     all.derniereSolde = state.temps;
     gagner(state, rang.def.solde);
     noterArgent(state, 'solde', rang.def.solde);
@@ -1083,6 +1132,10 @@ function tickEngagement(state, g, log, ctx) {
   } else if (state.temps >= all.prochainOrdre && !(ctx && ctx.absent)) {
     const o = fabriquerOrdre(state, rng, g);
     if (o) {
+      // L'estampille de la discipline (P5) : quand l'ordre est tombé, et ce
+      // que sa route vaut — c'est là-dessus que la loi du pays jugera.
+      o.t = state.temps;
+      o.routeH = o.duree || 300;
       // Le délai est l'exception, et il se paie. Voir `delai` au-dessus.
       o.urgent = rng.chance(PART_URGENTE_ORDRE);
       if (o.urgent) o.recompense = Math.round(o.recompense * URGENCE_ORDRE.prime);

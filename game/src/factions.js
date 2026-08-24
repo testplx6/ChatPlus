@@ -29,6 +29,7 @@ import { pourvoirCharges, nommerActeur } from './notables.js';
 import { chemin, colonieDe, colonieParId, distance, voisins, damer } from './world.js';
 import {
   loisDe, pressionFiscale, IMPOTS, PEINES, REGIMES, DIRECTEURS, directeurInitial,
+  DISCIPLINES,
 } from './lois.js';
 
 // ---------------------------------------------------------------------------
@@ -1406,6 +1407,24 @@ function legiferer(world, key, t, log, ctx) {
   if (reg !== lois.regime) {
     lois.regime = reg;
     changements.push(`le régime devient ${REGIMES[reg].nom.toLowerCase()}`);
+  }
+
+  // La discipline de solde (PROMESSES.md, P5) vit comme les autres lois, au
+  // même moteur que le loyer de l'argent : une caisse vide ne paie pas les
+  // absents, la prospérité tolère. Les rancuniers, eux, ne légifèrent pas
+  // leur mémoire — c'est leur nature, pas une loi.
+  if (lois.discipline && lois.discipline !== 'rancuniere') {
+    const echelle = ['stricte', 'comptable', 'tolerante'];
+    const cran = echelle.indexOf(lois.discipline);
+    let vise = lois.discipline;
+    if (pays.caisse < 700 && cran > 0) vise = echelle[cran - 1];
+    else if (pays.caisse > 3200 && cran < 2) vise = echelle[cran + 1];
+    if (vise !== lois.discipline) {
+      const durci = echelle.indexOf(vise) < cran;
+      lois.discipline = vise;
+      changements.push(`la discipline de solde ${durci ? 'se durcit' : 's’assouplit'} `
+        + `— ${DISCIPLINES[vise].texte}`);
+    }
   }
 
   // La bourse : une faction qui tient assez de villes et dont la caisse suit

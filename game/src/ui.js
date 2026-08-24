@@ -88,6 +88,7 @@ import {
 } from './coffres.js';
 import {
   PEINES, PEINE_KEYS, IMPOTS, REGIMES, REGIME_KEYS, DIRECTEURS, loisDe, loiIci,
+  DISCIPLINES,
 } from './lois.js';
 import { distanceMorale } from './factions.js';
 import { detresse } from './credit.js';
@@ -4204,7 +4205,9 @@ function ecranMonde() {
     const reg = REGIMES[l.regime] || REGIMES.charte;
     return `<div class="aide">Chez eux : ${e(reg.nom.toLowerCase())},
       impôt ${e(imp.nom.toLowerCase())} (${Math.round(l.impot * 100)} %),
-      justice ${e(PEINES[l.peine].nom.toLowerCase())}${l.esclavage
+      justice ${e(PEINES[l.peine].nom.toLowerCase())},
+      solde ${e((DISCIPLINES[l.discipline] || DISCIPLINES.comptable).nom.toLowerCase())}
+      (${e((DISCIPLINES[l.discipline] || DISCIPLINES.comptable).texte)})${l.esclavage
       ? ', <span class="alerte">et l’on y vend des hommes</span>' : ''}.${facheurs
       ? ` <span class="alerte">${pl(facheurs, 'faction ne le supporte pas', 'factions ne le supportent pas')}.</span>` : ''}
       <br>Pour vous : ${e(reg.desc.toLowerCase())}</div>`;
