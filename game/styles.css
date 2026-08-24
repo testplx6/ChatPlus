@@ -29,7 +29,10 @@ html, body {
   height: 100%;
   background: var(--fond);
   color: var(--texte);
-  font-family: ui-monospace, "SF Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  /* Deux voix, deux corps (ALLURE.md, Q1) : le mono pour la machine — et
+     `--serif` pour la chronique, posé sur les surfaces de récit (.recit). */
+  font-family: "IBM Plex Mono", ui-monospace, "SF Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  --serif: "IBM Plex Serif", Georgia, "Times New Roman", serif;
   font-size: 14px;
   line-height: 1.45;
   -webkit-text-size-adjust: 100%;
@@ -454,20 +457,80 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
   width: 100%;
 }
 
-.toast {
+/* La file de toasts (ALLURE.md, Q2) : ancrée en bas, elle empile au lieu de
+   remplacer — plus jamais un message posé par-dessus un autre. */
+#toasts {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
   bottom: calc(var(--nav-h) + 14px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  gap: 6px;
+  z-index: 60;
+  max-width: 90%;
+  pointer-events: none;
+}
+.toast {
   background: var(--panneau-2);
   border: 1px solid var(--bord-vif);
   padding: 7px 12px;
   font-size: 12px;
-  z-index: 60;
-  max-width: 90%;
+  max-width: 100%;
   text-align: center;
 }
 .toast.err { border-color: var(--rouge); color: var(--rouge); }
+
+/* Les surfaces de récit parlent en serif (ALLURE.md, Q1). */
+.recit { font-family: var(--serif); font-size: 14.5px; line-height: 1.6; }
+
+/* La vignette de la carte (Q3) : un monde sous la cendre, pas un écran éteint. */
+#carte-boite { position: relative; }
+#carte-boite::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 42%, transparent 58%, rgba(0, 0, 0, .38));
+}
+
+/* La nuit se sent sur le chrome (Q5). */
+#racine[data-nuit="1"] #barre-haut { filter: brightness(.82) saturate(.85); }
+
+/* Ce qu'on tient en main répond (Q6). Les barres animées attendent un rendu
+   qui ne reconstruit pas tout (piste moyenne) : une transition sur un élément
+   remplacé par innerHTML ne joue jamais — on ne pose pas de CSS mort. */
+.act:active { transform: translateY(1px); }
+
+/* Le point de situation pointe (Q7) : chaque ligne ouvre l'écran concerné. */
+.lien {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 2px 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--texte-2);
+  cursor: pointer;
+}
+.lien.alerte { color: var(--rouge); }
+.lien:active { transform: translateY(1px); }
+
+/* La prose derrière un « ? » (Q4) : la donnée d'abord, le savoir à un tap. */
+details.aide-plus { margin-top: 4px; }
+details.aide-plus > summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--texte-2);
+  opacity: .8;
+  list-style: none;
+  user-select: none;
+}
+details.aide-plus > summary::before { content: '? '; color: var(--accent); }
+details.aide-plus[open] > summary { opacity: 1; }
 
 /* ------------------------------------------------------------------ Groupes */
 /* Une ligne de vignettes : où est chacun, ce qu'il fait. Ça défile

@@ -3047,7 +3047,15 @@ if (!existsSync(chemin)) {
   const seul = await navigateur.newPage({ viewport: { width: 390, height: 844 } });
   const errSeul = [];
   seul.on('pageerror', (e) => errSeul.push(e.message));
-  seul.on('console', (m) => { if (m.type() === 'error') errSeul.push(m.text()); });
+  // Les polices (Q1, ALLURE.md) sont la seule ressource externe autorisée, en
+  // lien non bloquant : hors ligne, leur échec de chargement est attendu et ne
+  // dit rien du jeu. Tout autre échec de ressource reste une erreur.
+  seul.on('console', (m) => {
+    if (m.type() !== 'error') return;
+    const url = (m.location() && m.location().url) || '';
+    if (/^Failed to load resource/.test(m.text()) && /fonts\.(googleapis|gstatic)\.com/.test(url)) return;
+    errSeul.push(m.text());
+  });
   await seul.goto(`file://${chemin}`);
   await seul.waitForSelector('[data-a="nouvelle"]', { timeout: 5000 });
   await seul.click('[data-a="nouvelle"]');

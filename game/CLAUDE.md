@@ -81,7 +81,7 @@ quelqu'un d'autre.
 | `REVUE.md` | la revue de game master du jeu entier — verdicts, top 5, exploits, ordre des chantiers proposé |
 | `PROMESSES.md` | le chantier de couture — **livré**, six lots sur six (deux dettes consignées dans ses Blocages) |
 | `MARECHAL.md` | le sommet de la voie du service — dyarchie et porte de la couronne, M5 livré, chantier en cours |
-| `ALLURE.md` | l'étude « AAA textuel » — diagnostic, direction artistique, pistes classées, rien d'engagé |
+| `ALLURE.md` | l'étude « AAA textuel » — diagnostic, direction artistique ; **quick wins Q1–Q7 livrés** (limites dites dans « L'avancement »), pistes moyennes et grosses en attente |
 | `AUDIT.md` | l'audit doctrinal du moteur — 14 écarts en 3 vagues, 6 questions au propriétaire, verdict : pas de refonte |
 | `PISTES.md` | des idées consignées, pas des chantiers — rien n'y est engagé |
 | `README.md` | le projet, les tests, l'architecture |

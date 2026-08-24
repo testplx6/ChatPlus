@@ -222,14 +222,20 @@ function jauge(pct, cls = '', couleur) {
 }
 
 function toast(msg, err) {
-  const vieux = document.querySelector('.toast');
-  if (vieux) vieux.remove();
+  // Une file, pas un remplacement (ALLURE.md, Q2) : deux nouvelles rapprochées
+  // s'empilent au lieu de s'écraser — et jamais par-dessus le contenu.
+  let file = document.getElementById('toasts');
+  if (!file) {
+    file = document.createElement('div');
+    file.id = 'toasts';
+    document.body.appendChild(file);
+  }
+  while (file.children.length >= 3) file.firstChild.remove();
   const d = document.createElement('div');
   d.className = 'toast' + (err ? ' err' : '');
   d.textContent = msg;
-  document.body.appendChild(d);
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => d.remove(), 2600);
+  file.appendChild(d);
+  setTimeout(() => d.remove(), 3200);
 }
 
 function logger() {
@@ -538,6 +544,9 @@ export function rafraichir(force) {
   ecran.classList.toggle('deux-colonnes', onglet === 'carte');
   const racine = document.getElementById('racine');
   if (racine) racine.classList.toggle('large-carte', onglet === 'carte');
+  // La nuit se sent sur le chrome (ALLURE.md, Q5).
+  const heure = S ? S.temps % 24 : 12;
+  if (racine) racine.dataset.nuit = heure >= 21 || heure < 6 ? '1' : '0';
   appliquerReplis(ecran);
 
   const cv = $('#carte');
@@ -1008,6 +1017,22 @@ function dessinerCarte(cv) {
     }
   }
 
+  // Le voile du monde (ALLURE.md, Q5) : la saison teinte à peine la carte, la
+  // nuit l'assombrit — le temps se sent sans se lire. Posé sur le terrain,
+  // sous les marqueurs : la nuit tombe sur le monde, pas sur ce qu'on suit.
+  const cond = conditions(S.world, S.temps);
+  if (cond && cond.saison && cond.saison.def.couleur) {
+    g.fillStyle = cond.saison.def.couleur;
+    g.globalAlpha = 0.045;
+    g.fillRect(0, 0, L, H);
+    g.globalAlpha = 1;
+  }
+  const heureCarte = S.temps % 24;
+  if (heureCarte >= 21 || heureCarte < 6) {
+    g.fillStyle = 'rgba(5, 8, 16, 0.22)';
+    g.fillRect(0, 0, L, H);
+  }
+
   // Armées : idem. Une colonne en marche à l'autre bout de la carte ne se
   // devine pas — sauf transmissions cassées, ou rapports de la maison qu'on
   // sert (MARECHAL.md, M5 : `vueArmee` centralise qui voit quoi).
@@ -1089,6 +1114,7 @@ function dessinerCarte(cv) {
     g.textAlign = 'left';
     g.textBaseline = 'alphabetic';
   }
+
 }
 
 
@@ -1144,27 +1170,33 @@ function blocSituation() {
   if (!g) return '';
   const urgences = [];
   const bientot = [];
+  // Chaque ligne pointe vers l'écran où elle se règle (ALLURE.md, Q7) : le
+  // point de situation est le guide parfait d'une simulation — il n'invente
+  // rien, il pointe.
+  let cible = 'escouade';
+  const presse = (t) => urgences.push({ t, o: cible });
+  const note = (t) => bientot.push({ t, o: cible });
 
   const jours = autonomie(S, g);
   const rations = Math.floor(g.inventaire.rations || 0);
   if (!Number.isFinite(jours)) {
     // Personne ne mange : tout le monde est mort ou l'escouade est vide.
   } else if (jours < 1) {
-    urgences.push(`Plus rien à manger — ${pl(rations, 'ration')}. On commence à mourir de faim.`);
+    presse(`Plus rien à manger — ${pl(rations, 'ration')}. On commence à mourir de faim.`);
   } else if (jours < 3) {
-    urgences.push(`${jours.toFixed(1).replace('.', ',')} jour${jours >= 2 ? 's' : ''} de vivres. Il faut trouver à manger maintenant.`);
+    presse(`${jours.toFixed(1).replace('.', ',')} jour${jours >= 2 ? 's' : ''} de vivres. Il faut trouver à manger maintenant.`);
   } else if (jours < 8) {
-    bientot.push(`${Math.round(jours)} jours de vivres`);
+    note(`${Math.round(jours)} jours de vivres`);
   }
 
   const vivants = g.membres.filter(estVivant);
   const aTerre = vivants.filter((c) => !estDebout(c));
   if (aTerre.length) {
-    urgences.push(`${aTerre.map((c) => c.nom).join(', ')} ${aTerre.length > 1 ? 'sont' : 'est'} `
+    presse(`${aTerre.map((c) => c.nom).join(', ')} ${aTerre.length > 1 ? 'sont' : 'est'} `
       + 'à terre. On ne les porte pas indéfiniment.');
   }
   const amoches = vivants.filter((c) => estDebout(c) && pvTotal(c).pct < 0.5);
-  if (amoches.length) bientot.push(`${pl(amoches.length, 'blessé sérieux', 'blessés sérieux')}`);
+  if (amoches.length) note(`${pl(amoches.length, 'blessé sérieux', 'blessés sérieux')}`);
 
   // Les morts qu'on porte encore. Le panneau qui permet d'en décider vit sur
   // l'écran d'escouade, et rien ne renvoyait vers lui : on pouvait traîner un
@@ -1173,7 +1205,7 @@ function blocSituation() {
   // depuis qu'on se réveille à côté de celui avec qui on voyageait.
   const corps = depouillesDe(g);
   if (corps.length) {
-    urgences.push(`${corps.map((c) => c.nom).join(', ')} ${corps.length > 1 ? 'sont morts' : 'est mort'}`
+    presse(`${corps.map((c) => c.nom).join(', ')} ${corps.length > 1 ? 'sont morts' : 'est mort'}`
       + ' et la colonne le porte encore — à régler sur l’écran d’escouade :'
       + ' enterrer, ou dépouiller.');
   }
@@ -1181,40 +1213,42 @@ function blocSituation() {
   const cap = capacitePortage(S, g);
   const poids = poidsInventaire(g.inventaire);
   if (cap > 0 && poids > cap * 0.98) {
-    bientot.push('sac plein : on laisse du butin sur place');
+    note('sac plein : on laisse du butin sur place');
   }
 
   // Une colonne en marche sur votre camp est la seule chose du jeu qu'on peut
   // perdre entièrement sans avoir joué : elle met des centaines d'heures à
   // arriver, et l'on n'en était averti que par l'épitaphe.
+  cible = 'base';
   for (const m of menacesSurLaBase(S)) {
     const t = `${drapeauDe(S.world, m.faction).nom} marche sur ${S.base.nom} — ${m.vue
       ? `${n(m.force)} hommes` : 'nombre inconnu'}, `
       + `${m.cases <= 0 ? 'ils y sont' : `${m.cases} région${m.cases > 1 ? 's' : ''}`}`;
-    if (m.cases <= 4) urgences.push(`${t}.`);
-    else bientot.push(t);
+    if (m.cases <= 4) presse(`${t}.`);
+    else note(t);
   }
   // La bande que la vigie a vue venir (SIEGE.md, S2) : quelques heures pour agir.
   if (S.base.fonde && S.base.raidImminent) {
     const reste = S.base.raidImminent.echeance - S.temps;
-    urgences.push(`La vigie signale une bande sur ${S.base.nom} — assaut `
+    presse(`La vigie signale une bande sur ${S.base.nom} — assaut `
       + `${reste <= 0 ? 'imminent' : `d’ici ${dureeTexte(reste)}`}.`);
   }
 
   // Les échéances : ce qui va se retourner contre vous si vous l'oubliez.
+  cible = 'contrats';
   const all = g.allegeance;
   if (all && all.ordre && all.ordre.echeance) { // sans délai : rien qui presse
     const reste = all.ordre.echeance - S.temps;
     const t = `ordre « ${all.ordre.titre} » — ${dureeTexte(Math.max(0, reste))}`;
-    if (reste < 72) urgences.push(`${t} avant l’échéance.`);
-    else bientot.push(t);
+    if (reste < 72) presse(`${t} avant l’échéance.`);
+    else note(t);
   }
   for (const c of S.player.contrats) {
     if (!c.echeance) continue; // sans délai : rien qui presse
     const reste = c.echeance - S.temps;
     const t = `contrat « ${c.titre} » — ${dureeTexte(Math.max(0, reste))}`;
-    if (reste < 48) urgences.push(`${t} avant l’échéance.`);
-    else bientot.push(t);
+    if (reste < 48) presse(`${t} avant l’échéance.`);
+    else note(t);
   }
 
   if (!urgences.length && !bientot.length) return '';
@@ -1222,8 +1256,8 @@ function blocSituation() {
     <h2 class="titre">Point de situation
       <span class="droite ${urgences.length ? 'alerte' : ''}">${urgences.length
     ? `${urgences.length} à régler` : 'rien de pressant'}</span></h2>
-    ${urgences.map((t) => `<div class="aide alerte">▲ ${e(t)}</div>`).join('')}
-    ${bientot.length ? `<div class="aide">${bientot.map(e).join(' · ')}</div>` : ''}
+    ${urgences.map((u) => `<button class="lien alerte" data-a="onglet" data-k="${u.o}">▲ ${e(u.t)}</button>`).join('')}
+    ${bientot.length ? `<div class="aide">${bientot.map((u) => e(u.t)).join(' · ')}</div>` : ''}
   </section>`;
 }
 
@@ -1819,7 +1853,7 @@ function ficheMembre(c) {
     const fl = texteFil(S, c);
     if (!fl) return '';
     return `<div class="titre">Son histoire</div>
-      <div class="aide" style="font-style:italic">${fl.lignes.map(e).join('<br>')}</div>
+      <div class="aide recit" style="font-style:italic">${fl.lignes.map(e).join('<br>')}</div>
       <div class="sep"></div>`;
   })()}
       ${(c.diplomes || []).length ? `<div class="titre">Diplômes</div>
@@ -3882,14 +3916,15 @@ function blocAllegeance() {
   if (!all) {
     return `<section class="panneau">
       <h2 class="titre">Allégeance <span class="droite">indépendant</span></h2>
-      <div class="aide">Vous ne servez personne. Entrer au service d’une faction demande
+      <div class="aide">Vous ne servez personne. Rendez-vous dans une de leurs villes
+        pour vous engager.</div>
+      <details class="aide-plus"><summary>Ce que servir rapporte, et coûte</summary>
+      <div class="aide">Entrer au service d’une faction demande
         de l’estime — de ${Math.min(...Object.values(ESTIME_ENGAGEMENT))} chez une commune à
         ${Math.max(...Object.values(ESTIME_ENGAGEMENT))} chez une église, ils ne demandent pas
         tous la même chose ; cela donne une remise chez elle, une solde,
         le passage libre à ses barrages, l’accès à son bon matériel — et des ordres de
-        mission qu’on ne refuse pas sans conséquence.</div>
-      <div class="sep"></div>
-      <div class="aide">Rendez-vous dans une de leurs villes pour vous engager.</div>
+        mission qu’on ne refuse pas sans conséquence.</div></details>
     </section>`;
   }
 
@@ -4461,9 +4496,9 @@ function blocChronique() {
     <h2 class="titre">Chronique <span class="droite ambre">${e(t.nom)}</span></h2>
     ${ch ? `<div class="ligne"><span class="k">Chapitre ${romain(S.player.chapitreN)}</span>
       <span class="v ambre">${e(ch.titre)}</span></div>
-    <div class="aide" style="font-style:italic">${e(ch.dit)}</div>
+    <div class="aide recit" style="font-style:italic">${e(ch.dit)}</div>
     <div class="sep"></div>` : ''}
-    <div class="aide" style="font-style:italic">${e(t.dit)}</div>
+    <div class="aide recit" style="font-style:italic">${e(t.dit)}</div>
     <div class="sep"></div>
     <div class="pile">
       ${lignes.map((l) => `<div class="aide">${e(l)}</div>`).join('')}

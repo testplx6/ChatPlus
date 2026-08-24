@@ -115,6 +115,42 @@ pistes damées visibles, relevés périmés désaturés — la capture
 d'écran devient le marketing du jeu) · G2 le mode chronique (la
 partie relue comme un livre, exportable) · G3 le son génératif.
 
+## L'avancement
+
+**Quick wins livrés d'un bloc (août 2026), avec leurs limites dites :**
+
+- **Q1 — livré, socle + deux surfaces.** IBM Plex Mono porte tout le
+  chrome (seule ressource externe autorisée, lien non bloquant : hors
+  ligne le jeu s'affiche dans la pile système sans attendre) ; le serif
+  (`--serif`, classe `.recit`) n'habille pour l'instant que la chronique
+  et « Son histoire » sur la fiche. Étendre le serif aux autres passages
+  de prose reste à faire, écran par écran.
+- **Q2 — livré.** Les toasts font la file en bas (trois au plus, les
+  plus vieux partent), et le doublon du toast d'absence est supprimé —
+  l'écran de retour dit déjà tout.
+- **Q3 — livré.** Vignette sur le cadre de la carte
+  (`#carte-boite::after`) ; l'inexploré était déjà voilé par la carte
+  elle-même.
+- **Q4 — livré, un bloc.** Seul « Ce que servir rapporte, et coûte »
+  (allégeance, indépendant) est replié derrière `details.aide-plus`.
+  Les autres pavés d'aide candidats seront repliés au fil des écrans.
+- **Q5 — livré.** La nuit (21 h–6 h) assombrit le bandeau haut
+  (`data-nuit`) ; sur la carte, la saison teint à peine, la nuit voile —
+  **sous** les marqueurs : le voile tombe sur le terrain, pas sur ce
+  qu'on suit (les carrés blancs des groupes restent francs, le test
+  navigateur y veille).
+- **Q6 — partiel, dit honnêtement.** Les boutons répondent sous le
+  doigt (`:active`). Les transitions de largeur sur les jauges seraient
+  du CSS mort — `rafraichir` reconstruit l'innerHTML, rien ne
+  transitionne sur un élément neuf — donc retirées plutôt que laissées
+  en décor. Animer les nombres demande la piste M-moyenne (rendu
+  incrémental ou rAF), pas un quick win.
+- **Q7 — livré.** Chaque ligne du point de situation est un lien `▲`
+  vers l'écran où elle se règle (escouade, base, contrats).
+
+Aucune règle du jeu touchée : tout est dans `ui.js`, `styles.css`,
+`tools/bundle.js` (polices). Le moteur n'a pas bougé.
+
 ## Le mot de la fin du game master
 
 « Ce jeu écrit comme un roman et s'affiche comme un tableur : la

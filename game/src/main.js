@@ -699,14 +699,8 @@ function lancer(s) {
     demarrerBoucle();
     rafraichir(true);
     sauver();
-    if (state.temps - avant > 24) {
-      const jours = ((state.temps - avant) / 24).toFixed(1);
-      const el = document.createElement('div');
-      el.className = 'toast';
-      el.textContent = `${jours} jours se sont écoulés en votre absence${r.tronque ? ' (plafonné)' : ''}.`;
-      document.body.appendChild(el);
-      setTimeout(() => el.remove(), 4200);
-    }
+    // Le toast d'absence disait ce que l'écran de rattrapage venait de dire,
+    // par-dessus lui (ALLURE.md, Q2) : le rapport suffit.
   });
 }
 
