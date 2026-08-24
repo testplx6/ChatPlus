@@ -107,6 +107,18 @@ export function groupeVide(id, nom, regionId, t = 0) {
   };
 }
 
+/**
+ * Comment cette colonne se bat (PROMESSES.md, P2). Chaque groupe peut avoir
+ * sa consigne ; sans elle, il suit la consigne générale du joueur. Pas de
+ * clé posée d'office : l'absence vaut « comme tout le monde », et les
+ * vieilles sauvegardes n'ont rien à migrer.
+ */
+export function tactiqueDe(state, g) {
+  return (g && g.tactique)
+    || (state && state.player && state.player.tactique)
+    || 'ligne';
+}
+
 export function groupes(state) {
   return (state.player && state.player.groupes) || [];
 }

@@ -2063,7 +2063,7 @@ function blocTactique() {
     (c) => estVivant(c) && c.equip.arme && ITEMS[c.equip.arme]
       && ITEMS[c.equip.arme].comp === 'tir').length;
   const biome = S.world.regions[g.regionId].biome;
-  const choisie = S.player.tactique || 'ligne';
+  const choisie = g.tactique || S.player.tactique || 'ligne';
   return `<section class="panneau">
     <h2 class="titre">Tactique
       <span class="resume">sur ${e(BIOMES[biome].nom.toLowerCase())} · ${e(apercuTactique(choisie, biome, 1, armes / Math.max(1, vivants)).mot)}</span>
@@ -6253,7 +6253,8 @@ function surClic(ev) {
     }
 
     case 'tactique': {
-      ACTIONS.tactique(el.dataset.k);
+      // La consigne vaut pour la colonne affichée (PROMESSES.md, P2).
+      ACTIONS.tactique(el.dataset.k, G().id);
       break;
     }
 

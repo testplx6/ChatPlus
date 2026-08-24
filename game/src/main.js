@@ -562,10 +562,17 @@ const API = {
     return { ok: true };
   },
 
-  /** Comment on se bat. Vaut aussi pendant votre absence. */
-  tactique(key) {
+  /**
+   * Comment on se bat. Vaut aussi pendant votre absence — et par colonne
+   * (PROMESSES.md, P2) : avec un groupeId, la consigne est la sienne ; sans,
+   * c'est la consigne générale, que suivent les colonnes sans la leur.
+   */
+  tactique(key, groupeId) {
     if (!TACTIQUES[key]) return { ok: false, motif: 'Tactique inconnue.' };
-    state.player.tactique = key;
+    const g = groupeId
+      ? (state.player.groupes || []).find((x) => x.id === groupeId) : null;
+    if (g) g.tactique = key;
+    else state.player.tactique = key;
     sauver();
     rafraichir(true);
     return { ok: true };

@@ -37,7 +37,9 @@ import { BETES } from '../src/betes.js';
 import {
   attaquerCaravane, passerOrdre, ordresEnCours, ESCORTES,
 } from '../src/caravanes.js';
-import { combatContre, fouillerSite, inscrireAuMemorial, creerLogger } from '../src/events.js';
+import {
+  combatContre, fouillerSite, inscrireAuMemorial, creerLogger, solderPrime,
+} from '../src/events.js';
 import {
   bandeLocale, tenterChasseurs, erosionEstime, EROSION_ESTIME,
 } from '../src/events.js';
@@ -149,7 +151,7 @@ import {
   colonieDe, colonieParId, nomRegion, lieuAvecCoord, coordonnee,
 } from '../src/world.js';
 import {
-  groupeActif, groupes, tousLesMembres, scinder, fusionner, assignerTache,
+  groupeActif, groupes, tousLesMembres, scinder, fusionner, assignerTache, tactiqueDe,
   tacheDe, debout, noyau, plafondCohesion, rendementCohesion,
   porteeOrdres, joignable, PORTEE_COUREUR, PORTEE_PAR_ANTENNE,
   vivants as vivantsGroupe, placesSociables,
@@ -10972,6 +10974,38 @@ section('P. Les promesses tenues — P1, la milice s’arme à l’arsenal (PROM
   ok(!g.objets.includes('machette') && g.objets.includes('barre'),
     'camp mis à sac : la pièce du tombé est perdue avec le corps, le survivant rend la sienne',
     g.objets.join(', '));
+}
+
+// P2 : la tactique est un pari par colonne.
+{
+  const s = nouvellePartie(786, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const g = groupeActif(s);
+  const rngT = new Rng(41);
+  const libre = g.membres.filter(estVivant)[0];
+  scinder(s, g, [libre.id], rngT);
+  const g2 = groupes(s).find((x) => x.id !== g.id);
+  s.player.tactique = 'ligne';
+  g2.tactique = 'harceler';
+  ok(tactiqueDe(s, g2) === 'harceler',
+    'une colonne qui a sa tactique se bat avec la sienne');
+  ok(tactiqueDe(s, g) === 'ligne',
+    'une colonne sans consigne suit la consigne générale');
+  const rejouee = deserialiser(JSON.stringify(s));
+  ok(tactiqueDe(rejouee, groupes(rejouee).find((x) => x.id === g2.id)) === 'harceler',
+    'et la consigne survit à la sauvegarde');
+}
+
+// P4 : la défaite solde la prime — ils ont été payés — mais ne rend plus
+// d'estime : se faire battre n'a jamais fait aimer personne.
+{
+  const s = nouvellePartie(787, { maintenant: 0, depart: 'ville', equipe: 3 });
+  s.player.primes = { hexa: 3 };
+  s.player.reputation.hexa = -40;
+  solderPrime(s, 'hexa', creerLogger(s));
+  ok(s.player.primes.hexa === 2, 'la prime retombe : les chasseurs ont eu leur dû');
+  ok(s.player.reputation.hexa === -40,
+    'et l’estime ne bouge pas d’un point — la dette de réputation reste une dette',
+    `estime ${s.player.reputation.hexa}`);
 }
 
 // ===========================================================================

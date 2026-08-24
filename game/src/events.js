@@ -21,7 +21,9 @@ import {
   ajusterLien, XP_PRATIQUE,
 } from './characters.js';
 import { poidsInventaire, capacitePortage } from './economy.js';
-import { groupeActif, groupes, tousLesMembres, debout as deboutDe } from './groupes.js';
+import {
+  groupeActif, groupes, tousLesMembres, debout as deboutDe, tactiqueDe,
+} from './groupes.js';
 import { estSurveillee } from './connaissance.js';
 import { occupeParEcole } from './formation.js';
 import { noterAuRapport } from './rapport.js';
@@ -142,6 +144,23 @@ function annoncerProgres(state, avant, log, membres) {
   }
 }
 
+/**
+ * Perdre contre les chasseurs solde l'affaire : ils ont eu ce qu'ils
+ * voulaient, la prime retombe — sinon elle s'auto-entretient et il n'existe
+ * aucune sortie. Mais l'estime ne bouge pas d'un point (PROMESSES.md, P4) :
+ * se faire battre n'a jamais fait aimer personne, et la dette de réputation
+ * reste une dette — c'est la simulation qui le dit, pas l'équilibrage.
+ */
+export function solderPrime(state, k, log) {
+  const primes = state.player.primes || {};
+  primes[k] = Math.max(0, (primes[k] || 0) - 1);
+  log({
+    type: 'prime_tete',
+    texte: `${drapeauDe(state.world, k).nom} considère l’affaire réglée. La prime retombe.`,
+    important: true,
+  });
+}
+
 export function combatContre(state, bande, log, ctx, groupe) {
   const rng = ctx.rng;
   const g = groupe || groupeActif(state);
@@ -184,8 +203,10 @@ export function combatContre(state, bande, log, ctx, groupe) {
     letalA: state.player.politique.achever ? 0.45 : 0,
     cohA: rendementCohesion(g),
     letalB: bande.letal,
-    // Comment on se bat : décidé à l'avance, valable aussi en votre absence.
-    tactique: state.player.tactique || 'ligne',
+    // Comment on se bat : décidé à l'avance, valable aussi en votre absence —
+    // et par colonne (PROMESSES.md, P2) : celle des marais peut harceler
+    // pendant que celle des murs tient la ligne.
+    tactique: tactiqueDe(state, g),
     viserChefs: !!state.player.politique.viserChefs,
   });
 
@@ -573,17 +594,7 @@ export function tenterChasseurs(state, log, ctx) {
   });
   const res = combatContre(state, bande, log, ctx, cible);
 
-  // Perdre solde l'affaire : ils ont eu ce qu'ils voulaient. Sinon la prime
-  // s'auto-entretient et il n'existe aucune sortie.
-  if (res.vainqueur === 'B') {
-    primes[k] = Math.max(0, primes[k] - 1);
-    state.player.reputation[k] = Math.min(100, (state.player.reputation[k] || 0) + 10);
-    log({
-      type: 'prime_tete',
-      texte: `${drapeauDe(state.world, k).nom} considère l’affaire réglée. La prime retombe.`,
-      important: true,
-    });
-  }
+  if (res.vainqueur === 'B') solderPrime(state, k, log);
   return true;
 }
 
