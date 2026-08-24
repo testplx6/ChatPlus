@@ -6,6 +6,18 @@ chantier quand elle passe par `METHODE.md` §9 et que le propriétaire l'ouvre.
 
 ---
 
+## Le baron rebelle
+
+**Consigné au chantier Maréchal, août 2026** (lecture L3, écartée) : un
+Maréchal qui rompt part avec les colonnes qui lui sont fidèles et
+plante son drapeau — le précédent moteur existe (`fonderColonne`,
+factions.js). C'est le rêve « le joueur devient sa propre faction »,
+un chantier entier, et il marche sur la parole donnée (rompre un
+serment est exactement le sujet du chantier geôle/rançons). Rien n'y
+est engagé.
+
+---
+
 ## Multi-monde, ou un monde par joueur
 
 **Dit par le propriétaire, août 2026** : « je pense qu'on pourra imaginer un
