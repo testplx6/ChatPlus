@@ -39,6 +39,7 @@ import {
 } from '../src/caravanes.js';
 import {
   combatContre, fouillerSite, inscrireAuMemorial, creerLogger, solderPrime,
+  detrousser, FOUILLE,
 } from '../src/events.js';
 import {
   bandeLocale, tenterChasseurs, erosionEstime, EROSION_ESTIME,
@@ -11006,6 +11007,30 @@ section('P. Les promesses tenues — P1, la milice s’arme à l’arsenal (PROM
   ok(s.player.reputation.hexa === -40,
     'et l’estime ne bouge pas d’un point — la dette de réputation reste une dette',
     `estime ${s.player.reputation.hexa}`);
+}
+
+// P3 : le détroussage est une fouille — le voleur prend ce qu'il trouve.
+{
+  const s = nouvellePartie(788, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const ici = monnaieIci(s);
+  const etr = ici === 'hexa' ? 'corpo' : 'hexa';
+  s.player.bourse = { [ici]: 1000, [etr]: 1000 };
+  detrousser(s, new Rng(3));
+  ok(s.player.bourse[ici] < 1000,
+    'la bourse d’ici, en main, est toujours entamée',
+    `${s.player.bourse[ici]}`);
+
+  let prises = 0;
+  let ratees = 0;
+  for (let i = 0; i < 30; i++) {
+    s.player.bourse = { [ici]: 1000, [etr]: 1000 };
+    detrousser(s, new Rng(100 + i));
+    if (s.player.bourse[etr] < 1000) prises++;
+    else ratees++;
+  }
+  ok(prises > 0 && ratees > 0,
+    'la bourse étrangère se cache mieux : parfois prise, parfois ratée',
+    `${prises} prises, ${ratees} ratées sur 30`);
 }
 
 // ===========================================================================

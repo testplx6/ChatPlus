@@ -1,4 +1,4 @@
-import { gagner, regler, soldeIci, signeIci } from './monnaie.js';
+import { gagner, regler, soldeIci, signeIci, monnaieIci } from './monnaie.js';
 // Journal de bord et rencontres. Tout se résout automatiquement selon la
 // posture et les consignes de l'escouade : c'est ce qui permet à la simulation
 // de tourner pendant que le joueur est hors ligne.
@@ -151,6 +151,33 @@ function annoncerProgres(state, avant, log, membres) {
  * se faire battre n'a jamais fait aimer personne, et la dette de réputation
  * reste une dette — c'est la simulation qui le dit, pas l'équilibrage.
  */
+/** La fouille, réglée. Objet mutable, calibrable. */
+export const FOUILLE = { bourseCachee: 0.5, part: [0.25, 0.55] };
+
+/**
+ * Le détroussage est une fouille (PROMESSES.md, P3) : le voleur prend tout
+ * ce qu'il peut trouver — doctrine du propriétaire — mais il ne trouve pas
+ * forcément tout. La bourse d'ici, celle qu'on a en main pour vivre, est
+ * toujours trouvée ; les autres se cachent mieux, et un fouilleur pressé
+ * peut les rater. Un billet étranger n'est ni un talisman ni un dû : c'est
+ * un billet. Le coffre en ville reste l'abri sûr — il n'est pas sur vous.
+ */
+export function detrousser(state, rng) {
+  const ici = monnaieIci(state);
+  const bourse = (state.player && state.player.bourse) || {};
+  let total = 0;
+  for (const m of Object.keys(bourse)) {
+    if (!(bourse[m] > 0)) continue;
+    if (m !== ici && !rng.chance(FOUILLE.bourseCachee)) continue;
+    const pris = Math.round(bourse[m] * rng.range(FOUILLE.part[0], FOUILLE.part[1]));
+    if (pris <= 0) continue;
+    regler(state, pris, m);
+    noterArgent(state, 'détroussé après une défaite', -pris);
+    total += pris;
+  }
+  return total;
+}
+
 export function solderPrime(state, k, log) {
   const primes = state.player.primes || {};
   primes[k] = Math.max(0, (primes[k] || 0) - 1);
@@ -372,9 +399,7 @@ function perdreCombat(state, bande, log, ctx, lieu, g) {
   }
   // On garde de quoi repartir : tout rafler à chaque défaite interdit
   // définitivement de s'équiper, donc de cesser de perdre.
-  const cr = Math.round(soldeIci(state) * rng.range(0.25, 0.55));
-  regler(state, cr);
-  noterArgent(state, 'détroussé après une défaite', -cr);
+  const cr = detrousser(state, rng);
   if (g.objets.length && rng.chance(0.6)) {
     g.objets.splice(rng.int(g.objets.length), 1);
   }
@@ -393,7 +418,9 @@ function perdreCombat(state, bande, log, ctx, lieu, g) {
     c.sang = Math.min(c.sang, 6);
     if (c.etat === 'ko') c.koHeures = Math.max(c.koHeures, rng.irange(4, 12));
   }
-  return `${g.nom} battu à ${lieu} : ${perdu} unités et ${cr} ${signeIci(state)} perdus, réveil à ${nomRegion(state.world, g.regionId)}.`;
+  // La fouille peut mélanger les monnaies : on compte des pièces, pas un signe.
+  return `${g.nom} battu à ${lieu} : ${perdu} unités emportées, les bourses fouillées`
+    + `${cr > 0 ? ` (${cr} en pièces)` : ''}, réveil à ${nomRegion(state.world, g.regionId)}.`;
 }
 
 // ---------------------------------------------------------------------------

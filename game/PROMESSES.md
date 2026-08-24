@@ -180,7 +180,11 @@ ci-dessus est porté par un agent qui a sa logique.
   (groupes.js), lu par le combat ; le panneau règle la colonne
   affichée ; pas de clé posée d'office (l'absence vaut « comme tout le
   monde », rien à migrer).
-- [ ] P3 — le détroussage est une fouille
+- [x] P3 — le détroussage est une fouille — livré : `detrousser`
+  (events.js, FOUILLE calibrable) — la bourse d'ici toujours trouvée,
+  chaque bourse étrangère ratée une fois sur deux, part 0,25-0,55
+  inchangée, texte du journal en pièces (les monnaies se mélangent).
+  Le coffre en ville reste l'abri sûr.
 - [x] P4 — la prime retombe, l'estime ne bouge pas — livré :
   `solderPrime` (le +10 disparaît), deux tests nés rouges.
 - [ ] P5 — chaque drapeau a sa discipline de solde
