@@ -106,6 +106,8 @@ export function normaliser(state) {
   // d'une ardoise vide : le premier tick relève ce qu'on a sous les yeux, et le
   // reste de la carte redevient un souvenir à rafraîchir.
   if (!state.connaissance) state.connaissance = creerConnaissance(state.temps);
+  // Avant l'état-major (MARECHAL.md, M5), on ne relevait pas les colonnes.
+  if (!state.connaissance.armees) state.connaissance.armees = {};
 
   // Avant les tactiques, on subissait le combat sans rien en décider.
   if (!p.tactique) p.tactique = 'ligne';

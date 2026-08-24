@@ -23,7 +23,7 @@ import { notable } from './notables.js';
 export const PEREMPTION = 24 * 120; // quatre saisons
 
 export function creerConnaissance(t = 0) {
-  return { colonies: {}, regions: {}, maj: t };
+  return { colonies: {}, regions: {}, armees: {}, maj: t };
 }
 
 // ---------------------------------------------------------------------------
@@ -92,14 +92,37 @@ function releverRegion(r, t) {
   return { t, controle: r.controle, colonie: r.colonie };
 }
 
+function releverArmee(a, t) {
+  return {
+    t,
+    faction: a.faction,
+    force: Math.round(a.force),
+    regionId: a.regionId,
+    etat: a.etat,
+  };
+}
+
 /**
  * Met à jour les relevés des lieux sous surveillance. Appelé à chaque heure de
  * jeu : c'est deux ou trois régions en pratique, pas la carte entière.
  */
 export function observer(state, prixDe) {
   const c = state.connaissance || (state.connaissance = creerConnaissance(state.temps));
+  if (!c.armees) c.armees = {}; // parties d'avant l'état-major (MARECHAL.md, M5)
   const t = state.temps;
-  for (const rid of regionsVues(state)) {
+  // Les colonnes en marche se relèvent comme les villes : là où l'on a des
+  // yeux, on note qui passe, à quelle force, et la date. Une poignée
+  // d'armées au plus — c'est donné.
+  const vues = regionsVues(state);
+  for (const a of state.world.armees || []) {
+    if (vues.has(a.regionId)) c.armees[a.id] = releverArmee(a, t);
+  }
+  // Un relevé de quatre saisons ne dit plus rien — et l'armée est morte
+  // depuis longtemps. On fait de la place.
+  for (const id of Object.keys(c.armees)) {
+    if (t - c.armees[id].t > PEREMPTION) delete c.armees[id];
+  }
+  for (const rid of vues) {
     const r = state.world.regions[rid];
     if (!r) continue;
     c.regions[rid] = releverRegion(r, t);
@@ -248,6 +271,72 @@ export function estSurveillee(state, regionId) {
     }
   }
   return false;
+}
+
+/** Sert-on cette maison ? Ses rapports de marche arrivent dès le grade d'Agent. */
+function estDeLaMaison(state, faction) {
+  for (const g of groupes(state)) {
+    const all = g.allegeance;
+    if (all && all.faction === faction && rangDe(all).index >= 1) return true;
+  }
+  return false;
+}
+
+/**
+ * Ce qu'on sait d'une colonne en marche (MARECHAL.md, M5) : sous nos yeux ou
+ * rapportée par la maison qu'on sert, elle se lit en direct ; la
+ * cryptographie ouvre leurs transmissions ; sinon, le dernier relevé, daté —
+ * et il vieillit à sa place d'hier, car le monde a bougé, pas votre savoir.
+ * Jamais vue : null — elle n'existe pas pour nous.
+ */
+export function vueArmee(state, a) {
+  if (!a) return null;
+  const frais = estSurveillee(state, a.regionId)
+    || (state.base.recherche.cryptographie || 0) > 0
+    || estDeLaMaison(state, a.faction);
+  if (frais) {
+    return {
+      id: a.id, frais: true, depuis: 0, faction: a.faction,
+      force: Math.round(a.force), regionId: a.regionId, etat: a.etat,
+      cible: a.cible || null,
+    };
+  }
+  const r = state.connaissance && state.connaissance.armees
+    && state.connaissance.armees[a.id];
+  if (!r) return null;
+  return {
+    id: a.id, frais: false, depuis: state.temps - r.t, faction: r.faction,
+    force: r.force, regionId: r.regionId, etat: r.etat, cible: null,
+  };
+}
+
+/**
+ * L'état-major : tout ce qu'on sait des colonnes — le frais et le daté, y
+ * compris les relevés d'armées qu'on ne retrouve plus : peut-être dissoutes,
+ * peut-être ailleurs — on croit ce qu'on a vu, jusqu'à péremption.
+ */
+export function armeesConnues(state) {
+  const out = [];
+  const vivantes = new Set();
+  for (const a of state.world.armees || []) {
+    const v = vueArmee(state, a);
+    if (v) {
+      out.push(v);
+      vivantes.add(a.id);
+    }
+  }
+  const c = state.connaissance;
+  if (c && c.armees) {
+    for (const id of Object.keys(c.armees)) {
+      if (vivantes.has(id)) continue;
+      const r = c.armees[id];
+      out.push({
+        id, frais: false, depuis: state.temps - r.t, faction: r.faction,
+        force: r.force, regionId: r.regionId, etat: r.etat, cible: null,
+      });
+    }
+  }
+  return out;
 }
 
 /** « il y a 3 j » — la date compte autant que le chiffre qu'elle accompagne. */

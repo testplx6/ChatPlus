@@ -109,6 +109,7 @@ import {
 import { dirigeant, TEMPERAMENTS, LEGITIMITE_CRITIQUE } from './dirigeants.js';
 import {
   vueColonie, vueRegion, estSurveillee, ageTexte, nouvellesConnues, carnetPrix,
+  vueArmee, armeesConnues,
 } from './connaissance.js';
 import {
   groupeActif, groupes, groupeParId, choisirGroupe, tousLesMembres, tacheDe,
@@ -1008,12 +1009,13 @@ function dessinerCarte(cv) {
   }
 
   // Armées : idem. Une colonne en marche à l'autre bout de la carte ne se
-  // devine pas — sauf à avoir cassé leurs transmissions.
-  const crypto = (S.base.recherche.cryptographie || 0) > 0;
+  // devine pas — sauf transmissions cassées, ou rapports de la maison qu'on
+  // sert (MARECHAL.md, M5 : `vueArmee` centralise qui voit quoi).
   for (const a of w.armees) {
     const r = w.regions[a.regionId];
     if (!r || !r.decouvert) continue;
-    if (!crypto && !estSurveillee(S, a.regionId)) continue;
+    const va = vueArmee(S, a);
+    if (!va || !va.frais) continue;
     const x = r.x * CELL;
     const y = r.y * CELL;
     const t = Math.max(3, Math.round(CELL * 0.19));
@@ -1691,12 +1693,13 @@ function blocSelection() {
 }
 
 function armeesIci(rid) {
-  // Une colonne en marche ne se devine pas depuis l'autre bout de la carte.
-  if (!estSurveillee(S, rid)) return '';
-  const as = S.world.armees.filter((a) => a.regionId === rid);
-  if (!as.length) return '';
-  return as.map((a) => `<div class="ligne"><span class="k">Colonne</span>
-    <span class="v" style="color:${couleurFaction(a.faction)}">${e(drapeauDe(S.world, a.faction).nom)} · ${n(a.force)} · ${e(a.etat)}</span></div>`).join('');
+  // Ce qu'on SAIT de ce secteur : le frais en direct, le relevé avec sa
+  // date — « le monde a bougé, pas votre savoir » (MARECHAL.md, M5).
+  const la = armeesConnues(S).filter((v) => v.regionId === rid);
+  if (!la.length) return '';
+  return la.map((v) => `<div class="ligne"><span class="k">Colonne</span>
+    <span class="v" style="color:${couleurFaction(v.faction)}">${e(drapeauDe(S.world, v.faction).nom)} · ${n(v.force)} · ${e(v.etat)}${v.frais
+    ? '' : ` <span class="aide">${e(ageTexte(v.depuis))}</span>`}</span></div>`).join('');
 }
 
 /**
@@ -4250,16 +4253,19 @@ function ecranMonde() {
       </div>`).join('')
     : '<div class="aide">Paix générale. Ça ne dure jamais.</div>';
 
-  // Une colonne en marche se voit si on a quelqu'un dans le secteur — ou si on
-  // a cassé leurs transmissions. C'est à ça que sert la Cryptographie.
-  const vues = crypto ? S.world.armees : S.world.armees.filter((a) => estSurveillee(S, a.regionId));
-  const armees = vues.length
-    ? vues.map((a) => `<div class="ligne">
-        <span class="k" style="color:${couleurFaction(a.faction)}">${e(drapeauDe(S.world, a.faction).nom)} · ${n(a.force)}</span>
-        <span class="v">${e(a.etat)} → ${e((colonieParId(S.world, a.cible) || {}).nom || '—')}</span></div>`).join('')
-    : `<div class="aide">${S.world.armees.length
-      ? 'Rien en vue. Ce qui ne veut pas dire qu’il ne se passe rien.'
-      : 'Aucune colonne en campagne.'}</div>`;
+  // L'état-major (MARECHAL.md, M5) : le frais en direct — vu de nos yeux,
+  // rapporté par la maison, ou lu dans leurs transmissions — et le relevé
+  // daté qui vieillit à sa place d'hier. Le décompte des campagnes en cours
+  // n'est plus dit : c'est déjà un renseignement.
+  const etatMajor = armeesConnues(S)
+    .sort((a, b) => (a.frais === b.frais ? (a.depuis || 0) - (b.depuis || 0) : (a.frais ? -1 : 1)));
+  const armees = etatMajor.length
+    ? etatMajor.map((v) => `<div class="ligne">
+        <span class="k" style="color:${couleurFaction(v.faction)}">${e(drapeauDe(S.world, v.faction).nom)} · ${n(v.force)}</span>
+        <span class="v">${e(v.etat)}${v.frais
+    ? ` → ${e((colonieParId(S.world, v.cible) || {}).nom || '—')}`
+    : ` · ${e(nomRegion(S.world, v.regionId))} <span class="aide">${e(ageTexte(v.depuis))}</span>`}</span></div>`).join('')
+    : '<div class="aide">Rien en vue. Ce qui ne veut pas dire qu’il ne se passe rien.</div>';
 
   // Le registre des villes est un carnet de relevés, pas un tableau de bord :
   // chaque ligne porte la date à laquelle on l'a écrite.
@@ -4383,7 +4389,7 @@ function ecranMonde() {
     // On croisait ses bandes, on lisait son nom dans le journal quand il
     // saccageait une ville, et rien ne disait ce que c'était. Un joueur a fait
     // une partie entière sans le savoir.
-    const vu = S.world.armees.some((a) => a.faction === 'essaim')
+    const vu = armeesConnues(S).some((v) => v.faction === 'essaim')
       || S.world.regions.some((r) => r.decouvert && r.controle === 'essaim')
       || S.journal.some((x) => (x.texte || '').includes('Essaim'));
     if (!vu) return '';

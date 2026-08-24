@@ -161,8 +161,17 @@ pouvoir emprunte un flux que la faction a déjà.
 
 ## L'avancement
 
-- [ ] M5 — l'état-major et la fin de l'omniscience (premier : il ne
-  dépend d'aucune décision et répare un écart de doctrine)
+- [x] M5 — l'état-major et la fin de l'omniscience — livré : les
+  colonnes se relèvent comme les villes (`releverArmee` dans
+  `observer`, péremption appliquée), `vueArmee` centralise qui voit
+  quoi (sous nos yeux / rapports de la maison dès Agent /
+  transmissions par cryptographie / sinon relevé daté **qui vieillit à
+  sa place d'hier**), `armeesConnues` liste le frais et le daté — y
+  compris les relevés d'armées qu'on ne retrouve plus, crus jusqu'à
+  péremption. L'UI suit : carte (les rapports de la maison s'y
+  dessinent enfin), panneau de secteur, écran monde (le décompte des
+  campagnes en cours n'est plus dit — c'était déjà un renseignement),
+  légende Essaim. Six tests nés rouges.
 - [ ] M1 — le commandement des colonnes
 - [ ] M2 — rappeler une colonne
 - [ ] M6 — la levée dimensionnée (+ E10, l'indexation au cours)

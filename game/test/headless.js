@@ -186,7 +186,7 @@ import {
 } from '../src/allegeance.js';
 import {
   vueColonie, estSurveillee, ageTexte, nouvellesConnues, DELAI_NOUVELLE, observer,
-  carnetPrix, PEREMPTION,
+  carnetPrix, PEREMPTION, vueArmee, armeesConnues,
 } from '../src/connaissance.js';
 import { distance } from '../src/world.js';
 import { conditions } from '../src/climat.js';
@@ -11131,6 +11131,56 @@ section('P. Les promesses tenues — P1, la milice s’arme à l’arsenal (PROM
   echaude.temps = 0;
   ok(jaugeRaid(echaude).appetit < jaugeRaid(riche).appetit,
     'une bande repoussée se raconte : on y va moins');
+}
+
+// ===========================================================================
+section('M. Le Maréchal — M5, l’état-major et la fin de l’omniscience (MARECHAL.md)');
+{
+  const s = nouvellePartie(791, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const g = groupeActif(s);
+  const loin = s.world.regions.find((r) => distance(r.i, g.regionId) > 6);
+  s.world.armees = s.world.armees || [];
+  const ici = {
+    id: 'aIci', faction: 'hexa', force: 120, regionId: g.regionId,
+    etat: 'marche', route: [], etape: 0, ravitaillement: 40,
+  };
+  const ailleurs = {
+    id: 'aLoin', faction: 'cendre', force: 200, regionId: loin.i,
+    etat: 'marche', route: [], etape: 0, ravitaillement: 40,
+  };
+  s.world.armees.push(ici, ailleurs);
+  observer(s);
+
+  const vIci = vueArmee(s, ici);
+  ok(vIci && vIci.frais && vIci.force === 120,
+    'une colonne sous nos yeux se lit en direct, force exacte');
+  ok(!vueArmee(s, ailleurs),
+    'une colonne jamais vue n’existe pas pour nous — fini l’omniscience');
+  ok(!armeesConnues(s).some((a) => a.id === 'aLoin'),
+    'et l’état-major ne la liste pas non plus');
+
+  // Vue hier, partie aujourd'hui : le relevé vieillit, il ne suit pas.
+  const posAvant = ici.regionId;
+  s.temps += 30;
+  ici.regionId = loin.i;
+  g.regionId = s.world.regions.find((r) => r.i !== posAvant && distance(r.i, loin.i) > 6).i;
+  const vApres = vueArmee(s, ici);
+  ok(vApres && !vApres.frais && vApres.depuis === 30 && vApres.regionId === posAvant,
+    'ce qu’on a vu hier vieillit à sa place d’hier — le monde a bougé, pas votre savoir',
+    vApres ? `depuis ${vApres.depuis}` : 'rien');
+
+  // Les rapports de la maison : ses colonnes sont toujours fraîches.
+  g.allegeance = { faction: 'cendre', points: 100, derniereSolde: 0, intendance: 0 };
+  const vMaison = vueArmee(s, ailleurs);
+  ok(vMaison && vMaison.frais,
+    'les colonnes de la maison qu’on sert se rapportent toujours fraîches');
+
+  // La cryptographie ouvre les transmissions : tout se lit.
+  g.allegeance = null;
+  s.base.recherche.cryptographie = 1;
+  const vCrypto = vueArmee(s, ailleurs);
+  ok(vCrypto && vCrypto.frais,
+    'la cryptographie ouvre leurs transmissions — tout se lit, et c’est diégétique');
 }
 
 // ===========================================================================
