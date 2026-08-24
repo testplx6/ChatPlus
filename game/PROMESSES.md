@@ -43,9 +43,13 @@ sait, veut et peut.
 
 Des habitants qui montent au mur prennent ce qui traîne : chaque
 milicien levé emprunte la meilleure pièce libre (arme puis armure)
-dans les `objets` du groupe présent. Rendue après la bataille ;
-partie avec le corps s'il tombe. Zéro état nouveau, zéro tirage — et
-la forge trouve son client naturel.
+dans les `objets` du groupe présent. **Rien ne disparaît jamais —
+l'arme suit le corps** (correction du propriétaire) : le combat tenu,
+on relève ses morts et la pièce revient au sac ; le camp mis à sac,
+ce sont les pillards qui dépouillent — les deux règles existent déjà
+(`depouilles.js:70-73` : un corps garde son équipement ;
+`combat.js:450` : le vainqueur prend l'arme d'un tombé à 40 %). Zéro
+règle neuve : on branche l'emprunt, la simulation fait le reste.
 
 ### P2 — la tactique est un pari par colonne
 
@@ -71,11 +75,19 @@ payés, l'affaire est réglée — sinon la chasse ne s'arrête jamais).
 Le +10 d'estime disparaît : rien d'aimable n'est arrivé. C'est la
 simulation qui le dit, pas l'équilibrage.
 
-### P5 — chaque drapeau a sa discipline de solde
+### P5 — la discipline de solde est une loi du pays
 
-Pas de règle globale : **la culture du service décide** ce qui arrive
-quand un ordre traîne au-delà de sa route (mesurée par
-`dureeMinimale`). Table proposée, à valider :
+Pas de règle globale, et **pas de constante éternelle non plus**
+(correction du propriétaire : « rien n'est fixe, c'est une
+simulation ») : la discipline entre dans **les lois du pays**
+(`lois.js`), comme la peine, l'impôt ou l'esclavage. Elle naît selon
+la culture du drapeau (table ci-dessous — des valeurs *initiales*,
+pas des destins), et **elle évolue comme toute loi** : les conseils
+la votent, le tempérament du dirigeant la penche, et un joueur au
+rang de législateur peut peser dessus — le mécanisme existe
+(`ctx.legislateur`, rang 4). Un pays de fonctionnaires peut durcir
+après une guerre ruineuse ; une armée peut s'embourgeoiser. Valeurs
+initiales proposées :
 
 | profil | quand un ordre traîne… | pourquoi (leur logique) |
 |---|---|---|
@@ -148,10 +160,12 @@ ci-dessus est porté par un agent qui a sa logique.
 
 ## Les décisions du propriétaire
 
-1. **Valider ou amender les six lots ainsi respécifiés.**
-2. **La table des disciplines (P5)** : six cultures, six lignes — les
-   valider ou en changer. C'est le seul endroit où l'on écrit ce que
-   les drapeaux SONT ; le reste n'est que mesure.
+1. **Valider ou amender les six lots** — avec les deux corrections du
+   propriétaire intégrées : l'arme suit le corps (P1), la discipline
+   est une loi qui évolue (P5).
+2. **La table des disciplines initiales (P5)** : six cultures, six
+   points de départ — les valider ou en changer. Ce ne sont plus des
+   destins : la loi vivra sa vie ensuite.
 
 ## L'avancement
 
