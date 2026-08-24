@@ -212,4 +212,20 @@ pouvoir emprunte un flux que la faction a déjà.
 
 ## Blocages
 
-Rien pour l'instant.
+- **M6/E10 déplace le monde, et la garde `convois` sort de 0,7 %** — le
+  commit de M6 est fait (vérificateur trois étapes vert, moteur
+  1517/1519) mais **pas poussé** : `--complet` mesure convois = 13 901
+  hors [14 000, 24 000]. Ce n'est pas un effondrement, c'est une
+  trajectoire déplacée par l'indexation au cours — même effet qu'au
+  lot H, sur la garde la plus serrée (plancher ×0,885 du 15 823 mesuré
+  à M5). L'état complet aux mêmes six graines, 6 000 h : villes 358
+  (garde [260, 430] ✓), pop 151 115 (✓), satiété 0,970 (✓), bourses 26
+  (plancher 24, ✓ de justesse), convois 13 901 (✗), guerres 17 (✓),
+  effondrées 12 → **2** — une monnaie morte n'achète plus d'armées
+  quasi gratuites, donc s'effondrer coûte et arrive moins —, cours de
+  0,01 à 4,11, invariant comptable exact (écart 0). Décision au
+  propriétaire : (a) recaler le plancher `convois` sur le monde d'E10
+  avec la même marge (13 901 × 0,9 ≈ 12 500), ce que je recommande —
+  la garde doit dire « cassé », pas « l'ancien monde » ; (b) revenir
+  sur une partie de l'indexation ; (c) autre chose. En attendant, M6
+  reste local et rien n'est poussé sans `--complet` vert.
