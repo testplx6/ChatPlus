@@ -80,7 +80,8 @@ quelqu'un d'autre.
 | `BATIMENTS.md` | cinq bâtiments nouveaux — **livré**, cinq sur cinq, amendé sur avis de game master |
 | `REVUE.md` | la revue de game master du jeu entier — verdicts, top 5, exploits, ordre des chantiers proposé |
 | `PROMESSES.md` | le chantier de couture — **livré**, six lots sur six (deux dettes consignées dans ses Blocages) |
-| `MARECHAL.md` | le sommet de la voie du service — dyarchie et porte de la couronne, cinq décisions en attente |
+| `MARECHAL.md` | le sommet de la voie du service — dyarchie et porte de la couronne, M5 livré, chantier en cours |
+| `ALLURE.md` | l'étude « AAA textuel » — diagnostic, direction artistique, pistes classées, rien d'engagé |
 | `AUDIT.md` | l'audit doctrinal du moteur — 14 écarts en 3 vagues, 6 questions au propriétaire, verdict : pas de refonte |
 | `PISTES.md` | des idées consignées, pas des chantiers — rien n'y est engagé |
 | `README.md` | le projet, les tests, l'architecture |
