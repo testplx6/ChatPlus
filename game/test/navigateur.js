@@ -1693,10 +1693,14 @@ ok(/(bien vu ici|convenable|mauvais choix ici)/.test(texteTac),
   'et chacune annonce ce qu’elle vaut sur le terrain d’ici');
 await page.locator('[data-a="tactique"][data-k="harcelement"]').click();
 await page.waitForTimeout(500);
-const tacRetenue = await page.evaluate(
-  () => JSON.parse(localStorage.getItem('cendres.save.v1')).player.tactique
-);
-ok(tacRetenue === 'harcelement', 'le choix est retenu et sauvegardé', tacRetenue);
+// Depuis P2 (PROMESSES.md), la consigne est celle de la colonne affichée —
+// le repli global reste pour les colonnes sans consigne.
+const tacRetenue = await page.evaluate(() => {
+  const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const avecConsigne = (s.player.groupes || []).find((g) => g.tactique);
+  return avecConsigne ? avecConsigne.tactique : s.player.tactique;
+});
+ok(tacRetenue === 'harcelement', 'le choix est retenu et sauvegardé — pour la colonne affichée', tacRetenue);
 await page.screenshot({ path: join(CAPTURES, '28-tactique.png'), fullPage: true });
 
 console.log('\n8 sexdecies bis. Camper dans une ville affranchie');
