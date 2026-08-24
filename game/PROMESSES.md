@@ -169,7 +169,13 @@ ci-dessus est porté par un agent qui a sa logique.
 
 ## L'avancement
 
-- [ ] P1 — la milice s'arme à l'arsenal du camp
+- [x] P1 — la milice s'arme à l'arsenal du camp — livré :
+  `armerMilice` (la meilleure pièce libre du sac, arme puis armure,
+  seulement si mieux que ce qu'il a en main) + `rendreEmprunts` (rien
+  ne disparaît : terrain tenu, on relève ses morts et tout revient ;
+  camp mis à sac, la pièce d'un tombé reste sur le corps, chez eux ;
+  les survivants rendent toujours la leur). Branché dans
+  `raidSurLaBase`, quatre tests nés rouges.
 - [ ] P2 — la tactique est un pari par colonne
 - [ ] P3 — le détroussage est une fouille
 - [ ] P4 — la prime retombe, l'estime ne bouge pas

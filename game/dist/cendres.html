@@ -19396,6 +19396,51 @@ function leverMilice(state) {
 }
 
 /**
+ * Des habitants qui montent au mur prennent les armes qui traînent
+ * (PROMESSES.md, P1). Chaque milicien emprunte la meilleure pièce libre du
+ * sac du groupe présent — s'il n'a pas déjà mieux en main. Rien ne
+ * disparaît jamais : voir `rendreEmprunts`.
+ */
+function armerMilice(g, milice) {
+  const emprunts = [];
+  if (!g || !g.objets || !g.objets.length) return emprunts;
+  for (const slot of ['arme', 'armure']) {
+    for (const m of milice) {
+      let meilleure = -1;
+      for (let i = 0; i < g.objets.length; i++) {
+        const it = ITEMS[g.objets[i]];
+        if (!it || it.type !== slot) continue;
+        if (meilleure < 0 || it.prix > ITEMS[g.objets[meilleure]].prix) meilleure = i;
+      }
+      if (meilleure < 0) break;
+      const k = g.objets[meilleure];
+      const enMain = m.equip[slot] ? ITEMS[m.equip[slot]] : null;
+      if (enMain && enMain.prix >= ITEMS[k].prix) continue;
+      g.objets.splice(meilleure, 1);
+      emprunts.push({ m, slot, key: k, avant: m.equip[slot] || null });
+      m.equip[slot] = k;
+    }
+  }
+  return emprunts;
+}
+
+/**
+ * Après la bataille, l'arme suit le corps — jamais le néant (doctrine du
+ * propriétaire). Terrain tenu : on relève ses morts, chaque pièce revient
+ * au sac. Camp mis à sac : la pièce d'un tombé reste sur le corps, et le
+ * corps chez eux ; les survivants rendent la leur.
+ */
+function rendreEmprunts(g, emprunts, terrainTenu) {
+  for (const e of emprunts) {
+    const tombe = e.m.etat === 'mort';
+    e.m.equip[e.slot] = e.avant;
+    if ((!tombe || terrainTenu) && g.objets.length < 30) {
+      g.objets.push(e.key);
+    }
+  }
+}
+
+/**
  * Un raid sur l'avant-poste (SIEGE.md, S1). Deux régimes :
  *
  * - Un groupe est au camp : la bataille a lieu pour de bon, homme par homme,
@@ -19457,8 +19502,10 @@ function raidSurLaBase(state, log, ctx, force, guet = 0) {
     // La milice se lève : des habitants, pas des soldats — ils comptent,
     // ils peuvent mourir, et ce sont les mêmes qui reviennent (B5).
     const milice = leverMilice(state);
+    const emprunts = armerMilice(gIci, milice);
     const res = ctx.combatContre(state, bande, log,
       { rng: rngRaid, renfortsLocaux: milice }, gIci);
+    rendreEmprunts(gIci, emprunts, res.vainqueur !== 'B');
     const tombes = milice.filter((m) => m.etat === 'mort');
     if (tombes.length > 0) {
       base.pop = Math.max(0, (base.pop || 0) - tombes.length);

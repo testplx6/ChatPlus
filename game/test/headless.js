@@ -76,7 +76,7 @@ import {
   raidSurLaBase, raidEnApproche, siegeEnCours, prixSiege, negocierSiege,
   sortieContreSiege, evacuerCamp, RANCON, userMursSiege, MURS,
   lancerFabrication, ATTELAGE, FORGE, coutForge, forgeables,
-  facteurClimatRecolte, DISTILLERIE, leverMilice,
+  facteurClimatRecolte, DISTILLERIE, leverMilice, armerMilice, rendreEmprunts,
   recetteDe, recettesDe, reglerRecette, reglerReserve, brasEscouade,
   voulus, tenus, postesDegarnis, brasDisponibles, ORDRE_EMBAUCHE, tempsRecherche,
   deposer,
@@ -10930,6 +10930,48 @@ section('B1. L’attelage — fabriquer et réparer la charrette (BATIMENTS.md)'
   ok(force(m4[0]) > force(m1[0]),
     'la salle au niveau 2 lève une milice mieux formée',
     `${force(m1[0])} → ${force(m4[0])}`);
+}
+
+// ===========================================================================
+section('P. Les promesses tenues — P1, la milice s’arme à l’arsenal (PROMESSES.md)');
+{
+  const s = nouvellePartie(785, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const g = groupeActif(s);
+  s.base.fonde = true;
+  s.base.regionId = g.regionId;
+  s.base.pop = 30;
+  g.objets = ['machette', 'plaque', 'barre'];
+  const milice = leverMilice(s);
+  const emprunts = armerMilice(g, milice);
+  ok(emprunts.length > 0 && milice.some((m) => m.equip.arme === 'machette'),
+    'la milice prend les armes qui traînent — la meilleure d’abord',
+    `${emprunts.length} emprunt(s)`);
+  ok(!g.objets.includes('machette'), 'la machette est sortie du sac');
+
+  // Terrain tenu : on relève ses morts, tout revient — rien ne disparaît.
+  emprunts[0].m.etat = 'mort';
+  rendreEmprunts(g, emprunts, true);
+  ok(g.objets.filter((k) => k === 'machette').length === 1
+    && g.objets.length === 3,
+  'terrain tenu, on relève les morts : chaque pièce revient au sac',
+  g.objets.join(', '));
+}
+{
+  // Camp mis à sac : la pièce du tombé reste sur le corps — chez eux.
+  const s = nouvellePartie(785, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const g = groupeActif(s);
+  s.base.fonde = true;
+  s.base.regionId = g.regionId;
+  s.base.pop = 30;
+  g.objets = ['machette', 'barre'];
+  const milice = leverMilice(s);
+  const emprunts = armerMilice(g, milice);
+  const tombe = emprunts.find((e) => e.key === 'machette');
+  tombe.m.etat = 'mort';
+  rendreEmprunts(g, emprunts, false);
+  ok(!g.objets.includes('machette') && g.objets.includes('barre'),
+    'camp mis à sac : la pièce du tombé est perdue avec le corps, le survivant rend la sienne',
+    g.objets.join(', '));
 }
 
 // ===========================================================================
