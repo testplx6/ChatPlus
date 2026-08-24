@@ -50,6 +50,12 @@ export const PREROGATIVES = {
     rang: 2, // Lieutenant
     charge: 'Vous répondez de ce qu’elle devient.',
   },
+  rappeler: {
+    nom: 'Rappeler une colonne',
+    desc: 'Ordonner le retour : route, puis garnison dans la plus proche de vos villes.',
+    rang: 2, // Lieutenant — le pendant d'« envoyer »
+    charge: 'Lever un siège est une retraite ; un but de guerre qui en meurt vous revient.',
+  },
   lever: {
     nom: 'Lever une colonne',
     desc: 'Faire armer des hommes sur le trésor de la faction, et les envoyer.',
@@ -330,11 +336,72 @@ export function envoyerColonne(state, faction, armeeId, cibleId, log) {
   a.progres = 0;
   a.etat = 'marche';
   a.surOrdre = true;
+  delete a.rappel; // renvoyée en campagne : elle ne rentre plus (M2)
   inscrireActe(state, faction, { type: 'envoi', armee: a.id, cible: cibleId, t: state.temps });
   if (log) {
     log({
       type: 'influence',
       texte: `Sur votre ordre, une colonne ${drapeauDe(state.world, faction).genitif} marche sur ${col.nom}.`,
+      important: true,
+      factions: [faction],
+    });
+  }
+  return { ok: true };
+}
+
+/**
+ * M2 (MARECHAL.md) — le verbe manquant : ordonner le retour. La colonne fait
+ * route vers la plus proche des villes de la maison, puis y prend garnison —
+ * l'état existe déjà, il n'avait simplement aucun chemin pour y mener.
+ *
+ * Rappeler en plein siège est une retraite : si le but de la guerre était la
+ * ville qu'on assiégeait, et que la guerre finit sans elle, la faute est au
+ * dossier — jugée à la paix, pas au moment de l'ordre (`jugerActes`).
+ */
+export function rappelerColonne(state, faction, armeeId, log) {
+  const v = peutExercer(state, faction, 'rappeler');
+  if (!v.ok) return v;
+  const w = state.world;
+  const a = w.armees.find((x) => x.id === armeeId && x.faction === faction);
+  if (!a) return { ok: false, motif: 'Cette colonne n’existe plus.' };
+  if (a.etat === 'garnison') return { ok: false, motif: 'Elle tient déjà garnison.' };
+  const maison = villeLaPlusProche(w, faction, a.regionId);
+  if (!maison) return { ok: false, motif: 'Plus une ville où rentrer.' };
+  const retraite = a.etat === 'siege';
+  const assiegee = retraite ? colonieParId(w, a.cible) : null;
+  // Un ordre remplace l'autre : la colonne rappelée n'est plus « envoyée »,
+  // et sa dissolution en garnison ne doit pas se juger comme une perte.
+  for (const g of groupesEngages(state, faction)) {
+    if (g.allegeance.actes) {
+      g.allegeance.actes = g.allegeance.actes.filter(
+        (x) => !((x.type === 'envoi' || x.type === 'levee') && x.armee === a.id));
+    }
+  }
+  a.cible = maison.id;
+  a.route = chemin(w, a.regionId, maison.regionId) || [];
+  a.etape = 0;
+  a.progres = 0;
+  a.etat = 'marche';
+  a.rappel = true;
+  a.surOrdre = true;
+  const guerre = retraite && assiegee && assiegee.faction
+    ? w.guerres.find((x) => (x.a === faction && x.b === assiegee.faction)
+      || (x.b === faction && x.a === assiegee.faction))
+    : null;
+  const surLeBut = !!(guerre && guerre.but && guerre.but.type === 'conquete'
+    && guerre.but.villeId === assiegee.id);
+  inscrireActe(state, faction, {
+    type: 'rappel', armee: a.id, retraite, surLeBut,
+    cible: assiegee ? assiegee.id : null,
+    contre: assiegee ? assiegee.faction : null, t: state.temps,
+  });
+  if (log) {
+    log({
+      type: 'influence',
+      texte: retraite
+        ? `Sur votre ordre, la colonne ${drapeauDe(w, faction).genitif} lève le siège `
+          + `${assiegee ? `de ${assiegee.nom} ` : ''}et bat en retraite vers ${maison.nom}.`
+        : `Sur votre ordre, la colonne ${drapeauDe(w, faction).genitif} rentre sur ${maison.nom}.`,
       important: true,
       factions: [faction],
     });
@@ -1052,6 +1119,19 @@ function juger(state, faction, acte, log) {
     } else {
       porterFaute(state, faction, 'la perte d’une colonne que vous aviez envoyée', log);
     }
+    return true;
+  }
+
+  if (acte.type === 'rappel') {
+    // Rentrer n'est pas un pari : seul se juge le siège levé sur le but même
+    // de la guerre (M2, MARECHAL.md) — et à la paix, pas à l'ordre.
+    if (!acte.retraite || !acte.surLeBut) return true;
+    if (acte.contre && enGuerre(w, faction, acte.contre)) return false;
+    const col = colonieParId(w, acte.cible);
+    if (col && col.faction === faction) return true; // prise quand même
+    porterFaute(state, faction,
+      `un but de guerre mort avec le siège que vous avez levé${col ? ` devant ${col.nom}` : ''}`,
+      log);
     return true;
   }
 

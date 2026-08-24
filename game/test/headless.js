@@ -11302,6 +11302,92 @@ section('M bis. Le Maréchal — M1, le commandement des colonnes (MARECHAL.md)'
 }
 
 // ===========================================================================
+section('M ter. Le Maréchal — M2, rappeler une colonne (MARECHAL.md)');
+{
+  const influence = await import('../src/influence.js');
+  const { rappelerColonne } = influence;
+  ok(typeof rappelerColonne === 'function'
+    && influence.PREROGATIVES.rappeler && influence.PREROGATIVES.rappeler.rang === 2,
+    'le verbe existe, au rang du Lieutenant — le pendant d’« envoyer »');
+
+  const monter = () => {
+    const st = nouvellePartie(631, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(st);
+    const cand = Object.keys(st.world.factions).filter(
+      (k) => k !== 'essaim' && st.world.factions[k].colonies.length >= 1 && dirigeant(st.world, k));
+    const A = cand[0];
+    const B = cand.find((k) => k !== A);
+    g.allegeance = { faction: A, points: RANGS[2].points, derniereSolde: 0, intendance: 0 };
+    return { st, g, A, B };
+  };
+  const rien = () => {};
+
+  if (typeof rappelerColonne === 'function') {
+    // 1) Le retour : route, puis garnison — et la colonne qui marche vers une
+    //    ville à elle ne « rebrousse chemin » plus : elle rentre.
+    const { st, g, A, B } = monter();
+    const colB = st.world.colonies.find((c) => c.faction === B && !c.ruine);
+    const maison = st.world.colonies.find((c) => c.faction === A && !c.ruine);
+    const loin = st.world.regions.find((r) => distance(r.i, maison.regionId) >= 3
+      && distance(r.i, maison.regionId) <= 5);
+    st.world.armees.push({
+      id: 'aR1', faction: A, regionId: loin.i, force: 80, forceMax: 80,
+      cible: colB.id, route: [], etape: 0, progres: 0, etat: 'marche',
+      ravitaillement: 120, impayees: 0,
+    });
+    const a = st.world.armees.find((x) => x.id === 'aR1');
+    const r = rappelerColonne(st, A, 'aR1', rien);
+    ok(r.ok && a.etat === 'marche' && a.rappel
+      && colonieParId(st.world, a.cible).faction === A,
+      'rappelée : la colonne fait route vers la ville la plus proche de la maison',
+      r.motif || '');
+    let arrivee = false;
+    for (let i = 0; i < 120 && st.world.armees.includes(a); i++) {
+      tick(st);
+      if (a.etat === 'garnison') { arrivee = true; break; }
+    }
+    ok(arrivee && a.regionId === colonieParId(st.world, a.cible).regionId,
+      'route, puis garnison — elle rentre au lieu de se dissoudre en chemin');
+
+    // 2) Rappeler en plein siège est une retraite ; le but de guerre qui en
+    //    meurt est une faute au dossier — jugée quand la guerre finit.
+    const m2 = monter();
+    const colB2 = m2.st.world.colonies.find((c) => c.faction === m2.B && !c.ruine);
+    declarerGuerre(m2.st.world, m2.A, m2.B, m2.st.temps, rien,
+      { type: 'conquete', villeId: colB2.id, texte: `pour prendre ${colB2.nom}` });
+    m2.st.world.armees.push({
+      id: 'aR2', faction: m2.A, regionId: colB2.regionId, force: 90, forceMax: 90,
+      cible: colB2.id, route: [], etape: 0, progres: 0, etat: 'siege',
+      ravitaillement: 120, impayees: 0,
+    });
+    const r2 = rappelerColonne(m2.st, m2.A, 'aR2', (l) => m2.st.journal.push(l));
+    ok(r2.ok && m2.st.journal.some((l) => /lève le siège/.test(l.texte)),
+      'lever le siège se dit comme ce que c’est : une retraite, sur votre ordre');
+    signerPaix(m2.st.world, m2.A, m2.B, m2.st.temps, rien);
+    for (let i = 0; i < 3; i++) tick(m2.st);
+    ok((m2.g.allegeance.fautes || 0) > 0
+      && m2.st.journal.some((l) => /but de guerre mort/.test(l.texte)),
+      'la guerre finie sans la ville, le but mort avec votre retraite vous est imputé');
+
+    // 3) Le rappel remplace l'ordre d'envoi : pas de faute pour la « perte »
+    //    d'une colonne qui s'est dissoute en garnison, chez elle.
+    const m3 = monter();
+    const colB3 = m3.st.world.colonies.find((c) => c.faction === m3.B && !c.ruine);
+    const maison3 = m3.st.world.colonies.find((c) => c.faction === m3.A && !c.ruine);
+    m3.st.world.armees.push({
+      id: 'aR3', faction: m3.A, regionId: maison3.regionId, force: 80, forceMax: 80,
+      cible: colB3.id, route: [], etape: 0, progres: 0, etat: 'marche',
+      ravitaillement: 120, impayees: 0, surOrdre: true,
+    });
+    influence.envoyerColonne(m3.st, m3.A, 'aR3', colB3.id, rien);
+    rappelerColonne(m3.st, m3.A, 'aR3', rien);
+    const actes = m3.g.allegeance.actes || [];
+    ok(!actes.some((x) => (x.type === 'envoi' || x.type === 'levee') && x.armee === 'aR3'),
+      'le rappel retire l’ordre d’envoi du dossier — un ordre remplace l’autre');
+  }
+}
+
+// ===========================================================================
 console.log('\n' + '='.repeat(42));
 console.log(`${total - echecs}/${total} tests passés`);
 if (echecs > 0) {

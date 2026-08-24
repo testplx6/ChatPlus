@@ -3534,6 +3534,7 @@ function cibleVide(k) {
     accord: 'Personne à brancher : il leur faut une bourse ouverte, et pas de guerre entre vous.',
     rompre: 'Aucun accord commercial en cours.',
     envoyer: 'Aucune colonne des vôtres n’est sur les routes.',
+    rappeler: 'Rien à rappeler : aucune colonne en campagne.',
     lever: 'Rien à prendre : aucune ville ennemie à portée.',
     fonder: 'Pas une case libre assez près des vôtres, ni assez loin des autres.',
     garnison: 'Aucune ville ne vous est confiée — il faut un secteur.',
@@ -3563,6 +3564,20 @@ function ciblesCharge(faction, k) {
       }
     }
     return out.slice(0, 12);
+  }
+  if (k === 'rappeler') {
+    return colonnesDe(S, faction)
+      .filter((a) => a.etat !== 'garnison' && !a.rappel)
+      .slice(0, 6)
+      .map((a) => {
+        const cible = colonieParId(w, a.cible);
+        return {
+          val: a.id,
+          texte: a.etat === 'siege' && cible
+            ? `${a.force} h. — lever le siège de ${cible.nom} et rentrer`
+            : `${a.force} h.${cible ? ` (sur ${cible.nom})` : ''} — rentrer`,
+        };
+      });
   }
   if (k === 'lever') {
     const cout = coutLevee();
@@ -6071,6 +6086,7 @@ function surClic(ev) {
       let r;
       switch (el.dataset.r) {
         case 'envoyer': r = ACTIONS.envoyerColonne(f, cible, el.dataset.b); break;
+        case 'rappeler': r = ACTIONS.rappelerColonne(f, cible); break;
         case 'garnison': r = ACTIONS.garnison(f); break;
         case 'grenier': r = ACTIONS.grenier(f); break;
         case 'loi': r = ACTIONS.fixerLoi(f, cible); break;

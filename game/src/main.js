@@ -36,6 +36,7 @@ import {
 import { engager } from './recrues.js';
 import {
   envoyerColonne as envoyerColonneA, leverColonne as leverColonneA,
+  rappelerColonne as rappelerColonneA,
   fonderPoste as fonderPosteA, declarerGuerreA, signerPaixAvec,
   renforcerGarnison, ouvrirGreniers, fixerLoi as fixerLoiA,
   accorderCredit as accorderCreditA, battreMonnaie as battreMonnaieA,
@@ -412,6 +413,13 @@ const API = {
   /** Détourner une colonne déjà levée vers la ville de son choix. */
   envoyerColonne(faction, armeeId, cibleId) {
     const r = envoyerColonneA(state, faction, armeeId, cibleId, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Ordonner le retour d'une colonne : route, puis garnison chez soi. */
+  rappelerColonne(faction, armeeId) {
+    const r = rappelerColonneA(state, faction, armeeId, creerLogger(state));
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },

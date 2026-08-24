@@ -632,8 +632,10 @@ function tickArmee(world, armee, t, log, ctx) {
   if (armee.etat === 'marche') {
     const cible = colonieParId(world, armee.cible);
     if (!cible) { dissoudre(world, armee); return; }
-    // La cible a changé de mains entre-temps : on rentre
-    if (cible.faction === armee.faction) {
+    // La cible a changé de mains entre-temps : on rentre. Une colonne
+    // rappelée (M2, MARECHAL.md) marche justement vers une ville à elle —
+    // elle ne « rebrousse » pas, elle rentre pour de bon, jusqu'au bout.
+    if (cible.faction === armee.faction && !armee.rappel) {
       log({
         type: 'armee',
         texte: `La colonne ${drapeauDe(world, armee.faction).genitif} rebrousse chemin : ${cible.nom} est déjà tombée.`,
@@ -644,6 +646,22 @@ function tickArmee(world, armee, t, log, ctx) {
       return;
     }
     if (!armee.route.length || armee.etape >= armee.route.length) {
+      // Arrivée d'une colonne rappelée : garnison chez soi, l'état existait.
+      // Si la maison est tombée en route, on laisse le fil ordinaire faire —
+      // la colonne trouve l'ennemi dans ses murs, et met le siège.
+      if (armee.rappel && cible.faction === armee.faction) {
+        armee.etat = 'garnison';
+        armee.regionId = cible.regionId;
+        armee.attente = rng.irange(20, 90);
+        delete armee.rappel;
+        log({
+          type: 'armee',
+          texte: `La colonne ${drapeauDe(world, armee.faction).genitif} rentre à ${cible.nom} et prend garnison.`,
+          regionId: cible.regionId,
+          factions: [armee.faction],
+        });
+        return;
+      }
       armee.etat = 'siege';
       armee.regionId = cible.regionId;
       log({

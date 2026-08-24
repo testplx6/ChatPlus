@@ -182,7 +182,16 @@ pouvoir emprunte un flux que la faction a déjà.
   du dirigeant ne bouge pas — il n'en répond plus. L'écran de charge le dit
   en clair. Neuf tests nés rouges (levée gelée, reprise réelle, absence,
   imputation, témoin Commandeur).
-- [ ] M2 — rappeler une colonne
+- [x] M2 — rappeler une colonne — livré : `rappelerColonne` (influence.js,
+  rang Lieutenant — le pendant d'« envoyer »). Route vers la plus proche des
+  villes de la maison, puis garnison — l'état existait, il n'avait pas de
+  chemin. Une colonne rappelée ne « rebrousse » plus : elle rentre jusqu'au
+  bout ; si sa maison est tombée en route, elle trouve l'ennemi dans ses murs
+  et met le siège, par le fil ordinaire. Rappeler en plein siège est une
+  retraite dite comme telle ; si le but de la guerre était la ville assiégée
+  et que la paix se signe sans elle, la faute est au dossier — jugée à la
+  paix, pas à l'ordre. Le rappel retire du dossier l'ordre d'envoi qu'il
+  remplace. Six tests nés rouges.
 - [ ] M6 — la levée dimensionnée (+ E10, l'indexation au cours)
 - [ ] M3 — le but de guerre choisi
 - [ ] M4 — la place à tenir
