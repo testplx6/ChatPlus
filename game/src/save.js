@@ -271,6 +271,8 @@ export function normaliser(state) {
     // Avant, la milice était des silhouettes jetables : personne n'y mourait
     // pour de bon.
     if (!b.miliceMorts) b.miliceMorts = [];
+    // Avant, un raid repoussé ne se racontait pas.
+    if (b.dernierRepousse === undefined) b.dernierRepousse = null;
     if (!b.reserves) b.reserves = {};
     if (!b.recettes) {
       // Les consignes n'existaient pas, et la raffinerie faisait les deux à la

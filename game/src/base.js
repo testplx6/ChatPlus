@@ -46,6 +46,9 @@ export function creerBase() {
     // Les miliciens tombés, par index d'habitant : ils ne reviennent pas
     // (BATIMENTS.md, B5).
     miliceMorts: [],
+    // La dernière fois qu'un raid s'est cassé les dents ici : ça se raconte,
+    // et les prochains y regardent (PROMESSES.md, P6).
+    dernierRepousse: null,
     // Ce que l'entrepôt n'a pas pu prendre, cumulé. L'écrêtage était muet.
     gaspille: 0,
     gaspilleJour: 0,
@@ -1541,11 +1544,15 @@ export function tickBase(state, log, ctx) {
     base.raidImminent = null;
     raidSurLaBase(state, log, ctx, imminent.force, guet);
   }
-  if (!base.raidImminent
-    && t - base.derniereAttaque > 72
-    && rng.chance(0.0016 * (1 + reg.danger * 4) * vigilance)) {
-    const force = rng.irange(20, 45) + Math.floor(t / 600) + Math.round((base.pop || 0) * 1.5);
-    raidEnApproche(state, log, ctx, force, guet);
+  if (!base.raidImminent && t - base.derniereAttaque > 72) {
+    // Les pillards jaugent leur coup (PROMESSES.md, P6) : le monde ne
+    // durcit plus à l'horloge — c'est l'appétit qui décide, et la bande
+    // vient taillée pour le coup, pas pour le calendrier.
+    const jauge = jaugeRaid(state);
+    if (rng.chance(0.0016 * (1 + reg.danger * 4) * vigilance * jauge.appetit)) {
+      const force = Math.round(jauge.force * rng.range(0.85, 1.2));
+      raidEnApproche(state, log, ctx, force, guet);
+    }
   }
 
   // Ce que l'entrepôt n'a pas pu prendre. On ne le dit pas à chaque heure — ce
@@ -2133,6 +2140,50 @@ export function assaillantDe(state) {
 }
 
 /**
+ * La jauge des pillards (PROMESSES.md, P6) : le butin qu'ils CROIENT — ce
+ * qui se voit et se raconte : les bouches, les colporteurs repartis
+ * chargés, une place inscrite sur les cartes — contre le risque qu'ils
+ * VOIENT : les murs (et leur brèche), les têtes, et la rumeur d'un raid
+ * repoussé. Jamais votre registre : un stock caché ne se convoite pas.
+ * Objet mutable, ancré par équivalence à l'ancienne pression pour un camp
+ * médian (tenu par test) ; le vrai balayage au banc attendra que `jouer()`
+ * sache mesurer la pression sur un camp (consigné dans PROMESSES.md).
+ */
+export const RAID_JAUGE = {
+  parTete: 3,        // le butin supposé d'une bouche à nourrir
+  parColporteur: 2,  // ce que raconte chaque colporteur passé
+  parTaille: 20,     // une place sur les cartes se raconte toute seule
+  equilibre: 8,      // le socle du dénominateur : petit coup, petit intérêt
+  rumeur: 240,       // heures pendant lesquelles un raid repoussé se raconte
+  prudence: 1.5,     // ce que la rumeur ajoute au risque perçu
+  appetitMin: 0.15,
+  appetitMax: 4,
+  socle: 25,         // une bande ne part jamais à moins
+  avidite: 0.35,     // les bras qu'on amène par unité de butin cru
+  marge: 0.15,       // ... et par unité de risque vu
+};
+
+export function jaugeRaid(state) {
+  const base = state.base;
+  const col = base.colonieId
+    ? state.world.colonies.find((c) => c.id === base.colonieId) : null;
+  const butin = (base.pop || 0) * RAID_JAUGE.parTete
+    + (base.marchands || 0) * RAID_JAUGE.parColporteur
+    + (col && !col.ruine ? (col.taille || 1) * RAID_JAUGE.parTaille : 0);
+  let risque = niveau(base, 'mur') * 22 * (base.brecheEtat ?? 1)
+    + (base.pop || 0) * 2.5;
+  if (base.dernierRepousse != null
+    && state.temps - base.dernierRepousse < RAID_JAUGE.rumeur) {
+    risque *= RAID_JAUGE.prudence;
+  }
+  const appetit = Math.max(RAID_JAUGE.appetitMin, Math.min(RAID_JAUGE.appetitMax,
+    butin / (RAID_JAUGE.equilibre + risque)));
+  const force = Math.round(RAID_JAUGE.socle
+    + butin * RAID_JAUGE.avidite + risque * RAID_JAUGE.marge);
+  return { butin, risque, appetit, force };
+}
+
+/**
  * La milice du camp (SIEGE.md S1, BATIMENTS.md B5) : des habitants qui
  * prennent ce que l'entrepôt contient et montent au mur. Chacun se dérive de
  * la graine et de SON index d'habitant — pas de l'heure du raid : les mêmes
@@ -2287,6 +2338,8 @@ export function raidSurLaBase(state, log, ctx, force, guet = 0) {
     }
     if (res.vainqueur !== 'B') {
       base.defense = Math.max(0, base.defense - force * 0.15);
+      // Un raid repoussé se raconte (P6) : les prochains y regarderont.
+      base.dernierRepousse = t;
       return;
     }
     // La bataille est perdue : le camp est à eux, le pillage suit.
@@ -2296,6 +2349,7 @@ export function raidSurLaBase(state, log, ctx, force, guet = 0) {
     const defense = base.defense + forceEscouade(state);
     if (defense > force) {
       base.defense = Math.max(0, base.defense - force * 0.3);
+      base.dernierRepousse = t;
       log({
         type: 'raid',
         texte: `Raid de ${bande ? bande.nom : 'pillards'} repoussé sur ${base.nom} `

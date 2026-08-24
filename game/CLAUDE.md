@@ -79,7 +79,7 @@ quelqu'un d'autre.
 | `SIEGE.md` | le camp qui se défend — **livré**, quatre lots sur quatre |
 | `BATIMENTS.md` | cinq bâtiments nouveaux — **livré**, cinq sur cinq, amendé sur avis de game master |
 | `REVUE.md` | la revue de game master du jeu entier — verdicts, top 5, exploits, ordre des chantiers proposé |
-| `PROMESSES.md` | le chantier de couture — six lots, P1 livré |
+| `PROMESSES.md` | le chantier de couture — **livré**, six lots sur six (deux dettes consignées dans ses Blocages) |
 | `AUDIT.md` | l'audit doctrinal du moteur — 14 écarts en 3 vagues, 6 questions au propriétaire, verdict : pas de refonte |
 | `PISTES.md` | des idées consignées, pas des chantiers — rien n'y est engagé |
 | `README.md` | le projet, les tests, l'architecture |

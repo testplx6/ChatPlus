@@ -78,7 +78,7 @@ import {
   perdreAvantPoste, saccagerAvantPoste, menacesSurLaBase, rendementLibre, AMENDEMENT_MAX,
   raidSurLaBase, raidEnApproche, siegeEnCours, prixSiege, negocierSiege,
   sortieContreSiege, evacuerCamp, RANCON, userMursSiege, MURS,
-  lancerFabrication, ATTELAGE, FORGE, coutForge, forgeables,
+  lancerFabrication, ATTELAGE, FORGE, coutForge, forgeables, jaugeRaid, RAID_JAUGE,
   facteurClimatRecolte, DISTILLERIE, leverMilice, armerMilice, rendreEmprunts,
   recetteDe, recettesDe, reglerRecette, reglerReserve, brasEscouade,
   voulus, tenus, postesDegarnis, brasDisponibles, ORDRE_EMBAUCHE, tempsRecherche,
@@ -11068,6 +11068,69 @@ section('P. Les promesses tenues — P1, la milice s’arme à l’arsenal (PROM
     'l’Ombrelle ne suspend rien — elle retient');
   ok(!disciplineDe(s, { faction: 'cendre', ordre: null }).suspendue,
     'sans ordre en attente, rien à reprocher à personne');
+}
+
+// P6 : les pillards jaugent leur coup — le butin qu'ils croient contre le
+// risque qu'ils voient, et c'est eux qui décident.
+{
+  const decor = () => {
+    const s = nouvellePartie(790, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(s);
+    s.base.fonde = true;
+    s.base.regionId = g.regionId;
+    return s;
+  };
+
+  // Un camp médian vaut à peu près l'ancienne pression : l'ancrage.
+  const median = decor();
+  median.base.pop = 20;
+  median.base.marchands = 10;
+  median.base.batiments = { mur: 1 };
+  const jm = jaugeRaid(median);
+  ok(jm.appetit > 0.6 && jm.appetit < 1.5,
+    'un camp médian vaut à peu près l’ancienne pression',
+    `appétit ${jm.appetit.toFixed(2)}`);
+  ok(jm.force > 40 && jm.force < 95,
+    'et une bande de la taille d’avant', `force ${jm.force}`);
+
+  // Le pillard ne lit pas votre registre : doubler le stock ne change RIEN
+  // à ce qu'il croit — seuls comptent ce qui se voit et ce qui se raconte.
+  const cache = decor();
+  cache.base.pop = 20;
+  cache.base.marchands = 10;
+  cache.base.batiments = { mur: 1 };
+  cache.base.stock.composant = 5000;
+  ok(Math.abs(jaugeRaid(cache).appetit - jm.appetit) < 1e-9,
+    'le pillard ne lit pas votre registre — le stock caché ne se convoite pas');
+
+  // Un camp pauvre est plus tranquille, un camp couru se convoite.
+  const pauvre = decor();
+  pauvre.base.pop = 6;
+  pauvre.base.marchands = 0;
+  const riche = decor();
+  riche.base.pop = 40;
+  riche.base.marchands = 60;
+  ok(jaugeRaid(pauvre).appetit < jm.appetit
+    && jaugeRaid(riche).appetit > jm.appetit,
+  'un camp pauvre respire, un camp couru par les colporteurs se convoite',
+  `${jaugeRaid(pauvre).appetit.toFixed(2)} < ${jm.appetit.toFixed(2)} < ${jaugeRaid(riche).appetit.toFixed(2)}`);
+  ok(jaugeRaid(riche).force > jm.force,
+    'et l’on vient en nombre proportionné au coup');
+
+  // Les murs qu'on voit dissuadent ; un raid repoussé se raconte.
+  const mure = decor();
+  mure.base.pop = 40;
+  mure.base.marchands = 60;
+  mure.base.batiments = { mur: 4 };
+  ok(jaugeRaid(mure).appetit < jaugeRaid(riche).appetit,
+    'des murs qu’on voit refroidissent l’appétit');
+  const echaude = decor();
+  echaude.base.pop = 40;
+  echaude.base.marchands = 60;
+  echaude.base.dernierRepousse = -100;
+  echaude.temps = 0;
+  ok(jaugeRaid(echaude).appetit < jaugeRaid(riche).appetit,
+    'une bande repoussée se raconte : on y va moins');
 }
 
 // ===========================================================================

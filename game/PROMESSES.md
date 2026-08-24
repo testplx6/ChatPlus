@@ -198,8 +198,28 @@ ci-dessus est porté par un agent qui a sa logique.
   prospère (même moteur que le loyer de l'argent), les rancuniers ne
   légifèrent pas leur mémoire. La fiche de chaque drapeau (écran
   monde) la dit. Sept tests nés rouges.
-- [ ] P6 — les pillards jaugent leur coup
+- [x] P6 — les pillards jaugent leur coup — livré : `jaugeRaid`
+  (butin cru = bouches + colporteurs passés + place sur les cartes ;
+  risque vu = murs × brèche + têtes, ×1,5 tant qu'un raid repoussé se
+  raconte — 240 h de rumeur, `dernierRepousse`), l'appétit multiplie
+  la chance de raid (borné 0,15-4), la bande vient taillée pour le
+  coup — **le terme `t/600` du calendrier disparaît** (résorbe la part
+  camp de l'écart E2 de l'audit). Ancré par équivalence à l'ancienne
+  pression pour un camp médian, tenu par test — dont le test de
+  doctrine : doubler le stock caché ne change rien à l'appétit, le
+  pillard ne lit pas votre registre. Sept tests nés rouges.
 
 ## Blocages
 
-Rien pour l'instant.
+- **Le balayage au banc des constantes de P6** (RAID_JAUGE) attend que
+  `jouer()` sache mesurer la pression des raids sur un camp — aucune
+  métrique joueur du banc ne la voit aujourd'hui, et la règle interdit
+  les scripts de mesure à côté. En attendant : ancrage par équivalence
+  à l'ancienne pression (test), verdict final au propriétaire en
+  jouant.
+- **La mesure d'ancre du navigateur** (« ce qu'on lit reste sous les
+  yeux ») oscille d'un run à l'autre sur un arbre identique sous
+  charge machine (vérifié : vert au calme, rouge pendant qu'un agent
+  laboure le CPU). Elle mérite sa propre enquête d'instrumentation —
+  pas un élargissement.
+
