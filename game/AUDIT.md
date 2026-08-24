@@ -61,7 +61,32 @@ cadences de calcul, péremption du carnet.
 | E13 | la carence de raid 72 h et `miliceMax = 6` sans porteur (base.js:1545, 2119) | la carence EST la mémoire des pillards (P6) ; le plafond = ceux qu'on peut armer (P1) et que le moral fournit | petite (avec P1/P6) |
 | E14 | l'urgence d'un contrat tirée à pile ou face (contrats.js:36, allegeance.js:734) | la détresse réelle de la ville (`detresse` existe, credit.js:88) | petite |
 
-## À trancher par le propriétaire
+## Tranché par le propriétaire, août 2026
+
+1. **« Rien ne se perd, tout se transforme — valable pour tout. »**
+   Conservation totale : gens, matière, objets. Les affamés partis,
+   les esclaves vendus, les débandés deviennent le monde qu'on croise
+   (chantier « migrations », vague 3).
+2. **« Les bandes utilisent ce qu'elles prennent comme elles le
+   veulent. »** Elles existent donc entre deux rencontres : un stock,
+   des choix (s'équiper, manger, revendre) — et ce qui se stocke se
+   pille (vague 3, avec E4).
+3. et 4. **« Ça évolue si ça doit évoluer. »** La cruauté, l'agression,
+   la cupidité d'un drapeau ne bougent PAS par une règle posée pour
+   les faire bouger : elles bougent quand la simulation leur donne une
+   raison — une guerre perdue, un chef cruel qui dure, une loi. À
+   brancher là où ces raisons naissent déjà (dirigeants, lois,
+   guerres).
+5. et 6. **« Pas clair — aller dans le sens de la simulation. »**
+   Tranché dans ce sens : **la mémoire appartient au souvenant** —
+   ce que chaque faction pense de vous migrera chez elle (comme
+   l'opinion d'un notable vit déjà sur sa ville), le monde continuant
+   de ne jamais lire `state.player` ; et **on est sur les cartes
+   quand des témoins vous y ont mis** — l'inscription devient un fait
+   du monde (assez de colporteurs et de voyageurs passés), que le
+   joueur peut devancer en se déclarant, plus un seuil de 18 têtes.
+
+## Ce qui restait à trancher (mémoire de l'audit)
 
 - **T1** — « rien ne disparaît » vaut-il pour les gens ? Les affamés
   « partis », l'esclave vendu, les débandés s'évaporent. Abstraction
