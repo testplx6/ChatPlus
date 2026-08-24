@@ -11184,6 +11184,124 @@ section('M. Le Maréchal — M5, l’état-major et la fin de l’omniscience (M
 }
 
 // ===========================================================================
+section('M bis. Le Maréchal — M1, le commandement des colonnes (MARECHAL.md)');
+{
+  // La dyarchie au niveau du conseil : quand `ctx.marechal` désigne la
+  // faction, son conseil ne lève plus une colonne — ni sur les fronts, ni
+  // pour reprendre un bourg libre. Même câblage que `ctx.legislateur`.
+  const s = nouvellePartie(617, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const w = s.world;
+  const rien = () => {};
+  const cand = Object.keys(w.factions).filter(
+    (k) => k !== 'essaim' && w.factions[k].colonies.length >= 1 && dirigeant(w, k));
+  const A = cand[0];
+  const B = cand.find((k) => k !== A);
+  const compte = () => w.armees.filter((a) => a.faction === A).length;
+  const geler = (t) => {
+    for (const k of Object.keys(w.factions)) w.factions[k].prochainConseil = k === A ? 1 : 99999;
+    w.factions[A].tresor = 80000;
+    if (!enGuerre(w, A, B)) declarerGuerre(w, A, B, t, rien);
+  };
+  let t = 0;
+  for (let i = 0; i < 400 && compte() === 0; i++) {
+    t += 1;
+    geler(t);
+    tickFactions(w, t, rien, { rng: new Rng(grainDe(w.graine, 'm1', t)), marechal: A });
+  }
+  ok(compte() === 0,
+    'charge tenue : quatre cents heures de guerre, pas une colonne levée par le conseil',
+    `${compte()} levée(s)`);
+  // Le commandement levé, le même conseil reprend son métier.
+  for (let i = 0; i < 400 && compte() === 0; i++) {
+    t += 1;
+    geler(t);
+    tickFactions(w, t, rien, { rng: new Rng(grainDe(w.graine, 'm1', t)) });
+  }
+  ok(compte() > 0, 'le commandement rendu, le conseil lève à nouveau — la reprise est réelle');
+}
+{
+  // Le câblage entier, par le vrai tick : présent, le Maréchal commande ;
+  // absent (heures rattrapées), le conseil reprend la main.
+  const monter = () => {
+    const st = nouvellePartie(619, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(st);
+    const cand = Object.keys(st.world.factions).filter(
+      (k) => k !== 'essaim' && st.world.factions[k].colonies.length >= 2 && dirigeant(st.world, k));
+    const A = cand[0];
+    const B = cand.find((k) => k !== A);
+    g.allegeance = { faction: A, points: RANGS[5].points, derniereSolde: 0, intendance: 0 };
+    return { st, g, A, B };
+  };
+  const jouer = (st, g, A, B, heures) => {
+    let levees = 0;
+    for (let i = 0; i < heures; i++) {
+      for (const k of Object.keys(st.world.factions)) {
+        st.world.factions[k].prochainConseil = k === A ? 1 : 99999;
+      }
+      st.world.factions[A].tresor = 80000;
+      if (!enGuerre(st.world, A, B)) declarerGuerre(st.world, A, B, st.temps, () => {});
+      // On teste la levée, pas la tenue du crédit : la feuille reste propre.
+      g.allegeance.points = RANGS[5].points;
+      g.allegeance.fautes = 0;
+      g.allegeance.manques = 0;
+      g.allegeance.derniereSolde = st.temps;
+      tick(st);
+      levees += st.world.armees.filter((a) => a.faction === A && !a.surOrdre).length;
+      st.world.armees = st.world.armees.filter((a) => a.faction !== A);
+    }
+    return levees;
+  };
+  const { st, g, A, B } = monter();
+  ok(jouer(st, g, A, B, 300) === 0,
+    'par le vrai tick : Maréchal présent, le conseil ne lève pas');
+  st.absent = true;
+  ok(jouer(st, g, A, B, 300) > 0,
+    'les heures rattrapées ne sont pas commandées : absent, le conseil reprend la levée');
+}
+{
+  // La perte d'une ville sous commandement s'impute au Maréchal, pas au
+  // dirigeant : la faute va au dossier de l'officier, la légitimité du chef
+  // ne bouge pas. Sans la charge (Commandeur), c'est l'inverse.
+  const monter = (points) => {
+    const st = nouvellePartie(623, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(st);
+    const cand = Object.keys(st.world.factions).filter(
+      (k) => k !== 'essaim' && st.world.factions[k].colonies.length >= 2 && dirigeant(st.world, k));
+    const A = cand[0];
+    const B = cand.find((k) => k !== A);
+    g.allegeance = { faction: A, points, derniereSolde: 0, intendance: 0 };
+    const col = st.world.colonies.find((c) => c.faction === A && !c.ruine && !c.avantPoste);
+    col.defense = 0.5;
+    col.murs = 0;
+    st.world.armees.push({
+      id: 'aM1', faction: B, regionId: col.regionId, force: 400, forceMax: 400,
+      cible: col.id, route: [], etape: 0, progres: 0, etat: 'siege',
+      ravitaillement: 80, impayees: 0,
+    });
+    return { st, g, A, col };
+  };
+  const chuteEn = (st, col, A) => {
+    for (let i = 0; i < 30 && col.faction === A; i++) tick(st);
+    return col.faction !== A;
+  };
+  const m = monter(RANGS[5].points); // Maréchal
+  const avantLeg = dirigeant(m.st.world, m.A).legitimite;
+  ok(chuteEn(m.st, m.col, m.A), 'la ville assiégée tombe (fixture)');
+  ok((m.g.allegeance.fautes || 0) > 0,
+    'sous commandement, la ville perdue est une faute au dossier du Maréchal');
+  ok(dirigeant(m.st.world, m.A).legitimite === avantLeg,
+    'et la légitimité du dirigeant ne bouge pas — il n’en répond plus',
+    `${avantLeg} → ${dirigeant(m.st.world, m.A).legitimite}`);
+  ok(m.st.journal.some((l) => /On vous impute la perte de/.test(l.texte)),
+    'le journal dit l’imputation en clair');
+  const c = monter(RANGS[4].points); // Commandeur : pas le commandement
+  const avantC = dirigeant(c.st.world, c.A).legitimite;
+  ok(chuteEn(c.st, c.col, c.A) && (c.g.allegeance.fautes || 0) === 0
+    && dirigeant(c.st.world, c.A).legitimite < avantC,
+    'sans la charge, la perte reste au dirigeant — un Commandeur n’en répond pas');
+}
+
+// ===========================================================================
 console.log('\n' + '='.repeat(42));
 console.log(`${total - echecs}/${total} tests passés`);
 if (echecs > 0) {

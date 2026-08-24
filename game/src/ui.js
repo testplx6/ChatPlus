@@ -97,7 +97,7 @@ import {
   SEUIL_FAUTE, SEUIL_MERITE, RANG_SECTEUR,
 } from './secteur.js';
 import {
-  PREROGATIVES, PREROGATIVE_KEYS, peutExercer, credit as creditInfluence,
+  PREROGATIVES, PREROGATIVE_KEYS, peutExercer, credit as creditInfluence, commandementDe,
   peutOuvrirBourse, accordsPossibles, accordsRompables,
   colonnesDe, sitesFondation, cibleGuerre, guerresArretables, coutLevee,
   COUT_POSTE, FORCE_LEVEE, COUT_GARNISON, COUT_GRENIER, villeConfiee,
@@ -3491,6 +3491,11 @@ function blocInfluence(faction) {
   <div class="aide">${e(d.titre)} ${e(d.nom)}, ${e(TEMPERAMENTS[d.temperament].nom.toLowerCase())}.
     Vous n’avez rien à lui demander : ce que votre grade permet, vous l’ordonnez.
     Mais chaque ordre s’inscrit, et son issue vous revient.</div>
+  ${commandementDe(S) === faction
+    ? `<div class="aide" style="color:var(--ambre,#d9803a)">Les colonnes n’obéissent qu’à vous :
+      le conseil ne lève plus un homme. Il reprend la main pendant vos absences, ou si le
+      crédit tombe — et toute ville perdue s’impute à vous, pas au dirigeant.</div>`
+    : ''}
   ${lignes}`;
 }
 

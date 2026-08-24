@@ -33,7 +33,9 @@ import { rafraichirPanneaux, genererContrats, tickContrats } from './contrats.js
 import {
   tickAllegeance, palierBonus, rangDe, estimeEngagement, renfortMilice,
 } from './allegeance.js';
-import { jugerActes, tickCharges } from './influence.js';
+import {
+  jugerActes, tickCharges, commandementDe, porterFaute,
+} from './influence.js';
 import { tickSecteurs } from './secteur.js';
 import { tickGeole, tickOrdrePublic } from './justice.js';
 import { ouvrirRapport, fermerRapport } from './rapport.js';
@@ -414,6 +416,16 @@ export function tick(state) {
   for (const g of state.player.groupes) {
     const all = g.allegeance;
     if (all && rangDe(all).index >= 4) { ctx.legislateur = all.faction; break; }
+  }
+  // M1 (MARECHAL.md) : charge de Maréchal tenue, les colonnes de la maison
+  // n'obéissent qu'au joueur — le conseil s'efface des levées comme il
+  // s'efface des lois, et une ville perdue sous commandement s'impute à
+  // l'officier, pas au dirigeant. `commandementDe` rend la main pendant les
+  // absences et dès que le crédit tombe.
+  const commandement = commandementDe(state);
+  if (commandement) {
+    ctx.marechal = commandement;
+    ctx.perteVille = (faction, nom) => porterFaute(state, faction, `la perte de ${nom}`, log);
   }
   // Le banc peut geler la législation pour la mesurer par différence.
   if (state.sansLois) ctx.sansLois = true;

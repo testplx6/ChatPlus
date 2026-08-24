@@ -378,8 +378,13 @@ function capturer(world, armee, col, t, log, ctx) {
     col.unrest = Math.min(1, col.unrest + 0.35);
     col.prises = (col.prises || 0) + 1;
     // Prendre une ville assoit celui qui l'a voulue ; la perdre ronge l'autre.
+    // Sauf sous commandement (M1, MARECHAL.md) : la ville perdue s'impute au
+    // Maréchal, pas au dirigeant — c'est ce que tenir la charge veut dire.
     crediterDirigeant(world, nouveau, 'prise');
-    if (ancien) crediterDirigeant(world, ancien, 'perte');
+    if (ancien) {
+      if (ctx && ctx.marechal === ancien && ctx.perteVille) ctx.perteVille(ancien, col.nom);
+      else crediterDirigeant(world, ancien, 'perte');
+    }
     // Pillage : une partie du stock file dans le trésor du vainqueur
     let butin = 0;
     for (const k of COMMODITY_KEYS) {
@@ -989,20 +994,26 @@ function conseil(world, key, t, log, ctx) {
     }
   }
 
-  // 3) Lever des colonnes sur les fronts ouverts
-  for (const g of guerresDe(world, key)) {
-    const ennemi = g.a === key ? g.b : g.a;
-    const dejaEnRoute = world.armees.filter((a) => a.faction === key).length;
-    if (dejaEnRoute >= 2) break;
-    if (!rng.chance(Math.min(1, 0.75 * penchant(world, key, 'colonne')))) continue;
-    const prox = cibleLaPlusProche(world, key, ennemi);
-    if (!prox) continue;
-    const force = Math.min(
-      Math.floor(f.tresor / 5.2),
-      Math.round(prox.cible.defense * rng.range(1.1, 2.0) + 25)
-    );
-    if (force >= 25 && f.tresor >= coutArmee(force)) {
-      leverArmee(world, key, force, prox.depuis.regionId, prox.cible.id, log);
+  // 3) Lever des colonnes sur les fronts ouverts — sauf si un Maréchal tient
+  //    la charge : les colonnes de la maison n'obéissent qu'à lui, le conseil
+  //    s'efface des levées comme il s'efface des lois (M1, MARECHAL.md —
+  //    même câblage que `ctx.legislateur` dans `legiferer`).
+  const marechalCommande = ctx && ctx.marechal === key;
+  if (!marechalCommande) {
+    for (const g of guerresDe(world, key)) {
+      const ennemi = g.a === key ? g.b : g.a;
+      const dejaEnRoute = world.armees.filter((a) => a.faction === key).length;
+      if (dejaEnRoute >= 2) break;
+      if (!rng.chance(Math.min(1, 0.75 * penchant(world, key, 'colonne')))) continue;
+      const prox = cibleLaPlusProche(world, key, ennemi);
+      if (!prox) continue;
+      const force = Math.min(
+        Math.floor(f.tresor / 5.2),
+        Math.round(prox.cible.defense * rng.range(1.1, 2.0) + 25)
+      );
+      if (force >= 25 && f.tresor >= coutArmee(force)) {
+        leverArmee(world, key, force, prox.depuis.regionId, prox.cible.id, log);
+      }
     }
   }
 
@@ -1040,7 +1051,10 @@ function conseil(world, key, t, log, ctx) {
     // séance, plus une seule ville ne restait libre en fin de partie et l'état
     // le plus intéressant du monde — un bourg sans drapeau ni loi — ne durait
     // jamais assez pour qu'on aille y voir.
-    if (!guerresDe(world, key).length && f.tresor >= coutArmee(force) * 1.5
+    // Reprendre un bourg, c'est encore lever une colonne : sous commandement,
+    // c'est au Maréchal d'y penser — ou de laisser la place à qui la voudra.
+    if (!marechalCommande && !guerresDe(world, key).length
+        && f.tresor >= coutArmee(force) * 1.5
         && rng.chance(0.16 * penchant(world, key, 'expansion'))) {
       leverArmee(world, key, force, depuis.regionId, cible.id, log);
     }

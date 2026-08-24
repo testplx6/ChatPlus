@@ -172,7 +172,16 @@ pouvoir emprunte un flux que la faction a déjà.
   dessinent enfin), panneau de secteur, écran monde (le décompte des
   campagnes en cours n'est plus dit — c'était déjà un renseignement),
   légende Essaim. Six tests nés rouges.
-- [ ] M1 — le commandement des colonnes
+- [x] M1 — le commandement des colonnes — livré : `commandementDe`
+  (influence.js) désigne la faction commandée (charge de Maréchal, crédit
+  debout, présent) ; `ctx.marechal` s'installe dans le tick comme
+  `ctx.legislateur`, et le conseil s'efface des deux sites de levée (fronts
+  ouverts, reprise d'un bourg libre) — il reprend la main pendant les heures
+  rattrapées et dès que le crédit tombe. Une ville perdue sous commandement
+  passe par `ctx.perteVille` : faute au dossier de l'officier, la légitimité
+  du dirigeant ne bouge pas — il n'en répond plus. L'écran de charge le dit
+  en clair. Neuf tests nés rouges (levée gelée, reprise réelle, absence,
+  imputation, témoin Commandeur).
 - [ ] M2 — rappeler une colonne
 - [ ] M6 — la levée dimensionnée (+ E10, l'indexation au cours)
 - [ ] M3 — le but de guerre choisi

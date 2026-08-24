@@ -181,6 +181,22 @@ export function credit(state, faction) {
   return Math.round(c);
 }
 
+/**
+ * M1 (MARECHAL.md) — la dyarchie : la faction dont les colonnes n'obéissent
+ * qu'au joueur, ou null. Charge de Maréchal tenue, crédit debout, et présent :
+ * le conseil reprend la main pendant les heures rattrapées (`state.absent`)
+ * et dès que le crédit tombe — avant même que `tickCharges` retire la charge.
+ */
+export function commandementDe(state) {
+  if (state.absent) return null;
+  for (const g of state.player.groupes) {
+    const all = g.allegeance;
+    if (!all) continue;
+    if (rangDe(all).index >= 5 && credit(state, all.faction) > 0) return all.faction;
+  }
+  return null;
+}
+
 export function peutExercer(state, faction, key) {
   const def = PREROGATIVES[key];
   if (!def) return { ok: false, motif: 'Prérogative inconnue.' };
