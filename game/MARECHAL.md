@@ -192,7 +192,19 @@ pouvoir emprunte un flux que la faction a déjà.
   et que la paix se signe sans elle, la faute est au dossier — jugée à la
   paix, pas à l'ordre. Le rappel retire du dossier l'ordre d'envoi qu'il
   remplace. Six tests nés rouges.
-- [ ] M6 — la levée dimensionnée (+ E10, l'indexation au cours)
+- [x] M6 — la levée dimensionnée (+ E10, l'indexation au cours) — livré :
+  `leverColonne` prend une force (25 au moins, sinon ce n'est pas une
+  colonne) — le trésor borne, la solde court (déjà au cours depuis le lot
+  H), le ravitaillement plafonne avec les bras (`ravitaillementMax`).
+  L'écran propose des forces tirées du trésor, la dernière est tout ce
+  qu'il paie. E10 part avec : `coutArmee`, `coutLevee`, `COUT_POSTE`,
+  `COUT_GARNISON`, `COUT_GRENIER`, `COUT_CHANGE`, les maçons du conseil et
+  le service du mur (`veutBatir`) se paient au cours — une monnaie
+  effondrée n'arme plus personne à bon compte, ni le conseil ni vous. Six
+  tests nés rouges ; la trajectoire du monde a bougé à graine égale (comme
+  au lot H) : deux décors resélectionnent leur colonne (l'Essaim était
+  devenu `armees[0]`), et le plancher ménages de l'erreur locale est recalé
+  à la pointe remesurée du modèle pur (±0,7, cinq échauffements).
 - [ ] M3 — le but de guerre choisi
 - [ ] M4 — la place à tenir
 - [ ] F1 + F2 — les frictions de la cour

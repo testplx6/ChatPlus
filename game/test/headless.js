@@ -122,7 +122,7 @@ import {
   PREROGATIVES, peutExercer, credit as creditCharge, chargeAupres,
   leverColonne, envoyerColonne, fonderPoste, declarerGuerreA, signerPaixAvec,
   sitesFondation, cibleGuerre, jugerActes, tickCharges, porterFaute,
-  coutLevee, COUT_POSTE, fixerLoi,
+  coutLevee, COUT_POSTE, fixerLoi, FORCE_LEVEE,
   peutOuvrirBourse, ouvrirBourseA, accordsPossibles, signerAccordAvec,
   accordsRompables, rompreAccordAvec,
 } from '../src/influence.js';
@@ -2534,7 +2534,7 @@ const avantCredits = soldeIci(pol);
 const cibleLevee = pol.world.colonies.find((c) => !c.ruine && c.faction === ennemi);
 const lev = leverColonne(pol, fPol, null, cibleLevee.id, () => {});
 ok(lev.ok, 'la colonne est levée sans qu’on demande la permission', lev.motif);
-ok(pol.world.factions[fPol].tresor === avantTresor - coutLevee(),
+ok(pol.world.factions[fPol].tresor === avantTresor - coutLevee(pol, fPol),
   'le trésor de la faction paie');
 ok(soldeIci(pol) === avantCredits, 'et pas la bourse du joueur');
 ok(pol.world.armees.some((a) => a.id === lev.armee.id && a.cible === cibleLevee.id),
@@ -7749,6 +7749,16 @@ section('23. Une probabilité se regroupe, un compte ne se regroupe pas');
   // échantillons. Plancher de caisse porté à la pointe observée du modèle
   // pur (±1,5) ; ménages porté à ±0,35 — le modèle pur rend −0,119 à −0,267
   // selon l'échauffement, l'ancien ±0,25 le rejetait aussi.
+  // RECALÉ à E10 (indexation des coûts régaliens sur le cours, chantier
+  // Maréchal M6) : la trajectoire du monde-échantillon a bougé à graine
+  // égale — comme au lot H —, donc les villes comparées ne sont plus les
+  // mêmes. `tickColonie`, l'objet mesuré, n'a pas changé d'une ligne.
+  // Remesuré au même instrument, cinq échauffements (396 à 404 ticks) :
+  // caisse +0,644 à +1,177 (le plancher ±1,5 tient) ; rations −0,447
+  // partout (±0,55 tient) ; ménages −0,293 / −0,293 / −0,657 / −0,522 /
+  // −0,522 — la médiane saute avec l'échauffement, signature de la chance
+  // de l'échantillon, pas d'un biais de tranche. Plancher ménages porté à
+  // la pointe observée : ±0,7.
   const e24 = erreurLocale(24);
   ok(Math.abs(e24.rations) < 0.55, 'une tranche de 24 h sert les mêmes rations qu’heure par heure',
     `${e24.rations.toFixed(3)} de rations (plancher de bruit ±0,55)`);
@@ -7756,8 +7766,8 @@ section('23. Une probabilité se regroupe, un compte ne se regroupe pas');
     `${e24.unrest.toFixed(4)}`);
   ok(Math.abs(e24.caisse) < 1.5, 'et elle laisse la même caisse',
     `${e24.caisse.toFixed(3)} crédits (plancher ±1,5 — pointe du modèle pur selon l’échantillon)`);
-  ok(Math.abs(e24.menages) < 0.35, 'et les mêmes ménages',
-    `${e24.menages.toFixed(3)} crédits (plancher ±0,35 — pointe du modèle pur selon l’échantillon)`);
+  ok(Math.abs(e24.menages) < 0.7, 'et les mêmes ménages',
+    `${e24.menages.toFixed(3)} crédits (plancher ±0,7 — pointe du modèle pur selon l’échantillon)`);
 }
 
 // ===========================================================================
@@ -8240,7 +8250,13 @@ section('26. La colonne sans solde');
     COLONNE.grace = 1e9;
     const st = nouvellePartie(4141, { maintenant: 0 });
     for (let i = 0; i < 600; i++) tick(st);
-    const a0 = (st.world.armees || [])[0];
+    // Pas armees[0] à l'aveugle : depuis E10, la première colonne du monde à
+    // cette graine est l'Essaim — pas de ville, pas de conseil, donc jamais
+    // d'ardoise, et le décor mesurait le vide. Même piège que le lot H, même
+    // réparation : une colonne d'une vraie faction qui tient encore des villes.
+    const a0 = (st.world.armees || []).find(
+      (a) => a.faction !== 'essaim' && st.world.factions[a.faction]
+        && st.world.factions[a.faction].colonies.length > 0);
     if (!a0) return null;
     const key = a0.faction;
     const f = st.world.factions[key];
@@ -8290,7 +8306,10 @@ section('26. La colonne sans solde');
   const campagne = (avecPayeur) => {
     const st = nouvellePartie(4141, { maintenant: 0 });
     for (let i = 0; i < 600; i++) tick(st);
-    const a0 = (st.world.armees || [])[0];
+    // Même sélection que `pireArdoise` : une colonne d'une vraie faction.
+    const a0 = (st.world.armees || []).find(
+      (a) => a.faction !== 'essaim' && st.world.factions[a.faction]
+        && st.world.factions[a.faction].colonies.length > 0);
     if (!a0) return null;
     const key = a0.faction;
     const lignes = [];
@@ -11384,6 +11403,102 @@ section('M ter. Le Maréchal — M2, rappeler une colonne (MARECHAL.md)');
     const actes = m3.g.allegeance.actes || [];
     ok(!actes.some((x) => (x.type === 'envoi' || x.type === 'levee') && x.armee === 'aR3'),
       'le rappel retire l’ordre d’envoi du dossier — un ordre remplace l’autre');
+  }
+}
+
+// ===========================================================================
+section('M quater. Le Maréchal — M6, la levée dimensionnée, et E10 au cours (MARECHAL.md)');
+{
+  const monter = () => {
+    const st = nouvellePartie(641, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(st);
+    const cand = Object.keys(st.world.factions).filter(
+      (k) => k !== 'essaim' && st.world.factions[k].colonies.length >= 1 && dirigeant(st.world, k));
+    const A = cand[0];
+    const B = cand.find((k) => k !== A);
+    g.allegeance = { faction: A, points: RANGS[3].points, derniereSolde: 0, intendance: 0 };
+    return { st, g, A, B };
+  };
+  const rien = () => {};
+
+  // 1) La force se choisit ; le ravitaillement suit les bras.
+  const m1 = monter();
+  const cible1 = m1.st.world.colonies.find((c) => c.faction === m1.B && !c.ruine);
+  m1.st.world.factions[m1.A].tresor = 10000;
+  m1.st.world.factions[m1.A].cours = 1;
+  const l1 = leverColonne(m1.st, m1.A, null, cible1.id, rien, 120);
+  ok(l1.ok && l1.armee.force === 120
+    && l1.armee.ravitaillement === ravitaillementMax(120),
+    'on lève cent vingt hommes quand on en ordonne cent vingt — le ravitaillement suit les bras',
+    l1.ok ? `force ${l1.armee.force}` : l1.motif);
+
+  // 2) Le trésor borne : une armée qu'on ne peut pas payer ne se lève pas.
+  const m2 = monter();
+  const cible2 = m2.st.world.colonies.find((c) => c.faction === m2.B && !c.ruine);
+  m2.st.world.factions[m2.A].tresor = 400;
+  m2.st.world.factions[m2.A].cours = 1;
+  const l2 = leverColonne(m2.st, m2.A, null, cible2.id, rien, 500);
+  ok(!l2.ok, 'cinq cents hommes sur un trésor de quatre cents : refusé — le trésor borne');
+
+  // 3) E10 : le coût s'indexe sur le cours. Une monnaie effondrée ne lève
+  //    plus des armées quasi gratuites — c'est quatre fois plus d'unités.
+  const m3 = monter();
+  m3.st.world.factions[m3.A].cours = 0.25;
+  ok(coutLevee(m3.st, m3.A) === Math.round((FORCE_LEVEE * 5.2) / 0.25),
+    'la levée coûte en unités ce qu’elle vaut en vrai : le cours divise',
+    `${coutLevee(m3.st, m3.A)}`);
+
+  // 4) Le conseil aussi : à cours effondré, le même trésor ne paie plus la
+  //    même armée — la guerre attend que la monnaie tienne.
+  const m4 = monter();
+  const w4 = m4.st.world;
+  declarerGuerre(w4, m4.A, m4.B, 0, rien);
+  const compte4 = () => w4.armees.filter((a) => a.faction === m4.A).length;
+  const geler4 = (t) => {
+    for (const k of Object.keys(w4.factions)) w4.factions[k].prochainConseil = k === m4.A ? 1 : 99999;
+    w4.factions[m4.A].tresor = 1000;
+    // Vider le trésor ne suffit pas (voir le décor de l'ardoise) : le conseil
+    // remonte d'abord les caisses de ses villes, PUIS lève. Les deux à zéro.
+    for (const c of w4.colonies) if (c.faction === m4.A) c.caisse = 0;
+    if (!enGuerre(w4, m4.A, m4.B)) declarerGuerre(w4, m4.A, m4.B, t, rien);
+  };
+  // Épingler `f.cours` ne tient pas un tick : chaque conseil le recote
+  // (`majCours`). On effondre donc la monnaie par les règles du moteur —
+  // la référence de gage décuplée, le cours converge vers 0,1 et y reste.
+  let t4 = 0;
+  geler4(1);
+  tickFactions(w4, (t4 += 1), rien, { rng: new Rng(grainDe(w4.graine, 'm6', t4)) });
+  const gageRef4 = w4.factions[m4.A].gageRef;
+  w4.factions[m4.A].gageRef = gageRef4 * 10;
+  w4.factions[m4.A].cours = 0.1;
+  w4.armees = w4.armees.filter((a) => a.faction !== m4.A);
+  for (let i = 0; i < 300 && compte4() === 0; i++) {
+    t4 += 1;
+    geler4(t4);
+    tickFactions(w4, t4, rien, { rng: new Rng(grainDe(w4.graine, 'm6', t4)) });
+  }
+  ok(compte4() === 0,
+    'mille au trésor, cours effondré à 0,1 : le conseil ne peut plus armer personne — trois cents heures sans levée');
+  w4.factions[m4.A].gageRef = gageRef4;
+  w4.factions[m4.A].cours = 1;
+  for (let i = 0; i < 300 && compte4() === 0; i++) {
+    t4 += 1;
+    geler4(t4);
+    tickFactions(w4, t4, rien, { rng: new Rng(grainDe(w4.graine, 'm6', t4)) });
+  }
+  ok(compte4() > 0, 'le cours revenu, le même trésor lève — c’était bien la monnaie');
+
+  // 5) Le régalien suit : fonder un poste se paie au cours, lui aussi.
+  const m5 = monter();
+  m5.st.world.factions[m5.A].tresor = 2000;
+  m5.st.world.factions[m5.A].cours = 0.5;
+  const sites5 = sitesFondation(m5.st.world, m5.A);
+  if (sites5.length) {
+    const f5 = fonderPoste(m5.st, m5.A, sites5[0].i, new Rng(1), rien);
+    ok(!f5.ok, 'deux mille au trésor, cours à 0,5 : le poste à quinze cents en vaut trois mille — refusé',
+      f5.ok ? 'accepté' : '');
+  } else {
+    ok(true, 'pas de site de fondation à cette graine — vérification sautée, dit tel quel');
   }
 }
 

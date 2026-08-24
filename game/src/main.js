@@ -424,9 +424,9 @@ const API = {
     return r;
   },
 
-  /** Lever une colonne sur le trésor de la faction, et la lancer. */
-  leverColonne(faction, depuisId, cibleId) {
-    const r = leverColonneA(state, faction, depuisId, cibleId, creerLogger(state));
+  /** Lever une colonne sur le trésor de la faction, et la lancer — à la force choisie (M6). */
+  leverColonne(faction, depuisId, cibleId, force) {
+    const r = leverColonneA(state, faction, depuisId, cibleId, creerLogger(state), force);
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },

@@ -3535,7 +3535,7 @@ function cibleVide(k) {
     rompre: 'Aucun accord commercial en cours.',
     envoyer: 'Aucune colonne des vôtres n’est sur les routes.',
     rappeler: 'Rien à rappeler : aucune colonne en campagne.',
-    lever: 'Rien à prendre : aucune ville ennemie à portée.',
+    lever: 'Rien à lever : aucune ville ennemie à portée, ou un trésor qui ne paie plus vingt-cinq hommes.',
     fonder: 'Pas une case libre assez près des vôtres, ni assez loin des autres.',
     garnison: 'Aucune ville ne vous est confiée — il faut un secteur.',
     grenier: 'Aucune ville ne vous est confiée — il faut un secteur.',
@@ -3580,12 +3580,24 @@ function ciblesCharge(faction, k) {
       });
   }
   if (k === 'lever') {
-    const cout = coutLevee();
-    const paye = w.factions[faction].tresor >= cout;
-    return villesVisables(faction).slice(0, 6).map((c) => ({
-      val: c.id,
-      texte: `${FORCE_LEVEE} hommes sur ${c.nom} — ${n(cout)} ${sym(faction)}${paye ? '' : ' (trésor court)'}`,
-    }));
+    // M6 (MARECHAL.md) : une campagne se dimensionne. Les forces proposées
+    // sortent du trésor, pas d'une table — la dernière est tout ce qu'il paie.
+    const f = w.factions[faction];
+    const maxForce = Math.floor((f.tresor * Math.max(0.001, coursMonnaie(w, faction))) / 5.2);
+    const forces = [...new Set([40, FORCE_LEVEE * 2, maxForce])]
+      .filter((x) => x >= 25 && x <= maxForce).sort((a, b) => a - b);
+    const out = [];
+    for (const c of villesVisables(faction).slice(0, 4)) {
+      for (const force of forces) {
+        out.push({
+          val: c.id,
+          val2: String(force),
+          texte: `${force} hommes sur ${c.nom} — ${n(coutLevee(S, faction, force))} ${sym(faction)}${
+            force === maxForce ? ' (tout ce que le trésor paie)' : ''}`,
+        });
+      }
+    }
+    return out.slice(0, 12);
   }
   if (k === 'fonder') {
     const sites = sitesFondation(w, faction);
@@ -6092,7 +6104,7 @@ function surClic(ev) {
         case 'loi': r = ACTIONS.fixerLoi(f, cible); break;
         case 'crediter': r = ACTIONS.accorderCredit(f, cible, Number(el.dataset.b)); break;
         case 'emettre': r = ACTIONS.battreMonnaie(f, Number(cible)); break;
-        case 'lever': r = ACTIONS.leverColonne(f, null, cible); break;
+        case 'lever': r = ACTIONS.leverColonne(f, null, cible, Number(el.dataset.b) || undefined); break;
         case 'fonder': r = ACTIONS.fonderPoste(f, cible); break;
         case 'guerre': r = ACTIONS.declarerGuerre(f, cible); break;
         case 'paix': r = ACTIONS.signerPaix(f, cible); break;

@@ -236,9 +236,11 @@ export function signerPaix(world, a, b, t, log, motif) {
 // ---------------------------------------------------------------------------
 
 // Lever des hommes coûte cher : sans ça, les factions passent leur temps à
-// s'échanger les mêmes villes et la carte devient du bruit.
-function coutArmee(force) {
-  return Math.round(force * 5.2);
+// s'échanger les mêmes villes et la carte devient du bruit. Le cours divise
+// (E10, AUDIT.md) : le trésor est en unités du pays, les hommes se paient en
+// vrai — une monnaie effondrée ne lève plus d'armées quasi gratuites.
+function coutArmee(world, key, force) {
+  return Math.round((force * 5.2) / Math.max(0.001, coursMonnaie(world, key)));
 }
 
 /** La ville de la faction la plus proche d'une case : celle qui fournit. */
@@ -281,7 +283,7 @@ function leverArmee(world, key, force, depuis, cibleId, log) {
   // La levée se paie sur place : recruter, armer, ravitailler passe entre les
   // mains de gens qui vivent quelque part. L'argent quitte le trésor mais ne
   // quitte pas le monde.
-  verser(world, key, colonieDepart(world, key, depuis), coutArmee(force));
+  verser(world, key, colonieDepart(world, key, depuis), coutArmee(world, key, force));
   // Quand c'est chez vous qu'ils vont, ce n'est plus une nouvelle du monde,
   // c'est un préavis. La ligne était noyée parmi quatre cents autres et n'était
   // même pas marquée importante : on apprenait la colonne en lisant l'épitaphe
@@ -1026,10 +1028,12 @@ function conseil(world, key, t, log, ctx) {
       const prox = cibleLaPlusProche(world, key, ennemi);
       if (!prox) continue;
       const force = Math.min(
-        Math.floor(f.tresor / 5.2),
+        // Ce que le trésor paie en vrai : le cours divise le coût, donc il
+        // multiplie ici (E10) — un pays à la monnaie morte arme petit.
+        Math.floor((f.tresor * coursMonnaie(world, key)) / 5.2),
         Math.round(prox.cible.defense * rng.range(1.1, 2.0) + 25)
       );
-      if (force >= 25 && f.tresor >= coutArmee(force)) {
+      if (force >= 25 && f.tresor >= coutArmee(world, key, force)) {
         leverArmee(world, key, force, prox.depuis.regionId, prox.cible.id, log);
       }
     }
@@ -1072,7 +1076,7 @@ function conseil(world, key, t, log, ctx) {
     // Reprendre un bourg, c'est encore lever une colonne : sous commandement,
     // c'est au Maréchal d'y penser — ou de laisser la place à qui la voudra.
     if (!marechalCommande && !guerresDe(world, key).length
-        && f.tresor >= coutArmee(force) * 1.5
+        && f.tresor >= coutArmee(world, key, force) * 1.5
         && rng.chance(0.16 * penchant(world, key, 'expansion'))) {
       leverArmee(world, key, force, depuis.regionId, cible.id, log);
     }
@@ -1134,12 +1138,14 @@ function conseil(world, key, t, log, ctx) {
   //    ce que l'argent coûte. Un pays au loyer étouffant cesse visiblement de
   //    bâtir, et l'on peut dire de quelle ville il s'agit. Voir `veutBatir`.
   const aBatir = mesColonies.filter((c) => veutBatir(world, c));
-  if (!guerresDe(world, key).length && f.tresor > 900 && aBatir.length
+  // Les maçons aussi se paient en vrai (E10) : le cours divise, le seuil suit.
+  const coutMur = Math.round(400 / Math.max(0.001, coursMonnaie(world, key)));
+  if (!guerresDe(world, key).length && f.tresor > coutMur * 2.25 && aBatir.length
       && rng.chance(0.6)) {
     const col = rng.pick(aBatir);
     col.murs += 1;
     // Des murs se paient à des maçons, et les maçons habitent la ville.
-    verser(world, key, col, 400);
+    verser(world, key, col, coutMur);
     log({
       type: 'chantier',
       texte: `${drapeauDe(world, key).nom} renforce${drapeauDe(world, key).pluriel ? 'nt' : ''} les défenses de ${col.nom}.`,

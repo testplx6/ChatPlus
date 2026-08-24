@@ -11902,7 +11902,10 @@ function saisir(world, col, ancien, repreneur, log) {
 function veutBatir(world, col) {
   if (!col.faction || col.avantPoste) return false;
   if (col.murs >= col.taille * 6) return false;
-  const service = COUT_MUR * loisDe(world, col.faction).directeur;
+  // Le mur se paie en vrai : le principal s'indexe sur le cours (E10), et le
+  // service de la dette avec — sinon un pays effondré bâtissait pour rien.
+  const service = (COUT_MUR / Math.max(0.001, coursMonnaie(world, col.faction)))
+    * loisDe(world, col.faction).directeur;
   return service <= capaciteRemboursement(world, col) * CREDIT.partServiceDette;
 }
 
@@ -13671,9 +13674,11 @@ function signerPaix(world, a, b, t, log, motif) {
 // ---------------------------------------------------------------------------
 
 // Lever des hommes coûte cher : sans ça, les factions passent leur temps à
-// s'échanger les mêmes villes et la carte devient du bruit.
-function coutArmee(force) {
-  return Math.round(force * 5.2);
+// s'échanger les mêmes villes et la carte devient du bruit. Le cours divise
+// (E10, AUDIT.md) : le trésor est en unités du pays, les hommes se paient en
+// vrai — une monnaie effondrée ne lève plus d'armées quasi gratuites.
+function coutArmee(world, key, force) {
+  return Math.round((force * 5.2) / Math.max(0.001, coursMonnaie(world, key)));
 }
 
 /** La ville de la faction la plus proche d'une case : celle qui fournit. */
@@ -13716,7 +13721,7 @@ function leverArmee(world, key, force, depuis, cibleId, log) {
   // La levée se paie sur place : recruter, armer, ravitailler passe entre les
   // mains de gens qui vivent quelque part. L'argent quitte le trésor mais ne
   // quitte pas le monde.
-  verser(world, key, colonieDepart(world, key, depuis), coutArmee(force));
+  verser(world, key, colonieDepart(world, key, depuis), coutArmee(world, key, force));
   // Quand c'est chez vous qu'ils vont, ce n'est plus une nouvelle du monde,
   // c'est un préavis. La ligne était noyée parmi quatre cents autres et n'était
   // même pas marquée importante : on apprenait la colonne en lisant l'épitaphe
@@ -14461,10 +14466,12 @@ function conseil(world, key, t, log, ctx) {
       const prox = cibleLaPlusProche(world, key, ennemi);
       if (!prox) continue;
       const force = Math.min(
-        Math.floor(f.tresor / 5.2),
+        // Ce que le trésor paie en vrai : le cours divise le coût, donc il
+        // multiplie ici (E10) — un pays à la monnaie morte arme petit.
+        Math.floor((f.tresor * coursMonnaie(world, key)) / 5.2),
         Math.round(prox.cible.defense * rng.range(1.1, 2.0) + 25)
       );
-      if (force >= 25 && f.tresor >= coutArmee(force)) {
+      if (force >= 25 && f.tresor >= coutArmee(world, key, force)) {
         leverArmee(world, key, force, prox.depuis.regionId, prox.cible.id, log);
       }
     }
@@ -14507,7 +14514,7 @@ function conseil(world, key, t, log, ctx) {
     // Reprendre un bourg, c'est encore lever une colonne : sous commandement,
     // c'est au Maréchal d'y penser — ou de laisser la place à qui la voudra.
     if (!marechalCommande && !guerresDe(world, key).length
-        && f.tresor >= coutArmee(force) * 1.5
+        && f.tresor >= coutArmee(world, key, force) * 1.5
         && rng.chance(0.16 * penchant(world, key, 'expansion'))) {
       leverArmee(world, key, force, depuis.regionId, cible.id, log);
     }
@@ -14569,12 +14576,14 @@ function conseil(world, key, t, log, ctx) {
   //    ce que l'argent coûte. Un pays au loyer étouffant cesse visiblement de
   //    bâtir, et l'on peut dire de quelle ville il s'agit. Voir `veutBatir`.
   const aBatir = mesColonies.filter((c) => veutBatir(world, c));
-  if (!guerresDe(world, key).length && f.tresor > 900 && aBatir.length
+  // Les maçons aussi se paient en vrai (E10) : le cours divise, le seuil suit.
+  const coutMur = Math.round(400 / Math.max(0.001, coursMonnaie(world, key)));
+  if (!guerresDe(world, key).length && f.tresor > coutMur * 2.25 && aBatir.length
       && rng.chance(0.6)) {
     const col = rng.pick(aBatir);
     col.murs += 1;
     // Des murs se paient à des maçons, et les maçons habitent la ville.
-    verser(world, key, col, 400);
+    verser(world, key, col, coutMur);
     log({
       type: 'chantier',
       texte: `${drapeauDe(world, key).nom} renforce${drapeauDe(world, key).pluriel ? 'nt' : ''} les défenses de ${col.nom}.`,
@@ -15744,9 +15753,21 @@ function rappelerColonne(state, faction, armeeId, log) {
   return { ok: true };
 }
 
-/** Ce que coûte une colonne levée sur ordre. */
-function coutLevee() {
-  return Math.round(FORCE_LEVEE * 5.2);
+/**
+ * E10 (AUDIT.md, avec M6) : un coût régalien se paie en unités de la monnaie
+ * du pays, mais il achète des choses réelles — hommes, murs, grain. Le cours
+ * divise donc, comme le lot H l'a fait pour les soldes : une monnaie
+ * effondrée ne lève plus d'armées quasi gratuites, elle paie tout au prix
+ * fort. Même plancher que `taux` (monnaie.js), pour ne jamais diviser par
+ * un cours mort.
+ */
+function auCours(world, faction, base) {
+  return Math.round(base / Math.max(0.001, coursMonnaie(world, faction)));
+}
+
+/** Ce que coûte une colonne levée sur ordre, au cours du jour (M6 + E10). */
+function coutLevee(state, faction, force = FORCE_LEVEE) {
+  return auCours(state ? state.world : null, faction, force * 5.2);
 }
 
 /**
@@ -15754,12 +15775,20 @@ function coutLevee() {
  *
  * `depuisId` peut être nul : un officier dit « marchez sur X », il ne dit pas
  * de quelle caserne on sort. On part alors de la plus proche des nôtres.
+ *
+ * M6 (MARECHAL.md) : la force se choisit — une campagne se dimensionne, elle
+ * ne se prend pas au menu. Le trésor borne, la solde courra (ETAT.parSoldat,
+ * déjà au cours), et le ravitaillement plafonne avec les bras.
  */
-function leverColonne(state, faction, depuisId, cibleId, log) {
+function leverColonne(state, faction, depuisId, cibleId, log, force = FORCE_LEVEE) {
   const v = peutExercer(state, faction, 'lever');
   if (!v.ok) return v;
+  force = Math.round(force);
+  if (!(force >= 25)) {
+    return { ok: false, motif: 'Vingt-cinq hommes au moins — en dessous, ce n’est pas une colonne.' };
+  }
   const f = state.world.factions[faction];
-  const cout = coutLevee();
+  const cout = coutLevee(state, faction, force);
   if (f.tresor < cout) {
     return { ok: false, motif: `Le trésor ne suit pas : ${Math.round(f.tresor)} / ${cout} cr.` };
   }
@@ -15774,14 +15803,14 @@ function leverColonne(state, faction, depuisId, cibleId, log) {
     id: `a${state.world.prochainArmeeId++}`,
     faction,
     regionId: depuis.regionId,
-    force: FORCE_LEVEE,
-    forceMax: FORCE_LEVEE,
+    force,
+    forceMax: force,
     cible: cibleId,
     route: chemin(state.world, depuis.regionId, cible.regionId) || [],
     etape: 0,
     progres: 0,
     etat: 'marche',
-    ravitaillement: 60 + Math.round(FORCE_LEVEE / 4),
+    ravitaillement: ravitaillementMax(force),
     impayees: 0,
     surOrdre: true,
   };
@@ -15790,7 +15819,7 @@ function leverColonne(state, faction, depuisId, cibleId, log) {
   if (log) {
     log({
       type: 'influence',
-      texte: `Sur votre ordre, ${drapeauDe(state.world, faction).nom} lève une colonne à ${depuis.nom} `
+      texte: `Sur votre ordre, ${drapeauDe(state.world, faction).nom} lève ${force} hommes à ${depuis.nom} `
         + `pour marcher sur ${cible.nom} (${cout} cr).`,
       important: true,
       factions: [faction],
@@ -15834,15 +15863,16 @@ function fonderPoste(state, faction, regionIndex, rng, log) {
   const v = peutExercer(state, faction, 'fonder');
   if (!v.ok) return v;
   const f = state.world.factions[faction];
-  if (f.tresor < COUT_POSTE) {
-    return { ok: false, motif: `Le trésor ne suit pas : ${Math.round(f.tresor)} / ${COUT_POSTE} cr.` };
+  const coutPoste = auCours(state.world, faction, COUT_POSTE);
+  if (f.tresor < coutPoste) {
+    return { ok: false, motif: `Le trésor ne suit pas : ${Math.round(f.tresor)} / ${coutPoste} cr.` };
   }
   const r = state.world.regions[regionIndex];
   if (!r) return { ok: false, motif: 'Cette case n’existe pas.' };
   if (!sitesFondation(state.world, faction).some((s) => s.i === r.i)) {
     return { ok: false, motif: 'On ne fonde pas là : trop loin des vôtres, ou trop près d’une ville.' };
   }
-  depenser(state.world, faction, COUT_POSTE);
+  depenser(state.world, faction, coutPoste);
   const col = fonderColonie(state.world, faction, r, rng, state.temps);
   crediterDirigeant(state.world, faction, 'fondation');
   inscrireActe(state, faction, { type: 'fondation', colonie: col.id, t: state.temps });
@@ -15850,7 +15880,7 @@ function fonderPoste(state, faction, regionIndex, rng, log) {
     log({
       type: 'fondation',
       texte: `Sur votre ordre, ${drapeauDe(state.world, faction).nom} plante ${col.nom} `
-        + `(${COUT_POSTE} cr). On verra bien si ça tient.`,
+        + `(${coutPoste} cr). On verra bien si ça tient.`,
       important: true,
       regionId: r.i,
       factions: [faction],
@@ -16085,17 +16115,18 @@ function renforcerGarnison(state, faction, log) {
   const col = villeConfiee(state, faction);
   if (!col) return { ok: false, motif: 'Aucune ville ne vous est confiée.' };
   const f = state.world.factions[faction];
-  if (f.tresor < COUT_GARNISON) {
-    return { ok: false, motif: `Le trésor ne suit pas : ${Math.round(f.tresor)} / ${COUT_GARNISON} cr.` };
+  const coutGarnison = auCours(state.world, faction, COUT_GARNISON);
+  if (f.tresor < coutGarnison) {
+    return { ok: false, motif: `Le trésor ne suit pas : ${Math.round(f.tresor)} / ${coutGarnison} cr.` };
   }
-  depenser(state.world, faction, COUT_GARNISON);
+  depenser(state.world, faction, coutGarnison);
   col.murs += 2;
   col.defenseMax = Math.round(col.pop * 0.09 + col.murs * 12);
   col.defense = Math.min(col.defenseMax, col.defense + Math.round(col.defenseMax * 0.3));
   if (log) {
     log({
       type: 'influence',
-      texte: `Sur votre ordre, on relève les murs de ${col.nom} (${COUT_GARNISON} cr).`,
+      texte: `Sur votre ordre, on relève les murs de ${col.nom} (${coutGarnison} cr).`,
       important: true,
       regionId: col.regionId,
       factions: [faction],
@@ -16111,16 +16142,17 @@ function ouvrirGreniers(state, faction, log) {
   const col = villeConfiee(state, faction);
   if (!col) return { ok: false, motif: 'Aucune ville ne vous est confiée.' };
   const f = state.world.factions[faction];
-  if (f.tresor < COUT_GRENIER) {
-    return { ok: false, motif: `Le trésor ne suit pas : ${Math.round(f.tresor)} / ${COUT_GRENIER} cr.` };
+  const coutGrenier = auCours(state.world, faction, COUT_GRENIER);
+  if (f.tresor < coutGrenier) {
+    return { ok: false, motif: `Le trésor ne suit pas : ${Math.round(f.tresor)} / ${coutGrenier} cr.` };
   }
-  depenser(state.world, faction, COUT_GRENIER);
+  depenser(state.world, faction, coutGrenier);
   col.stock.rations = (col.stock.rations || 0) + Math.round(col.pop * 0.9);
   col.unrest = Math.max(0, (col.unrest || 0) - 0.18);
   if (log) {
     log({
       type: 'influence',
-      texte: `Sur votre ordre, ${col.nom} distribue du grain (${COUT_GRENIER} cr). On se tait, pour l’instant.`,
+      texte: `Sur votre ordre, ${col.nom} distribue du grain (${coutGrenier} cr). On se tait, pour l’instant.`,
       important: true,
       regionId: col.regionId,
       factions: [faction],
@@ -16246,14 +16278,15 @@ function ouvrirChange(state, faction, colId, log) {
   if (col.avantPoste) return { ok: false, motif: 'Un camp n’est pas une place.' };
   if (col.change) return { ok: false, motif: 'Il y en a déjà un.' };
   const f = state.world.factions[faction];
-  if (!f || f.tresor < COUT_CHANGE) {
+  const coutChange = auCours(state.world, faction, COUT_CHANGE);
+  if (!f || f.tresor < coutChange) {
     return {
       ok: false,
-      motif: `Le trésor ne suit pas : ${Math.round(f ? f.tresor : 0)} / ${COUT_CHANGE} `
+      motif: `Le trésor ne suit pas : ${Math.round(f ? f.tresor : 0)} / ${coutChange} `
         + `${symboleDe(state.world, faction)}.`,
     };
   }
-  depenser(state.world, faction, COUT_CHANGE);
+  depenser(state.world, faction, coutChange);
   col.change = true;
   inscrireActe(state, faction, { type: 'change', ville: colId, t: state.temps });
   if (log) {
@@ -28394,7 +28427,7 @@ function cibleVide(k) {
     rompre: 'Aucun accord commercial en cours.',
     envoyer: 'Aucune colonne des vôtres n’est sur les routes.',
     rappeler: 'Rien à rappeler : aucune colonne en campagne.',
-    lever: 'Rien à prendre : aucune ville ennemie à portée.',
+    lever: 'Rien à lever : aucune ville ennemie à portée, ou un trésor qui ne paie plus vingt-cinq hommes.',
     fonder: 'Pas une case libre assez près des vôtres, ni assez loin des autres.',
     garnison: 'Aucune ville ne vous est confiée — il faut un secteur.',
     grenier: 'Aucune ville ne vous est confiée — il faut un secteur.',
@@ -28439,12 +28472,24 @@ function ciblesCharge(faction, k) {
       });
   }
   if (k === 'lever') {
-    const cout = coutLevee();
-    const paye = w.factions[faction].tresor >= cout;
-    return villesVisables(faction).slice(0, 6).map((c) => ({
-      val: c.id,
-      texte: `${FORCE_LEVEE} hommes sur ${c.nom} — ${n(cout)} ${sym(faction)}${paye ? '' : ' (trésor court)'}`,
-    }));
+    // M6 (MARECHAL.md) : une campagne se dimensionne. Les forces proposées
+    // sortent du trésor, pas d'une table — la dernière est tout ce qu'il paie.
+    const f = w.factions[faction];
+    const maxForce = Math.floor((f.tresor * Math.max(0.001, coursMonnaie(w, faction))) / 5.2);
+    const forces = [...new Set([40, FORCE_LEVEE * 2, maxForce])]
+      .filter((x) => x >= 25 && x <= maxForce).sort((a, b) => a - b);
+    const out = [];
+    for (const c of villesVisables(faction).slice(0, 4)) {
+      for (const force of forces) {
+        out.push({
+          val: c.id,
+          val2: String(force),
+          texte: `${force} hommes sur ${c.nom} — ${n(coutLevee(S, faction, force))} ${sym(faction)}${
+            force === maxForce ? ' (tout ce que le trésor paie)' : ''}`,
+        });
+      }
+    }
+    return out.slice(0, 12);
   }
   if (k === 'fonder') {
     const sites = sitesFondation(w, faction);
@@ -30951,7 +30996,7 @@ function surClic(ev) {
         case 'loi': r = ACTIONS.fixerLoi(f, cible); break;
         case 'crediter': r = ACTIONS.accorderCredit(f, cible, Number(el.dataset.b)); break;
         case 'emettre': r = ACTIONS.battreMonnaie(f, Number(cible)); break;
-        case 'lever': r = ACTIONS.leverColonne(f, null, cible); break;
+        case 'lever': r = ACTIONS.leverColonne(f, null, cible, Number(el.dataset.b) || undefined); break;
         case 'fonder': r = ACTIONS.fonderPoste(f, cible); break;
         case 'guerre': r = ACTIONS.declarerGuerre(f, cible); break;
         case 'paix': r = ACTIONS.signerPaix(f, cible); break;
@@ -31628,9 +31673,9 @@ const API = {
     return r;
   },
 
-  /** Lever une colonne sur le trésor de la faction, et la lancer. */
-  leverColonne(faction, depuisId, cibleId) {
-    const r = leverColonneA(state, faction, depuisId, cibleId, creerLogger(state));
+  /** Lever une colonne sur le trésor de la faction, et la lancer — à la force choisie (M6). */
+  leverColonne(faction, depuisId, cibleId, force) {
+    const r = leverColonneA(state, faction, depuisId, cibleId, creerLogger(state), force);
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },

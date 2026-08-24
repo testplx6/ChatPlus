@@ -26,6 +26,7 @@ import { rangDe, groupesEngages, RANGS } from './allegeance.js';
 import { dirigeant, crediterDirigeant, butDeGuerre } from './dirigeants.js';
 import {
   declarerGuerre, signerPaix, fonderColonie, guerresDe, enGuerre, coloniesDe,
+  ravitaillementMax,
 } from './factions.js';
 import { colonieParId, distance, chemin } from './world.js';
 import {
@@ -35,7 +36,7 @@ import {
   aUneBourse, ouvrirBourse, signerAccord, rompreAccords, partenairePossible,
   VILLES_BOURSE, TRESOR_BOURSE,
 } from './bourse.js';
-import { depenser, emettre, retirerMonnaie } from './monnaie.js';
+import { depenser, emettre, retirerMonnaie, coursMonnaie } from './monnaie.js';
 import { racheterCreance } from './credit.js';
 
 /**
@@ -409,9 +410,21 @@ export function rappelerColonne(state, faction, armeeId, log) {
   return { ok: true };
 }
 
-/** Ce que coûte une colonne levée sur ordre. */
-export function coutLevee() {
-  return Math.round(FORCE_LEVEE * 5.2);
+/**
+ * E10 (AUDIT.md, avec M6) : un coût régalien se paie en unités de la monnaie
+ * du pays, mais il achète des choses réelles — hommes, murs, grain. Le cours
+ * divise donc, comme le lot H l'a fait pour les soldes : une monnaie
+ * effondrée ne lève plus d'armées quasi gratuites, elle paie tout au prix
+ * fort. Même plancher que `taux` (monnaie.js), pour ne jamais diviser par
+ * un cours mort.
+ */
+function auCours(world, faction, base) {
+  return Math.round(base / Math.max(0.001, coursMonnaie(world, faction)));
+}
+
+/** Ce que coûte une colonne levée sur ordre, au cours du jour (M6 + E10). */
+export function coutLevee(state, faction, force = FORCE_LEVEE) {
+  return auCours(state ? state.world : null, faction, force * 5.2);
 }
 
 /**
@@ -419,12 +432,20 @@ export function coutLevee() {
  *
  * `depuisId` peut être nul : un officier dit « marchez sur X », il ne dit pas
  * de quelle caserne on sort. On part alors de la plus proche des nôtres.
+ *
+ * M6 (MARECHAL.md) : la force se choisit — une campagne se dimensionne, elle
+ * ne se prend pas au menu. Le trésor borne, la solde courra (ETAT.parSoldat,
+ * déjà au cours), et le ravitaillement plafonne avec les bras.
  */
-export function leverColonne(state, faction, depuisId, cibleId, log) {
+export function leverColonne(state, faction, depuisId, cibleId, log, force = FORCE_LEVEE) {
   const v = peutExercer(state, faction, 'lever');
   if (!v.ok) return v;
+  force = Math.round(force);
+  if (!(force >= 25)) {
+    return { ok: false, motif: 'Vingt-cinq hommes au moins — en dessous, ce n’est pas une colonne.' };
+  }
   const f = state.world.factions[faction];
-  const cout = coutLevee();
+  const cout = coutLevee(state, faction, force);
   if (f.tresor < cout) {
     return { ok: false, motif: `Le trésor ne suit pas : ${Math.round(f.tresor)} / ${cout} cr.` };
   }
@@ -439,14 +460,14 @@ export function leverColonne(state, faction, depuisId, cibleId, log) {
     id: `a${state.world.prochainArmeeId++}`,
     faction,
     regionId: depuis.regionId,
-    force: FORCE_LEVEE,
-    forceMax: FORCE_LEVEE,
+    force,
+    forceMax: force,
     cible: cibleId,
     route: chemin(state.world, depuis.regionId, cible.regionId) || [],
     etape: 0,
     progres: 0,
     etat: 'marche',
-    ravitaillement: 60 + Math.round(FORCE_LEVEE / 4),
+    ravitaillement: ravitaillementMax(force),
     impayees: 0,
     surOrdre: true,
   };
@@ -455,7 +476,7 @@ export function leverColonne(state, faction, depuisId, cibleId, log) {
   if (log) {
     log({
       type: 'influence',
-      texte: `Sur votre ordre, ${drapeauDe(state.world, faction).nom} lève une colonne à ${depuis.nom} `
+      texte: `Sur votre ordre, ${drapeauDe(state.world, faction).nom} lève ${force} hommes à ${depuis.nom} `
         + `pour marcher sur ${cible.nom} (${cout} cr).`,
       important: true,
       factions: [faction],
@@ -499,15 +520,16 @@ export function fonderPoste(state, faction, regionIndex, rng, log) {
   const v = peutExercer(state, faction, 'fonder');
   if (!v.ok) return v;
   const f = state.world.factions[faction];
-  if (f.tresor < COUT_POSTE) {
-    return { ok: false, motif: `Le trésor ne suit pas : ${Math.round(f.tresor)} / ${COUT_POSTE} cr.` };
+  const coutPoste = auCours(state.world, faction, COUT_POSTE);
+  if (f.tresor < coutPoste) {
+    return { ok: false, motif: `Le trésor ne suit pas : ${Math.round(f.tresor)} / ${coutPoste} cr.` };
   }
   const r = state.world.regions[regionIndex];
   if (!r) return { ok: false, motif: 'Cette case n’existe pas.' };
   if (!sitesFondation(state.world, faction).some((s) => s.i === r.i)) {
     return { ok: false, motif: 'On ne fonde pas là : trop loin des vôtres, ou trop près d’une ville.' };
   }
-  depenser(state.world, faction, COUT_POSTE);
+  depenser(state.world, faction, coutPoste);
   const col = fonderColonie(state.world, faction, r, rng, state.temps);
   crediterDirigeant(state.world, faction, 'fondation');
   inscrireActe(state, faction, { type: 'fondation', colonie: col.id, t: state.temps });
@@ -515,7 +537,7 @@ export function fonderPoste(state, faction, regionIndex, rng, log) {
     log({
       type: 'fondation',
       texte: `Sur votre ordre, ${drapeauDe(state.world, faction).nom} plante ${col.nom} `
-        + `(${COUT_POSTE} cr). On verra bien si ça tient.`,
+        + `(${coutPoste} cr). On verra bien si ça tient.`,
       important: true,
       regionId: r.i,
       factions: [faction],
@@ -750,17 +772,18 @@ export function renforcerGarnison(state, faction, log) {
   const col = villeConfiee(state, faction);
   if (!col) return { ok: false, motif: 'Aucune ville ne vous est confiée.' };
   const f = state.world.factions[faction];
-  if (f.tresor < COUT_GARNISON) {
-    return { ok: false, motif: `Le trésor ne suit pas : ${Math.round(f.tresor)} / ${COUT_GARNISON} cr.` };
+  const coutGarnison = auCours(state.world, faction, COUT_GARNISON);
+  if (f.tresor < coutGarnison) {
+    return { ok: false, motif: `Le trésor ne suit pas : ${Math.round(f.tresor)} / ${coutGarnison} cr.` };
   }
-  depenser(state.world, faction, COUT_GARNISON);
+  depenser(state.world, faction, coutGarnison);
   col.murs += 2;
   col.defenseMax = Math.round(col.pop * 0.09 + col.murs * 12);
   col.defense = Math.min(col.defenseMax, col.defense + Math.round(col.defenseMax * 0.3));
   if (log) {
     log({
       type: 'influence',
-      texte: `Sur votre ordre, on relève les murs de ${col.nom} (${COUT_GARNISON} cr).`,
+      texte: `Sur votre ordre, on relève les murs de ${col.nom} (${coutGarnison} cr).`,
       important: true,
       regionId: col.regionId,
       factions: [faction],
@@ -776,16 +799,17 @@ export function ouvrirGreniers(state, faction, log) {
   const col = villeConfiee(state, faction);
   if (!col) return { ok: false, motif: 'Aucune ville ne vous est confiée.' };
   const f = state.world.factions[faction];
-  if (f.tresor < COUT_GRENIER) {
-    return { ok: false, motif: `Le trésor ne suit pas : ${Math.round(f.tresor)} / ${COUT_GRENIER} cr.` };
+  const coutGrenier = auCours(state.world, faction, COUT_GRENIER);
+  if (f.tresor < coutGrenier) {
+    return { ok: false, motif: `Le trésor ne suit pas : ${Math.round(f.tresor)} / ${coutGrenier} cr.` };
   }
-  depenser(state.world, faction, COUT_GRENIER);
+  depenser(state.world, faction, coutGrenier);
   col.stock.rations = (col.stock.rations || 0) + Math.round(col.pop * 0.9);
   col.unrest = Math.max(0, (col.unrest || 0) - 0.18);
   if (log) {
     log({
       type: 'influence',
-      texte: `Sur votre ordre, ${col.nom} distribue du grain (${COUT_GRENIER} cr). On se tait, pour l’instant.`,
+      texte: `Sur votre ordre, ${col.nom} distribue du grain (${coutGrenier} cr). On se tait, pour l’instant.`,
       important: true,
       regionId: col.regionId,
       factions: [faction],
@@ -911,14 +935,15 @@ export function ouvrirChange(state, faction, colId, log) {
   if (col.avantPoste) return { ok: false, motif: 'Un camp n’est pas une place.' };
   if (col.change) return { ok: false, motif: 'Il y en a déjà un.' };
   const f = state.world.factions[faction];
-  if (!f || f.tresor < COUT_CHANGE) {
+  const coutChange = auCours(state.world, faction, COUT_CHANGE);
+  if (!f || f.tresor < coutChange) {
     return {
       ok: false,
-      motif: `Le trésor ne suit pas : ${Math.round(f ? f.tresor : 0)} / ${COUT_CHANGE} `
+      motif: `Le trésor ne suit pas : ${Math.round(f ? f.tresor : 0)} / ${coutChange} `
         + `${symboleDe(state.world, faction)}.`,
     };
   }
-  depenser(state.world, faction, COUT_CHANGE);
+  depenser(state.world, faction, coutChange);
   col.change = true;
   inscrireActe(state, faction, { type: 'change', ville: colId, t: state.temps });
   if (log) {

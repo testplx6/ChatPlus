@@ -407,7 +407,10 @@ export function saisir(world, col, ancien, repreneur, log) {
 export function veutBatir(world, col) {
   if (!col.faction || col.avantPoste) return false;
   if (col.murs >= col.taille * 6) return false;
-  const service = COUT_MUR * loisDe(world, col.faction).directeur;
+  // Le mur se paie en vrai : le principal s'indexe sur le cours (E10), et le
+  // service de la dette avec — sinon un pays effondré bâtissait pour rien.
+  const service = (COUT_MUR / Math.max(0.001, coursMonnaie(world, col.faction)))
+    * loisDe(world, col.faction).directeur;
   return service <= capaciteRemboursement(world, col) * CREDIT.partServiceDette;
 }
 
