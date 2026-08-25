@@ -11728,8 +11728,13 @@ section('M sexies. Le Maréchal — M4, la place à tenir (MARECHAL.md)');
     });
     for (let i = 0; i < 30 && colP.faction === m3.A; i++) tick(m3.st);
     ok(colP.faction !== m3.A, 'la place assiégée tombe (fixture)');
-    ok((m3.g.allegeance.fautes || 0) >= 2,
-      'la place désignée tombée compte double — c’était la vôtre',
+    // Revu au prisme du propriétaire (août 2026) : « c'est une simulation,
+    // pas un truc punitif ». Une perte = une faute — aucun agent ne « compte
+    // double » ; ce qui distingue la place désignée, c'est la mémoire du
+    // récit, pas un multiplicateur.
+    ok((m3.g.allegeance.fautes || 0) === 1
+      && m3.st.journal.some((l) => /la place que vous aviez fait tenir/.test(l.texte)),
+      'la place désignée tombée s’impute UNE fois — la faute est la perte, le récit garde la promesse',
       `${m3.g.allegeance.fautes || 0} faute(s)`);
     ok(m3.g.allegeance.place === null || m3.g.allegeance.place === undefined,
       'et la désignation s’efface avec la place — on ne tient pas une ville perdue');
@@ -11798,13 +11803,19 @@ section('M septies. Le Maréchal — F1 + F2, les frictions de la cour (MARECHAL
       `rang ${rangDe(m.g.allegeance).index}, ${m.g.allegeance.fautes} fautes`);
   }
 
-  // F2 — le bouc émissaire : un chef contesté dans une guerre qui va mal
-  // impute sa guerre au Maréchal. C'est injuste, et c'est voulu.
+  // F2 — le bouc émissaire, revu au prisme du propriétaire (août 2026) :
+  // un ÉVÉNEMENT avec un visage, pas une taxe au chronomètre. Seuls les
+  // tempéraments qui s'y prêtent se défaussent, et une seule fois par
+  // guerre et par chef.
   {
     const m = monter(RANGS[5].points, 0);
     const d = dirigeant(m.st.world, m.A);
+    d.temperament = 'rancunier';
     const B = Object.keys(m.st.world.factions).find(
       (k) => k !== 'essaim' && k !== m.A && m.st.world.factions[k].colonies.length);
+    // Une seule guerre au dossier : la maison en portait déjà d'autres à
+    // cette graine, et le chef se trouvait un deuxième dos légitime.
+    m.st.world.guerres = m.st.world.guerres.filter((x) => x.a !== m.A && x.b !== m.A);
     declarerGuerre(m.st.world, m.A, B, m.st.temps, rien);
     d.legitimite = 18;
     d.pertes = 3;
@@ -11813,30 +11824,42 @@ section('M septies. Le Maréchal — F1 + F2, les frictions de la cour (MARECHAL
     tick(m.st);
     ok((m.g.allegeance.fautes || 0) === 1
       && m.st.journal.some((l) => /se sauve sur votre dos/.test(l.texte)),
-      'le chef contesté vous impute la guerre qui se perd — l’injustice fait le récit',
+      'un rancunier contesté vous impute la guerre qui se perd — l’injustice fait le récit',
       `${m.g.allegeance.fautes || 0} faute(s)`);
     ok(dirigeant(m.st.world, m.A).legitimite > legAvant,
       'et il se refait une santé sur votre dos — c’est bien à ça que ça lui sert');
-    // Les fenêtres qui suivent restent SOUS la prochaine frontière de %24 :
-    // `tickDirigeant` y remplace parfois un chef à 26 de légitimité, et un
-    // successeur rancunier relirait le dossier en pleine mesure.
+    // Une seule fois par guerre et par chef — même l'ancien minuteur expiré
+    // ne rouvre rien : ce n'est plus un minuteur.
+    m.g.allegeance.dernierBouc = m.st.temps - 999; // relique de l'ancienne forme
+    d.legitimite = 18;
     const fautesApres = m.g.allegeance.fautes;
-    for (let i = 0; i < 12; i++) tick(m.st);
-    ok(m.g.allegeance.fautes === fautesApres,
-      'mais pas deux fois par jour : le bouc émissaire est un événement, pas une taxe');
-    // Contre-jeu : la paix signée, plus rien à vous imputer — répit annulé
-    // exprès, seule la guerre manque.
-    signerPaix(m.st.world, m.A, B, m.st.temps, rien);
-    m.g.allegeance.dernierBouc = null;
-    const fAvantPaix = m.g.allegeance.fautes;
     for (let i = 0; i < 8; i++) {
-      // Toutes les guerres de la maison, pas seulement la nôtre : le monde en
-      // rouvre parfois une pendant la mesure, et le chef aurait un autre dos.
-      m.st.world.guerres = m.st.world.guerres.filter((x) => x.a !== m.A && x.b !== m.A);
+      // Toujours une seule guerre au dossier pendant la mesure — et personne
+      // n'en déclare une neuve EN PLEIN tick (le monde l'a fait, et le chef
+      // s'était trouvé un nouveau dos, légitimement).
+      for (const k of Object.keys(m.st.world.factions)) m.st.world.factions[k].agression = 0;
+      m.st.world.guerres = m.st.world.guerres.filter(
+        (x) => (x.a === m.A && x.b === B) || (x.b === m.A && x.a === B) || (x.a !== m.A && x.b !== m.A));
       tick(m.st);
     }
-    ok(m.g.allegeance.fautes === fAvantPaix,
-      'la paix signée, le chef n’a plus de guerre à vous mettre sur le dos — le contre-jeu est réel');
+    ok(m.g.allegeance.fautes === fautesApres,
+      'la même guerre ne se met qu’une fois sur votre dos — un événement, pas une taxe');
+  }
+  {
+    // Un conciliateur ne se défausse pas sur ses gens : mêmes conditions,
+    // aucune faute — le tempérament porte la règle, pas le rang du joueur.
+    const m = monter(RANGS[5].points, 0);
+    const d = dirigeant(m.st.world, m.A);
+    d.temperament = 'conciliateur';
+    const B = Object.keys(m.st.world.factions).find(
+      (k) => k !== 'essaim' && k !== m.A && m.st.world.factions[k].colonies.length);
+    declarerGuerre(m.st.world, m.A, B, m.st.temps, rien);
+    d.legitimite = 18;
+    d.pertes = 3;
+    d.prises = 0;
+    for (let i = 0; i < 8; i++) tick(m.st);
+    ok((m.g.allegeance.fautes || 0) === 0,
+      'un conciliateur aux mêmes abois ne se défausse pas — c’est son caractère qui décide');
   }
 }
 

@@ -340,10 +340,12 @@ export function tickCharges(state, log) {
 export const COUR = {
   /** En dessous, un chef est contesté et cherche un dos. */
   legitimiteCritique: 30,
-  /** Heures entre deux fautes de bouc émissaire : un événement, pas une taxe. */
-  repitBouc: 240,
   /** Ce que le chef se rend de légitimité en vous chargeant. */
   souffleBouc: 8,
+  /** Les tempéraments qui se défaussent sur leur général. Les autres portent
+   * leurs guerres — revu au prisme du propriétaire (août 2026) : le bouc
+   * émissaire est un événement avec un visage, pas une taxe au chronomètre. */
+  temperamentsBouc: ['rancunier', 'rapace', 'conquerant'],
   /** Le crédit en dessous duquel on n'offre pas un trône à un fautif (M7). */
   creditCouronne: 150,
   /** Heures pour se décider : passé ça, la maison s'est choisie quelqu'un. */
@@ -449,16 +451,24 @@ export function tickCour(state, log) {
     // F2 — le bouc émissaire, sous commandement seulement : c'est le
     // Maréchal qu'on charge, pas le dernier des Affiliés. Et pas quand le
     // chef, c'est vous (M7) : on ne se met rien sur son propre dos.
+    // Un ÉVÉNEMENT, pas une taxe : seuls les tempéraments qui s'y prêtent se
+    // défaussent, et une même guerre ne se met qu'une fois sur votre dos par
+    // chef — c'est son caractère qui porte la règle, pas le rang du joueur.
     if (!d.joueur
       && rangDe(all).index >= 5
+      && COUR.temperamentsBouc.includes(d.temperament)
       && d.legitimite < COUR.legitimiteCritique
-      && (d.pertes || 0) > (d.prises || 0)
-      && guerresDe(state.world, all.faction).length
-      && (!all.dernierBouc || state.temps - all.dernierBouc >= COUR.repitBouc)) {
-      all.dernierBouc = state.temps;
-      porterFaute(state, all.faction,
-        `la guerre qui va mal — ${d.nom} se sauve sur votre dos`, log);
-      d.legitimite = Math.min(100, d.legitimite + COUR.souffleBouc);
+      && (d.pertes || 0) > (d.prises || 0)) {
+      if (!all.boucs) all.boucs = [];
+      const guerre = guerresDe(state.world, all.faction)
+        .find((x) => !all.boucs.includes(`${d.id}:${x.a === all.faction ? x.b : x.a}:${x.depuis}`));
+      if (guerre) {
+        all.boucs.push(`${d.id}:${guerre.a === all.faction ? guerre.b : guerre.a}:${guerre.depuis}`);
+        if (all.boucs.length > 8) all.boucs.shift();
+        porterFaute(state, all.faction,
+          `la guerre qui va mal — ${d.nom} se sauve sur votre dos`, log);
+        d.legitimite = Math.min(100, d.legitimite + COUR.souffleBouc);
+      }
     }
   }
 }

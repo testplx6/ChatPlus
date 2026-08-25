@@ -137,8 +137,10 @@ export function normaliser(state) {
     // Avant M4, personne ne désignait la place que la maison renforce.
     if (g.allegeance.place === undefined) g.allegeance.place = null;
     // Avant F1+F2, la cour n'avait ni mémoire du chef ni bouc émissaire.
+    // (`dernierBouc` a vécu un commit : le minuteur est devenu une liste —
+    // une guerre ne se met qu'une fois sur un dos, par chef.)
     if (g.allegeance.chef === undefined) g.allegeance.chef = null;
-    if (g.allegeance.dernierBouc === undefined) g.allegeance.dernierBouc = null;
+    if (!g.allegeance.boucs) g.allegeance.boucs = [];
     // Avant M7, la couronne n'avait pas de porte.
     if (g.allegeance.couronne === undefined) g.allegeance.couronne = null;
   }

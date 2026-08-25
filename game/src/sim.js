@@ -435,9 +435,13 @@ export function tick(state) {
     if (placeTenue) ctx.placeATenir = placeTenue;
     ctx.perteVille = (faction, nom, colId) => {
       const laVotre = colId && colId === placeTenue;
+      // Une perte = une faute, place désignée ou pas. Revu au prisme du
+      // propriétaire (août 2026) : aucun agent ne « compte double » — un
+      // multiplicateur serait un malus dirigé, pas de la simulation. Ce qui
+      // distingue la place désignée, c'est la mémoire du récit.
       porterFaute(state, faction,
         laVotre ? `la perte de ${nom} — la place que vous aviez fait tenir` : `la perte de ${nom}`,
-        log, laVotre ? 2 : 1);
+        log);
       // On ne tient pas une ville perdue : la désignation s'efface avec elle.
       if (laVotre) {
         for (const g of state.player.groupes) {
