@@ -2,124 +2,205 @@
 
 Ouvert par le propriétaire (« ouvre », août 2026), à la suite de la revue au
 prisme (AUDIT.md §prisme) : ses deux derniers écarts, S1 et S5, sont le même
-défaut vu des deux côtés — **l'information sur le joueur n'a ni porteur ni
-jambes**. Le monde l'oublie au chronomètre et le voit agir en direct, alors
-que lui subit le brouillard, les relevés datés et les rapports en retard.
-Conçu en binôme avec le game master, chaque fait moteur revérifié à la ligne.
-Format METHODE §9. **Rien ne se code avant que le propriétaire ait tranché
-les décisions.**
+défaut vu des deux côtés — plus E12 de l'audit, et la rancune. Conçu en
+binôme avec le game master, chaque fait moteur revérifié à la ligne. Format
+METHODE §9. **Rien ne se code avant que le propriétaire ait tranché les
+décisions.**
+
+Le principe : **ce que le monde sait du joueur doit être appris par
+quelqu'un, transporté par quelqu'un, retenu par quelqu'un — et oublié par la
+vie, pas par le chronomètre.**
 
 ## 1. Le constat, chiffré
 
-**S1 — le joueur est le seul être du monde qu'on oublie à heure fixe.**
+**S1 — l'oubli au chronomètre.** Chaque jour à heure fixe
+(events.js:548), toute estime positive fond de 0,1/j au-dessus du palier 30,
+toute rancune de 0,45/j. Le joueur est le seul être du monde traité ainsi :
+entre elles, les factions ne bougent que sur événements (`majRelation` —
+guerre −60, paix +45, prise −25). Une caravane pillée (−22) est pardonnée en
+~49 jours sans qu'un seul agent ait décidé de pardonner. Et **l'ouverture a
+été calibrée contre cette pente** (allegeance.js:94-117, en toutes lettres) :
+seuil d'enrôlement à 10 parce que les 12 d'estime de départ fondent ; porté à
+15, le banc rendait 30 parties engagées → 7, heures sous les couleurs
+3 894 → 659, patrimoine 4 616 → 1 769. Tuer la pente sans remesurer, c'est
+décalibrer l'ouverture en silence. La raison d'être de l'oubli est réelle et
+documentée sur place : sans lui, la réputation est « un cliquet qui descend »
+— toute refonte doit garder une porte de sortie de l'hostilité.
 
-- Chaque jour à `t % 24 === 0` (events.js:549-563), toute estime positive
-  fond (`EROSION_ESTIME` 0,1/j, dégressive sous 30 — lot 3), toute rancune
-  fond (`OUBLI_RANCUNE` 0,45/j). Exemption : le drapeau qu'on sert.
-- La raison d'être de l'oubli est réelle et documentée sur place : sans lui,
-  la réputation est « un cliquet qui descend — dix accrochages suffisent à se
-  rendre le monde définitivement hostile ». Toute refonte doit garder une
-  porte de sortie de l'hostilité.
-- Les factions entre elles ne s'oublient jamais au chronomètre : leurs
-  relations bougent quand un conseil juge (`jugerLesAutres`,
-  factions.js:1273+) — un agent, un moment.
-- L'équilibre d'ouverture a été calibré CONTRE la pente (le seuil
-  d'enrôlement, l'estime de départ — allegeance.js:94-117, et la mesure du
-  lot 3 : sous le seuil à J7-J20 en ne faisant rien de mal). Retirer la pente
-  déplace tout ce calage : à remesurer au banc (le témoin `sansErosion`
-  existe déjà — test/equilibre.js:2034).
+**S5 — l'omniscience.** Cinq actes du joueur se savent partout, à l'heure
+même, sans témoin ni route : s'engager → −20 immédiat chez chaque ennemi en
+guerre (allegeance.js:504) ; vendre un esclave → −14 les siens et −4 chez
+toute abolitionniste, planétaire et instantané (justice.js:430-435) ; les
+organes → −5 partout où c'est interdit (depouilles.js:230-234) ; piller une
+caravane → −22 + rancune nommée des deux villes, **même quand l'escorte est
+morte jusqu'au dernier** (caravanes.js:858-866) — alors que `resoudreCombat`
+rend `survivantsB` (combat.js:433) et que personne ne le lit ici ;
+l'indépendance → −35 à l'instant du geste (base.js:1820-1821). Le joueur,
+lui, subit le brouillard : relevés datés, forces cachées, rapports en retard.
 
-**S5 — le monde voit le joueur agir en direct, partout, sans témoin.**
+**E12 — les nouvelles sans jambes.** `DELAI_NOUVELLE` (connaissance.js:366)
+est une table par type : une ville qui s'effondre se sait en 72 h qu'elle
+soit à 2 cases ou à 30. La distance, colonne vertébrale de tout le reste du
+jeu, n'entre pas dans le voyage de l'information.
 
-- S'engager : −20 immédiat chez tous les ennemis en guerre
-  (allegeance.js:500-505).
-- Vendre un esclave : −14 chez les siens et −4 chez TOUTES les
-  abolitionnistes, à l'heure même, où que la vente ait eu lieu
-  (justice.js:428-433). Organes : idem, −5 (depouilles.js:228-234).
-- Piller une caravane : −22 la faction + les deux villes des bouts
-  (`retenirEnVille` −18), instantané, même sans survivant modélisé
-  (caravanes.js:858-867).
-- Déclarer l'indépendance : −35 su partout à l'heure même (base.js:1818-1821).
-- Pendant ce temps, le joueur, lui, apprend les nouvelles du monde avec
-  retard (`DELAI_NOUVELLE`, connaissance.js:366-391) — et ce délai est FIXE
-  par type, indépendant de la distance : c'est l'écart E12 de l'audit, qui
-  entre dans ce chantier.
+**Le patron existe déjà, livré et mesuré.** La correction E3
+(base.js:2474-2483) est le prototype exact : `rachatsFaits`, une liste de
+faits datés `{faction, t}`, bornée (12), lue au moment où l'agent décide —
+mémoire propre 3 000 h, rumeur 720 h, tout s'érode. Et les porteurs sont
+debout : l'opinion d'un notable (mémoire bornée à 4 souvenirs,
+services.js:71), leur mortalité (notables.js:294), les successions avec bilan
+de règne (dirigeants.js:273-286), le bouc à visage (F2), la mémoire du joueur
+bornée à 60 rencontres (rapport.js). Il ne manque que le branchement.
 
-**Ce qui existe déjà et qu'on réutilise.** La mémoire des lieux
-(`retenirEnVille`, `retenir` — services.js:117-135, lot B+E), l'`opinion`
-des notables et leur mortalité (notables.js), la relecture à la succession
-(F1, influence.js `tickCour`), les nouvelles sourcées (« rapporté » vs
-« témoin », connaissance.js), les colporteurs comptés (`base.marchands`),
-le témoin de banc `sansErosion`.
+**Une asymétrie à connaître avant de choisir le porteur** : aujourd'hui
+l'opinion d'un notable se cale SUR la réputation scalaire
+(notables.js:282-289, vitesses asymétriques). Migrer l'estime « chez le
+souvenant » (tranché T5 de l'audit), c'est inverser ce sens de dérivation.
 
-## 2. La règle de conception
+## 2. La cause
 
-Une information sur le joueur est un FAIT : local, daté, avec des témoins.
-Elle voyage par les mêmes canaux que les nouvelles du monde, à la même
-vitesse. Elle est PORTÉE — par une ville qui retient, un notable qui a une
-opinion, un chef qui relit un dossier — et elle meurt avec ses porteurs ou
-s'émousse quand un agent en décide, jamais au chronomètre.
+La réputation est née scalaire quand le monde n'avait ni notables, ni
+dirigeants, ni relevés datés ; chaque système d'information est venu après
+sans qu'on rebranche la mémoire du monde sur eux. L'érosion quotidienne et
+l'omniscience sont les deux béquilles de cette époque : l'une remplace
+l'oubli des gens, l'autre remplace leurs yeux.
 
-## 3. Les lots (proposés — l'ordre est celui du moindre risque)
+## 3. Les lots — l'ordre est celui de la mesure
 
-- **L1 — les actes ont des témoins.** Les cinq sites d'omniscience passent
-  par témoins + délai : une vente au marché a des témoins par définition
-  (la nouvelle part de la ville et voyage) ; une caravane pillée n'en a que
-  si des rescapés s'échappent ; l'engagement et l'indépendance sont des
-  faits publics qui VOYAGENT (E12 : délai = distance × canal) au lieu
-  d'être sus partout à l'heure même.
-- **L2 — E12, la nouvelle a des jambes.** `DELAI_NOUVELLE` devient
-  f(distance, canal) pour tout le monde — les nouvelles du monde vers le
-  joueur ET les faits du joueur vers le monde. Un seul système.
-- **L3 — l'oubli devient événementiel.** L'érosion quotidienne meurt.
-  L'estime et la rancune bougent sur des événements : succession de chef
-  (F1 étendu à l'estime), mort d'un notable qui vous connaissait, chute de
-  la ville où l'on s'était fait un nom, guerre/paix qui rebat les cartes.
-  La porte de sortie de l'hostilité (le cliquet) change de forme : la
-  rancune meurt avec ses porteurs, se solde (primes payées), s'éteint à la
-  paix — des événements, pas un taux.
-- **L4 — le recalage d'ouverture.** Remesurer au banc les seuils
-  d'enrôlement et l'estime de départ dans le monde sans pente (profils du
-  banc + `sansErosion` comme témoin de contrôle).
+**Le principe unificateur : le FAIT.** Un acte du joueur devient un objet
+daté et situé — `{type, regionId, t, temoins}` — qui **voyage** par un
+canal, **arrive** chez une faction à une heure calculée, et n'a d'effet qu'à
+l'arrivée. Une seule infrastructure pour S5, E12 et S1 ; le scalaire
+`reputation[faction]` reste la vue agrégée (décision n°1), mais plus rien ne
+l'écrit sans passer par un fait.
+
+- **L1 — les jambes (E12), monde → joueur d'abord** *(petite)*.
+  `delaiNouvelle(world, deRegionId, type, versRegionId)` = base du canal ×
+  distance. Trois canaux calibrables : **proclamation** (guerre, paix —
+  criée sur les places, rapide), **rumeur de route** (chute, sécession, vos
+  actes — au pas des colporteurs, ~4-8 h/case, à balayer), **regard direct**
+  (témoin : 0). `saison` reste à 0 — on regarde le ciel soi-même. Zéro effet
+  d'équilibre : des dates d'affichage — c'est pour ça qu'il part en premier.
+- **L2 — le registre des faits : une seule porte d'écriture** *(moyenne)*.
+  `commettre(state, fait)` devient l'unique chemin vers `reputation` : le
+  fait entre au registre (borné, comme `rachatsFaits`), avec pour chaque
+  faction l'effet et l'heure `su` où elle l'apprend (L1 la calcule). Un acte
+  commis en face de l'intéressé — contrat rendu, péage payé, rançon versée —
+  a `su = t` : rien ne change pour lui. `tick` applique à l'échéance (file
+  triée, pas de balayage). Pur refactor à ce stade : valeurs et dates
+  identiques, testé comme tel.
+- **L3 — les cinq omniscients passent au registre (S5)** *(moyenne)*.
+  S'engager : l'enrôlement se fait en ville, devant témoins — le fait part
+  en rumeur vers chaque capitale ennemie, le −20 arrive avec la nouvelle.
+  Esclave/organes : témoins = toute la ville ; l'abolitionniste à 3 cases
+  l'apprend avant celle à 14 — valeurs inchangées, dates vraies. Caravane
+  pillée : lecture de `survivantsB` et des témoins du lieu (ville sur la
+  case, région contrôlée, colonne à ≤ 1 case) ; sans aucun témoin, voir
+  décision n°2. Indépendance : une proclamation — on décroche un drapeau
+  pour que ça se sache — canal rapide, mais un délai quand même.
+- **L4 — l'oubli a des visages (S1 + la rancune)** *(grosse par la mesure,
+  pas par le code)*. Mort de l'érosion à `temps % 24`. L'oubli devient trois
+  événements, tous existants : (1) **la succession** — le successeur hérite
+  d'une part de l'estime et de la rancune selon SON tempérament, même patron
+  que F1/F2 ; (2) **la mort du porteur** — un notable de vos rencontres qui
+  meurt, la ville théâtre de vos faits qui tombe : les faits correspondants
+  cessent de compter (le registre borné pousse les vieux dehors) ; (3) **la
+  réparation**, inchangée — contrats, services, rançons, relâchés : déjà le
+  seul chemin actif, il devient le principal. Puis **la remesure d'ouverture
+  au banc** : profils par drapeau contre témoin (parties engagées, heures
+  sous les couleurs, patrimoine), et si l'ouverture a bougé, recalage
+  d'`ESTIME_ENGAGEMENT` par balayage, pas à vue.
+- *(L5, hors périmètre sauf décision contraire : la migration complète chez
+  le souvenant — le scalaire devient la lecture agrégée des porteurs.
+  Chantier propre, consigné.)*
 
 ## 4. Les décisions du propriétaire
 
-*(Sera complété avec l'avis du game master avant tout code — voir
-l'avancement.)*
-
-1. **Qui porte l'estime ?** Garder le scalaire par faction mais ne le faire
-   bouger que sur événements (pas raisonnable, livrable ici), ou refondre
-   vers des porteurs nommés (notables, chefs — le vrai fond, mais c'est un
-   chantier de plus) ?
-2. **Un acte sans témoin est-il jamais su ?** Doctrine « c'est à eux de
-   voir » : des rescapés s'échappent-ils toujours d'une caravane pillée ?
-3. **L'oubli disparaît-il entièrement**, ou devient-il lui-même
-   événementiel (les porteurs meurent, les générations passent) ?
+1. **Qui porte l'estime, dans ce chantier-ci ?** (a) Le scalaire par faction
+   reste, mais ne bouge plus que par faits datés — ~200 sites de lecture
+   intacts, et la forme du registre prépare la migration ; (b) migration
+   directe chez les porteurs nommés (dirigeants, notables — et inverser
+   notables.js:282-289). *(b) est la cible du T5 et le plus beau récit — un
+   chef meurt, et avec lui ce qu'il vous pardonnait — mais c'est une refonte
+   qui touche l'affichage et deux cents lectures ; (a) livre 90 % de la
+   vérité tout de suite.* **Recommandé : (a) maintenant, (b) = L5 consigné.**
+2. **Le crime parfait existe-t-il ?** Stricte : sans témoin, jamais su —
+   « c'est à eux de voir » ; conséquence assumée : achever les témoins
+   devient une décision qui paie. Intermédiaire (**recommandée**) :
+   **l'absence est un fait** — le convoi manque à l'arrivée (rancune contre
+   « des pillards », l'insécurité du secteur monte), mais l'AUTEUR n'est su
+   que par témoin.
+3. **Reste-t-il une érosion résiduelle ?** Zéro chronomètre (**recommandé** —
+   l'oubli passe entièrement par les successions, les morts et le registre
+   borné), ou une pente générationnelle minime en attendant la mesure. *À
+   zéro, un joueur haï d'un chef qui vit vieux le reste des années — c'est la
+   simulation pleine, et le contre-jeu existe : réparer, ou attendre la
+   succession, qu'on peut lire venir (la légitimité s'affiche).*
+4. **Les seuils d'enrôlement après L4** : regeler tels quels et mesurer
+   d'abord (**recommandé**), ou les remonter dans le même chantier si le
+   banc montre une ouverture devenue triviale. *Le seuil 10 n'existait que
+   contre la pente — le garder sans mesure serait garder le pansement après
+   la guérison.*
+5. **Ce que l'écran montre** : l'écran d'une faction affiche ce qu'elle SAIT
+   (**recommandé** — le journal date chaque arrivée : « À Fort-Vermeil, on
+   sait désormais ce que vous avez vendu à Manase ») ; le joueur, lui, sait
+   toujours ce qu'il a fait. *La fenêtre entre l'acte et la nouvelle devient
+   jouable — trois jours pour commercer chez les abolitionnistes avant que
+   ça se sache ; sans affichage daté, elle serait vécue comme un bug.*
 
 ## 5. Les cibles mesurables
 
-1. Un test né rouge par lot.
-2. L'ouverture tient : les profils du banc (colon, négociant, franc-tireur)
-   ne régressent pas dans le monde sans pente.
-3. Le cliquet ne revient pas : une partie qui accumule dix accrochages doit
-   garder une porte de sortie mesurable de l'hostilité.
-4. Gardes du monde inchangées.
+1. **Un test né rouge par lot** : L1 — une chute à 2 cases se sait avant la
+   même à 12 ; L2 — toute écriture de réputation hors `commettre` fait
+   échouer le test d'exhaustivité ; L3 — caravane pillée sans survivant ni
+   témoin : aucune faction ne nomme l'auteur, jamais ; avec un survivant :
+   l'effet arrive à `t + délai(distance)`, pas avant ; l'esclave vendu se
+   sait à 3 cases avant 14 ; L4 — à J60 sans rien faire, l'estime de départ
+   n'a pas bougé (témoin d'aujourd'hui : −6) ; une succession chez un
+   drapeau hostile réduit la rancune selon le tempérament du successeur.
+2. **Le banc, profils par drapeau, contre témoin** : parties engagées,
+   heures sous les couleurs, patrimoine — dans le bruit du témoin, sinon
+   STOP et recalage par balayage (décision n°4). Plus un profil pillard : il
+   doit pouvoir se racheter par actes en un temps comparable à l'oubli
+   d'aujourd'hui, sinon la sortie d'hostilité est morte et c'est un blocage.
+3. Gardes de CIBLES.json inchangées (tout vit côté joueur), zéro tirage
+   nouveau dans les flux (les délais sont déterministes, les témoins
+   dérivés), tick dans le budget (file d'échéances, aucun balayage par
+   heure), vieille sauvegarde : rien de perdu (`normaliser` pose registre
+   vide + `su = t` pour l'existant — le passé est réputé su, on ne réécrit
+   pas l'histoire).
 
 ## 6. Ce que ça casse, dit d'avance
 
-- Le calage d'ouverture (lot 3, ESTIME_ENGAGEMENT) est à refaire — c'est L4,
-  et il est DANS le chantier, pas après.
-- Le témoin `sansErosion` du banc change de sens (il n'y aura plus d'érosion
-  à couper) : à re-consigner.
-- E12 touche `nouvellesConnues`, lu par l'UI et le rapport d'absence.
+- **L'équilibre d'ouverture** — le seul vrai risque, d'où l'ordre L1→L4 :
+  les trois premiers lots sont neutres ou quasi (des dates, pas des
+  valeurs) ; toute la bascule est concentrée dans L4, remesurée avant d'être
+  posée.
+- **La sortie d'hostilité n'est plus gratuite** : plus d'absolution à
+  0,45/j — un monde peut rester fermé à qui l'a saigné. Voulu, mais le
+  contre-jeu (réparations, successions lisibles) est à vérifier en partie
+  jouée, pas à supposer.
+- **Les primes** suivent une rancune qui ne fond plus toute seule — la
+  défaite solde la prime (P4) et les successions sont les soupapes ; à
+  surveiller au banc.
+- **La fenêtre acte→nouvelle** ouvre un jeu d'esquive (agir puis devancer la
+  rumeur) : une richesse, si l'UI la montre (décision n°5).
+- **Le témoin `sansErosion` du banc** change de sens : à re-consigner.
+- **Ce qu'on ne fait pas** : pas de migration du scalaire (L5 consigné), pas
+  de réseau d'espionnage ni de contre-rumeur (le fait voyage, il ne se
+  falsifie pas — piste, pas chantier), pas de témoins pour les actes du
+  monde entre factions (les conseils se jugent déjà sur événements), et pas
+  une valeur d'effet modifiée — ce chantier change *qui sait, quand, et
+  pourquoi on oublie*, jamais *combien ça coûte*.
 
 ## L'avancement
 
-- [ ] Cahier relu par le game master, décisions complétées et tranchées
-- [ ] L1 — les actes ont des témoins
-- [ ] L2 — E12, la nouvelle a des jambes
-- [ ] L3 — l'oubli devient événementiel
-- [ ] L4 — le recalage d'ouverture
+- [x] Cahier écrit avec le game master, constats revérifiés dans le code
+- [ ] Décisions 1-5 tranchées par le propriétaire
+- [ ] L1 — les jambes (E12)
+- [ ] L2 — le registre des faits
+- [ ] L3 — les cinq omniscients passent au registre
+- [ ] L4 — l'oubli a des visages, et la remesure d'ouverture
 
 ## Blocages
 
