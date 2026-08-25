@@ -213,6 +213,25 @@ function poser(st, montant) {
   return montant;
 }
 
+/**
+ * Poser une estime dans un décor. Depuis L5, le scalaire est une VUE du
+ * registre des faits : le poser à la main sans fait derrière, c'est écrire un
+ * chiffre que la première matérialisation effacerait. On sème donc un fait
+ * « passe » qui y aboutit — le décor dit « voilà ce que cette maison pense de
+ * vous, et c'est porté par sa mémoire », pas « voilà un nombre ».
+ */
+function semerEstime(st, faction, valeur) {
+  const manque = valeur - (st.player.reputation[faction] || 0);
+  if (!st.player.faits) st.player.faits = [];
+  if (manque) {
+    st.player.faits.push({
+      type: 'passe', t: st.temps,
+      effets: [{ faction, delta: manque, su: st.temps, applique: true, poids: 1 }],
+    });
+  }
+  st.player.reputation[faction] = valeur; // la vue, tenue en phase avec le fait
+}
+
 
 let echecs = 0;
 let total = 0;
@@ -648,7 +667,7 @@ section('4 ter. Un coffre en ville');
   const ville = cf.world.colonies.find((c) => !c.ruine && c.faction && c.faction !== 'essaim');
   gc.regionId = ville.regionId;
   poser(cf, 5000);
-  cf.player.reputation[ville.faction] = 0;
+  semerEstime(cf, ville.faction, 0);
 
   ok(!coffreDe(cf, ville.id), 'on n’a pas de coffre au départ');
   ok(!peutAcheter(cf, ville).ok,
@@ -692,7 +711,7 @@ section('4 ter. Un coffre en ville');
     'mais il se rembourse, il ne confisque pas tout');
 
   // Acheter : possible dès qu'on est estimé, et le loyer s'arrête.
-  cf.player.reputation[ville.faction] = ESTIME_PROPRIETE + 5;
+  semerEstime(cf, ville.faction, ESTIME_PROPRIETE + 5);
   poser(cf, PRIX_COFFRE + 10);
   ok(peutAcheter(cf, ville).ok, 'estimé, on peut acheter');
   ok(acheterCoffre(cf, ville, () => {}).ok, 'et l’on achète');
@@ -818,7 +837,7 @@ section('4 bis. Ce qu’on fait de ses morts');
   const fs = nouvellePartie(4041, { maintenant: 0, depart: 'ville', equipe: 3 });
   const gf = groupeActif(fs);
   const cf = fs.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
-  fs.player.reputation[cf.faction] = 40;
+  semerEstime(fs, cf.faction, 40);
   gf.regionId = cf.regionId;
   sEngager(fs, cf.faction, () => {});
   const af = gf.allegeance;
@@ -873,7 +892,7 @@ section('4 bis. Ce qu’on fait de ses morts');
   const ordre = nouvellePartie(3940, { maintenant: 0, depart: 'ville', equipe: 3 });
   const gO = groupeActif(ordre);
   const colO = ordre.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
-  ordre.player.reputation[colO.faction] = 40;
+  semerEstime(ordre, colO.faction, 40);
   gO.regionId = colO.regionId;
   sEngager(ordre, colO.faction, () => {});
   // On force un ordre de ravitaillement vers une ville qu'on peut situer.
@@ -1283,7 +1302,7 @@ ok(RANGS[0].solde > 0, 'le premier grade défraie : servir ne doit pas coûter d
 const serv = nouvellePartie(5858, { maintenant: 0, depart: 'ville', equipe: 3 });
 const gServ = groupeActif(serv);
 const colServ = serv.world.colonies.find((c) => !c.ruine);
-serv.player.reputation[colServ.faction] = 40;
+semerEstime(serv, colServ.faction, 40);
 gServ.regionId = colServ.regionId;
 ok(!droitIntendance(serv, colServ).ok, 'sans engagement, pas d’intendance');
 sEngager(serv, colServ.faction, () => {});
@@ -1313,7 +1332,7 @@ if (autreVille) {
 // --- Rater un ordre ne fait plus reculer.
 const rate = nouvellePartie(5959, { maintenant: 0, depart: 'ville', equipe: 3 });
 const colRate = rate.world.colonies.find((c) => !c.ruine);
-rate.player.reputation[colRate.faction] = 40;
+semerEstime(rate, colRate.faction, 40);
 sEngager(rate, colRate.faction, () => {});
 groupeActif(rate).allegeance.points = 200;
 groupeActif(rate).allegeance.ordre = {
@@ -1335,7 +1354,7 @@ ok(rate.player.reputation[colRate.faction] < repAvantOrdre,
   const paix = nouvellePartie(5960, { maintenant: 0, depart: 'ville', equipe: 3 });
   const colPaix = paix.world.colonies.find((c) => !c.ruine);
   const adverse = paix.world.colonies.find((c) => !c.ruine && c.faction !== colPaix.faction);
-  paix.player.reputation[colPaix.faction] = 40;
+  semerEstime(paix, colPaix.faction, 40);
   sEngager(paix, colPaix.faction, () => {});
   const allPaix = groupeActif(paix).allegeance;
   allPaix.points = 200;
@@ -1370,13 +1389,13 @@ ok(rate.player.reputation[colRate.faction] < repAvantOrdre,
   const gu = nouvellePartie(5961, { maintenant: 0, depart: 'ville', equipe: 3 });
   const mienne = gu.world.colonies.find((c) => !c.ruine);
   const leur = gu.world.colonies.find((c) => !c.ruine && c.faction !== mienne.faction);
-  gu.player.reputation[mienne.faction] = 40;
+  semerEstime(gu, mienne.faction, 40);
   sEngager(gu, mienne.faction, () => {});
   // On se place sur une case que l'adversaire contrôle, sans le détester encore :
   // c'est la guerre de sa faction qui doit compter, pas sa rancune personnelle.
   const chezEux = gu.world.regions.findIndex((r) => r.controle === leur.faction);
   groupeActif(gu).regionId = chezEux;
-  gu.player.reputation[leur.faction] = 0;
+  semerEstime(gu, leur.faction, 0);
   const part = () => {
     const rng = new Rng(77);
     let eux = 0;
@@ -1395,7 +1414,7 @@ ok(rate.player.reputation[colRate.faction] < repAvantOrdre,
     `${Math.round(enGuerreLa * 100)} %`);
   // Le même terrain, mais la guerre est celle d'un autre : rien ne change.
   const neutre = nouvellePartie(5961, { maintenant: 0, depart: 'ville', equipe: 3 });
-  neutre.player.reputation[leur.faction] = 0;
+  semerEstime(neutre, leur.faction, 0);
   groupeActif(neutre).regionId = chezEux;
   neutre.world.guerres.push({ a: mienne.faction, b: leur.faction, depuis: neutre.temps });
   const rngN = new Rng(77);
@@ -1410,7 +1429,7 @@ ok(rate.player.reputation[colRate.faction] < repAvantOrdre,
 // --- La garnison : à partir de Lieutenant, les villes des siens vous logent.
 const garn = nouvellePartie(6060, { maintenant: 0, depart: 'ville', equipe: 3 });
 const colGarn = garn.world.colonies.find((c) => !c.ruine);
-garn.player.reputation[colGarn.faction] = 40;
+semerEstime(garn, colGarn.faction, 40);
 groupeActif(garn).regionId = colGarn.regionId;
 sEngager(garn, colGarn.faction, () => {});
 ok(!garnison(garn, colGarn.regionId), 'un affilié n’est logé nulle part');
@@ -1475,7 +1494,7 @@ section('9 ter ter. Ce qu’on a mérité ne s’évapore plus — du tout (MEMO
     if (st.world.factions[hote].dirigeant !== chef101) {
       st.world.factions[hote].dirigeant = chef101;
       st.player.chefs[hote] = chef101.id;
-      st.player.reputation[hote] = repAvantH101;
+      semerEstime(st, hote, repAvantH101);
     }
   }
   ok((st.player.reputation[hote] || 0) > depart - 3,
@@ -1511,7 +1530,7 @@ section('9 ter bis. Six drapeaux, six extras, une seule base');
     const g = groupeActif(st);
     const col = st.world.colonies.find((c) => c.faction === faction && !c.ruine);
     if (col) g.regionId = col.regionId;
-    st.player.reputation[faction] = 100;
+    semerEstime(st, faction, 100);
     sEngager(st, faction, () => {}, g);
     // On monte au grade voulu sans jouer trois cents heures pour ça.
     g.allegeance.points = RANGS[rang].points;
@@ -1541,7 +1560,7 @@ section('9 ter bis. Six drapeaux, six extras, une seule base');
         defenseMax: 0, contrats: [], notables: [], ruine: false,
       });
       // Zéro d'estime : sans le compte, la porte est fermée.
-      if (!avecDrapeau) st.player.reputation[hexa] = 0;
+      if (!avecDrapeau) semerEstime(st, hexa, 0);
       return { st, faction };
     };
     const sans = monter(false);
@@ -1564,7 +1583,7 @@ section('9 ter bis. Six drapeaux, six extras, une seule base');
       st.world.factions[riche].tresor = 9000;
       ouvrirBourse(st.world, riche, 0);
       tickBourses(st.world, 0);
-      st.player.reputation[riche] = 80;
+      semerEstime(st, riche, 80);
       st.base.fonde = true;
       st.base.regionId = groupeActif(st).regionId;
       st.base.batiments = { comptoir: 1, entrepot: 3 };
@@ -1631,7 +1650,7 @@ section('9 ter bis. Six drapeaux, six extras, une seule base');
       // On se fait détester de tout le monde, et l'on regarde qui vient.
       for (const k of DIPLO_FACTIONS) {
         if (FACTIONS[k].style === style) continue;
-        st.player.reputation[k] = -90;
+        semerEstime(st, k, -90);
       }
       let visites = 0;
       const log = (e) => { if (e.type === 'chasseurs') visites++; };
@@ -1875,7 +1894,7 @@ ok(estSurveillee(s9h, voisine.i), 'l’optique porte le regard d’une case');
 // Servir une faction, c'est recevoir ses rapports.
 const s9i = nouvellePartie(80808, { maintenant: 0, depart: 'ville', equipe: 3 });
 const colService = s9i.world.colonies.find((c) => c.regionId === groupeActif(s9i).regionId);
-s9i.player.reputation[colService.faction] = 60;
+semerEstime(s9i, colService.faction, 60);
 sEngager(s9i, colService.faction, () => {});
 groupeActif(s9i).allegeance.points = RANGS[1].points; // grade d'Agent
 const sienne = s9i.world.colonies.find(
@@ -2381,8 +2400,8 @@ const gB = detA.groupe;
 // Deux colonnes, deux engagements différents dans la même partie.
 const bourgUn = multi.world.colonies.find((c) => !c.ruine);
 const bourgDeux = multi.world.colonies.find((c) => !c.ruine && c.faction !== bourgUn.faction);
-multi.player.reputation[bourgUn.faction] = 40;
-multi.player.reputation[bourgDeux.faction] = 40;
+semerEstime(multi, bourgUn.faction, 40);
+semerEstime(multi, bourgDeux.faction, 40);
 gA.regionId = bourgUn.regionId;
 gB.regionId = bourgDeux.regionId;
 ok(sEngager(multi, bourgUn.faction, () => {}, gA).ok, 'la première entre au service');
@@ -2406,7 +2425,7 @@ const pol = nouvellePartie(9898, { maintenant: 0, depart: 'ville', equipe: 3 });
 const gPol = groupeActif(pol);
 const villePol = pol.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
 gPol.regionId = villePol.regionId;
-pol.player.reputation[villePol.faction] = 60;
+semerEstime(pol, villePol.faction, 60);
 sEngager(pol, villePol.faction, () => {}, gPol);
 const fPol = villePol.faction;
 
@@ -2585,7 +2604,7 @@ const sec = nouvellePartie(5151, { maintenant: 0, depart: 'ville', equipe: 3 });
 const gSec = groupeActif(sec);
 const villeSec = sec.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
 gSec.regionId = villeSec.regionId;
-sec.player.reputation[villeSec.faction] = 60;
+semerEstime(sec, villeSec.faction, 60);
 sEngager(sec, villeSec.faction, () => {}, gSec);
 
 ok(!gSec.allegeance.secteur, 'un affilié ne répond de rien');
@@ -2888,7 +2907,7 @@ const loi = nouvellePartie(8484, { maintenant: 0, depart: 'ville', equipe: 3 });
 const gLoi = groupeActif(loi);
 const villeLoi = loi.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
 gLoi.regionId = villeLoi.regionId;
-loi.player.reputation[villeLoi.faction] = 60;
+semerEstime(loi, villeLoi.faction, 60);
 sEngager(loi, villeLoi.faction, () => {}, gLoi);
 const fLoi = villeLoi.faction;
 
@@ -3021,7 +3040,7 @@ const regne = nouvellePartie(9494, { maintenant: 0, depart: 'ville', equipe: 3 }
 const gRegne = groupeActif(regne);
 const villeRegne = regne.world.colonies.find((c) => !c.ruine && c.faction !== 'essaim');
 gRegne.regionId = villeRegne.regionId;
-regne.player.reputation[villeRegne.faction] = 60;
+semerEstime(regne, villeRegne.faction, 60);
 sEngager(regne, villeRegne.faction, () => {}, gRegne);
 gRegne.allegeance.points = RANGS[4].points;
 const fRegne = villeRegne.faction;
@@ -3660,7 +3679,7 @@ function survitAuMonde(hostile, murs) {
   Object.assign(t.base.batiments, { mur: murs });
   t.base.pop = POP_RECONNUE + 6;
   reconnaitreAvantPoste(t, () => {});
-  if (hostile) for (const f of DIPLO_FACTIONS) t.player.reputation[f] = -45;
+  if (hostile) for (const f of DIPLO_FACTIONS) semerEstime(t, f, -45);
   for (let i = 0; i < 40 && t.base.fonde; i++) {
     for (const gg of groupes(t)) {
       gg.inventaire.rations = 200;
@@ -3682,7 +3701,7 @@ for (const gr of [4949, 5050, 5151, 5252, 5353, 5454, 5555, 5656, 5757, 5858, 59
   const t = campDeveloppe(gr);
   t.base.pop = POP_RECONNUE + 6;
   reconnaitreAvantPoste(t, () => {});
-  for (const f of DIPLO_FACTIONS) t.player.reputation[f] = -45;
+  for (const f of DIPLO_FACTIONS) semerEstime(t, f, -45);
   for (let i = 0; i < 40 && t.base.fonde; i++) {
     for (const gg of groupes(t)) {
       gg.inventaire.rations = 200;
@@ -3827,7 +3846,7 @@ ok(!peutRattacher(monBourg, patron).ok,
   'on ne se met pas sous la protection de gens qui ne vous connaissent pas',
   peutRattacher(monBourg, patron).motif);
 
-monBourg.player.reputation[patron] = 55;
+semerEstime(monBourg, patron, 55);
 ok(peutRattacher(monBourg, patron).ok, 'ceux qui vous estiment, si',
   peutRattacher(monBourg, patron).motif);
 ok(rattacherVille(monBourg, patron, () => {}).ok, 'la ville change de drapeau');
@@ -4707,12 +4726,12 @@ section('9 terdecies. Les régimes : ce qu’on a le droit de faire chez eux');
   // Ce qu'on peut posséder : le régime décide, plus un seuil en dur.
   lois.regime = 'commune';
   poser(sr, 9000);
-  sr.player.reputation[colR.faction] = 100;
+  semerEstime(sr, colR.faction, 100);
   ok(!peutAcheter(sr, colR).ok, 'on ne possède rien dans une Commune, même adoré',
     peutAcheter(sr, colR).motif);
   lois.regime = 'charte';
   ok(peutAcheter(sr, colR).ok, 'mais on achète sous une Charte quand on est connu');
-  sr.player.reputation[colR.faction] = 5;
+  semerEstime(sr, colR.faction, 5);
   ok(!peutAcheter(sr, colR).ok, 'et pas quand on ne l’est pas');
 
   // Ce que l'école coûte.
@@ -4794,19 +4813,19 @@ section('9 quaterdecies. Ce que l’estime change, et ce qu’une absence ne co�
 
   const se = nouvellePartie(4242, { maintenant: 0, depart: 'ville', equipe: 3 });
   const fe = DIPLO_FACTIONS[0];
-  se.player.reputation[fe] = 45;
+  semerEstime(se, fe, 45);
   const haut = effetsEstime(se, fe);
   ok(haut.acquis.length > 0 && haut.perdu.length === 0,
     'bien vu, on n’énumère que ce qui s’ouvre', haut.palier.nom);
   ok(haut.acquis.some((t) => /coffre/.test(t)),
     'et l’on y lit qu’on peut enfin posséder des murs');
-  se.player.reputation[fe] = -60;
+  semerEstime(se, fe, -60);
   const bas = effetsEstime(se, fe);
   ok(bas.perdu.some((t) => /prime/.test(t)),
     'mal vu, on lit d’abord qu’il y a une prime sur votre tête', bas.palier.nom);
   ok(bas.perdu.length === new Set(bas.perdu).size,
     'et jamais deux fois la même conséquence : les paliers se recouvrent');
-  se.player.reputation[fe] = 8;
+  semerEstime(se, fe, 8);
   const proche = effetsEstime(se, fe);
   ok(proche.suivant && proche.suivant.manque === REPUTATION_MINIMALE - 8,
     'on sait de combien on est loin du palier suivant',
@@ -4826,7 +4845,7 @@ section('9 quaterdecies. Ce que l’estime change, et ce qu’une absence ne co�
     const c0 = s0.world.colonies.find((c) => c.faction && !c.ruine);
     const drapeau = c0.faction;
     g0.regionId = c0.regionId;
-    s0.player.reputation[drapeau] = 40;
+    semerEstime(s0, drapeau, 40);
     sEngager(s0, drapeau, () => {}, g0);
     if (avecOrdre) {
       g0.allegeance.ordre = {
@@ -4887,7 +4906,7 @@ section('9 quindecies. Le rapport d’absence');
     const gr = groupeActif(sr);
     const colr = sr.world.colonies.find((c) => c.faction && !c.ruine);
     gr.regionId = colr.regionId;
-    sr.player.reputation[colr.faction] = 40;
+    semerEstime(sr, colr.faction, 40);
     sEngager(sr, colr.faction, () => {}, gr);
   }
   // De quoi tenir : le rattrapage s'arrête net si l'escouade meurt en route, et
@@ -5499,7 +5518,7 @@ section('9 quattuorvicies. Les ordres de mission aussi : le délai est l’excep
     const go = groupeActif(so);
     const colO = so.world.colonies.find((c) => c.faction && !c.ruine);
     go.regionId = colO.regionId;
-    so.player.reputation[colO.faction] = 60;
+    semerEstime(so, colO.faction, 60);
     sEngager(so, colO.faction, () => {}, go);
 
     for (let i = 0; i < 60; i++) {
@@ -5546,7 +5565,7 @@ section('9 quattuorvicies. Les ordres de mission aussi : le délai est l’excep
       const gp = groupeActif(sp);
       const cp = sp.world.colonies.find((c) => c.faction && !c.ruine);
       gp.regionId = cp.regionId;
-      sp.player.reputation[cp.faction] = 60;
+      semerEstime(sp, cp.faction, 60);
       sEngager(sp, cp.faction, () => {}, gp);
       const recus = [];
       const memoire = URGENCE_ORDRE.prime;
@@ -5593,11 +5612,11 @@ section('9 quinvicies. Se faire un nom coûte de moins en moins cher au début, 
   const colG = sg.world.colonies.find((c) => c.faction && !c.ruine);
   const faux = { faction: colG.faction, reputation: 10 };
 
-  sg.player.reputation[colG.faction] = 0;
+  semerEstime(sg, colG.faction, 0);
   const aZero = gainEstime(sg, faux);
-  sg.player.reputation[colG.faction] = 50;
+  semerEstime(sg, colG.faction, 50);
   const aCinquante = gainEstime(sg, faux);
-  sg.player.reputation[colG.faction] = 95;
+  semerEstime(sg, colG.faction, 95);
   const aQuatreVingtQuinze = gainEstime(sg, faux);
 
   ok(aZero === 10, 'inconnu, on touche le tarif plein', `${aZero}`);
@@ -5609,18 +5628,18 @@ section('9 quinvicies. Se faire un nom coûte de moins en moins cher au début, 
 
   // Le point de la manœuvre : on n'atteint pas cent en une poignée de contrats,
   // et l'on ne cesse jamais de progresser non plus.
-  sg.player.reputation[colG.faction] = 0;
+  semerEstime(sg, colG.faction, 0);
   let n = 0;
   while ((sg.player.reputation[colG.faction] || 0) < 100 && n < 500) {
-    sg.player.reputation[colG.faction] = Math.min(100,
-      sg.player.reputation[colG.faction] + gainEstime(sg, faux));
+    semerEstime(sg, colG.faction, Math.min(100,
+      sg.player.reputation[colG.faction] + gainEstime(sg, faux)));
     n += 1;
   }
   ok(n >= 20, 'saturer une faction demande une vraie carrière', `${n} contrats`);
   ok(n < 500, 'mais le sommet n’est pas hors d’atteinte', `${n} contrats`);
 
   // Et l'on ne rachète pas une haine plus vite qu'on ne bâtit une estime.
-  sg.player.reputation[colG.faction] = -80;
+  semerEstime(sg, colG.faction, -80);
   ok(gainEstime(sg, faux) <= 10,
     'un contrat ne vaut jamais plus que son tarif, même chez ceux qui vous détestent',
     `${gainEstime(sg, faux)}`);
@@ -6022,7 +6041,7 @@ section('9 quinvicies decies. L’intendance dit son plafond');
   const gi = groupeActif(si);
   const coli = si.world.colonies.find((c) => c.faction && !c.ruine);
   gi.regionId = coli.regionId;
-  si.player.reputation[coli.faction] = 60;
+  semerEstime(si, coli.faction, 60);
   sEngager(si, coli.faction, () => {}, gi);
   gi.allegeance.intendance = si.temps;
 
@@ -6565,11 +6584,11 @@ section('9 sexvicies quater. Le comptoir : traiter sans bouger de chez soi');
   // --- Les deux portes.
   {
     const { st, riche } = monteComptoir(2024);
-    st.player.reputation[riche] = 0;
+    semerEstime(st, riche, 0);
     ok(!peutTraiter(st).ok, 'sans couleurs ni estime, aucun réseau ne traite',
       peutTraiter(st).motif);
 
-    st.player.reputation[riche] = ESTIME_COMPTOIR;
+    semerEstime(st, riche, ESTIME_COMPTOIR);
     const ouvert = peutTraiter(st);
     ok(ouvert.ok, `${ESTIME_COMPTOIR} d’estime suffisent, sans porter leurs couleurs`,
       ouvert.motif || '');
@@ -6579,7 +6598,7 @@ section('9 sexvicies quater. Le comptoir : traiter sans bouger de chez soi');
 
     // L'autre porte : la place du joueur porte leur drapeau.
     const { st: st2, riche: r2 } = monteComptoir(2024);
-    st2.player.reputation[r2] = 0;
+    semerEstime(st2, r2, 0);
     st2.world.colonies.find((c) => c.id === st2.base.colonieId).faction = r2;
     const sien = peutTraiter(st2);
     ok(sien.ok && sien.comptoir.sien, 'porter leurs couleurs ouvre la même porte, moins cher',
@@ -6596,7 +6615,7 @@ section('9 sexvicies quater. Le comptoir : traiter sans bouger de chez soi');
     const { st, riche } = monteComptoir(2024);
     st.base.pop = 0;
     st.base.colonieId = null;
-    st.player.reputation[riche] = ESTIME_COMPTOIR;
+    semerEstime(st, riche, ESTIME_COMPTOIR);
     const v = peutTraiter(st);
     ok(v.ok, 'un camp neuf et vide traite dès qu’il a son comptoir', v.motif || '');
     const r = passerOrdre(st, 'vente', 'ferraille', 100, 'aucune', new Rng(3), () => {}, null);
@@ -6618,7 +6637,7 @@ section('9 sexvicies quater. Le comptoir : traiter sans bouger de chez soi');
   // --- Le bâtiment est la condition, pas la recherche seule.
   {
     const { st, riche } = monteComptoir(2024);
-    st.player.reputation[riche] = 80;
+    semerEstime(st, riche, 80);
     st.base.batiments = { entrepot: 3 };
     ok(!peutTraiter(st).ok, 'sans le bâtiment, rien ne se traite', peutTraiter(st).motif);
   }
@@ -6626,7 +6645,7 @@ section('9 sexvicies quater. Le comptoir : traiter sans bouger de chez soi');
   // --- Le devis, avant de cliquer.
   {
     const { st, riche } = monteComptoir(2024);
-    st.player.reputation[riche] = 80;
+    semerEstime(st, riche, 80);
     const d = chiffrerOrdre(st, 'achat', 'rations', 100);
     ok(d.ok && d.qte === 100 && d.brut > 0 && d.frais > 0,
       'un ordre se chiffre avant d’être passé',
@@ -6647,7 +6666,7 @@ section('9 sexvicies quater. Le comptoir : traiter sans bouger de chez soi');
   // --- L'achat : débité maintenant, livré à l'arrivée.
   {
     const { st, riche } = monteComptoir(2024);
-    st.player.reputation[riche] = 80;
+    semerEstime(st, riche, 80);
     const avantCr = soldeIci(st);
     const avantStock = st.base.stock.rations;
     const rng = new Rng(9);
@@ -6671,7 +6690,7 @@ section('9 sexvicies quater. Le comptoir : traiter sans bouger de chez soi');
   // --- La vente : sortie maintenant, payée à l'arrivée.
   {
     const { st, riche } = monteComptoir(2024);
-    st.player.reputation[riche] = 80;
+    semerEstime(st, riche, 80);
     const avantCr = soldeIci(st);
     const rng = new Rng(9);
     const r = passerOrdre(st, 'vente', 'ferraille', 100, 'aucune', rng, () => {}, null);
@@ -6691,7 +6710,7 @@ section('9 sexvicies quater. Le comptoir : traiter sans bouger de chez soi');
   //     téléporteur, et c'est donc ce qu'il faut vérifier le plus.
   {
     const { st, riche } = monteComptoir(2024);
-    st.player.reputation[riche] = 80;
+    semerEstime(st, riche, 80);
     const rng = new Rng(9);
     passerOrdre(st, 'vente', 'ferraille', 100, 'aucune', rng, () => {}, null);
     const avantCr = soldeIci(st);
@@ -6717,7 +6736,7 @@ section('9 sexvicies quater. Le comptoir : traiter sans bouger de chez soi');
       let vivants = 0;
       for (let n = 0; n < 24; n++) {
         const { st, riche } = monteComptoir(2024);
-        st.player.reputation[riche] = 80;
+        semerEstime(st, riche, 80);
         const rng = new Rng(100 + n);
         passerOrdre(st, 'vente', 'ferraille', 100, 'aucune', rng, () => {}, null);
         const car = ordresEnCours(st)[0];
@@ -9127,7 +9146,7 @@ section('E3 bis. Le bureau de change s’ouvre, il n’est pas partout');
   // La prérogative. C'est un Capitaine, et ça coûte au trésor.
   const gB = groupeActif(sB);
   gB.regionId = sans.regionId;
-  sB.player.reputation[sans.faction] = 60;
+  semerEstime(sB, sans.faction, 60);
   sEngager(sB, sans.faction, () => {}, gB);
   gB.allegeance.points = RANGS[2].points; // Lieutenant
   ok(!peutExercer(sB, sans.faction, 'change').ok,
@@ -9174,7 +9193,7 @@ section('E4. Les prérogatives monétaires');
   const gP = groupeActif(sP);
   const vP = sP.world.colonies.find((c) => !c.ruine && c.faction && c.faction !== 'essaim');
   gP.regionId = vP.regionId;
-  sP.player.reputation[vP.faction] = 60;
+  semerEstime(sP, vP.faction, 60);
   sEngager(sP, vP.faction, () => {}, gP);
   const fP = vP.faction;
 
@@ -9286,7 +9305,7 @@ section('E4 bis. Le Maréchal, et les deux prérogatives qui l’attendaient');
   const gM = groupeActif(sM);
   const vM = sM.world.colonies.find((c) => !c.ruine && c.faction && c.faction !== 'essaim');
   gM.regionId = vM.regionId;
-  sM.player.reputation[vM.faction] = 60;
+  semerEstime(sM, vM.faction, 60);
   sEngager(sM, vM.faction, () => {}, gM);
   const fM = vM.faction;
 
@@ -12071,7 +12090,7 @@ section('P octies. Le prisme du propriétaire — la revue complète (S2, S3, S4
       const A = cand[0];
       s.world.guerres = s.world.guerres.filter((x) => x.a !== A && x.b !== A);
       g.allegeance = { faction: A, points: 100, derniereSolde: 0, intendance: 0 };
-      s.player.reputation[A] = 40;
+      semerEstime(s, A, 40);
       return { s, g, A };
     };
     const { quitter } = await import('../src/allegeance.js');
@@ -12177,8 +12196,8 @@ section('MEM 2. La mémoire — L2, le registre des faits, une seule porte (MEMO
       (k) => k !== 'essaim' && s.world.factions[k].colonies.length);
     const B = Object.keys(s.world.factions).find(
       (k) => k !== 'essaim' && k !== A && s.world.factions[k].colonies.length);
-    s.player.reputation[A] = 0;
-    s.player.reputation[B] = 0;
+    semerEstime(s, A, 0);
+    semerEstime(s, B, 0);
     // 1) Un fait su sur-le-champ s'applique sur-le-champ ; un fait en route
     //    n'a d'effet qu'à l'arrivée.
     faits.commettre(s, {
@@ -12191,7 +12210,10 @@ section('MEM 2. La mémoire — L2, le registre des faits, une seule porte (MEMO
     ok((s.player.reputation[A] || 0) === -10 && (s.player.reputation[B] || 0) === 0,
       'l’intéressé sur place sait tout de suite ; l’autre n’a encore rien appris',
       `${s.player.reputation[A]} / ${s.player.reputation[B]}`);
-    ok((s.player.faits || []).length === 1, 'et le fait est au registre');
+    // Le registre porte aussi le fait fondateur (L5) et les graines du décor :
+    // on compte les actes, pas le passé.
+    ok((s.player.faits || []).filter((x) => x.type !== 'passe').length === 1,
+      'et le fait est au registre');
     // 2) La nouvelle arrive à son heure, pas avant — et elle se dit.
     for (let i = 0; i < 23; i++) tick(s);
     ok((s.player.reputation[B] || 0) === 0, 'une heure avant l’arrivée : toujours rien');
@@ -12253,8 +12275,8 @@ section('MEM 3. La mémoire — L3, les cinq omniscients passent au registre (ME
       (k) => k !== 'essaim' && k !== A && s.world.factions[k].colonies.length);
     s.world.guerres = s.world.guerres.filter((x) => x.a !== A && x.b !== A);
     declarerGuerre(s.world, A, B, s.temps, rien);
-    s.player.reputation[A] = 60;
-    s.player.reputation[B] = 0;
+    semerEstime(s, A, 60);
+    semerEstime(s, B, 0);
     sEngager(s, A, rien);
     ok((s.player.reputation[B] || 0) === 0,
       's’engager ne se sait pas chez l’ennemi à la signature — la nouvelle doit marcher');
@@ -12288,7 +12310,7 @@ section('MEM 3. La mémoire — L3, les cinq omniscients passent au registre (ME
   {
     const { s, g, car } = monterCar(743);
     const F = car.faction;
-    s.player.reputation[F] = 0;
+    semerEstime(s, F, 0);
     const faux = () => ({ vainqueur: 'A', survivantsB: 2, journal: [] });
     const r = attaquerCaravane(s, car, new Rng(1), rien, faux, genererBande, g);
     ok(r.ok && r.gagne && (s.player.reputation[F] || 0) === 0,
@@ -12305,7 +12327,7 @@ section('MEM 3. La mémoire — L3, les cinq omniscients passent au registre (ME
   {
     const { s, g, car, arr, vide } = monterCar(747);
     const F = car.faction;
-    s.player.reputation[F] = 0;
+    semerEstime(s, F, 0);
     const opinionAvant = (arr.notables[0] || {}).opinion || 0;
     const dangerAvant = s.world.regions[vide.i].danger || 0;
     const faux = () => ({ vainqueur: 'A', survivantsB: 0, journal: [] });
@@ -12343,7 +12365,7 @@ section('MEM 3. La mémoire — L3, les cinq omniscients passent au registre (ME
       (k) => k !== 'essaim' && s.world.factions[k].colonies.length);
     col.faction = F;
     s.world.factions[F].colonies.push(col.id);
-    s.player.reputation[F] = 20;
+    semerEstime(s, F, 20);
     const r = declarerIndependance(s, rien);
     ok(r.ok && (s.player.reputation[F] || 0) === 20,
       'le drapeau décroché, le protecteur ne le sait pas encore — même une proclamation voyage');
@@ -12369,7 +12391,7 @@ section('MEM 4. La mémoire — L4, l’oubli a des visages (MEMOIRE.md)');
     const s = nouvellePartie(761, { maintenant: 0, depart: 'ville', equipe: 3 });
     const B = Object.keys(s.world.factions).find(
       (k) => k !== 'essaim' && s.world.factions[k].colonies.length && dirigeant(s.world, k));
-    s.player.reputation[B] = -40;
+    semerEstime(s, B, -40);
     // Règne épinglé : on mesure l'absence d'oubli au chronomètre, pas une
     // succession qui aurait le droit, elle, de bouger la rancune.
     const chef761 = s.world.factions[B].dirigeant;
@@ -12385,7 +12407,7 @@ section('MEM 4. La mémoire — L4, l’oubli a des visages (MEMOIRE.md)');
         // on restaure le chef, le guetteur, ET la valeur.
         s.world.factions[B].dirigeant = chef761;
         s.player.chefs[B] = chef761.id;
-        s.player.reputation[B] = repAvantH;
+        semerEstime(s, B, repAvantH);
       }
     }
     ok(Math.abs((s.player.reputation[B] || 0) + 40) < 1,
@@ -12401,8 +12423,8 @@ section('MEM 4. La mémoire — L4, l’oubli a des visages (MEMOIRE.md)');
     const A = cand[0];
     const B = cand[1];
     tick(s); // le guetteur note les chefs du jour
-    s.player.reputation[A] = -40;
-    s.player.reputation[B] = 40;
+    semerEstime(s, A, -40);
+    semerEstime(s, B, 40);
     const succ = (k) => {
       const neuf = creerDirigeant(new Rng(29), k, s.temps, undefined, s.world);
       neuf.temperament = 'rancunier';
@@ -12426,7 +12448,7 @@ section('MEM 4. La mémoire — L4, l’oubli a des visages (MEMOIRE.md)');
     const A = Object.keys(s.world.factions).find(
       (k) => k !== 'essaim' && s.world.factions[k].colonies.length && dirigeant(s.world, k));
     tick(s);
-    s.player.reputation[A] = -40;
+    semerEstime(s, A, -40);
     const neuf = creerDirigeant(new Rng(31), A, s.temps, undefined, s.world);
     neuf.temperament = 'conciliateur';
     s.world.factions[A].dirigeant = neuf;
@@ -12454,7 +12476,7 @@ section('MEM 5. La mémoire — L5a, l’assiette : les actes deviennent des fai
       && s.world.factions[k].colonies.length && dirigeant(s.world, k))[0];
     s.world.guerres = s.world.guerres.filter((x) => x.a !== A && x.b !== A);
     g.allegeance = { faction: A, points: 100, derniereSolde: 0, intendance: 0 };
-    s.player.reputation[A] = 40;
+    semerEstime(s, A, 40);
     const { quitter } = await import('../src/allegeance.js');
     quitter(s, rien, g);
     ok((s.player.reputation[A] || 0) === 30,
@@ -12552,6 +12574,160 @@ section('MEM 5. La mémoire — L5a, l’assiette : les actes deviennent des fai
       && Math.abs((s.player.reputation[B] || 0) - avantB + faits5.FLEUVE.plafond) < 1e-9,
       'la borne vaut dans les deux sens — la rancune d’intendance aussi est un fleuve',
       flB ? `delta ${flB.effets[0].delta}, rep ${avantB} → ${s.player.reputation[B]}` : 'aucun fleuve');
+  }
+}
+
+section('MEM 6. La mémoire — L5b, l’agrégat matérialisé et la succession qui repèse (MEMOIRE.md)');
+{
+  const faits6 = await import('../src/faits.js');
+
+  // 1) Le fait fondateur : l'accueil du départ est porté par le registre, et
+  //    la matérialisation le reproduit exactement — le passé est réputé su.
+  {
+    const s = nouvellePartie(781, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const hote = Object.keys(s.player.reputation).find((k) => s.player.reputation[k]);
+    const fond = (s.player.faits || []).find((x) => x.type === 'passe');
+    ok(!!hote && !!fond && (fond.effets || []).some((e) => e.faction === hote
+      && e.delta === s.player.reputation[hote] && e.applique),
+      'l’accueil du départ est un fait fondateur du registre',
+      fond ? JSON.stringify(fond.effets) : 'aucun fait « passe »');
+    const avant = s.player.reputation[hote];
+    faits6.materialiser(s, hote);
+    ok(s.player.reputation[hote] === avant,
+      'et la vue matérialisée le reproduit à l’identique', `${avant} → ${s.player.reputation[hote]}`);
+  }
+
+  // 2) L'écriture directe est morte : un chiffre posé sans fait derrière ne
+  //    survit pas à la première matérialisation.
+  {
+    const s = nouvellePartie(783, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const A = Object.keys(s.world.factions).find((k) => k !== 'essaim'
+      && s.world.factions[k].colonies.length && !s.player.reputation[k]);
+    s.player.reputation[A] = 77; // à la main, exprès : pas de fait derrière
+    faits6.materialiser(s, A);
+    ok((s.player.reputation[A] || 0) === 0,
+      'un chiffre posé sans fait ne survit pas à la matérialisation — le registre est la vérité',
+      `77 → ${s.player.reputation[A]}`);
+  }
+
+  // 3) Le clamp vit à la lecture, plus à l'écriture : la haine ne se solde
+  //    pas à l'unité près. À −300 de faits, un rachat de +50 ne bouge rien —
+  //    il en faut davantage pour repasser au-dessus de −100.
+  {
+    const s = nouvellePartie(785, { maintenant: 100, depart: 'ville', equipe: 3 });
+    const A = Object.keys(s.world.factions).find((k) => k !== 'essaim'
+      && s.world.factions[k].colonies.length && !s.player.reputation[k]);
+    for (let i = 0; i < 5; i++) {
+      faits6.commettre(s, {
+        type: 'essai', t: s.temps,
+        effets: [{ faction: A, delta: -60, su: s.temps }],
+      });
+    }
+    ok((s.player.reputation[A] || 0) === -100,
+      'cinq pillages à −60 : la vue est au plancher', `${s.player.reputation[A]}`);
+    faits6.commettre(s, {
+      type: 'essai', t: s.temps, effets: [{ faction: A, delta: 50, su: s.temps }],
+    });
+    ok((s.player.reputation[A] || 0) === -100,
+      'un rachat de +50 ne refait pas surface : la mémoire pèse −300, pas −100',
+      `${s.player.reputation[A]}`);
+    faits6.commettre(s, {
+      type: 'essai', t: s.temps, effets: [{ faction: A, delta: 160, su: s.temps }],
+    });
+    ok((s.player.reputation[A] || 0) === -90,
+      'il faut solder la mémoire entière pour remonter — +160 de plus, et la vue suit',
+      `${s.player.reputation[A]}`);
+  }
+
+  // 4) L'éviction emporte sa contribution : un fait poussé dehors ne laisse
+  //    pas de fantôme dans l'agrégat.
+  {
+    const s = nouvellePartie(787, { maintenant: 100, depart: 'ville', equipe: 3 });
+    const ks = Object.keys(s.world.factions).filter((k) => k !== 'essaim'
+      && s.world.factions[k].colonies.length && !s.player.reputation[k]);
+    const [A, B] = [ks[0], ks[1]];
+    for (let i = 0; i < faits6.FAITS_MAX; i++) {
+      faits6.commettre(s, {
+        type: 'essai', t: s.temps, effets: [{ faction: A, delta: 1, su: s.temps }],
+      });
+    }
+    ok((s.player.reputation[A] || 0) === faits6.FAITS_MAX,
+      'soixante faits d’un point : la vue les somme tous', `${s.player.reputation[A]}`);
+    for (let i = 0; i < 10; i++) {
+      faits6.commettre(s, {
+        type: 'essai', t: s.temps, effets: [{ faction: B, delta: 0.5, su: s.temps }],
+      });
+    }
+    ok((s.player.reputation[A] || 0) === faits6.FAITS_MAX - 10,
+      'dix faits neufs poussent les dix plus vieux dehors — et leur contribution part avec eux',
+      `${s.player.reputation[A]}`);
+  }
+
+  // 5) La succession repèse les faits, elle ne multiplie plus le chiffre :
+  //    sur une mémoire mixte (+30 d'estime, −20 de griefs, solde +10), un
+  //    rancunier rend −5 — il garde les griefs entiers même quand le solde
+  //    vous était favorable. L'ancien multiplicateur aurait rendu +5.
+  {
+    const s = nouvellePartie(789, { maintenant: 24 * 40 + 1, depart: 'ville', equipe: 3 });
+    const A = Object.keys(s.world.factions).find((k) => k !== 'essaim'
+      && s.world.factions[k].colonies.length && dirigeant(s.world, k)
+      && !s.player.reputation[k]);
+    tick(s); // le guetteur se cale
+    faits6.commettre(s, {
+      type: 'contrat', t: s.temps, effets: [{ faction: A, delta: 30, su: s.temps }],
+    });
+    faits6.commettre(s, {
+      type: 'vol', t: s.temps, effets: [{ faction: A, delta: -20, su: s.temps }],
+    });
+    ok((s.player.reputation[A] || 0) === 10,
+      'trente d’estime, vingt de griefs : le solde vous est favorable', `${s.player.reputation[A]}`);
+    const neuf = creerDirigeant(new Rng(33), A, s.temps, undefined, s.world);
+    neuf.temperament = 'rancunier';
+    neuf.age = 30;
+    neuf.legitimite = 95;
+    s.world.factions[A].dirigeant = neuf;
+    tick(s);
+    ok(Math.abs((s.player.reputation[A] || 0) - (-5)) < 0.75,
+      'le rancunier repèse les FAITS : estime à moitié, griefs entiers — le solde s’inverse',
+      `+10 → ${s.player.reputation[A]} (attendu −5 ; l’ancien multiplicateur aurait dit +5)`);
+  }
+
+  // 6) Une nouvelle encore en route arrive au successeur à plein poids : il
+  //    apprend un fait, il n'hérite pas d'une rancune — la repesée ne touche
+  //    que ce qui était déjà su.
+  {
+    const s = nouvellePartie(791, { maintenant: 24 * 40 + 1, depart: 'ville', equipe: 3 });
+    const A = Object.keys(s.world.factions).find((k) => k !== 'essaim'
+      && s.world.factions[k].colonies.length && dirigeant(s.world, k)
+      && !s.player.reputation[k]);
+    tick(s);
+    faits6.commettre(s, {
+      type: 'vol', t: s.temps, effets: [{ faction: A, delta: -20, su: s.temps + 48 }],
+    });
+    const neuf = creerDirigeant(new Rng(35), A, s.temps, undefined, s.world);
+    neuf.temperament = 'conciliateur';
+    s.world.factions[A].dirigeant = neuf;
+    tick(s);
+    ok((s.player.reputation[A] || 0) === 0,
+      'le conciliateur prend la maison : la nouvelle n’est pas arrivée, rien à repeser',
+      `${s.player.reputation[A]}`);
+    // Règne épinglé le temps que la rumeur arrive : on mesure le poids de la
+    // nouvelle, pas une deuxième succession.
+    const chef791 = s.world.factions[A].dirigeant;
+    for (let i = 0; i < 60; i++) {
+      chef791.age = 30;
+      chef791.legitimite = 95;
+      const repAvantH = s.player.reputation[A] || 0;
+      tick(s);
+      if (s.world.factions[A].dirigeant !== chef791) {
+        s.world.factions[A].dirigeant = chef791;
+        s.player.chefs[A] = chef791.id;
+        semerEstime(s, A, repAvantH);
+      }
+    }
+    ok((s.player.reputation[A] || 0) === -20,
+      'la rumeur arrive : plein poids, même chez un conciliateur — il apprend, il n’hérite pas',
+      `${s.player.reputation[A]}`);
   }
 }
 

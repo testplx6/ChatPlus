@@ -1,5 +1,5 @@
 import { gagner, signeIci } from './monnaie.js';
-import { appliquerReputation, commettre, delaiVersFaction } from './faits.js';
+import { commettre, delaiVersFaction } from './faits.js';
 // Ce qu'on fait de ses morts.
 //
 // `justice.js` demande ce qu'on fait des gens qu'on n'a pas tués. Voici la

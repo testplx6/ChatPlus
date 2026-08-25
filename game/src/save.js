@@ -165,6 +165,31 @@ export function normaliser(state) {
   // L4 : le guetteur des successions — vide, il se pose au premier tick sans
   // déclencher d'héritage (on ne relit pas un passé qu'on n'a pas vu).
   if (!state.player.chefs) state.player.chefs = {};
+  // L5 : le guetteur des conseils (l'oubli tombe au conseil du porteur) —
+  // même patron que `chefs` : vide, il se cale sans rien déclencher.
+  if (!state.player.conseilsVus) state.player.conseilsVus = {};
+  // L5 : le scalaire est devenu une vue du registre. Pour une partie d'avant,
+  // le passé est réputé su — UN fait fondateur porte ce que chaque maison
+  // pensait déjà de vous et que les faits du registre n'expliquent pas, sinon
+  // la première matérialisation effacerait l'histoire.
+  if (!state.player.faitsFondes) {
+    state.player.faitsFondes = true;
+    const somme = {};
+    for (const f of state.player.faits) {
+      for (const e of f.effets || []) {
+        if (e.applique && !e.oublie && e.faction && e.delta !== undefined) {
+          somme[e.faction] = (somme[e.faction] || 0)
+            + e.delta * (e.poids === undefined ? 1 : e.poids);
+        }
+      }
+    }
+    const passe = [];
+    for (const k of Object.keys(state.player.reputation || {})) {
+      const manque = (state.player.reputation[k] || 0) - (somme[k] || 0);
+      if (manque) passe.push({ faction: k, delta: manque, su: 0, applique: true, poids: 1 });
+    }
+    if (passe.length) state.player.faits.unshift({ type: 'passe', t: 0, effets: passe });
+  }
   if (!state.player.rachatsFaits) {
     state.player.rachatsFaits = [];
     for (let i = 0; i < Math.min(5, state.player.rachats || 0); i++) {

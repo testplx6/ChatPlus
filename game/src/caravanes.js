@@ -4,7 +4,7 @@
 // donne au joueur autre chose à faire que ramasser des cailloux.
 
 import { COMMODITIES, COMMODITY_KEYS, FACTIONS, drapeauDe } from './data.js';
-import { appliquerReputation, commettre, delaiVersFaction, CANAUX } from './faits.js';
+import { commettre, delaiVersFaction, CANAUX } from './faits.js';
 import { Rng, grainDe } from './rng.js';
 import { chemin, colonieParId, colonieDe, nomRegion, distance, damer } from './world.js';
 import {

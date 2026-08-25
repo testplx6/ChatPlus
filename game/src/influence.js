@@ -38,7 +38,7 @@ import {
 } from './bourse.js';
 import { depenser, emettre, retirerMonnaie, coursMonnaie } from './monnaie.js';
 import { racheterCreance } from './credit.js';
-import { appliquerReputation } from './faits.js';
+import { repeserPorteur, MEMOIRE_TEMPERAMENT } from './faits.js';
 
 /**
  * Ce que chaque charge permet. `rang` est l'indice minimal dans RANGS.
@@ -373,27 +373,18 @@ export const COURONNE_MODES = {
 };
 
 /**
- * L4 (MEMOIRE.md) — ce qu'un successeur fait des comptes que son prédécesseur
- * tenait sur VOUS. Part gardée de l'estime et de la rancune, par tempérament :
- * un rancunier n'oublie rien mais ne vous doit rien ; un conciliateur passe
- * l'éponge sur les vieilles histoires. C'est le seul « oubli » du jeu — porté
- * par un visage, daté par une mort. Calibrable, objet mutable.
+ * L4→L5 (MEMOIRE.md) — la table est devenue la mémoire par tempérament, et
+ * elle vit à la porte des faits : le successeur ne multiplie plus un chiffre,
+ * il repèse les faits du registre selon SON caractère. L'ancien nom reste —
+ * c'est la même table, une colonne de patience en plus.
  */
-export const HERITAGE_COUR = {
-  rancunier: { estime: 0.5, rancune: 1 },
-  conciliateur: { estime: 1, rancune: 0.25 },
-  methodique: { estime: 0.9, rancune: 0.9 },
-  conquerant: { estime: 0.6, rancune: 0.8 },
-  rapace: { estime: 0.6, rancune: 0.6 },
-  prudent: { estime: 0.8, rancune: 0.7 },
-  batisseur: { estime: 0.8, rancune: 0.5 },
-};
+export const HERITAGE_COUR = MEMOIRE_TEMPERAMENT;
 
 export function tickCour(state, log) {
-  // L4 — l'oubli a des visages : à chaque succession, PARTOUT (pas seulement
-  // chez ceux qu'on sert), le successeur hérite d'une part de ce que son
-  // prédécesseur pensait de vous, selon SON tempérament. C'est LEUR mémoire
-  // qui vit sa vie — elle bouge que vous le sachiez ou non.
+  // L4/L5 — l'oubli a des visages : à chaque succession, PARTOUT (pas
+  // seulement chez ceux qu'on sert), le successeur repèse les faits que la
+  // maison tient sur vous, selon SON tempérament (repeserPorteur, faits.js).
+  // C'est LEUR mémoire qui vit sa vie — elle bouge que vous le sachiez ou non.
   if (!state.player.chefs) state.player.chefs = {};
   for (const k of Object.keys(state.world.factions)) {
     if (k === 'essaim') continue;
@@ -403,16 +394,11 @@ export function tickCour(state, log) {
     if (connu === undefined || connu === null) { state.player.chefs[k] = dk.id; continue; }
     if (connu === dk.id) continue;
     state.player.chefs[k] = dk.id;
-    const rep = state.player.reputation[k] || 0;
-    if (rep === 0) continue;
-    const h = HERITAGE_COUR[dk.temperament] || { estime: 0.8, rancune: 0.8 };
-    const part = rep > 0 ? h.estime : h.rancune;
-    const delta = rep * part - rep;
+    const delta = repeserPorteur(state, k, dk.temperament);
     if (Math.abs(delta) < 0.5) continue;
-    appliquerReputation(state, k, delta);
     log({
       type: 'rumeur',
-      texte: rep > 0
+      texte: delta < 0
         ? `${dk.titre} ${dk.nom} reprend ${drapeauDe(state.world, k).nom} : ce qu'on vous devait `
           + `ne se transmet qu'en partie — votre nom y pèse un peu moins.`
         : `${dk.titre} ${dk.nom} reprend ${drapeauDe(state.world, k).nom} : une part des vieilles `

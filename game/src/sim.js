@@ -304,8 +304,18 @@ export function nouvellePartie(seed, opts = {}) {
       // prix monte à chaque fois (SIEGE.md, S3).
       rachats: 0,
       rachatsFaits: [],
-      faits: [],
+      // L5 : le scalaire est une vue du registre — l'accueil du départ est
+      // donc un fait, le fait fondateur, sinon la première matérialisation
+      // effacerait ce qu'on pense déjà de vous. « Le passé est réputé su. »
+      faits: Object.keys(reputation).some((k) => reputation[k])
+        ? [{
+          type: 'passe', t: 0,
+          effets: Object.keys(reputation).filter((k) => reputation[k])
+            .map((k) => ({ faction: k, delta: reputation[k], su: 0, applique: true, poids: 1 })),
+        }] : [],
+      faitsFondes: true,
       chefs: {},
+      conseilsVus: {},
     },
     base: creerBase(),
     journal: [],

@@ -7,13 +7,13 @@
 // le moteur n'écrit `state.player.reputation` : c'est la garantie (tenue par
 // un test statique) que les chemins muets ne reviendront pas.
 //
-// Deux portes, un seul module :
-// - `commettre` : les ACTES — discrets, enregistrés, différables. C'est la
-//   matière que L5 distribuera aux porteurs nommés (« la mémoire appartient
-//   au souvenant »).
-// - `appliquerReputation` : l'écriture brute, clampée — pour l'ambiant qui
-//   n'est pas un acte (la patrouille qui rassure au fil des heures, l'érosion
-//   tant qu'elle vit — elle meurt à L4). Elle n'enregistre rien.
+// Une seule porte : `commettre` — les ACTES, discrets, enregistrés,
+// différables ; le filet continu y passe en fait-fleuve. Depuis L5,
+// l'écriture brute n'existe plus du tout : le scalaire `reputation[k]` est
+// une VUE — « ce que le porteur de la maison k sait et retient » — sommée
+// depuis le registre par `materialiser`, repesée aux successions par
+// `repeserPorteur`, classée aux conseils par l'oubli. La mémoire appartient
+// au souvenant.
 
 import { drapeauDe } from './data.js';
 import { distance, colonieParId } from './world.js';
@@ -86,13 +86,84 @@ export function delaiVersFaction(state, canal, deRegionId, faction) {
  */
 export const FAITS_MAX = 60;
 
-/** L'écriture brute, clampée, sans registre. Garde-fou : les pillards et
- * l'Essaim ne sont pas des institutions — pas de clé fantôme. */
-export function appliquerReputation(state, faction, delta) {
-  if (!faction || faction === 'essaim' || faction === 'bandits'
-    || !drapeauDe(state.world, faction)) return;
-  const r = state.player.reputation;
-  r[faction] = Math.max(-100, Math.min(100, (r[faction] || 0) + delta));
+/**
+ * La table de mémoire par tempérament (L5, décision n°3) : qui garde quoi,
+ * et combien de temps. `estime`/`rancune` : la part d'un fait que le
+ * successeur retient en repesant l'héritage — le rancunier garde les griefs
+ * entiers, le conciliateur passe l'éponge. `patience` : les heures au bout
+ * desquelles, à SON conseil, le porteur classe un vieux grief — proportionnée
+ * à la gravité du fait (voir OUBLI.parPoint). Le rancunier n'oublie jamais :
+ * un grand fini, parce que `JSON.stringify(Infinity)` écrit `null` (le
+ * précédent est documenté sur `coursMax`, monnaie.js). AUCUNE constante
+ * universelle : c'est le caractère de l'agent qui décide, comme `guerre: 1.6`
+ * est le caractère d'un conquérant. Calibrable — objet mutable.
+ */
+export const MEMOIRE_TEMPERAMENT = {
+  rancunier: { estime: 0.5, rancune: 1, patience: 1e9 },
+  conciliateur: { estime: 1, rancune: 0.25, patience: 700 },
+  methodique: { estime: 0.9, rancune: 0.9, patience: 2800 },
+  conquerant: { estime: 0.6, rancune: 0.8, patience: 2100 },
+  rapace: { estime: 0.6, rancune: 0.6, patience: 1400 },
+  prudent: { estime: 0.8, rancune: 0.7, patience: 2100 },
+  batisseur: { estime: 0.8, rancune: 0.5, patience: 1400 },
+};
+
+/** L'échelle de l'oubli : des heures de patience par point de gravité.
+ * Une insulte à −3 se classe sept fois plus vite qu'un pillage à −22. */
+export const OUBLI = { parPoint: 3 };
+
+/** Le garde-fou de la porte : les pillards et l'Essaim ne sont pas des
+ * institutions — pas de clé fantôme. */
+function institution(state, faction) {
+  return !!faction && faction !== 'essaim' && faction !== 'bandits'
+    && !!drapeauDe(state.world, faction);
+}
+
+/**
+ * Matérialiser ce qu'une maison pense de vous : la somme de ce que son
+ * porteur sait et retient — les effets appliqués du registre, chacun à son
+ * poids — clampée à ±100 À LA LECTURE, pas à l'écriture. Un joueur à −300 de
+ * faits cumulés qui rachète +50 ne bouge pas de −100 : la haine ne se solde
+ * pas à l'unité près. Le scalaire n'est plus une vérité qu'on édite : c'est
+ * une vue, recalculée à quatre occasions (arrivée d'un effet, succession,
+ * oubli, éviction) — jamais par balayage horaire.
+ */
+export function materialiser(state, faction) {
+  if (!institution(state, faction)) return;
+  let somme = 0;
+  for (const f of state.player.faits || []) {
+    for (const e of f.effets || []) {
+      if (!e.applique || e.oublie || e.faction !== faction || e.delta === undefined) continue;
+      somme += e.delta * (e.poids === undefined ? 1 : e.poids);
+    }
+  }
+  state.player.reputation[faction] = Math.max(-100, Math.min(100, somme));
+}
+
+/**
+ * La succession repèse les faits, elle ne multiplie plus un chiffre (L5,
+ * remplace le multiplicateur de L4) : le successeur connaît les livres de la
+ * maison, mais les pèse selon SON tempérament — la part d'estime pour ce
+ * qu'on vous devait, la part de rancune pour ce qu'on vous reprochait. Sur
+ * une mémoire mixte, les signes ne se compensent plus avant la pesée : un
+ * rancunier devant +30 d'estime et −20 de griefs vous rend −5, pas +5 —
+ * c'est exactement lui. Seuls les effets DÉJÀ appliqués sont repesés : une
+ * nouvelle encore en route arrive au nouveau chef à plein poids — il
+ * apprend, il n'hérite pas. Et les successions composent : deux rapaces de
+ * suite, ×0,6 puis ×0,6.
+ */
+export function repeserPorteur(state, faction, temperament) {
+  if (!institution(state, faction)) return 0;
+  const h = MEMOIRE_TEMPERAMENT[temperament] || { estime: 0.8, rancune: 0.8 };
+  const avant = state.player.reputation[faction] || 0;
+  for (const f of state.player.faits || []) {
+    for (const e of f.effets || []) {
+      if (!e.applique || e.oublie || e.faction !== faction || e.delta === undefined) continue;
+      e.poids = (e.poids === undefined ? 1 : e.poids) * (e.delta > 0 ? h.estime : h.rancune);
+    }
+  }
+  materialiser(state, faction);
+  return (state.player.reputation[faction] || 0) - avant;
 }
 
 /**
@@ -120,22 +191,31 @@ export function commettre(state, fait, log) {
     const lit = e && state.player.faits.find((x) => x.fleuve && x.type === fait.type
       && (x.effets || [])[0] && x.effets[0].faction === e.faction);
     if (lit) {
-      const vieux = lit.effets[0].delta || 0;
-      lit.effets[0].delta = borne(vieux + e.delta);
+      lit.effets[0].delta = borne((lit.effets[0].delta || 0) + e.delta);
       lit.t = fait.t ?? state.temps;
-      appliquerReputation(state, e.faction, lit.effets[0].delta - vieux);
+      materialiser(state, e.faction);
       return lit;
     }
     if (e) e.delta = borne(e.delta);
   }
   state.player.faits.push(fait);
-  if (state.player.faits.length > FAITS_MAX) state.player.faits.shift();
-  for (const e of fait.effets || []) {
-    if (e.su <= (fait.t ?? state.temps)) {
-      appliquerReputation(state, e.faction, e.delta);
-      e.applique = true;
+  const touchees = new Set();
+  if (state.player.faits.length > FAITS_MAX) {
+    // L'éviction recalcule aussi : un fait poussé dehors emporte sa
+    // contribution — sinon l'agrégat garde des fantômes que plus aucune
+    // somme n'explique.
+    const sorti = state.player.faits.shift();
+    for (const e of sorti.effets || []) {
+      if (e.applique && !e.oublie && e.faction && e.delta !== undefined) touchees.add(e.faction);
     }
   }
+  for (const e of fait.effets || []) {
+    if (e.su <= (fait.t ?? state.temps)) {
+      e.applique = true;
+      if (e.faction && e.delta !== undefined) touchees.add(e.faction);
+    }
+  }
+  for (const k of touchees) materialiser(state, k);
   return fait;
 }
 
@@ -150,7 +230,7 @@ export function tickFaits(state, log, outils) {
       if (e.applique || e.su > state.temps) continue;
       e.applique = true;
       if (e.faction && e.delta !== undefined) {
-        appliquerReputation(state, e.faction, e.delta);
+        materialiser(state, e.faction);
       }
       // Une ville qui apprend retient (L3) — par ses notables, sans juger si
       // le fait ne nomme personne (delta absent : « des pillards », pas vous).

@@ -382,8 +382,24 @@ l'écrit sans passer par un fait.
     date qui avance). Le délégué `reputation()` d'events.js est mort — il
     ne reste plus une seule écriture muette dans src/. Dix tests nés
     rouges.
-  - [ ] L5b — le poids, le fait fondateur, l'agrégat matérialisé, les
-    quatre événements de recomputation, la succession qui repèse
+  - [x] L5b — livré : `materialiser` (la vue = Σ effets appliqués × poids,
+    clamp ±100 à la LECTURE — hystérésis assumée : à −300 de faits, +50 ne
+    refait pas surface), `repeserPorteur` (la succession multiplie les
+    POIDS par la part du tempérament, plus jamais le chiffre — l'inversion
+    de signe sur mémoire mixte est réelle : +30/−20 chez un rancunier rend
+    −5, l'ancien multiplicateur disait +5 ; les nouvelles en route arrivent
+    au successeur à plein poids), le fait fondateur (partie neuve : l'accueil ;
+    vieille sauvegarde : UN fait « passe » qui porte ce que les faits
+    n'expliquent pas — `normaliser`), l'éviction qui recalcule, la table
+    unique `MEMOIRE_TEMPERAMENT` dans faits.js (estime/rancune/patience —
+    `HERITAGE_COUR` en est l'alias, mêmes valeurs qu'à L4). La porte brute
+    `appliquerReputation` N'EXISTE PLUS — plus une seule écriture du
+    scalaire hors matérialisation. Les décors de test sèment des faits
+    (`semerEstime`) au lieu de poser des chiffres. Douze tests (MEM 6) ;
+    écart de méthode assumé et compensé : le cœur codé avant ses tests,
+    donc chaque comportement neuf prouvé par mutation (repesée neutralisée,
+    éviction fantôme, clamp à l'écriture → les trois rougissent pile les
+    tests visés).
   - [ ] L5c — l'oubli au conseil du porteur (patience par tempérament)
   - [ ] L5d — notables : l'opinion suit l'agrégat + leurs souvenirs
   - [ ] L5e — remesure contre L4-témoin, docs, consignation

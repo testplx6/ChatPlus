@@ -6,7 +6,7 @@ import {
   FACTIONS, RECETTES, ARRET, drapeauDe, ITEMS, PALIERS_ITEM,
 } from './data.js';
 import { Rng, grainDe } from './rng.js';
-import { appliquerReputation, commettre, delaiVersFaction } from './faits.js';
+import { commettre, delaiVersFaction } from './faits.js';
 import { rendementRegion } from './world.js';
 import { METEO } from './climat.js';
 import { loisDe } from './lois.js';
