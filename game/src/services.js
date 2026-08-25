@@ -1,5 +1,5 @@
 import { gagner } from './monnaie.js';
-import { appliquerReputation } from './faits.js';
+import { commettre } from './faits.js';
 // Ce que les gens vous demandent, en personne.
 //
 // Le panneau d'affichage d'une ville est anonyme : il paie en crédits, il bouge
@@ -230,7 +230,10 @@ export function honorer(state, colId, notableId, log) {
     autre.opinion = Math.min(100, (autre.opinion || 0) + GAIN_TEMOINS);
   }
   if (col.faction) {
-    appliquerReputation(state, col.faction, 2);
+    commettre(state, {
+      type: 'service', regionId: col.regionId, t: state.temps,
+      effets: [{ faction: col.faction, delta: 2, su: state.temps }],
+    });
   }
   state.stats.servicesRendus = (state.stats.servicesRendus || 0) + 1;
   p.demande = null;

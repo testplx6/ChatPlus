@@ -14,9 +14,10 @@ import {
   tendreLien, lien, mods, XP_PRATIQUE, makeCharacter, ARCHETYPE_KEYS,
 } from './characters.js';
 import {
-  ajouterAuSac, tenterRencontre, tenterAlea, reputation, tenterChasseurs,
+  ajouterAuSac, tenterRencontre, tenterAlea, tenterChasseurs,
   inscrireAuMemorial,
 } from './events.js';
+import { commettre } from './faits.js';
 import { poidsInventaire, capacitePortage } from './economy.js';
 import { niveau as nivBat, abriDe } from './base.js';
 import { conditions } from './climat.js';
@@ -672,7 +673,14 @@ function tickGroupe(state, g, log, ctx) {
           break;
         case 'patrouille': {
           const f = state.world.regions[g.regionId].controle;
-          if (f) reputation(state, f, 0.05);
+          // La patrouille est un fait-fleuve (L5) : « il tient nos routes
+          // depuis des semaines », pas soixante écritures muettes.
+          if (f) {
+            commettre(state, {
+              type: 'patrouille', fleuve: true, t: state.temps,
+              effets: [{ faction: f, delta: 0.05, su: state.temps }],
+            });
+          }
           break;
         }
         default:

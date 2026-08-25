@@ -1,5 +1,5 @@
 import { gagner, soldeIci, signeIci } from './monnaie.js';
-import { appliquerReputation } from './faits.js';
+import { commettre } from './faits.js';
 // Contrats : ce que les villes vous demandent de faire. C'est ce qui donne un
 // but à court terme entre deux ordres de récolte, et une raison de traverser la
 // carte plutôt que de camper.
@@ -377,8 +377,11 @@ export function abandonner(state, id, log, groupe) {
   } else if (c.type === 'livraison' && c.charge && !rendu.ok) {
     // On garde la marchandise, ça s'appelle du vol : là, l'estime paie. C'est la
     // distinction qui tient tout le reste — on ne juge pas un homme sur un délai
-    // manqué, on le juge sur ce qu'il a pris.
-    appliquerReputation(state, c.faction, -12);
+    // manqué, on le juge sur ce qu'il a pris. Et un vol est un fait (L5).
+    commettre(state, {
+      type: 'vol', regionId: g ? g.regionId : null, t: state.temps,
+      effets: [{ faction: c.faction, delta: -12, su: state.temps }],
+    });
   }
 
   const perduAb = (state.player.reputation[c.faction] || 0) - repAvant;
@@ -507,7 +510,11 @@ function recompenser(state, c, log) {
     crediter(state, Math.round(c.recompense / 7) + 10, log, 'Contrat honoré pour les vôtres');
   }
   const gagne = gainEstime(state, c);
-  appliquerReputation(state, c.faction, gagne);
+  commettre(state, {
+    type: 'contrat', regionId: (colonieParId(state.world, c.colonieId) || {}).regionId,
+    t: state.temps,
+    effets: [{ faction: c.faction, delta: gagne, su: state.temps }],
+  });
   state.stats.contratsRemplis = (state.stats.contratsRemplis || 0) + 1;
   noterContrat(state, c, 'honore', {
     cr: soldeIci(state) - crAvant,

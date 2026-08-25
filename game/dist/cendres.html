@@ -5461,13 +5461,38 @@ function appliquerReputation(state, faction, delta) {
 }
 
 /**
+ * Le filet continu — la patrouille qui rassure heure après heure, la rancune
+ * d'intendance qui s'accumule — ne pousse pas une entrée par heure : au
+ * registre borné, un mois de patrouille évincerait la vraie mémoire. C'est UN
+ * fait par (type, faction) — un fleuve : son delta grossit jusqu'à la borne,
+ * sa date avance à la dernière heure d'activité. « Il tient nos routes depuis
+ * des semaines » est un fait, que la maison connaît, qu'un successeur repèse
+ * et qu'un conseil peut finir par classer — aucun régime spécial.
+ */
+const FLEUVE = { plafond: 30 };
+
+/**
  * Commettre un fait : il entre au registre, ce qui est déjà su s'applique,
  * le reste attend son heure. `effets` : [{faction, delta, su, dit?}] —
  * `dit` est la ligne de journal à l'arrivée de la nouvelle (décision n°5 :
- * on montre qui sait quoi, et quand).
+ * on montre qui sait quoi, et quand). `fleuve: true` : voir FLEUVE.
  */
 function commettre(state, fait, log) {
   if (!state.player.faits) state.player.faits = [];
+  if (fait.fleuve) {
+    const e = (fait.effets || [])[0];
+    const borne = (x) => Math.max(-FLEUVE.plafond, Math.min(FLEUVE.plafond, x));
+    const lit = e && state.player.faits.find((x) => x.fleuve && x.type === fait.type
+      && (x.effets || [])[0] && x.effets[0].faction === e.faction);
+    if (lit) {
+      const vieux = lit.effets[0].delta || 0;
+      lit.effets[0].delta = borne(vieux + e.delta);
+      lit.t = fait.t ?? state.temps;
+      appliquerReputation(state, e.faction, lit.effets[0].delta - vieux);
+      return lit;
+    }
+    if (e) e.delta = borne(e.delta);
+  }
   state.player.faits.push(fait);
   if (state.player.faits.length > FAITS_MAX) state.player.faits.shift();
   for (const e of fait.effets || []) {
@@ -6489,7 +6514,10 @@ function honorer(state, colId, notableId, log) {
     autre.opinion = Math.min(100, (autre.opinion || 0) + GAIN_TEMOINS);
   }
   if (col.faction) {
-    appliquerReputation(state, col.faction, 2);
+    commettre(state, {
+      type: 'service', regionId: col.regionId, t: state.temps,
+      effets: [{ faction: col.faction, delta: 2, su: state.temps }],
+    });
   }
   state.stats.servicesRendus = (state.stats.servicesRendus || 0) + 1;
   p.demande = null;
@@ -7107,7 +7135,13 @@ function quitter(state, log, groupe) {
   const ordrePendant = !!all.ordre;
   g.allegeance = null;
   const cout = enGuerre || ordrePendant ? 30 : 10;
-  appliquerReputation(state, f, -cout);
+  // Le départ est un fait (L5) : la maison s'en souvient, un successeur le
+  // repèsera — ce qui n'entre pas au registre ne se transmet pas.
+  commettre(state, {
+    type: enGuerre ? 'desertion' : (ordrePendant ? 'abandon' : 'depart'),
+    regionId: g.regionId, t: state.temps,
+    effets: [{ faction: f, delta: -cout, su: state.temps }],
+  });
   let texte;
   if (enGuerre) {
     texte = `Vous désertez ${drapeauDe(state.world, f).nom} en pleine guerre. Ça ne s’oublie pas.`;
@@ -7609,8 +7643,12 @@ function tickEngagement(state, g, log, ctx) {
     all.intendance = Math.min(state.temps, (all.intendance || 0) + 1);
   }
   if (disc.rancune) {
-    // On ne fait pas de paperasse, on retient.
-    appliquerReputation(state, all.faction, -0.02);
+    // On ne fait pas de paperasse, on retient — et « on retient » est un
+    // fait-fleuve (L5) : une rancune qui grossit, pas soixante écritures.
+    commettre(state, {
+      type: 'rancune', fleuve: true, t: state.temps,
+      effets: [{ faction: all.faction, delta: -0.02, su: state.temps }],
+    });
   }
 
   // Solde versée tous les jours, à partir du grade d'Agent.
@@ -7667,7 +7705,10 @@ function tickEngagement(state, g, log, ctx) {
       const ptsAvant = all.points;
       gagner(state, o.recompense);
       noterArgent(state, 'missions honorées', o.recompense);
-      appliquerReputation(state, all.faction, 5);
+      commettre(state, {
+        type: 'ordre', regionId: g.regionId, t: state.temps,
+        effets: [{ faction: all.faction, delta: 5, su: state.temps }],
+      });
       all.ordre = null;
       all.prochainOrdre = state.temps + rng.irange(120, 260);
       state.stats.ordresRemplis = (state.stats.ordresRemplis || 0) + 1;
@@ -7712,7 +7753,10 @@ function tickEngagement(state, g, log, ctx) {
         // sur quarante-huit ne quittaient jamais le premier grade. Ce qu'on
         // perd, c'est l'estime, et elle finit par fermer l'intendance.
         const repAvantM = state.player.reputation[all.faction] || 0;
-        appliquerReputation(state, all.faction, -3);
+        commettre(state, {
+          type: 'ordre', regionId: g.regionId, t: state.temps,
+          effets: [{ faction: all.faction, delta: -3, su: state.temps }],
+        });
         all.manques = (all.manques || 0) + 1;
         noterFait(all, o, 'manque', state.temps, {
           rep: (state.player.reputation[all.faction] || 0) - repAvantM,
@@ -17504,9 +17548,15 @@ function retirerCaptif(g, c) {
   if (i >= 0) g.prisonniers.splice(i, 1);
 }
 
-function noterReputation(state, faction, delta) {
-  // L2 (MEMOIRE.md) : une seule porte d'écriture, garde-fou compris.
-  appliquerReputation(state, faction, delta);
+function noterReputation(state, faction, delta, regionId = null) {
+  // L5 (MEMOIRE.md) : le sort d'un captif est un fait — daté, situé,
+  // repesable par un successeur. Le garde-fou de la porte vaut aussi pour le
+  // registre : les pillards et l'Essaim ne tiennent pas de livres.
+  if (!faction || faction === 'bandits' || faction === 'essaim') return;
+  commettre(state, {
+    type: 'captif', regionId, t: state.temps,
+    effets: [{ faction, delta, su: state.temps }],
+  });
 }
 
 /**
@@ -17523,7 +17573,7 @@ function disposer(state, g, captifId, quoi, log) {
   if (quoi === 'relacher') {
     retirerCaptif(g, c);
     state.stats.captifsRelaches = (state.stats.captifsRelaches || 0) + 1;
-    noterReputation(state, cap.faction, 4);
+    noterReputation(state, cap.faction, 4, col.regionId);
     // La ville se souvient de lui. On peut relâcher quelqu'un au milieu de
     // nulle part — il n'y a alors personne pour s'en souvenir, et c'est
     // pourquoi le garde sur `col` est là.
@@ -17566,8 +17616,8 @@ function disposer(state, g, captifId, quoi, log) {
     gagner(state, prime);
     state.stats.captifsLivres = (state.stats.captifsLivres || 0) + 1;
     ecrouer(state, col, c, loi);
-    noterReputation(state, col.faction, 2);
-    noterReputation(state, cap.faction, -3);
+    noterReputation(state, col.faction, 2, col.regionId);
+    noterReputation(state, cap.faction, -3, col.regionId);
     // Il purge sa peine ici, donc il reste ici. La ville le connaîtra.
     pousserAuVivier(col, c.nom, 'captif', state.temps);
     // Livrer un brigand à la faction qu'on sert, c'est du service rendu — et
@@ -17595,7 +17645,7 @@ function disposer(state, g, captifId, quoi, log) {
     gagner(state, prix);
     // On rend un homme : c'est mieux vu que de le vendre, moins bien que de
     // l'avoir laissé tranquille.
-    noterReputation(state, cap.faction, 3);
+    noterReputation(state, cap.faction, 3, col.regionId);
     if (log) {
       log({
         type: 'prisonnier',
@@ -21696,8 +21746,11 @@ function abandonner(state, id, log, groupe) {
   } else if (c.type === 'livraison' && c.charge && !rendu.ok) {
     // On garde la marchandise, ça s'appelle du vol : là, l'estime paie. C'est la
     // distinction qui tient tout le reste — on ne juge pas un homme sur un délai
-    // manqué, on le juge sur ce qu'il a pris.
-    appliquerReputation(state, c.faction, -12);
+    // manqué, on le juge sur ce qu'il a pris. Et un vol est un fait (L5).
+    commettre(state, {
+      type: 'vol', regionId: g ? g.regionId : null, t: state.temps,
+      effets: [{ faction: c.faction, delta: -12, su: state.temps }],
+    });
   }
 
   const perduAb = (state.player.reputation[c.faction] || 0) - repAvant;
@@ -21826,7 +21879,11 @@ function recompenser(state, c, log) {
     crediter(state, Math.round(c.recompense / 7) + 10, log, 'Contrat honoré pour les vôtres');
   }
   const gagne = gainEstime(state, c);
-  appliquerReputation(state, c.faction, gagne);
+  commettre(state, {
+    type: 'contrat', regionId: (colonieParId(state.world, c.colonieId) || {}).regionId,
+    t: state.temps,
+    effets: [{ faction: c.faction, delta: gagne, su: state.temps }],
+  });
   state.stats.contratsRemplis = (state.stats.contratsRemplis || 0) + 1;
   noterContrat(state, c, 'honore', {
     cr: soldeIci(state) - crAvant,
@@ -21987,11 +22044,6 @@ function ajouterAuSac(state, key, qte, groupe) {
   return reel;
 }
 
-function reputation(state, faction, delta) {
-  // L2 (MEMOIRE.md) : une seule porte d'écriture — faits.js porte le
-  // garde-fou (pillards et Essaim ne sont pas des institutions).
-  appliquerReputation(state, faction, delta);
-}
 
 function factionDominante(state, regionId) {
   const r = state.world.regions[regionId];
@@ -22180,15 +22232,19 @@ function combatContre(state, bande, log, ctx, groupe) {
     for (const o of b.objets) {
       if (g.objets.length < 30) g.objets.push(o);
     }
-    reputation(state, bande.faction, -6);
-    // Les ennemis d'un ennemi apprécient
+    // Une bataille gagnée est UN fait, et il nomme tous ses publics (L5) :
+    // la maison battue, et les ennemis d'un ennemi, qui apprécient.
+    const publics = [{ faction: bande.faction, delta: -6, su: state.temps }];
     for (const k of Object.keys(state.world.factions)) {
       if (k === bande.faction || k === 'essaim') continue;
       const enGuerre = state.world.guerres.some(
         (w) => (w.a === k && w.b === bande.faction) || (w.b === k && w.a === bande.faction)
       );
-      if (enGuerre) reputation(state, k, 2);
+      if (enGuerre) publics.push({ faction: k, delta: 2, su: state.temps });
     }
+    commettre(state, {
+      type: 'bataille', regionId: g.regionId, t: state.temps, effets: publics,
+    });
     state.stats.combatsGagnes++;
     compterVictoire(state, bande.faction);
     compterVictoireOrdre(state, bande.faction);
@@ -22319,7 +22375,10 @@ function perdreCombat(state, bande, log, ctx, lieu, g) {
   // Une bête se mène toute seule et se revend bien : c'est la première chose
   // qu'on emmène. C'est aussi ce qui fait qu'on y tient.
   perdreBete(g, rng, log);
-  reputation(state, bande.faction, -3);
+  commettre(state, {
+    type: 'bataille', regionId: g.regionId, t: state.temps,
+    effets: [{ faction: bande.faction, delta: -3, su: state.temps }],
+  });
 
   // On se réveille ailleurs, quelques heures plus tard. Dépouillés, pas égorgés :
   // ces gens voulaient le sac, pas les cadavres.
@@ -22627,7 +22686,10 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       if (!agressif && soldeIci(state) >= taxe && state.player.politique.payerPeage) {
         regler(state, taxe);
         noterArgent(state, 'péages', -taxe);
-        reputation(state, f, 1);
+        commettre(state, {
+          type: 'peage', regionId, t: state.temps,
+          effets: [{ faction: f, delta: 1, su: state.temps }],
+        });
         log({
           type: 'peage',
           texte: `Péage ${drapeauDe(state.world, f) ? drapeauDe(state.world, f).nom : 'local'} : ${taxe} ${signeIci(state)} versés.`,
@@ -22636,7 +22698,10 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       } else {
         const bande = genererBande(rng, drapeauDe(state.world, f) ? f : 'bandits', rng.irange(2, 4), Math.min(2, Math.floor(state.temps / 900)));
         log({ type: 'peage', texte: `${g.nom} : péage refusé. Ça tourne mal.`, regionId, groupe: g.id });
-        reputation(state, f, -8);
+        commettre(state, {
+          type: 'peage', regionId, t: state.temps,
+          effets: [{ faction: f, delta: -8, su: state.temps }],
+        });
         combatContre(state, bande, log, ctx, g);
       }
       return true;
@@ -23440,7 +23505,14 @@ function tickGroupe(state, g, log, ctx) {
           break;
         case 'patrouille': {
           const f = state.world.regions[g.regionId].controle;
-          if (f) reputation(state, f, 0.05);
+          // La patrouille est un fait-fleuve (L5) : « il tient nos routes
+          // depuis des semaines », pas soixante écritures muettes.
+          if (f) {
+            commettre(state, {
+              type: 'patrouille', fleuve: true, t: state.temps,
+              effets: [{ faction: f, delta: 0.05, su: state.temps }],
+            });
+          }
           break;
         }
         default:

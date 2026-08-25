@@ -12439,6 +12439,122 @@ section('MEM 4. La mémoire — L4, l’oubli a des visages (MEMOIRE.md)');
   }
 }
 
+section('MEM 5. La mémoire — L5a, l’assiette : les actes deviennent des faits (MEMOIRE.md)');
+{
+  const rien = () => {};
+  const faits5 = await import('../src/faits.js');
+
+  // 1) Partir en règle s'écrit au registre — plus d'écriture muette. Le
+  //    successeur doit pouvoir repeser votre départ comme vos pillages :
+  //    ce qui n'est pas un fait ne se transmet pas (L5, MEMOIRE.md).
+  {
+    const s = nouvellePartie(771, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(s);
+    const A = Object.keys(s.world.factions).filter((k) => k !== 'essaim'
+      && s.world.factions[k].colonies.length && dirigeant(s.world, k))[0];
+    s.world.guerres = s.world.guerres.filter((x) => x.a !== A && x.b !== A);
+    g.allegeance = { faction: A, points: 100, derniereSolde: 0, intendance: 0 };
+    s.player.reputation[A] = 40;
+    const { quitter } = await import('../src/allegeance.js');
+    quitter(s, rien, g);
+    ok((s.player.reputation[A] || 0) === 30,
+      'partir en règle coûte toujours dix — les valeurs ne bougent pas d’un point',
+      `40 → ${s.player.reputation[A]}`);
+    const fDep = (s.player.faits || []).find((x) => x.type === 'depart');
+    ok(!!fDep && (fDep.effets || []).some((e) => e.faction === A && e.delta === -10
+      && e.su === s.temps && e.applique),
+      'et le départ est un fait daté du registre, pas une écriture muette',
+      fDep ? JSON.stringify(fDep.effets) : 'aucun fait « depart »');
+  }
+
+  // 2) Garder le colis, c'est un vol — et le vol entre au registre.
+  {
+    const s = nouvellePartie(773, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(s);
+    const loin = s.world.colonies.find((c) => c.faction && c.faction !== 'essaim'
+      && c.regionId !== g.regionId && !c.ruine && dirigeant(s.world, c.faction));
+    s.player.contrats = [{
+      id: 'c1', type: 'livraison', charge: true, colonieId: loin.id,
+      ressource: 'rations', quantite: 5, faction: loin.faction,
+      titre: 'Colis d’essai', recompense: 0,
+    }];
+    const avant = s.player.reputation[loin.faction] || 0;
+    const { abandonner } = await import('../src/contrats.js');
+    abandonner(s, 'c1', rien, g);
+    ok((s.player.reputation[loin.faction] || 0) === avant - 12,
+      'le vol du colis coûte toujours douze', `${avant} → ${s.player.reputation[loin.faction]}`);
+    const fVol = (s.player.faits || []).find((x) => x.type === 'vol');
+    ok(!!fVol && (fVol.effets || []).some((e) => e.faction === loin.faction
+      && e.delta === -12 && e.applique),
+      'et le vol est un fait du registre — un successeur rancunier pourra le garder',
+      fVol ? JSON.stringify(fVol.effets) : 'aucun fait « vol »');
+  }
+
+  // 3) Le filet continu est UN fait-fleuve : le delta s'accumule, la date
+  //    avance, le registre ne se remplit pas de soixante heures de patrouille.
+  {
+    const s = nouvellePartie(775, { maintenant: 100, depart: 'ville', equipe: 3 });
+    const A = Object.keys(s.world.factions).filter((k) => k !== 'essaim'
+      && s.world.factions[k].colonies.length && dirigeant(s.world, k))[0];
+    const avant = s.player.reputation[A] || 0;
+    faits5.commettre(s, {
+      type: 'patrouille', fleuve: true, t: s.temps,
+      effets: [{ faction: A, delta: 0.05, su: s.temps }],
+    });
+    s.temps += 5;
+    faits5.commettre(s, {
+      type: 'patrouille', fleuve: true, t: s.temps,
+      effets: [{ faction: A, delta: 0.05, su: s.temps }],
+    });
+    const fl = (s.player.faits || []).filter((x) => x.type === 'patrouille');
+    ok(fl.length === 1,
+      'deux heures de patrouille : UN fait au registre — le fleuve grossit, il ne se duplique pas',
+      `${fl.length} fait(s)`);
+    ok(fl.length === 1 && Math.abs(fl[0].effets[0].delta - 0.1) < 1e-9 && fl[0].t === s.temps,
+      'son delta s’accumule et sa date avance à la dernière heure d’activité',
+      fl.length ? `delta ${fl[0].effets[0].delta}, t ${fl[0].t} (heure ${s.temps})` : '—');
+    ok(Math.abs((s.player.reputation[A] || 0) - avant - 0.1) < 1e-9,
+      'et l’estime a bougé d’exactement autant', `${avant} → ${s.player.reputation[A]}`);
+  }
+
+  // 4) Le fleuve est borné — des mois de patrouille ne fabriquent pas une
+  //    dévotion infinie, et la rancune continue ne creuse pas sans fond.
+  {
+    const s = nouvellePartie(777, { maintenant: 100, depart: 'ville', equipe: 3 });
+    const ks = Object.keys(s.world.factions).filter((k) => k !== 'essaim'
+      && s.world.factions[k].colonies.length && dirigeant(s.world, k));
+    const [A, B] = [ks[0], ks[1]];
+    const avantA = s.player.reputation[A] || 0;
+    for (let i = 0; i < 2000; i++) {
+      faits5.commettre(s, {
+        type: 'patrouille', fleuve: true, t: s.temps,
+        effets: [{ faction: A, delta: 0.05, su: s.temps }],
+      });
+    }
+    const flA = (s.player.faits || []).find((x) => x.type === 'patrouille'
+      && x.effets[0].faction === A);
+    ok(!!faits5.FLEUVE && !!flA && flA.effets[0].delta === faits5.FLEUVE.plafond,
+      'le fleuve plafonne à sa borne calibrable',
+      flA ? `delta ${flA.effets[0].delta}` : 'aucun fleuve');
+    ok(Math.abs((s.player.reputation[A] || 0) - avantA - faits5.FLEUVE.plafond) < 1e-9,
+      'et l’estime n’a reçu que la borne, pas la somme des heures',
+      `${avantA} → ${s.player.reputation[A]}`);
+    const avantB = s.player.reputation[B] || 0;
+    for (let i = 0; i < 2000; i++) {
+      faits5.commettre(s, {
+        type: 'rancune', fleuve: true, t: s.temps,
+        effets: [{ faction: B, delta: -0.02, su: s.temps }],
+      });
+    }
+    const flB = (s.player.faits || []).find((x) => x.type === 'rancune'
+      && x.effets[0].faction === B);
+    ok(!!flB && flB.effets[0].delta === -faits5.FLEUVE.plafond
+      && Math.abs((s.player.reputation[B] || 0) - avantB + faits5.FLEUVE.plafond) < 1e-9,
+      'la borne vaut dans les deux sens — la rancune d’intendance aussi est un fleuve',
+      flB ? `delta ${flB.effets[0].delta}, rep ${avantB} → ${s.player.reputation[B]}` : 'aucun fleuve');
+  }
+}
+
 // ===========================================================================
 console.log('\n' + '='.repeat(42));
 console.log(`${total - echecs}/${total} tests passés`);

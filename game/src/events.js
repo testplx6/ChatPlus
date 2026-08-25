@@ -1,5 +1,5 @@
 import { gagner, regler, soldeIci, signeIci, monnaieIci } from './monnaie.js';
-import { appliquerReputation } from './faits.js';
+import { commettre } from './faits.js';
 // Journal de bord et rencontres. Tout se résout automatiquement selon la
 // posture et les consignes de l'escouade : c'est ce qui permet à la simulation
 // de tourner pendant que le joueur est hors ligne.
@@ -72,11 +72,6 @@ export function ajouterAuSac(state, key, qte, groupe) {
   return reel;
 }
 
-export function reputation(state, faction, delta) {
-  // L2 (MEMOIRE.md) : une seule porte d'écriture — faits.js porte le
-  // garde-fou (pillards et Essaim ne sont pas des institutions).
-  appliquerReputation(state, faction, delta);
-}
 
 function factionDominante(state, regionId) {
   const r = state.world.regions[regionId];
@@ -265,15 +260,19 @@ export function combatContre(state, bande, log, ctx, groupe) {
     for (const o of b.objets) {
       if (g.objets.length < 30) g.objets.push(o);
     }
-    reputation(state, bande.faction, -6);
-    // Les ennemis d'un ennemi apprécient
+    // Une bataille gagnée est UN fait, et il nomme tous ses publics (L5) :
+    // la maison battue, et les ennemis d'un ennemi, qui apprécient.
+    const publics = [{ faction: bande.faction, delta: -6, su: state.temps }];
     for (const k of Object.keys(state.world.factions)) {
       if (k === bande.faction || k === 'essaim') continue;
       const enGuerre = state.world.guerres.some(
         (w) => (w.a === k && w.b === bande.faction) || (w.b === k && w.a === bande.faction)
       );
-      if (enGuerre) reputation(state, k, 2);
+      if (enGuerre) publics.push({ faction: k, delta: 2, su: state.temps });
     }
+    commettre(state, {
+      type: 'bataille', regionId: g.regionId, t: state.temps, effets: publics,
+    });
     state.stats.combatsGagnes++;
     compterVictoire(state, bande.faction);
     compterVictoireOrdre(state, bande.faction);
@@ -404,7 +403,10 @@ function perdreCombat(state, bande, log, ctx, lieu, g) {
   // Une bête se mène toute seule et se revend bien : c'est la première chose
   // qu'on emmène. C'est aussi ce qui fait qu'on y tient.
   perdreBete(g, rng, log);
-  reputation(state, bande.faction, -3);
+  commettre(state, {
+    type: 'bataille', regionId: g.regionId, t: state.temps,
+    effets: [{ faction: bande.faction, delta: -3, su: state.temps }],
+  });
 
   // On se réveille ailleurs, quelques heures plus tard. Dépouillés, pas égorgés :
   // ces gens voulaient le sac, pas les cadavres.
@@ -712,7 +714,10 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       if (!agressif && soldeIci(state) >= taxe && state.player.politique.payerPeage) {
         regler(state, taxe);
         noterArgent(state, 'péages', -taxe);
-        reputation(state, f, 1);
+        commettre(state, {
+          type: 'peage', regionId, t: state.temps,
+          effets: [{ faction: f, delta: 1, su: state.temps }],
+        });
         log({
           type: 'peage',
           texte: `Péage ${drapeauDe(state.world, f) ? drapeauDe(state.world, f).nom : 'local'} : ${taxe} ${signeIci(state)} versés.`,
@@ -721,7 +726,10 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       } else {
         const bande = genererBande(rng, drapeauDe(state.world, f) ? f : 'bandits', rng.irange(2, 4), Math.min(2, Math.floor(state.temps / 900)));
         log({ type: 'peage', texte: `${g.nom} : péage refusé. Ça tourne mal.`, regionId, groupe: g.id });
-        reputation(state, f, -8);
+        commettre(state, {
+          type: 'peage', regionId, t: state.temps,
+          effets: [{ faction: f, delta: -8, su: state.temps }],
+        });
         combatContre(state, bande, log, ctx, g);
       }
       return true;

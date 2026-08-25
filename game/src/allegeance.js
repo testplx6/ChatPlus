@@ -10,7 +10,7 @@ import { colonieParId, distance, coordonnee } from './world.js';
 import { idDepuisRng } from './characters.js';
 import { groupes, groupeActif } from './groupes.js';
 import { loisDe, REGIMES, DISCIPLINES } from './lois.js';
-import { appliquerReputation, commettre, delaiVersFaction } from './faits.js';
+import { commettre, delaiVersFaction } from './faits.js';
 import { noterArgent } from './rapport.js';
 import { depenser, gagner, soldeIci, signeIci } from './monnaie.js';
 
@@ -551,7 +551,13 @@ export function quitter(state, log, groupe) {
   const ordrePendant = !!all.ordre;
   g.allegeance = null;
   const cout = enGuerre || ordrePendant ? 30 : 10;
-  appliquerReputation(state, f, -cout);
+  // Le départ est un fait (L5) : la maison s'en souvient, un successeur le
+  // repèsera — ce qui n'entre pas au registre ne se transmet pas.
+  commettre(state, {
+    type: enGuerre ? 'desertion' : (ordrePendant ? 'abandon' : 'depart'),
+    regionId: g.regionId, t: state.temps,
+    effets: [{ faction: f, delta: -cout, su: state.temps }],
+  });
   let texte;
   if (enGuerre) {
     texte = `Vous désertez ${drapeauDe(state.world, f).nom} en pleine guerre. Ça ne s’oublie pas.`;
@@ -1053,8 +1059,12 @@ function tickEngagement(state, g, log, ctx) {
     all.intendance = Math.min(state.temps, (all.intendance || 0) + 1);
   }
   if (disc.rancune) {
-    // On ne fait pas de paperasse, on retient.
-    appliquerReputation(state, all.faction, -0.02);
+    // On ne fait pas de paperasse, on retient — et « on retient » est un
+    // fait-fleuve (L5) : une rancune qui grossit, pas soixante écritures.
+    commettre(state, {
+      type: 'rancune', fleuve: true, t: state.temps,
+      effets: [{ faction: all.faction, delta: -0.02, su: state.temps }],
+    });
   }
 
   // Solde versée tous les jours, à partir du grade d'Agent.
@@ -1111,7 +1121,10 @@ function tickEngagement(state, g, log, ctx) {
       const ptsAvant = all.points;
       gagner(state, o.recompense);
       noterArgent(state, 'missions honorées', o.recompense);
-      appliquerReputation(state, all.faction, 5);
+      commettre(state, {
+        type: 'ordre', regionId: g.regionId, t: state.temps,
+        effets: [{ faction: all.faction, delta: 5, su: state.temps }],
+      });
       all.ordre = null;
       all.prochainOrdre = state.temps + rng.irange(120, 260);
       state.stats.ordresRemplis = (state.stats.ordresRemplis || 0) + 1;
@@ -1156,7 +1169,10 @@ function tickEngagement(state, g, log, ctx) {
         // sur quarante-huit ne quittaient jamais le premier grade. Ce qu'on
         // perd, c'est l'estime, et elle finit par fermer l'intendance.
         const repAvantM = state.player.reputation[all.faction] || 0;
-        appliquerReputation(state, all.faction, -3);
+        commettre(state, {
+          type: 'ordre', regionId: g.regionId, t: state.temps,
+          effets: [{ faction: all.faction, delta: -3, su: state.temps }],
+        });
         all.manques = (all.manques || 0) + 1;
         noterFait(all, o, 'manque', state.temps, {
           rep: (state.player.reputation[all.faction] || 0) - repAvantM,

@@ -96,13 +96,38 @@ export function appliquerReputation(state, faction, delta) {
 }
 
 /**
+ * Le filet continu — la patrouille qui rassure heure après heure, la rancune
+ * d'intendance qui s'accumule — ne pousse pas une entrée par heure : au
+ * registre borné, un mois de patrouille évincerait la vraie mémoire. C'est UN
+ * fait par (type, faction) — un fleuve : son delta grossit jusqu'à la borne,
+ * sa date avance à la dernière heure d'activité. « Il tient nos routes depuis
+ * des semaines » est un fait, que la maison connaît, qu'un successeur repèse
+ * et qu'un conseil peut finir par classer — aucun régime spécial.
+ */
+export const FLEUVE = { plafond: 30 };
+
+/**
  * Commettre un fait : il entre au registre, ce qui est déjà su s'applique,
  * le reste attend son heure. `effets` : [{faction, delta, su, dit?}] —
  * `dit` est la ligne de journal à l'arrivée de la nouvelle (décision n°5 :
- * on montre qui sait quoi, et quand).
+ * on montre qui sait quoi, et quand). `fleuve: true` : voir FLEUVE.
  */
 export function commettre(state, fait, log) {
   if (!state.player.faits) state.player.faits = [];
+  if (fait.fleuve) {
+    const e = (fait.effets || [])[0];
+    const borne = (x) => Math.max(-FLEUVE.plafond, Math.min(FLEUVE.plafond, x));
+    const lit = e && state.player.faits.find((x) => x.fleuve && x.type === fait.type
+      && (x.effets || [])[0] && x.effets[0].faction === e.faction);
+    if (lit) {
+      const vieux = lit.effets[0].delta || 0;
+      lit.effets[0].delta = borne(vieux + e.delta);
+      lit.t = fait.t ?? state.temps;
+      appliquerReputation(state, e.faction, lit.effets[0].delta - vieux);
+      return lit;
+    }
+    if (e) e.delta = borne(e.delta);
+  }
   state.player.faits.push(fait);
   if (state.player.faits.length > FAITS_MAX) state.player.faits.shift();
   for (const e of fait.effets || []) {

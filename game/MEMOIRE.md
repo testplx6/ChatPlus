@@ -111,10 +111,80 @@ l'écrit sans passer par un fait.
   sous les couleurs, patrimoine), et si l'ouverture a bougé, recalage
   d'`ESTIME_ENGAGEMENT` par balayage, pas à vue.
 - **L5 — la mémoire chez le souvenant (décision n°1 : c'est la cible).**
-  Le scalaire devient la lecture agrégée des porteurs nommés — chaque fait
-  du registre est distribué à qui l'a su (chef, notables), et
-  notables.js:282-289 inverse son sens de dérivation. Après L4 et sa
-  mesure.
+  Le scalaire devient la lecture agrégée des porteurs nommés. Architecture
+  arrêtée avec le game master (août 2026), chaque affirmation revérifiée
+  dans le code :
+  - **La mémoire du porteur est une vue pondérée du registre joueur** —
+    jamais une liste sur l'objet dirigeant (`dk` vit dans `state.world`,
+    partagé : piège n°5, et il est remplacé d'un bloc à la succession,
+    dirigeants.js:281). Chaque effet du registre gagne un `poids` (défaut
+    1) ; « ce que la maison k pense de vous » = Σ des effets appliqués ×
+    poids, clampée à ±100 **à la matérialisation** (le clamp change
+    d'endroit : un joueur à −300 de faits qui rachète +50 ne bouge pas de
+    −100 — hystérésis plus vraie, au banc de juger).
+  - **L'assiette s'élargit d'abord** : les douze actes encore sur la porte
+    brute (contrats.js:381 et 510, services.js:233, events.js:268/275/407/
+    715/724, allegeance.js:554/1114/1159, justice.js:320) passent par
+    `commettre` avec `su = t` — valeurs identiques, dates inchangées. Sans
+    ça, un successeur rancunier garderait vos pillages (des faits) mais
+    transmettrait intact ce que trente contrats ont bâti (du fonds) —
+    régression sur L4.
+  - **Le filet continu devient un fait-fleuve** : la patrouille
+    (squad.js:675, +0,05/h) et la rancune criminelle P5
+    (allegeance.js:1057, −0,02/h) ne poussent pas soixante entrées — UN
+    fait par (type, faction) dont le delta s'accumule (borné, calibrable)
+    et dont la date avance. « Il tient nos routes depuis des semaines »
+    est un fait, qu'un successeur repèse et qu'un conseil peut classer.
+    Ni fonds ambiant séparé (un mini-scalaire sans porteur : S1 en petit),
+    ni micro-faits (ils évinceraient la vraie mémoire du registre borné).
+  - **Le fait fondateur** : à `nouvellePartie` (l'accueil, sim.js:243-244)
+    et dans `normaliser` (le scalaire existant des vieilles sauvegardes),
+    un fait `passe` par faction non nulle, `su = t`, poids 1 — « le passé
+    est réputé su, on ne réécrit pas l'histoire », et un successeur repèse
+    aussi l'accueil que sa maison vous avait fait.
+  - **La succession repèse les faits, elle ne multiplie plus le chiffre** :
+    `HERITAGE_COUR` s'étend en **une seule table de mémoire par
+    tempérament** (estime, rancune, patience) — jamais deux tables de
+    caractère qui finiraient par se contredire. Au signal du guetteur
+    (state.player.chefs, livré à L4), les poids des effets DÉJÀ appliqués
+    sont multipliés par la part (estime si delta > 0, rancune sinon), puis
+    on matérialise. Les faits encore en route arrivent au nouveau chef à
+    plein poids : il apprend une nouvelle, il n'hérite pas d'une rancune.
+    Les successions composent naturellement (deux rapaces : ×0,6 puis
+    ×0,6). Trois différences de comportement assumées et remesurées contre
+    L4-témoin : l'inversion de signe sur mémoire mixte (+30/−20 chez un
+    rancunier : +5 hier, −5 demain — c'est exactement lui), les faits en
+    route, le clamp déplacé.
+  - **L'oubli tombe au conseil du porteur, pas à une heure fixe** : les
+    conseils battent à `f.prochainConseil` (rng.irange(30,90),
+    factions.js:852) — guetteur joueur sur `f.dernierConseil` (le joueur a
+    le droit de lire le monde), tampon `state.player.conseilsVus[k]`, même
+    patron que `chefs`. À SON conseil, le porteur classe LE plus vieux
+    fait négatif dont l'âge dépasse `patience × |delta| / OUBLI.parPoint`
+    — une insulte à −3 se lâche vite, un pillage à −22 sept fois plus
+    tard, un rancunier (patience quasi infinie — un grand fini,
+    `Infinity` ne survit pas à JSON, précédent monnaie.js:64-70) jamais.
+    Un par conseil, argmax stable : entièrement déterministe, zéro tirage.
+  - **Quatre événements recalculent, aucun balayage horaire** : arrivée
+    d'un effet (tickFaits), succession, oubli au conseil, **éviction par
+    FAITS_MAX** (sinon l'agrégat garde des contributions fantômes —
+    recompute dans `commettre` après le shift). Toute la recomputation vit
+    dans faits.js (`materialiser`, `repeserPorteur`) : le garde statique
+    « seule faits.js touche la réputation » reste vrai en substance, pas
+    seulement en regex.
+  - **notables.js:288-289 s'inverse en douceur** : l'opinion continue de
+    suivre la réputation locale — qui devient l'agrégat — plus leurs
+    souvenirs propres (`retenirEnVille`), au poids posé en constante
+    calibrable (double comptage local assumé et dit : « on juge quelqu'un
+    sur ce qu'il fait ici »). L'écart préexistant `p.opinion` côté monde
+    est consigné, pas creusé ni résorbé ici.
+  - **Le pillard anonyme ne change pas** : mémoire sans opinion tant que
+    personne n'est nommé (décision n°2 verbatim), pas d'attribution
+    rétroactive — on n'invente pas un savoir. La route mal famée et la
+    ville qui retient agissent déjà par les bons canaux.
+  - **Remesure finale contre L4-témoin** (décision n°4) : la repesée par
+    signe n'est pas neutre sur mémoire mixte — banc 30 × 4000 h, mêmes
+    graines, et rien de regelé à vue.
 
 ## 4. Les décisions du propriétaire — TRANCHÉES (août 2026)
 
@@ -304,6 +374,19 @@ l'écrit sans passer par un fait.
   était déjà quasi morte AVANT ce chantier (témoin a655ba7 : 3/30) — ce
   n'est pas la mémoire qui l'a tuée, et rien n'a été réglé à vue.
 - [ ] L5 — la mémoire chez le souvenant (la cible, après mesure de L4)
+  - [x] L5a — l'assiette : les douze actes de la porte brute (départ,
+    désertion, vol de colis, contrat honoré, service rendu, batailles,
+    péages, ordres, captifs) sont des faits `su = t`, valeurs identiques ;
+    la patrouille et la rancune d'intendance sont des faits-fleuves (UN
+    fait par (type, faction), delta accumulé borné par `FLEUVE.plafond`,
+    date qui avance). Le délégué `reputation()` d'events.js est mort — il
+    ne reste plus une seule écriture muette dans src/. Dix tests nés
+    rouges.
+  - [ ] L5b — le poids, le fait fondateur, l'agrégat matérialisé, les
+    quatre événements de recomputation, la succession qui repèse
+  - [ ] L5c — l'oubli au conseil du porteur (patience par tempérament)
+  - [ ] L5d — notables : l'opinion suit l'agrégat + leurs souvenirs
+  - [ ] L5e — remesure contre L4-témoin, docs, consignation
 
 ## Blocages
 

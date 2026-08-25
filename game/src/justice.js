@@ -20,7 +20,7 @@
 // surveille pas s'en vont — parfois en emportant quelque chose.
 
 import { FACTIONS, DIPLO_FACTIONS, diploDe, drapeauDe} from './data.js';
-import { appliquerReputation, commettre, delaiVersFaction } from './faits.js';
+import { commettre, delaiVersFaction } from './faits.js';
 import { estVivant, estDebout, comp } from './characters.js';
 import { colonieDe } from './world.js';
 import { enGuerre } from './factions.js';
@@ -315,9 +315,15 @@ function retirerCaptif(g, c) {
   if (i >= 0) g.prisonniers.splice(i, 1);
 }
 
-function noterReputation(state, faction, delta) {
-  // L2 (MEMOIRE.md) : une seule porte d'écriture, garde-fou compris.
-  appliquerReputation(state, faction, delta);
+function noterReputation(state, faction, delta, regionId = null) {
+  // L5 (MEMOIRE.md) : le sort d'un captif est un fait — daté, situé,
+  // repesable par un successeur. Le garde-fou de la porte vaut aussi pour le
+  // registre : les pillards et l'Essaim ne tiennent pas de livres.
+  if (!faction || faction === 'bandits' || faction === 'essaim') return;
+  commettre(state, {
+    type: 'captif', regionId, t: state.temps,
+    effets: [{ faction, delta, su: state.temps }],
+  });
 }
 
 /**
@@ -334,7 +340,7 @@ export function disposer(state, g, captifId, quoi, log) {
   if (quoi === 'relacher') {
     retirerCaptif(g, c);
     state.stats.captifsRelaches = (state.stats.captifsRelaches || 0) + 1;
-    noterReputation(state, cap.faction, 4);
+    noterReputation(state, cap.faction, 4, col.regionId);
     // La ville se souvient de lui. On peut relâcher quelqu'un au milieu de
     // nulle part — il n'y a alors personne pour s'en souvenir, et c'est
     // pourquoi le garde sur `col` est là.
@@ -377,8 +383,8 @@ export function disposer(state, g, captifId, quoi, log) {
     gagner(state, prime);
     state.stats.captifsLivres = (state.stats.captifsLivres || 0) + 1;
     ecrouer(state, col, c, loi);
-    noterReputation(state, col.faction, 2);
-    noterReputation(state, cap.faction, -3);
+    noterReputation(state, col.faction, 2, col.regionId);
+    noterReputation(state, cap.faction, -3, col.regionId);
     // Il purge sa peine ici, donc il reste ici. La ville le connaîtra.
     pousserAuVivier(col, c.nom, 'captif', state.temps);
     // Livrer un brigand à la faction qu'on sert, c'est du service rendu — et
@@ -406,7 +412,7 @@ export function disposer(state, g, captifId, quoi, log) {
     gagner(state, prix);
     // On rend un homme : c'est mieux vu que de le vendre, moins bien que de
     // l'avoir laissé tranquille.
-    noterReputation(state, cap.faction, 3);
+    noterReputation(state, cap.faction, 3, col.regionId);
     if (log) {
       log({
         type: 'prisonnier',
