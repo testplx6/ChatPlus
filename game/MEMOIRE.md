@@ -110,11 +110,44 @@ l'écrit sans passer par un fait.
   au banc** : profils par drapeau contre témoin (parties engagées, heures
   sous les couleurs, patrimoine), et si l'ouverture a bougé, recalage
   d'`ESTIME_ENGAGEMENT` par balayage, pas à vue.
-- *(L5, hors périmètre sauf décision contraire : la migration complète chez
-  le souvenant — le scalaire devient la lecture agrégée des porteurs.
-  Chantier propre, consigné.)*
+- **L5 — la mémoire chez le souvenant (décision n°1 : c'est la cible).**
+  Le scalaire devient la lecture agrégée des porteurs nommés — chaque fait
+  du registre est distribué à qui l'a su (chef, notables), et
+  notables.js:282-289 inverse son sens de dérivation. Après L4 et sa
+  mesure.
 
-## 4. Les décisions du propriétaire
+## 4. Les décisions du propriétaire — TRANCHÉES (août 2026)
+
+1. **Qui porte l'estime ?** — « (b) a l'air beaucoup mieux, mais il faut
+   faire (a) d'abord ? » Oui : **(a) est le marchepied de (b)** — le registre
+   de faits datés est exactement la matière que (b) distribuera aux
+   personnes. **(b) n'est plus une option : c'est L5, un vrai lot du
+   chantier**, après la mesure de L4.
+2. **Le crime parfait ?** — « Pas vu, pas su. » Le nom de l'auteur n'est
+   JAMAIS prononcé sans témoin. Et même la disparition n'est sue que de qui
+   attendait : « on ne s'attend pas forcément que quelqu'un ou une caravane
+   arrive — ça dépend de l'importance et de si les personnes sont connues.
+   Mais il peut probablement rester des traces. » Trois niveaux, tous
+   portés : **l'attente** (la ville de destination attend SA caravane —
+   connue, chargée), **la notoriété** (un errant anonyme disparaît sans que
+   le monde s'en aperçoive), **la trace** (une épave, des corps — un fait
+   trouvable par qui passe, qui dit où et quand, jamais qui).
+3. **L'oubli ?** — « La rancune et la durée sont propres à chaque personnage
+   et chaque situation. Certains peuvent oublier — ce n'est pas à moi de
+   décider mais à la simulation. » Donc : AUCUNE constante universelle, et
+   l'oubli EXISTE — c'est un acte du porteur. Le moment appartient à l'agent
+   (ses conseils, ses successions, sa mort), la décision à son tempérament
+   (un conciliateur laisse tomber les vieilles histoires, un rancunier les
+   garde jusqu'à la tombe), le poids au fait lui-même (une insulte se lâche,
+   un pillage non). Un même acte peut être oublié par Hexa en une saison et
+   jamais par l'Ombrelle.
+4. **Les seuils d'enrôlement ?** — « Mesure. » Rien ne bouge avant que le
+   banc ait joué ses parties dans le monde sans érosion ; recalage par
+   balayage si besoin, jamais à vue.
+5. **L'écran ?** — « Montrer. » Chaque faction affiche ce qu'elle SAIT,
+   le journal date chaque arrivée de nouvelle.
+
+### Les options telles qu'elles avaient été posées (archive)
 
 1. **Qui porte l'estime, dans ce chantier-ci ?** (a) Le scalaire par faction
    reste, mais ne bouge plus que par faits datés — ~200 sites de lecture
@@ -196,11 +229,14 @@ l'écrit sans passer par un fait.
 ## L'avancement
 
 - [x] Cahier écrit avec le game master, constats revérifiés dans le code
-- [ ] Décisions 1-5 tranchées par le propriétaire
+- [x] Décisions 1-5 tranchées par le propriétaire (voir §4 — deux
+  raffinements de sa main : la disparition n'est sue que de qui attendait,
+  et l'oubli est un acte du porteur, pas une règle)
 - [ ] L1 — les jambes (E12)
 - [ ] L2 — le registre des faits
 - [ ] L3 — les cinq omniscients passent au registre
 - [ ] L4 — l'oubli a des visages, et la remesure d'ouverture
+- [ ] L5 — la mémoire chez le souvenant (la cible, après mesure de L4)
 
 ## Blocages
 
