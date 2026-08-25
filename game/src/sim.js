@@ -36,6 +36,7 @@ import {
 import {
   jugerActes, tickCharges, commandementDe, porterFaute, tickCour,
 } from './influence.js';
+import { tickFaits } from './faits.js';
 import { tickSecteurs } from './secteur.js';
 import { tickGeole, tickOrdrePublic } from './justice.js';
 import { ouvrirRapport, fermerRapport } from './rapport.js';
@@ -302,6 +303,7 @@ export function nouvellePartie(seed, opts = {}) {
       // prix monte à chaque fois (SIEGE.md, S3).
       rachats: 0,
       rachatsFaits: [],
+      faits: [],
     },
     base: creerBase(),
     journal: [],
@@ -678,6 +680,8 @@ export function tick(state) {
   // On rend des comptes de ce qu'on a ordonné : d'abord l'issue des actes, puis
   // la charge elle-même, qu'on perd quand le crédit est épuisé.
   if (!state.fin) jugerActes(state, log);
+  // Les nouvelles en route arrivent à leur heure (L2, MEMOIRE.md).
+  if (!state.fin) tickFaits(state, log);
   // Les frictions de la cour (F1+F2, MARECHAL.md) : la relève des comptes à
   // la succession, et le bouc émissaire du chef contesté. AVANT tickCharges,
   // pour qu'une relecture qui vide le crédit coûte la charge la même heure —

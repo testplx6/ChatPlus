@@ -159,6 +159,9 @@ export function normaliser(state) {
   // E3 (prisme du propriétaire) : le compteur mondial de rachats devient une
   // mémoire située et datée. On ne sait plus QUI les vieux paiements ont
   // payé — ils entrent comme des souvenirs sans drapeau, qui s'érodent.
+  // L2 (MEMOIRE.md) : le registre des faits — vide pour une vieille partie,
+  // le passé est réputé su, on ne réécrit pas l'histoire.
+  if (!state.player.faits) state.player.faits = [];
   if (!state.player.rachatsFaits) {
     state.player.rachatsFaits = [];
     for (let i = 0; i < Math.min(5, state.player.rachats || 0); i++) {

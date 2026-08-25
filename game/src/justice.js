@@ -20,6 +20,7 @@
 // surveille pas s'en vont — parfois en emportant quelque chose.
 
 import { FACTIONS, DIPLO_FACTIONS, diploDe, drapeauDe} from './data.js';
+import { appliquerReputation } from './faits.js';
 import { estVivant, estDebout, comp } from './characters.js';
 import { colonieDe } from './world.js';
 import { enGuerre } from './factions.js';
@@ -315,9 +316,8 @@ function retirerCaptif(g, c) {
 }
 
 function noterReputation(state, faction, delta) {
-  if (!faction || !drapeauDe(state.world, faction) || faction === 'bandits') return;
-  state.player.reputation[faction] = Math.max(-100, Math.min(100,
-    (state.player.reputation[faction] || 0) + delta));
+  // L2 (MEMOIRE.md) : une seule porte d'écriture, garde-fou compris.
+  appliquerReputation(state, faction, delta);
 }
 
 /**

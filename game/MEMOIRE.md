@@ -240,7 +240,18 @@ l'écrit sans passer par un fait.
   d'où l'on est — marcher vers le lieu, c'est aller au-devant de la
   nouvelle. La table figée `DELAI_NOUVELLE` est morte. Sept tests nés
   rouges.
-- [ ] L2 — le registre des faits
+- [x] L2 — le registre des faits — livré : `src/faits.js`, trente-neuvième
+  module, la SEULE porte vers `state.player.reputation` (tenu par un test
+  statique, comme les interdits du vérificateur). Deux portes dans un seul
+  module : `commettre` (les actes — datés, situés, effets par faction avec
+  leur heure `su`, journal daté à l'arrivée — décision n°5) et
+  `appliquerReputation` (l'écriture brute clampée, pour l'ambiant qui n'est
+  pas un acte : la patrouille au fil des heures, et l'érosion tant qu'elle
+  vit — elle meurt à L4). Le registre est borné (60), la file livre à
+  l'heure dite (`tickFaits`). Les deux aides historiques (`reputation`,
+  `noterReputation`) et neuf écritures directes passent par la porte —
+  valeurs identiques, su = t : pur refactor, comme promis. Neuf tests nés
+  rouges.
 - [ ] L3 — les cinq omniscients passent au registre
 - [ ] L4 — l'oubli a des visages, et la remesure d'ouverture
 - [ ] L5 — la mémoire chez le souvenant (la cible, après mesure de L4)

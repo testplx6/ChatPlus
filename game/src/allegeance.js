@@ -10,6 +10,7 @@ import { colonieParId, distance, coordonnee } from './world.js';
 import { idDepuisRng } from './characters.js';
 import { groupes, groupeActif } from './groupes.js';
 import { loisDe, REGIMES, DISCIPLINES } from './lois.js';
+import { appliquerReputation } from './faits.js';
 import { noterArgent } from './rapport.js';
 import { depenser, gagner, soldeIci, signeIci } from './monnaie.js';
 
@@ -501,7 +502,7 @@ export function sEngager(state, faction, log, groupe) {
   for (const w of state.world.guerres) {
     const autre = w.a === faction ? w.b : w.b === faction ? w.a : null;
     if (!autre) continue;
-    state.player.reputation[autre] = Math.max(-100, (state.player.reputation[autre] || 0) - 20);
+    appliquerReputation(state, autre, -20);
   }
 
   log({
@@ -528,7 +529,7 @@ export function quitter(state, log, groupe) {
   const ordrePendant = !!all.ordre;
   g.allegeance = null;
   const cout = enGuerre || ordrePendant ? 30 : 10;
-  state.player.reputation[f] = Math.max(-100, (state.player.reputation[f] || 0) - cout);
+  appliquerReputation(state, f, -cout);
   let texte;
   if (enGuerre) {
     texte = `Vous désertez ${drapeauDe(state.world, f).nom} en pleine guerre. Ça ne s’oublie pas.`;
@@ -1031,8 +1032,7 @@ function tickEngagement(state, g, log, ctx) {
   }
   if (disc.rancune) {
     // On ne fait pas de paperasse, on retient.
-    state.player.reputation[all.faction] = Math.max(-100,
-      (state.player.reputation[all.faction] || 0) - 0.02);
+    appliquerReputation(state, all.faction, -0.02);
   }
 
   // Solde versée tous les jours, à partir du grade d'Agent.
@@ -1089,7 +1089,7 @@ function tickEngagement(state, g, log, ctx) {
       const ptsAvant = all.points;
       gagner(state, o.recompense);
       noterArgent(state, 'missions honorées', o.recompense);
-      state.player.reputation[all.faction] = Math.min(100, repAvant + 5);
+      appliquerReputation(state, all.faction, 5);
       all.ordre = null;
       all.prochainOrdre = state.temps + rng.irange(120, 260);
       state.stats.ordresRemplis = (state.stats.ordresRemplis || 0) + 1;
@@ -1134,7 +1134,7 @@ function tickEngagement(state, g, log, ctx) {
         // sur quarante-huit ne quittaient jamais le premier grade. Ce qu'on
         // perd, c'est l'estime, et elle finit par fermer l'intendance.
         const repAvantM = state.player.reputation[all.faction] || 0;
-        state.player.reputation[all.faction] = Math.max(-100, repAvantM - 3);
+        appliquerReputation(state, all.faction, -3);
         all.manques = (all.manques || 0) + 1;
         noterFait(all, o, 'manque', state.temps, {
           rep: (state.player.reputation[all.faction] || 0) - repAvantM,

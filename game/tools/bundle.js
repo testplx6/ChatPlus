@@ -23,6 +23,9 @@ const FRAGMENT = iFragment >= 0 ? process.argv[iFragment + 1] : null;
 const MODULES = [
   'rng.js',
   'data.js',
+  // Le registre des faits (MEMOIRE.md, L2) : la seule porte vers la
+  // réputation. Ne dépend que des données ; tout le monde le cite.
+  'faits.js',
   'climat.js',
   // Feuille : lue par le conseil comme par la justice, elle ne dépend de rien.
   'lois.js',

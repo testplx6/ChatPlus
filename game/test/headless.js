@@ -12191,6 +12191,79 @@ section('MEM 1. La mémoire — L1, les nouvelles ont des jambes (MEMOIRE.md, E1
 }
 
 // ===========================================================================
+section('MEM 2. La mémoire — L2, le registre des faits, une seule porte (MEMOIRE.md)');
+{
+  let faits = null;
+  try { faits = await import('../src/faits.js'); } catch (e) { faits = null; }
+  ok(!!(faits && typeof faits.commettre === 'function' && typeof faits.tickFaits === 'function'),
+    'le module des faits existe — commettre, et la file qui livre à l’heure');
+
+  if (faits && typeof faits.commettre === 'function') {
+    const s = nouvellePartie(731, { maintenant: 100, depart: 'ville', equipe: 3 });
+    const A = Object.keys(s.world.factions).find(
+      (k) => k !== 'essaim' && s.world.factions[k].colonies.length);
+    const B = Object.keys(s.world.factions).find(
+      (k) => k !== 'essaim' && k !== A && s.world.factions[k].colonies.length);
+    s.player.reputation[A] = 0;
+    s.player.reputation[B] = 0;
+    // 1) Un fait su sur-le-champ s'applique sur-le-champ ; un fait en route
+    //    n'a d'effet qu'à l'arrivée.
+    faits.commettre(s, {
+      type: 'essai', regionId: groupeActif(s).regionId, t: s.temps,
+      effets: [
+        { faction: A, delta: -10, su: s.temps },
+        { faction: B, delta: -10, su: s.temps + 24, dit: `À ${identiteDe(s.world, B).nom}, on sait désormais.` },
+      ],
+    });
+    ok((s.player.reputation[A] || 0) === -10 && (s.player.reputation[B] || 0) === 0,
+      'l’intéressé sur place sait tout de suite ; l’autre n’a encore rien appris',
+      `${s.player.reputation[A]} / ${s.player.reputation[B]}`);
+    ok((s.player.faits || []).length === 1, 'et le fait est au registre');
+    // 2) La nouvelle arrive à son heure, pas avant — et elle se dit.
+    for (let i = 0; i < 23; i++) tick(s);
+    ok((s.player.reputation[B] || 0) === 0, 'une heure avant l’arrivée : toujours rien');
+    tick(s);
+    ok((s.player.reputation[B] || 0) === -10,
+      'à l’heure dite, la nouvelle arrive et l’effet tombe',
+      `${s.player.reputation[B]}`);
+    ok(s.journal.some((l) => /on sait désormais/i.test(l.texte)),
+      'et le journal date l’arrivée — on montre qui sait quoi (décision n°5)');
+    // 3) Le garde-fou : pas de clé fantôme pour les sans-drapeau.
+    faits.commettre(s, {
+      type: 'essai', t: s.temps,
+      effets: [{ faction: 'bandits', delta: -5, su: s.temps }],
+    });
+    ok(!('bandits' in s.player.reputation),
+      'les pillards ne sont pas une institution : pas de clé fantôme');
+    // 4) Le registre est borné : les vieux faits sortent poussés.
+    for (let i = 0; i < faits.FAITS_MAX + 10; i++) {
+      faits.commettre(s, { type: 'essai', t: s.temps, effets: [] });
+    }
+    ok((s.player.faits || []).length === faits.FAITS_MAX,
+      'le registre est borné — comme la mémoire de tout le monde ici',
+      `${(s.player.faits || []).length}`);
+  }
+
+  // 5) Une seule porte : plus une écriture de réputation hors de faits.js.
+  //    Statique, comme les interdits du vérificateur — c'est la garantie que
+  //    L3 et L4 ne laisseront pas de vieux chemins muets.
+  {
+    const { readdirSync, readFileSync } = await import('node:fs');
+    const coupables = [];
+    for (const f of readdirSync(new URL('../src', import.meta.url))) {
+      if (!f.endsWith('.js') || f === 'faits.js') continue;
+      const texte = readFileSync(new URL(`../src/${f}`, import.meta.url), 'utf8');
+      for (const [i, ligne] of texte.split('\n').entries()) {
+        if (/player\.reputation\[[^\]]*\]\s*=[^=]/.test(ligne)) coupables.push(`${f}:${i + 1}`);
+      }
+    }
+    ok(coupables.length === 0,
+      'une seule porte d’écriture : seule faits.js touche la réputation',
+      coupables.slice(0, 6).join(' '));
+  }
+}
+
+// ===========================================================================
 console.log('\n' + '='.repeat(42));
 console.log(`${total - echecs}/${total} tests passés`);
 if (echecs > 0) {

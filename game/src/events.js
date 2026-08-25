@@ -1,4 +1,5 @@
 import { gagner, regler, soldeIci, signeIci, monnaieIci } from './monnaie.js';
+import { appliquerReputation } from './faits.js';
 // Journal de bord et rencontres. Tout se résout automatiquement selon la
 // posture et les consignes de l'escouade : c'est ce qui permet à la simulation
 // de tourner pendant que le joueur est hors ligne.
@@ -72,12 +73,9 @@ export function ajouterAuSac(state, key, qte, groupe) {
 }
 
 export function reputation(state, faction, delta) {
-  // « bandits » n'est pas une faction : on tape sur des pillards, pas sur une
-  // institution. Sans ce garde-fou, la table de réputation se remplit de clés
-  // qui n'ont ni nom ni couleur, et tout ce qui la parcourt casse.
-  if (!faction || faction === 'essaim' || !drapeauDe(state.world, faction)) return;
-  const r = state.player.reputation;
-  r[faction] = Math.max(-100, Math.min(100, (r[faction] || 0) + delta));
+  // L2 (MEMOIRE.md) : une seule porte d'écriture — faits.js porte le
+  // garde-fou (pillards et Essaim ne sont pas des institutions).
+  appliquerReputation(state, faction, delta);
 }
 
 function factionDominante(state, regionId) {
@@ -557,7 +555,8 @@ export function tenterChasseurs(state, log, ctx) {
       // sert ce drapeau, rien ne s'efface chez lui. C'était la seule façon de
       // perdre du terrain en servant tous les jours.
       if (v > 0 && estAuService(state, k)) continue;
-      state.player.reputation[k] = v > 0 ? v - erosionEstime(v) : v + Math.min(-v, OUBLI_RANCUNE);
+      // Par la porte unique — et ce bloc entier meurt à L4 (MEMOIRE.md).
+      appliquerReputation(state, k, v > 0 ? -erosionEstime(v) : Math.min(-v, OUBLI_RANCUNE));
     }
   }
 

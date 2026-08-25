@@ -6,6 +6,7 @@ import {
   FACTIONS, RECETTES, ARRET, drapeauDe, ITEMS, PALIERS_ITEM,
 } from './data.js';
 import { Rng, grainDe } from './rng.js';
+import { appliquerReputation } from './faits.js';
 import { rendementRegion } from './world.js';
 import { METEO } from './climat.js';
 import { loisDe } from './lois.js';
@@ -1817,8 +1818,7 @@ export function declarerIndependance(state, log) {
   if (f) f.colonies = f.colonies.filter((id) => id !== col.id);
   col.faction = null;
   state.world.regions[col.regionId].controle = null;
-  state.player.reputation[ancienne] = Math.max(-100,
-    (state.player.reputation[ancienne] || 0) - 35);
+  appliquerReputation(state, ancienne, -35);
   if (log) {
     log({
       type: 'base',

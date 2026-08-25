@@ -4,6 +4,7 @@
 // donne au joueur autre chose à faire que ramasser des cailloux.
 
 import { COMMODITIES, COMMODITY_KEYS, FACTIONS, drapeauDe } from './data.js';
+import { appliquerReputation } from './faits.js';
 import { Rng, grainDe } from './rng.js';
 import { chemin, colonieParId, colonieDe, nomRegion, distance, damer } from './world.js';
 import {
@@ -855,9 +856,8 @@ export function attaquerCaravane(state, car, rng, log, combatContre, genererBand
   }
   retirerCaravane(state.world, car);
 
-  const rep = state.player.reputation;
   if (car.faction && car.faction !== 'essaim') {
-    rep[car.faction] = Math.max(-100, (rep[car.faction] || 0) - 22);
+    appliquerReputation(state, car.faction, -22);
     // Une caravane qui n'arrive pas, ce sont des gens qui l'attendaient. Ceux
     // des deux bouts s'en souviennent nommément, pas seulement la faction.
     for (const id of [car.deId, car.versId]) {

@@ -1,4 +1,5 @@
 import { gagner, signeIci } from './monnaie.js';
+import { appliquerReputation } from './faits.js';
 // Ce qu'on fait de ses morts.
 //
 // `justice.js` demande ce qu'on fait des gens qu'on n'a pas tués. Voici la
@@ -230,7 +231,7 @@ export function disposerCorps(state, g, id, quoi, log) {
     for (const k of diploDe(state.world)) {
       if (k === col.faction) continue;
       if (loisDe(state.world, k).esclavage) continue;
-      state.player.reputation[k] = Math.max(-100, (state.player.reputation[k] || 0) - 5);
+      appliquerReputation(state, k, -5);
     }
     state.stats.organesVendus = (state.stats.organesVendus || 0) + 1;
     dire(`Ce qui était encore bon chez ${c.nom} est parti à ${col.nom} pour ${prix} ${signeIci(state)}.`);

@@ -2647,6 +2647,83 @@ function couleurNeuve(world) {
   return hexDeHsl(meilleure, SAT_DRAPEAU, LUM_DRAPEAU);
 }
 
+// ===== src/faits.js ==================================================
+// Le registre des faits — la seule porte vers ce que le monde pense du joueur.
+//
+// L2 (MEMOIRE.md) : un acte du joueur est un FAIT — daté, situé, avec des
+// effets par faction et l'heure `su` où chacune l'apprend. L'effet ne tombe
+// qu'à l'arrivée de la nouvelle : commettre enregistre et applique ce qui est
+// déjà su, `tickFaits` livre le reste à l'heure dite. Plus rien d'autre dans
+// le moteur n'écrit `state.player.reputation` : c'est la garantie (tenue par
+// un test statique) que les chemins muets ne reviendront pas.
+//
+// Deux portes, un seul module :
+// - `commettre` : les ACTES — discrets, enregistrés, différables. C'est la
+//   matière que L5 distribuera aux porteurs nommés (« la mémoire appartient
+//   au souvenant »).
+// - `appliquerReputation` : l'écriture brute, clampée — pour l'ambiant qui
+//   n'est pas un acte (la patrouille qui rassure au fil des heures, l'érosion
+//   tant qu'elle vit — elle meurt à L4). Elle n'enregistre rien.
+
+
+/**
+ * La mémoire du monde est bornée, comme celle de tout le monde ici (quatre
+ * souvenirs par notable, soixante rencontres, douze rachats) : les vieux
+ * faits sortent poussés par les nouveaux.
+ */
+const FAITS_MAX = 60;
+
+/** L'écriture brute, clampée, sans registre. Garde-fou : les pillards et
+ * l'Essaim ne sont pas des institutions — pas de clé fantôme. */
+function appliquerReputation(state, faction, delta) {
+  if (!faction || faction === 'essaim' || faction === 'bandits'
+    || !drapeauDe(state.world, faction)) return;
+  const r = state.player.reputation;
+  r[faction] = Math.max(-100, Math.min(100, (r[faction] || 0) + delta));
+}
+
+/**
+ * Commettre un fait : il entre au registre, ce qui est déjà su s'applique,
+ * le reste attend son heure. `effets` : [{faction, delta, su, dit?}] —
+ * `dit` est la ligne de journal à l'arrivée de la nouvelle (décision n°5 :
+ * on montre qui sait quoi, et quand).
+ */
+function commettre(state, fait, log) {
+  if (!state.player.faits) state.player.faits = [];
+  state.player.faits.push(fait);
+  if (state.player.faits.length > FAITS_MAX) state.player.faits.shift();
+  for (const e of fait.effets || []) {
+    if (e.su <= (fait.t ?? state.temps)) {
+      appliquerReputation(state, e.faction, e.delta);
+      e.applique = true;
+    }
+  }
+  return fait;
+}
+
+/**
+ * La file des nouvelles en route : ce qui doit être su à cette heure-ci
+ * tombe, et se dit. Le registre est borné à soixante entrées — le parcours
+ * est trivial, et un fait dont tous les effets sont tombés ne coûte rien.
+ */
+function tickFaits(state, log) {
+  for (const f of state.player.faits || []) {
+    for (const e of f.effets || []) {
+      if (e.applique || e.su > state.temps) continue;
+      appliquerReputation(state, e.faction, e.delta);
+      e.applique = true;
+      if (log && e.dit) {
+        log({
+          type: 'rumeur',
+          texte: e.dit,
+          important: true,
+          factions: [e.faction],
+        });
+      }
+    }
+  }
+}
+
 // ===== src/climat.js =================================================
 // Saisons et météo. Le monde n'a pas la même tête en pleine saison sèche
 // qu'au milieu d'un hiver de cendre : les rendements, la marche, les aléas et
@@ -6337,7 +6414,7 @@ function honorer(state, colId, notableId, log) {
     autre.opinion = Math.min(100, (autre.opinion || 0) + GAIN_TEMOINS);
   }
   if (col.faction) {
-    state.player.reputation[col.faction] = Math.min(100, (state.player.reputation[col.faction] || 0) + 2);
+    appliquerReputation(state, col.faction, 2);
   }
   state.stats.servicesRendus = (state.stats.servicesRendus || 0) + 1;
   p.demande = null;
@@ -6906,7 +6983,7 @@ function sEngager(state, faction, log, groupe) {
   for (const w of state.world.guerres) {
     const autre = w.a === faction ? w.b : w.b === faction ? w.a : null;
     if (!autre) continue;
-    state.player.reputation[autre] = Math.max(-100, (state.player.reputation[autre] || 0) - 20);
+    appliquerReputation(state, autre, -20);
   }
 
   log({
@@ -6933,7 +7010,7 @@ function quitter(state, log, groupe) {
   const ordrePendant = !!all.ordre;
   g.allegeance = null;
   const cout = enGuerre || ordrePendant ? 30 : 10;
-  state.player.reputation[f] = Math.max(-100, (state.player.reputation[f] || 0) - cout);
+  appliquerReputation(state, f, -cout);
   let texte;
   if (enGuerre) {
     texte = `Vous désertez ${drapeauDe(state.world, f).nom} en pleine guerre. Ça ne s’oublie pas.`;
@@ -7436,8 +7513,7 @@ function tickEngagement(state, g, log, ctx) {
   }
   if (disc.rancune) {
     // On ne fait pas de paperasse, on retient.
-    state.player.reputation[all.faction] = Math.max(-100,
-      (state.player.reputation[all.faction] || 0) - 0.02);
+    appliquerReputation(state, all.faction, -0.02);
   }
 
   // Solde versée tous les jours, à partir du grade d'Agent.
@@ -7494,7 +7570,7 @@ function tickEngagement(state, g, log, ctx) {
       const ptsAvant = all.points;
       gagner(state, o.recompense);
       noterArgent(state, 'missions honorées', o.recompense);
-      state.player.reputation[all.faction] = Math.min(100, repAvant + 5);
+      appliquerReputation(state, all.faction, 5);
       all.ordre = null;
       all.prochainOrdre = state.temps + rng.irange(120, 260);
       state.stats.ordresRemplis = (state.stats.ordresRemplis || 0) + 1;
@@ -7539,7 +7615,7 @@ function tickEngagement(state, g, log, ctx) {
         // sur quarante-huit ne quittaient jamais le premier grade. Ce qu'on
         // perd, c'est l'estime, et elle finit par fermer l'intendance.
         const repAvantM = state.player.reputation[all.faction] || 0;
-        state.player.reputation[all.faction] = Math.max(-100, repAvantM - 3);
+        appliquerReputation(state, all.faction, -3);
         all.manques = (all.manques || 0) + 1;
         noterFait(all, o, 'manque', state.temps, {
           rep: (state.player.reputation[all.faction] || 0) - repAvantM,
@@ -13508,9 +13584,8 @@ function attaquerCaravane(state, car, rng, log, combatContre, genererBande, grou
   }
   retirerCaravane(state.world, car);
 
-  const rep = state.player.reputation;
   if (car.faction && car.faction !== 'essaim') {
-    rep[car.faction] = Math.max(-100, (rep[car.faction] || 0) - 22);
+    appliquerReputation(state, car.faction, -22);
     // Une caravane qui n'arrive pas, ce sont des gens qui l'attendaient. Ceux
     // des deux bouts s'en souviennent nommément, pas seulement la faction.
     for (const id of [car.deId, car.versId]) {
@@ -17289,9 +17364,8 @@ function retirerCaptif(g, c) {
 }
 
 function noterReputation(state, faction, delta) {
-  if (!faction || !drapeauDe(state.world, faction) || faction === 'bandits') return;
-  state.player.reputation[faction] = Math.max(-100, Math.min(100,
-    (state.player.reputation[faction] || 0) + delta));
+  // L2 (MEMOIRE.md) : une seule porte d'écriture, garde-fou compris.
+  appliquerReputation(state, faction, delta);
 }
 
 /**
@@ -17732,7 +17806,7 @@ function disposerCorps(state, g, id, quoi, log) {
     for (const k of diploDe(state.world)) {
       if (k === col.faction) continue;
       if (loisDe(state.world, k).esclavage) continue;
-      state.player.reputation[k] = Math.max(-100, (state.player.reputation[k] || 0) - 5);
+      appliquerReputation(state, k, -5);
     }
     state.stats.organesVendus = (state.stats.organesVendus || 0) + 1;
     dire(`Ce qui était encore bon chez ${c.nom} est parti à ${col.nom} pour ${prix} ${signeIci(state)}.`);
@@ -19917,8 +19991,7 @@ function declarerIndependance(state, log) {
   if (f) f.colonies = f.colonies.filter((id) => id !== col.id);
   col.faction = null;
   state.world.regions[col.regionId].controle = null;
-  state.player.reputation[ancienne] = Math.max(-100,
-    (state.player.reputation[ancienne] || 0) - 35);
+  appliquerReputation(state, ancienne, -35);
   if (log) {
     log({
       type: 'base',
@@ -21447,7 +21520,7 @@ function abandonner(state, id, log, groupe) {
     // On garde la marchandise, ça s'appelle du vol : là, l'estime paie. C'est la
     // distinction qui tient tout le reste — on ne juge pas un homme sur un délai
     // manqué, on le juge sur ce qu'il a pris.
-    state.player.reputation[c.faction] = Math.max(-100, repAvant - 12);
+    appliquerReputation(state, c.faction, -12);
   }
 
   const perduAb = (state.player.reputation[c.faction] || 0) - repAvant;
@@ -21576,7 +21649,7 @@ function recompenser(state, c, log) {
     crediter(state, Math.round(c.recompense / 7) + 10, log, 'Contrat honoré pour les vôtres');
   }
   const gagne = gainEstime(state, c);
-  state.player.reputation[c.faction] = Math.min(100, repAvant + gagne);
+  appliquerReputation(state, c.faction, gagne);
   state.stats.contratsRemplis = (state.stats.contratsRemplis || 0) + 1;
   noterContrat(state, c, 'honore', {
     cr: soldeIci(state) - crAvant,
@@ -21738,12 +21811,9 @@ function ajouterAuSac(state, key, qte, groupe) {
 }
 
 function reputation(state, faction, delta) {
-  // « bandits » n'est pas une faction : on tape sur des pillards, pas sur une
-  // institution. Sans ce garde-fou, la table de réputation se remplit de clés
-  // qui n'ont ni nom ni couleur, et tout ce qui la parcourt casse.
-  if (!faction || faction === 'essaim' || !drapeauDe(state.world, faction)) return;
-  const r = state.player.reputation;
-  r[faction] = Math.max(-100, Math.min(100, (r[faction] || 0) + delta));
+  // L2 (MEMOIRE.md) : une seule porte d'écriture — faits.js porte le
+  // garde-fou (pillards et Essaim ne sont pas des institutions).
+  appliquerReputation(state, faction, delta);
 }
 
 function factionDominante(state, regionId) {
@@ -22223,7 +22293,8 @@ function tenterChasseurs(state, log, ctx) {
       // sert ce drapeau, rien ne s'efface chez lui. C'était la seule façon de
       // perdre du terrain en servant tous les jours.
       if (v > 0 && estAuService(state, k)) continue;
-      state.player.reputation[k] = v > 0 ? v - erosionEstime(v) : v + Math.min(-v, OUBLI_RANCUNE);
+      // Par la porte unique — et ce bloc entier meurt à L4 (MEMOIRE.md).
+      appliquerReputation(state, k, v > 0 ? -erosionEstime(v) : Math.min(-v, OUBLI_RANCUNE));
     }
   }
 
@@ -24236,6 +24307,9 @@ function normaliser(state) {
   // E3 (prisme du propriétaire) : le compteur mondial de rachats devient une
   // mémoire située et datée. On ne sait plus QUI les vieux paiements ont
   // payé — ils entrent comme des souvenirs sans drapeau, qui s'érodent.
+  // L2 (MEMOIRE.md) : le registre des faits — vide pour une vieille partie,
+  // le passé est réputé su, on ne réécrit pas l'histoire.
+  if (!state.player.faits) state.player.faits = [];
   if (!state.player.rachatsFaits) {
     state.player.rachatsFaits = [];
     for (let i = 0; i < Math.min(5, state.player.rachats || 0); i++) {
@@ -24947,6 +25021,7 @@ function nouvellePartie(seed, opts = {}) {
       // prix monte à chaque fois (SIEGE.md, S3).
       rachats: 0,
       rachatsFaits: [],
+      faits: [],
     },
     base: creerBase(),
     journal: [],
@@ -25323,6 +25398,8 @@ function tick(state) {
   // On rend des comptes de ce qu'on a ordonné : d'abord l'issue des actes, puis
   // la charge elle-même, qu'on perd quand le crédit est épuisé.
   if (!state.fin) jugerActes(state, log);
+  // Les nouvelles en route arrivent à leur heure (L2, MEMOIRE.md).
+  if (!state.fin) tickFaits(state, log);
   // Les frictions de la cour (F1+F2, MARECHAL.md) : la relève des comptes à
   // la succession, et le bouc émissaire du chef contesté. AVANT tickCharges,
   // pour qu'une relecture qui vide le crédit coûte la charge la même heure —
