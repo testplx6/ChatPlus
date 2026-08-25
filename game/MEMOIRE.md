@@ -373,7 +373,12 @@ l'écrit sans passer par un fait.
   Une trouvaille d'ouverture consignée dans §Blocages : la voie du service
   était déjà quasi morte AVANT ce chantier (témoin a655ba7 : 3/30) — ce
   n'est pas la mémoire qui l'a tuée, et rien n'a été réglé à vue.
-- [ ] L5 — la mémoire chez le souvenant (la cible, après mesure de L4)
+- [x] L5 — la mémoire chez le souvenant — **livré, cinq pas sur cinq** :
+  l'assiette (tout acte est un fait), la vue matérialisée (le scalaire
+  n'est plus une vérité qu'on édite), la succession qui repèse, l'oubli
+  au conseil, les notables qui jugent sur ce qu'ils ont vu ici — et la
+  remesure contre L4-témoin, dans le bruit. La cible du propriétaire
+  (décision n°1b) est atteinte : la mémoire appartient au souvenant.
   - [x] L5a — l'assiette : les douze actes de la porte brute (départ,
     désertion, vol de colis, contrat honoré, service rendu, batailles,
     péages, ordres, captifs) sont des faits `su = t`, valeurs identiques ;
@@ -422,7 +427,23 @@ l'écrit sans passer par un fait.
     double comptage local assumé et dit. La disparition sans nom garde son
     poids nul : mémoire sans opinion (décision n°2). Deux tests nés rouges
     + un garde de doctrine né vert et assumé (MEM 8).
-  - [ ] L5e — remesure contre L4-témoin, docs, consignation
+  - [x] L5e — livré. **Remesure contre L4-témoin** (banc 30 × 4000 h,
+    mêmes graines, témoin = 8b10ecd) :
+    - défaut : survie 28/30 = 28/30 (mêmes extinctions), crédits 1103 vs
+      1088, engagées 3/30 = 3/30, heures sous les couleurs 431 vs 418,
+      replis 19 = 19, sans engagement 24/30 = 24/30, table des drapeaux
+      inchangée — la repesée par signe et le clamp déplacé sont **dans le
+      bruit** : rien de regelé à vue (décision n°4).
+    - pillard : prédation égale (244 caravanes prises vs 242, survie
+      29/30 = 29/30), mais estime finale −9 vs −13 et parties engagées
+      7/30 vs 4/30 : **la sortie d'hostilité est vivante** — les conseils
+      patients classent les vieux griefs, les successions repèsent, sans
+      que le pillard cesse de piller. Le contre-jeu promis par le cahier
+      existe en partie jouée, pas en supposition.
+    - le banc a aussi trouvé ce que les tests n'avaient pas vu : relâcher
+      un captif au milieu de nulle part passait par `col.regionId` sans
+      garde — corrigé (justice.js).
+    AUDIT.md : S1 et S5 marqués résolus par le chantier.
 
 ## Blocages
 

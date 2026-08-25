@@ -164,24 +164,20 @@ punitive qu'aucun agent ne porte ; (2) minuteur vécu comme une taxe ;
 
 ## Décisions au propriétaire — les deux fonds et deux petits
 
-- **S1 — l'érosion d'estime quotidienne** (events.js) : chaque jour à
-  heure fixe, toute estime fond (0,1/j) et toute rancune aussi — le
-  joueur est le seul être du monde que tout le monde oublie au
-  chronomètre (les factions entre elles ne bougent que quand un
-  conseil juge). La reformulation : l'estime portée par des gens qui
-  se souviennent, et qui bougent sur des ÉVÉNEMENTS — succession (F1
-  le fait déjà pour les fautes), chute d'une ville, mort d'un notable.
-  C'est un chantier (l'équilibre d'ouverture a été calibré CONTRE
-  cette pente), pas un correctif.
-- **S5 — le monde omniscient sur vos actes** : s'engager, vendre un
-  esclave, piller une caravane sans survivant, l'indépendance — tout
-  se sait partout, à l'heure même, sans témoin ni route. Le joueur
-  subit le brouillard ; le monde, lui, voit en direct. Reformulation :
-  un acte est un fait local et daté, il voyage par les canaux
-  existants (DELAI_NOUVELLE, colporteurs) et il lui faut des témoins.
-  À instruire avec E12 et T5 — même sujet que S1 vu de l'autre côté :
-  **la mémoire et l'information doivent avoir des porteurs et des
-  jambes.**
+- **S1 — l'érosion d'estime quotidienne** — **RÉSOLU par le chantier
+  MEMOIRE (L4-L5, août 2026)** : l'érosion à heure fixe est morte ;
+  l'oubli est un acte du porteur — la succession repèse les faits selon
+  le tempérament du successeur, le conseil classe les vieux griefs à sa
+  patience, le registre borné évince. L'équilibre d'ouverture a été
+  remesuré au banc avant la bascule (les seuils, regelés tels quels, se
+  sont révélés déjà hors d'atteinte AVANT le chantier — trouvaille
+  consignée dans MEMOIRE.md §Blocages, décision au propriétaire).
+- **S5 — le monde omniscient sur vos actes** — **RÉSOLU par le chantier
+  MEMOIRE (L1-L3, août 2026)** : un acte est un fait local et daté, il
+  voyage par ses canaux (proclamation, rumeur — délais par distance), il
+  lui faut des témoins (« pas vu, pas su » : le nom de l'auteur n'est
+  jamais prononcé sans témoin), et l'écriture de la réputation n'a plus
+  qu'une porte, tenue par un test statique (src/faits.js).
 - **S7** — le jugement d'un acte à 1 200 h pile, sur l'instantané
   d'une heure : cosmétique, à juger au premier conseil suivant.
 - **S11** — le joueur capture et rançonne, mais n'est jamais capturé
@@ -206,6 +202,7 @@ opportunistes, défendable.
 
 **Constat d'ensemble du game master, vérifié :** après P1-P6, la
 correction M4/F2 et cette vague, le moteur n'a plus AUCUN
-multiplicateur dirigé contre le joueur. Ce qui reste (S1, S5) n'est
-pas de la punition — c'est de l'information sans porteur, et c'est le
-même chantier des deux côtés.
+multiplicateur dirigé contre le joueur. Ce qui restait (S1, S5) n'était
+pas de la punition — de l'information sans porteur — et le chantier
+MEMOIRE l'a soldé des deux côtés : les nouvelles ont des jambes, la
+mémoire a des porteurs, l'oubli a des visages.
