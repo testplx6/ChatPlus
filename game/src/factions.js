@@ -384,7 +384,7 @@ function capturer(world, armee, col, t, log, ctx) {
     // Maréchal, pas au dirigeant — c'est ce que tenir la charge veut dire.
     crediterDirigeant(world, nouveau, 'prise');
     if (ancien) {
-      if (ctx && ctx.marechal === ancien && ctx.perteVille) ctx.perteVille(ancien, col.nom);
+      if (ctx && ctx.marechal === ancien && ctx.perteVille) ctx.perteVille(ancien, col.nom, col.id);
       else crediterDirigeant(world, ancien, 'perte');
     }
     // Pillage : une partie du stock file dans le trésor du vainqueur
@@ -1142,7 +1142,11 @@ function conseil(world, key, t, log, ctx) {
   const coutMur = Math.round(400 / Math.max(0.001, coursMonnaie(world, key)));
   if (!guerresDe(world, key).length && f.tresor > coutMur * 2.25 && aBatir.length
       && rng.chance(0.6)) {
-    const col = rng.pick(aBatir);
+    // M4 (MARECHAL.md) : la place désignée d'abord — le Maréchal dit ce qu'on
+    // tient, le sort ne décide plus que sans lui. Tant qu'elle veut bâtir.
+    const designee = ctx && ctx.marechal === key && ctx.placeATenir
+      ? aBatir.find((c) => c.id === ctx.placeATenir) : null;
+    const col = designee || rng.pick(aBatir);
     col.murs += 1;
     // Des murs se paient à des maçons, et les maçons habitent la ville.
     verser(world, key, col, coutMur);

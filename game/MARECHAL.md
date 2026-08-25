@@ -218,11 +218,36 @@ pouvoir emprunte un flux que la faction a déjà.
   mesurées, ville jamais prise). Le but se juge désormais du côté du
   déclarant, pour les deux camps : les guerres de conquête durent enfin.
   Huit tests nés rouges.
-- [ ] M4 — la place à tenir
+- [x] M4 — la place à tenir — livré : `designerPlace` (rang Maréchal), la
+  désignation vit à la feuille de service (`allegeance.place`, migrée) et
+  passe au monde par `ctx.placeATenir`. Tant qu'elle veut bâtir, la place
+  désignée reçoit l'investissement du conseil — le sort ne décide plus que
+  sans Maréchal. La place désignée qui tombe est une **double** faute, dite
+  comme telle, et la désignation s'efface avec elle. Sept tests nés rouges.
+  **Trouvaille consignée en l'écrivant** (voir Blocages) : l'investissement
+  du conseil ne tire presque jamais — le seul chemin par lequel une ville
+  « veut bâtir » en pleine séance est l'appréciation du cours entre le
+  balayage des caisses et la recote.
 - [ ] F1 + F2 — les frictions de la cour
 - [ ] M7 — la porte de la couronne
 
 ## Blocages
+
+- **L'investissement du conseil est quasi mort, et personne ne l'avait vu**
+  — trouvé en écrivant le décor de M4. La séquence d'une séance :
+  `remonterCaisses` balaie TOUT ce qui dépasse le fonds de roulement (la
+  capacité d'emprunt retombe à zéro par construction), puis chaque
+  versement de la séance — solde de garnison, prêt de détresse — va aux
+  **ménages**, jamais à la caisse. `veutBatir` (qui garde l'investissement,
+  section 5) ne peut donc passer que par un accident d'ordre : `majCours`
+  recote la monnaie APRÈS le balayage, et si le cours monte, la réserve
+  baisse et la différence devient capacité. Les murs du conseil ne se
+  bâtissent que les jours où la monnaie s'apprécie — 44 chantiers sur six
+  graines et 6 000 heures, pour trente-six pays. Ce n'est pas le chantier
+  Maréchal qui tranche ça : soit c'est voulu (un pays ne fortifie que
+  quand sa monnaie respire — défendable), soit la garde de
+  l'investissement doit regarder le trésor du pays plutôt que la capacité
+  d'emprunt de la ville. Décision au propriétaire, rien touché ici.
 
 - ~~M6/E10 déplace le monde, et la garde `convois` sort de 0,7 %~~ —
   **levé** par le propriétaire (« recale », août 2026) : le plancher

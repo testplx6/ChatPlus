@@ -132,6 +132,12 @@ export const PREROGATIVES = {
     rang: 4, // Commandeur
     charge: 'Chacun de ceux qui en détiennent perdra ce que vous aurez imprimé.',
   },
+  place: {
+    nom: 'Désigner la place à tenir',
+    desc: 'La ville que la maison renforce en priorité, tant que vous commandez.',
+    rang: 5, // Maréchal
+    charge: 'La place désignée qui tombe est une double faute : c’était la vôtre.',
+  },
   racheter: {
     nom: 'Racheter une créance',
     desc: 'Reprendre au porteur la dette d’une ville étrangère. Elle vous devra, et '
@@ -408,6 +414,43 @@ export function rappelerColonne(state, faction, armeeId, log) {
     });
   }
   return { ok: true };
+}
+
+/**
+ * M4 (MARECHAL.md) — la place à tenir : la ville que la maison renforce en
+ * priorité. L'investissement du conseil était tiré au sort ; charge tenue,
+ * il va d'abord là où le Maréchal l'a dit (voir `conseil`, factions.js — la
+ * désignation passe par `ctx.placeATenir`, le monde ne lit pas le joueur).
+ * La place désignée qui tombe est une double faute : c'était la vôtre.
+ * `colId` nul retire la désignation.
+ */
+export function designerPlace(state, faction, colId, log) {
+  const v = peutExercer(state, faction, 'place');
+  if (!v.ok) return v;
+  const porteur = groupesEngages(state, faction)[0];
+  if (!porteur) return { ok: false, motif: `Vous ne servez pas ${drapeauDe(state.world, faction).nom}.` };
+  if (!colId) {
+    porteur.allegeance.place = null;
+    return { ok: true };
+  }
+  const col = colonieParId(state.world, colId);
+  if (!col || col.ruine || col.faction !== faction) {
+    return { ok: false, motif: 'Cette ville n’est pas à la maison.' };
+  }
+  if (col.avantPoste) {
+    return { ok: false, motif: 'Votre camp n’est pas une place de la maison.' };
+  }
+  porteur.allegeance.place = col.id;
+  if (log) {
+    log({
+      type: 'influence',
+      texte: `Sur votre ordre, ${drapeauDe(state.world, faction).nom} tien${drapeauDe(state.world, faction).pluriel ? 'nent' : 't'} ${col.nom} en priorité : les murs iront là d’abord.`,
+      important: true,
+      regionId: col.regionId,
+      factions: [faction],
+    });
+  }
+  return { ok: true, colonie: col };
 }
 
 /**

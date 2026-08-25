@@ -971,6 +971,7 @@ const acheterCoffreA = acheterCoffre;
 const envoyerColonneA = envoyerColonne;
 const leverColonneA = leverColonne;
 const rappelerColonneA = rappelerColonne;
+const designerPlaceA = designerPlace;
 const fonderPosteA = fonderPoste;
 const fixerLoiA = fixerLoi;
 const accorderCreditA = accorderCredit;
@@ -13832,7 +13833,7 @@ function capturer(world, armee, col, t, log, ctx) {
     // Maréchal, pas au dirigeant — c'est ce que tenir la charge veut dire.
     crediterDirigeant(world, nouveau, 'prise');
     if (ancien) {
-      if (ctx && ctx.marechal === ancien && ctx.perteVille) ctx.perteVille(ancien, col.nom);
+      if (ctx && ctx.marechal === ancien && ctx.perteVille) ctx.perteVille(ancien, col.nom, col.id);
       else crediterDirigeant(world, ancien, 'perte');
     }
     // Pillage : une partie du stock file dans le trésor du vainqueur
@@ -14590,7 +14591,11 @@ function conseil(world, key, t, log, ctx) {
   const coutMur = Math.round(400 / Math.max(0.001, coursMonnaie(world, key)));
   if (!guerresDe(world, key).length && f.tresor > coutMur * 2.25 && aBatir.length
       && rng.chance(0.6)) {
-    const col = rng.pick(aBatir);
+    // M4 (MARECHAL.md) : la place désignée d'abord — le Maréchal dit ce qu'on
+    // tient, le sort ne décide plus que sans lui. Tant qu'elle veut bâtir.
+    const designee = ctx && ctx.marechal === key && ctx.placeATenir
+      ? aBatir.find((c) => c.id === ctx.placeATenir) : null;
+    const col = designee || rng.pick(aBatir);
     col.murs += 1;
     // Des murs se paient à des maçons, et les maçons habitent la ville.
     verser(world, key, col, coutMur);
@@ -15485,6 +15490,12 @@ const PREROGATIVES = {
     rang: 4, // Commandeur
     charge: 'Chacun de ceux qui en détiennent perdra ce que vous aurez imprimé.',
   },
+  place: {
+    nom: 'Désigner la place à tenir',
+    desc: 'La ville que la maison renforce en priorité, tant que vous commandez.',
+    rang: 5, // Maréchal
+    charge: 'La place désignée qui tombe est une double faute : c’était la vôtre.',
+  },
   racheter: {
     nom: 'Racheter une créance',
     desc: 'Reprendre au porteur la dette d’une ville étrangère. Elle vous devra, et '
@@ -15761,6 +15772,43 @@ function rappelerColonne(state, faction, armeeId, log) {
     });
   }
   return { ok: true };
+}
+
+/**
+ * M4 (MARECHAL.md) — la place à tenir : la ville que la maison renforce en
+ * priorité. L'investissement du conseil était tiré au sort ; charge tenue,
+ * il va d'abord là où le Maréchal l'a dit (voir `conseil`, factions.js — la
+ * désignation passe par `ctx.placeATenir`, le monde ne lit pas le joueur).
+ * La place désignée qui tombe est une double faute : c'était la vôtre.
+ * `colId` nul retire la désignation.
+ */
+function designerPlace(state, faction, colId, log) {
+  const v = peutExercer(state, faction, 'place');
+  if (!v.ok) return v;
+  const porteur = groupesEngages(state, faction)[0];
+  if (!porteur) return { ok: false, motif: `Vous ne servez pas ${drapeauDe(state.world, faction).nom}.` };
+  if (!colId) {
+    porteur.allegeance.place = null;
+    return { ok: true };
+  }
+  const col = colonieParId(state.world, colId);
+  if (!col || col.ruine || col.faction !== faction) {
+    return { ok: false, motif: 'Cette ville n’est pas à la maison.' };
+  }
+  if (col.avantPoste) {
+    return { ok: false, motif: 'Votre camp n’est pas une place de la maison.' };
+  }
+  porteur.allegeance.place = col.id;
+  if (log) {
+    log({
+      type: 'influence',
+      texte: `Sur votre ordre, ${drapeauDe(state.world, faction).nom} tien${drapeauDe(state.world, faction).pluriel ? 'nent' : 't'} ${col.nom} en priorité : les murs iront là d’abord.`,
+      important: true,
+      regionId: col.regionId,
+      factions: [faction],
+    });
+  }
+  return { ok: true, colonie: col };
 }
 
 /**
@@ -23839,6 +23887,8 @@ function normaliser(state) {
     if (g.allegeance.fautes === undefined) g.allegeance.fautes = 0;
     // Avant les secteurs, un gradé n'avait rien à tenir entre deux guerres.
     if (g.allegeance.secteur === undefined) g.allegeance.secteur = null;
+    // Avant M4, personne ne désignait la place que la maison renforce.
+    if (g.allegeance.place === undefined) g.allegeance.place = null;
   }
   if (!state.memorial) state.memorial = [];
   // Les chapitres (HISTOIRE.md, lot A) : une vieille sauvegarde n'en a pas —
@@ -24680,7 +24730,26 @@ function tick(state) {
   const commandement = commandementDe(state);
   if (commandement) {
     ctx.marechal = commandement;
-    ctx.perteVille = (faction, nom) => porterFaute(state, faction, `la perte de ${nom}`, log);
+    // M4 : la place à tenir. La désignation vit à la feuille de service et
+    // passe au monde par le ctx, comme le reste du commandement.
+    let placeTenue = null;
+    for (const g of state.player.groupes) {
+      const all = g.allegeance;
+      if (all && all.faction === commandement && all.place) { placeTenue = all.place; break; }
+    }
+    if (placeTenue) ctx.placeATenir = placeTenue;
+    ctx.perteVille = (faction, nom, colId) => {
+      const laVotre = colId && colId === placeTenue;
+      porterFaute(state, faction,
+        laVotre ? `la perte de ${nom} — la place que vous aviez fait tenir` : `la perte de ${nom}`,
+        log, laVotre ? 2 : 1);
+      // On ne tient pas une ville perdue : la désignation s'efface avec elle.
+      if (laVotre) {
+        for (const g of state.player.groupes) {
+          if (g.allegeance && g.allegeance.place === colId) g.allegeance.place = null;
+        }
+      }
+    };
   }
   // Le banc peut geler la législation pour la mesurer par différence.
   if (state.sansLois) ctx.sansLois = true;
@@ -28499,6 +28568,7 @@ function cibleVide(k) {
     rompre: 'Aucun accord commercial en cours.',
     envoyer: 'Aucune colonne des vôtres n’est sur les routes.',
     rappeler: 'Rien à rappeler : aucune colonne en campagne.',
+    place: 'Pas une place à tenir : la maison n’a plus de ville.',
     lever: 'Rien à lever : aucune ville ennemie à portée, ou un trésor qui ne paie plus vingt-cinq hommes.',
     fonder: 'Pas une case libre assez près des vôtres, ni assez loin des autres.',
     garnison: 'Aucune ville ne vous est confiée — il faut un secteur.',
@@ -28686,6 +28756,28 @@ function ciblesCharge(faction, k) {
       texte: `${n(Math.round(m * part))} ${sym(faction)} — ${Math.round(part * 100)} % `
         + `de ce qui circule ; le cours perdra à peu près autant`,
     }));
+  }
+  if (k === 'place') {
+    const actuelle = (() => {
+      for (const g of S.player.groupes) {
+        const all = g.allegeance;
+        if (all && all.faction === faction && all.place) return all.place;
+      }
+      return null;
+    })();
+    const out = w.colonies
+      .filter((c) => c.faction === faction && !c.ruine && !c.avantPoste && c.id !== actuelle)
+      .sort((x, y) => (x.defense + x.murs * 12) - (y.defense + y.murs * 12))
+      .slice(0, 5)
+      .map((c) => ({
+        val: c.id,
+        texte: `Tenir ${c.nom} — ${c.murs} mur${c.murs > 1 ? 's' : ''}, défense ${Math.round(c.defense)}`,
+      }));
+    if (actuelle) {
+      const c = colonieParId(w, actuelle);
+      out.unshift({ val: '', texte: `Ne plus tenir ${c ? c.nom : 'la place'} en priorité` });
+    }
+    return out;
   }
   if (k === 'guerre') {
     // M3 (MARECHAL.md) : le Maréchal nomme le but — on dit ce qu'on est venu
@@ -31088,6 +31180,7 @@ function surClic(ev) {
       switch (el.dataset.r) {
         case 'envoyer': r = ACTIONS.envoyerColonne(f, cible, el.dataset.b); break;
         case 'rappeler': r = ACTIONS.rappelerColonne(f, cible); break;
+        case 'place': r = ACTIONS.designerPlace(f, cible); break;
         case 'garnison': r = ACTIONS.garnison(f); break;
         case 'grenier': r = ACTIONS.grenier(f); break;
         case 'loi': r = ACTIONS.fixerLoi(f, cible); break;
@@ -31775,6 +31868,13 @@ const API = {
   /** Ordonner le retour d'une colonne : route, puis garnison chez soi. */
   rappelerColonne(faction, armeeId) {
     const r = rappelerColonneA(state, faction, armeeId, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Désigner la ville que la maison renforce en priorité (M4). Vide : retirer. */
+  designerPlace(faction, colId) {
+    const r = designerPlaceA(state, faction, colId || null, creerLogger(state));
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },

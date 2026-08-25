@@ -3536,6 +3536,7 @@ function cibleVide(k) {
     rompre: 'Aucun accord commercial en cours.',
     envoyer: 'Aucune colonne des vôtres n’est sur les routes.',
     rappeler: 'Rien à rappeler : aucune colonne en campagne.',
+    place: 'Pas une place à tenir : la maison n’a plus de ville.',
     lever: 'Rien à lever : aucune ville ennemie à portée, ou un trésor qui ne paie plus vingt-cinq hommes.',
     fonder: 'Pas une case libre assez près des vôtres, ni assez loin des autres.',
     garnison: 'Aucune ville ne vous est confiée — il faut un secteur.',
@@ -3723,6 +3724,28 @@ function ciblesCharge(faction, k) {
       texte: `${n(Math.round(m * part))} ${sym(faction)} — ${Math.round(part * 100)} % `
         + `de ce qui circule ; le cours perdra à peu près autant`,
     }));
+  }
+  if (k === 'place') {
+    const actuelle = (() => {
+      for (const g of S.player.groupes) {
+        const all = g.allegeance;
+        if (all && all.faction === faction && all.place) return all.place;
+      }
+      return null;
+    })();
+    const out = w.colonies
+      .filter((c) => c.faction === faction && !c.ruine && !c.avantPoste && c.id !== actuelle)
+      .sort((x, y) => (x.defense + x.murs * 12) - (y.defense + y.murs * 12))
+      .slice(0, 5)
+      .map((c) => ({
+        val: c.id,
+        texte: `Tenir ${c.nom} — ${c.murs} mur${c.murs > 1 ? 's' : ''}, défense ${Math.round(c.defense)}`,
+      }));
+    if (actuelle) {
+      const c = colonieParId(w, actuelle);
+      out.unshift({ val: '', texte: `Ne plus tenir ${c ? c.nom : 'la place'} en priorité` });
+    }
+    return out;
   }
   if (k === 'guerre') {
     // M3 (MARECHAL.md) : le Maréchal nomme le but — on dit ce qu'on est venu
@@ -6125,6 +6148,7 @@ function surClic(ev) {
       switch (el.dataset.r) {
         case 'envoyer': r = ACTIONS.envoyerColonne(f, cible, el.dataset.b); break;
         case 'rappeler': r = ACTIONS.rappelerColonne(f, cible); break;
+        case 'place': r = ACTIONS.designerPlace(f, cible); break;
         case 'garnison': r = ACTIONS.garnison(f); break;
         case 'grenier': r = ACTIONS.grenier(f); break;
         case 'loi': r = ACTIONS.fixerLoi(f, cible); break;

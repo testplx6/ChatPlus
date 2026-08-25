@@ -425,7 +425,26 @@ export function tick(state) {
   const commandement = commandementDe(state);
   if (commandement) {
     ctx.marechal = commandement;
-    ctx.perteVille = (faction, nom) => porterFaute(state, faction, `la perte de ${nom}`, log);
+    // M4 : la place à tenir. La désignation vit à la feuille de service et
+    // passe au monde par le ctx, comme le reste du commandement.
+    let placeTenue = null;
+    for (const g of state.player.groupes) {
+      const all = g.allegeance;
+      if (all && all.faction === commandement && all.place) { placeTenue = all.place; break; }
+    }
+    if (placeTenue) ctx.placeATenir = placeTenue;
+    ctx.perteVille = (faction, nom, colId) => {
+      const laVotre = colId && colId === placeTenue;
+      porterFaute(state, faction,
+        laVotre ? `la perte de ${nom} — la place que vous aviez fait tenir` : `la perte de ${nom}`,
+        log, laVotre ? 2 : 1);
+      // On ne tient pas une ville perdue : la désignation s'efface avec elle.
+      if (laVotre) {
+        for (const g of state.player.groupes) {
+          if (g.allegeance && g.allegeance.place === colId) g.allegeance.place = null;
+        }
+      }
+    };
   }
   // Le banc peut geler la législation pour la mesurer par différence.
   if (state.sansLois) ctx.sansLois = true;

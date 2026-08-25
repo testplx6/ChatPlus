@@ -36,7 +36,7 @@ import {
 import { engager } from './recrues.js';
 import {
   envoyerColonne as envoyerColonneA, leverColonne as leverColonneA,
-  rappelerColonne as rappelerColonneA,
+  rappelerColonne as rappelerColonneA, designerPlace as designerPlaceA,
   fonderPoste as fonderPosteA, declarerGuerreA, signerPaixAvec,
   renforcerGarnison, ouvrirGreniers, fixerLoi as fixerLoiA,
   accorderCredit as accorderCreditA, battreMonnaie as battreMonnaieA,
@@ -420,6 +420,13 @@ const API = {
   /** Ordonner le retour d'une colonne : route, puis garnison chez soi. */
   rappelerColonne(faction, armeeId) {
     const r = rappelerColonneA(state, faction, armeeId, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Désigner la ville que la maison renforce en priorité (M4). Vide : retirer. */
+  designerPlace(faction, colId) {
+    const r = designerPlaceA(state, faction, colId || null, creerLogger(state));
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },

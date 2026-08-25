@@ -134,6 +134,8 @@ export function normaliser(state) {
     if (g.allegeance.fautes === undefined) g.allegeance.fautes = 0;
     // Avant les secteurs, un gradé n'avait rien à tenir entre deux guerres.
     if (g.allegeance.secteur === undefined) g.allegeance.secteur = null;
+    // Avant M4, personne ne désignait la place que la maison renforce.
+    if (g.allegeance.place === undefined) g.allegeance.place = null;
   }
   if (!state.memorial) state.memorial = [];
   // Les chapitres (HISTOIRE.md, lot A) : une vieille sauvegarde n'en a pas —

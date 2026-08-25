@@ -11613,6 +11613,130 @@ section('M quinquies. Le Maréchal — M3, le but de guerre choisi (MARECHAL.md)
 }
 
 // ===========================================================================
+section('M sexies. Le Maréchal — M4, la place à tenir (MARECHAL.md)');
+{
+  const rien = () => {};
+  const influence = await import('../src/influence.js');
+  const { designerPlace } = influence;
+  ok(typeof designerPlace === 'function'
+    && influence.PREROGATIVES.place && influence.PREROGATIVES.place.rang === 5,
+    'le verbe existe, au rang du Maréchal — désigner est du commandement');
+
+  const monter = (points) => {
+    const st = nouvellePartie(661, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(st);
+    const cand = Object.keys(st.world.factions).filter(
+      (k) => k !== 'essaim' && st.world.factions[k].colonies.length >= 3 && dirigeant(st.world, k));
+    const A = cand[0];
+    g.allegeance = { faction: A, points, derniereSolde: 0, intendance: 0 };
+    return { st, g, A };
+  };
+
+  if (typeof designerPlace === 'function') {
+    // 1) Désigner, et pas en dessous du rang.
+    const m = monter(RANGS[5].points);
+    const col = m.st.world.colonies.find((c) => c.faction === m.A && !c.ruine && !c.avantPoste);
+    const r = designerPlace(m.st, m.A, col.id, rien);
+    ok(r.ok && m.g.allegeance.place === col.id,
+      'la place se désigne, et la désignation tient à la feuille de service', r.motif || '');
+    const c4 = monter(RANGS[4].points);
+    const col4 = c4.st.world.colonies.find((c) => c.faction === c4.A && !c.ruine && !c.avantPoste);
+    ok(!designerPlace(c4.st, c4.A, col4.id, rien).ok,
+      'un Commandeur ne désigne pas la place — la charge de Maréchal le fait');
+
+    // 2) L'investissement du conseil va à la place désignée, plus au sort.
+    //    On laisse le conseil bâtir plusieurs fois : sans désignation le sort
+    //    disperse, désignée la place reçoit tout.
+    const { veutBatir, capaciteRemboursement } = await import('../src/credit.js');
+    const m2 = monter(RANGS[5].points);
+    const w2 = m2.st.world;
+    // Le seul chemin par lequel `veutBatir` passe EN séance : le balayage des
+    // caisses se fait au cours d'avant, `majCours` recote ensuite, et si le
+    // cours MONTE, la réserve baisse et la différence devient capacité — les
+    // murs du conseil ne se bâtissent que les jours où la monnaie s'apprécie
+    // (tout autre versement de séance va aux ménages, jamais à la caisse).
+    // Le décor provoque donc l'appréciation : cours poussé à 0,7 avant chaque
+    // séance, l'inertie (0,7) le remonte d'un tiers vers sa cible pendant.
+    const geler = () => {
+      for (const k of Object.keys(w2.factions)) w2.factions[k].prochainConseil = k === m2.A ? 1 : 99999;
+      w2.factions[m2.A].tresor = 50000;
+      w2.factions[m2.A].agression = 0; // pas de guerre déclarée EN séance : l'investissement exige la paix à l'instant même
+      w2.factions[m2.A].cours = 0.7;
+      w2.guerres = w2.guerres.filter((x) => x.a !== m2.A && x.b !== m2.A);
+      for (const c of w2.colonies) {
+        if (c.faction !== m2.A || c.ruine || c.avantPoste) continue;
+        c.caisse = Math.max(c.caisse || 0, (c.pop || 0) * 24);
+        c.dette = 0;
+      }
+    };
+    // La fondation `return` à chaque séance d'un pays riche et en paix, et
+    // l'investissement ne viendrait jamais : on construit le cas où il n'y a
+    // plus une case où fonder — tout ce qui est libre à portée devient relais
+    // (exclu des candidates) — au lieu de le parier sur le tirage.
+    {
+      const miennes2 = w2.colonies.filter((c) => c.faction === m2.A && !c.ruine);
+      for (const r of w2.regions) {
+        if (r.colonie) continue;
+        if (miennes2.some((c) => distance(c.regionId, r.i) <= 3)) r.biome = 'relais';
+      }
+    }
+    geler();
+    const aBatir = w2.colonies.filter((c) => c.faction === m2.A && veutBatir(w2, c));
+    if (aBatir.length >= 2) {
+      const cible = aBatir[aBatir.length - 1];
+      designerPlace(m2.st, m2.A, cible.id, rien);
+      const mursAvant = new Map(aBatir.map((c) => [c.id, c.murs]));
+      let t = 0;
+      let ailleurs = 0;
+      let chezElle = 0;
+      for (let i = 0; i < 200 && chezElle < 3; i++) {
+        t += 1;
+        geler();
+        tickFactions(w2, t, rien, {
+          rng: new Rng(grainDe(w2.graine, 'm4', t)),
+          marechal: m2.A,
+          placeATenir: m2.g.allegeance.place,
+        });
+        for (const c of w2.colonies) {
+          if (c.faction !== m2.A || !mursAvant.has(c.id)) continue;
+          const delta = c.murs - mursAvant.get(c.id);
+          if (delta > 0) {
+            if (c.id === cible.id) chezElle += delta; else ailleurs += delta;
+            mursAvant.set(c.id, c.murs);
+          }
+        }
+      }
+      ok(chezElle > 0 && ailleurs === 0,
+        'tant qu’elle veut bâtir, la place désignée reçoit tout — le sort ne décide plus',
+        `${chezElle} chez elle, ${ailleurs} ailleurs`);
+    } else {
+      ok(true, 'moins de deux villes à bâtir à cette graine — vérification sautée, dit tel quel');
+    }
+
+    // 3) La place désignée qui tombe est une double faute : c'était la vôtre.
+    const m3 = monter(RANGS[5].points);
+    const colP = m3.st.world.colonies.find((c) => c.faction === m3.A && !c.ruine && !c.avantPoste);
+    designerPlace(m3.st, m3.A, colP.id, rien);
+    colP.defense = 0.5;
+    colP.murs = 0;
+    const B3 = Object.keys(m3.st.world.factions).find(
+      (k) => k !== 'essaim' && k !== m3.A && m3.st.world.factions[k].colonies.length);
+    m3.st.world.armees.push({
+      id: 'aM4', faction: B3, regionId: colP.regionId, force: 400, forceMax: 400,
+      cible: colP.id, route: [], etape: 0, progres: 0, etat: 'siege',
+      ravitaillement: 80, impayees: 0,
+    });
+    for (let i = 0; i < 30 && colP.faction === m3.A; i++) tick(m3.st);
+    ok(colP.faction !== m3.A, 'la place assiégée tombe (fixture)');
+    ok((m3.g.allegeance.fautes || 0) >= 2,
+      'la place désignée tombée compte double — c’était la vôtre',
+      `${m3.g.allegeance.fautes || 0} faute(s)`);
+    ok(m3.g.allegeance.place === null || m3.g.allegeance.place === undefined,
+      'et la désignation s’efface avec la place — on ne tient pas une ville perdue');
+  }
+}
+
+// ===========================================================================
 console.log('\n' + '='.repeat(42));
 console.log(`${total - echecs}/${total} tests passés`);
 if (echecs > 0) {
