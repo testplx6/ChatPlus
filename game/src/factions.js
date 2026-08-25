@@ -851,6 +851,13 @@ function conseil(world, key, t, log, ctx) {
 
   f.prochainConseil = rng.irange(30, 90);
 
+  // M7 (MARECHAL.md) : la couronne portée par le joueur, le conseil s'efface
+  // ENTIÈREMENT des décisions — paix, guerre, levées, reprises, fondations,
+  // rachats, murs. Les comptes, eux, tournent toujours : impôt, solde,
+  // crédit, cote de la monnaie. `joueur` est posé sur le dirigeant, un fait
+  // du monde — rien ici ne lit l'état du joueur.
+  const couronne = !!(f.dirigeant && f.dirigeant.joueur);
+
   // Ce qu'on s'autorise avant de décider ce qu'on fait : l'impôt paie les
   // colonnes, la justice tient les routes, et l'un et l'autre se paient en
   // grogne. La politique intérieure passe donc avant la politique étrangère.
@@ -913,7 +920,7 @@ function conseil(world, key, t, log, ctx) {
   // colonne. Le porteur décide du prix — voir `prixCession` —, et le
   // tempérament décide si l'on est de ceux qui achètent.
   const chef = dirigeant(world, key);
-  if (chef && ACHETEURS.includes(chef.temperament) && f.tresor > 4000
+  if (chef && !chef.joueur && ACHETEURS.includes(chef.temperament) && f.tresor > 4000
       && rng.chance(0.35 * penchant(world, key, 'expansion'))) {
     const convoitees = world.colonies.filter(
       (c) => !c.ruine && c.faction && c.faction !== key && c.dette > 500
@@ -959,8 +966,9 @@ function conseil(world, key, t, log, ctx) {
   const maPuissance = puissance(world, key);
   const mesGuerres = guerresDe(world, key);
 
-  // 1) Faire la paix si la guerre coûte trop cher
-  for (const g of mesGuerres) {
+  // 1) Faire la paix si la guerre coûte trop cher — pas sous la couronne :
+  //    une paix qui n'est pas de vous n'existe pas (M7).
+  for (const g of couronne ? [] : mesGuerres) {
     const autre = g.a === key ? g.b : g.a;
     const duree = t - g.depuis;
     const leur = puissance(world, autre);
@@ -985,7 +993,7 @@ function conseil(world, key, t, log, ctx) {
   // ne tente pas se décide tout de même contre un régime qu'il réprouve.
   const indignation = Math.max(...diploDe(world).map(
     (k) => (k === key ? 0 : distanceMorale(world, key, k))));
-  if (enGuerreAvec.size < 2 && rng.chance(f.agression * 0.5
+  if (!couronne && enGuerreAvec.size < 2 && rng.chance(f.agression * 0.5
       * penchant(world, key, 'guerre') * (1 + indignation * 1.8))) {
     const candidats = diploDe(world).filter(
       (k) => k !== key && !enGuerreAvec.has(k) && coloniesDe(world, k).length > 0
@@ -1018,7 +1026,7 @@ function conseil(world, key, t, log, ctx) {
   //    la charge : les colonnes de la maison n'obéissent qu'à lui, le conseil
   //    s'efface des levées comme il s'efface des lois (M1, MARECHAL.md —
   //    même câblage que `ctx.legislateur` dans `legiferer`).
-  const marechalCommande = ctx && ctx.marechal === key;
+  const marechalCommande = (ctx && ctx.marechal === key) || couronne;
   if (!marechalCommande) {
     for (const g of guerresDe(world, key)) {
       const ennemi = g.a === key ? g.b : g.a;
@@ -1090,7 +1098,7 @@ function conseil(world, key, t, log, ctx) {
   // factions : aucune n'était plus jamais sous son plafond, et plus une seule
   // ville n'a été fondée de toute une partie.
   const plafond = Math.max(7, Math.round(world.regions.length / 36));
-  if (mesColonies.length < plafond
+  if (!couronne && mesColonies.length < plafond
       && rng.chance(Math.min(0.9, 0.4 * penchant(world, key, 'expansion')))
       && f.tresor > (enPaix ? 1700 : 4200)) {
     // Une case libre, à portée de nos terres mais assez loin des villes
@@ -1140,7 +1148,7 @@ function conseil(world, key, t, log, ctx) {
   const aBatir = mesColonies.filter((c) => veutBatir(world, c));
   // Les maçons aussi se paient en vrai (E10) : le cours divise, le seuil suit.
   const coutMur = Math.round(400 / Math.max(0.001, coursMonnaie(world, key)));
-  if (!guerresDe(world, key).length && f.tresor > coutMur * 2.25 && aBatir.length
+  if (!couronne && !guerresDe(world, key).length && f.tresor > coutMur * 2.25 && aBatir.length
       && rng.chance(0.6)) {
     // M4 (MARECHAL.md) : la place désignée d'abord — le Maréchal dit ce qu'on
     // tient, le sort ne décide plus que sans lui. Tant qu'elle veut bâtir.
@@ -1413,6 +1421,8 @@ function legiferer(world, key, t, log, ctx) {
   if (t - (lois.depuis || 0) < DELAI_LOI) return;
   const d = dirigeant(world, key);
   if (!d) return;
+  // M7 : la couronne portée par le joueur, plus une loi qui ne soit de lui.
+  if (d.joueur) return;
   const temp = TEMPERAMENTS[d.temperament];
   const pays = etatDuPays(world, key);
   if (!temp || !pays) return;

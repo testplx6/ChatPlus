@@ -242,7 +242,22 @@ pouvoir emprunte un flux que la faction a déjà.
   rendre la charge. Le chef est identifié par son `id` public à la feuille
   de service (`allegeance.chef`, migrée) — le monde ne lit rien du joueur.
   Neuf tests nés rouges.
-- [ ] M7 — la porte de la couronne
+- [x] M7 — la porte de la couronne — livré, et le chantier avec. À la chute
+  du chef, la maison offre la charge de dirigeant au Maréchal au crédit
+  haut (≥ 150), selon son régime : le pays élit (commune), le directoire
+  nomme au bilan (corpo), les compagnies acclament (militaire), le convoi
+  se range (nomade), le Signal désigne (fanatique) — les criminels
+  n'offrent rien, un coup se prend (chantier futur). L'offre attend 120 h
+  puis s'éteint. Refuser est permis : le PNJ garde la place. Accepter : le
+  dirigeant porte votre nom (`joueur` posé sur le dirigeant — un fait du
+  monde, rien ne lit le joueur), le conseil s'efface ENTIÈREMENT (paix,
+  guerre, levées, reprises, fondations, rachats, murs, lois — les comptes
+  tournent toujours), la légitimité remplace le crédit (`peutExercer`
+  donne tous les verbes tant qu'elle tient, `tickCharges` ne retire plus
+  rien), et `tickDirigeant` vous renverse comme un autre — la chute est
+  détectée à la feuille de service, dite au journal, et F1 s'applique à
+  votre successeur près : on se réveille serviteur, relu. Quatorze tests
+  nés rouges.
 
 ## Blocages
 

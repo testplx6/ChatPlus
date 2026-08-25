@@ -972,6 +972,8 @@ const envoyerColonneA = envoyerColonne;
 const leverColonneA = leverColonne;
 const rappelerColonneA = rappelerColonne;
 const designerPlaceA = designerPlace;
+const accepterCouronneA = accepterCouronne;
+const refuserCouronneA = refuserCouronne;
 const fonderPosteA = fonderPoste;
 const fixerLoiA = fixerLoi;
 const accorderCreditA = accorderCredit;
@@ -14300,6 +14302,13 @@ function conseil(world, key, t, log, ctx) {
 
   f.prochainConseil = rng.irange(30, 90);
 
+  // M7 (MARECHAL.md) : la couronne portée par le joueur, le conseil s'efface
+  // ENTIÈREMENT des décisions — paix, guerre, levées, reprises, fondations,
+  // rachats, murs. Les comptes, eux, tournent toujours : impôt, solde,
+  // crédit, cote de la monnaie. `joueur` est posé sur le dirigeant, un fait
+  // du monde — rien ici ne lit l'état du joueur.
+  const couronne = !!(f.dirigeant && f.dirigeant.joueur);
+
   // Ce qu'on s'autorise avant de décider ce qu'on fait : l'impôt paie les
   // colonnes, la justice tient les routes, et l'un et l'autre se paient en
   // grogne. La politique intérieure passe donc avant la politique étrangère.
@@ -14362,7 +14371,7 @@ function conseil(world, key, t, log, ctx) {
   // colonne. Le porteur décide du prix — voir `prixCession` —, et le
   // tempérament décide si l'on est de ceux qui achètent.
   const chef = dirigeant(world, key);
-  if (chef && ACHETEURS.includes(chef.temperament) && f.tresor > 4000
+  if (chef && !chef.joueur && ACHETEURS.includes(chef.temperament) && f.tresor > 4000
       && rng.chance(0.35 * penchant(world, key, 'expansion'))) {
     const convoitees = world.colonies.filter(
       (c) => !c.ruine && c.faction && c.faction !== key && c.dette > 500
@@ -14408,8 +14417,9 @@ function conseil(world, key, t, log, ctx) {
   const maPuissance = puissance(world, key);
   const mesGuerres = guerresDe(world, key);
 
-  // 1) Faire la paix si la guerre coûte trop cher
-  for (const g of mesGuerres) {
+  // 1) Faire la paix si la guerre coûte trop cher — pas sous la couronne :
+  //    une paix qui n'est pas de vous n'existe pas (M7).
+  for (const g of couronne ? [] : mesGuerres) {
     const autre = g.a === key ? g.b : g.a;
     const duree = t - g.depuis;
     const leur = puissance(world, autre);
@@ -14434,7 +14444,7 @@ function conseil(world, key, t, log, ctx) {
   // ne tente pas se décide tout de même contre un régime qu'il réprouve.
   const indignation = Math.max(...diploDe(world).map(
     (k) => (k === key ? 0 : distanceMorale(world, key, k))));
-  if (enGuerreAvec.size < 2 && rng.chance(f.agression * 0.5
+  if (!couronne && enGuerreAvec.size < 2 && rng.chance(f.agression * 0.5
       * penchant(world, key, 'guerre') * (1 + indignation * 1.8))) {
     const candidats = diploDe(world).filter(
       (k) => k !== key && !enGuerreAvec.has(k) && coloniesDe(world, k).length > 0
@@ -14467,7 +14477,7 @@ function conseil(world, key, t, log, ctx) {
   //    la charge : les colonnes de la maison n'obéissent qu'à lui, le conseil
   //    s'efface des levées comme il s'efface des lois (M1, MARECHAL.md —
   //    même câblage que `ctx.legislateur` dans `legiferer`).
-  const marechalCommande = ctx && ctx.marechal === key;
+  const marechalCommande = (ctx && ctx.marechal === key) || couronne;
   if (!marechalCommande) {
     for (const g of guerresDe(world, key)) {
       const ennemi = g.a === key ? g.b : g.a;
@@ -14539,7 +14549,7 @@ function conseil(world, key, t, log, ctx) {
   // factions : aucune n'était plus jamais sous son plafond, et plus une seule
   // ville n'a été fondée de toute une partie.
   const plafond = Math.max(7, Math.round(world.regions.length / 36));
-  if (mesColonies.length < plafond
+  if (!couronne && mesColonies.length < plafond
       && rng.chance(Math.min(0.9, 0.4 * penchant(world, key, 'expansion')))
       && f.tresor > (enPaix ? 1700 : 4200)) {
     // Une case libre, à portée de nos terres mais assez loin des villes
@@ -14589,7 +14599,7 @@ function conseil(world, key, t, log, ctx) {
   const aBatir = mesColonies.filter((c) => veutBatir(world, c));
   // Les maçons aussi se paient en vrai (E10) : le cours divise, le seuil suit.
   const coutMur = Math.round(400 / Math.max(0.001, coursMonnaie(world, key)));
-  if (!guerresDe(world, key).length && f.tresor > coutMur * 2.25 && aBatir.length
+  if (!couronne && !guerresDe(world, key).length && f.tresor > coutMur * 2.25 && aBatir.length
       && rng.chance(0.6)) {
     // M4 (MARECHAL.md) : la place désignée d'abord — le Maréchal dit ce qu'on
     // tient, le sort ne décide plus que sans lui. Tant qu'elle veut bâtir.
@@ -14862,6 +14872,8 @@ function legiferer(world, key, t, log, ctx) {
   if (t - (lois.depuis || 0) < DELAI_LOI) return;
   const d = dirigeant(world, key);
   if (!d) return;
+  // M7 : la couronne portée par le joueur, plus une loi qui ne soit de lui.
+  if (d.joueur) return;
   const temp = TEMPERAMENTS[d.temperament];
   const pays = etatDuPays(world, key);
   if (!temp || !pays) return;
@@ -15571,6 +15583,15 @@ function commandementDe(state) {
 function peutExercer(state, faction, key) {
   const def = PREROGATIVES[key];
   if (!def) return { ok: false, motif: 'Prérogative inconnue.' };
+  // M7 : la couronne portée, tous les verbes sont à vous — la légitimité
+  // remplace le crédit, et à zéro plus personne n'exécute : vous tombez.
+  const dCouronne = dirigeant(state.world, faction);
+  if (dCouronne && dCouronne.joueur) {
+    if (dCouronne.legitimite <= 0) {
+      return { ok: false, motif: 'Plus personne n’exécute vos ordres : vous tombez.' };
+    }
+    return { ok: true, charge: chargeAupres(state, faction) || { index: 5, def: RANGS[5] } };
+  }
   const charge = chargeAupres(state, faction);
   if (!charge) return { ok: false, motif: `Vous ne servez pas ${drapeauDe(state.world, faction).nom}.` };
   if (charge.index < def.rang) {
@@ -15647,6 +15668,10 @@ function tickCharges(state, log) {
     if (!all) continue;
     const rang = rangDe(all);
     if (rang.index < 2) continue;
+    // M7 : la couronne portée, la légitimité remplace le crédit — le trône
+    // ne se retire pas pour des comptes, il se renverse.
+    const dC = dirigeant(state.world, all.faction);
+    if (dC && dC.joueur) continue;
     if (credit(state, all.faction) > 0) continue;
     // On retombe au grade précédent, et le compteur de fautes repart : on ne
     // dégringole pas toute l'échelle d'un coup pour une seule mauvaise passe.
@@ -15689,9 +15714,38 @@ const COUR = {
   repitBouc: 240,
   /** Ce que le chef se rend de légitimité en vous chargeant. */
   souffleBouc: 8,
+  /** Le crédit en dessous duquel on n'offre pas un trône à un fautif (M7). */
+  creditCouronne: 150,
+  /** Heures pour se décider : passé ça, la maison s'est choisie quelqu'un. */
+  delaiCouronne: 120,
+};
+
+/**
+ * M7 (MARECHAL.md) — comment chaque régime offre la couronne. Les criminels
+ * n'offrent rien : chez eux, un coup se prend (chantier futur, avec la
+ * geôle). L'Essaim n'a pas de trône du tout.
+ */
+const COURONNE_MODES = {
+  commune: 'le pays vous élit',
+  corpo: 'le directoire vous nomme au bilan',
+  militaire: 'les compagnies vous acclament',
+  nomade: 'le convoi se range derrière vous',
+  fanatique: 'le Signal vous désigne',
 };
 
 function tickCour(state, log) {
+  // M7 : une offre qui attend trop s'éteint — la maison s'est choisie
+  // quelqu'un, et c'est celui qui tient déjà la place.
+  if (state.player.offreCouronne && state.temps > state.player.offreCouronne.echeance) {
+    const off = state.player.offreCouronne;
+    delete state.player.offreCouronne;
+    log({
+      type: 'allegeance',
+      texte: `L’offre ${drapeauDe(state.world, off.faction).genitif} est restée sans réponse : `
+        + `la maison se range derrière celui qui tenait la place.`,
+      factions: [off.faction],
+    });
+  }
   for (const g of state.player.groupes) {
     const all = g.allegeance;
     if (!all) continue;
@@ -15702,7 +15756,45 @@ function tickCour(state, log) {
     if (all.chef === undefined || all.chef === null) {
       all.chef = d.id; // première rencontre : rien à relire
     } else if (all.chef !== d.id) {
+      const ancienChef = all.chef;
       all.chef = d.id;
+      // M7 — la chute de VOTRE règne : on ne démissionne pas d'un trône, on
+      // en tombe, et la feuille de service en revient au service.
+      if (all.couronne && all.couronne === ancienChef) {
+        all.couronne = null;
+        log({
+          type: 'dirigeant',
+          texte: `Le trône vous a renversé comme un autre : ${d.titre} ${d.nom} porte `
+            + `désormais la maison. Vous voilà rendu au service — et à ses comptes.`,
+          important: true,
+          groupe: g.id,
+          factions: [all.faction],
+        });
+      }
+      // M7 — la porte de la couronne : à la chute du chef, la maison peut
+      // offrir la charge de dirigeant à un Maréchal au crédit haut, selon
+      // son régime.
+      const style = drapeauDe(state.world, all.faction).style;
+      if (COURONNE_MODES[style]
+        && rangDe(all).index >= 5
+        && credit(state, all.faction) >= COUR.creditCouronne
+        && !state.player.offreCouronne
+        && !d.joueur) {
+        state.player.offreCouronne = {
+          faction: all.faction,
+          t: state.temps,
+          echeance: state.temps + COUR.delaiCouronne,
+        };
+        log({
+          type: 'allegeance',
+          texte: `${drapeauDe(state.world, all.faction).nom} vous ${drapeauDe(state.world, all.faction).pluriel ? 'offrent' : 'offre'} `
+            + `la charge de dirigeant — ${COURONNE_MODES[style]}. ${d.titre} ${d.nom} tient la place `
+            + `en attendant votre mot. Refuser est permis ; accepter ne se rend pas.`,
+          important: true,
+          groupe: g.id,
+          factions: [all.faction],
+        });
+      }
       if (rangDe(all).index >= 2 && (all.fautes || 0) > 0) {
         let verdict = 'il reprend les livres tels quels';
         if (d.temperament === 'rancunier') {
@@ -15721,14 +15813,14 @@ function tickCour(state, log) {
           groupe: g.id,
           factions: [all.faction],
         });
-      } else {
-        all.chef = d.id;
       }
     }
 
     // F2 — le bouc émissaire, sous commandement seulement : c'est le
-    // Maréchal qu'on charge, pas le dernier des Affiliés.
-    if (rangDe(all).index >= 5
+    // Maréchal qu'on charge, pas le dernier des Affiliés. Et pas quand le
+    // chef, c'est vous (M7) : on ne se met rien sur son propre dos.
+    if (!d.joueur
+      && rangDe(all).index >= 5
       && d.legitimite < COUR.legitimiteCritique
       && (d.pertes || 0) > (d.prises || 0)
       && guerresDe(state.world, all.faction).length
@@ -15739,6 +15831,79 @@ function tickCour(state, log) {
       d.legitimite = Math.min(100, d.legitimite + COUR.souffleBouc);
     }
   }
+}
+
+/**
+ * M7 — accepter la couronne. Le dirigeant porte votre nom, le conseil
+ * s'efface entièrement (voir `conseil` et `legiferer`, factions.js : le
+ * drapeau `joueur` sur le dirigeant est un fait du monde, pas une lecture du
+ * joueur), la légitimité remplace le crédit, et `tickDirigeant` peut vous
+ * renverser comme un autre — on ne démissionne pas d'un trône, on en tombe.
+ */
+function accepterCouronne(state, log) {
+  const offre = state.player.offreCouronne;
+  if (!offre) return { ok: false, motif: 'Personne ne vous offre rien.' };
+  if (state.temps > offre.echeance) {
+    delete state.player.offreCouronne;
+    return { ok: false, motif: 'L’heure est passée : la maison s’est choisie quelqu’un.' };
+  }
+  const faction = offre.faction;
+  const f = state.world.factions[faction];
+  const sortant = dirigeant(state.world, faction);
+  if (!f || !sortant) {
+    delete state.player.offreCouronne;
+    return { ok: false, motif: 'Cette maison n’a plus de conseil.' };
+  }
+  const porteur = groupesEngages(state, faction)[0];
+  if (!porteur) return { ok: false, motif: 'Vous ne servez plus cette maison.' };
+  const visage = porteur.membres && porteur.membres[0] ? porteur.membres[0] : null;
+  const neuf = {
+    id: `dj-${faction}-${state.temps}`,
+    nom: visage ? visage.nom : porteur.nom,
+    titre: sortant.titre,
+    // Un tempérament de registre : le conseil effacé, il ne décide rien —
+    // il ne sert qu'aux regards des autres et au récit.
+    temperament: 'methodique',
+    age: visage && visage.age ? visage.age : 45,
+    depuis: state.temps,
+    legitimite: 55,
+    grogne: 0,
+    guerres: 0,
+    prises: 0,
+    pertes: 0,
+    joueur: true,
+  };
+  f.dirigeant = neuf;
+  porteur.allegeance.couronne = neuf.id;
+  porteur.allegeance.chef = neuf.id;
+  delete state.player.offreCouronne;
+  if (log) {
+    log({
+      type: 'dirigeant',
+      texte: `${neuf.titre} ${neuf.nom} — la maison porte votre nom, désormais. Le conseil `
+        + `s’efface : plus une loi, plus une colonne, plus une paix qui ne soit de vous. `
+        + `Et l’on ne démissionne pas d’un trône — on en tombe.`,
+      important: true,
+      factions: [faction],
+    });
+  }
+  return { ok: true };
+}
+
+/** M7 — refuser la couronne. Permis, et la vie continue : le PNJ garde la place. */
+function refuserCouronne(state, log) {
+  const offre = state.player.offreCouronne;
+  if (!offre) return { ok: false, motif: 'Personne ne vous offre rien.' };
+  delete state.player.offreCouronne;
+  if (log) {
+    log({
+      type: 'allegeance',
+      texte: `Vous déclinez la charge de dirigeant ${drapeauDe(state.world, offre.faction).genitif}. `
+        + `La maison se range derrière celui qui tenait la place, et la vie continue.`,
+      factions: [offre.faction],
+    });
+  }
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -23969,6 +24134,8 @@ function normaliser(state) {
     // Avant F1+F2, la cour n'avait ni mémoire du chef ni bouc émissaire.
     if (g.allegeance.chef === undefined) g.allegeance.chef = null;
     if (g.allegeance.dernierBouc === undefined) g.allegeance.dernierBouc = null;
+    // Avant M7, la couronne n'avait pas de porte.
+    if (g.allegeance.couronne === undefined) g.allegeance.couronne = null;
   }
   if (!state.memorial) state.memorial = [];
   // Les chapitres (HISTOIRE.md, lot A) : une vieille sauvegarde n'en a pas —
@@ -28602,7 +28769,29 @@ function blocInfluence(faction) {
   const cr = creditInfluence(S, faction);
   const lignes = PREROGATIVE_KEYS.map((k) => ligneCharge(faction, k)).join('');
 
-  return `<div class="sep"></div>
+  // M7 : l'offre de la couronne, et le règne — la porte de la voie du service.
+  const offre = S.player.offreCouronne;
+  const blocOffre = offre && offre.faction === faction
+    ? `<div class="sep"></div>
+      <div class="titre">La couronne <span class="droite ambre">${dureeTexte(Math.max(0, offre.echeance - S.temps))} pour répondre</span></div>
+      <div class="aide">${e(drapeauDe(S.world, faction).nom)} vous offre la charge de dirigeant.
+        Accepter : la maison porte votre nom, le conseil s’efface, la légitimité remplace le
+        crédit — et l’on ne démissionne pas d’un trône, on en tombe. Refuser est permis.</div>
+      <button class="act" data-a="couronne" data-k="oui">Accepter la couronne</button>
+      <button class="act mini" data-a="couronne" data-k="non">Décliner — la vie continue</button>`
+    : '';
+  const regne = d.joueur
+    ? `<div class="sep"></div>
+      <div class="titre">Votre règne
+        <span class="droite ${d.legitimite < 30 ? 'alerte' : ''}">légitimité ${Math.round(d.legitimite)}</span></div>
+      ${jauge(Math.min(1, d.legitimite / 100), d.legitimite < 30 ? 'alerte' : 'vert')}
+      <div class="aide">${e(d.titre)} ${e(d.nom)} — la maison porte votre nom. Le conseil s’est
+        effacé : plus une loi, plus une colonne, plus une paix qui ne soit de vous. La légitimité
+        remplace le crédit ; à zéro, plus personne n’exécute — et le trône vous renversera comme
+        un autre.</div>`
+    : '';
+
+  return `${blocOffre}${regne}<div class="sep"></div>
   <div class="titre">Votre charge</div>
   <div class="ligne"><span class="k">Crédit auprès ${e(drapeauDe(S.world, faction).genitif)}</span>
     <span class="v ${cr < 40 ? 'alerte' : ''}">${n(cr)}</span></div>
@@ -31258,6 +31447,15 @@ function surClic(ev) {
 
     // Exercer une prérogative. Pas de « peut-être » : ça part, ou ça ne part
     // pas parce qu'on n'en a pas le droit — et alors on dit lequel.
+    case 'couronne': {
+      const r = el.dataset.k === 'oui' ? ACTIONS.accepterCouronne() : ACTIONS.refuserCouronne();
+      toast(r.ok
+        ? (el.dataset.k === 'oui' ? 'La maison porte votre nom.' : 'La vie continue.')
+        : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
     case 'ordonner': {
       const f = el.dataset.f;
       const cible = el.dataset.k;
@@ -31960,6 +32158,20 @@ const API = {
   /** Désigner la ville que la maison renforce en priorité (M4). Vide : retirer. */
   designerPlace(faction, colId) {
     const r = designerPlaceA(state, faction, colId || null, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Accepter la couronne (M7) : la maison porte votre nom, le conseil s'efface. */
+  accepterCouronne() {
+    const r = accepterCouronneA(state, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Refuser la couronne : permis, et la vie continue. */
+  refuserCouronne() {
+    const r = refuserCouronneA(state, creerLogger(state));
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },

@@ -11841,6 +11841,131 @@ section('M septies. Le Maréchal — F1 + F2, les frictions de la cour (MARECHAL
 }
 
 // ===========================================================================
+section('M octies. Le Maréchal — M7, la porte de la couronne (MARECHAL.md)');
+{
+  const rien = () => {};
+  const influence = await import('../src/influence.js');
+  const { accepterCouronne, refuserCouronne } = influence;
+  ok(typeof accepterCouronne === 'function' && typeof refuserCouronne === 'function',
+    'les deux verbes existent — accepter, ou refuser et vivre');
+
+  const monter = (points, fautes = 0) => {
+    const st = nouvellePartie(677, { maintenant: 24 * 30 + 1, depart: 'ville', equipe: 3 });
+    const g = groupeActif(st);
+    const cand = Object.keys(st.world.factions).filter(
+      (k) => k !== 'essaim' && st.world.factions[k].colonies.length >= 2 && dirigeant(st.world, k));
+    const A = cand.find((k) => identiteDe(st.world, k).style !== 'criminel') || cand[0];
+    const d = dirigeant(st.world, A);
+    g.allegeance = {
+      faction: A, points, derniereSolde: st.temps, intendance: st.temps,
+      fautes, chef: d.id,
+    };
+    return { st, g, A };
+  };
+  const succession = (st, A) => {
+    const neuf = creerDirigeant(new Rng(23), A, st.temps, undefined, st.world);
+    st.world.factions[A].dirigeant = neuf;
+    return neuf;
+  };
+
+  if (typeof accepterCouronne === 'function') {
+    // 1) À la chute du chef, la maison offre la couronne au Maréchal au
+    //    crédit haut — selon son régime.
+    const m = monter(RANGS[5].points);
+    succession(m.st, m.A);
+    tick(m.st);
+    ok(m.st.player.offreCouronne && m.st.player.offreCouronne.faction === m.A,
+      'le chef tombé, la maison offre la couronne au Maréchal au crédit haut');
+    ok(m.st.journal.some((l) => /couronne|charge de dirigeant/i.test(l.texte)),
+      'et l’offre se dit au journal');
+
+    // 2) Pas d'offre chez les criminels, ni sous le rang, ni au crédit bas.
+    const mc = monter(RANGS[5].points);
+    m.st.world.drapeaux = m.st.world.drapeaux || {};
+    const drapC = identiteDe(mc.st.world, mc.A);
+    const styleAvant = drapC.style;
+    drapC.style = 'criminel';
+    succession(mc.st, mc.A);
+    tick(mc.st);
+    ok(!mc.st.player.offreCouronne,
+      'les criminels n’offrent rien — chez eux, un coup se prend');
+    drapC.style = styleAvant;
+    const m4b = monter(RANGS[4].points);
+    succession(m4b.st, m4b.A);
+    tick(m4b.st);
+    ok(!m4b.st.player.offreCouronne, 'un Commandeur ne se voit rien offrir');
+    const mf = monter(RANGS[5].points, 8); // crédit effondré
+    succession(mf.st, mf.A);
+    tick(mf.st);
+    ok(!mf.st.player.offreCouronne, 'un Maréchal au crédit bas non plus — on n’offre pas un trône à un fautif');
+
+    // 3) Refuser est permis : un PNJ prend la place, la vie continue.
+    const mr = monter(RANGS[5].points);
+    succession(mr.st, mr.A);
+    tick(mr.st);
+    const rRef = refuserCouronne(mr.st, rien);
+    ok(rRef.ok && !mr.st.player.offreCouronne && !dirigeant(mr.st.world, mr.A).joueur,
+      'refusée : l’offre s’éteint, le PNJ garde la place');
+
+    // 4) Accepter : le dirigeant porte votre nom, et le conseil s'efface
+    //    entièrement — plus une levée, plus une loi qui ne soit de vous.
+    const ma = monter(RANGS[5].points);
+    succession(ma.st, ma.A);
+    tick(ma.st);
+    const chefEscouade = ma.g.membres[0].nom;
+    const rAcc = accepterCouronne(ma.st, (l) => ma.st.journal.push(l));
+    const dJ = dirigeant(ma.st.world, ma.A);
+    ok(rAcc.ok && dJ.joueur && dJ.nom === chefEscouade,
+      'acceptée : le dirigeant porte votre nom', rAcc.motif || dJ.nom);
+    ok(ma.g.allegeance.couronne === dJ.id, 'et la feuille de service le sait');
+    // Le conseil ne décide plus : guerre ouverte, trésor plein — pas une
+    // levée, pas une paix signée par lui, sur trois cents heures.
+    const wA = ma.st.world;
+    const B = Object.keys(wA.factions).find(
+      (k) => k !== 'essaim' && k !== ma.A && wA.factions[k].colonies.length);
+    declarerGuerre(wA, ma.A, B, ma.st.temps, rien);
+    let tA = ma.st.temps;
+    let leveesA = 0;
+    for (let i = 0; i < 300; i++) {
+      tA += 1;
+      for (const k of Object.keys(wA.factions)) wA.factions[k].prochainConseil = k === ma.A ? 1 : 99999;
+      wA.factions[ma.A].tresor = 80000;
+      tickFactions(wA, tA, rien, { rng: new Rng(grainDe(wA.graine, 'm7', tA)) });
+      leveesA += wA.armees.filter((a) => a.faction === ma.A && !a.surOrdre).length;
+      wA.armees = wA.armees.filter((a) => a.faction !== ma.A);
+    }
+    ok(leveesA === 0 && enGuerre(wA, ma.A, B),
+      'couronné : le conseil ne lève plus ni ne signe plus rien — le pays, c’est vous',
+      `${leveesA} levée(s)`);
+
+    // 5) La légitimité remplace le crédit : les verbes s'exercent sans rang
+    //    ni crédit, tant qu'elle tient.
+    ma.g.allegeance.points = 0; // même plus Agent
+    ma.g.allegeance.fautes = 40; // crédit ruiné
+    ok(peutExercer(ma.st, ma.A, 'guerre').ok,
+      'la couronne donne tous les verbes — le rang et le crédit ne comptent plus');
+    dJ.legitimite = 0;
+    ok(!peutExercer(ma.st, ma.A, 'guerre').ok,
+      'mais à légitimité nulle, plus personne n’exécute : on est en train de tomber');
+
+    // 6) On ne démissionne pas d'un trône, on en tombe — tickDirigeant vous
+    //    renverse comme un autre, et la chute se dit.
+    dJ.legitimite = 5;
+    dJ.grogne = 0.9;
+    let tombe = false;
+    for (let i = 0; i < 400 && !tombe; i++) {
+      tickDirigeant(wA, ma.A, new Rng(900 + i), 24, ma.st.temps + i * 24, rien, 0.9);
+      tombe = !dirigeant(wA, ma.A).joueur;
+    }
+    ok(tombe, 'le trône vous renverse comme un autre — la simulation ne connaît pas de joueur');
+    tick(ma.st);
+    ok(!ma.g.allegeance.couronne
+      && ma.st.journal.some((l) => /trône|couronne|renversé/i.test(l.texte)),
+      'la chute est sue, dite, et la feuille de service en revient au service');
+  }
+}
+
+// ===========================================================================
 console.log('\n' + '='.repeat(42));
 console.log(`${total - echecs}/${total} tests passés`);
 if (echecs > 0) {

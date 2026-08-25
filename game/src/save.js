@@ -139,6 +139,8 @@ export function normaliser(state) {
     // Avant F1+F2, la cour n'avait ni mémoire du chef ni bouc émissaire.
     if (g.allegeance.chef === undefined) g.allegeance.chef = null;
     if (g.allegeance.dernierBouc === undefined) g.allegeance.dernierBouc = null;
+    // Avant M7, la couronne n'avait pas de porte.
+    if (g.allegeance.couronne === undefined) g.allegeance.couronne = null;
   }
   if (!state.memorial) state.memorial = [];
   // Les chapitres (HISTOIRE.md, lot A) : une vieille sauvegarde n'en a pas —

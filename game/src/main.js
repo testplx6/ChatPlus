@@ -37,6 +37,7 @@ import { engager } from './recrues.js';
 import {
   envoyerColonne as envoyerColonneA, leverColonne as leverColonneA,
   rappelerColonne as rappelerColonneA, designerPlace as designerPlaceA,
+  accepterCouronne as accepterCouronneA, refuserCouronne as refuserCouronneA,
   fonderPoste as fonderPosteA, declarerGuerreA, signerPaixAvec,
   renforcerGarnison, ouvrirGreniers, fixerLoi as fixerLoiA,
   accorderCredit as accorderCreditA, battreMonnaie as battreMonnaieA,
@@ -427,6 +428,20 @@ const API = {
   /** Désigner la ville que la maison renforce en priorité (M4). Vide : retirer. */
   designerPlace(faction, colId) {
     const r = designerPlaceA(state, faction, colId || null, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Accepter la couronne (M7) : la maison porte votre nom, le conseil s'efface. */
+  accepterCouronne() {
+    const r = accepterCouronneA(state, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Refuser la couronne : permis, et la vie continue. */
+  refuserCouronne() {
+    const r = refuserCouronneA(state, creerLogger(state));
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },

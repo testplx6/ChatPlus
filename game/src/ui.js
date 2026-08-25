@@ -3485,7 +3485,29 @@ function blocInfluence(faction) {
   const cr = creditInfluence(S, faction);
   const lignes = PREROGATIVE_KEYS.map((k) => ligneCharge(faction, k)).join('');
 
-  return `<div class="sep"></div>
+  // M7 : l'offre de la couronne, et le règne — la porte de la voie du service.
+  const offre = S.player.offreCouronne;
+  const blocOffre = offre && offre.faction === faction
+    ? `<div class="sep"></div>
+      <div class="titre">La couronne <span class="droite ambre">${dureeTexte(Math.max(0, offre.echeance - S.temps))} pour répondre</span></div>
+      <div class="aide">${e(drapeauDe(S.world, faction).nom)} vous offre la charge de dirigeant.
+        Accepter : la maison porte votre nom, le conseil s’efface, la légitimité remplace le
+        crédit — et l’on ne démissionne pas d’un trône, on en tombe. Refuser est permis.</div>
+      <button class="act" data-a="couronne" data-k="oui">Accepter la couronne</button>
+      <button class="act mini" data-a="couronne" data-k="non">Décliner — la vie continue</button>`
+    : '';
+  const regne = d.joueur
+    ? `<div class="sep"></div>
+      <div class="titre">Votre règne
+        <span class="droite ${d.legitimite < 30 ? 'alerte' : ''}">légitimité ${Math.round(d.legitimite)}</span></div>
+      ${jauge(Math.min(1, d.legitimite / 100), d.legitimite < 30 ? 'alerte' : 'vert')}
+      <div class="aide">${e(d.titre)} ${e(d.nom)} — la maison porte votre nom. Le conseil s’est
+        effacé : plus une loi, plus une colonne, plus une paix qui ne soit de vous. La légitimité
+        remplace le crédit ; à zéro, plus personne n’exécute — et le trône vous renversera comme
+        un autre.</div>`
+    : '';
+
+  return `${blocOffre}${regne}<div class="sep"></div>
   <div class="titre">Votre charge</div>
   <div class="ligne"><span class="k">Crédit auprès ${e(drapeauDe(S.world, faction).genitif)}</span>
     <span class="v ${cr < 40 ? 'alerte' : ''}">${n(cr)}</span></div>
@@ -6141,6 +6163,15 @@ function surClic(ev) {
 
     // Exercer une prérogative. Pas de « peut-être » : ça part, ou ça ne part
     // pas parce qu'on n'en a pas le droit — et alors on dit lequel.
+    case 'couronne': {
+      const r = el.dataset.k === 'oui' ? ACTIONS.accepterCouronne() : ACTIONS.refuserCouronne();
+      toast(r.ok
+        ? (el.dataset.k === 'oui' ? 'La maison porte votre nom.' : 'La vie continue.')
+        : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
     case 'ordonner': {
       const f = el.dataset.f;
       const cible = el.dataset.k;
