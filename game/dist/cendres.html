@@ -17707,7 +17707,7 @@ function disposer(state, g, captifId, quoi, log) {
   if (quoi === 'relacher') {
     retirerCaptif(g, c);
     state.stats.captifsRelaches = (state.stats.captifsRelaches || 0) + 1;
-    noterReputation(state, cap.faction, 4, col.regionId);
+    noterReputation(state, cap.faction, 4, col ? col.regionId : null);
     // La ville se souvient de lui. On peut relâcher quelqu'un au milieu de
     // nulle part — il n'y a alors personne pour s'en souvenir, et c'est
     // pourquoi le garde sur `col` est là.
