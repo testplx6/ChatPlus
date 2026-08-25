@@ -363,16 +363,53 @@ export function ageTexte(depuis) {
  * module : la carte devenait un souvenir pendant que le journal restait
  * omniscient.
  */
-export const DELAI_NOUVELLE = {
-  guerre: 12,
-  paix: 18,
-  capture: 48,
-  effondrement: 72,
-  secession: 60,
-  fondation: 96,
-  croissance: 120,
-  saison: 0,     // on regarde le ciel soi-même
+/**
+ * L1 (MEMOIRE.md, E12 de l'audit) : la nouvelle a des jambes. La table figée
+ * par type faisait savoir une ville effondrée en 72 h qu'elle soit à 2 cases
+ * ou à 30 — la distance, colonne vertébrale de tout le reste du jeu,
+ * n'entrait pas dans le voyage de l'information. Désormais : un canal (sa
+ * base, son pas), fois la route. Calibrables — objets mutables.
+ */
+export const CANAUX = {
+  /** Criée sur les places : une déclaration VEUT être sue. */
+  proclamation: { base: 6, parCase: 1 },
+  /** Au pas des colporteurs : ce qui s'est passé quelque part. */
+  rumeur: { base: 12, parCase: 4 },
 };
+
+/** Quel canal porte quel type. `null` : on regarde le ciel soi-même. */
+export const CANAL_PAR_TYPE = {
+  guerre: 'proclamation',
+  paix: 'proclamation',
+  capture: 'rumeur',
+  effondrement: 'rumeur',
+  secession: 'rumeur',
+  fondation: 'rumeur',
+  croissance: 'rumeur',
+  saison: null,
+};
+
+/** Faute de lieu connu, une nouvelle a marché « une route moyenne ». */
+export const ROUTE_MOYENNE = 8;
+
+/**
+ * Le temps qu'une nouvelle met à atteindre le joueur, d'où elle est née à où
+ * il est. Elle atteint le plus proche des siens — n'importe lequel de ses
+ * groupes peut l'avoir entendue — et se recalcule d'où l'on est : marcher
+ * vers le lieu, c'est aller au-devant de la nouvelle.
+ */
+export function delaiNouvelle(state, type, deRegionId) {
+  const nomCanal = CANAL_PAR_TYPE[type] === undefined ? 'rumeur' : CANAL_PAR_TYPE[type];
+  if (nomCanal === null) return 0;
+  const canal = CANAUX[nomCanal];
+  let d = ROUTE_MOYENNE;
+  if (deRegionId != null) {
+    d = Infinity;
+    for (const g of groupes(state)) d = Math.min(d, distance(g.regionId, deRegionId));
+    if (!Number.isFinite(d)) d = ROUTE_MOYENNE;
+  }
+  return Math.round(canal.base + canal.parCase * d);
+}
 
 /**
  * Ce que le joueur a pu apprendre du monde, avec la mention de la source.
@@ -384,7 +421,7 @@ export function nouvellesConnues(state, entrees) {
   for (const x of entrees) {
     const temoin = x.regionId != null && x.vu === true;
     if (temoin) { out.push(Object.assign({}, x, { rapporte: false })); continue; }
-    const delai = DELAI_NOUVELLE[x.type] ?? 36;
+    const delai = delaiNouvelle(state, x.type, x.regionId);
     if (state.temps - x.t < delai) continue;
     out.push(Object.assign({}, x, { rapporte: delai > 0 }));
   }

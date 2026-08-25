@@ -185,7 +185,7 @@ import {
   disciplineDe,
 } from '../src/allegeance.js';
 import {
-  vueColonie, estSurveillee, ageTexte, nouvellesConnues, DELAI_NOUVELLE, observer,
+  vueColonie, estSurveillee, ageTexte, nouvellesConnues, delaiNouvelle, observer,
   carnetPrix, PEREMPTION, vueArmee, armeesConnues,
 } from '../src/connaissance.js';
 import { distance } from '../src/world.js';
@@ -1935,12 +1935,12 @@ ok(toutDeSuite.length === 1 && toutDeSuite[0].texte === 'sous nos yeux',
   'seul ce dont on est témoin est su sur-le-champ', `${toutDeSuite.length} nouvelles`);
 ok(toutDeSuite[0].rapporte === false, 'et ce n’est pas donné pour un on-dit');
 
-avancer(s9j, DELAI_NOUVELLE.guerre + 1);
+avancer(s9j, delaiNouvelle(s9j, 'guerre', loinDeTout.i) + 1);
 const apresGuerre = nouvellesConnues(s9j, journal9j);
 ok(apresGuerre.some((x) => x.type === 'guerre'), 'une déclaration de guerre finit par se savoir');
 ok(!apresGuerre.some((x) => x.type === 'capture' && x.texte === 'ville prise'),
   'une ville prise se sait plus lentement qu’une guerre');
-avancer(s9j, DELAI_NOUVELLE.capture);
+avancer(s9j, delaiNouvelle(s9j, 'capture', loinDeTout.i));
 const apresCapture = nouvellesConnues(s9j, journal9j);
 const prise = apresCapture.find((x) => x.texte === 'ville prise');
 ok(!!prise, 'mais elle finit par se savoir aussi');
@@ -12141,6 +12141,52 @@ section('P octies. Le prisme du propriétaire — la revue complète (S2, S3, S4
       `${juste.appetit.toFixed(3)} contre ${loin.appetit.toFixed(3)}`);
     ok(loin.appetit >= RAID_JAUGE.appetitMin,
       'et loin de tout raid, l’appétit est entier');
+  }
+}
+
+// ===========================================================================
+section('MEM 1. La mémoire — L1, les nouvelles ont des jambes (MEMOIRE.md, E12)');
+{
+  const connaissance = await import('../src/connaissance.js');
+  const { delaiNouvelle } = connaissance;
+  ok(typeof delaiNouvelle === 'function',
+    'le délai d’une nouvelle se calcule — canal et distance, plus une table figée');
+
+  if (typeof delaiNouvelle === 'function') {
+    const s = nouvellePartie(721, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(s);
+    const pres = s.world.regions.find((r) => distance(r.i, g.regionId) === 2);
+    const loin = s.world.regions.find((r) => distance(r.i, g.regionId) >= 12);
+    // 1) La même chute, à 2 cases et à 12 : la proche se sait d'abord.
+    const dPres = delaiNouvelle(s, 'capture', pres.i);
+    const dLoin = delaiNouvelle(s, 'capture', loin.i);
+    ok(dPres < dLoin,
+      'une chute à deux cases se sait avant la même à douze — la nouvelle marche',
+      `${dPres} h contre ${dLoin} h`);
+    const journal = [
+      { type: 'capture', t: s.temps, regionId: pres.i, vu: false, texte: 'proche' },
+      { type: 'capture', t: s.temps, regionId: loin.i, vu: false, texte: 'lointaine' },
+    ];
+    s.temps += dPres;
+    const su = connaissance.nouvellesConnues(s, journal);
+    ok(su.some((x) => x.texte === 'proche') && !su.some((x) => x.texte === 'lointaine'),
+      'à l’heure où la proche arrive, la lointaine est encore en route');
+    s.temps += dLoin;
+    ok(connaissance.nouvellesConnues(s, journal).some((x) => x.texte === 'lointaine'),
+      'et elle finit par arriver aussi');
+    // 2) Une proclamation court plus vite qu'une rumeur, à distance égale.
+    ok(delaiNouvelle(s, 'guerre', loin.i) < delaiNouvelle(s, 'capture', loin.i),
+      'une guerre se crie sur les places — plus vite que la rumeur d’une chute');
+    // 3) La saison ne voyage pas : on regarde le ciel soi-même.
+    ok(delaiNouvelle(s, 'saison', loin.i) === 0, 'la saison se lit au ciel, pas aux colporteurs');
+    // 4) Se rapprocher, c'est aller au-devant de la nouvelle : le délai se
+    //    recalcule d'où l'on est.
+    const avantMarche = delaiNouvelle(s, 'capture', loin.i);
+    const ancienne = g.regionId;
+    g.regionId = s.world.regions.find((r) => distance(r.i, loin.i) <= 3).i;
+    ok(delaiNouvelle(s, 'capture', loin.i) < avantMarche,
+      'marcher vers le lieu, c’est aller au-devant de la nouvelle');
+    g.regionId = ancienne;
   }
 }
 

@@ -232,7 +232,14 @@ l'écrit sans passer par un fait.
 - [x] Décisions 1-5 tranchées par le propriétaire (voir §4 — deux
   raffinements de sa main : la disparition n'est sue que de qui attendait,
   et l'oubli est un acte du porteur, pas une règle)
-- [ ] L1 — les jambes (E12)
+- [x] L1 — les jambes (E12) — livré : `delaiNouvelle(state, type,
+  deRegionId)` = base du canal + pas × distance au plus proche des groupes
+  du joueur. Deux canaux calibrables (proclamation 6+1/case — une
+  déclaration veut être sue ; rumeur 12+4/case — le pas des colporteurs),
+  la saison à zéro (on regarde le ciel soi-même), et le délai se recalcule
+  d'où l'on est — marcher vers le lieu, c'est aller au-devant de la
+  nouvelle. La table figée `DELAI_NOUVELLE` est morte. Sept tests nés
+  rouges.
 - [ ] L2 — le registre des faits
 - [ ] L3 — les cinq omniscients passent au registre
 - [ ] L4 — l'oubli a des visages, et la remesure d'ouverture
