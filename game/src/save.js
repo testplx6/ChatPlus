@@ -136,6 +136,9 @@ export function normaliser(state) {
     if (g.allegeance.secteur === undefined) g.allegeance.secteur = null;
     // Avant M4, personne ne désignait la place que la maison renforce.
     if (g.allegeance.place === undefined) g.allegeance.place = null;
+    // Avant F1+F2, la cour n'avait ni mémoire du chef ni bouc émissaire.
+    if (g.allegeance.chef === undefined) g.allegeance.chef = null;
+    if (g.allegeance.dernierBouc === undefined) g.allegeance.dernierBouc = null;
   }
   if (!state.memorial) state.memorial = [];
   // Les chapitres (HISTOIRE.md, lot A) : une vieille sauvegarde n'en a pas —

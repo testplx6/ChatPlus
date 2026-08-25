@@ -23,7 +23,7 @@
 
 import { FACTIONS, DIPLO_FACTIONS, diploDe, drapeauDe, symboleDe } from './data.js';
 import { rangDe, groupesEngages, RANGS } from './allegeance.js';
-import { dirigeant, crediterDirigeant, butDeGuerre } from './dirigeants.js';
+import { dirigeant, crediterDirigeant, butDeGuerre, TEMPERAMENTS } from './dirigeants.js';
 import {
   declarerGuerre, signerPaix, fonderColonie, guerresDe, enGuerre, coloniesDe,
   ravitaillementMax,
@@ -303,6 +303,83 @@ export function tickCharges(state, log) {
       groupe: g.id,
       factions: [all.faction],
     });
+  }
+}
+
+/**
+ * F1 + F2 (MARECHAL.md) — les frictions de la cour. Rien ici ne lit le monde
+ * en secret : un chef est un fait public, et c'est le dossier du joueur qui
+ * réagit à la nouvelle.
+ *
+ * F1, la relève des comptes : à chaque succession, le nouveau chef relit
+ * votre crédit à son tempérament — un rancunier compte vos fautes double, un
+ * conciliateur les efface, les autres reprennent les livres tels quels. On
+ * peut se coucher Maréchal et se réveiller Commandeur parce qu'un chef est
+ * mort (`tickCharges` fait le reste).
+ *
+ * F2, le bouc émissaire : un chef contesté (légitimité sous 30) dans une
+ * guerre qui va mal (plus de pertes que de prises à son règne) impute sa
+ * guerre au Maréchal — une faute, pas plus d'une fois tous les dix jours, et
+ * il se refait une santé dessus. C'est injuste, et c'est voulu : c'est la
+ * simulation d'une cour. Contre-jeu : gagner vite, signer la paix, ou rendre
+ * la charge avant qu'il ne vous la fasse payer.
+ */
+export const COUR = {
+  /** En dessous, un chef est contesté et cherche un dos. */
+  legitimiteCritique: 30,
+  /** Heures entre deux fautes de bouc émissaire : un événement, pas une taxe. */
+  repitBouc: 240,
+  /** Ce que le chef se rend de légitimité en vous chargeant. */
+  souffleBouc: 8,
+};
+
+export function tickCour(state, log) {
+  for (const g of state.player.groupes) {
+    const all = g.allegeance;
+    if (!all) continue;
+    const d = dirigeant(state.world, all.faction);
+    if (!d) continue;
+
+    // F1 — la relève des comptes, à la succession.
+    if (all.chef === undefined || all.chef === null) {
+      all.chef = d.id; // première rencontre : rien à relire
+    } else if (all.chef !== d.id) {
+      all.chef = d.id;
+      if (rangDe(all).index >= 2 && (all.fautes || 0) > 0) {
+        let verdict = 'il reprend les livres tels quels';
+        if (d.temperament === 'rancunier') {
+          all.fautes = (all.fautes || 0) * 2;
+          verdict = 'vos fautes comptent double';
+        } else if (d.temperament === 'conciliateur') {
+          all.fautes = 0;
+          verdict = 'l’ardoise est effacée';
+        }
+        log({
+          type: 'allegeance',
+          texte: `${d.titre} ${d.nom}${TEMPERAMENTS[d.temperament]
+            ? `, ${TEMPERAMENTS[d.temperament].nom.toLowerCase()},` : ''} reprend la maison `
+            + `et relit votre dossier : ${verdict}.`,
+          important: true,
+          groupe: g.id,
+          factions: [all.faction],
+        });
+      } else {
+        all.chef = d.id;
+      }
+    }
+
+    // F2 — le bouc émissaire, sous commandement seulement : c'est le
+    // Maréchal qu'on charge, pas le dernier des Affiliés.
+    if (rangDe(all).index >= 5
+      && d.legitimite < COUR.legitimiteCritique
+      && (d.pertes || 0) > (d.prises || 0)
+      && guerresDe(state.world, all.faction).length
+      && (!all.dernierBouc || state.temps - all.dernierBouc >= COUR.repitBouc)) {
+      all.dernierBouc = state.temps;
+      porterFaute(state, all.faction,
+        `la guerre qui va mal — ${d.nom} se sauve sur votre dos`, log);
+      d.legitimite = Math.min(100, d.legitimite + COUR.souffleBouc);
+    }
   }
 }
 

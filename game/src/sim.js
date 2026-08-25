@@ -34,7 +34,7 @@ import {
   tickAllegeance, palierBonus, rangDe, estimeEngagement, renfortMilice,
 } from './allegeance.js';
 import {
-  jugerActes, tickCharges, commandementDe, porterFaute,
+  jugerActes, tickCharges, commandementDe, porterFaute, tickCour,
 } from './influence.js';
 import { tickSecteurs } from './secteur.js';
 import { tickGeole, tickOrdrePublic } from './justice.js';
@@ -673,6 +673,11 @@ export function tick(state) {
   // On rend des comptes de ce qu'on a ordonné : d'abord l'issue des actes, puis
   // la charge elle-même, qu'on perd quand le crédit est épuisé.
   if (!state.fin) jugerActes(state, log);
+  // Les frictions de la cour (F1+F2, MARECHAL.md) : la relève des comptes à
+  // la succession, et le bouc émissaire du chef contesté. AVANT tickCharges,
+  // pour qu'une relecture qui vide le crédit coûte la charge la même heure —
+  // on se couche Maréchal, on se réveille Commandeur.
+  if (!state.fin) tickCour(state, log);
   if (!state.fin) tickCharges(state, log);
   if (!state.fin) tickFormation(state, log);
   // Et ce que le monde a fait à votre argent pendant ce temps. En dernier :

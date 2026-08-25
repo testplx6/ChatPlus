@@ -228,7 +228,20 @@ pouvoir emprunte un flux que la faction a déjà.
   du conseil ne tire presque jamais — le seul chemin par lequel une ville
   « veut bâtir » en pleine séance est l'appréciation du cours entre le
   balayage des caisses et la recote.
-- [ ] F1 + F2 — les frictions de la cour
+- [x] F1 + F2 — les frictions de la cour — livré : `tickCour`
+  (influence.js, appelé AVANT `tickCharges` pour qu'une relecture qui vide
+  le crédit coûte la charge la même heure). F1 : à chaque succession, le
+  nouveau chef relit le dossier à son tempérament — un rancunier compte les
+  fautes double, un conciliateur efface l'ardoise, les autres reprennent
+  les livres tels quels ; on peut se coucher Maréchal et se réveiller
+  Commandeur parce qu'un chef est mort. F2 : un chef contesté (légitimité
+  sous 30) dans une guerre qui va mal (plus de pertes que de prises à son
+  règne) impute la guerre au Maréchal — une faute tous les dix jours au
+  plus, et il se refait une santé dessus (+8). Injuste et voulu : c'est la
+  simulation d'une cour. Contre-jeu réel : gagner, signer la paix, ou
+  rendre la charge. Le chef est identifié par son `id` public à la feuille
+  de service (`allegeance.chef`, migrée) — le monde ne lit rien du joueur.
+  Neuf tests nés rouges.
 - [ ] M7 — la porte de la couronne
 
 ## Blocages
