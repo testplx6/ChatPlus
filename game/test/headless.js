@@ -10614,14 +10614,44 @@ function decorSiege(graine, faction, force) {
   ok(soldeIci(s) <= avant - r.prix + 0.001, 'le prix est sorti de la poche',
     `${avant} → ${soldeIci(s)} (prix ${r.prix})`);
   ok(!siegeEnCours(s), 'et la colonne est partie');
-  ok((s.player.rachats || 0) === 1, 'le paiement est retenu');
+  // Revu au prisme du propriétaire (août 2026) : le « payeur marqué » n'est
+  // plus un compteur mondial et éternel (×1,6^n pour tout le monde, à
+  // jamais) — c'est la MÉMOIRE de qui a été payé, et la rumeur chez les
+  // autres. E3 de l'audit, livré ici.
+  ok((s.player.rachatsFaits || []).length === 1
+    && s.player.rachatsFaits[0].faction === 'hexa',
+    'le paiement est retenu — daté, et au nom de qui l’a encaissé');
   s.world.armees.push({
     id: 'siegeTest2', faction: 'hexa', force: 120, cible: s.base.colonieId,
     etat: 'siege', regionId: s.base.regionId, route: [], etape: 0, ravitaillement: 60,
   });
   ok(prixSiege(s, siegeEnCours(s)) > prix1,
-    'on se fait connaître comme payeur : le prix monte',
+    'celui qu’on a payé s’en souvient : SON prix monte',
     `${prix1} → ${prixSiege(s, siegeEnCours(s))}`);
+  s.world.armees.pop();
+  // Un autre drapeau, une fois la rumeur éteinte : il ne sait rien, il
+  // demande le prix d'un siège, pas le prix d'un payeur.
+  s.temps += RANCON.rumeur + 1;
+  const autre = {
+    id: 'siegeTest3', faction: 'cendre', force: 120, cible: s.base.colonieId,
+    etat: 'siege', regionId: s.base.regionId, route: [], etape: 0, ravitaillement: 60,
+  };
+  s.world.armees.push(autre);
+  ok(prixSiege(s, autre) === prix1,
+    'un drapeau qui n’en a rien su demande le prix de base — le savoir est situé',
+    `${prixSiege(s, autre)} pour ${prix1}`);
+  s.world.armees.pop();
+  // Et même chez le payé, la mémoire s'érode : très longtemps après, le
+  // souvenir ne vaut plus une majoration.
+  s.temps += RANCON.memoire + 1;
+  const encore = {
+    id: 'siegeTest4', faction: 'hexa', force: 120, cible: s.base.colonieId,
+    etat: 'siege', regionId: s.base.regionId, route: [], etape: 0, ravitaillement: 60,
+  };
+  s.world.armees.push(encore);
+  ok(prixSiege(s, encore) === prix1,
+    'la mémoire du payé s’érode aussi — rien n’est éternel, pas même une réputation de payeur',
+    `${prixSiege(s, encore)} pour ${prix1}`);
 }
 
 // L'Essaim ne négocie pas.

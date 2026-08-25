@@ -156,6 +156,15 @@ export function normaliser(state) {
   }
   // Les sièges rachetés (SIEGE.md, S3) : avant, personne ne payait.
   if (state.player.rachats === undefined) state.player.rachats = 0;
+  // E3 (prisme du propriétaire) : le compteur mondial de rachats devient une
+  // mémoire située et datée. On ne sait plus QUI les vieux paiements ont
+  // payé — ils entrent comme des souvenirs sans drapeau, qui s'érodent.
+  if (!state.player.rachatsFaits) {
+    state.player.rachatsFaits = [];
+    for (let i = 0; i < Math.min(5, state.player.rachats || 0); i++) {
+      state.player.rachatsFaits.push({ faction: null, t: state.temps });
+    }
+  }
   if (!state.stats) state.stats = {};
   for (const k of ['contratsRemplis', 'sitesFouilles', 'caravanesPillees', 'distanceParcourue',
     'servicesRendus', 'captifsPris', 'captifsLivres', 'captifsVendus', 'captifsRelaches',

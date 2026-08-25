@@ -2452,15 +2452,26 @@ export function siegeEnCours(state) {
 
 /**
  * La rançon d'un siège. Objet mutable, calibrable — mais la règle est de la
- * simulation, pas du réglage : qui paie une fois se fait connaître comme
- * payeur, et le prix monte à chaque paiement. Sans cette mémoire, négocier
- * serait le bouton qu'on presse toujours (décision du propriétaire, SIEGE.md).
+ * simulation, pas du réglage : qui paie se fait connaître comme payeur.
+ *
+ * Revu au prisme du propriétaire (août 2026, E3 de l'audit) : la première
+ * forme était un compteur mondial et éternel — ×1,6^n pour TOUTES les
+ * factions, à jamais, y compris celles qui n'en avaient jamais rien su. Un
+ * multiplicateur dirigé, pas un savoir. Désormais le savoir est situé :
+ * celui qu'on a payé s'en souvient (`memoire` heures), les autres ne
+ * majorent que tant que la rumeur court (`rumeur` heures), et tout s'érode —
+ * rien n'est éternel, pas même une réputation de payeur.
  */
-export const RANCON = { parForce: 3, montee: 1.6 };
+export const RANCON = { parForce: 3, montee: 1.6, memoire: 3000, rumeur: 720 };
 
 export function prixSiege(state, armee) {
-  const deja = state.player.rachats || 0;
-  return Math.round(armee.force * RANCON.parForce * Math.pow(RANCON.montee, deja));
+  const t = state.temps;
+  const connus = (state.player.rachatsFaits || []).filter((r) => (
+    r.faction === armee.faction || r.faction === null
+      ? t - r.t < RANCON.memoire
+      : t - r.t < RANCON.rumeur
+  )).length;
+  return Math.round(armee.force * RANCON.parForce * Math.pow(RANCON.montee, connus));
 }
 
 /**
@@ -2486,7 +2497,9 @@ export function negocierSiege(state, log) {
     f.tresor += prix;
     entrerDehors(state.world, armee.faction, prix);
   }
-  state.player.rachats = (state.player.rachats || 0) + 1;
+  if (!state.player.rachatsFaits) state.player.rachatsFaits = [];
+  state.player.rachatsFaits.push({ faction: armee.faction, t: state.temps });
+  if (state.player.rachatsFaits.length > 12) state.player.rachatsFaits.shift();
   const i = state.world.armees.indexOf(armee);
   if (i >= 0) state.world.armees.splice(i, 1);
   log({

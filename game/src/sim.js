@@ -301,6 +301,7 @@ export function nouvellePartie(seed, opts = {}) {
       // Les sièges rachetés, en tout : le monde apprend qu'on paie et le
       // prix monte à chaque fois (SIEGE.md, S3).
       rachats: 0,
+      rachatsFaits: [],
     },
     base: creerBase(),
     journal: [],
