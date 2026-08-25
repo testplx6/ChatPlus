@@ -410,7 +410,18 @@ l'écrit sans passer par un fait.
     après tickCour : une succession repèse d'abord, le nouveau maître
     classe ensuite à sa séance. Ça se dit au journal (discret) quand le
     grief pesait au moins un point. Huit tests nés rouges (MEM 7).
-  - [ ] L5d — notables : l'opinion suit l'agrégat + leurs souvenirs
+  - [x] L5d — livré : la cible de dérive d'un notable suivait déjà
+    l'agrégat (le `rep` que sim.js passe à `tickColonie` est la vue L5b —
+    l'inversion de notables.js:288 était acquise de fait) ; ce qui
+    manquait, c'est que SES souvenirs pèsent durablement. Chaque souvenir
+    porte désormais son poids (`retenir(p, quoi, detail, t, poids)` —
+    retenirEnVille/retenirDe le passent, le service honoré grave
+    +GAIN_OPINION), et la cible devient `rep×0,7 + Σ souvenirs ×
+    SOUVENIR.poids` (0,5, calibrable, clampée) : l'armurier qui a VU le
+    pillage reste froid même quand la maison-mère a tourné la page —
+    double comptage local assumé et dit. La disparition sans nom garde son
+    poids nul : mémoire sans opinion (décision n°2). Deux tests nés rouges
+    + un garde de doctrine né vert et assumé (MEM 8).
   - [ ] L5e — remesure contre L4-témoin, docs, consignation
 
 ## Blocages

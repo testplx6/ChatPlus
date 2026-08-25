@@ -238,6 +238,10 @@ export function ordreDe(col) {
   return t.ordre + Math.min(0.06, p.comp / 900) + (p.humeur - 50) / 2000;
 }
 
+/** Ce que pèse un souvenir personnel dans la cible d'opinion d'un notable
+ * (L5d) — l'échelle du « je l'ai vu faire, ici ». Calibrable. */
+export const SOUVENIR = { poids: 0.5 };
+
 /** Comment ces gens vous voient, en moyenne. Sert à l'affichage. */
 export function opinionMoyenne(col) {
   if (!col.notables || !col.notables.length) return 0;
@@ -285,7 +289,14 @@ export function tickNotables(col, rng, dt, reputation, log, t = 0) {
     // rendu était intégralement effacé en une semaine de jeu et tout le système
     // devenait décoratif. Le banc l'a chiffré : zéro personne acquise en fin de
     // partie sur trente parties.
-    const ecart = vers - (p.opinion || 0);
+    // L5d : chacun juge AUSSI sur ce qu'il a vu ici — ses souvenirs pèsent
+    // dans sa cible, durablement, même quand la maison-mère a tourné la page.
+    // Double comptage local assumé (le fait touche l'agrégat ET le souvenir) :
+    // « on juge quelqu'un sur ce qu'il fait ici », dit le commentaire
+    // au-dessus depuis toujours. SOUVENIR.poids est l'échelle, calibrable.
+    const local = (p.memoire || []).reduce((sm, m) => sm + (m.poids || 0), 0);
+    const versP = Math.max(-100, Math.min(100, vers + local * SOUVENIR.poids));
+    const ecart = versP - (p.opinion || 0);
     p.opinion = (p.opinion || 0) + ecart * (ecart > 0 ? 0.004 : 0.0008) * dt;
 
     // On finit par se retirer, ou pire.

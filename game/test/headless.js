@@ -12826,6 +12826,64 @@ section('MEM 7. La mémoire — L5c, l’oubli tombe au conseil du porteur (MEMO
   }
 }
 
+section('MEM 8. La mémoire — L5d, les notables jugent sur ce qu’ils ont vu ici (MEMOIRE.md)');
+{
+  const rien = () => {};
+  const services8 = await import('../src/services.js');
+  const notables8 = await import('../src/notables.js');
+
+  // Décor commun : une ville à notables, tous jeunes (la relève ne doit pas
+  // emporter la mémoire qu'on mesure), et un monde qu'on ne fait pas tourner —
+  // seul tickNotables travaille.
+  const monterVille = (graine) => {
+    const s = nouvellePartie(graine, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const col = s.world.colonies.find((c) => c.notables && c.notables.length >= 2 && !c.ruine);
+    for (const p of col.notables) { p.age = 20; p.opinion = 0; p.memoire = []; }
+    return { s, col };
+  };
+
+  // 1) Le souvenir se signe à la source : ce que la ville retient porte le
+  //    poids de ce qui s'est passé.
+  {
+    const { col } = monterVille(821);
+    services8.retenirEnVille(col, 'pillage', 50, -18);
+    ok(col.notables.every((p) => p.memoire.length === 1 && p.memoire[0].poids === -18),
+      'la ville pillée retient — et le souvenir porte son poids',
+      JSON.stringify(col.notables[0].memoire));
+  }
+
+  // 2) Le souvenir pèse durablement : même quand la maison-mère vous a tout
+  //    pardonné (agrégat à zéro), l'armurier qui a VU le pillage reste froid.
+  //    « On juge quelqu'un sur ce qu'il fait ici. »
+  {
+    const { col } = monterVille(823);
+    services8.retenirEnVille(col, 'pillage', 0, -18);
+    const rng8 = new Rng(7);
+    for (let i = 0; i < 150; i++) {
+      for (const p of col.notables) p.age = 20;
+      notables8.tickNotables(col, rng8, 12, 0, rien, i * 12);
+    }
+    ok(notables8.opinionMoyenne(col) < -4,
+      'la réputation de faction est à zéro, mais l’opinion d’ici reste marquée par ce qu’on y a vu',
+      `opinion moyenne ${notables8.opinionMoyenne(col).toFixed(1)}`);
+  }
+
+  // 3) Une mémoire sans opinion reste sans opinion (décision n°2) : la
+  //    disparition retenue sans nom ne pèse sur personne.
+  {
+    const { col } = monterVille(825);
+    services8.retenirEnVille(col, 'disparition', 0, null);
+    const rng8 = new Rng(9);
+    for (let i = 0; i < 150; i++) {
+      for (const p of col.notables) p.age = 20;
+      notables8.tickNotables(col, rng8, 12, 0, rien, i * 12);
+    }
+    ok(Math.abs(notables8.opinionMoyenne(col)) < 1,
+      'le souvenir sans coupable ne juge personne — pas vu, pas su',
+      `opinion moyenne ${notables8.opinionMoyenne(col).toFixed(1)}`);
+  }
+}
+
 // ===========================================================================
 console.log('\n' + '='.repeat(42));
 console.log(`${total - echecs}/${total} tests passés`);

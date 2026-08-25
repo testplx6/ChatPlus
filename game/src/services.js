@@ -100,10 +100,13 @@ const ACTES = {
 };
 
 /** On retient un acte, et on oublie le plus vieux. */
-export function retenir(p, quoi, detail, t) {
+export function retenir(p, quoi, detail, t, poids = 0) {
   if (!p) return;
   if (!p.memoire) p.memoire = [];
-  p.memoire.push({ quoi, detail: detail || null, t });
+  // L5d : le souvenir porte son poids — c'est lui qui fait qu'un notable
+  // juge sur ce qu'il a vu ICI, durablement, même quand la maison-mère a
+  // tourné la page (voir tickNotables). Zéro : une mémoire sans opinion.
+  p.memoire.push({ quoi, detail: detail || null, t, poids: poids || 0 });
   if (p.memoire.length > MEMOIRE_MAX) p.memoire.shift();
 }
 
@@ -124,7 +127,7 @@ export function souvenirs(p) {
 export function retenirDe(col, charge, quoi, t, delta) {
   const p = notable(col, charge);
   if (!p) return;
-  retenir(p, quoi, null, t);
+  retenir(p, quoi, null, t, delta || 0);
   if (delta) p.opinion = Math.max(-100, Math.min(100, (p.opinion || 0) + delta));
 }
 
@@ -132,7 +135,7 @@ export function retenirDe(col, charge, quoi, t, delta) {
 export function retenirEnVille(col, quoi, t, delta) {
   if (!col || !col.notables) return;
   for (const p of col.notables) {
-    retenir(p, quoi, null, t);
+    retenir(p, quoi, null, t, delta || 0);
     if (delta) p.opinion = Math.max(-100, Math.min(100, (p.opinion || 0) + delta));
   }
 }
@@ -222,7 +225,7 @@ export function honorer(state, colId, notableId, log) {
   gagner(state, d.prime);
 
   p.opinion = Math.min(100, (p.opinion || 0) + GAIN_OPINION);
-  retenir(p, 'service', d.res, state.temps);
+  retenir(p, 'service', d.res, state.temps, GAIN_OPINION);
   // Ça se sait : les autres en tiennent compte, sans en faire une affaire
   // personnelle.
   for (const autre of col.notables) {
