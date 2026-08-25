@@ -23,9 +23,6 @@ const FRAGMENT = iFragment >= 0 ? process.argv[iFragment + 1] : null;
 const MODULES = [
   'rng.js',
   'data.js',
-  // Le registre des faits (MEMOIRE.md, L2) : la seule porte vers la
-  // réputation. Ne dépend que des données ; tout le monde le cite.
-  'faits.js',
   'climat.js',
   // Feuille : lue par le conseil comme par la justice, elle ne dépend de rien.
   'lois.js',
@@ -34,6 +31,10 @@ const MODULES = [
   'notables.js',
   'dirigeants.js',
   'groupes.js',
+  // Le registre des faits (MEMOIRE.md, L2-L3) : la seule porte vers la
+  // réputation, et le voyage des nouvelles. Lit le monde et les groupes ;
+  // tout ce qui suit le cite.
+  'faits.js',
   // Ce qui s'est passé pendant qu'on ne regardait pas. Placé tôt parce que tout
   // le monde lui déclare ses mouvements d'argent — le camp, les coffres, les
   // péages —, et qu'un module ne cite que ceux qui le précèdent. Il ne dépend

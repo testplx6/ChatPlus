@@ -6,7 +6,7 @@ import {
   FACTIONS, RECETTES, ARRET, drapeauDe, ITEMS, PALIERS_ITEM,
 } from './data.js';
 import { Rng, grainDe } from './rng.js';
-import { appliquerReputation } from './faits.js';
+import { appliquerReputation, commettre, delaiVersFaction } from './faits.js';
 import { rendementRegion } from './world.js';
 import { METEO } from './climat.js';
 import { loisDe } from './lois.js';
@@ -1818,7 +1818,17 @@ export function declarerIndependance(state, log) {
   if (f) f.colonies = f.colonies.filter((id) => id !== col.id);
   col.faction = null;
   state.world.regions[col.regionId].controle = null;
-  appliquerReputation(state, ancienne, -35);
+  // Une proclamation : on décroche un drapeau pour que ça se sache (L3,
+  // MEMOIRE.md). Mais le protecteur ne fulmine qu'à l'arrivée de la nouvelle.
+  commettre(state, {
+    type: 'independance', regionId: base.regionId, t: state.temps,
+    effets: [{
+      faction: ancienne, delta: -35,
+      su: state.temps + delaiVersFaction(state, 'proclamation', base.regionId, ancienne),
+      dit: `${drapeauDe(state.world, ancienne).nom} appren${drapeauDe(state.world, ancienne).pluriel ? 'nent' : 'd'} `
+        + `que ${base.nom} a repris son drapeau. On n'oublie pas ce genre de départ.`,
+    }],
+  });
   if (log) {
     log({
       type: 'base',

@@ -1,5 +1,5 @@
 import { gagner, signeIci } from './monnaie.js';
-import { appliquerReputation } from './faits.js';
+import { appliquerReputation, commettre, delaiVersFaction } from './faits.js';
 // Ce qu'on fait de ses morts.
 //
 // `justice.js` demande ce qu'on fait des gens qu'on n'a pas tués. Voici la
@@ -23,7 +23,7 @@ import { appliquerReputation } from './faits.js';
 // ralentit la colonne et pèse sur le moral de ceux qui le portent. On peut
 // garder ses morts trois semaines ; on n'en a simplement pas envie.
 
-import { COMMODITIES, FACTIONS, DIPLO_FACTIONS, ITEMS, diploDe } from './data.js';
+import { COMMODITIES, FACTIONS, DIPLO_FACTIONS, ITEMS, diploDe, drapeauDe } from './data.js';
 import { colonieDe } from './world.js';
 import { loiIci, loisDe } from './lois.js';
 
@@ -226,12 +226,20 @@ export function disposerCorps(state, g, id, quoi, log) {
     gagner(state, prix);
     retirerDuGroupe(g, c);
     coute();
-    // Ça se sait, comme pour les vivants qu'on vend : auprès de tous ceux qui
-    // l'interdisent chez eux.
-    for (const k of diploDe(state.world)) {
-      if (k === col.faction) continue;
-      if (loisDe(state.world, k).esclavage) continue;
-      appliquerReputation(state, k, -5);
+    // Ça se sait, comme pour les vivants qu'on vend — quand la rumeur arrive
+    // (L3, MEMOIRE.md) : les témoins, c'est la ville où l'on a vendu.
+    {
+      const effets = [];
+      for (const k of diploDe(state.world)) {
+        if (k === col.faction) continue;
+        if (loisDe(state.world, k).esclavage) continue;
+        effets.push({
+          faction: k, delta: -5,
+          su: state.temps + delaiVersFaction(state, 'rumeur', col.regionId, k),
+          dit: `Chez ${drapeauDe(state.world, k).nom}, on sait ce que vous avez vendu à ${col.nom}.`,
+        });
+      }
+      commettre(state, { type: 'vente-organes', regionId: col.regionId, t: state.temps, effets });
     }
     state.stats.organesVendus = (state.stats.organesVendus || 0) + 1;
     dire(`Ce qui était encore bon chez ${c.nom} est parti à ${col.nom} pour ${prix} ${signeIci(state)}.`);

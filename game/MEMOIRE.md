@@ -252,7 +252,21 @@ l'écrit sans passer par un fait.
   `noterReputation`) et neuf écritures directes passent par la porte —
   valeurs identiques, su = t : pur refactor, comme promis. Neuf tests nés
   rouges.
-- [ ] L3 — les cinq omniscients passent au registre
+- [x] L3 — les cinq omniscients passent au registre — livré, décision n°2
+  incluse. S'engager : le −20 part en rumeur vers chaque ennemi et tombe à
+  l'arrivée. Esclave/organes : la ville de la vente est témoin, la rumeur
+  part d'elle — ceux dont c'est la ville savent sur-le-champ, l'abolitionniste
+  à trois cases avant celle à quatorze. Caravane : témoins = rescapés
+  (`survivantsB`, enfin lu), ville sur la case, région tenue, colonne à une
+  case — avec témoin le nom voyage ; sans, « pas vu, pas su » : le nom n'est
+  JAMAIS prononcé, mais la ville qui attendait retient la disparition à
+  l'heure où le convoi aurait dû arriver (sans juger personne — mémoire sans
+  opinion) et la route se fait mal famée (danger +0,05). Indépendance : une
+  proclamation — rapide, mais elle voyage. Les canaux ont déménagé dans
+  faits.js (l'ordre des modules l'exige), `delaiVersFaction` fait le voyage
+  inverse de L1, et chaque arrivée se dit au journal, datée (décision n°5).
+  Onze tests nés rouges ; deux vieux tests d'instantanéité apprennent à
+  attendre la rumeur.
 - [ ] L4 — l'oubli a des visages, et la remesure d'ouverture
 - [ ] L5 — la mémoire chez le souvenant (la cible, après mesure de L4)
 

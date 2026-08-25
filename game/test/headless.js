@@ -2788,10 +2788,13 @@ const repuAvantVente = { ...jus.player.reputation };
 const vte = disposer(jus, gJus, encore.id, 'vendre', () => {});
 ok(vte.ok, 'là où la loi le permet, si', vte.motif);
 ok(vte.prix > 0, 'et ça rapporte plus que la justice', `${vte.prix} cr`);
+// L3 (MEMOIRE.md) : la nouvelle voyage — on laisse à la rumeur le temps
+// d'atteindre la plus lointaine des abolitionnistes.
+for (let i = 0; i < 160; i++) tick(jus);
 const vus = DIPLO_FACTIONS.filter(
   (k) => (jus.player.reputation[k] || 0) < (repuAvantVente[k] || 0)
 );
-ok(vus.length > 0, 'ceux qui l’interdisent chez eux l’apprennent', `${vus.length} factions`);
+ok(vus.length > 0, 'ceux qui l’interdisent chez eux finissent par l’apprendre', `${vus.length} factions`);
 // Le prix doit valoir la peine qu'on prend : à 1,9 fois la valeur, un homme se
 // vendait moins cher qu'une charrette à bras, et la voie du négrier mesurait
 // moins bien que le travail honnête sur tous les tableaux à la fois.
@@ -3923,8 +3926,11 @@ const estimeAvant = monBourg.player.reputation[patron];
 ok(declarerIndependance(monBourg, () => {}).ok, 'on peut reprendre son drapeau');
 ok(!maVille.faction && !monBourg.world.factions[patron].colonies.includes(maVille.id),
   'la ville redevient libre');
-ok(monBourg.player.reputation[patron] < estimeAvant - 30,
-  'et l’on n’oublie pas ce genre de départ',
+// L3 (MEMOIRE.md) : même une proclamation voyage — le protecteur fulmine à
+// l'arrivée de la nouvelle, pas au décrochage du drapeau.
+for (let i = 0; i < 60; i++) tick(monBourg);
+ok(monBourg.player.reputation[patron] < estimeAvant - 25,
+  'et l’on n’oublie pas ce genre de départ — sitôt la nouvelle arrivée',
   `${estimeAvant} → ${monBourg.player.reputation[patron]}`);
 ok(!declarerIndependance(monBourg, () => {}).ok, 'deux fois, non');
 
@@ -12260,6 +12266,125 @@ section('MEM 2. La mémoire — L2, le registre des faits, une seule porte (MEMO
     ok(coupables.length === 0,
       'une seule porte d’écriture : seule faits.js touche la réputation',
       coupables.slice(0, 6).join(' '));
+  }
+}
+
+// ===========================================================================
+section('MEM 3. La mémoire — L3, les cinq omniscients passent au registre (MEMOIRE.md)');
+{
+  const rien = () => {};
+  const faits3 = await import('../src/faits.js');
+
+  // 1) S'engager : le fait part en rumeur vers chaque ennemi — le −20 arrive
+  //    avec la nouvelle, plus à la signature.
+  {
+    const s = nouvellePartie(741, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(s);
+    const col = s.world.colonies.find((c) => c.regionId === g.regionId);
+    const A = col.faction;
+    const B = Object.keys(s.world.factions).find(
+      (k) => k !== 'essaim' && k !== A && s.world.factions[k].colonies.length);
+    s.world.guerres = s.world.guerres.filter((x) => x.a !== A && x.b !== A);
+    declarerGuerre(s.world, A, B, s.temps, rien);
+    s.player.reputation[A] = 60;
+    s.player.reputation[B] = 0;
+    sEngager(s, A, rien);
+    ok((s.player.reputation[B] || 0) === 0,
+      's’engager ne se sait pas chez l’ennemi à la signature — la nouvelle doit marcher');
+    const delai = faits3.delaiVersFaction(s, 'rumeur', g.regionId, B);
+    for (let i = 0; i < delai + 2; i++) tick(s);
+    ok((s.player.reputation[B] || 0) <= -18,
+      'et quand elle arrive, l’ennemi vous compte parmi les leurs',
+      `${s.player.reputation[B]}`);
+  }
+
+  // 2) La caravane pillée AVEC des survivants : l'effet voyage — pas avant.
+  const monterCar = (graine) => {
+    const s = nouvellePartie(graine, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(s);
+    const dep = s.world.colonies.find((c) => !c.ruine && c.faction);
+    const arr = s.world.colonies.find(
+      (c) => !c.ruine && c.faction && c.id !== dep.id && (c.notables || []).length);
+    // Loin de tout : pas de ville sur la case, pas de contrôle, pas de colonne.
+    const vide = s.world.regions.find((r) => !r.colonie && !r.controle
+      && distance(r.i, dep.regionId) >= 4
+      && !s.world.armees.some((a) => distance(a.regionId, r.i) <= 1));
+    g.regionId = vide.i;
+    const car = {
+      id: `v-mem-${graine}`, faction: dep.faction, deId: dep.id, versId: arr.id,
+      regionId: vide.i, route: [vide.i], etape: 0, progres: 0,
+      cargaison: { alliage: 5 }, escorte: 6, depuis: s.temps,
+    };
+    s.world.caravanes.push(car);
+    return { s, g, car, dep, arr, vide };
+  };
+  {
+    const { s, g, car } = monterCar(743);
+    const F = car.faction;
+    s.player.reputation[F] = 0;
+    const faux = () => ({ vainqueur: 'A', survivantsB: 2, journal: [] });
+    const r = attaquerCaravane(s, car, new Rng(1), rien, faux, genererBande, g);
+    ok(r.ok && r.gagne && (s.player.reputation[F] || 0) === 0,
+      'des rescapés se sont enfuis : la faction ne sait pas ENCORE — la nouvelle court',
+      `${s.player.reputation[F]}`);
+    const delai = faits3.delaiVersFaction(s, 'rumeur', g.regionId, F);
+    for (let i = 0; i < delai + 2; i++) tick(s);
+    ok((s.player.reputation[F] || 0) < -15,
+      'les rescapés arrivés, la faction n’oublie pas', `${s.player.reputation[F]}`);
+  }
+
+  // 3) SANS témoin : pas vu, pas su — jamais. Mais qui attendait remarque
+  //    l'absence, sans pouvoir nommer personne, et la route se fait mal famée.
+  {
+    const { s, g, car, arr, vide } = monterCar(747);
+    const F = car.faction;
+    s.player.reputation[F] = 0;
+    const opinionAvant = (arr.notables[0] || {}).opinion || 0;
+    const dangerAvant = s.world.regions[vide.i].danger || 0;
+    const faux = () => ({ vainqueur: 'A', survivantsB: 0, journal: [] });
+    const r = attaquerCaravane(s, car, new Rng(1), rien, faux, genererBande, g);
+    ok(r.ok && r.gagne, 'l’embuscade sans témoin a lieu', r.motif);
+    for (let i = 0; i < 260; i++) tick(s);
+    ok((s.player.reputation[F] || 0) >= 0,
+      'personne n’a survécu, personne n’a vu : votre nom n’est JAMAIS prononcé',
+      `${s.player.reputation[F]}`);
+    ok((arr.notables[0] || {}).memoire?.some?.((m) => m.quoi === 'disparition'),
+      'mais la ville qui attendait le convoi retient sa disparition');
+    ok(Math.abs(((arr.notables[0] || {}).opinion || 0) - opinionAvant) < 3,
+      'sans accuser personne — on ne juge pas ce qu’on ne sait pas');
+    ok((s.world.regions[vide.i].danger || 0) > dangerAvant,
+      'et la route où l’on disparaît se fait mal famée',
+      `${dangerAvant} → ${s.world.regions[vide.i].danger}`);
+  }
+
+  // 4) L'indépendance est une proclamation : elle veut se savoir, mais elle
+  //    met le temps d'arriver aux oreilles du protecteur.
+  {
+    const s = nouvellePartie(751, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(s);
+    const libre = s.world.regions.find((r) => !r.colonie
+      && s.world.colonies.every((c) => distance(c.regionId, r.i) >= 3));
+    s.base.fonde = true;
+    s.base.nom = 'Le Môle';
+    s.base.regionId = libre.i;
+    g.regionId = libre.i;
+    s.base.pop = POP_RECONNUE;
+    s.base.batiments = { halle: 1 };
+    reconnaitreAvantPoste(s, rien);
+    const col = s.world.colonies.find((c) => c.id === s.base.colonieId);
+    const F = Object.keys(s.world.factions).find(
+      (k) => k !== 'essaim' && s.world.factions[k].colonies.length);
+    col.faction = F;
+    s.world.factions[F].colonies.push(col.id);
+    s.player.reputation[F] = 20;
+    const r = declarerIndependance(s, rien);
+    ok(r.ok && (s.player.reputation[F] || 0) === 20,
+      'le drapeau décroché, le protecteur ne le sait pas encore — même une proclamation voyage');
+    const delai = faits3.delaiVersFaction(s, 'proclamation', s.base.regionId, F);
+    for (let i = 0; i < delai + 2; i++) tick(s);
+    ok((s.player.reputation[F] || 0) <= -10,
+      'et quand elle arrive, on n’oublie pas ce genre de départ',
+      `${s.player.reputation[F]}`);
   }
 }
 

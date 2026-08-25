@@ -16,6 +16,68 @@
 //   tant qu'elle vit — elle meurt à L4). Elle n'enregistre rien.
 
 import { drapeauDe } from './data.js';
+import { distance, colonieParId } from './world.js';
+import { groupes } from './groupes.js';
+
+/**
+ * L1 (MEMOIRE.md, E12 de l'audit) : la nouvelle a des jambes. Un canal (sa
+ * base, son pas), fois la route. Calibrables — objets mutables. Vit ici et
+ * non dans connaissance.js : l'ordre des modules — allegeance, justice,
+ * caravanes citent la porte des faits bien avant que la connaissance
+ * n'existe — et c'est le même voyage dans les deux sens (E12 = S5).
+ */
+export const CANAUX = {
+  /** Criée sur les places : une déclaration VEUT être sue. */
+  proclamation: { base: 6, parCase: 1 },
+  /** Au pas des colporteurs : ce qui s'est passé quelque part. */
+  rumeur: { base: 12, parCase: 4 },
+};
+
+/** Quel canal porte quel type de nouvelle. `null` : on regarde le ciel. */
+export const CANAL_PAR_TYPE = {
+  guerre: 'proclamation',
+  paix: 'proclamation',
+  capture: 'rumeur',
+  effondrement: 'rumeur',
+  secession: 'rumeur',
+  fondation: 'rumeur',
+  croissance: 'rumeur',
+  saison: null,
+};
+
+/** Faute de lieu connu, une nouvelle a marché « une route moyenne ». */
+export const ROUTE_MOYENNE = 8;
+
+/**
+ * Le temps qu'une nouvelle du monde met à atteindre le joueur, d'où elle est
+ * née à où il est. Elle atteint le plus proche des siens, et se recalcule
+ * d'où l'on est : marcher vers le lieu, c'est aller au-devant d'elle.
+ */
+export function delaiNouvelle(state, type, deRegionId) {
+  const nomCanal = CANAL_PAR_TYPE[type] === undefined ? 'rumeur' : CANAL_PAR_TYPE[type];
+  if (nomCanal === null) return 0;
+  const canal = CANAUX[nomCanal];
+  let d = ROUTE_MOYENNE;
+  if (deRegionId != null) {
+    d = Infinity;
+    for (const g of groupes(state)) d = Math.min(d, distance(g.regionId, deRegionId));
+    if (!Number.isFinite(d)) d = ROUTE_MOYENNE;
+  }
+  return Math.round(canal.base + canal.parCase * d);
+}
+
+/**
+ * Le même voyage, dans l'autre sens (L3) : le temps qu'un fait du joueur met
+ * à atteindre une faction — sa capitale, où l'on décide de ce qu'on pense.
+ */
+export function delaiVersFaction(state, canal, deRegionId, faction) {
+  const c = CANAUX[canal] || CANAUX.rumeur;
+  const f = state.world.factions[faction];
+  const capitale = f && f.capitale ? colonieParId(state.world, f.capitale) : null;
+  const d = capitale && deRegionId != null
+    ? distance(deRegionId, capitale.regionId) : ROUTE_MOYENNE;
+  return Math.round(c.base + c.parCase * d);
+}
 
 /**
  * La mémoire du monde est bornée, comme celle de tout le monde ici (quatre
@@ -57,18 +119,31 @@ export function commettre(state, fait, log) {
  * tombe, et se dit. Le registre est borné à soixante entrées — le parcours
  * est trivial, et un fait dont tous les effets sont tombés ne coûte rien.
  */
-export function tickFaits(state, log) {
+export function tickFaits(state, log, outils) {
   for (const f of state.player.faits || []) {
     for (const e of f.effets || []) {
       if (e.applique || e.su > state.temps) continue;
-      appliquerReputation(state, e.faction, e.delta);
       e.applique = true;
+      if (e.faction && e.delta !== undefined) {
+        appliquerReputation(state, e.faction, e.delta);
+      }
+      // Une ville qui apprend retient (L3) — par ses notables, sans juger si
+      // le fait ne nomme personne (delta absent : « des pillards », pas vous).
+      if (e.ville && outils && outils.retenirEnVille) {
+        const col = colonieParId(state.world, e.ville);
+        if (col) outils.retenirEnVille(col, e.memoire || 'pillage', state.temps, e.delta || null);
+      }
+      // Une route où l'on disparaît se fait mal famée.
+      if (e.region != null && e.danger) {
+        const r = state.world.regions[e.region];
+        if (r) r.danger = Math.min(1, (r.danger || 0) + e.danger);
+      }
       if (log && e.dit) {
         log({
           type: 'rumeur',
           texte: e.dit,
           important: true,
-          factions: [e.faction],
+          factions: e.faction ? [e.faction] : [],
         });
       }
     }

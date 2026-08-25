@@ -4,7 +4,7 @@
 // donne au joueur autre chose à faire que ramasser des cailloux.
 
 import { COMMODITIES, COMMODITY_KEYS, FACTIONS, drapeauDe } from './data.js';
-import { appliquerReputation } from './faits.js';
+import { appliquerReputation, commettre, delaiVersFaction, CANAUX } from './faits.js';
 import { Rng, grainDe } from './rng.js';
 import { chemin, colonieParId, colonieDe, nomRegion, distance, damer } from './world.js';
 import {
@@ -857,13 +857,52 @@ export function attaquerCaravane(state, car, rng, log, combatContre, genererBand
   retirerCaravane(state.world, car);
 
   if (car.faction && car.faction !== 'essaim') {
-    appliquerReputation(state, car.faction, -22);
-    // Une caravane qui n'arrive pas, ce sont des gens qui l'attendaient. Ceux
-    // des deux bouts s'en souviennent nommément, pas seulement la faction.
-    for (const id of [car.deId, car.versId]) {
-      const col = id && state.world.colonies.find((c) => c.id === id);
-      if (col) retenirEnVille(col, 'pillage', state.temps, -18);
+    // L3 (MEMOIRE.md, décision n°2 du propriétaire : « pas vu, pas su ») —
+    // qui a vu ? Des rescapés, une ville sur la case, la région tenue par la
+    // faction, ou une de ses colonnes à une case. Avec témoin : le nom
+    // voyage. Sans : votre nom n'est JAMAIS prononcé — mais la ville qui
+    // attendait le convoi remarque son absence à l'heure où il aurait dû
+    // arriver, sans accuser personne, et la route se fait mal famée (il
+    // reste des traces : c'est par elles que l'endroit se sait dangereux).
+    const rid = car.regionId;
+    const colIci = colonieDe(state.world, rid);
+    const temoins = (res.survivantsB || 0) > 0
+      || !!colIci
+      || state.world.regions[rid].controle === car.faction
+      || state.world.armees.some((a) => a.faction === car.faction
+        && distance(a.regionId, rid) <= 1);
+    const effets = [];
+    if (temoins) {
+      const suVille = (col) => state.temps + Math.round(
+        CANAUX.rumeur.base + CANAUX.rumeur.parCase * distance(rid, col.regionId));
+      effets.push({
+        faction: car.faction, delta: -22,
+        su: colIci && colIci.faction === car.faction
+          ? state.temps
+          : state.temps + delaiVersFaction(state, 'rumeur', rid, car.faction),
+        dit: `${drapeauDe(state.world, car.faction).nom} sa${drapeauDe(state.world, car.faction).pluriel ? 'vent' : 'it'} `
+          + `désormais qui a pillé leur caravane.`,
+      });
+      // Ceux des deux bouts s'en souviennent nommément, quand ils l'apprennent.
+      for (const id of [car.deId, car.versId]) {
+        const col = id && colonieParId(state.world, id);
+        if (col) effets.push({ ville: col.id, memoire: 'pillage', delta: -18, su: suVille(col) });
+      }
+    } else {
+      const arr = car.versId && colonieParId(state.world, car.versId);
+      const attendue = state.temps
+        + (arr ? distance(rid, arr.regionId) * 4 : 24) + 24;
+      if (arr) {
+        effets.push({
+          ville: arr.id, memoire: 'disparition', su: attendue,
+          dit: `À ${arr.nom}, on attendait un convoi qui n'arrivera jamais. La route se fait mal famée.`,
+        });
+      }
+      effets.push({ region: rid, danger: 0.05, su: attendue });
     }
+    commettre(state, {
+      type: 'pillage', regionId: rid, t: state.temps, effets, anonyme: !temoins,
+    });
   }
   state.stats.caravanesPillees = (state.stats.caravanesPillees || 0) + 1;
   if (log) {

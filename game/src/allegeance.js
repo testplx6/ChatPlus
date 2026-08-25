@@ -10,7 +10,7 @@ import { colonieParId, distance, coordonnee } from './world.js';
 import { idDepuisRng } from './characters.js';
 import { groupes, groupeActif } from './groupes.js';
 import { loisDe, REGIMES, DISCIPLINES } from './lois.js';
-import { appliquerReputation } from './faits.js';
+import { appliquerReputation, commettre, delaiVersFaction } from './faits.js';
 import { noterArgent } from './rapport.js';
 import { depenser, gagner, soldeIci, signeIci } from './monnaie.js';
 
@@ -498,11 +498,26 @@ export function sEngager(state, faction, log, groupe) {
     secteur: null,
   };
 
-  // On ne choisit pas un camp sans que l'autre le remarque.
-  for (const w of state.world.guerres) {
-    const autre = w.a === faction ? w.b : w.b === faction ? w.a : null;
-    if (!autre) continue;
-    appliquerReputation(state, autre, -20);
+  // On ne choisit pas un camp sans que l'autre le remarque — mais il faut que
+  // la nouvelle lui parvienne (L3, MEMOIRE.md) : l'enrôlement se fait devant
+  // témoins, le fait part en rumeur vers chaque ennemi, le coup tombe à
+  // l'arrivée.
+  {
+    const effets = [];
+    for (const w of state.world.guerres) {
+      const autre = w.a === faction ? w.b : w.b === faction ? w.a : null;
+      if (!autre || !drapeauDe(state.world, autre)) continue;
+      effets.push({
+        faction: autre,
+        delta: -20,
+        su: state.temps + delaiVersFaction(state, 'rumeur', g.regionId, autre),
+        dit: `Chez ${drapeauDe(state.world, autre).nom}, on sait désormais que vous portez `
+          + `les couleurs ${drapeauDe(state.world, faction).genitif}.`,
+      });
+    }
+    if (effets.length) {
+      commettre(state, { type: 'engagement', regionId: g.regionId, t: state.temps, effets });
+    }
   }
 
   log({

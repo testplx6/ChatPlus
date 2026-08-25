@@ -20,7 +20,7 @@
 // surveille pas s'en vont — parfois en emportant quelque chose.
 
 import { FACTIONS, DIPLO_FACTIONS, diploDe, drapeauDe} from './data.js';
-import { appliquerReputation } from './faits.js';
+import { appliquerReputation, commettre, delaiVersFaction } from './faits.js';
 import { estVivant, estDebout, comp } from './characters.js';
 import { colonieDe } from './world.js';
 import { enGuerre } from './factions.js';
@@ -425,12 +425,30 @@ export function disposer(state, g, captifId, quoi, log) {
     retirerCaptif(g, c);
     gagner(state, prix);
     state.stats.captifsVendus = (state.stats.captifsVendus || 0) + 1;
-    // Ça se sait. Auprès des siens d'abord, et auprès de tous ceux qui l'ont
-    // interdit chez eux — ce qui donne son poids à la loi d'en face.
-    noterReputation(state, cap.faction, -14);
-    for (const k of diploDe(state.world)) {
-      if (k === col.faction || k === cap.faction) continue;
-      if (!loisDe(state.world, k).esclavage) noterReputation(state, k, -4);
+    // Ça se sait — quand la nouvelle arrive (L3, MEMOIRE.md) : les témoins,
+    // c'est toute la ville, et la rumeur part d'ici. Ceux dont c'est la ville
+    // savent sur-le-champ ; l'abolitionniste à trois cases l'apprend avant
+    // celle à quatorze.
+    {
+      const suDe = (k) => (k === col.faction ? state.temps
+        : state.temps + delaiVersFaction(state, 'rumeur', col.regionId, k));
+      const effets = [];
+      if (cap.faction && drapeauDe(state.world, cap.faction)) {
+        effets.push({
+          faction: cap.faction, delta: -14, su: suDe(cap.faction),
+          dit: `${drapeauDe(state.world, cap.faction).nom} appren${drapeauDe(state.world, cap.faction).pluriel ? 'nent' : 'd'} `
+            + `qu'un des leurs a été vendu à ${col.nom}. On s'en souviendra.`,
+        });
+      }
+      for (const k of diploDe(state.world)) {
+        if (k === col.faction || k === cap.faction) continue;
+        if (loisDe(state.world, k).esclavage) continue;
+        effets.push({
+          faction: k, delta: -4, su: suDe(k),
+          dit: `Chez ${drapeauDe(state.world, k).nom}, on sait ce que vous avez vendu à ${col.nom}.`,
+        });
+      }
+      commettre(state, { type: 'vente-esclave', regionId: col.regionId, t: state.temps, effets });
     }
     col.unrest = Math.min(1, (col.unrest || 0) + 0.02);
     if (log) {

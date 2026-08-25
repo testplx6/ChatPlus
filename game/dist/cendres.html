@@ -2647,83 +2647,6 @@ function couleurNeuve(world) {
   return hexDeHsl(meilleure, SAT_DRAPEAU, LUM_DRAPEAU);
 }
 
-// ===== src/faits.js ==================================================
-// Le registre des faits — la seule porte vers ce que le monde pense du joueur.
-//
-// L2 (MEMOIRE.md) : un acte du joueur est un FAIT — daté, situé, avec des
-// effets par faction et l'heure `su` où chacune l'apprend. L'effet ne tombe
-// qu'à l'arrivée de la nouvelle : commettre enregistre et applique ce qui est
-// déjà su, `tickFaits` livre le reste à l'heure dite. Plus rien d'autre dans
-// le moteur n'écrit `state.player.reputation` : c'est la garantie (tenue par
-// un test statique) que les chemins muets ne reviendront pas.
-//
-// Deux portes, un seul module :
-// - `commettre` : les ACTES — discrets, enregistrés, différables. C'est la
-//   matière que L5 distribuera aux porteurs nommés (« la mémoire appartient
-//   au souvenant »).
-// - `appliquerReputation` : l'écriture brute, clampée — pour l'ambiant qui
-//   n'est pas un acte (la patrouille qui rassure au fil des heures, l'érosion
-//   tant qu'elle vit — elle meurt à L4). Elle n'enregistre rien.
-
-
-/**
- * La mémoire du monde est bornée, comme celle de tout le monde ici (quatre
- * souvenirs par notable, soixante rencontres, douze rachats) : les vieux
- * faits sortent poussés par les nouveaux.
- */
-const FAITS_MAX = 60;
-
-/** L'écriture brute, clampée, sans registre. Garde-fou : les pillards et
- * l'Essaim ne sont pas des institutions — pas de clé fantôme. */
-function appliquerReputation(state, faction, delta) {
-  if (!faction || faction === 'essaim' || faction === 'bandits'
-    || !drapeauDe(state.world, faction)) return;
-  const r = state.player.reputation;
-  r[faction] = Math.max(-100, Math.min(100, (r[faction] || 0) + delta));
-}
-
-/**
- * Commettre un fait : il entre au registre, ce qui est déjà su s'applique,
- * le reste attend son heure. `effets` : [{faction, delta, su, dit?}] —
- * `dit` est la ligne de journal à l'arrivée de la nouvelle (décision n°5 :
- * on montre qui sait quoi, et quand).
- */
-function commettre(state, fait, log) {
-  if (!state.player.faits) state.player.faits = [];
-  state.player.faits.push(fait);
-  if (state.player.faits.length > FAITS_MAX) state.player.faits.shift();
-  for (const e of fait.effets || []) {
-    if (e.su <= (fait.t ?? state.temps)) {
-      appliquerReputation(state, e.faction, e.delta);
-      e.applique = true;
-    }
-  }
-  return fait;
-}
-
-/**
- * La file des nouvelles en route : ce qui doit être su à cette heure-ci
- * tombe, et se dit. Le registre est borné à soixante entrées — le parcours
- * est trivial, et un fait dont tous les effets sont tombés ne coûte rien.
- */
-function tickFaits(state, log) {
-  for (const f of state.player.faits || []) {
-    for (const e of f.effets || []) {
-      if (e.applique || e.su > state.temps) continue;
-      appliquerReputation(state, e.faction, e.delta);
-      e.applique = true;
-      if (log && e.dit) {
-        log({
-          type: 'rumeur',
-          texte: e.dit,
-          important: true,
-          factions: [e.faction],
-        });
-      }
-    }
-  }
-}
-
 // ===== src/climat.js =================================================
 // Saisons et météo. Le monde n'a pas la même tête en pleine saison sèche
 // qu'au milieu d'un hiver de cendre : les rendements, la marche, les aléas et
@@ -5442,6 +5365,156 @@ function fusionnablesAvec(state, g) {
   return groupes(state).filter((o) => o.id !== g.id && o.regionId === g.regionId);
 }
 
+// ===== src/faits.js ==================================================
+// Le registre des faits — la seule porte vers ce que le monde pense du joueur.
+//
+// L2 (MEMOIRE.md) : un acte du joueur est un FAIT — daté, situé, avec des
+// effets par faction et l'heure `su` où chacune l'apprend. L'effet ne tombe
+// qu'à l'arrivée de la nouvelle : commettre enregistre et applique ce qui est
+// déjà su, `tickFaits` livre le reste à l'heure dite. Plus rien d'autre dans
+// le moteur n'écrit `state.player.reputation` : c'est la garantie (tenue par
+// un test statique) que les chemins muets ne reviendront pas.
+//
+// Deux portes, un seul module :
+// - `commettre` : les ACTES — discrets, enregistrés, différables. C'est la
+//   matière que L5 distribuera aux porteurs nommés (« la mémoire appartient
+//   au souvenant »).
+// - `appliquerReputation` : l'écriture brute, clampée — pour l'ambiant qui
+//   n'est pas un acte (la patrouille qui rassure au fil des heures, l'érosion
+//   tant qu'elle vit — elle meurt à L4). Elle n'enregistre rien.
+
+
+/**
+ * L1 (MEMOIRE.md, E12 de l'audit) : la nouvelle a des jambes. Un canal (sa
+ * base, son pas), fois la route. Calibrables — objets mutables. Vit ici et
+ * non dans connaissance.js : l'ordre des modules — allegeance, justice,
+ * caravanes citent la porte des faits bien avant que la connaissance
+ * n'existe — et c'est le même voyage dans les deux sens (E12 = S5).
+ */
+const CANAUX = {
+  /** Criée sur les places : une déclaration VEUT être sue. */
+  proclamation: { base: 6, parCase: 1 },
+  /** Au pas des colporteurs : ce qui s'est passé quelque part. */
+  rumeur: { base: 12, parCase: 4 },
+};
+
+/** Quel canal porte quel type de nouvelle. `null` : on regarde le ciel. */
+const CANAL_PAR_TYPE = {
+  guerre: 'proclamation',
+  paix: 'proclamation',
+  capture: 'rumeur',
+  effondrement: 'rumeur',
+  secession: 'rumeur',
+  fondation: 'rumeur',
+  croissance: 'rumeur',
+  saison: null,
+};
+
+/** Faute de lieu connu, une nouvelle a marché « une route moyenne ». */
+const ROUTE_MOYENNE = 8;
+
+/**
+ * Le temps qu'une nouvelle du monde met à atteindre le joueur, d'où elle est
+ * née à où il est. Elle atteint le plus proche des siens, et se recalcule
+ * d'où l'on est : marcher vers le lieu, c'est aller au-devant d'elle.
+ */
+function delaiNouvelle(state, type, deRegionId) {
+  const nomCanal = CANAL_PAR_TYPE[type] === undefined ? 'rumeur' : CANAL_PAR_TYPE[type];
+  if (nomCanal === null) return 0;
+  const canal = CANAUX[nomCanal];
+  let d = ROUTE_MOYENNE;
+  if (deRegionId != null) {
+    d = Infinity;
+    for (const g of groupes(state)) d = Math.min(d, distance(g.regionId, deRegionId));
+    if (!Number.isFinite(d)) d = ROUTE_MOYENNE;
+  }
+  return Math.round(canal.base + canal.parCase * d);
+}
+
+/**
+ * Le même voyage, dans l'autre sens (L3) : le temps qu'un fait du joueur met
+ * à atteindre une faction — sa capitale, où l'on décide de ce qu'on pense.
+ */
+function delaiVersFaction(state, canal, deRegionId, faction) {
+  const c = CANAUX[canal] || CANAUX.rumeur;
+  const f = state.world.factions[faction];
+  const capitale = f && f.capitale ? colonieParId(state.world, f.capitale) : null;
+  const d = capitale && deRegionId != null
+    ? distance(deRegionId, capitale.regionId) : ROUTE_MOYENNE;
+  return Math.round(c.base + c.parCase * d);
+}
+
+/**
+ * La mémoire du monde est bornée, comme celle de tout le monde ici (quatre
+ * souvenirs par notable, soixante rencontres, douze rachats) : les vieux
+ * faits sortent poussés par les nouveaux.
+ */
+const FAITS_MAX = 60;
+
+/** L'écriture brute, clampée, sans registre. Garde-fou : les pillards et
+ * l'Essaim ne sont pas des institutions — pas de clé fantôme. */
+function appliquerReputation(state, faction, delta) {
+  if (!faction || faction === 'essaim' || faction === 'bandits'
+    || !drapeauDe(state.world, faction)) return;
+  const r = state.player.reputation;
+  r[faction] = Math.max(-100, Math.min(100, (r[faction] || 0) + delta));
+}
+
+/**
+ * Commettre un fait : il entre au registre, ce qui est déjà su s'applique,
+ * le reste attend son heure. `effets` : [{faction, delta, su, dit?}] —
+ * `dit` est la ligne de journal à l'arrivée de la nouvelle (décision n°5 :
+ * on montre qui sait quoi, et quand).
+ */
+function commettre(state, fait, log) {
+  if (!state.player.faits) state.player.faits = [];
+  state.player.faits.push(fait);
+  if (state.player.faits.length > FAITS_MAX) state.player.faits.shift();
+  for (const e of fait.effets || []) {
+    if (e.su <= (fait.t ?? state.temps)) {
+      appliquerReputation(state, e.faction, e.delta);
+      e.applique = true;
+    }
+  }
+  return fait;
+}
+
+/**
+ * La file des nouvelles en route : ce qui doit être su à cette heure-ci
+ * tombe, et se dit. Le registre est borné à soixante entrées — le parcours
+ * est trivial, et un fait dont tous les effets sont tombés ne coûte rien.
+ */
+function tickFaits(state, log, outils) {
+  for (const f of state.player.faits || []) {
+    for (const e of f.effets || []) {
+      if (e.applique || e.su > state.temps) continue;
+      e.applique = true;
+      if (e.faction && e.delta !== undefined) {
+        appliquerReputation(state, e.faction, e.delta);
+      }
+      // Une ville qui apprend retient (L3) — par ses notables, sans juger si
+      // le fait ne nomme personne (delta absent : « des pillards », pas vous).
+      if (e.ville && outils && outils.retenirEnVille) {
+        const col = colonieParId(state.world, e.ville);
+        if (col) outils.retenirEnVille(col, e.memoire || 'pillage', state.temps, e.delta || null);
+      }
+      // Une route où l'on disparaît se fait mal famée.
+      if (e.region != null && e.danger) {
+        const r = state.world.regions[e.region];
+        if (r) r.danger = Math.min(1, (r.danger || 0) + e.danger);
+      }
+      if (log && e.dit) {
+        log({
+          type: 'rumeur',
+          texte: e.dit,
+          important: true,
+          factions: e.faction ? [e.faction] : [],
+        });
+      }
+    }
+  }
+}
+
 // ===== src/rapport.js ================================================
 // Ce qui s'est passé pendant que vous n'étiez pas là.
 //
@@ -6281,6 +6354,8 @@ const ACTES = {
   oubli: (r) => `Vous avez laissé passer ${(DIT[r] || [null, r])[1]} qu’il attendait.`,
   defense: () => 'Vous étiez là quand la ville a été attaquée.',
   pillage: () => 'Vous avez pillé une caravane des siens.',
+  // L3 (MEMOIRE.md) : un convoi qui manque, sans coupable à nommer.
+  disparition: () => 'Un convoi qu’on attendait n’est jamais arrivé.',
 };
 
 /** On retient un acte, et on oublie le plus vieux. */
@@ -6979,11 +7054,26 @@ function sEngager(state, faction, log, groupe) {
     secteur: null,
   };
 
-  // On ne choisit pas un camp sans que l'autre le remarque.
-  for (const w of state.world.guerres) {
-    const autre = w.a === faction ? w.b : w.b === faction ? w.a : null;
-    if (!autre) continue;
-    appliquerReputation(state, autre, -20);
+  // On ne choisit pas un camp sans que l'autre le remarque — mais il faut que
+  // la nouvelle lui parvienne (L3, MEMOIRE.md) : l'enrôlement se fait devant
+  // témoins, le fait part en rumeur vers chaque ennemi, le coup tombe à
+  // l'arrivée.
+  {
+    const effets = [];
+    for (const w of state.world.guerres) {
+      const autre = w.a === faction ? w.b : w.b === faction ? w.a : null;
+      if (!autre || !drapeauDe(state.world, autre)) continue;
+      effets.push({
+        faction: autre,
+        delta: -20,
+        su: state.temps + delaiVersFaction(state, 'rumeur', g.regionId, autre),
+        dit: `Chez ${drapeauDe(state.world, autre).nom}, on sait désormais que vous portez `
+          + `les couleurs ${drapeauDe(state.world, faction).genitif}.`,
+      });
+    }
+    if (effets.length) {
+      commettre(state, { type: 'engagement', regionId: g.regionId, t: state.temps, effets });
+    }
   }
 
   log({
@@ -7686,6 +7776,10 @@ function renfortsDisponibles(state, groupe) {
 // rapportait rien qui se monnaye et détacher un éclaireur était une perte
 // sèche — le banc d'équilibrage l'a chiffré.
 
+// Les canaux et le voyage des nouvelles vivent dans faits.js (ordre des
+// modules : la porte des faits est citée bien avant la connaissance) — on les
+// ré-exporte ici, où l'écran et les tests viennent naturellement les chercher.
+export { CANAUX, CANAL_PAR_TYPE, ROUTE_MOYENNE, delaiNouvelle };
 
 /** Au-delà, l'information est trop vieille pour valoir mieux que rien. */
 const PEREMPTION = 24 * 120; // quatre saisons
@@ -8031,54 +8125,6 @@ function ageTexte(depuis) {
  * module : la carte devenait un souvenir pendant que le journal restait
  * omniscient.
  */
-/**
- * L1 (MEMOIRE.md, E12 de l'audit) : la nouvelle a des jambes. La table figée
- * par type faisait savoir une ville effondrée en 72 h qu'elle soit à 2 cases
- * ou à 30 — la distance, colonne vertébrale de tout le reste du jeu,
- * n'entrait pas dans le voyage de l'information. Désormais : un canal (sa
- * base, son pas), fois la route. Calibrables — objets mutables.
- */
-const CANAUX = {
-  /** Criée sur les places : une déclaration VEUT être sue. */
-  proclamation: { base: 6, parCase: 1 },
-  /** Au pas des colporteurs : ce qui s'est passé quelque part. */
-  rumeur: { base: 12, parCase: 4 },
-};
-
-/** Quel canal porte quel type. `null` : on regarde le ciel soi-même. */
-const CANAL_PAR_TYPE = {
-  guerre: 'proclamation',
-  paix: 'proclamation',
-  capture: 'rumeur',
-  effondrement: 'rumeur',
-  secession: 'rumeur',
-  fondation: 'rumeur',
-  croissance: 'rumeur',
-  saison: null,
-};
-
-/** Faute de lieu connu, une nouvelle a marché « une route moyenne ». */
-const ROUTE_MOYENNE = 8;
-
-/**
- * Le temps qu'une nouvelle met à atteindre le joueur, d'où elle est née à où
- * il est. Elle atteint le plus proche des siens — n'importe lequel de ses
- * groupes peut l'avoir entendue — et se recalcule d'où l'on est : marcher
- * vers le lieu, c'est aller au-devant de la nouvelle.
- */
-function delaiNouvelle(state, type, deRegionId) {
-  const nomCanal = CANAL_PAR_TYPE[type] === undefined ? 'rumeur' : CANAL_PAR_TYPE[type];
-  if (nomCanal === null) return 0;
-  const canal = CANAUX[nomCanal];
-  let d = ROUTE_MOYENNE;
-  if (deRegionId != null) {
-    d = Infinity;
-    for (const g of groupes(state)) d = Math.min(d, distance(g.regionId, deRegionId));
-    if (!Number.isFinite(d)) d = ROUTE_MOYENNE;
-  }
-  return Math.round(canal.base + canal.parCase * d);
-}
-
 /**
  * Ce que le joueur a pu apprendre du monde, avec la mention de la source.
  * Un événement dont il a été témoin est immédiat et sûr ; les autres arrivent
@@ -13585,13 +13631,52 @@ function attaquerCaravane(state, car, rng, log, combatContre, genererBande, grou
   retirerCaravane(state.world, car);
 
   if (car.faction && car.faction !== 'essaim') {
-    appliquerReputation(state, car.faction, -22);
-    // Une caravane qui n'arrive pas, ce sont des gens qui l'attendaient. Ceux
-    // des deux bouts s'en souviennent nommément, pas seulement la faction.
-    for (const id of [car.deId, car.versId]) {
-      const col = id && state.world.colonies.find((c) => c.id === id);
-      if (col) retenirEnVille(col, 'pillage', state.temps, -18);
+    // L3 (MEMOIRE.md, décision n°2 du propriétaire : « pas vu, pas su ») —
+    // qui a vu ? Des rescapés, une ville sur la case, la région tenue par la
+    // faction, ou une de ses colonnes à une case. Avec témoin : le nom
+    // voyage. Sans : votre nom n'est JAMAIS prononcé — mais la ville qui
+    // attendait le convoi remarque son absence à l'heure où il aurait dû
+    // arriver, sans accuser personne, et la route se fait mal famée (il
+    // reste des traces : c'est par elles que l'endroit se sait dangereux).
+    const rid = car.regionId;
+    const colIci = colonieDe(state.world, rid);
+    const temoins = (res.survivantsB || 0) > 0
+      || !!colIci
+      || state.world.regions[rid].controle === car.faction
+      || state.world.armees.some((a) => a.faction === car.faction
+        && distance(a.regionId, rid) <= 1);
+    const effets = [];
+    if (temoins) {
+      const suVille = (col) => state.temps + Math.round(
+        CANAUX.rumeur.base + CANAUX.rumeur.parCase * distance(rid, col.regionId));
+      effets.push({
+        faction: car.faction, delta: -22,
+        su: colIci && colIci.faction === car.faction
+          ? state.temps
+          : state.temps + delaiVersFaction(state, 'rumeur', rid, car.faction),
+        dit: `${drapeauDe(state.world, car.faction).nom} sa${drapeauDe(state.world, car.faction).pluriel ? 'vent' : 'it'} `
+          + `désormais qui a pillé leur caravane.`,
+      });
+      // Ceux des deux bouts s'en souviennent nommément, quand ils l'apprennent.
+      for (const id of [car.deId, car.versId]) {
+        const col = id && colonieParId(state.world, id);
+        if (col) effets.push({ ville: col.id, memoire: 'pillage', delta: -18, su: suVille(col) });
+      }
+    } else {
+      const arr = car.versId && colonieParId(state.world, car.versId);
+      const attendue = state.temps
+        + (arr ? distance(rid, arr.regionId) * 4 : 24) + 24;
+      if (arr) {
+        effets.push({
+          ville: arr.id, memoire: 'disparition', su: attendue,
+          dit: `À ${arr.nom}, on attendait un convoi qui n'arrivera jamais. La route se fait mal famée.`,
+        });
+      }
+      effets.push({ region: rid, danger: 0.05, su: attendue });
     }
+    commettre(state, {
+      type: 'pillage', regionId: rid, t: state.temps, effets, anonyme: !temoins,
+    });
   }
   state.stats.caravanesPillees = (state.stats.caravanesPillees || 0) + 1;
   if (log) {
@@ -17473,12 +17558,30 @@ function disposer(state, g, captifId, quoi, log) {
     retirerCaptif(g, c);
     gagner(state, prix);
     state.stats.captifsVendus = (state.stats.captifsVendus || 0) + 1;
-    // Ça se sait. Auprès des siens d'abord, et auprès de tous ceux qui l'ont
-    // interdit chez eux — ce qui donne son poids à la loi d'en face.
-    noterReputation(state, cap.faction, -14);
-    for (const k of diploDe(state.world)) {
-      if (k === col.faction || k === cap.faction) continue;
-      if (!loisDe(state.world, k).esclavage) noterReputation(state, k, -4);
+    // Ça se sait — quand la nouvelle arrive (L3, MEMOIRE.md) : les témoins,
+    // c'est toute la ville, et la rumeur part d'ici. Ceux dont c'est la ville
+    // savent sur-le-champ ; l'abolitionniste à trois cases l'apprend avant
+    // celle à quatorze.
+    {
+      const suDe = (k) => (k === col.faction ? state.temps
+        : state.temps + delaiVersFaction(state, 'rumeur', col.regionId, k));
+      const effets = [];
+      if (cap.faction && drapeauDe(state.world, cap.faction)) {
+        effets.push({
+          faction: cap.faction, delta: -14, su: suDe(cap.faction),
+          dit: `${drapeauDe(state.world, cap.faction).nom} appren${drapeauDe(state.world, cap.faction).pluriel ? 'nent' : 'd'} `
+            + `qu'un des leurs a été vendu à ${col.nom}. On s'en souviendra.`,
+        });
+      }
+      for (const k of diploDe(state.world)) {
+        if (k === col.faction || k === cap.faction) continue;
+        if (loisDe(state.world, k).esclavage) continue;
+        effets.push({
+          faction: k, delta: -4, su: suDe(k),
+          dit: `Chez ${drapeauDe(state.world, k).nom}, on sait ce que vous avez vendu à ${col.nom}.`,
+        });
+      }
+      commettre(state, { type: 'vente-esclave', regionId: col.regionId, t: state.temps, effets });
     }
     col.unrest = Math.min(1, (col.unrest || 0) + 0.02);
     if (log) {
@@ -17801,12 +17904,20 @@ function disposerCorps(state, g, id, quoi, log) {
     gagner(state, prix);
     retirerDuGroupe(g, c);
     coute();
-    // Ça se sait, comme pour les vivants qu'on vend : auprès de tous ceux qui
-    // l'interdisent chez eux.
-    for (const k of diploDe(state.world)) {
-      if (k === col.faction) continue;
-      if (loisDe(state.world, k).esclavage) continue;
-      appliquerReputation(state, k, -5);
+    // Ça se sait, comme pour les vivants qu'on vend — quand la rumeur arrive
+    // (L3, MEMOIRE.md) : les témoins, c'est la ville où l'on a vendu.
+    {
+      const effets = [];
+      for (const k of diploDe(state.world)) {
+        if (k === col.faction) continue;
+        if (loisDe(state.world, k).esclavage) continue;
+        effets.push({
+          faction: k, delta: -5,
+          su: state.temps + delaiVersFaction(state, 'rumeur', col.regionId, k),
+          dit: `Chez ${drapeauDe(state.world, k).nom}, on sait ce que vous avez vendu à ${col.nom}.`,
+        });
+      }
+      commettre(state, { type: 'vente-organes', regionId: col.regionId, t: state.temps, effets });
     }
     state.stats.organesVendus = (state.stats.organesVendus || 0) + 1;
     dire(`Ce qui était encore bon chez ${c.nom} est parti à ${col.nom} pour ${prix} ${signeIci(state)}.`);
@@ -19991,7 +20102,17 @@ function declarerIndependance(state, log) {
   if (f) f.colonies = f.colonies.filter((id) => id !== col.id);
   col.faction = null;
   state.world.regions[col.regionId].controle = null;
-  appliquerReputation(state, ancienne, -35);
+  // Une proclamation : on décroche un drapeau pour que ça se sache (L3,
+  // MEMOIRE.md). Mais le protecteur ne fulmine qu'à l'arrivée de la nouvelle.
+  commettre(state, {
+    type: 'independance', regionId: base.regionId, t: state.temps,
+    effets: [{
+      faction: ancienne, delta: -35,
+      su: state.temps + delaiVersFaction(state, 'proclamation', base.regionId, ancienne),
+      dit: `${drapeauDe(state.world, ancienne).nom} appren${drapeauDe(state.world, ancienne).pluriel ? 'nent' : 'd'} `
+        + `que ${base.nom} a repris son drapeau. On n'oublie pas ce genre de départ.`,
+    }],
+  });
   if (log) {
     log({
       type: 'base',
@@ -25398,8 +25519,10 @@ function tick(state) {
   // On rend des comptes de ce qu'on a ordonné : d'abord l'issue des actes, puis
   // la charge elle-même, qu'on perd quand le crédit est épuisé.
   if (!state.fin) jugerActes(state, log);
-  // Les nouvelles en route arrivent à leur heure (L2, MEMOIRE.md).
-  if (!state.fin) tickFaits(state, log);
+  // Les nouvelles en route arrivent à leur heure (L2-L3, MEMOIRE.md). Les
+  // villes qui apprennent retiennent par leurs notables — l'outil vient de
+  // services.js, que faits.js précède dans l'ordre des modules.
+  if (!state.fin) tickFaits(state, log, { retenirEnVille });
   // Les frictions de la cour (F1+F2, MARECHAL.md) : la relève des comptes à
   // la succession, et le bouc émissaire du chef contesté. AVANT tickCharges,
   // pour qu'une relecture qui vide le crédit coûte la charge la même heure —

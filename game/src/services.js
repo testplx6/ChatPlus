@@ -95,6 +95,8 @@ const ACTES = {
   oubli: (r) => `Vous avez laissé passer ${(DIT[r] || [null, r])[1]} qu’il attendait.`,
   defense: () => 'Vous étiez là quand la ville a été attaquée.',
   pillage: () => 'Vous avez pillé une caravane des siens.',
+  // L3 (MEMOIRE.md) : un convoi qui manque, sans coupable à nommer.
+  disparition: () => 'Un convoi qu’on attendait n’est jamais arrivé.',
 };
 
 /** On retient un acte, et on oublie le plus vieux. */
