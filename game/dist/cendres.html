@@ -6923,13 +6923,32 @@ function quitter(state, log, groupe) {
   const all = allegeanceDe(g);
   if (!all) return { ok: false, motif: 'Cette colonne ne sert personne.' };
   const f = all.faction;
+  // Le prix du départ se lit au dossier, pas à un forfait (S4, prisme du
+  // propriétaire) : la faction sait s'il y a un ordre pendant et si elle est
+  // en guerre — le −30 aveugle traitait mille heures de bons services rendus
+  // en règle comme une désertion. En règle, on se quitte ; un ordre abandonné
+  // est un abandon ; en guerre c'est une désertion — et une armée stricte met
+  // la tête du déserteur à prix : elle les pend.
+  const enGuerre = state.world.guerres.some((w) => w.a === f || w.b === f);
+  const ordrePendant = !!all.ordre;
   g.allegeance = null;
-  state.player.reputation[f] = Math.max(-100, (state.player.reputation[f] || 0) - 30);
-  log({
-    type: 'allegeance',
-    texte: `Vous rompez avec ${drapeauDe(state.world, f).nom}. On n’oublie pas ce genre de départ.`,
-    important: true,
-  });
+  const cout = enGuerre || ordrePendant ? 30 : 10;
+  state.player.reputation[f] = Math.max(-100, (state.player.reputation[f] || 0) - cout);
+  let texte;
+  if (enGuerre) {
+    texte = `Vous désertez ${drapeauDe(state.world, f).nom} en pleine guerre. Ça ne s’oublie pas.`;
+    if (loisDe(state.world, f).discipline === 'stricte') {
+      if (!state.player.primes) state.player.primes = {};
+      state.player.primes[f] = (state.player.primes[f] || 0) + 1;
+      texte += ' L’armée met votre tête à prix — elle pend les déserteurs.';
+    }
+  } else if (ordrePendant) {
+    texte = `Vous rompez avec ${drapeauDe(state.world, f).nom}, un ordre encore pendant. `
+      + 'On n’oublie pas ce genre de départ.';
+  } else {
+    texte = `Vous quittez le service ${drapeauDe(state.world, f).genitif}, en règle. On se sépare — sans plus.`;
+  }
+  log({ type: 'allegeance', texte, important: true });
   return { ok: true };
 }
 
@@ -15558,7 +15577,13 @@ function credit(state, faction) {
   let c = 0;
   for (const g of groupesEngages(state, faction)) {
     const all = g.allegeance;
-    c += 100 + Math.min(120, all.points / 8) - (all.manques || 0) * 10;
+    // Les manques se jugent à la feuille de service — quatorze faits — pas à
+    // la vie entière (S3, prisme du propriétaire) : le compteur éternel
+    // plombait une carrière à perpétuité, et son seul « contre-jeu » était de
+    // se faire rétrograder exprès pour le purger. Le conseil lit ses livres ;
+    // `all.manques` reste la statistique de carrière, pour le bilan.
+    const manques = (all.faits || []).filter((f) => f.issue === 'manque').length;
+    c += 100 + Math.min(120, all.points / 8) - manques * 10;
     c -= (all.fautes || 0) * 25;
   }
   return Math.round(c);
@@ -19582,10 +19607,11 @@ function tickBase(state, log, ctx) {
     base.raidImminent = null;
     raidSurLaBase(state, log, ctx, imminent.force, guet);
   }
-  if (!base.raidImminent && t - base.derniereAttaque > 72) {
+  if (!base.raidImminent) {
     // Les pillards jaugent leur coup (PROMESSES.md, P6) : le monde ne
     // durcit plus à l'horloge — c'est l'appétit qui décide, et la bande
-    // vient taillée pour le coup, pas pour le calendrier.
+    // vient taillée pour le coup, pas pour le calendrier. Le portillon des
+    // 72 h est mort avec S6 : l'accalmie d'après-raid vit dans la jauge.
     const jauge = jaugeRaid(state);
     if (rng.chance(0.0016 * (1 + reg.danger * 4) * vigilance * jauge.appetit)) {
       const force = Math.round(jauge.force * rng.range(0.85, 1.2));
@@ -20199,6 +20225,7 @@ const RAID_JAUGE = {
   socle: 25,         // une bande ne part jamais à moins
   avidite: 0.35,     // les bras qu'on amène par unité de butin cru
   marge: 0.15,       // ... et par unité de risque vu
+  accalmie: 240,     // heures pour que l'appétit se relève après un raid
 };
 
 function jaugeRaid(state) {
@@ -20214,8 +20241,15 @@ function jaugeRaid(state) {
     && state.temps - base.dernierRepousse < RAID_JAUGE.rumeur) {
     risque *= RAID_JAUGE.prudence;
   }
-  const appetit = Math.max(RAID_JAUGE.appetitMin, Math.min(RAID_JAUGE.appetitMax,
+  let appetit = Math.max(RAID_JAUGE.appetitMin, Math.min(RAID_JAUGE.appetitMax,
     butin / (RAID_JAUGE.equilibre + risque)));
+  // Un raid qui vient d'avoir lieu se raconte aussi (S6, prisme du
+  // propriétaire) : la bande repartie dépenser, la place saignée sans
+  // intérêt un temps — l'appétit se relève avec l'oubli. C'est cette mémoire
+  // qui remplace le portillon des 72 h (E13) : une seule règle, portée par
+  // les pillards, au lieu d'un cooldown en dur à côté d'elle.
+  const depuisRaid = Math.max(0, state.temps - (base.derniereAttaque ?? -9999));
+  appetit *= Math.min(1, depuisRaid / RAID_JAUGE.accalmie);
   const force = Math.round(RAID_JAUGE.socle
     + butin * RAID_JAUGE.avidite + risque * RAID_JAUGE.marge);
   return { butin, risque, appetit, force };
@@ -22544,7 +22578,7 @@ const ORDRES = {
   mine: { nom: 'Extraire', desc: 'Minerai et métaux, à la force du poignet.', effort: 1.2 },
   chasse: { nom: 'Chasser', desc: 'Biomasse et viande, de quoi manger.', effort: 1 },
   exploration: { nom: 'Explorer', desc: 'Lever la carte alentour et repérer les sites.', effort: 0.9 },
-  entrainement: { nom: 'S’entraîner', desc: 'Progresser vite, consommer des vivres.', effort: 1.1 },
+  entrainement: { nom: 'S’entraîner', desc: 'Progresser vite — l’effort creuse la faim et la fatigue.', effort: 1.5 },
   patrouille: { nom: 'Patrouiller', desc: 'Chercher l’affrontement dans le secteur.', effort: 1.1 },
   voyage: { nom: 'En route', desc: 'Déplacement vers une région.', effort: 1 },
   // Le seul ordre qui ne rapporte rien au groupe : il rapporte au camp.
@@ -23136,9 +23170,13 @@ function tickGroupe(state, g, log, ctx) {
         case 'entrainement': {
           const skill = COMPETENCES_EXERCICE.includes(paquet.tache.skill)
             ? paquet.tache.skill : 'melee';
-          const cout = Math.ceil(paquet.gens.length / 2);
-          if ((g.inventaire.rations || 0) >= cout) {
-            g.inventaire.rations -= cout;
+          // Plus de prélèvement de vivres (S2, prisme du propriétaire) : une
+          // ration par heure pour deux, c'était un corps qui mange vingt fois
+          // ce qu'un marcheur mange — un prix d'équilibrage, pas une faim.
+          // L'effort (1,5, ORDRES) passe par la physiologie : on mange plus,
+          // on se fatigue plus, et le vrai prix est l'heure qui ne produit
+          // rien. `tickPerso` fait le reste.
+          {
             // Le meilleur du groupe donne le ton, y compris s'il ne s'entraîne
             // pas lui-même : on regarde tout le monde debout, pas le paquet.
             let maitre = 0;
@@ -23164,20 +23202,6 @@ function tickGroupe(state, g, log, ctx) {
                 });
               }
             }
-          } else {
-            // On ne s'entraîne pas le ventre vide : la tâche retombe au repos.
-            for (const c of paquet.gens) if (c.tache) delete c.tache;
-            if (g.ordre.type === 'entrainement') g.ordre = { type: 'repos' };
-            log({
-              type: 'ordre',
-              texte: `${g.nom} : plus de rations, entraînement interrompu.`,
-              // Un ordre qui s'annule tout seul doit se voir : c'est le genre de
-              // chose qu'on découvre trois jours plus tard en se demandant
-              // pourquoi personne ne progresse.
-              important: true,
-              regionId: g.regionId,
-              groupe: g.id,
-            });
           }
           break;
         }
@@ -23393,12 +23417,10 @@ function consommationGroupe(state, g) {
   // Les prisonniers mangent sur le sac, qu'on les nourrisse ou non.
   const prisonniers = prisonniersDe(g).length * RATION_PRISONNIER;
 
-  // L'entraînement : une ration par heure pour deux personnes. C'est le poste
-  // que personne ne voyait, et c'est le plus gros de tous.
-  const entraine = debout.filter(
-    (c) => (c.tache ? c.tache.type : type) === 'entrainement'
-  ).length;
-  const entrainement = entraine ? Math.ceil(entraine / 2) * 24 : 0;
+  // L'entraînement ne prélève plus rien (S2, prisme du propriétaire) : son
+  // surcroît passe par la faim physiologique (effort 1,5), déjà comptée dans
+  // la part de l'escouade.
+  const entrainement = 0;
 
   return {
     escouade,

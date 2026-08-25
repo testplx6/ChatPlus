@@ -40,7 +40,7 @@ export const ORDRES = {
   mine: { nom: 'Extraire', desc: 'Minerai et métaux, à la force du poignet.', effort: 1.2 },
   chasse: { nom: 'Chasser', desc: 'Biomasse et viande, de quoi manger.', effort: 1 },
   exploration: { nom: 'Explorer', desc: 'Lever la carte alentour et repérer les sites.', effort: 0.9 },
-  entrainement: { nom: 'S’entraîner', desc: 'Progresser vite, consommer des vivres.', effort: 1.1 },
+  entrainement: { nom: 'S’entraîner', desc: 'Progresser vite — l’effort creuse la faim et la fatigue.', effort: 1.5 },
   patrouille: { nom: 'Patrouiller', desc: 'Chercher l’affrontement dans le secteur.', effort: 1.1 },
   voyage: { nom: 'En route', desc: 'Déplacement vers une région.', effort: 1 },
   // Le seul ordre qui ne rapporte rien au groupe : il rapporte au camp.
@@ -632,9 +632,13 @@ function tickGroupe(state, g, log, ctx) {
         case 'entrainement': {
           const skill = COMPETENCES_EXERCICE.includes(paquet.tache.skill)
             ? paquet.tache.skill : 'melee';
-          const cout = Math.ceil(paquet.gens.length / 2);
-          if ((g.inventaire.rations || 0) >= cout) {
-            g.inventaire.rations -= cout;
+          // Plus de prélèvement de vivres (S2, prisme du propriétaire) : une
+          // ration par heure pour deux, c'était un corps qui mange vingt fois
+          // ce qu'un marcheur mange — un prix d'équilibrage, pas une faim.
+          // L'effort (1,5, ORDRES) passe par la physiologie : on mange plus,
+          // on se fatigue plus, et le vrai prix est l'heure qui ne produit
+          // rien. `tickPerso` fait le reste.
+          {
             // Le meilleur du groupe donne le ton, y compris s'il ne s'entraîne
             // pas lui-même : on regarde tout le monde debout, pas le paquet.
             let maitre = 0;
@@ -660,20 +664,6 @@ function tickGroupe(state, g, log, ctx) {
                 });
               }
             }
-          } else {
-            // On ne s'entraîne pas le ventre vide : la tâche retombe au repos.
-            for (const c of paquet.gens) if (c.tache) delete c.tache;
-            if (g.ordre.type === 'entrainement') g.ordre = { type: 'repos' };
-            log({
-              type: 'ordre',
-              texte: `${g.nom} : plus de rations, entraînement interrompu.`,
-              // Un ordre qui s'annule tout seul doit se voir : c'est le genre de
-              // chose qu'on découvre trois jours plus tard en se demandant
-              // pourquoi personne ne progresse.
-              important: true,
-              regionId: g.regionId,
-              groupe: g.id,
-            });
           }
           break;
         }
@@ -889,12 +879,10 @@ export function consommationGroupe(state, g) {
   // Les prisonniers mangent sur le sac, qu'on les nourrisse ou non.
   const prisonniers = prisonniersDe(g).length * RATION_PRISONNIER;
 
-  // L'entraînement : une ration par heure pour deux personnes. C'est le poste
-  // que personne ne voyait, et c'est le plus gros de tous.
-  const entraine = debout.filter(
-    (c) => (c.tache ? c.tache.type : type) === 'entrainement'
-  ).length;
-  const entrainement = entraine ? Math.ceil(entraine / 2) * 24 : 0;
+  // L'entraînement ne prélève plus rien (S2, prisme du propriétaire) : son
+  // surcroît passe par la faim physiologique (effort 1,5), déjà comptée dans
+  // la part de l'escouade.
+  const entrainement = 0;
 
   return {
     escouade,

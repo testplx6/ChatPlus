@@ -1544,10 +1544,11 @@ export function tickBase(state, log, ctx) {
     base.raidImminent = null;
     raidSurLaBase(state, log, ctx, imminent.force, guet);
   }
-  if (!base.raidImminent && t - base.derniereAttaque > 72) {
+  if (!base.raidImminent) {
     // Les pillards jaugent leur coup (PROMESSES.md, P6) : le monde ne
     // durcit plus à l'horloge — c'est l'appétit qui décide, et la bande
-    // vient taillée pour le coup, pas pour le calendrier.
+    // vient taillée pour le coup, pas pour le calendrier. Le portillon des
+    // 72 h est mort avec S6 : l'accalmie d'après-raid vit dans la jauge.
     const jauge = jaugeRaid(state);
     if (rng.chance(0.0016 * (1 + reg.danger * 4) * vigilance * jauge.appetit)) {
       const force = Math.round(jauge.force * rng.range(0.85, 1.2));
@@ -2161,6 +2162,7 @@ export const RAID_JAUGE = {
   socle: 25,         // une bande ne part jamais à moins
   avidite: 0.35,     // les bras qu'on amène par unité de butin cru
   marge: 0.15,       // ... et par unité de risque vu
+  accalmie: 240,     // heures pour que l'appétit se relève après un raid
 };
 
 export function jaugeRaid(state) {
@@ -2176,8 +2178,15 @@ export function jaugeRaid(state) {
     && state.temps - base.dernierRepousse < RAID_JAUGE.rumeur) {
     risque *= RAID_JAUGE.prudence;
   }
-  const appetit = Math.max(RAID_JAUGE.appetitMin, Math.min(RAID_JAUGE.appetitMax,
+  let appetit = Math.max(RAID_JAUGE.appetitMin, Math.min(RAID_JAUGE.appetitMax,
     butin / (RAID_JAUGE.equilibre + risque)));
+  // Un raid qui vient d'avoir lieu se raconte aussi (S6, prisme du
+  // propriétaire) : la bande repartie dépenser, la place saignée sans
+  // intérêt un temps — l'appétit se relève avec l'oubli. C'est cette mémoire
+  // qui remplace le portillon des 72 h (E13) : une seule règle, portée par
+  // les pillards, au lieu d'un cooldown en dur à côté d'elle.
+  const depuisRaid = Math.max(0, state.temps - (base.derniereAttaque ?? -9999));
+  appetit *= Math.min(1, depuisRaid / RAID_JAUGE.accalmie);
   const force = Math.round(RAID_JAUGE.socle
     + butin * RAID_JAUGE.avidite + risque * RAID_JAUGE.marge);
   return { butin, risque, appetit, force };

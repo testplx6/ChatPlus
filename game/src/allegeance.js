@@ -518,13 +518,32 @@ export function quitter(state, log, groupe) {
   const all = allegeanceDe(g);
   if (!all) return { ok: false, motif: 'Cette colonne ne sert personne.' };
   const f = all.faction;
+  // Le prix du départ se lit au dossier, pas à un forfait (S4, prisme du
+  // propriétaire) : la faction sait s'il y a un ordre pendant et si elle est
+  // en guerre — le −30 aveugle traitait mille heures de bons services rendus
+  // en règle comme une désertion. En règle, on se quitte ; un ordre abandonné
+  // est un abandon ; en guerre c'est une désertion — et une armée stricte met
+  // la tête du déserteur à prix : elle les pend.
+  const enGuerre = state.world.guerres.some((w) => w.a === f || w.b === f);
+  const ordrePendant = !!all.ordre;
   g.allegeance = null;
-  state.player.reputation[f] = Math.max(-100, (state.player.reputation[f] || 0) - 30);
-  log({
-    type: 'allegeance',
-    texte: `Vous rompez avec ${drapeauDe(state.world, f).nom}. On n’oublie pas ce genre de départ.`,
-    important: true,
-  });
+  const cout = enGuerre || ordrePendant ? 30 : 10;
+  state.player.reputation[f] = Math.max(-100, (state.player.reputation[f] || 0) - cout);
+  let texte;
+  if (enGuerre) {
+    texte = `Vous désertez ${drapeauDe(state.world, f).nom} en pleine guerre. Ça ne s’oublie pas.`;
+    if (loisDe(state.world, f).discipline === 'stricte') {
+      if (!state.player.primes) state.player.primes = {};
+      state.player.primes[f] = (state.player.primes[f] || 0) + 1;
+      texte += ' L’armée met votre tête à prix — elle pend les déserteurs.';
+    }
+  } else if (ordrePendant) {
+    texte = `Vous rompez avec ${drapeauDe(state.world, f).nom}, un ordre encore pendant. `
+      + 'On n’oublie pas ce genre de départ.';
+  } else {
+    texte = `Vous quittez le service ${drapeauDe(state.world, f).genitif}, en règle. On se sépare — sans plus.`;
+  }
+  log({ type: 'allegeance', texte, important: true });
   return { ok: true };
 }
 

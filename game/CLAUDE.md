@@ -82,7 +82,7 @@ quelqu'un d'autre.
 | `PROMESSES.md` | le chantier de couture — **livré**, six lots sur six (deux dettes consignées dans ses Blocages) |
 | `MARECHAL.md` | le sommet de la voie du service — **livré, huit lots sur huit** : dyarchie, rappel, levée dimensionnée (+E10), but nommé, place à tenir, frictions de la cour, couronne (une trouvaille consignée dans ses Blocages : l'investissement du conseil quasi mort) |
 | `ALLURE.md` | l'étude « AAA textuel » — diagnostic, direction artistique ; **quick wins Q1–Q7 livrés** (limites dites dans « L'avancement »), pistes moyennes et grosses en attente |
-| `AUDIT.md` | l'audit doctrinal du moteur — 14 écarts en 3 vagues, 6 questions au propriétaire, verdict : pas de refonte |
+| `AUDIT.md` | l'audit doctrinal (14 écarts, 3 vagues) **+ la revue au prisme « simulation, pas punition »** (août 2026) : sept corrections livrées (E3, S2, S3, S4, S6, M4, F2), deux fonds au propriétaire (S1 l'oubli à heure fixe, S5 l'omniscience) — plus aucun multiplicateur dirigé contre le joueur |
 | `PISTES.md` | des idées consignées, pas des chantiers — rien n'y est engagé |
 | `README.md` | le projet, les tests, l'architecture |
 
@@ -103,8 +103,11 @@ de travail : celle indiquée par la session, jamais une autre.
   propriétaire, août 2026 : « le voleur prend tout ce qu'il peut trouver et
   emporter », « les pillards vont là où ils pensent avoir du butin raisonnable
   par rapport à leur risque, c'est à eux de voir », « c'est une simulation, ce
-  n'est pas moi qui décide ». Avant d'écrire une règle, demander : *quel agent
-  la porte, et que sait-il ?*
+  n'est pas moi qui décide », « le but est de créer une simulation, pas de
+  faire un truc injouable ». Avant d'écrire une règle, demander : *quel agent
+  la porte, et que sait-il ?* — et les quatre odeurs de la revue d'août 2026
+  (AUDIT.md §prisme) : un multiplicateur sans agent, un minuteur vécu comme
+  une taxe, une règle qui ne vise que le joueur, une friction sans contre-jeu.
 - Coder un mécanisme de jeu non décrit dans le cahier des charges du chantier.
 - Choisir une constante sans balayage au banc (`--balaye`), ni la poser en
   `export const` scalaire si elle est calibrable — objet mutable exporté.

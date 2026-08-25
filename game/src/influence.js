@@ -188,7 +188,13 @@ export function credit(state, faction) {
   let c = 0;
   for (const g of groupesEngages(state, faction)) {
     const all = g.allegeance;
-    c += 100 + Math.min(120, all.points / 8) - (all.manques || 0) * 10;
+    // Les manques se jugent à la feuille de service — quatorze faits — pas à
+    // la vie entière (S3, prisme du propriétaire) : le compteur éternel
+    // plombait une carrière à perpétuité, et son seul « contre-jeu » était de
+    // se faire rétrograder exprès pour le purger. Le conseil lit ses livres ;
+    // `all.manques` reste la statistique de carrière, pour le bilan.
+    const manques = (all.faits || []).filter((f) => f.issue === 'manque').length;
+    c += 100 + Math.min(120, all.points / 8) - manques * 10;
     c -= (all.fautes || 0) * 25;
   }
   return Math.round(c);

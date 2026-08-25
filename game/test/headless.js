@@ -578,9 +578,11 @@ ok(serialiser(s3) === serialiser(s3b), 'la sim reprend à l’identique après r
 
   donnerOrdre(cons, { type: 'entrainement', skill: 'melee' }, gc);
   const enTrain = consommationGroupe(cons, gc);
-  ok(enTrain.entrainement > enTrain.escouade,
-    'l’entraînement coûte plus cher que les repas eux-mêmes',
-    `${enTrain.entrainement} contre ${enTrain.escouade.toFixed(1)}`);
+  // Revu au prisme (S2) : plus de prélèvement — le surcroît d'exercice passe
+  // par la faim physiologique, comptée dans la part de l'escouade.
+  ok(enTrain.entrainement === 0,
+    'l’entraînement ne prélève plus rien : l’effort passe par la faim du corps',
+    `${enTrain.entrainement}`);
 
   // Les prisonniers mangent sur le sac, qu'on le veuille ou non.
   donnerOrdre(cons, { type: 'repos' }, gc);
@@ -1973,17 +1975,23 @@ const gains = g9k.membres
   .filter((c) => avantMelee.has(c.id))
   .map((c) => c.skills.melee - avantMelee.get(c.id));
 ok(gains.every((x) => x >= 2), 'cent heures d’entraînement se voient', gains.join(', '));
-ok(rationsEntrainement - g9k.inventaire.rations > 50, 'et coûtent des vivres',
+// Revu au prisme (S2) : le coût n'est plus un prélèvement ×20, c'est la faim
+// d'un corps à l'effort — quelques rations, pas cinquante.
+ok(rationsEntrainement - g9k.inventaire.rations > 0
+  && rationsEntrainement - g9k.inventaire.rations < 30,
+  'et coûtent des vivres — ceux d’un corps à l’effort, pas un prélèvement',
   `${Math.round(rationsEntrainement - g9k.inventaire.rations)} rations`);
 console.log(`     entraînement interrompu ${interruptions} fois par les rencontres`);
 
-// Sans vivres, l'entraînement s'interrompt de lui-même plutôt que d'affamer.
+// Revu au prisme (S2) : plus de portillon à rations — sans vivres, l'ordre
+// tient, et c'est le corps qui paie, comme pour n'importe quel travail.
 const s9l = nouvellePartie(556, { maintenant: 0, depart: 'ville', equipe: 3 });
 const g9l = groupeActif(s9l);
 g9l.inventaire.rations = 2;
 donnerOrdre(s9l, { type: 'entrainement', skill: 'tir' }, g9l);
 avancer(s9l, 30);
-ok(g9l.ordre.type !== 'entrainement', 'sans rations, l’entraînement s’arrête');
+ok(g9l.ordre.type === 'entrainement',
+  'sans rations, l’ordre tient — c’est le ventre qui lâchera, pas un portillon');
 
 // L'instructeur : un écart de niveau accélère l'élève.
 const s9m = nouvellePartie(557, { maintenant: 0, depart: 'ville', equipe: 3 });
@@ -12015,6 +12023,124 @@ section('M octies. Le Maréchal — M7, la porte de la couronne (MARECHAL.md)');
     ok(!ma.g.allegeance.couronne
       && ma.st.journal.some((l) => /trône|couronne|renversé/i.test(l.texte)),
       'la chute est sue, dite, et la feuille de service en revient au service');
+  }
+}
+
+// ===========================================================================
+section('P octies. Le prisme du propriétaire — la revue complète (S2, S3, S4, S6)');
+{
+  const rien = () => {};
+
+  // S2 — l'entraînement mange par la physiologie, pas par un prélèvement.
+  // L'ancienne forme : une ration par heure pour deux — un corps qui mange
+  // vingt fois ce qu'un marcheur mange, sans qu'aucune physiologie le dise.
+  {
+    const s = nouvellePartie(701, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(s);
+    g.inventaire.rations = 200;
+    g.ordre = { type: 'entrainement' };
+    const avant = g.inventaire.rations;
+    const compAvant = Math.min(...g.membres.map((c) => c.skills.melee || 0));
+    for (let i = 0; i < 24; i++) tick(s);
+    const mange = avant - g.inventaire.rations;
+    ok(mange < 8,
+      'une journée d’exercice creuse la faim d’un corps, pas un prélèvement ×20',
+      `${mange.toFixed(1)} rations pour trois en 24 h`);
+    ok(Math.min(...g.membres.map((c) => c.skills.melee || 0)) > compAvant,
+      'et l’on progresse toujours — le vrai prix est l’heure qui ne produit rien');
+  }
+  {
+    // Sans vivres, on s'entraîne encore — et l'on crève de faim, comme
+    // partout ailleurs : la physiologie punit, pas un portillon à rations.
+    const s = nouvellePartie(703, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(s);
+    g.inventaire.rations = 1;
+    g.ordre = { type: 'entrainement' };
+    const compAvant = Math.min(...g.membres.map((c) => c.skills.melee || 0));
+    for (let i = 0; i < 24; i++) tick(s);
+    ok(Math.min(...g.membres.map((c) => c.skills.melee || 0)) > compAvant,
+      'le sac vide n’arrête pas l’exercice — il arrête le ventre, et le ventre se paie');
+  }
+
+  // S3 — les manques se jugent à la feuille de service, pas à la vie entière.
+  // L'ancienne forme : un compteur qui ne décroît jamais — dix manques en dix
+  // ans de jeu et le crédit était plombé à perpétuité, sauf à se faire
+  // rétrograder exprès pour purger le compteur.
+  {
+    const s = nouvellePartie(707, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(s);
+    const cand = Object.keys(s.world.factions).filter(
+      (k) => k !== 'essaim' && s.world.factions[k].colonies.length && dirigeant(s.world, k));
+    const A = cand[0];
+    g.allegeance = {
+      faction: A, points: RANGS[5].points, derniereSolde: 0, intendance: 0,
+      manques: 30, fautes: 0,
+      faits: Array.from({ length: 14 }, (_, i) => ({ t: i, type: 'livraison', titre: 'x', issue: 'honore' })),
+    };
+    ok(creditCharge(s, A) === 220,
+      'trente manques d’une vieille carrière, quatorze faits propres : le conseil lit ses livres, pas votre vie',
+      `${creditCharge(s, A)}`);
+    g.allegeance.faits = Array.from({ length: 14 }, (_, i) => (
+      { t: i, type: 'livraison', titre: 'x', issue: i < 5 ? 'manque' : 'honore' }));
+    ok(creditCharge(s, A) === 170,
+      'cinq manques encore à la feuille : eux comptent — dix de crédit chacun',
+      `${creditCharge(s, A)}`);
+  }
+
+  // S4 — quitter le service se lit au dossier, pas à un forfait. Partir en
+  // règle n'est pas déserter en guerre avec un ordre pendant.
+  {
+    const monterQ = (graine) => {
+      const s = nouvellePartie(graine, { maintenant: 0, depart: 'ville', equipe: 3 });
+      const g = groupeActif(s);
+      const cand = Object.keys(s.world.factions).filter(
+        (k) => k !== 'essaim' && s.world.factions[k].colonies.length && dirigeant(s.world, k));
+      const A = cand[0];
+      s.world.guerres = s.world.guerres.filter((x) => x.a !== A && x.b !== A);
+      g.allegeance = { faction: A, points: 100, derniereSolde: 0, intendance: 0 };
+      s.player.reputation[A] = 40;
+      return { s, g, A };
+    };
+    const { quitter } = await import('../src/allegeance.js');
+    const p1 = monterQ(709);
+    quitter(p1.s, rien, p1.g);
+    ok((p1.s.player.reputation[p1.A] || 0) === 30,
+      'partir en règle — hors guerre, rien de pendant — se quitte : dix d’estime, pas trente',
+      `40 → ${p1.s.player.reputation[p1.A]}`);
+    const p2 = monterQ(709);
+    p2.g.allegeance.ordre = { type: 'livraison', titre: 'Convoi', echeance: p2.s.temps + 100 };
+    quitter(p2.s, rien, p2.g);
+    ok((p2.s.player.reputation[p2.A] || 0) === 10,
+      'abandonner un ordre pendant, c’est l’abandon : trente d’estime',
+      `40 → ${p2.s.player.reputation[p2.A]}`);
+    const p3 = monterQ(709);
+    const B3 = Object.keys(p3.s.world.factions).find(
+      (k) => k !== 'essaim' && k !== p3.A && p3.s.world.factions[k].colonies.length);
+    declarerGuerre(p3.s.world, p3.A, B3, p3.s.temps, rien);
+    loisDe(p3.s.world, p3.A).discipline = 'stricte';
+    quitter(p3.s, rien, p3.g);
+    ok((p3.s.player.reputation[p3.A] || 0) === 10
+      && (p3.s.player.primes && p3.s.player.primes[p3.A]) === 1,
+      'déserter en guerre chez une armée stricte : trente d’estime, et une prime sur votre tête',
+      `rep ${p3.s.player.reputation[p3.A]}, prime ${p3.s.player.primes ? p3.s.player.primes[p3.A] : 0}`);
+  }
+
+  // S6 — une seule mémoire des raids : la jauge. Un raid qui vient d'avoir
+  // lieu se raconte aussi — les pillards repartis dépenser, la place saignée
+  // sans intérêt un temps — et le portillon des 72 h n'a plus de raison.
+  {
+    const s = nouvellePartie(711, { maintenant: 500, depart: 'ville', equipe: 3 });
+    s.base.pop = 20;
+    s.base.marchands = 4;
+    s.base.derniereAttaque = s.temps - 6;
+    const juste = jaugeRaid(s);
+    s.base.derniereAttaque = s.temps - 2000;
+    const loin = jaugeRaid(s);
+    ok(juste.appetit < loin.appetit * 0.1,
+      'au lendemain d’un raid, l’appétit est à terre — la bande vient de passer, ça se sait',
+      `${juste.appetit.toFixed(3)} contre ${loin.appetit.toFixed(3)}`);
+    ok(loin.appetit >= RAID_JAUGE.appetitMin,
+      'et loin de tout raid, l’appétit est entier');
   }
 }
 
