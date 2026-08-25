@@ -400,7 +400,16 @@ l'écrit sans passer par un fait.
     donc chaque comportement neuf prouvé par mutation (repesée neutralisée,
     éviction fantôme, clamp à l'écriture → les trois rougissent pile les
     tests visés).
-  - [ ] L5c — l'oubli au conseil du porteur (patience par tempérament)
+  - [x] L5c — livré : `tickOubli` (faits.js), guetteur joueur sur
+    `f.dernierConseil` — même patron que `chefs`, il se cale sans oubli
+    rétroactif. À SA séance, le porteur classe LE plus vieux grief dont
+    l'âge dépasse `patience × |delta×poids| / OUBLI.parPoint` : le
+    conciliateur (700 h/pt) lâche l'insulte à −3 mais pas le pillage à −22
+    du même âge, le rancunier (1e9 — un grand fini, jamais `Infinity`) ne
+    lâche rien, un seul par conseil, argmax stable — zéro tirage. Branché
+    après tickCour : une succession repèse d'abord, le nouveau maître
+    classe ensuite à sa séance. Ça se dit au journal (discret) quand le
+    grief pesait au moins un point. Huit tests nés rouges (MEM 7).
   - [ ] L5d — notables : l'opinion suit l'agrégat + leurs souvenirs
   - [ ] L5e — remesure contre L4-témoin, docs, consignation
 

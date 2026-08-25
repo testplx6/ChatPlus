@@ -36,7 +36,7 @@ import {
 import {
   jugerActes, tickCharges, commandementDe, porterFaute, tickCour,
 } from './influence.js';
-import { tickFaits } from './faits.js';
+import { tickFaits, tickOubli } from './faits.js';
 import { retenirEnVille } from './services.js';
 import { tickSecteurs } from './secteur.js';
 import { tickGeole, tickOrdrePublic } from './justice.js';
@@ -701,6 +701,9 @@ export function tick(state) {
   // pour qu'une relecture qui vide le crédit coûte la charge la même heure —
   // on se couche Maréchal, on se réveille Commandeur.
   if (!state.fin) tickCour(state, log);
+  // L'oubli tombe au conseil du porteur (L5c) : après la cour — une
+  // succession repèse d'abord, le nouveau maître classe ensuite à SA séance.
+  if (!state.fin) tickOubli(state, log);
   if (!state.fin) tickCharges(state, log);
   if (!state.fin) tickFormation(state, log);
   // Et ce que le monde a fait à votre argent pendant ce temps. En dernier :

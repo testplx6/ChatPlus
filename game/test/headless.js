@@ -12731,6 +12731,101 @@ section('MEM 6. La mémoire — L5b, l’agrégat matérialisé et la succession
   }
 }
 
+section('MEM 7. La mémoire — L5c, l’oubli tombe au conseil du porteur (MEMOIRE.md)');
+{
+  const rien = () => {};
+  const faits7 = await import('../src/faits.js');
+  ok(typeof faits7.tickOubli === 'function',
+    'l’oubli existe, et c’est un acte du porteur — pas un chronomètre');
+
+  if (typeof faits7.tickOubli === 'function') {
+    const monter = (graine, temperament) => {
+      const s = nouvellePartie(graine, { maintenant: 0, depart: 'ville', equipe: 3 });
+      const A = Object.keys(s.world.factions).find((k) => k !== 'essaim'
+        && s.world.factions[k].colonies.length && dirigeant(s.world, k)
+        && !s.player.reputation[k]);
+      s.world.factions[A].dirigeant.temperament = temperament;
+      faits7.tickOubli(s, rien); // le guetteur se cale — sans rien déclencher
+      return { s, A };
+    };
+    const grief = (s, A, delta, t) => faits7.commettre(s, {
+      type: 'essai', t, effets: [{ faction: A, delta, su: t }],
+    });
+
+    // 1) Le guetteur se cale sans oubli rétroactif : un conseil déjà tenu
+    //    au moment où l'on ouvre les yeux ne classe rien.
+    {
+      const { s, A } = monter(801, 'conciliateur');
+      grief(s, A, -3, 0);
+      s.temps = 3000;
+      faits7.tickOubli(s, rien); // aucun conseil nouveau : rien ne bouge
+      ok((s.player.reputation[A] || 0) === -3,
+        'pas de conseil, pas d’oubli — le guetteur ne classe rien tout seul',
+        `${s.player.reputation[A]}`);
+    }
+
+    // 2) Au conseil, un conciliateur classe le plus vieux grief au-delà de
+    //    sa patience — et la vue remonte.
+    {
+      const { s, A } = monter(803, 'conciliateur');
+      grief(s, A, -3, 0);
+      s.temps = 3000;
+      s.world.factions[A].dernierConseil = s.temps;
+      const lignes = [];
+      faits7.tickOubli(s, (l) => lignes.push(l));
+      ok((s.player.reputation[A] || 0) === 0,
+        'le conciliateur laisse tomber la vieille histoire à SON conseil',
+        `−3 → ${s.player.reputation[A]}`);
+      ok(lignes.some((l) => l.type === 'rumeur'),
+        'et ça se dit — l’oubli a un visage, une date et une salle');
+    }
+
+    // 3) Un rancunier ne classe rien — jamais. Même grief, même âge.
+    {
+      const { s, A } = monter(805, 'rancunier');
+      grief(s, A, -3, 0);
+      s.temps = 3000;
+      s.world.factions[A].dernierConseil = s.temps;
+      faits7.tickOubli(s, rien);
+      ok((s.player.reputation[A] || 0) === -3,
+        'le rancunier garde tout — c’est le caractère qui décide, pas une règle',
+        `${s.player.reputation[A]}`);
+    }
+
+    // 4) Le poids du fait entre dans le seuil : au même âge, l'insulte se
+    //    classe, le pillage reste — la gravité se pardonne plus lentement.
+    {
+      const { s, A } = monter(807, 'conciliateur');
+      grief(s, A, -22, 0);
+      s.temps = 3000; // 700 × 22 / 3 ≈ 5133 h de patience : pas encore
+      s.world.factions[A].dernierConseil = s.temps;
+      faits7.tickOubli(s, rien);
+      ok((s.player.reputation[A] || 0) === -22,
+        'un pillage à −22 ne se classe pas à l’âge où une insulte s’oublie',
+        `${s.player.reputation[A]}`);
+    }
+
+    // 5) Un par conseil : la mémoire se vide à la cadence des séances, pas
+    //    d'un coup.
+    {
+      const { s, A } = monter(809, 'conciliateur');
+      grief(s, A, -3, 0);
+      grief(s, A, -3, 10);
+      s.temps = 3000;
+      s.world.factions[A].dernierConseil = s.temps;
+      faits7.tickOubli(s, rien);
+      ok((s.player.reputation[A] || 0) === -3,
+        'une séance, une vieille histoire — le plus vieux grief d’abord',
+        `−6 → ${s.player.reputation[A]}`);
+      s.temps = 3050;
+      s.world.factions[A].dernierConseil = s.temps;
+      faits7.tickOubli(s, rien);
+      ok((s.player.reputation[A] || 0) === 0,
+        'la séance suivante classe le suivant', `${s.player.reputation[A]}`);
+    }
+  }
+}
+
 // ===========================================================================
 console.log('\n' + '='.repeat(42));
 console.log(`${total - echecs}/${total} tests passés`);

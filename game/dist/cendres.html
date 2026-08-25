@@ -5585,6 +5585,60 @@ function commettre(state, fait, log) {
 }
 
 /**
+ * L'oubli tombe au conseil du porteur (L5c, décision n°3) — jamais à heure
+ * fixe : les conseils battent à leur propre cadence (`f.prochainConseil`,
+ * irrégulier), et le guetteur côté joueur — même patron que `chefs` — lit le
+ * tampon `f.dernierConseil` que le monde laisse derrière lui. À SA séance,
+ * le porteur classe LE plus vieux grief dont l'âge dépasse sa patience,
+ * proportionnée à la gravité (patience × |delta×poids| / OUBLI.parPoint) :
+ * une insulte à −3 se lâche vite, un pillage à −22 sept fois plus tard, un
+ * rancunier jamais. Un par conseil ; argmax stable, entièrement
+ * déterministe — zéro tirage. Le moment appartient à l'agent, la décision à
+ * son tempérament, le poids au fait lui-même.
+ */
+function tickOubli(state, log) {
+  if (!state.player.conseilsVus) state.player.conseilsVus = {};
+  for (const k of Object.keys(state.world.factions)) {
+    if (k === 'essaim') continue;
+    const f = state.world.factions[k];
+    if (!f || f.morte) continue;
+    const dc = f.dernierConseil || 0;
+    const vu = state.player.conseilsVus[k];
+    if (vu === undefined) { state.player.conseilsVus[k] = dc; continue; }
+    if (dc === vu) continue;
+    state.player.conseilsVus[k] = dc;
+    const dk = f.dirigeant;
+    if (!dk) continue;
+    const h = MEMOIRE_TEMPERAMENT[dk.temperament] || {};
+    const patience = h.patience || 1e9;
+    let cible = null;
+    for (const fait of state.player.faits || []) {
+      for (const e of fait.effets || []) {
+        if (!e.applique || e.oublie || e.faction !== k || !(e.delta < 0)) continue;
+        const poids = e.poids === undefined ? 1 : e.poids;
+        if (!poids) continue;
+        const age = state.temps - (fait.t || 0);
+        if (age <= patience * Math.abs(e.delta * poids) / OUBLI.parPoint) continue;
+        if (!cible || (fait.t || 0) < (cible.t || 0)) cible = { t: fait.t || 0, e };
+      }
+    }
+    if (!cible) continue;
+    cible.e.oublie = true;
+    materialiser(state, k);
+    const d = drapeauDe(state.world, k);
+    if (log && d && Math.abs(cible.e.delta * (cible.e.poids === undefined ? 1 : cible.e.poids)) >= 1) {
+      log({
+        type: 'rumeur',
+        texte: `Au conseil ${d.genitif}, une vieille histoire ne revient plus : `
+          + `${dk.titre} ${dk.nom} l’a laissée aux archives.`,
+        factions: [k],
+        discret: true,
+      });
+    }
+  }
+}
+
+/**
  * La file des nouvelles en route : ce qui doit être su à cette heure-ci
  * tombe, et se dit. Le registre est borné à soixante entrées — le parcours
  * est trivial, et un fait dont tous les effets sont tombés ne coûte rien.
@@ -25706,6 +25760,9 @@ function tick(state) {
   // pour qu'une relecture qui vide le crédit coûte la charge la même heure —
   // on se couche Maréchal, on se réveille Commandeur.
   if (!state.fin) tickCour(state, log);
+  // L'oubli tombe au conseil du porteur (L5c) : après la cour — une
+  // succession repèse d'abord, le nouveau maître classe ensuite à SA séance.
+  if (!state.fin) tickOubli(state, log);
   if (!state.fin) tickCharges(state, log);
   if (!state.fin) tickFormation(state, log);
   // Et ce que le monde a fait à votre argent pendant ce temps. En dernier :
