@@ -98,6 +98,7 @@ import {
 } from './secteur.js';
 import {
   PREROGATIVES, PREROGATIVE_KEYS, peutExercer, credit as creditInfluence, commandementDe,
+  chargeAupres,
   peutOuvrirBourse, accordsPossibles, accordsRompables,
   colonnesDe, sitesFondation, cibleGuerre, guerresArretables, coutLevee,
   COUT_POSTE, FORCE_LEVEE, COUT_GARNISON, COUT_GRENIER, villeConfiee,
@@ -3724,10 +3725,35 @@ function ciblesCharge(faction, k) {
     }));
   }
   if (k === 'guerre') {
-    return cibleGuerre(S, faction).map((f) => ({
-      val: f,
-      texte: `La guerre ${drapeauDe(S.world, f).datif}`,
-    }));
+    // M3 (MARECHAL.md) : le Maréchal nomme le but — on dit ce qu'on est venu
+    // chercher, on est jugé dessus. En dessous, on déclare et le tempérament
+    // du chef décide de la raison, comme toujours.
+    const charge = chargeAupres(S, faction);
+    const marechal = charge && charge.index >= 5;
+    const out = [];
+    for (const f of cibleGuerre(S, faction).slice(0, marechal ? 3 : 6)) {
+      if (!marechal) {
+        out.push({ val: f, texte: `La guerre ${drapeauDe(S.world, f).datif}` });
+        continue;
+      }
+      const nom = drapeauDe(S.world, f).datif;
+      const leurs = w.colonies.filter((c) => c.faction === f && !c.ruine);
+      const notres = w.colonies.filter((c) => c.faction === faction && !c.ruine);
+      const dNous = (c) => (notres.length
+        ? Math.min(...notres.map((x) => distance(x.regionId, c.regionId))) : 0);
+      const proche = leurs.length
+        ? leurs.reduce((a, b) => (dNous(b) < dNous(a) ? b : a))
+        : null;
+      if (proche) {
+        out.push({ val: f, val2: `conquete:${proche.id}`, texte: `La guerre ${nom} — pour prendre ${proche.nom}` });
+      }
+      out.push({ val: f, val2: 'butin', texte: `La guerre ${nom} — pour ce qu’il y a à prendre` });
+      out.push({ val: f, val2: 'frontiere', texte: `La guerre ${nom} — pour desserrer l’étau` });
+      if (loisDe(w, f).esclavage) {
+        out.push({ val: f, val2: 'abolition', texte: `La guerre ${nom} — pour fermer leurs marchés d’hommes` });
+      }
+    }
+    return out.slice(0, 12);
   }
   if (k === 'paix') {
     return guerresArretables(S, faction).map((g) => ({
@@ -6106,7 +6132,16 @@ function surClic(ev) {
         case 'emettre': r = ACTIONS.battreMonnaie(f, Number(cible)); break;
         case 'lever': r = ACTIONS.leverColonne(f, null, cible, Number(el.dataset.b) || undefined); break;
         case 'fonder': r = ACTIONS.fonderPoste(f, cible); break;
-        case 'guerre': r = ACTIONS.declarerGuerre(f, cible); break;
+        case 'guerre': {
+          const b = el.dataset.b || '';
+          const but = b
+            ? (b.startsWith('conquete:')
+              ? { type: 'conquete', villeId: b.slice('conquete:'.length) }
+              : { type: b })
+            : undefined;
+          r = ACTIONS.declarerGuerre(f, cible, but);
+          break;
+        }
         case 'paix': r = ACTIONS.signerPaix(f, cible); break;
         case 'bourse': r = ACTIONS.ouvrirBourse(f); break;
         case 'accord': r = ACTIONS.signerAccord(f, cible); break;

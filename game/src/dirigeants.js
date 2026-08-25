@@ -203,20 +203,30 @@ export function butDeGuerre(world, a, b, rng, cible) {
 /**
  * Le but est-il atteint — ou devenu hors d'atteinte ? Retourne 'atteint',
  * 'perdu', ou null si la guerre a encore une raison de durer.
+ *
+ * Le but appartient au DÉCLARANT, et il se juge de son côté quel que soit
+ * celui qui demande. La première version le jugeait du côté du demandeur :
+ * le défenseur qui tenait sa propre ville voyait « atteint » et signait la
+ * trêve à son premier conseil — toute guerre de conquête mourait en neuf
+ * heures, la ville jamais prise, avec une dépêche absurde (« l'affaire est
+ * réglée pour prendre Dépôt-Malemer »). Corrigé avec M3 (MARECHAL.md) :
+ * un but atteint ou perdu l'est pour les deux camps — la guerre a dit ce
+ * qu'elle avait à dire —, mais c'est la carte du déclarant qui en décide.
  */
 export function etatDuBut(world, guerre, key) {
   const but = guerre.but;
   if (!but) return null;
+  const declarant = guerre.initiateur || guerre.a;
   if (but.type === 'abolition') {
     // Une guerre faite au régime d'en face se gagne le jour où il change, pas
     // quand on a fini de compter les morts.
-    const autre = guerre.a === key ? guerre.b : guerre.a;
-    if (!loisDe(world, autre).esclavage) return 'atteint';
+    const vise = declarant === guerre.a ? guerre.b : guerre.a;
+    if (!loisDe(world, vise).esclavage) return 'atteint';
   }
   if (but.type === 'conquete' && but.villeId) {
     const ville = world.colonies.find((c) => c.id === but.villeId);
     if (!ville || ville.ruine) return 'perdu';
-    if (ville.faction === key) return 'atteint';
+    if (ville.faction === declarant) return 'atteint';
     return null;
   }
   if (but.batailles && guerre.batailles >= but.batailles) return 'atteint';

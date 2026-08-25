@@ -4914,20 +4914,30 @@ function butDeGuerre(world, a, b, rng, cible) {
 /**
  * Le but est-il atteint — ou devenu hors d'atteinte ? Retourne 'atteint',
  * 'perdu', ou null si la guerre a encore une raison de durer.
+ *
+ * Le but appartient au DÉCLARANT, et il se juge de son côté quel que soit
+ * celui qui demande. La première version le jugeait du côté du demandeur :
+ * le défenseur qui tenait sa propre ville voyait « atteint » et signait la
+ * trêve à son premier conseil — toute guerre de conquête mourait en neuf
+ * heures, la ville jamais prise, avec une dépêche absurde (« l'affaire est
+ * réglée pour prendre Dépôt-Malemer »). Corrigé avec M3 (MARECHAL.md) :
+ * un but atteint ou perdu l'est pour les deux camps — la guerre a dit ce
+ * qu'elle avait à dire —, mais c'est la carte du déclarant qui en décide.
  */
 function etatDuBut(world, guerre, key) {
   const but = guerre.but;
   if (!but) return null;
+  const declarant = guerre.initiateur || guerre.a;
   if (but.type === 'abolition') {
     // Une guerre faite au régime d'en face se gagne le jour où il change, pas
     // quand on a fini de compter les morts.
-    const autre = guerre.a === key ? guerre.b : guerre.a;
-    if (!loisDe(world, autre).esclavage) return 'atteint';
+    const vise = declarant === guerre.a ? guerre.b : guerre.a;
+    if (!loisDe(world, vise).esclavage) return 'atteint';
   }
   if (but.type === 'conquete' && but.villeId) {
     const ville = world.colonies.find((c) => c.id === but.villeId);
     if (!ville || ville.ruine) return 'perdu';
-    if (ville.faction === key) return 'atteint';
+    if (ville.faction === declarant) return 'atteint';
     return null;
   }
   if (but.batailles && guerre.batailles >= but.batailles) return 'atteint';
@@ -15905,19 +15915,58 @@ function cibleGuerre(state, faction) {
  * l'a. Ce qu'il n'a pas, c'est le droit de la perdre impunément — la balance
  * des villes au moment de la déclaration est notée, et relue à la paix.
  */
-function declarerGuerreA(state, faction, contre, rng, log) {
+/**
+ * M3 (MARECHAL.md) : le déclarant de rang Maréchal nomme le but parmi les
+ * types existants — on dit ce qu'on est venu chercher, on est jugé dessus
+ * (`jugerActes`, à la paix). Sans but nommé, le tempérament du chef décide,
+ * comme toujours. Un Commandeur déclare, mais ne nomme pas.
+ */
+function declarerGuerreA(state, faction, contre, rng, log, butChoisi) {
   const v = peutExercer(state, faction, 'guerre');
   if (!v.ok) return v;
   if (!cibleGuerre(state, faction).includes(contre)) {
     return { ok: false, motif: 'Pas contre ceux-là.' };
   }
-  const prox = plusProche(state.world, faction, contre);
-  declarerGuerre(state.world, faction, contre, state.temps, log,
-    butDeGuerre(state.world, faction, contre, rng, prox));
+  let but = null;
+  if (butChoisi && butChoisi.type) {
+    if (v.charge.index < 5) {
+      return { ok: false, motif: `Nommer le but de la guerre est l’affaire du ${RANGS[5].nom}.` };
+    }
+    if (butChoisi.type === 'conquete') {
+      const ville = colonieParId(state.world, butChoisi.villeId);
+      if (!ville || ville.ruine || ville.faction !== contre) {
+        return { ok: false, motif: 'On ne prend que ce qu’ils tiennent.' };
+      }
+      but = { type: 'conquete', villeId: ville.id, texte: `pour prendre ${ville.nom}` };
+    } else if (butChoisi.type === 'abolition') {
+      if (!loisDe(state.world, contre).esclavage) {
+        return { ok: false, motif: 'Ils n’ont pas de marchés d’hommes à abolir.' };
+      }
+      but = { type: 'abolition', texte: 'pour en finir avec leurs marchés d’hommes', batailles: rng.irange(2, 4) };
+    } else if (butChoisi.type === 'punition') {
+      but = { type: 'punition', texte: 'pour solde de tout compte', batailles: rng.irange(2, 4) };
+    } else if (butChoisi.type === 'frontiere') {
+      but = { type: 'frontiere', texte: 'pour desserrer l’étau', batailles: rng.irange(1, 3) };
+    } else if (butChoisi.type === 'butin') {
+      but = { type: 'butin', texte: 'pour ce qu’il y a à prendre', batailles: rng.irange(2, 5) };
+    } else {
+      return { ok: false, motif: 'On ne fait pas la guerre pour ça.' };
+    }
+  }
+  if (!but) {
+    const prox = plusProche(state.world, faction, contre);
+    but = butDeGuerre(state.world, faction, contre, rng, prox);
+  }
+  declarerGuerre(state.world, faction, contre, state.temps, log, but);
   inscrireActe(state, faction, {
     type: 'guerre',
     contre,
     villes: coloniesDe(state.world, faction).length,
+    // Le but NOMMÉ s'inscrit : on sera jugé contre lui, pas contre le solde
+    // des villes. Un but hérité du tempérament ne vous engage pas plus que
+    // n'importe quelle guerre — l'ancien jugement s'applique.
+    but: butChoisi && butChoisi.type ? but.type : null,
+    butVille: butChoisi && butChoisi.type === 'conquete' ? but.villeId : null,
     t: state.temps,
   });
   return { ok: true };
@@ -16531,6 +16580,29 @@ function juger(state, faction, acte, log) {
 
   if (acte.type === 'guerre') {
     if (enGuerre(w, faction, acte.contre)) return false; // elle dure : on attend
+    // Un but NOMMÉ (M3, MARECHAL.md) se juge contre lui-même : on a dit ce
+    // qu'on était venu chercher, la paix dit si on l'a trouvé.
+    if (acte.but === 'conquete' && acte.butVille) {
+      const col = colonieParId(w, acte.butVille);
+      if (col && col.faction === faction) {
+        porterMerite(state, faction,
+          `${col.nom} est tombée — la guerre a tenu ce que vous aviez promis.`, 140, log);
+      } else {
+        porterFaute(state, faction,
+          `une guerre déclarée pour prendre ${col ? col.nom : 'une ville'}, finie sans elle`, log, 2);
+      }
+      return true;
+    }
+    if (acte.but === 'abolition') {
+      if (!loisDe(w, acte.contre).esclavage) {
+        porterMerite(state, faction,
+          `Leurs marchés d’hommes ont fermé — la guerre a tenu ce que vous aviez promis.`, 140, log);
+      } else {
+        porterFaute(state, faction,
+          'une guerre déclarée pour abolir leurs marchés d’hommes, finie sans rien abolir', log, 2);
+      }
+      return true;
+    }
     const maintenant = coloniesDe(w, faction).length;
     if (maintenant > acte.villes) {
       porterMerite(state, faction,
@@ -28616,10 +28688,35 @@ function ciblesCharge(faction, k) {
     }));
   }
   if (k === 'guerre') {
-    return cibleGuerre(S, faction).map((f) => ({
-      val: f,
-      texte: `La guerre ${drapeauDe(S.world, f).datif}`,
-    }));
+    // M3 (MARECHAL.md) : le Maréchal nomme le but — on dit ce qu'on est venu
+    // chercher, on est jugé dessus. En dessous, on déclare et le tempérament
+    // du chef décide de la raison, comme toujours.
+    const charge = chargeAupres(S, faction);
+    const marechal = charge && charge.index >= 5;
+    const out = [];
+    for (const f of cibleGuerre(S, faction).slice(0, marechal ? 3 : 6)) {
+      if (!marechal) {
+        out.push({ val: f, texte: `La guerre ${drapeauDe(S.world, f).datif}` });
+        continue;
+      }
+      const nom = drapeauDe(S.world, f).datif;
+      const leurs = w.colonies.filter((c) => c.faction === f && !c.ruine);
+      const notres = w.colonies.filter((c) => c.faction === faction && !c.ruine);
+      const dNous = (c) => (notres.length
+        ? Math.min(...notres.map((x) => distance(x.regionId, c.regionId))) : 0);
+      const proche = leurs.length
+        ? leurs.reduce((a, b) => (dNous(b) < dNous(a) ? b : a))
+        : null;
+      if (proche) {
+        out.push({ val: f, val2: `conquete:${proche.id}`, texte: `La guerre ${nom} — pour prendre ${proche.nom}` });
+      }
+      out.push({ val: f, val2: 'butin', texte: `La guerre ${nom} — pour ce qu’il y a à prendre` });
+      out.push({ val: f, val2: 'frontiere', texte: `La guerre ${nom} — pour desserrer l’étau` });
+      if (loisDe(w, f).esclavage) {
+        out.push({ val: f, val2: 'abolition', texte: `La guerre ${nom} — pour fermer leurs marchés d’hommes` });
+      }
+    }
+    return out.slice(0, 12);
   }
   if (k === 'paix') {
     return guerresArretables(S, faction).map((g) => ({
@@ -30998,7 +31095,16 @@ function surClic(ev) {
         case 'emettre': r = ACTIONS.battreMonnaie(f, Number(cible)); break;
         case 'lever': r = ACTIONS.leverColonne(f, null, cible, Number(el.dataset.b) || undefined); break;
         case 'fonder': r = ACTIONS.fonderPoste(f, cible); break;
-        case 'guerre': r = ACTIONS.declarerGuerre(f, cible); break;
+        case 'guerre': {
+          const b = el.dataset.b || '';
+          const but = b
+            ? (b.startsWith('conquete:')
+              ? { type: 'conquete', villeId: b.slice('conquete:'.length) }
+              : { type: b })
+            : undefined;
+          r = ACTIONS.declarerGuerre(f, cible, but);
+          break;
+        }
         case 'paix': r = ACTIONS.signerPaix(f, cible); break;
         case 'bourse': r = ACTIONS.ouvrirBourse(f); break;
         case 'accord': r = ACTIONS.signerAccord(f, cible); break;
@@ -31690,9 +31796,9 @@ const API = {
   },
 
   /** Déclarer la guerre. Le but est tiré du tempérament du chef. */
-  declarerGuerre(faction, contre) {
+  declarerGuerre(faction, contre, but) {
     const rng = new Rng(state.rngState);
-    const r = declarerGuerreA(state, faction, contre, rng, creerLogger(state));
+    const r = declarerGuerreA(state, faction, contre, rng, creerLogger(state), but);
     state.rngState = rng.save();
     if (r.ok) { sauver(); rafraichir(true); }
     return r;

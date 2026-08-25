@@ -205,7 +205,19 @@ pouvoir emprunte un flux que la faction a déjà.
   au lot H) : deux décors resélectionnent leur colonne (l'Essaim était
   devenu `armees[0]`), et le plancher ménages de l'erreur locale est recalé
   à la pointe remesurée du modèle pur (±0,7, cinq échauffements).
-- [ ] M3 — le but de guerre choisi
+- [x] M3 — le but de guerre choisi — livré : le déclarant de rang Maréchal
+  nomme le but parmi les types existants (prendre telle ville, butin,
+  desserrer l'étau, abolir leurs marchés d'hommes — refusé si l'objet
+  manque) ; un Commandeur déclare mais ne nomme pas, le tempérament du chef
+  décide comme toujours. Le but nommé s'inscrit au dossier et la paix se
+  juge contre LUI : la ville promise prise assoit (+140), la guerre finie
+  sans elle s'impute (double faute) — le solde des villes ne juge plus que
+  les guerres sans promesse. Prérequis corrigé en route : `etatDuBut`
+  jugeait le but du côté du demandeur — le défenseur qui tenait sa propre
+  ville voyait « atteint » et signait la trêve à son premier conseil (9 h
+  mesurées, ville jamais prise). Le but se juge désormais du côté du
+  déclarant, pour les deux camps : les guerres de conquête durent enfin.
+  Huit tests nés rouges.
 - [ ] M4 — la place à tenir
 - [ ] F1 + F2 — les frictions de la cour
 - [ ] M7 — la porte de la couronne

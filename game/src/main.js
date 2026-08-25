@@ -441,9 +441,9 @@ const API = {
   },
 
   /** Déclarer la guerre. Le but est tiré du tempérament du chef. */
-  declarerGuerre(faction, contre) {
+  declarerGuerre(faction, contre, but) {
     const rng = new Rng(state.rngState);
-    const r = declarerGuerreA(state, faction, contre, rng, creerLogger(state));
+    const r = declarerGuerreA(state, faction, contre, rng, creerLogger(state), but);
     state.rngState = rng.save();
     if (r.ok) { sauver(); rafraichir(true); }
     return r;

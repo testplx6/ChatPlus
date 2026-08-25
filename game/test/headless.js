@@ -3212,14 +3212,25 @@ ok(rSec.issue === 'secession' && reprise.faction === maison,
 // Le monde s'en sert : sur une longue partie, des villes changent de mains par
 // la rue et pas seulement par les armées — sans que le journal ne parle que de
 // ça.
+// Le journal est plafonné à 400 lignes : compter dedans après 8 000 h ne
+// mesurait que la fenêtre de fin, et le verdict sautait avec la trajectoire
+// (le correctif d'etatDuBut à M3 l'a montré : 0 dans la fenêtre à cette
+// graine, 1 et 3 sur les voisines). On compte donc sur TOUTE la partie, en
+// vidant le journal par tranches — c'est ce que la phrase du test promet.
 const monde = nouvellePartie(6161, { maintenant: 0, depart: 'ville', equipe: 3 });
-avancer(monde, 8000);
-const lignesRevolte = monde.journal.filter((x) => x.type === 'revolte').length;
+let lignesRevolte = 0;
+let lignesTotal = 0;
+for (let tr = 0; tr < 16; tr++) {
+  avancer(monde, 500);
+  lignesRevolte += monde.journal.filter((x) => x.type === 'revolte').length;
+  lignesTotal += monde.journal.length;
+  monde.journal = [];
+}
 ok(lignesRevolte > 0, 'des villes se soulèvent au cours d’une longue partie',
   `${lignesRevolte} au journal`);
-ok(lignesRevolte < monde.journal.length * 0.15,
+ok(lignesRevolte < lignesTotal * 0.15,
   'mais l’émeute reste un événement, pas le bruit de fond du journal',
-  `${lignesRevolte}/${monde.journal.length}`);
+  `${lignesRevolte}/${lignesTotal}`);
 
 // Un chef répond de l'humeur de son pays, pas seulement de ses guerres.
 function legitimiteApres(grogne) {
@@ -11499,6 +11510,105 @@ section('M quater. Le Maréchal — M6, la levée dimensionnée, et E10 au cours
       f5.ok ? 'accepté' : '');
   } else {
     ok(true, 'pas de site de fondation à cette graine — vérification sautée, dit tel quel');
+  }
+}
+
+// ===========================================================================
+section('M quinquies. Le Maréchal — M3, le but de guerre choisi (MARECHAL.md)');
+{
+  const rien = () => {};
+  // 0) Le prérequis : le but appartient au déclarant. `etatDuBut` rendait
+  //    « atteint » au DÉFENSEUR tant qu'il tenait sa propre ville — toute
+  //    guerre de conquête mourait à son premier conseil (mesuré : 9 h,
+  //    « l'affaire est réglée pour prendre Dépôt-Malemer », ville pas prise).
+  {
+    const st = nouvellePartie(653, { maintenant: 0 });
+    const w = st.world;
+    const cand = Object.keys(w.factions).filter(
+      (k) => k !== 'essaim' && w.factions[k].colonies.length >= 2 && dirigeant(w, k));
+    const A = cand[0];
+    const B = cand[1];
+    const colB = w.colonies.find((c) => c.faction === B && !c.ruine);
+    const g = {
+      a: A, b: B, depuis: 0, batailles: 0, initiateur: A,
+      but: { type: 'conquete', villeId: colB.id, texte: `pour prendre ${colB.nom}` },
+    };
+    ok(etatDuBut(w, g, B) !== 'atteint',
+      'le défenseur qui tient sa ville n’a rien « atteint » — le but n’est pas le sien');
+    ok(etatDuBut(w, g, A) === null,
+      'et le déclarant n’a rien atteint non plus tant que la ville tient');
+    colB.faction = A;
+    ok(etatDuBut(w, g, A) === 'atteint' && etatDuBut(w, g, B) === 'atteint',
+      'la ville prise, le but est atteint — pour tout le monde, la guerre a dit ce qu’elle avait à dire');
+    colB.faction = B;
+    // Et dans le monde qui tourne : la guerre de conquête ne meurt plus au
+    // premier conseil du défenseur.
+    declarerGuerre(w, A, B, 0, rien, { type: 'conquete', villeId: colB.id, texte: `pour prendre ${colB.nom}` });
+    let fin = null;
+    for (let i = 1; i <= 48; i++) { tick(st); if (!enGuerre(w, A, B)) { fin = i; break; } }
+    ok(fin === null || w.colonies.find((c) => c.id === colB.id).faction === A,
+      'une guerre de conquête dure tant que la ville tient (ou tombe) — plus de trêve à 9 h',
+      fin ? `finie à ${fin} h` : 'dure');
+  }
+
+  // 1) Le déclarant de rang 5 nomme le but ; un Commandeur ne le peut pas.
+  const monter = (points) => {
+    const st = nouvellePartie(659, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(st);
+    const cand = Object.keys(st.world.factions).filter(
+      (k) => k !== 'essaim' && st.world.factions[k].colonies.length >= 2 && dirigeant(st.world, k));
+    const A = cand[0];
+    g.allegeance = { faction: A, points, derniereSolde: 0, intendance: 0 };
+    const contre = cibleGuerre(st, A)[0];
+    return { st, g, A, contre };
+  };
+  {
+    const m = monter(RANGS[5].points);
+    if (!m.contre) {
+      ok(true, 'aucune cible de guerre à cette graine — vérification sautée, dit tel quel');
+    } else {
+      // Pas la ville que le tempérament choisirait par défaut (la plus proche
+      // des nôtres) : le test doit distinguer « nommé » de « tiré du chef ».
+      const miennes = m.st.world.colonies.filter((c) => c.faction === m.A && !c.ruine);
+      const dist = (c) => Math.min(...miennes.map((x) => distance(x.regionId, c.regionId)));
+      const villes = m.st.world.colonies
+        .filter((c) => c.faction === m.contre && !c.ruine)
+        .sort((x, y) => dist(x) - dist(y));
+      const colC = villes[villes.length - 1];
+      const r = declarerGuerreA(m.st, m.A, m.contre, new Rng(7), rien,
+        { type: 'conquete', villeId: colC.id });
+      const guerre = m.st.world.guerres.find(
+        (x) => (x.a === m.A && x.b === m.contre) || (x.b === m.A && x.a === m.contre));
+      ok(r.ok && guerre && guerre.but && guerre.but.type === 'conquete'
+        && guerre.but.villeId === colC.id,
+        'le Maréchal nomme le but : la guerre porte « pour prendre » SA ville, pas celle du tempérament',
+        r.motif || (guerre && guerre.but ? guerre.but.type : 'sans but'));
+      ok((m.g.allegeance.actes || []).some((x) => x.type === 'guerre' && x.but === 'conquete'),
+        'et le but nommé est inscrit au dossier — on sera jugé dessus');
+    }
+    const c4 = monter(RANGS[4].points);
+    if (c4.contre) {
+      const colC4 = c4.st.world.colonies.find((c) => c.faction === c4.contre && !c.ruine);
+      const r4 = declarerGuerreA(c4.st, c4.A, c4.contre, new Rng(7), rien,
+        { type: 'conquete', villeId: colC4.id });
+      ok(!r4.ok, 'un Commandeur ne nomme pas le but — la charge de Maréchal le fait');
+    }
+  }
+
+  // 2) La paix jugée contre LE but nommé : la ville prise assoit, la guerre
+  //    finie sans elle s'impute.
+  {
+    const m = monter(RANGS[5].points);
+    if (m.contre) {
+      const colC = m.st.world.colonies.find((c) => c.faction === m.contre && !c.ruine);
+      declarerGuerreA(m.st, m.A, m.contre, new Rng(7), rien,
+        { type: 'conquete', villeId: colC.id });
+      signerPaix(m.st.world, m.A, m.contre, m.st.temps, rien);
+      for (let i = 0; i < 3; i++) tick(m.st);
+      ok((m.g.allegeance.fautes || 0) > 0
+        && m.st.journal.some((l) => /finie sans/.test(l.texte)),
+        'la guerre finie sans la ville promise : la faute est au dossier, dite en clair');
+    }
   }
 }
 
