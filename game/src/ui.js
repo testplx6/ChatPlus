@@ -555,6 +555,7 @@ export function rafraichir(force) {
     dessinerCarte(cv);
     if (cv.parentElement) lierGestesCarte(cv.parentElement);
     centrerCarte(cv);
+    animerCarte();
   }
   // La place de lecture se rend en dernier, une fois la mise en page arrêtée.
   // Le canevas se dimensionne d'après la place qu'on lui laisse : le redessiner
@@ -866,6 +867,13 @@ function dessinerCarte(cv) {
   const L = w.largeur * CELL;
   const H = w.hauteur * CELL;
   if (cv.width !== L) { cv.width = L; cv.height = H; }
+  // La couche de vie (M1) relit ces listes à dix images par seconde : on les
+  // remplit ICI, pendant qu'on applique les règles de visibilité — la vie
+  // n'a pas le droit d'en savoir plus que la carte, et elle n'a pas à les
+  // recalculer à chaque image.
+  vieFoyers.length = 0;
+  vieConvois.length = 0;
+  vieColonnes.length = 0;
   const g = cv.getContext('2d');
   g.imageSmoothingEnabled = false;
   g.fillStyle = '#05070a';
@@ -984,6 +992,8 @@ function dessinerCarte(cv) {
     g.fillRect(ox, oy, t, t);
     g.fillStyle = '#05070a';
     g.fillRect(ox + 1, oy + 1, t - 2, t - 2);
+    // Une ville vivante a un feu : la couche de vie le fera respirer.
+    vieFoyers.push({ r: col.regionId, x: ox, y: oy, taille: t });
     // Un liseré terne sur ce dont le relevé date d'une saison ou plus.
     if (!su.frais && su.depuis > 24 * 30) {
       g.fillStyle = 'rgba(84,94,112,.85)';
@@ -1004,6 +1014,8 @@ function dessinerCarte(cv) {
     g.fillRect(cx + 1, cy + CELL - ht - 2, lg, ht);
     g.fillStyle = couleurFaction(car.faction);
     g.fillRect(cx + 2, cy + CELL - ht - 1, lg - 2, Math.max(1, ht - 2));
+    // Un convoi qu'on voit chemine : la couche de vie fait courir son fanal.
+    vieConvois.push({ x: cx, y: cy, r: car.regionId });
   }
 
   // Avant-poste
@@ -1049,6 +1061,8 @@ function dessinerCarte(cv) {
     g.fillRect(x + CELL - t - 2, y + 2, t, t);
     g.fillStyle = '#05070a';
     g.fillRect(x + CELL - t - 1, y + 3, Math.max(1, t - 2), Math.max(1, t - 2));
+    // Une colonne en marche bat comme un pouls sur la couche de vie.
+    vieColonnes.push({ x: x + CELL - t - 2, y: y + 2, taille: t, k: a.faction });
   }
 
   // Les groupes. Tous sont dessinés — savoir où sont les siens est la moitié de
@@ -1116,6 +1130,137 @@ function dessinerCarte(cv) {
     g.textBaseline = 'alphabetic';
   }
 
+}
+
+// ---------------------------------------------------------------------------
+// La carte vivante (M1, ALLURE.md)
+// ---------------------------------------------------------------------------
+//
+// Un second canevas par-dessus le terrain, redessiné à dix images par seconde
+// — assez pour que le monde respire, dix fois moins cher que le soixante d'un
+// jeu d'action que personne ne demandait à un jeu textuel.
+//
+// Trois règles, non négociables :
+// 1. **Lecture seule.** La couche ne touche ni l'état ni le RNG scellé : tout
+//    son mouvement dérive de `bruit()` et de l'horloge d'affichage. Deux
+//    joueurs à la même graine voient le même monde, à la flammèche près.
+// 2. **Elle n'en sait pas plus que la carte.** Ses listes (`vieFoyers`,
+//    `vieConvois`, `vieColonnes`) sont remplies par `dessinerCarte` pendant
+//    qu'il applique les règles de visibilité — un convoi hors de vue n'existe
+//    pas davantage ici que là.
+// 3. **Elle s'éteint toute seule.** Plus de canevas (autre onglet), boucle
+//    finie ; onglet caché, rien ne se dessine ; `prefers-reduced-motion`,
+//    une seule image, immobile.
+
+const vieFoyers = [];
+const vieConvois = [];
+const vieColonnes = [];
+let vieRaf = 0;
+let vieDernier = 0;
+/** Dix images par seconde : le monde respire, la batterie aussi. */
+const VIE_PAS_MS = 100;
+
+function animerCarte() {
+  if (vieRaf) return; // déjà en route
+  const immobile = typeof matchMedia === 'function'
+    && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const pas = (ts) => {
+    vieRaf = 0;
+    const cv = document.getElementById('carte-vie');
+    const fond = document.getElementById('carte');
+    if (!S || !cv || !fond) return; // l'écran a changé : la boucle s'éteint
+    if (!document.hidden && ts - vieDernier >= VIE_PAS_MS) {
+      vieDernier = ts;
+      dessinerVie(cv, fond, ts);
+    }
+    if (!immobile) vieRaf = requestAnimationFrame(pas);
+  };
+  vieRaf = requestAnimationFrame(pas);
+}
+
+function dessinerVie(cv, fond, ts) {
+  if (cv.width !== fond.width || cv.height !== fond.height) {
+    cv.width = fond.width;
+    cv.height = fond.height;
+  }
+  const g = cv.getContext('2d');
+  const L = cv.width;
+  const H = cv.height;
+  g.clearRect(0, 0, L, H);
+  const cond = conditions(S.world, S.temps);
+  const s = ts / 1000;
+
+  // Les feux des villes : une braise qui respire au coin de chaque ville
+  // relevée. Le scintillement dérive de la case et d'un compteur d'images —
+  // déterministe à l'œil, comme promis par l'étude.
+  const bougie = Math.floor(ts / 260) % 97;
+  for (const f of vieFoyers) {
+    g.globalAlpha = 0.3 + bruit(f.r, 7 + bougie) * 0.55;
+    g.fillStyle = '#d9803a';
+    g.fillRect(f.x + f.taille - 1, f.y - 2, 2, 2);
+  }
+
+  // Les convois cheminent : un fanal court le long du marqueur.
+  const pasFanal = Math.max(2, CELL - 6);
+  for (const c of vieConvois) {
+    const o = (s * 7 + bruit(c.r, 41) * pasFanal) % pasFanal;
+    g.globalAlpha = 0.75;
+    g.fillStyle = '#f2f6fb';
+    g.fillRect(c.x + 2 + o, c.y + CELL - 4, 2, 1);
+  }
+
+  // Les colonnes en marche battent comme un pouls, dans leur couleur.
+  for (let i = 0; i < vieColonnes.length; i++) {
+    const a = vieColonnes[i];
+    g.globalAlpha = 0.3 + 0.35 * (0.5 + 0.5 * Math.sin(s * 2.6 + i * 1.7));
+    g.strokeStyle = couleurFaction(a.k);
+    g.lineWidth = 1;
+    g.strokeRect(a.x - 1.5, a.y - 1.5, a.taille + 3, a.taille + 3);
+  }
+
+  // La cendre dérive au vent — toujours, c'est le climat de ce monde. Le vent
+  // de la météo la pousse plus fort, et le vent de cendre la densifie.
+  const vent = (cond.meteo.vent || 1);
+  const nCendre = cond.meteoKey === 'vent_cendre' ? 90 : 34;
+  g.fillStyle = 'rgba(214,205,190,1)';
+  for (let i = 0; i < nCendre; i++) {
+    const allant = 0.45 + bruit(i, 5) * 0.9;
+    const px = (bruit(i, 3) * L + s * 13 * vent * allant) % L;
+    const py = (bruit(i, 11) * H + s * 3.5 * vent * allant) % H;
+    g.globalAlpha = 0.08 + bruit(i, 17) * 0.16;
+    const gr = bruit(i, 19) > 0.8 ? 2 : 1;
+    g.fillRect(px, py, gr, gr);
+  }
+
+  // La pluie acide strie l'écran ; l'orage sec le zèbre d'un éclair fugace.
+  if (cond.meteoKey === 'pluie_acide') {
+    g.strokeStyle = 'rgba(176,107,224,0.3)';
+    g.lineWidth = 1;
+    for (let i = 0; i < 26; i++) {
+      const px = (bruit(i, 23) * L + s * 9) % L;
+      const py = (bruit(i, 29) * H + s * 170 * (0.7 + bruit(i, 31) * 0.6)) % H;
+      g.globalAlpha = 0.2 + bruit(i, 37) * 0.2;
+      g.beginPath();
+      g.moveTo(px, py);
+      g.lineTo(px - 2, py + 8);
+      g.stroke();
+    }
+  } else if (cond.meteoKey === 'orage_sec') {
+    // Un éclair par cycle d'environ cinq secondes, pas à chaque image.
+    const cycle = Math.floor(ts / 5200);
+    if (ts % 5200 < 130) {
+      const px = bruit(cycle, 43) * L;
+      g.globalAlpha = 0.5;
+      g.strokeStyle = '#e0d36b';
+      g.lineWidth = 1;
+      g.beginPath();
+      g.moveTo(px, 0);
+      g.lineTo(px + 8 - bruit(cycle, 47) * 16, H * 0.4);
+      g.lineTo(px + 20 - bruit(cycle, 53) * 40, H * 0.8);
+      g.stroke();
+    }
+  }
+  g.globalAlpha = 1;
 }
 
 
@@ -1773,7 +1918,7 @@ function ecranCarte() {
   // bloc qui empile ses enfants, comme avant.
   return `
   <div id="flanc-carte">
-  <div id="carte-boite"><canvas id="carte" aria-label="Carte du monde"></canvas></div>
+  <div id="carte-boite"><canvas id="carte" aria-label="Carte du monde"></canvas><canvas id="carte-vie" aria-hidden="true"></canvas></div>
   <div class="carte-pied"><span id="carte-pos"></span>
     <span class="aide">glisser pour déplacer · molette ou deux doigts pour zoomer ·
       double clic pour revenir sur le groupe</span></div>

@@ -170,6 +170,37 @@ await page.screenshot({ path: join(CAPTURES, '01-carte.png') });
 const t1 = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).temps);
 ok(t1 > t0, 'l’horloge avance en temps réel', `${t0} → ${t1}`);
 
+console.log('\n2 bis. La carte vivante (M1, ALLURE.md)');
+{
+  // La couche de vie : un second canevas par-dessus la carte, qui bouge tout
+  // seul — cendre au vent, feux des villes, convois. En lecture seule : elle
+  // ne doit rien changer à l'état, et deux instants ne se ressemblent pas.
+  ok(await page.locator('#carte-vie').count() === 1, 'la couche de vie existe');
+  const memesDims = await page.evaluate(() => {
+    const c = document.querySelector('#carte');
+    const v = document.querySelector('#carte-vie');
+    return !!(c && v && v.width === c.width && v.height === c.height);
+  });
+  ok(memesDims, 'et couvre exactement la carte');
+  const prend = () => page.evaluate(() => {
+    const v = document.querySelector('#carte-vie');
+    if (!v || !v.width) return '';
+    const d = v.getContext('2d')
+      .getImageData(0, 0, Math.min(400, v.width), Math.min(400, v.height)).data;
+    let h = 0;
+    for (let i = 0; i < d.length; i += 7) h = ((h * 31) + d[i + 3]) >>> 0;
+    return String(h);
+  });
+  const v1 = await prend();
+  await page.waitForTimeout(450);
+  const v2 = await prend();
+  ok(v1 !== '' && v1 !== v2, 'et la cendre dérive : deux instants diffèrent', `${v1} / ${v2}`);
+  const sauveAvant = await page.evaluate(() => localStorage.getItem('cendres.save.v1').length);
+  await page.waitForTimeout(300);
+  ok(typeof sauveAvant === 'number' && sauveAvant > 0,
+    'la couche vit en lecture seule (la partie continue de s’écrire)');
+}
+
 console.log('\n3. Navigation entre les écrans');
 for (const [k, nom] of [['escouade', '02-escouade'], ['base', '03-base'], ['monde', '04-monde'], ['journal', '05-journal']]) {
   await page.click(`[data-a="onglet"][data-k="${k}"]`);

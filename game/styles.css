@@ -487,6 +487,15 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
 
 /* La vignette de la carte (Q3) : un monde sous la cendre, pas un écran éteint. */
 #carte-boite { position: relative; }
+
+/* La carte vivante (M1) : la couche qui bouge, posée sur le terrain. Elle
+   partage l'origine du canevas de fond, donc elle défile avec lui. */
+#carte-vie {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
 #carte-boite::after {
   content: '';
   position: absolute;

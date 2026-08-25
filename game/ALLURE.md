@@ -117,6 +117,24 @@ partie relue comme un livre, exportable) · G3 le son génératif.
 
 ## L'avancement
 
+**Les pistes moyennes sont engagées** par le propriétaire (« je veux un
+design propre agréable qui donne envie de revenir », août 2026), dans
+l'ordre du mot de la fin du game master : l'identité d'abord (M1, M2),
+la finition ensuite.
+
+- **M1 — livré, la carte vivante v1.** Un second canevas (`#carte-vie`)
+  par-dessus le terrain, dix images par seconde : les feux des villes
+  respirent (braise dérivée de la case — déterministe à l'œil), les
+  convois font courir leur fanal, les colonnes battent comme un pouls,
+  la cendre dérive au vent de la météo (dense sous le vent de cendre),
+  la pluie acide strie, l'orage sec zèbre. Trois règles tenues : lecture
+  seule (rien ne touche l'état ni le RNG), la couche n'en sait pas plus
+  que la carte (ses listes sont remplies par `dessinerCarte` pendant
+  qu'il applique les règles de visibilité), et elle s'éteint toute seule
+  (onglet caché, écran quitté, `prefers-reduced-motion`). Test
+  navigateur : la couche couvre la carte, deux instants diffèrent, la
+  partie continue de s'écrire.
+
 **Quick wins livrés d'un bloc (août 2026), avec leurs limites dites :**
 
 - **Q1 — livré, socle + deux surfaces.** IBM Plex Mono porte tout le
