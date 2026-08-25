@@ -466,9 +466,38 @@ l'ouverture est cassée pour de vrai et il faut un balayage
 d'`ESTIME_ENGAGEMENT` contre le monde d'aujourd'hui. Décision au
 propriétaire ; rien n'a été réglé à vue (décision n°4).
 
-**Dette de mesure — le temps de rachat du pillard** : la cible 2 demande
-qu'un pillard puisse se racheter par actes « en un temps comparable à
-l'oubli d'aujourd'hui ». Le bot pillard du banc ne se repent jamais — il
-pille jusqu'à la dernière heure — donc le banc ne sait pas encore chiffrer
-ce temps. Il faudra un comportement de repentir (piller 2000 h, puis servir)
-avant de pouvoir dire si la sortie d'hostilité est vivante en pratique.
+**Instruction faite (août 2026, 30 parties × 4000 h par profil)** — la
+première lecture est morte : ce n'est pas le bot qui manquait de zèle.
+Le profil CARRIERE (courtise un drapeau, l'ordre de mission d'abord) :
+4/30 parties engagées, 24/30 sans aucun engagement, sommet d'estime
+2-12 chez le courtisé, les six drapeaux « hors d'atteinte », 16 des 18
+replis signent chez LIBRE (seuil 10). Le témoin du haut, ASSIDU (ne
+fait que courtiser, remplit son carnet du seul drapeau visé) : 8/30
+engagées, sommet 4-24 — seul ROUIL (seuil 18, sommet 24) passe à
+portée ; SIGNL 40, CENDR 34, HEXA 26, OMBRL 26 restent du décor même
+pour lui. Le débit réel du plus dévoué : 3,8 contrats pris, 1,4 rendus
+par partie — l'estime coule à ~5 points par millier d'heures là où les
+seuils hauts en demandent 26-40. À noter : ce constat exact a déjà été
+mesuré et corrigé une fois — le tarif des contrats a été doublé (4-16
+points, contrats.js `gainEstime` et son commentaire : « c'était le
+tarif, pas les seuils ») — et le plafond est retombé au même endroit :
+le monde a rebougé depuis (économie, prix, MARECHAL) sans remesure.
+Trois leviers possibles, aucun réglé à vue : le tarif (re-balayer les
+fourchettes `reputation` des quatre types de contrats, contrats.js:117,
+140, 165, 182), le débit (la part des contrats du drapeau courtisé sur
+les panneaux), les seuils (`ESTIME_ENGAGEMENT`, balayage). Décision au
+propriétaire.
+
+~~**Dette de mesure — le temps de rachat du pillard**~~ — **soldée**
+(août 2026). Le banc a son profil repenti (`REPENTIR=2000` dans
+test/equilibre.js : pillard jusqu'à l'heure dite, bot ordinaire
+ensuite ; à l'heure du repentir on relève l'ardoise et l'on chronomètre
+chaque faction fâchée). Mesuré, 30 parties × 6000 h : 65 ardoises,
+départ moyen −27 (pire −100) ; l'ardoise s'efface (repasser 0) pour
+49/65 en 1048 h médianes ; la sortie d'hostilité (repasser −25) pour
+21/27 en 1204 h. Référence de la cible 2 : l'oubli d'hier (0,45 point
+par jour, mort en L4) aurait mis 1435 h pour le même départ. **Le
+rachat par actes est vivant, et même un peu plus rapide que l'oubli
+passif ne l'était** — la cible 2 est tenue. Les 16 ardoises jamais
+effacées dans la fenêtre de 4000 h sont les pires départs (vers −100),
+que l'oubli d'hier n'aurait pas non plus soldés (5300 h).

@@ -220,6 +220,11 @@ const TRACE = {
   // décrit ni l'une ni l'autre.
   vises: {}, servis: {}, replis: 0, jamais: 0,
   estimeVisee: {}, nVisee: {},
+  // Le chronomètre du pardon (profil repenti) : une entrée par faction fâchée
+  // à l'heure du repentir, avec l'ardoise de départ et les heures mises à
+  // repasser les deux seuils qui changent la vie — −25 (leurs hommes cessent
+  // de sortir du bois, events.js) et 0 (l'ardoise est effacée).
+  rachats: [],
 };
 const HEURES = Number(process.argv[2]) || 4000;
 // Trente parties par défaut, pas huit. À huit, l'écart-type sur un taux de
@@ -352,6 +357,20 @@ const RAYON_PAROISSE = 4;
  * caravane pillée. C'est le seul chemin vers le titre de Seigneur de guerre.
  */
 const PILLARD = process.env.PILLARD === '1';
+/**
+ * Profil repenti : on pille, puis on cesse — et l'on chronomètre le pardon.
+ *
+ * La cible 2 du chantier MEMOIRE demande qu'un pillard puisse se racheter par
+ * actes « en un temps comparable à l'oubli d'aujourd'hui » — et le bot pillard
+ * ne se repent jamais, donc le banc ne savait pas chiffrer ce temps (dette
+ * consignée dans MEMOIRE.md §Blocages). REPENTIR=2000 : le bot vit en pillard
+ * jusqu'à l'heure dite, puis redevient le bot ordinaire — contrats, services,
+ * rançons — sans plus toucher une caravane. À l'heure du repentir on relève
+ * l'ardoise (chaque faction en négatif), et l'on note l'heure où chacune
+ * repasse −25 puis 0. La référence de « comparable » est l'oubli d'hier :
+ * l'érosion morte en L4 rendait 0,45 point par jour, soit 53 heures le point.
+ */
+const REPENTIR = Math.max(0, Number(process.env.REPENTIR || 0));
 /**
  * Profil marchand : acheter là où c'est abondant, revendre là où ça manque.
  *
@@ -1415,7 +1434,7 @@ function jouerPrincipal(state, g, memo) {
   // --- L'embuscade. Une caravane sur la case ne reste pas : elle avance d'une
   // région toutes les deux heures, et le bot ne joue qu'un tour sur quatre. Si
   // on ne la prend pas maintenant, on ne la prendra pas.
-  if (PILLARD) {
+  if (PILLARD || (REPENTIR && state.temps < REPENTIR)) {
     const ici = (state.world.caravanes || []).filter((c) => c.regionId === g.regionId);
     for (const car of ici) {
       TRACE.caravanesVues++;
@@ -2097,6 +2116,25 @@ for (let n = 0; n < PARTIES; n++) {
     // d'une partie où l'on est monté à 38. Ce qu'on veut savoir, c'est si le
     // seuil a été touché, une fois, à un moment.
     memo.estimeVisee = Math.max(memo.estimeVisee, state.player.reputation[memo.visee] || 0);
+    // Le chronomètre du pardon : à l'heure du repentir on relève l'ardoise —
+    // chaque faction en négatif — puis on note l'heure où chacune repasse les
+    // deux seuils qui comptent : −25, où leurs hommes cessent de sortir du
+    // bois (events.js), et 0, l'ardoise effacée.
+    if (REPENTIR && !memo.ardoise && state.temps >= REPENTIR) {
+      memo.ardoise = new Map();
+      for (const k of Object.keys(state.player.reputation)) {
+        const v = state.player.reputation[k];
+        if (v < 0) memo.ardoise.set(k, { depart: v, sortie: v > -25 ? 0 : null, zero: null });
+      }
+    }
+    if (memo.ardoise) {
+      for (const [k, a] of memo.ardoise) {
+        if (a.zero !== null) continue;
+        const v = state.player.reputation[k] || 0;
+        if (a.sortie === null && v > -25) a.sortie = state.temps - REPENTIR;
+        if (v >= 0) a.zero = state.temps - REPENTIR;
+      }
+    }
     // Un panneau fermé se rouvre : le compter en fin de partie ne mesure que
     // l'oubli, pas la sanction. On échantillonne une fois par jour de jeu.
     if (state.temps % 24 === 0) {
@@ -2273,6 +2311,14 @@ for (let n = 0; n < PARTIES; n++) {
     TRACE.estimeVisee[st] = (TRACE.estimeVisee[st] || 0) + memo.estimeVisee;
     TRACE.nVisee[st] = (TRACE.nVisee[st] || 0) + 1;
     if (!groupes(state).some((gg) => gg.allegeance)) TRACE.jamais += 1;
+  }
+  // L'ardoise du repenti, une entrée par faction fâchée. `null` veut dire
+  // « la partie s'est finie sans repasser ce seuil » — c'est une donnée, pas
+  // un trou : c'est elle qui dirait que la sortie d'hostilité est morte.
+  if (memo.ardoise) {
+    for (const [, a] of memo.ardoise) {
+      TRACE.rachats.push({ depart: a.depart, sortie: a.sortie, zero: a.zero });
+    }
   }
   lignes.push({
     seed: 1000 + n * 7919,
@@ -2484,6 +2530,32 @@ console.log(`Échelle atteinte : ${RANGS.map((r, i) => `${r.nom} ${TRACE.rangs[i
   }
   console.log(`  replis sur un autre drapeau : ${TRACE.replis} · `
     + `parties sans aucun engagement : ${TRACE.jamais}/${PARTIES}`);
+}
+if (REPENTIR && TRACE.rachats.length) {
+  // Le pardon, chronométré. La médiane plutôt que la moyenne : une faction
+  // jamais pardonnée d'ici la fin rendrait la moyenne infinie, et c'est
+  // justement l'information — on la compte à part.
+  const med = (a) => {
+    const t = a.slice().sort((x, y) => x - y);
+    return t.length ? t[Math.floor(t.length / 2)] : 0;
+  };
+  const r = TRACE.rachats;
+  const fachees = r.length;
+  const hostiles = r.filter((x) => x.depart <= -25);
+  const sorties = hostiles.filter((x) => x.sortie !== null);
+  const zeros = r.filter((x) => x.zero !== null);
+  const departMoy = r.reduce((t, x) => t + x.depart, 0) / fachees;
+  // La référence de la cible 2 : l'oubli d'hier rendait 0,45 point par jour.
+  const hier = Math.abs(departMoy) / 0.45 * 24;
+  console.log(`Le rachat du repenti (pillage jusqu'à ${REPENTIR} h) :`);
+  console.log(`  ${fachees} ardoise(s) relevée(s) sur ${PARTIES} parties — `
+    + `départ moyen ${departMoy.toFixed(0)}, pire ${Math.min(...r.map((x) => x.depart))}`);
+  console.log(`  sortie d'hostilité (repasser −25) : ${sorties.length}/${hostiles.length} `
+    + `y arrivent — médiane ${med(sorties.map((x) => x.sortie))} h`);
+  console.log(`  ardoise effacée (repasser 0) : ${zeros.length}/${fachees} `
+    + `y arrivent — médiane ${med(zeros.map((x) => x.zero))} h`);
+  console.log(`  référence, l'oubli d'hier (0,45/jour) : ${Math.round(hier)} h `
+    + `pour un départ de ${departMoy.toFixed(0)}`);
 }
 {
   // Calibrer les seuils de la chronique sur ce qui arrive vraiment, plutôt que

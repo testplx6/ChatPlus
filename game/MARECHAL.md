@@ -276,6 +276,9 @@ pouvoir emprunte un flux que la faction a déjà.
   quand sa monnaie respire — défendable), soit la garde de
   l'investissement doit regarder le trésor du pays plutôt que la capacité
   d'emprunt de la ville. Décision au propriétaire, rien touché ici.
+  **Le cahier de réforme est ouvert : `INVESTISSEMENT.md`** (août 2026) —
+  le constat y est instruit à la ligne, trois options A/B/C, la mesure
+  avant/après cadrée ; rien ne se code avant la décision.
 
 - ~~M6/E10 déplace le monde, et la garde `convois` sort de 0,7 %~~ —
   **levé** par le propriétaire (« recale », août 2026) : le plancher
