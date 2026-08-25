@@ -490,75 +490,20 @@ export function bandeLocale(state, ctx, groupe) {
  * tirage est global, et c'est le groupe qu'ils trouvent qui doit s'expliquer.
  * Un tirage par groupe multiplierait leur fréquence par le nombre de groupes.
  */
-/** Ce qu'une rancune perd par jour. Une haine s'émousse vite. */
-export const OUBLI_RANCUNE = 0.45;
-
-/** Et ce qu'un service rendu perd par jour, au mieux. */
-export const EROSION_ESTIME = 0.1;
-
-/**
- * Au-dessus, on s'efface à plein tarif ; en dessous, de moins en moins vite.
- *
- * Trente : c'est l'ordre de grandeur de ce qu'on a en poche au premier jour
- * quand une ville vous accueille, et de ce que demandent les drapeaux les plus
- * ouverts.
- */
-export const PALIER_EROSION = 30;
-
-/**
- * L'estime s'efface, mais de moins en moins vite à mesure qu'elle baisse.
- *
- * C'était un taux plat de un dixième par jour, et il rendait l'ouverture du jeu
- * impraticable. Mesuré, en ne faisant ni bien ni mal — le cas du joueur qui
- * explore, c'est-à-dire les premières heures de toutes les parties :
- *
- *   Ombrelle   seuil 26 · 28 d'estime au départ · sous le seuil à J20
- *   Hexa       seuil 26 · 28                    · sous le seuil à J7
- *   Église     seuil 40 · 42                    · sous le seuil à J20
- *
- * Et en huit mois de jeu, l'estime de départ était intégralement partie. On
- * commençait donc reçu quelque part et l'on devenait un inconnu en une semaine,
- * sans avoir rien fait de mal. Le commentaire d'ESTIME_ENGAGEMENT l'avait
- * pressenti sans le corriger : « demander trois points de plus, c'est demander
- * de courir plus vite qu'une pente ».
- *
- * On garde la pente là où elle a un sens — une gloire de Commandeur doit se
- * défendre — et on l'aplatit là où elle tue le début de partie. Le service rendu
- * s'oublie ; le premier service rendu s'oublie très lentement.
- */
-export function erosionEstime(v) {
-  if (v <= 0) return 0;
-  return Math.min(v, EROSION_ESTIME * Math.min(1, v / PALIER_EROSION));
-}
+// L'érosion quotidienne est morte ici (L4, MEMOIRE.md, décision n°3 du
+// propriétaire : « la rancune et la durée sont propres à chaque personnage et
+// chaque situation — certains peuvent oublier, ce n'est pas à moi de décider
+// mais à la simulation »). Le joueur était le seul être du monde qu'on
+// oubliait à heure fixe : 0,1 point d'estime et 0,45 de rancune par jour,
+// pour tout le monde, au chronomètre. L'oubli est désormais un acte du
+// porteur : la succession relit (HERITAGE_COUR, influence.js), les porteurs
+// meurent, la réparation reste le chemin actif. La porte de sortie de
+// l'hostilité — la raison d'être de l'ancien oubli — a changé de forme, pas
+// disparu : réparer, solder ses primes, ou lire venir la succession.
 
 export function tenterChasseurs(state, log, ctx) {
   const rng = ctx.rng;
   const primes = state.player.primes || (state.player.primes = {});
-
-  // Les rancunes s'émoussent. Sans cet oubli, la réputation n'est qu'un
-  // cliquet qui descend : dix accrochages suffisent à se rendre le monde
-  // définitivement hostile, et plus rien ne peut réparer ça.
-  //
-  // L'estime, elle, s'efface de moins en moins vite à mesure qu'elle baisse :
-  // voir `erosionEstime`.
-  // Témoin du banc : on coupe l'oubli pour savoir ce qu'il coûte vraiment à
-  // l'estime, plutôt que de le deviner. Voir test/equilibre.js, SANS=erosion.
-  if (state.temps % 24 === 0 && !state.sansErosion) {
-    for (const k of Object.keys(state.player.reputation)) {
-      const v = state.player.reputation[k];
-      if (v === 0) continue;
-      // Asymétrique à dessein : une rancune s'émousse vite, un service rendu
-      // reste longtemps. Sinon on ne peut ni sortir de l'hostilité, ni
-      // accumuler assez d'estime pour être reçu quelque part.
-      //
-      // Et l'on n'oublie pas celui qu'on a sous les yeux : tant qu'une colonne
-      // sert ce drapeau, rien ne s'efface chez lui. C'était la seule façon de
-      // perdre du terrain en servant tous les jours.
-      if (v > 0 && estAuService(state, k)) continue;
-      // Par la porte unique — et ce bloc entier meurt à L4 (MEMOIRE.md).
-      appliquerReputation(state, k, v > 0 ? -erosionEstime(v) : Math.min(-v, OUBLI_RANCUNE));
-    }
-  }
 
   for (const k of Object.keys(state.player.reputation)) {
     if (!drapeauDe(state.world, k) || k === 'essaim') continue;

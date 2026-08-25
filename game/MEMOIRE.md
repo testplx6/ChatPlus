@@ -267,9 +267,68 @@ l'écrit sans passer par un fait.
   inverse de L1, et chaque arrivée se dit au journal, datée (décision n°5).
   Onze tests nés rouges ; deux vieux tests d'instantanéité apprennent à
   attendre la rumeur.
-- [ ] L4 — l'oubli a des visages, et la remesure d'ouverture
+- [x] L4 — l'oubli a des visages, et la remesure d'ouverture — livré,
+  décision n°3 incluse. Le bloc d'érosion à `temps % 24` est mort
+  (events.js) : plus aucun chronomètre ne pardonne ni ne ronge. L'oubli
+  passe par ses trois visages : la succession (nouveau : `HERITAGE_COUR`
+  dans influence.js — le successeur hérite d'une part de l'estime et de la
+  rancune selon SON tempérament : un rancunier garde la rancune entière et
+  la moitié de l'estime, un conciliateur passe l'éponge aux trois quarts —
+  même patron que F1/F2 ; le guetteur de `tickCour` suit tous les trônes
+  via `state.player.chefs`, semé en silence à la première vue, et chaque
+  passation se dit au journal, datée — décision n°5), la mort du porteur
+  (existant : registre borné à 60, notables mortels), la réparation
+  (existant : contrats, services, rançons — désormais le chemin principal).
+  Le levier `SANS=erosion` du banc est mort avec elle, consigné dans
+  equilibre.js. Six tests nés rouges ; le vieux test « l'érosion ronge »
+  (9 ter ter) devient « à J60, l'estime de départ n'a pas bougé », décor à
+  règne épinglé (l'instrument annule les successions hors sujet — l'héritage
+  est légitime, mais ce n'est pas lui qu'on mesure là).
+  **La remesure d'ouverture (décision n°4)** — banc 30 parties × 4000 h,
+  mêmes graines, seul L4 diffère du témoin (HEAD, L3) :
+  - survie identique (28/30, les deux mêmes extinctions aux mêmes graines) ;
+  - parties finissant engagées 4 → 3, heures sous les couleurs 589 → 418,
+    crédits moyens 1258 → 1088 : même direction mais dans le bruit du
+    témoin (les crédits vont de 1 à 9818 selon la graine) — **seuils
+    d'`ESTIME_ENGAGEMENT` regelés tels quels**, comme décidé ;
+  - la porte du bas s'ouvre plus souvent, mais ne retient pas mieux : 21
+    épisodes d'engagement contre 11 (LIBRE, seuil 10 : 16 contre 3) — sans
+    érosion l'estime gagnée ne fond plus en route, le bot signe ; il
+    ressort comme avant (détachements, crédit d'ordres épuisé) ;
+  - profil pillard : la rancune tient enfin — estime finale −4 → −13, pire
+    chef fâché −92 → −120, survie 29/30 et butin intacts. La sortie
+    d'hostilité par actes existe (services, contrats, rançons) mais le bot
+    pillard ne se repent jamais : la mesure du temps de rachat demande un
+    comportement de repentir au banc — consigné en dette, pas supposé.
+  Une trouvaille d'ouverture consignée dans §Blocages : la voie du service
+  était déjà quasi morte AVANT ce chantier (témoin a655ba7 : 3/30) — ce
+  n'est pas la mémoire qui l'a tuée, et rien n'a été réglé à vue.
 - [ ] L5 — la mémoire chez le souvenant (la cible, après mesure de L4)
 
 ## Blocages
 
-Rien pour l'instant.
+**La voie du service est quasi morte — et ce n'est pas la mémoire qui l'a
+tuée.** Trouvaille de la remesure L4 (30 parties × 4000 h, bot par défaut) :
+3 parties sur 30 finissent engagées, 418-608 h sous les couleurs, tous les
+drapeaux « hors d'atteinte » (l'estime plafonne à 2-12 quand les seuils
+demandent 10 à 40). Le calibrage documenté d'`ESTIME_ENGAGEMENT`
+(allegeance.js) date d'un autre monde : « seuil 10 → 30 parties engagées,
+3 894 h, 4 616 de patrimoine ». L'attribution est faite : le témoin
+d'avant-L1 (a655ba7, érosion vivante, registre absent) rend déjà 3/30 —
+l'écart est antérieur au chantier MEMOIRE et s'est creusé quelque part le
+long des chantiers depuis (profils de seuils par style 10→40, économie,
+MARECHAL…), sans qu'on remesure. Ni L1-L3 (4→3, dans le bruit) ni L4
+(mêmes chiffres au bruit près, et la porte du bas s'ouvre PLUS souvent :
+16 épisodes LIBRE contre 3) n'y sont pour rien. Deux lectures possibles :
+le monde veut ça (s'engager se mérite, et le bot par défaut est un
+aventurier, pas un candidat — le profil CARRIERE existe pour ça), ou
+l'ouverture est cassée pour de vrai et il faut un balayage
+d'`ESTIME_ENGAGEMENT` contre le monde d'aujourd'hui. Décision au
+propriétaire ; rien n'a été réglé à vue (décision n°4).
+
+**Dette de mesure — le temps de rachat du pillard** : la cible 2 demande
+qu'un pillard puisse se racheter par actes « en un temps comparable à
+l'oubli d'aujourd'hui ». Le bot pillard du banc ne se repent jamais — il
+pille jusqu'à la dernière heure — donc le banc ne sait pas encore chiffrer
+ce temps. Il faudra un comportement de repentir (piller 2000 h, puis servir)
+avant de pouvoir dire si la sortie d'hostilité est vivante en pratique.

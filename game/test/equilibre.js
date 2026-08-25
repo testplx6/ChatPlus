@@ -5,7 +5,7 @@
 // Deux interrupteurs servent à isoler un système à la fois, ce qui est la seule
 // façon d'attribuer un déséquilibre à sa cause plutôt qu'à une intuition :
 //
-//   SANS=detach,contrats,livraison,services,intel,base,service,lois,pistes,preleve,erosion
+//   SANS=detach,contrats,livraison,services,intel,base,service,lois,pistes,preleve
 //        coupe ces comportements. `service` interdit de s'engager : c'est le
 //        témoin du nomade pur, à comparer à `CAMP=1` pour le colon.
 //        `preleve` annule la retenue des régimes sur les ventes : c'est le
@@ -2031,7 +2031,7 @@ for (let n = 0; n < PARTIES; n++) {
   if (SANS.has('lois')) state.sansLois = true;
   if (SANS.has('preleve')) state.sansPreleve = true;
   if (SANS.has('pistes')) state.world.sansPistes = true;
-  if (SANS.has('erosion')) state.sansErosion = true;
+  // SANS=erosion : levier mort depuis L4 (MEMOIRE.md) — l'érosion n'existe plus.
   // Le drapeau qu'on courtise cette partie-ci. Tiré sur un générateur à part,
   // pas sur celui du monde : sinon changer le tirage décalerait toute la
   // simulation et l'on comparerait deux mondes différents en croyant comparer

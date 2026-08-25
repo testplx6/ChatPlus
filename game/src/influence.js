@@ -38,6 +38,7 @@ import {
 } from './bourse.js';
 import { depenser, emettre, retirerMonnaie, coursMonnaie } from './monnaie.js';
 import { racheterCreance } from './credit.js';
+import { appliquerReputation } from './faits.js';
 
 /**
  * Ce que chaque charge permet. `rang` est l'indice minimal dans RANGS.
@@ -371,7 +372,56 @@ export const COURONNE_MODES = {
   fanatique: 'le Signal vous désigne',
 };
 
+/**
+ * L4 (MEMOIRE.md) — ce qu'un successeur fait des comptes que son prédécesseur
+ * tenait sur VOUS. Part gardée de l'estime et de la rancune, par tempérament :
+ * un rancunier n'oublie rien mais ne vous doit rien ; un conciliateur passe
+ * l'éponge sur les vieilles histoires. C'est le seul « oubli » du jeu — porté
+ * par un visage, daté par une mort. Calibrable, objet mutable.
+ */
+export const HERITAGE_COUR = {
+  rancunier: { estime: 0.5, rancune: 1 },
+  conciliateur: { estime: 1, rancune: 0.25 },
+  methodique: { estime: 0.9, rancune: 0.9 },
+  conquerant: { estime: 0.6, rancune: 0.8 },
+  rapace: { estime: 0.6, rancune: 0.6 },
+  prudent: { estime: 0.8, rancune: 0.7 },
+  batisseur: { estime: 0.8, rancune: 0.5 },
+};
+
 export function tickCour(state, log) {
+  // L4 — l'oubli a des visages : à chaque succession, PARTOUT (pas seulement
+  // chez ceux qu'on sert), le successeur hérite d'une part de ce que son
+  // prédécesseur pensait de vous, selon SON tempérament. C'est LEUR mémoire
+  // qui vit sa vie — elle bouge que vous le sachiez ou non.
+  if (!state.player.chefs) state.player.chefs = {};
+  for (const k of Object.keys(state.world.factions)) {
+    if (k === 'essaim') continue;
+    const dk = dirigeant(state.world, k);
+    if (!dk) continue;
+    const connu = state.player.chefs[k];
+    if (connu === undefined || connu === null) { state.player.chefs[k] = dk.id; continue; }
+    if (connu === dk.id) continue;
+    state.player.chefs[k] = dk.id;
+    const rep = state.player.reputation[k] || 0;
+    if (rep === 0) continue;
+    const h = HERITAGE_COUR[dk.temperament] || { estime: 0.8, rancune: 0.8 };
+    const part = rep > 0 ? h.estime : h.rancune;
+    const delta = rep * part - rep;
+    if (Math.abs(delta) < 0.5) continue;
+    appliquerReputation(state, k, delta);
+    log({
+      type: 'rumeur',
+      texte: rep > 0
+        ? `${dk.titre} ${dk.nom} reprend ${drapeauDe(state.world, k).nom} : ce qu'on vous devait `
+          + `ne se transmet qu'en partie — votre nom y pèse un peu moins.`
+        : `${dk.titre} ${dk.nom} reprend ${drapeauDe(state.world, k).nom} : une part des vieilles `
+          + `rancunes s'éteint avec son prédécesseur.`,
+      factions: [k],
+      discret: true,
+    });
+  }
+
   // M7 : une offre qui attend trop s'éteint — la maison s'est choisie
   // quelqu'un, et c'est celui qui tient déjà la place.
   if (state.player.offreCouronne && state.temps > state.player.offreCouronne.echeance) {

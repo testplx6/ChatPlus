@@ -6665,6 +6665,13 @@ const ESTIME_ENGAGEMENT = {
   //
   // Si l'ouverture doit se mériter un jour, le levier n'est pas ici : c'est
   // l'érosion du début de partie, ou un premier gain garanti chez ses hôtes.
+  //
+  // Depuis L4 (MEMOIRE.md, août 2026), l'érosion n'existe plus — et la
+  // remesure a montré que ces chiffres dataient d'un autre monde : le banc
+  // d'aujourd'hui rend 3 parties engagées sur 30, érosion ou pas (témoin
+  // a655ba7). Les seuils sont regelés tels quels sur décision du
+  // propriétaire (« mesure ») ; le fond est consigné dans MEMOIRE.md
+  // §Blocages, et tout recalage passera par un balayage, pas à vue.
   commune: 10,
   nomade: 18,
   corpo: 26,
@@ -15957,7 +15964,56 @@ const COURONNE_MODES = {
   fanatique: 'le Signal vous désigne',
 };
 
+/**
+ * L4 (MEMOIRE.md) — ce qu'un successeur fait des comptes que son prédécesseur
+ * tenait sur VOUS. Part gardée de l'estime et de la rancune, par tempérament :
+ * un rancunier n'oublie rien mais ne vous doit rien ; un conciliateur passe
+ * l'éponge sur les vieilles histoires. C'est le seul « oubli » du jeu — porté
+ * par un visage, daté par une mort. Calibrable, objet mutable.
+ */
+const HERITAGE_COUR = {
+  rancunier: { estime: 0.5, rancune: 1 },
+  conciliateur: { estime: 1, rancune: 0.25 },
+  methodique: { estime: 0.9, rancune: 0.9 },
+  conquerant: { estime: 0.6, rancune: 0.8 },
+  rapace: { estime: 0.6, rancune: 0.6 },
+  prudent: { estime: 0.8, rancune: 0.7 },
+  batisseur: { estime: 0.8, rancune: 0.5 },
+};
+
 function tickCour(state, log) {
+  // L4 — l'oubli a des visages : à chaque succession, PARTOUT (pas seulement
+  // chez ceux qu'on sert), le successeur hérite d'une part de ce que son
+  // prédécesseur pensait de vous, selon SON tempérament. C'est LEUR mémoire
+  // qui vit sa vie — elle bouge que vous le sachiez ou non.
+  if (!state.player.chefs) state.player.chefs = {};
+  for (const k of Object.keys(state.world.factions)) {
+    if (k === 'essaim') continue;
+    const dk = dirigeant(state.world, k);
+    if (!dk) continue;
+    const connu = state.player.chefs[k];
+    if (connu === undefined || connu === null) { state.player.chefs[k] = dk.id; continue; }
+    if (connu === dk.id) continue;
+    state.player.chefs[k] = dk.id;
+    const rep = state.player.reputation[k] || 0;
+    if (rep === 0) continue;
+    const h = HERITAGE_COUR[dk.temperament] || { estime: 0.8, rancune: 0.8 };
+    const part = rep > 0 ? h.estime : h.rancune;
+    const delta = rep * part - rep;
+    if (Math.abs(delta) < 0.5) continue;
+    appliquerReputation(state, k, delta);
+    log({
+      type: 'rumeur',
+      texte: rep > 0
+        ? `${dk.titre} ${dk.nom} reprend ${drapeauDe(state.world, k).nom} : ce qu'on vous devait `
+          + `ne se transmet qu'en partie — votre nom y pèse un peu moins.`
+        : `${dk.titre} ${dk.nom} reprend ${drapeauDe(state.world, k).nom} : une part des vieilles `
+          + `rancunes s'éteint avec son prédécesseur.`,
+      factions: [k],
+      discret: true,
+    });
+  }
+
   // M7 : une offre qui attend trop s'éteint — la maison s'est choisie
   // quelqu'un, et c'est celui qui tient déjà la place.
   if (state.player.offreCouronne && state.temps > state.player.offreCouronne.echeance) {
@@ -22349,75 +22405,20 @@ function bandeLocale(state, ctx, groupe) {
  * tirage est global, et c'est le groupe qu'ils trouvent qui doit s'expliquer.
  * Un tirage par groupe multiplierait leur fréquence par le nombre de groupes.
  */
-/** Ce qu'une rancune perd par jour. Une haine s'émousse vite. */
-const OUBLI_RANCUNE = 0.45;
-
-/** Et ce qu'un service rendu perd par jour, au mieux. */
-const EROSION_ESTIME = 0.1;
-
-/**
- * Au-dessus, on s'efface à plein tarif ; en dessous, de moins en moins vite.
- *
- * Trente : c'est l'ordre de grandeur de ce qu'on a en poche au premier jour
- * quand une ville vous accueille, et de ce que demandent les drapeaux les plus
- * ouverts.
- */
-const PALIER_EROSION = 30;
-
-/**
- * L'estime s'efface, mais de moins en moins vite à mesure qu'elle baisse.
- *
- * C'était un taux plat de un dixième par jour, et il rendait l'ouverture du jeu
- * impraticable. Mesuré, en ne faisant ni bien ni mal — le cas du joueur qui
- * explore, c'est-à-dire les premières heures de toutes les parties :
- *
- *   Ombrelle   seuil 26 · 28 d'estime au départ · sous le seuil à J20
- *   Hexa       seuil 26 · 28                    · sous le seuil à J7
- *   Église     seuil 40 · 42                    · sous le seuil à J20
- *
- * Et en huit mois de jeu, l'estime de départ était intégralement partie. On
- * commençait donc reçu quelque part et l'on devenait un inconnu en une semaine,
- * sans avoir rien fait de mal. Le commentaire d'ESTIME_ENGAGEMENT l'avait
- * pressenti sans le corriger : « demander trois points de plus, c'est demander
- * de courir plus vite qu'une pente ».
- *
- * On garde la pente là où elle a un sens — une gloire de Commandeur doit se
- * défendre — et on l'aplatit là où elle tue le début de partie. Le service rendu
- * s'oublie ; le premier service rendu s'oublie très lentement.
- */
-function erosionEstime(v) {
-  if (v <= 0) return 0;
-  return Math.min(v, EROSION_ESTIME * Math.min(1, v / PALIER_EROSION));
-}
+// L'érosion quotidienne est morte ici (L4, MEMOIRE.md, décision n°3 du
+// propriétaire : « la rancune et la durée sont propres à chaque personnage et
+// chaque situation — certains peuvent oublier, ce n'est pas à moi de décider
+// mais à la simulation »). Le joueur était le seul être du monde qu'on
+// oubliait à heure fixe : 0,1 point d'estime et 0,45 de rancune par jour,
+// pour tout le monde, au chronomètre. L'oubli est désormais un acte du
+// porteur : la succession relit (HERITAGE_COUR, influence.js), les porteurs
+// meurent, la réparation reste le chemin actif. La porte de sortie de
+// l'hostilité — la raison d'être de l'ancien oubli — a changé de forme, pas
+// disparu : réparer, solder ses primes, ou lire venir la succession.
 
 function tenterChasseurs(state, log, ctx) {
   const rng = ctx.rng;
   const primes = state.player.primes || (state.player.primes = {});
-
-  // Les rancunes s'émoussent. Sans cet oubli, la réputation n'est qu'un
-  // cliquet qui descend : dix accrochages suffisent à se rendre le monde
-  // définitivement hostile, et plus rien ne peut réparer ça.
-  //
-  // L'estime, elle, s'efface de moins en moins vite à mesure qu'elle baisse :
-  // voir `erosionEstime`.
-  // Témoin du banc : on coupe l'oubli pour savoir ce qu'il coûte vraiment à
-  // l'estime, plutôt que de le deviner. Voir test/equilibre.js, SANS=erosion.
-  if (state.temps % 24 === 0 && !state.sansErosion) {
-    for (const k of Object.keys(state.player.reputation)) {
-      const v = state.player.reputation[k];
-      if (v === 0) continue;
-      // Asymétrique à dessein : une rancune s'émousse vite, un service rendu
-      // reste longtemps. Sinon on ne peut ni sortir de l'hostilité, ni
-      // accumuler assez d'estime pour être reçu quelque part.
-      //
-      // Et l'on n'oublie pas celui qu'on a sous les yeux : tant qu'une colonne
-      // sert ce drapeau, rien ne s'efface chez lui. C'était la seule façon de
-      // perdre du terrain en servant tous les jours.
-      if (v > 0 && estAuService(state, k)) continue;
-      // Par la porte unique — et ce bloc entier meurt à L4 (MEMOIRE.md).
-      appliquerReputation(state, k, v > 0 ? -erosionEstime(v) : Math.min(-v, OUBLI_RANCUNE));
-    }
-  }
 
   for (const k of Object.keys(state.player.reputation)) {
     if (!drapeauDe(state.world, k) || k === 'essaim') continue;
@@ -24431,6 +24432,9 @@ function normaliser(state) {
   // L2 (MEMOIRE.md) : le registre des faits — vide pour une vieille partie,
   // le passé est réputé su, on ne réécrit pas l'histoire.
   if (!state.player.faits) state.player.faits = [];
+  // L4 : le guetteur des successions — vide, il se pose au premier tick sans
+  // déclencher d'héritage (on ne relit pas un passé qu'on n'a pas vu).
+  if (!state.player.chefs) state.player.chefs = {};
   if (!state.player.rachatsFaits) {
     state.player.rachatsFaits = [];
     for (let i = 0; i < Math.min(5, state.player.rachats || 0); i++) {
@@ -25143,6 +25147,7 @@ function nouvellePartie(seed, opts = {}) {
       rachats: 0,
       rachatsFaits: [],
       faits: [],
+      chefs: {},
     },
     base: creerBase(),
     journal: [],

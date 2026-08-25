@@ -42,7 +42,7 @@ import {
   detrousser, FOUILLE,
 } from '../src/events.js';
 import {
-  bandeLocale, tenterChasseurs, erosionEstime, EROSION_ESTIME,
+  bandeLocale, tenterChasseurs,
 } from '../src/events.js';
 import { texteFil, texteFilInacheve } from '../src/histoire.js';
 import { rencontresDe, retenirContrat, retenirAccrochage } from '../src/rapport.js';
@@ -1448,72 +1448,39 @@ ok(liens9c.length === 0 || Math.max(...liens9c) < 100,
   'les liens d’escouade ne saturent pas', liens9c.join(','));
 verifierCoherence(s9c, 'après 8 000 h au service d’une faction');
 
-section('9 ter ter. Ce qu’on a mérité ne s’évapore plus');
+section('9 ter ter. Ce qu’on a mérité ne s’évapore plus — du tout (MEMOIRE.md, L4)');
 {
-  // L'estime s'effaçait d'un dixième par jour, quel que soit son niveau. Mesuré
-  // en ne faisant ni bien ni mal — le cas du joueur qui explore, c'est-à-dire
-  // les premières heures de toutes les parties — l'estime de départ était
-  // intégralement partie en huit mois de jeu : 28 → 4, 28 → 2, 42 → 18. On
-  // commençait reçu quelque part et l'on devenait un inconnu sans avoir rien
-  // fait de mal.
-
-  // La forme d'abord, sur la fonction elle-même : c'est là que la règle vit.
-  ok(erosionEstime(60) === EROSION_ESTIME,
-    'au-dessus du palier, on s’efface à plein tarif',
-    `${erosionEstime(60)}`);
-  ok(erosionEstime(10) < erosionEstime(28),
-    'et de moins en moins vite à mesure qu’on descend',
-    `28 → ${erosionEstime(28).toFixed(3)}/j · 10 → ${erosionEstime(10).toFixed(3)}/j`);
-  ok(erosionEstime(2) > 0, 'sans jamais s’arrêter tout à fait',
-    `${erosionEstime(2).toFixed(3)}/j`);
-  ok(erosionEstime(0) === 0 && erosionEstime(-30) === 0,
-    'et ceci ne parle que de l’estime : les rancunes ont leur propre oubli');
-
-  // Puis l'effet, dans une vraie partie. On nourrit l'escouade : sans ça elle
-  // meurt de faim au bout de deux mois et l'on mesure une partie finie, pas une
-  // érosion. C'est le piège qui a d'abord fait croire que l'érosion s'arrêtait
-  // toute seule.
+  // L'érosion quotidienne est morte avec L4 : le joueur était le seul être du
+  // monde qu'on oubliait à heure fixe. L'estime ne bouge plus que par des
+  // ACTES (les siens) et des ÉVÉNEMENTS (successions, morts, réparations).
+  // Même fixture qu'au temps de l'érosion dégressive : on nourrit l'escouade
+  // et on ne fait ni bien ni mal — l'estime de départ ne doit plus fondre.
   const st = nouvellePartie(101, { maintenant: 0, depart: 'ville', equipe: 3 });
   const hote = DIPLO_FACTIONS.find((k) => (st.player.reputation[k] || 0) > 5);
   ok(!!hote, 'une ville d’accueil vous connaît au premier jour');
   const depart = st.player.reputation[hote];
-  const jouer = (jours) => {
-    for (let i = 0; i < 24 * jours; i++) {
-      groupeActif(st).inventaire.rations = 400;
-      tick(st);
+  // Le décor épingle le règne : on mesure l'absence d'érosion, pas
+  // l'héritage d'une succession — le monde a le droit de changer de chef,
+  // pas au milieu de cet instrument-ci.
+  const chef101 = st.world.factions[hote].dirigeant;
+  for (let i = 0; i < 24 * 60; i++) {
+    groupeActif(st).inventaire.rations = 400;
+    // Chef jeune et assis : la chute devient improbable — et si le monde le
+    // remplace quand même, on restaure le chef, le guetteur ET la valeur :
+    // l'héritage est légitime, mais ce n'est pas lui que cet instrument mesure.
+    chef101.age = 30;
+    chef101.legitimite = 95;
+    const repAvantH101 = st.player.reputation[hote] || 0;
+    tick(st);
+    if (st.world.factions[hote].dirigeant !== chef101) {
+      st.world.factions[hote].dirigeant = chef101;
+      st.player.chefs[hote] = chef101.id;
+      st.player.reputation[hote] = repAvantH101;
     }
-    return st.player.reputation[hote] || 0;
-  };
-  // Cent vingt jours, en deux moitiés — et pas huit mois. Au-delà, l'estime
-  // bouge pour des raisons qui n'ont rien à voir avec l'oubli : l'escouade se
-  // bat, dépouille des morts, et chaque cadavre fouillé coûte cinq points à la
-  // faction du mort. Mesuré, la trajectoire est 28 → 25,3 → 22,9 → 20,7 → 18,8
-  // sur quatre mois, puis un décrochage brutal à zéro le huitième — trois
-  // pillages, rien d'autre. Un horizon trop long ne mesure plus son sujet.
-  const miParcours = jouer(60);
-  const reste = jouer(60);
-
-  // Le sujet, c'est que l'érosion *ralentit* — pas qu'il reste tel pourcentage
-  // au bout de tel nombre de jours. La première version exigeait « plus de 35 %
-  // après huit mois » sur une seule graine : elle est tombée à 33 % le jour où
-  // un changement d'économie a décalé le monde de quelques pour cent, et elle
-  // accusait alors l'érosion, qui n'avait pas bougé d'un iota. On compare donc
-  // les deux moitiés du parcours l'une à l'autre : c'est ce que « dégressif »
-  // veut dire, et ça ne dépend d'aucun seuil choisi à la main.
-  // La dégressivité se vérifie sur la fonction, quelques lignes plus haut, et
-  // pas sur une trajectoire jouée : l'escouade se bat et dépouille des morts,
-  // et chaque cadavre fouillé coûte cinq points à la faction du mort. Aucun
-  // horizon n'échappe à ce bruit — mesuré, la perte du second quadrimestre est
-  // tantôt inférieure, tantôt supérieure à celle du premier, selon les
-  // rencontres. Ce qu'on vérifie ici, c'est que la partie jouée est cohérente
-  // avec la règle : ça baisse, et il en reste.
-  ok(miParcours < depart && reste < miParcours,
-    'et dans une partie jouée, l’estime s’émousse pour de bon',
-    `${depart.toFixed(0)} → ${miParcours.toFixed(1)} → ${reste.toFixed(1)}`);
-  ok(reste > 0, 'et il en reste toujours quelque chose', `${reste.toFixed(1)}`);
-  ok(reste < depart,
-    'mais elle a bien baissé : servir reste la seule façon de la tenir',
-    `${depart.toFixed(0)} → ${reste.toFixed(1)}`);
+  }
+  ok((st.player.reputation[hote] || 0) > depart - 3,
+    'soixante jours sans rien faire : l’estime de départ n’a pas fondu — on n’oublie plus au chronomètre',
+    `${depart} → ${(st.player.reputation[hote] || 0).toFixed(1)}`);
 }
 
 section('9 ter bis. Six drapeaux, six extras, une seule base');
@@ -12385,6 +12352,90 @@ section('MEM 3. La mémoire — L3, les cinq omniscients passent au registre (ME
     ok((s.player.reputation[F] || 0) <= -10,
       'et quand elle arrive, on n’oublie pas ce genre de départ',
       `${s.player.reputation[F]}`);
+  }
+}
+
+// ===========================================================================
+section('MEM 4. La mémoire — L4, l’oubli a des visages (MEMOIRE.md)');
+{
+  const rien = () => {};
+  const influence4 = await import('../src/influence.js');
+  ok(!!influence4.HERITAGE_COUR,
+    'l’héritage d’une succession existe, tempérament par tempérament — pas de constante universelle');
+
+  // 1) La rancune ne fond plus toute seule : dix jours sans un geste, elle
+  //    est toujours là.
+  {
+    const s = nouvellePartie(761, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const B = Object.keys(s.world.factions).find(
+      (k) => k !== 'essaim' && s.world.factions[k].colonies.length && dirigeant(s.world, k));
+    s.player.reputation[B] = -40;
+    // Règne épinglé : on mesure l'absence d'oubli au chronomètre, pas une
+    // succession qui aurait le droit, elle, de bouger la rancune.
+    const chef761 = s.world.factions[B].dirigeant;
+    for (let i = 0; i < 240; i++) {
+      groupeActif(s).inventaire.rations = 200;
+      chef761.age = 30;
+      chef761.legitimite = 95;
+      const repAvantH = s.player.reputation[B] || 0;
+      tick(s);
+      if (s.world.factions[B].dirigeant !== chef761) {
+        // Le monde a remplacé le chef pendant l'heure : l'héritage qui vient
+        // de s'appliquer est légitime, mais ce n'est pas lui qu'on mesure —
+        // on restaure le chef, le guetteur, ET la valeur.
+        s.world.factions[B].dirigeant = chef761;
+        s.player.chefs[B] = chef761.id;
+        s.player.reputation[B] = repAvantH;
+      }
+    }
+    ok(Math.abs((s.player.reputation[B] || 0) + 40) < 1,
+      'dix jours passent : la rancune est toujours là — l’absolution au chronomètre est morte',
+      `${(s.player.reputation[B] || 0).toFixed(1)}`);
+  }
+
+  // 2) Un rancunier hérite : il garde les comptes — et ne vous doit rien.
+  {
+    const s = nouvellePartie(763, { maintenant: 24 * 40 + 1, depart: 'ville', equipe: 3 });
+    const cand = Object.keys(s.world.factions).filter(
+      (k) => k !== 'essaim' && s.world.factions[k].colonies.length && dirigeant(s.world, k));
+    const A = cand[0];
+    const B = cand[1];
+    tick(s); // le guetteur note les chefs du jour
+    s.player.reputation[A] = -40;
+    s.player.reputation[B] = 40;
+    const succ = (k) => {
+      const neuf = creerDirigeant(new Rng(29), k, s.temps, undefined, s.world);
+      neuf.temperament = 'rancunier';
+      s.world.factions[k].dirigeant = neuf;
+    };
+    succ(A);
+    succ(B);
+    tick(s);
+    ok(Math.abs((s.player.reputation[A] || 0) + 40) < 1,
+      'le rancunier garde la rancune entière — il n’oublie rien, c’est tout son travail',
+      `${s.player.reputation[A]}`);
+    ok((s.player.reputation[B] || 0) < 30,
+      'mais ce qu’on devait à l’ancien chef ne se transmet qu’en partie',
+      `${s.player.reputation[B]}`);
+  }
+
+  // 3) Un conciliateur hérite : les vieilles histoires s'éteignent avec
+  //    l'ancien chef.
+  {
+    const s = nouvellePartie(767, { maintenant: 24 * 40 + 1, depart: 'ville', equipe: 3 });
+    const A = Object.keys(s.world.factions).find(
+      (k) => k !== 'essaim' && s.world.factions[k].colonies.length && dirigeant(s.world, k));
+    tick(s);
+    s.player.reputation[A] = -40;
+    const neuf = creerDirigeant(new Rng(31), A, s.temps, undefined, s.world);
+    neuf.temperament = 'conciliateur';
+    s.world.factions[A].dirigeant = neuf;
+    tick(s);
+    ok((s.player.reputation[A] || 0) > -15,
+      'le conciliateur passe l’éponge sur l’essentiel des vieilles histoires',
+      `${s.player.reputation[A]}`);
+    ok(s.journal.some((l) => /reprend|hérite|éponge|rancune/i.test(l.texte) && l.type === 'rumeur'),
+      'et ça se dit — l’oubli a un visage et une date');
   }
 }
 

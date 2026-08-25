@@ -83,7 +83,7 @@ quelqu'un d'autre.
 | `MARECHAL.md` | le sommet de la voie du service — **livré, huit lots sur huit** : dyarchie, rappel, levée dimensionnée (+E10), but nommé, place à tenir, frictions de la cour, couronne (une trouvaille consignée dans ses Blocages : l'investissement du conseil quasi mort) |
 | `ALLURE.md` | l'étude « AAA textuel » — diagnostic, direction artistique ; **quick wins Q1–Q7 livrés** (limites dites dans « L'avancement »), pistes moyennes et grosses en attente |
 | `AUDIT.md` | l'audit doctrinal (14 écarts, 3 vagues) **+ la revue au prisme « simulation, pas punition »** (août 2026) : sept corrections livrées (E3, S2, S3, S4, S6, M4, F2), deux fonds au propriétaire (S1 l'oubli à heure fixe, S5 l'omniscience) — plus aucun multiplicateur dirigé contre le joueur |
-| `MEMOIRE.md` | le chantier « la mémoire a des porteurs » (S1+S5+E12) — **ouvert**, cahier en cours, rien ne se code avant les décisions |
+| `MEMOIRE.md` | le chantier « la mémoire a des porteurs » (S1+S5+E12) — **L1 à L4 livrés** : les nouvelles ont des jambes, le registre des faits (seule porte vers la réputation), « pas vu, pas su », l'érosion est morte et l'oubli a des visages ; remesure d'ouverture faite (deux trouvailles dans ses Blocages), reste L5 (la mémoire chez le souvenant — la cible) |
 | `PISTES.md` | des idées consignées, pas des chantiers — rien n'y est engagé |
 | `README.md` | le projet, les tests, l'architecture |
 

@@ -305,6 +305,7 @@ export function nouvellePartie(seed, opts = {}) {
       rachats: 0,
       rachatsFaits: [],
       faits: [],
+      chefs: {},
     },
     base: creerBase(),
     journal: [],

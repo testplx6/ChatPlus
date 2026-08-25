@@ -162,6 +162,9 @@ export function normaliser(state) {
   // L2 (MEMOIRE.md) : le registre des faits — vide pour une vieille partie,
   // le passé est réputé su, on ne réécrit pas l'histoire.
   if (!state.player.faits) state.player.faits = [];
+  // L4 : le guetteur des successions — vide, il se pose au premier tick sans
+  // déclencher d'héritage (on ne relit pas un passé qu'on n'a pas vu).
+  if (!state.player.chefs) state.player.chefs = {};
   if (!state.player.rachatsFaits) {
     state.player.rachatsFaits = [];
     for (let i = 0; i < Math.min(5, state.player.rachats || 0); i++) {

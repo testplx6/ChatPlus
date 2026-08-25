@@ -109,6 +109,13 @@ export const ESTIME_ENGAGEMENT = {
   //
   // Si l'ouverture doit se mériter un jour, le levier n'est pas ici : c'est
   // l'érosion du début de partie, ou un premier gain garanti chez ses hôtes.
+  //
+  // Depuis L4 (MEMOIRE.md, août 2026), l'érosion n'existe plus — et la
+  // remesure a montré que ces chiffres dataient d'un autre monde : le banc
+  // d'aujourd'hui rend 3 parties engagées sur 30, érosion ou pas (témoin
+  // a655ba7). Les seuils sont regelés tels quels sur décision du
+  // propriétaire (« mesure ») ; le fond est consigné dans MEMOIRE.md
+  // §Blocages, et tout recalage passera par un balayage, pas à vue.
   commune: 10,
   nomade: 18,
   corpo: 26,
