@@ -189,15 +189,16 @@ la finition ensuite.
   amplifiée : feux avec halo, cendre plus dense. Deux gardes
   mesurables : l'inexploré ≥ 6 tons, une case découverte ≥ 8 tons —
   rouges d'abord (2 et 3 tons).
-- **Trouvaille en route — l'ancre du journal avait un vrai défaut.**
-  Le garde « ce qu'on lit reste sous les yeux » est tombé au pixel
-  près : la clé d'ancre « heure + début du texte » n'est pas unique —
-  une rafale de guerre écrit deux entrées identiques à la même heure,
-  et l'ancre retrouvait le premier doublon. Réparé dans le produit,
-  pas dans le garde : chaque entrée de journal porte un numéro d'ordre
-  monotone (`journalN`, posé par `creerLogger`, migré par
-  `normaliser`), et l'ancre s'y accroche. C'est probablement le fond
-  de la dette « enquête ancre navigateur » de PROMESSES.md.
+- **Trouvaille en route — un vrai défaut d'ancre corrigé, mais pas
+  celui du garde.** Le garde « ce qu'on lit reste sous les yeux » est
+  tombé au pixel près pendant G1 (cinq runs rouges identiques, un vert
+  isolé, même code — la bissection remonte à l'état déjà poussé). En
+  l'instruisant, un défaut réel : la clé d'ancre « heure + début du
+  texte » n'est pas unique sous rafale de guerre — corrigé dans le
+  produit (`journalN`, numéro d'ordre monotone par entrée). Le
+  durcissement est réel, l'oscillation persiste : dossier complet dans
+  PROMESSES.md §Blocages, **`--complet` est bloqué dessus, donc le
+  push de G1 attend**.
 
 **Les six pistes moyennes et G1 sont livrées.** Restent G2 (mode
 chronique) et G3 (son génératif) — non engagées.

@@ -217,14 +217,20 @@ ci-dessus est porté par un agent qui a sa logique.
   les scripts de mesure à côté. En attendant : ancrage par équivalence
   à l'ancienne pression (test), verdict final au propriétaire en
   jouant.
-- ~~**La mesure d'ancre du navigateur** (« ce qu'on lit reste sous les
-  yeux ») oscille d'un run à l'autre~~ — **enquête close (août 2026,
-  chantier ALLURE G1)** : ce n'était pas que la charge machine. La clé
-  d'ancre d'une entrée de journal (« heure + début du texte ») n'était
-  pas unique — une rafale de guerre écrit deux entrées identiques à la
-  même heure, l'ancre retrouvait le premier doublon et la lecture
-  sautait. Tombé au pixel près (quatre runs identiques), bissecté
-  jusqu'à l'état commité, corrigé dans le produit : chaque entrée porte
-  un numéro d'ordre monotone (`journalN`, creerLogger + normaliser) et
-  l'ancre s'y accroche. Le garde n'a pas bougé d'une virgule.
+- **La mesure d'ancre du navigateur** (« ce qu'on lit reste sous les
+  yeux ») oscille d'un run à l'autre — **enquête toujours ouverte,
+  nouvelles pièces au dossier (août 2026, chantier ALLURE G1)** :
+  l'oscillation est apparue en rouge STABLE au pixel près (cinq runs :
+  « ⚑ Église du », hauts 8224/8749/8863 identiques) avec un vert
+  isolé, même code — et la bissection remonte à l'état déjà poussé :
+  ce ne sont pas les changements du jour. En route, un vrai défaut
+  trouvé et corrigé : la clé d'ancre « heure + début du texte » n'est
+  pas unique (une rafale de guerre écrit deux entrées identiques à la
+  même heure, l'ancre retrouvait le premier doublon) — chaque entrée
+  porte désormais un numéro d'ordre monotone (`journalN`, creerLogger
+  + normaliser) et l'ancre s'y accroche. Ce durcissement est réel mais
+  ne suffit pas : les deux transitions persistent. Le garde n'a pas
+  bougé d'une virgule ; il **bloque `--complet`, donc le push**, tant
+  que l'instrumentation dédiée n'a pas dit qui, de l'ancre ou du
+  rendu, perd la ligne pendant la rafale.
 
