@@ -929,6 +929,24 @@ function dessinerCarte(cv) {
   g.fillStyle = '#05070a';
   g.fillRect(0, 0, L, H);
 
+  // La sous-couche peinte (étape 8, l'affiche) : le monde en UN pixel par
+  // région, étiré avec lissage bilinéaire — les régions d'un même pays se
+  // fondent en champs organiques, et la matière crispe se pose par-dessus.
+  // Déterministe (mêmes entrées, même image), et le carnet ne divulgue rien :
+  // l'inexploré y est une seule teinte de cendre.
+  const mini = dessinerCarte._mini || (dessinerCarte._mini = document.createElement('canvas'));
+  if (mini.width !== w.largeur) { mini.width = w.largeur; mini.height = w.hauteur; }
+  const mg = mini.getContext('2d');
+  for (const r of w.regions) {
+    mg.fillStyle = r.decouvert ? BIOMES[r.biome].couleurs[1] : '#0b0a0d';
+    mg.fillRect(r.x, r.y, 1, 1);
+  }
+  g.imageSmoothingEnabled = true;
+  g.globalAlpha = 0.55;
+  g.drawImage(mini, 0, 0, L, H);
+  g.globalAlpha = 1;
+  g.imageSmoothingEnabled = false;
+
   for (const r of w.regions) {
     const x = r.x * CELL;
     const y = r.y * CELL;
@@ -936,8 +954,10 @@ function dessinerCarte(cv) {
       // L'inexploré n'est pas un aplat (G1) : un monde sous la cendre. Des
       // reliefs devinés — du bruit, pas le vrai terrain : la carte reste un
       // carnet, elle ne divulgue rien.
+      g.globalAlpha = 0.82;
       g.fillStyle = '#121014';
       g.fillRect(x, y, CELL, CELL);
+      g.globalAlpha = 1;
       g.globalAlpha = 0.05 + bruit(r.i, 97) * 0.07;
       g.fillStyle = '#000';
       g.fillRect(x, y, CELL, CELL);
@@ -957,8 +977,10 @@ function dessinerCarte(cv) {
       continue;
     }
     const cols = BIOMES[r.biome].couleurs;
+    g.globalAlpha = 0.62;
     g.fillStyle = cols[0];
     g.fillRect(x, y, CELL, CELL);
+    g.globalAlpha = 1;
     // Le terrain ondule (G1) : chaque case a sa valeur propre, tirée de son
     // indice — fini le carrelage de neuf aplats.
     g.globalAlpha = 0.08 * bruit(r.i, 1);
@@ -1240,6 +1262,28 @@ function dessinerCarte(cv) {
       const o = Math.round((CELL - t) / 2);
       g.fillStyle = '#05070a';
       g.fillRect(x + o + 1, y + o + 1, t - 2, t - 2);
+    }
+  }
+
+  // L'étiquette de l'escouade (étape 8) : le marqueur porte son nom, comme
+  // sur l'affiche — un seul mot, sous le carré du groupe affiché.
+  if (CELL >= 16) {
+    const ra = w.regions[actif.regionId];
+    if (ra) {
+      const tE = Math.max(7, Math.round(CELL * 0.3));
+      g.font = `600 ${tE}px ui-monospace, Menlo, Consolas, monospace`;
+      g.textAlign = 'center';
+      g.textBaseline = 'top';
+      g.lineWidth = 3;
+      g.strokeStyle = 'rgba(5,7,10,.9)';
+      const et = groupes(S).length > 1 ? actif.nom.toUpperCase() : 'VOTRE ESCOUADE';
+      const ex = ra.x * CELL + CELL / 2;
+      const ey = Math.min(ra.y * CELL + CELL + 2, H - tE - 1);
+      g.strokeText(et, ex, ey);
+      g.fillStyle = 'rgba(242,246,251,.95)';
+      g.fillText(et, ex, ey);
+      g.textAlign = 'left';
+      g.textBaseline = 'alphabetic';
     }
   }
 

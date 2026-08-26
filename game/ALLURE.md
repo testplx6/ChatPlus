@@ -356,7 +356,27 @@ la finition ensuite.
     huit icônes dessinées à la règle de M5 (trait 1,6, grille 24,
     couleur du texte courant), cyan quand l'ordre est actif.
 
-  **La refonte direction A est livrée** — cinq étapes, chacune
+  - **Étapes 6 à 8 — livrées : la carte rejoint l'affiche.**
+    L'alerte flotte sur le monde (première urgence du point de
+    situation — scindé en `donneesSituation()` et son panneau — avec
+    la porte « Régler ») ; le HUD tient en jetons généreux, à
+    l'échelle de la maquette (l'effectif y RESTE : le test du bandeau
+    a refusé son masquage — « une information cachée coûte une
+    escouade » — et il avait raison) ; et le terrain est peint, plus
+    carrelé : une sous-couche du monde en un pixel par région étirée
+    avec lissage bilinéaire fond les pays en champs organiques, la
+    matière crispe se pose dessus, chaque case découverte pose sa
+    lueur radiale, les villes vivantes ont un halo à la couleur de
+    leur drapeau vu (les ruines restent éteintes), le marqueur de
+    l'escouade rayonne et porte son nom. Le garde G1 a refusé le
+    premier éclaircissement (5 tons sur 6 dans l'inexploré) —
+    corrigé en rendant sa variété à la cendre, pas en touchant au
+    garde. Ce qui reste de l'ordre des données, dit franchement : la
+    maquette montre un monde de milieu de partie ; à J1, le monde
+    réel est sous la cendre et se peint en jouant — la carte est un
+    carnet.
+
+  **La refonte direction A est livrée** — huit étapes, chacune
   poussée après suite entière et `--complet` verts, l'artefact
   republié à chaque livraison. Reste ouvert si le propriétaire en
   veut plus : le HUD posé en surimpression sur la carte elle-même
