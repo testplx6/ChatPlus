@@ -129,6 +129,18 @@ if (!navigateur) {
 }
 
 const page = await navigateur.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+// Le décor épingle les polices : la police distante (`font-display: swap`)
+// s'applique quand le réseau veut — et quand elle arrive EN COURS de mesure,
+// toutes les métriques de texte changent d'un coup : la ligne lue saute sans
+// que l'ancre ait failli. C'est ce qui faisait osciller le garde « ce qu'on
+// lit reste sous les yeux » à code identique (vert quand la police arrivait
+// avant la mesure ou jamais, rouge quand elle arrivait au milieu). On mesure
+// l'ancre, pas le reflow d'un swap : la pile de repli est la seule servie.
+const epinglerPolices = async (p) => {
+  await p.route('**://fonts.googleapis.com/**', (r) => r.abort());
+  await p.route('**://fonts.gstatic.com/**', (r) => r.abort());
+};
+await epinglerPolices(page);
 // U2 (INTERFACE.md) — le canevas ne se lit pas dans le DOM : on note ce que la
 // carte écrit (fillText) pour pouvoir vérifier qu'elle écrit les noms des
 // villes relevées. Posé avant la première navigation, survit aux reload.
@@ -431,6 +443,7 @@ ok(await page.locator('[data-a="annuler"]').count() > filesAvant, 'un chantier s
 
 console.log('\n8. Écran large');
 const large = await navigateur.newPage({ viewport: { width: 1280, height: 900 } });
+await epinglerPolices(large);
 await large.goto(`http://localhost:${PORT}/`, { waitUntil: 'networkidle' });
 await large.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), sauvegarde);
 await large.reload({ waitUntil: 'networkidle' });

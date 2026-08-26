@@ -189,16 +189,17 @@ la finition ensuite.
   amplifiée : feux avec halo, cendre plus dense. Deux gardes
   mesurables : l'inexploré ≥ 6 tons, une case découverte ≥ 8 tons —
   rouges d'abord (2 et 3 tons).
-- **Trouvaille en route — un vrai défaut d'ancre corrigé, mais pas
-  celui du garde.** Le garde « ce qu'on lit reste sous les yeux » est
-  tombé au pixel près pendant G1 (cinq runs rouges identiques, un vert
-  isolé, même code — la bissection remonte à l'état déjà poussé). En
-  l'instruisant, un défaut réel : la clé d'ancre « heure + début du
-  texte » n'est pas unique sous rafale de guerre — corrigé dans le
-  produit (`journalN`, numéro d'ordre monotone par entrée). Le
-  durcissement est réel, l'oscillation persiste : dossier complet dans
-  PROMESSES.md §Blocages, **`--complet` est bloqué dessus, donc le
-  push de G1 attend**.
+- **Trouvaille en route — l'enquête d'ancre de PROMESSES est close,
+  coupable confondu : la police.** Le garde « ce qu'on lit reste sous
+  les yeux » est tombé au pixel près pendant G1 ; l'instruction a
+  montré que `font-display: swap` appliquait IBM Plex en cours de
+  mesure — toutes les métriques changent d'un coup, la ligne saute
+  sans que l'ancre ait failli. Le décor épingle les polices (abort sur
+  les deux hôtes, pile de repli seule servie), la suite repasse deux
+  fois d'affilée, le garde n'a pas bougé d'une virgule. Bonus : un
+  vrai doublon de clés d'ancre corrigé en route (`journalN`, numéro
+  d'ordre monotone par entrée de journal). Dossier complet dans
+  PROMESSES.md §Blocages.
 
 **Les six pistes moyennes et G1 sont livrées.** Restent G2 (mode
 chronique) et G3 (son génératif) — non engagées.

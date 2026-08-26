@@ -217,20 +217,22 @@ ci-dessus est porté par un agent qui a sa logique.
   les scripts de mesure à côté. En attendant : ancrage par équivalence
   à l'ancienne pression (test), verdict final au propriétaire en
   jouant.
-- **La mesure d'ancre du navigateur** (« ce qu'on lit reste sous les
-  yeux ») oscille d'un run à l'autre — **enquête toujours ouverte,
-  nouvelles pièces au dossier (août 2026, chantier ALLURE G1)** :
-  l'oscillation est apparue en rouge STABLE au pixel près (cinq runs :
-  « ⚑ Église du », hauts 8224/8749/8863 identiques) avec un vert
-  isolé, même code — et la bissection remonte à l'état déjà poussé :
-  ce ne sont pas les changements du jour. En route, un vrai défaut
-  trouvé et corrigé : la clé d'ancre « heure + début du texte » n'est
-  pas unique (une rafale de guerre écrit deux entrées identiques à la
-  même heure, l'ancre retrouvait le premier doublon) — chaque entrée
-  porte désormais un numéro d'ordre monotone (`journalN`, creerLogger
-  + normaliser) et l'ancre s'y accroche. Ce durcissement est réel mais
-  ne suffit pas : les deux transitions persistent. Le garde n'a pas
-  bougé d'une virgule ; il **bloque `--complet`, donc le push**, tant
-  que l'instrumentation dédiée n'a pas dit qui, de l'ancre ou du
-  rendu, perd la ligne pendant la rafale.
+- ~~**La mesure d'ancre du navigateur** (« ce qu'on lit reste sous les
+  yeux ») oscille d'un run à l'autre~~ — **enquête close, coupable
+  confondu (août 2026, chantier ALLURE G1)**. Ce n'était ni l'ancre ni
+  la charge machine : **la police distante**. `font-display: swap`
+  applique IBM Plex quand le réseau veut ; quand elle arrive EN COURS
+  de mesure, toutes les métriques de texte changent d'un coup et la
+  ligne lue saute — sans que l'ancre ait failli. Les pièces : rouge
+  stable au pixel près (six runs, mêmes hauts 8224/8749/8863) quand le
+  proxy servait la police au milieu de la fenêtre, vert quand elle
+  arrivait avant ou jamais ; bissection jusqu'à l'état déjà poussé
+  (code hors de cause) ; et la preuve par le remède — le décor épingle
+  les polices (`route: abort` sur fonts.googleapis/gstatic, la pile de
+  repli est la seule servie) et la suite passe deux fois d'affilée
+  sans rien changer d'autre. Le garde n'a pas bougé d'une virgule.
+  Bonus de l'enquête : un vrai doublon corrigé en route — la clé
+  d'ancre « heure + début du texte » n'était pas unique sous rafale de
+  guerre ; chaque entrée porte désormais un numéro d'ordre monotone
+  (`journalN`, creerLogger + normaliser) et l'ancre s'y accroche.
 
