@@ -148,6 +148,15 @@ la finition ensuite.
   Le harnais navigateur joue en joueur pressé : il tape sur les moments
   qu'il n'est pas en train de vérifier.
 
+- **M3 — livré, le journal raconté.** Le fil est groupé par jour (têtes
+  de chapitre à rebours), chaque entrée porte un glyphe de sa famille
+  (†, ⨯, ⚑, +, ⌂, ❧ — dérivé de la famille de couleur, un type nouveau
+  hérite), les marquants portent un liséré braise, et les dépêches du
+  récit (début, chapitres, fils, accueils, fin) parlent en serif. Les
+  quatre points sont sous test navigateur, prouvé mordant par mutation
+  (l'écart au cycle — code écrit avant d'avoir vu le rouge — est
+  compensé, pas caché).
+
 **Quick wins livrés d'un bloc (août 2026), avec leurs limites dites :**
 
 - **Q1 — livré, socle + deux surfaces.** IBM Plex Mono porte tout le

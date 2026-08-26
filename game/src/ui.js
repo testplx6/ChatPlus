@@ -4803,6 +4803,27 @@ function ecranMonde() {
 // Écran JOURNAL
 // ---------------------------------------------------------------------------
 
+/**
+ * L'icône d'une entrée (M3, ALLURE.md) : un glyphe par famille d'événement.
+ * Quatre cents lignes de la même voix ne se parcourent pas ; un œil accroche
+ * une forme avant de lire un mot. Dérivée de la famille de couleur, pas
+ * recopiée type par type : un type nouveau hérite d'un glyphe cohérent.
+ */
+function iconeLog(type) {
+  if (type === 'mort' || type === 'fin') return '†';
+  if (RECITS_JOURNAL.has(type)) return '❧';
+  switch (couleurLog(type)) {
+    case 'danger': return '⨯';
+    case 'guerre': return '⚑';
+    case 'gain': return '+';
+    case 'base': return '⌂';
+    default: return '·';
+  }
+}
+
+/** Les entrées qui appartiennent au récit : elles parlent en serif. */
+const RECITS_JOURNAL = new Set(['chronique', 'fil', 'accueil', 'debut', 'fin']);
+
 function ecranJournal() {
   S.nonLus = 0;
   const entrees = S.journal
@@ -4810,12 +4831,19 @@ function ecranJournal() {
     .slice(-160)
     .reverse();
 
+  // Groupé par jour (M3) : un fil de quatre cents lignes sans repère de temps
+  // ne raconte rien. Le fil est à rebours, les têtes de jour aussi.
+  let jourCourant = null;
   const html = entrees.length ? entrees.map((x) => {
     const h = horloge(x.t);
+    const tete = h.jour !== jourCourant
+      ? `<div class="jour-tete" data-ancre="jour-${h.jour}">— Jour ${h.jour} —</div>` : '';
+    jourCourant = h.jour;
     // Une ancre par entrée : le journal est un fil, il grandit par le haut, et
     // sans elle on se fait pousser vers le bas pendant qu'on lit.
-    return `<div class="entree ${couleurLog(x.type)}" data-ancre="${e(`${x.t}-${(x.texte || '').slice(0, 24)}`)}">
-      <div class="t">${h.texte}</div>
+    return `${tete}<div class="entree ${couleurLog(x.type)}${x.important ? ' marquant' : ''}${
+  RECITS_JOURNAL.has(x.type) ? ' recit' : ''}" data-ancre="${e(`${x.t}-${(x.texte || '').slice(0, 24)}`)}">
+      <div class="t"><span class="ico" aria-hidden="true">${iconeLog(x.type)}</span> ${h.texte}</div>
       <div>${e(x.texte)}</div>
       ${x.detail && x.detail.length ? `<div class="detail">${x.detail.map(e).join('<br>')}</div>` : ''}
     </div>`;

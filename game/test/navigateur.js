@@ -220,6 +220,32 @@ for (const [k, nom] of [['escouade', '02-escouade'], ['base', '03-base'], ['mond
   await page.screenshot({ path: join(CAPTURES, `${nom}.png`), fullPage: true });
 }
 
+console.log('\n3 bis. Le journal groupé et raconté (M3, ALLURE.md)');
+{
+  // La page est restée sur le journal après le tour d'écrans.
+  const j = await page.evaluate(() => {
+    const ecran = document.querySelector('#ecran');
+    return {
+      jours: ecran.querySelectorAll('.jour-tete').length,
+      texteJour: (ecran.querySelector('.jour-tete') || {}).textContent || '',
+      icones: ecran.querySelectorAll('.entree .ico').length,
+      entrees: ecran.querySelectorAll('.entree').length,
+      marquants: ecran.querySelectorAll('.entree.marquant').length,
+    };
+  });
+  ok(j.jours >= 1 && /Jour \d+/.test(j.texteJour),
+    'le fil est groupé par jour, et le jour se lit', j.texteJour.trim());
+  ok(j.entrees > 0 && j.icones === j.entrees,
+    'chaque entrée porte son icône de type', `${j.icones}/${j.entrees}`);
+  ok(j.marquants >= 1, 'les marquants se distinguent d’un liséré', `${j.marquants}`);
+  const serifDebut = await page.evaluate(() => {
+    const el = document.querySelector('#ecran .entree.recit');
+    return el ? getComputedStyle(el).fontFamily : '';
+  });
+  ok(/serif/i.test(serifDebut),
+    'les dépêches du récit parlent en serif', serifDebut || 'aucune entrée de récit');
+}
+
 console.log('\n4. Fiches de personnage');
 await page.click('[data-a="onglet"][data-k="escouade"]');
 // Seul, la jauge parle de tenue, au singulier : « Ça tient par habitude »,

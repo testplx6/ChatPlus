@@ -401,6 +401,21 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
 .entree.base { border-left-color: var(--cyan); }
 .entree .detail { font-size: 11px; color: var(--texte-3); margin-top: 3px; }
 
+/* Le journal raconté (M3) : les jours en têtes de chapitre, les marquants au
+   liséré braise, les dépêches du récit en serif, un glyphe par famille. */
+.jour-tete {
+  text-align: center;
+  font-size: 10px;
+  letter-spacing: .16em;
+  color: var(--texte-3);
+  margin: 10px 0 6px;
+}
+.entree.marquant { border-left-color: #d9803a; }
+.entree.marquant.danger { border-left-color: var(--rouge); }
+.entree.recit { font-family: var(--serif); font-size: 14px; }
+.entree.recit .t { font-family: "IBM Plex Mono", ui-monospace, "SF Mono", "Roboto Mono", Menlo, Consolas, monospace; }
+.entree .ico { display: inline-block; min-width: 10px; color: var(--texte-2); }
+
 /* ------------------------------------------------------------------ Marché */
 
 .marche-l {
