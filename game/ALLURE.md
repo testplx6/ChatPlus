@@ -320,10 +320,24 @@ la finition ensuite.
     pas d'un octet). La cohésion s'affiche en grand chiffre de la
     voix d'affichage, coloré par son état — un état de jeu, pas une
     note de bas de page.
-  - Étapes suivantes, dans l'ordre de la maquette : le dock d'ordres
-    flottant sur la carte (mécanisme : cycle strict), puis
-    l'harmonisation des autres écrans (base, contrats, monde,
-    journal) dans la même voix.
+  - **Étape 3 — livrée : le dock d'ordres, les verbes sur la carte.**
+    Mécanisme mené au cycle strict (trois assertions vues rouges
+    avant le code) : les tuiles d'ordre déménagent du panneau
+    « Ordre » vers un dock posé sur le bas du terrain — une rangée
+    défilante, translucide, qui suit la carte collante : donner un
+    ordre ne demande plus de défiler. UNE seule source de boutons
+    (le panneau garde le détail : progression, rendements,
+    répartition, transfert) — les tests existants cliquent les mêmes
+    sélecteurs sans changer une ligne.
+
+  **La refonte direction A est livrée** — trois étapes, chacune
+  poussée après suite entière et `--complet` verts, l'artefact
+  republié à chaque livraison. Les autres écrans (base, contrats,
+  monde, journal) parlent déjà la même voix par les composants
+  partagés (têtes d'affichage, cartes, jetons, dock de navigation) ;
+  leurs architectures propres (maquettes dédiées) restent ouvertes
+  si le propriétaire les demande, tout comme la direction B gardée
+  sur le canevas de maquettes.
 
 **Les six pistes moyennes et G1 sont livrées.** Restent G2 (mode
 chronique) et G3 (son génératif) — non engagées.

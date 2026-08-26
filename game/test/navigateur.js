@@ -182,6 +182,29 @@ const pixels = await page.evaluate(() => {
 });
 ok(pixels > 10, 'la carte est réellement dessinée', `${pixels} couleurs`);
 
+console.log('\n1 bis. Le dock d’ordres — les verbes vivent sur la carte (direction A)');
+{
+  // Le poste de commandement : donner un ordre ne demande pas de défiler.
+  // Les tuiles d'ordre sont posées sur le bas du terrain, en une rangée qui
+  // défile horizontalement, et c'est LA source des boutons — le panneau
+  // « Ordre » garde le détail, le dock porte le geste.
+  const dock = await page.evaluate(() => {
+    const d = document.querySelector('#dock-ordres');
+    if (!d) return null;
+    const rb = d.getBoundingClientRect();
+    const cb = document.querySelector('#carte-boite').getBoundingClientRect();
+    return {
+      boutons: d.querySelectorAll('button.act.ordre').length,
+      surCarte: rb.top < cb.bottom - 4 && rb.bottom > cb.top,
+      dansVue: rb.bottom <= window.innerHeight && rb.width > 0,
+    };
+  });
+  ok(!!dock, 'le dock d’ordres existe sur l’écran carte');
+  ok(!!dock && dock.boutons >= 6, 'et porte tous les verbes', dock ? `${dock.boutons} boutons` : 'absent');
+  ok(!!dock && dock.surCarte && dock.dansVue,
+    'posé sur la carte, sous le pouce, sans défiler', dock ? JSON.stringify(dock) : 'absent');
+}
+
 console.log('\n2. Ordres et temps réel');
 await page.click('[data-a="ordre"][data-k="fouille"]');
 await page.click('[data-a="vitesse"][data-v="16"]');

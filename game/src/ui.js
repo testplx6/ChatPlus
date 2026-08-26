@@ -1619,25 +1619,6 @@ function blocRegionCourante() {
   const o = G().ordre;
   const ici = S.base.fonde && S.base.regionId === rid;
 
-  // « Travaux » ne s'offre que chez soi : ailleurs il n'y a rien à faire
-  // tourner. C'est aussi le seul ordre qui ne rapporte rien au groupe.
-  const ordresDispo = ['repos', 'fouille', 'mine', 'chasse', 'exploration', 'patrouille']
-    .concat(ici ? ['travaux'] : []);
-  const boutons = ordresDispo.map((k) => {
-    const prev = rendementPrevu(S, k);
-    const rien = prev && prev.total <= 0.02;
-    const chiffre = k === 'travaux'
-      ? `+${vivantsDe(G()).filter(estDebout).length} bras`
-      : prev
-        ? (rien ? 'rien ici' : `${prev.total.toFixed(2)}/h`)
-        : k === 'exploration' ? 'carte' : k === 'patrouille' ? 'combat' : 'récup.';
-    return `<button class="act ordre" data-a="ordre" data-k="${k}"
-      aria-pressed="${o.type === k}" ${rien && k !== 'travaux' ? 'disabled' : ''}>
-      <span class="o-n">${e(ORDRES[k].nom)}</span>
-      <span class="o-r ${rien ? 'alerte' : ''}">${e(chiffre)}</span>
-    </button>`;
-  }).join('');
-
   // Ce que l'ordre en cours rapporte, détaillé
   const prevActuel = rendementPrevu(S, o.type);
   const detailRendement = prevActuel && prevActuel.total > 0
@@ -1665,10 +1646,6 @@ function blocRegionCourante() {
   <section class="panneau">
     <h2 class="titre">Ordre de ${e(G().nom)} <span class="droite">${e(enTete)}</span></h2>
     ${progression}
-    <div class="grille-ordres">${boutons}
-      <button class="act ordre" data-a="modale" data-m="entrainement">
-        <span class="o-n">Entraîner</span><span class="o-r">xp</span></button>
-    </div>
     <div class="aide" style="margin-top:6px">${e(ORDRES[o.type] ? ORDRES[o.type].desc : '')}</div>
     ${detailRendement ? `<div class="aide" style="color:var(--texte-2)">Ici : ${e(detailRendement)} par heure de travail.</div>` : ''}
     ${G().recolteHeure ? `<div class="aide" style="color:var(--vert)">Dernière heure : ${e(G().recolteHeure)}</div>` : ''}
@@ -2110,6 +2087,40 @@ function bandeauDevaluation() {
   </section>`;
 }
 
+/**
+ * Le dock d'ordres (direction A) : les verbes du jeu vivent sur la carte,
+ * posés sur le bas du terrain, sous le pouce — donner un ordre ne demande
+ * pas de défiler. UNE seule source de boutons : le panneau « Ordre » garde
+ * le détail (progression, rendements, répartition), le dock porte le geste.
+ * « Travaux » ne s'offre que chez soi : ailleurs il n'y a rien à faire
+ * tourner. C'est aussi le seul ordre qui ne rapporte rien au groupe.
+ */
+function blocDockOrdres() {
+  const g = G();
+  const o = g.ordre;
+  const ici = S.base.fonde && S.base.regionId === g.regionId;
+  const ordresDispo = ['repos', 'fouille', 'mine', 'chasse', 'exploration', 'patrouille']
+    .concat(ici ? ['travaux'] : []);
+  const boutons = ordresDispo.map((k) => {
+    const prev = rendementPrevu(S, k);
+    const rien = prev && prev.total <= 0.02;
+    const chiffre = k === 'travaux'
+      ? `+${vivantsDe(g).filter(estDebout).length} bras`
+      : prev
+        ? (rien ? 'rien ici' : `${prev.total.toFixed(2)}/h`)
+        : k === 'exploration' ? 'carte' : k === 'patrouille' ? 'combat' : 'récup.';
+    return `<button class="act ordre" data-a="ordre" data-k="${k}"
+      aria-pressed="${o.type === k}" ${rien && k !== 'travaux' ? 'disabled' : ''}>
+      <span class="o-n">${e(ORDRES[k].nom)}</span>
+      <span class="o-r ${rien ? 'alerte' : ''}">${e(chiffre)}</span>
+    </button>`;
+  }).join('');
+  return `<div id="dock-ordres">${boutons}
+    <button class="act ordre" data-a="modale" data-m="entrainement">
+      <span class="o-n">Entraîner</span><span class="o-r">xp</span></button>
+  </div>`;
+}
+
 function ecranCarte() {
   // Le flanc : la carte, son pied et sa légende, groupés pour qu'un grand
   // écran puisse les tenir à gauche pendant que les panneaux défilent à
@@ -2118,6 +2129,7 @@ function ecranCarte() {
   return `
   <div id="flanc-carte">
   <div id="carte-boite"><canvas id="carte" aria-label="Carte du monde"></canvas><canvas id="carte-vie" aria-hidden="true"></canvas></div>
+  ${blocDockOrdres()}
   <div class="carte-pied"><span id="carte-pos"></span>
     <span class="aide">glisser pour déplacer · molette ou deux doigts pour zoomer ·
       double clic pour revenir sur le groupe</span></div>
