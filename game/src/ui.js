@@ -2645,6 +2645,20 @@ function blocQuiFaitQuoi() {
   </section>`;
 }
 
+/**
+ * La bande de tête d'écran (direction A) : chaque écran s'annonce — son nom
+ * en voix d'affichage, et deux ou trois chiffres qui disent son métier d'un
+ * regard. Les valeurs arrivent déjà échappées quand il le faut : la bande ne
+ * ré-échappe pas, elle compose.
+ */
+function bandeauEcran(nom, stats) {
+  return `<section class="panneau bande-ecran">
+    <div class="be-nom">${e(nom)}</div>
+    <div class="be-stats">${stats.map(([v, k]) => `<div class="be-stat">
+      <div class="be-v">${v}</div><div class="be-k">${e(k)}</div></div>`).join('')}</div>
+  </section>`;
+}
+
 function ecranEscouade() {
   const p = S.player;
   const pol = p.politique;
@@ -2656,6 +2670,10 @@ function ecranEscouade() {
   const cohCls = rend >= 1 ? 'ok' : rend >= 0.9 ? 'att' : 'mal';
 
   return `
+  ${bandeauEcran(nGens === 1 ? 'Seul' : 'Escouade', [
+    [`${vivantsDe(g).filter(estDebout).length}/${nGens}`, 'debout'],
+    [`<span class="${cohCls}">${Math.round(g.cohesion ?? 55)} %</span>`, nGens === 1 ? 'tenue' : 'cohésion'],
+  ])}
   ${barreGroupes()}
   ${blocPrisonniers()}
   ${blocDepouilles()}
@@ -3635,6 +3653,11 @@ function ecranBase() {
   ${siegeHtml}
   ${vigieHtml}
   ${menaceHtml}
+  ${bandeauEcran(b.nom, [
+    [n(Math.round(b.pop || 0)), 'habitants'],
+    [n(b.defense), 'défense'],
+    [`<span class="${stock >= capa * 0.95 ? 'mal' : ''}">${Math.round((stock / Math.max(1, capa)) * 100)} %</span>`, 'entrepôt'],
+  ])}
   <section class="panneau">
     <h2 class="titre">${e(b.nom)} <span class="droite">${e(lieuAvecCoord(S.world, b.regionId))}</span></h2>
     <div class="grille2 serree">
@@ -4495,6 +4518,10 @@ function ecranContrats() {
   const dispo = col && col.contrats ? col.contrats : [];
 
   return `
+  ${bandeauEcran('Contrats', [
+    [`${enCours.length}/${MAX_CONTRATS}`, 'en cours'],
+    [`<span class="ok">${n((S.player.bilanContrats && S.player.bilanContrats.honores) || 0)}</span>`, 'honorés'],
+  ])}
   <section class="panneau">
     <h2 class="titre">En cours <span class="droite">${enCours.length} / ${MAX_CONTRATS}</span></h2>
     ${enCours.length
@@ -4811,6 +4838,10 @@ function ecranMonde() {
   ).slice(-14).reverse();
 
   return `
+  ${bandeauEcran('Le monde', [
+    [n(S.world.colonies.filter((c) => !c.ruine).length), 'villes vivantes'],
+    [`an ${meteoNow.saison.annee}`, e(meteoNow.saison.def.nom)],
+  ])}
   ${blocOuVousEnEtes()}
   <section class="panneau"><h2 class="titre">Rapport de puissance</h2>${factionsHtml}
     ${(() => {
@@ -4969,6 +5000,10 @@ function ecranJournal() {
   }).join('') : '<div class="aide">Rien à signaler.</div>';
 
   return `
+  ${bandeauEcran('Journal', [
+    [`J${Math.floor(S.temps / 24) + 1}`, 'jour'],
+    [S.player.chapitreN ? `ch. ${romain(S.player.chapitreN)}` : '—', 'chapitre'],
+  ])}
   ${blocChronique()}
   <section class="panneau">
     <h2 class="titre">Journal de bord

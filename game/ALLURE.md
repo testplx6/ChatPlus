@@ -330,14 +330,26 @@ la finition ensuite.
     répartition, transfert) — les tests existants cliquent les mêmes
     sélecteurs sans changer une ligne.
 
-  **La refonte direction A est livrée** — trois étapes, chacune
+  - **Étape 4 — livrée : chaque écran s'annonce** (« c'est pas
+    fini », dit le propriétaire — il avait raison : les composants
+    partagés ne font pas une identité par écran). La bande de tête
+    de la maquette sur les cinq écrans hors carte — la carte, elle,
+    EST sa propre identité : le nom de l'écran en voix d'affichage,
+    et les chiffres-héros qui disent son métier d'un regard — debout
+    et cohésion colorée (escouade), habitants, défense et entrepôt
+    (le camp), l'en-cours et les honorés (contrats), les villes
+    vivantes et l'année (le monde), le jour et le chapitre
+    (journal). La bande n'a pas de titre repliable : elle n'est pas
+    un encart, elle est l'identité de la page. Les urgences (siège,
+    vigie, dévaluation) passent toujours devant.
+
+  **La refonte direction A est livrée** — quatre étapes, chacune
   poussée après suite entière et `--complet` verts, l'artefact
-  republié à chaque livraison. Les autres écrans (base, contrats,
-  monde, journal) parlent déjà la même voix par les composants
-  partagés (têtes d'affichage, cartes, jetons, dock de navigation) ;
-  leurs architectures propres (maquettes dédiées) restent ouvertes
-  si le propriétaire les demande, tout comme la direction B gardée
-  sur le canevas de maquettes.
+  republié à chaque livraison. Reste ouvert si le propriétaire en
+  veut plus : le HUD posé en surimpression sur la carte elle-même
+  (l'en-tête reste une barre), les architectures dédiées écran par
+  écran au-delà de la bande, et la direction B « carnet de
+  campagne » gardée sur le canevas de maquettes.
 
 **Les six pistes moyennes et G1 sont livrées.** Restent G2 (mode
 chronique) et G3 (son génératif) — non engagées.

@@ -1310,3 +1310,48 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
   background: rgba(12, 24, 28, .88);
   box-shadow: 0 0 14px -5px rgba(79, 208, 227, .6);
 }
+
+
+/* La bande de tête d'écran (direction A) : l'écran s'annonce — grand nom en
+   voix d'affichage, chiffres-héros à droite. Elle ne se replie pas : elle
+   n'est pas un encart, elle est l'identité de la page. */
+.bande-ecran {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px;
+}
+.be-nom {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--display);
+  font-size: 25px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: #efe6cf;
+  text-shadow: 0 0 14px rgba(217, 128, 58, .18);
+}
+.be-stats { display: flex; gap: 16px; flex: 0 0 auto; }
+.be-stat { text-align: right; }
+.be-v {
+  font-family: var(--display);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  color: #e8a050;
+  font-variant-numeric: tabular-nums;
+}
+.be-v .ok { color: var(--vert); }
+.be-v .att { color: var(--ambre); }
+.be-v .mal { color: var(--rouge); }
+.be-k {
+  margin-top: 3px;
+  font-size: 8px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--texte-3);
+}
