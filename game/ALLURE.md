@@ -135,6 +135,19 @@ la finition ensuite.
   navigateur : la couche couvre la carte, deux instants diffèrent, la
   partie continue de s'écrire.
 
+- **M2 — livré, les grands moments.** Un chapitre qui tourne et un des
+  vôtres qui tombe ont l'écran entier : plein écran serif, chiffre
+  romain braise pour la chronique, carte-stèle (nom, métier, cause,
+  lieu) pour le deuil — un tap referme, la file montre le suivant.
+  Trois règles : seulement ce qui arrive en jouant (l'histoire déjà
+  écrite ne se rejoue pas, les heures d'absence restent au rapport, qui
+  parle désormais en serif lui aussi) ; un moment ne se montre qu'une
+  fois (`momentVu`, dans la sauvegarde) ; la stèle ne se lève que pour
+  un des vôtres (elle doit répondre à une inscription au mémorial). Le
+  siège du camp a son bandeau sur tous les écrans tant qu'il dure.
+  Le harnais navigateur joue en joueur pressé : il tape sur les moments
+  qu'il n'est pas en train de vérifier.
+
 **Quick wins livrés d'un bloc (août 2026), avec leurs limites dites :**
 
 - **Q1 — livré, socle + deux surfaces.** IBM Plex Mono porte tout le

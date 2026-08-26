@@ -284,6 +284,10 @@ export function tickChapitres(state, log) {
     log({
       type: 'chronique',
       texte: `Chapitre ${romain(state.player.chapitreN)} — ${ch.titre}.`,
+      // La clé du chapitre voyage avec l'entrée : la mise en scène (M2,
+      // ALLURE.md) retrouve ainsi le titre et la phrase du chapitre sans
+      // avoir à relire l'état, qui peut avoir tourné une autre page depuis.
+      cle: ch.cle,
       important: true,
       vu: true,
     });

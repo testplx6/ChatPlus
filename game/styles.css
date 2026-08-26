@@ -504,6 +504,70 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
   background: radial-gradient(ellipse at 50% 42%, transparent 58%, rgba(0, 0, 0, .38));
 }
 
+/* Les grands moments (M2) : l'écran entier, la voix de la chronique, un tap
+   pour refermer. La braise et l'os — l'axe du récit — contre le noir. */
+#moment {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 7, 10, .9);
+  cursor: pointer;
+  animation: moment-nait .45s ease;
+}
+@keyframes moment-nait { from { opacity: 0; } }
+.moment-boite {
+  max-width: 430px;
+  margin: 0 20px;
+  padding: 30px 24px;
+  text-align: center;
+  border-top: 1px solid rgba(217, 128, 58, .8);
+  border-bottom: 1px solid rgba(217, 128, 58, .8);
+}
+.moment-sur {
+  font-size: 10px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--texte-2);
+}
+.moment-chiffre {
+  font-family: var(--serif);
+  font-size: 46px;
+  line-height: 1.1;
+  color: #d9803a;
+  margin-top: 10px;
+}
+.moment-titre {
+  font-family: var(--serif);
+  font-size: 25px;
+  line-height: 1.25;
+  color: #e8e0d0;
+  margin: 8px 0 4px;
+}
+.moment-dit {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 15px;
+  color: var(--texte);
+}
+.moment-main {
+  margin-top: 20px;
+  font-size: 9px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--texte-3);
+}
+
+/* Le bandeau de siège (M2) : tant que ça dure, ça se voit — partout. */
+.bandeau-siege { border-left: 2px solid var(--rouge); }
+
+/* Le rapport d'absence parle en serif (M2) : des dépêches, pas un ticket. */
+.rapport-t { font-size: 19px; color: #e8e0d0; }
+.aide.recit { font-size: 14px; }
+
 /* La nuit se sent sur le chrome (Q5). */
 #racine[data-nuit="1"] #barre-haut { filter: brightness(.82) saturate(.85); }
 

@@ -160,6 +160,10 @@ const G = () => groupeActif(S);
 export function attacherEtat(state) {
   S = state;
   selection = state ? groupeActif(state).regionId : null;
+  // Les grands moments (M2) ne se mettent en scène que pour ce qui arrive en
+  // jouant : tout ce qui précède l'attache est de l'histoire, pas un moment.
+  momentDepuis = state ? state.temps : 0;
+  fermerMoment();
 }
 
 export function monterUI(api) {
@@ -491,6 +495,7 @@ export function rafraichir(force) {
 
   rendreBarreHaut();
   rendreNav();
+  majMoments();
 
   // Un écran qui plante ne doit pas se contenter de ne rien faire.
   //
@@ -516,7 +521,7 @@ export function rafraichir(force) {
   // bouge même quand le texte autour ne bouge pas.
   let ecrit = true;
   try {
-    const html = bandeauDevaluation() + rendu();
+    const html = bandeauDevaluation() + bandeauSiege() + rendu();
     if (html === dernierHtml && memeEcran) ecrit = false;
     else { dernierHtml = html; ecran.innerHTML = html; }
   } catch (err) {
@@ -1895,6 +1900,106 @@ function armeesIci(rid) {
  * l'onglet est une alerte qui n'a servi à rien, et c'est exactement le reproche
  * qu'on fait au journal, où la ligne défile derrière quatre cents autres.
  */
+/**
+ * Le bandeau de siège (M2, ALLURE.md).
+ *
+ * Un siège sur le camp est l'événement le plus grave que le monde puisse
+ * infliger au joueur, et il n'était dit que par des lignes de journal et
+ * l'écran Base : on pouvait régler son étal pendant qu'on perdait sa ville.
+ * Tant que ça dure, ça se voit — sur tous les écrans, comme la dévaluation.
+ */
+function bandeauSiege() {
+  const a = S && S.base && S.base.fonde ? siegeEnCours(S) : null;
+  if (!a) return '';
+  const f = drapeauDe(S.world, a.faction);
+  return `<section class="panneau urgent bandeau-siege">
+    <h2 class="titre alerte">Le siège de ${e(S.base.nom)}
+      <span class="droite">${n(a.force)} hommes</span></h2>
+    <div class="aide">${f ? e(f.nom) : 'Une colonne'} campe sous vos murs.
+      Tenir, sortir, négocier, évacuer — les quatre verbes sont sur l’écran BASE.</div>
+  </section>`;
+}
+
+// ---------------------------------------------------------------------------
+// Les grands moments (M2, ALLURE.md)
+// ---------------------------------------------------------------------------
+//
+// Les trois plus belles machines à récit du moteur — un chapitre qui tourne,
+// un des vôtres qui tombe — passaient en taille 13 dans un fil de quatre
+// cents lignes. Elles ont désormais l'écran entier, en serif, un tap pour
+// refermer. Trois règles :
+// 1. Seulement ce qui arrive EN JOUANT (`momentDepuis`) : l'histoire déjà
+//    écrite ne se rejoue pas, et les heures d'absence sont racontées par le
+//    rapport, pas par des cartons — quand un rapport attend, on marque tout lu.
+// 2. Un moment ne se montre qu'une fois : `momentVu` est écrit dans l'entrée
+//    de journal, donc dans la sauvegarde.
+// 3. La stèle ne se lève que pour un des vôtres : l'entrée doit répondre à
+//    une inscription au mémorial, sinon ce n'est pas notre deuil.
+
+let momentDepuis = 0;
+let momentCourant = null;
+
+function peutEtreMoment(x) {
+  if (!x || !x.important || x.momentVu) return false;
+  if (x.type === 'chronique') return (S.player.chapitreN || 0) > 1;
+  return x.type === 'mort';
+}
+
+function majMoments() {
+  if (!S) return;
+  const recents = S.journal.slice(-40);
+  if (S.rapport) {
+    for (const x of recents) if (peutEtreMoment(x)) x.momentVu = true;
+    return;
+  }
+  if (momentCourant) return; // un à la fois : le suivant attendra le tap
+  for (const x of recents) {
+    if (!peutEtreMoment(x)) continue;
+    if (x.t <= momentDepuis || S.temps - x.t > 24) { x.momentVu = true; continue; }
+    let html = null;
+    if (x.type === 'chronique') {
+      const ch = x.cle ? infoChapitre(x.cle) : null;
+      html = `<div class="moment-boite">
+        <div class="moment-sur">La chronique tourne une page</div>
+        <div class="moment-chiffre">${e(romain(S.player.chapitreN || 1))}</div>
+        <div class="moment-titre">${e(ch ? ch.titre : x.texte)}</div>
+        ${ch ? `<div class="moment-dit">${e(ch.dit)}</div>` : ''}`;
+    } else {
+      // Du plus récent au plus ancien : deux morts peuvent porter le même
+      // nom à des années d'écart, et c'est le deuil du jour qu'on grave.
+      const m = (S.memorial || []).slice(-6).reverse().find(
+        (mm) => Math.abs((mm.t || 0) - x.t) <= 1 && x.texte.includes(mm.nom));
+      if (!m) { x.momentVu = true; continue; } // pas un des nôtres : pas de stèle
+      html = `<div class="moment-boite">
+        <div class="moment-sur">Un des vôtres est resté en route</div>
+        <div class="moment-titre">${e(m.nom)}</div>
+        <div class="moment-dit">${e(m.archetype || '')}${m.cause ? ` · ${e(m.cause)}` : ''}${
+  m.lieu ? ` · ${e(m.lieu)}` : ''}</div>
+        ${m.meilleure ? `<div class="moment-dit" style="opacity:.75">${e(m.meilleure)}</div>` : ''}`;
+    }
+    x.momentVu = true;
+    momentCourant = x;
+    const el = document.createElement('div');
+    el.id = 'moment';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', x.texte);
+    el.innerHTML = `${html}
+      <div class="moment-main">toucher pour continuer</div></div>`;
+    el.addEventListener('click', fermerMoment);
+    document.body.appendChild(el);
+    break;
+  }
+}
+
+function fermerMoment() {
+  const el = document.getElementById('moment');
+  if (el) el.remove();
+  if (!momentCourant) return;
+  momentCourant = null;
+  // Le suivant, s'il y en a un — sans attendre qu'une heure de jeu passe.
+  rafraichir(true);
+}
+
 function bandeauDevaluation() {
   const a = (S && S.player && S.player.alertesMonnaie) || [];
   if (!a.length) return '';
@@ -5056,11 +5161,11 @@ function modaleRapport() {
         <span class="fil-x">${e(m.texte)}</span></div>`).join('')
     : '';
 
-  return `<h2 class="titre">Le monde a continué sans vous
+  return `<h2 class="titre recit rapport-t">Le monde a continué sans vous
     <span class="droite">${e(duree)}</span></h2>
   ${r.calme
-    ? '<div class="aide">Rien de notable. Ça arrive, et c’est plutôt bon signe.</div>'
-    : '<div class="aide">Ce qui a changé pendant que cet onglet était fermé.</div>'}
+    ? '<div class="aide recit">Rien de notable. Ça arrive, et c’est plutôt bon signe.</div>'
+    : '<div class="aide recit">Ce qui a changé pendant que cet onglet était fermé.</div>'}
   <div class="sep"></div>
   ${gens}
   ${argent}

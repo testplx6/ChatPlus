@@ -13,6 +13,7 @@ import { extname, join, normalize, resolve } from 'node:path';
 import { nouvellePartie, avancer, tick as tickSim } from '../src/sim.js';
 import {
   fonderBase, lancerConstruction, lancerRecherche, COUT_FONDATION,
+  reconnaitreAvantPoste,
 } from '../src/base.js';
 import { donnerOrdre } from '../src/squad.js';
 import { serialiser, deserialiser } from '../src/save.js';
@@ -138,6 +139,15 @@ await page.addInitScript(() => {
     if (window.__peints.length < 800) window.__peints.push(String(txt));
     return brut.call(this, txt, ...args);
   };
+  // Les grands moments (M2) couvrent l'écran jusqu'au tap — c'est le but. Le
+  // harnais, lui, joue en aveugle : il tape dessus comme un joueur pressé,
+  // sauf pendant la section qui les vérifie (`__momentsAuto = false`).
+  window.__momentsAuto = true;
+  setInterval(() => {
+    if (!window.__momentsAuto) return;
+    const m = document.querySelector('#moment');
+    if (m) m.click();
+  }, 200);
 });
 const erreurs = [];
 page.on('console', (m) => { if (m.type() === 'error') erreurs.push(m.text()); });
@@ -2772,6 +2782,14 @@ ok(tApres - tAvant > 2000, 'le temps passé a bien été rejoué', `${tAvant} �
     rapport.slice(0, 160).replace(/\n+/g, ' | '));
   ok(/jours?/i.test(rapport) && /Vos gens/i.test(rapport),
     'il dit combien de temps a passé et ce qu’il reste de l’escouade');
+  // M2 (ALLURE.md) : le retour d'absence est une dépêche, pas un ticket de
+  // caisse — la voix de la chronique, en serif.
+  const serifRapport = await page.evaluate(() => {
+    const el = document.querySelector('#modale .titre');
+    return el ? getComputedStyle(el).fontFamily : '';
+  });
+  ok(/serif/i.test(serifRapport), 'et parle en serif — la voix de la chronique',
+    serifRapport);
   await page.screenshot({ path: join(CAPTURES, '14b-rapport.png') });
   await page.click('[data-a="rapport-vu"]');
   await page.waitForTimeout(300);
@@ -3067,6 +3085,126 @@ console.log('\n8 ter. Un drapeau né en cours de partie s’affiche');
     'et l’écran ne montre pas « undefined » là où il devrait montrer un pays');
   ok(errNeuf.length === 0, 'aucune erreur de page sur un drapeau inconnu du jeu',
     errNeuf.join(' | '));
+}
+
+console.log('\n8 vicies quinquies. Les grands moments (M2, ALLURE.md)');
+{
+  // a) Un chapitre qui tourne pendant qu'on joue se met en scène : plein
+  // écran, serif, chiffre romain braise — et un tap le referme.
+  const surChapitre = serialiser((() => {
+    const t = partieAvancee();
+    // Un chapitre périmé depuis longtemps : le premier tick vivant tournera
+    // la page (le camp est fondé, l'état raconte autre chose que la
+    // poussière), et le moment doit s'imposer.
+    t.player.chapitre = { cle: 'poussiere', t: Math.max(0, t.temps - 300) };
+    t.vitesse = 60;
+    t.dernierReel = Date.now();
+    return t;
+  })());
+  // L'origine d'abord : la section précédente peut avoir laissé la page
+  // ailleurs, et un setItem hors de chez nous écrit dans le mauvais stockage.
+  await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), surChapitre);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate(() => { window.__momentsAuto = false; });
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#moment', { timeout: 12000 });
+  const mTxt = await page.evaluate(() => document.querySelector('#moment').textContent);
+  ok(/Chapitre|chronique/i.test(mTxt), 'le chapitre nouveau s’ouvre en plein écran',
+    mTxt.slice(0, 80).replace(/\n+/g, ' | '));
+  const mSerif = await page.evaluate(() => {
+    const el = document.querySelector('#moment .moment-titre');
+    return el ? getComputedStyle(el).fontFamily : '';
+  });
+  ok(/serif/i.test(mSerif), 'et parle en serif — la voix de la chronique', mSerif);
+  await page.screenshot({ path: join(CAPTURES, '21-moment-chapitre.png') });
+  await page.click('#moment');
+  await page.waitForTimeout(250);
+  ok(await page.evaluate(() => !document.querySelector('#moment')), 'un tap le referme');
+  const revu = await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const chron = s.journal.filter((x) => x.type === 'chronique');
+    return chron.length > 0 && chron[chron.length - 1].momentVu === true;
+  });
+  ok(revu, 'et il ne reviendra pas : le moment est marqué lu dans la partie');
+}
+{
+  // b) La stèle : un des vôtres tombe pendant qu'on joue, l'écran s'arrête
+  // sur lui — nom, métier, cause. Un contrôle de deuil, pas une ligne 13 px.
+  const surMort = serialiser((() => {
+    const t = partieAvancee();
+    const g = groupeActif(t);
+    // Un vivant, pas le premier venu : l'historique de la partie peut déjà
+    // porter un mort du même nom, et la stèle montrerait l'ancien deuil.
+    const c = g.membres.find((x) => x.etat !== 'mort');
+    c.etat = 'mort';
+    c.pv = 0;
+    // Déjà compté : sans ça, le premier combat du groupe ré-inscrirait ce
+    // mort au mémorial (« tombé face à… ») et la stèle montrerait l'autre
+    // inscription. Le décor imite ce que `combatContre` aurait fait.
+    c._compte = true;
+    // Le fait est déjà au journal et au mémorial, daté du prochain tick : la
+    // mise en scène (UI) se déclenche sur ce qui arrive en jouant, et c'est
+    // le seul déclencheur qu'un décor sait dater à coup sûr.
+    t.memorial.push({
+      nom: c.nom, archetype: c.archetypeNom, cause: 'mort en route',
+      lieu: 'les Dalles', t: t.temps + 1, meilleure: 'mêlée 12',
+    });
+    t.journal.push({ type: 'mort', texte: `${c.nom} est mort en route.`, important: true, t: t.temps + 1 });
+    t.vitesse = 60;
+    t.dernierReel = Date.now();
+    return t;
+  })());
+  // On recharge d'abord, puis on injecte : la partie en cours sauvegarde sur
+  // `pagehide` et écraserait le décor. Même piège que partout dans ce fichier.
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), surMort);
+  await page.evaluate(() => { window.__momentsAuto = false; });
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#moment', { timeout: 12000 });
+  const sTxt = await page.evaluate(() => document.querySelector('#moment').textContent);
+  ok(/resté en route|est mort/i.test(sTxt) && /mort en route/.test(sTxt),
+    'la stèle donne le nom, le métier et la cause', sTxt.slice(0, 100).replace(/\n+/g, ' | '));
+  await page.screenshot({ path: join(CAPTURES, '22-moment-stele.png') });
+  await page.click('#moment');
+  await page.waitForTimeout(250);
+  // À ×60 un autre moment peut suivre immédiatement — c'est la file qui
+  // marche. Ce qu'on vérifie : CELUI-LÀ est fermé, pas « plus rien ».
+  ok(await page.evaluate((avant) => {
+    const m = document.querySelector('#moment');
+    return !m || m.textContent !== avant;
+  }, sTxt), 'un tap referme la stèle');
+}
+{
+  // c) Le siège se voit de partout : un bandeau tant que ça dure, pas une
+  // ligne de journal qu'on rate en regardant son sac.
+  const surSiege = serialiser((() => {
+    const t = partieAvancee();
+    t.base.pop = 20; // la reconnaissance en demande 18
+    t.base.batiments.halle = Math.max(1, t.base.batiments.halle || 0);
+    const rec = reconnaitreAvantPoste(t, () => {});
+    if (!rec) throw new Error('décor : l’avant-poste n’a pas pu être reconnu');
+    t.world.armees.push({
+      id: 'aSiege', rngEtat: 424242, faction: 'hexa', regionId: t.base.regionId,
+      force: 140, forceMax: 140, cible: t.base.colonieId, route: [], etape: 0,
+      progres: 0, etat: 'siege', ravitaillement: 4000, impayees: 0,
+    });
+    t.vitesse = 1; // le bandeau se lit sur l'état, pas besoin que ça tourne
+    t.dernierReel = Date.now();
+    return t;
+  })());
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), surSiege);
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte', { timeout: 8000 });
+  await page.waitForTimeout(400);
+  const vuSiege = await page.evaluate(() => document.querySelector('#ecran').textContent);
+  ok(/siège/i.test(vuSiege), 'le bandeau de siège se lève sur l’écran de carte', vuSiege.slice(0, 90));
+  await page.click('[data-a="onglet"][data-k="escouade"]');
+  await page.waitForTimeout(400);
+  ok(/siège/i.test(await page.evaluate(() => document.querySelector('#ecran').textContent)),
+    'et il suit sur les autres écrans — tant que ça dure, ça se voit');
+  await page.screenshot({ path: join(CAPTURES, '23-bandeau-siege.png') });
 }
 
 console.log('\n9. Fichier unique ouvert en file://');
