@@ -2095,6 +2095,23 @@ function bandeauDevaluation() {
  * « Travaux » ne s'offre que chez soi : ailleurs il n'y a rien à faire
  * tourner. C'est aussi le seul ordre qui ne rapporte rien au groupe.
  */
+const ICONES_ORDRES = {
+  repos: '<path d="M15 4a8 8 0 1 0 5 13 9 9 0 0 1-5-13z"/>',
+  fouille: '<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>',
+  mine: '<path d="M4 20l6-16 4 9 6 7z"/>',
+  chasse: '<circle cx="12" cy="12" r="7"/><path d="M12 5v4M12 15v4M5 12h4M15 12h4"/>',
+  exploration: '<circle cx="12" cy="12" r="8"/><path d="M14.5 9.5l-1.8 4.6-3.2 1.4 1.8-4.6z"/>',
+  patrouille: '<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/>',
+  travaux: '<path d="M4 20l6-6"/><path d="M9 9l6 6 3-3-6-6z"/>',
+  entrainement: '<path d="M13 3l-8 11h6l-2 7 8-11h-6z"/>',
+};
+function icoOrdre(k) {
+  const d = ICONES_ORDRES[k];
+  return d ? `<svg class="o-i" viewBox="0 0 24 24" width="15" height="15" fill="none"
+    stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"
+    aria-hidden="true">${d}</svg>` : '';
+}
+
 function blocDockOrdres() {
   const g = G();
   const o = g.ordre;
@@ -2111,12 +2128,14 @@ function blocDockOrdres() {
         : k === 'exploration' ? 'carte' : k === 'patrouille' ? 'combat' : 'récup.';
     return `<button class="act ordre" data-a="ordre" data-k="${k}"
       aria-pressed="${o.type === k}" ${rien && k !== 'travaux' ? 'disabled' : ''}>
+      ${icoOrdre(k)}
       <span class="o-n">${e(ORDRES[k].nom)}</span>
       <span class="o-r ${rien ? 'alerte' : ''}">${e(chiffre)}</span>
     </button>`;
   }).join('');
   return `<div id="dock-ordres">${boutons}
     <button class="act ordre" data-a="modale" data-m="entrainement">
+      ${icoOrdre('entrainement')}
       <span class="o-n">Entraîner</span><span class="o-r">xp</span></button>
   </div>`;
 }

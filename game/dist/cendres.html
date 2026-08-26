@@ -1373,6 +1373,48 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
   text-transform: uppercase;
   color: var(--texte-3);
 }
+
+
+/* ---------------------------------------------------------------------------
+   Le HUD flotte sur la carte (direction A, étape 5). Sur téléphone, l'écran
+   carte n'a plus de barre au-dessus de lui : la carte monte jusqu'en haut, et
+   les indicateurs deviennent des jetons translucides posés SUR le monde —
+   comme la maquette. Les autres écrans gardent leur barre pleine ; le grand
+   écran (≥ 1100 px) aussi. `#racine.large-carte` n'est posé que sur l'onglet
+   carte : c'est notre interrupteur d'écran, déjà entretenu par le rendu. */
+@media (max-width: 1099px) {
+  #racine.large-carte { position: relative; }
+  #racine.large-carte #barre-haut {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: transparent;
+    background-image: none;
+    border-bottom: 0;
+    box-shadow: none;
+    pointer-events: none;
+  }
+  /* Les jetons, eux, répondent au doigt — et portent leur propre fond. */
+  #racine.large-carte #barre-haut .hd-bloc,
+  #racine.large-carte #barre-haut .vitesse {
+    pointer-events: auto;
+    background: rgba(10, 12, 16, .74);
+    border-color: rgba(78, 68, 52, .85);
+    backdrop-filter: blur(6px);
+  }
+  #racine.large-carte #barre-haut .vitesse button { background: transparent; }
+  #racine.large-carte #barre-haut .vitesse button[aria-pressed="true"] { background: #d9803a; }
+  /* La carte reprend la hauteur que la barre occupait. */
+  #ecran.plein-carte #carte-boite {
+    height: calc(100dvh - var(--nav-h) - 208px);
+  }
+}
+
+/* Les icônes du dock d'ordres : le verbe se reconnaît avant de se lire. */
+#dock-ordres .o-i { display: block; margin-bottom: 2px; color: var(--texte-3); }
+#dock-ordres [aria-pressed="true"] .o-i { color: var(--cyan); }
+#dock-ordres [disabled] .o-i { opacity: .5; }
 </style>
 </head>
 <body>
@@ -28519,6 +28561,23 @@ function bandeauDevaluation() {
  * « Travaux » ne s'offre que chez soi : ailleurs il n'y a rien à faire
  * tourner. C'est aussi le seul ordre qui ne rapporte rien au groupe.
  */
+const ICONES_ORDRES = {
+  repos: '<path d="M15 4a8 8 0 1 0 5 13 9 9 0 0 1-5-13z"/>',
+  fouille: '<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>',
+  mine: '<path d="M4 20l6-16 4 9 6 7z"/>',
+  chasse: '<circle cx="12" cy="12" r="7"/><path d="M12 5v4M12 15v4M5 12h4M15 12h4"/>',
+  exploration: '<circle cx="12" cy="12" r="8"/><path d="M14.5 9.5l-1.8 4.6-3.2 1.4 1.8-4.6z"/>',
+  patrouille: '<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/>',
+  travaux: '<path d="M4 20l6-6"/><path d="M9 9l6 6 3-3-6-6z"/>',
+  entrainement: '<path d="M13 3l-8 11h6l-2 7 8-11h-6z"/>',
+};
+function icoOrdre(k) {
+  const d = ICONES_ORDRES[k];
+  return d ? `<svg class="o-i" viewBox="0 0 24 24" width="15" height="15" fill="none"
+    stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"
+    aria-hidden="true">${d}</svg>` : '';
+}
+
 function blocDockOrdres() {
   const g = G();
   const o = g.ordre;
@@ -28535,12 +28594,14 @@ function blocDockOrdres() {
         : k === 'exploration' ? 'carte' : k === 'patrouille' ? 'combat' : 'récup.';
     return `<button class="act ordre" data-a="ordre" data-k="${k}"
       aria-pressed="${o.type === k}" ${rien && k !== 'travaux' ? 'disabled' : ''}>
+      ${icoOrdre(k)}
       <span class="o-n">${e(ORDRES[k].nom)}</span>
       <span class="o-r ${rien ? 'alerte' : ''}">${e(chiffre)}</span>
     </button>`;
   }).join('');
   return `<div id="dock-ordres">${boutons}
     <button class="act ordre" data-a="modale" data-m="entrainement">
+      ${icoOrdre('entrainement')}
       <span class="o-n">Entraîner</span><span class="o-r">xp</span></button>
   </div>`;
 }

@@ -1355,3 +1355,45 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
   text-transform: uppercase;
   color: var(--texte-3);
 }
+
+
+/* ---------------------------------------------------------------------------
+   Le HUD flotte sur la carte (direction A, étape 5). Sur téléphone, l'écran
+   carte n'a plus de barre au-dessus de lui : la carte monte jusqu'en haut, et
+   les indicateurs deviennent des jetons translucides posés SUR le monde —
+   comme la maquette. Les autres écrans gardent leur barre pleine ; le grand
+   écran (≥ 1100 px) aussi. `#racine.large-carte` n'est posé que sur l'onglet
+   carte : c'est notre interrupteur d'écran, déjà entretenu par le rendu. */
+@media (max-width: 1099px) {
+  #racine.large-carte { position: relative; }
+  #racine.large-carte #barre-haut {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: transparent;
+    background-image: none;
+    border-bottom: 0;
+    box-shadow: none;
+    pointer-events: none;
+  }
+  /* Les jetons, eux, répondent au doigt — et portent leur propre fond. */
+  #racine.large-carte #barre-haut .hd-bloc,
+  #racine.large-carte #barre-haut .vitesse {
+    pointer-events: auto;
+    background: rgba(10, 12, 16, .74);
+    border-color: rgba(78, 68, 52, .85);
+    backdrop-filter: blur(6px);
+  }
+  #racine.large-carte #barre-haut .vitesse button { background: transparent; }
+  #racine.large-carte #barre-haut .vitesse button[aria-pressed="true"] { background: #d9803a; }
+  /* La carte reprend la hauteur que la barre occupait. */
+  #ecran.plein-carte #carte-boite {
+    height: calc(100dvh - var(--nav-h) - 208px);
+  }
+}
+
+/* Les icônes du dock d'ordres : le verbe se reconnaît avant de se lire. */
+#dock-ordres .o-i { display: block; margin-bottom: 2px; color: var(--texte-3); }
+#dock-ordres [aria-pressed="true"] .o-i { color: var(--cyan); }
+#dock-ordres [disabled] .o-i { opacity: .5; }

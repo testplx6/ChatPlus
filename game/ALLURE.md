@@ -343,7 +343,20 @@ la finition ensuite.
     un encart, elle est l'identité de la page. Les urgences (siège,
     vigie, dévaluation) passent toujours devant.
 
-  **La refonte direction A est livrée** — quatre étapes, chacune
+  - **Étape 5 — livrée : le HUD flotte sur la carte, le dock a ses
+    icônes** (« on est encore loin de la maquette », dit le
+    propriétaire — les deux écarts les plus visibles étaient là).
+    Sur téléphone, l'écran carte n'a plus de barre au-dessus de lui :
+    la carte monte jusqu'en haut, la barre devient transparente et
+    laisse passer le doigt, et les indicateurs sont des jetons
+    translucides (fond sombre, flou) posés SUR le monde. Les autres
+    écrans gardent leur barre pleine, le grand écran aussi —
+    l'interrupteur est la classe d'écran déjà entretenue par le
+    rendu. Et chaque verbe du dock se reconnaît avant de se lire :
+    huit icônes dessinées à la règle de M5 (trait 1,6, grille 24,
+    couleur du texte courant), cyan quand l'ordre est actif.
+
+  **La refonte direction A est livrée** — cinq étapes, chacune
   poussée après suite entière et `--complet` verts, l'artefact
   republié à chaque livraison. Reste ouvert si le propriétaire en
   veut plus : le HUD posé en surimpression sur la carte elle-même
