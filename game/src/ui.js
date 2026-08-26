@@ -2173,11 +2173,24 @@ function ficheMembre(c) {
   const armure = c.equip.armure ? ITEMS[c.equip.armure].nom : '—';
   const greffes = Object.keys(c.equip.greffes).map((m) => ITEMS[c.equip.greffes[m]].nom).join(', ') || '—';
 
+  // Le portrait (direction A) : l'anneau de santé autour des initiales — la
+  // fiche se lit de loin, comme une carte de jeu. Le mot « santé » reste dans
+  // le résumé : un pourcentage sans nom ne se comprend pas.
+  const ini = c.nom.trim().slice(0, 2).toUpperCase();
+  const arc = (t.pct * 106.8).toFixed(1);
   return `<details class="perso" data-id="${e(c.id)}"${ouvert}>
     <summary>
+      <span class="anneau ${cls}" aria-hidden="true">
+        <svg viewBox="0 0 40 40" width="40" height="40">
+          <circle cx="20" cy="20" r="17" fill="none" stroke="#241f18" stroke-width="3"></circle>
+          <circle cx="20" cy="20" r="17" fill="none" stroke="currentColor" stroke-width="3"
+            stroke-dasharray="${arc} 106.8" stroke-linecap="round" transform="rotate(-90 20 20)"></circle>
+        </svg>
+        <span class="ini">${e(ini)}</span>
+      </span>
+      <span class="nom">${e(c.nom)} <span class="arch">${e(c.archetypeNom)}</span>
+        <span class="sante mono-num">santé ${(t.pct * 100).toFixed(0)} %</span></span>
       <span class="puce ${cls}">${e(et)}</span>
-      <span class="nom">${e(c.nom)} <span class="arch">${e(c.archetypeNom)}</span></span>
-      <span class="mono-num" style="color:var(--texte-3)">santé ${(t.pct * 100).toFixed(0)} %</span>
     </summary>
     <div class="corps-detail">
       <div class="grille2" style="margin-bottom:8px">
@@ -2636,9 +2649,9 @@ function ecranEscouade() {
   ${blocDepouilles()}
   <section class="panneau">
     <h2 class="titre">${nGens === 1 ? 'Tenue' : 'Cohésion'} de ${e(g.nom)}
-      <span class="droite"><span class="puce ${cohCls}">${Math.round(g.cohesion ?? 55)} %</span></span></h2>
+      <span class="droite"><span class="nombre ${cohCls}">${Math.round(g.cohesion ?? 55)} %</span></span></h2>
     ${jauge((g.cohesion ?? 55) / 100, '', rend >= 1 ? '#4fd0e3' : undefined)}
-    <div class="grille2 serree">
+    <div class="grille2">
       <div class="ligne"><span class="k">Effectif</span>
         <span class="v">${nGens} · noyau ${n(noy)}</span></div>
       <div class="ligne"><span class="k">Plafond atteignable</span>
@@ -2660,7 +2673,7 @@ function ecranEscouade() {
   <section class="panneau">
     <h2 class="titre">${e(g.nom)}
       <span class="droite">${tousLesMembres(S).filter(estVivant).length} au total</span></h2>
-    ${g.membres.map(ficheMembre).join('')}
+    <div class="galerie">${g.membres.map(ficheMembre).join('')}</div>
   </section>
 
   ${blocQuiFaitQuoi()}

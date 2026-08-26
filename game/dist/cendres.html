@@ -1256,6 +1256,48 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
     margin: -4px auto 8px;
   }
 }
+
+/* ------------------------------------------ La galerie de portraits (dir. A)
+   L'escouade se regarde avant de se lire : deux cartes par rangée, l'anneau
+   de santé autour des initiales, et la fiche ouverte prend toute la largeur. */
+.galerie { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.galerie details.perso { margin-bottom: 0; }
+.galerie details.perso[open] { grid-column: 1 / -1; }
+.galerie .perso > summary { flex-wrap: wrap; padding: 10px; }
+
+.perso .anneau { position: relative; flex: 0 0 40px; width: 40px; height: 40px; }
+.perso .anneau svg { display: block; }
+.perso .anneau.ok { color: var(--vert); }
+.perso .anneau.att { color: var(--ambre); }
+.perso .anneau.mal { color: var(--rouge); }
+.perso .anneau .ini {
+  position: absolute;
+  inset: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #262019;
+  border-radius: 50%;
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: #e8dfc9;
+}
+.perso .nom .arch { display: block; }
+.perso .nom .sante { display: block; font-size: 10px; color: var(--texte-3); }
+
+/* Le grand chiffre d'une barre de titre : la cohésion se lit de l'autre bout
+   de la pièce — c'est un état de jeu, pas une note de bas de page. */
+.titre .droite .nombre {
+  font-family: var(--display);
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1;
+}
+.titre .droite .nombre.ok { color: var(--vert); }
+.titre .droite .nombre.att { color: var(--ambre); }
+.titre .droite .nombre.mal { color: var(--rouge); }
 </style>
 </head>
 <body>
@@ -28480,11 +28522,24 @@ function ficheMembre(c) {
   const armure = c.equip.armure ? ITEMS[c.equip.armure].nom : '—';
   const greffes = Object.keys(c.equip.greffes).map((m) => ITEMS[c.equip.greffes[m]].nom).join(', ') || '—';
 
+  // Le portrait (direction A) : l'anneau de santé autour des initiales — la
+  // fiche se lit de loin, comme une carte de jeu. Le mot « santé » reste dans
+  // le résumé : un pourcentage sans nom ne se comprend pas.
+  const ini = c.nom.trim().slice(0, 2).toUpperCase();
+  const arc = (t.pct * 106.8).toFixed(1);
   return `<details class="perso" data-id="${e(c.id)}"${ouvert}>
     <summary>
+      <span class="anneau ${cls}" aria-hidden="true">
+        <svg viewBox="0 0 40 40" width="40" height="40">
+          <circle cx="20" cy="20" r="17" fill="none" stroke="#241f18" stroke-width="3"></circle>
+          <circle cx="20" cy="20" r="17" fill="none" stroke="currentColor" stroke-width="3"
+            stroke-dasharray="${arc} 106.8" stroke-linecap="round" transform="rotate(-90 20 20)"></circle>
+        </svg>
+        <span class="ini">${e(ini)}</span>
+      </span>
+      <span class="nom">${e(c.nom)} <span class="arch">${e(c.archetypeNom)}</span>
+        <span class="sante mono-num">santé ${(t.pct * 100).toFixed(0)} %</span></span>
       <span class="puce ${cls}">${e(et)}</span>
-      <span class="nom">${e(c.nom)} <span class="arch">${e(c.archetypeNom)}</span></span>
-      <span class="mono-num" style="color:var(--texte-3)">santé ${(t.pct * 100).toFixed(0)} %</span>
     </summary>
     <div class="corps-detail">
       <div class="grille2" style="margin-bottom:8px">
@@ -28943,9 +28998,9 @@ function ecranEscouade() {
   ${blocDepouilles()}
   <section class="panneau">
     <h2 class="titre">${nGens === 1 ? 'Tenue' : 'Cohésion'} de ${e(g.nom)}
-      <span class="droite"><span class="puce ${cohCls}">${Math.round(g.cohesion ?? 55)} %</span></span></h2>
+      <span class="droite"><span class="nombre ${cohCls}">${Math.round(g.cohesion ?? 55)} %</span></span></h2>
     ${jauge((g.cohesion ?? 55) / 100, '', rend >= 1 ? '#4fd0e3' : undefined)}
-    <div class="grille2 serree">
+    <div class="grille2">
       <div class="ligne"><span class="k">Effectif</span>
         <span class="v">${nGens} · noyau ${n(noy)}</span></div>
       <div class="ligne"><span class="k">Plafond atteignable</span>
@@ -28967,7 +29022,7 @@ function ecranEscouade() {
   <section class="panneau">
     <h2 class="titre">${e(g.nom)}
       <span class="droite">${tousLesMembres(S).filter(estVivant).length} au total</span></h2>
-    ${g.membres.map(ficheMembre).join('')}
+    <div class="galerie">${g.membres.map(ficheMembre).join('')}</div>
   </section>
 
   ${blocQuiFaitQuoi()}

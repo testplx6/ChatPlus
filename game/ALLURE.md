@@ -311,11 +311,19 @@ la finition ensuite.
     les valeurs restent en mono, le récit en serif. Le bandeau
     d'urgence garde sa préséance : il passe AVANT la carte, la
     feuille commence après elle.
-  - Étapes suivantes, dans l'ordre de la maquette : l'escouade en
-    galerie de portraits (anneaux de santé, jetons d'état, réglages
-    derrière une porte), puis le dock d'ordres flottant sur la carte
-    (mécanisme : cycle strict), puis l'harmonisation des autres
-    écrans.
+  - **Étape 2 — livrée : l'escouade en galerie de portraits.** La
+    fiche membre devient une carte : l'anneau de santé (SVG, coloré
+    par l'état) autour des initiales, le nom, le métier, l'état en
+    jeton — et le mot « santé » reste dans le résumé, un pourcentage
+    sans nom ne se comprend pas. Deux cartes par rangée ; la fiche
+    ouverte prend toute la largeur (la mécanique `details` ne bouge
+    pas d'un octet). La cohésion s'affiche en grand chiffre de la
+    voix d'affichage, coloré par son état — un état de jeu, pas une
+    note de bas de page.
+  - Étapes suivantes, dans l'ordre de la maquette : le dock d'ordres
+    flottant sur la carte (mécanisme : cycle strict), puis
+    l'harmonisation des autres écrans (base, contrats, monde,
+    journal) dans la même voix.
 
 **Les six pistes moyennes et G1 sont livrées.** Restent G2 (mode
 chronique) et G3 (son génératif) — non engagées.
