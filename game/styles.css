@@ -165,6 +165,10 @@ body {
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
+  /* L'ancre de lecture est la nôtre (mesurerAncre/restaurerAncre) : on coupe
+     l'ancrage natif du navigateur, sinon deux compensations se battent et
+     l'écran saute quand un encart change de hauteur au-dessus du doigt. */
+  overflow-anchor: none;
   padding: 10px 10px 16px;
   /* Une lueur de braise à peine posée en haut de page : l'écran a une source
      de lumière, pas un vide. */
@@ -1202,14 +1206,22 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
     background: #05070a;
     padding-bottom: 4px;
   }
+  /* `svh` et pas `dvh` : la hauteur dynamique CHANGE quand la barre d'adresse
+     du téléphone se rétracte en plein défilement — la carte se redimensionnait
+     sous le doigt (« la carte fait des mouvements bizarres », le propriétaire,
+     depuis son téléphone). La petite hauteur, elle, ne bouge jamais. */
   #ecran.plein-carte #carte-boite {
-    height: calc(100dvh - var(--haut-h) - var(--nav-h) - 196px);
+    height: calc(100svh - var(--haut-h) - var(--nav-h) - 196px);
     max-height: none;
     border-left: 0;
     border-right: 0;
   }
-  #ecran.plein-carte .carte-pied { padding: 0 10px; }
-  #ecran.plein-carte .legende { padding: 0 10px; }
+  /* Le pied de carte range son texte : l'aide aux gestes traînait entre le
+     dock et la feuille (« du texte sous le menu », le propriétaire) — les
+     gestes se découvrent au doigt, le secteur et la légende suffisent. */
+  #ecran.plein-carte .carte-pied { padding: 2px 10px 0; }
+  #ecran.plein-carte .carte-pied .aide { display: none; }
+  #ecran.plein-carte .legende { padding: 0 10px; margin-top: 4px; opacity: .85; }
 
   /* La feuille : tout ce qui suit la carte passe AU-DESSUS d'elle. */
   #ecran.plein-carte > section.panneau,
@@ -1387,9 +1399,9 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
   }
   #racine.large-carte #barre-haut .vitesse button { background: transparent; }
   #racine.large-carte #barre-haut .vitesse button[aria-pressed="true"] { background: #d9803a; }
-  /* La carte reprend la hauteur que la barre occupait. */
+  /* La carte reprend la hauteur que la barre occupait — en `svh`, stable. */
   #ecran.plein-carte #carte-boite {
-    height: calc(100dvh - var(--nav-h) - 208px);
+    height: calc(100svh - var(--nav-h) - 208px);
   }
 }
 
@@ -1420,7 +1432,17 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
   border-radius: 6px;
   backdrop-filter: blur(6px);
 }
-#alerte-carte .ac-t { flex: 1 1 auto; font-size: 11px; line-height: 1.35; color: #e8ded0; }
+#alerte-carte .ac-t {
+  flex: 1 1 auto;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #e8ded0;
+  /* Deux lignes au plus : sur un petit écran, l'alerte mangeait la carte. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 #alerte-carte .act.mini {
   flex: 0 0 auto;
   width: auto;
