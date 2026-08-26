@@ -19,6 +19,22 @@
   --violet: #b06be0;
   --nav-h: 54px;
   --haut-h: 46px;
+  /* La grille d'espacement (refonte, experts août 2026) : cinq crans, rien
+     d'autre. Un espacement hors grille est une valeur devinée. */
+  --e1: 4px;
+  --e2: 8px;
+  --e3: 12px;
+  --e4: 16px;
+  --e5: 24px;
+  /* L'échelle typographique : six crans. Le CSS portait onze corps de texte
+     — LE marqueur fait-maison résiduel, dit l'expert. */
+  --t-eti: 10px;
+  --t-aide: 11px;
+  --t-donnee: 12px;
+  --t-base: 14px;
+  --t-tete: 17px;
+  /* Le séparateur interne, codé en dur neuf fois avant d'être un jeton. */
+  --filet: #26211a;
 }
 
 * { box-sizing: border-box; }
@@ -221,15 +237,17 @@ body {
 #barre-nav button[aria-current="page"] { color: #e8a050; border-top-color: #d9803a; }
 #barre-nav .pastille {
   position: absolute;
-  top: 5px;
+  top: 3px;
   right: 50%;
-  transform: translateX(20px);
+  transform: translateX(14px);
   min-width: 15px;
   height: 15px;
   padding: 0 3px;
   background: var(--rouge);
+  border-radius: 8px;
+  box-shadow: 0 0 0 2px var(--fond-2);
   color: #120606;
-  font-size: 9px;
+  font-size: var(--t-eti);
   line-height: 15px;
   text-align: center;
 }
@@ -240,8 +258,8 @@ body {
   background: linear-gradient(180deg, #1b1813, var(--panneau) 30px);
   border: 1px solid var(--bord);
   border-top-color: #3b3327;
-  padding: 10px 11px;
-  margin-bottom: 10px;
+  padding: var(--e3);
+  margin-bottom: var(--e3);
 }
 
 /* Un panneau qui réclame une décision maintenant. Le liseré suffit : le rouge
@@ -300,7 +318,7 @@ body {
 @media (max-width: 430px) {
   .grille2 { grid-template-columns: 1fr; gap: 0; }
 }
-.grille2 > .ligne { border-bottom: 1px solid #26211a; }
+.grille2 > .ligne { border-bottom: 1px solid var(--filet); }
 .grille3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
 
 button.act, .act {
@@ -313,8 +331,9 @@ button.act, .act {
   cursor: pointer;
   text-align: left;
   width: 100%;
-  min-height: 38px;
+  min-height: 44px;
   display: block;
+  border-radius: 2px;
   transition: border-color .12s ease, background .12s ease;
 }
 button.act:hover { border-color: #6d5d43; }
@@ -355,24 +374,30 @@ button.act.danger { border-color: #7c3a34; color: var(--rouge); }
 
 .puce {
   display: inline-block;
-  font-size: 10px;
+  font-size: var(--t-eti);
   letter-spacing: .08em;
-  padding: 1px 5px;
+  padding: 1px var(--e1);
   border: 1px solid var(--bord-vif);
+  border-radius: 2px;
   color: var(--texte-2);
   text-transform: uppercase;
+  vertical-align: baseline;
 }
 .puce.ok { border-color: #2b5c3a; color: var(--vert); }
 .puce.att { border-color: #6b5320; color: var(--ambre); }
 .puce.mal { border-color: #6b2b2b; color: var(--rouge); }
 
 .jauge {
-  height: 4px;
+  height: 6px;
   background: #0e0c09;
   border: 0;
   box-shadow: inset 0 0 0 1px rgba(50, 44, 35, .55);
   position: relative;
 }
+/* La rangée jauge + valeur : la barre et son chiffre vivent ensemble. */
+.jauge-l { display: flex; align-items: center; gap: var(--e2); }
+.jauge-l .jauge { flex: 1 1 auto; }
+.jauge-l .val { flex: 0 0 auto; font-variant-numeric: tabular-nums; font-size: var(--t-donnee); }
 .jauge > i { display: block; height: 100%; background: var(--cyan); }
 .jauge.rouge > i { background: var(--rouge); }
 .jauge.ambre > i { background: var(--ambre); }
@@ -406,8 +431,8 @@ button.act.danger { border-color: #7c3a34; color: var(--rouge); }
   background: #05070a;
   line-height: 0;
   overflow: hidden;          /* on gère nous-mêmes le défilement */
-  max-height: 52vh;
-  height: 52vh;
+  max-height: 50dvh;
+  height: 50dvh;
   /* Sans ça, un glissement vertical sur la carte fait défiler la page et on
      n'atteint jamais le sud du monde. */
   touch-action: none;
@@ -422,7 +447,17 @@ button.act.danger { border-color: #7c3a34; color: var(--rouge); }
   pointer-events: none;      /* les gestes sont écoutés sur la boîte */
 }
 
-.legende { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 7px; }
+.legende {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  gap: var(--e1) 10px;
+  margin-top: var(--e2);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent);
+}
+.legende::-webkit-scrollbar { display: none; }
+.legende span { flex: 0 0 auto; }
 .legende span { font-size: 10px; color: var(--texte-3); display: flex; align-items: center; gap: 4px; }
 .legende i { width: 8px; height: 8px; display: inline-block; }
 
@@ -487,7 +522,7 @@ button.act.danger { border-color: #7c3a34; color: var(--rouge); }
   gap: 5px;
   align-items: center;
   padding: 3px 0;
-  border-bottom: 1px solid #26211a;
+  border-bottom: 1px solid var(--filet);
 }
 .marche-l .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .marche-l .px { font-size: 11px; font-variant-numeric: tabular-nums; color: var(--texte-2); text-align: right; }
@@ -616,7 +651,8 @@ button.act.danger { border-color: #7c3a34; color: var(--rouge); }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: rgba(5, 7, 10, .9);
+  background: rgba(5, 7, 10, .96);
+  backdrop-filter: blur(3px);
   cursor: pointer;
   animation: moment-nait .45s ease;
 }
@@ -843,12 +879,12 @@ button.act.ordre[aria-pressed="true"] .o-r { color: var(--cyan); }
 
 .traits { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 5px; }
 
-.contrat { border-bottom: 1px solid #26211a; padding: 7px 0; }
+.contrat { border-bottom: 1px solid var(--filet); padding: 7px 0; }
 .contrat:last-child { border-bottom: 0; }
 .contrat-t { font-size: 13px; margin: 2px 0 5px; }
 .contrat button { margin-top: 5px; }
 
-.article { border-bottom: 1px solid #26211a; padding: 7px 0; }
+.article { border-bottom: 1px solid var(--filet); padding: 7px 0; }
 .article:last-child { border-bottom: 0; }
 .article button { margin-top: 5px; }
 
@@ -913,6 +949,18 @@ summary:hover::after { border-color: var(--cyan); }
 .panneau.plie > *:not(h2.titre) { display: none; }
 .panneau.plie > h2.titre { margin-bottom: 0; }
 
+/* Des boutons peuvent vivre dans une barre de titre (filtre du journal) :
+   petits, en ligne, sans hériter de la hauteur tactile des .act pleins. */
+h2.titre .droite .act.mini {
+  display: inline-block;
+  width: auto;
+  min-height: 0;
+  padding: 2px 8px;
+  margin: 0 0 0 6px;
+  font-size: var(--t-aide);
+  line-height: 1.3;
+}
+
 /* Les `<details>` déjà présents suivent la même règle. `summary` n'est pas un
    conteneur flex par défaut : sans ça le chevron se colle au texte au lieu
    d'aller au bout de la ligne. */
@@ -964,3 +1012,46 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
     repeating-linear-gradient(0deg, rgba(255, 255, 255, .015) 0 1px, transparent 1px 3px),
     linear-gradient(180deg, #191610, var(--fond-2));
 }
+
+
+/* ------------------------------------------------------ Refonte (experts) */
+
+/* L'état vide plein écran : un panneau seul ne flotte plus sur le noir. */
+#ecran > .panneau.fiche-vide {
+  min-height: 40vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* La paire de colonnes qui TIENT sur mobile : pour les couples courts
+   clé/valeur — multiplicateurs, effectifs, stocks. */
+.grille2.serree { grid-template-columns: 1fr 1fr; gap: var(--e1) var(--e4); }
+@media (max-width: 430px) {
+  .grille2.serree { grid-template-columns: 1fr 1fr; gap: var(--e1) var(--e4); }
+}
+.grille2.serree .k { font-size: var(--t-aide); }
+
+/* La ligne à filet : remplace les huit bordures inline des gabarits. */
+.ligne.filet, .filet-b { border-bottom: 1px solid var(--filet); }
+.ligne.filet { padding: var(--e1) 0; }
+
+/* Utilitaires d'espacement : les gabarits cessent d'inventer des marges. */
+.mt1 { margin-top: var(--e1); }
+.mt2 { margin-top: var(--e2); }
+
+/* Un sous-libellé d'ordre jamais vide : les hauteurs restent égales. */
+.o-r:empty::before { content: '—'; opacity: .4; }
+.act.ordre { min-height: 52px; }
+
+/* La rangée de cartes défilable : le composant des groupes, généralisé. */
+.rangee-cartes {
+  display: flex;
+  gap: var(--e2);
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+  mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent);
+}
+.rangee-cartes::-webkit-scrollbar { display: none; }
+.rangee-cartes > * { flex: 0 0 auto; scroll-snap-align: start; }

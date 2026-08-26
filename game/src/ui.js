@@ -406,6 +406,17 @@ function restaurerAncre(ecran, a) {
 const CLE_REPLIS = 'cendres.replis.v1';
 let replis = null;
 
+// Ce qui naît replié (refonte, avis du game master) : les réglages qu'on touche
+// une fois par partie et les fiches d'ambiance. Leur barre de titre dit
+// l'essentiel ; l'écran s'ouvre sur les gens et sur ce qui se décide. Le jeu
+// de `replis` mémorise alors l'écart au défaut, pas l'état absolu — déplier un
+// encart né plié est un choix qui tient, sans migration de sauvegarde.
+const DEFAUT_PLIE = new Set([
+  'Posture', 'Tactique', 'Consignes permanentes', 'Détacher', 'Mémorial',
+  'Position', 'Contrats en cours', 'Comment ça marche',
+  'Climat', 'Villes connues', 'Chronique',
+]);
+
 function chargerReplis() {
   if (replis) return replis;
   replis = new Set();
@@ -456,7 +467,7 @@ function appliquerReplis(ecran) {
     h.setAttribute('data-k', cle);
     h.setAttribute('role', 'button');
     h.setAttribute('tabindex', '0');
-    const plie = r.has(cle);
+    const plie = r.has(cle) !== DEFAUT_PLIE.has(cle);
     s.classList.toggle('plie', plie);
     h.setAttribute('aria-expanded', plie ? 'false' : 'true');
   }
@@ -1641,7 +1652,12 @@ function blocRegionCourante() {
         · ${o.allure === 'forcee' ? 'on ne dort pas' : 'camp la nuit'}</div>`;
   }
 
+  // Sur les terres de quelqu'un, ce qu'il pense de vous décide de ce qui sort
+  // du bois : hissé dans la barre de « Position », lisible même repliée.
+  const ef = r.controle ? effetsEstime(S, r.controle) : null;
+
   return `
+  ${col && !col.ruine ? blocColonie(col) : ''}
   <section class="panneau">
     <h2 class="titre">Ordre de ${e(G().nom)} <span class="droite">${e(enTete)}</span></h2>
     ${progression}
@@ -1653,10 +1669,16 @@ function blocRegionCourante() {
     ${detailRendement ? `<div class="aide" style="color:var(--texte-2)">Ici : ${e(detailRendement)} par heure de travail.</div>` : ''}
     ${G().recolteHeure ? `<div class="aide" style="color:var(--vert)">Dernière heure : ${e(G().recolteHeure)}</div>` : ''}
     ${blocRepartition()}
+    ${ici ? `<div class="sep"></div>
+      <button class="act" data-a="modale" data-m="transfert">Transférer des ressources vers l’avant-poste</button>` : ''}
   </section>
 
+  ${blocSite()}
+
   <section class="panneau">
-    <h2 class="titre">Position <span class="droite">${e(lieuAvecCoord(S.world, rid))}</span></h2>
+    <h2 class="titre">Position
+      ${ef ? `<span class="resume">ils vous voient : <span class="puce ${couleurEstime(ef.rep)}">${ef.rep > 0 ? '+' : ''}${n(ef.rep)} ${e(ef.palier.nom.toLowerCase())}</span></span>` : ''}
+      <span class="droite">${e(lieuAvecCoord(S.world, rid))}</span></h2>
     <div class="ligne"><span class="k">Biome</span><span class="v">${e(b.nom)}</span></div>
     <div class="ligne"><span class="k">Richesse</span><span class="v">×${r.richesse.toFixed(2)}</span></div>
     <div class="ligne"><span class="k">Épuisement</span><span class="v">${(r.fouille * 100).toFixed(0)} %</span></div>
@@ -1664,27 +1686,13 @@ function blocRegionCourante() {
     <div class="ligne"><span class="k">Aléa</span><span class="v">${e(b.hazard.nom)}</span></div>
     <div class="ligne"><span class="k">Ciel</span>
       <span class="v" style="color:${conditions(S.world, S.temps).meteo.couleur}">${e(conditions(S.world, S.temps).meteo.nom)}</span></div>
-    ${r.controle ? `<div class="ligne"><span class="k">Territoire</span>
+    ${ef ? `<div class="ligne"><span class="k">Territoire</span>
       <span class="v" style="color:${couleurFaction(r.controle)}">${e(drapeauDe(S.world, r.controle).nom)}</span></div>
-      ${(() => {
-    // Sur les terres de quelqu'un, ce qu'il pense de vous décide de ce qui
-    // sort du bois. C'est l'information la plus utile de tout le panneau, et
-    // elle n'était visible qu'en ville.
-    const ef = effetsEstime(S, r.controle);
-    const cls = couleurEstime(ef.rep);
-    return `<div class="ligne"><span class="k">Ils vous voient</span>
-        <span class="v"><span class="puce ${cls}">${ef.rep > 0 ? '+' : ''}${n(ef.rep)}
+      <div class="ligne"><span class="k">Ils vous voient</span>
+        <span class="v"><span class="puce ${couleurEstime(ef.rep)}">${ef.rep > 0 ? '+' : ''}${n(ef.rep)}
           ${e(ef.palier.nom.toLowerCase())}</span></span></div>
-      ${ef.perdu.length ? `<div class="aide alerte">${e(ef.perdu[0])}.</div>` : ''}`;
-  })()}` : ''}
-  </section>
-
-  ${blocSite()}
-  ${col && !col.ruine ? blocColonie(col) : ''}
-  ${ici ? `<section class="panneau">
-      <h2 class="titre">Avant-poste</h2>
-      <button class="act" data-a="modale" data-m="transfert">Transférer des ressources</button>
-    </section>` : ''}`;
+      ${ef.perdu.length ? `<div class="aide alerte">${e(ef.perdu[0])}.</div>` : ''}` : ''}
+  </section>`;
 }
 
 /**
@@ -2620,12 +2628,13 @@ function ecranEscouade() {
 
   return `
   ${barreGroupes()}
-  ${blocQuiFaitQuoi()}
+  ${blocPrisonniers()}
+  ${blocDepouilles()}
   <section class="panneau">
     <h2 class="titre">${nGens === 1 ? 'Tenue' : 'Cohésion'} de ${e(g.nom)}
       <span class="droite"><span class="puce ${cohCls}">${Math.round(g.cohesion ?? 55)} %</span></span></h2>
     ${jauge((g.cohesion ?? 55) / 100, '', rend >= 1 ? '#4fd0e3' : undefined)}
-    <div class="grille2">
+    <div class="grille2 serree">
       <div class="ligne"><span class="k">Effectif</span>
         <span class="v">${nGens} · noyau ${n(noy)}</span></div>
       <div class="ligne"><span class="k">Plafond atteignable</span>
@@ -2641,10 +2650,18 @@ function ecranEscouade() {
     ? 'Au-delà du noyau, on se connaît moins. Rien ne l’interdit : ça coûte, simplement — '
       + 'et un baraquement ou quelqu’un de sociable agrandit ce noyau.'
     : 'Une bande de cette taille peut se souder complètement.'}</div>
+    <div class="aide">${e((nGens === 1 ? texteTenueSeul : texteCohesion)(g.cohesion ?? 55))}</div>
   </section>
 
-  ${blocPrisonniers()}
-  ${blocDepouilles()}
+  <section class="panneau">
+    <h2 class="titre">${e(g.nom)}
+      <span class="droite">${tousLesMembres(S).filter(estVivant).length} au total</span></h2>
+    ${g.membres.map(ficheMembre).join('')}
+  </section>
+
+  ${blocQuiFaitQuoi()}
+  ${blocDetachement()}
+  ${blocInventaire()}
 
   <section class="panneau">
     <h2 class="titre">Posture
@@ -2676,22 +2693,6 @@ function ecranEscouade() {
     <div class="aide" style="margin-top:6px">Ces consignes s’appliquent aussi pendant votre absence.</div>
   </section>
 
-  <section class="panneau">
-    <h2 class="titre">${vivantsDe(g).length === 1 ? 'Tenue' : 'Cohésion'} de ${e(g.nom)}
-      <span class="droite">${Math.round(g.cohesion ?? 55)} / 100</span></h2>
-    ${jauge((g.cohesion ?? 55) / 100, (g.cohesion ?? 55) < 30 ? 'rouge' : (g.cohesion ?? 55) < 60 ? 'ambre' : 'vert')}
-    <div class="aide" style="margin-top:5px">${e((vivantsDe(g).length === 1
-    ? texteTenueSeul : texteCohesion)(g.cohesion ?? 55))}</div>
-  </section>
-
-  <section class="panneau">
-    <h2 class="titre">${e(g.nom)}
-      <span class="droite">${tousLesMembres(S).filter(estVivant).length} au total</span></h2>
-    ${g.membres.map(ficheMembre).join('')}
-  </section>
-
-  ${blocDetachement()}
-  ${blocInventaire()}
   ${blocMemorial()}`;
 }
 
@@ -3390,7 +3391,7 @@ function ecranBase() {
       .filter((k) => (inv[k] || 0) < COUT_FONDATION[k])
       .map((k) => `${COMMODITIES[k].nom.toLowerCase()} ${n(inv[k] || 0)}/${COUT_FONDATION[k]}`);
     const enVille = !!r.colonie;
-    return `<section class="panneau">
+    return `<section class="panneau fiche-vide">
       <h2 class="titre">Aucun avant-poste</h2>
       <div class="aide">Un avant-poste vous donne un entrepôt, des chaînes de production
       et la recherche. Il faut le bâtir hors d’une ville existante, et il pourra être attaqué.</div>
@@ -3607,7 +3608,7 @@ function ecranBase() {
   ${menaceHtml}
   <section class="panneau">
     <h2 class="titre">${e(b.nom)} <span class="droite">${e(lieuAvecCoord(S.world, b.regionId))}</span></h2>
-    <div class="grille2">
+    <div class="grille2 serree">
       <div class="ligne"><span class="k">Énergie</span>
         <span class="v ${en.ratio < 1 ? '' : ''}">${n(en.prod)} / ${n(en.conso)}</span></div>
       <div class="ligne"><span class="k">Défense</span><span class="v">${n(b.defense)}</span></div>
@@ -3621,6 +3622,10 @@ function ecranBase() {
     <div class="ligne"><span class="k">Habitants</span>
       <span class="v">${n(Math.round(b.pop || 0))} / ${n(populationMax(b, S))}${b.colonieId
     ? ' · <span class="ok">sur les cartes</span>' : ''}</span></div>
+    ${jauge(populationMax(b, S) ? (b.pop || 0) / populationMax(b, S) : 0, '', '#6be08a')}
+    <div class="aide">${(b.pop || 0) === 0
+    ? 'Personne ne vit ici. Un baraquement et des vivres y changeraient quelque chose.'
+    : `Main-d’œuvre ×${mainDoeuvre(b, S).toFixed(2)} sur les chaînes · +${n(Math.round((b.pop || 0) * 2.5))} de défense · ${n((b.pop || 0) * 0.014 * 24, 1)} rations/jour consommées`}</div>
     ${b.colonieId
     ? `${blocDrapeau(b)}`
     : `<div class="aide">Un camp que personne n’a inscrit nulle part n’intéresse personne.
@@ -3653,21 +3658,10 @@ function ecranBase() {
     ${b.gaspille > 20 ? `<div class="aide alerte">L’entrepôt a déjà refusé
       ${n(Math.round(b.gaspille))} unités faute de place. Ce qui ne rentre pas est perdu.</div>` : ''}
     ${jauge(stock / capa, stock / capa > 0.95 ? 'rouge' : '')}
-    <div class="sep"></div>
-    <div class="ligne"><span class="k">Habitants</span>
-      <span class="v">${n(b.pop || 0)} / ${n(populationMax(b, S))}</span></div>
-    ${jauge(populationMax(b, S) ? (b.pop || 0) / populationMax(b, S) : 0, '', '#6be08a')}
-    <div class="aide">${(b.pop || 0) === 0
-    ? 'Personne ne vit ici. Un baraquement et des vivres y changeraient quelque chose.'
-    : `Main-d’œuvre ×${mainDoeuvre(b, S).toFixed(2)} sur les chaînes · +${n(Math.round((b.pop || 0) * 2.5))} de défense · ${n((b.pop || 0) * 0.014 * 24, 1)} rations/jour consommées`}</div>
   </section>
 
   ${blocChaine()}
   ${blocConsignes()}
-  ${blocComptoir()}
-  ${blocTerre()}
-  ${blocMetiers()}
-  ${blocEcoleBase()}
 
   <section class="panneau">
     <h2 class="titre">File de construction
@@ -3685,6 +3679,11 @@ function ecranBase() {
       <span class="droite">${Object.keys(b.batiments).filter((k) => b.batiments[k] > 0).length} montés</span></h2>
     ${batHtml}
   </section>
+
+  ${blocMetiers()}
+  ${blocEcoleBase()}
+  ${blocComptoir()}
+  ${blocTerre()}
 
   <section class="panneau">
     <h2 class="titre">Recherche
@@ -4380,7 +4379,7 @@ function blocAllegeance() {
     <div class="aide">${n(all.points)} points de service${rang.suivant
     ? ` · ${n(rang.suivant.points - all.points)} avant ${e(rang.suivant.nom)}` : ' · grade maximal'}</div>
     <div class="sep"></div>
-    <div class="grille2">
+    <div class="grille2 serree">
       <div class="ligne"><span class="k">Remise</span><span class="v">${(rang.def.remise * 100).toFixed(0)} %</span></div>
       <div class="ligne"><span class="k">Solde</span><span class="v">${n(rang.def.solde)} ${sym(all.faction)}/jour</span></div>
       <div class="ligne"><span class="k">Barrages</span><span class="v">${rang.index >= 1 ? 'libres' : 'payants'}</span></div>
@@ -4467,8 +4466,6 @@ function ecranContrats() {
   const dispo = col && col.contrats ? col.contrats : [];
 
   return `
-  ${blocAllegeance()}
-  ${blocDossierContrats()}
   <section class="panneau">
     <h2 class="titre">En cours <span class="droite">${enCours.length} / ${MAX_CONTRATS}</span></h2>
     ${enCours.length
@@ -4486,6 +4483,9 @@ function ecranContrats() {
       : '<div class="aide">Rien d’affiché pour le moment. Les offres se renouvellent.</div>')
     : '<div class="aide">Il faut être dans une ville pour consulter un panneau.</div>'}
   </section>
+
+  ${blocAllegeance()}
+  ${blocDossierContrats()}
 
   <section class="panneau">
     <h2 class="titre">Comment ça marche</h2>
@@ -4783,24 +4783,29 @@ function ecranMonde() {
 
   return `
   ${blocOuVousEnEtes()}
-  <section class="panneau">
-    <h2 class="titre">Climat
-      <span class="droite" style="color:${meteoNow.saison.def.couleur}">${e(meteoNow.saison.def.nom)} · jour ${meteoNow.saison.jour}/30 · an ${meteoNow.saison.annee}</span></h2>
-    <div class="aide">${e(meteoNow.saison.def.texte)}</div>
-    <div class="sep"></div>
-    <div class="ligne"><span class="k">Ciel</span>
-      <span class="v" style="color:${meteoNow.meteo.couleur}">${e(meteoNow.meteo.nom)}</span></div>
-    <div class="aide">${e(meteoNow.meteo.texte)}</div>
-    <div class="sep"></div>
-    <div class="grille2">
-      <div class="ligne"><span class="k">Récolte vivante</span><span class="v">×${meteoNow.rendement('biomasse').toFixed(2)}</span></div>
-      <div class="ligne"><span class="k">Récolte minérale</span><span class="v">×${meteoNow.rendement('minerai').toFixed(2)}</span></div>
-      <div class="ligne"><span class="k">Marche</span><span class="v">×${meteoNow.marche.toFixed(2)}</span></div>
-      <div class="ligne"><span class="k">Aléas</span><span class="v">×${meteoNow.aleas.toFixed(2)}</span></div>
-      <div class="ligne"><span class="k">Rencontres</span><span class="v">×${meteoNow.rencontres.toFixed(2)}</span></div>
-      <div class="ligne"><span class="k">Visibilité</span><span class="v">×${meteoNow.vue.toFixed(2)}</span></div>
-    </div>
+  <section class="panneau"><h2 class="titre">Rapport de puissance</h2>${factionsHtml}
+    ${(() => {
+    // Le septième drapeau n'est pas dans le classement — il ne gouverne rien,
+    // ne négocie rien et n'a pas de trésor —, si bien qu'il n'était nulle part.
+    // On croisait ses bandes, on lisait son nom dans le journal quand il
+    // saccageait une ville, et rien ne disait ce que c'était. Un joueur a fait
+    // une partie entière sans le savoir.
+    const vu = armeesConnues(S).some((v) => v.faction === 'essaim')
+      || S.world.regions.some((r) => r.decouvert && r.controle === 'essaim')
+      || S.journal.some((x) => (x.texte || '').includes('Essaim'));
+    if (!vu) return '';
+    return `<div class="sep"></div>
+      <div class="ligne"><span class="k" style="color:${couleurFaction('essaim')}">${
+  e(FACTIONS.essaim.nom)}</span><span class="v">hors classement</span></div>
+      <div class="aide">Ce ne sont pas des gens. Ils ne tiennent rien, ne votent rien,
+        n’acceptent ni contrat ni parole donnée, et l’on n’entre pas à leur service.
+        Leurs bandes descendent sur une place, prennent ce qu’il y a et repartent :
+        une ville saccagée par eux reste à qui elle était. Il n’y a pas de paix à
+        signer avec eux — seulement des murs, ou de la distance.</div>`;
+  })()}
   </section>
+  <section class="panneau"><h2 class="titre">Guerres en cours</h2>${guerres}</section>
+  <section class="panneau"><h2 class="titre">Colonnes en campagne</h2>${armees}</section>
 
   <section class="panneau">
     <h2 class="titre">Chronique du monde</h2>
@@ -4852,33 +4857,29 @@ function ecranMonde() {
 
   ${blocBourses()}
 
-  <section class="panneau"><h2 class="titre">Rapport de puissance</h2>${factionsHtml}
-    ${(() => {
-    // Le septième drapeau n'est pas dans le classement — il ne gouverne rien,
-    // ne négocie rien et n'a pas de trésor —, si bien qu'il n'était nulle part.
-    // On croisait ses bandes, on lisait son nom dans le journal quand il
-    // saccageait une ville, et rien ne disait ce que c'était. Un joueur a fait
-    // une partie entière sans le savoir.
-    const vu = armeesConnues(S).some((v) => v.faction === 'essaim')
-      || S.world.regions.some((r) => r.decouvert && r.controle === 'essaim')
-      || S.journal.some((x) => (x.texte || '').includes('Essaim'));
-    if (!vu) return '';
-    return `<div class="sep"></div>
-      <div class="ligne"><span class="k" style="color:${couleurFaction('essaim')}">${
-  e(FACTIONS.essaim.nom)}</span><span class="v">hors classement</span></div>
-      <div class="aide">Ce ne sont pas des gens. Ils ne tiennent rien, ne votent rien,
-        n’acceptent ni contrat ni parole donnée, et l’on n’entre pas à leur service.
-        Leurs bandes descendent sur une place, prennent ce qu’il y a et repartent :
-        une ville saccagée par eux reste à qui elle était. Il n’y a pas de paix à
-        signer avec eux — seulement des murs, ou de la distance.</div>`;
-  })()}
+  <section class="panneau">
+    <h2 class="titre">Climat
+      <span class="droite" style="color:${meteoNow.saison.def.couleur}">${e(meteoNow.saison.def.nom)} · jour ${meteoNow.saison.jour}/30 · an ${meteoNow.saison.annee}</span></h2>
+    <div class="aide">${e(meteoNow.saison.def.texte)}</div>
+    <div class="sep"></div>
+    <div class="ligne"><span class="k">Ciel</span>
+      <span class="v" style="color:${meteoNow.meteo.couleur}">${e(meteoNow.meteo.nom)}</span></div>
+    <div class="aide">${e(meteoNow.meteo.texte)}</div>
+    <div class="sep"></div>
+    <div class="grille2 serree">
+      <div class="ligne"><span class="k">Récolte vivante</span><span class="v">×${meteoNow.rendement('biomasse').toFixed(2)}</span></div>
+      <div class="ligne"><span class="k">Récolte minérale</span><span class="v">×${meteoNow.rendement('minerai').toFixed(2)}</span></div>
+      <div class="ligne"><span class="k">Marche</span><span class="v">×${meteoNow.marche.toFixed(2)}</span></div>
+      <div class="ligne"><span class="k">Aléas</span><span class="v">×${meteoNow.aleas.toFixed(2)}</span></div>
+      <div class="ligne"><span class="k">Rencontres</span><span class="v">×${meteoNow.rencontres.toFixed(2)}</span></div>
+      <div class="ligne"><span class="k">Visibilité</span><span class="v">×${meteoNow.vue.toFixed(2)}</span></div>
+    </div>
   </section>
+
+  <section class="panneau"><h2 class="titre">Villes connues <span class="droite">${connues.length}/${S.world.colonies.length}</span></h2>${villes}</section>
   <section class="panneau"><h2 class="titre">Chiffres</h2>
     ${chiffres.map(([k, v]) => `<div class="ligne"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('')}
-  </section>
-  <section class="panneau"><h2 class="titre">Guerres en cours</h2>${guerres}</section>
-  <section class="panneau"><h2 class="titre">Colonnes en campagne</h2>${armees}</section>
-  <section class="panneau"><h2 class="titre">Villes connues <span class="droite">${connues.length}/${S.world.colonies.length}</span></h2>${villes}</section>`;
+  </section>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -4941,13 +4942,10 @@ function ecranJournal() {
   return `
   ${blocChronique()}
   <section class="panneau">
-    <h2 class="titre">Journal de bord</h2>
-    <div class="rangee">
-      <button class="act mini" data-a="filtre" data-k="tout" aria-pressed="${filtreJournal === 'tout'}">Tout</button>
-      <button class="act mini" data-a="filtre" data-k="important" aria-pressed="${filtreJournal === 'important'}">Marquant</button>
-    </div>
-  </section>
-  <section class="panneau">${html}</section>`;
+    <h2 class="titre">Journal de bord
+      <span class="droite"><button class="act mini" data-a="filtre" data-k="tout" aria-pressed="${filtreJournal === 'tout'}">Tout</button><button class="act mini" data-a="filtre" data-k="important" aria-pressed="${filtreJournal === 'important'}">Marquant</button></span></h2>
+    ${html}
+  </section>`;
 }
 
 /**
@@ -6015,6 +6013,7 @@ export function rendreAccueil(aSauvegarde, perimee = false) {
   <div class="accueil">
     <h1>Cendres &amp; Protocole</h1>
     <div class="sous">Une escouade. Un monde qui tourne sans vous.</div>
+    ${aSauvegarde ? '<button class="act primaire" data-a="continuer">Reprendre la partie</button><div style="height:8px"></div>' : ''}
     <div class="panneau">
       <div class="aide">Vous n’êtes l’élu de personne. Six factions se disputent une carte
       que vous ne connaissez pas. Elles se font la guerre, prennent des villes et en perdent,
@@ -6022,7 +6021,6 @@ export function rendreAccueil(aSauvegarde, perimee = false) {
       Vos gens apprennent en faisant. Ils se blessent membre par membre, tombent K.O.
       avant de mourir, et se souviennent de la faim.</div>
     </div>
-    ${aSauvegarde ? '<button class="act primaire" data-a="continuer">Reprendre la partie</button><div style="height:8px"></div>' : ''}
     ${!aSauvegarde && perimee ? `<div class="panneau">
       <div class="titre">Ancienne partie</div>
       <div class="aide">Une sauvegarde est là, mais elle a été commencée sur la carte

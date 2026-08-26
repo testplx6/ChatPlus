@@ -281,8 +281,10 @@ await page.screenshot({ path: join(CAPTURES, '06-fiche.png'), fullPage: true });
 console.log('\n5. Mise en page');
 const deborde = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
 ok(!deborde, 'aucun débordement horizontal');
+// Seuls les boutons visibles sont des cibles : un bouton rangé sous un encart
+// replié mesure zéro pixel et n'attend aucun doigt.
 const boutonsPetits = await page.evaluate(() => [...document.querySelectorAll('button')]
-  .filter((b) => b.getBoundingClientRect().height < 28).length);
+  .filter((b) => b.offsetParent !== null && b.getBoundingClientRect().height < 28).length);
 ok(boutonsPetits === 0, 'toutes les cibles tactiles font au moins 28 px', `${boutonsPetits} trop petites`);
 // L'en-tête a une largeur fixe et gagne des indicateurs : il faut vérifier que
 // les blocs ne se marchent pas dessus, et que la vitesse reste atteignable.
@@ -1414,6 +1416,13 @@ ok(tacheOk, 'une tâche personnelle est enregistrée sur le membre');
 
 // Détachement : on coche quelqu'un, on le détache, on vérifie l'état.
 const avantGroupes = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).player.groupes.length);
+// L'encart « Détacher » naît replié depuis la refonte : on l'ouvre d'abord,
+// comme le ferait le joueur.
+await page.evaluate(() => {
+  const h = document.querySelector('h2.titre[data-k="Détacher"]');
+  if (h && h.parentElement.classList.contains('plie')) h.click();
+});
+await page.waitForTimeout(250);
 await page.locator('[data-a="detacher-sel"]').first().click();
 await page.waitForTimeout(300);
 const boutonDetacher = page.locator('[data-a="detacher"]:not([disabled])');
@@ -1823,6 +1832,12 @@ ok(await page.locator('[data-a="tactique"]').count() === 5,
   'cinq façons de se battre sont proposées');
 ok(/(bien vu ici|convenable|mauvais choix ici)/.test(texteTac),
   'et chacune annonce ce qu’elle vaut sur le terrain d’ici');
+// L'encart naît replié depuis la refonte : on l'ouvre avant de choisir.
+await page.evaluate(() => {
+  const h = document.querySelector('h2.titre[data-k="Tactique"]');
+  if (h && h.parentElement.classList.contains('plie')) h.click();
+});
+await page.waitForTimeout(250);
 await page.locator('[data-a="tactique"][data-k="harcelement"]').click();
 await page.waitForTimeout(500);
 // Depuis P2 (PROMESSES.md), la consigne est celle de la colonne affichée —
@@ -2263,6 +2278,30 @@ console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit
   await page.click('[data-a="onglet"][data-k="escouade"]');
   await page.waitForTimeout(500);
 
+  // --- Le pli par défaut (refonte, avis du game master) : l'écran s'ouvre sur
+  //     les gens et ce qui se décide. Les réglages qu'on touche une fois par
+  //     partie naissent repliés — leur barre dit l'essentiel — et les déplier
+  //     est un choix qui tient d'une session à l'autre.
+  const nesPlies = await page.evaluate(
+    () => [...document.querySelectorAll('#ecran > section.plie > h2.titre')].map((h) => h.dataset.k));
+  // « Mémorial » et les prisonniers n'existent que si la partie en a : on
+  // n'exige que les encarts toujours présents.
+  ok(['Posture', 'Tactique', 'Consignes permanentes', 'Détacher'].every((k) => nesPlies.includes(k)),
+    'les réglages naissent repliés — l’écran s’ouvre sur les gens',
+    nesPlies.join(' · ') || 'aucun');
+  await page.evaluate(() => document.querySelector('h2.titre[data-k="Posture"]').click());
+  await page.waitForTimeout(250);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.click('[data-a="onglet"][data-k="escouade"]');
+  await page.waitForTimeout(500);
+  const nesPlies2 = await page.evaluate(
+    () => [...document.querySelectorAll('#ecran > section.plie > h2.titre')].map((h) => h.dataset.k));
+  ok(!nesPlies2.includes('Posture') && nesPlies2.includes('Tactique'),
+    'déplier un encart né plié est un choix qui survit au rechargement',
+    nesPlies2.join(' · ') || 'aucun');
+
   // --- Les clés d'encart, qui servent au pli comme à l'ancre de défilement.
   const cles = await page.evaluate(
     () => [...document.querySelectorAll('#ecran > section.pliable > h2.titre')].map((h) => h.dataset.k));
@@ -2293,6 +2332,10 @@ console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit
 
   // --- Replier : ça raccourcit, ça tient au rechargement.
   const gros = 'Qui fait quoi';
+  // Certains encarts naissent repliés : on note lesquels, pour vérifier que le
+  // clic n'ajoute que le sien.
+  const dejaPlies = await page.evaluate(
+    () => [...document.querySelectorAll('.panneau.plie > h2.titre')].map((h) => h.dataset.k));
   const avant = await page.evaluate(() => document.querySelector('#ecran').scrollHeight);
   await page.click(`h2.titre[data-k="${gros}"]`);
   await page.waitForTimeout(350);
@@ -2300,7 +2343,9 @@ console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit
   ok(apres < avant, 'replier un encart raccourcit vraiment la page', `${avant} → ${apres}px`);
   const plie = await page.evaluate(
     () => [...document.querySelectorAll('.panneau.plie > h2.titre')].map((h) => h.dataset.k));
-  ok(plie.length === 1 && plie[0] === gros, 'et lui seul est replié', plie.join(', '));
+  ok(plie.length === dejaPlies.length + 1 && plie.includes(gros)
+    && dejaPlies.every((k) => plie.includes(k)),
+  'et lui seul s’est ajouté aux plis', plie.join(', '));
 
   await page.reload({ waitUntil: 'networkidle' });
   await page.click('[data-a="continuer"]');

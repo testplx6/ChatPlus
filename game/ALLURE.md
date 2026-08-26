@@ -215,6 +215,45 @@ la finition ensuite.
   campagne (scanlines discrètes, lumière par le haut). Menée par la
   voie rapide de METHODE §10 : une passe, une suite, un --complet.
 
+- **La refonte complète, passe 2 — l'architecture des écrans, sur
+  ordre du propriétaire** (« je veux une refonte complète de l'UI,
+  fais appel aux experts nécessaires », août 2026). Deux avis croisés
+  — le game master (architecture de l'information : les écrans
+  racontaient l'histoire du dépôt, pas la journée du joueur ; l'ordre
+  voulu : décision en attente → gens → verbes) et un œil mobile
+  (composants, rythme vertical) — puis une passe. Livré :
+  - **Le socle de jetons** (passe 1 du même lot) : espacements
+    (`--e1`…`--e5`), échelle typographique (`--t-*`), filet unifié,
+    boutons à hauteur tactile (44 px), jauges affinées, pastilles,
+    légende sur une ligne, et les composants `fiche-vide`,
+    `grille2.serree`, `jauge-l`, `rangee-cartes`.
+  - **Le pli par défaut** (`DEFAUT_PLIE`, mécanisme mené au cycle
+    strict, rouge d'abord) : les réglages qu'on touche une fois par
+    partie (posture, tactique, consignes, détacher, mémorial) et les
+    fiches d'ambiance (position, contrats en cours de la carte,
+    climat, villes connues, chronique, « comment ça marche ») naissent
+    repliés — leur barre dit l'essentiel, et les déplier est un choix
+    qui tient (`replis` mémorise l'écart au défaut, aucune migration).
+  - **Les écrans réordonnés et les doublons fondus.** Escouade :
+    prisonniers et morts d'abord, la cohésion puis les fiches — les
+    deux panneaux « Cohésion » n'en font plus qu'un. Base : les deux
+    lignes « Habitants » fondues ; chaîne, consignes, file et
+    bâtiments avant le comptoir. Contrats : l'en-cours mène,
+    l'allégeance suit. Monde : l'estime puis le rapport de puissance ;
+    le climat et les villes connues replient en fin. Carte : la ville
+    (ses portes) au-dessus de l'ordre, le panneau « Avant-poste » à un
+    bouton fondu dans l'ordre du groupe, et « ils vous voient » hissé
+    dans la barre de « Position » — lisible même repliée.
+  - **Le journal** : le panneau-filtre à deux boutons fondu dans la
+    tête du fil. **L'accueil** ouvre sur « Reprendre ». **La carte**
+    tient en 50 dvh pour que le point de situation affleure.
+
+  Limites dites : la salle des cartes garde `column-count` (les
+  grilles explicites par écran voulues par le GM seraient un lot à
+  part) ; le méga-panneau d'allégeance n'est pas encore éclaté en
+  sections de premier niveau ; la chronique repliée ne s'ouvre pas
+  d'elle-même au tournant de chapitre.
+
 **Les six pistes moyennes et G1 sont livrées.** Restent G2 (mode
 chronique) et G3 (son génératif) — non engagées.
 
