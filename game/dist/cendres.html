@@ -238,15 +238,13 @@ body {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   background: var(--fond-2);
-  /* Le dock du poste de commandement : une barre flottante arrondie, posée
-     au-dessus du fond, l'onglet actif allumé dedans. */
-  margin: 8px;
-  margin-bottom: max(8px, env(safe-area-inset-bottom));
-  border: 1px solid #322c23;
+  /* En BARRE FIXE, pleine largeur, collée en bas — demandé par le
+     propriétaire : le dock flottant à marges laissait le contenu apparaître
+     autour de lui. L'onglet actif reste allumé dedans. */
+  margin: 0;
+  padding-bottom: env(safe-area-inset-bottom);
   border-top: 1px solid #3b3327;
-  border-radius: 14px;
-  overflow: hidden;
-  box-shadow: 0 6px 20px -6px rgba(0, 0, 0, .55);
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, .4);
 }
 
 #barre-nav button {
