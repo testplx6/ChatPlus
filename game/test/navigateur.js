@@ -130,12 +130,11 @@ if (!navigateur) {
 
 const page = await navigateur.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
 // Le décor épingle les polices : la police distante (`font-display: swap`)
-// s'applique quand le réseau veut — et quand elle arrive EN COURS de mesure,
-// toutes les métriques de texte changent d'un coup : la ligne lue saute sans
-// que l'ancre ait failli. C'est ce qui faisait osciller le garde « ce qu'on
-// lit reste sous les yeux » à code identique (vert quand la police arrivait
-// avant la mesure ou jamais, rouge quand elle arrivait au milieu). On mesure
-// l'ancre, pas le reflow d'un swap : la pile de repli est la seule servie.
+// arrive quand le réseau veut, et changer de pile change toutes les métriques
+// de texte — un demi-pixel suffit à faire basculer une sonde posée sur une
+// frontière (voir la sonde du garde « ce qu'on lit reste sous les yeux »).
+// Un test de géométrie ne se mesure que sur une géométrie déterministe : la
+// pile de repli est la seule servie, à chaque run, sur chaque machine.
 const epinglerPolices = async (p) => {
   await p.route('**://fonts.googleapis.com/**', (r) => r.abort());
   await p.route('**://fonts.gstatic.com/**', (r) => r.abort());
@@ -2404,7 +2403,22 @@ console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit
     // une fois — la sonde est ce qui a permis de le voir.
     const lu = () => page.evaluate(() => {
       const ec = document.querySelector('#ecran');
-      const el = document.elementFromPoint(200, ec.getBoundingClientRect().top + 10);
+      const bord = ec.getBoundingClientRect().top;
+      // La sonde échappe aux gouttières. `elementFromPoint` à bord+10 tombait
+      // PILE sur la frontière de marge entre deux entrées du journal : un
+      // demi-pixel de dérive de métriques — une pile de polices pour une
+      // autre — la faisait basculer sur le fond du panneau, et l'on comptait
+      // une « transition » alors que les ancres n'avaient pas bougé d'un
+      // pixel (sonde posée : l'entrée e318 à y=11 aux huit relevés, dans les
+      // runs rouges comme il se doit). On regarde donc à trois profondeurs et
+      // l'on prend la première ligne de contenu — même mesure, sans le fil
+      // du rasoir.
+      let el = null;
+      for (const dy of [10, 16, 22]) {
+        const cand = document.elementFromPoint(200, bord + dy);
+        if (cand && cand !== ec && !cand.matches('section')) { el = cand; break; }
+        el = el || cand;
+      }
       const texte = (el ? el.textContent : '').slice(0, 34)
         .replace(/\s+/g, ' ').replace(/\d+/g, '#').split(' · ')[0];
       return { texte, haut: Math.round(ec.scrollTop) };

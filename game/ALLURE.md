@@ -190,16 +190,17 @@ la finition ensuite.
   mesurables : l'inexploré ≥ 6 tons, une case découverte ≥ 8 tons —
   rouges d'abord (2 et 3 tons).
 - **Trouvaille en route — l'enquête d'ancre de PROMESSES est close,
-  coupable confondu : la police.** Le garde « ce qu'on lit reste sous
-  les yeux » est tombé au pixel près pendant G1 ; l'instruction a
-  montré que `font-display: swap` appliquait IBM Plex en cours de
-  mesure — toutes les métriques changent d'un coup, la ligne saute
-  sans que l'ancre ait failli. Le décor épingle les polices (abort sur
-  les deux hôtes, pile de repli seule servie), la suite repasse deux
-  fois d'affilée, le garde n'a pas bougé d'une virgule. Bonus : un
-  vrai doublon de clés d'ancre corrigé en route (`journalN`, numéro
-  d'ordre monotone par entrée de journal). Dossier complet dans
-  PROMESSES.md §Blocages.
+  et l'ancre est innocente.** Le garde « ce qu'on lit reste sous les
+  yeux » est tombé au pixel près pendant G1 ; une sonde posée dans le
+  garde a montré que les ancres n'avaient pas bougé d'un pixel dans
+  les runs rouges — c'est la sonde du décor qui tombait sur la
+  frontière de marge entre deux entrées, et qu'un demi-pixel de
+  métriques (la pile de polices) faisait basculer. Deux remèdes de
+  décor (la sonde regarde à trois profondeurs, les polices sont
+  épinglées dans les tests), deux durcissements réels du produit en
+  bonus (`journalN` unique par entrée, ancre stable des têtes de
+  jour). Le garde n'a pas bougé d'une virgule. Dossier complet, faux
+  départs compris, dans PROMESSES.md §Blocages.
 
 **Les six pistes moyennes et G1 sont livrées.** Restent G2 (mode
 chronique) et G3 (son génératif) — non engagées.

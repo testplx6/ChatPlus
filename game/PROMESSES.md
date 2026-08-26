@@ -218,21 +218,27 @@ ci-dessus est porté par un agent qui a sa logique.
   à l'ancienne pression (test), verdict final au propriétaire en
   jouant.
 - ~~**La mesure d'ancre du navigateur** (« ce qu'on lit reste sous les
-  yeux ») oscille d'un run à l'autre~~ — **enquête close, coupable
-  confondu (août 2026, chantier ALLURE G1)**. Ce n'était ni l'ancre ni
-  la charge machine : **la police distante**. `font-display: swap`
-  applique IBM Plex quand le réseau veut ; quand elle arrive EN COURS
-  de mesure, toutes les métriques de texte changent d'un coup et la
-  ligne lue saute — sans que l'ancre ait failli. Les pièces : rouge
-  stable au pixel près (six runs, mêmes hauts 8224/8749/8863) quand le
-  proxy servait la police au milieu de la fenêtre, vert quand elle
-  arrivait avant ou jamais ; bissection jusqu'à l'état déjà poussé
-  (code hors de cause) ; et la preuve par le remède — le décor épingle
-  les polices (`route: abort` sur fonts.googleapis/gstatic, la pile de
-  repli est la seule servie) et la suite passe deux fois d'affilée
-  sans rien changer d'autre. Le garde n'a pas bougé d'une virgule.
-  Bonus de l'enquête : un vrai doublon corrigé en route — la clé
-  d'ancre « heure + début du texte » n'était pas unique sous rafale de
-  guerre ; chaque entrée porte désormais un numéro d'ordre monotone
-  (`journalN`, creerLogger + normaliser) et l'ancre s'y accroche.
+  yeux ») oscille d'un run à l'autre~~ — **enquête close, l'ancre
+  innocentée par la sonde (août 2026, chantier ALLURE G1)**. Deux
+  fausses pistes d'abord, consignées parce qu'elles instruisent : la
+  police qui arriverait en cours de mesure (corrélée, pas causale), la
+  charge CPU de `--complet` (un sommeil de 12 s n'y changeait rien —
+  retiré). La preuve est venue d'une sonde posée dans le garde : dans
+  les runs rouges, **les ancres n'avaient pas bougé d'un pixel**
+  (l'entrée e318 à y=11 aux huit relevés). Le coupable était la sonde
+  du décor elle-même : `elementFromPoint` à `haut+10` tombait PILE sur
+  la frontière de marge entre deux entrées ; un demi-pixel de dérive de
+  métriques — changer de pile de polices suffit — la faisait basculer
+  sur le fond du panneau, comptée comme « transition ». D'où toutes
+  les corrélations observées depuis des chantiers : polices, contexte
+  d'exécution, « charge machine ». Deux remèdes de décor, le garde
+  intact : la sonde regarde à trois profondeurs et prend la première
+  ligne de contenu (plus de fil du rasoir), et les polices distantes
+  sont épinglées dans les tests (une mesure de géométrie exige une
+  géométrie déterministe). Reproduit rouge 8 fois au pixel identique
+  avant, vert stable après, dans le même contexte. Bonus de
+  l'enquête, deux durcissements réels du produit : la clé d'ancre du
+  journal n'était pas unique sous rafale de guerre (`journalN`, numéro
+  d'ordre monotone par entrée — creerLogger, normaliser), et la tête
+  de jour porte une ancre à clé stable.
 

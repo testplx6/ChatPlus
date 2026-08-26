@@ -4918,11 +4918,14 @@ function ecranJournal() {
   let jourCourant = null;
   const html = entrees.length ? entrees.map((x) => {
     const h = horloge(x.t);
-    // Pas de `data-ancre` sur la tête de jour : une ancre posée sur elle
-    // épingle le titre, pas la ligne lue — tout ce qui s'insère sous le titre
-    // glisse alors sous les yeux. L'ancre doit se prendre sur une entrée.
+    // La tête de jour porte une ancre, et sa clé est STABLE (« jour-N » ne
+    // change pas tant que le jour a des entrées à l'écran) : quand le haut de
+    // la fenêtre tombe sur elle, c'est elle qu'on épingle — sinon l'ancre
+    // tient l'entrée d'en dessous pendant que la tête au-dessus change
+    // d'identité au fil de la fenêtre des 160 entrées, et la ligne lue change
+    // sans que l'ancre ait failli (vu par le garde, au pixel près).
     const tete = h.jour !== jourCourant
-      ? `<div class="jour-tete">— Jour ${h.jour} —</div>` : '';
+      ? `<div class="jour-tete" data-ancre="jour-${h.jour}">— Jour ${h.jour} —</div>` : '';
     jourCourant = h.jour;
     // Une ancre par entrée : le journal est un fil, il grandit par le haut, et
     // sans elle on se fait pousser vers le bas pendant qu'on lit.
