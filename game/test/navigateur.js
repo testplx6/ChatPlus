@@ -2461,7 +2461,13 @@ console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit
       let el = null;
       for (const dy of [10, 16, 22]) {
         const cand = document.elementFromPoint(200, bord + dy);
-        if (cand && cand !== ec && !cand.matches('section')) { el = cand; break; }
+        // « La première ligne de contenu » : un élément au texte vide n'en est
+        // pas une. Une aiguille vide se retrouve dans tout — l'éviction devient
+        // indétectable et chaque texte réel compte comme une transition ; la
+        // mesure perdait son objet dès le premier relevé (vu après la refonte
+        // des titres : « » à 7755, puis trois ≠ qui n'accusaient personne).
+        if (cand && cand !== ec && !cand.matches('section')
+            && (cand.textContent || '').trim()) { el = cand; break; }
         el = el || cand;
       }
       const texte = (el ? el.textContent : '').slice(0, 34)

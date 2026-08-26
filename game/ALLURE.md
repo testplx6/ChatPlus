@@ -288,6 +288,35 @@ la finition ensuite.
   chaque tick) ; les nombres ne défilent pas encore (piste M du rendu
   incrémental).
 
+- **La vraie refonte — direction A « le poste de commandement »,
+  choisie sur maquettes** (« je m'attendais à une vraie refonte »,
+  août 2026). Le constat honnête d'abord : trois passes avaient poli
+  le jeu sans changer son squelette — une liste verticale de panneaux
+  reste une liste verticale de panneaux. La méthode qui a débloqué :
+  deux directions maquettées (A poste de commandement, B carnet de
+  campagne), le propriétaire a choisi **A** en les regardant.
+  L'implémentation se fait écran par écran contre la maquette ;
+  chaque écran livré passe la suite entière, `--complet`, et
+  republie l'artefact.
+  - **Étape 1 — livrée : l'écran carte et le chrome.** Sur téléphone,
+    la carte EST l'écran : collante, pleine largeur, sans cadre — et
+    les panneaux glissent par-dessus comme une feuille qu'on tire,
+    avec poignée et ombre portée sur la carte. Le geste de la feuille
+    est le défilement natif : AUCUN mécanisme nouveau, donc l'ancre
+    de lecture, les replis et les gestes de carte tiennent tels
+    quels (334 vérifications vertes sans en réécrire une). Le dock
+    de navigation devient une barre flottante arrondie, l'onglet
+    actif allumé dedans. La voix d'affichage arrive : Big Shoulders
+    Display (condensée, militaire) porte toutes les têtes d'encart —
+    les valeurs restent en mono, le récit en serif. Le bandeau
+    d'urgence garde sa préséance : il passe AVANT la carte, la
+    feuille commence après elle.
+  - Étapes suivantes, dans l'ordre de la maquette : l'escouade en
+    galerie de portraits (anneaux de santé, jetons d'état, réglages
+    derrière une porte), puis le dock d'ordres flottant sur la carte
+    (mécanisme : cycle strict), puis l'harmonisation des autres
+    écrans.
+
 **Les six pistes moyennes et G1 sont livrées.** Restent G2 (mode
 chronique) et G3 (son génératif) — non engagées.
 

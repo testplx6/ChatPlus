@@ -19,6 +19,9 @@
   --violet: #b06be0;
   --nav-h: 54px;
   --haut-h: 46px;
+  /* La voix d'affichage du poste de commandement (direction A) : condensée,
+     haute, militaire. Les données restent en mono, le récit en serif. */
+  --display: "Big Shoulders Display", "Arial Narrow", "Helvetica Neue", sans-serif;
   /* La grille d'espacement (refonte, experts août 2026) : cinq crans, rien
      d'autre. Un espacement hors grille est une valeur devinée. */
   --e1: 4px;
@@ -213,8 +216,15 @@ body {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   background: var(--fond-2);
-  border-top: 1px solid var(--bord);
-  padding-bottom: env(safe-area-inset-bottom);
+  /* Le dock du poste de commandement : une barre flottante arrondie, posée
+     au-dessus du fond, l'onglet actif allumé dedans. */
+  margin: 8px;
+  margin-bottom: max(8px, env(safe-area-inset-bottom));
+  border: 1px solid #322c23;
+  border-top: 1px solid #3b3327;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 6px 20px -6px rgba(0, 0, 0, .55);
 }
 
 #barre-nav button {
@@ -303,11 +313,12 @@ body {
 .panneau.urgent { border-left: 2px solid var(--rouge); }
 
 .titre {
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: .17em;
+  font-family: var(--display);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .12em;
   text-transform: uppercase;
-  color: #d9cfba;
+  color: #e3d9c2;
   margin: 0 0 8px;
   padding-bottom: 6px;
   background: linear-gradient(90deg, rgba(217, 128, 58, .5), rgba(217, 128, 58, .07) 55%, transparent)
@@ -317,12 +328,16 @@ body {
   align-items: center;
   gap: 8px;
 }
+/* Les valeurs de la barre de titre restent des données : mono, pas d'affiche. */
 .titre .droite {
+  font-family: "IBM Plex Mono", ui-monospace, "SF Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
   color: var(--ambre);
   letter-spacing: .05em;
   font-variant-numeric: tabular-nums;
   font-weight: 400;
 }
+.titre .resume { font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace; }
 
 .ligne { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; align-items: baseline; }
 /* La clé ne se coupe jamais en deux ; c'est la valeur qui cède du terrain. */
@@ -1168,3 +1183,58 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
 }
 .rangee-cartes::-webkit-scrollbar { display: none; }
 .rangee-cartes > * { flex: 0 0 auto; scroll-snap-align: start; }
+
+/* ---------------------------------------------------------------------------
+   La direction A — le poste de commandement (choix du propriétaire, août 2026)
+   ---------------------------------------------------------------------------
+   Sur téléphone, l'écran carte cesse d'être « un panneau parmi d'autres » :
+   la carte tient l'écran, collante, pleine largeur, et les panneaux glissent
+   par-dessus comme une feuille qu'on tire — le geste, c'est le défilement
+   natif, aucun mécanisme nouveau. Le grand écran (≥ 1100 px) garde sa salle
+   des cartes à deux colonnes. */
+
+@media (max-width: 1099px) {
+  #ecran.plein-carte { padding: 0; background: #05070a; }
+  #ecran.plein-carte > #flanc-carte {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #05070a;
+    padding-bottom: 4px;
+  }
+  #ecran.plein-carte #carte-boite {
+    height: calc(100dvh - var(--haut-h) - var(--nav-h) - 196px);
+    max-height: none;
+    border-left: 0;
+    border-right: 0;
+  }
+  #ecran.plein-carte .carte-pied { padding: 0 10px; }
+  #ecran.plein-carte .legende { padding: 0 10px; }
+
+  /* La feuille : tout ce qui suit la carte passe AU-DESSUS d'elle. */
+  #ecran.plein-carte > section.panneau,
+  #ecran.plein-carte > .groupes,
+  #ecran.plein-carte > div {
+    position: relative;
+    z-index: 2;
+    margin-left: 8px;
+    margin-right: 8px;
+  }
+  /* La feuille commence au premier panneau APRÈS la carte — pas au bandeau
+     d'urgence qui, lui, précède la carte dans le document. */
+  #ecran.plein-carte > #flanc-carte + section.panneau {
+    border-radius: 12px 12px 4px 4px;
+    margin-top: -10px;
+    box-shadow: 0 -10px 26px -10px rgba(0, 0, 0, .75), inset 0 1px 0 rgba(255, 255, 255, .03);
+  }
+  /* La poignée de la feuille : on lit d'un regard qu'elle se tire. */
+  #ecran.plein-carte > #flanc-carte + section.panneau::before {
+    content: '';
+    display: block;
+    width: 36px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--bord-vif);
+    margin: -4px auto 8px;
+  }
+}

@@ -559,6 +559,10 @@ export function rafraichir(force) {
   // seulement sur l'onglet carte, les autres écrans restent une colonne. La
   // racine doit s'élargir avec : c'est elle qui portait le 620 px.
   ecran.classList.toggle('deux-colonnes', onglet === 'carte');
+  // Le poste de commandement (direction A de la refonte, choix du
+  // propriétaire) : sur téléphone, l'écran carte est la carte — collante,
+  // pleine largeur — et les panneaux glissent par-dessus comme une feuille.
+  ecran.classList.toggle('plein-carte', onglet === 'carte');
   const racine = document.getElementById('racine');
   if (racine) racine.classList.toggle('large-carte', onglet === 'carte');
   // La nuit se sent sur le chrome (ALLURE.md, Q5).
