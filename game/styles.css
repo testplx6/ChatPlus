@@ -156,6 +156,15 @@ body {
     top: 0;
   }
   #ecran.deux-colonnes #carte-boite { height: calc(100dvh - 240px); max-height: none; }
+
+  /* La salle des cartes (M6, ALLURE.md) : les autres écrans cessent d'être un
+     téléphone étiré. Leurs panneaux coulent sur deux colonnes — l'ordre du
+     document ne bouge pas, donc l'ancre de lecture et les replis tiennent. */
+  #racine { max-width: 1240px; }
+  #ecran:not(.deux-colonnes) { column-count: 2; column-gap: 14px; }
+  #ecran:not(.deux-colonnes) > * { break-inside: avoid; }
+  /* Un bandeau d'urgence en tête (dévaluation, siège) barre toute la salle. */
+  #ecran:not(.deux-colonnes) > .panneau.urgent:first-child { column-span: all; }
 }
 
 /* ------------------------------------------------------------------ Navigation */

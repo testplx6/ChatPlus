@@ -451,6 +451,25 @@ ok(!(await large.evaluate(() => document.documentElement.scrollWidth > window.in
   'à 1280 px, les panneaux vivent à côté de la carte, pas dessous',
   boite && panneau ? `carte x=${Math.round(boite.x)}+${Math.round(boite.width)}, panneau x=${Math.round(panneau.x)} y=${Math.round(panneau.y)}` : 'introuvable');
 }
+// M6 (ALLURE.md) — la salle des cartes : les autres écrans cessent d'être un
+// téléphone étiré. À 1280 px, leurs panneaux coulent sur deux colonnes.
+{
+  await large.click('[data-a="onglet"][data-k="escouade"]');
+  await large.waitForTimeout(400);
+  const m6 = await large.evaluate(() => {
+    const ecran = document.querySelector('#ecran');
+    const cc = getComputedStyle(ecran).columnCount;
+    const secs = [...ecran.querySelectorAll(':scope > section.panneau')];
+    const gauche = new Set(secs.map((s) => Math.round(s.getBoundingClientRect().x)));
+    return { cc, colonnesVues: gauche.size, deborde: document.documentElement.scrollWidth > window.innerWidth + 1 };
+  });
+  ok(m6.cc === '2' && m6.colonnesVues >= 2,
+    'à 1280 px, l’escouade coule sur deux colonnes', `column-count=${m6.cc}, x distincts=${m6.colonnesVues}`);
+  ok(!m6.deborde, 'sans déborder de l’écran');
+  await large.screenshot({ path: join(CAPTURES, '08b-large-escouade.png'), fullPage: false });
+  await large.click('[data-a="onglet"][data-k="carte"]');
+  await large.waitForTimeout(300);
+}
 
 console.log('\n8 bis. Contenu de jeu : contrats, étal, sites');
 // Le vrai premier écran : une partie neuve, celle qu'un joueur lance.

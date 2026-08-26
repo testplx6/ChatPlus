@@ -167,6 +167,16 @@ la finition ensuite.
   Limite dite : les dix icônes de marchandises attendues par la DA
   restent à dessiner — elles viendront avec un écran qui les porte.
 
+- **M6 — livré, la salle des cartes.** À 1280 px, les écrans hors carte
+  cessent d'être un téléphone étiré : leurs panneaux coulent sur deux
+  colonnes (l'ordre du document ne bouge pas — l'ancre de lecture et
+  les replis tiennent), un bandeau d'urgence en tête barre toute la
+  salle, et la racine s'élargit sur tous les écrans, plus seulement la
+  carte.
+
+**Les six pistes moyennes sont livrées.** Restent les grosses (G1
+carte-affiche, G2 mode chronique, G3 son génératif) — non engagées.
+
 **Quick wins livrés d'un bloc (août 2026), avec leurs limites dites :**
 
 - **Q1 — livré, socle + deux surfaces.** IBM Plex Mono porte tout le
