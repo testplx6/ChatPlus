@@ -1475,11 +1475,13 @@ const marqueurs = await page.evaluate(() => {
   const L = s.world.largeur;
   const CELL = Math.round(c.width / L);
   // Un marqueur laisse du blanc franc dans sa case ; on le cherche là où le
-  // moteur dit qu'un groupe se trouve.
+  // moteur dit qu'un groupe se trouve — AU CENTRE de la case : le marqueur y
+  // est dessiné centré, et un décalage de coin fixe (+4 px) ne le trouvait
+  // plus dès que le zoom par défaut a grandi (24 → 36 px la case).
   return s.player.groupes.map((g) => {
     const x = (g.regionId % L) * CELL;
     const y = Math.floor(g.regionId / L) * CELL;
-    const d = ctx.getImageData(x + 4, y + 4, 8, 8).data;
+    const d = ctx.getImageData(x + CELL / 2 - 4, y + CELL / 2 - 4, 8, 8).data;
     let blancs = 0;
     for (let i = 0; i < d.length; i += 4) if (d[i] > 220 && d[i + 1] > 220) blancs++;
     return blancs;

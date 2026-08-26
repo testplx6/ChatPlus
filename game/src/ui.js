@@ -698,7 +698,7 @@ function rendreNav() {
  */
 const CELL_MIN = 9;
 const CELL_MAX = 46;
-let CELL = 24;
+let CELL = 36;
 
 /** Un carré centré dans la case, en proportion de la case. */
 function pave(g, x, y, part) {
@@ -977,7 +977,7 @@ function dessinerCarte(cv) {
       continue;
     }
     const cols = BIOMES[r.biome].couleurs;
-    g.globalAlpha = 0.62;
+    g.globalAlpha = 0.55;
     g.fillStyle = cols[0];
     g.fillRect(x, y, CELL, CELL);
     g.globalAlpha = 1;
@@ -1054,6 +1054,20 @@ function dessinerCarte(cv) {
       g.fillRect(x, y, CELL, CELL);
     }
   }
+
+  // La trame du pupitre (l'affiche) : une grille fine sur tout le monde.
+  g.strokeStyle = 'rgba(140, 155, 170, 0.05)';
+  g.lineWidth = 1;
+  g.beginPath();
+  for (let gx = 0; gx <= w.largeur; gx++) {
+    g.moveTo(gx * CELL + 0.5, 0);
+    g.lineTo(gx * CELL + 0.5, H);
+  }
+  for (let gy = 0; gy <= w.hauteur; gy++) {
+    g.moveTo(0, gy * CELL + 0.5);
+    g.lineTo(L, gy * CELL + 0.5);
+  }
+  g.stroke();
 
   // Les champs de couleur (étape 7, l'affiche) : chaque case découverte pose
   // une lueur radiale de son biome, et les voisines d'un même pays se fondent
