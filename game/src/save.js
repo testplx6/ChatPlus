@@ -145,6 +145,10 @@ export function normaliser(state) {
     if (g.allegeance.couronne === undefined) g.allegeance.couronne = null;
   }
   if (!state.memorial) state.memorial = [];
+  // Le numéro d'ordre du journal (l'identité stable d'une entrée — voir
+  // creerLogger). Une vieille partie repart de sa longueur : les entrées déjà
+  // écrites gardent leur clé d'avant, les neuves sont numérotées.
+  if (typeof state.journalN !== 'number') state.journalN = (state.journal || []).length;
   // Les chapitres (HISTOIRE.md, lot A) : une vieille sauvegarde n'en a pas —
   // le premier tick après chargement ouvrira celui que son état raconte.
   if (!state.player.chapitres) state.player.chapitres = [];

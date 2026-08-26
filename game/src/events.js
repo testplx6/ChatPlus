@@ -34,7 +34,13 @@ export const LOG_MAX = 400;
 
 export function creerLogger(state) {
   return (entree) => {
-    const e = Object.assign({ t: state.temps }, entree);
+    // Un numéro d'ordre monotone : l'identité STABLE d'une entrée. L'ancre de
+    // lecture s'accrochait à « heure + début du texte », et une rafale de
+    // guerre loggue plusieurs entrées à la même heure avec le même préfixe
+    // (« X lève une colonne… » ×2) : l'ancre retrouvait le premier doublon et
+    // la lecture sautait — vu par le garde navigateur, au pixel près.
+    state.journalN = (state.journalN || 0) + 1;
+    const e = Object.assign({ t: state.temps, n: state.journalN }, entree);
     // Témoin ou pas : ce qui arrive sous les yeux de l'escouade est su tout de
     // suite, le reste met le temps de la route (voir `nouvellesConnues`).
     if (e.regionId != null && e.vu === undefined) e.vu = estSurveillee(state, e.regionId);

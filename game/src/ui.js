@@ -918,26 +918,56 @@ function dessinerCarte(cv) {
     const x = r.x * CELL;
     const y = r.y * CELL;
     if (!r.decouvert) {
-      g.fillStyle = '#0b0e14';
+      // L'inexploré n'est pas un aplat (G1) : un monde sous la cendre. Des
+      // reliefs devinés — du bruit, pas le vrai terrain : la carte reste un
+      // carnet, elle ne divulgue rien.
+      g.fillStyle = '#0d0c0f';
       g.fillRect(x, y, CELL, CELL);
-      for (let k = 0; k < 4; k++) {
+      g.globalAlpha = 0.05 + bruit(r.i, 97) * 0.07;
+      g.fillStyle = '#000';
+      g.fillRect(x, y, CELL, CELL);
+      g.globalAlpha = 1;
+      for (let k = 0; k < 8; k++) {
         const b = bruit(r.i, k);
-        g.fillStyle = 'rgba(120,132,152,.07)';
-        g.fillRect(x + Math.floor(b * 14), y + Math.floor(bruit(r.i, k + 9) * 14), 2, 2);
+        // Chaque grain a sa valeur : c'est l'alpha qui varie, pas la teinte —
+        // huit reliefs devinés, pas deux tons plaqués.
+        g.globalAlpha = 0.05 + bruit(r.i, k + 61) * 0.09;
+        g.fillStyle = b > 0.6 ? '#7a7468' : '#606878';
+        g.fillRect(x + Math.floor(bruit(r.i, k + 31) * (CELL - 2)),
+          y + Math.floor(bruit(r.i, k + 9) * (CELL - 2)), b > 0.85 ? 2 : 1, 1);
       }
+      g.globalAlpha = 1;
       continue;
     }
     const cols = BIOMES[r.biome].couleurs;
     g.fillStyle = cols[0];
     g.fillRect(x, y, CELL, CELL);
-    // Texture : quelques pixels plus clairs et plus sombres, toujours les mêmes
-    for (let k = 0; k < 11; k++) {
+    // Le terrain ondule (G1) : chaque case a sa valeur propre, tirée de son
+    // indice — fini le carrelage de neuf aplats.
+    g.globalAlpha = 0.13 * bruit(r.i, 1);
+    g.fillStyle = '#000';
+    g.fillRect(x, y, CELL, CELL);
+    g.globalAlpha = 1;
+    // La matière : un tramage dense, trois tons plus un accent semé rare —
+    // toujours les mêmes grains au même endroit, la carte ne scintille pas.
+    for (let k = 0; k < 22; k++) {
       const b = bruit(r.i, k);
       const px = x + Math.floor(bruit(r.i, k + 31) * (CELL - 2));
       const py = y + Math.floor(bruit(r.i, k + 57) * (CELL - 2));
-      g.fillStyle = b > 0.5 ? cols[1] : cols[2];
-      g.fillRect(px, py, 2, 2);
+      g.fillStyle = b > 0.92 && cols[3] ? cols[3] : b > 0.55 ? cols[1] : cols[2];
+      // Chaque grain a sa valeur propre : la matière, pas un motif à deux tons.
+      g.globalAlpha = 0.55 + bruit(r.i, k + 79) * 0.45;
+      const gr = b > 0.72 ? 2 : 1;
+      g.fillRect(px, py, gr, gr);
     }
+    g.globalAlpha = 1;
+    // La couture entre deux biomes : une ombre d'un pixel, et les régions
+    // cessent d'être des cases pour devenir des pays.
+    const voisinE = r.x + 1 < w.largeur ? w.regions[r.i + 1] : null;
+    const voisinS = r.y + 1 < w.hauteur ? w.regions[r.i + w.largeur] : null;
+    g.fillStyle = 'rgba(0,0,0,.32)';
+    if (voisinE && voisinE.decouvert && voisinE.biome !== r.biome) g.fillRect(x + CELL - 1, y, 1, CELL);
+    if (voisinS && voisinS.decouvert && voisinS.biome !== r.biome) g.fillRect(x, y + CELL - 1, CELL, 1);
     // Les pistes tassées par ceux qui passent. Un trait clair au milieu de la
     // case, d'autant plus net que la terre est damée : c'est ce qui fait qu'une
     // carte parcourue ne ressemble pas à une carte vierge.
@@ -970,6 +1000,13 @@ function dessinerCarte(cv) {
         g.fillRect(x + 2 + Math.floor(bruit(r.i, k + 71) * (CELL - 4)),
           y + 2 + Math.floor(bruit(r.i, k + 91) * (CELL - 4)), 1, 1);
       }
+    }
+    // Le carnet se voit (G1) : ce qu'on ne surveille pas est un souvenir, et
+    // un souvenir est plus terne que ce qu'on a sous les yeux. Le voile est
+    // léger — l'information reste lisible, seule la fraîcheur se distingue.
+    if (!estSurveillee(S, r.i)) {
+      g.fillStyle = 'rgba(10,10,14,.14)';
+      g.fillRect(x, y, CELL, CELL);
     }
   }
 
@@ -1014,6 +1051,16 @@ function dessinerCarte(cv) {
     const t = 3 + (su.taille || col.taille);
     const ox = x + Math.floor((CELL - t) / 2);
     const oy = y + Math.floor((CELL - t) / 2);
+    // Une ville est bâtie (G1) : quelques toits autour du carré dès que le
+    // zoom laisse la place — plus une pastille posée sur du vide.
+    if (CELL >= 22 && !su.ruine) {
+      for (let k = 0; k < 3 + (su.taille || col.taille); k++) {
+        const bx = x + 2 + Math.floor(bruit(col.regionId, k + 11) * (CELL - 5));
+        const by = y + 2 + Math.floor(bruit(col.regionId, k + 29) * (CELL - 5));
+        g.fillStyle = bruit(col.regionId, k + 47) > 0.5 ? '#6e675c' : '#4c463f';
+        g.fillRect(bx, by, 2, 2);
+      }
+    }
     g.fillStyle = '#05070a';
     g.fillRect(ox - 1, oy - 1, t + 2, t + 2);
     if (su.ruine) {
@@ -1230,8 +1277,13 @@ function dessinerVie(cv, fond, ts) {
   // déterministe à l'œil, comme promis par l'étude.
   const bougie = Math.floor(ts / 260) % 97;
   for (const f of vieFoyers) {
-    g.globalAlpha = 0.3 + bruit(f.r, 7 + bougie) * 0.55;
+    const b = bruit(f.r, 7 + bougie);
+    // Le halo d'abord, la flamme dessus : un feu se voit de loin.
+    g.globalAlpha = 0.14 + b * 0.12;
     g.fillStyle = '#d9803a';
+    g.fillRect(f.x + f.taille - 2, f.y - 3, 4, 4);
+    g.globalAlpha = 0.5 + b * 0.45;
+    g.fillStyle = '#e8a050';
     g.fillRect(f.x + f.taille - 1, f.y - 2, 2, 2);
   }
 
@@ -1256,13 +1308,13 @@ function dessinerVie(cv, fond, ts) {
   // La cendre dérive au vent — toujours, c'est le climat de ce monde. Le vent
   // de la météo la pousse plus fort, et le vent de cendre la densifie.
   const vent = (cond.meteo.vent || 1);
-  const nCendre = cond.meteoKey === 'vent_cendre' ? 90 : 34;
+  const nCendre = cond.meteoKey === 'vent_cendre' ? 130 : 60;
   g.fillStyle = 'rgba(214,205,190,1)';
   for (let i = 0; i < nCendre; i++) {
     const allant = 0.45 + bruit(i, 5) * 0.9;
-    const px = (bruit(i, 3) * L + s * 13 * vent * allant) % L;
-    const py = (bruit(i, 11) * H + s * 3.5 * vent * allant) % H;
-    g.globalAlpha = 0.08 + bruit(i, 17) * 0.16;
+    const px = (bruit(i, 3) * L + s * 15 * vent * allant) % L;
+    const py = (bruit(i, 11) * H + s * 4 * vent * allant) % H;
+    g.globalAlpha = 0.1 + bruit(i, 17) * 0.22;
     const gr = bruit(i, 19) > 0.8 ? 2 : 1;
     g.fillRect(px, py, gr, gr);
   }
@@ -2435,7 +2487,7 @@ function blocPrisonniers() {
     const opts = optionsPour(S, col, g, c);
     const cap = c.captif || {};
     return `<details data-id="captif-${e(c.id)}" ${ouverts.has(`captif-${c.id}`) ? 'open' : ''}
-        style="border-bottom:1px solid #1b2029;padding:5px 0">
+        style="border-bottom:1px solid #26211a;padding:5px 0">
         <summary class="ligne"><span class="k">${e(c.nom)}</span>
           <span class="v">${e(cap.brigandage ? 'brigand'
       : cap.faction ? drapeauDe(S.world, cap.faction).nom : 'inconnu')}</span></summary>
@@ -2472,7 +2524,7 @@ function blocDepouilles() {
     ${corps.map((c) => {
     const rites = ritesPour(S, g, c);
     return `<details data-id="corps-${e(c.id)}" ${ouverts.has(`corps-${c.id}`) ? 'open' : ''}
-        style="border-bottom:1px solid #1b2029;padding:5px 0">
+        style="border-bottom:1px solid #26211a;padding:5px 0">
         <summary class="ligne"><span class="k">${e(c.nom)}</span>
           <span class="v aide">${e(c.archetypeNom || '')}</span></summary>
         ${rites.map((o) => `<button class="act mini" style="margin-top:4px;text-align:left"
@@ -2855,7 +2907,7 @@ function blocMetiers() {
     const puce = n0 === veut
       ? `<span class="puce">${veut}/${places}</span>`
       : `<span class="puce att">${n0} tenu${n0 >= 2 ? 's' : ''} sur ${veut}</span>`;
-    return `<div style="border-bottom:1px solid #1b2029;padding:7px 0">
+    return `<div style="border-bottom:1px solid #26211a;padding:7px 0">
       <div class="ligne">
         <span class="k">${e(m.nom)} ${puce}</span>
         <span class="v ${n0 ? 'ambre' : ''}">${n0 ? `×${rd.mult.toFixed(2)}` : '—'}</span>
@@ -3073,7 +3125,7 @@ function blocConsignes() {
     const boutons = [...choix, { id: ARRET, nom: 'Arrêter' }].map((x) => `
       <button class="act mini ${actuelle === x.id ? 'primaire' : ''}${x.id === ARRET ? ' danger' : ''}"
         data-a="recette" data-k="${k}" data-r="${x.id}">${e(x.nom)}</button>`).join('');
-    return `<div style="border-bottom:1px solid #1b2029;padding:7px 0">
+    return `<div style="border-bottom:1px solid #26211a;padding:7px 0">
       <div class="ligne souple"><span class="k">${e(BUILDINGS[k].nom)}
         <span class="puce">niv ${nivBat(b, k)}</span></span>
         <span class="v ${actuelle === ARRET ? 'alerte' : 'ok'}">${
@@ -3478,7 +3530,7 @@ function ecranBase() {
     // le joueur clique sur « Construire » et il ne se passe rien.
     const verrou = bd.recherche && niveauRech(b, bd.recherche) < 1
       ? RESEARCH[bd.recherche].nom : null;
-    return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
+    return `<div style="border-bottom:1px solid #26211a;padding:6px 0">
       <div class="ligne souple"><span class="k">${e(bd.nom)} <span class="puce">niv ${niv}${enFile ? `+${enFile}` : ''}</span></span>
         <span class="v">${bd.energie > 0 ? `+${bd.energie * (niv + 1)}` : bd.energie < 0 ? `${bd.energie * (niv + 1)}` : '—'} én.</span></div>
       <div class="aide">${e(apportBatiment(b, k, S))}</div>
@@ -3506,7 +3558,7 @@ function ecranBase() {
     // annonçait « Lancer », le clic échouait, et il fallait lire le message
     // fugace pour comprendre. Une condition se lit avant d'agir, pas après.
     const amont = rd.exige && niveauRech(b, rd.exige) < 1 ? RESEARCH[rd.exige] : null;
-    return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
+    return `<div style="border-bottom:1px solid #26211a;padding:6px 0">
       <div class="ligne"><span class="k">${e(rd.nom)}</span><span class="v"><span class="puce">niv ${niv}/${rd.max}</span></span></div>
       <div class="aide">${e(rd.desc)}</div>
       ${rd.exige ? `<div class="aide ${amont ? 'ambre' : ''}">${amont
@@ -3807,7 +3859,7 @@ function ligneCharge(faction, k) {
   const def = PREROGATIVES[k];
   const v = peutExercer(S, faction, k);
   if (!v.ok) {
-    return `<div style="border-bottom:1px solid #1b2029;padding:5px 0;opacity:.5">
+    return `<div style="border-bottom:1px solid #26211a;padding:5px 0;opacity:.5">
       <div class="ligne"><span class="k">${e(def.nom)}</span>
         <span class="v">${e(v.motif)}</span></div>
       <div class="aide">${e(def.desc)}</div>
@@ -3815,7 +3867,7 @@ function ligneCharge(faction, k) {
   }
   const cibles = ciblesCharge(faction, k);
   return `<details data-id="prero-${k}" ${ouverts.has(`prero-${k}`) ? 'open' : ''}
-    style="border-bottom:1px solid #1b2029;padding:5px 0">
+    style="border-bottom:1px solid #26211a;padding:5px 0">
     <summary class="ligne"><span class="k">${e(def.nom)}</span>
       <span class="v ambre">${cibles.length ? `${cibles.length} possible${cibles.length > 1 ? 's' : ''}` : '—'}</span></summary>
     <div class="aide">${e(def.desc)} <span style="opacity:.7">${e(def.charge)}</span></div>
@@ -4550,7 +4602,7 @@ function blocBourses() {
     // Le nom du réseau a sa ligne à lui : en colonne face aux chiffres, il se
     // faisait écraser et coupait au milieu des mots — « Consortiu / m Hexa »
     // sur la capture (U4).
-    return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
+    return `<div style="border-bottom:1px solid #26211a;padding:6px 0">
       <div>${e(nom)}${r.membres.length > 1
     ? ' <span class="puce ok">accord</span>' : ''}</div>
       <div class="aide">${pl(r.villes, 'ville')} · ${part} % de la carte</div>
@@ -4592,7 +4644,7 @@ function ecranMonde() {
     // Un nombre nu ne dit rien : « rép 0 » ne se lit que si l'on sait déjà ce
     // que zéro vaut. On accole le palier, qui est un mot.
     const palier = palierEstime(repu);
-    return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
+    return `<div style="border-bottom:1px solid #26211a;padding:6px 0">
       <div class="ligne">
         <span class="k" style="color:${f.couleur}">${e(f.nom)}</span>
         <span class="v"><span class="puce ${cls}">${repu > 0 ? '+' : ''}${n(repu)}
@@ -4662,7 +4714,7 @@ function ecranMonde() {
   }).join('');
 
   const guerres = S.world.guerres.length
-    ? S.world.guerres.map((g) => `<div style="border-bottom:1px solid #1b2029;padding:4px 0">
+    ? S.world.guerres.map((g) => `<div style="border-bottom:1px solid #26211a;padding:4px 0">
         <div class="ligne">
           <span class="k"><span style="color:${couleurFaction(g.a)}">${e(drapeauDe(S.world, g.a).nom)}</span>
             ✕ <span style="color:${couleurFaction(g.b)}">${e(drapeauDe(S.world, g.b).nom)}</span></span>
@@ -4866,13 +4918,17 @@ function ecranJournal() {
   let jourCourant = null;
   const html = entrees.length ? entrees.map((x) => {
     const h = horloge(x.t);
+    // Pas de `data-ancre` sur la tête de jour : une ancre posée sur elle
+    // épingle le titre, pas la ligne lue — tout ce qui s'insère sous le titre
+    // glisse alors sous les yeux. L'ancre doit se prendre sur une entrée.
     const tete = h.jour !== jourCourant
-      ? `<div class="jour-tete" data-ancre="jour-${h.jour}">— Jour ${h.jour} —</div>` : '';
+      ? `<div class="jour-tete">— Jour ${h.jour} —</div>` : '';
     jourCourant = h.jour;
     // Une ancre par entrée : le journal est un fil, il grandit par le haut, et
     // sans elle on se fait pousser vers le bas pendant qu'on lit.
     return `${tete}<div class="entree ${couleurLog(x.type)}${x.important ? ' marquant' : ''}${
-  RECITS_JOURNAL.has(x.type) ? ' recit' : ''}" data-ancre="${e(`${x.t}-${(x.texte || '').slice(0, 24)}`)}">
+  RECITS_JOURNAL.has(x.type) ? ' recit' : ''}" data-ancre="${
+  x.n ? `e${x.n}` : e(`${x.t}-${(x.texte || '').slice(0, 24)}`)}">
       <div class="t"><span class="ico" aria-hidden="true">${iconeLog(x.type)}</span> ${h.texte}</div>
       <div>${e(x.texte)}</div>
       ${x.detail && x.detail.length ? `<div class="detail">${x.detail.map(e).join('<br>')}</div>` : ''}
@@ -4954,7 +5010,7 @@ function modaleSauvegardes() {
   };
   const ligne = (x) => {
     const r = x.resume || {};
-    return `<div style="border-bottom:1px solid #1b2029;padding:7px 0">
+    return `<div style="border-bottom:1px solid #26211a;padding:7px 0">
       <div class="ligne souple"><span class="k">${e(x.nom)}</span>
         <span class="v aide">${e(quandTexte(x.quand))}</span></div>
       <div class="aide">Jour ${n(r.jour || 0)} · ${pl(r.gens || 0, 'vivant')} ·
@@ -5057,7 +5113,7 @@ function blocAccueilSauvegardes() {
   ? `<span class="droite aide">${liste.length}</span>` : ''}</div>
     ${liste.length ? liste.map((x) => {
     const r = x.resume || {};
-    return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
+    return `<div style="border-bottom:1px solid #26211a;padding:6px 0">
         <div class="ligne souple"><span class="k">${e(x.nom)}</span>
           <span class="v aide">jour ${n(r.jour || 0)} · ${pl(r.gens || 0, 'vivant')}</span></div>
         <div class="taches" style="margin-top:4px">
@@ -5756,7 +5812,7 @@ function modaleVille() {
     .sort((a, b) => b.n - a.n)
     .map(({ k, n: nb }) => {
       const m = METIERS_VILLE[k];
-      return `<div style="border-bottom:1px solid #1b2029;padding:5px 0">
+      return `<div style="border-bottom:1px solid #26211a;padding:5px 0">
         <div class="ligne"><span class="k">${e(m.nom)}</span>
           <span class="v">${n(nb)} <span class="aide">${((nb / act) * 100).toFixed(0)} %</span></span></div>
         ${jauge(nb / act, '', k === (voc && voc.key) ? '#4fd0e3' : undefined)}
@@ -5846,7 +5902,7 @@ function modaleAttelage() {
     const prix = prixBete(col, k);
     // Rien n'est interdit : on dit ce que ça coûtera, et le joueur décide.
     const auDela = miennes.length >= conduite(g);
-    return `<div style="border-bottom:1px solid #1b2029;padding:6px 0">
+    return `<div style="border-bottom:1px solid #26211a;padding:6px 0">
       <div class="ligne"><span class="k">${e(def.nom)}</span>
         <span class="v">${n(prix)} ${sym()}</span></div>
       <div class="aide">${e(def.desc)}</div>

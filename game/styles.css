@@ -3,15 +3,15 @@
    l'affichage large n'est qu'un centrage. */
 
 :root {
-  --fond: #0a0c10;
-  --fond-2: #11141b;
-  --panneau: #151922;
-  --panneau-2: #1b2029;
-  --bord: #262d3a;
-  --bord-vif: #38445a;
-  --texte: #c6cedb;
-  --texte-2: #7b8699;
-  --texte-3: #545e70;
+  --fond: #0c0b0a;
+  --fond-2: #14120f;
+  --panneau: #181611;
+  --panneau-2: #201c16;
+  --bord: #322c23;
+  --bord-vif: #4e4434;
+  --texte: #d8d1c3;
+  --texte-2: #98907e;
+  --texte-3: #6b6355;
   --cyan: #4fd0e3;
   --ambre: #d9a03a;
   --rouge: #e05b5b;
@@ -290,7 +290,7 @@ body {
 @media (max-width: 430px) {
   .grille2 { grid-template-columns: 1fr; gap: 0; }
 }
-.grille2 > .ligne { border-bottom: 1px solid #1b2029; }
+.grille2 > .ligne { border-bottom: 1px solid #26211a; }
 .grille3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
 
 button.act, .act {
@@ -455,7 +455,7 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
   gap: 5px;
   align-items: center;
   padding: 3px 0;
-  border-bottom: 1px solid #1b2029;
+  border-bottom: 1px solid #26211a;
 }
 .marche-l .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .marche-l .px { font-size: 11px; font-variant-numeric: tabular-nums; color: var(--texte-2); text-align: right; }
@@ -787,12 +787,12 @@ button.act.ordre[aria-pressed="true"] .o-r { color: var(--cyan); }
 
 .traits { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 5px; }
 
-.contrat { border-bottom: 1px solid #1b2029; padding: 7px 0; }
+.contrat { border-bottom: 1px solid #26211a; padding: 7px 0; }
 .contrat:last-child { border-bottom: 0; }
 .contrat-t { font-size: 13px; margin: 2px 0 5px; }
 .contrat button { margin-top: 5px; }
 
-.article { border-bottom: 1px solid #1b2029; padding: 7px 0; }
+.article { border-bottom: 1px solid #26211a; padding: 7px 0; }
 .article:last-child { border-bottom: 0; }
 .article button { margin-top: 5px; }
 

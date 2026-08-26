@@ -56,7 +56,7 @@ export const BIOMES = {
     court: 'STEPPE',
     // Ce que le terrain offre à qui capte : voir `rendementLibre`.
     soleil: 1.0, vent: 1.2,
-    couleurs: ['#33323a', '#3d3c46', '#2b2a32'],
+    couleurs: ['#3b3733', '#4c463f', '#2c2926', '#6a5f52'],
     danger: 0.014,
     cout: 3,
     yields: { biomasse: 0.4, ferraille: 0.35 },
@@ -67,7 +67,7 @@ export const BIOMES = {
     court: 'DALLES',
     // Ce que le terrain offre à qui capte : voir `rendementLibre`.
     soleil: 0.8, vent: 0.7,
-    couleurs: ['#2a2f3a', '#39404f', '#222732'],
+    couleurs: ['#2c313c', '#3f4655', '#20242d', '#59637a'],
     danger: 0.032,
     cout: 3,
     yields: { ferraille: 1.0, polymere: 0.55, composant: 0.09 },
@@ -78,7 +78,7 @@ export const BIOMES = {
     court: 'FRICHE',
     // Ce que le terrain offre à qui capte : voir `rendementLibre`.
     soleil: 0.7, vent: 0.8,
-    couleurs: ['#3a3320', '#4a4128', '#2f2a1a'],
+    couleurs: ['#3d3a1e', '#524c28', '#2c2a16', '#7a7038'],
     danger: 0.028,
     cout: 4,
     yields: { isotope: 0.42, ferraille: 0.35 },
@@ -89,7 +89,7 @@ export const BIOMES = {
     court: 'DÉSERT',
     // Ce que le terrain offre à qui capte : voir `rendementLibre`.
     soleil: 1.35, vent: 1.1,
-    couleurs: ['#5a4a2a', '#6b5a33', '#4a3d22'],
+    couleurs: ['#5f4c28', '#75613a', '#463a1f', '#96803f'],
     danger: 0.022,
     cout: 5,
     yields: { minerai: 0.5, isotope: 0.18 },
@@ -100,7 +100,7 @@ export const BIOMES = {
     court: 'CANYONS',
     // Ce que le terrain offre à qui capte : voir `rendementLibre`.
     soleil: 0.85, vent: 1.15,
-    couleurs: ['#4a2f2a', '#5a3a32', '#3c2622'],
+    couleurs: ['#4e2f26', '#653d2f', '#3a231c', '#8a4f35'],
     danger: 0.036,
     cout: 6,
     yields: { minerai: 1.0, alliage: 0.08 },
@@ -111,7 +111,7 @@ export const BIOMES = {
     court: 'MARAIS',
     // Ce que le terrain offre à qui capte : voir `rendementLibre`.
     soleil: 0.55, vent: 0.5,
-    couleurs: ['#16342c', '#1d4438', '#122a24'],
+    couleurs: ['#173a2e', '#20503c', '#112a22', '#2f7a52'],
     danger: 0.04,
     cout: 6,
     yields: { biomasse: 1.0, polymere: 0.3 },
@@ -122,7 +122,7 @@ export const BIOMES = {
     court: 'PLASTIQUE',
     // Ce que le terrain offre à qui capte : voir `rendementLibre`.
     soleil: 0.9, vent: 0.6,
-    couleurs: ['#2b2438', '#392f4a', '#231d2e'],
+    couleurs: ['#2e2440', '#3f3156', '#241c31', '#5c4a85'],
     danger: 0.03,
     cout: 7,
     yields: { polymere: 1.2, carburant: 0.28 },
@@ -133,7 +133,7 @@ export const BIOMES = {
     court: 'BRÛLÉES',
     // Ce que le terrain offre à qui capte : voir `rendementLibre`.
     soleil: 1.2, vent: 1.0,
-    couleurs: ['#4a2420', '#5c2e28', '#3a1c19'],
+    couleurs: ['#4e241e', '#682f26', '#3a1b16', '#93402b'],
     danger: 0.052,
     cout: 5,
     yields: { carburant: 0.6, minerai: 0.4 },
@@ -144,7 +144,7 @@ export const BIOMES = {
     court: 'RELAIS',
     // Ce que le terrain offre à qui capte : voir `rendementLibre`.
     soleil: 0.95, vent: 0.9,
-    couleurs: ['#1d3a4a', '#26506a', '#152c39'],
+    couleurs: ['#1d3d4e', '#2a5570', '#152e3b', '#3e7fa3'],
     danger: 0.075,
     cout: 6,
     yields: { composant: 0.5, isotope: 0.5, alliage: 0.2 },

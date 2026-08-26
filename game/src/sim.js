@@ -319,6 +319,9 @@ export function nouvellePartie(seed, opts = {}) {
     },
     base: creerBase(),
     journal: [],
+    // Le compteur d'entrées — même valeur que poserait `normaliser`, pour un
+    // aller-retour JSON exact d'une partie neuve.
+    journalN: 0,
     nonLus: 0,
     stats: {
       ticks: 0,

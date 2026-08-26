@@ -3286,6 +3286,44 @@ console.log('\n8 vicies quinquies. Les grands moments (M2, ALLURE.md)');
   await page.screenshot({ path: join(CAPTURES, '23-bandeau-siege.png') });
 }
 
+console.log('\n8 vicies sexies. La carte-affiche (G1, ALLURE.md)');
+{
+  // En fin de suite, exprès : posé en tête, ce décor décalait la fenêtre de
+  // mesure du garde « ce qu'on lit reste sous les yeux » sur un orage de
+  // guerre à ×60 — on ne touche pas à un garde pour faire passer un décor,
+  // on déplace le décor. Partie fraîche, la carte du premier écran.
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.fill('#graine', 'kenshi');
+  await page.click('[data-a="nouvelle"]');
+  await page.waitForSelector('#carte', { timeout: 5000 });
+  await page.waitForTimeout(400);
+  // La carte est 60 % du premier écran : c'est elle qui décide si le jeu a
+  // l'air fait ou fait maison. Deux exigences mesurables : l'inexploré n'est
+  // plus un aplat noir, et une case découverte porte une vraie matière.
+  const g1 = await page.evaluate(() => {
+    const c = document.querySelector('#carte');
+    const g = c.getContext('2d');
+    const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const CELL = c.width / s.world.largeur;
+    const lit = (r) => {
+      const d = g.getImageData(Math.round(r.x * CELL) + 1, Math.round(r.y * CELL) + 1,
+        Math.max(4, Math.floor(CELL) - 2), Math.max(4, Math.floor(CELL) - 2)).data;
+      const v = new Set();
+      for (let i = 0; i < d.length; i += 4) v.add(`${d[i]},${d[i + 1]},${d[i + 2]}`);
+      return v.size;
+    };
+    const inconnue = s.world.regions.find((r) => !r.decouvert);
+    const connue = s.world.regions.find((r) => r.decouvert && !r.colonie);
+    return { inconnue: inconnue ? lit(inconnue) : 99, connue: connue ? lit(connue) : 99 };
+  });
+  ok(g1.inconnue >= 6, 'l’inexploré n’est plus un aplat : un monde sous la cendre',
+    `${g1.inconnue} tons`);
+  ok(g1.connue >= 8, 'une case découverte porte une vraie matière',
+    `${g1.connue} tons`);
+}
+
 console.log('\n9. Fichier unique ouvert en file://');
 const { existsSync } = await import('node:fs');
 const chemin = join(RACINE, 'dist', 'cendres.html');

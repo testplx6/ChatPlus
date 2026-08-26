@@ -174,8 +174,33 @@ la finition ensuite.
   salle, et la racine s'élargit sur tous les écrans, plus seulement la
   carte.
 
-**Les six pistes moyennes sont livrées.** Restent les grosses (G1
-carte-affiche, G2 mode chronique, G3 son génératif) — non engagées.
+- **G1 — livré, la carte-affiche et la palette de cendre.** Le retour
+  du propriétaire sur les moyennes (« y a vraiment pas de grosses
+  améliorations ») a dit vrai : le visible était ici, pas là. Livré :
+  les neuf biomes ont une vraie matière (tramage dense à valeur par
+  grain, quatrième ton d'accent semé rare, ondulation par case,
+  coutures d'ombre entre biomes — des pays, plus des cases), les
+  villes sont bâties (des toits autour du carré dès que le zoom laisse
+  la place), le hors-de-vue est voilé (le carnet se voit), l'inexploré
+  est un monde sous la cendre (reliefs devinés — du bruit, jamais le
+  vrai terrain), les palettes des neuf biomes sont plus riches, et le
+  chrome entier passe du froid tech à la cendre chaude (les jetons de
+  `:root`, plus les séparateurs codés en dur). La vie (M1) est
+  amplifiée : feux avec halo, cendre plus dense. Deux gardes
+  mesurables : l'inexploré ≥ 6 tons, une case découverte ≥ 8 tons —
+  rouges d'abord (2 et 3 tons).
+- **Trouvaille en route — l'ancre du journal avait un vrai défaut.**
+  Le garde « ce qu'on lit reste sous les yeux » est tombé au pixel
+  près : la clé d'ancre « heure + début du texte » n'est pas unique —
+  une rafale de guerre écrit deux entrées identiques à la même heure,
+  et l'ancre retrouvait le premier doublon. Réparé dans le produit,
+  pas dans le garde : chaque entrée de journal porte un numéro d'ordre
+  monotone (`journalN`, posé par `creerLogger`, migré par
+  `normaliser`), et l'ancre s'y accroche. C'est probablement le fond
+  de la dette « enquête ancre navigateur » de PROMESSES.md.
+
+**Les six pistes moyennes et G1 sont livrées.** Restent G2 (mode
+chronique) et G3 (son génératif) — non engagées.
 
 **Quick wins livrés d'un bloc (août 2026), avec leurs limites dites :**
 

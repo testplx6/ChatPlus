@@ -217,9 +217,14 @@ ci-dessus est porté par un agent qui a sa logique.
   les scripts de mesure à côté. En attendant : ancrage par équivalence
   à l'ancienne pression (test), verdict final au propriétaire en
   jouant.
-- **La mesure d'ancre du navigateur** (« ce qu'on lit reste sous les
-  yeux ») oscille d'un run à l'autre sur un arbre identique sous
-  charge machine (vérifié : vert au calme, rouge pendant qu'un agent
-  laboure le CPU). Elle mérite sa propre enquête d'instrumentation —
-  pas un élargissement.
+- ~~**La mesure d'ancre du navigateur** (« ce qu'on lit reste sous les
+  yeux ») oscille d'un run à l'autre~~ — **enquête close (août 2026,
+  chantier ALLURE G1)** : ce n'était pas que la charge machine. La clé
+  d'ancre d'une entrée de journal (« heure + début du texte ») n'était
+  pas unique — une rafale de guerre écrit deux entrées identiques à la
+  même heure, l'ancre retrouvait le premier doublon et la lecture
+  sautait. Tombé au pixel près (quatre runs identiques), bissecté
+  jusqu'à l'état commité, corrigé dans le produit : chaque entrée porte
+  un numéro d'ordre monotone (`journalN`, creerLogger + normaliser) et
+  l'ancre s'y accroche. Le garde n'a pas bougé d'une virgule.
 
