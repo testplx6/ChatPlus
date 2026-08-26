@@ -1234,12 +1234,14 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
     border-left: 0;
     border-right: 0;
   }
-  /* Le pied de carte range son texte : l'aide aux gestes traînait entre le
-     dock et la feuille (« du texte sous le menu », le propriétaire) — les
-     gestes se découvrent au doigt, le secteur et la légende suffisent. */
-  #ecran.plein-carte .carte-pied { padding: 2px 10px 0; }
-  #ecran.plein-carte .carte-pied .aide { display: none; }
-  #ecran.plein-carte .legende { padding: 0 10px; margin-top: 4px; opacity: .85; }
+  /* Comme la maquette : RIEN sous le dock (« y a toujours du texte sous le
+     menu flottant », le propriétaire — deux fois). Le pied et la légende
+     disparaissent de l'écran carte mobile : les gestes se découvrent au
+     doigt, la position vit dans le panneau « Position », et les couleurs des
+     factions se lisent sur la carte elle-même — c'est son métier. La légende
+     reste dans le document pour le grand écran. */
+  #ecran.plein-carte .carte-pied,
+  #ecran.plein-carte .legende { display: none; }
 
   /* La feuille : tout ce qui suit la carte passe AU-DESSUS d'elle. */
   #ecran.plein-carte > section.panneau,
