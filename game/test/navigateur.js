@@ -195,14 +195,17 @@ console.log('\n1 bis. Le dock d’ordres — les verbes vivent sur la carte (dir
     const cb = document.querySelector('#carte-boite').getBoundingClientRect();
     return {
       boutons: d.querySelectorAll('button.act.ordre').length,
-      surCarte: rb.top < cb.bottom - 4 && rb.bottom > cb.top,
+      // « En fixe SOUS la carte » — décision du propriétaire (le débord en
+      // surimpression masquait le bas du monde) : le dock suit la carte,
+      // rangé juste dessous, toujours atteignable sans défiler.
+      sousCarte: rb.top >= cb.bottom - 4 && rb.top < cb.bottom + 80,
       dansVue: rb.bottom <= window.innerHeight && rb.width > 0,
     };
   });
   ok(!!dock, 'le dock d’ordres existe sur l’écran carte');
   ok(!!dock && dock.boutons >= 6, 'et porte tous les verbes', dock ? `${dock.boutons} boutons` : 'absent');
-  ok(!!dock && dock.surCarte && dock.dansVue,
-    'posé sur la carte, sous le pouce, sans défiler', dock ? JSON.stringify(dock) : 'absent');
+  ok(!!dock && dock.sousCarte && dock.dansVue,
+    'rangé sous la carte, sous le pouce, sans défiler', dock ? JSON.stringify(dock) : 'absent');
 }
 
 console.log('\n2. Ordres et temps réel');
@@ -1979,6 +1982,27 @@ await page.waitForTimeout(250);
 const apresGlisse = await page.evaluate(() => document.querySelector('#carte-boite').scrollLeft);
 ok(apresGlisse > avantGlisse, 'glisser vers la gauche fait avancer la vue vers l’est',
   `${Math.round(avantGlisse)} → ${Math.round(apresGlisse)}`);
+
+// Un geste n'est jamais avalé par le rendu : pendant un long glissement à
+// grande vitesse, `rafraichir` reconstruisait l'écran — la boîte remplacée,
+// la capture du pointeur morte, la carte qui saute sous le doigt. Le geste
+// arme désormais le même répit qu'un clic, et la boîte SURVIT au glissement.
+{
+  await page.click('[data-a="vitesse"][data-v="60"]');
+  await page.waitForTimeout(300);
+  const boiteAvant = await page.evaluateHandle(() => document.querySelector('#carte-boite'));
+  await page.mouse.move(bb.x + bb.width * 0.5, bb.y + bb.height * 0.5);
+  await page.mouse.down();
+  for (let i = 0; i < 14; i++) {
+    await page.mouse.move(bb.x + bb.width * 0.5 + i * 5, bb.y + bb.height * 0.5 + (i % 2 ? 3 : -3));
+    await page.waitForTimeout(100);
+  }
+  await page.mouse.up();
+  const survit = await page.evaluate((el) => el === document.querySelector('#carte-boite'), boiteAvant);
+  ok(survit, 'la boîte de carte survit à un glissement d’une seconde et demie à ×60');
+  await page.click('[data-a="vitesse"][data-v="1"]');
+  await page.waitForTimeout(300);
+}
 
 // Un clic franc, lui, sélectionne bien une région.
 await page.mouse.click(bb.x + bb.width * 0.5, bb.y + bb.height * 0.5);

@@ -811,6 +811,8 @@ function zoomer(boite, facteur, cx, cy) {
   boite.scrollTop = avant.wy * CELL - avant.ey;
   vueTenueParLeJoueur = true;
   noterVue(boite);
+  // Le zoom aussi est un geste : même répit que le glissement.
+  derniereInteraction = (typeof performance !== 'undefined' ? performance.now() : Date.now());
   majPositionCarte();
 }
 
@@ -862,6 +864,11 @@ function lierGestesCarte(boite) {
     boite.scrollTop -= dy;
     if (glisse.dep > SEUIL_CLIC) vueTenueParLeJoueur = true;
     noterVue(boite);
+    // Le geste arme le répit du rendu, comme un clic : sans ça, `rafraichir`
+    // reconstruisait l'écran EN PLEIN glissement — la boîte remplacée, la
+    // capture du pointeur morte, la carte qui saute sous le doigt (« la carte
+    // fait des mouvements bizarres », le propriétaire, sur téléphone).
+    derniereInteraction = (typeof performance !== 'undefined' ? performance.now() : Date.now());
   });
 
   const relacher = (ev) => {

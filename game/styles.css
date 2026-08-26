@@ -1306,7 +1306,9 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
   gap: 6px;
   overflow-x: auto;
   scrollbar-width: none;
-  margin: -68px 8px 6px;
+  /* En fixe SOUS la carte, plus en surimpression dessus — demandé par le
+     propriétaire : le débord masquait le bas du monde et lisait mal. */
+  margin: 6px 8px;
   padding: 2px;
   mask-image: linear-gradient(90deg, #000 calc(100% - 22px), transparent);
 }
