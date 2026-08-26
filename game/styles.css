@@ -1436,7 +1436,7 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
 
 @media (max-width: 1099px) {
   /* Sous le HUD flottant, pas dessous la carte. */
-  #ecran.plein-carte #alerte-carte { top: 50px; }
+  #ecran.plein-carte #alerte-carte { top: 96px; }
   /* Le HUD de la carte tient sur UNE rangée : le sac et la météo ont leur
      place ailleurs sur cet écran (la feuille, le ciel de la carte elle-même).
      L'effectif, lui, RESTE : « une information cachée coûte une escouade » —
@@ -1453,3 +1453,20 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
     radial-gradient(ellipse at 50% 42%, transparent 58%, rgba(0, 0, 0, .38)),
     radial-gradient(130% 55% at 50% 108%, rgba(217, 128, 58, .14), transparent 60%);
 }
+
+
+/* L'échelle de l'affiche (étape 7) : sur la carte, les jetons du HUD sont
+   grands et généreux — un poste de commandement, pas une barre d'état. Deux
+   rangées assumées : les mesures en haut, la vitesse en dessous à droite. */
+@media (max-width: 1099px) {
+  #racine.large-carte #barre-haut { padding: 8px; }
+  #racine.large-carte .hd-metriques { gap: 6px 8px; }
+  #racine.large-carte .hd-bloc { padding: 5px 9px; border-radius: 6px; gap: 6px; }
+  #racine.large-carte .hd-val { font-size: 14px; }
+  #racine.large-carte .hd-eti { font-size: 9px; }
+  #racine.large-carte .vitesse { border-radius: 6px; }
+  #racine.large-carte .vitesse button { min-height: 34px; padding: 5px 9px; }
+}
+
+/* Les verbes du dock assument leur poids. */
+#dock-ordres .o-n { font-weight: 600; }

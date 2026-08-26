@@ -936,7 +936,7 @@ function dessinerCarte(cv) {
       // L'inexploré n'est pas un aplat (G1) : un monde sous la cendre. Des
       // reliefs devinés — du bruit, pas le vrai terrain : la carte reste un
       // carnet, elle ne divulgue rien.
-      g.fillStyle = '#0d0c0f';
+      g.fillStyle = '#121014';
       g.fillRect(x, y, CELL, CELL);
       g.globalAlpha = 0.05 + bruit(r.i, 97) * 0.07;
       g.fillStyle = '#000';
@@ -946,8 +946,10 @@ function dessinerCarte(cv) {
         const b = bruit(r.i, k);
         // Chaque grain a sa valeur : c'est l'alpha qui varie, pas la teinte —
         // huit reliefs devinés, pas deux tons plaqués.
-        g.globalAlpha = 0.05 + bruit(r.i, k + 61) * 0.09;
-        g.fillStyle = b > 0.6 ? '#7a7468' : '#606878';
+        // Trois tons de relief, plage d'alpha large : l'éclaircissement de
+        // l'étape 7 avait fait converger deux tons — le garde (≥ 6) a refusé.
+        g.globalAlpha = 0.07 + bruit(r.i, k + 61) * 0.14;
+        g.fillStyle = b > 0.75 ? '#8a8274' : b > 0.45 ? '#6e7480' : '#565e6e';
         g.fillRect(x + Math.floor(bruit(r.i, k + 31) * (CELL - 2)),
           y + Math.floor(bruit(r.i, k + 9) * (CELL - 2)), b > 0.85 ? 2 : 1, 1);
       }
@@ -959,8 +961,14 @@ function dessinerCarte(cv) {
     g.fillRect(x, y, CELL, CELL);
     // Le terrain ondule (G1) : chaque case a sa valeur propre, tirée de son
     // indice — fini le carrelage de neuf aplats.
-    g.globalAlpha = 0.13 * bruit(r.i, 1);
+    g.globalAlpha = 0.08 * bruit(r.i, 1);
     g.fillStyle = '#000';
+    g.fillRect(x, y, CELL, CELL);
+    g.globalAlpha = 1;
+    // La lumière de l'affiche (étape 7) : un voile chaud à valeur propre par
+    // case — le monde exploré rayonne au lieu de s'éteindre.
+    g.globalAlpha = 0.05 + bruit(r.i, 3) * 0.06;
+    g.fillStyle = '#ffe9c9';
     g.fillRect(x, y, CELL, CELL);
     g.globalAlpha = 1;
     // La matière : un tramage dense, trois tons plus un accent semé rare —
@@ -1025,6 +1033,27 @@ function dessinerCarte(cv) {
     }
   }
 
+  // Les champs de couleur (étape 7, l'affiche) : chaque case découverte pose
+  // une lueur radiale de son biome, et les voisines d'un même pays se fondent
+  // en champs lumineux qui débordent doucement dans la cendre — le monde est
+  // peint, plus carrelé. C'est de la LUMIÈRE, pas de l'information : la lueur
+  // porte la couleur de la case découverte, jamais celle d'une case voisine
+  // encore sous la cendre.
+  for (const r of w.regions) {
+    if (!r.decouvert) continue;
+    const cx = r.x * CELL + CELL / 2;
+    const cy = r.y * CELL + CELL / 2;
+    const teinte = BIOMES[r.biome].couleurs[1];
+    const tr = Math.min(255, parseInt(teinte.slice(1, 3), 16) + 55);
+    const tg = Math.min(255, parseInt(teinte.slice(3, 5), 16) + 50);
+    const tb = Math.min(255, parseInt(teinte.slice(5, 7), 16) + 40);
+    const halo = g.createRadialGradient(cx, cy, 0, cx, cy, CELL * 1.35);
+    halo.addColorStop(0, `rgba(${tr},${tg},${tb},${estSurveillee(S, r.i) ? 0.2 : 0.13})`);
+    halo.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = halo;
+    g.fillRect(cx - CELL * 1.35, cy - CELL * 1.35, CELL * 2.7, CELL * 2.7);
+  }
+
   // Le secteur dont on répond : un liseré tireté, pour qu'on sache où il est
   // sans avoir à ouvrir un écran.
   const monSecteur = G() && G().allegeance && G().allegeance.secteur;
@@ -1076,6 +1105,19 @@ function dessinerCarte(cv) {
         g.fillRect(bx, by, 2, 2);
       }
     }
+    // Une ville vivante rayonne (étape 7) : trois anneaux d'alpha dans la
+    // couleur du drapeau vu — le halo de l'affiche. Les ruines restent
+    // éteintes : c'est même à ça qu'on les reconnaît de loin.
+    if (!su.ruine) {
+      g.fillStyle = couleurFaction(su.faction);
+      g.globalAlpha = 0.05;
+      g.fillRect(ox - 7, oy - 7, t + 14, t + 14);
+      g.globalAlpha = 0.09;
+      g.fillRect(ox - 4, oy - 4, t + 8, t + 8);
+      g.globalAlpha = 0.16;
+      g.fillRect(ox - 2, oy - 2, t + 4, t + 4);
+      g.globalAlpha = 1;
+    }
     g.fillStyle = '#05070a';
     g.fillRect(ox - 1, oy - 1, t + 2, t + 2);
     if (su.ruine) {
@@ -1121,6 +1163,10 @@ function dessinerCarte(cv) {
     if (r) {
       const x = r.x * CELL;
       const y = r.y * CELL;
+      g.fillStyle = '#4fd0e3';
+      g.globalAlpha = 0.08;
+      g.fillRect(x - 2, y - 2, CELL + 4, CELL + 4);
+      g.globalAlpha = 1;
       g.strokeStyle = '#4fd0e3';
       g.lineWidth = 1;
       g.strokeRect(x + 2.5, y + 2.5, CELL - 5, CELL - 5);
@@ -1172,6 +1218,16 @@ function dessinerCarte(cv) {
     const x = rp.x * CELL;
     const y = rp.y * CELL;
     const moi = gr.id === actif.id;
+    if (moi) {
+      // Le marqueur de l'escouade rayonne (étape 7) : le joueur se trouve
+      // d'un regard, comme sur l'affiche.
+      g.fillStyle = '#f2f6fb';
+      g.globalAlpha = 0.07;
+      pave(g, x, y, 0.95);
+      g.globalAlpha = 0.13;
+      pave(g, x, y, 0.66);
+      g.globalAlpha = 1;
+    }
     g.fillStyle = '#05070a';
     pave(g, x, y, 0.42);
     g.fillStyle = '#f2f6fb';
