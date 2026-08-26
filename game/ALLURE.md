@@ -202,6 +202,19 @@ la finition ensuite.
   jour). Le garde n'a pas bougé d'une virgule. Dossier complet, faux
   départs compris, dans PROMESSES.md §Blocages.
 
+- **La refonte d'ensemble — une passe, sur ordre du propriétaire**
+  (« je veux une refonte profonde de l'UI », août 2026). La braise
+  devient la couleur de l'action du joueur — boutons primaires, onglet
+  actif, vitesse enfoncée — et le cyan redevient ce qu'il devait être :
+  le signal de la machine (états, sélections). Les têtes de panneaux
+  sont de vraies têtes (os clair, graisse 600, filet braise dégradé),
+  les boutons ont une hiérarchie (repos/primaire/danger, transitions,
+  survol), les jauges sont affinées, la modale est une feuille tirée du
+  bas (poignée, coins hauts arrondis, filet braise), l'accueil parle
+  serif sous un titre os, et le chrome porte la matière du terminal de
+  campagne (scanlines discrètes, lumière par le haut). Menée par la
+  voie rapide de METHODE §10 : une passe, une suite, un --complet.
+
 **Les six pistes moyennes et G1 sont livrées.** Restent G2 (mode
 chronique) et G3 (son génératif) — non engagées.
 

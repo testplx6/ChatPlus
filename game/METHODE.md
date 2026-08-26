@@ -469,3 +469,25 @@ Avant de coder quoi que ce soit :
 6. **Ce qu'on ne fait pas**, pour ne pas y revenir.
 
 `ECONOMIE.md` est le premier document écrit à ce format. Il sert de gabarit.
+
+---
+
+## 10. La voie rapide de l'apparence
+
+Fixée par le propriétaire (« beaucoup beaucoup beaucoup plus rapide »,
+août 2026), après une soirée où sept lots d'interface ont coûté quinze
+passages de la suite navigateur (~100 s chacun) pour un effet perçu
+faible.
+
+- **Ce qui est de l'apparence pure** — styles.css, gabarits HTML
+  d'ui.js, dessin du canevas — se travaille **par passes groupées** :
+  plusieurs retouches, UN passage de la suite navigateur à la fin de la
+  passe, `--complet` avant de pousser. Le vérifieur rapide (35 s) reste
+  le réflexe entre deux retouches.
+- **Ce qui est un mécanisme d'interface** — ancres de lecture, moments,
+  sauvegardes, replis, gestes de carte — garde le cycle complet : test
+  rouge d'abord, un lot à la fois. C'est là que vivent les régressions
+  qui coûtent des soirées.
+- La frontière en un test : « si ça casse, est-ce que ça se VOIT au
+  premier coup d'œil ? » Oui → apparence, passe groupée. Non → mécanisme,
+  cycle complet.

@@ -120,7 +120,7 @@ body {
 .hd-saison { font-size: 13px; line-height: 1; }
 .hd-cycle { font-size: 11px; color: var(--texte-3); }
 .hd-eti { font-size: 8px; letter-spacing: .1em; color: var(--texte-3); text-transform: uppercase; }
-.hd-val { font-size: 12px; color: var(--texte); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.hd-val { font-size: 13px; color: var(--texte); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .hd-val.cyan { color: var(--cyan); }
 .hd-val.ambre { color: var(--ambre); }
 .hd-val.rouge { color: var(--rouge); }
@@ -140,7 +140,7 @@ body {
   cursor: pointer;
 }
 .vitesse button:last-child { border-right: 0; }
-.vitesse button[aria-pressed="true"] { background: var(--cyan); color: #06222a; }
+.vitesse button[aria-pressed="true"] { background: #d9803a; color: #241205; }
 
 /* ------------------------------------------------------------------ Écran */
 
@@ -236,7 +236,7 @@ body {
   inset: 2px;
   background: var(--cyan);
 }
-#barre-nav button[aria-current="page"] { color: var(--cyan); border-top-color: var(--cyan); }
+#barre-nav button[aria-current="page"] { color: #e8a050; border-top-color: #d9803a; }
 #barre-nav .pastille {
   position: absolute;
   top: 5px;
@@ -255,10 +255,11 @@ body {
 /* ------------------------------------------------------------------ Briques */
 
 .panneau {
-  background: var(--panneau);
+  background: linear-gradient(180deg, #1b1813, var(--panneau) 30px);
   border: 1px solid var(--bord);
-  padding: 9px 10px;
-  margin-bottom: 9px;
+  border-top-color: #3b3327;
+  padding: 10px 11px;
+  margin-bottom: 10px;
 }
 
 /* Un panneau qui réclame une décision maintenant. Le liseré suffit : le rouge
@@ -266,17 +267,26 @@ body {
 .panneau.urgent { border-left: 2px solid var(--rouge); }
 
 .titre {
-  font-size: 10px;
-  letter-spacing: .16em;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .17em;
   text-transform: uppercase;
-  color: var(--texte-3);
-  margin: 0 0 7px;
+  color: #d9cfba;
+  margin: 0 0 8px;
+  padding-bottom: 6px;
+  background: linear-gradient(90deg, rgba(217, 128, 58, .5), rgba(217, 128, 58, .07) 55%, transparent)
+    bottom / 100% 1px no-repeat;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
 }
-.titre .droite { color: var(--texte-2); letter-spacing: .04em; }
+.titre .droite {
+  color: var(--ambre);
+  letter-spacing: .05em;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
 
 .ligne { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; align-items: baseline; }
 /* La clé ne se coupe jamais en deux ; c'est la valeur qui cède du terrain. */
@@ -312,21 +322,27 @@ body {
 .grille3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
 
 button.act, .act {
-  background: var(--panneau-2);
+  background: #221d15;
   border: 1px solid var(--bord-vif);
   color: var(--texte);
   font: inherit;
   font-size: 12px;
-  padding: 8px 9px;
+  padding: 8px 10px;
   cursor: pointer;
   text-align: left;
   width: 100%;
   min-height: 38px;
   display: block;
+  transition: border-color .12s ease, background .12s ease;
 }
+button.act:hover { border-color: #6d5d43; }
 button.act:active { background: var(--bord); }
 button.act[disabled] { opacity: .38; cursor: not-allowed; }
-button.act[aria-pressed="true"] { border-color: var(--cyan); color: var(--cyan); }
+button.act[aria-pressed="true"] {
+  border-color: var(--cyan);
+  color: var(--cyan);
+  background: rgba(79, 208, 227, .05);
+}
 button.act.mini { min-height: 30px; padding: 4px 7px; font-size: 11px; text-align: center; }
 /* Une porte de ville : le libellé, et dessous le fait qui dit ce qu'il y a
    derrière (INTERFACE.md, U1). Aligné à gauche : deux lignes centrées se
@@ -335,8 +351,17 @@ button.act.mini.porte { text-align: left; min-height: 40px; }
 .porte .fait { display: block; font-size: 10px; color: var(--texte-3);
   letter-spacing: 0; margin-top: 2px; }
 .porte .fait.alerte { color: var(--rouge); }
-button.act.primaire { border-color: var(--cyan); color: var(--cyan); }
-button.act.danger { border-color: var(--rouge); color: var(--rouge); }
+/* La braise porte l'action du joueur ; le cyan reste le signal de l'état.
+   C'est l'axe de la DA (braise/os = ce qu'on fait et ce qu'on vit, cyan =
+   ce que la machine dit), appliqué aux boutons — le geste le plus visible
+   de la refonte. */
+button.act.primaire {
+  border-color: #a5632e;
+  color: #e8a050;
+  background: rgba(217, 128, 58, .09);
+}
+button.act.primaire:hover { border-color: #d9803a; }
+button.act.danger { border-color: #7c3a34; color: var(--rouge); }
 
 .pile { display: flex; flex-direction: column; gap: 5px; }
 .rangee { display: flex; gap: 5px; flex-wrap: wrap; }
@@ -359,7 +384,13 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
 .puce.att { border-color: #6b5320; color: var(--ambre); }
 .puce.mal { border-color: #6b2b2b; color: var(--rouge); }
 
-.jauge { height: 5px; background: #0b0e13; border: 1px solid var(--bord); position: relative; }
+.jauge {
+  height: 4px;
+  background: #0e0c09;
+  border: 0;
+  box-shadow: inset 0 0 0 1px rgba(50, 44, 35, .55);
+  position: relative;
+}
 .jauge > i { display: block; height: 100%; background: var(--cyan); }
 .jauge.rouge > i { background: var(--rouge); }
 .jauge.ambre > i { background: var(--ambre); }
@@ -367,7 +398,7 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
 
 .aide { font-size: 11px; color: var(--texte-3); line-height: 1.4; }
 .mono-num { font-variant-numeric: tabular-nums; }
-.sep { height: 1px; background: var(--bord); margin: 8px 0; }
+.sep { height: 1px; background: linear-gradient(90deg, var(--bord), rgba(50, 44, 35, .15)); margin: 9px 0; }
 
 /* ------------------------------------------------------------------ Carte */
 
@@ -388,7 +419,8 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
    monde à explorer. On garde donc les pixels gros et on fait défiler, en
    recentrant sur le groupe affiché à chaque rendu. */
 #carte-boite {
-  border: 1px solid var(--bord);
+  border: 1px solid #3b3327;
+  box-shadow: inset 0 0 0 1px rgba(217, 128, 58, .06);
   background: #05070a;
   line-height: 0;
   overflow: hidden;          /* on gère nous-mêmes le défilement */
@@ -494,24 +526,46 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
 #modale .boite {
   background: var(--panneau);
   border: 1px solid var(--bord-vif);
+  border-top: 2px solid rgba(217, 128, 58, .45);
+  border-radius: 8px 8px 0 0;
   width: 100%;
   max-width: 620px;
   max-height: 82vh;
   overflow-y: auto;
-  padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+  padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
+}
+/* La poignée de la feuille : la modale se lit comme un panneau qu'on a tiré
+   du bas de l'écran, pas comme une boîte surgie de nulle part. */
+#modale .boite::before {
+  content: '';
+  display: block;
+  width: 38px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--bord-vif);
+  margin: 0 auto 10px;
 }
 
 /* ------------------------------------------------------------------ Accueil */
 
 .accueil { padding: 18px 4px; }
 .accueil h1 {
-  font-size: 22px;
-  letter-spacing: .16em;
-  margin: 0 0 2px;
-  color: var(--cyan);
+  font-size: 23px;
+  letter-spacing: .2em;
+  margin: 0 0 4px;
+  color: #e8dfc9;
   text-transform: uppercase;
+  padding-bottom: 8px;
+  background: linear-gradient(90deg, rgba(217, 128, 58, .6), transparent 70%)
+    bottom / 100% 1px no-repeat;
 }
-.accueil .sous { color: var(--texte-3); font-size: 12px; margin-bottom: 18px; }
+.accueil .sous {
+  font-family: var(--serif);
+  font-style: italic;
+  color: var(--texte-2);
+  font-size: 13.5px;
+  margin-bottom: 18px;
+}
 .accueil input {
   background: #0b0e13;
   border: 1px solid var(--bord-vif);
@@ -539,10 +593,12 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
 .toast {
   background: var(--panneau-2);
   border: 1px solid var(--bord-vif);
+  border-radius: 3px;
   padding: 7px 12px;
   font-size: 12px;
   max-width: 100%;
   text-align: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .4);
 }
 .toast.err { border-color: var(--rouge); color: var(--rouge); }
 
@@ -916,6 +972,16 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
 .panneau.plie > h2.titre .resume .mal { color: var(--rouge); }
 .panneau.plie > h2.titre .resume .att { color: var(--ambre); }
 .panneau.plie > h2.titre .resume .bien { color: var(--vert); }
+
+
+/* La matière du terminal de campagne (refonte) : des scanlines à peine
+   visibles sur le chrome — jamais sur le contenu — et le bandeau qui prend
+   la lumière par le haut. */
+#barre-haut, #barre-nav {
+  background-image:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, .015) 0 1px, transparent 1px 3px),
+    linear-gradient(180deg, #191610, var(--fond-2));
+}
 </style>
 </head>
 <body>
