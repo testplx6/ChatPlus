@@ -174,6 +174,15 @@ body {
     top: 0;
   }
   #ecran.deux-colonnes #carte-boite { height: calc(100dvh - 240px); max-height: none; }
+
+  /* La salle des cartes (M6, ALLURE.md) : les autres écrans cessent d'être un
+     téléphone étiré. Leurs panneaux coulent sur deux colonnes — l'ordre du
+     document ne bouge pas, donc l'ancre de lecture et les replis tiennent. */
+  #racine { max-width: 1240px; }
+  #ecran:not(.deux-colonnes) { column-count: 2; column-gap: 14px; }
+  #ecran:not(.deux-colonnes) > * { break-inside: avoid; }
+  /* Un bandeau d'urgence en tête (dévaluation, siège) barre toute la salle. */
+  #ecran:not(.deux-colonnes) > .panneau.urgent:first-child { column-span: all; }
 }
 
 /* ------------------------------------------------------------------ Navigation */
@@ -205,6 +214,28 @@ body {
   position: relative;
 }
 #barre-nav button .glyphe { font-size: 15px; line-height: 1; }
+/* Les icônes dessinées (M5) : un trait, une grille, la couleur du texte. */
+#barre-nav button .svgi { width: 16px; height: 16px; display: block; margin: 0 auto 2px; }
+
+/* Les vraies cases à cocher (M5) : l'état vit sur `aria-pressed`, la case ne
+   fait que le montrer — pas de [×] ASCII. */
+.coche {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 1px solid var(--bord-vif);
+  margin-right: 7px;
+  vertical-align: -1px;
+  position: relative;
+  flex: 0 0 auto;
+}
+[aria-pressed="true"] > .coche { border-color: var(--cyan); }
+[aria-pressed="true"] > .coche::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  background: var(--cyan);
+}
 #barre-nav button[aria-current="page"] { color: var(--cyan); border-top-color: var(--cyan); }
 #barre-nav .pastille {
   position: absolute;
@@ -419,6 +450,21 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
 .entree.base { border-left-color: var(--cyan); }
 .entree .detail { font-size: 11px; color: var(--texte-3); margin-top: 3px; }
 
+/* Le journal raconté (M3) : les jours en têtes de chapitre, les marquants au
+   liséré braise, les dépêches du récit en serif, un glyphe par famille. */
+.jour-tete {
+  text-align: center;
+  font-size: 10px;
+  letter-spacing: .16em;
+  color: var(--texte-3);
+  margin: 10px 0 6px;
+}
+.entree.marquant { border-left-color: #d9803a; }
+.entree.marquant.danger { border-left-color: var(--rouge); }
+.entree.recit { font-family: var(--serif); font-size: 14px; }
+.entree.recit .t { font-family: "IBM Plex Mono", ui-monospace, "SF Mono", "Roboto Mono", Menlo, Consolas, monospace; }
+.entree .ico { display: inline-block; min-width: 10px; color: var(--texte-2); }
+
 /* ------------------------------------------------------------------ Marché */
 
 .marche-l {
@@ -505,6 +551,15 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
 
 /* La vignette de la carte (Q3) : un monde sous la cendre, pas un écran éteint. */
 #carte-boite { position: relative; }
+
+/* La carte vivante (M1) : la couche qui bouge, posée sur le terrain. Elle
+   partage l'origine du canevas de fond, donc elle défile avec lui. */
+#carte-vie {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
 #carte-boite::after {
   content: '';
   position: absolute;
@@ -512,6 +567,70 @@ button.act.danger { border-color: var(--rouge); color: var(--rouge); }
   pointer-events: none;
   background: radial-gradient(ellipse at 50% 42%, transparent 58%, rgba(0, 0, 0, .38));
 }
+
+/* Les grands moments (M2) : l'écran entier, la voix de la chronique, un tap
+   pour refermer. La braise et l'os — l'axe du récit — contre le noir. */
+#moment {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 7, 10, .9);
+  cursor: pointer;
+  animation: moment-nait .45s ease;
+}
+@keyframes moment-nait { from { opacity: 0; } }
+.moment-boite {
+  max-width: 430px;
+  margin: 0 20px;
+  padding: 30px 24px;
+  text-align: center;
+  border-top: 1px solid rgba(217, 128, 58, .8);
+  border-bottom: 1px solid rgba(217, 128, 58, .8);
+}
+.moment-sur {
+  font-size: 10px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--texte-2);
+}
+.moment-chiffre {
+  font-family: var(--serif);
+  font-size: 46px;
+  line-height: 1.1;
+  color: #d9803a;
+  margin-top: 10px;
+}
+.moment-titre {
+  font-family: var(--serif);
+  font-size: 25px;
+  line-height: 1.25;
+  color: #e8e0d0;
+  margin: 8px 0 4px;
+}
+.moment-dit {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 15px;
+  color: var(--texte);
+}
+.moment-main {
+  margin-top: 20px;
+  font-size: 9px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--texte-3);
+}
+
+/* Le bandeau de siège (M2) : tant que ça dure, ça se voit — partout. */
+.bandeau-siege { border-left: 2px solid var(--rouge); }
+
+/* Le rapport d'absence parle en serif (M2) : des dépêches, pas un ticket. */
+.rapport-t { font-size: 19px; color: #e8e0d0; }
+.aide.recit { font-size: 14px; }
 
 /* La nuit se sent sur le chrome (Q5). */
 #racine[data-nuit="1"] #barre-haut { filter: brightness(.82) saturate(.85); }
@@ -24473,6 +24592,10 @@ function tickChapitres(state, log) {
     log({
       type: 'chronique',
       texte: `Chapitre ${romain(state.player.chapitreN)} — ${ch.titre}.`,
+      // La clé du chapitre voyage avec l'entrée : la mise en scène (M2,
+      // ALLURE.md) retrouve ainsi le titre et la phrase du chapitre sans
+      // avoir à relire l'état, qui peut avoir tourné une autre page depuis.
+      cle: ch.cle,
       important: true,
       vu: true,
     });
@@ -25991,6 +26114,10 @@ const G = () => groupeActif(S);
 function attacherEtat(state) {
   S = state;
   selection = state ? groupeActif(state).regionId : null;
+  // Les grands moments (M2) ne se mettent en scène que pour ce qui arrive en
+  // jouant : tout ce qui précède l'attache est de l'histoire, pas un moment.
+  momentDepuis = state ? state.temps : 0;
+  fermerMoment();
 }
 
 function monterUI(api) {
@@ -26322,6 +26449,7 @@ function rafraichir(force) {
 
   rendreBarreHaut();
   rendreNav();
+  majMoments();
 
   // Un écran qui plante ne doit pas se contenter de ne rien faire.
   //
@@ -26347,7 +26475,7 @@ function rafraichir(force) {
   // bouge même quand le texte autour ne bouge pas.
   let ecrit = true;
   try {
-    const html = bandeauDevaluation() + rendu();
+    const html = bandeauDevaluation() + bandeauSiege() + rendu();
     if (html === dernierHtml && memeEcran) ecrit = false;
     else { dernierHtml = html; ecran.innerHTML = html; }
   } catch (err) {
@@ -26386,6 +26514,7 @@ function rafraichir(force) {
     dessinerCarte(cv);
     if (cv.parentElement) lierGestesCarte(cv.parentElement);
     centrerCarte(cv);
+    animerCarte();
   }
   // La place de lecture se rend en dernier, une fois la mise en page arrêtée.
   // Le canevas se dimensionne d'après la place qu'on lui laisse : le redessiner
@@ -26425,8 +26554,15 @@ function rendreBarreHaut() {
       <div class="hd-bloc" title="${e(cl.saison.def.nom)} — ${e(cl.meteo.nom)}">
         <span class="hd-val hd-saison" style="color:${cl.saison.def.couleur}"
           aria-label="${e(cl.saison.def.nom)}">◆</span></div>
-      <div class="hd-bloc"><span class="hd-eti">${e(sym())}</span>
-        <span class="hd-val ambre">${n(soldeIci(S))}</span></div>
+      ${(() => {
+    // Le signe s'explique (M4) : « ⚙ 412 » ne se lit que si l'on a appris le
+    // signe par cœur. L'infobulle nomme la monnaie et son pays.
+    const mk = monnaieIci(S);
+    const md = mk && drapeauDe(S.world, mk);
+    return `<div class="hd-bloc" title="Monnaie d’ici : ${md ? e(md.nom) : 'aucune — troc local'}">
+      <span class="hd-eti">${e(sym())}</span>
+        <span class="hd-val ambre">${n(soldeIci(S))}</span></div>`;
+  })()}
       <div class="hd-bloc"><span class="hd-eti">sac</span>
         <span class="hd-val ${charge > 0.95 ? 'rouge' : ''}">${n(poids)}/${n(cap)}</span></div>
       <div class="hd-bloc" title="${e(g.nom)}"><span class="hd-eti">${e(groupes(S).length > 1 ? g.nom.slice(0, 3) : 'esc')}</span>
@@ -26449,19 +26585,42 @@ function rendreBarreHaut() {
     </div>`;
 }
 
+/**
+ * Les icônes de navigation (M5, ALLURE.md) : dessinées, pas empruntées.
+ * Les glyphes Unicode (▚ ⌂ ✦ ⌸ ◈ ≡) venaient de blocs typographiques
+ * différents et pesaient chacun leur poids — LE détail qui crie « fait avec
+ * ce qu'on avait ». Un seul trait (1,5 px), une seule grille (24), la couleur
+ * du texte courant.
+ */
+const ICONES_NAV = {
+  carte: '<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>',
+  escouade: '<circle cx="8" cy="8" r="2.6"/><circle cx="16" cy="8" r="2.6"/>'
+    + '<path d="M3.5 19c0-2.6 2-4.4 4.5-4.4S12.5 16.4 12.5 19M11.5 19c0-2.6 2-4.4 4.5-4.4s4.5 1.8 4.5 4.4"/>',
+  contrats: '<rect x="6" y="3" width="12" height="18" rx="1"/><path d="M9 8h6M9 12h6M9 16h4"/>',
+  base: '<path d="M4 11l8-7 8 7"/><path d="M6.5 9.5V20h11V9.5"/><path d="M10 20v-5h4v5"/>',
+  monde: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 3v18M4 7.5l8 4.5 8-4.5"/>',
+  journal: '<path d="M5 5h14M5 9h14M5 13h14M5 17h9"/>',
+};
+
+function svgIco(nom) {
+  return `<svg class="glyphe svgi" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+    aria-hidden="true">${ICONES_NAV[nom] || ICONES_NAV.carte}</svg>`;
+}
+
 function rendreNav() {
   const enCours = S.player.contrats.length;
   const tabs = [
-    ['carte', '▚', 'CARTE', 0],
-    ['escouade', '⌂', 'ESCOUADE', 0],
-    ['contrats', '✦', 'CONTRATS', enCours],
-    ['base', '⌸', 'BASE', S.base.file.length + S.base.fileRech.length],
-    ['monde', '◈', 'MONDE', 0],
-    ['journal', '≡', 'JOURNAL', S.nonLus],
+    ['carte', 'CARTE', 0],
+    ['escouade', 'ESCOUADE', 0],
+    ['contrats', 'CONTRATS', enCours],
+    ['base', 'BASE', S.base.file.length + S.base.fileRech.length],
+    ['monde', 'MONDE', 0],
+    ['journal', 'JOURNAL', S.nonLus],
   ];
-  $('#barre-nav').innerHTML = tabs.map(([k, g, l, compte]) => `
+  $('#barre-nav').innerHTML = tabs.map(([k, l, compte]) => `
     <button data-a="onglet" data-k="${k}" aria-current="${onglet === k ? 'page' : 'false'}">
-      <span class="glyphe" aria-hidden="true">${g}</span>${l}
+      ${svgIco(k)}${l}
       ${compte ? `<span class="pastille ${k === 'journal' ? '' : 'calme'}">${compte > 99 ? '99' : compte}</span>` : ''}
     </button>`).join('');
 }
@@ -26697,6 +26856,13 @@ function dessinerCarte(cv) {
   const L = w.largeur * CELL;
   const H = w.hauteur * CELL;
   if (cv.width !== L) { cv.width = L; cv.height = H; }
+  // La couche de vie (M1) relit ces listes à dix images par seconde : on les
+  // remplit ICI, pendant qu'on applique les règles de visibilité — la vie
+  // n'a pas le droit d'en savoir plus que la carte, et elle n'a pas à les
+  // recalculer à chaque image.
+  vieFoyers.length = 0;
+  vieConvois.length = 0;
+  vieColonnes.length = 0;
   const g = cv.getContext('2d');
   g.imageSmoothingEnabled = false;
   g.fillStyle = '#05070a';
@@ -26815,6 +26981,8 @@ function dessinerCarte(cv) {
     g.fillRect(ox, oy, t, t);
     g.fillStyle = '#05070a';
     g.fillRect(ox + 1, oy + 1, t - 2, t - 2);
+    // Une ville vivante a un feu : la couche de vie le fera respirer.
+    vieFoyers.push({ r: col.regionId, x: ox, y: oy, taille: t });
     // Un liseré terne sur ce dont le relevé date d'une saison ou plus.
     if (!su.frais && su.depuis > 24 * 30) {
       g.fillStyle = 'rgba(84,94,112,.85)';
@@ -26835,6 +27003,8 @@ function dessinerCarte(cv) {
     g.fillRect(cx + 1, cy + CELL - ht - 2, lg, ht);
     g.fillStyle = couleurFaction(car.faction);
     g.fillRect(cx + 2, cy + CELL - ht - 1, lg - 2, Math.max(1, ht - 2));
+    // Un convoi qu'on voit chemine : la couche de vie fait courir son fanal.
+    vieConvois.push({ x: cx, y: cy, r: car.regionId });
   }
 
   // Avant-poste
@@ -26880,6 +27050,8 @@ function dessinerCarte(cv) {
     g.fillRect(x + CELL - t - 2, y + 2, t, t);
     g.fillStyle = '#05070a';
     g.fillRect(x + CELL - t - 1, y + 3, Math.max(1, t - 2), Math.max(1, t - 2));
+    // Une colonne en marche bat comme un pouls sur la couche de vie.
+    vieColonnes.push({ x: x + CELL - t - 2, y: y + 2, taille: t, k: a.faction });
   }
 
   // Les groupes. Tous sont dessinés — savoir où sont les siens est la moitié de
@@ -26947,6 +27119,137 @@ function dessinerCarte(cv) {
     g.textBaseline = 'alphabetic';
   }
 
+}
+
+// ---------------------------------------------------------------------------
+// La carte vivante (M1, ALLURE.md)
+// ---------------------------------------------------------------------------
+//
+// Un second canevas par-dessus le terrain, redessiné à dix images par seconde
+// — assez pour que le monde respire, dix fois moins cher que le soixante d'un
+// jeu d'action que personne ne demandait à un jeu textuel.
+//
+// Trois règles, non négociables :
+// 1. **Lecture seule.** La couche ne touche ni l'état ni le RNG scellé : tout
+//    son mouvement dérive de `bruit()` et de l'horloge d'affichage. Deux
+//    joueurs à la même graine voient le même monde, à la flammèche près.
+// 2. **Elle n'en sait pas plus que la carte.** Ses listes (`vieFoyers`,
+//    `vieConvois`, `vieColonnes`) sont remplies par `dessinerCarte` pendant
+//    qu'il applique les règles de visibilité — un convoi hors de vue n'existe
+//    pas davantage ici que là.
+// 3. **Elle s'éteint toute seule.** Plus de canevas (autre onglet), boucle
+//    finie ; onglet caché, rien ne se dessine ; `prefers-reduced-motion`,
+//    une seule image, immobile.
+
+const vieFoyers = [];
+const vieConvois = [];
+const vieColonnes = [];
+let vieRaf = 0;
+let vieDernier = 0;
+/** Dix images par seconde : le monde respire, la batterie aussi. */
+const VIE_PAS_MS = 100;
+
+function animerCarte() {
+  if (vieRaf) return; // déjà en route
+  const immobile = typeof matchMedia === 'function'
+    && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const pas = (ts) => {
+    vieRaf = 0;
+    const cv = document.getElementById('carte-vie');
+    const fond = document.getElementById('carte');
+    if (!S || !cv || !fond) return; // l'écran a changé : la boucle s'éteint
+    if (!document.hidden && ts - vieDernier >= VIE_PAS_MS) {
+      vieDernier = ts;
+      dessinerVie(cv, fond, ts);
+    }
+    if (!immobile) vieRaf = requestAnimationFrame(pas);
+  };
+  vieRaf = requestAnimationFrame(pas);
+}
+
+function dessinerVie(cv, fond, ts) {
+  if (cv.width !== fond.width || cv.height !== fond.height) {
+    cv.width = fond.width;
+    cv.height = fond.height;
+  }
+  const g = cv.getContext('2d');
+  const L = cv.width;
+  const H = cv.height;
+  g.clearRect(0, 0, L, H);
+  const cond = conditions(S.world, S.temps);
+  const s = ts / 1000;
+
+  // Les feux des villes : une braise qui respire au coin de chaque ville
+  // relevée. Le scintillement dérive de la case et d'un compteur d'images —
+  // déterministe à l'œil, comme promis par l'étude.
+  const bougie = Math.floor(ts / 260) % 97;
+  for (const f of vieFoyers) {
+    g.globalAlpha = 0.3 + bruit(f.r, 7 + bougie) * 0.55;
+    g.fillStyle = '#d9803a';
+    g.fillRect(f.x + f.taille - 1, f.y - 2, 2, 2);
+  }
+
+  // Les convois cheminent : un fanal court le long du marqueur.
+  const pasFanal = Math.max(2, CELL - 6);
+  for (const c of vieConvois) {
+    const o = (s * 7 + bruit(c.r, 41) * pasFanal) % pasFanal;
+    g.globalAlpha = 0.75;
+    g.fillStyle = '#f2f6fb';
+    g.fillRect(c.x + 2 + o, c.y + CELL - 4, 2, 1);
+  }
+
+  // Les colonnes en marche battent comme un pouls, dans leur couleur.
+  for (let i = 0; i < vieColonnes.length; i++) {
+    const a = vieColonnes[i];
+    g.globalAlpha = 0.3 + 0.35 * (0.5 + 0.5 * Math.sin(s * 2.6 + i * 1.7));
+    g.strokeStyle = couleurFaction(a.k);
+    g.lineWidth = 1;
+    g.strokeRect(a.x - 1.5, a.y - 1.5, a.taille + 3, a.taille + 3);
+  }
+
+  // La cendre dérive au vent — toujours, c'est le climat de ce monde. Le vent
+  // de la météo la pousse plus fort, et le vent de cendre la densifie.
+  const vent = (cond.meteo.vent || 1);
+  const nCendre = cond.meteoKey === 'vent_cendre' ? 90 : 34;
+  g.fillStyle = 'rgba(214,205,190,1)';
+  for (let i = 0; i < nCendre; i++) {
+    const allant = 0.45 + bruit(i, 5) * 0.9;
+    const px = (bruit(i, 3) * L + s * 13 * vent * allant) % L;
+    const py = (bruit(i, 11) * H + s * 3.5 * vent * allant) % H;
+    g.globalAlpha = 0.08 + bruit(i, 17) * 0.16;
+    const gr = bruit(i, 19) > 0.8 ? 2 : 1;
+    g.fillRect(px, py, gr, gr);
+  }
+
+  // La pluie acide strie l'écran ; l'orage sec le zèbre d'un éclair fugace.
+  if (cond.meteoKey === 'pluie_acide') {
+    g.strokeStyle = 'rgba(176,107,224,0.3)';
+    g.lineWidth = 1;
+    for (let i = 0; i < 26; i++) {
+      const px = (bruit(i, 23) * L + s * 9) % L;
+      const py = (bruit(i, 29) * H + s * 170 * (0.7 + bruit(i, 31) * 0.6)) % H;
+      g.globalAlpha = 0.2 + bruit(i, 37) * 0.2;
+      g.beginPath();
+      g.moveTo(px, py);
+      g.lineTo(px - 2, py + 8);
+      g.stroke();
+    }
+  } else if (cond.meteoKey === 'orage_sec') {
+    // Un éclair par cycle d'environ cinq secondes, pas à chaque image.
+    const cycle = Math.floor(ts / 5200);
+    if (ts % 5200 < 130) {
+      const px = bruit(cycle, 43) * L;
+      g.globalAlpha = 0.5;
+      g.strokeStyle = '#e0d36b';
+      g.lineWidth = 1;
+      g.beginPath();
+      g.moveTo(px, 0);
+      g.lineTo(px + 8 - bruit(cycle, 47) * 16, H * 0.4);
+      g.lineTo(px + 20 - bruit(cycle, 53) * 40, H * 0.8);
+      g.stroke();
+    }
+  }
+  g.globalAlpha = 1;
 }
 
 
@@ -27581,6 +27884,106 @@ function armeesIci(rid) {
  * l'onglet est une alerte qui n'a servi à rien, et c'est exactement le reproche
  * qu'on fait au journal, où la ligne défile derrière quatre cents autres.
  */
+/**
+ * Le bandeau de siège (M2, ALLURE.md).
+ *
+ * Un siège sur le camp est l'événement le plus grave que le monde puisse
+ * infliger au joueur, et il n'était dit que par des lignes de journal et
+ * l'écran Base : on pouvait régler son étal pendant qu'on perdait sa ville.
+ * Tant que ça dure, ça se voit — sur tous les écrans, comme la dévaluation.
+ */
+function bandeauSiege() {
+  const a = S && S.base && S.base.fonde ? siegeEnCours(S) : null;
+  if (!a) return '';
+  const f = drapeauDe(S.world, a.faction);
+  return `<section class="panneau urgent bandeau-siege">
+    <h2 class="titre alerte">Le siège de ${e(S.base.nom)}
+      <span class="droite">${n(a.force)} hommes</span></h2>
+    <div class="aide">${f ? e(f.nom) : 'Une colonne'} campe sous vos murs.
+      Tenir, sortir, négocier, évacuer — les quatre verbes sont sur l’écran BASE.</div>
+  </section>`;
+}
+
+// ---------------------------------------------------------------------------
+// Les grands moments (M2, ALLURE.md)
+// ---------------------------------------------------------------------------
+//
+// Les trois plus belles machines à récit du moteur — un chapitre qui tourne,
+// un des vôtres qui tombe — passaient en taille 13 dans un fil de quatre
+// cents lignes. Elles ont désormais l'écran entier, en serif, un tap pour
+// refermer. Trois règles :
+// 1. Seulement ce qui arrive EN JOUANT (`momentDepuis`) : l'histoire déjà
+//    écrite ne se rejoue pas, et les heures d'absence sont racontées par le
+//    rapport, pas par des cartons — quand un rapport attend, on marque tout lu.
+// 2. Un moment ne se montre qu'une fois : `momentVu` est écrit dans l'entrée
+//    de journal, donc dans la sauvegarde.
+// 3. La stèle ne se lève que pour un des vôtres : l'entrée doit répondre à
+//    une inscription au mémorial, sinon ce n'est pas notre deuil.
+
+let momentDepuis = 0;
+let momentCourant = null;
+
+function peutEtreMoment(x) {
+  if (!x || !x.important || x.momentVu) return false;
+  if (x.type === 'chronique') return (S.player.chapitreN || 0) > 1;
+  return x.type === 'mort';
+}
+
+function majMoments() {
+  if (!S) return;
+  const recents = S.journal.slice(-40);
+  if (S.rapport) {
+    for (const x of recents) if (peutEtreMoment(x)) x.momentVu = true;
+    return;
+  }
+  if (momentCourant) return; // un à la fois : le suivant attendra le tap
+  for (const x of recents) {
+    if (!peutEtreMoment(x)) continue;
+    if (x.t <= momentDepuis || S.temps - x.t > 24) { x.momentVu = true; continue; }
+    let html = null;
+    if (x.type === 'chronique') {
+      const ch = x.cle ? infoChapitre(x.cle) : null;
+      html = `<div class="moment-boite">
+        <div class="moment-sur">La chronique tourne une page</div>
+        <div class="moment-chiffre">${e(romain(S.player.chapitreN || 1))}</div>
+        <div class="moment-titre">${e(ch ? ch.titre : x.texte)}</div>
+        ${ch ? `<div class="moment-dit">${e(ch.dit)}</div>` : ''}`;
+    } else {
+      // Du plus récent au plus ancien : deux morts peuvent porter le même
+      // nom à des années d'écart, et c'est le deuil du jour qu'on grave.
+      const m = (S.memorial || []).slice(-6).reverse().find(
+        (mm) => Math.abs((mm.t || 0) - x.t) <= 1 && x.texte.includes(mm.nom));
+      if (!m) { x.momentVu = true; continue; } // pas un des nôtres : pas de stèle
+      html = `<div class="moment-boite">
+        <div class="moment-sur">Un des vôtres est resté en route</div>
+        <div class="moment-titre">${e(m.nom)}</div>
+        <div class="moment-dit">${e(m.archetype || '')}${m.cause ? ` · ${e(m.cause)}` : ''}${
+  m.lieu ? ` · ${e(m.lieu)}` : ''}</div>
+        ${m.meilleure ? `<div class="moment-dit" style="opacity:.75">${e(m.meilleure)}</div>` : ''}`;
+    }
+    x.momentVu = true;
+    momentCourant = x;
+    const el = document.createElement('div');
+    el.id = 'moment';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', x.texte);
+    el.innerHTML = `${html}
+      <div class="moment-main">toucher pour continuer</div></div>`;
+    el.addEventListener('click', fermerMoment);
+    document.body.appendChild(el);
+    break;
+  }
+}
+
+function fermerMoment() {
+  const el = document.getElementById('moment');
+  if (el) el.remove();
+  if (!momentCourant) return;
+  momentCourant = null;
+  // Le suivant, s'il y en a un — sans attendre qu'une heure de jeu passe.
+  rafraichir(true);
+}
+
 function bandeauDevaluation() {
   const a = (S && S.player && S.player.alertesMonnaie) || [];
   if (!a.length) return '';
@@ -27604,7 +28007,7 @@ function ecranCarte() {
   // bloc qui empile ses enfants, comme avant.
   return `
   <div id="flanc-carte">
-  <div id="carte-boite"><canvas id="carte" aria-label="Carte du monde"></canvas></div>
+  <div id="carte-boite"><canvas id="carte" aria-label="Carte du monde"></canvas><canvas id="carte-vie" aria-hidden="true"></canvas></div>
   <div class="carte-pied"><span id="carte-pos"></span>
     <span class="aide">glisser pour déplacer · molette ou deux doigts pour zoomer ·
       double clic pour revenir sur le groupe</span></div>
@@ -27782,7 +28185,7 @@ function blocDetachement() {
   const place = true; // rien ne limite le nombre : c'est la portée qui décide
 
   const cases = dispo.map((c) => `<button class="act mini" data-a="detacher-sel" data-c="${e(c.id)}"
-    aria-pressed="${detaches.has(c.id)}">${detaches.has(c.id) ? '×' : ' '} ${e(c.nom)}</button>`).join('');
+    aria-pressed="${detaches.has(c.id)}"><span class="coche" aria-hidden="true"></span>${e(c.nom)}</button>`).join('');
 
   const choisis = dispo.filter((c) => detaches.has(c.id)).length;
   const possible = place && choisis > 0 && choisis < dispo.length;
@@ -27946,7 +28349,7 @@ function blocTactique() {
     const a = apercuTactique(k, biome, 1, armes / vivants);
     return `<button class="act mini" style="text-align:left" data-a="tactique" data-k="${k}"
         aria-pressed="${choisie === k}">
-        [${choisie === k ? '×' : ' '}] ${e(t.nom)}
+        <span class="coche" aria-hidden="true"></span>${e(t.nom)}
         <span class="puce ${a.cls}" style="float:right">${e(a.mot)}</span>
         <br><span class="aide">${e(t.desc)}</span></button>`;
   }).join('')}
@@ -28170,7 +28573,7 @@ function ecranEscouade() {
     ['viserChefs', 'Viser les plus dangereux d’abord'],
     ['halte', 'Interrompre la route quand quelqu’un tombe'],
   ].map(([k, l]) => `<button class="act mini" style="text-align:left" data-a="politique" data-k="${k}"
-        aria-pressed="${!!pol[k]}">[${pol[k] ? '×' : ' '}] ${e(l)}</button>`).join('')}
+        aria-pressed="${!!pol[k]}"><span class="coche" aria-hidden="true"></span>${e(l)}</button>`).join('')}
     </div>
     <div class="aide" style="margin-top:6px">Ces consignes s’appliquent aussi pendant votre absence.</div>
   </section>
@@ -29130,10 +29533,10 @@ function ecranBase() {
         style="margin-bottom:6px" ${peutReconnaitre(S).ok ? '' : 'disabled'}>
         ${peutReconnaitre(S).ok ? `Faire reconnaître ${e(b.nom)}` : e(peutReconnaitre(S).motif)}</button>`}
     <button class="act mini" data-a="autoemploi" style="margin-bottom:4px"
-      aria-pressed="${b.autoEmploi !== false}">[${b.autoEmploi !== false ? '×' : ' '}]
+      aria-pressed="${b.autoEmploi !== false}"><span class="coche" aria-hidden="true"></span>
       Les habitants se placent eux-mêmes</button>
     <button class="act mini" data-a="commerce" style="margin-bottom:6px"
-      aria-pressed="${b.commerce !== false}">[${b.commerce !== false ? '×' : ' '}]
+      aria-pressed="${b.commerce !== false}"><span class="coche" aria-hidden="true"></span>
       Laisser les colporteurs traiter avec l’intendance</button>
     <div class="aide">Ils prennent le surplus au prix du gros et laissent ce qui manque
       au prix du détail : moins avantageux que d’aller vendre soi-même, et l’on n’a pas
@@ -30384,6 +30787,27 @@ function ecranMonde() {
 // Écran JOURNAL
 // ---------------------------------------------------------------------------
 
+/**
+ * L'icône d'une entrée (M3, ALLURE.md) : un glyphe par famille d'événement.
+ * Quatre cents lignes de la même voix ne se parcourent pas ; un œil accroche
+ * une forme avant de lire un mot. Dérivée de la famille de couleur, pas
+ * recopiée type par type : un type nouveau hérite d'un glyphe cohérent.
+ */
+function iconeLog(type) {
+  if (type === 'mort' || type === 'fin') return '†';
+  if (RECITS_JOURNAL.has(type)) return '❧';
+  switch (couleurLog(type)) {
+    case 'danger': return '⨯';
+    case 'guerre': return '⚑';
+    case 'gain': return '+';
+    case 'base': return '⌂';
+    default: return '·';
+  }
+}
+
+/** Les entrées qui appartiennent au récit : elles parlent en serif. */
+const RECITS_JOURNAL = new Set(['chronique', 'fil', 'accueil', 'debut', 'fin']);
+
 function ecranJournal() {
   S.nonLus = 0;
   const entrees = S.journal
@@ -30391,12 +30815,19 @@ function ecranJournal() {
     .slice(-160)
     .reverse();
 
+  // Groupé par jour (M3) : un fil de quatre cents lignes sans repère de temps
+  // ne raconte rien. Le fil est à rebours, les têtes de jour aussi.
+  let jourCourant = null;
   const html = entrees.length ? entrees.map((x) => {
     const h = horloge(x.t);
+    const tete = h.jour !== jourCourant
+      ? `<div class="jour-tete" data-ancre="jour-${h.jour}">— Jour ${h.jour} —</div>` : '';
+    jourCourant = h.jour;
     // Une ancre par entrée : le journal est un fil, il grandit par le haut, et
     // sans elle on se fait pousser vers le bas pendant qu'on lit.
-    return `<div class="entree ${couleurLog(x.type)}" data-ancre="${e(`${x.t}-${(x.texte || '').slice(0, 24)}`)}">
-      <div class="t">${h.texte}</div>
+    return `${tete}<div class="entree ${couleurLog(x.type)}${x.important ? ' marquant' : ''}${
+  RECITS_JOURNAL.has(x.type) ? ' recit' : ''}" data-ancre="${e(`${x.t}-${(x.texte || '').slice(0, 24)}`)}">
+      <div class="t"><span class="ico" aria-hidden="true">${iconeLog(x.type)}</span> ${h.texte}</div>
       <div>${e(x.texte)}</div>
       ${x.detail && x.detail.length ? `<div class="detail">${x.detail.map(e).join('<br>')}</div>` : ''}
     </div>`;
@@ -30742,11 +31173,11 @@ function modaleRapport() {
         <span class="fil-x">${e(m.texte)}</span></div>`).join('')
     : '';
 
-  return `<h2 class="titre">Le monde a continué sans vous
+  return `<h2 class="titre recit rapport-t">Le monde a continué sans vous
     <span class="droite">${e(duree)}</span></h2>
   ${r.calme
-    ? '<div class="aide">Rien de notable. Ça arrive, et c’est plutôt bon signe.</div>'
-    : '<div class="aide">Ce qui a changé pendant que cet onglet était fermé.</div>'}
+    ? '<div class="aide recit">Rien de notable. Ça arrive, et c’est plutôt bon signe.</div>'
+    : '<div class="aide recit">Ce qui a changé pendant que cet onglet était fermé.</div>'}
   <div class="sep"></div>
   ${gens}
   ${argent}
