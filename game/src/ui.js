@@ -612,7 +612,7 @@ function rendreBarreHaut() {
       <div class="hd-bloc" title="${g.nuit ? 'Nuit — on campe' : 'Jour'}">
         <span class="hd-val hd-cycle">${g.nuit ? '☾' : '☀'}</span>
         <span class="hd-val cyan">${h.texte}</span></div>
-      <div class="hd-bloc" title="${e(cl.saison.def.nom)} — ${e(cl.meteo.nom)}">
+      <div class="hd-bloc hd-meteo" title="${e(cl.saison.def.nom)} — ${e(cl.meteo.nom)}">
         <span class="hd-val hd-saison" style="color:${cl.saison.def.couleur}"
           aria-label="${e(cl.saison.def.nom)}">◆</span></div>
       ${(() => {
@@ -624,9 +624,9 @@ function rendreBarreHaut() {
       <span class="hd-eti">${e(sym())}</span>
         <span class="hd-val ambre">${n(soldeIci(S))}</span></div>`;
   })()}
-      <div class="hd-bloc"><span class="hd-eti">sac</span>
+      <div class="hd-bloc hd-sac"><span class="hd-eti">sac</span>
         <span class="hd-val ${charge > 0.95 ? 'rouge' : ''}">${n(poids)}/${n(cap)}</span></div>
-      <div class="hd-bloc" title="${e(g.nom)}"><span class="hd-eti">${e(groupes(S).length > 1 ? g.nom.slice(0, 3) : 'esc')}</span>
+      <div class="hd-bloc hd-esc" title="${e(g.nom)}"><span class="hd-eti">${e(groupes(S).length > 1 ? g.nom.slice(0, 3) : 'esc')}</span>
         <span class="hd-val ${debout < vivants ? 'rouge' : ''}">${debout}/${vivants}</span></div>
       <div class="hd-bloc" title="Jours de vivres au rythme actuel">
         <span class="hd-eti">viv</span>
@@ -1413,9 +1413,9 @@ function blocFil() {
  * Trois registres, dans cet ordre — ce qui presse, ce qui vient, ce qu'on fait.
  * Muet sur ce qui va bien : un panneau qui parle tout le temps ne se lit plus.
  */
-function blocSituation() {
+function donneesSituation() {
   const g = G();
-  if (!g) return '';
+  if (!g) return { urgences: [], bientot: [] };
   const urgences = [];
   const bientot = [];
   // Chaque ligne pointe vers l'écran où elle se règle (ALLURE.md, Q7) : le
@@ -1499,6 +1499,11 @@ function blocSituation() {
     else note(t);
   }
 
+  return { urgences, bientot };
+}
+
+function blocSituation() {
+  const { urgences, bientot } = donneesSituation();
   if (!urgences.length && !bientot.length) return '';
   return `<section class="panneau ${urgences.length ? 'urgent' : ''}">
     <h2 class="titre">Point de situation
@@ -1507,6 +1512,21 @@ function blocSituation() {
     ${urgences.map((u) => `<button class="lien alerte" data-a="onglet" data-k="${u.o}">▲ ${e(u.t)}</button>`).join('')}
     ${bientot.length ? `<div class="aide">${bientot.map((u) => e(u.t)).join(' · ')}</div>` : ''}
   </section>`;
+}
+
+/**
+ * L'alerte posée sur le monde (direction A) : la première urgence du point de
+ * situation flotte sur la carte — le cri et le geste ; le détail complet
+ * reste dans la feuille. Même source de données, jamais une copie.
+ */
+function blocAlerteCarte() {
+  const { urgences } = donneesSituation();
+  if (!urgences.length) return '';
+  const u = urgences[0];
+  return `<div id="alerte-carte">
+    <span class="ac-t">${e(u.t)}</span>
+    <button class="act mini" data-a="onglet" data-k="${u.o}">Régler</button>
+  </div>`;
 }
 
 function blocSite() {
@@ -2148,6 +2168,7 @@ function ecranCarte() {
   return `
   <div id="flanc-carte">
   <div id="carte-boite"><canvas id="carte" aria-label="Carte du monde"></canvas><canvas id="carte-vie" aria-hidden="true"></canvas></div>
+  ${blocAlerteCarte()}
   ${blocDockOrdres()}
   <div class="carte-pied"><span id="carte-pos"></span>
     <span class="aide">glisser pour déplacer · molette ou deux doigts pour zoomer ·

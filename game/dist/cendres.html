@@ -1415,6 +1415,62 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
 #dock-ordres .o-i { display: block; margin-bottom: 2px; color: var(--texte-3); }
 #dock-ordres [aria-pressed="true"] .o-i { color: var(--cyan); }
 #dock-ordres [disabled] .o-i { opacity: .5; }
+
+
+/* ---------------------------------------------------------------------------
+   Étape 6 (direction A) : l'alerte flotte, le HUD tient sur une rangée, la
+   carte rayonne. */
+
+/* L'alerte posée sur le monde : le cri, et la porte pour agir. */
+#alerte-carte {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 8px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  background: rgba(26, 10, 10, .82);
+  border: 1px solid rgba(224, 91, 91, .55);
+  border-left: 3px solid var(--rouge);
+  border-radius: 6px;
+  backdrop-filter: blur(6px);
+}
+#alerte-carte .ac-t { flex: 1 1 auto; font-size: 11px; line-height: 1.35; color: #e8ded0; }
+#alerte-carte .act.mini {
+  flex: 0 0 auto;
+  width: auto;
+  min-height: 34px;
+  padding: 6px 11px;
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: #e8a050;
+  border-color: rgba(217, 128, 58, .6);
+  background: rgba(20, 14, 8, .6);
+}
+
+@media (max-width: 1099px) {
+  /* Sous le HUD flottant, pas dessous la carte. */
+  #ecran.plein-carte #alerte-carte { top: 50px; }
+  /* Le HUD de la carte tient sur UNE rangée : le sac et la météo ont leur
+     place ailleurs sur cet écran (la feuille, le ciel de la carte elle-même).
+     L'effectif, lui, RESTE : « une information cachée coûte une escouade » —
+     le test du bandeau y veille, et il a raison. Les autres écrans gardent la
+     barre complète. */
+  #racine.large-carte .hd-sac,
+  #racine.large-carte .hd-meteo { display: none; }
+}
+
+/* La carte rayonne comme l'affiche : la vignette garde ses bords, et la
+   braise monte du bas du monde. */
+#carte-boite::after {
+  background:
+    radial-gradient(ellipse at 50% 42%, transparent 58%, rgba(0, 0, 0, .38)),
+    radial-gradient(130% 55% at 50% 108%, rgba(217, 128, 58, .14), transparent 60%);
+}
 </style>
 </head>
 <body>
@@ -27078,7 +27134,7 @@ function rendreBarreHaut() {
       <div class="hd-bloc" title="${g.nuit ? 'Nuit — on campe' : 'Jour'}">
         <span class="hd-val hd-cycle">${g.nuit ? '☾' : '☀'}</span>
         <span class="hd-val cyan">${h.texte}</span></div>
-      <div class="hd-bloc" title="${e(cl.saison.def.nom)} — ${e(cl.meteo.nom)}">
+      <div class="hd-bloc hd-meteo" title="${e(cl.saison.def.nom)} — ${e(cl.meteo.nom)}">
         <span class="hd-val hd-saison" style="color:${cl.saison.def.couleur}"
           aria-label="${e(cl.saison.def.nom)}">◆</span></div>
       ${(() => {
@@ -27090,9 +27146,9 @@ function rendreBarreHaut() {
       <span class="hd-eti">${e(sym())}</span>
         <span class="hd-val ambre">${n(soldeIci(S))}</span></div>`;
   })()}
-      <div class="hd-bloc"><span class="hd-eti">sac</span>
+      <div class="hd-bloc hd-sac"><span class="hd-eti">sac</span>
         <span class="hd-val ${charge > 0.95 ? 'rouge' : ''}">${n(poids)}/${n(cap)}</span></div>
-      <div class="hd-bloc" title="${e(g.nom)}"><span class="hd-eti">${e(groupes(S).length > 1 ? g.nom.slice(0, 3) : 'esc')}</span>
+      <div class="hd-bloc hd-esc" title="${e(g.nom)}"><span class="hd-eti">${e(groupes(S).length > 1 ? g.nom.slice(0, 3) : 'esc')}</span>
         <span class="hd-val ${debout < vivants ? 'rouge' : ''}">${debout}/${vivants}</span></div>
       <div class="hd-bloc" title="Jours de vivres au rythme actuel">
         <span class="hd-eti">viv</span>
@@ -27879,9 +27935,9 @@ function blocFil() {
  * Trois registres, dans cet ordre — ce qui presse, ce qui vient, ce qu'on fait.
  * Muet sur ce qui va bien : un panneau qui parle tout le temps ne se lit plus.
  */
-function blocSituation() {
+function donneesSituation() {
   const g = G();
-  if (!g) return '';
+  if (!g) return { urgences: [], bientot: [] };
   const urgences = [];
   const bientot = [];
   // Chaque ligne pointe vers l'écran où elle se règle (ALLURE.md, Q7) : le
@@ -27965,6 +28021,11 @@ function blocSituation() {
     else note(t);
   }
 
+  return { urgences, bientot };
+}
+
+function blocSituation() {
+  const { urgences, bientot } = donneesSituation();
   if (!urgences.length && !bientot.length) return '';
   return `<section class="panneau ${urgences.length ? 'urgent' : ''}">
     <h2 class="titre">Point de situation
@@ -27973,6 +28034,21 @@ function blocSituation() {
     ${urgences.map((u) => `<button class="lien alerte" data-a="onglet" data-k="${u.o}">▲ ${e(u.t)}</button>`).join('')}
     ${bientot.length ? `<div class="aide">${bientot.map((u) => e(u.t)).join(' · ')}</div>` : ''}
   </section>`;
+}
+
+/**
+ * L'alerte posée sur le monde (direction A) : la première urgence du point de
+ * situation flotte sur la carte — le cri et le geste ; le détail complet
+ * reste dans la feuille. Même source de données, jamais une copie.
+ */
+function blocAlerteCarte() {
+  const { urgences } = donneesSituation();
+  if (!urgences.length) return '';
+  const u = urgences[0];
+  return `<div id="alerte-carte">
+    <span class="ac-t">${e(u.t)}</span>
+    <button class="act mini" data-a="onglet" data-k="${u.o}">Régler</button>
+  </div>`;
 }
 
 function blocSite() {
@@ -28614,6 +28690,7 @@ function ecranCarte() {
   return `
   <div id="flanc-carte">
   <div id="carte-boite"><canvas id="carte" aria-label="Carte du monde"></canvas><canvas id="carte-vie" aria-hidden="true"></canvas></div>
+  ${blocAlerteCarte()}
   ${blocDockOrdres()}
   <div class="carte-pied"><span id="carte-pos"></span>
     <span class="aide">glisser pour déplacer · molette ou deux doigts pour zoomer ·
