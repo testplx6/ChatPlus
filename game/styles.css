@@ -82,7 +82,11 @@ body {
   padding: 5px 8px;
   padding-top: max(5px, env(safe-area-inset-top));
   background: var(--fond-2);
-  border-bottom: 1px solid var(--bord);
+  border-bottom: 1px solid #3b3327;
+  /* Le bandeau flotte au-dessus de l'écran qui défile dessous. */
+  position: relative;
+  z-index: 5;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, .35);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -110,7 +114,18 @@ body {
 }
 /* Un indicateur ne se coupe jamais entre son libellé et sa valeur : le bandeau
    passe à la ligne entre deux blocs, pas au milieu de l'un d'eux. */
-.hd-bloc { display: flex; align-items: baseline; gap: 4px; flex: 0 0 auto; white-space: nowrap; }
+.hd-bloc {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  /* Chaque indicateur est un jeton du HUD, pas un mot perdu dans la barre. */
+  padding: 1px 5px;
+  background: rgba(255, 255, 255, .02);
+  border: 1px solid rgba(78, 68, 52, .45);
+  border-radius: 3px;
+}
 .hd-eti, .hd-val { flex: 0 0 auto; }
 /* La saison tient en un losange coloré : écrire « GRANDES PLUIES » dans une
    barre de 390 px coûte deux autres indicateurs. Le nom complet est dans
@@ -120,11 +135,11 @@ body {
 .hd-eti { font-size: 8px; letter-spacing: .1em; color: var(--texte-3); text-transform: uppercase; }
 .hd-val { font-size: 13px; color: var(--texte); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .hd-val.cyan { color: var(--cyan); }
-.hd-val.ambre { color: var(--ambre); }
+.hd-val.ambre { color: var(--ambre); text-shadow: 0 0 8px rgba(217, 160, 58, .3); }
 .hd-val.rouge { color: var(--rouge); }
 .hd-pousse { margin-left: auto; }
 
-.vitesse { display: flex; border: 1px solid var(--bord); }
+.vitesse { display: flex; border: 1px solid var(--bord); border-radius: 3px; overflow: hidden; }
 .vitesse { flex: 0 0 auto; }
 .vitesse button {
   background: transparent;
@@ -148,7 +163,15 @@ body {
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   padding: 10px 10px 16px;
+  /* Une lueur de braise à peine posée en haut de page : l'écran a une source
+     de lumière, pas un vide. */
+  background: radial-gradient(120% 70% at 50% 0, rgba(217, 128, 58, .035), transparent 55%);
+  scrollbar-width: thin;
+  scrollbar-color: #2c261d transparent;
 }
+#ecran::-webkit-scrollbar { width: 8px; }
+#ecran::-webkit-scrollbar-thumb { background: #2c261d; border-radius: 4px; }
+#ecran::-webkit-scrollbar-track { background: transparent; }
 
 /* Le grand écran (INTERFACE.md, U6) : au lieu d'une colonne de 620 px cernée
    de noir, la carte tient le flanc gauche — collante, à hauteur d'écran — et
@@ -210,6 +233,7 @@ body {
   align-items: center;
   gap: 3px;
   position: relative;
+  transition: color .15s ease;
 }
 #barre-nav button .glyphe { font-size: 15px; line-height: 1; }
 /* Les icônes dessinées (M5) : un trait, une grille, la couleur du texte. */
@@ -234,7 +258,13 @@ body {
   inset: 2px;
   background: var(--cyan);
 }
-#barre-nav button[aria-current="page"] { color: #e8a050; border-top-color: #d9803a; }
+#barre-nav button[aria-current="page"] {
+  color: #e8a050;
+  border-top-color: #d9803a;
+  /* L'onglet actif est allumé, pas seulement souligné. */
+  background: linear-gradient(180deg, rgba(217, 128, 58, .12), transparent 70%);
+  text-shadow: 0 0 10px rgba(217, 128, 58, .35);
+}
 #barre-nav .pastille {
   position: absolute;
   top: 3px;
@@ -260,6 +290,12 @@ body {
   border-top-color: #3b3327;
   padding: var(--e3);
   margin-bottom: var(--e3);
+  /* La profondeur d'une carte de jeu : un filet de lumière par le haut, une
+     ombre portée courte — la page a des plans, plus des rectangles à plat. */
+  border-radius: 4px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .025),
+    0 8px 18px -12px rgba(0, 0, 0, .6);
 }
 
 /* Un panneau qui réclame une décision maintenant. Le liseré suffit : le rouge
@@ -322,7 +358,7 @@ body {
 .grille3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
 
 button.act, .act {
-  background: #221d15;
+  background: linear-gradient(180deg, #262019, #1e1912);
   border: 1px solid var(--bord-vif);
   color: var(--texte);
   font: inherit;
@@ -333,16 +369,20 @@ button.act, .act {
   width: 100%;
   min-height: 44px;
   display: block;
-  border-radius: 2px;
-  transition: border-color .12s ease, background .12s ease;
+  border-radius: 3px;
+  /* Le relief d'une touche : lumière en haut, ombre courte dessous — et
+     l'enfoncement à l'appui est réel (l'ombre rentre). */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03), 0 1px 3px rgba(0, 0, 0, .35);
+  transition: border-color .12s ease, background .12s ease, box-shadow .12s ease;
 }
-button.act:hover { border-color: #6d5d43; }
-button.act:active { background: var(--bord); }
+button.act:hover { border-color: #6d5d43; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05), 0 3px 8px rgba(0, 0, 0, .4); }
+button.act:active { background: var(--bord); box-shadow: inset 0 2px 5px rgba(0, 0, 0, .35); }
 button.act[disabled] { opacity: .38; cursor: not-allowed; }
 button.act[aria-pressed="true"] {
   border-color: var(--cyan);
   color: var(--cyan);
-  background: rgba(79, 208, 227, .05);
+  background: linear-gradient(180deg, rgba(79, 208, 227, .1), rgba(79, 208, 227, .03));
+  box-shadow: inset 0 0 0 1px rgba(79, 208, 227, .25), inset 0 1px 6px rgba(0, 0, 0, .3);
 }
 button.act.mini { min-height: 30px; padding: 4px 7px; font-size: 11px; text-align: center; }
 /* Une porte de ville : le libellé, et dessous le fait qui dit ce qu'il y a
@@ -359,10 +399,12 @@ button.act.mini.porte { text-align: left; min-height: 40px; }
 button.act.primaire {
   border-color: #a5632e;
   color: #e8a050;
-  background: rgba(217, 128, 58, .09);
+  background: linear-gradient(180deg, rgba(217, 128, 58, .2), rgba(217, 128, 58, .07));
+  box-shadow: inset 0 1px 0 rgba(232, 160, 80, .12), 0 0 14px -6px rgba(217, 128, 58, .5);
 }
-button.act.primaire:hover { border-color: #d9803a; }
+button.act.primaire:hover { border-color: #d9803a; box-shadow: inset 0 1px 0 rgba(232, 160, 80, .16), 0 0 18px -6px rgba(217, 128, 58, .7); }
 button.act.danger { border-color: #7c3a34; color: var(--rouge); }
+button.act.danger:hover { box-shadow: 0 0 14px -6px rgba(224, 91, 91, .5); }
 
 .pile { display: flex; flex-direction: column; gap: 5px; }
 .rangee { display: flex; gap: 5px; flex-wrap: wrap; }
@@ -393,15 +435,23 @@ button.act.danger { border-color: #7c3a34; color: var(--rouge); }
   border: 0;
   box-shadow: inset 0 0 0 1px rgba(50, 44, 35, .55);
   position: relative;
+  border-radius: 2px;
+  overflow: hidden;
 }
 /* La rangée jauge + valeur : la barre et son chiffre vivent ensemble. */
 .jauge-l { display: flex; align-items: center; gap: var(--e2); }
 .jauge-l .jauge { flex: 1 1 auto; }
 .jauge-l .val { flex: 0 0 auto; font-variant-numeric: tabular-nums; font-size: var(--t-donnee); }
-.jauge > i { display: block; height: 100%; background: var(--cyan); }
-.jauge.rouge > i { background: var(--rouge); }
-.jauge.ambre > i { background: var(--ambre); }
-.jauge.vert > i { background: var(--vert); }
+.jauge > i {
+  display: block;
+  height: 100%;
+  background: var(--cyan);
+  /* Des crans, comme une barre d'énergie — on lit une quantité, pas une tache. */
+  background-image: repeating-linear-gradient(90deg, transparent 0 8px, rgba(0, 0, 0, .28) 8px 9px);
+}
+.jauge.rouge > i { background-color: var(--rouge); box-shadow: 0 0 7px -1px rgba(224, 91, 91, .55); }
+.jauge.ambre > i { background-color: var(--ambre); box-shadow: 0 0 7px -1px rgba(217, 160, 58, .45); }
+.jauge.vert > i { background-color: var(--vert); box-shadow: 0 0 7px -1px rgba(107, 224, 138, .4); }
 
 .aide { font-size: 11px; color: var(--texte-3); line-height: 1.4; }
 .mono-num { font-variant-numeric: tabular-nums; }
@@ -463,7 +513,13 @@ button.act.danger { border-color: #7c3a34; color: var(--rouge); }
 
 /* ------------------------------------------------------------------ Escouade */
 
-.perso { border: 1px solid var(--bord); background: var(--panneau); margin-bottom: 7px; }
+.perso {
+  border: 1px solid var(--bord);
+  background: var(--panneau);
+  margin-bottom: 7px;
+  border-radius: 4px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .02), 0 4px 10px -8px rgba(0, 0, 0, .5);
+}
 .perso > summary {
   padding: 8px 10px;
   cursor: pointer;
@@ -539,8 +595,14 @@ button.act.danger { border-color: #7c3a34; color: var(--rouge); }
   align-items: flex-end;
   justify-content: center;
   z-index: 50;
+  /* `hidden` coupe l'affichage : chaque ouverture rejoue l'entrée. */
+  animation: scrim-nait .22s ease;
 }
+@keyframes scrim-nait { from { opacity: 0; } }
 #modale .boite {
+  /* La boîte n'est créée qu'à l'ouverture (le contenu seul est re-rendu) :
+     l'animation joue une fois par feuille tirée, jamais pendant qu'on lit. */
+  animation: feuille-monte .3s cubic-bezier(.17, .84, .35, 1);
   background: var(--panneau);
   border: 1px solid var(--bord-vif);
   border-top: 2px solid rgba(217, 128, 58, .45);
@@ -565,14 +627,38 @@ button.act.danger { border-color: #7c3a34; color: var(--rouge); }
 
 /* ------------------------------------------------------------------ Accueil */
 
-.accueil { padding: 18px 4px; }
+.accueil { padding: 26px 4px 18px; position: relative; }
+/* Des braises montent derrière l'écran-titre — le monde couve avant même la
+   première partie. Une seule couche animée, coupée si le système le demande. */
+.accueil::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(2px 2px at 15% 85%, rgba(232, 160, 80, .55), transparent 55%),
+    radial-gradient(1.5px 1.5px at 45% 70%, rgba(232, 160, 80, .4), transparent 55%),
+    radial-gradient(2px 2px at 75% 90%, rgba(217, 128, 58, .5), transparent 55%),
+    radial-gradient(1.5px 1.5px at 88% 62%, rgba(232, 160, 80, .35), transparent 55%),
+    radial-gradient(2px 2px at 30% 96%, rgba(217, 128, 58, .4), transparent 55%);
+  background-repeat: no-repeat;
+  animation: braises-montent 16s linear infinite;
+}
+@keyframes braises-montent {
+  0% { transform: translateY(12vh); opacity: 0; }
+  12% { opacity: .8; }
+  85% { opacity: .45; }
+  100% { transform: translateY(-42vh); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .accueil::before { animation: none; opacity: .3; } }
 .accueil h1 {
-  font-size: 23px;
-  letter-spacing: .2em;
+  font-size: 30px;
+  letter-spacing: .18em;
   margin: 0 0 4px;
-  color: #e8dfc9;
+  color: #efe6cf;
+  text-shadow: 0 0 18px rgba(217, 128, 58, .28);
   text-transform: uppercase;
-  padding-bottom: 8px;
+  padding-bottom: 10px;
   background: linear-gradient(90deg, rgba(217, 128, 58, .6), transparent 70%)
     bottom / 100% 1px no-repeat;
 }
@@ -608,6 +694,7 @@ button.act.danger { border-color: #7c3a34; color: var(--rouge); }
   pointer-events: none;
 }
 .toast {
+  animation: toast-nait .25s ease;
   background: var(--panneau-2);
   border: 1px solid var(--bord-vif);
   border-radius: 3px;
@@ -618,12 +705,33 @@ button.act.danger { border-color: #7c3a34; color: var(--rouge); }
   box-shadow: 0 4px 14px rgba(0, 0, 0, .4);
 }
 .toast.err { border-color: var(--rouge); color: var(--rouge); }
+@keyframes feuille-monte { from { transform: translateY(26px); opacity: .5; } }
+@keyframes toast-nait { from { transform: translateY(8px); opacity: 0; } }
 
 /* Les surfaces de récit parlent en serif (ALLURE.md, Q1). */
 .recit { font-family: var(--serif); font-size: 14.5px; line-height: 1.6; }
 
 /* La vignette de la carte (Q3) : un monde sous la cendre, pas un écran éteint. */
 #carte-boite { position: relative; }
+
+/* Les coins du pupitre tactique : quatre équerres braise sur le cadre. */
+#carte-boite::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  background:
+    linear-gradient(rgba(232, 160, 80, .55), rgba(232, 160, 80, .55)) 0 0 / 14px 1px,
+    linear-gradient(rgba(232, 160, 80, .55), rgba(232, 160, 80, .55)) 0 0 / 1px 14px,
+    linear-gradient(rgba(232, 160, 80, .55), rgba(232, 160, 80, .55)) 100% 0 / 14px 1px,
+    linear-gradient(rgba(232, 160, 80, .55), rgba(232, 160, 80, .55)) 100% 0 / 1px 14px,
+    linear-gradient(rgba(232, 160, 80, .55), rgba(232, 160, 80, .55)) 0 100% / 14px 1px,
+    linear-gradient(rgba(232, 160, 80, .55), rgba(232, 160, 80, .55)) 0 100% / 1px 14px,
+    linear-gradient(rgba(232, 160, 80, .55), rgba(232, 160, 80, .55)) 100% 100% / 14px 1px,
+    linear-gradient(rgba(232, 160, 80, .55), rgba(232, 160, 80, .55)) 100% 100% / 1px 14px;
+  background-repeat: no-repeat;
+}
 
 /* La carte vivante (M1) : la couche qui bouge, posée sur le terrain. Elle
    partage l'origine du canevas de fond, donc elle défile avec lui. */
@@ -863,10 +971,15 @@ button.act.ordre[aria-pressed="true"] .o-r { color: var(--cyan); }
 
 /* Les scénarios de départ : un bouton par situation, texte à gauche, aligné,
    parce qu'on les compare en les lisant l'un sous l'autre. */
-.act.depart { display: block; width: 100%; text-align: left; margin-bottom: 5px; }
-.act.depart[aria-pressed="true"] { border-color: var(--cyan); }
+.act.depart { display: block; width: 100%; text-align: left; margin-bottom: 6px; border-radius: 4px; padding: 10px 12px; }
+button.act.depart[aria-pressed="true"] {
+  border-color: #d9803a;
+  color: var(--texte);
+  background: linear-gradient(180deg, rgba(217, 128, 58, .16), rgba(217, 128, 58, .05));
+  box-shadow: inset 0 0 0 1px rgba(217, 128, 58, .3), 0 0 16px -8px rgba(217, 128, 58, .6);
+}
 .act.depart .depart-n { display: block; font-size: 13px; color: var(--texte); }
-.act.depart[aria-pressed="true"] .depart-n { color: var(--cyan); }
+button.act.depart[aria-pressed="true"] .depart-n { color: #e8a050; }
 
 .alerte { color: var(--rouge); }
 /* Ni une alerte ni une information neutre : ce qui coûte quelque chose sans

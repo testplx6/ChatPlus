@@ -254,6 +254,40 @@ la finition ensuite.
   sections de premier niveau ; la chronique repliée ne s'ouvre pas
   d'elle-même au tournant de chapitre.
 
+- **La refonte complète, passe 3 — la peau du jeu, sur ordre du
+  propriétaire** (« je veux que l'aspect soit agréable, ludique,
+  addictif, jeu pro, immersif », août 2026). Apparence pure, une passe
+  §10, `styles.css` seul :
+  - **La profondeur** : les panneaux et les fiches sont des cartes
+    (rayon, filet de lumière par le haut, ombre courte), l'en-tête
+    flotte au-dessus de l'écran qui défile, l'écran a une source de
+    lumière (lueur braise en haut de page) et une barre de défilement
+    discrète.
+  - **Le HUD** : chaque indicateur de l'en-tête est un jeton bordé, la
+    monnaie a une lueur d'ambre, le sélecteur de vitesse est une
+    capsule, l'onglet actif est *allumé* (fond braise dégradé, halo).
+  - **La réponse au doigt** : les boutons ont un relief qui s'enfonce
+    réellement à l'appui (l'ombre rentre), le primaire est une braise
+    pleine qui rayonne, l'état sélectionné se lit au premier regard.
+  - **Les jauges sont des barres de jeu** : crantées tous les 8 px,
+    colorées avec un halo — une quantité, pas une tache.
+  - **Les entrées** : la feuille de modale monte du bas à l'ouverture,
+    les toasts naissent en glissant — animées seulement sur des
+    surfaces montées une fois (la boîte de modale n'est créée qu'à
+    l'ouverture, vérifié dans `rendreModale`), jamais sur ce que le
+    tick re-rend.
+  - **L'écran-titre** : titre plus grand sous halo braise, des braises
+    montent lentement derrière l'accueil (une couche, coupée par
+    `prefers-reduced-motion`), et choisir son départ répond en braise —
+    le premier geste du joueur.
+  - **Le pupitre tactique** : quatre équerres braise aux coins du
+    cadre de la carte.
+
+  Limites dites : pas d'animation sur les jauges ni les panneaux (le
+  rendu reconstruit l'innerHTML — toute animation y rejouerait à
+  chaque tick) ; les nombres ne défilent pas encore (piste M du rendu
+  incrémental).
+
 **Les six pistes moyennes et G1 sont livrées.** Restent G2 (mode
 chronique) et G3 (son génératif) — non engagées.
 
