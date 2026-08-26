@@ -157,6 +157,16 @@ la finition ensuite.
   (l'écart au cycle — code écrit avant d'avoir vu le rouge — est
   compensé, pas caché).
 
+- **M4 + M5 — livrés ensemble, le chrome qui s'explique.** La barre de
+  navigation porte six icônes dessinées (SVG inline, trait 1,5, grille
+  24, couleur du texte courant) au lieu des glyphes Unicode aux poids
+  disparates ; les `[×]` ASCII sont devenus de vraies cases (l'état vit
+  sur `aria-pressed`, la case ne fait que le montrer) — consignes,
+  tactiques, détachement, réglages du camp ; et le signe de monnaie de
+  l'en-tête s'explique enfin (infobulle : « Monnaie d'ici : … »).
+  Limite dite : les dix icônes de marchandises attendues par la DA
+  restent à dessiner — elles viendront avec un écran qui les porte.
+
 **Quick wins livrés d'un bloc (août 2026), avec leurs limites dites :**
 
 - **Q1 — livré, socle + deux surfaces.** IBM Plex Mono porte tout le

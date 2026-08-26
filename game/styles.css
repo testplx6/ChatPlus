@@ -187,6 +187,28 @@ body {
   position: relative;
 }
 #barre-nav button .glyphe { font-size: 15px; line-height: 1; }
+/* Les icônes dessinées (M5) : un trait, une grille, la couleur du texte. */
+#barre-nav button .svgi { width: 16px; height: 16px; display: block; margin: 0 auto 2px; }
+
+/* Les vraies cases à cocher (M5) : l'état vit sur `aria-pressed`, la case ne
+   fait que le montrer — pas de [×] ASCII. */
+.coche {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 1px solid var(--bord-vif);
+  margin-right: 7px;
+  vertical-align: -1px;
+  position: relative;
+  flex: 0 0 auto;
+}
+[aria-pressed="true"] > .coche { border-color: var(--cyan); }
+[aria-pressed="true"] > .coche::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  background: var(--cyan);
+}
 #barre-nav button[aria-current="page"] { color: var(--cyan); border-top-color: var(--cyan); }
 #barre-nav .pastille {
   position: absolute;

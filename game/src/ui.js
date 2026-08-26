@@ -600,8 +600,15 @@ function rendreBarreHaut() {
       <div class="hd-bloc" title="${e(cl.saison.def.nom)} — ${e(cl.meteo.nom)}">
         <span class="hd-val hd-saison" style="color:${cl.saison.def.couleur}"
           aria-label="${e(cl.saison.def.nom)}">◆</span></div>
-      <div class="hd-bloc"><span class="hd-eti">${e(sym())}</span>
-        <span class="hd-val ambre">${n(soldeIci(S))}</span></div>
+      ${(() => {
+    // Le signe s'explique (M4) : « ⚙ 412 » ne se lit que si l'on a appris le
+    // signe par cœur. L'infobulle nomme la monnaie et son pays.
+    const mk = monnaieIci(S);
+    const md = mk && drapeauDe(S.world, mk);
+    return `<div class="hd-bloc" title="Monnaie d’ici : ${md ? e(md.nom) : 'aucune — troc local'}">
+      <span class="hd-eti">${e(sym())}</span>
+        <span class="hd-val ambre">${n(soldeIci(S))}</span></div>`;
+  })()}
       <div class="hd-bloc"><span class="hd-eti">sac</span>
         <span class="hd-val ${charge > 0.95 ? 'rouge' : ''}">${n(poids)}/${n(cap)}</span></div>
       <div class="hd-bloc" title="${e(g.nom)}"><span class="hd-eti">${e(groupes(S).length > 1 ? g.nom.slice(0, 3) : 'esc')}</span>
@@ -624,19 +631,42 @@ function rendreBarreHaut() {
     </div>`;
 }
 
+/**
+ * Les icônes de navigation (M5, ALLURE.md) : dessinées, pas empruntées.
+ * Les glyphes Unicode (▚ ⌂ ✦ ⌸ ◈ ≡) venaient de blocs typographiques
+ * différents et pesaient chacun leur poids — LE détail qui crie « fait avec
+ * ce qu'on avait ». Un seul trait (1,5 px), une seule grille (24), la couleur
+ * du texte courant.
+ */
+const ICONES_NAV = {
+  carte: '<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>',
+  escouade: '<circle cx="8" cy="8" r="2.6"/><circle cx="16" cy="8" r="2.6"/>'
+    + '<path d="M3.5 19c0-2.6 2-4.4 4.5-4.4S12.5 16.4 12.5 19M11.5 19c0-2.6 2-4.4 4.5-4.4s4.5 1.8 4.5 4.4"/>',
+  contrats: '<rect x="6" y="3" width="12" height="18" rx="1"/><path d="M9 8h6M9 12h6M9 16h4"/>',
+  base: '<path d="M4 11l8-7 8 7"/><path d="M6.5 9.5V20h11V9.5"/><path d="M10 20v-5h4v5"/>',
+  monde: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 3v18M4 7.5l8 4.5 8-4.5"/>',
+  journal: '<path d="M5 5h14M5 9h14M5 13h14M5 17h9"/>',
+};
+
+function svgIco(nom) {
+  return `<svg class="glyphe svgi" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+    aria-hidden="true">${ICONES_NAV[nom] || ICONES_NAV.carte}</svg>`;
+}
+
 function rendreNav() {
   const enCours = S.player.contrats.length;
   const tabs = [
-    ['carte', '▚', 'CARTE', 0],
-    ['escouade', '⌂', 'ESCOUADE', 0],
-    ['contrats', '✦', 'CONTRATS', enCours],
-    ['base', '⌸', 'BASE', S.base.file.length + S.base.fileRech.length],
-    ['monde', '◈', 'MONDE', 0],
-    ['journal', '≡', 'JOURNAL', S.nonLus],
+    ['carte', 'CARTE', 0],
+    ['escouade', 'ESCOUADE', 0],
+    ['contrats', 'CONTRATS', enCours],
+    ['base', 'BASE', S.base.file.length + S.base.fileRech.length],
+    ['monde', 'MONDE', 0],
+    ['journal', 'JOURNAL', S.nonLus],
   ];
-  $('#barre-nav').innerHTML = tabs.map(([k, g, l, compte]) => `
+  $('#barre-nav').innerHTML = tabs.map(([k, l, compte]) => `
     <button data-a="onglet" data-k="${k}" aria-current="${onglet === k ? 'page' : 'false'}">
-      <span class="glyphe" aria-hidden="true">${g}</span>${l}
+      ${svgIco(k)}${l}
       ${compte ? `<span class="pastille ${k === 'journal' ? '' : 'calme'}">${compte > 99 ? '99' : compte}</span>` : ''}
     </button>`).join('');
 }
@@ -2201,7 +2231,7 @@ function blocDetachement() {
   const place = true; // rien ne limite le nombre : c'est la portée qui décide
 
   const cases = dispo.map((c) => `<button class="act mini" data-a="detacher-sel" data-c="${e(c.id)}"
-    aria-pressed="${detaches.has(c.id)}">${detaches.has(c.id) ? '×' : ' '} ${e(c.nom)}</button>`).join('');
+    aria-pressed="${detaches.has(c.id)}"><span class="coche" aria-hidden="true"></span>${e(c.nom)}</button>`).join('');
 
   const choisis = dispo.filter((c) => detaches.has(c.id)).length;
   const possible = place && choisis > 0 && choisis < dispo.length;
@@ -2365,7 +2395,7 @@ function blocTactique() {
     const a = apercuTactique(k, biome, 1, armes / vivants);
     return `<button class="act mini" style="text-align:left" data-a="tactique" data-k="${k}"
         aria-pressed="${choisie === k}">
-        [${choisie === k ? '×' : ' '}] ${e(t.nom)}
+        <span class="coche" aria-hidden="true"></span>${e(t.nom)}
         <span class="puce ${a.cls}" style="float:right">${e(a.mot)}</span>
         <br><span class="aide">${e(t.desc)}</span></button>`;
   }).join('')}
@@ -2589,7 +2619,7 @@ function ecranEscouade() {
     ['viserChefs', 'Viser les plus dangereux d’abord'],
     ['halte', 'Interrompre la route quand quelqu’un tombe'],
   ].map(([k, l]) => `<button class="act mini" style="text-align:left" data-a="politique" data-k="${k}"
-        aria-pressed="${!!pol[k]}">[${pol[k] ? '×' : ' '}] ${e(l)}</button>`).join('')}
+        aria-pressed="${!!pol[k]}"><span class="coche" aria-hidden="true"></span>${e(l)}</button>`).join('')}
     </div>
     <div class="aide" style="margin-top:6px">Ces consignes s’appliquent aussi pendant votre absence.</div>
   </section>
@@ -3549,10 +3579,10 @@ function ecranBase() {
         style="margin-bottom:6px" ${peutReconnaitre(S).ok ? '' : 'disabled'}>
         ${peutReconnaitre(S).ok ? `Faire reconnaître ${e(b.nom)}` : e(peutReconnaitre(S).motif)}</button>`}
     <button class="act mini" data-a="autoemploi" style="margin-bottom:4px"
-      aria-pressed="${b.autoEmploi !== false}">[${b.autoEmploi !== false ? '×' : ' '}]
+      aria-pressed="${b.autoEmploi !== false}"><span class="coche" aria-hidden="true"></span>
       Les habitants se placent eux-mêmes</button>
     <button class="act mini" data-a="commerce" style="margin-bottom:6px"
-      aria-pressed="${b.commerce !== false}">[${b.commerce !== false ? '×' : ' '}]
+      aria-pressed="${b.commerce !== false}"><span class="coche" aria-hidden="true"></span>
       Laisser les colporteurs traiter avec l’intendance</button>
     <div class="aide">Ils prennent le surplus au prix du gros et laissent ce qui manque
       au prix du détail : moins avantageux que d’aller vendre soi-même, et l’on n’a pas

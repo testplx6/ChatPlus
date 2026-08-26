@@ -294,6 +294,40 @@ ok(enTete.chevauche === 0, 'les indicateurs de l’en-tête ne se chevauchent pa
 ok(enTete.vitesseVisible, 'le sélecteur de vitesse reste dans l’écran');
 ok(enTete.rognes === 0, 'aucun indicateur n’est rogné à 390 px', `${enTete.rognes} rognés`);
 
+console.log('\n5 ter. L’en-tête qui s’explique et les vraies icônes (M4+M5, ALLURE.md)');
+{
+  // M5 : la barre de navigation porte des icônes dessinées (SVG inline, trait
+  // 1,5, grille 24), plus des glyphes Unicode aux poids disparates.
+  const nav = await page.evaluate(() => ({
+    svg: document.querySelectorAll('#barre-nav button svg').length,
+    boutons: document.querySelectorAll('#barre-nav button').length,
+  }));
+  ok(nav.svg === nav.boutons && nav.boutons >= 6,
+    'chaque onglet de nav porte une icône dessinée', `${nav.svg}/${nav.boutons}`);
+  // M5 : les cases à cocher sont de vraies cases, plus des [×] ASCII.
+  await page.click('[data-a="onglet"][data-k="escouade"]');
+  await page.waitForTimeout(350);
+  const cases = await page.evaluate(() => {
+    const ecran = document.querySelector('#ecran');
+    return {
+      ascii: /\[[ ×]\]/.test(ecran.textContent),
+      coches: ecran.querySelectorAll('.coche').length,
+    };
+  });
+  ok(!cases.ascii, 'plus une seule case [×] en ASCII sur l’écran escouade');
+  ok(cases.coches >= 6, 'les consignes portent de vraies cases', `${cases.coches}`);
+  // M4 : le signe de monnaie s'explique — l'en-tête dit de quelle monnaie il
+  // s'agit sans qu'on ait à l'apprendre par cœur.
+  const monnaie = await page.evaluate(() => {
+    const bloc = [...document.querySelectorAll('#barre-haut .hd-bloc')]
+      .find((b) => /onnaie/.test(b.title || ''));
+    return bloc ? bloc.title : '';
+  });
+  ok(/onnaie/.test(monnaie), 'l’en-tête nomme la monnaie derrière son signe', monnaie);
+  await page.click('[data-a="onglet"][data-k="carte"]');
+  await page.waitForTimeout(300);
+}
+
 console.log('\n5 bis. Installation sur l’écran d’accueil');
 const ressources = await page.evaluate(async () => {
   const res = {};
