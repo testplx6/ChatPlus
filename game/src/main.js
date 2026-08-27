@@ -62,6 +62,18 @@ function demarrerBoucle() {
     // « le temps devrait continuer même quand tout le monde est mort ». Le
     // moteur avait appris la règle, mais cette porte-ci gardait l'écran figé.
     if (!state || rattrapageEnCours) return;
+    // Un grand moment plein écran (stèle, chapitre) confisque l'entrée : tant
+    // qu'il est ouvert, l'horloge cesse de consommer le monde. Sinon, à ×60,
+    // le temps de lire une stèle et le suivant était déjà tombé — « on est
+    // obligé de voir défiler tous les écrans de mort à la suite sans rien
+    // pouvoir faire » (le propriétaire). On brûle le réel écoulé (dernierReel
+    // suit) pour que la fermeture ne rejoue pas l'attente en rafale. La règle
+    // du temps n'est pas touchée : le monde ne se suspend que le temps où le
+    // joueur n'a pas les mains.
+    if (document.getElementById('moment')) {
+      state.dernierReel = Date.now();
+      return;
+    }
     const r = rattraper(state, Date.now());
     if (r.ticks > 0) rafraichir();
   }, 400);

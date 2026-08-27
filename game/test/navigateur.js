@@ -3506,6 +3506,54 @@ console.log('\n8 vicies quinquies. Les grands moments (M2, ALLURE.md)');
   }, sTxt), 'un tap referme la stèle');
 }
 {
+  // b bis) « Quand il y a un écran pour dire que quelqu'un est mort, le temps
+  // continue à tourner en fond ? et du coup tout le monde meurt à la suite,
+  // on est obligé de voir défiler tous les écrans de mort à la suite sans
+  // rien pouvoir faire ? » — le propriétaire. La stèle confisque l'entrée :
+  // tant qu'elle est ouverte, l'horloge cesse de consommer le monde. On
+  // ferme, on agit, PUIS ça repart. La règle « le temps continue même quand
+  // tout le monde est mort » n'est pas touchée : elle vaut quand on a les
+  // mains — ici, on ne les a pas.
+  const surMort2 = serialiser((() => {
+    const t = partieAvancee();
+    const g = groupeActif(t);
+    const c = g.membres.find((x) => x.etat !== 'mort');
+    c.etat = 'mort';
+    c.pv = 0;
+    c._compte = true;
+    t.memorial.push({
+      nom: c.nom, archetype: c.archetypeNom, cause: 'mort en route',
+      lieu: 'les Dalles', t: t.temps + 1, meilleure: 'mêlée 12',
+    });
+    t.journal.push({ type: 'mort', texte: `${c.nom} est mort en route.`, important: true, t: t.temps + 1 });
+    t.vitesse = 60;
+    t.dernierReel = Date.now();
+    return t;
+  })());
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), surMort2);
+  // Sans quoi le harnais-joueur-pressé referme la stèle en 200 ms et l'on
+  // mesure un écran déjà fermé.
+  await page.evaluate(() => { window.__momentsAuto = false; });
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#moment', { timeout: 12000 });
+  // Premier relevé APRÈS un cycle de sauvegarde (5 s) : la sauvegarde reflète
+  // alors l'état gelé, pas un reste d'avant l'ouverture.
+  await page.waitForTimeout(5500);
+  const tA = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).temps);
+  await page.waitForTimeout(6000);
+  const tB = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).temps);
+  ok(tB === tA, 'la stèle ouverte, l’horloge cesse de consommer le monde — à ×60',
+    `${tA} → ${tB}`);
+  // Fermer UNE stèle peut en ouvrir une autre (la file), qui gèle à son tour :
+  // c'est la règle. On rend donc la main au joueur pressé du harnais, qui
+  // referme toute la file — et le temps doit repartir.
+  await page.evaluate(() => { window.__momentsAuto = true; });
+  await page.waitForTimeout(6500);
+  const tC = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).temps);
+  ok(tC > tB, 'la file refermée, le temps repart', `${tB} → ${tC}`);
+}
+{
   // c) Le siège se voit de partout : un bandeau tant que ça dure, pas une
   // ligne de journal qu'on rate en regardant son sac.
   const surSiege = serialiser((() => {
