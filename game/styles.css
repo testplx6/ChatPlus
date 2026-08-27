@@ -1408,12 +1408,11 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
    carte rayonne. */
 
 @media (max-width: 1099px) {
-  /* Le HUD de la carte tient sur UNE rangée : le sac et la météo ont leur
-     place ailleurs sur cet écran (la feuille, le ciel de la carte elle-même).
-     L'effectif, lui, RESTE : « une information cachée coûte une escouade » —
-     le test du bandeau y veille, et il a raison. Les autres écrans gardent la
-     barre complète. */
-  #racine.large-carte .hd-sac,
+  /* Seule la météo quitte le HUD de la carte : le ciel se lit sur la carte
+     elle-même. Le sac y était masqué aussi — le propriétaire l'a réclamé
+     (« avant on l'avait ») : l'encombrement décide de ce qu'on ramasse, il
+     reste sous les yeux, comme l'effectif. « Une information cachée coûte
+     une escouade. » */
   #racine.large-carte .hd-meteo { display: none; }
 }
 
