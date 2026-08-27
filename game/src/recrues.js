@@ -79,9 +79,21 @@ export function primeDe(state, col, c) {
  * dès que l'époque tourne.
  */
 export function bancDerive(col, t, graine = 0) {
-  if (!col || col.ruine) return { epoque: 0, gens: [] };
+  if (!col || col.ruine) return { epoque: 0, agitation: 0, gens: [] };
   const epoque = Math.floor(t / DUREE_BANC);
   const agitation = Math.round((col.unrest || 0) * 4);
+  return bancVu(col, epoque, agitation, graine);
+}
+
+/**
+ * Le banc d'une VUE précise (époque, agitation) : ce que l'écran a montré.
+ * La vue fait partie de la requête d'engagement — à grande vitesse, le temps
+ * et l'agitation tournent entre l'affichage et le clic, et l'on doit pouvoir
+ * engager la personne qu'on avait sous les yeux, pas celle d'un banc que
+ * personne n'a vu.
+ */
+export function bancVu(col, epoque, agitation, graine = 0) {
+  if (!col || col.ruine) return { epoque: 0, agitation: 0, gens: [] };
   const rng = new Rng(grainDe(graine, 'banc', col.id, epoque, col.taille, agitation));
   const combien = Math.max(1, Math.min(5, Math.round(1 + col.taille * 0.8 + agitation)));
   const gens = [];
@@ -91,7 +103,7 @@ export function bancDerive(col, t, graine = 0) {
     gens.push(makeCharacter(rng, { archetype: rng.pick(ARCHETYPE_KEYS), niveau }));
   }
   const pris = (col.bancPris && col.bancPris.epoque === epoque) ? col.bancPris.ids : [];
-  return { epoque, gens: pris.length ? gens.filter((c) => !pris.includes(c.id)) : gens };
+  return { epoque, agitation, gens: pris.length ? gens.filter((c) => !pris.includes(c.id)) : gens };
 }
 
 /**
@@ -99,7 +111,7 @@ export function bancDerive(col, t, graine = 0) {
  * d'entasser du monde, c'est la cohésion qui se délite (voir groupes.js), pas
  * une règle qui interdit.
  */
-export function engager(state, col, id, log, groupe) {
+export function engager(state, col, id, log, groupe, vue) {
   const g = groupe || (state.player.groupes || [])[0];
   if (!g) return { ok: false, motif: 'Aucun groupe.' };
   if (!col || col.ruine || g.regionId !== col.regionId) {
@@ -108,8 +120,17 @@ export function engager(state, col, id, log, groupe) {
   // Par identifiant, plus par rang dans la liste : le banc n'est plus un objet
   // qu'on garde en main, c'est une vue qu'on recalcule. Un rang ne veut rien
   // dire d'un calcul à l'autre — un identifiant, si.
-  const banc = bancDerive(col, state.temps, state.world.graine);
-  const c = banc.gens.find((x) => x.id === id);
+  let banc = bancDerive(col, state.temps, state.world.graine);
+  let c = banc.gens.find((x) => x.id === id);
+  // La personne cliquée est celle que l'écran montrait : si le banc courant a
+  // tourné entre l'affichage et le clic, on re-dérive la vue transmise —
+  // bornée à une époque d'écart, on n'engage pas les fantômes d'un banc vieux.
+  if (!c && vue && Number.isFinite(vue.epoque) && Number.isFinite(vue.agitation)
+      && Math.abs(vue.epoque - banc.epoque) <= 1) {
+    const bv = bancVu(col, vue.epoque, vue.agitation, state.world.graine);
+    c = bv.gens.find((x) => x.id === id);
+    if (c) banc = bv;
+  }
   if (!c) return { ok: false, motif: 'Cette personne s’est placée ailleurs.' };
   const prix = primeDe(state, col, c);
   if (soldeIci(state) < prix) {

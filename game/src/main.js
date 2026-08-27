@@ -382,10 +382,10 @@ const API = {
 
   /** Engagement d'un mercenaire dans une ville : il rejoint le groupe affiché. */
   /** Engager quelqu'un du banc de la ville où l'on se trouve. */
-  recruter(index) {
+  recruter(index, vue) {
     const g = groupeActif(state);
     const col = state.world.colonies.find((c) => !c.ruine && c.regionId === g.regionId);
-    const r = engager(state, col, Number(index), creerLogger(state), g);
+    const r = engager(state, col, Number(index), creerLogger(state), g, vue);
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },

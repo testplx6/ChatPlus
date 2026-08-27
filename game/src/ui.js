@@ -6156,7 +6156,11 @@ function modaleRecrutement() {
   const ici = vivantsDe(g).length;
   const plafond = plafondCohesion(S, g);
   const apres = Math.max(12, 100 / (1 + Math.max(0, ici + 1 - noy) / 7));
-  const banc = bancDerive(col, S.temps, S.world.graine).gens;
+  // La vue (époque, agitation) part avec chaque bouton : à grande vitesse le
+  // banc tourne entre l'affichage et le clic, et le moteur doit pouvoir
+  // engager la personne que CET écran montrait.
+  const vueBanc = bancDerive(col, S.temps, S.world.graine);
+  const banc = vueBanc.gens;
 
   const gens = banc.length ? banc.map((c, i) => {
     const prix = primeDe(S, col, c);
@@ -6172,7 +6176,7 @@ function modaleRecrutement() {
     e(TRAITS[t] ? TRAITS[t].nom : t)).join(' · ')}</div>` : ''}
       <div class="ligne"><span class="k">Prime</span><span class="v">${n(prix)} ${sym()}</span></div>
       <button class="act mini${soldeIci(S) >= prix ? ' primaire' : ''}"
-        data-a="recruter" data-i="${e(c.id)}" style="margin-top:4px"
+        data-a="recruter" data-i="${e(c.id)}" data-ep="${vueBanc.epoque}" data-ag="${vueBanc.agitation}" style="margin-top:4px"
         ${soldeIci(S) < prix ? 'disabled' : ''}>
         ${soldeIci(S) < prix ? 'Bourse trop courte' : 'Engager'}</button>
     </div>`;
@@ -7013,7 +7017,8 @@ function surClic(ev) {
     }
 
     case 'recruter': {
-      const r = ACTIONS.recruter(el.dataset.i);
+      const r = ACTIONS.recruter(el.dataset.i,
+        { epoque: Number(el.dataset.ep), agitation: Number(el.dataset.ag) });
       toast(r.ok ? `${r.perso.nom} rejoint l’escouade.` : r.motif, !r.ok);
       rendreModale();
       break;

@@ -4049,6 +4049,31 @@ ok(gRec.membres.length === avantRec + 1
 ok(!bancDerive(colRec, rec.temps, rec.world.graine).gens.some((x) => x.id === choisi.id),
   'il ne figure plus au banc');
 
+// Le clic engage la personne qu'on avait SOUS LES YEUX. Le banc est dérivé du
+// temps ET de l'agitation : à grande vitesse, l'un ou l'autre tourne entre
+// l'affichage et le clic, la graine change, et l'identifiant cliqué n'existe
+// plus — « cette personne s'est placée ailleurs » à presque chaque essai
+// (rapporté par le propriétaire, en jouant). L'interface transmet donc la vue
+// qu'elle a montrée (époque, agitation), et le moteur re-dérive CE banc-là,
+// borné à une époque d'écart.
+{
+  const vue = bancDerive(colRec, rec.temps, rec.world.graine);
+  const cible = vue.gens[0];
+  // Le monde bouge sous le clic : l'agitation franchit un quart.
+  colRec.unrest = (colRec.unrest || 0) + 0.3;
+  const bancNeuf = bancDerive(colRec, rec.temps, rec.world.graine);
+  ok(!bancNeuf.gens.some((x) => x.id === cible.id),
+    'décor : l’agitation a bien recomposé le banc', `${bancNeuf.gens.length} gens`);
+  const avantVue = gRec.membres.length;
+  const rVue = engager(rec, colRec, cible.id, () => {}, gRec,
+    { epoque: vue.epoque, agitation: vue.agitation });
+  ok(rVue.ok, 'on engage la personne qu’on avait sous les yeux, banc recomposé ou pas',
+    rVue.motif);
+  ok(gRec.membres.length === avantVue + 1
+    && gRec.membres[gRec.membres.length - 1].id === cible.id,
+    'et c’est bien elle qui rejoint le groupe');
+}
+
 section('9 nonies quinquies. Une escouade n’a pas de plafond, elle a un noyau');
 const coh = nouvellePartie(8686, { maintenant: 0, depart: 'ville', equipe: 3 });
 const gCoh = groupeActif(coh);

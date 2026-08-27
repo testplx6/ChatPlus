@@ -7031,9 +7031,21 @@ function primeDe(state, col, c) {
  * dès que l'époque tourne.
  */
 function bancDerive(col, t, graine = 0) {
-  if (!col || col.ruine) return { epoque: 0, gens: [] };
+  if (!col || col.ruine) return { epoque: 0, agitation: 0, gens: [] };
   const epoque = Math.floor(t / DUREE_BANC);
   const agitation = Math.round((col.unrest || 0) * 4);
+  return bancVu(col, epoque, agitation, graine);
+}
+
+/**
+ * Le banc d'une VUE précise (époque, agitation) : ce que l'écran a montré.
+ * La vue fait partie de la requête d'engagement — à grande vitesse, le temps
+ * et l'agitation tournent entre l'affichage et le clic, et l'on doit pouvoir
+ * engager la personne qu'on avait sous les yeux, pas celle d'un banc que
+ * personne n'a vu.
+ */
+function bancVu(col, epoque, agitation, graine = 0) {
+  if (!col || col.ruine) return { epoque: 0, agitation: 0, gens: [] };
   const rng = new Rng(grainDe(graine, 'banc', col.id, epoque, col.taille, agitation));
   const combien = Math.max(1, Math.min(5, Math.round(1 + col.taille * 0.8 + agitation)));
   const gens = [];
@@ -7043,7 +7055,7 @@ function bancDerive(col, t, graine = 0) {
     gens.push(makeCharacter(rng, { archetype: rng.pick(ARCHETYPE_KEYS), niveau }));
   }
   const pris = (col.bancPris && col.bancPris.epoque === epoque) ? col.bancPris.ids : [];
-  return { epoque, gens: pris.length ? gens.filter((c) => !pris.includes(c.id)) : gens };
+  return { epoque, agitation, gens: pris.length ? gens.filter((c) => !pris.includes(c.id)) : gens };
 }
 
 /**
@@ -7051,7 +7063,7 @@ function bancDerive(col, t, graine = 0) {
  * d'entasser du monde, c'est la cohésion qui se délite (voir groupes.js), pas
  * une règle qui interdit.
  */
-function engager(state, col, id, log, groupe) {
+function engager(state, col, id, log, groupe, vue) {
   const g = groupe || (state.player.groupes || [])[0];
   if (!g) return { ok: false, motif: 'Aucun groupe.' };
   if (!col || col.ruine || g.regionId !== col.regionId) {
@@ -7060,8 +7072,17 @@ function engager(state, col, id, log, groupe) {
   // Par identifiant, plus par rang dans la liste : le banc n'est plus un objet
   // qu'on garde en main, c'est une vue qu'on recalcule. Un rang ne veut rien
   // dire d'un calcul à l'autre — un identifiant, si.
-  const banc = bancDerive(col, state.temps, state.world.graine);
-  const c = banc.gens.find((x) => x.id === id);
+  let banc = bancDerive(col, state.temps, state.world.graine);
+  let c = banc.gens.find((x) => x.id === id);
+  // La personne cliquée est celle que l'écran montrait : si le banc courant a
+  // tourné entre l'affichage et le clic, on re-dérive la vue transmise —
+  // bornée à une époque d'écart, on n'engage pas les fantômes d'un banc vieux.
+  if (!c && vue && Number.isFinite(vue.epoque) && Number.isFinite(vue.agitation)
+      && Math.abs(vue.epoque - banc.epoque) <= 1) {
+    const bv = bancVu(col, vue.epoque, vue.agitation, state.world.graine);
+    c = bv.gens.find((x) => x.id === id);
+    if (c) banc = bv;
+  }
   if (!c) return { ok: false, motif: 'Cette personne s’est placée ailleurs.' };
   const prix = primeDe(state, col, c);
   if (soldeIci(state) < prix) {
@@ -32666,7 +32687,11 @@ function modaleRecrutement() {
   const ici = vivantsDe(g).length;
   const plafond = plafondCohesion(S, g);
   const apres = Math.max(12, 100 / (1 + Math.max(0, ici + 1 - noy) / 7));
-  const banc = bancDerive(col, S.temps, S.world.graine).gens;
+  // La vue (époque, agitation) part avec chaque bouton : à grande vitesse le
+  // banc tourne entre l'affichage et le clic, et le moteur doit pouvoir
+  // engager la personne que CET écran montrait.
+  const vueBanc = bancDerive(col, S.temps, S.world.graine);
+  const banc = vueBanc.gens;
 
   const gens = banc.length ? banc.map((c, i) => {
     const prix = primeDe(S, col, c);
@@ -32682,7 +32707,7 @@ function modaleRecrutement() {
     e(TRAITS[t] ? TRAITS[t].nom : t)).join(' · ')}</div>` : ''}
       <div class="ligne"><span class="k">Prime</span><span class="v">${n(prix)} ${sym()}</span></div>
       <button class="act mini${soldeIci(S) >= prix ? ' primaire' : ''}"
-        data-a="recruter" data-i="${e(c.id)}" style="margin-top:4px"
+        data-a="recruter" data-i="${e(c.id)}" data-ep="${vueBanc.epoque}" data-ag="${vueBanc.agitation}" style="margin-top:4px"
         ${soldeIci(S) < prix ? 'disabled' : ''}>
         ${soldeIci(S) < prix ? 'Bourse trop courte' : 'Engager'}</button>
     </div>`;
@@ -33523,7 +33548,8 @@ function surClic(ev) {
     }
 
     case 'recruter': {
-      const r = ACTIONS.recruter(el.dataset.i);
+      const r = ACTIONS.recruter(el.dataset.i,
+        { epoque: Number(el.dataset.ep), agitation: Number(el.dataset.ag) });
       toast(r.ok ? `${r.perso.nom} rejoint l’escouade.` : r.motif, !r.ok);
       rendreModale();
       break;
@@ -33912,10 +33938,10 @@ const API = {
 
   /** Engagement d'un mercenaire dans une ville : il rejoint le groupe affiché. */
   /** Engager quelqu'un du banc de la ville où l'on se trouve. */
-  recruter(index) {
+  recruter(index, vue) {
     const g = groupeActif(state);
     const col = state.world.colonies.find((c) => !c.ruine && c.regionId === g.regionId);
-    const r = engager(state, col, Number(index), creerLogger(state), g);
+    const r = engager(state, col, Number(index), creerLogger(state), g, vue);
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },
