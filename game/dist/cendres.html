@@ -1215,12 +1215,17 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
 
 @media (max-width: 1099px) {
   #ecran.plein-carte { padding: 0; background: #05070a; }
+  /* La carte et le dock sont un bloc FIXE et OPAQUE : le contenu défile
+     DERRIÈRE eux et n'apparaît que dessous — jamais par-dessus la carte.
+     (La « feuille » qui montait sur la carte lisait comme un bug, pas comme
+     un geste : « quand on scroll il monte sur la map », le propriétaire.) */
   #ecran.plein-carte > #flanc-carte {
     position: sticky;
     top: 0;
-    z-index: 1;
+    z-index: 3;
     background: #05070a;
     padding-bottom: 4px;
+    box-shadow: 0 8px 16px -10px rgba(0, 0, 0, .8);
   }
   /* `svh` et pas `dvh` : la hauteur dynamique CHANGE quand la barre d'adresse
      du téléphone se rétracte en plein défilement — la carte se redimensionnait
@@ -1241,32 +1246,17 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
   #ecran.plein-carte .carte-pied,
   #ecran.plein-carte .legende { display: none; }
 
-  /* La feuille : tout ce qui suit la carte passe AU-DESSUS d'elle. */
+  /* Les panneaux défilent sous le bloc carte+dock : marges propres, pas de
+     superposition — ils passent DERRIÈRE la carte (z-index inférieur). */
   #ecran.plein-carte > section.panneau,
   #ecran.plein-carte > .groupes,
-  #ecran.plein-carte > div {
+  #ecran.plein-carte > div:not(#flanc-carte) {
     position: relative;
-    z-index: 2;
+    z-index: 1;
     margin-left: 8px;
     margin-right: 8px;
   }
-  /* La feuille commence au premier panneau APRÈS la carte — pas au bandeau
-     d'urgence qui, lui, précède la carte dans le document. */
-  #ecran.plein-carte > #flanc-carte + section.panneau {
-    border-radius: 12px 12px 4px 4px;
-    margin-top: -10px;
-    box-shadow: 0 -10px 26px -10px rgba(0, 0, 0, .75), inset 0 1px 0 rgba(255, 255, 255, .03);
-  }
-  /* La poignée de la feuille : on lit d'un regard qu'elle se tire. */
-  #ecran.plein-carte > #flanc-carte + section.panneau::before {
-    content: '';
-    display: block;
-    width: 36px;
-    height: 3px;
-    border-radius: 2px;
-    background: var(--bord-vif);
-    margin: -4px auto 8px;
-  }
+  #ecran.plein-carte > #flanc-carte + section.panneau { margin-top: 8px; }
 }
 
 /* ------------------------------------------ La galerie de portraits (dir. A)
