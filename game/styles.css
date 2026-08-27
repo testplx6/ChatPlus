@@ -1285,6 +1285,27 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
 /* Le dock d'ordres (direction A) : la rangée des verbes, posée sur le bas de
    la carte par un débord négatif — elle suit la carte collante, donc le geste
    reste sous le pouce pendant que la feuille défile. */
+/* La barre cible : le « Y aller » du secteur visé, collé sur le dock — le
+   verbe le plus fréquent du jeu ne vit plus au fond d'un panneau à défiler. */
+#barre-cible {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 8px 0;
+}
+#barre-cible .bc-nom {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  color: var(--texte-2);
+}
+#barre-cible .act { flex: 0 0 auto; margin: 0; }
+
 #dock-ordres {
   position: relative;
   z-index: 3;

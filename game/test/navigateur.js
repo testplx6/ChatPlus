@@ -2030,6 +2030,61 @@ ok(Math.abs(recentre.vu + recentre.larg / 2 - recentre.cible) < recentre.larg,
   'le double clic ramène la vue sur le groupe', JSON.stringify(recentre));
 await page.screenshot({ path: join(CAPTURES, '24-carte-vaste.png'), fullPage: true });
 
+// « On peut mettre les boutons "y aller" avec les autres actions plutôt que de
+// devoir ouvrir les sous-menus ? » — le propriétaire. L'ordre de route est un
+// verbe comme les autres : sitôt une case visée, il rejoint le dock, dans une
+// barre cible collée dessus — pas au fond d'un panneau à défiler puis déplier.
+{
+  // Une case voisine du groupe, même rangée : visible puisque la vue vient
+  // d'être recentrée sur lui, et différente de sa case à lui.
+  const ou = await page.evaluate(() => {
+    const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const g2 = s2.player.groupes[0];
+    const L = s2.world.largeur;
+    const x = g2.regionId % L;
+    const y = Math.floor(g2.regionId / L);
+    const cx = x + (x < L - 3 ? 2 : -2);
+    const r = document.querySelector('#carte').getBoundingClientRect();
+    const cell = r.width / L;
+    return { px: r.left + (cx + 0.5) * cell, py: r.top + (y + 0.5) * cell };
+  });
+  await page.mouse.click(ou.px, ou.py);
+  await page.waitForTimeout(350);
+  const cible = await page.evaluate(() => {
+    const b = document.querySelector('#barre-cible [data-a="voyage"]');
+    if (!b || b.offsetParent === null) return { present: false };
+    const rb = b.getBoundingClientRect();
+    const dock = document.querySelector('#dock-ordres');
+    const rd = dock ? dock.getBoundingClientRect() : null;
+    return {
+      present: true,
+      dansVue: rb.top >= 0 && rb.bottom <= window.innerHeight && rb.width > 0,
+      surLeDock: !!rd && rd.top - rb.bottom >= -4 && rd.top - rb.bottom < 60,
+    };
+  });
+  ok(cible.present && cible.dansVue && cible.surLeDock,
+    'sitôt une case visée, « Y aller » est sur le dock — sans défiler ni déplier',
+    JSON.stringify(cible));
+}
+
+// « Quand le tick passe, les boutons reviennent à la position par défaut,
+// ce n'est pas bon » — le propriétaire. Le dock défile horizontalement, et
+// chaque re-rendu réécrivait l'écran d'un bloc : le défilement du dock
+// retombait à zéro sous le doigt, plusieurs fois par seconde à ×60.
+{
+  await page.evaluate(() => { document.querySelector('#dock-ordres').scrollLeft = 140; });
+  await page.click('[data-a="vitesse"][data-v="60"]');
+  await page.waitForTimeout(2600);
+  const defil = await page.evaluate(() => {
+    const d = document.querySelector('#dock-ordres');
+    return d ? Math.round(d.scrollLeft) : -1;
+  });
+  ok(defil > 100, 'le défilement du dock survit aux ticks — les boutons restent où on les a mis',
+    `scrollLeft ${defil}`);
+  await page.click('[data-a="vitesse"][data-v="1"]');
+  await page.waitForTimeout(300);
+}
+
 console.log('\n8 terdecies. Quelqu’un vous demande quelque chose');
 // On pose une demande à la main : le hasard finit par en produire, mais un test
 // d'interface ne doit pas attendre le hasard.

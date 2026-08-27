@@ -534,7 +534,21 @@ export function rafraichir(force) {
   try {
     const html = bandeauDevaluation() + bandeauSiege() + rendu();
     if (html === dernierHtml && memeEcran) ecrit = false;
-    else { dernierHtml = html; ecran.innerHTML = html; }
+    else {
+      dernierHtml = html;
+      // Le défilement horizontal du dock survit à la réécriture : à ×60
+      // l'écran se réécrit plusieurs fois par seconde, et les boutons
+      // revenaient à la position de départ sous le doigt (« quand le tick
+      // passe, les boutons reviennent à la position par défaut » — le
+      // propriétaire). L'ancre, plus bas, ne garde que la lecture verticale.
+      const dockAvant = document.getElementById('dock-ordres');
+      const defilDock = dockAvant ? dockAvant.scrollLeft : 0;
+      ecran.innerHTML = html;
+      if (defilDock > 0) {
+        const dockApres = document.getElementById('dock-ordres');
+        if (dockApres) dockApres.scrollLeft = defilDock;
+      }
+    }
   } catch (err) {
     dernierHtml = null;
     ecran.innerHTML = `<section class="panneau urgent">
@@ -2238,6 +2252,33 @@ function icoOrdre(k) {
     aria-hidden="true">${d}</svg>` : '';
 }
 
+/**
+ * La barre cible (revue GM + UX, août 2026). « On peut mettre les boutons
+ * "y aller" avec les autres actions plutôt que de devoir ouvrir les
+ * sous-menus ? » — le propriétaire. Aller quelque part est le verbe le plus
+ * fréquent du jeu, et il vivait au FOND du panneau de sélection, sous un
+ * défilement : sitôt une case visée, il rejoint le dock, collé dessus. Le
+ * panneau de sélection garde tout le détail ; la barre porte le geste.
+ */
+function barreCible() {
+  if (selection == null || selection === G().regionId) return '';
+  const eta = etaVoyage(selection);
+  if (!eta) return '';
+  const r = S.world.regions[selection];
+  const col = colonieDe(S.world, selection);
+  const c = coord(selection);
+  const nom = r.decouvert && col && !col.ruine
+    ? (vueColonie(S, col).nom || col.nom)
+    : `Secteur ${String.fromCharCode(65 + c.x)}${c.y + 1}`;
+  return `<div id="barre-cible">
+    <span class="bc-nom">${e(nom)}</span>
+    <button class="act primaire" data-a="voyage" data-r="${selection}">
+      Y aller — ${dureeTexte(eta.heures)}</button>
+    <button class="act" data-a="voyage" data-r="${selection}" data-f="1">
+      Forcée — ${dureeTexte(Math.round(eta.heures * 0.68))}</button>
+  </div>`;
+}
+
 function blocDockOrdres() {
   const g = G();
   const o = g.ordre;
@@ -2274,6 +2315,7 @@ function ecranCarte() {
   return `
   <div id="flanc-carte">
   <div id="carte-boite"><canvas id="carte" aria-label="Carte du monde"></canvas><canvas id="carte-vie" aria-hidden="true"></canvas></div>
+  ${barreCible()}
   ${blocDockOrdres()}
   <div class="carte-pied"><span id="carte-pos"></span>
     <span class="aide">glisser pour déplacer · molette ou deux doigts pour zoomer ·

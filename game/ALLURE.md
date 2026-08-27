@@ -421,6 +421,46 @@ chronique) et G3 (son génératif) — non engagées.
 Aucune règle du jeu touchée : tout est dans `ui.js`, `styles.css`,
 `tools/bundle.js` (polices). Le moteur n'a pas bougé.
 
+## La revue des sous-menus (août 2026)
+
+Demandée par le propriétaire, en jouant : « on peut mettre les boutons
+"y aller" avec les autres actions plutôt que de devoir ouvrir les
+sous-menus ? je pense qu'il faut revoir toute l'architecture des
+sous-menus ». Deux revues indépendantes (game design et UX mobile)
+menées sur captures et code ; elles convergent sur le même diagnostic —
+**les panneaux mettent l'information avant l'action : le verbe est
+systématiquement au fond** — et sur la même règle :
+
+> *Verbe global fréquent = dock ; verbe contextuel (case visée, lieu où
+> l'on est, membre visé) = barre contextuelle collée au dock, jamais
+> dans le flux défilant ; information = panneau pliable qui résume dans
+> sa barre de titre ; réglage rare = pli ou modale, mais toujours à UN
+> tap d'une barre visible. Corollaires : aucun verbe primaire sous un
+> pli replié ni au fond d'un panneau ; une alerte porte ses verbes au
+> lieu de renvoyer vers un autre écran.*
+
+Les cinq étapes, à plus fort rendement d'abord :
+
+- **SM1 — livré, la barre cible.** Taper une case → `#barre-cible`
+  au-dessus du dock : nom du lieu, « Y aller — durée » (primaire),
+  « Forcée ». Le panneau de sélection garde tout le détail ; la barre
+  porte le geste. Avant : tap case → défiler ~2 écrans → le bouton en
+  dernière ligne du panneau. Test navigateur : bouton visible dans la
+  vue, collé au dock, sans défiler ni déplier (vu rouge avant).
+  Dans la même passe : le défilement horizontal du dock survit au
+  re-rendu (« quand le tick passe, les boutons reviennent à la position
+  par défaut » — vu rouge scrollLeft 0, le re-rendu réécrivait tout).
+- **SM2 — en attente.** Les portes chaudes de la ville (Marché ·
+  Équipement · Recruter) dans la barre cible quand on est en ville.
+- **SM3 — en attente.** L'audit « aucun verbe sous un pli / au fond » :
+  S'engager (sous le pli Position), Détacher, le transfert (écran
+  carte → écran base), les verbes du siège dans le bandeau lui-même.
+- **SM4 — en attente.** Mini-actions sur le résumé des fiches
+  d'escouade (Équiper · Tâche visibles sans déplier la fiche).
+- **SM5 — en attente.** Réordonner les panneaux par écran : décisions
+  d'abord, prose ensuite ; plis pilotés par « décision en attente »,
+  titres repliés porteurs du résumé chiffré.
+
 ## Le mot de la fin du game master
 
 « Ce jeu écrit comme un roman et s'affiche comme un tableur : la
