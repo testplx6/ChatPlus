@@ -686,32 +686,37 @@ export function tick(state) {
   const rngJoueur = new Rng(state.player.rngEtat);
   ctx.rng = rngJoueur;
   tickBase(state, log, ctx);
-  if (!state.fin) tickSquad(state, log, ctx);
-  if (!state.fin) tickContrats(state, log, ctx);
-  if (!state.fin) tickAllegeance(state, log, ctx);
+  // La fin ne gèle RIEN : « le temps devrait continuer même quand tout le
+  // monde est mort » (le propriétaire, août 2026) — c'est la devise du jeu
+  // prise au mot. Une escouade éteinte est un joueur absent, pas un monde à
+  // l'arrêt : les contrats échoient, les charges se perdent, les monnaies
+  // vivent. tickSquad garde son propre repli quand personne ne tient debout.
+  tickSquad(state, log, ctx);
+  tickContrats(state, log, ctx);
+  tickAllegeance(state, log, ctx);
   // Ce dont un gradé répond tous les jours, guerre ou pas : l'état de ses
   // routes. Avant le jugement, qui lit le bilan qu'il vient d'écrire.
-  if (!state.fin) tickSecteurs(state, log, ctx);
+  tickSecteurs(state, log, ctx);
   // On rend des comptes de ce qu'on a ordonné : d'abord l'issue des actes, puis
   // la charge elle-même, qu'on perd quand le crédit est épuisé.
-  if (!state.fin) jugerActes(state, log);
+  jugerActes(state, log);
   // Les nouvelles en route arrivent à leur heure (L2-L3, MEMOIRE.md). Les
   // villes qui apprennent retiennent par leurs notables — l'outil vient de
   // services.js, que faits.js précède dans l'ordre des modules.
-  if (!state.fin) tickFaits(state, log, { retenirEnVille });
+  tickFaits(state, log, { retenirEnVille });
   // Les frictions de la cour (F1+F2, MARECHAL.md) : la relève des comptes à
   // la succession, et le bouc émissaire du chef contesté. AVANT tickCharges,
   // pour qu'une relecture qui vide le crédit coûte la charge la même heure —
   // on se couche Maréchal, on se réveille Commandeur.
-  if (!state.fin) tickCour(state, log);
+  tickCour(state, log);
   // L'oubli tombe au conseil du porteur (L5c) : après la cour — une
   // succession repèse d'abord, le nouveau maître classe ensuite à SA séance.
-  if (!state.fin) tickOubli(state, log);
-  if (!state.fin) tickCharges(state, log);
-  if (!state.fin) tickFormation(state, log);
+  tickOubli(state, log);
+  tickCharges(state, log);
+  tickFormation(state, log);
   // Et ce que le monde a fait à votre argent pendant ce temps. En dernier :
   // les cours ne bougent qu'au conseil, mais on relève après que tout a bougé.
-  if (!state.fin) veillerMonnaies(state, log);
+  veillerMonnaies(state, log);
 
   state.player.rngEtat = rngJoueur.save();
   ctx.rng = rng;
@@ -736,7 +741,8 @@ export function tick(state) {
 export function avancer(state, n) {
   let joues = 0;
   for (let i = 0; i < n; i++) {
-    if (state.fin) break;
+    // La fin n'arrête plus le temps : le monde tourne sans vous — c'est même
+    // tout le jeu. On regarde, on peut engager quelqu'un, et ça repart.
     tick(state);
     joues++;
   }

@@ -145,6 +145,13 @@ export function engager(state, col, id, log, groupe, vue) {
   }
   col.bancPris.ids.push(c.id);
   g.membres.push(c);
+  // La fin n'a plus d'objet quand quelqu'un reprend le flambeau : la partie
+  // était finie « extinction », le monde a continué de tourner, et voilà
+  // quelqu'un debout — c'est lui, la suite de l'histoire.
+  if (state.fin === 'extinction') {
+    state.fin = null;
+    log({ type: 'fin', texte: `${c.nom} reprend le flambeau. La partie continue.`, important: true });
+  }
   if (log) {
     log({
       type: 'recrue',

@@ -3003,11 +3003,18 @@ ok(taux.size > 1, 'et ils ne votent pas tous la même chose',
 // tempérament ailleurs que sur un champ de bataille.
 function impotSous(temperament) {
   const t = nouvellePartie(9292, { maintenant: 0, depart: 'ville', equipe: 3 });
-  for (const k of DIPLO_FACTIONS) {
-    const d = dirigeant(t.world, k);
-    if (d) d.temperament = temperament;
+  // L'expérience contrôlée tient sa variable : depuis « le temps continue
+  // même quand tout le monde est mort », le monde vit toute la fenêtre — et
+  // les successions remplaçaient les chefs fabriqués, diluant le tempérament
+  // qu'on mesure. On le re-fixe donc à chaque fenêtre : la question reste
+  // « que fait un rapace au pouvoir ? », pas « combien de temps y reste-t-il ».
+  for (let h = 0; h < 2600; h += 100) {
+    for (const k of DIPLO_FACTIONS) {
+      const d = dirigeant(t.world, k);
+      if (d) d.temperament = temperament;
+    }
+    avancer(t, 100);
   }
-  avancer(t, 2600);
   const vivantes = DIPLO_FACTIONS.filter(
     (k) => t.world.colonies.some((c) => !c.ruine && c.faction === k)
   );
@@ -4072,6 +4079,37 @@ ok(!bancDerive(colRec, rec.temps, rec.world.graine).gens.some((x) => x.id === ch
   ok(gRec.membres.length === avantVue + 1
     && gRec.membres[gRec.membres.length - 1].id === cible.id,
     'et c’est bien elle qui rejoint le groupe');
+}
+
+section('9 nonies quater bis. La fin n’a plus d’objet quand quelqu’un reprend le flambeau');
+// Rapporté par le propriétaire, en jouant : escouade entièrement perdue, il
+// engage quelqu'un avec l'argent qui reste — et le jeu reste figé. La fin
+// « extinction » gèle tous les ticks du joueur, mais l'embauche restait
+// possible et ne levait pas la fin : un vivant à bord, un monde à l'arrêt.
+{
+  const ext = nouvellePartie(4242, { maintenant: 0, depart: 'ville', equipe: 2 });
+  const gExt = groupeActif(ext);
+  for (const m of gExt.membres) m.etat = 'mort';
+  avancer(ext, 1);
+  ok(ext.fin === 'extinction', 'décor : plus personne, la partie est finie', ext.fin || 'pas de fin');
+  // La règle du propriétaire : « le temps devrait continuer même quand tout
+  // le monde est mort ». La fin est un état du RÉCIT, pas un frein du monde.
+  const tMonde = ext.temps;
+  avancer(ext, 48);
+  ok(ext.temps === tMonde + 48 && ext.fin === 'extinction',
+    'le monde continue de tourner sans personne — deux jours sans accroc',
+    `${tMonde} → ${ext.temps}, fin=${ext.fin || 'aucune'}`);
+  const colExt = ext.world.colonies.find((c) => !c.ruine);
+  gExt.regionId = colExt.regionId;
+  poser(ext, 99999);
+  const bExt = bancDerive(colExt, ext.temps, ext.world.graine);
+  const rExt = engager(ext, colExt, bExt.gens[0].id, () => {}, gExt);
+  ok(rExt.ok, 'debout dans une ville avec de quoi payer, on peut encore engager', rExt.motif);
+  ok(!ext.fin, 'et la fin n’a plus d’objet — quelqu’un reprend le flambeau', ext.fin || '');
+  const tExt = ext.temps;
+  avancer(ext, 3);
+  ok(!ext.fin && ext.temps > tExt, 'le monde repart, et la partie avec lui',
+    `fin=${ext.fin || 'aucune'}, ${tExt} → ${ext.temps}`);
 }
 
 section('9 nonies quinquies. Une escouade n’a pas de plafond, elle a un noyau');
