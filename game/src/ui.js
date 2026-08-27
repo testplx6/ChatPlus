@@ -1635,21 +1635,6 @@ function blocSituation() {
   </section>`;
 }
 
-/**
- * L'alerte posée sur le monde (direction A) : la première urgence du point de
- * situation flotte sur la carte — le cri et le geste ; le détail complet
- * reste dans la feuille. Même source de données, jamais une copie.
- */
-function blocAlerteCarte() {
-  const { urgences } = donneesSituation();
-  if (!urgences.length) return '';
-  const u = urgences[0];
-  return `<div id="alerte-carte">
-    <span class="ac-t">${e(u.t)}</span>
-    <button class="act mini" data-a="onglet" data-k="${u.o}">Régler</button>
-  </div>`;
-}
-
 function blocSite() {
   const r = S.world.regions[G().regionId];
   if (!r.site || !r.site.connu) return '';
@@ -2289,7 +2274,6 @@ function ecranCarte() {
   return `
   <div id="flanc-carte">
   <div id="carte-boite"><canvas id="carte" aria-label="Carte du monde"></canvas><canvas id="carte-vie" aria-hidden="true"></canvas></div>
-  ${blocAlerteCarte()}
   ${blocDockOrdres()}
   <div class="carte-pied"><span id="carte-pos"></span>
     <span class="aide">glisser pour déplacer · molette ou deux doigts pour zoomer ·

@@ -1407,50 +1407,7 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
    Étape 6 (direction A) : l'alerte flotte, le HUD tient sur une rangée, la
    carte rayonne. */
 
-/* L'alerte posée sur le monde : le cri, et la porte pour agir. */
-#alerte-carte {
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  top: 8px;
-  z-index: 3;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 11px;
-  background: rgba(26, 10, 10, .82);
-  border: 1px solid rgba(224, 91, 91, .55);
-  border-left: 3px solid var(--rouge);
-  border-radius: 6px;
-  backdrop-filter: blur(6px);
-}
-#alerte-carte .ac-t {
-  flex: 1 1 auto;
-  font-size: 11px;
-  line-height: 1.35;
-  color: #e8ded0;
-  /* Deux lignes au plus : sur un petit écran, l'alerte mangeait la carte. */
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-#alerte-carte .act.mini {
-  flex: 0 0 auto;
-  width: auto;
-  min-height: 34px;
-  padding: 6px 11px;
-  font-size: 10px;
-  letter-spacing: .12em;
-  text-transform: uppercase;
-  color: #e8a050;
-  border-color: rgba(217, 128, 58, .6);
-  background: rgba(20, 14, 8, .6);
-}
-
 @media (max-width: 1099px) {
-  /* Sous le HUD flottant, pas dessous la carte. */
-  #ecran.plein-carte #alerte-carte { top: 96px; }
   /* Le HUD de la carte tient sur UNE rangée : le sac et la météo ont leur
      place ailleurs sur cet écran (la feuille, le ciel de la carte elle-même).
      L'effectif, lui, RESTE : « une information cachée coûte une escouade » —
