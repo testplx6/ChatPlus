@@ -806,6 +806,15 @@ export function tickSquad(state, log, ctx) {
       log({ type: 'fin', texte: 'Plus personne. Fin de partie.', important: true });
     }
     if (state.fin) return;
+  } else if (state.fin === 'extinction') {
+    // Quelqu'un tient debout alors que la fin est posée : une sauvegarde
+    // d'avant la règle du flambeau (l'embauche ne levait pas la fin), ou
+    // n'importe quel chemin futur qui ramène un vivant. La fin n'a plus
+    // d'objet — sans cette relève, les portes plus bas gelaient l'escouade
+    // pour toujours : « le temps tourne, mais le jeu est figé quand même »
+    // (le propriétaire, sur sa partie en cours).
+    state.fin = null;
+    log({ type: 'fin', texte: 'Quelqu’un tient encore debout. La partie continue.', important: true });
   }
 
   // Les chasseurs de prime cherchent le joueur, pas un groupe : un seul tirage

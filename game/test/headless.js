@@ -4112,6 +4112,38 @@ section('9 nonies quater bis. La fin n’a plus d’objet quand quelqu’un repr
     `fin=${ext.fin || 'aucune'}, ${tExt} → ${ext.temps}`);
 }
 
+section('9 nonies quater ter. Une sauvegarde d’avant le flambeau : un vivant, la fin posée');
+// « d'accord le temps tourne, mais le jeu est figé quand même » — le
+// propriétaire, sur sa partie en cours. Il avait engagé quelqu'un AVANT que
+// l'embauche ne lève la fin : sa sauvegarde porte l'état contradictoire
+// fin='extinction' + un vivant à bord. Les portes de tickSquad (`if
+// (state.fin) return`) rendaient ce gel éternel : le monde tournait, jamais
+// l'escouade. La règle vraie : dès que quelqu'un tient debout, la fin n'a
+// plus d'objet — quelle qu'en soit la source.
+{
+  const vieux = nouvellePartie(4243, { maintenant: 0, depart: 'ville', equipe: 2 });
+  const gV = groupeActif(vieux);
+  for (const m of gV.membres) m.etat = 'mort';
+  avancer(vieux, 1);
+  ok(vieux.fin === 'extinction', 'décor : plus personne, la partie est finie', vieux.fin || 'aucune');
+  // L'embauche d'avant la règle, à l'identique : un vivant poussé dans le
+  // groupe, la fin laissée posée. C'est mot pour mot l'état de sa sauvegarde.
+  const rngV = new Rng(77);
+  const vivant = makeCharacter(rngV, { archetype: 'ferrailleur' });
+  gV.membres.push(vivant);
+  gV.inventaire.rations = 500;
+  // La faim monte à chaque heure vécue : une escouade gelée reste au même
+  // chiffre pour toujours. (Pas les rations : le repas ne part qu'au seuil
+  // de faim, qu'une recrue fraîche n'atteint pas en 24 h de repos.)
+  const faimAvant = vivant.faim;
+  avancer(vieux, 24);
+  ok(!vieux.fin, 'au premier tick, la fin n’a plus d’objet : quelqu’un tient debout',
+    `fin=${vieux.fin || 'aucune'}`);
+  ok(vivant.faim > faimAvant,
+    'et l’escouade vit pour de bon : la faim monte, elle n’est plus gelée',
+    `faim ${faimAvant} → ${vivant.faim}`);
+}
+
 section('9 nonies quinquies. Une escouade n’a pas de plafond, elle a un noyau');
 const coh = nouvellePartie(8686, { maintenant: 0, depart: 'ville', equipe: 3 });
 const gCoh = groupeActif(coh);
