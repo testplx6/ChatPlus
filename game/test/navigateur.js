@@ -2303,6 +2303,39 @@ console.log('\n8 vicies bis. Toutes les fiches, pas seulement celle qu’on a si
   await pp.close();
 }
 
+console.log('\n8 vicies semel. Recruter : le clic engage vraiment');
+{
+  // Le chemin de l'INTERFACE, jamais couvert : le moteur engageait par
+  // identifiant, mais l'action le passait par Number() — relique du temps où
+  // l'on engageait par RANG. Les identifiants sont des chaînes (« c7f3… ») :
+  // Number en fait NaN, et chaque clic répondait « cette personne s'est
+  // placée ailleurs » — à ×1 comme à ×60 (rapporté par le propriétaire).
+  const enVille = (() => {
+    const s = nouvellePartie(20260830, { maintenant: Date.now(), depart: 'ville' });
+    s.player.bourse = { [monnaieIci(s)]: 99999 };
+    s.dernierReel = Date.now();
+    return s;
+  })();
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(enVille));
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.waitForTimeout(400);
+  await page.click('[data-a="modale"][data-m="recrutement"]');
+  await page.waitForTimeout(400);
+  const bEngager = page.locator('[data-a="recruter"]:not([disabled])').first();
+  ok(await bEngager.count() >= 1, 'la ville propose au moins une personne engageable');
+  const avantN = await page.evaluate(
+    () => JSON.parse(localStorage.getItem('cendres.save.v1')).player.groupes[0].membres.length);
+  await bEngager.click();
+  await page.waitForTimeout(600);
+  const apresN = await page.evaluate(
+    () => JSON.parse(localStorage.getItem('cendres.save.v1')).player.groupes[0].membres.length);
+  ok(apresN === avantN + 1, 'cliquer « Engager » engage vraiment', `${avantN} → ${apresN}`);
+  await page.click('[data-a="fermer"]');
+  await page.waitForTimeout(250);
+}
+
 console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit pas');
 {
   // Trois défauts d'usage rapportés ensemble : « régulièrement la page se

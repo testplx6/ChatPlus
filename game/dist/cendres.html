@@ -33937,10 +33937,13 @@ const API = {
 
   /** Engagement d'un mercenaire dans une ville : il rejoint le groupe affiché. */
   /** Engager quelqu'un du banc de la ville où l'on se trouve. */
-  recruter(index, vue) {
+  recruter(id, vue) {
     const g = groupeActif(state);
     const col = state.world.colonies.find((c) => !c.ruine && c.regionId === g.regionId);
-    const r = engager(state, col, Number(index), creerLogger(state), g, vue);
+    // L'identifiant est une CHAÎNE (« c7f3… ») : le Number() qui traînait ici
+    // était une relique du temps où l'on engageait par rang — il rendait NaN,
+    // et chaque clic répondait « cette personne s'est placée ailleurs ».
+    const r = engager(state, col, id, creerLogger(state), g, vue);
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },
