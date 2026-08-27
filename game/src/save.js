@@ -30,15 +30,25 @@ export const CLE = 'cendres.save.v1';
 
 const MARQUE = 'CZ1|';
 
+// Le même texte revient souvent d'affilée : une action qui sauvegarde deux
+// fois dans la même heure de jeu, un moment ouvert qui suspend le temps, un
+// onglet à l'arrêt. On ne recompresse pas un texte déjà emballé à l'instant.
+let dernierClair = null;
+let dernierPaquet = null;
+
 /** Le texte tel qu'il part au stockage (ou dans un export à copier). */
 export function emballer(txt) {
+  if (txt === dernierClair && dernierPaquet !== null) return dernierPaquet;
+  let paquet = txt;
   try {
     const z = comprimer(txt);
-    if (decomprimer(z) === txt) return MARQUE + z;
+    if (decomprimer(z) === txt) paquet = MARQUE + z;
   } catch (e) {
     // On écrit en clair : lourd, mais jamais faux.
   }
-  return txt;
+  dernierClair = txt;
+  dernierPaquet = paquet;
+  return paquet;
 }
 
 /** Le texte tel qu'on le relit — comprimé ou en clair, d'hier ou d'avant. */

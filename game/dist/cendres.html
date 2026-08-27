@@ -1518,29 +1518,45 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
 /** Compresse un texte en une chaîne UTF-16 sûre. */
 function comprimer(texte) {
   if (texte == null || texte === '') return '';
-  const dico = new Map();
-  const naissants = new Map();
+  // Le dictionnaire travaille en ENTIERS, jamais en chaînes : la première
+  // version concaténait le mot courant à chaque pas (clés de Map en chaînes,
+  // ré-allouées et re-hachées sans cesse) et coûtait ~110 ms sur un monde de
+  // 6 000 h — « le jeu rame vachement » (le propriétaire), la sauvegarde
+  // tournant toutes les cinq secondes. Ici : un code par caractère connu, et
+  // les suites indexées par (code du mot << 16) + caractère. Même flux de
+  // sortie au bit près — `decomprimer` n'a pas changé d'une ligne.
+  const parChar = new Map();
+  const suites = new Map();
+  const naissants = new Set();
   let tailleDico = 3;
-  // Largeur de code courante et compteur avant élargissement.
   let bitsCode = 2;
   let avantElargir = 2;
   const sortie = [];
   let tampon = 0;
   let tamponBits = 0;
 
-  const emettreBit = (b) => {
-    tampon = (tampon << 1) | b;
-    if (tamponBits === 14) {
-      sortie.push(String.fromCharCode(tampon + 32));
-      tampon = 0;
-      tamponBits = 0;
-    } else tamponBits++;
-  };
-  // Les codes s'émettent bit de poids faible d'abord, comme à la lecture.
+  // Les codes s'émettent bit de poids faible d'abord, comme à la lecture —
+  // mais par BLOCS : on renverse les bits du code une fois, puis on les pose
+  // dans le tampon par tranches de ce qui reste de place. Bit à bit, chaque
+  // sauvegarde payait un appel et un test de débordement par bit.
   const emettreCode = (valeur, nbBits) => {
+    let renv = 0;
     for (let i = 0; i < nbBits; i++) {
-      emettreBit(valeur & 1);
+      renv = (renv << 1) | (valeur & 1);
       valeur >>= 1;
+    }
+    let restant = nbBits;
+    while (restant > 0) {
+      const prendre = restant < 15 - tamponBits ? restant : 15 - tamponBits;
+      const bloc = (renv >>> (restant - prendre)) & ((1 << prendre) - 1);
+      tampon = (tampon << prendre) | bloc;
+      tamponBits += prendre;
+      restant -= prendre;
+      if (tamponBits === 15) {
+        sortie.push(String.fromCharCode(tampon + 32));
+        tampon = 0;
+        tamponBits = 0;
+      }
     }
   };
   const compterEmission = () => {
@@ -1550,43 +1566,56 @@ function comprimer(texte) {
       bitsCode++;
     }
   };
-  // Un mot jamais émis se dit en clair : le code 0 annonce 8 bits, le code 1
-  // en annonce 16. Après quoi le mot a un code à lui.
-  const emettreMot = (mot) => {
-    if (naissants.has(mot)) {
-      const c = mot.charCodeAt(0);
-      if (c < 256) {
+  // Un caractère jamais émis se dit en clair : le code 0 annonce 8 bits, le
+  // code 1 en annonce 16. Seul un mot d'UN caractère peut être naissant.
+  const emettreMot = (codeMot, charMot, simple) => {
+    if (simple && naissants.has(charMot)) {
+      if (charMot < 256) {
         emettreCode(0, bitsCode);
-        emettreCode(c, 8);
+        emettreCode(charMot, 8);
       } else {
         emettreCode(1, bitsCode);
-        emettreCode(c, 16);
+        emettreCode(charMot, 16);
       }
       compterEmission();
-      naissants.delete(mot);
+      naissants.delete(charMot);
     } else {
-      emettreCode(dico.get(mot), bitsCode);
+      emettreCode(codeMot, bitsCode);
     }
     compterEmission();
   };
 
-  let mot = '';
+  let codeMot = -1;
+  let charMot = -1;
+  let simple = false;
   for (let i = 0; i < texte.length; i++) {
-    const c = texte.charAt(i);
-    if (!dico.has(c)) {
-      dico.set(c, tailleDico++);
-      naissants.set(c, true);
+    const c = texte.charCodeAt(i);
+    let codeC = parChar.get(c);
+    if (codeC === undefined) {
+      codeC = tailleDico++;
+      parChar.set(c, codeC);
+      naissants.add(c);
     }
-    const motC = mot + c;
-    if (dico.has(motC)) {
-      mot = motC;
+    if (codeMot === -1) {
+      codeMot = codeC;
+      charMot = c;
+      simple = true;
+      continue;
+    }
+    const cle = codeMot * 65536 + c;
+    const codeSuite = suites.get(cle);
+    if (codeSuite !== undefined) {
+      codeMot = codeSuite;
+      simple = false;
     } else {
-      emettreMot(mot);
-      dico.set(motC, tailleDico++);
-      mot = c;
+      emettreMot(codeMot, charMot, simple);
+      suites.set(cle, tailleDico++);
+      codeMot = codeC;
+      charMot = c;
+      simple = true;
     }
   }
-  if (mot !== '') emettreMot(mot);
+  if (codeMot !== -1) emettreMot(codeMot, charMot, simple);
 
   // Le code 2 clôt le flux, puis on vide le tampon.
   emettreCode(2, bitsCode);
@@ -1612,23 +1641,36 @@ function decomprimer(paquet) {
 
   let index = 0;
   let val = paquet.charCodeAt(0) - 32;
-  let masque = 16384; // bit de poids fort d'un caractère de 15 bits
+  let dispo = 15; // bits pas encore lus dans le caractère courant
 
-  const lireBit = () => {
-    const b = val & masque ? 1 : 0;
-    masque >>= 1;
-    if (masque === 0) {
-      masque = 16384;
-      val = index + 1 < paquet.length ? paquet.charCodeAt(++index) - 32 : 0;
-      if (index >= paquet.length) index = paquet.length;
-    }
-    return b;
-  };
+  // Lecture par blocs, miroir de l'émission : on prend d'un coup ce que le
+  // caractère courant peut donner, et on renverse le bloc une fois pour le
+  // poser poids faible d'abord.
   const lireCode = (nbBits) => {
     let v = 0;
-    for (let i = 0; i < nbBits; i++) v |= lireBit() << i;
+    let fait = 0;
+    while (fait < nbBits) {
+      if (dispo === 0) {
+        index++;
+        val = index < paquet.length ? paquet.charCodeAt(index) - 32 : 0;
+        dispo = 15;
+      }
+      const reste = nbBits - fait;
+      const prendre = reste < dispo ? reste : dispo;
+      let bloc = (val >> (dispo - prendre)) & ((1 << prendre) - 1);
+      dispo -= prendre;
+      let renv = 0;
+      for (let i = 0; i < prendre; i++) {
+        renv = (renv << 1) | (bloc & 1);
+        bloc >>= 1;
+      }
+      v |= renv << fait;
+      fait += prendre;
+    }
     return v;
   };
+  const epuise = () => index >= paquet.length
+    || (index === paquet.length - 1 && dispo === 0);
   const compterAjout = () => {
     avantElargir--;
     if (avantElargir === 0) {
@@ -1646,7 +1688,7 @@ function decomprimer(paquet) {
   sortie.push(c0);
 
   for (;;) {
-    if (index >= paquet.length) return null;
+    if (epuise()) return null;
     let code = lireCode(bitsCode);
     if (code === 2) return sortie.join('');
     if (code === 0 || code === 1) {
@@ -25457,15 +25499,25 @@ const CLE = 'cendres.save.v1';
 
 const MARQUE = 'CZ1|';
 
+// Le même texte revient souvent d'affilée : une action qui sauvegarde deux
+// fois dans la même heure de jeu, un moment ouvert qui suspend le temps, un
+// onglet à l'arrêt. On ne recompresse pas un texte déjà emballé à l'instant.
+let dernierClair = null;
+let dernierPaquet = null;
+
 /** Le texte tel qu'il part au stockage (ou dans un export à copier). */
 function emballer(txt) {
+  if (txt === dernierClair && dernierPaquet !== null) return dernierPaquet;
+  let paquet = txt;
   try {
     const z = comprimer(txt);
-    if (decomprimer(z) === txt) return MARQUE + z;
+    if (decomprimer(z) === txt) paquet = MARQUE + z;
   } catch (e) {
     // On écrit en clair : lourd, mais jamais faux.
   }
-  return txt;
+  dernierClair = txt;
+  dernierPaquet = paquet;
+  return paquet;
 }
 
 /** Le texte tel qu'on le relit — comprimé ou en clair, d'hier ou d'avant. */
