@@ -1215,17 +1215,15 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
 
 @media (max-width: 1099px) {
   #ecran.plein-carte { padding: 0; background: #05070a; }
-  /* La carte et le dock sont un bloc FIXE et OPAQUE : le contenu défile
-     DERRIÈRE eux et n'apparaît que dessous — jamais par-dessus la carte.
-     (La « feuille » qui montait sur la carte lisait comme un bug, pas comme
-     un geste : « quand on scroll il monte sur la map », le propriétaire.) */
+  /* TOUTE la page défile, carte comprise — comme les autres écrans. Le bloc
+     collant ne laissait qu'une bande minuscule pour lire (« ça scroll que
+     dans un tout petit espace », le propriétaire) ; la « feuille » d'avant
+     montait sur la carte. Les deux concepts sont retirés : la carte est un
+     bloc normal qui s'en va vers le haut quand on lit, et qu'on retrouve en
+     remontant. */
   #ecran.plein-carte > #flanc-carte {
-    position: sticky;
-    top: 0;
-    z-index: 3;
     background: #05070a;
     padding-bottom: 4px;
-    box-shadow: 0 8px 16px -10px rgba(0, 0, 0, .8);
   }
   /* `svh` et pas `dvh` : la hauteur dynamique CHANGE quand la barre d'adresse
      du téléphone se rétracte en plein défilement — la carte se redimensionnait
@@ -1400,10 +1398,12 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
     pointer-events: none;
   }
   /* Les jetons, eux, répondent au doigt — et portent leur propre fond. */
+  /* Les jetons portent un fond presque plein : les panneaux qui défilent
+     passent dessous, derrière le verre — jamais en collision de texte. */
   #racine.large-carte #barre-haut .hd-bloc,
   #racine.large-carte #barre-haut .vitesse {
     pointer-events: auto;
-    background: rgba(10, 12, 16, .74);
+    background: rgba(10, 12, 16, .88);
     border-color: rgba(78, 68, 52, .85);
     backdrop-filter: blur(6px);
   }
