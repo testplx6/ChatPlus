@@ -58,7 +58,10 @@ let rattrapageEnCours = false;
 function demarrerBoucle() {
   arreterBoucle();
   boucle = setInterval(() => {
-    if (!state || state.fin || rattrapageEnCours) return;
+    // Pas de `state.fin` ici : la fin est un état du récit, pas un frein —
+    // « le temps devrait continuer même quand tout le monde est mort ». Le
+    // moteur avait appris la règle, mais cette porte-ci gardait l'écran figé.
+    if (!state || rattrapageEnCours) return;
     const r = rattraper(state, Date.now());
     if (r.ticks > 0) rafraichir();
   }, 400);
@@ -788,7 +791,7 @@ if (sauvegarde) {
 // Ne jamais perdre une session parce que l'onglet est passé en arrière-plan.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') sauver();
-  else if (state && !state.fin) {
+  else if (state) {
     // Un onglet laissé de côté toute la nuit doit autant de temps qu'une
     // session rouverte : même chemin, même écran de rattrapage.
     reprendreLeTemps((r) => { if (r.total) { rafraichir(true); sauver(); } });

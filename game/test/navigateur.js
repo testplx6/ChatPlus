@@ -2336,6 +2336,42 @@ console.log('\n8 vicies semel. Recruter : le clic engage vraiment');
   await page.waitForTimeout(250);
 }
 
+console.log('\n8 vicies semel bis. La fin ne gèle pas l’horloge de l’écran');
+{
+  // « ça ne fonctionne pas sur la partie que j'avais en cours » — le
+  // propriétaire, après la règle du temps. Le moteur ne s'arrête plus, mais
+  // l'horloge temps réel de main.js refusait de battre dès que `state.fin`
+  // était posé : une partie éteinte restait figée à l'écran — sauvegarde
+  // ancienne ou partie neuve, même gel à la première extinction.
+  const eteinte = serialiser((() => {
+    const s = partieAvancee();
+    for (const g of s.player.groupes) {
+      for (const m of g.membres) {
+        m.etat = 'mort';
+        m.pv = 0;
+        // Déjà compté, comme dans le décor de la stèle : sans ça le premier
+        // tick ré-inscrirait ces morts au mémorial.
+        m._compte = true;
+      }
+    }
+    s.fin = 'extinction';
+    s.vitesse = 60;
+    s.dernierReel = Date.now();
+    return s;
+  })());
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), eteinte);
+  await page.evaluate(() => { window.__momentsAuto = false; });
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  const tFige = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).temps);
+  // La sauvegarde s'écrit toutes les 5 s : on attend au-delà, comme au § 2.
+  await page.waitForTimeout(6000);
+  const tApres = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).temps);
+  ok(tApres > tFige, 'le monde tourne à l’écran même quand tout le monde est mort',
+    `${tFige} → ${tApres}`);
+}
+
 console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit pas');
 {
   // Trois défauts d'usage rapportés ensemble : « régulièrement la page se
