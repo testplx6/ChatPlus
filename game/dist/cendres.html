@@ -1303,6 +1303,11 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
 /* Le dock d'ordres (direction A) : la rangée des verbes, posée sur le bas de
    la carte par un débord négatif — elle suit la carte collante, donc le geste
    reste sous le pouce pendant que la feuille défile. */
+/* La rangée « pour tous » des morts et des prisonniers : une décision, tout
+   le monde — les décisions à l'unité restent sur les fiches. */
+.rang-tous { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.rang-tous .act.mini { margin: 0; }
+
 /* La barre cible : le « Y aller » du secteur visé, collé sur le dock — le
    verbe le plus fréquent du jeu ne vit plus au fond d'un panneau à défiler. */
 #barre-cible {
@@ -1490,6 +1495,203 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
   <div id="modale" hidden></div>
   <noscript>Ce jeu a besoin de JavaScript : toute la simulation tourne dans votre navigateur.</noscript>
 <script type="module">
+// ===== src/lz.js =====================================================
+// Compression de texte pour le stockage local — maison, synchrone, zéro
+// dépendance, à la manière de LZ-string (variante « UTF-16 sûre »).
+//
+// Pourquoi elle existe : une partie NEUVE sérialise déjà à ~250 Ko et une
+// partie longue à 400 Ko et plus. Le quota du stockage local se ferme (la
+// sauvegarde ne s'écrit plus), et le texte d'export devient incollable sur un
+// téléphone — rapporté par le propriétaire, août 2026. Le JSON du monde est
+// extrêmement répétitif : la compression le divise par cinq à dix.
+//
+// Pourquoi synchrone : la sauvegarde part aussi sur `pagehide`, où rien
+// d'asynchrone ne finit. Pourquoi 15 bits par caractère décalés de 32 : chaque
+// caractère émis reste dans [32, 32799], loin des substituts UTF-16 — la
+// chaîne survit à localStorage, à JSON.stringify et au presse-papiers.
+//
+// La sûreté ne repose PAS sur la perfection de ce fichier : `emballer`
+// (save.js) décompresse et compare à l'original AVANT de retenir le paquet,
+// et écrit en clair au moindre écart. Un défaut ici coûte des octets, jamais
+// une partie.
+
+/** Compresse un texte en une chaîne UTF-16 sûre. */
+function comprimer(texte) {
+  if (texte == null || texte === '') return '';
+  const dico = new Map();
+  const naissants = new Map();
+  let tailleDico = 3;
+  // Largeur de code courante et compteur avant élargissement.
+  let bitsCode = 2;
+  let avantElargir = 2;
+  const sortie = [];
+  let tampon = 0;
+  let tamponBits = 0;
+
+  const emettreBit = (b) => {
+    tampon = (tampon << 1) | b;
+    if (tamponBits === 14) {
+      sortie.push(String.fromCharCode(tampon + 32));
+      tampon = 0;
+      tamponBits = 0;
+    } else tamponBits++;
+  };
+  // Les codes s'émettent bit de poids faible d'abord, comme à la lecture.
+  const emettreCode = (valeur, nbBits) => {
+    for (let i = 0; i < nbBits; i++) {
+      emettreBit(valeur & 1);
+      valeur >>= 1;
+    }
+  };
+  const compterEmission = () => {
+    avantElargir--;
+    if (avantElargir === 0) {
+      avantElargir = 1 << bitsCode;
+      bitsCode++;
+    }
+  };
+  // Un mot jamais émis se dit en clair : le code 0 annonce 8 bits, le code 1
+  // en annonce 16. Après quoi le mot a un code à lui.
+  const emettreMot = (mot) => {
+    if (naissants.has(mot)) {
+      const c = mot.charCodeAt(0);
+      if (c < 256) {
+        emettreCode(0, bitsCode);
+        emettreCode(c, 8);
+      } else {
+        emettreCode(1, bitsCode);
+        emettreCode(c, 16);
+      }
+      compterEmission();
+      naissants.delete(mot);
+    } else {
+      emettreCode(dico.get(mot), bitsCode);
+    }
+    compterEmission();
+  };
+
+  let mot = '';
+  for (let i = 0; i < texte.length; i++) {
+    const c = texte.charAt(i);
+    if (!dico.has(c)) {
+      dico.set(c, tailleDico++);
+      naissants.set(c, true);
+    }
+    const motC = mot + c;
+    if (dico.has(motC)) {
+      mot = motC;
+    } else {
+      emettreMot(mot);
+      dico.set(motC, tailleDico++);
+      mot = c;
+    }
+  }
+  if (mot !== '') emettreMot(mot);
+
+  // Le code 2 clôt le flux, puis on vide le tampon.
+  emettreCode(2, bitsCode);
+  for (;;) {
+    tampon <<= 1;
+    if (tamponBits === 14) {
+      sortie.push(String.fromCharCode(tampon + 32));
+      break;
+    }
+    tamponBits++;
+  }
+  return sortie.join('');
+}
+
+/** Décompresse ce que `comprimer` a produit. Rend null si le flux est faux. */
+function decomprimer(paquet) {
+  if (paquet == null || paquet === '') return '';
+  const dico = [];
+  let tailleDico = 4;
+  let bitsCode = 3;
+  let avantElargir = 4;
+  const sortie = [];
+
+  let index = 0;
+  let val = paquet.charCodeAt(0) - 32;
+  let masque = 16384; // bit de poids fort d'un caractère de 15 bits
+
+  const lireBit = () => {
+    const b = val & masque ? 1 : 0;
+    masque >>= 1;
+    if (masque === 0) {
+      masque = 16384;
+      val = index + 1 < paquet.length ? paquet.charCodeAt(++index) - 32 : 0;
+      if (index >= paquet.length) index = paquet.length;
+    }
+    return b;
+  };
+  const lireCode = (nbBits) => {
+    let v = 0;
+    for (let i = 0; i < nbBits; i++) v |= lireBit() << i;
+    return v;
+  };
+  const compterAjout = () => {
+    avantElargir--;
+    if (avantElargir === 0) {
+      avantElargir = 1 << bitsCode;
+      bitsCode++;
+    }
+  };
+
+  // Premier mot : forcément en clair.
+  const premier = lireCode(2);
+  if (premier === 2) return '';
+  const c0 = String.fromCharCode(lireCode(premier === 0 ? 8 : 16));
+  dico[3] = c0;
+  let mot = c0;
+  sortie.push(c0);
+
+  for (;;) {
+    if (index >= paquet.length) return null;
+    let code = lireCode(bitsCode);
+    if (code === 2) return sortie.join('');
+    if (code === 0 || code === 1) {
+      dico[tailleDico++] = String.fromCharCode(lireCode(code === 0 ? 8 : 16));
+      code = tailleDico - 1;
+      compterAjout();
+    }
+    let entree;
+    if (dico[code] !== undefined) entree = dico[code];
+    else if (code === tailleDico) entree = mot + mot.charAt(0);
+    else return null;
+    sortie.push(entree);
+    dico[tailleDico++] = mot + entree.charAt(0);
+    compterAjout();
+    mot = entree;
+    if (avantElargir === 0) {
+      avantElargir = 1 << bitsCode;
+      bitsCode++;
+    }
+  }
+}
+
+// Alias d'import
+const distanceCases = distance;
+const deboutDe = debout;
+const nivBat = niveau;
+const vivantsDe = vivants;
+const progresContrat = progres;
+const creditInfluence = credit;
+const toucherRationsA = toucherRations;
+const honorerService = honorer;
+const changerA = changer;
+const louerCoffreA = louerCoffre;
+const acheterCoffreA = acheterCoffre;
+const envoyerColonneA = envoyerColonne;
+const leverColonneA = leverColonne;
+const rappelerColonneA = rappelerColonne;
+const designerPlaceA = designerPlace;
+const accepterCouronneA = accepterCouronne;
+const refuserCouronneA = refuserCouronne;
+const fonderPosteA = fonderPoste;
+const fixerLoiA = fixerLoi;
+const accorderCreditA = accorderCredit;
+const battreMonnaieA = battreMonnaie;
+
 // ===== src/rng.js ====================================================
 // Générateur pseudo-aléatoire déterministe (mulberry32).
 // L'état tient dans un seul entier 32 bits : la sauvegarde est donc exacte,
@@ -1637,29 +1839,6 @@ function combienDeFois(rng, p, dt) {
   for (let i = 0; i < dt; i++) if (rng.f() < p) n += 1;
   return n;
 }
-
-// Alias d'import
-const distanceCases = distance;
-const deboutDe = debout;
-const nivBat = niveau;
-const vivantsDe = vivants;
-const progresContrat = progres;
-const creditInfluence = credit;
-const toucherRationsA = toucherRations;
-const honorerService = honorer;
-const changerA = changer;
-const louerCoffreA = louerCoffre;
-const acheterCoffreA = acheterCoffre;
-const envoyerColonneA = envoyerColonne;
-const leverColonneA = leverColonne;
-const rappelerColonneA = rappelerColonne;
-const designerPlaceA = designerPlace;
-const accepterCouronneA = accepterCouronne;
-const refuserCouronneA = refuserCouronne;
-const fonderPosteA = fonderPoste;
-const fixerLoiA = fixerLoi;
-const accorderCreditA = accorderCredit;
-const battreMonnaieA = battreMonnaie;
 
 // ===== src/data.js ===================================================
 // Données statiques du monde : marchandises, biomes, factions, bâtiments,
@@ -18549,6 +18728,28 @@ function disposer(state, g, captifId, quoi, log) {
   return { ok: false, motif: 'On ne fait pas ça.' };
 }
 
+/**
+ * La même décision pour tous les prisonniers — « pour le traitement des
+ * prisonniers ou des morts, il faut pouvoir appliquer la décision à tous »
+ * (le propriétaire, août 2026). Chacun passe par la porte de la décision à
+ * l'unité : mêmes prix, mêmes réputations, mêmes journaux. Une issue qui ne
+ * vaut pas pour l'un (pas de prime sur sa tête, pas d'acheteur) ne bloque
+ * pas les autres : on fait où l'on peut, et l'on rend le compte du reste.
+ */
+function disposerTous(state, g, quoi, log) {
+  const ids = prisonniersDe(g).map((c) => c.id);
+  if (!ids.length) return { ok: false, faits: 0, rates: 0, motif: 'Personne à garder.' };
+  let faits = 0;
+  let rates = 0;
+  let motif = null;
+  for (const id of ids) {
+    const r = disposer(state, g, id, quoi, log);
+    if (r.ok) faits++;
+    else { rates++; if (!motif) motif = r.motif; }
+  }
+  return { ok: faits > 0, faits, rates, motif };
+}
+
 // ---------------------------------------------------------------------------
 // La geôle
 // ---------------------------------------------------------------------------
@@ -18880,6 +19081,28 @@ function disposerCorps(state, g, id, quoi, log) {
   state.stats.enterres = (state.stats.enterres || 0) + 1;
   dire(`${c.nom} est en terre${col ? `, près de ${col.nom}` : ''}. On a pris le temps qu’il fallait.`);
   return { ok: true };
+}
+
+/**
+ * La même décision pour tous les corps portés — « pour le traitement des
+ * prisonniers ou des morts, il faut pouvoir appliquer la décision à tous »
+ * (le propriétaire, août 2026). Chacun passe par la porte de la décision à
+ * l'unité : mêmes coûts, mêmes journaux, mêmes gardes. Une issue qui ne vaut
+ * pas pour l'un (rien à dépouiller, pas d'acheteur) ne bloque pas les autres :
+ * on fait où l'on peut, et l'on rend le compte du reste.
+ */
+function disposerCorpsTous(state, g, quoi, log) {
+  const ids = depouillesDe(g).map((c) => c.id);
+  if (!ids.length) return { ok: false, faits: 0, rates: 0, motif: 'Personne à porter.' };
+  let faits = 0;
+  let rates = 0;
+  let motif = null;
+  for (const id of ids) {
+    const r = disposerCorps(state, g, id, quoi, log);
+    if (r.ok) faits++;
+    else { rates++; if (!motif) motif = r.motif; }
+  }
+  return { ok: faits > 0, faits, rates, motif };
 }
 
 // ===== src/secteur.js ================================================
@@ -25215,6 +25438,43 @@ function tickChapitres(state, log) {
 
 
 const CLE = 'cendres.save.v1';
+
+// ---------------------------------------------------------------------------
+// L'emballage : ce qui part au stockage est comprimé
+// ---------------------------------------------------------------------------
+//
+// Une partie neuve sérialise déjà à ~250 Ko, une partie longue à 400 Ko et
+// plus : le quota du stockage local finit par se fermer (« le système de
+// sauvegarde ne fonctionne pas, le fichier est trop gros pour le navigateur,
+// et aussi trop gros pour faire un copier-coller » — le propriétaire, août
+// 2026). Le JSON du monde se comprime par cinq à dix.
+//
+// La règle de sûreté, non négociable : on ne retient un paquet comprimé
+// qu'après l'avoir DÉCOMPRESSÉ et comparé à l'original au caractère près.
+// Au moindre écart, on écrit en clair — un défaut de compression coûte des
+// octets, jamais une partie. Et la lecture accepte les deux formats pour
+// toujours : les sauvegardes d'avant restent lisibles.
+
+const MARQUE = 'CZ1|';
+
+/** Le texte tel qu'il part au stockage (ou dans un export à copier). */
+function emballer(txt) {
+  try {
+    const z = comprimer(txt);
+    if (decomprimer(z) === txt) return MARQUE + z;
+  } catch (e) {
+    // On écrit en clair : lourd, mais jamais faux.
+  }
+  return txt;
+}
+
+/** Le texte tel qu'on le relit — comprimé ou en clair, d'hier ou d'avant. */
+function deballer(txt) {
+  if (txt == null) return txt;
+  if (!txt.startsWith(MARQUE)) return txt;
+  const clair = decomprimer(txt.slice(MARQUE.length));
+  return clair == null ? txt : clair;
+}
 /**
  * 2 : la carte est passée de 10×8 à 24×18.
  *
@@ -25570,7 +25830,7 @@ function sauvegardePerimee() {
   const txt = s.getItem(CLE);
   if (!txt) return false;
   try {
-    const brut = JSON.parse(txt);
+    const brut = JSON.parse(deballer(txt));
     return !!brut && brut.version !== VERSION;
   } catch (e) {
     return true;
@@ -25596,7 +25856,7 @@ function sauvegarder(state) {
         + 'n’est écrit et tout sera perdu en fermant l’onglet.',
     };
   }
-  const txt = serialiser(state);
+  const txt = emballer(serialiser(state));
   try {
     s.setItem(CLE, txt);
     return { ok: true, taille: txt.length };
@@ -25622,10 +25882,21 @@ function charger() {
   const txt = s.getItem(CLE);
   if (!txt) return null;
   try {
-    return deserialiser(txt);
+    return deserialiser(deballer(txt));
   } catch (e) {
     return null;
   }
+}
+
+/**
+ * Le texte en clair de la partie stockée — pour l'export à copier et pour le
+ * harnais de test, qui lit la sauvegarde sans connaître son emballage.
+ */
+function lireTexteSauvegarde(cle = CLE) {
+  const s = stockage();
+  if (!s) return null;
+  const txt = s.getItem(cle);
+  return txt == null ? null : deballer(txt);
 }
 
 function effacer() {
@@ -25752,7 +26023,7 @@ function enregistrerEmplacement(state, nom, id) {
   // réel suffit, et deux enregistrements dans la même milliseconde n'arrivent
   // pas quand c'est un doigt qui appuie.
   const clef = existant ? existant.id : `e${Date.now().toString(36)}`;
-  const txt = serialiser(state);
+  const txt = emballer(serialiser(state));
   try {
     s.setItem(PREFIXE + clef, txt);
   } catch (e) {
@@ -25779,7 +26050,7 @@ function chargerEmplacement(id) {
   const txt = s.getItem(PREFIXE + id);
   if (!txt) return null;
   try {
-    return deserialiser(txt);
+    return deserialiser(deballer(txt));
   } catch (e) {
     return null;
   }
@@ -25822,7 +26093,8 @@ function nomFichier(state) {
 function importerTexte(txt) {
   let brut;
   try {
-    brut = JSON.parse(txt);
+    // Un export comprimé se colle comme un export en clair.
+    brut = JSON.parse(deballer((txt || '').trim()));
   } catch (e) {
     return { ok: false, motif: 'Ce fichier n’est pas une sauvegarde lisible.' };
   }
@@ -29279,6 +29551,7 @@ function blocPrisonniers() {
     ? `<div class="aide">${e(col.nom)} : justice ${e(loi.peine.nom.toLowerCase())}${
       loi.esclavage ? ', et le commerce d’hommes y est légal' : ''}.</div>`
     : '<div class="aide">Hors ville : on ne peut ni les livrer, ni les vendre, ni les rançonner.</div>'}
+    ${blocDecisionTous(gens.map((c) => optionsPour(S, col, g, c)), 'captif-tous')}
     <div class="sep"></div>
     ${gens.map((c) => {
     const opts = optionsPour(S, col, g, c);
@@ -29296,6 +29569,26 @@ function blocPrisonniers() {
       </details>`;
   }).join('')}
   </section>`;
+}
+
+/**
+ * La rangée « pour tous » des morts et des prisonniers — « il faut pouvoir
+ * appliquer la décision à tous » (le propriétaire, août 2026). Une décision
+ * n'apparaît ici que si elle vaut pour au moins une personne ; le moteur fait
+ * où il peut et rend le compte du reste. À l'unité, rien ne change : les
+ * fiches gardent leurs boutons.
+ */
+function blocDecisionTous(parPersonne, action) {
+  if (parPersonne.length < 2) return '';
+  const vues = new Map();
+  for (const opts of parPersonne) {
+    for (const o of opts) if (!vues.has(o.key)) vues.set(o.key, o.nom);
+  }
+  if (!vues.size) return '';
+  return `<div class="aide" style="margin-top:6px">Pour tous, d’un seul geste :</div>
+    <div class="rang-tous">${[...vues].map(([k, nom]) =>
+    `<button class="act mini" data-a="${action}" data-k="${e(k)}">${e(nom)} — tous</button>`).join('')}
+    </div>`;
 }
 
 /**
@@ -29317,6 +29610,7 @@ function blocDepouilles() {
     <div class="aide">On les porte tant qu'on n'en a rien décidé.
       ${lenteur > 0.01 ? `Marche −${Math.round(lenteur * 100)} %.` : ''}
       Le moral s'en ressent, un peu plus chaque heure.</div>
+    ${blocDecisionTous(corps.map((c) => ritesPour(S, g, c)), 'corps-tous')}
     <div class="sep"></div>
     ${corps.map((c) => {
     const rites = ritesPour(S, g, c);
@@ -33185,6 +33479,24 @@ function surClic(ev) {
       break;
     }
 
+    case 'corps-tous': {
+      const r = ACTIONS.disposerCorpsTous(el.dataset.k);
+      toast(r.ok
+        ? `${r.faits} réglé${r.faits >= 2 ? 's' : ''}.${r.rates ? ` ${r.rates} pas pu : ${r.motif}` : ''}`
+        : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
+    case 'captif-tous': {
+      const r = ACTIONS.disposerPrisonniersTous(el.dataset.k);
+      toast(r.ok
+        ? `${r.faits} réglé${r.faits >= 2 ? 's' : ''}.${r.rates ? ` ${r.rates} pas pu : ${r.motif}` : ''}`
+        : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
     case 'corps': {
       const r = ACTIONS.disposerCorps(el.dataset.c, el.dataset.k);
       toast(r.ok
@@ -33860,7 +34172,9 @@ const API = {
   texteExport() {
     if (!state) return '';
     sauver();
-    return serialiser(state);
+    // Comprimé : c'est ce qui rend le copier-coller possible au téléphone —
+    // le texte en clair d'une partie longue ne se laissait plus sélectionner.
+    return emballer(serialiser(state));
   },
 
   /** Relire un fichier, et le poser directement comme partie en cours. */
@@ -33939,6 +34253,13 @@ const API = {
   disposerCorps(id, quoi) {
     const r = disposerCorps(state, groupeActif(state), id, quoi, creerLogger(state));
     sauver();
+    return r;
+  },
+
+  /** La même décision pour tous les corps portés, d'un seul geste. */
+  disposerCorpsTous(quoi) {
+    const r = disposerCorpsTous(state, groupeActif(state), quoi, creerLogger(state));
+    if (r.faits) sauver();
     return r;
   },
 
@@ -34211,6 +34532,13 @@ const API = {
     return r;
   },
 
+  /** La même décision pour tous les prisonniers, d'un seul geste. */
+  disposerPrisonniersTous(quoi) {
+    const r = disposerTous(state, groupeActif(state), quoi, creerLogger(state));
+    if (r.faits) { sauver(); rafraichir(true); }
+    return r;
+  },
+
   /** Laisser les habitants se placer eux-mêmes, ou tenir le tableau soi-même. */
   autoEmploi() {
     state.base.autoEmploi = state.base.autoEmploi === false;
@@ -34432,6 +34760,11 @@ function ecranRattrapage(r, fini) {
 }
 
 monterUI(API);
+
+// Le harnais de test lit la sauvegarde sans connaître son emballage : ce
+// crochet rend toujours le texte en clair, comprimée ou non. Ce n'est pas une
+// API de jeu — c'est une fenêtre d'atelier, comme `__momentsAuto`.
+if (typeof window !== 'undefined') window.__sauvegardeTexte = lireTexteSauvegarde;
 
 const sauvegarde = charger();
 if (sauvegarde) {

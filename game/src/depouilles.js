@@ -253,3 +253,25 @@ export function disposerCorps(state, g, id, quoi, log) {
   dire(`${c.nom} est en terre${col ? `, près de ${col.nom}` : ''}. On a pris le temps qu’il fallait.`);
   return { ok: true };
 }
+
+/**
+ * La même décision pour tous les corps portés — « pour le traitement des
+ * prisonniers ou des morts, il faut pouvoir appliquer la décision à tous »
+ * (le propriétaire, août 2026). Chacun passe par la porte de la décision à
+ * l'unité : mêmes coûts, mêmes journaux, mêmes gardes. Une issue qui ne vaut
+ * pas pour l'un (rien à dépouiller, pas d'acheteur) ne bloque pas les autres :
+ * on fait où l'on peut, et l'on rend le compte du reste.
+ */
+export function disposerCorpsTous(state, g, quoi, log) {
+  const ids = depouillesDe(g).map((c) => c.id);
+  if (!ids.length) return { ok: false, faits: 0, rates: 0, motif: 'Personne à porter.' };
+  let faits = 0;
+  let rates = 0;
+  let motif = null;
+  for (const id of ids) {
+    const r = disposerCorps(state, g, id, quoi, log);
+    if (r.ok) faits++;
+    else { rates++; if (!motif) motif = r.motif; }
+  }
+  return { ok: faits > 0, faits, rates, motif };
+}

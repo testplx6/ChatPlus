@@ -211,10 +211,10 @@ console.log('\n1 bis. Le dock d’ordres — les verbes vivent sur la carte (dir
 console.log('\n2. Ordres et temps réel');
 await page.click('[data-a="ordre"][data-k="fouille"]');
 await page.click('[data-a="vitesse"][data-v="16"]');
-const t0 = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).temps);
+const t0 = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
 await page.waitForTimeout(6000);
 await page.screenshot({ path: join(CAPTURES, '01-carte.png') });
-const t1 = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).temps);
+const t1 = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
 ok(t1 > t0, 'l’horloge avance en temps réel', `${t0} → ${t1}`);
 
 console.log('\n2 bis. La carte vivante (M1, ALLURE.md)');
@@ -386,12 +386,12 @@ ok(ressources['icone-180.png'] === 200 && ressources['icone.svg'] === 200, 'les 
 ok(ressources.display === 'standalone' && ressources.nbIcones >= 2, 'le manifeste déclare le plein écran et ses icônes');
 
 console.log('\n6. Persistance');
-const avantRechargement = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).temps);
+const avantRechargement = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
 await page.reload({ waitUntil: 'networkidle' });
 ok(await page.locator('[data-a="continuer"]').count() > 0, 'la reprise est proposée');
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte');
-const apresRechargement = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).temps);
+const apresRechargement = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
 ok(apresRechargement >= avantRechargement, 'la partie reprend là où elle en était',
   `${avantRechargement} → ${apresRechargement}`);
 
@@ -429,7 +429,7 @@ ok(await page.locator('[data-a="annuler"]').count() > filesAvant, 'un chantier s
   // `pagehide` et écraserait la modification. Même piège que partout ailleurs
   // dans ce fichier, et je viens d'y retomber.
   const auCamp = await page.evaluate(() => {
-    const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const s2 = JSON.parse(window.__sauvegardeTexte());
     s2.player.groupes[0].regionId = s2.base.regionId;
     s2.player.groupes[0].ordre = { type: 'repos' };
     return JSON.stringify(s2);
@@ -450,7 +450,7 @@ ok(await page.locator('[data-a="annuler"]').count() > filesAvant, 'un chantier s
     if (await dep.count()) {
       const cle = await dep.getAttribute('data-k');
       const lire = (k) => page.evaluate((x) => {
-        const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+        const s2 = JSON.parse(window.__sauvegardeTexte());
         return Math.floor(s2.player.groupes[0].inventaire[x] || 0);
       }, k);
       const avant = await lire(cle);
@@ -545,7 +545,7 @@ console.log('\n8 bis. Contenu de jeu : contrats, étal, sites');
     premierEcran.slice(0, 200).replace(/\n+/g, ' | '));
   // Seul, et les mains vides.
   const debut = await page.evaluate(() => {
-    const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const s2 = JSON.parse(window.__sauvegardeTexte());
     const g = s2.player.groupes[0];
     return {
       gens: g.membres.filter((c) => c.etat !== 'mort').length,
@@ -584,7 +584,7 @@ console.log('\n8 bis. Contenu de jeu : contrats, étal, sites');
     (await page.locator('#barre-haut').innerText()).replace(/\n+/g, ' | '));
   await page.screenshot({ path: join(CAPTURES, '00b-depart.png'), fullPage: true });
   const rep = await page.evaluate(
-    () => JSON.parse(localStorage.getItem('cendres.save.v1')).player.reputation);
+    () => JSON.parse(window.__sauvegardeTexte()).player.reputation);
   ok(Object.values(rep).every((v) => v === 0),
     'et personne ne vous connaît encore', JSON.stringify(rep));
 }
@@ -846,13 +846,13 @@ if ((await page.locator('[data-a="coffre-louer"]:not([disabled])').count()) > 0)
   ok((await page.locator('[data-a="coffre-deposer"]').count()) > 0,
     'et une fois loué, on peut y déposer');
   const dedansAvant = await page.evaluate(
-    () => Object.keys(JSON.parse(localStorage.getItem('cendres.save.v1')).player.coffres || {}).length);
+    () => Object.keys(JSON.parse(window.__sauvegardeTexte()).player.coffres || {}).length);
   ok(dedansAvant === 1, 'le coffre est bien enregistré', `${dedansAvant}`);
   if ((await page.locator('[data-a="coffre-deposer"]:not([disabled])').count()) > 0) {
     await page.click('[data-a="coffre-deposer"]:not([disabled])');
     await page.waitForTimeout(400);
     const contenu = await page.evaluate(() => {
-      const c = JSON.parse(localStorage.getItem('cendres.save.v1')).player.coffres;
+      const c = JSON.parse(window.__sauvegardeTexte()).player.coffres;
       const k = Object.keys(c)[0];
       return Object.values(c[k].contenu).reduce((a, b) => a + b, 0);
     });
@@ -869,13 +869,13 @@ if ((await page.locator('[data-a="coffre-louer"]:not([disabled])').count()) > 0)
   if (await cible1.count()) {
     const cle1 = await cible1.getAttribute('data-k');
     const sacAvant = await page.evaluate((k) => {
-      const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+      const s2 = JSON.parse(window.__sauvegardeTexte());
       return Math.floor(s2.player.groupes[0].inventaire[k] || 0);
     }, cle1);
     await cible1.click();
     await page.waitForTimeout(350);
     const sacApres = await page.evaluate((k) => {
-      const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+      const s2 = JSON.parse(window.__sauvegardeTexte());
       return Math.floor(s2.player.groupes[0].inventaire[k] || 0);
     }, cle1);
     ok(sacAvant - sacApres === 1,
@@ -895,7 +895,7 @@ await page.waitForTimeout(200);
   // effacé avant même d'avoir servi.
   await page.reload({ waitUntil: 'networkidle' });
   const posee = await page.evaluate(() => {
-    const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const s2 = JSON.parse(window.__sauvegardeTexte());
     const k = Object.keys(s2.player.bourse || {})[0]
       || Object.keys(s2.world.factions).find((x) => x !== 'essaim');
     s2.player.bourse = { [k]: 900 };
@@ -923,7 +923,7 @@ await page.waitForTimeout(200);
     await page.evaluate(() => document.querySelector('#ecran').textContent)),
   'une fois vu, il s’efface');
   const reste = await page.evaluate(
-    () => JSON.parse(localStorage.getItem('cendres.save.v1')).player.alertesMonnaie.length);
+    () => JSON.parse(window.__sauvegardeTexte()).player.alertesMonnaie.length);
   ok(reste === 0, 'et ça tient dans la sauvegarde', `${reste}`);
   await page.click('[data-a="onglet"][data-k="carte"]');
   await page.waitForTimeout(300);
@@ -955,11 +955,11 @@ await page.waitForTimeout(200);
   const bouton = page.locator('[data-a="change-faire"]:not([disabled])');
   if (await bouton.count()) {
     const avant = await page.evaluate(
-      () => JSON.parse(localStorage.getItem('cendres.save.v1')).player.bourse);
+      () => JSON.parse(window.__sauvegardeTexte()).player.bourse);
     await bouton.click();
     await page.waitForTimeout(450);
     const apres = await page.evaluate(
-      () => JSON.parse(localStorage.getItem('cendres.save.v1')).player.bourse);
+      () => JSON.parse(window.__sauvegardeTexte()).player.bourse);
     const bougé = Object.keys({ ...avant, ...apres })
       .filter((k) => Math.abs((apres[k] || 0) - (avant[k] || 0)) > 0.001);
     ok(bougé.length === 2, 'un change fait bouger deux monnaies, et deux seulement',
@@ -975,13 +975,13 @@ await page.waitForTimeout(400);
 const articles = await page.locator('[data-a="acheter-item"]').count();
 ok(articles > 0, 'l’armurier propose de l’équipement', `${articles} articles`);
 await page.screenshot({ path: join(CAPTURES, '09-etal.png') });
-const objetsAvant = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).player.groupes[0].objets.length);
+const objetsAvant = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).player.groupes[0].objets.length);
 const abordable = await page.locator('[data-a="acheter-item"]:not([disabled])').count();
 if (abordable) {
   await page.click('[data-a="acheter-item"]:not([disabled])');
   await page.waitForTimeout(500);
 }
-const objetsApres = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).player.groupes[0].objets.length);
+const objetsApres = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).player.groupes[0].objets.length);
 ok(!abordable || objetsApres > objetsAvant, 'un achat d’équipement arrive dans la réserve',
   `${objetsAvant} → ${objetsApres}`);
 await page.click('[data-a="fermer"]');
@@ -1022,7 +1022,7 @@ await page.waitForTimeout(300);
   await page.click('[data-a="onglet"][data-k="carte"]');
   await page.waitForTimeout(900);
   const attendus = await page.evaluate(() => {
-    const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const s = JSON.parse(window.__sauvegardeTexte());
     return s.world.colonies
       .filter((c) => s.world.regions[c.regionId].decouvert && !c.ruine)
       .map((c) => c.nom);
@@ -1252,10 +1252,10 @@ await page.screenshot({ path: join(CAPTURES, '09b-marche.png') });
     `${avant.replace(/\n/g, ' ')} → ${apres.replace(/\n/g, ' ')}`);
   // Le montant affiché doit être celui qu'on paie réellement.
   const promis = Number((apres.match(/([0-9]+)\s+\S+\s*$/) || [])[1] || 0);
-  const crAvant = await page.evaluate(() => { const s2 = JSON.parse(localStorage.getItem('cendres.save.v1')); return Object.values((s2.player.bourse) || {}).reduce((a, b) => a + b, 0); });
+  const crAvant = await page.evaluate(() => { const s2 = JSON.parse(window.__sauvegardeTexte()); return Object.values((s2.player.bourse) || {}).reduce((a, b) => a + b, 0); });
   await page.click('[data-a="acheter"]:not([disabled])');
   await page.waitForTimeout(500);
-  const crApres = await page.evaluate(() => { const s2 = JSON.parse(localStorage.getItem('cendres.save.v1')); return Object.values((s2.player.bourse) || {}).reduce((a, b) => a + b, 0); });
+  const crApres = await page.evaluate(() => { const s2 = JSON.parse(window.__sauvegardeTexte()); return Object.values((s2.player.bourse) || {}).reduce((a, b) => a + b, 0); });
   ok(promis > 0 && Math.abs((crAvant - crApres) - promis) <= 1,
     'et le prix annoncé est exactement le prix payé',
     `annoncé ${promis}, payé ${crAvant - crApres}`);
@@ -1286,7 +1286,7 @@ if (offres) {
   await page.click('[data-a="accepter"]');
   await page.waitForTimeout(600);
 }
-const pris = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).player.contrats.length);
+const pris = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).player.contrats.length);
 ok(pris > 0, 'un contrat accepté part en cours', `${pris} en cours`);
 await page.click('[data-a="onglet"][data-k="contrats"]');
 await page.waitForTimeout(400);
@@ -1303,7 +1303,7 @@ await page.screenshot({ path: join(CAPTURES, '11-contrats.png'), fullPage: true 
   // flèche) ; et « aucun délai » ne double jamais le « sans délai » que la
   // carte affiche déjà.
   const enCours = await page.evaluate(() => {
-    const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const s = JSON.parse(window.__sauvegardeTexte());
     const livr = s.player.contrats.find((c) => c.type === 'livraison');
     const dest = livr && s.world.colonies.find((c) => c.id === livr.destId);
     return { dest: dest ? dest.nom : null };
@@ -1341,7 +1341,7 @@ await page.screenshot({ path: join(CAPTURES, '11-contrats.png'), fullPage: true 
   'et il cite un prix relevé dans une ville, ou dit comment s’en procurer');
   // c. Plus aucun code de faction hors légende.
   const codes = await page.evaluate(() => {
-    const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const s = JSON.parse(window.__sauvegardeTexte());
     return Object.values(s.world.drapeaux).map((d) => d.court).filter(Boolean);
   });
   const restants = codes.filter((c) => new RegExp(`(^|[^A-ZÀ-Ý])${c}($|[^A-ZÀ-Ý])`).test(texteMonde));
@@ -1404,7 +1404,7 @@ console.log('     ' + ordres.map((o) => `${o.nom}:${o.rendement}${o.off ? '(off)
 
 console.log('\n8 ter. Monde vivant : climat, caravanes, villes qui bougent');
 const monde = await page.evaluate(() => {
-  const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const s = JSON.parse(window.__sauvegardeTexte());
   return {
     meteo: s.world.meteo && s.world.meteo.type,
     caravanes: (s.world.caravanes || []).length,
@@ -1435,13 +1435,13 @@ await page.waitForTimeout(250);
 await page.locator('[data-a="tache"][data-k="chasse"]').first().click();
 await page.waitForTimeout(400);
 const tacheOk = await page.evaluate(() => {
-  const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const s = JSON.parse(window.__sauvegardeTexte());
   return s.player.groupes.some((g) => g.membres.some((c) => c.tache && c.tache.type === 'chasse'));
 });
 ok(tacheOk, 'une tâche personnelle est enregistrée sur le membre');
 
 // Détachement : on coche quelqu'un, on le détache, on vérifie l'état.
-const avantGroupes = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).player.groupes.length);
+const avantGroupes = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).player.groupes.length);
 // L'encart « Détacher » naît replié depuis la refonte : on l'ouvre d'abord,
 // comme le ferait le joueur.
 await page.evaluate(() => {
@@ -1456,7 +1456,7 @@ ok(await boutonDetacher.count() > 0, 'le bouton de détachement s’active une f
 await boutonDetacher.first().click();
 await page.waitForTimeout(500);
 const apres = await page.evaluate(() => {
-  const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const s = JSON.parse(window.__sauvegardeTexte());
   return {
     n: s.player.groupes.length,
     membres: s.player.groupes.reduce((t, g) => t + g.membres.length, 0),
@@ -1472,7 +1472,7 @@ await page.screenshot({ path: join(CAPTURES, '15-groupes.png'), fullPage: true }
 await page.click('[data-a="onglet"][data-k="carte"]');
 await page.waitForTimeout(400);
 const marqueurs = await page.evaluate(() => {
-  const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const s = JSON.parse(window.__sauvegardeTexte());
   const c = document.querySelector('#carte');
   const ctx = c.getContext('2d');
   const L = s.world.largeur;
@@ -1498,7 +1498,7 @@ await page.waitForTimeout(300);
 // On bascule d'un groupe à l'autre : le point de vue suit.
 await page.locator('.grp').nth(1).click();
 await page.waitForTimeout(400);
-const bascule = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).player.groupeActif);
+const bascule = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).player.groupeActif);
 ok(!!bascule, 'on peut changer de groupe affiché');
 
 // Regrouper : les deux sont au même endroit, donc l'absorption est proposée.
@@ -1507,7 +1507,7 @@ ok(await fusion.count() > 0, 'le regroupement est proposé quand les groupes se 
 await fusion.first().click();
 await page.waitForTimeout(500);
 const refusion = await page.evaluate(() => {
-  const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const s = JSON.parse(window.__sauvegardeTexte());
   return { n: s.player.groupes.length, membres: s.player.groupes.reduce((t, g) => t + g.membres.length, 0) };
 });
 ok(refusion.n === avantGroupes, 'les groupes sont réunis', `${refusion.n}`);
@@ -1540,7 +1540,7 @@ ok(/en circulation/.test(textePol) && /émissions?/.test(textePol),
 ok(/Loyer de l’argent/.test(textePol), 'et le taux directeur, en toutes lettres');
 await page.screenshot({ path: join(CAPTURES, '22-politique.png'), fullPage: true });
 const guerresAffichees = await page.evaluate(() => {
-  const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const s = JSON.parse(window.__sauvegardeTexte());
   return { n: s.world.guerres.length, avecBut: s.world.guerres.filter((g) => g.but).length };
 });
 if (guerresAffichees.n > 0) {
@@ -1611,7 +1611,7 @@ ok(/Caractère/.test(texteVille) && /Vous concernant/.test(texteVille),
   'chacun a un caractère et une opinion sur vous');
 await page.screenshot({ path: join(CAPTURES, '21-ville.png'), fullPage: true });
 const notables = await page.evaluate(() => {
-  const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const s = JSON.parse(window.__sauvegardeTexte());
   const c = s.world.colonies.find((x) => x.notables && x.notables.length);
   return c ? { n: c.notables.length, ok: c.notables.every((p) => p.nom && p.age > 0) } : null;
 });
@@ -1687,7 +1687,7 @@ ok(/Accorder un crédit/.test(prerogs.texte), 'accorder un crédit aussi');
 
 // Ordonner : ça part, et ça ne coûte pas un point de service.
 const avantOrdre = await page.evaluate(() => {
-  const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const s2 = JSON.parse(window.__sauvegardeTexte());
   return {
     pts: s2.player.groupes[0].allegeance.points,
     armees: s2.world.armees.length,
@@ -1710,7 +1710,7 @@ if (aOrdonne) {
   await charge.locator('[data-a="ordonner"]').first().click();
   await page.waitForTimeout(600);
   const apresOrdre = await page.evaluate(() => {
-    const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const s2 = JSON.parse(window.__sauvegardeTexte());
     return {
       pts: s2.player.groupes[0].allegeance.points,
       actes: (s2.player.groupes[0].allegeance.actes || []).length,
@@ -1731,7 +1731,7 @@ if (aOrdonne) {
 
 // Le secteur : ce dont on répond tous les jours, affiché et dessiné.
 const secteurVu = await page.evaluate(() => {
-  const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const s2 = JSON.parse(window.__sauvegardeTexte());
   return {
     secteur: s2.player.groupes[0].allegeance.secteur,
     texte: document.querySelector('#ecran').textContent,
@@ -1744,7 +1744,7 @@ ok(/Relevé dans/.test(secteurVu.texte),
 
 // L'engagement est bien sur la colonne, pas sur le joueur.
 const ouEstLEngagement = await page.evaluate(() => {
-  const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const s2 = JSON.parse(window.__sauvegardeTexte());
   return { joueur: s2.player.allegeance === undefined, colonne: !!s2.player.groupes[0].allegeance };
 });
 ok(ouEstLEngagement.colonne && ouEstLEngagement.joueur,
@@ -1815,7 +1815,7 @@ ok(await page.locator('[data-a="captif"]').count() >= 2,
 await page.screenshot({ path: join(CAPTURES, '26-prisonniers.png'), fullPage: true });
 
 const crAvantCap = await page.evaluate(
-  () => { const s2 = JSON.parse(localStorage.getItem('cendres.save.v1')); return Object.values((s2.player.bourse) || {}).reduce((a, b) => a + b, 0); }
+  () => { const s2 = JSON.parse(window.__sauvegardeTexte()); return Object.values((s2.player.bourse) || {}).reduce((a, b) => a + b, 0); }
 );
 // On ouvre TOUS les panneaux, pas seulement le premier : le bouton « livrer »
 // n'appartient pas forcément au premier captif, et replié il existe dans le
@@ -1829,7 +1829,7 @@ if (await livrable.count()) {
   await livrable.click();
   await page.waitForTimeout(500);
   const apresCap = await page.evaluate(() => {
-    const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const s2 = JSON.parse(window.__sauvegardeTexte());
     const col = s2.world.colonies.find((c) => c.geole && c.geole.detenus.length);
     return { cr: Object.values((s2.player.bourse) || {}).reduce((a, b) => a + b, 0), geole: col ? col.geole.detenus.length : 0 };
   });
@@ -1871,7 +1871,7 @@ await page.waitForTimeout(500);
 // Depuis P2 (PROMESSES.md), la consigne est celle de la colonne affichée —
 // le repli global reste pour les colonnes sans consigne.
 const tacRetenue = await page.evaluate(() => {
-  const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const s = JSON.parse(window.__sauvegardeTexte());
   const avecConsigne = (s.player.groupes || []).find((g) => g.tactique);
   return avecConsigne ? avecConsigne.tactique : s.player.tactique;
 });
@@ -1944,7 +1944,7 @@ await page.click('[data-a="nouvelle"]');
 await page.waitForSelector('#carte');
 await page.waitForTimeout(400);
 const dims = await page.evaluate(() => {
-  const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const s2 = JSON.parse(window.__sauvegardeTexte());
   const cv = document.querySelector('#carte');
   return { l: s2.world.largeur, h: s2.world.hauteur, w: cv.width, ht: cv.height };
 });
@@ -2018,7 +2018,7 @@ await page.mouse.click(bb.x + bb.width * 0.5, bb.y + bb.height * 0.5);
 await page.mouse.click(bb.x + bb.width * 0.5, bb.y + bb.height * 0.5, { delay: 20 });
 await page.waitForTimeout(300);
 const recentre = await page.evaluate(() => {
-  const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const s2 = JSON.parse(window.__sauvegardeTexte());
   const g2 = s2.player.groupes[0];
   const bt = document.querySelector('#carte-boite');
   const cv = document.querySelector('#carte');
@@ -2038,7 +2038,7 @@ await page.screenshot({ path: join(CAPTURES, '24-carte-vaste.png'), fullPage: tr
   // Une case voisine du groupe, même rangée : visible puisque la vue vient
   // d'être recentrée sur lui, et différente de sa case à lui.
   const ou = await page.evaluate(() => {
-    const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const s2 = JSON.parse(window.__sauvegardeTexte());
     const g2 = s2.player.groupes[0];
     const L = s2.world.largeur;
     const x = g2.regionId % L;
@@ -2119,11 +2119,11 @@ await page.waitForTimeout(200);
 await page.screenshot({ path: join(CAPTURES, '23-service.png'), fullPage: true });
 ok(await page.locator('[data-a="honorer"]:not([disabled])').count() > 0,
   'on peut lui remettre la marchandise puisqu’on l’a');
-const creditsAv = await page.evaluate(() => { const s2 = JSON.parse(localStorage.getItem('cendres.save.v1')); return Object.values((s2.player.bourse) || {}).reduce((a, b) => a + b, 0); });
+const creditsAv = await page.evaluate(() => { const s2 = JSON.parse(window.__sauvegardeTexte()); return Object.values((s2.player.bourse) || {}).reduce((a, b) => a + b, 0); });
 await page.click('[data-a="honorer"]');
 await page.waitForTimeout(500);
 const apresServ = await page.evaluate(() => {
-  const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const s = JSON.parse(window.__sauvegardeTexte());
   const c = s.world.colonies.find((x) => x.notables && x.notables.some((p) => p.memoire && p.memoire.length));
   const p = c.notables.find((x) => x.memoire && x.memoire.length);
   return { credits: Object.values(s.player.bourse || {}).reduce((a, b) => a + b, 0),
@@ -2381,11 +2381,11 @@ console.log('\n8 vicies semel. Recruter : le clic engage vraiment');
   const bEngager = page.locator('[data-a="recruter"]:not([disabled])').first();
   ok(await bEngager.count() >= 1, 'la ville propose au moins une personne engageable');
   const avantN = await page.evaluate(
-    () => JSON.parse(localStorage.getItem('cendres.save.v1')).player.groupes[0].membres.length);
+    () => JSON.parse(window.__sauvegardeTexte()).player.groupes[0].membres.length);
   await bEngager.click();
   await page.waitForTimeout(600);
   const apresN = await page.evaluate(
-    () => JSON.parse(localStorage.getItem('cendres.save.v1')).player.groupes[0].membres.length);
+    () => JSON.parse(window.__sauvegardeTexte()).player.groupes[0].membres.length);
   ok(apresN === avantN + 1, 'cliquer « Engager » engage vraiment', `${avantN} → ${apresN}`);
   await page.click('[data-a="fermer"]');
   await page.waitForTimeout(250);
@@ -2419,12 +2419,72 @@ console.log('\n8 vicies semel bis. La fin ne gèle pas l’horloge de l’écran
   await page.evaluate(() => { window.__momentsAuto = false; });
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
-  const tFige = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).temps);
+  const tFige = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
   // La sauvegarde s'écrit toutes les 5 s : on attend au-delà, comme au § 2.
   await page.waitForTimeout(6000);
-  const tApres = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).temps);
+  const tApres = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
   ok(tApres > tFige, 'le monde tourne à l’écran même quand tout le monde est mort',
     `${tFige} → ${tApres}`);
+}
+
+console.log('\n8 vicies semel ter. Morts et prisonniers : la décision s’applique à tous');
+{
+  // « Pour le traitement des prisonniers ou des morts, il faut pouvoir
+  // appliquer la décision à tous » — le propriétaire. Décor : deux morts
+  // portés ET des prisonniers dans la même colonne ; un bouton par décision,
+  // pour tous d'un coup, à côté des décisions à l'unité.
+  const surTous = serialiser((() => {
+    const t = partieAvancee();
+    const g = groupeActif(t);
+    for (const m of g.membres.slice(0, 2)) {
+      m.etat = 'mort';
+      m.pv = 0;
+      m._compte = true;
+    }
+    const bande = genererBande(new Rng(31), 'bandits', 4, 1);
+    for (const c of bande.membres) { c.etat = 'ko'; c.corps.torse.pv = 0; }
+    fairePrisonniers(t, g, bande, capturables(g, bande), () => {});
+    t.vitesse = 1;
+    t.dernierReel = Date.now();
+    return t;
+  })());
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), surTous);
+  await page.evaluate(() => { window.__momentsAuto = true; });
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.waitForTimeout(600);
+  await page.click('[data-a="onglet"][data-k="escouade"]');
+  await page.waitForTimeout(400);
+
+  const avantTous = await page.evaluate(() => {
+    const s2 = JSON.parse(window.__sauvegardeTexte());
+    const g2 = s2.player.groupes[0];
+    return { morts: g2.membres.filter((m) => m.etat === 'mort').length, captifs: (g2.prisonniers || []).length };
+  });
+  ok(avantTous.morts === 2 && avantTous.captifs >= 2, 'décor : deux morts portés, des prisonniers',
+    JSON.stringify(avantTous));
+
+  const bEnterrer = page.locator('[data-a="corps-tous"][data-k="enterrer"]');
+  ok(await bEnterrer.count() === 1, 'le panneau des morts porte la décision « pour tous »');
+  if (await bEnterrer.count()) {
+    await bEnterrer.click();
+    await page.waitForTimeout(600);
+  }
+  const bRelacher = page.locator('[data-a="captif-tous"][data-k="relacher"]');
+  ok(await bRelacher.count() === 1, 'celui des prisonniers aussi');
+  if (await bRelacher.count()) {
+    await bRelacher.click();
+    await page.waitForTimeout(600);
+  }
+  const apresTous = await page.evaluate(() => {
+    const s2 = JSON.parse(window.__sauvegardeTexte());
+    const g2 = s2.player.groupes[0];
+    return { morts: g2.membres.filter((m) => m.etat === 'mort').length, captifs: (g2.prisonniers || []).length };
+  });
+  ok(apresTous.morts === 0 && apresTous.captifs === 0,
+    'deux décisions, et tout est réglé — enterrés, relâchés',
+    JSON.stringify(apresTous));
 }
 
 console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit pas');
@@ -2766,11 +2826,11 @@ console.log('\n8 nonies quater. Le comptoir, à l’écran');
   ok(/Escorte/.test(devis), 'et ce que la garde coûte aussi');
 
   const crAvant = await page.evaluate(
-    () => { const s2 = JSON.parse(localStorage.getItem('cendres.save.v1')); return Object.values((s2.player.bourse) || {}).reduce((a, b) => a + b, 0); });
+    () => { const s2 = JSON.parse(window.__sauvegardeTexte()); return Object.values((s2.player.bourse) || {}).reduce((a, b) => a + b, 0); });
   await page.click('[data-a="passer-ordre"]');
   await page.waitForTimeout(600);
   const apresOrdre = await page.evaluate(() => {
-    const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const s = JSON.parse(window.__sauvegardeTexte());
     return {
       credits: Object.values(s.player.bourse || {}).reduce((a, b) => a + b, 0),
       ferraille: Math.round(s.base.stock.ferraille || 0),
@@ -2835,7 +2895,7 @@ await page.screenshot({ path: join(CAPTURES, '20b-consignes.png') });
   await page.click('[data-a="onglet"][data-k="base"]');
   await page.waitForTimeout(400);
   const etatSec = await page.evaluate(() => {
-    const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const s = JSON.parse(window.__sauvegardeTexte());
     return {
       bio: s.base.stock.biomasse,
       recette: (s.base.recettes || {}).hydroponie,
@@ -2859,7 +2919,7 @@ ok(await plus.count() > 0, 'des postes sont ouverts et pourvoyables', `${await p
 await plus.first().click();
 await page.waitForTimeout(500);
 const apresPostes = await page.evaluate(() => {
-  const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const s = JSON.parse(window.__sauvegardeTexte());
   const p = s.base.postes || {};
   return { total: Object.values(p).reduce((a, b) => a + b, 0), pop: s.base.pop, auto: s.base.autoEmploi };
 });
@@ -2873,7 +2933,7 @@ ok(apresPostes.auto === false, 'et régler un poste prend la main sur l’embauc
   // celles-ci vérifient qu'aucune ne revient, et que l'écran explique la
   // troisième au lieu de la subir.
   const survit = await page.evaluate(() => {
-    const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const s = JSON.parse(window.__sauvegardeTexte());
     return JSON.parse(JSON.stringify(s.base.postes));
   });
   // Deux jours de jeu, à la vitesse la plus rapide.
@@ -2882,7 +2942,7 @@ ok(apresPostes.auto === false, 'et régler un poste prend la main sur l’embauc
   await page.click('[data-a="onglet"][data-k="base"]');
   await page.waitForTimeout(400);
   const apres = await page.evaluate(() => {
-    const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const s = JSON.parse(window.__sauvegardeTexte());
     return { postes: s.base.postes, temps: s.temps, texte: document.querySelector('#ecran').textContent };
   });
   const identique = Object.keys(survit).every((k) => apres.postes[k] === survit[k]);
@@ -2924,7 +2984,7 @@ if (await former.count() > 0) {
   await former.first().click();
   await page.waitForTimeout(500);
   const etat = await page.evaluate(() => {
-    const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const s = JSON.parse(window.__sauvegardeTexte());
     const gens = s.player.groupes.flatMap((g) => g.membres);
     return {
       eleves: gens.filter((c) => c.formation && c.formation.maison).length,
@@ -2967,7 +3027,7 @@ ok(await inscriptible.count() > 0, 'quelqu’un peut s’inscrire');
 await inscriptible.first().click();
 await page.waitForTimeout(500);
 const apresInscription = await page.evaluate(() => {
-  const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const s = JSON.parse(window.__sauvegardeTexte());
   const gens = s.player.groupes.flatMap((g) => g.membres);
   return {
     enFormation: gens.filter((c) => c.formation).length,
@@ -3019,7 +3079,7 @@ await page.screenshot({ path: join(CAPTURES, '17-connaissance.png'), fullPage: t
 await page.click('[data-a="onglet"][data-k="carte"]');
 await page.waitForTimeout(300);
 const jamaisVue = await page.evaluate(() => {
-  const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+  const s = JSON.parse(window.__sauvegardeTexte());
   const connues = new Set(Object.keys(s.connaissance.colonies));
   const c = s.world.colonies.find((x) => !connues.has(x.id));
   return c ? c.regionId : null;
@@ -3029,7 +3089,7 @@ if (jamaisVue != null) {
   await page.evaluate((rid) => {
     const cv = document.querySelector('#carte');
     const boite = cv.parentElement;
-    const s2 = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const s2 = JSON.parse(window.__sauvegardeTexte());
     const L = s2.world.largeur;
     const CELL = Math.round(cv.width / L);
     // La carte défile maintenant : il faut amener la case dans la fenêtre avant
@@ -3067,7 +3127,7 @@ await page.evaluate((txt) => {
   s.dernierReel = Date.now() - 4 * 3600 * 1000;
   localStorage.setItem('cendres.save.v1', JSON.stringify(s));
 }, veilleTxt);
-const tAvant = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).temps);
+const tAvant = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('.rattrapage', { timeout: 5000 });
 ok(true, 'l’écran de rattrapage s’affiche');
@@ -3099,7 +3159,7 @@ await page.waitForSelector('.rattrapage', { state: 'detached', timeout: 120000 }
 // ne cadence pas `requestAnimationFrame` comme un vrai navigateur, et trente
 // secondes n'y suffisent pas toujours.
 await page.waitForSelector('#carte', { timeout: 60000 });
-const tApres = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).temps);
+const tApres = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
 ok(tApres - tAvant > 2000, 'le temps passé a bien été rejoué', `${tAvant} → ${tApres} h`);
 
 // Deux ans rejoués derrière une barre de progression, puis la main rendue sans
@@ -3125,7 +3185,7 @@ ok(tApres - tAvant > 2000, 'le temps passé a bien été rejoué', `${tAvant} �
   await page.waitForTimeout(300);
   ok(await page.locator('#modale').isHidden(), 'et il se referme quand on l’a lu');
   const encore = await page.evaluate(
-    () => JSON.parse(localStorage.getItem('cendres.save.v1')).rapport);
+    () => JSON.parse(window.__sauvegardeTexte()).rapport);
   ok(!encore, 'il ne revient pas au chargement suivant : on l’a lu une fois');
 }
 
@@ -3182,7 +3242,7 @@ console.log('\n8 septies. Sauvegardes : plusieurs parties côte à côte');
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   const enVie = await page.evaluate(
-    () => !JSON.parse(localStorage.getItem('cendres.save.v1')).fin);
+    () => !JSON.parse(window.__sauvegardeTexte()).fin);
   ok(enVie, 'la partie de départ est bien en cours');
 
   await page.click('[data-a="modale"][data-m="sauvegardes"]');
@@ -3212,7 +3272,8 @@ console.log('\n8 septies. Sauvegardes : plusieurs parties côte à côte');
   // d'après.
   const tCopie = await page.evaluate(() => {
     const i = JSON.parse(localStorage.getItem('cendres.emplacements.v1'))[0];
-    return JSON.parse(localStorage.getItem(`cendres.emp.${i.id}`)).temps;
+    // Les copies aussi partent comprimées : on lit par le crochet d'atelier.
+    return JSON.parse(window.__sauvegardeTexte(`cendres.emp.${i.id}`)).temps;
   });
   await page.click('[data-a="fermer"]');
   await page.click('[data-a="vitesse"][data-v="60"]');
@@ -3221,7 +3282,7 @@ console.log('\n8 septies. Sauvegardes : plusieurs parties côte à côte');
   // relevait deux fois le même chiffre.
   await page.waitForTimeout(7000);
   const tPlusTard = await page.evaluate(() => JSON.parse(
-    localStorage.getItem('cendres.save.v1')).temps);
+    window.__sauvegardeTexte()).temps);
   ok(tPlusTard > tCopie, 'la partie a avancé depuis la copie',
     `${tCopie} → ${tPlusTard}`);
 
@@ -3234,7 +3295,7 @@ console.log('\n8 septies. Sauvegardes : plusieurs parties côte à côte');
   await page.click('[data-a="charger-emp"]');
   await page.waitForTimeout(700);
   const tRevenu = await page.evaluate(() => JSON.parse(
-    localStorage.getItem('cendres.save.v1')).temps);
+    window.__sauvegardeTexte()).temps);
   ok(Math.abs(tRevenu - tCopie) < 60,
     'charger une copie ramène la partie à son heure',
     `copie ${tCopie} · partie ${tPlusTard} · après chargement ${tRevenu}`);
@@ -3348,8 +3409,11 @@ console.log('\n8 undecies bis. Le jeu enfermé dans une page isolée');
     await f.locator('[data-a="exporter-partie"]').click();
     await bac.waitForTimeout(600);
     const txt = await f.locator('#texte-partie').inputValue().catch(() => '');
-    ok(txt.length > 50000, 'exporter donne le texte de la partie, téléchargement ou non',
-      `${(txt.length / 1024).toFixed(0)} Ko`);
+    // L'export part désormais COMPRIMÉ (marqué CZ1|) : c'est ce qui rend le
+    // copier-coller possible au téléphone. Petit, marqué, et pas vide.
+    ok(txt.length > 3000 && (txt.startsWith('CZ1|') || txt.trim().startsWith('{')),
+      'exporter donne la partie — comprimée, donc collable',
+      `${(txt.length / 1024).toFixed(0)} Ko, tête « ${txt.slice(0, 4)} »`);
 
     await f.locator('[data-a="suppr-emp"]').first().click();
     await bac.waitForTimeout(300);
@@ -3452,7 +3516,7 @@ console.log('\n8 vicies quinquies. Les grands moments (M2, ALLURE.md)');
   await page.waitForTimeout(250);
   ok(await page.evaluate(() => !document.querySelector('#moment')), 'un tap le referme');
   const revu = await page.evaluate(() => {
-    const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const s = JSON.parse(window.__sauvegardeTexte());
     const chron = s.journal.filter((x) => x.type === 'chronique');
     return chron.length > 0 && chron[chron.length - 1].momentVu === true;
   });
@@ -3540,9 +3604,9 @@ console.log('\n8 vicies quinquies. Les grands moments (M2, ALLURE.md)');
   // Premier relevé APRÈS un cycle de sauvegarde (5 s) : la sauvegarde reflète
   // alors l'état gelé, pas un reste d'avant l'ouverture.
   await page.waitForTimeout(5500);
-  const tA = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).temps);
+  const tA = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
   await page.waitForTimeout(6000);
-  const tB = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).temps);
+  const tB = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
   ok(tB === tA, 'la stèle ouverte, l’horloge cesse de consommer le monde — à ×60',
     `${tA} → ${tB}`);
   // Fermer UNE stèle peut en ouvrir une autre (la file), qui gèle à son tour :
@@ -3550,7 +3614,7 @@ console.log('\n8 vicies quinquies. Les grands moments (M2, ALLURE.md)');
   // referme toute la file — et le temps doit repartir.
   await page.evaluate(() => { window.__momentsAuto = true; });
   await page.waitForTimeout(6500);
-  const tC = await page.evaluate(() => JSON.parse(localStorage.getItem('cendres.save.v1')).temps);
+  const tC = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
   ok(tC > tB, 'la file refermée, le temps repart', `${tB} → ${tC}`);
 }
 {
@@ -3604,7 +3668,7 @@ console.log('\n8 vicies sexies. La carte-affiche (G1, ALLURE.md)');
   const g1 = await page.evaluate(() => {
     const c = document.querySelector('#carte');
     const g = c.getContext('2d');
-    const s = JSON.parse(localStorage.getItem('cendres.save.v1'));
+    const s = JSON.parse(window.__sauvegardeTexte());
     const CELL = c.width / s.world.largeur;
     const lit = (r) => {
       const d = g.getImageData(Math.round(r.x * CELL) + 1, Math.round(r.y * CELL) + 1,

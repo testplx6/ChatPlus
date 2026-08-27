@@ -8,8 +8,46 @@ import { groupeVide } from './groupes.js';
 import { grainDe } from './rng.js';
 import { creerConnaissance } from './connaissance.js';
 import { MENAGES } from './data.js';
+import { comprimer, decomprimer } from './lz.js';
 
 export const CLE = 'cendres.save.v1';
+
+// ---------------------------------------------------------------------------
+// L'emballage : ce qui part au stockage est comprimé
+// ---------------------------------------------------------------------------
+//
+// Une partie neuve sérialise déjà à ~250 Ko, une partie longue à 400 Ko et
+// plus : le quota du stockage local finit par se fermer (« le système de
+// sauvegarde ne fonctionne pas, le fichier est trop gros pour le navigateur,
+// et aussi trop gros pour faire un copier-coller » — le propriétaire, août
+// 2026). Le JSON du monde se comprime par cinq à dix.
+//
+// La règle de sûreté, non négociable : on ne retient un paquet comprimé
+// qu'après l'avoir DÉCOMPRESSÉ et comparé à l'original au caractère près.
+// Au moindre écart, on écrit en clair — un défaut de compression coûte des
+// octets, jamais une partie. Et la lecture accepte les deux formats pour
+// toujours : les sauvegardes d'avant restent lisibles.
+
+const MARQUE = 'CZ1|';
+
+/** Le texte tel qu'il part au stockage (ou dans un export à copier). */
+export function emballer(txt) {
+  try {
+    const z = comprimer(txt);
+    if (decomprimer(z) === txt) return MARQUE + z;
+  } catch (e) {
+    // On écrit en clair : lourd, mais jamais faux.
+  }
+  return txt;
+}
+
+/** Le texte tel qu'on le relit — comprimé ou en clair, d'hier ou d'avant. */
+export function deballer(txt) {
+  if (txt == null) return txt;
+  if (!txt.startsWith(MARQUE)) return txt;
+  const clair = decomprimer(txt.slice(MARQUE.length));
+  return clair == null ? txt : clair;
+}
 /**
  * 2 : la carte est passée de 10×8 à 24×18.
  *
@@ -365,7 +403,7 @@ export function sauvegardePerimee() {
   const txt = s.getItem(CLE);
   if (!txt) return false;
   try {
-    const brut = JSON.parse(txt);
+    const brut = JSON.parse(deballer(txt));
     return !!brut && brut.version !== VERSION;
   } catch (e) {
     return true;
@@ -391,7 +429,7 @@ export function sauvegarder(state) {
         + 'n’est écrit et tout sera perdu en fermant l’onglet.',
     };
   }
-  const txt = serialiser(state);
+  const txt = emballer(serialiser(state));
   try {
     s.setItem(CLE, txt);
     return { ok: true, taille: txt.length };
@@ -417,10 +455,21 @@ export function charger() {
   const txt = s.getItem(CLE);
   if (!txt) return null;
   try {
-    return deserialiser(txt);
+    return deserialiser(deballer(txt));
   } catch (e) {
     return null;
   }
+}
+
+/**
+ * Le texte en clair de la partie stockée — pour l'export à copier et pour le
+ * harnais de test, qui lit la sauvegarde sans connaître son emballage.
+ */
+export function lireTexteSauvegarde(cle = CLE) {
+  const s = stockage();
+  if (!s) return null;
+  const txt = s.getItem(cle);
+  return txt == null ? null : deballer(txt);
 }
 
 export function effacer() {
@@ -547,7 +596,7 @@ export function enregistrerEmplacement(state, nom, id) {
   // réel suffit, et deux enregistrements dans la même milliseconde n'arrivent
   // pas quand c'est un doigt qui appuie.
   const clef = existant ? existant.id : `e${Date.now().toString(36)}`;
-  const txt = serialiser(state);
+  const txt = emballer(serialiser(state));
   try {
     s.setItem(PREFIXE + clef, txt);
   } catch (e) {
@@ -574,7 +623,7 @@ export function chargerEmplacement(id) {
   const txt = s.getItem(PREFIXE + id);
   if (!txt) return null;
   try {
-    return deserialiser(txt);
+    return deserialiser(deballer(txt));
   } catch (e) {
     return null;
   }
@@ -617,7 +666,8 @@ export function nomFichier(state) {
 export function importerTexte(txt) {
   let brut;
   try {
-    brut = JSON.parse(txt);
+    // Un export comprimé se colle comme un export en clair.
+    brut = JSON.parse(deballer((txt || '').trim()));
   } catch (e) {
     return { ok: false, motif: 'Ce fichier n’est pas une sauvegarde lisible.' };
   }

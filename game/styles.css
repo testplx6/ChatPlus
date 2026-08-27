@@ -1285,6 +1285,11 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
 /* Le dock d'ordres (direction A) : la rangée des verbes, posée sur le bas de
    la carte par un débord négatif — elle suit la carte collante, donc le geste
    reste sous le pouce pendant que la feuille défile. */
+/* La rangée « pour tous » des morts et des prisonniers : une décision, tout
+   le monde — les décisions à l'unité restent sur les fiches. */
+.rang-tous { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.rang-tous .act.mini { margin: 0; }
+
 /* La barre cible : le « Y aller » du secteur visé, collé sur le dock — le
    verbe le plus fréquent du jeu ne vit plus au fond d'un panneau à défiler. */
 #barre-cible {

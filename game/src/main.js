@@ -7,6 +7,7 @@ import {
   listerEmplacements, enregistrerEmplacement, chargerEmplacement,
   supprimerEmplacement, renommerEmplacement, poidsEmplacements,
   serialiser, importerTexte, nomFichier, resumeSauvegarde,
+  emballer, lireTexteSauvegarde,
 } from './save.js';
 import { monterUI, rafraichir, attacherEtat, rendreAccueil, ouvrirOnglet } from './ui.js';
 import { Rng, seedFromString } from './rng.js';
@@ -27,7 +28,7 @@ import {
 import { verifierExercice } from './squad.js';
 import { honorer as honorerService } from './services.js';
 import { acheterBete, vendreBete } from './betes.js';
-import { disposerCorps } from './depouilles.js';
+import { disposerCorps, disposerCorpsTous } from './depouilles.js';
 import { changer as changerA } from './economy.js';
 import {
   louerCoffre as louerCoffreA, acheterCoffre as acheterCoffreA,
@@ -43,7 +44,7 @@ import {
   accorderCredit as accorderCreditA, battreMonnaie as battreMonnaieA,
   ouvrirBourseA, signerAccordAvec, rompreAccordAvec,
 } from './influence.js';
-import { disposer } from './justice.js';
+import { disposer, disposerTous } from './justice.js';
 
 let state = null;
 let boucle = null;
@@ -220,7 +221,9 @@ const API = {
   texteExport() {
     if (!state) return '';
     sauver();
-    return serialiser(state);
+    // Comprimé : c'est ce qui rend le copier-coller possible au téléphone —
+    // le texte en clair d'une partie longue ne se laissait plus sélectionner.
+    return emballer(serialiser(state));
   },
 
   /** Relire un fichier, et le poser directement comme partie en cours. */
@@ -299,6 +302,13 @@ const API = {
   disposerCorps(id, quoi) {
     const r = disposerCorps(state, groupeActif(state), id, quoi, creerLogger(state));
     sauver();
+    return r;
+  },
+
+  /** La même décision pour tous les corps portés, d'un seul geste. */
+  disposerCorpsTous(quoi) {
+    const r = disposerCorpsTous(state, groupeActif(state), quoi, creerLogger(state));
+    if (r.faits) sauver();
     return r;
   },
 
@@ -571,6 +581,13 @@ const API = {
     return r;
   },
 
+  /** La même décision pour tous les prisonniers, d'un seul geste. */
+  disposerPrisonniersTous(quoi) {
+    const r = disposerTous(state, groupeActif(state), quoi, creerLogger(state));
+    if (r.faits) { sauver(); rafraichir(true); }
+    return r;
+  },
+
   /** Laisser les habitants se placer eux-mêmes, ou tenir le tableau soi-même. */
   autoEmploi() {
     state.base.autoEmploi = state.base.autoEmploi === false;
@@ -792,6 +809,11 @@ function ecranRattrapage(r, fini) {
 }
 
 monterUI(API);
+
+// Le harnais de test lit la sauvegarde sans connaître son emballage : ce
+// crochet rend toujours le texte en clair, comprimée ou non. Ce n'est pas une
+// API de jeu — c'est une fenêtre d'atelier, comme `__momentsAuto`.
+if (typeof window !== 'undefined') window.__sauvegardeTexte = lireTexteSauvegarde;
 
 const sauvegarde = charger();
 if (sauvegarde) {

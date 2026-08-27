@@ -21,6 +21,8 @@ const FRAGMENT = iFragment >= 0 ? process.argv[iFragment + 1] : null;
 
 // Ordre des dépendances : un module ne cite que ceux qui le précèdent.
 const MODULES = [
+  // La compression du stockage : ne dépend de rien, save.js s'en sert.
+  'lz.js',
   'rng.js',
   'data.js',
   'climat.js',

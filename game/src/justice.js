@@ -472,6 +472,28 @@ export function disposer(state, g, captifId, quoi, log) {
   return { ok: false, motif: 'On ne fait pas ça.' };
 }
 
+/**
+ * La même décision pour tous les prisonniers — « pour le traitement des
+ * prisonniers ou des morts, il faut pouvoir appliquer la décision à tous »
+ * (le propriétaire, août 2026). Chacun passe par la porte de la décision à
+ * l'unité : mêmes prix, mêmes réputations, mêmes journaux. Une issue qui ne
+ * vaut pas pour l'un (pas de prime sur sa tête, pas d'acheteur) ne bloque
+ * pas les autres : on fait où l'on peut, et l'on rend le compte du reste.
+ */
+export function disposerTous(state, g, quoi, log) {
+  const ids = prisonniersDe(g).map((c) => c.id);
+  if (!ids.length) return { ok: false, faits: 0, rates: 0, motif: 'Personne à garder.' };
+  let faits = 0;
+  let rates = 0;
+  let motif = null;
+  for (const id of ids) {
+    const r = disposer(state, g, id, quoi, log);
+    if (r.ok) faits++;
+    else { rates++; if (!motif) motif = r.motif; }
+  }
+  return { ok: faits > 0, faits, rates, motif };
+}
+
 // ---------------------------------------------------------------------------
 // La geôle
 // ---------------------------------------------------------------------------

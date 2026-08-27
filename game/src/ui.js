@@ -2706,6 +2706,7 @@ function blocPrisonniers() {
     ? `<div class="aide">${e(col.nom)} : justice ${e(loi.peine.nom.toLowerCase())}${
       loi.esclavage ? ', et le commerce d’hommes y est légal' : ''}.</div>`
     : '<div class="aide">Hors ville : on ne peut ni les livrer, ni les vendre, ni les rançonner.</div>'}
+    ${blocDecisionTous(gens.map((c) => optionsPour(S, col, g, c)), 'captif-tous')}
     <div class="sep"></div>
     ${gens.map((c) => {
     const opts = optionsPour(S, col, g, c);
@@ -2723,6 +2724,26 @@ function blocPrisonniers() {
       </details>`;
   }).join('')}
   </section>`;
+}
+
+/**
+ * La rangée « pour tous » des morts et des prisonniers — « il faut pouvoir
+ * appliquer la décision à tous » (le propriétaire, août 2026). Une décision
+ * n'apparaît ici que si elle vaut pour au moins une personne ; le moteur fait
+ * où il peut et rend le compte du reste. À l'unité, rien ne change : les
+ * fiches gardent leurs boutons.
+ */
+function blocDecisionTous(parPersonne, action) {
+  if (parPersonne.length < 2) return '';
+  const vues = new Map();
+  for (const opts of parPersonne) {
+    for (const o of opts) if (!vues.has(o.key)) vues.set(o.key, o.nom);
+  }
+  if (!vues.size) return '';
+  return `<div class="aide" style="margin-top:6px">Pour tous, d’un seul geste :</div>
+    <div class="rang-tous">${[...vues].map(([k, nom]) =>
+    `<button class="act mini" data-a="${action}" data-k="${e(k)}">${e(nom)} — tous</button>`).join('')}
+    </div>`;
 }
 
 /**
@@ -2744,6 +2765,7 @@ function blocDepouilles() {
     <div class="aide">On les porte tant qu'on n'en a rien décidé.
       ${lenteur > 0.01 ? `Marche −${Math.round(lenteur * 100)} %.` : ''}
       Le moral s'en ressent, un peu plus chaque heure.</div>
+    ${blocDecisionTous(corps.map((c) => ritesPour(S, g, c)), 'corps-tous')}
     <div class="sep"></div>
     ${corps.map((c) => {
     const rites = ritesPour(S, g, c);
@@ -6608,6 +6630,24 @@ function surClic(ev) {
       const r = ACTIONS.coffre(col && col.id, el.dataset.k, depose, qteTransfert);
       if (!r.ok) toast(r.motif, true);
       rendreModale();
+      rafraichir(true);
+      break;
+    }
+
+    case 'corps-tous': {
+      const r = ACTIONS.disposerCorpsTous(el.dataset.k);
+      toast(r.ok
+        ? `${r.faits} réglé${r.faits >= 2 ? 's' : ''}.${r.rates ? ` ${r.rates} pas pu : ${r.motif}` : ''}`
+        : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
+    case 'captif-tous': {
+      const r = ACTIONS.disposerPrisonniersTous(el.dataset.k);
+      toast(r.ok
+        ? `${r.faits} réglé${r.faits >= 2 ? 's' : ''}.${r.rates ? ` ${r.rates} pas pu : ${r.motif}` : ''}`
+        : r.motif, !r.ok);
       rafraichir(true);
       break;
     }

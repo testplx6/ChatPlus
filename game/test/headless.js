@@ -8,7 +8,10 @@ import {
 import { Rng, grainDe, combienDeFois } from '../src/rng.js';
 import { mesurerTick, CHAUFFE, MESURE } from './perf.js';
 import { lireRapport, MARQUANTS_MAX } from '../src/rapport.js';
-import { serialiser, deserialiser, normaliser } from '../src/save.js';
+import {
+  serialiser, deserialiser, normaliser, emballer, deballer, importerTexte,
+} from '../src/save.js';
+import { comprimer, decomprimer } from '../src/lz.js';
 import {
   COMMODITY_KEYS, DIPLO_FACTIONS, FACTIONS, drapeauDe as identiteDe,
   couleurNeuve, teinteDe, satDe, diploDe, reconnue,
@@ -97,6 +100,7 @@ import {
 } from '../src/recrues.js';
 import {
   capturables, fairePrisonniers, prisonniersDe, capaciteGarde, disposer,
+  disposerTous,
   surveillanceManquante, lenteurPrisonniers, tickPrisonniers, tickGeole,
   geoleDe, apaisementGeole, tickOrdrePublic,
 } from '../src/justice.js';
@@ -106,7 +110,7 @@ import {
 } from '../src/lois.js';
 import {
   depouillesDe, lenteurDepouilles, poidsMoral, disposerCorps, prixOrganes,
-  effetsDe, ritesPour,
+  effetsDe, ritesPour, disposerCorpsTous,
 } from '../src/depouilles.js';
 import {
   coffreDe, peutLouer, peutAcheter, louerCoffre, acheterCoffre, capaciteCoffre,
@@ -509,6 +513,54 @@ avancer(s3, 200);
 avancer(s3b, 200);
 ok(serialiser(s3) === serialiser(s3b), 'la sim reprend à l’identique après rechargement');
 
+section('3 bis. La sauvegarde comprimée — le stockage n’étouffe plus');
+{
+  // « Le système de sauvegarde ne fonctionne pas, le fichier est trop gros
+  // pour le navigateur, et aussi trop gros pour faire un copier-coller » —
+  // le propriétaire. Mesuré : une partie NEUVE sérialise déjà à ~250 Ko, une
+  // partie longue à 400+ Ko — le quota du stockage local se ferme, et le
+  // texte d'export devient incollable au téléphone. Ce qui part au stockage
+  // est donc comprimé (LZ maison, synchrone, zéro dépendance), et la lecture
+  // accepte les deux formats — les vieilles sauvegardes en clair restent
+  // lisibles.
+  const long = serialiser(s3);
+  const z = comprimer(long);
+  ok(decomprimer(z) === long, 'compression sans perte sur une vraie partie',
+    `${long.length} → ${z.length} caractères`);
+  ok(z.length < long.length * 0.35, 'et elle divise le poids par trois au moins',
+    `×${(long.length / Math.max(1, z.length)).toFixed(1)}`);
+
+  // La brutalité du monde entier : accents, symboles, sauts de ligne, et des
+  // chaînes tirées au hasard — cent aller-retours, zéro perte tolérée.
+  const rngZ = new Rng(4242);
+  let pertes = 0;
+  for (let i = 0; i < 100; i++) {
+    let brut = '';
+    const n = 1 + rngZ.irange(0, 400);
+    for (let j = 0; j < n; j++) brut += String.fromCharCode(1 + rngZ.irange(0, 1200));
+    if (decomprimer(comprimer(brut)) !== brut) pertes++;
+  }
+  ok(pertes === 0, 'cent chaînes au hasard, cent aller-retours exacts', `${pertes} perte(s)`);
+  ok(decomprimer(comprimer('')) === '' && decomprimer(comprimer('à § 12 «\n»')) === 'à § 12 «\n»',
+    'les bords tiennent : vide, accents, sauts de ligne');
+  // Le piège classique du LZ : le motif répété dont l'entrée du dictionnaire
+  // est référencée avant d'être complète (cScSc).
+  const pieges = ['a'.repeat(80), 'ababababababab', 'aaabaaabaaab', 'xyxyxyx'.repeat(9)];
+  ok(pieges.every((p) => decomprimer(comprimer(p)) === p),
+    'les motifs répétés — le piège cScSc — font l’aller-retour exact');
+
+  // Le paquet tel qu'il part au stockage : marqué, déballable, et l'import
+  // (le copier-coller du propriétaire) accepte les deux formats.
+  const paquet = emballer(long);
+  ok(paquet.startsWith('CZ1|') && paquet.length < long.length * 0.5,
+    'le paquet stocké est comprimé et marqué', `${long.length} → ${paquet.length}`);
+  ok(deballer(paquet) === long && deballer(long) === long,
+    'déballer lit le comprimé ET le clair — les vieilles parties restent lisibles');
+  const imp = importerTexte(paquet);
+  ok(imp.ok && serialiser(imp.state) === long,
+    'coller un export comprimé recharge la partie entière');
+}
+
 // --- On est prévenu avant de mourir de faim.
 //
 // Le jeu n'avait qu'un message sur ce chemin — « X est mort de faim » — et rien
@@ -792,6 +844,49 @@ section('4 bis. Ce qu’on fait de ses morts');
   const rO = disposerCorps(d3, g3, corps3.id, 'organes', () => {});
   ok(rO.ok && soldeIci(d3) > crAvant3, 'et ça paie', `+${soldeIci(d3) - crAvant3} cr`);
   ok(depouillesDe(g3).length === 0, 'le corps ne revient pas');
+}
+
+section('4 quater. La décision s’applique à tous — morts et prisonniers');
+{
+  // « Pour le traitement des prisonniers ou des morts, il faut pouvoir
+  // appliquer la décision à tous » — le propriétaire. La même décision,
+  // répétée par le moteur, chacun par la même porte que la décision à
+  // l'unité : rien de neuf par corps, juste moins de doigt.
+  const t = nouvellePartie(4347, { maintenant: 0, depart: 'ville', equipe: 4 });
+  const g = groupeActif(t);
+  for (const m of g.membres.slice(0, 2)) m.etat = 'mort';
+  ok(depouillesDe(g).length === 2, 'décor : deux morts portés');
+  const r = disposerCorpsTous(t, g, 'enterrer', () => {});
+  ok(!!r && r.ok && r.faits === 2, 'une seule décision les enterre tous',
+    JSON.stringify(r));
+  ok(depouillesDe(g).length === 0, 'plus personne à porter');
+
+  // Les prisonniers, pareil.
+  const bande = genererBande(new Rng(21), 'bandits', 4, 1);
+  for (const c of bande.membres) { c.etat = 'ko'; c.corps.torse.pv = 0; }
+  fairePrisonniers(t, g, bande, capturables(g, bande), () => {});
+  const combien = prisonniersDe(g).length;
+  ok(combien >= 2, 'décor : plusieurs prisonniers', `${combien}`);
+  const avantRel = t.stats.captifsRelaches || 0;
+  const r2 = disposerTous(t, g, 'relacher', () => {});
+  ok(!!r2 && r2.ok && r2.faits === combien, 'une seule décision les relâche tous',
+    JSON.stringify(r2));
+  ok(prisonniersDe(g).length === 0
+    && (t.stats.captifsRelaches || 0) === avantRel + combien,
+  'et le compte y est — chacun est passé par la porte de la décision à l’unité');
+
+  // Une décision qui ne vaut pas pour certains ne bloque pas les autres : on
+  // fait où l'on peut, et l'on rend le compte de ce qui n'a pas pu.
+  const t2 = nouvellePartie(4348, { maintenant: 0, depart: 'ville', equipe: 4 });
+  const g2b = groupeActif(t2);
+  g2b.membres[0].etat = 'mort';
+  g2b.membres[1].etat = 'mort';
+  // Le premier n'a plus rien sur lui : le dépouiller ne peut pas se faire.
+  g2b.membres[0].equip = { arme: null, armure: null, greffes: {} };
+  g2b.membres[1].equip.arme = 'machette';
+  const r3 = disposerCorpsTous(t2, g2b, 'depouiller', () => {});
+  ok(!!r3 && r3.ok && r3.faits === 1 && r3.rates === 1,
+    'on fait où l’on peut, et le reste est compté', JSON.stringify(r3));
 }
 
 // --- On ne repart pas en marche avec un homme sur les bras.
