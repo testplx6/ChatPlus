@@ -76,3 +76,37 @@ trajet d'un joueur ne décale plus les dés de personne.
 **Instruite en août 2026 : l'étude complète vit dans `MULTIJOUEUR.md` —
 trois architectures, une voie proposée en trois crans, décisions au
 propriétaire. Rien n'est engagé tant qu'il n'a pas tranché.**
+
+## Plusieurs implantations, pas une seule base (question du propriétaire, août 2026)
+
+« Il faudrait pouvoir créer plusieurs bases non ? Pourquoi une seule ? »
+Consigné, non engagé — la performance passe devant.
+
+L'état des lieux, tel que le code le dit aujourd'hui :
+
+- `state.base` est un objet UNIQUE (créé par `creerBase`, `src/base.js`),
+  référencé une centaine de fois dans le moteur et une trentaine dans
+  l'interface. Fonder ailleurs (`fonderBase`) remet ce même objet à neuf : on
+  ne double pas, on déménage — et le code le dit explicitement, parce qu'un
+  second camp héritait autrefois des habitants et du dossier de ville du
+  premier.
+- Mais le joueur tient DÉJÀ plusieurs choses dans le monde : l'avant-poste
+  reconnu devient une vraie colonie (`reconnaitreAvantPoste`), un chef de
+  faction fonde des postes (`fonderPoste`, influence.js), on rattache une
+  ville à un drapeau (`rattacherVille`), on déclare son indépendance, on tient
+  des secteurs (`confierSecteur`) et on mène des colonnes.
+
+D'où deux architectures, à trancher avant la moindre ligne :
+
+- **A — plusieurs camps à bâtir.** `state.base` devient une liste ; on bâtit,
+  emploie, stocke et défend dans chacun, avec un sélecteur de camp. Le Kenshi
+  classique. Chantier lourd : ~130 points de code à mettre au pluriel, une
+  migration de sauvegarde, les sièges par camp, et un coût de simulation qui
+  croît avec le nombre de camps.
+- **B — les villes qui sont vôtres.** Le camp reste unique et bâti à la main ;
+  les autres implantations sont de vraies villes du monde — fondées ou
+  annexées — qui vivent seules et que l'on gouverne (impôts, lois, garnison,
+  investissement). S'appuie sur ce qui existe, peu de code neuf, coût de
+  simulation nul (ces villes tournent déjà).
+
+Rien n'est décidé. Le jour où l'on ouvre, on ouvre un cahier des charges.

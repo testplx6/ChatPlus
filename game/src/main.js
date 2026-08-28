@@ -55,6 +55,10 @@ let rattrapageEnCours = false;
 let ecritureDemandee = null;
 /** Vrai si l'écriture en attente est accrochée à un temps mort du navigateur. */
 let ecritureParRepos = false;
+/** Quelque chose a changé depuis la dernière écriture. */
+let aEcrire = false;
+/** L'heure de jeu de la dernière écriture : au-delà, le monde a bougé. */
+let dernierTempsEcrit = -1;
 /**
  * Le souffle qu'on laisse au doigt avant d'écrire. Assez court pour qu'une
  * fermeture d'onglet juste après un clic soit rattrapée par `pagehide` ; assez
@@ -88,7 +92,11 @@ function demarrerBoucle() {
     const r = rattraper(state, Date.now());
     if (r.ticks > 0) rafraichir();
   }, 400);
-  sauvegardeTimer = setInterval(ecrireMaintenant, 5000);
+  sauvegardeTimer = setInterval(() => {
+    // Le monde avance tout seul : il y a presque toujours de quoi écrire, mais
+    // une partie à l'arrêt (moment ouvert, onglet immobile) n'a rien à dire.
+    if (aEcrire || (state && state.temps !== dernierTempsEcrit)) ecrireMaintenant();
+  }, 5000);
 }
 
 function arreterBoucle() {
@@ -138,6 +146,8 @@ function oublierAttente() {
 function ecrireMaintenant() {
   oublierAttente();
   if (!state) return;
+  aEcrire = false;
+  dernierTempsEcrit = state.temps;
   sauvegarderAilleurs(state, noterEcriture);
 }
 
@@ -149,6 +159,8 @@ function ecrireMaintenant() {
 function ecrireSurPlace() {
   oublierAttente();
   if (!state) return;
+  aEcrire = false;
+  dernierTempsEcrit = state.temps;
   noterEcriture(sauvegarder(state));
 }
 
@@ -162,17 +174,12 @@ function ecrireSurPlace() {
  * arrière-plan et la fermeture de l'onglet écrivent, elles, sur-le-champ.
  */
 function sauver() {
-  if (!state || ecritureDemandee !== null) return;
-  // Quand le navigateur sait dire « je n'ai rien à faire », on écrit là —
-  // entre deux images plutôt qu'au milieu d'un geste. Le délai reste un
-  // plafond : au pire, on écrit comme avant.
-  if (typeof requestIdleCallback === 'function') {
-    ecritureDemandee = requestIdleCallback(ecrireMaintenant, { timeout: DELAI_ECRITURE_MS });
-    ecritureParRepos = true;
-    return;
-  }
-  ecritureParRepos = false;
-  ecritureDemandee = setTimeout(ecrireMaintenant, DELAI_ECRITURE_MS);
+  // Un simple drapeau, et rien d'autre. Même différée d'un souffle, l'écriture
+  // ramenait `JSON.stringify` de la partie entière — 437 000 caractères, mesuré
+  // à 150 ms par clic sur un processeur de téléphone — dans le geste du joueur.
+  // La minuterie des cinq secondes s'en charge, et les moments où l'on n'a plus
+  // le temps (fermeture, arrière-plan, export) écrivent sur place.
+  aEcrire = true;
 }
 
 // ---------------------------------------------------------------------------

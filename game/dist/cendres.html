@@ -27651,7 +27651,20 @@ function rafraichir(force) {
       // propriétaire). L'ancre, plus bas, ne garde que la lecture verticale.
       const dockAvant = document.getElementById('dock-ordres');
       const defilDock = dockAvant ? dockAvant.scrollLeft : 0;
+      // La boîte de carte SURVIT à la réécriture. Sans ça, chaque clic
+      // détruisait les deux canevas, en réallouait deux neufs (le monde fait
+      // près de neuf cents pixels de côté, en triple densité sur un
+      // téléphone), reperdait le défilement et forçait un recentrage. Mesuré
+      // au profileur : c'était le dernier gros poste du geste. On la décroche,
+      // on réécrit les panneaux autour, on la remet — même nœud, même image,
+      // même place de lecture.
+      const boiteAvant = memeEcran ? ecran.querySelector('#carte-boite') : null;
+      if (boiteAvant) boiteAvant.remove();
       ecran.innerHTML = html;
+      if (boiteAvant) {
+        const boiteApres = ecran.querySelector('#carte-boite');
+        if (boiteApres) boiteApres.replaceWith(boiteAvant);
+      }
       if (defilDock > 0) {
         const dockApres = document.getElementById('dock-ordres');
         if (dockApres) dockApres.scrollLeft = defilDock;
@@ -28041,19 +28054,18 @@ function majPositionCarte() {
   el.textContent = r ? `secteur ${String.fromCharCode(65 + r.x)}${r.y + 1}` : '';
 }
 
-function dessinerCarte(cv) {
-  const w = S.world;
-  const L = w.largeur * CELL;
-  const H = w.hauteur * CELL;
-  if (cv.width !== L) { cv.width = L; cv.height = H; }
-  // La couche de vie (M1) relit ces listes à dix images par seconde : on les
-  // remplit ICI, pendant qu'on applique les règles de visibilité — la vie
-  // n'a pas le droit d'en savoir plus que la carte, et elle n'a pas à les
-  // recalculer à chaque image.
-  vieFoyers.length = 0;
-  vieConvois.length = 0;
-  vieColonnes.length = 0;
-  const g = cv.getContext('2d');
+/**
+ * Le terrain : le fond peint, la matière de chaque case, la trame et les
+ * champs de lumière. C'est le gros du travail — des milliers de rectangles et
+ * un dégradé radial par case découverte — et il ne change QUE si le monde
+ * connu change. Il est donc peint à part, et gardé.
+ *
+ * Mesuré au profileur sous processeur bridé six fois : un clic coûtait 220 à
+ * 330 ms, dont la moitié ici, redessinée à l'identique parce que réécrire
+ * l'écran recrée le canevas. « Les clics sur les boutons ne sont pas réactifs
+ * comme c'était avant, c'est devenu injouable » (le propriétaire, août 2026).
+ */
+function peindreTerrain(g, w, L, H) {
   g.imageSmoothingEnabled = false;
   g.fillStyle = '#05070a';
   g.fillRect(0, 0, L, H);
@@ -28218,6 +28230,81 @@ function dessinerCarte(cv) {
     g.fillStyle = halo;
     g.fillRect(cx - CELL * 1.35, cy - CELL * 1.35, CELL * 2.7, CELL * 2.7);
   }
+}
+
+/**
+ * L'empreinte de ce que le terrain dessine. Tout ce que `peindreTerrain` lit
+ * y entre : si l'empreinte n'a pas bougé, l'image d'avant est encore juste.
+ * Les nombres sont arrondis au cran qui se voit — plus fin serait du gaspillage,
+ * plus grossier laisserait une carte périmée à l'écran.
+ */
+function empreinteTerrain(w) {
+  // Deux empreintes, parce que deux natures. L'INFORMATION — ce qu'on a
+  // découvert, à qui appartient la case, ce qu'on surveille — se repeint
+  // sur-le-champ : une carte qui ment est pire qu'une carte lente. La
+  // MATIÈRE — les pistes qui se tassent, la région qu'on épuise, l'insécurité
+  // qui monte — dérive à chaque heure de jeu ; la repeindre à chaque fois,
+  // c'était repeindre tout le terrain en permanence, et l'à-coup revenait par
+  // la fenêtre. Elle attend un battement.
+  let dur = 2166136261;
+  let doux = 2166136261;
+  const dURE = (v) => { dur = Math.imul(dur ^ v, 16777619); };
+  const doUX = (v) => { doux = Math.imul(doux ^ v, 16777619); };
+  dURE(CELL);
+  dURE(w.largeur);
+  dURE(w.hauteur);
+  for (const r of w.regions) {
+    dURE(r.decouvert ? 1 : 0);
+    dURE((r.biome || '').length + (r.biome ? r.biome.charCodeAt(0) : 0));
+    dURE(r.controle ? r.controle.charCodeAt(0) + r.controle.length * 31 : 0);
+    dURE(estSurveillee(S, r.i) ? 1 : 0);
+    doUX(Math.round((r.piste || 0) * 8));
+    doUX(Math.round((r.fouille || 0) * 8));
+    doUX(Math.round((r.insecurite || 0) * 10));
+  }
+  return { dur: dur >>> 0, doux: doux >>> 0 };
+}
+
+/** Le délai au bout duquel la matière du terrain a le droit d'être repeinte. */
+const REPEINT_MATIERE_MS = 2500;
+
+/** Le terrain gardé, repeint seulement quand il le faut vraiment. */
+function terrainGarde(w, L, H) {
+  const emp = empreinteTerrain(w);
+  let t = terrainGarde.toile;
+  if (!t) t = terrainGarde.toile = document.createElement('canvas');
+  const maintenant = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  const neuf = t.width !== L || t.height !== H || terrainGarde.dur !== emp.dur;
+  const matiere = terrainGarde.doux !== emp.doux
+    && maintenant - (terrainGarde.quand || 0) > REPEINT_MATIERE_MS;
+  if (neuf || matiere) {
+    t.width = L;
+    t.height = H;
+    peindreTerrain(t.getContext('2d'), w, L, H);
+    terrainGarde.dur = emp.dur;
+    terrainGarde.doux = emp.doux;
+    terrainGarde.quand = maintenant;
+  }
+  return t;
+}
+
+function dessinerCarte(cv) {
+  const w = S.world;
+  const L = w.largeur * CELL;
+  const H = w.hauteur * CELL;
+  if (cv.width !== L) { cv.width = L; cv.height = H; }
+  // La couche de vie (M1) relit ces listes à dix images par seconde : on les
+  // remplit ICI, pendant qu'on applique les règles de visibilité — la vie
+  // n'a pas le droit d'en savoir plus que la carte, et elle n'a pas à les
+  // recalculer à chaque image.
+  vieFoyers.length = 0;
+  vieConvois.length = 0;
+  vieColonnes.length = 0;
+  const g = cv.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  // Le terrain est peint à part et gardé : il ne bouge que si le monde connu
+  // bouge. Ici, une seule image à poser.
+  g.drawImage(terrainGarde(w, L, H), 0, 0);
 
   // Le secteur dont on répond : un liseré tireté, pour qu'on sache où il est
   // sans avoir à ouvrir un écran.
@@ -34325,6 +34412,10 @@ let rattrapageEnCours = false;
 let ecritureDemandee = null;
 /** Vrai si l'écriture en attente est accrochée à un temps mort du navigateur. */
 let ecritureParRepos = false;
+/** Quelque chose a changé depuis la dernière écriture. */
+let aEcrire = false;
+/** L'heure de jeu de la dernière écriture : au-delà, le monde a bougé. */
+let dernierTempsEcrit = -1;
 /**
  * Le souffle qu'on laisse au doigt avant d'écrire. Assez court pour qu'une
  * fermeture d'onglet juste après un clic soit rattrapée par `pagehide` ; assez
@@ -34358,7 +34449,11 @@ function demarrerBoucle() {
     const r = rattraper(state, Date.now());
     if (r.ticks > 0) rafraichir();
   }, 400);
-  sauvegardeTimer = setInterval(ecrireMaintenant, 5000);
+  sauvegardeTimer = setInterval(() => {
+    // Le monde avance tout seul : il y a presque toujours de quoi écrire, mais
+    // une partie à l'arrêt (moment ouvert, onglet immobile) n'a rien à dire.
+    if (aEcrire || (state && state.temps !== dernierTempsEcrit)) ecrireMaintenant();
+  }, 5000);
 }
 
 function arreterBoucle() {
@@ -34408,6 +34503,8 @@ function oublierAttente() {
 function ecrireMaintenant() {
   oublierAttente();
   if (!state) return;
+  aEcrire = false;
+  dernierTempsEcrit = state.temps;
   sauvegarderAilleurs(state, noterEcriture);
 }
 
@@ -34419,6 +34516,8 @@ function ecrireMaintenant() {
 function ecrireSurPlace() {
   oublierAttente();
   if (!state) return;
+  aEcrire = false;
+  dernierTempsEcrit = state.temps;
   noterEcriture(sauvegarder(state));
 }
 
@@ -34432,17 +34531,12 @@ function ecrireSurPlace() {
  * arrière-plan et la fermeture de l'onglet écrivent, elles, sur-le-champ.
  */
 function sauver() {
-  if (!state || ecritureDemandee !== null) return;
-  // Quand le navigateur sait dire « je n'ai rien à faire », on écrit là —
-  // entre deux images plutôt qu'au milieu d'un geste. Le délai reste un
-  // plafond : au pire, on écrit comme avant.
-  if (typeof requestIdleCallback === 'function') {
-    ecritureDemandee = requestIdleCallback(ecrireMaintenant, { timeout: DELAI_ECRITURE_MS });
-    ecritureParRepos = true;
-    return;
-  }
-  ecritureParRepos = false;
-  ecritureDemandee = setTimeout(ecrireMaintenant, DELAI_ECRITURE_MS);
+  // Un simple drapeau, et rien d'autre. Même différée d'un souffle, l'écriture
+  // ramenait `JSON.stringify` de la partie entière — 437 000 caractères, mesuré
+  // à 150 ms par clic sur un processeur de téléphone — dans le geste du joueur.
+  // La minuterie des cinq secondes s'en charge, et les moments où l'on n'a plus
+  // le temps (fermeture, arrière-plan, export) écrivent sur place.
+  aEcrire = true;
 }
 
 // ---------------------------------------------------------------------------
