@@ -145,6 +145,8 @@ let detaches = new Set();
 
 /** Cadence minimale entre deux reconstructions complètes de l'écran (ms). */
 const RENDU_MIN_MS = 600;
+/** Ce qu'a coûté le dernier rendu, lissé. Sert de frein sur machine lente. */
+let coutRendu = 0;
 /** Après un geste de l'utilisateur, on laisse le DOM tranquille un instant. */
 const REPIT_APRES_CLIC_MS = 400;
 
@@ -487,7 +489,13 @@ export function rafraichir(force) {
     if (S.temps === dernierRendu) return;
     // On reconstruit tout l'écran d'un bloc : à vitesse ×16 cela arriverait
     // plusieurs fois par seconde et pourrait avaler le geste de l'utilisateur.
-    if (maintenant - dernierRenduMs < RENDU_MIN_MS) return;
+    // Le budget du rendu, mesuré sur la machine qui joue. Reconstruire l'écran
+    // coûte ce qu'il coûte ici — quelques millisecondes sur un ordinateur, dix
+    // fois plus sur un téléphone — et le monde, lui, avance à la même vitesse.
+    // Sans ce frein, une machine lente passait le plus clair de son temps à se
+    // redessiner : « toujours beaucoup de lag ». On ne redessine jamais plus
+    // d'un cinquième du temps.
+    if (maintenant - dernierRenduMs < Math.max(RENDU_MIN_MS, coutRendu * 5)) return;
     if (maintenant - derniereInteraction < REPIT_APRES_CLIC_MS) return;
   }
   dernierRendu = S.temps;
@@ -612,6 +620,11 @@ export function rafraichir(force) {
   // `rendreModale` s'occupe aussi du rapport d'absence, qui s'ouvre de
   // lui-même : on l'appelle donc même sans modale demandée.
   if (modale || (S.rapport && S.rapport.apres)) rendreModale();
+  // Ce que ce rendu a coûté, lissé : c'est lui qui décidera de l'espacement du
+  // suivant. Lissé, parce qu'un rendu isolé et long (un écran qu'on ouvre pour
+  // la première fois) ne doit pas freiner le jeu pour autant.
+  const fini = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  coutRendu = coutRendu * 0.7 + (fini - maintenant) * 0.3;
 }
 
 function rendreBarreHaut() {
@@ -1478,6 +1491,8 @@ let vieRaf = 0;
 let vieDernier = 0;
 /** Dix images par seconde : le monde respire, la batterie aussi. */
 const VIE_PAS_MS = 100;
+/** Ce qu'a coûté la dernière image de la couche de vie, lissé. */
+let coutVie = 0;
 
 function animerCarte() {
   if (vieRaf) return; // déjà en route
@@ -1488,9 +1503,15 @@ function animerCarte() {
     const cv = document.getElementById('carte-vie');
     const fond = document.getElementById('carte');
     if (!S || !cv || !fond) return; // l'écran a changé : la boucle s'éteint
-    if (!document.hidden && ts - vieDernier >= VIE_PAS_MS) {
+    // Dix images par seconde quand la machine suit ; moins quand elle peine.
+    // La couche de vie est un agrément : elle ne prend jamais plus d'un
+    // sixième du fil, sinon c'est le jeu qui la paie.
+    if (!document.hidden && ts - vieDernier >= Math.max(VIE_PAS_MS, coutVie * 6)) {
       vieDernier = ts;
+      const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
       dessinerVie(cv, fond, ts);
+      const t1 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+      coutVie = coutVie * 0.7 + (t1 - t0) * 0.3;
     }
     if (!immobile) vieRaf = requestAnimationFrame(pas);
   };

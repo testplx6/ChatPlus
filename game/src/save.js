@@ -450,6 +450,8 @@ function stockage() {
 
 let fil = null;
 let filRefuse = false;
+/** Vrai dès que le stockage a refusé du texte en clair : il faut comprimer. */
+let compressionObligee = false;
 let jetonEcriture = 0;
 let enVol = null;
 
@@ -501,10 +503,23 @@ export function sauvegarderAilleurs(state, apres) {
   // Rien n'a bougé depuis la dernière écriture : on repose le même paquet.
   if (txt === dernierClair && dernierPaquet !== null) { apres(poser(dernierPaquet)); return; }
   const f = filCompression();
+  // Pas de fil de côté (page isolée, navigateur sans fils, bac à sable qui les
+  // refuse) : on ne comprime PAS sur le fil du jeu. La compression n'existe que
+  // pour le jour où le stockage se ferme — tant que le texte en clair passe, il
+  // passe, et le doigt ne paie rien. S'il est refusé une fois, on comprime, et
+  // l'on comprimera désormais d'emblée.
+  if (!f) {
+    if (!compressionObligee) {
+      const direct = poser(txt);
+      if (direct.ok) { apres(direct); return; }
+      compressionObligee = true;
+    }
+    apres(sauvegarder(state));
+    return;
+  }
   // Une écriture est déjà en route : celle-ci attendra le battement suivant —
   // la partie n'aura pas changé de beaucoup, et c'est toujours la dernière qui
   // gagne.
-  if (!f) { apres(sauvegarder(state)); return; }
   if (enVol) return;
   const jeton = ++jetonEcriture;
   enVol = { jeton, txt, apres };
