@@ -395,6 +395,8 @@ export function normaliser(state) {
   // l'arrêt : on n'inflige à personne un rattrapage qu'il n'a pas demandé.
   if (!state.reglages) state.reglages = { rattrapage: false };
   if (typeof state.reglages.rattrapage !== 'boolean') state.reglages.rattrapage = false;
+  // Le confort de l'écran : tout par défaut, allégé si la machine peine.
+  if (typeof state.reglages.allege !== 'boolean') state.reglages.allege = false;
   return state;
 }
 

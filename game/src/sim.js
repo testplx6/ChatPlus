@@ -361,7 +361,7 @@ export function nouvellePartie(seed, opts = {}) {
     // l'absence, c'était « plusieurs centaines de jours qui défilent sous nos
     // yeux sans qu'on ne puisse rien faire » (le propriétaire, août 2026). Qui
     // veut un monde qui tourne sans lui l'allume — c'est un choix, pas un dû.
-    reglages: { rattrapage: false },
+    reglages: { rattrapage: false, allege: false },
   };
   world.caravanes = [];
 

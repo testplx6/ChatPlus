@@ -670,6 +670,15 @@ const API = {
     return { ok: true, rattrapage: state.reglages.rattrapage };
   },
 
+  /** Couper l'agrément de l'écran quand la machine peine. */
+  reglerAllege(actif) {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    if (!state.reglages) state.reglages = { rattrapage: false, allege: false };
+    state.reglages.allege = !!actif;
+    sauver();
+    return { ok: true, allege: state.reglages.allege };
+  },
+
   /** Laisser les habitants se placer eux-mêmes, ou tenir le tableau soi-même. */
   autoEmploi() {
     state.base.autoEmploi = state.base.autoEmploi === false;

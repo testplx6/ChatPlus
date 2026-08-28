@@ -25954,6 +25954,8 @@ function normaliser(state) {
   // l'arrêt : on n'inflige à personne un rattrapage qu'il n'a pas demandé.
   if (!state.reglages) state.reglages = { rattrapage: false };
   if (typeof state.reglages.rattrapage !== 'boolean') state.reglages.rattrapage = false;
+  // Le confort de l'écran : tout par défaut, allégé si la machine peine.
+  if (typeof state.reglages.allege !== 'boolean') state.reglages.allege = false;
   return state;
 }
 
@@ -26684,7 +26686,7 @@ function nouvellePartie(seed, opts = {}) {
     // l'absence, c'était « plusieurs centaines de jours qui défilent sous nos
     // yeux sans qu'on ne puisse rien faire » (le propriétaire, août 2026). Qui
     // veut un monde qui tourne sans lui l'allume — c'est un choix, pas un dû.
-    reglages: { rattrapage: false },
+    reglages: { rattrapage: false, allege: false },
   };
   world.caravanes = [];
 
@@ -27602,6 +27604,71 @@ function appliquerReplis(ecran) {
 // Rendu principal
 // ---------------------------------------------------------------------------
 
+/** L'empreinte de ce que la carte montre, au dernier dessin. */
+let derniereSignatureCarte = '';
+/** La part de cette empreinte qui doit se voir sur-le-champ. */
+let dernierVifCarte = '';
+/** Quand la carte a été dessinée pour la dernière fois. */
+let derniereCarteMs = 0;
+/** La cadence de la carte : elle raconte un monde lent, pas un jeu d'action. */
+const CARTE_PAS_MS = 500;
+/** La même cadence, en mode allégé : la carte attend plus longtemps. */
+const CARTE_PAS_ALLEGE_MS = 1600;
+
+/**
+ * Tout ce qui décide de l'image de la carte : le terrain (lui-même gardé),
+ * l'heure — dont dépendent la nuit, la saison, les convois, les colonnes —, ce
+ * qu'on a sélectionné, où sont les groupes, et le zoom.
+ */
+function signatureCarte() {
+  const emp = empreinteTerrain(S.world);
+  const gs = groupes(S).map((g) => `${g.id}:${g.regionId}`).join(',');
+  return `${emp.dur}|${emp.doux}|${S.temps}|${selection}|${CELL}|${gs}`;
+}
+
+/** Les blocs de premier rang du dernier écran écrit, tels qu'on les a produits. */
+let dernierBlocs = [];
+
+/**
+ * Poser l'écran en ne remplaçant QUE les blocs qui ont changé.
+ *
+ * Réécrire `innerHTML` en entier ne coûte pas seulement l'analyse du texte :
+ * le navigateur jette puis refait la mise en page et la peinture de tout ce
+ * qu'il y avait — quelques millisecondes ici, cent de plus sur un téléphone.
+ * Mesuré au profileur : le code du clic tenait en 45 ms, mais l'image
+ * n'arrivait qu'à 110-190 ms. C'est cette moitié-là que le doigt sent, et
+ * c'est celle que mes premières sondes ne voyaient pas — elles s'arrêtaient
+ * au retour du gestionnaire.
+ *
+ * Or presque rien ne change d'un rendu à l'autre : un bouton d'ordre qui
+ * s'enfonce, un chiffre qui bouge. On compare donc bloc à bloc, tel qu'on les
+ * a produits — jamais en relisant le DOM vivant, qui normalise ce qu'on lui
+ * donne et ferait passer chaque bloc pour modifié.
+ */
+function poserEcran(ecran, html, memeEcran) {
+  const gabarit = poserEcran.gabarit || (poserEcran.gabarit = document.createElement('div'));
+  gabarit.innerHTML = html;
+  const neufs = [...gabarit.children];
+  const blocs = neufs.map((el) => el.outerHTML);
+  const vieux = [...ecran.children];
+  // Même écran, même découpe : on ne touche qu'aux blocs qui diffèrent.
+  const memeDecoupe = memeEcran
+    && vieux.length === neufs.length
+    && dernierBlocs.length === neufs.length
+    && vieux.every((el, i) => el.tagName === neufs[i].tagName);
+  if (!memeDecoupe) {
+    ecran.innerHTML = '';
+    for (const el of neufs) ecran.appendChild(el);
+    dernierBlocs = blocs;
+    return;
+  }
+  for (let i = 0; i < neufs.length; i++) {
+    if (blocs[i] === dernierBlocs[i]) continue;
+    ecran.replaceChild(neufs[i], vieux[i]);
+  }
+  dernierBlocs = blocs;
+}
+
 function rafraichir(force) {
   // Sans partie en cours, on redessine l'accueil — mais avec ce qu'il savait
   // déjà. Rappeler `rendreAccueil()` sans arguments effaçait le bouton
@@ -27632,12 +27699,33 @@ function rafraichir(force) {
   // c'est ce qui se produisait en sortant d'un accueil devenu plus long — la
   // carte apparaissait hors de vue, et les gestes tombaient dans le vide.
   const memeEcran = onglet === dernierOngletRendu;
-  const ancre = memeEcran ? mesurerAncre(ecran) : null;
   dernierOngletRendu = onglet;
+
+  // Un chronomètre par phase, éteint par défaut : on ne devine pas où part le
+  // temps d'un rendu, on le mesure — sur la machine qui peine, pas sur la
+  // mienne. `window.__mesureRendu = true` l'allume, `window.__phases` le lit.
+  const chrono = (typeof window !== 'undefined' && window.__mesureRendu)
+    ? (() => {
+      const t = [];
+      let dernier = maintenant;
+      return {
+        pas(nom) {
+          const n2 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+          t.push([nom, n2 - dernier]);
+          dernier = n2;
+        },
+        fin() {
+          if (!window.__phases) window.__phases = [];
+          window.__phases.push(t);
+        },
+      };
+    })()
+    : null;
 
   rendreBarreHaut();
   rendreNav();
   majMoments();
+  if (chrono) chrono.pas('chrome');
 
   // Un écran qui plante ne doit pas se contenter de ne rien faire.
   //
@@ -27662,10 +27750,17 @@ function rafraichir(force) {
   // On ne sort pas de la fonction pour autant : la carte est un canevas, elle
   // bouge même quand le texte autour ne bouge pas.
   let ecrit = true;
+  let ancre = null;
   try {
     const html = bandeauSauvegarde() + bandeauDevaluation() + bandeauSiege() + rendu();
+    if (chrono) chrono.pas('texte');
     if (html === dernierHtml && memeEcran) ecrit = false;
     else {
+      // Mesurer la place de lecture force le navigateur à calculer toute la
+      // mise en page sur-le-champ. On ne le fait donc qu'une fois qu'on SAIT
+      // que l'écran change — sur un téléphone, c'était le premier poste du
+      // clic, payé même quand rien ne bougeait.
+      ancre = memeEcran ? mesurerAncre(ecran) : null;
       dernierHtml = html;
       // Le défilement horizontal du dock survit à la réécriture : à ×60
       // l'écran se réécrit plusieurs fois par seconde, et les boutons
@@ -27681,13 +27776,19 @@ function rafraichir(force) {
       // au profileur : c'était le dernier gros poste du geste. On la décroche,
       // on réécrit les panneaux autour, on la remet — même nœud, même image,
       // même place de lecture.
+      // La boîte de carte survit à la réécriture — mais on ne la décroche PAS
+      // d'avance : depuis qu'on ne remplace que les blocs qui changent, un bloc
+      // inchangé n'est jamais réinséré, et la boîte décrochée disparaissait
+      // pour de bon. (Vu tout de suite par la suite navigateur : « la couche de
+      // vie existe » au rouge.) On la laisse en place, et on ne la rapatrie que
+      // si son bloc a effectivement été remplacé.
       const boiteAvant = memeEcran ? ecran.querySelector('#carte-boite') : null;
-      if (boiteAvant) boiteAvant.remove();
-      ecran.innerHTML = html;
-      if (boiteAvant) {
+      poserEcran(ecran, html, memeEcran);
+      if (boiteAvant && !boiteAvant.isConnected) {
         const boiteApres = ecran.querySelector('#carte-boite');
         if (boiteApres) boiteApres.replaceWith(boiteAvant);
       }
+      if (chrono) chrono.pas('pose');
       if (defilDock > 0) {
         const dockApres = document.getElementById('dock-ordres');
         if (dockApres) dockApres.scrollLeft = defilDock;
@@ -27695,6 +27796,7 @@ function rafraichir(force) {
     }
   } catch (err) {
     dernierHtml = null;
+    dernierBlocs = [];
     ecran.innerHTML = `<section class="panneau urgent">
       <h2 class="titre">Cet écran n’a pas pu s’afficher</h2>
       <div class="aide">C’est un défaut du jeu, pas de votre partie : elle continue de
@@ -27727,28 +27829,63 @@ function rafraichir(force) {
   const heure = S ? S.temps % 24 : 12;
   if (racine) racine.dataset.nuit = heure >= 21 || heure < 6 ? '1' : '0';
   appliquerReplis(ecran);
+  if (chrono) chrono.pas('replis');
 
   const cv = $('#carte');
   if (cv) {
-    dessinerCarte(cv);
+    // La boîte de carte survit à la réécriture : son dessin aussi. Tant que
+    // rien de ce qu'elle montre n'a bougé — l'heure, le monde connu, où sont
+    // les vôtres, ce qui est visé — on ne la repeint pas. Presser un bouton
+    // d'ordre ne change pas la carte, et ça coûtait un dessin entier.
+    const sig = signatureCarte();
+    const vierge = cv.dataset.vide !== '0';
+    // Ce qui se voit tout de suite : le zoom, la case visée, un groupe qui
+    // change de région. Le reste — l'heure qui avance, les convois — peut
+    // attendre le battement suivant : à ×60 la carte se redessinait dix fois
+    // par seconde pour montrer un fanal qui glisse d'un pixel.
+    const vif = `${selection}|${CELL}|${sig.split('|').pop()}`;
+    const cadence = (S.reglages && S.reglages.allege) ? CARTE_PAS_ALLEGE_MS : CARTE_PAS_MS;
+    const assezVieux = maintenant - derniereCarteMs > cadence;
+    if (vierge || vif !== dernierVifCarte || (sig !== derniereSignatureCarte && assezVieux)) {
+      dessinerCarte(cv);
+      derniereSignatureCarte = sig;
+      dernierVifCarte = vif;
+      derniereCarteMs = maintenant;
+      cv.dataset.vide = '0';
+    }
+    if (chrono) chrono.pas('carte');
     if (cv.parentElement) lierGestesCarte(cv.parentElement);
     centrerCarte(cv);
     animerCarte();
+    if (chrono) chrono.pas('centrage');
   }
   // La place de lecture se rend en dernier, une fois la mise en page arrêtée.
   // Le canevas se dimensionne d'après la place qu'on lui laisse : le redessiner
   // après avoir replacé le défilement décalait tout ce qui se trouve dessous,
   // et c'était le seul écran où l'ancre ne tenait pas ses promesses.
   if (ecrit) restaurerAncre(ecran, ancre);
+  if (chrono) chrono.pas('ancre');
   // `rendreModale` s'occupe aussi du rapport d'absence, qui s'ouvre de
   // lui-même : on l'appelle donc même sans modale demandée.
   if (modale || (S.rapport && S.rapport.apres)) rendreModale();
   // Ce que ce rendu a coûté, lissé : c'est lui qui décidera de l'espacement du
   // suivant. Lissé, parce qu'un rendu isolé et long (un écran qu'on ouvre pour
   // la première fois) ne doit pas freiner le jeu pour autant.
+  if (chrono) { chrono.pas('modale'); chrono.fin(); }
   const fini = (typeof performance !== 'undefined' ? performance.now() : Date.now());
   coutRendu = coutRendu * 0.7 + (fini - maintenant) * 0.3;
 }
+
+/** Poser du HTML seulement s'il a changé : sinon, mise en page et peinture
+ *  pour rien — mesuré à neuf millisecondes par rendu sur un téléphone, juste
+ *  pour réécrire une barre identique. */
+function poserSi(el, html, memoire, cle) {
+  if (!el) return;
+  if (memoire[cle] === html) return;
+  memoire[cle] = html;
+  el.innerHTML = html;
+}
+const chromeMemoire = {};
 
 function rendreBarreHaut() {
   const h = horloge(S.temps);
@@ -27770,7 +27907,7 @@ function rendreBarreHaut() {
   // l'écran est trop étroit. Sans ça, les blocs se compriment les uns dans les
   // autres et les libellés se chevauchent — et c'est le sélecteur de vitesse,
   // le seul vrai bouton de la barre, qui finissait par sortir de l'écran.
-  $('#barre-haut').innerHTML = `
+  poserSi($('#barre-haut'), `
     <div class="hd-metriques">
       <div class="hd-bloc" title="${g.nuit ? 'Nuit — on campe' : 'Jour'}">
         <span class="hd-val hd-cycle">${g.nuit ? '☾' : '☀'}</span>
@@ -27806,7 +27943,7 @@ function rendreBarreHaut() {
         class="${etatSauvegarde().ok ? '' : 'alerte'}"
         title="${etatSauvegarde().ok ? 'Sauvegardes' : 'La sauvegarde échoue'}">${
   etatSauvegarde().ok ? '⛁' : '⚠'}</button>
-    </div>`;
+    </div>`, chromeMemoire, 'haut');
 }
 
 /**
@@ -27842,11 +27979,11 @@ function rendreNav() {
     ['monde', 'MONDE', 0],
     ['journal', 'JOURNAL', S.nonLus],
   ];
-  $('#barre-nav').innerHTML = tabs.map(([k, l, compte]) => `
+  poserSi($('#barre-nav'), tabs.map(([k, l, compte]) => `
     <button data-a="onglet" data-k="${k}" aria-current="${onglet === k ? 'page' : 'false'}">
       ${svgIco(k)}${l}
       ${compte ? `<span class="pastille ${k === 'journal' ? '' : 'calme'}">${compte > 99 ? '99' : compte}</span>` : ''}
-    </button>`).join('');
+    </button>`).join(''), chromeMemoire, 'nav');
 }
 
 // ---------------------------------------------------------------------------
@@ -28619,6 +28756,10 @@ let coutVie = 0;
 
 function animerCarte() {
   if (vieRaf) return; // déjà en route
+  // Le mode allégé coupe l'agrément : la cendre ne dérive plus, les feux ne
+  // respirent plus, et le fil du jeu ne fait plus que ce qui compte. C'est un
+  // choix du joueur, pas une décision prise pour lui.
+  if (S && S.reglages && S.reglages.allege) return;
   const immobile = typeof matchMedia === 'function'
     && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const pas = (ts) => {
@@ -32591,7 +32732,27 @@ function modaleSauvegardes() {
     : 'La partie reprend exactement où vous l’avez laissée. Rien ne se joue en '
       + 'votre absence, rien ne défile au retour.'}</div>` : '';
 
-  return `${sante}${tempsHorsLigne}
+  const allege = !!(S && S.reglages && S.reglages.allege);
+  // Le chiffre de VOTRE appareil, pas du mien. Deux passes de mesure m'ont
+  // fait courir après des millisecondes qui n'existaient que sur ma machine ;
+  // celui-ci se lit sur le téléphone qui joue, et il se rapporte.
+  const mesure = `<div class="aide">Cet appareil : un rendu d’écran coûte
+    ${coutRendu.toFixed(0)} ms${ETAT_SAUVEGARDE_TAILLE() ? `, la partie écrite pèse
+    ${(ETAT_SAUVEGARDE_TAILLE() / 1024).toFixed(0)} Ko` : ''}.</div>`;
+  const confort = S ? `<div class="sep"></div>
+    <h2 class="titre">Le confort de l’écran</h2>
+    <div class="rang-tous">
+      <button class="act mini" data-a="allege" data-v="0" aria-pressed="${!allege}">Tout</button>
+      <button class="act mini" data-a="allege" data-v="1" aria-pressed="${allege}">Allégé</button>
+    </div>
+    ${mesure}
+    <div class="aide">${allege
+    ? 'La carte ne s’anime plus et se redessine moins souvent. Sur un téléphone '
+      + 'qui peine, c’est ce qui rend les boutons vifs.'
+    : 'La carte vit : la cendre dérive, les feux des villes respirent, les convois '
+      + 'avancent. C’est joli et ça coûte — si les boutons traînent, passez en allégé.'}</div>` : '';
+
+  return `${sante}${tempsHorsLigne}${confort}
   <h2 class="titre">Sauvegardes
     <span class="droite aide">${liste.length}/${EMPLACEMENTS_MAX}</span></h2>
   <div class="aide">La partie en cours s’écrit toute seule en continu. Ce sont des copies
@@ -32683,6 +32844,12 @@ function blocAccueilSauvegardes() {
 }
 
 /** L'état de la dernière écriture, sans supposer que l'API l'expose. */
+/** La taille du dernier écrit, si le jeu la connaît. */
+function ETAT_SAUVEGARDE_TAILLE() {
+  const e = etatSauvegarde();
+  return (e && e.taille) || 0;
+}
+
 function etatSauvegarde() {
   try {
     return (ACTIONS && ACTIONS.etatSauvegarde && ACTIONS.etatSauvegarde())
@@ -33625,6 +33792,9 @@ function surClic(ev) {
   switch (a) {
     case 'onglet':
       onglet = el.dataset.k;
+      // Ouvrir un écran, c'est le vouloir neuf — y compris celui qu'on rouvre.
+      derniereSignatureCarte = '';
+      dernierVifCarte = '';
       rafraichir(true);
       break;
 
@@ -33908,6 +34078,14 @@ function surClic(ev) {
       const depose = el.dataset.a === 'coffre-deposer';
       const r = ACTIONS.coffre(col && col.id, el.dataset.k, depose, qteTransfert);
       if (!r.ok) toast(r.motif, true);
+      rendreModale();
+      rafraichir(true);
+      break;
+    }
+
+    case 'allege': {
+      const r = ACTIONS.reglerAllege(el.dataset.v === '1');
+      toast(r.allege ? 'Écran allégé.' : 'Tous les effets sont rendus.');
       rendreModale();
       rafraichir(true);
       break;
@@ -34431,6 +34609,12 @@ function surClic(ev) {
 }
 
 function ouvrirOnglet(k) {
+  // Ouvrir un écran, c'est le vouloir neuf : la carte se redessine, même si le
+  // monde n'a pas bougé d'une heure. (Sans ça, rouvrir l'onglet CARTE laissait
+  // le dessin d'avant — attrapé par la suite : « la carte écrit le nom des
+  // villes relevées », zéro texte peint.)
+  derniereSignatureCarte = '';
+  dernierVifCarte = '';
   onglet = k;
 }
 
@@ -35061,6 +35245,15 @@ const API = {
     state.dernierReel = Date.now();
     sauver();
     return { ok: true, rattrapage: state.reglages.rattrapage };
+  },
+
+  /** Couper l'agrément de l'écran quand la machine peine. */
+  reglerAllege(actif) {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    if (!state.reglages) state.reglages = { rattrapage: false, allege: false };
+    state.reglages.allege = !!actif;
+    sauver();
+    return { ok: true, allege: state.reglages.allege };
   },
 
   /** Laisser les habitants se placer eux-mêmes, ou tenir le tableau soi-même. */
