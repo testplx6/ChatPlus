@@ -3110,6 +3110,48 @@ if (jamaisVue != null) {
   ok(/jamais mis les pieds/.test(txt), 'une ville jamais visitée ne livre ni drapeau ni population');
 }
 
+console.log('\n8 quater bis. Par défaut, le monde attend');
+{
+  // « Plusieurs centaines de jours défilent sous nos yeux sans qu'on ne puisse
+  // rien faire » — le propriétaire, août 2026. Par défaut, la partie reprend
+  // où on l'a laissée : rien ne défile, et le réglage se change à l'écran.
+  const dort = nouvellePartie(20260731, { maintenant: Date.now(), depart: 'ville' });
+  const dortTxt = serialiser(dort);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => {
+    const s = JSON.parse(txt);
+    s.dernierReel = Date.now() - 4 * 3600 * 1000; // des milliers d'heures de jeu
+    localStorage.setItem('cendres.save.v1', JSON.stringify(s));
+  }, dortTxt);
+  await page.reload({ waitUntil: 'networkidle' });
+  const avantDort = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte', { timeout: 8000 });
+  ok(await page.locator('.rattrapage').count() === 0,
+    'aucun écran de rattrapage : rien ne défile au retour');
+  const apresDort = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
+  ok(apresDort - avantDort < 30, 'la partie reprend où on l’avait laissée',
+    `${avantDort} → ${apresDort} h`);
+
+  // Et le choix se prend à l'écran, dans le panneau des sauvegardes.
+  await page.click('#barre-haut [data-a="modale"][data-m="sauvegardes"]');
+  await page.waitForTimeout(400);
+  const choix = await page.locator('[data-a="temps-hors-ligne"]').count();
+  ok(choix === 2, 'le panneau propose les deux temps hors ligne', `${choix} boutons`);
+  await page.click('[data-a="temps-hors-ligne"][data-v="1"]');
+  await page.waitForTimeout(500);
+  const allume = await page.evaluate(
+    () => JSON.parse(window.__sauvegardeTexte()).reglages.rattrapage);
+  ok(allume === true, 'et l’allumer se garde dans la partie');
+  await page.click('[data-a="temps-hors-ligne"][data-v="0"]');
+  await page.waitForTimeout(500);
+  const eteint = await page.evaluate(
+    () => JSON.parse(window.__sauvegardeTexte()).reglages.rattrapage);
+  ok(eteint === false, 'et l’éteindre aussi');
+  await page.click('[data-a="fermer"]');
+  await page.waitForTimeout(250);
+}
+
 console.log('\n8 quater. Retour après une longue absence');
 // Le pire cas réel : le plafond de rattrapage, dix-sept mille heures à rejouer
 // au chargement. Ça doit se voir à l'écran et rendre la main, pas figer l'onglet.
@@ -3125,6 +3167,9 @@ await page.evaluate((txt) => {
   // Quatre heures de vraie absence à la vitesse par défaut : près de six mille
   // heures de jeu à rejouer, largement au-delà du seuil de l'écran.
   s.dernierReel = Date.now() - 4 * 3600 * 1000;
+  // Le mode sous test. Depuis août 2026 le monde attend par défaut : rejouer
+  // l'absence est un choix, et c'est CE choix qu'on vérifie ici.
+  s.reglages = { rattrapage: true };
   localStorage.setItem('cendres.save.v1', JSON.stringify(s));
 }, veilleTxt);
 const tAvant = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);

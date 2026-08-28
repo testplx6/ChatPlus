@@ -391,6 +391,10 @@ export function normaliser(state) {
     if (!b.postes) b.postes = {};
   }
   if (state.stats.ordresRemplis === undefined) state.stats.ordresRemplis = 0;
+  // Le temps hors ligne. Une partie d'avant le réglage s'ouvre le monde à
+  // l'arrêt : on n'inflige à personne un rattrapage qu'il n'a pas demandé.
+  if (!state.reglages) state.reglages = { rattrapage: false };
+  if (typeof state.reglages.rattrapage !== 'boolean') state.reglages.rattrapage = false;
   return state;
 }
 

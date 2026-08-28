@@ -47,6 +47,14 @@ export const TICK_MS = 10000;
 /** Plafond de rattrapage hors ligne, en heures de jeu (environ deux ans). */
 export const RATTRAPAGE_MAX = 17000;
 
+/**
+ * Au-delà de ce silence, on n'était plus là : onglet fermé, téléphone dans la
+ * poche, page endormie. En deçà, c'est du jeu en cours — la même fonction sert
+ * les deux, et confondre les deux, c'est arrêter la partie qu'on est en train
+ * de jouer.
+ */
+export const SEUIL_ABSENCE_MS = 10000;
+
 export const VITESSES = [1, 4, 16, 60];
 
 /**
@@ -349,6 +357,11 @@ export function nouvellePartie(seed, opts = {}) {
     // Ce que le joueur sait du monde, par opposition à ce qui est.
     connaissance: creerConnaissance(0),
     fin: null,
+    // Ce que le monde fait quand on n'est pas là. Arrêté par défaut : rejouer
+    // l'absence, c'était « plusieurs centaines de jours qui défilent sous nos
+    // yeux sans qu'on ne puisse rien faire » (le propriétaire, août 2026). Qui
+    // veut un monde qui tourne sans lui l'allume — c'est un choix, pas un dû.
+    reglages: { rattrapage: false },
   };
   world.caravanes = [];
 
@@ -779,6 +792,18 @@ export function rattrapageDu(state, maintenantMs) {
   const pas = TICK_MS / (state.vitesse || 1);
   if (!state.dernierReel) return { ticks: 0, tronque: false, pas };
   const ecoule = Math.max(0, maintenantMs - state.dernierReel);
+  // Le monde n'a pas tourné pendant l'absence : rien à rejouer, et l'horloge
+  // reprend d'ici — `gele` dit aux appelants de recaler `dernierReel`, faute
+  // de quoi l'absence s'accumulerait en dette et resurgirait au réglage suivant.
+  //
+  // Le seuil est essentiel : cette même fonction fait avancer l'horloge du jeu
+  // EN DIRECT, toutes les quatre cents millisecondes. Sans lui, éteindre le
+  // rattrapage éteignait la partie elle-même — la suite navigateur me l'a
+  // rendu tout de suite, « l'horloge avance en temps réel, 0 → 0 ». Jouer,
+  // ce n'est pas être absent : en deçà du seuil, le temps passe toujours.
+  if (ecoule > SEUIL_ABSENCE_MS && (!state.reglages || !state.reglages.rattrapage)) {
+    return { ticks: 0, tronque: false, pas, gele: true };
+  }
   let ticks = Math.floor(ecoule / pas);
   const tronque = ticks > RATTRAPAGE_MAX;
   if (tronque) ticks = RATTRAPAGE_MAX;
@@ -794,7 +819,11 @@ export function rattraper(state, maintenantMs) {
     state.dernierReel = maintenantMs;
     return { ticks: 0, tronque: false };
   }
-  const { ticks, tronque, pas } = rattrapageDu(state, maintenantMs);
+  const { ticks, tronque, pas, gele } = rattrapageDu(state, maintenantMs);
+  if (gele) {
+    state.dernierReel = maintenantMs;
+    return { ticks: 0, tronque: false };
+  }
   ouvrirRapport(state, 'absence');
   const joues = enAbsence(state, () => avancer(state, ticks));
   fermerRapport(state);
@@ -819,6 +848,10 @@ export function rattrapageEtale(state, maintenantMs, tranche = 200) {
     return { total: 0, tronque: false, faits: () => 0, pas: () => false };
   }
   const plan = rattrapageDu(state, maintenantMs);
+  if (plan.gele) {
+    state.dernierReel = maintenantMs;
+    return { total: 0, tronque: false, faits: () => 0, pas: () => false };
+  }
   let faits = 0;
   const finir = () => {
     if (plan.tronque) state.dernierReel = maintenantMs;

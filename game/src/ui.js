@@ -5340,7 +5340,27 @@ function modaleSauvegardes() {
         <div class="aide">${e(et.motif || '')}</div>
         <div class="aide">${pl(et.echecs, 'tentative')} en échec. Exportez la partie en
           fichier tant qu’elle est ouverte : c’est le seul moyen de ne pas la perdre.</div></div>`;
-  return `${sante}
+  const rejoue = !!(S && S.reglages && S.reglages.rattrapage);
+  // Le temps hors ligne, tranché par le propriétaire (août 2026) : « plusieurs
+  // centaines de jours défilent sous nos yeux sans qu'on ne puisse rien
+  // faire ». Le monde attend, sauf si l'on demande le contraire — et alors on
+  // sait ce qu'on demande.
+  const tempsHorsLigne = S ? `<div class="sep"></div>
+    <h2 class="titre">Le temps quand vous n’êtes pas là</h2>
+    <div class="rang-tous">
+      <button class="act mini" data-a="temps-hors-ligne" data-v="0"
+        aria-pressed="${!rejoue}">Le monde attend</button>
+      <button class="act mini" data-a="temps-hors-ligne" data-v="1"
+        aria-pressed="${rejoue}">Le monde tourne sans vous</button>
+    </div>
+    <div class="aide">${rejoue
+    ? 'Au retour, l’absence est rejouée heure par heure : les villes vivent, les '
+      + 'guerres avancent, votre escouade mange. Une longue absence défile à '
+      + 'l’écran, et vous ne pouvez rien y faire tant qu’elle dure.'
+    : 'La partie reprend exactement où vous l’avez laissée. Rien ne se joue en '
+      + 'votre absence, rien ne défile au retour.'}</div>` : '';
+
+  return `${sante}${tempsHorsLigne}
   <h2 class="titre">Sauvegardes
     <span class="droite aide">${liste.length}/${EMPLACEMENTS_MAX}</span></h2>
   <div class="aide">La partie en cours s’écrit toute seule en continu. Ce sont des copies
@@ -6657,6 +6677,14 @@ function surClic(ev) {
       const depose = el.dataset.a === 'coffre-deposer';
       const r = ACTIONS.coffre(col && col.id, el.dataset.k, depose, qteTransfert);
       if (!r.ok) toast(r.motif, true);
+      rendreModale();
+      rafraichir(true);
+      break;
+    }
+
+    case 'temps-hors-ligne': {
+      const r = ACTIONS.reglerRattrapage(el.dataset.v === '1');
+      toast(r.rattrapage ? 'Le monde tournera sans vous.' : 'Le monde vous attendra.');
       rendreModale();
       rafraichir(true);
       break;

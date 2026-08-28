@@ -514,6 +514,53 @@ avancer(s3b, 200);
 ok(serialiser(s3) === serialiser(s3b), 'la sim reprend à l’identique après rechargement');
 
 const MARQUE_TEST = 'CZ1|';
+section('3 ter. Le temps hors ligne : le rattrapage est un choix');
+{
+  // « Le monde continue sans nous, mais ça n'est pas réellement le cas : il y a
+  // un rattrapage fictif qui se déroule lorsqu'on revient, plusieurs centaines
+  // de jours défilent sous nos yeux sans qu'on ne puisse rien faire » — le
+  // propriétaire, août 2026. Il tranche : par défaut le monde attend, et
+  // rejouer l'absence redevient un choix qu'on prend en connaissance de cause.
+  const hors = nouvellePartie(5150, { maintenant: 0, depart: 'ville', equipe: 3 });
+  ok(hors.reglages && hors.reglages.rattrapage === false,
+    'par défaut, l’absence ne se rejoue pas', JSON.stringify(hors.reglages || null));
+  const t0 = hors.temps;
+  // Jouer, ce n'est pas être absent : l'horloge du jeu passe par le même
+  // chemin, toutes les quatre cents millisecondes. Elle ne doit pas s'arrêter.
+  // À ×60 une heure de jeu prend une sixième de seconde de vrai temps : cinq
+  // secondes de fil, c'est trente heures jouées — et zéro absence.
+  hors.vitesse = 60;
+  hors.dernierReel = 1;
+  const enJeu = rattraper(hors, 1 + 5000);
+  ok(enJeu.ticks === 30 && hors.temps === t0 + 30,
+    'le temps passe normalement pendant qu’on joue', `${enJeu.ticks} h`);
+  hors.vitesse = 1;
+  const t1 = hors.temps;
+  const r = rattraper(hors, 6 * 3600 * 1000);
+  ok(r.ticks === 0 && hors.temps === t1, 'six heures dehors, rien n’est rejoué',
+    `${t1} → ${hors.temps}`);
+  ok(hors.dernierReel === 6 * 3600 * 1000,
+    'et l’horloge repart d’ici : l’absence ne s’accumule pas en dette',
+    `${hors.dernierReel}`);
+  const r2 = rattraper(hors, 9 * 3600 * 1000);
+  ok(r2.ticks === 0 && hors.temps === t1, 'ni au retour suivant');
+  const plan = rattrapageEtale(hors, 20 * 3600 * 1000);
+  ok(plan.total === 0, 'et il n’y a pas d’écran de rattrapage à afficher', `${plan.total}`);
+
+  // Le choix inverse marche toujours : c'est une option, pas une suppression.
+  hors.reglages.rattrapage = true;
+  const r3 = rattraper(hors, 26 * 3600 * 1000);
+  ok(r3.ticks > 0 && hors.temps > t1, 'qui le demande retrouve le monde qui tourne sans lui',
+    `${t1} → ${hors.temps} (${r3.ticks} h rejouées)`);
+
+  // Une partie d'avant le réglage ne rejoue pas non plus : on n'inflige pas
+  // à quelqu'un un rattrapage qu'il n'a pas demandé.
+  const vieille = JSON.parse(serialiser(hors));
+  delete vieille.reglages;
+  ok(normaliser(vieille).reglages.rattrapage === false,
+    'et les parties d’avant s’ouvrent avec le monde à l’arrêt');
+}
+
 section('3 bis. La sauvegarde comprimée — le stockage n’étouffe plus');
 {
   // « Le système de sauvegarde ne fonctionne pas, le fichier est trop gros
@@ -5065,6 +5112,8 @@ section('9 quaterdecies. Ce que l’estime change, et ce qu’une absence ne co�
       };
     }
     s0.dernierReel = 1;
+    // Ce test porte sur l'absence rejouée : le décor allume ce mode.
+    s0.reglages.rattrapage = true;
     rattraper(s0, 1 + TICK_MS * 40);
     return { s: s0, g: g0, drapeau, rep: s0.player.reputation[drapeau] || 0 };
   };
@@ -5127,6 +5176,7 @@ section('9 quindecies. Le rapport d’absence');
   for (const g of sr.player.groupes) g.inventaire.rations = 4000;
   sr.vitesse = 1;
   sr.dernierReel = 1;
+  sr.reglages.rattrapage = true;
   const creditsAvant = soldeIci(sr);
   gagner(sr, 0); // repère explicite : on veut voir le delta, pas la valeur
   rattraper(sr, 1 + TICK_MS * 1200);
@@ -6973,6 +7023,8 @@ section('9 sexvicies quater. Le comptoir : traiter sans bouger de chez soi');
 
 section('10. Rattrapage hors ligne');
 const s10 = nouvellePartie(1010, { maintenant: 1000000, depart: 'ville', equipe: 3 });
+// Le mode sous test : depuis août 2026, le monde attend par défaut.
+s10.reglages.rattrapage = true;
 s10.vitesse = 1; // le rattrapage dépend de la vitesse choisie
 const res10 = rattraper(s10, 1000000 + TICK_MS * 100);
 ok(res10.ticks === 100, '100 heures rattrapées après 100 pas de temps réel', `reçu ${res10.ticks}`);
@@ -6984,9 +7036,11 @@ ok(s10.temps <= 100 + RATTRAPAGE_MAX, 'plafond respecté', `t=${s10.temps}`);
 // Le rattrapage étalé sert l'interface : il doit produire exactement le même
 // monde que le rattrapage d'un bloc, quel que soit le découpage.
 const bloc = nouvellePartie(2020, { maintenant: 500, depart: 'ville', equipe: 3 });
+bloc.reglages.rattrapage = true;
 bloc.vitesse = 1;
 rattraper(bloc, 500 + TICK_MS * 600);
 const etale = nouvellePartie(2020, { maintenant: 500, depart: 'ville', equipe: 3 });
+etale.reglages.rattrapage = true;
 etale.vitesse = 1;
 const pas10 = rattrapageEtale(etale, 500 + TICK_MS * 600, 37);
 let tranches = 0;
@@ -6998,6 +7052,7 @@ ok(serialiser(etale) === serialiser(bloc), 'étalé et d’un bloc donnent le m�
 // Fermer la page en cours de rattrapage ne doit ni perdre ni rejouer le temps
 // déjà passé : ce qui reste dû se retrouve au chargement suivant.
 const coupe = nouvellePartie(2020, { maintenant: 500, depart: 'ville', equipe: 3 });
+coupe.reglages.rattrapage = true;
 coupe.vitesse = 1;
 const pas10b = rattrapageEtale(coupe, 500 + TICK_MS * 600, 37);
 pas10b.pas();

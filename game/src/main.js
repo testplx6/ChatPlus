@@ -649,6 +649,20 @@ const API = {
     return r;
   },
 
+  /**
+   * Ce que le monde fait quand on n'est pas là. En l'allumant, on repart de
+   * maintenant : l'absence déjà écoulée ne se rejoue pas d'un coup — on n'a
+   * pas demandé ça, on a demandé que ça compte À PARTIR D'ICI.
+   */
+  reglerRattrapage(actif) {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    if (!state.reglages) state.reglages = { rattrapage: false };
+    state.reglages.rattrapage = !!actif;
+    state.dernierReel = Date.now();
+    sauver();
+    return { ok: true, rattrapage: state.reglages.rattrapage };
+  },
+
   /** Laisser les habitants se placer eux-mêmes, ou tenir le tableau soi-même. */
   autoEmploi() {
     state.base.autoEmploi = state.base.autoEmploi === false;
