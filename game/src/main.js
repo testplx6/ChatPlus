@@ -51,6 +51,16 @@ let boucle = null;
 let sauvegardeTimer = null;
 /** Vrai pendant l'écran de rattrapage : l'horloge normale ne doit pas s'en mêler. */
 let rattrapageEnCours = false;
+/** L'écriture différée en attente, s'il y en a une. */
+let ecritureDemandee = null;
+/** Vrai si l'écriture en attente est accrochée à un temps mort du navigateur. */
+let ecritureParRepos = false;
+/**
+ * Le souffle qu'on laisse au doigt avant d'écrire. Assez court pour qu'une
+ * fermeture d'onglet juste après un clic soit rattrapée par `pagehide` ; assez
+ * long pour que dix actions d'affilée ne fassent qu'une écriture.
+ */
+const DELAI_ECRITURE_MS = 300;
 
 // ---------------------------------------------------------------------------
 // Boucle temps réel
@@ -78,7 +88,7 @@ function demarrerBoucle() {
     const r = rattraper(state, Date.now());
     if (r.ticks > 0) rafraichir();
   }, 400);
-  sauvegardeTimer = setInterval(sauver, 5000);
+  sauvegardeTimer = setInterval(ecrireMaintenant, 5000);
 }
 
 function arreterBoucle() {
@@ -100,7 +110,18 @@ function arreterBoucle() {
  */
 export const ETAT_SAUVEGARDE = { ok: true, motif: null, quand: 0, taille: 0, echecs: 0 };
 
-function sauver() {
+/**
+ * L'écriture, pour de vrai : sérialiser tout l'état et le comprimer coûte des
+ * dizaines de millisecondes sur cette machine, plusieurs centaines sur un
+ * téléphone. Elle ne doit jamais tomber dans le fil d'un clic.
+ */
+function ecrireMaintenant() {
+  if (ecritureDemandee !== null) {
+    if (ecritureParRepos && typeof cancelIdleCallback === 'function') {
+      cancelIdleCallback(ecritureDemandee);
+    } else clearTimeout(ecritureDemandee);
+    ecritureDemandee = null;
+  }
   if (!state) return;
   const r = sauvegarder(state);
   ETAT_SAUVEGARDE.ok = !!r.ok;
@@ -112,6 +133,29 @@ function sauver() {
   } else {
     ETAT_SAUVEGARDE.echecs += 1;
   }
+}
+
+/**
+ * Demander que la partie soit écrite. Le geste du joueur ne la paie pas :
+ * l'écriture est différée d'un souffle et regroupée — « ça rame beaucoup, les
+ * boutons ne réagissent plus aussitôt comme avant » (le propriétaire, août
+ * 2026), après que la compression eut ajouté son coût à CHAQUE action.
+ *
+ * Rien n'est perdu pour autant : la minuterie des cinq secondes, la mise en
+ * arrière-plan et la fermeture de l'onglet écrivent, elles, sur-le-champ.
+ */
+function sauver() {
+  if (!state || ecritureDemandee !== null) return;
+  // Quand le navigateur sait dire « je n'ai rien à faire », on écrit là —
+  // entre deux images plutôt qu'au milieu d'un geste. Le délai reste un
+  // plafond : au pire, on écrit comme avant.
+  if (typeof requestIdleCallback === 'function') {
+    ecritureDemandee = requestIdleCallback(ecrireMaintenant, { timeout: DELAI_ECRITURE_MS });
+    ecritureParRepos = true;
+    return;
+  }
+  ecritureParRepos = false;
+  ecritureDemandee = setTimeout(ecrireMaintenant, DELAI_ECRITURE_MS);
 }
 
 // ---------------------------------------------------------------------------
@@ -194,7 +238,7 @@ const API = {
    */
   exporter() {
     if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
-    sauver();
+    ecrireMaintenant();
     try {
       const blob = new Blob([serialiser(state)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -220,7 +264,7 @@ const API = {
    */
   texteExport() {
     if (!state) return '';
-    sauver();
+    ecrireMaintenant();
     // Comprimé : c'est ce qui rend le copier-coller possible au téléphone —
     // le texte en clair d'une partie longue ne se laissait plus sélectionner.
     return emballer(serialiser(state));
@@ -813,7 +857,12 @@ monterUI(API);
 // Le harnais de test lit la sauvegarde sans connaître son emballage : ce
 // crochet rend toujours le texte en clair, comprimée ou non. Ce n'est pas une
 // API de jeu — c'est une fenêtre d'atelier, comme `__momentsAuto`.
-if (typeof window !== 'undefined') window.__sauvegardeTexte = lireTexteSauvegarde;
+if (typeof window !== 'undefined') {
+  window.__sauvegardeTexte = (cle) => {
+    ecrireMaintenant();
+    return lireTexteSauvegarde(cle);
+  };
+}
 
 const sauvegarde = charger();
 if (sauvegarde) {
@@ -824,12 +873,12 @@ if (sauvegarde) {
 
 // Ne jamais perdre une session parce que l'onglet est passé en arrière-plan.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') sauver();
+  if (document.visibilityState === 'hidden') ecrireMaintenant();
   else if (state) {
     // Un onglet laissé de côté toute la nuit doit autant de temps qu'une
     // session rouverte : même chemin, même écran de rattrapage.
     reprendreLeTemps((r) => { if (r.total) { rafraichir(true); sauver(); } });
   }
 });
-window.addEventListener('pagehide', sauver);
-window.addEventListener('beforeunload', sauver);
+window.addEventListener('pagehide', ecrireMaintenant);
+window.addEventListener('beforeunload', ecrireMaintenant);

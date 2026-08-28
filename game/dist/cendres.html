@@ -1515,6 +1515,20 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
 // et écrit en clair au moindre écart. Un défaut ici coûte des octets, jamais
 // une partie.
 
+// Les tables de travail vivent ici, pas dans la fonction : les rallouer à
+// chaque écriture, c'était douze mégaoctets de déchets toutes les cinq
+// secondes — et un ramasse-miettes qui s'invite au milieu du jeu, sur un
+// téléphone plus qu'ailleurs. Elles sont remises à zéro à chaque appel, ce qui
+// coûte une fraction de milliseconde.
+const CAPACITE_H = 1 << 20;
+const TABLES = {
+  parChar: new Int32Array(65536),
+  naissants: new Uint8Array(65536),
+  hMot: new Int32Array(CAPACITE_H),
+  hChar: new Int32Array(CAPACITE_H),
+  hVal: new Int32Array(CAPACITE_H),
+};
+
 /** Compresse un texte en une chaîne UTF-16 sûre. */
 function comprimer(texte) {
   if (texte == null || texte === '') return '';
@@ -1525,9 +1539,48 @@ function comprimer(texte) {
   // tournant toutes les cinq secondes. Ici : un code par caractère connu, et
   // les suites indexées par (code du mot << 16) + caractère. Même flux de
   // sortie au bit près — `decomprimer` n'a pas changé d'une ligne.
-  const parChar = new Map();
-  const suites = new Map();
-  const naissants = new Set();
+  // Tables TYPÉES plutôt que Map : mesuré en jeu, la compression d'un monde de
+  // 6 000 h bloquait le fil 50 ms toutes les cinq secondes — quelques centaines
+  // sur un téléphone, et « les boutons ne réagissent plus aussitôt comme
+  // avant ». `parChar` est un tableau direct indexé par le code du caractère ;
+  // `suites` est une table de hachage à sondage linéaire (clé : le couple
+  // code-du-mot + caractère, qui ne tient pas dans un entier une fois le
+  // dictionnaire grand). Le flux produit est le même, au bit près.
+  const parChar = TABLES.parChar;
+  const naissants = TABLES.naissants;
+  const capacite = CAPACITE_H;
+  const masqueH = capacite - 1;
+  const hMot = TABLES.hMot;
+  const hChar = TABLES.hChar;
+  const hVal = TABLES.hVal;
+  parChar.fill(-1);
+  naissants.fill(0);
+  hMot.fill(-1);
+  let occupes = 0;
+  const suitesLentes = new Map();
+  const place = (codeMot, c) => {
+    let i = ((codeMot * 2654435761 + c * 40503) >>> 12) & masqueH;
+    for (;;) {
+      const m = hMot[i];
+      if (m === -1) return i;
+      if (m === codeMot && hChar[i] === c) return i;
+      i = (i + 1) & masqueH;
+    }
+  };
+  const lireSuite = (codeMot, c) => {
+    if (occupes * 2 >= capacite) {
+      const v = suitesLentes.get(`${codeMot},${c}`);
+      return v === undefined ? -1 : v;
+    }
+    const i = place(codeMot, c);
+    return hMot[i] === -1 ? -1 : hVal[i];
+  };
+  const poserSuite = (codeMot, c, valeur) => {
+    if (occupes * 2 >= capacite) { suitesLentes.set(`${codeMot},${c}`, valeur); return; }
+    const i = place(codeMot, c);
+    if (hMot[i] === -1) { hMot[i] = codeMot; hChar[i] = c; occupes++; }
+    hVal[i] = valeur;
+  };
   let tailleDico = 3;
   let bitsCode = 2;
   let avantElargir = 2;
@@ -1569,7 +1622,7 @@ function comprimer(texte) {
   // Un caractère jamais émis se dit en clair : le code 0 annonce 8 bits, le
   // code 1 en annonce 16. Seul un mot d'UN caractère peut être naissant.
   const emettreMot = (codeMot, charMot, simple) => {
-    if (simple && naissants.has(charMot)) {
+    if (simple && naissants[charMot] === 1) {
       if (charMot < 256) {
         emettreCode(0, bitsCode);
         emettreCode(charMot, 8);
@@ -1578,7 +1631,7 @@ function comprimer(texte) {
         emettreCode(charMot, 16);
       }
       compterEmission();
-      naissants.delete(charMot);
+      naissants[charMot] = 0;
     } else {
       emettreCode(codeMot, bitsCode);
     }
@@ -1590,11 +1643,11 @@ function comprimer(texte) {
   let simple = false;
   for (let i = 0; i < texte.length; i++) {
     const c = texte.charCodeAt(i);
-    let codeC = parChar.get(c);
-    if (codeC === undefined) {
+    let codeC = parChar[c];
+    if (codeC === -1) {
       codeC = tailleDico++;
-      parChar.set(c, codeC);
-      naissants.add(c);
+      parChar[c] = codeC;
+      naissants[c] = 1;
     }
     if (codeMot === -1) {
       codeMot = codeC;
@@ -1602,14 +1655,13 @@ function comprimer(texte) {
       simple = true;
       continue;
     }
-    const cle = codeMot * 65536 + c;
-    const codeSuite = suites.get(cle);
-    if (codeSuite !== undefined) {
+    const codeSuite = lireSuite(codeMot, c);
+    if (codeSuite !== -1) {
       codeMot = codeSuite;
       simple = false;
     } else {
       emettreMot(codeMot, charMot, simple);
-      suites.set(cle, tailleDico++);
+      poserSuite(codeMot, c, tailleDico++);
       codeMot = codeC;
       charMot = c;
       simple = true;
@@ -27429,7 +27481,7 @@ function rafraichir(force) {
   // bouge même quand le texte autour ne bouge pas.
   let ecrit = true;
   try {
-    const html = bandeauDevaluation() + bandeauSiege() + rendu();
+    const html = bandeauSauvegarde() + bandeauDevaluation() + bandeauSiege() + rendu();
     if (html === dernierHtml && memeEcran) ecrit = false;
     else {
       dernierHtml = html;
@@ -29016,6 +29068,34 @@ function armeesIci(rid) {
  * l'écran Base : on pouvait régler son étal pendant qu'on perdait sa ville.
  * Tant que ça dure, ça se voit — sur tous les écrans, comme la dévaluation.
  */
+/**
+ * Le bandeau d'écriture refusée.
+ *
+ * Il existait déjà un signe : le pictogramme de la barre du haut passait de ⛁
+ * à ⚠. Il n'a pas suffi, et ce qu'il a coûté est connu — le propriétaire a
+ * joué des heures sur un stockage plein, puis retrouvé sa partie ramenée à
+ * l'instant où l'écriture s'est fermée : « plusieurs améliorations que j'avais
+ * faites sur ma base ont disparu ». Une écriture qui ne passe plus n'est pas
+ * un détail d'état : c'est tout ce qu'on fait ensuite qui n'existe pas.
+ *
+ * Donc : au-dessus de tous les écrans, comme la dévaluation et le siège, et
+ * porteur de son verbe — le panneau des sauvegardes, où l'on met la partie en
+ * fichier et où l'on fait de la place.
+ */
+function bandeauSauvegarde() {
+  const et = etatSauvegarde();
+  if (et.ok) return '';
+  return `<section class="panneau urgent" id="bandeau-sauvegarde">
+    <h2 class="titre alerte">La partie ne s’écrit plus
+      <span class="droite">${n(et.echecs)} refus</span></h2>
+    <div class="aide">${e(et.motif || 'Écriture refusée.')}</div>
+    <div class="aide">Tout ce que vous faites depuis n’est gardé nulle part : en
+      fermant l’onglet, cela n’aura pas eu lieu. Mettez la partie en fichier —
+      et faites de la place en supprimant une copie.</div>
+    <button class="act primaire" data-a="modale" data-m="sauvegardes">Mettre la partie à l’abri</button>
+  </section>`;
+}
+
 function bandeauSiege() {
   const a = S && S.base && S.base.fonde ? siegeEnCours(S) : null;
   if (!a) return '';
@@ -34054,6 +34134,16 @@ let boucle = null;
 let sauvegardeTimer = null;
 /** Vrai pendant l'écran de rattrapage : l'horloge normale ne doit pas s'en mêler. */
 let rattrapageEnCours = false;
+/** L'écriture différée en attente, s'il y en a une. */
+let ecritureDemandee = null;
+/** Vrai si l'écriture en attente est accrochée à un temps mort du navigateur. */
+let ecritureParRepos = false;
+/**
+ * Le souffle qu'on laisse au doigt avant d'écrire. Assez court pour qu'une
+ * fermeture d'onglet juste après un clic soit rattrapée par `pagehide` ; assez
+ * long pour que dix actions d'affilée ne fassent qu'une écriture.
+ */
+const DELAI_ECRITURE_MS = 300;
 
 // ---------------------------------------------------------------------------
 // Boucle temps réel
@@ -34081,7 +34171,7 @@ function demarrerBoucle() {
     const r = rattraper(state, Date.now());
     if (r.ticks > 0) rafraichir();
   }, 400);
-  sauvegardeTimer = setInterval(sauver, 5000);
+  sauvegardeTimer = setInterval(ecrireMaintenant, 5000);
 }
 
 function arreterBoucle() {
@@ -34103,7 +34193,18 @@ function arreterBoucle() {
  */
 const ETAT_SAUVEGARDE = { ok: true, motif: null, quand: 0, taille: 0, echecs: 0 };
 
-function sauver() {
+/**
+ * L'écriture, pour de vrai : sérialiser tout l'état et le comprimer coûte des
+ * dizaines de millisecondes sur cette machine, plusieurs centaines sur un
+ * téléphone. Elle ne doit jamais tomber dans le fil d'un clic.
+ */
+function ecrireMaintenant() {
+  if (ecritureDemandee !== null) {
+    if (ecritureParRepos && typeof cancelIdleCallback === 'function') {
+      cancelIdleCallback(ecritureDemandee);
+    } else clearTimeout(ecritureDemandee);
+    ecritureDemandee = null;
+  }
   if (!state) return;
   const r = sauvegarder(state);
   ETAT_SAUVEGARDE.ok = !!r.ok;
@@ -34115,6 +34216,29 @@ function sauver() {
   } else {
     ETAT_SAUVEGARDE.echecs += 1;
   }
+}
+
+/**
+ * Demander que la partie soit écrite. Le geste du joueur ne la paie pas :
+ * l'écriture est différée d'un souffle et regroupée — « ça rame beaucoup, les
+ * boutons ne réagissent plus aussitôt comme avant » (le propriétaire, août
+ * 2026), après que la compression eut ajouté son coût à CHAQUE action.
+ *
+ * Rien n'est perdu pour autant : la minuterie des cinq secondes, la mise en
+ * arrière-plan et la fermeture de l'onglet écrivent, elles, sur-le-champ.
+ */
+function sauver() {
+  if (!state || ecritureDemandee !== null) return;
+  // Quand le navigateur sait dire « je n'ai rien à faire », on écrit là —
+  // entre deux images plutôt qu'au milieu d'un geste. Le délai reste un
+  // plafond : au pire, on écrit comme avant.
+  if (typeof requestIdleCallback === 'function') {
+    ecritureDemandee = requestIdleCallback(ecrireMaintenant, { timeout: DELAI_ECRITURE_MS });
+    ecritureParRepos = true;
+    return;
+  }
+  ecritureParRepos = false;
+  ecritureDemandee = setTimeout(ecrireMaintenant, DELAI_ECRITURE_MS);
 }
 
 // ---------------------------------------------------------------------------
@@ -34197,7 +34321,7 @@ const API = {
    */
   exporter() {
     if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
-    sauver();
+    ecrireMaintenant();
     try {
       const blob = new Blob([serialiser(state)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -34223,7 +34347,7 @@ const API = {
    */
   texteExport() {
     if (!state) return '';
-    sauver();
+    ecrireMaintenant();
     // Comprimé : c'est ce qui rend le copier-coller possible au téléphone —
     // le texte en clair d'une partie longue ne se laissait plus sélectionner.
     return emballer(serialiser(state));
@@ -34816,7 +34940,12 @@ monterUI(API);
 // Le harnais de test lit la sauvegarde sans connaître son emballage : ce
 // crochet rend toujours le texte en clair, comprimée ou non. Ce n'est pas une
 // API de jeu — c'est une fenêtre d'atelier, comme `__momentsAuto`.
-if (typeof window !== 'undefined') window.__sauvegardeTexte = lireTexteSauvegarde;
+if (typeof window !== 'undefined') {
+  window.__sauvegardeTexte = (cle) => {
+    ecrireMaintenant();
+    return lireTexteSauvegarde(cle);
+  };
+}
 
 const sauvegarde = charger();
 if (sauvegarde) {
@@ -34827,15 +34956,15 @@ if (sauvegarde) {
 
 // Ne jamais perdre une session parce que l'onglet est passé en arrière-plan.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') sauver();
+  if (document.visibilityState === 'hidden') ecrireMaintenant();
   else if (state) {
     // Un onglet laissé de côté toute la nuit doit autant de temps qu'une
     // session rouverte : même chemin, même écran de rattrapage.
     reprendreLeTemps((r) => { if (r.total) { rafraichir(true); sauver(); } });
   }
 });
-window.addEventListener('pagehide', sauver);
-window.addEventListener('beforeunload', sauver);
+window.addEventListener('pagehide', ecrireMaintenant);
+window.addEventListener('beforeunload', ecrireMaintenant);
 </script>
 </body>
 </html>

@@ -17,6 +17,20 @@
 // et écrit en clair au moindre écart. Un défaut ici coûte des octets, jamais
 // une partie.
 
+// Les tables de travail vivent ici, pas dans la fonction : les rallouer à
+// chaque écriture, c'était douze mégaoctets de déchets toutes les cinq
+// secondes — et un ramasse-miettes qui s'invite au milieu du jeu, sur un
+// téléphone plus qu'ailleurs. Elles sont remises à zéro à chaque appel, ce qui
+// coûte une fraction de milliseconde.
+const CAPACITE_H = 1 << 20;
+const TABLES = {
+  parChar: new Int32Array(65536),
+  naissants: new Uint8Array(65536),
+  hMot: new Int32Array(CAPACITE_H),
+  hChar: new Int32Array(CAPACITE_H),
+  hVal: new Int32Array(CAPACITE_H),
+};
+
 /** Compresse un texte en une chaîne UTF-16 sûre. */
 export function comprimer(texte) {
   if (texte == null || texte === '') return '';
@@ -27,9 +41,48 @@ export function comprimer(texte) {
   // tournant toutes les cinq secondes. Ici : un code par caractère connu, et
   // les suites indexées par (code du mot << 16) + caractère. Même flux de
   // sortie au bit près — `decomprimer` n'a pas changé d'une ligne.
-  const parChar = new Map();
-  const suites = new Map();
-  const naissants = new Set();
+  // Tables TYPÉES plutôt que Map : mesuré en jeu, la compression d'un monde de
+  // 6 000 h bloquait le fil 50 ms toutes les cinq secondes — quelques centaines
+  // sur un téléphone, et « les boutons ne réagissent plus aussitôt comme
+  // avant ». `parChar` est un tableau direct indexé par le code du caractère ;
+  // `suites` est une table de hachage à sondage linéaire (clé : le couple
+  // code-du-mot + caractère, qui ne tient pas dans un entier une fois le
+  // dictionnaire grand). Le flux produit est le même, au bit près.
+  const parChar = TABLES.parChar;
+  const naissants = TABLES.naissants;
+  const capacite = CAPACITE_H;
+  const masqueH = capacite - 1;
+  const hMot = TABLES.hMot;
+  const hChar = TABLES.hChar;
+  const hVal = TABLES.hVal;
+  parChar.fill(-1);
+  naissants.fill(0);
+  hMot.fill(-1);
+  let occupes = 0;
+  const suitesLentes = new Map();
+  const place = (codeMot, c) => {
+    let i = ((codeMot * 2654435761 + c * 40503) >>> 12) & masqueH;
+    for (;;) {
+      const m = hMot[i];
+      if (m === -1) return i;
+      if (m === codeMot && hChar[i] === c) return i;
+      i = (i + 1) & masqueH;
+    }
+  };
+  const lireSuite = (codeMot, c) => {
+    if (occupes * 2 >= capacite) {
+      const v = suitesLentes.get(`${codeMot},${c}`);
+      return v === undefined ? -1 : v;
+    }
+    const i = place(codeMot, c);
+    return hMot[i] === -1 ? -1 : hVal[i];
+  };
+  const poserSuite = (codeMot, c, valeur) => {
+    if (occupes * 2 >= capacite) { suitesLentes.set(`${codeMot},${c}`, valeur); return; }
+    const i = place(codeMot, c);
+    if (hMot[i] === -1) { hMot[i] = codeMot; hChar[i] = c; occupes++; }
+    hVal[i] = valeur;
+  };
   let tailleDico = 3;
   let bitsCode = 2;
   let avantElargir = 2;
@@ -71,7 +124,7 @@ export function comprimer(texte) {
   // Un caractère jamais émis se dit en clair : le code 0 annonce 8 bits, le
   // code 1 en annonce 16. Seul un mot d'UN caractère peut être naissant.
   const emettreMot = (codeMot, charMot, simple) => {
-    if (simple && naissants.has(charMot)) {
+    if (simple && naissants[charMot] === 1) {
       if (charMot < 256) {
         emettreCode(0, bitsCode);
         emettreCode(charMot, 8);
@@ -80,7 +133,7 @@ export function comprimer(texte) {
         emettreCode(charMot, 16);
       }
       compterEmission();
-      naissants.delete(charMot);
+      naissants[charMot] = 0;
     } else {
       emettreCode(codeMot, bitsCode);
     }
@@ -92,11 +145,11 @@ export function comprimer(texte) {
   let simple = false;
   for (let i = 0; i < texte.length; i++) {
     const c = texte.charCodeAt(i);
-    let codeC = parChar.get(c);
-    if (codeC === undefined) {
+    let codeC = parChar[c];
+    if (codeC === -1) {
       codeC = tailleDico++;
-      parChar.set(c, codeC);
-      naissants.add(c);
+      parChar[c] = codeC;
+      naissants[c] = 1;
     }
     if (codeMot === -1) {
       codeMot = codeC;
@@ -104,14 +157,13 @@ export function comprimer(texte) {
       simple = true;
       continue;
     }
-    const cle = codeMot * 65536 + c;
-    const codeSuite = suites.get(cle);
-    if (codeSuite !== undefined) {
+    const codeSuite = lireSuite(codeMot, c);
+    if (codeSuite !== -1) {
       codeMot = codeSuite;
       simple = false;
     } else {
       emettreMot(codeMot, charMot, simple);
-      suites.set(cle, tailleDico++);
+      poserSuite(codeMot, c, tailleDico++);
       codeMot = codeC;
       charMot = c;
       simple = true;

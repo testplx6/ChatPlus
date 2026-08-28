@@ -3346,15 +3346,41 @@ console.log('\n8 octies. Une sauvegarde qui échoue le dit');
     };
   });
   await page.waitForTimeout(6500);
-  ok((await page.locator('[data-a="modale"][data-m="sauvegardes"]').innerText()).trim() === '⚠',
+  ok((await page.locator('#barre-haut [data-a="modale"][data-m="sauvegardes"]').innerText()).trim() === '⚠',
     'l’écriture refusée se voit dans la barre du haut, sans rien ouvrir');
-  await page.click('[data-a="modale"][data-m="sauvegardes"]');
+  await page.click('#barre-haut [data-a="modale"][data-m="sauvegardes"]');
   await page.waitForTimeout(400);
   const casse = await page.locator('#modale').innerText();
   ok(/ne passe pas/i.test(casse), 'et le panneau nomme la panne',
     casse.slice(0, 140).replace(/\n+/g, ' | '));
   ok(/exportez/i.test(casse), 'et dit quoi faire tant que la partie est ouverte');
   await page.screenshot({ path: join(CAPTURES, '16-sauvegarde-en-echec.png'), fullPage: true });
+
+  // Le ⚠ de la barre n'a pas suffi : le propriétaire a joué des heures sur un
+  // stockage refusé, et retrouvé sa partie ramenée en arrière — « plusieurs
+  // améliorations que j'avais faites sur ma base ont disparu ». Une écriture
+  // qui ne passe pas s'impose désormais SUR l'écran, comme la dévaluation et
+  // le siège, et porte son verbe.
+  await page.click('[data-a="fermer"]');
+  await page.waitForTimeout(400);
+  const bandeauSauve = await page.evaluate(() => {
+    const b = document.querySelector('#bandeau-sauvegarde');
+    if (!b || b.offsetParent === null) return null;
+    return {
+      texte: b.textContent.replace(/\s+/g, ' ').trim(),
+      verbe: b.querySelectorAll('button').length,
+      dansVue: b.getBoundingClientRect().top < window.innerHeight,
+    };
+  });
+  ok(!!bandeauSauve && bandeauSauve.dansVue,
+    'l’écriture refusée s’impose sur l’écran, sans rien ouvrir',
+    bandeauSauve ? bandeauSauve.texte.slice(0, 90) : 'aucun bandeau');
+  ok(!!bandeauSauve && bandeauSauve.verbe >= 1,
+    'et le bandeau porte son verbe : de quoi mettre la partie à l’abri');
+  await page.click('[data-a="onglet"][data-k="escouade"]');
+  await page.waitForTimeout(400);
+  ok(await page.locator('#bandeau-sauvegarde').count() === 1,
+    'et il suit sur les autres écrans — tant que ça dure, ça se voit');
 
   // On rend l'écriture, et l'on repart d'une partie saine pour la suite.
   await page.reload({ waitUntil: 'networkidle' });

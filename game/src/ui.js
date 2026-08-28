@@ -532,7 +532,7 @@ export function rafraichir(force) {
   // bouge même quand le texte autour ne bouge pas.
   let ecrit = true;
   try {
-    const html = bandeauDevaluation() + bandeauSiege() + rendu();
+    const html = bandeauSauvegarde() + bandeauDevaluation() + bandeauSiege() + rendu();
     if (html === dernierHtml && memeEcran) ecrit = false;
     else {
       dernierHtml = html;
@@ -2119,6 +2119,34 @@ function armeesIci(rid) {
  * l'écran Base : on pouvait régler son étal pendant qu'on perdait sa ville.
  * Tant que ça dure, ça se voit — sur tous les écrans, comme la dévaluation.
  */
+/**
+ * Le bandeau d'écriture refusée.
+ *
+ * Il existait déjà un signe : le pictogramme de la barre du haut passait de ⛁
+ * à ⚠. Il n'a pas suffi, et ce qu'il a coûté est connu — le propriétaire a
+ * joué des heures sur un stockage plein, puis retrouvé sa partie ramenée à
+ * l'instant où l'écriture s'est fermée : « plusieurs améliorations que j'avais
+ * faites sur ma base ont disparu ». Une écriture qui ne passe plus n'est pas
+ * un détail d'état : c'est tout ce qu'on fait ensuite qui n'existe pas.
+ *
+ * Donc : au-dessus de tous les écrans, comme la dévaluation et le siège, et
+ * porteur de son verbe — le panneau des sauvegardes, où l'on met la partie en
+ * fichier et où l'on fait de la place.
+ */
+function bandeauSauvegarde() {
+  const et = etatSauvegarde();
+  if (et.ok) return '';
+  return `<section class="panneau urgent" id="bandeau-sauvegarde">
+    <h2 class="titre alerte">La partie ne s’écrit plus
+      <span class="droite">${n(et.echecs)} refus</span></h2>
+    <div class="aide">${e(et.motif || 'Écriture refusée.')}</div>
+    <div class="aide">Tout ce que vous faites depuis n’est gardé nulle part : en
+      fermant l’onglet, cela n’aura pas eu lieu. Mettez la partie en fichier —
+      et faites de la place en supprimant une copie.</div>
+    <button class="act primaire" data-a="modale" data-m="sauvegardes">Mettre la partie à l’abri</button>
+  </section>`;
+}
+
 function bandeauSiege() {
   const a = S && S.base && S.base.fonde ? siegeEnCours(S) : null;
   if (!a) return '';
