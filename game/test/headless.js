@@ -11,7 +11,7 @@ import { lireRapport, MARQUANTS_MAX } from '../src/rapport.js';
 import {
   serialiser, deserialiser, normaliser, emballer, deballer, importerTexte,
 } from '../src/save.js';
-import { comprimer, decomprimer } from '../src/lz.js';
+import { comprimer, decomprimer, sourceLz } from '../src/lz.js';
 import {
   COMMODITY_KEYS, DIPLO_FACTIONS, FACTIONS, drapeauDe as identiteDe,
   couleurNeuve, teinteDe, satDe, diploDe, reconnue,
@@ -513,6 +513,7 @@ avancer(s3, 200);
 avancer(s3b, 200);
 ok(serialiser(s3) === serialiser(s3b), 'la sim reprend à l’identique après rechargement');
 
+const MARQUE_TEST = 'CZ1|';
 section('3 bis. La sauvegarde comprimée — le stockage n’étouffe plus');
 {
   // « Le système de sauvegarde ne fonctionne pas, le fichier est trop gros
@@ -559,6 +560,26 @@ section('3 bis. La sauvegarde comprimée — le stockage n’étouffe plus');
   const imp = importerTexte(paquet);
   ok(imp.ok && serialiser(imp.state) === long,
     'coller un export comprimé recharge la partie entière');
+
+  // La compression part dans un fil de côté (le navigateur en fabrique un à
+  // partir de ce texte) : « ça rame tellement que c'est devenu injouable » — la
+  // compression gelait le fil du jeu ~370 ms toutes les cinq secondes sous
+  // processeur de téléphone. Le code transporté doit tenir DEBOUT TOUT SEUL :
+  // s'il dépend de quoi que ce soit du module, le fil meurt au premier
+  // message et le jeu écrit sur place sans qu'on sache pourquoi.
+  const src = sourceLz();
+  const messages = [];
+  const faux = { postMessage: (d) => messages.push(d) };
+  // eslint-disable-next-line no-new-func
+  const monter = new Function('self', `${src}; return { comprimer, decomprimer };`);
+  const dedans = monter(faux);
+  ok(typeof dedans.comprimer === 'function' && dedans.decomprimer(dedans.comprimer(long)) === long,
+    'le code envoyé au fil de côté tient debout tout seul');
+  faux.onmessage({ data: { jeton: 7, texte: long } });
+  ok(messages.length === 1 && messages[0].jeton === 7
+    && MARQUE_TEST + messages[0].paquet === paquet,
+  'et il rend le même paquet que la compression sur place',
+  messages.length ? `${messages[0].paquet ? messages[0].paquet.length : 'rien'}` : 'muet');
 }
 
 // --- On est prévenu avant de mourir de faim.

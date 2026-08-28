@@ -3314,6 +3314,37 @@ console.log('\n8 septies. Sauvegardes : plusieurs parties côte à côte');
     'et propose d’ouvrir un fichier sans partie en cours');
 }
 
+console.log('\n8 octies bis. La compression part dans un fil de côté');
+{
+  // Le fil du jeu ne doit plus payer la compression : elle se fait ailleurs, et
+  // la partie arrive au stockage marquée « CZ1| ». Si le fil de côté meurt ou
+  // n'existe pas, le jeu écrit sur place — c'est le repli, pas la règle : ici
+  // on vérifie que le chemin normal marche pour de vrai dans un navigateur.
+  // L'ordre compte, et il m'a repris : on recharge d'abord (la partie en cours
+  // s'écrit sur `pagehide` et écraserait le décor), on pose la sauvegarde, PUIS
+  // on recharge encore — sans quoi l'accueil déjà affiché ne propose pas de
+  // reprise, et le clic attend un bouton qui n'existe pas.
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(partieAvancee()));
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.click('[data-a="vitesse"][data-v="16"]');
+  // Deux battements de la minuterie : le premier peut tomber sur un état
+  // inchangé, et alors rien ne part au fil.
+  await page.waitForTimeout(11000);
+  const ecrit = await page.evaluate(() => {
+    const brut = localStorage.getItem('cendres.save.v1') || '';
+    return { tete: brut.slice(0, 4), ko: Math.round(brut.length / 1024) };
+  });
+  ok(ecrit.tete === 'CZ1|', 'la partie arrive comprimée au stockage, écrite par le fil de côté',
+    `tête « ${ecrit.tete} », ${ecrit.ko} Ko`);
+  const relu = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
+  ok(Number.isFinite(relu) && relu > 0, 'et elle se relit', `heure ${relu}`);
+  await page.click('[data-a="vitesse"][data-v="1"]');
+  await page.waitForTimeout(300);
+}
+
 console.log('\n8 octies. Une sauvegarde qui échoue le dit');
 {
   // La pire panne possible est celle qui ne se manifeste qu'au moment où il est

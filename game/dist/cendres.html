@@ -1515,23 +1515,26 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
 // et écrit en clair au moindre écart. Un défaut ici coûte des octets, jamais
 // une partie.
 
-// Les tables de travail vivent ici, pas dans la fonction : les rallouer à
-// chaque écriture, c'était douze mégaoctets de déchets toutes les cinq
-// secondes — et un ramasse-miettes qui s'invite au milieu du jeu, sur un
-// téléphone plus qu'ailleurs. Elles sont remises à zéro à chaque appel, ce qui
-// coûte une fraction de milliseconde.
-const CAPACITE_H = 1 << 20;
-const TABLES = {
-  parChar: new Int32Array(65536),
-  naissants: new Uint8Array(65536),
-  hMot: new Int32Array(CAPACITE_H),
-  hChar: new Int32Array(CAPACITE_H),
-  hVal: new Int32Array(CAPACITE_H),
-};
-
 /** Compresse un texte en une chaîne UTF-16 sûre. */
 function comprimer(texte) {
   if (texte == null || texte === '') return '';
+  // Les tables de travail sont accrochées À LA FONCTION, et pas au module :
+  // les rallouer à chaque écriture, c'était des mégaoctets de déchets toutes
+  // les cinq secondes ; les mettre au module aurait rendu cette fonction
+  // intransportable, or elle doit pouvoir partir telle quelle dans un fil de
+  // côté (voir `sourceLz`). 262 144 alvéoles : nos sauvegardes produisent
+  // 65 000 entrées environ — un quart de charge, sans chaîne de sondage.
+  const CAPACITE_H = 1 << 18;
+  if (!comprimer.tables) {
+    comprimer.tables = {
+      parChar: new Int32Array(65536),
+      naissants: new Uint8Array(65536),
+      hMot: new Int32Array(CAPACITE_H),
+      hChar: new Int32Array(CAPACITE_H),
+      hVal: new Int32Array(CAPACITE_H),
+    };
+  }
+  const TABLES = comprimer.tables;
   // Le dictionnaire travaille en ENTIERS, jamais en chaînes : la première
   // version concaténait le mot courant à chaque pas (clés de Map en chaînes,
   // ré-allouées et re-hachées sans cesse) et coûtait ~110 ms sur un monde de
@@ -1558,8 +1561,15 @@ function comprimer(texte) {
   hMot.fill(-1);
   let occupes = 0;
   const suitesLentes = new Map();
+  // Le brassage passe par `Math.imul` : `codeMot * 2654435761` sortait de
+  // l'entier 32 bits, devenait un flottant, et perdait précisément les bits de
+  // poids faible qui distinguent deux entrées voisines. Résultat mesuré au
+  // profileur sous processeur bridé : des chaînes de sondage à rallonge, et
+  // `place` à elle seule mangeait un tiers du fil bloqué du jeu.
   const place = (codeMot, c) => {
-    let i = ((codeMot * 2654435761 + c * 40503) >>> 12) & masqueH;
+    let h = Math.imul(codeMot, 2654435761) ^ Math.imul(c + 1, 374761393);
+    h = Math.imul(h ^ (h >>> 15), 2246822519);
+    let i = (h ^ (h >>> 13)) & masqueH;
     for (;;) {
       const m = hMot[i];
       if (m === -1) return i;
@@ -1761,6 +1771,34 @@ function decomprimer(paquet) {
       bitsCode++;
     }
   }
+}
+
+/**
+ * Le code de la compression, en texte, pour un fil de côté.
+ *
+ * Mesuré au profileur sous processeur bridé six fois (un téléphone) : écrire
+ * la partie gelait le fil principal ~370 ms toutes les cinq secondes —
+ * « ça rame tellement que c'est devenu injouable » (le propriétaire). Le
+ * travail lui-même ne peut pas beaucoup maigrir : c'est 437 000 caractères à
+ * lire. Il doit donc se faire AILLEURS.
+ *
+ * On ne recopie pas l'algorithme : on transporte les fonctions elles-mêmes.
+ * Elles sont écrites pour ça — aucune ne lit quoi que ce soit hors d'elle.
+ */
+function sourceLz() {
+  return `const comprimer = ${comprimer.toString()};\n`
+    + `const decomprimer = ${decomprimer.toString()};\n`
+    + `self.onmessage = (e) => {\n`
+    + `  const { jeton, texte } = e.data;\n`
+    + `  try {\n`
+    + `    const z = comprimer(texte);\n`
+    + `    // La vérification se fait ICI : le fil principal ne doit payer ni\n`
+    + `    // la compression ni son contrôle.\n`
+    + `    self.postMessage({ jeton, paquet: decomprimer(z) === texte ? z : null });\n`
+    + `  } catch (err) {\n`
+    + `    self.postMessage({ jeton, paquet: null });\n`
+    + `  }\n`
+    + `};\n`;
 }
 
 // Alias d'import
@@ -25950,34 +25988,118 @@ function stockage() {
   return null;
 }
 
-function sauvegarder(state) {
-  const s = stockage();
-  if (!s) {
-    return {
-      ok: false,
-      motif: 'Ce navigateur refuse le stockage local : navigation privée, page '
-        + 'isolée, ou réglage de confidentialité. La partie tourne, mais rien '
-        + 'n’est écrit et tout sera perdu en fermant l’onglet.',
+// ---------------------------------------------------------------------------
+// Le fil de côté : comprimer ailleurs que sous le doigt
+// ---------------------------------------------------------------------------
+//
+// Mesuré au profileur, processeur bridé six fois (un téléphone) : sérialiser
+// puis comprimer une partie de 6 000 h gelait le fil principal ~370 ms toutes
+// les cinq secondes — « ça rame tellement que c'est devenu injouable ». Le
+// travail ne peut pas beaucoup maigrir : ce sont 437 000 caractères à lire.
+// Il part donc dans un fil de côté, qui comprime ET vérifie ; le fil du jeu ne
+// garde que la sérialisation et la pose.
+//
+// Trois refuges, dans cet ordre : le fil s'il existe ; la compression sur
+// place s'il n'existe pas (page isolée, fil refusé) ; le texte en clair si la
+// compression se trompe. Aucun de ces chemins ne perd de partie.
+
+let fil = null;
+let filRefuse = false;
+let jetonEcriture = 0;
+let enVol = null;
+
+function filCompression() {
+  if (fil || filRefuse) return fil;
+  try {
+    const blob = new Blob([sourceLz()], { type: 'text/javascript' });
+    const url = URL.createObjectURL(blob);
+    fil = new Worker(url);
+    URL.revokeObjectURL(url);
+    fil.onerror = () => { filRefuse = true; try { fil.terminate(); } catch (e) { /* rien */ } fil = null; };
+    fil.onmessage = (ev) => {
+      const d = ev.data || {};
+      if (!enVol || d.jeton !== enVol.jeton) return;
+      const { txt, apres } = enVol;
+      enVol = null;
+      const paquet = d.paquet ? MARQUE + d.paquet : txt;
+      dernierClair = txt;
+      dernierPaquet = paquet;
+      apres(poser(paquet));
     };
+  } catch (e) {
+    filRefuse = true;
+    fil = null;
   }
-  const txt = emballer(serialiser(state));
+  return fil;
+}
+
+/** Poser un texte déjà emballé, et dire ce que ça a donné. */
+function poser(txt) {
+  const s = stockage();
+  if (!s) return { ok: false, motif: MOTIF_SANS_STOCKAGE };
   try {
     s.setItem(CLE, txt);
     return { ok: true, taille: txt.length };
   } catch (e) {
-    // Le quota est la panne la plus probable, et elle a une issue : supprimer
-    // des emplacements. Le dire vaut mieux qu'un point d'interrogation.
-    const p = poidsEmplacements();
-    return {
-      ok: false,
-      taille: txt.length,
-      motif: p.n
-        ? `Écriture refusée : le stockage est plein. Vos ${p.n} sauvegarde${p.n >= 2 ? 's' : ''} `
-          + `gardées occupent ${(p.octets / 1048576).toFixed(1)} Mo — en supprimer `
-          + 'une libérera la place.'
-        : 'Écriture refusée : le stockage du navigateur est plein.',
-    };
+    return { ok: false, taille: txt.length, motif: motifPlein() };
   }
+}
+
+/**
+ * Écrire la partie sans faire attendre le doigt. `apres` reçoit le même compte
+ * rendu que `sauvegarder`, tout de suite ou dans un instant.
+ */
+function sauvegarderAilleurs(state, apres) {
+  const s = stockage();
+  if (!s) { apres({ ok: false, motif: MOTIF_SANS_STOCKAGE }); return; }
+  const txt = serialiser(state);
+  // Rien n'a bougé depuis la dernière écriture : on repose le même paquet.
+  if (txt === dernierClair && dernierPaquet !== null) { apres(poser(dernierPaquet)); return; }
+  const f = filCompression();
+  // Une écriture est déjà en route : celle-ci attendra le battement suivant —
+  // la partie n'aura pas changé de beaucoup, et c'est toujours la dernière qui
+  // gagne.
+  if (!f) { apres(sauvegarder(state)); return; }
+  if (enVol) return;
+  const jeton = ++jetonEcriture;
+  enVol = { jeton, txt, apres };
+  // Si le fil ne répond pas, on n'attend pas la fin des temps : on écrit sur
+  // place et on ne s'y fie plus.
+  setTimeout(() => {
+    if (!enVol || enVol.jeton !== jeton) return;
+    const attendu = enVol;
+    enVol = null;
+    filRefuse = true;
+    try { if (fil) fil.terminate(); } catch (e) { /* rien */ }
+    fil = null;
+    attendu.apres(poser(emballer(attendu.txt)));
+  }, 8000);
+  f.postMessage({ jeton, texte: txt });
+}
+
+const MOTIF_SANS_STOCKAGE = 'Ce navigateur refuse le stockage local : navigation privée, page '
+  + 'isolée, ou réglage de confidentialité. La partie tourne, mais rien '
+  + 'n’est écrit et tout sera perdu en fermant l’onglet.';
+
+function motifPlein() {
+  const p = poidsEmplacements();
+  return p.n
+    ? `Écriture refusée : le stockage est plein. Vos ${p.n} sauvegarde${p.n >= 2 ? 's' : ''} `
+      + `gardées occupent ${(p.octets / 1048576).toFixed(1)} Mo — en supprimer `
+      + 'une libérera la place.'
+    : 'Écriture refusée : le stockage du navigateur est plein.';
+}
+
+/**
+ * Écrire la partie ICI, tout de suite, fil principal compris. C'est le chemin
+ * des moments où l'on n'a plus le temps : fermeture d'onglet, passage en
+ * arrière-plan, export. Partout ailleurs, `sauvegarderAilleurs` évite au doigt
+ * de payer la compression.
+ */
+function sauvegarder(state) {
+  const s = stockage();
+  if (!s) return { ok: false, motif: MOTIF_SANS_STOCKAGE };
+  return poser(emballer(serialiser(state)));
 }
 
 function charger() {
@@ -34193,20 +34315,8 @@ function arreterBoucle() {
  */
 const ETAT_SAUVEGARDE = { ok: true, motif: null, quand: 0, taille: 0, echecs: 0 };
 
-/**
- * L'écriture, pour de vrai : sérialiser tout l'état et le comprimer coûte des
- * dizaines de millisecondes sur cette machine, plusieurs centaines sur un
- * téléphone. Elle ne doit jamais tomber dans le fil d'un clic.
- */
-function ecrireMaintenant() {
-  if (ecritureDemandee !== null) {
-    if (ecritureParRepos && typeof cancelIdleCallback === 'function') {
-      cancelIdleCallback(ecritureDemandee);
-    } else clearTimeout(ecritureDemandee);
-    ecritureDemandee = null;
-  }
-  if (!state) return;
-  const r = sauvegarder(state);
+/** Prendre acte de ce qu'une écriture a donné. */
+function noterEcriture(r) {
   ETAT_SAUVEGARDE.ok = !!r.ok;
   ETAT_SAUVEGARDE.motif = r.ok ? null : (r.motif || 'Écriture refusée.');
   if (r.ok) {
@@ -34216,6 +34326,35 @@ function ecrireMaintenant() {
   } else {
     ETAT_SAUVEGARDE.echecs += 1;
   }
+}
+
+function oublierAttente() {
+  if (ecritureDemandee === null) return;
+  if (ecritureParRepos && typeof cancelIdleCallback === 'function') {
+    cancelIdleCallback(ecritureDemandee);
+  } else clearTimeout(ecritureDemandee);
+  ecritureDemandee = null;
+}
+
+/**
+ * L'écriture ordinaire : la sérialisation reste ici, la compression part dans
+ * un fil de côté. Le fil du jeu ne gèle plus.
+ */
+function ecrireMaintenant() {
+  oublierAttente();
+  if (!state) return;
+  sauvegarderAilleurs(state, noterEcriture);
+}
+
+/**
+ * L'écriture qu'on ne peut pas différer : fermeture d'onglet, passage en
+ * arrière-plan, export. Tout se fait ici, fil principal compris — c'est le
+ * prix à payer une fois, pour ne rien perdre.
+ */
+function ecrireSurPlace() {
+  oublierAttente();
+  if (!state) return;
+  noterEcriture(sauvegarder(state));
 }
 
 /**
@@ -34321,7 +34460,7 @@ const API = {
    */
   exporter() {
     if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
-    ecrireMaintenant();
+    ecrireSurPlace();
     try {
       const blob = new Blob([serialiser(state)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -34347,7 +34486,7 @@ const API = {
    */
   texteExport() {
     if (!state) return '';
-    ecrireMaintenant();
+    ecrireSurPlace();
     // Comprimé : c'est ce qui rend le copier-coller possible au téléphone —
     // le texte en clair d'une partie longue ne se laissait plus sélectionner.
     return emballer(serialiser(state));
@@ -34942,7 +35081,7 @@ monterUI(API);
 // API de jeu — c'est une fenêtre d'atelier, comme `__momentsAuto`.
 if (typeof window !== 'undefined') {
   window.__sauvegardeTexte = (cle) => {
-    ecrireMaintenant();
+    ecrireSurPlace();
     return lireTexteSauvegarde(cle);
   };
 }
@@ -34956,15 +35095,15 @@ if (sauvegarde) {
 
 // Ne jamais perdre une session parce que l'onglet est passé en arrière-plan.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') ecrireMaintenant();
+  if (document.visibilityState === 'hidden') ecrireSurPlace();
   else if (state) {
     // Un onglet laissé de côté toute la nuit doit autant de temps qu'une
     // session rouverte : même chemin, même écran de rattrapage.
     reprendreLeTemps((r) => { if (r.total) { rafraichir(true); sauver(); } });
   }
 });
-window.addEventListener('pagehide', ecrireMaintenant);
-window.addEventListener('beforeunload', ecrireMaintenant);
+window.addEventListener('pagehide', ecrireSurPlace);
+window.addEventListener('beforeunload', ecrireSurPlace);
 </script>
 </body>
 </html>

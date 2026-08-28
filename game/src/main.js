@@ -3,7 +3,7 @@
 
 import { nouvellePartie, rattraper, rattrapageEtale, TICK_MS } from './sim.js';
 import {
-  charger, sauvegarder, effacer, existeSauvegarde, sauvegardePerimee,
+  charger, sauvegarder, sauvegarderAilleurs, effacer, existeSauvegarde, sauvegardePerimee,
   listerEmplacements, enregistrerEmplacement, chargerEmplacement,
   supprimerEmplacement, renommerEmplacement, poidsEmplacements,
   serialiser, importerTexte, nomFichier, resumeSauvegarde,
@@ -110,20 +110,8 @@ function arreterBoucle() {
  */
 export const ETAT_SAUVEGARDE = { ok: true, motif: null, quand: 0, taille: 0, echecs: 0 };
 
-/**
- * L'écriture, pour de vrai : sérialiser tout l'état et le comprimer coûte des
- * dizaines de millisecondes sur cette machine, plusieurs centaines sur un
- * téléphone. Elle ne doit jamais tomber dans le fil d'un clic.
- */
-function ecrireMaintenant() {
-  if (ecritureDemandee !== null) {
-    if (ecritureParRepos && typeof cancelIdleCallback === 'function') {
-      cancelIdleCallback(ecritureDemandee);
-    } else clearTimeout(ecritureDemandee);
-    ecritureDemandee = null;
-  }
-  if (!state) return;
-  const r = sauvegarder(state);
+/** Prendre acte de ce qu'une écriture a donné. */
+function noterEcriture(r) {
   ETAT_SAUVEGARDE.ok = !!r.ok;
   ETAT_SAUVEGARDE.motif = r.ok ? null : (r.motif || 'Écriture refusée.');
   if (r.ok) {
@@ -133,6 +121,35 @@ function ecrireMaintenant() {
   } else {
     ETAT_SAUVEGARDE.echecs += 1;
   }
+}
+
+function oublierAttente() {
+  if (ecritureDemandee === null) return;
+  if (ecritureParRepos && typeof cancelIdleCallback === 'function') {
+    cancelIdleCallback(ecritureDemandee);
+  } else clearTimeout(ecritureDemandee);
+  ecritureDemandee = null;
+}
+
+/**
+ * L'écriture ordinaire : la sérialisation reste ici, la compression part dans
+ * un fil de côté. Le fil du jeu ne gèle plus.
+ */
+function ecrireMaintenant() {
+  oublierAttente();
+  if (!state) return;
+  sauvegarderAilleurs(state, noterEcriture);
+}
+
+/**
+ * L'écriture qu'on ne peut pas différer : fermeture d'onglet, passage en
+ * arrière-plan, export. Tout se fait ici, fil principal compris — c'est le
+ * prix à payer une fois, pour ne rien perdre.
+ */
+function ecrireSurPlace() {
+  oublierAttente();
+  if (!state) return;
+  noterEcriture(sauvegarder(state));
 }
 
 /**
@@ -238,7 +255,7 @@ const API = {
    */
   exporter() {
     if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
-    ecrireMaintenant();
+    ecrireSurPlace();
     try {
       const blob = new Blob([serialiser(state)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -264,7 +281,7 @@ const API = {
    */
   texteExport() {
     if (!state) return '';
-    ecrireMaintenant();
+    ecrireSurPlace();
     // Comprimé : c'est ce qui rend le copier-coller possible au téléphone —
     // le texte en clair d'une partie longue ne se laissait plus sélectionner.
     return emballer(serialiser(state));
@@ -859,7 +876,7 @@ monterUI(API);
 // API de jeu — c'est une fenêtre d'atelier, comme `__momentsAuto`.
 if (typeof window !== 'undefined') {
   window.__sauvegardeTexte = (cle) => {
-    ecrireMaintenant();
+    ecrireSurPlace();
     return lireTexteSauvegarde(cle);
   };
 }
@@ -873,12 +890,12 @@ if (sauvegarde) {
 
 // Ne jamais perdre une session parce que l'onglet est passé en arrière-plan.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') ecrireMaintenant();
+  if (document.visibilityState === 'hidden') ecrireSurPlace();
   else if (state) {
     // Un onglet laissé de côté toute la nuit doit autant de temps qu'une
     // session rouverte : même chemin, même écran de rattrapage.
     reprendreLeTemps((r) => { if (r.total) { rafraichir(true); sauver(); } });
   }
 });
-window.addEventListener('pagehide', ecrireMaintenant);
-window.addEventListener('beforeunload', ecrireMaintenant);
+window.addEventListener('pagehide', ecrireSurPlace);
+window.addEventListener('beforeunload', ecrireSurPlace);

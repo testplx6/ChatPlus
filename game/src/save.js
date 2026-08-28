@@ -8,7 +8,7 @@ import { groupeVide } from './groupes.js';
 import { grainDe } from './rng.js';
 import { creerConnaissance } from './connaissance.js';
 import { MENAGES } from './data.js';
-import { comprimer, decomprimer } from './lz.js';
+import { comprimer, decomprimer, sourceLz } from './lz.js';
 
 export const CLE = 'cendres.save.v1';
 
@@ -429,34 +429,118 @@ function stockage() {
   return null;
 }
 
-export function sauvegarder(state) {
-  const s = stockage();
-  if (!s) {
-    return {
-      ok: false,
-      motif: 'Ce navigateur refuse le stockage local : navigation privée, page '
-        + 'isolée, ou réglage de confidentialité. La partie tourne, mais rien '
-        + 'n’est écrit et tout sera perdu en fermant l’onglet.',
+// ---------------------------------------------------------------------------
+// Le fil de côté : comprimer ailleurs que sous le doigt
+// ---------------------------------------------------------------------------
+//
+// Mesuré au profileur, processeur bridé six fois (un téléphone) : sérialiser
+// puis comprimer une partie de 6 000 h gelait le fil principal ~370 ms toutes
+// les cinq secondes — « ça rame tellement que c'est devenu injouable ». Le
+// travail ne peut pas beaucoup maigrir : ce sont 437 000 caractères à lire.
+// Il part donc dans un fil de côté, qui comprime ET vérifie ; le fil du jeu ne
+// garde que la sérialisation et la pose.
+//
+// Trois refuges, dans cet ordre : le fil s'il existe ; la compression sur
+// place s'il n'existe pas (page isolée, fil refusé) ; le texte en clair si la
+// compression se trompe. Aucun de ces chemins ne perd de partie.
+
+let fil = null;
+let filRefuse = false;
+let jetonEcriture = 0;
+let enVol = null;
+
+function filCompression() {
+  if (fil || filRefuse) return fil;
+  try {
+    const blob = new Blob([sourceLz()], { type: 'text/javascript' });
+    const url = URL.createObjectURL(blob);
+    fil = new Worker(url);
+    URL.revokeObjectURL(url);
+    fil.onerror = () => { filRefuse = true; try { fil.terminate(); } catch (e) { /* rien */ } fil = null; };
+    fil.onmessage = (ev) => {
+      const d = ev.data || {};
+      if (!enVol || d.jeton !== enVol.jeton) return;
+      const { txt, apres } = enVol;
+      enVol = null;
+      const paquet = d.paquet ? MARQUE + d.paquet : txt;
+      dernierClair = txt;
+      dernierPaquet = paquet;
+      apres(poser(paquet));
     };
+  } catch (e) {
+    filRefuse = true;
+    fil = null;
   }
-  const txt = emballer(serialiser(state));
+  return fil;
+}
+
+/** Poser un texte déjà emballé, et dire ce que ça a donné. */
+function poser(txt) {
+  const s = stockage();
+  if (!s) return { ok: false, motif: MOTIF_SANS_STOCKAGE };
   try {
     s.setItem(CLE, txt);
     return { ok: true, taille: txt.length };
   } catch (e) {
-    // Le quota est la panne la plus probable, et elle a une issue : supprimer
-    // des emplacements. Le dire vaut mieux qu'un point d'interrogation.
-    const p = poidsEmplacements();
-    return {
-      ok: false,
-      taille: txt.length,
-      motif: p.n
-        ? `Écriture refusée : le stockage est plein. Vos ${p.n} sauvegarde${p.n >= 2 ? 's' : ''} `
-          + `gardées occupent ${(p.octets / 1048576).toFixed(1)} Mo — en supprimer `
-          + 'une libérera la place.'
-        : 'Écriture refusée : le stockage du navigateur est plein.',
-    };
+    return { ok: false, taille: txt.length, motif: motifPlein() };
   }
+}
+
+/**
+ * Écrire la partie sans faire attendre le doigt. `apres` reçoit le même compte
+ * rendu que `sauvegarder`, tout de suite ou dans un instant.
+ */
+export function sauvegarderAilleurs(state, apres) {
+  const s = stockage();
+  if (!s) { apres({ ok: false, motif: MOTIF_SANS_STOCKAGE }); return; }
+  const txt = serialiser(state);
+  // Rien n'a bougé depuis la dernière écriture : on repose le même paquet.
+  if (txt === dernierClair && dernierPaquet !== null) { apres(poser(dernierPaquet)); return; }
+  const f = filCompression();
+  // Une écriture est déjà en route : celle-ci attendra le battement suivant —
+  // la partie n'aura pas changé de beaucoup, et c'est toujours la dernière qui
+  // gagne.
+  if (!f) { apres(sauvegarder(state)); return; }
+  if (enVol) return;
+  const jeton = ++jetonEcriture;
+  enVol = { jeton, txt, apres };
+  // Si le fil ne répond pas, on n'attend pas la fin des temps : on écrit sur
+  // place et on ne s'y fie plus.
+  setTimeout(() => {
+    if (!enVol || enVol.jeton !== jeton) return;
+    const attendu = enVol;
+    enVol = null;
+    filRefuse = true;
+    try { if (fil) fil.terminate(); } catch (e) { /* rien */ }
+    fil = null;
+    attendu.apres(poser(emballer(attendu.txt)));
+  }, 8000);
+  f.postMessage({ jeton, texte: txt });
+}
+
+const MOTIF_SANS_STOCKAGE = 'Ce navigateur refuse le stockage local : navigation privée, page '
+  + 'isolée, ou réglage de confidentialité. La partie tourne, mais rien '
+  + 'n’est écrit et tout sera perdu en fermant l’onglet.';
+
+function motifPlein() {
+  const p = poidsEmplacements();
+  return p.n
+    ? `Écriture refusée : le stockage est plein. Vos ${p.n} sauvegarde${p.n >= 2 ? 's' : ''} `
+      + `gardées occupent ${(p.octets / 1048576).toFixed(1)} Mo — en supprimer `
+      + 'une libérera la place.'
+    : 'Écriture refusée : le stockage du navigateur est plein.';
+}
+
+/**
+ * Écrire la partie ICI, tout de suite, fil principal compris. C'est le chemin
+ * des moments où l'on n'a plus le temps : fermeture d'onglet, passage en
+ * arrière-plan, export. Partout ailleurs, `sauvegarderAilleurs` évite au doigt
+ * de payer la compression.
+ */
+export function sauvegarder(state) {
+  const s = stockage();
+  if (!s) return { ok: false, motif: MOTIF_SANS_STOCKAGE };
+  return poser(emballer(serialiser(state)));
 }
 
 export function charger() {

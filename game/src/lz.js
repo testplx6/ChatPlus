@@ -17,23 +17,26 @@
 // et écrit en clair au moindre écart. Un défaut ici coûte des octets, jamais
 // une partie.
 
-// Les tables de travail vivent ici, pas dans la fonction : les rallouer à
-// chaque écriture, c'était douze mégaoctets de déchets toutes les cinq
-// secondes — et un ramasse-miettes qui s'invite au milieu du jeu, sur un
-// téléphone plus qu'ailleurs. Elles sont remises à zéro à chaque appel, ce qui
-// coûte une fraction de milliseconde.
-const CAPACITE_H = 1 << 20;
-const TABLES = {
-  parChar: new Int32Array(65536),
-  naissants: new Uint8Array(65536),
-  hMot: new Int32Array(CAPACITE_H),
-  hChar: new Int32Array(CAPACITE_H),
-  hVal: new Int32Array(CAPACITE_H),
-};
-
 /** Compresse un texte en une chaîne UTF-16 sûre. */
 export function comprimer(texte) {
   if (texte == null || texte === '') return '';
+  // Les tables de travail sont accrochées À LA FONCTION, et pas au module :
+  // les rallouer à chaque écriture, c'était des mégaoctets de déchets toutes
+  // les cinq secondes ; les mettre au module aurait rendu cette fonction
+  // intransportable, or elle doit pouvoir partir telle quelle dans un fil de
+  // côté (voir `sourceLz`). 262 144 alvéoles : nos sauvegardes produisent
+  // 65 000 entrées environ — un quart de charge, sans chaîne de sondage.
+  const CAPACITE_H = 1 << 18;
+  if (!comprimer.tables) {
+    comprimer.tables = {
+      parChar: new Int32Array(65536),
+      naissants: new Uint8Array(65536),
+      hMot: new Int32Array(CAPACITE_H),
+      hChar: new Int32Array(CAPACITE_H),
+      hVal: new Int32Array(CAPACITE_H),
+    };
+  }
+  const TABLES = comprimer.tables;
   // Le dictionnaire travaille en ENTIERS, jamais en chaînes : la première
   // version concaténait le mot courant à chaque pas (clés de Map en chaînes,
   // ré-allouées et re-hachées sans cesse) et coûtait ~110 ms sur un monde de
@@ -60,8 +63,15 @@ export function comprimer(texte) {
   hMot.fill(-1);
   let occupes = 0;
   const suitesLentes = new Map();
+  // Le brassage passe par `Math.imul` : `codeMot * 2654435761` sortait de
+  // l'entier 32 bits, devenait un flottant, et perdait précisément les bits de
+  // poids faible qui distinguent deux entrées voisines. Résultat mesuré au
+  // profileur sous processeur bridé : des chaînes de sondage à rallonge, et
+  // `place` à elle seule mangeait un tiers du fil bloqué du jeu.
   const place = (codeMot, c) => {
-    let i = ((codeMot * 2654435761 + c * 40503) >>> 12) & masqueH;
+    let h = Math.imul(codeMot, 2654435761) ^ Math.imul(c + 1, 374761393);
+    h = Math.imul(h ^ (h >>> 15), 2246822519);
+    let i = (h ^ (h >>> 13)) & masqueH;
     for (;;) {
       const m = hMot[i];
       if (m === -1) return i;
@@ -263,4 +273,32 @@ export function decomprimer(paquet) {
       bitsCode++;
     }
   }
+}
+
+/**
+ * Le code de la compression, en texte, pour un fil de côté.
+ *
+ * Mesuré au profileur sous processeur bridé six fois (un téléphone) : écrire
+ * la partie gelait le fil principal ~370 ms toutes les cinq secondes —
+ * « ça rame tellement que c'est devenu injouable » (le propriétaire). Le
+ * travail lui-même ne peut pas beaucoup maigrir : c'est 437 000 caractères à
+ * lire. Il doit donc se faire AILLEURS.
+ *
+ * On ne recopie pas l'algorithme : on transporte les fonctions elles-mêmes.
+ * Elles sont écrites pour ça — aucune ne lit quoi que ce soit hors d'elle.
+ */
+export function sourceLz() {
+  return `const comprimer = ${comprimer.toString()};\n`
+    + `const decomprimer = ${decomprimer.toString()};\n`
+    + `self.onmessage = (e) => {\n`
+    + `  const { jeton, texte } = e.data;\n`
+    + `  try {\n`
+    + `    const z = comprimer(texte);\n`
+    + `    // La vérification se fait ICI : le fil principal ne doit payer ni\n`
+    + `    // la compression ni son contrôle.\n`
+    + `    self.postMessage({ jeton, paquet: decomprimer(z) === texte ? z : null });\n`
+    + `  } catch (err) {\n`
+    + `    self.postMessage({ jeton, paquet: null });\n`
+    + `  }\n`
+    + `};\n`;
 }
