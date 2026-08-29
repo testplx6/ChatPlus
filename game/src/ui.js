@@ -154,6 +154,23 @@ let coutRendu = 0;
  * panneau, sur l'appareil qui peine — le seul juge qui compte.
  */
 const coutParEcran = {};
+/**
+ * Et le coût des gros blocs, un par un. « base 3048 ms » sur le téléphone du
+ * propriétaire, quand mon banc en annonce deux cents : sa partie contient
+ * quelque chose que la mienne n'a pas, et deviner a assez duré. Deux appels à
+ * l'horloge par bloc, c'est gratuit ; le panneau les rend lisibles.
+ */
+const coutParBloc = {};
+/** La pesée de la partie, calculée seulement quand on la demande. */
+let pesee = null;
+
+function chrono(nom, fn) {
+  const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  const html = fn();
+  const t1 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  coutParBloc[nom] = Math.max(coutParBloc[nom] || 0, Math.round(t1 - t0));
+  return html;
+}
 /** Après un geste de l'utilisateur, on laisse le DOM tranquille un instant. */
 const REPIT_APRES_CLIC_MS = 400;
 
@@ -4135,10 +4152,10 @@ function ecranBase() {
         : `Construire niv. ${niv + enFile + 1}`}</button>
     </div>`;
   };
-  const batHtml = FAMILLES.map((f) => `<div class="titre" style="margin-top:8px">${e(f.nom)}</div>
-    ${f.clefs.filter((k) => BUILDINGS[k]).map(carteBat).join('')}`).join('');
+  const batHtml = chrono('bâtiments', () => FAMILLES.map((f) => `<div class="titre" style="margin-top:8px">${e(f.nom)}</div>
+    ${f.clefs.filter((k) => BUILDINGS[k]).map(carteBat).join('')}`).join(''));
 
-  const rechHtml = RESEARCH_KEYS.map((k) => {
+  const rechHtml = chrono('recherches', () => RESEARCH_KEYS.map((k) => {
     const rd = RESEARCH[k];
     const niv = niveauRech(b, k);
     const enFile = b.fileRech.filter((x) => x.key === k).length;
@@ -4162,10 +4179,10 @@ function ecranBase() {
         ${plein ? 'Terminé' : sansAntenne ? 'Antenne requise'
     : amont ? `${e(amont.nom)} d’abord` : 'Lancer'}</button>
     </div>`;
-  }).join('');
+  }).join(''));
 
-  const stockHtml = COMMODITY_KEYS.map((k) => `<div class="ligne">
-    <span class="k">${e(COMMODITIES[k].nom)}</span><span class="v">${n(b.stock[k] || 0)}</span></div>`).join('');
+  const stockHtml = chrono('stocks', () => COMMODITY_KEYS.map((k) => `<div class="ligne">
+    <span class="k">${e(COMMODITIES[k].nom)}</span><span class="v">${n(b.stock[k] || 0)}</span></div>`).join(''));
 
   // Les verbes du siège (SIEGE.md, S3) : tenir, sortir, payer, ou partir.
   const siege = siegeEnCours(S);
@@ -4256,8 +4273,8 @@ function ecranBase() {
     ${jauge(stock / capa, stock / capa > 0.95 ? 'rouge' : '')}
   </section>
 
-  ${blocChaine()}
-  ${blocConsignes()}
+  ${chrono('chaînes', blocChaine)}
+  ${chrono('consignes', blocConsignes)}
 
   <section class="panneau">
     <h2 class="titre">File de construction
@@ -4276,10 +4293,10 @@ function ecranBase() {
     ${batHtml}
   </section>
 
-  ${blocMetiers()}
-  ${blocEcoleBase()}
-  ${blocComptoir()}
-  ${blocTerre()}
+  ${chrono('métiers', blocMetiers)}
+  ${chrono('école', blocEcoleBase)}
+  ${chrono('comptoir', blocComptoir)}
+  ${chrono('terre', blocTerre)}
 
   <section class="panneau">
     <h2 class="titre">Recherche
@@ -5676,7 +5693,15 @@ function modaleSauvegardes() {
   const mesure = `<div class="aide">Cet appareil : un rendu coûte
     ${coutRendu.toFixed(0)} ms en moyenne${ETAT_SAUVEGARDE_TAILLE() ? `, la partie écrite pèse
     ${(ETAT_SAUVEGARDE_TAILLE() / 1024).toFixed(0)} Ko` : ''}.</div>
-    ${parEcran ? `<div class="aide">Le pire par écran : ${e(parEcran)}.</div>` : ''}`;
+    ${parEcran ? `<div class="aide">Le pire par écran : ${e(parEcran)}.</div>` : ''}
+    ${(() => {
+    const b2 = Object.keys(coutParBloc).filter((k) => coutParBloc[k] >= 5)
+      .sort((a, b3) => coutParBloc[b3] - coutParBloc[a]).slice(0, 6)
+      .map((k) => `${k} ${coutParBloc[k]} ms`).join(' · ');
+    return b2 ? `<div class="aide">Les blocs les plus chers : ${e(b2)}.</div>` : '';
+  })()}
+    ${pesee ? `<div class="aide">Ce qui pèse : ${e(pesee)}.</div>`
+    : '<button class="act mini" data-a="peser">Peser la partie</button>'}`;
   const confort = S ? `<div class="sep"></div>
     <h2 class="titre">Le confort de l’écran</h2>
     <div class="rang-tous">
@@ -7018,6 +7043,25 @@ function surClic(ev) {
       if (!r.ok) toast(r.motif, true);
       rendreModale();
       rafraichir(true);
+      break;
+    }
+
+    case 'peser': {
+      // On ne pèse que sur demande : sérialiser deux mégaoctets par morceau
+      // n'est pas une chose qu'on inflige à chaque ouverture de panneau.
+      const gros = [];
+      const p = (o) => { try { return JSON.stringify(o).length; } catch (err) { return 0; } };
+      const creuser = (o, prefixe, prof) => {
+        if (!o || typeof o !== 'object' || prof === 0) return;
+        for (const k of Object.keys(o)) {
+          const t = p(o[k]);
+          if (t > 40000) { gros.push([`${prefixe}${k}`, t]); creuser(o[k], `${prefixe}${k}.`, prof - 1); }
+        }
+      };
+      creuser(S, '', 3);
+      pesee = gros.sort((a, b) => b[1] - a[1]).slice(0, 6)
+        .map(([k, t]) => `${k} ${Math.round(t / 1024)} Ko`).join(' · ') || 'rien de gros';
+      rendreModale();
       break;
     }
 
