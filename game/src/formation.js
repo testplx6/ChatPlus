@@ -187,11 +187,11 @@ function presentsBase(state) {
 }
 
 /** Qui peut enseigner quoi, ici et maintenant. */
-export function ecolesAvantPoste(state) {
+export function ecolesAvantPoste(state, gensDejaLus) {
   const base = state.base;
   if (!base || !base.fonde) return [];
   if ((base.batiments.antenne || 0) < 1) return [];
-  const gens = presentsBase(state);
+  const gens = gensDejaLus || presentsBase(state);
   const out = [];
   for (const k of DIPLOME_KEYS) {
     const d = DIPLOMES[k];
@@ -202,13 +202,36 @@ export function ecolesAvantPoste(state) {
   return out;
 }
 
-export function peutApprendreChezSoi(state, perso, key) {
-  const offre = ecolesAvantPoste(state).find((o) => o.key === key);
+/**
+ * Ce qu'il faut savoir pour juger cent fois de suite qui peut apprendre quoi,
+ * calculé UNE fois : qui enseigne quelle matière, et qui est présent.
+ *
+ * Sans elle, `peutApprendreChezSoi` rappelait `ecolesAvantPoste` à chaque test
+ * — laquelle parcourt tous les présents pour chacune des matières — puis
+ * relisait la liste des présents. Sur l'écran de l'avant-poste, avec les mille
+ * deux cent quarante-deux personnes que mène le propriétaire, ce bloc coûtait
+ * 2 427 ms de son téléphone. La règle ne change pas d'un mot ; on cesse
+ * seulement de la redécouvrir à chaque personne.
+ */
+export function vueEcoles(state) {
+  const gens = presentsBase(state);
+  return {
+    offres: ecolesAvantPoste(state, gens),
+    presents: new Set(gens.map((c) => c.id)),
+  };
+}
+
+export function peutApprendreChezSoi(state, perso, key, vue) {
+  const offres = (vue && vue.offres) || ecolesAvantPoste(state);
+  const offre = offres.find((o) => o.key === key);
   if (!offre) return { ok: false, motif: 'Personne ici ne sait l’enseigner.' };
   if (offre.instructeur.id === perso.id) {
     return { ok: false, motif: 'On ne s’enseigne pas à soi-même.' };
   }
-  if (!presentsBase(state).some((c) => c.id === perso.id)) {
+  const present = vue && vue.presents
+    ? vue.presents.has(perso.id)
+    : presentsBase(state).some((c) => c.id === perso.id);
+  if (!present) {
     return { ok: false, motif: `${perso.nom} n’est pas à l’avant-poste.` };
   }
   if (occupeParEcole(perso)) return { ok: false, motif: `${perso.nom} est déjà pris.` };

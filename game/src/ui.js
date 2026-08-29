@@ -72,7 +72,7 @@ import { caravanesIci, valeurCargaison } from './caravanes.js';
 import { couleurLog, creerLogger } from './events.js';
 import {
   ecolesDe, prixFormation, peutSInscrire, inscrire, abandonnerFormation,
-  ecolesAvantPoste, peutApprendreChezSoi, enseignerChezSoi, LENTEUR_MAISON,
+  ecolesAvantPoste, vueEcoles, peutApprendreChezSoi, enseignerChezSoi, LENTEUR_MAISON,
 } from './formation.js';
 import { CHARGES, CARACTERES, margeMarchand, vocation } from './notables.js';
 import { demandesIci, souvenirs, faveurChef, SOINS_SEUIL, REGISTRES_SEUIL } from './services.js';
@@ -3620,14 +3620,15 @@ function blocEcoleBase() {
     </section>`;
   }
 
-  const offres = ecolesAvantPoste(S);
+  const vueEcole = vueEcoles(S);
+  const offres = vueEcole.offres;
   const lignes = offres.map((o) => {
     const d = DIPLOMES[o.key];
     const heures = Math.round(d.heures * LENTEUR_MAISON);
     // Les plus aptes d'abord, et pas tout le monde : une colonne de mille
     // boutons ne se lit pas, ne se parcourt pas, et coûte une seconde à
     // fabriquer. On propose les meilleurs, on dit combien d'autres attendent.
-    const eligibles = tous.filter((c) => peutApprendreChezSoi(S, c, o.key).ok);
+    const eligibles = tous.filter((c) => peutApprendreChezSoi(S, c, o.key, vueEcole).ok);
     const candidats = eligibles
       .slice()
       .sort((a, x) => comp(x, DIPLOMES[o.key].skill) - comp(a, DIPLOMES[o.key].skill))
