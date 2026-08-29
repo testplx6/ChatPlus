@@ -15,7 +15,7 @@ import { groupes, groupeActif } from './groupes.js';
 import { garnison, avantage } from './allegeance.js';
 import { estSurveillee } from './connaissance.js';
 import { noterArgent } from './rapport.js';
-import { capacitePortage, poidsInventaire } from './economy.js';
+import { capacitePortage, poidsInventaire, depouillerRuine } from './economy.js';
 import { BETES, creerBete } from './betes.js';
 import { depenser, entrerDehors, gagner, regler, soldeIci, signeIci } from './monnaie.js';
 
@@ -2614,6 +2614,8 @@ export function evacuerCamp(state, log) {
       col.ruine = true;
       col.pop = 0;
       col.defense = 0;
+      // Une place laissée debout mais vide ne garde pas ses registres.
+      depouillerRuine(col);
     }
   }
   const nom = base.nom;

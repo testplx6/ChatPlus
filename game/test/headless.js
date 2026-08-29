@@ -514,6 +514,46 @@ avancer(s3b, 200);
 ok(serialiser(s3) === serialiser(s3b), 'la sim reprend à l’identique après rechargement');
 
 const MARQUE_TEST = 'CZ1|';
+section('3 quater. Une ruine ne garde que sa cicatrice');
+{
+  // « Le jeu rame énormément, c'est de pire en pire, je suis peut-être trop
+  // avancé dans le jeu » — le propriétaire, août 2026. Mesuré : les villes
+  // vivantes se stabilisent autour de soixante, mais les RUINES s'empilent —
+  // cent quatre-vingt-dix à trente mille heures — et chacune gardait ses
+  // notables, ses stocks, ses emplois, sa geôle. Tout ce qui parcourt les
+  // villes payait le passé du monde, et la sauvegarde enflait de moitié.
+  const rn = nouvellePartie(9091, { maintenant: 0, depart: 'ville', equipe: 3 });
+  avancer(rn, 400);
+  const vivante = rn.world.colonies.find((c) => !c.ruine && (c.notables || []).length);
+  ok(!!vivante, 'décor : une ville vivante, avec ses notables');
+  const avant = JSON.stringify(vivante).length;
+  effondrer(rn.world, vivante);
+  const apres = JSON.stringify(vivante).length;
+  ok(vivante.ruine && !(vivante.notables || []).length,
+    'la ruine n’a plus de notables : personne n’administre des pierres',
+    `${(vivante.notables || []).length} restants`);
+  ok(!Object.keys(vivante.stock || {}).some((k) => (vivante.stock[k] || 0) > 0),
+    'ni de stocks : ce qu’il y avait est parti ou pourri');
+  ok(!Object.keys(vivante.emplois || {}).length && !Object.keys(vivante.postes || {}).length,
+    'ni d’emplois : il n’y a plus personne à employer');
+  ok(apres < avant * 0.4, 'et elle pèse le quart de ce qu’elle pesait vivante',
+    `${avant} → ${apres} caractères`);
+  // Ce qu'une ruine DOIT garder : la carte la dessine, et on peut la fouiller.
+  ok(vivante.nom && vivante.regionId !== undefined && vivante.id,
+    'mais elle garde son nom et sa place — la carte en garde la cicatrice');
+
+  // Et les parties déjà commencées maigrissent au chargement : c'est le poids
+  // du passé qu'on rend au joueur, pas une règle de jeu qui change.
+  const vieux = JSON.parse(serialiser(rn));
+  const r2 = vieux.world.colonies.find((c) => c.ruine);
+  r2.notables = [{ nom: 'Fantôme', charge: 'maire', opinion: 3 }];
+  r2.stock = { ferraille: 400 };
+  normaliser(vieux);
+  const nettoyee = vieux.world.colonies.find((c) => c.id === r2.id);
+  ok(!nettoyee.notables.length && !(nettoyee.stock.ferraille > 0),
+    'une vieille sauvegarde rend le poids de ses ruines au chargement');
+}
+
 section('3 ter. Le temps hors ligne : le rattrapage est un choix');
 {
   // « Le monde continue sans nous, mais ça n'est pas réellement le cas : il y a

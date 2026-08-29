@@ -9,6 +9,7 @@ import { grainDe } from './rng.js';
 import { creerConnaissance } from './connaissance.js';
 import { MENAGES } from './data.js';
 import { comprimer, decomprimer, sourceLz } from './lz.js';
+import { depouillerRuine } from './economy.js';
 
 export const CLE = 'cendres.save.v1';
 
@@ -397,6 +398,11 @@ export function normaliser(state) {
   if (typeof state.reglages.rattrapage !== 'boolean') state.reglages.rattrapage = false;
   // Le confort de l'écran : tout par défaut, allégé si la machine peine.
   if (typeof state.reglages.allege !== 'boolean') state.reglages.allege = false;
+  // Les ruines rendent ce qu'elles n'ont plus à porter — y compris dans une
+  // partie déjà bien avancée, où elles se comptent par centaines. C'est du
+  // poids rendu au joueur, pas une règle de jeu qui change : une ruine n'avait
+  // déjà ni habitants, ni marché, ni conseil.
+  for (const col of (state.world && state.world.colonies) || []) depouillerRuine(col);
   return state;
 }
 

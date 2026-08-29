@@ -2023,11 +2023,64 @@ export function faireSecession(world, col) {
   return { ancienne, rendue, renaissance: cible.colonies.length === 1 };
 }
 
+/**
+ * Ce qu'une ruine cesse de porter.
+ *
+ * Une ville morte gardait tout : ses notables en poste, ses stocks, ses
+ * emplois, sa geôle, son étal. Personne n'administre des pierres — et le
+ * monde en fabrique sans fin : mesuré au banc, les villes vivantes se
+ * stabilisent vers soixante, mais les ruines s'empilent (cent quatre-vingt-dix
+ * à trente mille heures). Tout ce qui parcourt les villes payait donc le passé
+ * du monde, et la sauvegarde enflait de moitié — « le jeu rame énormément,
+ * c'est de pire en pire, je suis peut-être trop avancé » (le propriétaire,
+ * août 2026), et il avait raison sur la cause.
+ *
+ * On garde ce qui fait la cicatrice : le nom, la place, le drapeau d'avant,
+ * ce qu'on en a su. On rend le reste.
+ */
+export function depouillerRuine(col) {
+  if (!col || !col.ruine) return false;
+  let rendu = false;
+  const vider = (cle, vide) => {
+    const v = col[cle];
+    if (v === undefined || v === null) return;
+    const plein = Array.isArray(v) ? v.length : Object.keys(v).length;
+    if (!plein) return;
+    col[cle] = vide;
+    rendu = true;
+  };
+  vider('notables', []);
+  vider('contrats', []);
+  // Le stock se met à ZÉRO, il ne disparaît pas : les comptes du monde lisent
+  // `col.stock.ferraille` sans se demander si la ville est debout, et une clé
+  // absente devenait un NaN qui contaminait tout (la garde de cohérence l'a
+  // dit tout de suite, sur dix mondes à la fois).
+  if (col.stock) {
+    for (const k of Object.keys(col.stock)) {
+      if (col.stock[k]) { col.stock[k] = 0; rendu = true; }
+    }
+  }
+  vider('emplois', {});
+  vider('postes', {});
+  vider('satiete', {});
+  vider('recettes', {});
+  vider('reserves', {});
+  vider('vivier', []);
+  vider('affiches', []);
+  if (col.geole && (col.geole.detenus || []).length) {
+    col.geole = { detenus: [], majA: 0 };
+    rendu = true;
+  }
+  if (col.etal) { col.etal = null; rendu = true; }
+  return rendu;
+}
+
 /** Transforme une colonie en ruine : la carte garde la cicatrice. */
 export function effondrer(world, col) {
   col.ruine = true;
   col.contrats = [];
   col.etal = null;
+  depouillerRuine(col);
   const ancienne = col.faction;
   if (ancienne && world.factions[ancienne]) {
     const f = world.factions[ancienne];
