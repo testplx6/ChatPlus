@@ -201,9 +201,20 @@ function pl(v, un, des = `${un}s`) {
   return `${n(v)} ${v >= 2 ? des : un}`;
 }
 
+// Les formateurs de nombres, gardés. `toLocaleString` en refabrique un à
+// chaque appel — et un écran en appelle des milliers. Mesuré au profileur sur
+// un aller-retour BASE/CARTE, processeur bridé huit fois : 287 ms passés là,
+// deuxième poste du jeu entier. Même sortie, au caractère près.
+const FORMATS_NOMBRE = new Map();
+
 function n(v, dec = 0) {
   if (!Number.isFinite(v)) return '—';
-  return v.toLocaleString('fr-FR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+  let f = FORMATS_NOMBRE.get(dec);
+  if (!f) {
+    f = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+    FORMATS_NOMBRE.set(dec, f);
+  }
+  return f.format(v);
 }
 
 /**
@@ -373,8 +384,13 @@ function mesurerAncre(ecran) {
  * serait pire. Vu à l'instrument : ancre calculée à 937 px, appliquée à 841,
  * qui était le maximum possible.
  */
-function restaurerAncre(ecran, a) {
-  if (!a) { ecran.scrollTop = 0; return; }
+function restaurerAncre(ecran, a, dejaEnHaut) {
+  // Écrire `scrollTop` force le navigateur à mettre en page tout ce qu'on
+  // vient de poser, sur-le-champ. Quand l'écran d'avant était déjà en haut —
+  // le cas ordinaire d'un changement d'onglet — il n'y a rien à remonter, et
+  // ce forçage coûtait à lui seul cent à cent quatre-vingts millisecondes par
+  // ouverture d'écran sur un téléphone.
+  if (!a) { if (!dejaEnHaut) ecran.scrollTop = 0; return; }
   const [cleSec, cleItem] = a.cle.split('|');
   const secs = ecran.children;
   const vus = new Map();
@@ -500,6 +516,13 @@ function signatureCarte() {
   const gs = groupes(S).map((g) => `${g.id}:${g.regionId}`).join(',');
   return `${emp.dur}|${emp.doux}|${S.temps}|${selection}|${CELL}|${gs}`;
 }
+
+// Un encart replié fabrique quand même son contenu, masqué par une classe.
+// Ne poser que son titre a été essayé, mesuré et RETIRÉ : quatre-vingts
+// éléments de moins sur l'écran le plus lourd, aucune milliseconde gagnée, et
+// trois sondes au rouge — ce qui est replié doit rester LÀ, lisible par la
+// recherche du navigateur et par le jeu lui-même. Le vrai coût était ailleurs
+// (le formateur de nombres, la mise en page forcée).
 
 /** Les blocs de premier rang du dernier écran écrit, tels qu'on les a produits. */
 let dernierBlocs = [];
@@ -627,6 +650,9 @@ export function rafraichir(force) {
   let ecrit = true;
   let ancre = null;
   let boitePreservee = false;
+  // Lu AVANT toute écriture dans le DOM : à ce moment-là, rien n'est en
+  // attente, et la lecture ne coûte rien.
+  const defilementAvant = ecran.scrollTop;
   try {
     const html = bandeauSauvegarde() + bandeauDevaluation() + bandeauSiege() + rendu();
     if (chrono) chrono.pas('texte');
@@ -740,7 +766,7 @@ export function rafraichir(force) {
   // Le canevas se dimensionne d'après la place qu'on lui laisse : le redessiner
   // après avoir replacé le défilement décalait tout ce qui se trouve dessous,
   // et c'était le seul écran où l'ancre ne tenait pas ses promesses.
-  if (ecrit) restaurerAncre(ecran, ancre);
+  if (ecrit) restaurerAncre(ecran, ancre, defilementAvant === 0);
   if (chrono) chrono.pas('ancre');
   // `rendreModale` s'occupe aussi du rapport d'absence, qui s'ouvre de
   // lui-même : on l'appelle donc même sans modale demandée.
@@ -913,7 +939,11 @@ function centrerCarte(cv, force, preservee) {
   // être, et personne n'a bougé. Relire sa géométrie pour la remettre où elle
   // est force un calcul de mise en page — huit millisecondes par clic sur un
   // téléphone, pour ne rien changer.
-  if (!force && preservee && derniereRegionVue === g.regionId) return;
+  // ... mais seulement tant que le joueur TIENT la vue. La double tape la lui
+  // reprend (`vueTenueParLeJoueur = false`) pour revenir sur le groupe : sauter
+  // le recentrage là, c'était ignorer sa demande — dit tout de suite par la
+  // suite navigateur, « le double clic ramène la vue sur le groupe » au rouge.
+  if (!force && preservee && vueTenueParLeJoueur && derniereRegionVue === g.regionId) return;
   // On suit le groupe tant que le joueur n'a pas pris la main ; une fois qu'il
   // l'a prise, seul un double clic la lui redemande.
   if (!force) {
