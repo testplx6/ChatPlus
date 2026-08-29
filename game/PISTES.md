@@ -109,4 +109,10 @@ D'où deux architectures, à trancher avant la moindre ligne :
   investissement). S'appuie sur ce qui existe, peu de code neuf, coût de
   simulation nul (ces villes tournent déjà).
 
-Rien n'est décidé. Le jour où l'on ouvre, on ouvre un cahier des charges.
+**Ouvert en août 2026, sur demande du propriétaire — « il faut peut-être
+travailler sur le système multi bases et villes avant la conquête des
+autres ». Le cahier des charges vit dans `IMPLANTATIONS.md` : le recensement
+y a trouvé mieux que prévu (la prise de ville, les dix-huit prérogatives et
+la naissance d'une faction sont déjà écrites ; il manque un drapeau au
+joueur), une troisième architecture s'y est ajoutée, et six questions
+attendent le propriétaire. Rien n'est engagé tant qu'il n'a pas tranché.**

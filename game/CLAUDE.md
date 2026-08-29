@@ -85,6 +85,7 @@ quelqu'un d'autre.
 | `AUDIT.md` | l'audit doctrinal (14 écarts, 3 vagues) **+ la revue au prisme « simulation, pas punition »** (août 2026) : sept corrections livrées (E3, S2, S3, S4, S6, M4, F2), deux fonds au propriétaire (S1 l'oubli à heure fixe, S5 l'omniscience) — plus aucun multiplicateur dirigé contre le joueur |
 | `MEMOIRE.md` | le chantier « la mémoire a des porteurs » (S1+S5+E12) — **livré, cinq lots sur cinq** : les nouvelles ont des jambes, le registre des faits (seule porte vers la réputation), « pas vu, pas su », l'érosion est morte, et la mémoire appartient au souvenant (la vue matérialisée, la succession qui repèse, l'oubli au conseil, les notables qui jugent sur ce qu'ils ont vu ici) ; S1 et S5 de l'audit soldés ; deux trouvailles dans ses Blocages (la voie du service quasi morte AVANT le chantier — instruite au banc, profils CARRIERE et ASSIDU, décision au propriétaire ; le temps de rachat du pillard — chiffré, dette soldée, cible 2 tenue) |
 | `INVESTISSEMENT.md` | le cahier de la réforme de l'investissement des conseils (trouvaille MARECHAL) — **ouvert**, une décision A/B/C au propriétaire, rien ne se code avant |
+| `IMPLANTATIONS.md` | plusieurs bases et villes — **ouvert** : le moteur sait déjà prendre et gouverner une ville, il manque un drapeau au joueur ; six questions au propriétaire, rien ne se code avant |
 | `PISTES.md` | des idées consignées, pas des chantiers — rien n'y est engagé |
 | `README.md` | le projet, les tests, l'architecture |
 
