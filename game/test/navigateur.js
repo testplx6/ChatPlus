@@ -2845,6 +2845,33 @@ console.log('\n8 nonies quater. Le comptoir, à l’écran');
   ok(apresOrdre.credits < crAvant, 'et la garde est payée d’avance',
     `${crAvant} → ${apresOrdre.credits}`);
   ok(/En route/.test(apresOrdre.texte), 'le convoi se suit à l’écran');
+
+  // « Les boutons du comptoir sont très très lents. » Ils ne font pourtant que
+  // remplir un bon de commande : un sens, une matière, une quantité. Chacun
+  // refabriquait tout l'écran Base — l'école, les métiers, les bâtiments, la
+  // recherche — pour n'enfoncer qu'un bouton. On clique dans le même tour de
+  // boucle que la lecture du compteur : l'horloge du jeu n'a pas le temps de
+  // s'intercaler, ce qui se compte est bien l'effet du clic.
+  const faitsOrdre = await page.evaluate(() => {
+    for (const k of Object.keys(window.__blocsFaits)) window.__blocsFaits[k] = 0;
+    document.querySelector('[data-a="ordre-sens"][data-r="achat"]').click();
+    return { ...window.__blocsFaits };
+  });
+  ok(faitsOrdre.comptoir === 1, 'le panneau du comptoir se refait quand on clique dedans',
+    JSON.stringify(faitsOrdre));
+  ok(!faitsOrdre['école'] && !faitsOrdre['métiers'],
+    'et le reste de l’écran Base ne se refabrique pas pour autant',
+    JSON.stringify(faitsOrdre));
+  const suiteOrdre = await page.evaluate(
+    () => document.querySelector('#ecran').textContent);
+  ok(/À payer/.test(suiteOrdre), 'le bon de commande a bien changé de sens');
+  // Un panneau posé à part reste un panneau : repliable comme ses voisins.
+  const pliableApres = await page.evaluate(() => {
+    const sec = document.getElementById('bloc-comptoir');
+    return !!(sec && sec.classList.contains('pliable')
+      && sec.querySelector(':scope > h2.titre[data-a="plier"]'));
+  });
+  ok(pliableApres, 'et le panneau reposé garde sa poignée de pli');
 }
 
 console.log('\n8 decies. Métiers de l’avant-poste');

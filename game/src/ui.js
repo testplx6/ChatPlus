@@ -161,6 +161,13 @@ const coutParEcran = {};
  * l'horloge par bloc, c'est gratuit ; le panneau les rend lisibles.
  */
 const coutParBloc = {};
+/**
+ * Et combien de fois chaque bloc a été refabriqué. Un bloc cher n'est pas un
+ * problème s'il ne se refait qu'en changeant d'écran ; un bloc bon marché
+ * refait à chaque bouton en devient un. Compter est gratuit, et c'est le seul
+ * moyen de voir un rendu ciblé rater sa cible. Lu par `window.__blocsFaits`.
+ */
+const blocsFaits = {};
 /** La pesée de la partie, calculée seulement quand on la demande. */
 let pesee = null;
 
@@ -169,6 +176,7 @@ function chrono(nom, fn) {
   const html = fn();
   const t1 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
   coutParBloc[nom] = Math.max(coutParBloc[nom] || 0, Math.round(t1 - t0));
+  blocsFaits[nom] = (blocsFaits[nom] || 0) + 1;
   return html;
 }
 /** Après un geste de l'utilisateur, on laisse le DOM tranquille un instant. */
@@ -194,6 +202,10 @@ export function attacherEtat(state) {
 
 export function monterUI(api) {
   ACTIONS = api;
+  // Un crochet d'atelier : combien de fois chaque bloc a été refabriqué depuis
+  // le début. Sert aux sondes de la suite navigateur, et à répondre sur pièces
+  // quand un écran paraît lent.
+  if (typeof window !== 'undefined') window.__blocsFaits = blocsFaits;
   $('#ecran').addEventListener('click', surClic);
   $('#barre-nav').addEventListener('click', surClic);
   $('#barre-haut').addEventListener('click', surClic);
@@ -602,6 +614,48 @@ function poserEcran(ecran, html, memeEcran) {
     ecran.replaceChild(neufs[i], vieux[i]);
   }
   dernierBlocs = blocs;
+}
+
+/**
+ * Redessiner un seul panneau, sans refabriquer l'écran autour.
+ *
+ * Les boutons du comptoir ne font que remplir un bon de commande : un sens, une
+ * marchandise, une quantité, une garde. Chacun appelait `rafraichir(true)`, qui
+ * refabrique tout le texte de l'écran Base — métiers, école, bâtiments,
+ * recherche, terre — pour n'enfoncer qu'un bouton. « Les boutons du comptoir
+ * sont très très lents. » Le diff de `poserEcran` épargnait le DOM, pas la
+ * fabrication du texte, qui est l'essentiel du coût.
+ *
+ * On tient les deux mémoires à jour : le bloc remplacé dans `dernierBlocs`,
+ * pour que le prochain diff se compare à ce qui est vraiment à l'écran, et
+ * `dernierHtml` oublié, pour qu'un rendu complet ne se croie pas identique.
+ *
+ * Au moindre doute — pas de partie, panneau absent, panneau devenu vide — on
+ * retombe sur le rafraîchissement complet : aucune optimisation ne vaut un
+ * écran figé.
+ */
+function rafraichirBloc(id, fabrique) {
+  const ecran = $('#ecran');
+  const vieux = ecran && document.getElementById(id);
+  const i = vieux ? [...ecran.children].indexOf(vieux) : -1;
+  if (!S || i < 0 || i >= dernierBlocs.length) { rafraichir(true); return; }
+  const gabarit = document.createElement('div');
+  gabarit.innerHTML = fabrique();
+  const neuf = gabarit.firstElementChild;
+  if (!neuf || gabarit.children.length !== 1) { rafraichir(true); return; }
+  ecran.replaceChild(neuf, vieux);
+  dernierBlocs[i] = neuf.outerHTML;
+  dernierHtml = null;
+  // Un panneau neuf ne sait pas encore qu'il est repliable : c'est le passage
+  // des replis qui rend son titre cliquable et lui rend son état. Sans ça, le
+  // premier bouton du comptoir enlevait au comptoir sa poignée de pli — pas
+  // faux à l'écran, mais mort au toucher jusqu'au rendu complet suivant.
+  appliquerReplis(ecran);
+}
+
+/** Le comptoir, et lui seul. */
+function rafraichirComptoir() {
+  rafraichirBloc(ID_COMPTOIR, () => chrono('comptoir', blocComptoir));
 }
 
 export function rafraichir(force) {
@@ -3897,6 +3951,9 @@ const QTES_ORDRE = [10, 50, 200, 1000];
  * Ce qui n'est jamais offert, en revanche, c'est la sécurité du convoi. Voir
  * `ESCORTES` : un convoi qu'on ne peut pas perdre annulerait la carte.
  */
+/** Le panneau du comptoir se redessine seul : il lui faut un nom dans l'écran. */
+const ID_COMPTOIR = 'bloc-comptoir';
+
 function blocComptoir() {
   const b = S.base;
   if (!b.fonde) return '';
@@ -3924,7 +3981,7 @@ function blocComptoir() {
     ${enRoute}` : '';
 
   if (!c.ok) {
-    return `<section class="panneau">
+    return `<section class="panneau" id="${ID_COMPTOIR}">
       <h2 class="titre">Comptoir <span class="droite alerte">fermé</span></h2>
       <div class="aide">${e(c.motif || 'Indisponible.')}</div>
       ${suivi}
@@ -3963,7 +4020,7 @@ function blocComptoir() {
   const g = G();
   const escouadeIci = !!(g && g.regionId === b.regionId);
 
-  return `<section class="panneau">
+  return `<section class="panneau" id="${ID_COMPTOIR}">
     <h2 class="titre">Comptoir
       <span class="droite">${e(act.membres.map((k) => drapeauDe(S.world, k).nom).join(' + '))}</span></h2>
     <div class="aide">${act.sien
@@ -7523,36 +7580,36 @@ function surClic(ev) {
     case 'comptoir-reseau':
       ACTIONS.choisirComptoir(el.dataset.r);
       messageComptoir = null;
-      rafraichir(true);
+      rafraichirComptoir();
       break;
 
     case 'ordre-sens':
       ordreSens = el.dataset.r;
       messageComptoir = null;
-      rafraichir(true);
+      rafraichirComptoir();
       break;
 
     case 'ordre-k':
       ordreKey = el.dataset.k;
       messageComptoir = null;
-      rafraichir(true);
+      rafraichirComptoir();
       break;
 
     case 'ordre-q':
       ordreQte = Number(el.dataset.q);
       messageComptoir = null;
-      rafraichir(true);
+      rafraichirComptoir();
       break;
 
     case 'ordre-escorte':
       ordreEscorte = el.dataset.r;
       messageComptoir = null;
-      rafraichir(true);
+      rafraichirComptoir();
       break;
 
     case 'ordre-escouade':
       ordreEscouade = !ordreEscouade;
-      rafraichir(true);
+      rafraichirComptoir();
       break;
 
     case 'passer-ordre': {
