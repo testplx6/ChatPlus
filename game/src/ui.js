@@ -626,10 +626,11 @@ export function rafraichir(force) {
   // bouge même quand le texte autour ne bouge pas.
   let ecrit = true;
   let ancre = null;
+  let boitePreservee = false;
   try {
     const html = bandeauSauvegarde() + bandeauDevaluation() + bandeauSiege() + rendu();
     if (chrono) chrono.pas('texte');
-    if (html === dernierHtml && memeEcran) ecrit = false;
+    if (html === dernierHtml && memeEcran) { ecrit = false; boitePreservee = true; }
     else {
       // Mesurer la place de lecture force le navigateur à calculer toute la
       // mise en page sur-le-champ. On ne le fait donc qu'une fois qu'on SAIT
@@ -663,6 +664,7 @@ export function rafraichir(force) {
         const boiteApres = ecran.querySelector('#carte-boite');
         if (boiteApres) boiteApres.replaceWith(boiteAvant);
       }
+      boitePreservee = !!boiteAvant;
       if (chrono) chrono.pas('pose');
       if (defilDock > 0) {
         const dockApres = document.getElementById('dock-ordres');
@@ -730,7 +732,7 @@ export function rafraichir(force) {
     }
     if (chrono) chrono.pas('carte');
     if (cv.parentElement) lierGestesCarte(cv.parentElement);
-    centrerCarte(cv);
+    centrerCarte(cv, false, boitePreservee);
     animerCarte();
     if (chrono) chrono.pas('centrage');
   }
@@ -902,11 +904,16 @@ function bruit(i, j) {
 let derniereRegionVue = null;
 /** Vrai dès que le joueur a bougé la carte lui-même : on ne lui reprend plus. */
 let vueTenueParLeJoueur = false;
-function centrerCarte(cv, force) {
+function centrerCarte(cv, force, preservee) {
   const boite = cv.parentElement;
   if (!boite) return;
   const g = G();
   if (!g) return;
+  // La boîte a survécu à la réécriture : son défilement est déjà où il doit
+  // être, et personne n'a bougé. Relire sa géométrie pour la remettre où elle
+  // est force un calcul de mise en page — huit millisecondes par clic sur un
+  // téléphone, pour ne rien changer.
+  if (!force && preservee && derniereRegionVue === g.regionId) return;
   // On suit le groupe tant que le joueur n'a pas pris la main ; une fois qu'il
   // l'a prise, seul un double clic la lui redemande.
   if (!force) {
@@ -1278,7 +1285,17 @@ function peindreTerrain(g, w, L, H) {
  * Les nombres sont arrondis au cran qui se voit — plus fin serait du gaspillage,
  * plus grossier laisserait une carte périmée à l'écran.
  */
+let empreinteTemps = -1;
+let empreinteCell = -1;
+let empreinteVue = null;
+
 function empreinteTerrain(w) {
+  // Le monde ne change qu'aux heures : entre deux ticks, la même empreinte.
+  // La recalculer à chaque rendu — quatre cent trente-deux régions, chacune
+  // demandant si on la surveille — coûtait vingt-huit millisecondes par clic
+  // sur un processeur de téléphone, pour un résultat identique. C'était le
+  // premier poste du geste, et c'était mon propre garde-fou qui le créait.
+  if (empreinteVue && empreinteTemps === S.temps && empreinteCell === CELL) return empreinteVue;
   // Deux empreintes, parce que deux natures. L'INFORMATION — ce qu'on a
   // découvert, à qui appartient la case, ce qu'on surveille — se repeint
   // sur-le-champ : une carte qui ment est pire qu'une carte lente. La
@@ -1302,7 +1319,10 @@ function empreinteTerrain(w) {
     doUX(Math.round((r.fouille || 0) * 8));
     doUX(Math.round((r.insecurite || 0) * 10));
   }
-  return { dur: dur >>> 0, doux: doux >>> 0 };
+  empreinteVue = { dur: dur >>> 0, doux: doux >>> 0 };
+  empreinteTemps = S.temps;
+  empreinteCell = CELL;
+  return empreinteVue;
 }
 
 /** Le délai au bout duquel la matière du terrain a le droit d'être repeinte. */

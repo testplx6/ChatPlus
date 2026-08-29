@@ -3359,6 +3359,44 @@ console.log('\n8 septies. Sauvegardes : plusieurs parties côte à côte');
     'et propose d’ouvrir un fichier sans partie en cours');
 }
 
+console.log('\n8 octies ter. Une partie déjà avancée maigrit en s’ouvrant');
+{
+  // « Tu es sûr que la sauvegarde s'est adaptée ? » — le propriétaire. La
+  // question mérite mieux qu'un oui : on fabrique une partie dont les ruines
+  // sont encore grasses (comme la sienne l'était), on l'ouvre, et l'on regarde
+  // ce que le jeu ÉCRIT ensuite.
+  const grasse = (() => {
+    const t = partieAvancee();
+    const col = t.world.colonies.find((c) => !c.ruine && (c.notables || []).length);
+    col.ruine = true; // une ruine à l'ancienne : elle garde tout son monde
+    t.dernierReel = Date.now();
+    return t;
+  })();
+  const idRuine = grasse.world.colonies.find((c) => c.ruine).id;
+  const texteGras = serialiser(grasse);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), texteGras);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.waitForTimeout(600);
+  const apres = await page.evaluate((id) => {
+    const s2 = JSON.parse(window.__sauvegardeTexte());
+    const r = s2.world.colonies.find((c) => c.id === id);
+    return {
+      notables: (r.notables || []).length,
+      emplois: Object.keys(r.emplois || {}).length,
+      stock: Object.values(r.stock || {}).filter((v) => v > 0).length,
+      taille: window.__sauvegardeTexte().length,
+    };
+  }, idRuine);
+  ok(apres.notables === 0 && apres.emplois === 0 && apres.stock === 0,
+    'la ruine a rendu son personnel, ses emplois et ses stocks', JSON.stringify(apres));
+  ok(apres.taille < texteGras.length,
+    'et la partie écrite pèse moins que celle qu’on a ouverte',
+    `${Math.round(texteGras.length / 1024)} Ko → ${Math.round(apres.taille / 1024)} Ko`);
+}
+
 console.log('\n8 octies bis. La compression part dans un fil de côté');
 {
   // Le fil du jeu ne doit plus payer la compression : elle se fait ailleurs, et
