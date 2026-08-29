@@ -512,6 +512,61 @@ export function nourrir(c, dispo) {
   return besoin;
 }
 
+/**
+ * Ce qu'un homme retient des autres.
+ *
+ * Le propriétaire, sur une partie au jour 748 : « player.groupes 24140 Ko ».
+ * Vingt-quatre mégaoctets de gens, quand le monde entier en pèse 376.
+ *
+ * La boucle sociale a longtemps été quadratique : chacun tenait un lien vers
+ * chacun. Le cercle de six voisins (`CERCLE_VOISINS`, squad.js) a arrêté d'en
+ * fabriquer — mais n'a jamais nettoyé ceux qui étaient déjà écrits. Mille deux
+ * cents personnes, c'est un million quatre cent mille entrées que plus rien ne
+ * lit, et vingt mégaoctets mesurés au banc : chaque écriture de la partie les
+ * traverse, et c'est du gel sur un téléphone.
+ *
+ * Ce qui se lit encore d'un lien : les douze voisins du cercle — qui se
+ * refont d'eux-mêmes — et l'ami et le rival de la fiche, qui sont les deux
+ * extrêmes. Garder les plus marqués préserve donc exactement ce qui se voit.
+ *
+ * Deux fois le cercle, pour que l'ordre des vivants puisse bouger — un mort,
+ * et les voisins de chacun changent — sans qu'on perde des liens actifs.
+ *
+ * Le nettoyage se fait à l'ouverture de la partie, pas à chaque lien touché :
+ * compter les clés d'un dictionnaire alloue, et deux comptages par ajustement
+ * dans une boucle de combat suffisaient à faire repasser la sonde de la foule
+ * au rouge (×4,2 par tête entre cent et cinq cents). On élague là où c'est
+ * gratuit, et l'on empêche de créer là où c'est cher.
+ */
+export const LIENS = {
+  gardes: 24,
+  /**
+   * Combien de voisins de chaque côté on fréquente vraiment. Vit ici, et non
+   * dans squad.js, parce que le combat s'en sert aussi et le précède dans
+   * l'ordre des modules. `CERCLE_VOISINS` en reste le nom public.
+   */
+  cercle: 6,
+};
+
+/**
+ * Ne garder que ce dont on se souvient. Rend le nombre de liens oubliés.
+ *
+ * Les plus marqués d'abord, en valeur absolue : on oublie les tièdes avant les
+ * amitiés et les rancunes. Zéro tirage, tri stable — deux parties identiques
+ * élaguent identiquement.
+ */
+export function elaguerLiens(c, gardes = LIENS.gardes) {
+  const l = c && c.liens;
+  if (!l) return 0;
+  const cles = Object.keys(l);
+  if (cles.length <= gardes) return 0;
+  cles.sort((a, b) => Math.abs(l[b]) - Math.abs(l[a]));
+  const neuf = {};
+  for (let i = 0; i < gardes; i++) neuf[cles[i]] = l[cles[i]];
+  c.liens = neuf;
+  return cles.length - gardes;
+}
+
 /** Le lien mutuel entre deux membres, borné à ±100. */
 export function lien(a, b) {
   if (!a.liens) a.liens = {};

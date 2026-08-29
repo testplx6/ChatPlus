@@ -19,7 +19,7 @@ import { capturables, fairePrisonniers } from './justice.js';
 import { rendementCohesion } from './groupes.js';
 import {
   comp, gagnerXp, estDebout, estVivant, makeCharacter, blesser, pvTotal,
-  ajusterLien, XP_PRATIQUE,
+  ajusterLien, XP_PRATIQUE, LIENS,
 } from './characters.js';
 import { poidsInventaire, capacitePortage } from './economy.js';
 import {
@@ -335,14 +335,30 @@ export function combatContre(state, bande, log, ctx, groupe) {
 
   // Sortir vivants du même combat rapproche ; y laisser quelqu'un aussi, mais
   // dans l'autre sens pour ceux qui n'ont pas tenu leur poste.
+  //
+  // On ne se rapproche pas de mille personnes en une bataille : on se
+  // rapproche de ceux avec qui on s'est battu côte à côte. Même cercle que la
+  // cohésion — en dessous de treize debouts, la portée couvre tout le monde et
+  // c'est exactement le calcul d'avant. Au-delà, cette boucle était carrée :
+  // mille deux cents debouts, c'était sept cent mille liens créés par combat,
+  // et c'est par là que le tas de liens se reformait.
   const debouts = g.membres.filter(estDebout);
-  for (let i = 0; i < debouts.length; i++) {
-    for (let j = i + 1; j < debouts.length; j++) {
-      ajusterLien(debouts[i], debouts[j], res.vainqueur === 'A' ? 7 : 3);
+  const nd = debouts.length;
+  const portee = Math.min(LIENS.cercle, Math.floor(nd / 2));
+  for (let d = 1; d <= portee; d++) {
+    // À portée exactement égale à la moitié, i et i+d désignent la même paire
+    // vue des deux bouts : on ne la compte qu'une fois.
+    const moitie = d * 2 === nd;
+    for (let i = 0; i < (moitie ? nd / 2 : nd); i++) {
+      ajusterLien(debouts[i], debouts[(i + d) % nd], res.vainqueur === 'A' ? 7 : 3);
     }
   }
   for (const tombe of g.membres.filter((c) => c.etat === 'ko')) {
-    for (const d of debouts) ajusterLien(tombe, d, -2);
+    // Celui qui est tombé en veut à ceux qui étaient autour de lui, pas à
+    // toute l'escouade — il n'a pas vu le reste.
+    for (let i = 0; i < Math.min(debouts.length, LIENS.cercle * 2); i++) {
+      ajusterLien(tombe, debouts[i], -2);
+    }
   }
 
   annoncerProgres(state, compsAvant, log, g.membres);

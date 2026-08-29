@@ -11,7 +11,7 @@ import {
 } from './world.js';
 import {
   comp, gagnerXp, estDebout, estVivant, tickPerso, nourrir, pvTotal,
-  tendreLien, lien, mods, XP_PRATIQUE, makeCharacter, ARCHETYPE_KEYS,
+  tendreLien, lien, mods, XP_PRATIQUE, makeCharacter, ARCHETYPE_KEYS, LIENS,
 } from './characters.js';
 import {
   ajouterAuSac, tenterRencontre, tenterAlea, tenterChasseurs,
@@ -837,7 +837,7 @@ function releverDepuisLaVille(state, rng, log) {
  * En dessous de ce nombre, le cercle contient toute l'escouade et le moteur
  * calcule exactement ce qu'il calculait avant.
  */
-export const CERCLE_VOISINS = 6;
+export const CERCLE_VOISINS = LIENS.cercle;
 
 export function tickSquad(state, log, ctx) {
   if (!quelquUnDebout(state)) {

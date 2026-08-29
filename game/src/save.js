@@ -9,6 +9,7 @@ import { grainDe } from './rng.js';
 import { creerConnaissance } from './connaissance.js';
 import { MENAGES } from './data.js';
 import { comprimer, decomprimer, sourceLz } from './lz.js';
+import { elaguerLiens } from './characters.js';
 import { depouillerRuine } from './economy.js';
 
 export const CLE = 'cendres.save.v1';
@@ -403,6 +404,15 @@ export function normaliser(state) {
   // poids rendu au joueur, pas une règle de jeu qui change : une ruine n'avait
   // déjà ni habitants, ni marché, ni conseil.
   for (const col of (state.world && state.world.colonies) || []) depouillerRuine(col);
+  // Et les gens rendent ce qu'ils ne peuvent pas retenir. Une partie d'avant le
+  // cercle de six voisins porte un lien de chacun vers chacun : à mille deux
+  // cents personnes, un million quatre cent mille entrées que plus rien ne lit,
+  // et vingt mégaoctets à traverser à chaque écriture. Ce qui se voit — les
+  // voisins, l'ami, le rival — est préservé : ce sont les liens les plus
+  // marqués, et ce sont ceux qu'on garde.
+  for (const g of (state.player && state.player.groupes) || []) {
+    for (const m of g.membres || []) elaguerLiens(m);
+  }
   return state;
 }
 

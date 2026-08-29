@@ -68,7 +68,18 @@ désirée, pas écartée : `state.base` passera au pluriel. « Tout est possible
 Chacune est jouable seule et se livre seule. L'ordre va du moins de code neuf
 au plus, et chaque marche prépare la suivante sans la présumer.
 
-### M1 — L'assaut et ses suites *(aucun drapeau requis)*
+### M1 — L'assaut et ses suites *(aucun drapeau requis)* — 🟩 le moteur est là
+
+**Livré côté moteur** (`src/assaut.js`, seize sondes) : `attaquerVille` fait
+combat contre la garnison, butin borné par le portage, la ville perd exactement
+ce que le sac gagne, le reste lui reste (D6), elle garde son drapeau (D4), sa
+défense tombe, la rancœur monte, et le pillage s'inscrit au registre des faits
+— la ville s'en souvient, son drapeau l'apprend quand la nouvelle arrive.
+`RAID_VILLE.forceDe` fait compter la garnison et les murs.
+
+**Ce qui manque encore** : l'action dans `main.js` et le bouton dans l'écran
+carte — sans quoi le verbe existe mais reste hors de portée du joueur. Puis le
+menu d'après-victoire (prendre des hommes, saccager) et le siège (M1c).
 
 Le verbe qui manque : **attaquer une ville**. Aujourd'hui la seule attaque que
 le joueur peut lancer sur le monde est `attaquer-caravane` — une seule action

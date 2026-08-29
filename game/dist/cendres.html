@@ -5334,6 +5334,61 @@ function nourrir(c, dispo) {
   return besoin;
 }
 
+/**
+ * Ce qu'un homme retient des autres.
+ *
+ * Le propriétaire, sur une partie au jour 748 : « player.groupes 24140 Ko ».
+ * Vingt-quatre mégaoctets de gens, quand le monde entier en pèse 376.
+ *
+ * La boucle sociale a longtemps été quadratique : chacun tenait un lien vers
+ * chacun. Le cercle de six voisins (`CERCLE_VOISINS`, squad.js) a arrêté d'en
+ * fabriquer — mais n'a jamais nettoyé ceux qui étaient déjà écrits. Mille deux
+ * cents personnes, c'est un million quatre cent mille entrées que plus rien ne
+ * lit, et vingt mégaoctets mesurés au banc : chaque écriture de la partie les
+ * traverse, et c'est du gel sur un téléphone.
+ *
+ * Ce qui se lit encore d'un lien : les douze voisins du cercle — qui se
+ * refont d'eux-mêmes — et l'ami et le rival de la fiche, qui sont les deux
+ * extrêmes. Garder les plus marqués préserve donc exactement ce qui se voit.
+ *
+ * Deux fois le cercle, pour que l'ordre des vivants puisse bouger — un mort,
+ * et les voisins de chacun changent — sans qu'on perde des liens actifs.
+ *
+ * Le nettoyage se fait à l'ouverture de la partie, pas à chaque lien touché :
+ * compter les clés d'un dictionnaire alloue, et deux comptages par ajustement
+ * dans une boucle de combat suffisaient à faire repasser la sonde de la foule
+ * au rouge (×4,2 par tête entre cent et cinq cents). On élague là où c'est
+ * gratuit, et l'on empêche de créer là où c'est cher.
+ */
+const LIENS = {
+  gardes: 24,
+  /**
+   * Combien de voisins de chaque côté on fréquente vraiment. Vit ici, et non
+   * dans squad.js, parce que le combat s'en sert aussi et le précède dans
+   * l'ordre des modules. `CERCLE_VOISINS` en reste le nom public.
+   */
+  cercle: 6,
+};
+
+/**
+ * Ne garder que ce dont on se souvient. Rend le nombre de liens oubliés.
+ *
+ * Les plus marqués d'abord, en valeur absolue : on oublie les tièdes avant les
+ * amitiés et les rancunes. Zéro tirage, tri stable — deux parties identiques
+ * élaguent identiquement.
+ */
+function elaguerLiens(c, gardes = LIENS.gardes) {
+  const l = c && c.liens;
+  if (!l) return 0;
+  const cles = Object.keys(l);
+  if (cles.length <= gardes) return 0;
+  cles.sort((a, b) => Math.abs(l[b]) - Math.abs(l[a]));
+  const neuf = {};
+  for (let i = 0; i < gardes; i++) neuf[cles[i]] = l[cles[i]];
+  c.liens = neuf;
+  return cles.length - gardes;
+}
+
 /** Le lien mutuel entre deux membres, borné à ±100. */
 function lien(a, b) {
   if (!a.liens) a.liens = {};
@@ -23276,6 +23331,178 @@ function lieuValidation(state, c) {
   return donneur ? donneur.nom : '—';
 }
 
+// ===== src/assaut.js =================================================
+// ---------------------------------------------------------------------------
+// L'assaut sur une ville (IMPLANTATIONS.md, M1)
+// ---------------------------------------------------------------------------
+//
+// Jusqu'ici, la seule attaque que le joueur pouvait porter au monde était
+// l'embuscade de caravane : une action, dans toute l'interface. On pouvait
+// défendre son camp contre un siège, jamais aller frapper ailleurs.
+//
+// Décision du propriétaire (D1, IMPLANTATIONS.md §3) : « avoir le choix entre
+// créer son drapeau ou capturer une ville pour le compte d'une faction ou
+// juste attaquer pour d'autres raisons, détruire, prendre les richesses,
+// matériaux etc, prendre les hommes ». Ce module ouvre la dernière de ces
+// portes — la seule qui ne demande aucun drapeau.
+//
+// Décision D4 : le raid éclair entre, prend ce qu'il peut porter et ressort.
+// **Il ne prend jamais la ville** : garder une place demandera un siège (M1c),
+// et ce n'est pas ce que fait ce fichier.
+//
+// Décision D6 : ce qu'on ne peut pas emporter reste sur place. Rien ne brûle,
+// rien ne s'évapore — la ville garde le reste, et l'on peut revenir.
+//
+// Le patron est celui de `attaquerCaravane` (caravanes.js) : combat, butin
+// borné par le portage, puis le registre des faits. Le combat arrive en
+// paramètre, comme là-bas et comme pour les sièges : ce module précède
+// `events.js`, qui le lui fournit.
+
+
+/**
+ * Ce qu'une place oppose, et ce qu'un coup de main lui coûte.
+ *
+ * Objet mutable, pas des scalaires : tout ceci se calibre au banc.
+ */
+const RAID_VILLE = {
+  /** Combien d'hommes la garnison met devant vous, par point de défense. */
+  parDefense: 0.11,
+  /** Et ce que les murs ajoutent : on ne monte pas dedans comme dans un bourg. */
+  parMur: 0.5,
+  minBande: 1,
+  maxBande: 14,
+  /** Ce que la garnison battue perd de sa capacité à tenir. */
+  degatsDefense: 0.5,
+  /** Ce qu'un pillage laisse de rancœur dans les rues. */
+  rancoeur: 0.18,
+  /** Ce que ceux qui l'ont vu en retiennent contre vous. */
+  memoire: -18,
+  /** Et ce que le drapeau en retient, quand la nouvelle lui parvient. */
+  reputation: -26,
+
+  /**
+   * La force opposée, en hommes. Une place tenue et murée est une autre
+   * affaire qu'un bourg ouvert — c'est ce que la sonde IMP 1.6 vérifie.
+   */
+  forceDe(col) {
+    const garnison = (col.defense || 0) * this.parDefense + (col.murs || 0) * this.parMur;
+    return Math.max(this.minBande, Math.min(this.maxBande, Math.round(garnison)));
+  },
+};
+
+/**
+ * L'ordre dans lequel un pillard se sert : le plus de valeur pour le moins de
+ * poids. Personne ne remplit son sac de biomasse en laissant les medkits.
+ *
+ * Dérivé des données, jamais tiré : deux raids identiques prennent la même
+ * chose.
+ */
+function ordreDuPillage() {
+  return COMMODITY_KEYS.slice().sort(
+    (a, b) => (COMMODITIES[b].prix / COMMODITIES[b].poids)
+      - (COMMODITIES[a].prix / COMMODITIES[a].poids),
+  );
+}
+
+/**
+ * Un coup de main sur une ville : on entre, on se bat, on prend ce qu'on peut
+ * porter, on ressort.
+ *
+ * Rend `{ ok: false, motif }` si le geste n'a pas lieu d'être,
+ * `{ ok: true, gagne: false, motif }` si la garde a tenu, et sinon
+ * `{ ok: true, gagne: true, pris, laisse }`.
+ */
+function attaquerVille(state, col, rng, log, combatContre, genererBande, groupe) {
+  const g = groupe || groupeActif(state);
+  if (!col || col.ruine) return { ok: false, motif: 'Il n’y a plus rien là-bas.' };
+  // Son propre camp : `state.base` en est la vérité, cette fiche n'en est que
+  // la vitrine. On ne se pille pas soi-même.
+  if (col.avantPoste) return { ok: false, motif: 'C’est votre camp.' };
+  if (col.regionId !== g.regionId) {
+    return { ok: false, motif: `Il faut être à ${col.nom} pour y entrer.` };
+  }
+
+  const taille = RAID_VILLE.forceDe(col);
+  const bande = genererBande(rng, col.faction, taille,
+    Math.min(2, Math.floor(state.temps / 2500)));
+  bande.nom = `Garde de ${col.nom}`;
+
+  log({
+    type: 'raid',
+    texte: `Coup de main sur ${col.nom}.`,
+    important: true,
+    regionId: col.regionId,
+  });
+
+  const res = combatContre(state, bande, log, { rng }, g);
+  if (res.vainqueur !== 'A') {
+    return { ok: true, gagne: false, motif: `La garde de ${col.nom} a tenu.` };
+  }
+
+  // Le butin. La ville perd exactement ce que le sac gagne : rien ne se crée,
+  // rien ne se perd, et la garde de cohérence le dirait.
+  const pris = {};
+  let laisse = 0;
+  const capacite = capacitePortage(state, g);
+  for (const k of ordreDuPillage()) {
+    const dispo = Math.floor(col.stock[k] || 0);
+    if (dispo <= 0) continue;
+    const libre = capacite - poidsInventaire(g.inventaire);
+    const poidsU = COMMODITIES[k].poids;
+    const max = poidsU > 0 ? Math.floor(libre / poidsU) : dispo;
+    const q = Math.max(0, Math.min(dispo, max));
+    if (q > 0) {
+      g.inventaire[k] = (g.inventaire[k] || 0) + q;
+      col.stock[k] = (col.stock[k] || 0) - q;
+      pris[k] = q;
+    }
+    // D6 : le reste ne brûle pas, il reste où il est.
+    laisse += dispo - q;
+  }
+
+  // La garde est par terre et les rues ont vu. Une ville pillée tient moins
+  // bien et gronde plus fort.
+  col.defense = Math.max(0, Math.round((col.defense || 0) * (1 - RAID_VILLE.degatsDefense)));
+  col.unrest = Math.min(1, (col.unrest || 0) + RAID_VILLE.rancoeur);
+
+  // Le registre des faits est la SEULE porte vers la réputation et vers la
+  // mémoire des villes (MEMOIRE.md, L2). On n'écrit donc pas dans les notables
+  // d'ici : on commet le fait, et `tickFaits` le porte à ceux qu'il concerne.
+  //
+  // `su` à l'heure suivante et non à l'heure même : `commettre` marque
+  // « appliqué » tout effet déjà dû, et c'est `tickFaits` — lui seul — qui
+  // fait retenir les villes. Un effet daté de maintenant serait donc classé
+  // sans que personne ne s'en souvienne jamais. Une heure, c'est le grain du
+  // monde, et l'on vient de piller la ville sous ses propres yeux : elle
+  // l'apprend au plus court.
+  const effets = [{ ville: col.id, memoire: 'pillage', delta: RAID_VILLE.memoire, su: state.temps + 1 }];
+  if (col.faction && col.faction !== 'essaim') {
+    // Personne ne pille une ville entière sans témoin : ceux d'ici vous ont vu.
+    // Reste le temps que la nouvelle remonte jusqu'à leur drapeau.
+    effets.push({
+      faction: col.faction,
+      delta: RAID_VILLE.reputation,
+      su: state.temps + delaiVersFaction(state, 'rumeur', col.regionId, col.faction),
+      dit: `${drapeauDe(state.world, col.faction).nom} sa${drapeauDe(state.world, col.faction).pluriel ? 'vent' : 'it'} `
+        + `qui est entré à ${col.nom} et ce qui en est reparti.`,
+    });
+  }
+  commettre(state, {
+    type: 'pillage-ville', regionId: col.regionId, t: state.temps, effets,
+  });
+
+  state.stats.villesPillees = (state.stats.villesPillees || 0) + 1;
+  log({
+    type: 'raid',
+    texte: `${col.nom} est saignée. On repart avec ce qu’on peut porter.`,
+    important: true,
+    regionId: col.regionId,
+    factions: col.faction ? [col.faction] : [],
+  });
+
+  return { ok: true, gagne: true, pris, laisse };
+}
+
 // ===== src/events.js =================================================
 // Journal de bord et rencontres. Tout se résout automatiquement selon la
 // posture et les consignes de l'escouade : c'est ce qui permet à la simulation
@@ -23587,14 +23814,30 @@ function combatContre(state, bande, log, ctx, groupe) {
 
   // Sortir vivants du même combat rapproche ; y laisser quelqu'un aussi, mais
   // dans l'autre sens pour ceux qui n'ont pas tenu leur poste.
+  //
+  // On ne se rapproche pas de mille personnes en une bataille : on se
+  // rapproche de ceux avec qui on s'est battu côte à côte. Même cercle que la
+  // cohésion — en dessous de treize debouts, la portée couvre tout le monde et
+  // c'est exactement le calcul d'avant. Au-delà, cette boucle était carrée :
+  // mille deux cents debouts, c'était sept cent mille liens créés par combat,
+  // et c'est par là que le tas de liens se reformait.
   const debouts = g.membres.filter(estDebout);
-  for (let i = 0; i < debouts.length; i++) {
-    for (let j = i + 1; j < debouts.length; j++) {
-      ajusterLien(debouts[i], debouts[j], res.vainqueur === 'A' ? 7 : 3);
+  const nd = debouts.length;
+  const portee = Math.min(LIENS.cercle, Math.floor(nd / 2));
+  for (let d = 1; d <= portee; d++) {
+    // À portée exactement égale à la moitié, i et i+d désignent la même paire
+    // vue des deux bouts : on ne la compte qu'une fois.
+    const moitie = d * 2 === nd;
+    for (let i = 0; i < (moitie ? nd / 2 : nd); i++) {
+      ajusterLien(debouts[i], debouts[(i + d) % nd], res.vainqueur === 'A' ? 7 : 3);
     }
   }
   for (const tombe of g.membres.filter((c) => c.etat === 'ko')) {
-    for (const d of debouts) ajusterLien(tombe, d, -2);
+    // Celui qui est tombé en veut à ceux qui étaient autour de lui, pas à
+    // toute l'escouade — il n'a pas vu le reste.
+    for (let i = 0; i < Math.min(debouts.length, LIENS.cercle * 2); i++) {
+      ajusterLien(tombe, debouts[i], -2);
+    }
   }
 
   annoncerProgres(state, compsAvant, log, g.membres);
@@ -24955,7 +25198,7 @@ function releverDepuisLaVille(state, rng, log) {
  * En dessous de ce nombre, le cercle contient toute l'escouade et le moteur
  * calcule exactement ce qu'il calculait avant.
  */
-const CERCLE_VOISINS = 6;
+const CERCLE_VOISINS = LIENS.cercle;
 
 function tickSquad(state, log, ctx) {
   if (!quelquUnDebout(state)) {
@@ -26082,6 +26325,15 @@ function normaliser(state) {
   // poids rendu au joueur, pas une règle de jeu qui change : une ruine n'avait
   // déjà ni habitants, ni marché, ni conseil.
   for (const col of (state.world && state.world.colonies) || []) depouillerRuine(col);
+  // Et les gens rendent ce qu'ils ne peuvent pas retenir. Une partie d'avant le
+  // cercle de six voisins porte un lien de chacun vers chacun : à mille deux
+  // cents personnes, un million quatre cent mille entrées que plus rien ne lit,
+  // et vingt mégaoctets à traverser à chaque écriture. Ce qui se voit — les
+  // voisins, l'ami, le rival — est préservé : ce sont les liens les plus
+  // marqués, et ce sont ceux qu'on garde.
+  for (const g of (state.player && state.player.groupes) || []) {
+    for (const m of g.membres || []) elaguerLiens(m);
+  }
   return state;
 }
 

@@ -71,6 +71,10 @@ const MODULES = [
   // De la place en ville, qui ne marche pas avec vous.
   'coffres.js',
   'contrats.js',
+  // Frapper une ville : lit l'économie (le portage), le registre des faits
+  // et les données. Le combat lui arrive en paramètre, comme aux sièges —
+  // c'est pourquoi il peut précéder events.js, qui le lui fournit.
+  'assaut.js',
   'events.js',
   'squad.js',
   // Ce que la partie a fait de vous : elle relit tout le reste.

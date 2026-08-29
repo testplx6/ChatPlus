@@ -65,6 +65,10 @@ import {
 import { verdict } from '../tools/vitesse.js';
 import { loiIci } from '../src/lois.js';
 import { primeLivraison, prixEsclave } from '../src/justice.js';
+import { attaquerVille, RAID_VILLE } from '../src/assaut.js';
+import { LIENS, relationsNotables } from '../src/characters.js';
+import { tickFaits as tickFaitsImp } from '../src/faits.js';
+import { retenirEnVille as retenirEnVilleImp } from '../src/services.js';
 import { classement, puissance } from '../src/factions.js';
 import { ravitailler, ravitaillementMax, FOURRAGE } from '../src/factions.js';
 import {
@@ -13215,6 +13219,212 @@ section('MEM 8. La mémoire — L5d, les notables jugent sur ce qu’ils ont vu 
     ok(Math.abs(notables8.opinionMoyenne(col)) < 1,
       'le souvenir sans coupable ne juge personne — pas vu, pas su',
       `opinion moyenne ${notables8.opinionMoyenne(col).toFixed(1)}`);
+  }
+}
+
+
+// ===========================================================================
+section('IMP 1. Le raid sur une ville (IMPLANTATIONS.md, M1)');
+// Jusqu'ici, la seule attaque que le joueur pouvait lancer sur le monde était
+// l'embuscade de caravane : une action, dans toute l'interface. Décision du
+// propriétaire (D1) : on doit pouvoir « juste attaquer pour d'autres raisons,
+// détruire, prendre les richesses, matériaux ». Décision D4 : le raid éclair
+// entre, prend ce qu'il peut porter et ressort — il ne prend jamais la ville.
+// Décision D6 : ce qu'on ne peut pas emporter reste sur place.
+{
+  const rien = () => {};
+  const monterRaid = (graine) => {
+    const s2 = nouvellePartie(graine, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g2 = groupeActif(s2);
+    // On gagne à coup sûr : les nôtres sont en pleine forme et surarmés.
+    for (const m of g2.membres) {
+      m.skills.melee = 95; m.skills.endurance = 95; m.skills.tir = 95;
+      for (const part of Object.keys(m.corps)) m.corps[part].pv = m.corps[part].max;
+    }
+    const col = s2.world.colonies.find((c) => !c.ruine && c.faction && c.regionId === g2.regionId)
+      || s2.world.colonies.find((c) => !c.ruine && c.faction);
+    g2.regionId = col.regionId;
+    // Une garnison qui ne tiendra pas, et une seule marchandise à prendre :
+    // le sac se remplit du plus précieux au poids d'abord, et l'on veut
+    // mesurer la conservation, pas l'ordre du pillage.
+    col.defense = 2;
+    col.murs = 0;
+    for (const k of Object.keys(col.stock)) col.stock[k] = 0;
+    col.stock.alliage = 60;
+    return { s: s2, g: g2, col };
+  };
+
+  // 1) On n'attaque pas une ville où l'on n'est pas.
+  {
+    const { s: s2, g: g2, col } = monterRaid(9101);
+    const ailleurs = s2.world.colonies.find((c) => !c.ruine && c.id !== col.id);
+    const r = attaquerVille(s2, ailleurs, new Rng(1), rien, combatContre, genererBande, g2);
+    ok(!r.ok, 'on n’attaque pas une ville où l’on n’est pas', r.motif);
+  }
+
+  // 2) Ni son propre camp.
+  {
+    const { s: s2, g: g2, col } = monterRaid(9102);
+    col.avantPoste = true;
+    const r = attaquerVille(s2, col, new Rng(1), rien, combatContre, genererBande, g2);
+    ok(!r.ok, 'ni le camp qu’on a bâti soi-même', r.motif);
+  }
+
+  // 3) Le raid gagné : le butin passe dans le sac, et la ville le perd.
+  {
+    const { s: s2, g: g2, col } = monterRaid(9103);
+    const avantSac = g2.inventaire.alliage || 0;
+    const avantVille = col.stock.alliage;
+    const drapeauAvant = col.faction;
+    const r = attaquerVille(s2, col, new Rng(11), rien, combatContre, genererBande, g2);
+    ok(r.ok, 'le raid a lieu', r.motif);
+    ok(r.gagne, 'et une garnison de deux hommes ne tient pas devant trois vétérans');
+    if (r.gagne) {
+      ok((g2.inventaire.alliage || 0) > avantSac,
+        'ce qu’on a pris est dans le sac de ceux qui se sont battus',
+        `${avantSac} → ${g2.inventaire.alliage}`);
+      // Conservation : rien ne se crée, rien ne se perd. La ville perd
+      // exactement ce que le sac a gagné.
+      const gagne = (g2.inventaire.alliage || 0) - avantSac;
+      ok(avantVille - col.stock.alliage === gagne,
+        'et la ville a perdu exactement ça — ni plus, ni moins',
+        `ville ${avantVille} → ${col.stock.alliage}, sac +${gagne}`);
+      ok(col.faction === drapeauAvant,
+        'un raid ne prend pas la ville : elle garde son drapeau (D4)');
+      ok(col.unrest > 0, 'mais on ne pille pas une ville sans y laisser de la rancœur');
+    }
+  }
+
+  // 4) Ce qu'on ne peut pas porter reste sur place (D6) — il ne s'évapore pas.
+  {
+    const { s: s2, g: g2, col } = monterRaid(9104);
+    col.stock.alliage = 4000;
+    const avantVille = col.stock.alliage;
+    const r = attaquerVille(s2, col, new Rng(12), rien, combatContre, genererBande, g2);
+    if (r.ok && r.gagne) {
+      ok(r.laisse > 0, 'trois personnes ne remportent pas quatre mille unités à dos d’homme',
+        `${r.laisse} laissées`);
+      ok(col.stock.alliage > 0, 'et ce qu’on laisse reste dans la ville, il ne brûle pas',
+        `${avantVille} → ${col.stock.alliage}`);
+      ok(poidsInventaire(g2.inventaire) <= capacitePortage(s2, g2) + 1,
+        'l’escouade ne dépasse pas sa capacité de portage');
+    }
+  }
+
+  // 5) La ville s'en souvient, et son drapeau aussi. Le registre des faits est
+  //    la seule porte vers la réputation (MEMOIRE.md, L2).
+  {
+    const { s: s2, g: g2, col } = monterRaid(9105);
+    const avant = s2.player.reputation[col.faction] || 0;
+    const r = attaquerVille(s2, col, new Rng(13), rien, combatContre, genererBande, g2);
+    if (r.ok && r.gagne) {
+      const marque = (s2.player.faits || []).some((f) => f.type === 'pillage-ville');
+      ok(marque, 'le pillage est inscrit au registre des faits');
+      // La mémoire des villes passe par le registre, jamais en direct : c'est
+      // `tickFaits` qui la porte, à l'heure où la ville l'apprend.
+      s2.temps += 1;
+      tickFaitsImp(s2, rien, { retenirEnVille: retenirEnVilleImp });
+      ok(col.notables.some((p) => (p.memoire || []).length > 0),
+        'et ceux qui l’ont vu s’en souviennent ici');
+      ok((s2.player.reputation[col.faction] || 0) <= avant,
+        'la réputation ne monte pas après un pillage',
+        `${avant} → ${s2.player.reputation[col.faction]}`);
+    }
+  }
+
+  // 6) La garnison compte, et les murs aussi : la même ville tenue est une
+  //    autre affaire. On ne mesure pas l'issue (le combat a ses dés) mais le
+  //    fait que la force opposée en tienne compte.
+  {
+    const { s: s2, col } = monterRaid(9106);
+    col.defense = 40; col.murs = 6;
+    const dure = RAID_VILLE.forceDe(col);
+    col.defense = 2; col.murs = 0;
+    const molle = RAID_VILLE.forceDe(col);
+    ok(dure > molle, 'une place tenue et murée oppose plus qu’un bourg ouvert',
+      `${molle} → ${dure}`);
+  }
+}
+
+
+// ===========================================================================
+section('PERF 1. Un homme ne se souvient pas de mille personnes');
+// Le propriétaire, août 2026, sur une partie au jour 748 : « player.groupes
+// 24140 Ko ». Vingt-quatre mégaoctets de gens, dans une partie dont le monde
+// entier pèse 376 Ko.
+//
+// La cause est un héritage. La boucle sociale a longtemps été quadratique :
+// chacun tenait un lien vers chacun. Le cercle de six voisins (CERCLE_VOISINS)
+// a arrêté d'en fabriquer, mais n'a jamais nettoyé ceux qui étaient déjà
+// écrits — mille deux cents personnes, c'est un million quatre cent mille
+// entrées que plus rien ne lit. Mesuré : vingt mégaoctets.
+//
+// Ce qui se lit d'un lien, aujourd'hui : les douze voisins du cercle (qui se
+// refont tout seuls), et l'ami et le rival affichés sur la fiche — les deux
+// extrêmes. Garder les liens les plus marqués préserve donc exactement ce qui
+// est visible, et jette le reste.
+{
+  const perf = nouvellePartie(4242, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const gPerf = groupeActif(perf);
+  // On refabrique l'héritage : deux cents personnes qui se connaissent toutes.
+  const rngPerf = new Rng(99);
+  while (gPerf.membres.length < 200) gPerf.membres.push(makeCharacter(rngPerf, { niveau: 1 }));
+  for (let i = 0; i < gPerf.membres.length; i++) {
+    for (let j = i + 1; j < gPerf.membres.length; j++) {
+      const v = ((i * 37 + j * 11) % 141) - 70 + 0.123456789;
+      gPerf.membres[i].liens[gPerf.membres[j].id] = v;
+      gPerf.membres[j].liens[gPerf.membres[i].id] = v;
+    }
+  }
+  const sujet = gPerf.membres[0];
+  const relAvant = relationsNotables(sujet, gPerf.membres);
+  // On pèse les liens, pas le groupe : le reste d'une personne — ses
+  // compétences, son corps, son équipement — ne bouge pas, et le noyer dans
+  // le total ferait mesurer autre chose que ce qu'on corrige.
+  const poidsLiens = (g) => g.membres.reduce(
+    (a, m) => a + JSON.stringify(m.liens || {}).length, 0);
+  const avant = poidsLiens(gPerf);
+
+  const relu = deserialiser(serialiser(perf));
+  const gRelu = groupeActif(relu);
+  const apres = poidsLiens(gRelu);
+
+  ok(apres < avant / 5, 'une partie ancienne maigrit en s’ouvrant',
+    `liens ${Math.round(avant / 1024)} Ko → ${Math.round(apres / 1024)} Ko`);
+
+  // Et ce qui se voit ne bouge pas : l'ami et le rival sont les extrêmes, donc
+  // les premiers gardés.
+  const sujetRelu = gRelu.membres.find((m) => m.id === sujet.id);
+  const relApres = relationsNotables(sujetRelu, gRelu.membres);
+  ok(!!relAvant.ami && relApres.ami && relApres.ami.id === relAvant.ami.id,
+    'celui avec qui il s’entend le mieux est toujours le même',
+    `${relAvant.ami && relAvant.ami.nom} → ${relApres.ami && relApres.ami.nom}`);
+  ok(!!relAvant.rival && relApres.rival && relApres.rival.id === relAvant.rival.id,
+    'et celui qu’il ne supporte pas aussi',
+    `${relAvant.rival && relAvant.rival.nom} → ${relApres.rival && relApres.rival.nom}`);
+
+  // On garde un nombre borné de liens par personne, pas une proportion : c'est
+  // ce qui fait qu'une escouade de mille ne coûte pas mille fois une de dix.
+  const maxLiens = Math.max(...gRelu.membres.map((m) => Object.keys(m.liens || {}).length));
+  ok(maxLiens <= LIENS.gardes, 'personne ne garde plus que ce qu’un homme retient',
+    `${maxLiens} au plus`);
+
+  // Une petite escouade ne perd rien du tout : sous le plafond, on ne touche
+  // à rien.
+  {
+    const petit = nouvellePartie(4243, { maintenant: 0, depart: 'ville', equipe: 5 });
+    const gp = groupeActif(petit);
+    for (let i = 0; i < gp.membres.length; i++) {
+      for (let j = i + 1; j < gp.membres.length; j++) {
+        gp.membres[i].liens[gp.membres[j].id] = 3;
+        gp.membres[j].liens[gp.membres[i].id] = 3;
+      }
+    }
+    const n0 = gp.membres.reduce((a, m) => a + Object.keys(m.liens).length, 0);
+    const gp2 = groupeActif(deserialiser(serialiser(petit)));
+    const n1 = gp2.membres.reduce((a, m) => a + Object.keys(m.liens).length, 0);
+    ok(n0 === n1, 'une escouade qui tient dans une pièce ne perd aucun lien',
+      `${n0} → ${n1}`);
   }
 }
 
