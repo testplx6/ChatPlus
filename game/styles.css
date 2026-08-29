@@ -777,7 +777,6 @@ button.act.danger:hover { box-shadow: 0 0 14px -6px rgba(224, 91, 91, .5); }
   align-items: center;
   justify-content: center;
   background: rgba(5, 7, 10, .96);
-  backdrop-filter: blur(3px);
   cursor: pointer;
   animation: moment-nait .45s ease;
 }
@@ -1325,13 +1324,18 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
   mask-image: linear-gradient(90deg, #000 calc(100% - 22px), transparent);
 }
 #dock-ordres::-webkit-scrollbar { display: none; }
+/* Pas de `backdrop-filter` ici, ni sur les jetons du HUD, ni sur les grands
+   moments : le fond est déjà opaque à 85-96 %, le flou derrière ne se voyait
+   pas — mais il obligeait le téléphone à composer une couche floutée PAR
+   BOUTON, à chaque image, au-dessus d'un canevas qui se redessine. Aucune de
+   mes mesures ne pouvait le voir : elles bridaient le processeur, pas la carte
+   graphique. « C'est toujours très lent » (le propriétaire, août 2026). */
 #dock-ordres > button.act.ordre {
   flex: 0 0 auto;
   width: 98px;
   min-height: 56px;
   border-radius: 8px;
   background: rgba(16, 13, 10, .85);
-  backdrop-filter: blur(5px);
   border-color: rgba(78, 68, 52, .9);
 }
 #dock-ordres > button.act.ordre[aria-pressed="true"] {
@@ -1413,7 +1417,6 @@ details:not([open]) > summary::after { transform: rotate(-45deg) translate(-2px,
     pointer-events: auto;
     background: rgba(10, 12, 16, .88);
     border-color: rgba(78, 68, 52, .85);
-    backdrop-filter: blur(6px);
   }
   #racine.large-carte #barre-haut .vitesse button { background: transparent; }
   #racine.large-carte #barre-haut .vitesse button[aria-pressed="true"] { background: #d9803a; }

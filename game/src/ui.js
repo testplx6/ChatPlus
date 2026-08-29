@@ -147,6 +147,13 @@ let detaches = new Set();
 const RENDU_MIN_MS = 600;
 /** Ce qu'a coûté le dernier rendu, lissé. Sert de frein sur machine lente. */
 let coutRendu = 0;
+/**
+ * Et le même coût, écran par écran. « Un rendu coûte 9 ms », dit le
+ * propriétaire, « mais la base c'est très long, plusieurs secondes » : les deux
+ * sont vrais, et un chiffre moyen ne le montre pas. Chacun se lit dans le
+ * panneau, sur l'appareil qui peine — le seul juge qui compte.
+ */
+const coutParEcran = {};
 /** Après un geste de l'utilisateur, on laisse le DOM tranquille un instant. */
 const REPIT_APRES_CLIC_MS = 400;
 
@@ -777,6 +784,9 @@ export function rafraichir(force) {
   if (chrono) { chrono.pas('modale'); chrono.fin(); }
   const fini = (typeof performance !== 'undefined' ? performance.now() : Date.now());
   coutRendu = coutRendu * 0.7 + (fini - maintenant) * 0.3;
+  // Le pire vu sur cet écran, pas la moyenne : c'est l'à-coup qu'on sent, et
+  // c'est lui qu'on cherche.
+  coutParEcran[onglet] = Math.max(coutParEcran[onglet] || 0, Math.round(fini - maintenant));
 }
 
 /** Poser du HTML seulement s'il a changé : sinon, mise en page et peinture
@@ -5661,9 +5671,12 @@ function modaleSauvegardes() {
   // Le chiffre de VOTRE appareil, pas du mien. Deux passes de mesure m'ont
   // fait courir après des millisecondes qui n'existaient que sur ma machine ;
   // celui-ci se lit sur le téléphone qui joue, et il se rapporte.
-  const mesure = `<div class="aide">Cet appareil : un rendu d’écran coûte
-    ${coutRendu.toFixed(0)} ms${ETAT_SAUVEGARDE_TAILLE() ? `, la partie écrite pèse
-    ${(ETAT_SAUVEGARDE_TAILLE() / 1024).toFixed(0)} Ko` : ''}.</div>`;
+  const parEcran = Object.keys(coutParEcran).sort((a, b) => coutParEcran[b] - coutParEcran[a])
+    .map((k) => `${k} ${coutParEcran[k]} ms`).join(' · ');
+  const mesure = `<div class="aide">Cet appareil : un rendu coûte
+    ${coutRendu.toFixed(0)} ms en moyenne${ETAT_SAUVEGARDE_TAILLE() ? `, la partie écrite pèse
+    ${(ETAT_SAUVEGARDE_TAILLE() / 1024).toFixed(0)} Ko` : ''}.</div>
+    ${parEcran ? `<div class="aide">Le pire par écran : ${e(parEcran)}.</div>` : ''}`;
   const confort = S ? `<div class="sep"></div>
     <h2 class="titre">Le confort de l’écran</h2>
     <div class="rang-tous">
