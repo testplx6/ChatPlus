@@ -522,6 +522,19 @@ function appliquerReplis(ecran) {
 /** L'empreinte de ce que la carte montre, au dernier dessin. */
 let derniereSignatureCarte = '';
 /** La part de cette empreinte qui doit se voir sur-le-champ. */
+/**
+ * Combien de fiches d'escouade on pose d'un coup, et par combien on avance.
+ *
+ * Mesuré sur une partie de mille deux cents personnes — celle du propriétaire,
+ * reproduite au banc : la galerie complète posait cent soixante-dix-huit mille
+ * éléments et coûtait douze secondes à l'ouverture, puis quatre de plus pour
+ * les détruire en quittant l'écran. Une escouade se mène, elle ne se feuillette
+ * pas d'un bloc.
+ */
+const PAS_ESCOUADE = 24;
+/** Combien de fiches d'escouade sont posées en ce moment. */
+let montresEscouade = PAS_ESCOUADE;
+
 let dernierVifCarte = '';
 /** Quand la carte a été dessinée pour la dernière fois. */
 let derniereCarteMs = 0;
@@ -2681,12 +2694,12 @@ function ecranCarte() {
   </div>
   </div>
   ${groupes(S).length > 1 ? barreGroupes() : ''}
-  ${blocSituation()}
-  ${blocSelection()}
-  ${blocRegionCourante()}
-  ${blocCaravanes()}
-  ${blocContratsActifs()}
-  ${blocFil()}`;
+  ${chrono('situation', blocSituation)}
+  ${chrono('sélection', blocSelection)}
+  ${chrono('région', blocRegionCourante)}
+  ${chrono('caravanes', blocCaravanes)}
+  ${chrono('contrats', blocContratsActifs)}
+  ${chrono('fil', blocFil)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -3236,8 +3249,8 @@ function ecranEscouade() {
     [`<span class="${cohCls}">${Math.round(g.cohesion ?? 55)} %</span>`, nGens === 1 ? 'tenue' : 'cohésion'],
   ])}
   ${barreGroupes()}
-  ${blocPrisonniers()}
-  ${blocDepouilles()}
+  ${chrono('prisonniers', blocPrisonniers)}
+  ${chrono('dépouilles', blocDepouilles)}
   <section class="panneau">
     <h2 class="titre">${nGens === 1 ? 'Tenue' : 'Cohésion'} de ${e(g.nom)}
       <span class="droite"><span class="nombre ${cohCls}">${Math.round(g.cohesion ?? 55)} %</span></span></h2>
@@ -3264,12 +3277,15 @@ function ecranEscouade() {
   <section class="panneau">
     <h2 class="titre">${e(g.nom)}
       <span class="droite">${tousLesMembres(S).filter(estVivant).length} au total</span></h2>
-    <div class="galerie">${g.membres.map(ficheMembre).join('')}</div>
+    <div class="galerie">${g.membres.slice(0, montresEscouade).map(ficheMembre).join('')}</div>
+    ${g.membres.length > montresEscouade ? `<div class="sep"></div>
+      <button class="act" data-a="voir-plus-escouade">Voir ${pl(Math.min(PAS_ESCOUADE, g.membres.length - montresEscouade), 'personne')} de plus
+        <span class="aide">${pl(g.membres.length - montresEscouade, 'restante')}</span></button>` : ''}
   </section>
 
-  ${blocQuiFaitQuoi()}
-  ${blocDetachement()}
-  ${blocInventaire()}
+  ${chrono('qui fait quoi', blocQuiFaitQuoi)}
+  ${chrono('détachement', blocDetachement)}
+  ${chrono('inventaire', blocInventaire)}
 
   <section class="panneau">
     <h2 class="titre">Posture
@@ -3563,18 +3579,31 @@ function blocMetiers() {
   </section>`;
 }
 
+/**
+ * Combien de candidats on propose par matière. Au-delà, on ne rend pas
+ * service : on fabrique une colonne qu'aucun pouce ne parcourt.
+ */
+const CANDIDATS_MONTRES = 8;
+
+
 function blocEcoleBase() {
   const b = S.base;
   const surPlace = G().regionId === b.regionId;
   const antenne = nivBat(b, 'antenne');
 
-  const cours = groupes(S).flatMap((g) => g.membres)
+  // La liste des gens, UNE fois. Elle était reconstruite pour chaque matière
+  // enseignée, et une seconde fois par élève pour retrouver son instructeur :
+  // avec les mille deux cent quarante-deux personnes que mène le propriétaire,
+  // ce bloc coûtait 2 749 ms sur son téléphone — les trois secondes de
+  // l'écran BASE à lui tout seul.
+  const tous = groupes(S).flatMap((g) => g.membres);
+  const parId = new Map(tous.map((c) => [c.id, c]));
+  const cours = tous
     .filter((c) => c.formation && c.formation.maison)
     .map((c) => {
       const d = DIPLOMES[c.formation.key];
       const fait = c.formation.total - c.formation.restant;
-      const maitre = groupes(S).flatMap((x) => x.membres)
-        .find((x) => x.id === c.formation.instructeurId);
+      const maitre = parId.get(c.formation.instructeurId);
       return `<div class="contrat">
         <div class="contrat-t">${e(c.nom)} — ${e(d.court.toLowerCase())}${maitre ? `, sous ${e(maitre.nom)}` : ''}</div>
         ${jauge(fait / c.formation.total, 'cyan')}
@@ -3595,8 +3624,14 @@ function blocEcoleBase() {
   const lignes = offres.map((o) => {
     const d = DIPLOMES[o.key];
     const heures = Math.round(d.heures * LENTEUR_MAISON);
-    const candidats = groupes(S).flatMap((g) => g.membres)
-      .filter((c) => peutApprendreChezSoi(S, c, o.key).ok);
+    // Les plus aptes d'abord, et pas tout le monde : une colonne de mille
+    // boutons ne se lit pas, ne se parcourt pas, et coûte une seconde à
+    // fabriquer. On propose les meilleurs, on dit combien d'autres attendent.
+    const eligibles = tous.filter((c) => peutApprendreChezSoi(S, c, o.key).ok);
+    const candidats = eligibles
+      .slice()
+      .sort((a, x) => comp(x, DIPLOMES[o.key].skill) - comp(a, DIPLOMES[o.key].skill))
+      .slice(0, CANDIDATS_MONTRES);
     return `<div class="contrat">
       <div class="contrat-t">${e(d.court)} — ${e(o.instructeur.nom)} enseigne</div>
       <div class="ligne"><span class="k">À la sortie</span>
@@ -3605,7 +3640,10 @@ function blocEcoleBase() {
       ${candidats.length
     ? `<div class="taches">${candidats.map((c) => `<button class="act mini"
         data-a="apprendre-maison" data-k="${o.key}" data-c="${e(c.id)}">Former ${e(c.nom)}
-        <span class="aide">(${Math.round(comp(c, d.skill))})</span></button>`).join('')}</div>`
+        <span class="aide">(${Math.round(comp(c, d.skill))})</span></button>`).join('')}</div>
+      ${eligibles.length > candidats.length
+      ? `<div class="aide">Les ${CANDIDATS_MONTRES} plus avancés — ${pl(eligibles.length - candidats.length, 'autre')} pourrai${eligibles.length - candidats.length >= 2 ? 'ent' : 't'} aussi suivre.</div>`
+      : ''}`
     : '<div class="aide">Personne à former là-dedans pour l’instant.</div>'}
     </div>`;
   }).join('');
@@ -6753,7 +6791,17 @@ function surClic(ev) {
   derniereInteraction = (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
   switch (a) {
+    case 'voir-plus-escouade':
+      montresEscouade += PAS_ESCOUADE;
+      rafraichir(true);
+      break;
+
     case 'onglet':
+      // On rouvre une escouade par son début : reposer mille fiches parce
+      // qu'on avait déroulé la liste hier n'aiderait personne. (Comparé AVANT
+      // d'affecter — sinon on se compare à soi-même, ce que j'ai écrit du
+      // premier coup.)
+      if (el.dataset.k !== onglet) montresEscouade = PAS_ESCOUADE;
       onglet = el.dataset.k;
       // Ouvrir un écran, c'est le vouloir neuf — y compris celui qu'on rouvre.
       derniereSignatureCarte = '';

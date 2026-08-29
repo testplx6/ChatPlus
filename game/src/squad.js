@@ -541,10 +541,22 @@ function tickGroupe(state, g, log, ctx) {
   // Les liens se tissent en vivant côte à côte, et se distendent quand l'un
   // s'écroule pendant que l'autre tient debout. Séparés, ils s'étiolent.
   if (state.temps % 6 === 0 && vivants.length > 1) {
-    for (let i = 0; i < vivants.length; i++) {
-      for (let j = i + 1; j < vivants.length; j++) {
+    // On ne vit pas côte à côte avec mille personnes. Chacun tisse ses liens
+    // avec son CERCLE — ceux qui plantent leur toile à côté de la sienne — et
+    // pas avec la colonne entière. En dessous de treize, le cercle contient
+    // tout le monde : pour une escouade ordinaire, rien ne change, pas une
+    // décimale. Au-delà, le lien de chacun avec chacun n'était pas une
+    // simulation plus fine, c'était un carré : mesuré à mille deux cents
+    // personnes, 609 ms par heure de jeu, et le moteur ne suivait plus.
+    const n2 = vivants.length;
+    const portee = Math.min(CERCLE_VOISINS, Math.floor(n2 / 2));
+    for (let d = 1; d <= portee; d++) {
+      // Quand le cercle fait exactement le tour, une paire reviendrait deux
+      // fois : on n'en garde qu'une moitié.
+      const moitie = d * 2 === n2;
+      for (let i = 0; i < (moitie ? n2 / 2 : n2); i++) {
         const a = vivants[i];
-        const b = vivants[j];
+        const b = vivants[(i + d) % n2];
         const ensemble = estDebout(a) && estDebout(b);
         let cible = 40;
         const ta = a.traits || [];
@@ -559,18 +571,38 @@ function tickGroupe(state, g, log, ctx) {
     }
   }
 
-  for (const c of vivants) {
+  for (let i = 0; i < vivants.length; i++) {
+    const c = vivants[i];
     // Le moral tient à deux choses : l'état du groupe, et ceux sur qui on peut
     // compter nommément — ceux qui sont là, pas ceux partis à l'autre bout.
+    // « Ceux sur qui on compte », ce sont ceux du cercle : les mêmes que ceux
+    // avec qui le lien se tisse. Faire la moyenne sur mille deux cents
+    // personnes coûtait un million et demi de lectures par heure de jeu, pour
+    // une moyenne que personne ne pouvait ressentir.
     let apport = 0;
     let n = 0;
-    for (const autre of vivants) {
-      if (autre.id === c.id) continue;
-      apport += lien(c, autre);
-      n++;
+    const total = vivants.length;
+    if (total - 1 <= CERCLE_VOISINS * 2) {
+      // Tout le monde tient dans le cercle : on compte tout le monde, une fois
+      // chacun, exactement comme avant. Une escouade ordinaire ne voit aucune
+      // différence — pas une décimale.
+      for (const autre of vivants) {
+        if (autre.id === c.id) continue;
+        apport += lien(c, autre);
+        n++;
+      }
+    } else {
+      // Une foule : chacun compte sur ses voisins de toile, six de chaque côté.
+      for (let d = 1; d <= CERCLE_VOISINS; d++) {
+        apport += lien(c, vivants[(i + d) % total]);
+        apport += lien(c, vivants[(i - d + total) % total]);
+        n += 2;
+      }
     }
     const social = n ? apport / n : -8; // seul : personne sur qui compter
-    const cible = Math.max(0, Math.min(plafondCohesion(state, g), g.cohesion + social * 0.25));
+    // Le plafond ne dépend que du GROUPE : il était recalculé pour chacun, et
+    // il parcourt le groupe entier — un carré de plus, à lui tout seul.
+    const cible = Math.max(0, Math.min(plafond, g.cohesion + social * 0.25));
     c.moral = Math.max(0, Math.min(100, c.moral + (cible - c.moral) * 0.012 * (mods(c).moral || 1)));
     // Porter ses morts pèse, tant qu'on n'en a rien décidé. C'est ce qui force
     // la question sans qu'aucune règle ne l'impose. Voir depouilles.js.
@@ -798,6 +830,14 @@ function releverDepuisLaVille(state, rng, log) {
   });
   return true;
 }
+
+/**
+ * Combien de gens on a vraiment autour de soi. Treize personnes, c'est une
+ * tablée ; mille, c'est une foule où l'on ne connaît que ses voisins de toile.
+ * En dessous de ce nombre, le cercle contient toute l'escouade et le moteur
+ * calcule exactement ce qu'il calculait avant.
+ */
+export const CERCLE_VOISINS = 6;
 
 export function tickSquad(state, log, ctx) {
   if (!quelquUnDebout(state)) {

@@ -514,6 +514,34 @@ avancer(s3b, 200);
 ok(serialiser(s3) === serialiser(s3b), 'la sim reprend à l’identique après rechargement');
 
 const MARQUE_TEST = 'CZ1|';
+section('3 quinquies. Une foule ne coûte pas le carré d’une escouade');
+{
+  // « Le jeu rame énormément » — le propriétaire mène 1 242 personnes, au jour
+  // 748. Mesuré : 0,5 ms par heure simulée à cinq membres, 609 ms à mille deux
+  // cents. Deux cent quarante fois plus de gens, mille cent quatre-vingt-trois
+  // fois plus cher : le tick était QUADRATIQUE (chacun tisse un lien avec
+  // chacun, chacun fait la moyenne de ses liens avec tous, et le plafond de
+  // cohésion — qui parcourt le groupe — était recalculé par personne).
+  const heure = (combien) => {
+    const t = nouvellePartie(4242, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(t);
+    const rng = new Rng(7);
+    for (let i = 0; i < combien; i++) g.membres.push(makeCharacter(rng, { archetype: 'ferrailleur' }));
+    g.inventaire.rations = 500000;
+    avancer(t, 30); // que le moteur chauffe
+    const t0 = Date.now();
+    avancer(t, 120);
+    return (Date.now() - t0) * 1000 / 120;
+  };
+  // Cent contre cinq cents : en deçà de deux cents, le coût quadratique se
+  // cache derrière les frais fixes — mesuré, il n'éclate qu'après.
+  const petit = heure(100);
+  const foule = heure(500);
+  const parTete = (foule / 500) / (petit / 100);
+  ok(parTete < 2.5, 'une personne de plus coûte le même prix, qu’on en mène cent ou cinq cents',
+    `${petit.toFixed(0)} µs/h à 100 · ${foule.toFixed(0)} µs/h à 500 → ×${parTete.toFixed(1)} par tête`);
+}
+
 section('3 quater. Une ruine ne garde que sa cicatrice');
 {
   // « Le jeu rame énormément, c'est de pire en pire, je suis peut-être trop
