@@ -1,10 +1,12 @@
 # Chantier « Plusieurs implantations »
 
-🟡 **Ouvert, rien n'est engagé.** Le propriétaire a demandé, août 2026 :
+🟢 **Ouvert, trois décisions prises, quatre marches au programme.** Le
+propriétaire a demandé, août 2026 :
 « il faudrait pouvoir créer plusieurs bases non ? pourquoi une seule ? », puis
 « il faut peut-être travailler sur le système multi bases et villes avant la
-conquête des autres ». Ce cahier fait l'état des lieux et pose les décisions.
-**Aucune ligne ne s'écrit avant qu'elles soient tranchées** (`METHODE.md` §9).
+conquête des autres ». Les trois décisions de cadrage sont
+prises (§3) ; ce qui reste à trancher avant la première ligne de M1 est en §5.
+**Rien ne s'écrit avant** (`METHODE.md` §9).
 
 L'intuition de l'ordre est juste, et le code la confirme : prendre une ville
 n'a pas de sens tant qu'on ne sait pas en tenir une.
@@ -45,73 +47,101 @@ aucun. Les trois conséquences se lisent directement dans le code :
 `state.base` compte **133 références** dans `src/`, dont 43 dans `base.js` et
 27 dans `ui.js`. C'est le chiffre à garder en tête pour la suite.
 
-## 3. Trois architectures
+## 3. Ce que le propriétaire a décidé (août 2026)
 
-**A — plusieurs camps à bâtir.** `state.base` devient une liste ; on bâtit,
-emploie, stocke, recherche et défend dans chacun, avec un sélecteur de camp.
-Le Kenshi classique.
-*Coût* : les 133 points au pluriel, une migration de sauvegarde, les sièges et
-l'énergie par camp, un tick qui croît avec le nombre de camps.
-*Ce que ça débloque* : bâtir ailleurs. **Pas la conquête** : une ville prise
-n'est pas un camp qu'on bâtit, c'est une ville qui vit déjà.
+**D1 — Le choix, jamais une seule issue.** Dit mot pour mot : « avoir le choix
+entre créer son drapeau ou capturer une ville pour le compte d'une faction ou
+juste attaquer pour d'autres raisons, détruire, prendre les richesses,
+matériaux etc, prendre les hommes etc etc etc ». Une ville qu'on a battue n'a
+donc pas une suite, elle en a plusieurs, et c'est devant la place qu'on tranche.
+Attaquer ne suppose aucun drapeau : on peut piller et repartir.
 
-**B — la couronne d'un pays existant.** On ne code rien : on monte dans une
-faction jusqu'à la couronne, et ses villes sont à commander.
-*Coût* : zéro, c'est livré.
-*Ce que ça débloque* : gouverner beaucoup, posséder rien. Le conseil décide,
-vous exécutez ou vous tombez (légitimité). Ce n'est pas « mes villes ».
+**D2 — Votre pays est vivant.** Conseil, humeur, notables qui jugent — comme
+tous les autres pays du monde. Ils peuvent vous contredire, et à légitimité
+nulle vous tombez. « Ce que vous tenez, vous le tenez parce qu'on vous suit. »
 
-**C — votre drapeau.** Le joueur devient une faction du monde, par le mécanisme
-déjà écrit pour les colonnes en sécession. Dès lors : votre escouade peut
-prendre une place (`capturer` marche tel quel), vos villes sont vôtres,
-`fonderPoste` vous ouvre une seconde implantation, l'impôt rentre au lieu de
-sortir, et les 18 prérogatives sont à vous par la couronne de votre propre
-maison.
-*Coût* : le mécanisme de naissance existe ; ce qui est neuf, c'est la porte
-d'entrée (à quelles conditions), le fait que le monde ne doit **pas** jouer
-votre drapeau à votre place, et l'interface d'un pays qu'on tient.
-*Ce que ça débloque* : tout le reste, y compris la conquête demandée.
+**D3 — Autant de camps qu'on veut.** L'architecture des camps multiples est
+désirée, pas écartée : `state.base` passera au pluriel. « Tout est possible. »
 
-## 4. La voie proposée — trois marches, dans cet ordre
+## 4. Le plan — quatre marches
 
-Elle n'est pas décidée ; c'est une proposition.
+Chacune est jouable seule et se livre seule. L'ordre va du moins de code neuf
+au plus, et chaque marche prépare la suivante sans la présumer.
 
-1. **Votre drapeau.** La porte : depuis un avant-poste reconnu et indépendant,
-   planter ses couleurs. `fonderColonne` fournit le patron exact — nom dérivé
-   du berceau, couleur neuve, relations vides, trésor nul, donc invariant
-   comptable intact par construction.
-2. **Prendre une place.** L'escouade se conduit comme une colonne sous votre
-   drapeau devant une ville ; la mécanique de siège et `capturer` font le
-   reste. C'est le « comment capturer une ville avec son escouade » demandé
-   plus tôt.
-3. **Tenir plusieurs places.** Rien à inventer : ce sont vos villes, elles
-   vivent seules (coût de simulation nul, elles tournent déjà), et les
-   prérogatives les gouvernent.
+### M1 — L'assaut et ses suites *(aucun drapeau requis)*
 
-L'architecture A reste possible **après**, comme chantier propre, si bâtir un
-second camp à la main manque encore une fois qu'on tient trois villes.
+Le verbe qui manque : **attaquer une ville**. Aujourd'hui la seule attaque que
+le joueur peut lancer sur le monde est `attaquer-caravane` — une seule action
+dans toute l'interface.
 
-## 5. Ce qui doit être tranché avant la première ligne
+*Ce qui existe déjà* : le combat (`resoudreCombat`), les bandes
+(`genererBande`), le butin (`butin`, et le portage qui le borne), la prise
+d'hommes (`capturables`, `fairePrisonniers`), ce qu'on en fait ensuite
+(`disposer`, `disposerTous` : rançon, prime, esclavage, relâcher), la mémoire
+de qui a vu quoi (registre des faits, « pas vu, pas su »), et un patron
+complet à copier : `attaquerCaravane` (caravanes.js:807) fait déjà combat →
+butin borné par le portage → retrait de l'entité → rancune nommée avec témoins.
 
-- **Q1 — Quelle porte ?** Fonder son pays doit-il exiger un avant-poste
-  reconnu et indépendant ? Une population minimale ? Une victoire ? Rien du
-  tout ? (`fonderColonne` exige d'avoir des hommes : « on ne fait pas sécession
-  de rien ».)
-- **Q2 — Qui joue votre drapeau ?** Le monde fait tourner un conseil, une
-  humeur, une agression pour chaque faction. Le vôtre doit-il être inerte
-  (vous seul décidez, rien ne se passe si vous ne faites rien) ou vivant
-  (vos gens ont des avis, et un conseil qui peut vous démettre) ?
-- **Q3 — Qu'emporte-t-on en naissant ?** Rien, comme les Affranchis ? Le camp
-  et ses gens ? Les villes déjà tenues sous une autre couronne ?
-- **Q4 — Comment prend-on une ville ?** Siège en règle (durée, faim, murs,
-  reddition) ou assaut direct de l'escouade ? Que devient la population, la
-  garnison, les notables, la ville de qui la perd ?
-- **Q5 — Le camp reste-t-il unique ?** Autrement dit : ouvre-t-on A un jour, ou
-  la seconde implantation est-elle toujours une ville ?
-- **Q6 — Le monde répond quoi ?** Un drapeau neuf qui prend des villes : les
-  voisins s'allient contre lui ? Le pays qu'on a quitté fulmine (déjà écrit
-  pour l'indépendance) ? Ça se règle par les mécanismes existants, mais il
-  faut le dire.
+*Ce qui manque* : la garnison d'une ville comme adversaire, les murs qui
+comptent, et surtout **le menu d'après-victoire** — piller les réserves,
+emporter les matériaux, prendre des hommes, saccager, se retirer. Le moteur
+sait déjà saigner une place : `capturer` le fait pour l'Essaim (population,
+stocks, défense, grogne). C'est ce chemin-là qu'on ouvre au joueur.
+
+### M2 — Prendre pour un drapeau qu'on sert
+
+La place tombe et l'on n'en veut pas pour soi : on la donne à ceux dont on
+porte les couleurs.
+
+*Ce qui existe* : `capturer` fait basculer la ville et la région ; le mérite
+porté au dossier (`porterMerite`), le crédit, les charges. *Ce qui manque* :
+que l'escouade puisse déclencher `capturer` au nom d'une faction, et le prix
+politique si l'on prend une ville que le conseil n'avait pas demandée.
+
+### M3 — Votre drapeau, vivant
+
+*Ce qui existe* : `fonderColonne` (factions.js:1675) fabrique une faction
+entière en cours de partie — identité dans `world.drapeaux`, couleur et
+symbole dérivés, relations vides, trésor et masse monétaire nuls, donc
+invariant comptable intact par construction. La couronne donne déjà les 18
+prérogatives (`peutExercer`), et la légitimité peut déjà vous faire tomber.
+
+*Ce qui manque* : la porte (à quelles conditions on plante ses couleurs), un
+conseil qui soit le vôtre (D2), et que le tick du monde ne joue pas votre
+drapeau à votre place.
+
+### M4 — Autant de camps qu'on veut
+
+*Ce qui manque* : les **133 références** à `state.base` au pluriel (43 dans
+`base.js`, 27 dans `ui.js`), un sélecteur de camp dans l'interface, l'énergie
+et les sièges par camp, la migration des parties en cours, et une mesure du
+tick avant/après.
+
+C'est le chantier lourd, et il vient en dernier non par réticence mais parce
+que les trois autres ne l'attendent pas — et qu'il sera plus simple à écrire
+quand on saura ce qu'est « une place à soi ».
+
+## 5. Ce qui reste à trancher avant d'écrire M1
+
+- **Q1 — Comment une ville tombe-t-elle ?** Assaut direct de l'escouade (une
+  bataille, on entre ou on recule) ou siège en règle (on s'installe, la faim
+  travaille, la place se rend) ? Le moteur sait faire le siège — mais dans
+  l'autre sens, contre votre camp.
+- **Q2 — Que deviennent les hommes pris ?** Le moteur sait déjà en faire des
+  prisonniers, les rançonner, les livrer contre prime, les vendre, les
+  relâcher. Peut-on aussi les enrôler dans l'escouade ? Les emmener au camp
+  comme habitants ?
+- **Q3 — Le pillage, jusqu'où ?** On ne remporte que ce qu'on peut porter
+  (c'est déjà la règle des caravanes, et ce qui donne son prix à l'attelage).
+  Une ville a beaucoup plus que ça : le reste brûle, reste sur place, ou
+  attend un second voyage ?
+- **Q4 — La porte du drapeau (M3).** Un avant-poste reconnu et indépendant
+  suffit-il ? Faut-il des hommes, une victoire, une ville ?
+- **Q5 — Ce qu'on emporte en naissant (M3).** Rien, comme les Affranchis ? Le
+  camp et ses gens ? Les places déjà tenues sous une autre couronne ?
+- **Q6 — La réponse du monde.** Un drapeau neuf qui prend des villes : les
+  voisins s'allient contre lui ? Le pays quitté fulmine (c'est déjà écrit pour
+  l'indépendance) ? Ça se règle avec l'existant, mais il faut le dire.
 
 ## 6. Les pièges déjà connus
 
