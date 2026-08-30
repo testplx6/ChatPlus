@@ -2883,8 +2883,10 @@ console.log('\n8 nonies quinquies. Donner l’assaut à une ville (IMPLANTATIONS
   const gAs = groupeActif(as);
   const cible = as.world.colonies.find((c) => !c.ruine && c.faction && !c.avantPoste);
   gAs.regionId = cible.regionId;
-  // Une garnison qui ne tiendra pas, et de quoi piller.
-  cible.defense = 2;
+  // Une garnison qui ne tiendra pas devant trois vétérans, mais qui tient
+  // encore debout après leur passage : on veut pouvoir enchaîner sur le siège,
+  // et l'on n'assiège pas une garde déjà à terre.
+  cible.defense = 12;
   cible.murs = 0;
   for (const k of Object.keys(cible.stock)) cible.stock[k] = 0;
   cible.stock.alliage = 90;
@@ -2939,6 +2941,25 @@ console.log('\n8 nonies quinquies. Donner l’assaut à une ville (IMPLANTATIONS
     `ville ${apresAs.villeAlliage}, sac +${apresAs.alliage - sacAvant}`);
   ok(apresAs.drapeau === cible.faction,
     'un coup de main ne prend pas la ville : elle garde son drapeau');
+
+  // Et le second verbe devant une place : s'installer devant elle. Un siège
+  // qui n'existe que dans le moteur ne se joue pas — c'est l'erreur de la
+  // veille, on ne la refait pas.
+  const boutonSiege = await page.$('[data-a="ordre"][data-k="siege"]');
+  ok(!!boutonSiege, 'on peut aussi mettre le siège devant la place');
+  if (boutonSiege) {
+    await page.click('[data-a="ordre"][data-k="siege"]');
+    await page.waitForTimeout(500);
+    const enSiege = await page.evaluate(() => {
+      const s2 = JSON.parse(window.__sauvegardeTexte());
+      const g = s2.player.groupes.find((x) => x.id === s2.player.groupeActif);
+      return { type: g.ordre.type, cible: g.ordre.cible };
+    });
+    ok(enSiege.type === 'siege' && enSiege.cible === cible.id,
+      'et l’escouade s’installe devant celle-là', JSON.stringify(enSiege));
+    const texteSiege = await page.evaluate(() => document.querySelector('#ecran').textContent);
+    ok(/Lever le siège/.test(texteSiege), 'on peut le lever d’un geste');
+  }
 }
 
 console.log('\n8 decies. Métiers de l’avant-poste');

@@ -88,6 +88,42 @@ propre camp.
 tout l'existant plus l'enrôlement), saccager — et le siège (M1c), seul chemin
 vers une place qu'on garde.
 
+#### M1c — Le siège, en trois lots
+
+Choisi par le propriétaire comme la suite, en réponse à « peut-on prendre une
+ville, et la prendre pour soi ou pour sa faction ? » — non, et le siège est ce
+qui manque en premier.
+
+**Le monde sait déjà assiéger** (`tickArmee`, factions.js : une colonne prend
+l'état `siege`, l'assaut s'use contre la tenue, la défense tombe, et à zéro
+`capturer` fait basculer la place). Il ne manque que le même verbe pour
+l'escouade. On retourne ce qui existe, formule comprise — aucune règle neuve.
+
+- **S1, tenir la place.** ✅ **Livré.** Un ordre `siege` de plus, comme voyage
+  ou fouille : on le donne devant une ville qui n'est pas la sienne, la défense
+  de la place s'use heure par heure, et elle riposte — un siège sans blessés
+  serait un siège gratuit. Quand la garde ne tient plus, le siège s'arrête et
+  le dit. Le geste est dans le panneau de la ville, à côté du coup de main.
+
+  **L'échelle, tranchée par le propriétaire** (août 2026) : « un vétéran vaut
+  une dizaine d'hommes ». La suite navigateur avait attrapé le défaut — en
+  copiant la formule du monde j'avais copié les nombres mais pas les unités,
+  et trois personnes pesaient quatre colonnes. À `SIEGE.parHomme = 9`, six
+  vétérans pèsent exactement une colonne levée : une bourgade tombe en
+  quelques jours, une place tenue en semaines, une capitale murée demande une
+  vraie armée — qu'on sait déjà lever par ses prérogatives.
+- **S2, la chute et ses suites.** Le menu devant une place à terre : la donner
+  au drapeau qu'on sert (c'est M2), la piller à fond, la raser, se retirer.
+  « Pour soi » reste impossible tant qu'on n'a pas de drapeau (M3).
+- **S3, la faim.** Un siège coupe les convois ; une place affamée se rend sans
+  qu'on ait à monter dedans. C'est le lot qui rend le siège autre chose qu'un
+  combat long.
+
+Deux garde-fous du monde s'appliqueront tels quels, parce que ce sont des
+règles du monde et non des règles dirigées contre le joueur : une capitale se
+défend comme une capitale, et l'on ne raye pas une faction de la carte par les
+armes — sa dernière ville tient.
+
 Le verbe qui manque : **attaquer une ville**. Aujourd'hui la seule attaque que
 le joueur peut lancer sur le monde est `attaquer-caravane` — une seule action
 dans toute l'interface.

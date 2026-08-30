@@ -22393,15 +22393,27 @@ function menacesSurLaBase(state) {
 }
 
 /** Ce que valent, l'arme à la main, les gens présents à l'avant-poste. */
-function forceEscouade(state) {
-  const base = state.base;
+/**
+ * Ce que pèse un groupe au combat, dans la même unité que la force d'une
+ * colonne du monde. Extraite de `forceEscouade` le jour où le siège en a eu
+ * besoin : la même somme, écrite une seule fois.
+ */
+function forceDeGroupe(g) {
   let f = 0;
-  const presents = base.fonde
-    ? groupes(state).filter((g) => g.regionId === base.regionId).flatMap((g) => g.membres)
-    : [];
-  for (const c of presents) {
+  for (const c of (g && g.membres) || []) {
     if (!estDebout(c)) continue;
     f += comp(c, 'melee') * 0.4 + comp(c, 'tir') * 0.4 + comp(c, 'endurance') * 0.2;
+  }
+  return Math.round(f);
+}
+
+function forceEscouade(state) {
+  const base = state.base;
+  if (!base.fonde) return 0;
+  let f = 0;
+  for (const g of groupes(state)) {
+    if (g.regionId !== base.regionId) continue;
+    f += forceDeGroupe(g);
   }
   return Math.round(f);
 }
@@ -23503,6 +23515,131 @@ function attaquerVille(state, col, rng, log, combatContre, genererBande, groupe)
   return { ok: true, gagne: true, pris, laisse };
 }
 
+// ---------------------------------------------------------------------------
+// Le siège (IMPLANTATIONS.md, M1c — lot S1)
+// ---------------------------------------------------------------------------
+//
+// « Peut-on prendre une ville ? » Non : le raid entre et ressort. Ce qui
+// manquait d'abord, c'est le siège — et le monde le fait déjà tous les jours
+// (`tickArmee`, factions.js) : une colonne prend l'état `siege`, son assaut
+// s'use contre la tenue de la place, la défense tombe, et à zéro la ville
+// bascule. Il ne manquait que le même verbe pour l'escouade.
+//
+// On retourne donc ce qui existe, formule comprise — pas une règle neuve. Deux
+// garde-fous du monde s'appliquent tels quels, parce que ce sont des règles du
+// monde et non des règles dirigées contre le joueur : une capitale se défend
+// comme une capitale, et l'on ne raye pas une faction de la carte par les
+// armes — sa dernière ville tient.
+
+/** Ce qu'un siège fait à une place, et ce qu'elle rend. Calibrable au banc. */
+const SIEGE = {
+  /**
+   * Ce que vaut un homme de troupe, en points de compétence d'escouade.
+   *
+   * Le piège que la suite navigateur a attrapé : en copiant la formule du
+   * monde, j'avais copié les nombres mais pas les UNITÉS. Une colonne de
+   * soixante hommes a une force de soixante ; `forceDeGroupe` rend environ
+   * quatre-vingt-dix par vétéran. Trois personnes pesaient donc quatre
+   * colonnes et abattaient n'importe quelle garde en une heure de siège,
+   * capitale comprise — le siège n'avait plus d'objet.
+   *
+   * Tranché par le propriétaire (août 2026) : « un vétéran vaut une dizaine
+   * d'hommes ». À neuf points par homme, six vétérans pèsent exactement une
+   * colonne levée (FORCE_LEVEE = 60) : une bourgade tombe en quelques jours,
+   * une place tenue en semaines, et une capitale murée demande une vraie
+   * armée — qu'on sait déjà lever par ses prérogatives.
+   */
+  parHomme: 9,
+  /** L'acharnement d'une capitale, et celui d'un pays qui n'a plus qu'elle. */
+  capitale: 1.8,
+  derniere: 1.6,
+  /** Ce que la défense perd par heure, selon qu'on domine ou non. */
+  usure: 0.12,
+  usureFaible: 0.05,
+  /** Ce que la place rend en coups, dans les mêmes deux cas. */
+  riposte: 0.02,
+  riposteFaible: 0.035,
+  /** Ce qu'un siège fait monter de grogne dans les rues, par heure. */
+  grogne: 0.004,
+  /** En dessous, la garde ne tient plus : le siège n'a plus d'objet. */
+  plancher: 1,
+};
+
+/** L'acharnement d'une place : la règle du monde, lue au même endroit. */
+function acharnementDe(world, col) {
+  const f = col.faction && world.factions[col.faction];
+  const estCapitale = !!(f && f.capitale === col.id);
+  const derniere = !!(f && f.colonies.length <= 1);
+  return (estCapitale ? SIEGE.capitale : 1) * (derniere ? SIEGE.derniere : 1);
+}
+
+/** La ville qu'on peut assiéger d'ici, s'il y en a une. */
+function assiegeable(state, g) {
+  const col = colonieDe(state.world, g.regionId);
+  if (!col || col.ruine) return null;
+  if (col.avantPoste) return null;
+  return col;
+}
+
+/**
+ * Une heure de siège. Appelée par `tickSquad` quand l'ordre du groupe est
+ * `siege`, avec le flux privé du joueur — le monde ne bouge pas d'un dé.
+ *
+ * Rend `true` tant que le siège tient, `false` quand il n'a plus d'objet : la
+ * place a cédé, elle a disparu, ou l'on n'est plus devant.
+ */
+function tickSiege(state, g, rng, log) {
+  const col = colonieParId(state.world, g.ordre.cible);
+  if (!col || col.ruine || col.avantPoste) return false;
+  // On ne tient pas une place à distance : partir, c'est lever le siège.
+  if (col.regionId !== g.regionId) return false;
+
+  // Dans l'unité du monde : ce que l'escouade pèse en hommes de troupe, et non
+  // en points de compétence. Voir SIEGE.parHomme.
+  const force = forceDeGroupe(g) / SIEGE.parHomme;
+  if (force <= 0) return false;
+
+  const assaut = force * rng.range(0.5, 1.1);
+  const tenue = (col.defense * rng.range(0.6, 1.15) + col.murs * 2)
+    * acharnementDe(state.world, col);
+  const domine = assaut > tenue;
+
+  col.defense = Math.max(0, col.defense - assaut * (domine ? SIEGE.usure : SIEGE.usureFaible));
+  col.unrest = Math.min(1, (col.unrest || 0) + SIEGE.grogne);
+
+  // Et la place rend les coups. Un siège sans blessés serait un siège gratuit :
+  // on s'installe, on attend, la ville tombe. Ce que la colonne du monde perd
+  // en force, l'escouade le prend dans les corps.
+  const rendu = tenue * (domine ? SIEGE.riposte : SIEGE.riposteFaible);
+  if (rendu >= 1) {
+    const debout = g.membres.filter(estDebout);
+    if (debout.length) {
+      const cible = debout[rng.irange(0, debout.length - 1)];
+      const parts = Object.keys(cible.corps);
+      blesser(cible, rendu, parts[rng.irange(0, parts.length - 1)], rng, { letal: false });
+      if (pvTotal(cible).pct < 0.35) {
+        log({
+          type: 'siege',
+          texte: `${cible.nom} prend un mauvais coup sous les murs de ${col.nom}.`,
+          regionId: col.regionId,
+        });
+      }
+    }
+  }
+
+  if (col.defense <= SIEGE.plancher) {
+    log({
+      type: 'siege',
+      texte: `La garde de ${col.nom} ne tient plus. La place est à vous, si vous y entrez.`,
+      regionId: col.regionId,
+      important: true,
+      factions: col.faction ? [col.faction] : [],
+    });
+    return false;
+  }
+  return true;
+}
+
 // ===== src/events.js =================================================
 // Journal de bord et rencontres. Tout se résout automatiquement selon la
 // posture et les consignes de l'escouade : c'est ce qui permet à la simulation
@@ -24414,6 +24551,10 @@ const ORDRES = {
   // les postes, mais ne tenait aucun. « J'ai mon escouade mais elle ne peut même
   // pas travailler dans la base. » C'était exact.
   travaux: { nom: 'Travaux', desc: 'Se mettre au service du camp : bras en plus sur toutes les chaînes.', effort: 1 },
+  // Tenir la place devant une ville (IMPLANTATIONS.md, M1c). Le seul ordre
+  // dirigé contre quelqu'un : il use la garde d'en face, et il coûte des
+  // blessés.
+  siege: { nom: 'Siège', desc: 'Tenir la place devant une ville : sa garde s’use, et vous aussi.', effort: 1.2 },
 };
 
 /**
@@ -24471,6 +24612,24 @@ function donnerOrdre(state, ordre, groupe) {
     return { ok: true };
   }
   if (!ORDRES[ordre.type]) return { ok: false, motif: 'Ordre inconnu.' };
+  if (ordre.type === 'siege') {
+    const place = assiegeable(state, g);
+    if (!place) {
+      const col = colonieDe(state.world, g.regionId);
+      return {
+        ok: false,
+        motif: col && col.avantPoste
+          ? 'C’est votre camp.' : 'Aucune ville à assiéger ici.',
+      };
+    }
+    // Une garde déjà à terre ne s'use plus : accepter l'ordre pour l'annuler au
+    // premier tick ferait un bouton qui ment. On dit ce qu'il reste à faire.
+    if (place.defense <= SIEGE.plancher) {
+      return { ok: false, motif: `La garde de ${place.nom} ne tient déjà plus : entrez.` };
+    }
+    g.ordre = { type: 'siege', cible: place.id, depuis: state.temps };
+    return { ok: true };
+  }
   if (ordre.type === 'travaux' && !(state.base.fonde && state.base.regionId === g.regionId)) {
     return { ok: false, motif: 'Il faut être à votre avant-poste pour y travailler.' };
   }
@@ -25022,6 +25181,12 @@ function tickGroupe(state, g, log, ctx) {
         case 'mine':
         case 'chasse':
           recolter(state, g, type, paquet.gens, log, ctx);
+          break;
+        case 'siege':
+          // Le siège ne rapporte rien : il use la place d'en face. Quand il n'a
+          // plus d'objet — la garde a cédé, la ville a disparu, on n'est plus
+          // devant —, on repasse au repos plutôt que d'assiéger le vide.
+          if (!tickSiege(state, g, ctx.rng, log)) g.ordre = { type: 'repos' };
           break;
         case 'entrainement': {
           const skill = COMPETENCES_EXERCICE.includes(paquet.tache.skill)
@@ -29835,6 +30000,9 @@ function blocAssaut(col) {
   const debout = G().membres.filter(estDebout);
   const force = RAID_VILLE.forceDe(col);
   const libre = !drapeauDe(S.world, col.faction);
+  const o = G().ordre;
+  const assiege = o.type === 'siege' && o.cible === col.id;
+  const aTerre = col.defense <= SIEGE.plancher;
   return `
   <section class="panneau">
     <h2 class="titre">Coup de main
@@ -29848,9 +30016,22 @@ function blocAssaut(col) {
     <div class="aide alerte">Ceux d’ici s’en souviendront${libre ? '.'
     : `, et ${drapeauDe(S.world, col.faction).nom} l’apprendra${
       drapeauDe(S.world, col.faction).pluriel ? 'nt' : ''}.`}</div>
-    <button class="act mini danger" data-a="assaut" data-k="${e(col.id)}"
-      ${debout.length ? '' : 'disabled'}>${debout.length
+    ${aTerre ? `<div class="aide ok">Sa garde ne tient plus : la place est ouverte.</div>` : ''}
+    <div class="grille2" style="gap:5px">
+      <button class="act mini danger" data-a="assaut" data-k="${e(col.id)}"
+        ${debout.length ? '' : 'disabled'}>${debout.length
     ? 'Donner l’assaut' : 'Personne ne tient debout'}</button>
+      ${assiege
+    ? `<button class="act mini" data-a="ordre" data-k="repos">Lever le siège</button>`
+    : `<button class="act mini" data-a="ordre" data-k="siege"
+        ${debout.length && !aTerre ? '' : 'disabled'}>${aTerre
+      ? 'Sa garde est à terre' : 'Mettre le siège'}</button>`}
+    </div>
+    ${assiege ? `<div class="aide">Vous tenez la place depuis ${
+  dureeTexte(Math.max(0, S.temps - (G().ordre.depuis || S.temps)))}. Sa garde s’use, et vous
+      prenez des coups : un siège se paie des deux côtés.</div>` : `<div class="aide">Un siège
+      use sa garde jusqu’à ce qu’elle ne tienne plus. C’est plus long qu’un coup de main, et
+      c’est le seul chemin vers une place qu’on garde.</div>`}
   </section>`;
 }
 

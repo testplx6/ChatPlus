@@ -66,7 +66,7 @@ import { verdict } from '../tools/vitesse.js';
 import { loiIci } from '../src/lois.js';
 import { primeLivraison, prixEsclave } from '../src/justice.js';
 import { attaquerVille, RAID_VILLE } from '../src/assaut.js';
-import { LIENS, relationsNotables } from '../src/characters.js';
+import { LIENS, relationsNotables, pvTotal as pvTotalImp } from '../src/characters.js';
 import { tickFaits as tickFaitsImp } from '../src/faits.js';
 import { retenirEnVille as retenirEnVilleImp } from '../src/services.js';
 import { classement, puissance } from '../src/factions.js';
@@ -13425,6 +13425,101 @@ section('PERF 1. Un homme ne se souvient pas de mille personnes');
     const n1 = gp2.membres.reduce((a, m) => a + Object.keys(m.liens).length, 0);
     ok(n0 === n1, 'une escouade qui tient dans une pièce ne perd aucun lien',
       `${n0} → ${n1}`);
+  }
+}
+
+
+// ===========================================================================
+section('IMP 2. Le siège d’une ville (IMPLANTATIONS.md, M1c-S1)');
+// « Peut-on prendre une ville ? » Non : le raid entre et ressort. Ce qui
+// manquait en premier, c'est le siège — et le monde sait déjà le faire
+// (`tickArmee`, factions.js). On retourne ce qui existe : même formule
+// d'assaut contre tenue, mêmes garde-fous, l'escouade à la place de la
+// colonne.
+{
+  const rienS = () => {};
+  const monterSiege = (graine) => {
+    const s2 = nouvellePartie(graine, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g2 = groupeActif(s2);
+    const col = s2.world.colonies.find((c) => !c.ruine && c.faction && c.regionId === g2.regionId)
+      || s2.world.colonies.find((c) => !c.ruine && c.faction);
+    g2.regionId = col.regionId;
+    for (const m of g2.membres) {
+      m.skills.melee = 90; m.skills.tir = 90; m.skills.endurance = 90;
+      for (const part of Object.keys(m.corps)) m.corps[part].pv = m.corps[part].max;
+    }
+    // Une place réellement tenue, mais pas une capitale : on veut mesurer
+    // l'usure et la riposte, pas les garde-fous du monde. Une garnison de
+    // pacotille tombe en deux heures et ne rend pas un coup — le décor dirait
+    // alors le contraire de ce que la sonde prétend vérifier.
+    const f = s2.world.factions[col.faction];
+    if (f && f.capitale === col.id) f.capitale = f.colonies.find((x) => x !== col.id) || null;
+    col.defense = 400;
+    col.defenseMax = 400;
+    col.murs = 6;
+    return { s: s2, g: g2, col };
+  };
+
+  // 1) L'ordre n'existe que devant une ville qui n'est pas la vôtre.
+  {
+    const { s: s2, g: g2, col } = monterSiege(9201);
+    const vide = s2.world.regions.find((r) => !r.colonie);
+    g2.regionId = vide.i;
+    ok(!donnerOrdre(s2, { type: 'siege' }, g2).ok,
+      'on n’assiège pas une région vide');
+    g2.regionId = col.regionId;
+    col.avantPoste = true;
+    ok(!donnerOrdre(s2, { type: 'siege' }, g2).ok, 'ni son propre camp');
+    col.avantPoste = false;
+    const r = donnerOrdre(s2, { type: 'siege' }, g2);
+    ok(r.ok, 'mais on met le siège devant une ville où l’on se tient', r.motif);
+    ok(g2.ordre.type === 'siege' && g2.ordre.cible === col.id,
+      'et l’ordre retient devant quoi on est');
+  }
+
+  // 2) La place s'use — et elle riposte. Un siège sans blessés serait gratuit.
+  {
+    const { s: s2, g: g2, col } = monterSiege(9202);
+    donnerOrdre(s2, { type: 'siege' }, g2);
+    const defAvant = col.defense;
+    const unrestAvant = col.unrest;
+    const pvAvant = g2.membres.reduce((a, m) => a + pvTotalImp(m).pv, 0);
+    avancer(s2, 12);
+    ok(col.defense < defAvant, 'la garde de la place s’use heure après heure',
+      `${defAvant} → ${Math.round(col.defense)}`);
+    ok(g2.membres.reduce((a, m) => a + pvTotalImp(m).pv, 0) < pvAvant,
+      'et l’on ne tient pas un siège sans prendre de coups',
+      `${pvAvant} → ${g2.membres.reduce((a, m) => a + pvTotalImp(m).pv, 0)}`);
+    ok(col.unrest > unrestAvant, 'la ville assiégée gronde',
+      `${unrestAvant.toFixed(3)} → ${col.unrest.toFixed(3)}`);
+  }
+
+  // 3) Quand la garde ne tient plus, le siège s'arrête tout seul et le dit.
+  //    On lit le journal et non la défense : une ville régénère sa garnison,
+  //    et la relever soixante heures plus tard mesurerait sa convalescence,
+  //    pas la chute.
+  {
+    const { s: s2, g: g2, col } = monterSiege(9203);
+    col.defense = 3;
+    col.murs = 0;
+    donnerOrdre(s2, { type: 'siege' }, g2);
+    avancer(s2, 60);
+    ok(s2.journal.some((e) => e.type === 'siege' && /ne tient plus/.test(e.texte)),
+      'la place finit par ne plus rien opposer, et on l’apprend');
+    ok(g2.ordre.type !== 'siege', 'et l’escouade ne reste pas à assiéger le vide');
+  }
+
+  // 4) Une ville qu'on a quittée n'est plus assiégée : on ne tient pas une
+  //    place à distance.
+  {
+    const { s: s2, g: g2, col } = monterSiege(9204);
+    donnerOrdre(s2, { type: 'siege' }, g2);
+    const ailleurs = s2.world.regions.find((r) => r.i !== col.regionId);
+    g2.regionId = ailleurs.i;
+    const defAvant = col.defense;
+    avancer(s2, 12);
+    ok(col.defense === defAvant, 'partir, c’est lever le siège',
+      `${defAvant} → ${col.defense}`);
   }
 }
 

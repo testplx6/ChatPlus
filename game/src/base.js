@@ -2670,15 +2670,27 @@ export function menacesSurLaBase(state) {
 }
 
 /** Ce que valent, l'arme à la main, les gens présents à l'avant-poste. */
-export function forceEscouade(state) {
-  const base = state.base;
+/**
+ * Ce que pèse un groupe au combat, dans la même unité que la force d'une
+ * colonne du monde. Extraite de `forceEscouade` le jour où le siège en a eu
+ * besoin : la même somme, écrite une seule fois.
+ */
+export function forceDeGroupe(g) {
   let f = 0;
-  const presents = base.fonde
-    ? groupes(state).filter((g) => g.regionId === base.regionId).flatMap((g) => g.membres)
-    : [];
-  for (const c of presents) {
+  for (const c of (g && g.membres) || []) {
     if (!estDebout(c)) continue;
     f += comp(c, 'melee') * 0.4 + comp(c, 'tir') * 0.4 + comp(c, 'endurance') * 0.2;
+  }
+  return Math.round(f);
+}
+
+export function forceEscouade(state) {
+  const base = state.base;
+  if (!base.fonde) return 0;
+  let f = 0;
+  for (const g of groupes(state)) {
+    if (g.regionId !== base.regionId) continue;
+    f += forceDeGroupe(g);
   }
   return Math.round(f);
 }

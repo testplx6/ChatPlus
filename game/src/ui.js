@@ -118,7 +118,7 @@ import {
   TACHES_INDIVIDUELLES, noyau, plafondCohesion, rendementCohesion, placesSociables,
   vivants as vivantsDe,
 } from './groupes.js';
-import { RAID_VILLE } from './assaut.js';
+import { RAID_VILLE, SIEGE } from './assaut.js';
 
 // ---------------------------------------------------------------------------
 // État local de l'interface
@@ -2333,6 +2333,9 @@ function blocAssaut(col) {
   const debout = G().membres.filter(estDebout);
   const force = RAID_VILLE.forceDe(col);
   const libre = !drapeauDe(S.world, col.faction);
+  const o = G().ordre;
+  const assiege = o.type === 'siege' && o.cible === col.id;
+  const aTerre = col.defense <= SIEGE.plancher;
   return `
   <section class="panneau">
     <h2 class="titre">Coup de main
@@ -2346,9 +2349,22 @@ function blocAssaut(col) {
     <div class="aide alerte">Ceux d’ici s’en souviendront${libre ? '.'
     : `, et ${drapeauDe(S.world, col.faction).nom} l’apprendra${
       drapeauDe(S.world, col.faction).pluriel ? 'nt' : ''}.`}</div>
-    <button class="act mini danger" data-a="assaut" data-k="${e(col.id)}"
-      ${debout.length ? '' : 'disabled'}>${debout.length
+    ${aTerre ? `<div class="aide ok">Sa garde ne tient plus : la place est ouverte.</div>` : ''}
+    <div class="grille2" style="gap:5px">
+      <button class="act mini danger" data-a="assaut" data-k="${e(col.id)}"
+        ${debout.length ? '' : 'disabled'}>${debout.length
     ? 'Donner l’assaut' : 'Personne ne tient debout'}</button>
+      ${assiege
+    ? `<button class="act mini" data-a="ordre" data-k="repos">Lever le siège</button>`
+    : `<button class="act mini" data-a="ordre" data-k="siege"
+        ${debout.length && !aTerre ? '' : 'disabled'}>${aTerre
+      ? 'Sa garde est à terre' : 'Mettre le siège'}</button>`}
+    </div>
+    ${assiege ? `<div class="aide">Vous tenez la place depuis ${
+  dureeTexte(Math.max(0, S.temps - (G().ordre.depuis || S.temps)))}. Sa garde s’use, et vous
+      prenez des coups : un siège se paie des deux côtés.</div>` : `<div class="aide">Un siège
+      use sa garde jusqu’à ce qu’elle ne tienne plus. C’est plus long qu’un coup de main, et
+      c’est le seul chemin vers une place qu’on garde.</div>`}
   </section>`;
 }
 

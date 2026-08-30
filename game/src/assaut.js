@@ -28,6 +28,9 @@ import { COMMODITIES, COMMODITY_KEYS, drapeauDe } from './data.js';
 import { groupeActif } from './groupes.js';
 import { poidsInventaire, capacitePortage } from './economy.js';
 import { commettre, delaiVersFaction } from './faits.js';
+import { forceDeGroupe } from './base.js';
+import { estDebout, blesser, pvTotal } from './characters.js';
+import { colonieParId, colonieDe } from './world.js';
 
 /**
  * Ce qu'une place oppose, et ce qu'un coup de main lui coûte.
@@ -171,4 +174,129 @@ export function attaquerVille(state, col, rng, log, combatContre, genererBande, 
   });
 
   return { ok: true, gagne: true, pris, laisse };
+}
+
+// ---------------------------------------------------------------------------
+// Le siège (IMPLANTATIONS.md, M1c — lot S1)
+// ---------------------------------------------------------------------------
+//
+// « Peut-on prendre une ville ? » Non : le raid entre et ressort. Ce qui
+// manquait d'abord, c'est le siège — et le monde le fait déjà tous les jours
+// (`tickArmee`, factions.js) : une colonne prend l'état `siege`, son assaut
+// s'use contre la tenue de la place, la défense tombe, et à zéro la ville
+// bascule. Il ne manquait que le même verbe pour l'escouade.
+//
+// On retourne donc ce qui existe, formule comprise — pas une règle neuve. Deux
+// garde-fous du monde s'appliquent tels quels, parce que ce sont des règles du
+// monde et non des règles dirigées contre le joueur : une capitale se défend
+// comme une capitale, et l'on ne raye pas une faction de la carte par les
+// armes — sa dernière ville tient.
+
+/** Ce qu'un siège fait à une place, et ce qu'elle rend. Calibrable au banc. */
+export const SIEGE = {
+  /**
+   * Ce que vaut un homme de troupe, en points de compétence d'escouade.
+   *
+   * Le piège que la suite navigateur a attrapé : en copiant la formule du
+   * monde, j'avais copié les nombres mais pas les UNITÉS. Une colonne de
+   * soixante hommes a une force de soixante ; `forceDeGroupe` rend environ
+   * quatre-vingt-dix par vétéran. Trois personnes pesaient donc quatre
+   * colonnes et abattaient n'importe quelle garde en une heure de siège,
+   * capitale comprise — le siège n'avait plus d'objet.
+   *
+   * Tranché par le propriétaire (août 2026) : « un vétéran vaut une dizaine
+   * d'hommes ». À neuf points par homme, six vétérans pèsent exactement une
+   * colonne levée (FORCE_LEVEE = 60) : une bourgade tombe en quelques jours,
+   * une place tenue en semaines, et une capitale murée demande une vraie
+   * armée — qu'on sait déjà lever par ses prérogatives.
+   */
+  parHomme: 9,
+  /** L'acharnement d'une capitale, et celui d'un pays qui n'a plus qu'elle. */
+  capitale: 1.8,
+  derniere: 1.6,
+  /** Ce que la défense perd par heure, selon qu'on domine ou non. */
+  usure: 0.12,
+  usureFaible: 0.05,
+  /** Ce que la place rend en coups, dans les mêmes deux cas. */
+  riposte: 0.02,
+  riposteFaible: 0.035,
+  /** Ce qu'un siège fait monter de grogne dans les rues, par heure. */
+  grogne: 0.004,
+  /** En dessous, la garde ne tient plus : le siège n'a plus d'objet. */
+  plancher: 1,
+};
+
+/** L'acharnement d'une place : la règle du monde, lue au même endroit. */
+function acharnementDe(world, col) {
+  const f = col.faction && world.factions[col.faction];
+  const estCapitale = !!(f && f.capitale === col.id);
+  const derniere = !!(f && f.colonies.length <= 1);
+  return (estCapitale ? SIEGE.capitale : 1) * (derniere ? SIEGE.derniere : 1);
+}
+
+/** La ville qu'on peut assiéger d'ici, s'il y en a une. */
+export function assiegeable(state, g) {
+  const col = colonieDe(state.world, g.regionId);
+  if (!col || col.ruine) return null;
+  if (col.avantPoste) return null;
+  return col;
+}
+
+/**
+ * Une heure de siège. Appelée par `tickSquad` quand l'ordre du groupe est
+ * `siege`, avec le flux privé du joueur — le monde ne bouge pas d'un dé.
+ *
+ * Rend `true` tant que le siège tient, `false` quand il n'a plus d'objet : la
+ * place a cédé, elle a disparu, ou l'on n'est plus devant.
+ */
+export function tickSiege(state, g, rng, log) {
+  const col = colonieParId(state.world, g.ordre.cible);
+  if (!col || col.ruine || col.avantPoste) return false;
+  // On ne tient pas une place à distance : partir, c'est lever le siège.
+  if (col.regionId !== g.regionId) return false;
+
+  // Dans l'unité du monde : ce que l'escouade pèse en hommes de troupe, et non
+  // en points de compétence. Voir SIEGE.parHomme.
+  const force = forceDeGroupe(g) / SIEGE.parHomme;
+  if (force <= 0) return false;
+
+  const assaut = force * rng.range(0.5, 1.1);
+  const tenue = (col.defense * rng.range(0.6, 1.15) + col.murs * 2)
+    * acharnementDe(state.world, col);
+  const domine = assaut > tenue;
+
+  col.defense = Math.max(0, col.defense - assaut * (domine ? SIEGE.usure : SIEGE.usureFaible));
+  col.unrest = Math.min(1, (col.unrest || 0) + SIEGE.grogne);
+
+  // Et la place rend les coups. Un siège sans blessés serait un siège gratuit :
+  // on s'installe, on attend, la ville tombe. Ce que la colonne du monde perd
+  // en force, l'escouade le prend dans les corps.
+  const rendu = tenue * (domine ? SIEGE.riposte : SIEGE.riposteFaible);
+  if (rendu >= 1) {
+    const debout = g.membres.filter(estDebout);
+    if (debout.length) {
+      const cible = debout[rng.irange(0, debout.length - 1)];
+      const parts = Object.keys(cible.corps);
+      blesser(cible, rendu, parts[rng.irange(0, parts.length - 1)], rng, { letal: false });
+      if (pvTotal(cible).pct < 0.35) {
+        log({
+          type: 'siege',
+          texte: `${cible.nom} prend un mauvais coup sous les murs de ${col.nom}.`,
+          regionId: col.regionId,
+        });
+      }
+    }
+  }
+
+  if (col.defense <= SIEGE.plancher) {
+    log({
+      type: 'siege',
+      texte: `La garde de ${col.nom} ne tient plus. La place est à vous, si vous y entrez.`,
+      regionId: col.regionId,
+      important: true,
+      factions: col.faction ? [col.faction] : [],
+    });
+    return false;
+  }
+  return true;
 }

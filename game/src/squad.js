@@ -13,6 +13,7 @@ import {
   comp, gagnerXp, estDebout, estVivant, tickPerso, nourrir, pvTotal,
   tendreLien, lien, mods, XP_PRATIQUE, makeCharacter, ARCHETYPE_KEYS, LIENS,
 } from './characters.js';
+import { tickSiege, assiegeable, SIEGE } from './assaut.js';
 import {
   ajouterAuSac, tenterRencontre, tenterAlea, tenterChasseurs,
   inscrireAuMemorial,
@@ -53,6 +54,10 @@ export const ORDRES = {
   // les postes, mais ne tenait aucun. « J'ai mon escouade mais elle ne peut même
   // pas travailler dans la base. » C'était exact.
   travaux: { nom: 'Travaux', desc: 'Se mettre au service du camp : bras en plus sur toutes les chaînes.', effort: 1 },
+  // Tenir la place devant une ville (IMPLANTATIONS.md, M1c). Le seul ordre
+  // dirigé contre quelqu'un : il use la garde d'en face, et il coûte des
+  // blessés.
+  siege: { nom: 'Siège', desc: 'Tenir la place devant une ville : sa garde s’use, et vous aussi.', effort: 1.2 },
 };
 
 /**
@@ -110,6 +115,24 @@ export function donnerOrdre(state, ordre, groupe) {
     return { ok: true };
   }
   if (!ORDRES[ordre.type]) return { ok: false, motif: 'Ordre inconnu.' };
+  if (ordre.type === 'siege') {
+    const place = assiegeable(state, g);
+    if (!place) {
+      const col = colonieDe(state.world, g.regionId);
+      return {
+        ok: false,
+        motif: col && col.avantPoste
+          ? 'C’est votre camp.' : 'Aucune ville à assiéger ici.',
+      };
+    }
+    // Une garde déjà à terre ne s'use plus : accepter l'ordre pour l'annuler au
+    // premier tick ferait un bouton qui ment. On dit ce qu'il reste à faire.
+    if (place.defense <= SIEGE.plancher) {
+      return { ok: false, motif: `La garde de ${place.nom} ne tient déjà plus : entrez.` };
+    }
+    g.ordre = { type: 'siege', cible: place.id, depuis: state.temps };
+    return { ok: true };
+  }
   if (ordre.type === 'travaux' && !(state.base.fonde && state.base.regionId === g.regionId)) {
     return { ok: false, motif: 'Il faut être à votre avant-poste pour y travailler.' };
   }
@@ -661,6 +684,12 @@ function tickGroupe(state, g, log, ctx) {
         case 'mine':
         case 'chasse':
           recolter(state, g, type, paquet.gens, log, ctx);
+          break;
+        case 'siege':
+          // Le siège ne rapporte rien : il use la place d'en face. Quand il n'a
+          // plus d'objet — la garde a cédé, la ville a disparu, on n'est plus
+          // devant —, on repasse au repos plutôt que d'assiéger le vide.
+          if (!tickSiege(state, g, ctx.rng, log)) g.ordre = { type: 'repos' };
           break;
         case 'entrainement': {
           const skill = COMPETENCES_EXERCICE.includes(paquet.tache.skill)
