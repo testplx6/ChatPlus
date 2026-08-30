@@ -124,9 +124,45 @@ l'escouade. On retourne ce qui existe, formule comprise — aucune règle neuve.
 
   « Pour soi » reste impossible faute de drapeau (M3) — et le panneau le dit
   aussi, plutôt que de laisser chercher un bouton qui n'existe pas.
-- **S3, la faim.** Un siège coupe les convois ; une place affamée se rend sans
-  qu'on ait à monter dedans. C'est le lot qui rend le siège autre chose qu'un
-  combat long.
+- **S3, la faim.** 🛑 **Écrit, mesuré, retiré. Blocage — décision au
+  propriétaire.** Un siège coupe les convois ; une place affamée se rend sans
+  qu'on ait à monter dedans. Le mécanisme marche : sept sondes vertes, la
+  place s'affame, sa garnison fond, le marqueur s'efface tout seul quand
+  l'assiégeant s'en va. **Mais il abîme l'économie du monde**, et le banc le
+  dit sans ambiguïté (6 graines × 6 000 h, témoin `72b410c`) :
+
+  | | témoin | S3 complet | sans la fonte |
+  |---|---:|---:|---:|
+  | villes debout | 370 | 351 | 358 |
+  | factions écrasées | 8/36 | 10/36 | 6/36 |
+  | guerres | 18 | 24 | 23 |
+  | villes effondrées | 1 | 2 | 0 |
+  | **fourchette des cours** | **0,07–3,44** | **0,02–547,89** | **0,15–8,18** |
+
+  Le cours d'une monnaie est l'indicateur le plus sensible du monde, et il part
+  en vrille : une monnaie à 547 n'est plus une monnaie. Un balayage de
+  `SIEGE_FAIM.fonte` (0 / 0,004 / 0,012) ne trouve aucune valeur saine — à
+  0,004 la masse monétaire double (3,0 → 6,9 M). Et même **fonte à zéro**, donc
+  la seule coupure des convois, coûte douze villes et double la fourchette des
+  cours.
+
+  Ce n'est pas un réglage à trouver, c'est une conséquence de fond : couper le
+  commerce vers toute place assiégée touche les dizaines de sièges que les
+  factions se livrent en permanence, pas seulement le vôtre. Le monde n'a
+  jamais eu à vivre sans ces routes.
+
+  **Trois voies possibles, aucune engagée** :
+  1. *Affamer sans couper le commerce* — la place assiégée reçoit encore, mais
+     la garnison mange moins (une règle sur la garnison, pas sur les routes).
+  2. *Ne couper que le dernier kilomètre* — les convois arrivent, mais ne
+     peuvent pas entrer et repartent chargés : la ville jeûne, le commerce du
+     monde continue de tourner.
+  3. *Renoncer à la faim* — un siège reste un combat long. C'est ce qui est
+     livré aujourd'hui, et ça marche.
+
+  Une quatrième possibilité existe et demande une mesure à part : le monde
+  supporterait peut-être la coupure si les factions **levaient les sièges
+  qu'elles ne peuvent pas conclure**, au lieu de les tenir indéfiniment.
 
 Deux garde-fous du monde s'appliqueront tels quels, parce que ce sont des
 règles du monde et non des règles dirigées contre le joueur : une capitale se
