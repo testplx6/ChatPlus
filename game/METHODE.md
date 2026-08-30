@@ -491,3 +491,96 @@ faible.
 - La frontière en un test : « si ça casse, est-ce que ça se VOIT au
   premier coup d'œil ? » Oui → apparence, passe groupée. Non → mécanisme,
   cycle complet.
+
+## 11. La lenteur
+
+Écrite après la longue chasse d'août 2026, déclarée « priorité maximale » par le
+propriétaire : « le jeu rame énormément, c'est de pire en pire », puis « c'est
+devenu injouable ». Elle a duré des jours, et les trois premiers n'ont servi à
+rien. Ces sept règles sont ce qu'ils ont coûté.
+
+**Ne devine pas. Mesure — et vérifie que tu mesures ce que tu crois.** Une
+mesure de performance est fausse par défaut ; c'est le cas normal.
+
+> **Incident, trois fois de suite.** (1) Je chronométrais le retour du
+> gestionnaire de clic, pas l'image réellement peinte : tout le travail de mise
+> en page tombait après ma borne. Il faut mesurer jusqu'à la seconde
+> `requestAnimationFrame`. (2) Je bridais le processeur à ×6 mais pas la carte
+> graphique, ce qui rendait gratuits les trois `backdrop-filter: blur()` qui
+> coûtaient le plus cher sur un téléphone. (3) Je mesurais sur un monde de banc
+> et non sur une partie jouée — or c'est la partie jouée qui contient les mille
+> deux cents personnes. Trois « correctifs » livrés contre des problèmes qui
+> n'existaient pas.
+
+**Les instruments vivent dans le jeu, pas à côté.** Le seul juge est l'appareil
+qui peine, et il n'est pas sur le bureau de celui qui code.
+
+> **Incident.** La chasse n'a avancé qu'à partir du moment où le panneau ⛁ a su
+> dire, sur le téléphone du propriétaire : le coût moyen d'un rendu, le pire par
+> écran, le prix de chaque bloc (`chrono`), ce que pèse la partie (« Peser la
+> partie »), et combien de fois chaque bloc est refabriqué
+> (`window.__blocsFaits`). Trois lignes recopiées par le propriétaire — « base
+> 3048 ms », « école 2749 ms », « player.groupes 24140 Ko » — ont désigné trois
+> causes que des jours de mesures locales n'avaient pas trouvées.
+
+**Cherche le carré.** Presque toute lenteur installée est quadratique. La
+question qui la trouve : *qu'est-ce qui est fait une fois par personne,
+multiplié par une fois par personne ?* Sur cinq membres ça ne se voit pas ; sur
+mille deux cents, c'est un million d'opérations.
+
+> **Incidents, tous de la même famille.** Le tick de l'escouade liait chacun à
+> chacun : 609 310 → 17 725 µs/h à mille deux cents membres (×34), et **inchangé
+> à cinq** (515 → 540) — la preuve qu'on n'a pas payé le gain sur les petites
+> parties. La galerie d'escouade posait toute la liste : 178 396 → 9 628
+> éléments, 12 272 → 808 ms. Le bloc école rappelait `ecolesAvantPoste` à chaque
+> test d'aptitude : 2749 → moins de 5 ms. La fin de combat liait tous les
+> debouts deux à deux : sept cent mille liens créés par bataille. Et les liens
+> eux-mêmes, hérités de la version d'avant : un million cinq cent mille entrées,
+> 21 Mo → 417 Ko une fois élagués (÷52).
+
+**Ne refais pas ce qui n'a pas changé.** Un écran, un dessin, un formateur, un
+texte : si rien de ce qui l'alimente n'a bougé, le refaire coûte tout son prix
+pour rien.
+
+> **Incidents.** `poserEcran` ne remplace que les blocs de premier rang dont le
+> HTML diffère. Le terrain de la carte est peint hors écran et gardé tant que
+> son empreinte tient. Les `Intl.NumberFormat` sont mémorisés. Les boutons du
+> comptoir ne refabriquent plus que leur panneau : neuf blocs par clic, plus
+> qu'un. Attention au piège inverse : comparer le HTML **produit**, jamais le
+> DOM vivant, que le navigateur normalise — sans quoi chaque bloc paraît
+> modifié.
+
+**Borne tout ce qui grandit.** Ce qui croît sans plafond finit toujours par
+ramer : la question est quand, pas si.
+
+> **Exemples tenus.** Vingt-quatre fiches d'escouade posées d'un coup
+> (`PAS_ESCOUADE`), six voisins de chaque côté pour la cohésion et le combat
+> (`LIENS.cercle`), vingt-quatre liens retenus par personne (`LIENS.gardes`),
+> quatre cents lignes de journal, huit actes au dossier d'un officier. Un
+> plafond n'est pas une règle de jeu quand il ne change rien de ce qui se lit :
+> l'ami et le rival d'une fiche sont les extrêmes, donc les premiers gardés.
+
+**Mesure la bonne grandeur.** Un seuil juste posé sur le mauvais objet est une
+sonde qui ment.
+
+> **Incident, le jour même.** La sonde de l'élagage pesait le groupe entier —
+> compétences, corps, équipement compris — alors que le correctif ne portait que
+> sur les liens : 1107 → 293 Ko, soit un facteur 3,8 pour un gain réel de 8 sur
+> ce qui changeait. Le réflexe interdit est d'élargir le seuil ; le bon geste est
+> de peser ce que le correctif touche.
+
+**Vérifie que tu n'as pas déplacé le coût.** Un gain de mémoire se paie souvent
+en temps, et l'inverse.
+
+> **Incident, le jour même.** Le premier élagage des liens se faisait dans
+> `ajusterLien`, à chaque lien touché. Compter les clés d'un dictionnaire alloue,
+> et deux comptages par ajustement dans une boucle de combat ont suffi à faire
+> repasser au rouge la sonde « une personne de plus coûte le même prix, qu'on en
+> mène cent ou cinq cents » : ×4,2 par tête, quand elle exige moins de 2,5. Sans
+> cette sonde, un progrès qui n'en était pas un partait en livraison. On élague
+> là où c'est gratuit — à l'ouverture de la partie —, et l'on empêche de créer
+> là où c'est cher.
+
+**Le cumul de la chasse**, sur l'appareil du propriétaire : un rendu 1584 → 49
+ms, l'écran Base 2454 → 110, le bloc école 2427 → 71, le tick du monde ×34 à
+mille deux cents membres, et les personnages de 24 Mo à environ 4.

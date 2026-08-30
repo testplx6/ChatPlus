@@ -62,7 +62,7 @@ quelqu'un d'autre.
 
 | fichier | quoi |
 |---|---|
-| `METHODE.md` | comment on travaille ici — chaque règle avec l'incident qui l'a écrite |
+| `METHODE.md` | comment on travaille ici — chaque règle avec l'incident qui l'a écrite ; **§11 la lenteur** : les sept règles de la chasse d'août 2026, et ce que chacune a coûté |
 | `CHANTIER.md` | la file de tâches du chantier économie — livré, gardé pour ses mesures et ses leviers |
 | `RECETTES.md` | les opérations récurrentes, pas à pas, avec leurs pièges |
 | `ECONOMIE.md` | le cahier des charges du chantier économie |
