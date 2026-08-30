@@ -2960,6 +2960,30 @@ console.log('\n8 nonies quinquies. Donner l’assaut à une ville (IMPLANTATIONS
     const texteSiege = await page.evaluate(() => document.querySelector('#ecran').textContent);
     ok(/Lever le siège/.test(texteSiege), 'on peut le lever d’un geste');
   }
+
+  // La chute et ses suites (S2) : une place à terre se donne, ou se rase.
+  await page.evaluate((id) => {
+    // On abat la garde d'un coup plutôt que d'attendre le siège : ce qu'on
+    // vérifie ici, c'est le menu, pas la durée d'un siège.
+    window.__testAbattreGarde(id);
+  }, cible.id);
+  await page.waitForTimeout(400);
+  const texteChute = await page.evaluate(() => document.querySelector('#ecran').textContent);
+  ok(/garde ne tient plus|garde est à terre/i.test(texteChute),
+    'le panneau annonce que la place est ouverte', texteChute.slice(0, 160));
+  const boutonRaser = await page.$('[data-a="raser"]');
+  ok(!!boutonRaser, 'on peut choisir de la raser');
+  if (boutonRaser) {
+    await page.click('[data-a="raser"]');
+    await page.waitForTimeout(600);
+    const apresRase = await page.evaluate((id) => {
+      const s2 = JSON.parse(window.__sauvegardeTexte());
+      const col = s2.world.colonies.find((c) => c.id === id);
+      return { ruine: !!col.ruine, faction: col.faction };
+    }, cible.id);
+    ok(apresRase.ruine, 'et il n’en reste qu’une ruine');
+    ok(!apresRase.faction, 'qui n’est plus à personne');
+  }
 }
 
 console.log('\n8 decies. Métiers de l’avant-poste');

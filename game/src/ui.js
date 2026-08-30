@@ -119,6 +119,7 @@ import {
   vivants as vivantsDe,
 } from './groupes.js';
 import { RAID_VILLE, SIEGE } from './assaut.js';
+import { derniereVille } from './factions.js';
 
 // ---------------------------------------------------------------------------
 // État local de l'interface
@@ -2349,7 +2350,8 @@ function blocAssaut(col) {
     <div class="aide alerte">Ceux d’ici s’en souviendront${libre ? '.'
     : `, et ${drapeauDe(S.world, col.faction).nom} l’apprendra${
       drapeauDe(S.world, col.faction).pluriel ? 'nt' : ''}.`}</div>
-    ${aTerre ? `<div class="aide ok">Sa garde ne tient plus : la place est ouverte.</div>` : ''}
+    ${aTerre ? `<div class="aide ok">Sa garde ne tient plus : la place est ouverte.</div>
+      ${blocChute(col)}` : ''}
     <div class="grille2" style="gap:5px">
       <button class="act mini danger" data-a="assaut" data-k="${e(col.id)}"
         ${debout.length ? '' : 'disabled'}>${debout.length
@@ -2366,6 +2368,38 @@ function blocAssaut(col) {
       use sa garde jusqu’à ce qu’elle ne tienne plus. C’est plus long qu’un coup de main, et
       c’est le seul chemin vers une place qu’on garde.</div>`}
   </section>`;
+}
+
+/**
+ * Ce qu'on fait d'une place dont la garde ne tient plus (M1c-S2).
+ *
+ * Trois suites, et une quatrième qui n'existe pas encore. La donner à ceux
+ * qu'on sert : c'est un cadeau, il faut être de la maison. La raser : il n'en
+ * reste rien, et personne n'oublie. La piller : c'est le coup de main, juste
+ * au-dessus. La garder pour soi demanderait un drapeau — et l'on n'en a pas
+ * (M3) ; on le dit plutôt que de laisser chercher un bouton qui n'existe pas.
+ */
+function blocChute(col) {
+  const g = G();
+  const servie = g.allegeance && g.allegeance.faction;
+  const derniere = derniereVille(S.world, col);
+  if (derniere) {
+    return `<div class="aide alerte">${e(col.nom)} est tout ce qui leur reste. On ne prend
+      pas ça par les armes : le monde ne se laisse pas réduire à un vainqueur.</div>`;
+  }
+  return `<div class="sep"></div>
+  <div class="grille2" style="gap:5px">
+    ${servie && col.faction !== servie
+    ? `<button class="act mini primaire" data-a="livrer" data-k="${e(col.id)}"
+        data-r="${e(servie)}">Livrer à ${e(drapeauDe(S.world, servie).nom)}</button>`
+    : ''}
+    <button class="act mini danger" data-a="raser" data-k="${e(col.id)}">Raser la place</button>
+  </div>
+  <div class="aide">${servie && col.faction !== servie
+    ? `Leur donner ${e(col.nom)} vous vaudra beaucoup auprès d’eux, et une rancune tenace
+      chez ceux qui la perdent. `
+    : `Vous ne servez personne à qui la donner. `}La garder pour vous demanderait un drapeau
+    à vous — vous n’en avez pas.</div>`;
 }
 
 /** Ce qu'une ville garde en réserve, toutes marchandises confondues. */
@@ -7039,6 +7073,20 @@ function surClic(ev) {
     case 'quitter-service': {
       const r = ACTIONS.quitterService();
       toast(r.ok ? 'Engagement rompu.' : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
+    case 'livrer': {
+      const r = ACTIONS.livrerPlace(el.dataset.k, el.dataset.r);
+      toast(r.ok ? 'La place change de drapeau.' : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
+    case 'raser': {
+      const r = ACTIONS.raserPlace(el.dataset.k);
+      toast(r.ok ? 'Il n’en reste que des murs noircis.' : r.motif, !r.ok);
       rafraichir(true);
       break;
     }

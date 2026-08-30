@@ -29,6 +29,8 @@ import { groupeActif } from './groupes.js';
 import { poidsInventaire, capacitePortage } from './economy.js';
 import { commettre, delaiVersFaction } from './faits.js';
 import { forceDeGroupe } from './base.js';
+import { basculerPlace, derniereVille } from './factions.js';
+import { effondrer } from './economy.js';
 import { estDebout, blesser, pvTotal } from './characters.js';
 import { colonieParId, colonieDe } from './world.js';
 
@@ -226,6 +228,18 @@ export const SIEGE = {
   plancher: 1,
 };
 
+/** Ce que la prise ou la destruction d'une place vaut au registre des faits. */
+export const PRISE = {
+  /** Ce que vous en gagnez auprès de ceux à qui vous la donnez. */
+  merite: 30,
+  /** Et ce que vous en perdez auprès de ceux qui la perdent. */
+  rancune: -45,
+  /** Ce que les habitants retiennent de la prise. */
+  memoire: -12,
+  /** Raser une ville ne s'oublie pas. */
+  rase: -70,
+};
+
 /** L'acharnement d'une place : la règle du monde, lue au même endroit. */
 function acharnementDe(world, col) {
   const f = col.faction && world.factions[col.faction];
@@ -299,4 +313,133 @@ export function tickSiege(state, g, rng, log) {
     return false;
   }
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// La chute et ses suites (IMPLANTATIONS.md, M1c — lot S2)
+// ---------------------------------------------------------------------------
+//
+// « Peut-on choisir de prendre la ville pour soi ou pour sa faction ? » Le
+// siège abat la garde ; restait à décider de ce qu'on fait de la place.
+//
+// **Pour sa faction** : tout existait déjà. `basculerPlace` — extraite de
+// `capturer` pour ne pas l'écrire deux fois — fait changer la ville et la
+// région de drapeau, dépêche comprise. On lui donne une porte d'entrée.
+//
+// **Pour soi** : impossible tant qu'on n'a pas de drapeau. C'est M3, et
+// `declarerIndependance` dit pourquoi : elle laisse la place à PERSONNE, faute
+// d'une case où la ranger.
+//
+// **La raser** : la ville devient une ruine. Le moteur sait le faire depuis
+// toujours (`effondrer`) — c'est ce qui arrive à une ville que la faim ou la
+// guerre a vidée.
+
+/** Ce qu'on peut faire d'une place, et ce que ça demande. */
+function placePrenable(state, col) {
+  if (!col || col.ruine) return { ok: false, motif: 'Il n’y a plus rien là-bas.' };
+  if (col.avantPoste) return { ok: false, motif: 'C’est votre camp.' };
+  const g = groupeActif(state);
+  if (col.regionId !== g.regionId) {
+    return { ok: false, motif: `Il faut être à ${col.nom}.` };
+  }
+  if (col.defense > SIEGE.plancher) {
+    return { ok: false, motif: `La garde de ${col.nom} tient encore. Il faut entrer.` };
+  }
+  // La règle du monde, la même pour tous.
+  if (derniereVille(state.world, col)) {
+    return {
+      ok: false,
+      motif: `${col.nom} est tout ce qui leur reste. On ne prend pas ça par les armes.`,
+    };
+  }
+  return { ok: true, g };
+}
+
+/**
+ * Livrer la place à ceux dont on porte les couleurs.
+ *
+ * On ne donne pas une ville à des gens qu'on ne sert pas : c'est un cadeau,
+ * pas une transaction, et il faut être de la maison pour le faire.
+ */
+export function livrerPlace(state, col, faction, log) {
+  const v = placePrenable(state, col);
+  if (!v.ok) return v;
+  const g = v.g;
+  const servie = g.allegeance && g.allegeance.faction;
+  if (!servie || servie !== faction) {
+    return { ok: false, motif: 'Vous ne servez pas ces couleurs.' };
+  }
+  if (col.faction === faction) return { ok: false, motif: 'Elle porte déjà leurs couleurs.' };
+  if (!state.world.factions[faction]) return { ok: false, motif: 'Ce drapeau n’existe plus.' };
+
+  const ancien = col.faction;
+  basculerPlace(state.world, col, faction, log, {});
+  log({
+    type: 'capture',
+    texte: `${col.nom} passe sous ${drapeauDe(state.world, faction).nom} : c’est vous qui `
+      + `${drapeauDe(state.world, faction).pluriel ? 'la leur avez' : 'la lui avez'} donnée.`,
+    regionId: col.regionId,
+    important: true,
+    factions: [faction, ancien].filter(Boolean),
+  });
+
+  // Le registre des faits, comme toujours : ceux qui l'apprennent en tiennent
+  // compte. Les vôtres vous en savent gré ; ceux qui la perdent ne vous le
+  // pardonnent pas.
+  const effets = [{
+    faction, delta: PRISE.merite,
+    su: state.temps + delaiVersFaction(state, 'rumeur', col.regionId, faction),
+    dit: `${drapeauDe(state.world, faction).nom} sa${drapeauDe(state.world, faction).pluriel ? 'vent' : 'it'} `
+      + `à qui ${drapeauDe(state.world, faction).pluriel ? 'ils doivent' : 'il doit'} ${col.nom}.`,
+  }];
+  if (ancien && ancien !== 'essaim') {
+    effets.push({
+      faction: ancien, delta: PRISE.rancune,
+      su: state.temps + delaiVersFaction(state, 'rumeur', col.regionId, ancien),
+      dit: `${drapeauDe(state.world, ancien).nom} sa${drapeauDe(state.world, ancien).pluriel ? 'vent' : 'it'} `
+        + `qui leur a pris ${col.nom}.`,
+    });
+  }
+  effets.push({ ville: col.id, memoire: 'prise', delta: PRISE.memoire, su: state.temps + 1 });
+  commettre(state, {
+    type: 'prise-ville', regionId: col.regionId, t: state.temps, effets,
+  });
+  state.stats.villesPrises = (state.stats.villesPrises || 0) + 1;
+  return { ok: true };
+}
+
+/**
+ * Raser la place. Il n'en reste rien, et elle n'est à personne.
+ *
+ * Le moteur sait faire une ruine depuis toujours — c'est ce qui arrive à une
+ * ville que la faim ou la guerre a vidée. Ici, c'est un choix, et il se paie :
+ * personne n'oublie qui a rasé une ville.
+ */
+export function raserPlace(state, col, log) {
+  const v = placePrenable(state, col);
+  if (!v.ok) return v;
+  const ancien = col.faction;
+  const nom = col.nom;
+  effondrer(state.world, col);
+  log({
+    type: 'effondrement',
+    texte: `${nom} est rasée. Il n’en restera que des murs noircis.`,
+    regionId: col.regionId,
+    important: true,
+    factions: ancien ? [ancien] : [],
+  });
+  const effets = [];
+  if (ancien && ancien !== 'essaim') {
+    effets.push({
+      faction: ancien, delta: PRISE.rase,
+      su: state.temps + delaiVersFaction(state, 'rumeur', col.regionId, ancien),
+      dit: `${drapeauDe(state.world, ancien).nom} sa${drapeauDe(state.world, ancien).pluriel ? 'vent' : 'it'} `
+        + `qui a rasé ${nom}. Ça ne s’oublie pas.`,
+    });
+  }
+  commettre(state, {
+    type: 'ville-rasee', regionId: col.regionId, t: state.temps, effets,
+  });
+  state.stats.villesRasees = (state.stats.villesRasees || 0) + 1;
+  return { ok: true };
 }

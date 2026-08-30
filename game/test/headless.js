@@ -65,7 +65,7 @@ import {
 import { verdict } from '../tools/vitesse.js';
 import { loiIci } from '../src/lois.js';
 import { primeLivraison, prixEsclave } from '../src/justice.js';
-import { attaquerVille, RAID_VILLE } from '../src/assaut.js';
+import { attaquerVille, RAID_VILLE, livrerPlace, raserPlace } from '../src/assaut.js';
 import { LIENS, relationsNotables, pvTotal as pvTotalImp } from '../src/characters.js';
 import { tickFaits as tickFaitsImp } from '../src/faits.js';
 import { retenirEnVille as retenirEnVilleImp } from '../src/services.js';
@@ -13520,6 +13520,90 @@ section('IMP 2. Le siège d’une ville (IMPLANTATIONS.md, M1c-S1)');
     avancer(s2, 12);
     ok(col.defense === defAvant, 'partir, c’est lever le siège',
       `${defAvant} → ${col.defense}`);
+  }
+}
+
+
+// ===========================================================================
+section('IMP 3. La chute et ses suites (IMPLANTATIONS.md, M1c-S2)');
+// « Peut-on choisir de prendre la ville pour soi ou pour sa faction ? » Le
+// siège abat la garde ; restait à décider de ce qu'on fait de la place. Pour
+// soi demandera un drapeau (M3). Pour sa faction, tout existe : `capturer`
+// sait faire basculer une ville, on lui donne une porte d'entrée.
+{
+  const rienC = () => {};
+  const monterChute = (graine) => {
+    const s2 = nouvellePartie(graine, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g2 = groupeActif(s2);
+    const col = s2.world.colonies.find((c) => !c.ruine && c.faction && c.regionId === g2.regionId)
+      || s2.world.colonies.find((c) => !c.ruine && c.faction);
+    g2.regionId = col.regionId;
+    // Un drapeau qu'on sert, et qui n'est pas celui de la place.
+    const sien = Object.keys(s2.world.factions).find(
+      (k) => k !== 'essaim' && k !== col.faction && s2.world.factions[k].colonies.length > 1);
+    g2.allegeance = { faction: sien, points: 0, depuis: 0, faits: [], actes: [] };
+    return { s: s2, g: g2, col, sien };
+  };
+
+  // 1) On ne livre pas une place dont la garde tient encore : il faut y entrer.
+  {
+    const { s: s2, col, sien } = monterChute(9301);
+    col.defense = 80;
+    const r = livrerPlace(s2, col, sien, rienC);
+    ok(!r.ok, 'une place qui se défend ne se donne pas', r.motif);
+  }
+
+  // 2) Ni à un drapeau qu'on ne sert pas.
+  {
+    const { s: s2, g: g2, col } = monterChute(9302);
+    col.defense = 0;
+    g2.allegeance = null;
+    const autre = Object.keys(s2.world.factions).find((k) => k !== 'essaim' && k !== col.faction);
+    const r = livrerPlace(s2, col, autre, rienC);
+    ok(!r.ok, 'on ne donne pas une ville à des gens qu’on ne sert pas', r.motif);
+  }
+
+  // 3) Livrée : la place change de drapeau, et la région avec elle.
+  {
+    const { s: s2, col, sien } = monterChute(9303);
+    col.defense = 0;
+    const ancien = col.faction;
+    const r = livrerPlace(s2, col, sien, rienC);
+    ok(r.ok, 'une place à terre se livre à ceux qu’on sert', r.motif);
+    ok(col.faction === sien, 'elle porte leurs couleurs',
+      `${ancien} → ${col.faction}`);
+    ok(s2.world.regions[col.regionId].controle === sien, 'et la région aussi');
+    ok(!s2.world.factions[ancien].colonies.includes(col.id),
+      'ceux qui la tenaient ne la comptent plus');
+    ok(s2.world.factions[sien].colonies.includes(col.id),
+      'ceux qui la reçoivent la comptent');
+    ok((s2.player.faits || []).some((f) => f.type === 'prise-ville'),
+      'la prise est inscrite au registre des faits');
+  }
+
+  // 4) Rasée : il n'en reste rien, et elle n'est plus à personne.
+  {
+    const { s: s2, col } = monterChute(9304);
+    col.defense = 0;
+    const r = raserPlace(s2, col, rienC);
+    ok(r.ok, 'une place à terre peut aussi être rasée', r.motif);
+    ok(col.ruine, 'et il n’en reste qu’une ruine');
+    ok(!col.faction, 'elle n’est plus à personne');
+  }
+
+  // 5) Le garde-fou du monde vaut pour vous aussi : on ne raye pas un pays de
+  //    la carte par les armes. Ce n'est pas une règle dirigée contre le
+  //    joueur — c'est celle qui laisse au monde six acteurs plutôt qu'un
+  //    vainqueur et des ruines.
+  {
+    const { s: s2, col, sien } = monterChute(9305);
+    col.defense = 0;
+    const f = s2.world.factions[col.faction];
+    f.colonies = [col.id];
+    f.capitale = col.id;
+    ok(!livrerPlace(s2, col, sien, rienC).ok,
+      'la dernière ville d’un pays ne se prend pas');
+    ok(!raserPlace(s2, col, rienC).ok, 'et ne se rase pas davantage');
   }
 }
 

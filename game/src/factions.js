@@ -310,6 +310,76 @@ function dissoudre(world, armee) {
   if (i >= 0) world.armees.splice(i, 1);
 }
 
+/**
+ * Une place change de drapeau.
+ *
+ * Extraite de `capturer` le jour où le joueur a pu prendre une ville pour ceux
+ * qu'il sert (IMPLANTATIONS.md, M1c-S2) : le geste est le même, qu'il vienne
+ * d'une colonne ou d'une escouade, et il n'a pas à être écrit deux fois.
+ */
+export function basculerPlace(world, col, nouveau, log, ctx) {
+  const ancien = col.faction;
+  // Celui qui la perd cesse de la compter. `capturer` le faisait déjà avant
+  // d'arriver ici — le filtre est sans effet la seconde fois —, mais rien ne
+  // le faisait sur le chemin du joueur : la ville était à deux drapeaux à la
+  // fois, et l'ancien propriétaire la comptait encore dans ses forces.
+  if (ancien && world.factions[ancien]) {
+    const fa = world.factions[ancien];
+    fa.colonies = fa.colonies.filter((c) => c !== col.id);
+    if (fa.capitale === col.id) fa.capitale = fa.colonies[0] || null;
+  }
+  col.faction = nouveau;
+  world.factions[nouveau].colonies.push(col.id);
+  // La dépêche se construit sur l'état d'AVANT la prise — la faim, la grogne,
+  // la garnison — parce que c'est lui qui dit pourquoi la ville est tombée
+  // (HISTOIRE.md, lot D). Après les lignes qui suivent, le pillage a vidé les
+  // étals et la défense est déjà réinitialisée.
+  const depeche = depecheChute(world, nouveau, ancien, col);
+  world.regions[col.regionId].controle = nouveau;
+  for (const v of voisins(col.regionId)) {
+    if (world.regions[v].controle === ancien) world.regions[v].controle = nouveau;
+  }
+  col.pop = Math.max(50, Math.round(col.pop * 0.82));
+  col.unrest = Math.min(1, col.unrest + 0.35);
+  col.prises = (col.prises || 0) + 1;
+  // Prendre une ville assoit celui qui l'a voulue ; la perdre ronge l'autre.
+  // Sauf sous commandement (M1, MARECHAL.md) : la ville perdue s'impute au
+  // Maréchal, pas au dirigeant — c'est ce que tenir la charge veut dire.
+  crediterDirigeant(world, nouveau, 'prise');
+  if (ancien) {
+    if (ctx && ctx.marechal === ancien && ctx.perteVille) ctx.perteVille(ancien, col.nom, col.id);
+    else crediterDirigeant(world, ancien, 'perte');
+  }
+  // Pillage : une partie du stock disparaît dans la prise.
+  for (const k of COMMODITY_KEYS) {
+    col.stock[k] = (col.stock[k] || 0) - Math.round((col.stock[k] || 0) * 0.3);
+  }
+  // Le butin, c'est de la marchandise emportée, pas de la monnaie trouvée : la
+  // créditer au trésor en fabriquait à chaque prise de ville. Le vainqueur
+  // hérite en revanche de ce que la ville avait en caisse et dans les poches
+  // de ses gens — ça, ça change simplement de registre.
+  transfererVille(world, col, ancien, nouveau);
+  col.defense = Math.round(col.defenseMax * 0.25);
+  log({
+    type: 'capture',
+    texte: depeche,
+    regionId: col.regionId,
+    factions: [nouveau, ancien].filter(Boolean),
+  });
+  if (ancien) majRelation(world, nouveau, ancien, -25);
+}
+
+/**
+ * Un pays ne se raye pas de la carte par les armes : sa dernière ville tient,
+ * quel qu'en soit le prix. C'est ce qui laisse au monde six acteurs plutôt
+ * qu'un vainqueur et des ruines — une règle du monde, pas une règle dirigée
+ * contre qui que ce soit, et elle vaut donc aussi pour le joueur.
+ */
+export function derniereVille(world, col) {
+  const f = col.faction && world.factions[col.faction];
+  return !!(f && f.colonies.length <= 1);
+}
+
 function capturer(world, armee, col, t, log, ctx) {
   const ancien = col.faction;
   const nouveau = armee.faction;
@@ -365,48 +435,7 @@ function capturer(world, armee, col, t, log, ctx) {
       });
     }
   } else {
-    col.faction = nouveau;
-    world.factions[nouveau].colonies.push(col.id);
-    // La dépêche se construit sur l'état d'AVANT la prise — la faim, la
-    // grogne, la garnison — parce que c'est lui qui dit pourquoi la ville
-    // est tombée (HISTOIRE.md, lot D). Après les lignes qui suivent, le
-    // pillage a vidé les étals et la défense est déjà réinitialisée.
-    const depeche = depecheChute(world, nouveau, ancien, col);
-    world.regions[col.regionId].controle = nouveau;
-    for (const v of voisins(col.regionId)) {
-      if (world.regions[v].controle === ancien) world.regions[v].controle = nouveau;
-    }
-    col.pop = Math.max(50, Math.round(col.pop * 0.82));
-    col.unrest = Math.min(1, col.unrest + 0.35);
-    col.prises = (col.prises || 0) + 1;
-    // Prendre une ville assoit celui qui l'a voulue ; la perdre ronge l'autre.
-    // Sauf sous commandement (M1, MARECHAL.md) : la ville perdue s'impute au
-    // Maréchal, pas au dirigeant — c'est ce que tenir la charge veut dire.
-    crediterDirigeant(world, nouveau, 'prise');
-    if (ancien) {
-      if (ctx && ctx.marechal === ancien && ctx.perteVille) ctx.perteVille(ancien, col.nom, col.id);
-      else crediterDirigeant(world, ancien, 'perte');
-    }
-    // Pillage : une partie du stock file dans le trésor du vainqueur
-    let butin = 0;
-    for (const k of COMMODITY_KEYS) {
-      const pris = Math.round((col.stock[k] || 0) * 0.3);
-      col.stock[k] -= pris;
-      butin += pris;
-    }
-    // Le butin, c'est de la marchandise emportée, pas de la monnaie trouvée : la
-    // créditer au trésor en fabriquait à chaque prise de ville. Le vainqueur
-    // hérite en revanche de ce que la ville avait en caisse et dans les poches
-    // de ses gens — ça, ça change simplement de registre.
-    transfererVille(world, col, ancien, nouveau);
-    col.defense = Math.round(col.defenseMax * 0.25);
-    log({
-      type: 'capture',
-      texte: depeche,
-      regionId: col.regionId,
-      factions: [nouveau, ancien].filter(Boolean),
-    });
-    if (ancien) majRelation(world, nouveau, ancien, -25);
+    basculerPlace(world, col, nouveau, log, ctx);
   }
 
   // La colonne fond après la prise : elle devient garnison

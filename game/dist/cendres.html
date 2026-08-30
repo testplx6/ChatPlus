@@ -15331,6 +15331,76 @@ function dissoudre(world, armee) {
   if (i >= 0) world.armees.splice(i, 1);
 }
 
+/**
+ * Une place change de drapeau.
+ *
+ * Extraite de `capturer` le jour où le joueur a pu prendre une ville pour ceux
+ * qu'il sert (IMPLANTATIONS.md, M1c-S2) : le geste est le même, qu'il vienne
+ * d'une colonne ou d'une escouade, et il n'a pas à être écrit deux fois.
+ */
+function basculerPlace(world, col, nouveau, log, ctx) {
+  const ancien = col.faction;
+  // Celui qui la perd cesse de la compter. `capturer` le faisait déjà avant
+  // d'arriver ici — le filtre est sans effet la seconde fois —, mais rien ne
+  // le faisait sur le chemin du joueur : la ville était à deux drapeaux à la
+  // fois, et l'ancien propriétaire la comptait encore dans ses forces.
+  if (ancien && world.factions[ancien]) {
+    const fa = world.factions[ancien];
+    fa.colonies = fa.colonies.filter((c) => c !== col.id);
+    if (fa.capitale === col.id) fa.capitale = fa.colonies[0] || null;
+  }
+  col.faction = nouveau;
+  world.factions[nouveau].colonies.push(col.id);
+  // La dépêche se construit sur l'état d'AVANT la prise — la faim, la grogne,
+  // la garnison — parce que c'est lui qui dit pourquoi la ville est tombée
+  // (HISTOIRE.md, lot D). Après les lignes qui suivent, le pillage a vidé les
+  // étals et la défense est déjà réinitialisée.
+  const depeche = depecheChute(world, nouveau, ancien, col);
+  world.regions[col.regionId].controle = nouveau;
+  for (const v of voisins(col.regionId)) {
+    if (world.regions[v].controle === ancien) world.regions[v].controle = nouveau;
+  }
+  col.pop = Math.max(50, Math.round(col.pop * 0.82));
+  col.unrest = Math.min(1, col.unrest + 0.35);
+  col.prises = (col.prises || 0) + 1;
+  // Prendre une ville assoit celui qui l'a voulue ; la perdre ronge l'autre.
+  // Sauf sous commandement (M1, MARECHAL.md) : la ville perdue s'impute au
+  // Maréchal, pas au dirigeant — c'est ce que tenir la charge veut dire.
+  crediterDirigeant(world, nouveau, 'prise');
+  if (ancien) {
+    if (ctx && ctx.marechal === ancien && ctx.perteVille) ctx.perteVille(ancien, col.nom, col.id);
+    else crediterDirigeant(world, ancien, 'perte');
+  }
+  // Pillage : une partie du stock disparaît dans la prise.
+  for (const k of COMMODITY_KEYS) {
+    col.stock[k] = (col.stock[k] || 0) - Math.round((col.stock[k] || 0) * 0.3);
+  }
+  // Le butin, c'est de la marchandise emportée, pas de la monnaie trouvée : la
+  // créditer au trésor en fabriquait à chaque prise de ville. Le vainqueur
+  // hérite en revanche de ce que la ville avait en caisse et dans les poches
+  // de ses gens — ça, ça change simplement de registre.
+  transfererVille(world, col, ancien, nouveau);
+  col.defense = Math.round(col.defenseMax * 0.25);
+  log({
+    type: 'capture',
+    texte: depeche,
+    regionId: col.regionId,
+    factions: [nouveau, ancien].filter(Boolean),
+  });
+  if (ancien) majRelation(world, nouveau, ancien, -25);
+}
+
+/**
+ * Un pays ne se raye pas de la carte par les armes : sa dernière ville tient,
+ * quel qu'en soit le prix. C'est ce qui laisse au monde six acteurs plutôt
+ * qu'un vainqueur et des ruines — une règle du monde, pas une règle dirigée
+ * contre qui que ce soit, et elle vaut donc aussi pour le joueur.
+ */
+function derniereVille(world, col) {
+  const f = col.faction && world.factions[col.faction];
+  return !!(f && f.colonies.length <= 1);
+}
+
 function capturer(world, armee, col, t, log, ctx) {
   const ancien = col.faction;
   const nouveau = armee.faction;
@@ -15386,48 +15456,7 @@ function capturer(world, armee, col, t, log, ctx) {
       });
     }
   } else {
-    col.faction = nouveau;
-    world.factions[nouveau].colonies.push(col.id);
-    // La dépêche se construit sur l'état d'AVANT la prise — la faim, la
-    // grogne, la garnison — parce que c'est lui qui dit pourquoi la ville
-    // est tombée (HISTOIRE.md, lot D). Après les lignes qui suivent, le
-    // pillage a vidé les étals et la défense est déjà réinitialisée.
-    const depeche = depecheChute(world, nouveau, ancien, col);
-    world.regions[col.regionId].controle = nouveau;
-    for (const v of voisins(col.regionId)) {
-      if (world.regions[v].controle === ancien) world.regions[v].controle = nouveau;
-    }
-    col.pop = Math.max(50, Math.round(col.pop * 0.82));
-    col.unrest = Math.min(1, col.unrest + 0.35);
-    col.prises = (col.prises || 0) + 1;
-    // Prendre une ville assoit celui qui l'a voulue ; la perdre ronge l'autre.
-    // Sauf sous commandement (M1, MARECHAL.md) : la ville perdue s'impute au
-    // Maréchal, pas au dirigeant — c'est ce que tenir la charge veut dire.
-    crediterDirigeant(world, nouveau, 'prise');
-    if (ancien) {
-      if (ctx && ctx.marechal === ancien && ctx.perteVille) ctx.perteVille(ancien, col.nom, col.id);
-      else crediterDirigeant(world, ancien, 'perte');
-    }
-    // Pillage : une partie du stock file dans le trésor du vainqueur
-    let butin = 0;
-    for (const k of COMMODITY_KEYS) {
-      const pris = Math.round((col.stock[k] || 0) * 0.3);
-      col.stock[k] -= pris;
-      butin += pris;
-    }
-    // Le butin, c'est de la marchandise emportée, pas de la monnaie trouvée : la
-    // créditer au trésor en fabriquait à chaque prise de ville. Le vainqueur
-    // hérite en revanche de ce que la ville avait en caisse et dans les poches
-    // de ses gens — ça, ça change simplement de registre.
-    transfererVille(world, col, ancien, nouveau);
-    col.defense = Math.round(col.defenseMax * 0.25);
-    log({
-      type: 'capture',
-      texte: depeche,
-      regionId: col.regionId,
-      factions: [nouveau, ancien].filter(Boolean),
-    });
-    if (ancien) majRelation(world, nouveau, ancien, -25);
+    basculerPlace(world, col, nouveau, log, ctx);
   }
 
   // La colonne fond après la prise : elle devient garnison
@@ -23565,6 +23594,18 @@ const SIEGE = {
   plancher: 1,
 };
 
+/** Ce que la prise ou la destruction d'une place vaut au registre des faits. */
+const PRISE = {
+  /** Ce que vous en gagnez auprès de ceux à qui vous la donnez. */
+  merite: 30,
+  /** Et ce que vous en perdez auprès de ceux qui la perdent. */
+  rancune: -45,
+  /** Ce que les habitants retiennent de la prise. */
+  memoire: -12,
+  /** Raser une ville ne s'oublie pas. */
+  rase: -70,
+};
+
 /** L'acharnement d'une place : la règle du monde, lue au même endroit. */
 function acharnementDe(world, col) {
   const f = col.faction && world.factions[col.faction];
@@ -23638,6 +23679,135 @@ function tickSiege(state, g, rng, log) {
     return false;
   }
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// La chute et ses suites (IMPLANTATIONS.md, M1c — lot S2)
+// ---------------------------------------------------------------------------
+//
+// « Peut-on choisir de prendre la ville pour soi ou pour sa faction ? » Le
+// siège abat la garde ; restait à décider de ce qu'on fait de la place.
+//
+// **Pour sa faction** : tout existait déjà. `basculerPlace` — extraite de
+// `capturer` pour ne pas l'écrire deux fois — fait changer la ville et la
+// région de drapeau, dépêche comprise. On lui donne une porte d'entrée.
+//
+// **Pour soi** : impossible tant qu'on n'a pas de drapeau. C'est M3, et
+// `declarerIndependance` dit pourquoi : elle laisse la place à PERSONNE, faute
+// d'une case où la ranger.
+//
+// **La raser** : la ville devient une ruine. Le moteur sait le faire depuis
+// toujours (`effondrer`) — c'est ce qui arrive à une ville que la faim ou la
+// guerre a vidée.
+
+/** Ce qu'on peut faire d'une place, et ce que ça demande. */
+function placePrenable(state, col) {
+  if (!col || col.ruine) return { ok: false, motif: 'Il n’y a plus rien là-bas.' };
+  if (col.avantPoste) return { ok: false, motif: 'C’est votre camp.' };
+  const g = groupeActif(state);
+  if (col.regionId !== g.regionId) {
+    return { ok: false, motif: `Il faut être à ${col.nom}.` };
+  }
+  if (col.defense > SIEGE.plancher) {
+    return { ok: false, motif: `La garde de ${col.nom} tient encore. Il faut entrer.` };
+  }
+  // La règle du monde, la même pour tous.
+  if (derniereVille(state.world, col)) {
+    return {
+      ok: false,
+      motif: `${col.nom} est tout ce qui leur reste. On ne prend pas ça par les armes.`,
+    };
+  }
+  return { ok: true, g };
+}
+
+/**
+ * Livrer la place à ceux dont on porte les couleurs.
+ *
+ * On ne donne pas une ville à des gens qu'on ne sert pas : c'est un cadeau,
+ * pas une transaction, et il faut être de la maison pour le faire.
+ */
+function livrerPlace(state, col, faction, log) {
+  const v = placePrenable(state, col);
+  if (!v.ok) return v;
+  const g = v.g;
+  const servie = g.allegeance && g.allegeance.faction;
+  if (!servie || servie !== faction) {
+    return { ok: false, motif: 'Vous ne servez pas ces couleurs.' };
+  }
+  if (col.faction === faction) return { ok: false, motif: 'Elle porte déjà leurs couleurs.' };
+  if (!state.world.factions[faction]) return { ok: false, motif: 'Ce drapeau n’existe plus.' };
+
+  const ancien = col.faction;
+  basculerPlace(state.world, col, faction, log, {});
+  log({
+    type: 'capture',
+    texte: `${col.nom} passe sous ${drapeauDe(state.world, faction).nom} : c’est vous qui `
+      + `${drapeauDe(state.world, faction).pluriel ? 'la leur avez' : 'la lui avez'} donnée.`,
+    regionId: col.regionId,
+    important: true,
+    factions: [faction, ancien].filter(Boolean),
+  });
+
+  // Le registre des faits, comme toujours : ceux qui l'apprennent en tiennent
+  // compte. Les vôtres vous en savent gré ; ceux qui la perdent ne vous le
+  // pardonnent pas.
+  const effets = [{
+    faction, delta: PRISE.merite,
+    su: state.temps + delaiVersFaction(state, 'rumeur', col.regionId, faction),
+    dit: `${drapeauDe(state.world, faction).nom} sa${drapeauDe(state.world, faction).pluriel ? 'vent' : 'it'} `
+      + `à qui ${drapeauDe(state.world, faction).pluriel ? 'ils doivent' : 'il doit'} ${col.nom}.`,
+  }];
+  if (ancien && ancien !== 'essaim') {
+    effets.push({
+      faction: ancien, delta: PRISE.rancune,
+      su: state.temps + delaiVersFaction(state, 'rumeur', col.regionId, ancien),
+      dit: `${drapeauDe(state.world, ancien).nom} sa${drapeauDe(state.world, ancien).pluriel ? 'vent' : 'it'} `
+        + `qui leur a pris ${col.nom}.`,
+    });
+  }
+  effets.push({ ville: col.id, memoire: 'prise', delta: PRISE.memoire, su: state.temps + 1 });
+  commettre(state, {
+    type: 'prise-ville', regionId: col.regionId, t: state.temps, effets,
+  });
+  state.stats.villesPrises = (state.stats.villesPrises || 0) + 1;
+  return { ok: true };
+}
+
+/**
+ * Raser la place. Il n'en reste rien, et elle n'est à personne.
+ *
+ * Le moteur sait faire une ruine depuis toujours — c'est ce qui arrive à une
+ * ville que la faim ou la guerre a vidée. Ici, c'est un choix, et il se paie :
+ * personne n'oublie qui a rasé une ville.
+ */
+function raserPlace(state, col, log) {
+  const v = placePrenable(state, col);
+  if (!v.ok) return v;
+  const ancien = col.faction;
+  const nom = col.nom;
+  effondrer(state.world, col);
+  log({
+    type: 'effondrement',
+    texte: `${nom} est rasée. Il n’en restera que des murs noircis.`,
+    regionId: col.regionId,
+    important: true,
+    factions: ancien ? [ancien] : [],
+  });
+  const effets = [];
+  if (ancien && ancien !== 'essaim') {
+    effets.push({
+      faction: ancien, delta: PRISE.rase,
+      su: state.temps + delaiVersFaction(state, 'rumeur', col.regionId, ancien),
+      dit: `${drapeauDe(state.world, ancien).nom} sa${drapeauDe(state.world, ancien).pluriel ? 'vent' : 'it'} `
+        + `qui a rasé ${nom}. Ça ne s’oublie pas.`,
+    });
+  }
+  commettre(state, {
+    type: 'ville-rasee', regionId: col.regionId, t: state.temps, effets,
+  });
+  state.stats.villesRasees = (state.stats.villesRasees || 0) + 1;
+  return { ok: true };
 }
 
 // ===== src/events.js =================================================
@@ -30016,7 +30186,8 @@ function blocAssaut(col) {
     <div class="aide alerte">Ceux d’ici s’en souviendront${libre ? '.'
     : `, et ${drapeauDe(S.world, col.faction).nom} l’apprendra${
       drapeauDe(S.world, col.faction).pluriel ? 'nt' : ''}.`}</div>
-    ${aTerre ? `<div class="aide ok">Sa garde ne tient plus : la place est ouverte.</div>` : ''}
+    ${aTerre ? `<div class="aide ok">Sa garde ne tient plus : la place est ouverte.</div>
+      ${blocChute(col)}` : ''}
     <div class="grille2" style="gap:5px">
       <button class="act mini danger" data-a="assaut" data-k="${e(col.id)}"
         ${debout.length ? '' : 'disabled'}>${debout.length
@@ -30033,6 +30204,38 @@ function blocAssaut(col) {
       use sa garde jusqu’à ce qu’elle ne tienne plus. C’est plus long qu’un coup de main, et
       c’est le seul chemin vers une place qu’on garde.</div>`}
   </section>`;
+}
+
+/**
+ * Ce qu'on fait d'une place dont la garde ne tient plus (M1c-S2).
+ *
+ * Trois suites, et une quatrième qui n'existe pas encore. La donner à ceux
+ * qu'on sert : c'est un cadeau, il faut être de la maison. La raser : il n'en
+ * reste rien, et personne n'oublie. La piller : c'est le coup de main, juste
+ * au-dessus. La garder pour soi demanderait un drapeau — et l'on n'en a pas
+ * (M3) ; on le dit plutôt que de laisser chercher un bouton qui n'existe pas.
+ */
+function blocChute(col) {
+  const g = G();
+  const servie = g.allegeance && g.allegeance.faction;
+  const derniere = derniereVille(S.world, col);
+  if (derniere) {
+    return `<div class="aide alerte">${e(col.nom)} est tout ce qui leur reste. On ne prend
+      pas ça par les armes : le monde ne se laisse pas réduire à un vainqueur.</div>`;
+  }
+  return `<div class="sep"></div>
+  <div class="grille2" style="gap:5px">
+    ${servie && col.faction !== servie
+    ? `<button class="act mini primaire" data-a="livrer" data-k="${e(col.id)}"
+        data-r="${e(servie)}">Livrer à ${e(drapeauDe(S.world, servie).nom)}</button>`
+    : ''}
+    <button class="act mini danger" data-a="raser" data-k="${e(col.id)}">Raser la place</button>
+  </div>
+  <div class="aide">${servie && col.faction !== servie
+    ? `Leur donner ${e(col.nom)} vous vaudra beaucoup auprès d’eux, et une rancune tenace
+      chez ceux qui la perdent. `
+    : `Vous ne servez personne à qui la donner. `}La garder pour vous demanderait un drapeau
+    à vous — vous n’en avez pas.</div>`;
 }
 
 /** Ce qu'une ville garde en réserve, toutes marchandises confondues. */
@@ -34710,6 +34913,20 @@ function surClic(ev) {
       break;
     }
 
+    case 'livrer': {
+      const r = ACTIONS.livrerPlace(el.dataset.k, el.dataset.r);
+      toast(r.ok ? 'La place change de drapeau.' : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
+    case 'raser': {
+      const r = ACTIONS.raserPlace(el.dataset.k);
+      toast(r.ok ? 'Il n’en reste que des murs noircis.' : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
     case 'assaut': {
       const r = ACTIONS.attaquerVille(el.dataset.k);
       if (!r.ok) toast(r.motif, true);
@@ -35898,6 +36115,24 @@ const API = {
     return res;
   },
 
+  /** Livrer une place à terre à ceux dont on porte les couleurs. */
+  livrerPlace(id, faction) {
+    const col = state.world.colonies.find((c) => c.id === id);
+    if (!col) return { ok: false, motif: 'Cette ville n’est plus là.' };
+    const r = livrerPlace(state, col, faction, creerLogger(state));
+    if (r.ok) sauver();
+    return r;
+  },
+
+  /** Ou la raser. */
+  raserPlace(id) {
+    const col = state.world.colonies.find((c) => c.id === id);
+    if (!col) return { ok: false, motif: 'Cette ville n’est plus là.' };
+    const r = raserPlace(state, col, creerLogger(state));
+    if (r.ok) sauver();
+    return r;
+  },
+
   /** Engagement d'un mercenaire dans une ville : il rejoint le groupe affiché. */
   /** Engager quelqu'un du banc de la ville où l'on se trouve. */
   recruter(id, vue) {
@@ -36333,6 +36568,15 @@ if (typeof window !== 'undefined') {
   window.__sauvegardeTexte = (cle) => {
     ecrireSurPlace();
     return lireTexteSauvegarde(cle);
+  };
+  // Abattre la garde d'une place sans jouer le siège : la suite navigateur
+  // vérifie le menu de la chute, pas la durée d'un siège — qui se compte en
+  // jours et qui a ses propres sondes au moteur. Fenêtre d'atelier, comme
+  // au-dessus.
+  window.__testAbattreGarde = (id) => {
+    const col = state && state.world.colonies.find((c) => c.id === id);
+    if (col) col.defense = 0;
+    rafraichir(true);
   };
 }
 

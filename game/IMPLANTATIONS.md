@@ -112,9 +112,18 @@ l'escouade. On retourne ce qui existe, formule comprise — aucune règle neuve.
   vétérans pèsent exactement une colonne levée : une bourgade tombe en
   quelques jours, une place tenue en semaines, une capitale murée demande une
   vraie armée — qu'on sait déjà lever par ses prérogatives.
-- **S2, la chute et ses suites.** Le menu devant une place à terre : la donner
-  au drapeau qu'on sert (c'est M2), la piller à fond, la raser, se retirer.
-  « Pour soi » reste impossible tant qu'on n'a pas de drapeau (M3).
+- **S2, la chute et ses suites.** ✅ **Livré.** Le menu paraît sous une place
+  dont la garde ne tient plus. **La livrer** au drapeau qu'on sert — c'est M2,
+  réglé du même coup : `basculerPlace`, extraite de `capturer` pour ne pas
+  l'écrire deux fois, fait changer la ville et la région de couleurs, dépêche
+  comprise ; les vôtres vous en savent gré, ceux qui la perdent ne vous le
+  pardonnent pas. **La raser** : il n'en reste qu'une ruine, et personne ne
+  l'oublie. **La piller**, c'est le coup de main, déjà là. Le garde-fou du
+  monde vaut ici aussi : la dernière ville d'un pays ne se prend ni ne se rase,
+  et le panneau le dit.
+
+  « Pour soi » reste impossible faute de drapeau (M3) — et le panneau le dit
+  aussi, plutôt que de laisser chercher un bouton qui n'existe pas.
 - **S3, la faim.** Un siège coupe les convois ; une place affamée se rend sans
   qu'on ait à monter dedans. C'est le lot qui rend le siège autre chose qu'un
   combat long.

@@ -16,7 +16,7 @@ import { creerLogger, fouillerSite, combatContre } from './events.js';
 import {
   attaquerCaravane, passerOrdre, ordresEnCours, ESCORTES,
 } from './caravanes.js';
-import { attaquerVille } from './assaut.js';
+import { attaquerVille, livrerPlace, raserPlace } from './assaut.js';
 import { peutTraiter, comptoirsPossibles, comptoirActif, chiffrerOrdre } from './bourse.js';
 import { sEngager, quitter, toucherRations as toucherRationsA } from './allegeance.js';
 import { genererBande, TACTIQUES } from './combat.js';
@@ -488,6 +488,24 @@ const API = {
     return res;
   },
 
+  /** Livrer une place à terre à ceux dont on porte les couleurs. */
+  livrerPlace(id, faction) {
+    const col = state.world.colonies.find((c) => c.id === id);
+    if (!col) return { ok: false, motif: 'Cette ville n’est plus là.' };
+    const r = livrerPlace(state, col, faction, creerLogger(state));
+    if (r.ok) sauver();
+    return r;
+  },
+
+  /** Ou la raser. */
+  raserPlace(id) {
+    const col = state.world.colonies.find((c) => c.id === id);
+    if (!col) return { ok: false, motif: 'Cette ville n’est plus là.' };
+    const r = raserPlace(state, col, creerLogger(state));
+    if (r.ok) sauver();
+    return r;
+  },
+
   /** Engagement d'un mercenaire dans une ville : il rejoint le groupe affiché. */
   /** Engager quelqu'un du banc de la ville où l'on se trouve. */
   recruter(id, vue) {
@@ -923,6 +941,15 @@ if (typeof window !== 'undefined') {
   window.__sauvegardeTexte = (cle) => {
     ecrireSurPlace();
     return lireTexteSauvegarde(cle);
+  };
+  // Abattre la garde d'une place sans jouer le siège : la suite navigateur
+  // vérifie le menu de la chute, pas la durée d'un siège — qui se compte en
+  // jours et qui a ses propres sondes au moteur. Fenêtre d'atelier, comme
+  // au-dessus.
+  window.__testAbattreGarde = (id) => {
+    const col = state && state.world.colonies.find((c) => c.id === id);
+    if (col) col.defense = 0;
+    rafraichir(true);
   };
 }
 
