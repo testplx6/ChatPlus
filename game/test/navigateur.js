@@ -2874,6 +2874,73 @@ console.log('\n8 nonies quater. Le comptoir, à l’écran');
   ok(pliableApres, 'et le panneau reposé garde sa poignée de pli');
 }
 
+console.log('\n8 nonies quinquies. Donner l’assaut à une ville (IMPLANTATIONS.md, M1)');
+{
+  // Le verbe existait dans le moteur depuis la veille et restait hors de portée
+  // du joueur : aucune action, aucun bouton. « Comment peut-on capturer une
+  // ville avec son escouade ? » — on commence par pouvoir y entrer.
+  const as = partieAvancee();
+  const gAs = groupeActif(as);
+  const cible = as.world.colonies.find((c) => !c.ruine && c.faction && !c.avantPoste);
+  gAs.regionId = cible.regionId;
+  // Une garnison qui ne tiendra pas, et de quoi piller.
+  cible.defense = 2;
+  cible.murs = 0;
+  for (const k of Object.keys(cible.stock)) cible.stock[k] = 0;
+  cible.stock.alliage = 90;
+  for (const m of gAs.membres) {
+    m.skills.melee = 95; m.skills.endurance = 95; m.skills.tir = 95;
+    for (const part of Object.keys(m.corps)) m.corps[part].pv = m.corps[part].max;
+  }
+  as.dernierReel = Date.now();
+
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(as));
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.waitForTimeout(400);
+
+  const texteAs = await page.evaluate(() => document.querySelector('#ecran').textContent);
+  ok(/Coup de main/i.test(texteAs), 'la ville où l’on se tient propose d’y entrer de force',
+    texteAs.slice(0, 200));
+  ok(/oppose/i.test(texteAs), 'et dit ce qu’elle oppose avant qu’on décide');
+
+  const boutonAs = await page.$('[data-a="assaut"]');
+  ok(!!boutonAs, 'le bouton existe');
+
+  const sacAvant = await page.evaluate(() => {
+    const s2 = JSON.parse(window.__sauvegardeTexte());
+    const g = s2.player.groupes.find((x) => x.id === s2.player.groupeActif);
+    return g.inventaire.alliage || 0;
+  });
+  await page.evaluate(() => {
+    const b = document.querySelector('[data-a="assaut"]');
+    if (b) b.scrollIntoView({ block: 'center' });
+  });
+  await page.screenshot({ path: join(CAPTURES, '26-assaut.png') });
+  await page.click('[data-a="assaut"]');
+  await page.waitForTimeout(700);
+
+  const apresAs = await page.evaluate((id) => {
+    const s2 = JSON.parse(window.__sauvegardeTexte());
+    const g = s2.player.groupes.find((x) => x.id === s2.player.groupeActif);
+    const col = s2.world.colonies.find((c) => c.id === id);
+    return {
+      alliage: g.inventaire.alliage || 0,
+      villeAlliage: Math.round(col.stock.alliage || 0),
+      drapeau: col.faction,
+      texte: document.querySelector('#ecran').textContent,
+    };
+  }, cible.id);
+  ok(apresAs.alliage > sacAvant, 'ce qu’on a pris est dans le sac',
+    `${sacAvant} → ${apresAs.alliage}`);
+  ok(apresAs.villeAlliage === 90 - (apresAs.alliage - sacAvant),
+    'et la ville a perdu exactement ça',
+    `ville ${apresAs.villeAlliage}, sac +${apresAs.alliage - sacAvant}`);
+  ok(apresAs.drapeau === cible.faction,
+    'un coup de main ne prend pas la ville : elle garde son drapeau');
+}
+
 console.log('\n8 decies. Métiers de l’avant-poste');
 const bourg = partieAvancee();
 Object.assign(bourg.base.batiments, { hydroponie: 2, entrepot: 3, mur: 2, baraquement: 1 });

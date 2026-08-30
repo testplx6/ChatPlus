@@ -118,6 +118,7 @@ import {
   TACHES_INDIVIDUELLES, noyau, plafondCohesion, rendementCohesion, placesSociables,
   vivants as vivantsDe,
 } from './groupes.js';
+import { RAID_VILLE } from './assaut.js';
 
 // ---------------------------------------------------------------------------
 // État local de l'interface
@@ -2307,7 +2308,55 @@ function blocColonie(col) {
       ${portesDeVille(col, libre, repu)}
     </div>
     ${blocEngagement(col)}
+  </section>
+  ${blocAssaut(col)}`;
+}
+
+/**
+ * Entrer de force dans la ville où l'on se tient (IMPLANTATIONS.md, M1).
+ *
+ * Le verbe a vécu un jour entier dans le moteur sans que personne puisse le
+ * prononcer : `attaquerVille` était écrit et vérifié, aucun bouton ne le
+ * demandait. C'était la seule attaque du jeu qu'on ne pouvait pas porter —
+ * l'embuscade de caravane était la seule action offensive de toute
+ * l'interface.
+ *
+ * On dit ce que la place oppose AVANT de décider : une garnison, des murs, et
+ * le nombre d'hommes que ça met devant vous. Un coup de main qui surprend le
+ * joueur n'est pas un choix, c'est un piège.
+ *
+ * Pas sur son propre camp : sa vérité est dans `state.base`, et l'on ne se
+ * pille pas soi-même.
+ */
+function blocAssaut(col) {
+  if (!col || col.ruine || col.avantPoste) return '';
+  const debout = G().membres.filter(estDebout);
+  const force = RAID_VILLE.forceDe(col);
+  const libre = !drapeauDe(S.world, col.faction);
+  return `
+  <section class="panneau">
+    <h2 class="titre">Coup de main
+      <span class="droite alerte">${n(force)} homme${force > 1 ? 's' : ''} devant vous</span></h2>
+    <div class="aide">Entrer de force à ${e(col.nom)} : on prend ce qu’on peut porter, et
+      l’on ressort. Une ville ne se garde pas comme ça — elle restera à qui elle est.</div>
+    <div class="ligne"><span class="k">Ce qu’elle oppose</span>
+      <span class="v">garnison ${n(col.defense)}${col.murs ? ` · murs ${n(col.murs)}` : ' · pas de murs'}</span></div>
+    <div class="ligne"><span class="k">Ce qu’il y a à prendre</span>
+      <span class="v">${n(Math.round(totalStockColonie(col)))} unités en réserve</span></div>
+    <div class="aide alerte">Ceux d’ici s’en souviendront${libre ? '.'
+    : `, et ${drapeauDe(S.world, col.faction).nom} l’apprendra${
+      drapeauDe(S.world, col.faction).pluriel ? 'nt' : ''}.`}</div>
+    <button class="act mini danger" data-a="assaut" data-k="${e(col.id)}"
+      ${debout.length ? '' : 'disabled'}>${debout.length
+    ? 'Donner l’assaut' : 'Personne ne tient debout'}</button>
   </section>`;
+}
+
+/** Ce qu'une ville garde en réserve, toutes marchandises confondues. */
+function totalStockColonie(col) {
+  let t = 0;
+  for (const k of COMMODITY_KEYS) t += col.stock[k] || 0;
+  return t;
 }
 
 /**
@@ -6974,6 +7023,20 @@ function surClic(ev) {
     case 'quitter-service': {
       const r = ACTIONS.quitterService();
       toast(r.ok ? 'Engagement rompu.' : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
+    case 'assaut': {
+      const r = ACTIONS.attaquerVille(el.dataset.k);
+      if (!r.ok) toast(r.motif, true);
+      else if (!r.gagne) toast(r.motif || 'La garde a tenu.', true);
+      else {
+        const emporte = Object.values(r.pris || {}).reduce((a, b) => a + b, 0);
+        toast(emporte
+          ? `On ressort avec ${n(emporte)} unités.`
+          : 'On ressort les mains vides : il n’y avait rien à prendre.');
+      }
       rafraichir(true);
       break;
     }

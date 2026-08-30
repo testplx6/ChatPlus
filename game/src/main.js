@@ -16,6 +16,7 @@ import { creerLogger, fouillerSite, combatContre } from './events.js';
 import {
   attaquerCaravane, passerOrdre, ordresEnCours, ESCORTES,
 } from './caravanes.js';
+import { attaquerVille } from './assaut.js';
 import { peutTraiter, comptoirsPossibles, comptoirActif, chiffrerOrdre } from './bourse.js';
 import { sEngager, quitter, toucherRations as toucherRationsA } from './allegeance.js';
 import { genererBande, TACTIQUES } from './combat.js';
@@ -468,6 +469,20 @@ const API = {
     if (!car) return { ok: false, motif: 'La caravane est déjà loin.' };
     const rng = new Rng(state.rngState);
     const res = attaquerCaravane(state, car, rng, creerLogger(state), combatContre, genererBande);
+    state.rngState = rng.save();
+    sauver();
+    return res;
+  },
+
+  /**
+   * Un coup de main sur la ville où l'on se tient. Le moteur vérifie qu'on y
+   * est, que ce n'est pas son propre camp, et que la place existe encore.
+   */
+  attaquerVille(id) {
+    const col = state.world.colonies.find((c) => c.id === id);
+    if (!col) return { ok: false, motif: 'Cette ville n’est plus là.' };
+    const rng = new Rng(state.rngState);
+    const res = attaquerVille(state, col, rng, creerLogger(state), combatContre, genererBande);
     state.rngState = rng.save();
     sauver();
     return res;
