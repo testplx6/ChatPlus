@@ -575,25 +575,99 @@ tombé revient** : il faut qu'une de ses anciennes villes se soulève et le
 rappelle. Personne ne le décide d'en haut. C'est aussi, en l'état, la seule
 façon dont un drapeau neuf apparaît dans le monde.
 
-### 8.3 Ce qui reste bloqué : la naissance
+### 8.3 La naissance : le mécanisme avait une seule raison, il en a autant qu'on veut
 
-Aucun pays ne naît, et la cause est mesurée. Une compagnie franche se fonde
-quand une colonne a cessé d'espérer sa solde : `impayees > loyauté ×
-COLONNE.patience`, soit environ 72 heures d'ardoise. Or **l'ardoise maximale du
-monde entier vaut zéro** sur six graines × 6 000 heures — une seule colonne a
-atteint 25 heures, sur une seule graine. Les pays sont trop riches pour manquer
-une solde : trésor médian 23 609 pour une solde de l'ordre de 150.
+> « Il y a autant de raisons de fonder sa faction que de façons de simuler le
+> monde. » — le propriétaire, quand je lui demandais laquelle choisir
 
-Le seuil n'est donc pas mal calibré, il est hors d'atteinte. Et le baisser
-serait le mauvais geste : ça ferait des sécessions de misère, pas des pays
-neufs.
+Aucun pays ne naissait, et la cause était mesurée : une compagnie franche ne se
+fondait que sur un défaut de solde — environ 72 heures d'impayé — or **l'ardoise
+maximale du monde entier valait zéro** sur six graines × 6 000 heures. Les pays
+sont trop riches pour manquer une paie : trésor médian 23 609 pour une solde de
+l'ordre de 150. Le seuil n'était pas mal réglé, il était hors d'atteinte, et le
+baisser n'aurait produit que des sécessions de misère.
 
-**La question à trancher, et c'est une règle de jeu, donc elle revient au
-propriétaire** : est-ce que le défaut de solde doit rester le *seul* motif de
-sécession ? Dans un monde vrai, on plante son propre drapeau aussi par ambition
-(un capitaine que sa légitimité dépasse), par distance (une colonne loin de
-tout, depuis longtemps), par victoire (celui qui vient de prendre une ville et
-ne voit pas pourquoi la rendre), ou parce que le pays qu'on sert s'effondre. Le
-mécanisme de fondation existe et fonctionne — `fonderColonne` est écrite,
-testée, et sait déjà faire naître un pays avec ses hommes et sa ville. Il ne lui
-manque que des raisons d'être appelée.
+La réponse du propriétaire ferme la question et impose la forme : on n'en
+choisit pas une, et on n'écrit pas une liste close dans le corps d'une fonction.
+**Les motifs sont de la donnée** — `MOTIFS_SECESSION` dans `factions.js`. Chacun
+dit ce que le capitaine regarde et combien ça pèse ; en ajouter un ne demande de
+toucher à rien d'autre.
+
+| motif | ce que le capitaine regarde |
+|---|---|
+| `solde` | ce qu'on lui doit, rapporté à ce qu'il endure |
+| `ambition` | un chef que plus personne ne suit, et une troupe qui, elle, se suit très bien |
+| `eloignement` | ce qui le sépare de la plus proche ville de son propre drapeau |
+| `victoire` | il tient une place qu'il a prise lui-même |
+| `naufrage` | le pays qu'il sert n'a plus que deux villes, ou une |
+
+Chaque `veut` rend une envie sans unité ; **aucun tirage** — le hasard est déjà
+dans tout ce qui l'alimente, et un dé de plus décalerait le flux scellé.
+
+**Le banc a corrigé la conception, et c'est le passage intéressant.** J'avais
+réglé les poids pour qu'un motif poussé à bout suffise seul :
+
+| seuil | villes | pop | cours | nés | morts | pays vivants |
+|---:|---:|---:|---|---:|---:|---:|
+| témoin (rien ne naît) | 370 | 153 965 | 0,07–5,32 | 0 | 3 | 36 |
+| 1 | 361 | 148 030 | **0,01–106,62** | **122** | 56 | **103** |
+| 1,5 | 359 | 152 715 | 0,00–5,78 | 16 | 11 | 45 |
+| 2 | 367 | 157 158 | 0,06–5,76 | 10 | 7 | 42 |
+
+À 1, le monde s'émiette : cent trois drapeaux et une monnaie à 106 — ce n'est
+plus une carte politique, c'est une poussière. **Il faut donc plus d'une raison
+pour planter ses couleurs**, ce qui est d'ailleurs plus vrai que ma première
+idée : personne ne fait sécession pour un seul grief. `SECESSION.seuil = 1,5`.
+
+Deux réglages en découlent, tous deux imposés par la mesure :
+
+- **la victoire est bornée sous le seuil.** À plein poids, TOUTE prise de ville
+  faisait un pays neuf, y compris sous un chef que rien ne contestait. Elle
+  incline ; il lui faut un chef médiocre, une solde en retard ou la distance.
+- **le rachat par l'ennemi passe avant la fondation.** Un capitaine qu'on ne
+  paie plus prend d'abord l'argent comptant : on ne fonde pas un pays quand
+  quelqu'un propose de solder l'ardoise le jour même.
+
+**L'état livré**, six graines × 6 000 h, contre le monde où rien ne naissait :
+
+| | témoin | après |
+|---|---:|---:|
+| pays fondés | **0** | **11** |
+| pays éteints | 3 | 9 |
+| drapeaux vivants à la fin | 36 | 42 |
+| villes debout | 370 | 361 |
+| population | 153 965 | 152 001 |
+| fourchette des cours | 0,07–5,32 | 0,01–5,72 |
+| écart comptable | 0 | 0 |
+| coût du tick | — | ×1,027 |
+
+### 8.4 Ce que ça a fait tomber autour, et qui était déjà faux
+
+Quatre sondes sont tombées avec ce lot. **Aucune ne signalait un défaut du
+mécanisme** : toutes tenaient un référentiel figé à la composition du premier
+jour, et ne s'en apercevaient pas tant que la carte politique ne bougeait pas.
+
+- « la réputation ne contient que de vraies factions » comparait à
+  `DIPLO_FACTIONS`, les sept d'origine — donc déclarait fausse une réputation
+  parfaitement réelle, celle qu'on s'est faite auprès d'un pays né en cours de
+  partie. C'est le piège que `data.js` documente sous `clesDe`, et la sonde
+  marchait dedans.
+- « classement des factions ordonné » exigeait `length === 6`.
+- « les charges restent pourvues » suivait `colonies[0]` pendant six mille
+  heures ; cette ville-là finit en ruine dépeuplée, et une ruine n'a pas de
+  charges à pourvoir.
+- « un voisin en guerre et solvable la rachète » : c'est celle-là qui a révélé
+  l'ordre des issues, et elle avait raison.
+
+Le coût du tick a d'abord bondi de dix pour cent, au-dessus du plafond de
+vitesse — `envieDeFonder` balayait les cinq cents villes du monde une fois par
+colonne et par conseil, pour une liste que `jugerColonnes` tenait déjà sous la
+main. Passée en argument : ×1,027, et le plafond n'a pas bougé d'un pouce.
+
+### 8.5 Ce qui reste
+
+Les motifs sont ouverts : en ajouter un est une entrée dans `MOTIFS_SECESSION`,
+et rien d'autre. Ceux qu'on n'a pas écrits et qui se tiendraient — la foi (un
+capitaine dont le drapeau abjure ce qu'il croit), le sang (un chef qui a fait
+tuer les siens), l'appel d'un voisin (on fonde parce qu'un pacte attend qu'on
+existe) — n'attendent qu'un `veut` chacun.

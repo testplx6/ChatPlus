@@ -73,6 +73,7 @@ import {
 } from '../src/pactes.js';
 import { declarerGuerreA as declarerGuerreAImp, cibleGuerre as cibleGuerreImp } from '../src/influence.js';
 import { enGuerre as enGuerreImp, leverArmee as leverArmeeImp } from '../src/factions.js';
+import { envieDeFonder, SECESSION, MOTIFS_SECESSION } from '../src/factions.js';
 import { dirigeant as dirigeantDe } from '../src/dirigeants.js';
 import { peutExercer as peutExercerImp } from '../src/influence.js';
 import { drapeauDe as drapeauDeImp } from '../src/data.js';
@@ -1244,8 +1245,14 @@ const proprioFin = s5.world.colonies.map((c) => c.faction).join(',');
 ok(guerresVues.size > 0, 'des guerres ont éclaté', `${guerresVues.size} conflits distincts`);
 ok(armeesVues > 0, 'des armées ont été levées', `pic à ${armeesVues}`);
 ok(proprioDepart !== proprioFin, 'la carte politique a changé');
+// Le classement porte sur les drapeaux VIVANTS du monde, dont le nombre n'est
+// plus six : des pays naissent et s'éteignent en cours de partie. Ce qu'on
+// vérifie est l'invariant — la liste est ordonnée, du plus fort au plus faible
+// — et non une taille figée à la composition du premier jour.
 const classe = classement(s5.world);
-ok(classe.length === 6 && classe[0].puissance >= classe[5].puissance, 'classement des factions ordonné');
+const ordonne = classe.every((e, i) => i === 0 || classe[i - 1].puissance >= e.puissance);
+ok(classe.length >= 6 && ordonne, 'classement des factions ordonné',
+  `${classe.length} drapeaux, ${ordonne ? 'ordonnés' : 'DÉSORDONNÉS'}`);
 console.log(`  → dominante : ${classe[0].nom} (${classe[0].colonies} colonies, puissance ${classe[0].puissance})`);
 verifierCoherence(s5, 'après 4 000 h de guerre');
 
@@ -1516,8 +1523,16 @@ s9b.player.posture = 'agressif';
 donnerOrdre(s9b, { type: 'patrouille' });
 for (let i = 0; i < 8000; i++) tick(s9b);
 ok(s9b.temps === 8000, 'huit mille heures sans plantage', `t=${s9b.temps}`);
-const repInconnue = Object.keys(s9b.player.reputation).filter((k) => !DIPLO_FACTIONS.includes(k));
-ok(repInconnue.length === 0, 'la réputation ne contient que de vraies factions', repInconnue.join(','));
+// Le référentiel est celui du MONDE, pas celui du jeu. `DIPLO_FACTIONS` est figé
+// aux sept d'origine et décrit la partie qu'on n'a pas encore commencée : depuis
+// que des drapeaux naissent en cours de route, s'en servir ici revenait à
+// déclarer fausse une réputation parfaitement réelle — celle qu'on s'est faite
+// auprès d'un pays fondé pendant la partie. C'est le piège que `data.js`
+// documente sous `clesDe`, et la sonde marchait dedans.
+const repInconnue = Object.keys(s9b.player.reputation).filter(
+  (k) => !clesDe(s9b.world).includes(k));
+ok(repInconnue.length === 0, 'la réputation ne contient que des drapeaux qui existent',
+  repInconnue.join(','));
 const vivantes = s9b.world.colonies.filter((c) => !c.ruine);
 ok(vivantes.length >= 6, 'le monde garde un socle de villes vivantes', `${vivantes.length}/${s9b.world.colonies.length}`);
 ok(s9b.world.colonies.some((c) => c.fondeeA !== undefined), 'des villes ont été fondées en cours de partie');
@@ -4835,7 +4850,14 @@ const ageApres = (suivi.notables || []).reduce((t, p) => t + p.age, 0);
 const nomsApres = (suivi.notables || []).map((p) => p.nom).join('|');
 ok(ageApres > ageAvant || nomsApres !== nomsAvant,
   'les notables vieillissent, ou cèdent la place');
-ok((suivi.notables || []).length > 0, 'et les charges restent pourvues');
+// La ville suivie peut être MORTE au bout de six mille heures — celle-ci l'est,
+// dépeuplée et en ruine, et une ruine n'a pas de charges à pourvoir. Le décor
+// pariait qu'elle survivrait ; il tenait tant que la carte politique ne bougeait
+// pas. On vérifie ce qu'on voulait vérifier : une ville VIVANTE a des notables.
+const vivanteV = s9v.world.colonies.find((c) => !c.ruine && c.faction && c.pop > 100);
+ok(!!vivanteV && (vivanteV.notables || []).length > 0, 'et les charges restent pourvues',
+  vivanteV ? `${vivanteV.nom} : ${(vivanteV.notables || []).length} notables`
+    : 'plus une ville debout');
 
 verifierCoherence(s9u, 'après une année avec métiers et notables');
 
@@ -14435,6 +14457,154 @@ section('PERF 4. L’ami et le rival se lisent dans les liens, pas dans la foule
     for (let i = 0; i < 25; i++) tick(sK);
     ok(!!fK.dirigeant, 'il retrouve quelqu’un à sa tête',
       fK.dirigeant ? 'un chef' : 'personne');
+  }
+}
+
+
+// ===========================================================================
+// FACTIONS-NEUVES, la reprise : un pays doit pouvoir naître
+// ===========================================================================
+//
+// « Il y a autant de raisons de fonder sa faction que de façons de simuler le
+// monde. » — le propriétaire, août 2026.
+//
+// Le mécanisme existait et ne servait jamais : une compagnie franche ne se
+// fondait que sur un défaut de solde, et l'ardoise maximale du monde entier
+// vaut zéro sur six graines — les pays sont trop riches pour manquer une paie.
+// Le seuil n'était pas mal réglé, il était hors d'atteinte, et le baisser
+// n'aurait produit que des sécessions de misère.
+//
+// Les motifs sont donc devenus de la DONNÉE : chacun dit ce que le capitaine
+// regarde et combien ça pèse. En ajouter un ne demande pas de toucher à la
+// machinerie — c'est la forme que la phrase du propriétaire impose.
+//
+// **Et le banc a corrigé la conception au passage.** J'avais réglé les poids
+// pour qu'un motif poussé à bout suffise seul : le monde s'est émietté en cent
+// trois drapeaux, avec une monnaie à 106. À `seuil = 1,5`, il faut plus d'une
+// raison pour planter ses couleurs — ce qui est d'ailleurs plus vrai : personne
+// ne fait sécession pour un seul grief.
+{
+  const partie = () => {
+    const s = nouvellePartie(919100, { maintenant: 0 });
+    for (let i = 0; i < 60; i++) tick(s);
+    const cle = clesDe(s.world).find((k) => k !== 'essaim'
+      && s.world.factions[k] && s.world.factions[k].colonies.length >= 3);
+    const depart = s.world.colonies.find((c) => c.faction === cle && !c.ruine);
+    const amie = s.world.colonies.find((c) => c.faction === cle && !c.ruine && c.id !== depart.id);
+    const a = leverArmeeImp(s.world, cle, 140, depart.regionId, amie.id, () => {});
+    // Une colonne rappelée chez elle : c'est le seul état où une colonne marche
+    // vers une ville de son propre drapeau sans être dissoute sur-le-champ
+    // (« rebrousse chemin : la ville est déjà tombée »). Le décor a besoin d'une
+    // colonne qui ne parte pas au combat — sinon elle enlève une place, sa
+    // force tombe de moitié et l'on mesure sa dissolution.
+    a.rappel = true;
+    return { s, cle, f: s.world.factions[cle], a };
+  };
+
+  // --- Chaque motif pèse, et pèse pour la raison qu'il annonce. On lit l'envie
+  // directement : un décor qui fait tourner quatre cents heures mesure surtout
+  // ce que le monde a décidé entre-temps.
+  {
+    const { s, cle, f, a } = partie();
+    a.impayees = 0;
+    f.dirigeant.legitimite = 75;
+    const calme = envieDeFonder(s.world, a, cle);
+    ok(calme.total < SECESSION.seuil,
+      'un capitaine payé, proche des siens, sous un chef assis : aucune envie de partir',
+      `envie ${calme.total.toFixed(2)} pour un seuil de ${SECESSION.seuil}`);
+
+    f.dirigeant.legitimite = 5;
+    const ambitieux = envieDeFonder(s.world, a, cle);
+    ok(ambitieux.parts.parMotif.ambition > calme.parts.parMotif.ambition,
+      'l’ambition pèse : un chef que personne ne suit donne des idées à son capitaine',
+      `${ambitieux.parts.parMotif.ambition.toFixed(2)} contre ${calme.parts.parMotif.ambition.toFixed(2)}`);
+
+    f.dirigeant.legitimite = 75;
+    // La case la plus loin de TOUTES ses villes, pas d'une seule : le motif lit
+    // la distance à la plus proche, et un pays de onze villes en a toujours une
+    // dans le voisinage.
+    const siennes = s.world.colonies.filter((c) => c.faction === cle && !c.ruine);
+    let pire = null;
+    let mieux = -1;
+    for (const r of s.world.regions) {
+      let proche = Infinity;
+      for (const c of siennes) proche = Math.min(proche, distance(r.i, c.regionId));
+      if (proche > mieux) { mieux = proche; pire = r; }
+    }
+    const ici = a.regionId;
+    a.regionId = pire.i;
+    const eloigne = envieDeFonder(s.world, a, cle);
+    ok(eloigne.parts.parMotif.eloignement > 0,
+      'l’éloignement pèse : à l’autre bout du monde, le pays qu’on sert est une idée',
+      `${eloigne.parts.parMotif.eloignement.toFixed(2)}`);
+    a.regionId = ici;
+
+    a.etat = 'garnison';
+    const vainqueur = envieDeFonder(s.world, a, cle);
+    ok(vainqueur.parts.parMotif.victoire > 0,
+      'la victoire pèse : qui tient la place qu’il a prise y pense',
+      `${vainqueur.parts.parMotif.victoire.toFixed(2)}`);
+    // Mais elle ne suffit pas seule, et c'est la mesure qui l'a imposé : à
+    // plein poids, TOUTE prise de ville faisait un pays neuf.
+    ok(vainqueur.total < SECESSION.seuil,
+      'et elle ne suffit pas seule : sous un chef assis, on rend la place',
+      `envie ${vainqueur.total.toFixed(2)}`);
+    a.etat = 'marche';
+
+    a.impayees = 400;
+    const impaye = envieDeFonder(s.world, a, cle);
+    ok(impaye.parts.parMotif.solde > 0, 'la solde pèse : on ne les payait plus',
+      `${impaye.parts.parMotif.solde.toFixed(2)}`);
+    a.impayees = 0;
+  }
+
+  // --- Le naufrage, qui demande de démolir le pays : à part.
+  {
+    const { s, cle, f, a } = partie();
+    a.impayees = 0;
+    f.dirigeant.legitimite = 75;
+    for (const id of f.colonies.slice(2)) {
+      const c = s.world.colonies.find((x) => x.id === id);
+      if (c) effondrer(s.world, c);
+    }
+    const nauf = envieDeFonder(s.world, a, cle);
+    ok(nauf.parts.parMotif.naufrage > 0,
+      'le naufrage pèse : on ne coule pas avec le pays qu’on servait',
+      `${nauf.parts.parMotif.naufrage.toFixed(2)} pour ${nauf.parts.villes} ville(s)`);
+  }
+
+  // --- Et l'intégration : deux raisons qui se cumulent font un pays, pour de
+  // vrai, jusqu'au drapeau planté sur la carte.
+  {
+    const { s, cle, f, a } = partie();
+    // Deux raisons, et surtout PAS la solde : une colonne qu'on ne paie plus se
+    // fait d'abord racheter par le premier ennemi solvable — c'est l'issue qui
+    // passe avant, et le décor mesurait alors une veste retournée, pas une
+    // sécession. On prend donc un chef que personne ne respecte, et une colonne
+    // à l'autre bout du monde.
+    const siennes = () => s.world.colonies.filter((c) => c.faction === cle && !c.ruine);
+    let pire = null;
+    let mieux = -1;
+    for (const r of s.world.regions) {
+      let proche = Infinity;
+      for (const c of siennes()) proche = Math.min(proche, distance(r.i, c.regionId));
+      if (proche < Infinity && proche > mieux) { mieux = proche; pire = r; }
+    }
+    const tenir = () => {
+      a.impayees = 0;
+      a.regionId = pire.i;
+      if (f.dirigeant) f.dirigeant.legitimite = 8;
+    };
+    tenir();
+    const sien = () => (s.world.drapeaux[a.faction] ? 1 : 0);
+    for (let i = 0; i < 900 && !sien(); i++) { tick(s); if (!sien()) tenir(); }
+    ok(sien() === 1, 'deux raisons qui se cumulent font un drapeau neuf sur la carte',
+      sien() ? `drapeau ${a.faction}` : 'rien');
+    if (sien()) {
+      ok(!!s.world.drapeaux[a.faction].couleur && !!s.world.drapeaux[a.faction].nom,
+        'et il naît complet : un nom, une couleur à lui',
+        `${s.world.drapeaux[a.faction].nom}`);
+    }
   }
 }
 

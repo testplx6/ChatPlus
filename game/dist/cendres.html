@@ -17097,7 +17097,7 @@ function fonderDrapeau(state, nom, log) {
   return { ok: true, cle };
 }
 
-function fonderColonne(world, a, key, t, log) {
+function fonderColonne(world, a, key, t, log, motif) {
   const f = world.factions[key];
   if (!f || !f.colonies || f.colonies.length === 0) return false;
 
@@ -17153,6 +17153,9 @@ function fonderColonne(world, a, key, t, log) {
     log({
       type: 'colonne',
       texte: `Le capitaine ${capitaine} plante son propre drapeau : ${nom}. `
+        // D'où vient un pays neuf. Le motif dominant est déjà calculé — le
+        // taire reviendrait à faire naître des drapeaux sans histoire.
+        + (motif && MOTIFS_SECESSION[motif] ? `${MOTIFS_SECESSION[motif].dit.charAt(0).toUpperCase()}${MOTIFS_SECESSION[motif].dit.slice(1)}. ` : '')
         + `${drapeauDe(world, key).nom} ${drapeauDe(world, key).pluriel ? 'perdent' : 'perd'} `
         + `une colonne et ${drapeauDe(world, key).pluriel ? 'gagnent' : 'gagne'} un voisin.`,
       regionId: a.regionId,
@@ -17176,6 +17179,132 @@ function fonderColonne(world, a, key, t, log) {
  * payeur règle l'ardoise **depuis son propre trésor** — le circuit reste fermé,
  * et `auditer` le vérifie sur tout le déroulé.
  */
+/**
+ * Ce qui pousse une colonne à planter son propre drapeau.
+ *
+ * « Il y a autant de raisons de fonder sa faction que de façons de simuler le
+ * monde. » — le propriétaire, août 2026, quand je lui demandais laquelle
+ * choisir. La réponse ferme la question : on n'en choisit pas une, et on
+ * n'écrit pas une liste close dans le corps d'une fonction.
+ *
+ * Les motifs sont donc de la DONNÉE. Chacun dit ce que le capitaine regarde et
+ * combien ça pèse ; en ajouter un ne demande de toucher à rien d'autre. Chaque
+ * `veut` rend une envie sans unité, calibrée pour valoir 1 dans son cas
+ * extrême — de sorte qu'un motif poussé au bout suffit seul, et que deux
+ * motifs tièdes se cumulent. C'est tout le mécanisme.
+ *
+ * **Aucun tirage.** L'envie se lit sur le monde, et le hasard est déjà dans
+ * tout ce qui l'alimente : ce qu'on doit à cette colonne, où elle se trouve, ce
+ * qu'elle vient de prendre, ce que vaut le chef qu'on lui a donné. Un dé de
+ * plus ne rendrait pas la décision plus vraie, il la rendrait moins lisible —
+ * et décalerait le flux scellé (piège n° 1).
+ *
+ * Ce que le capitaine sait, et rien d'autre : sa solde, ses hommes, sa
+ * position, l'état du pays qu'il sert et la tenue de son chef. Pas la carte
+ * entière, pas les intentions des autres.
+ */
+const MOTIFS_SECESSION = {
+  solde: {
+    nom: 'la solde',
+    dit: 'on ne les payait plus',
+    veut: (v) => v.a.impayees / Math.max(1, v.loyaute * COLONNE.patience),
+  },
+  ambition: {
+    nom: 'l’ambition',
+    dit: 'son capitaine valait mieux que le chef qu’on lui donnait',
+    // Un chef que plus personne ne suit, à la tête d'une troupe qui, elle, se
+    // suit très bien. C'est le motif le plus ancien du monde.
+    veut: (v) => Math.max(0, (50 - (v.chef ? v.chef.legitimite : 50)) / 50)
+      * Math.min(1, v.a.force / 120),
+  },
+  eloignement: {
+    nom: 'l’éloignement',
+    dit: 'le pays qu’ils servaient était devenu une idée lointaine',
+    // Ce qu'on ne voit plus, on cesse de le craindre. La distance est celle qui
+    // sépare la colonne de la plus proche ville de son propre drapeau.
+    veut: (v) => Math.max(0, (v.loin - 4) / 8),
+  },
+  victoire: {
+    nom: 'la victoire',
+    dit: 'ils tenaient une place qu’ils avaient prise eux-mêmes',
+    // Celui qui vient d'enlever une ville et qui la garde ne voit pas toujours
+    // pourquoi la rendre. `garnison` est exactement cet état-là.
+    //
+    // **Bornée sous le seuil, et c'est la mesure qui l'a imposé.** À un plein
+    // point, toute prise de ville faisait un pays neuf : le monde se serait
+    // émietté à chaque campagne, et un capitaine parfaitement traité aurait
+    // gardé la place pour lui sans autre raison que de l'avoir prise. La
+    // victoire incline, elle ne décide pas — il lui faut un chef médiocre, une
+    // solde en retard ou la distance pour faire pencher la balance.
+    veut: (v) => (v.a.etat === 'garnison' ? Math.min(0.6, v.a.force / 130) : 0),
+  },
+  naufrage: {
+    nom: 'le naufrage',
+    dit: 'ce qu’ils servaient était en train de sombrer',
+    // On ne coule pas avec le pays qu'on servait. Sous trois villes, la maison
+    // n'a plus les moyens de tenir ce qu'elle promet.
+    veut: (v) => Math.max(0, (3 - v.villes) / 3),
+  },
+};
+
+/**
+ * À partir de quelle envie cumulée on plante ses couleurs.
+ *
+ * Balayé sur six graines × 6 000 h, contre un monde où rien ne naissait jamais
+ * (370 villes, 153 965 habitants, cours 0,07–5,32, 36 pays) :
+ *
+ *   seuil   villes    pop      cours        nés  morts  pays vivants
+ *   1        361    148 030   0,01–106,62   122    56       103
+ *   1,5      359    152 715   0,00–5,78      16    11        45
+ *   2        367    157 158   0,06–5,76      10     7        42
+ *
+ * À 1, le monde s'émiette : cent trois drapeaux et une monnaie à 106, ce qui
+ * n'est plus une carte politique mais une poussière. À 1,5 la carte bouge
+ * franchement — seize pays nés, onze éteints — et toutes les autres grandeurs
+ * restent celles du témoin. C'est là qu'on se tient.
+ */
+const SECESSION = { seuil: 1.5 };
+
+/**
+ * Ce que cette colonne-ci a envie de faire, et pourquoi.
+ *
+ * Rend l'envie totale et le motif dominant — celui qui nomme la chose dans le
+ * journal. Un pays neuf mérite qu'on dise d'où il vient.
+ */
+function envieDeFonder(world, a, key, chef = null, loyaute = 0, siennes = null) {
+  if (!chef) chef = dirigeant(world, key);
+  if (!loyaute) loyaute = COLONNE.grace * Math.max(0.2, (chef ? chef.legitimite : 50) / 50);
+  // Les villes du pays, passées par l'appelant quand il les a déjà — et il les
+  // a toujours. Les recompter ici revenait à balayer les cinq cents villes du
+  // monde une fois PAR COLONNE et par conseil : dix pour cent du tick, mesurés
+  // au plafond de vitesse, pour une liste que `jugerColonnes` tient sous la
+  // main.
+  if (!siennes) {
+    siennes = [];
+    for (const c of world.colonies) if (c.faction === key && !c.ruine) siennes.push(c);
+  }
+  let loin = 0;
+  const villes = siennes.length;
+  for (let i = 0; i < villes; i++) {
+    const d = distance(siennes[i].regionId, a.regionId);
+    if (i === 0 || d < loin) loin = d;
+  }
+  const v = { world, a, key, chef, loyaute, loin, villes };
+  let total = 0;
+  let fort = null;
+  let mieux = 0;
+  const parMotif = {};
+  for (const k of Object.keys(MOTIFS_SECESSION)) {
+    const envie = MOTIFS_SECESSION[k].veut(v) || 0;
+    parMotif[k] = envie;
+    if (!(envie > 0)) continue;
+    total += envie;
+    if (envie > mieux) { mieux = envie; fort = k; }
+  }
+  v.parMotif = parMotif;
+  return { total, motif: fort, parts: v };
+}
+
 function jugerColonnes(world, key, heures, t, log) {
   const chef = dirigeant(world, key);
   const loyaute = COLONNE.grace * Math.max(0.2, (chef ? chef.legitimite : 50) / 50);
@@ -17192,15 +17321,22 @@ function jugerColonnes(world, key, heures, t, log) {
   //
   // Ce que ça ne rend pas immortel : la bataille, le ravitaillement et le siège
   // tuent des colonnes sans rien demander à la solde.
-  const sansTerre = !world.colonies.some((c) => c.faction === key && !c.ruine);
+  // Les villes du pays, comptées une seule fois : elles servent à savoir s'il
+  // en reste une, et à mesurer ce qui sépare chaque colonne des siens.
+  const siennes = [];
+  for (const c of world.colonies) if (c.faction === key && !c.ruine) siennes.push(c);
+  const sansTerre = siennes.length === 0;
 
   for (const a of world.armees.slice()) {
     if (a.faction !== key) continue;
     if (sansTerre) { a.impayees = 0; continue; }
-    if (!(a.impayees > loyaute)) continue;
 
     // Issue 3 : se faire payer par une autre. Il faut un ennemi de son pays qui
-    // puisse réellement solder l'ardoise — promettre ne suffit pas.
+    // puisse réellement solder l'ardoise — promettre ne suffit pas. Elle reste
+    // AVANT la fondation, et c'est une préférence, pas un détail : un capitaine
+    // qu'on ne paie plus prend d'abord l'argent comptant. On ne fonde pas un
+    // pays quand quelqu'un propose de solder l'ardoise le jour même.
+    if (a.impayees > loyaute) {
     const dette = a.force * ETAT.parSoldat * a.impayees / coursMonnaie(world, key);
     const payeur = Object.keys(world.factions).find(
       (k) => k !== key && k !== 'essaim' && enGuerre(world, k, key)
@@ -17223,13 +17359,24 @@ function jugerColonnes(world, key, heures, t, log) {
       }
       continue;
     }
+    }
 
-    // Issue 5 : planter son propre drapeau. Elle vient avant l'attrition, et
-    // c'est tout l'écart entre une sécession et une agonie : on fonde quand on
-    // est encore une troupe, pas quand il n'en reste rien.
-    if (a.impayees > loyaute * COLONNE.patience
-        && a.force >= COLONNE.debandade * COLONNE.assez
-        && fonderColonne(world, a, key, t, log)) continue;
+    // Issue 5 : planter son propre drapeau. Elle se juge pour TOUTE colonne,
+    // payée ou non — c'est ce qui change. Elle ne venait qu'après un défaut de
+    // solde, donc elle n'existait que pour les affamés ; et comme les pays
+    // paient toujours (ardoise maximale du monde : zéro), elle n'existait pas
+    // du tout. Un capitaine a d'autres raisons que la faim.
+    //
+    // Elle vient avant l'attrition, et c'est tout l'écart entre une sécession
+    // et une agonie : on fonde quand on est encore une troupe, pas quand il
+    // n'en reste rien.
+    if (a.force >= COLONNE.debandade * COLONNE.assez) {
+      const envie = envieDeFonder(world, a, key, chef, loyaute, siennes);
+      if (envie.total >= SECESSION.seuil
+          && fonderColonne(world, a, key, t, log, envie.motif)) continue;
+    }
+
+    if (!(a.impayees > loyaute)) continue;
 
     // Issue 2 : s'affaiblir. La faim mord, et les désertions se comptent.
     const avant = a.force;
