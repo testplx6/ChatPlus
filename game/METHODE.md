@@ -595,3 +595,40 @@ paie au prix de l'étape qui finit par la voir.
 **Le cumul de la chasse**, sur l'appareil du propriétaire : un rendu 1584 → 49
 ms, l'écran Base 2454 → 110, le bloc école 2427 → 71, le tick du monde ×34 à
 mille deux cents membres, et les personnages de 24 Mo à environ 4.
+
+## 12. La mesure ment aussi
+
+Écrite après deux jours passés à chercher une pompe à monnaie qui n'existait
+pas. On se méfie beaucoup du code et pas assez du chiffre qui le juge : une
+colonne du banc a le même air d'autorité qu'elle soit juste ou vide de sens.
+
+**Une somme d'unités hétérogènes n'est pas une mesure.** Avant de croire un
+agrégat, demande dans quelle unité chacun de ses termes est libellé.
+
+> **Incident.** La colonne « masse » du banc additionne les caisses, les
+> ménages et les trésors de trente-six pays — chacun dans sa propre monnaie,
+> dont les cours vont de 0,01 à 186. Un pays dont la monnaie s'effondre porte
+> cent fois plus d'unités pour la même valeur, et le bureau de change fabrique
+> légitimement ces unités-là. La colonne montait donc dès que les cours
+> divergeaient, sans qu'un sou ait été créé nulle part. Elle a fait déclarer un
+> chantier « déstabilisant pour le monde » (PACTES, P3), puis condamner deux
+> hypothèses successives — l'entretien des relations, le coût du secours —,
+> toutes deux innocentées au banc. En valeur réelle, le cas qui paraissait le
+> pire — « masse quatre fois le témoin » — valait exactement le témoin.
+
+**L'invariant qui ne bouge pas est une information, pas un détail.** L'audit
+comptable était resté à zéro exact pendant toute la chasse. Zéro veut dire
+« rien n'a été créé ni détruit ». Il disait donc, dès le premier jour, que la
+monnaie ne se fabriquait nulle part — et que le chiffre qui montait mesurait
+autre chose. Personne ne l'a écouté parce qu'il était vert.
+
+**Remonte la chaîne causale jusqu'au bout avant d'accuser.** Le dernier maillon
+de mon hypothèse — « les conseils compensent en battant monnaie » — se
+vérifiait en une ligne : chercher les appelants d'`emettre`. Il n'y en a qu'un,
+et c'est le joueur. Aucun conseil du monde ne bat monnaie. Une hypothèse dont
+un maillon est faux ne se teste pas au banc pendant deux jours, elle se lit.
+
+> La règle pratique : quand une mesure surprend, la première suspecte est la
+> mesure. On la refait dans une unité qu'on sait homogène — ici la valeur en
+> ancien crédit, le pivot du bureau de change — et on regarde si la surprise
+> tient. Elle n'a pas tenu.

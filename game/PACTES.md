@@ -137,13 +137,51 @@ peut ; ce qu'elle subit, il le subit.
   valeurs perdent les mêmes trente-cinq villes. Ce n'est donc pas l'entretien
   des relations, c'est la diplomatie elle-même.
 
-  **La piste suivante, non instruite** : la clause `secours` coûte. Chaque
-  levée sort 234 du trésor de celui qui tient parole (`SECOURS.force ×
-  parHomme`), et rien ne vérifie qu'il en a les moyens **avant** de promettre —
-  seulement au moment de venir. Des pays s'engagent donc au-delà de leurs
-  moyens, se vident, et leurs conseils compensent en battant monnaie : c'est le
-  chemin le plus court entre « le monde se lie » et « la masse monétaire
-  quadruple ». Ce qui se vérifierait en balayant `SECOURS.force`, ou en faisant
-  peser à `peserPacte` ce que la clause coûterait vraiment à celui qui la
-  donne — un pauvre refuserait alors de promettre son sang, ce qui est
-  exactement ce qu'on attend d'un pauvre.
+  **La deuxième piste est fausse aussi, et la troisième n'existait pas : la
+  mesure mentait.** J'avais écrit que la clause `secours` se promettait sans
+  qu'on vérifie les moyens de la tenir, que les pays se vidaient, et que leurs
+  conseils compensaient **en battant monnaie**. Le dernier maillon était
+  vérifiable en une ligne, et je ne l'ai pas vérifié : `emettre` — la seule
+  fonction du jeu qui crée une unité — **n'a qu'un seul appelant, et c'est le
+  joueur** (`influence.js`, `battreMonnaie`). Aucun conseil du monde ne bat
+  monnaie. Personne ne compensait quoi que ce soit.
+
+  P3 a donc été remis pour la mesure (réécrit — le code d'origine n'existait
+  plus), et les deux leviers isolés :
+
+  | config | villes | masse | **en crédit** | cours |
+  |---|---:|---:|---:|---|
+  | témoin (pas de P3) | 370 | 3,02 M | **2,79 M** | 0,07–3,44 |
+  | P3 | 335 | 4,36 M | **3,48 M** | 0,05–186,39 |
+  | P3 sans la clause de secours | 343 | **13,16 M** | **2,85 M** | 0,01–32,16 |
+  | P3 sans entretien des relations | 330 | 3,80 M | **2,62 M** | 0,08–47,88 |
+
+  La colonne « en crédit » est neuve, et c'est elle la trouvaille. La colonne
+  « masse » additionne les unités nominales de trente-six pays dont les cours
+  vont de 0,01 à 186 : **ce n'est pas une grandeur homogène**. Un pays dont la
+  monnaie s'effondre à 0,01 porte cent fois plus d'unités pour la même valeur,
+  et le change (`convertirMasse`) fabrique légitimement ces unités-là — sortir
+  cent d'un pays fort en fait des milliers dans un pays faible, et l'invariant
+  comptable reste exact, parce que rien n'a été créé.
+
+  Ramenée en ancien crédit — le pivot du bureau de change —, la masse du cas le
+  plus alarmant (13,16 M, « quatre fois le témoin ») **vaut 2,85 M : le niveau
+  du témoin**. Il n'y a jamais eu de pompe à monnaie. Deux jours de chasse
+  contre un artefact d'agrégation, et deux hypothèses innocentées à ses
+  dépens.
+
+  **Ce qui reste de P3, une fois la fausse alarme retirée** — et c'est petit :
+
+  - la valeur du monde monte de 25 % (2,79 → 3,48 M) pour 8 % d'habitants en
+    moins : les pays sont plus riches et moins nombreux à nourrir ;
+  - **35 villes de moins** (370 → 335) et cinq guerres de plus (18 → 23) ;
+  - **un cours à 186** là où le témoin plafonne à 3,44.
+
+  Le cours à 186 est le seul défaut franc, et il est maintenant isolable : ce
+  n'est pas une masse qui gonfle, c'est **un pays dont le gage explose par
+  rapport à ce qu'il a émis** — `majCours` rapporte la production au stock
+  d'unités, et un pays qui grandit sans émettre voit son cours partir vers le
+  haut sans borne. À instruire là, dans `monnaie.js`, et non dans les pactes.
+
+  **La métrique reste**, elle : `tools/banc.js` porte désormais la colonne
+  « en crédit » à côté de « masse », et toute mesure future s'y lira.

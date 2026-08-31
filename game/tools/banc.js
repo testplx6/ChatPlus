@@ -173,6 +173,9 @@ function jouer({ sim, data, eco, eco2 }, graine, horizon) {
     (k) => s.world.factions[k].colonies.length <= 2
   ).length;
 
+  // Le cours d'un pays, pour ramener ses unités en ancien crédit. Une ville
+  // sans drapeau bat la monnaie de personne : elle compte pour elle-même.
+  const cours = (k) => (k && eco2.coursMonnaie ? eco2.coursMonnaie(s.world, k) : 1);
   return {
     graine,
     villes: cols.length,
@@ -193,6 +196,18 @@ function jouer({ sim, data, eco, eco2 }, graine, horizon) {
     enCaisses: Math.round(cols.reduce((a2, c) => a2 + (c.caisse || 0), 0)),
     enMenages: Math.round(cols.reduce((a2, c) => a2 + (c.menages || 0), 0)),
     enTresors: Math.round(tresors.reduce((a2, v) => a2 + v, 0)),
+    // Et la même somme EN VALEUR. « masse » additionne les unités nominales de
+    // pays dont les cours vont de 0,01 à 186 : ce n'est pas une grandeur
+    // homogène. Elle enfle dès que les cours divergent, sans qu'un sou ait été
+    // créé nulle part — et c'est ce qui m'a fait chercher pendant deux jours
+    // une pompe à monnaie dans la diplomatie, alors qu'aucun conseil du monde
+    // ne bat monnaie (`emettre` n'a qu'un appelant, et c'est le joueur).
+    // Ramenée en ancien crédit — le pivot du bureau de change —, elle dit ce
+    // que le monde vaut vraiment.
+    valeur: Math.round(
+      cols.reduce((a2, c) => a2 + ((c.caisse || 0) + (c.menages || 0)) * cours(c.faction), 0)
+      + data.DIPLO_FACTIONS.reduce(
+        (a2, k) => a2 + (s.world.factions[k].tresor || 0) * cours(k), 0)),
     // Le crédit : combien de villes doivent, et combien. Sans ces deux nombres
     // on ne sait pas si le mécanisme tourne ou s'il dort.
     endettees: cols.filter((c) => (c.dette || 0) > 1).length,
@@ -329,6 +344,7 @@ function agreger(cfg) {
     // paie, ce qui était le cas avant que la monnaie ne circule.
     balance: (som(cfg, 'prod') / Math.max(1, som(cfg, 'cons'))).toFixed(2),
     masse: som(cfg, 'enCaisses') + som(cfg, 'enMenages') + som(cfg, 'enTresors'),
+    valeur: som(cfg, 'valeur'),
     endettees: som(cfg, 'endettees'),
     cours: (() => {
       const v = cfg.parties.flatMap((p2) => p2.cours);
@@ -390,7 +406,8 @@ const COLONNES = [
   ['caisseMed', 'caisse méd', 10], ['bourses', 'bourses', 7],
   ['accords', 'accords', 7], ['convois', 'convois', 8],
   ['guerres', 'guerres', 7], ['balance', 'prod/cons', 9],
-  ['masse', 'masse', 9], ['ou', 'caisses/ménages/trésors', 22],
+  ['masse', 'masse', 9], ['valeur', 'en crédit', 10],
+  ['ou', 'caisses/ménages/trésors', 22],
   ['endettees', 'endettées', 9], ['affamees', 'affamées', 11],
   ['satiete', 'satiété', 8], ['creve', 'à la diète', 11],
   ['cours', 'cours', 11], ['effondrees', 'effondrées', 10],
