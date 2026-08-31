@@ -581,6 +581,17 @@ en temps, et l'inverse.
 > là où c'est gratuit — à l'ouverture de la partie —, et l'on empêche de créer
 > là où c'est cher.
 
+**Fais échouer vite ce qui va échouer.** Une faute que le filet ne voit pas se
+paie au prix de l'étape qui finit par la voir.
+
+> **Incident.** Une parenthèse manquante dans un gabarit de `ui.js` — que rien
+> n'importe côté moteur, et que le bundle recopie sans le parser. Les trois
+> étapes rapides sont restées vertes ; la faute ne s'est vue qu'après trois
+> minutes de suite navigateur, sous la forme d'une page qui ne charge pas et
+> d'un délai dépassé sur un sélecteur sans rapport. `node --check` sur chaque
+> fichier de `src/` coûte trois secondes et le dit avec le numéro de ligne :
+> c'est désormais la première chose que fait le vérifieur.
+
 **Le cumul de la chasse**, sur l'appareil du propriétaire : un rendu 1584 → 49
 ms, l'écran Base 2454 → 110, le bloc école 2427 → 71, le tick du monde ×34 à
 mille deux cents membres, et les personnages de 24 Mo à environ 4.

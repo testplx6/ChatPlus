@@ -66,6 +66,20 @@ const INTERDITS = [
 etape('interdits statiques dans src/', () => {
   const fautes = [];
   for (const f of readdirSync(SRC).filter((x) => x.endsWith('.js'))) {
+    // La syntaxe d'abord, et c'est nouveau. `ui.js` n'est importé par rien du
+    // côté moteur : une parenthèse manquante dans un gabarit y passait les
+    // trois étapes rapides sans un mot, et ne se voyait qu'au bout de trois
+    // minutes de suite navigateur — sous la forme d'une page qui ne charge
+    // pas et d'un délai dépassé sur un sélecteur sans rapport. Trois secondes
+    // ici valent mieux.
+    try {
+      execFileSync(process.execPath, ['--check', join(SRC, f)], { stdio: 'pipe' });
+    } catch (err) {
+      const dit = String((err.stderr || '').toString() || err.message).split('\n')
+        .filter((l) => l.trim()).slice(0, 3).join(' ');
+      fautes.push(`${f} — syntaxe : ${dit}`);
+      continue;
+    }
     const texte = readFileSync(join(SRC, f), 'utf8');
     for (const r of INTERDITS) {
       if (r.sauf.includes(f)) continue;
