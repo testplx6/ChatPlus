@@ -21,7 +21,7 @@ import {
   ligneCours, resumeBourses, comptoirActif, TRESOR_BOURSE,
 } from './bourse.js';
 import {
-  comp, pvTotal, etatCourt, estVivant, estDebout, ratio, peutEquiper,
+  comp, pvTotal, etatCourt, estVivant, estDebout, ratio, peutEquiper, relationsDepuisLiens,
   SEUIL_FAMINE, SEUIL_VENTRE_CREUX,
   relationsNotables, lien,
 } from './characters.js';
@@ -2887,7 +2887,14 @@ function ecranCarte() {
 // Écran ESCOUADE
 // ---------------------------------------------------------------------------
 
-function ficheMembre(c) {
+/** Tout le monde, par identifiant. Construite une fois par galerie. */
+function tableDesMembres() {
+  const m = new Map();
+  for (const g of groupes(S)) for (const c of g.membres) m.set(c.id, c);
+  return m;
+}
+
+function ficheMembre(c, parId) {
   const t = pvTotal(c);
   const et = etatCourt(c);
   const cls = c.etat === 'mort' ? 'mal' : c.etat === 'ko' ? 'mal' : t.pct < 0.6 ? 'att' : 'ok';
@@ -2945,7 +2952,10 @@ function ficheMembre(c) {
         <div><span class="aide">Saignement</span>${jauge(c.sang / 100, c.sang > 5 ? 'rouge' : '')}</div>
       </div>
       ${(() => {
-    const rel = relationsNotables(c, tousLesMembres(S));
+    // Lu dans les vingt-quatre liens de la personne, et non dans toute
+    // l'escouade : `tousLesMembres(S)` allouait un tableau de mille deux cent
+    // quatre-vingts personnes PAR FICHE. Voir `relationsDepuisLiens`.
+    const rel = relationsDepuisLiens(c, parId || tableDesMembres());
     if (!rel.ami && !rel.rival) return '';
     return `<div class="titre">Relations</div><div class="aide">${[
       rel.ami ? `S’entend avec ${e(rel.ami.nom)} (${Math.round(lien(c, rel.ami))})` : null,
@@ -3502,7 +3512,11 @@ function ecranEscouade() {
   <section class="panneau">
     <h2 class="titre">${e(g.nom)}
       <span class="droite">${tousLesMembres(S).filter(estVivant).length} au total</span></h2>
-    <div class="galerie">${g.membres.slice(0, montresEscouade).map(ficheMembre).join('')}</div>
+    <div class="galerie">${(() => {
+    // La table id → personne, UNE fois pour toute la galerie.
+    const parId = tableDesMembres();
+    return g.membres.slice(0, montresEscouade).map((c) => ficheMembre(c, parId)).join('');
+  })()}</div>
     ${g.membres.length > montresEscouade ? `<div class="sep"></div>
       <button class="act" data-a="voir-plus-escouade">Voir ${pl(Math.min(PAS_ESCOUADE, g.membres.length - montresEscouade), 'personne')} de plus
         <span class="aide">${pl(g.membres.length - montresEscouade, 'restante')}</span></button>` : ''}

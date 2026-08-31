@@ -611,6 +611,38 @@ export function relationsNotables(c, squad) {
   return { ami, rival };
 }
 
+/**
+ * Le même ami et le même rival, mais lus dans les liens de la personne.
+ *
+ * `relationsNotables` parcourt toute l'escouade — et l'appelant lui construit
+ * la liste, ce qui alloue un tableau de mille deux cent quatre-vingts
+ * personnes PAR FICHE affichée. L'écran ESCOUADE est devenu le plus cher du
+ * jeu à cause de ça (69 ms sur le téléphone du propriétaire).
+ *
+ * Depuis l'élagage, une personne ne porte que vingt-quatre liens, et ce qu'on
+ * cherche est là : un lien absent vaut zéro, donc ni ami (≥ 25) ni rival
+ * (≤ −25). Les deux chemins sont strictement équivalents, et une sonde le
+ * vérifie sur deux cents personnes — morts et absents compris.
+ */
+export function relationsDepuisLiens(c, parId) {
+  let ami = null;
+  let amiV = 0;
+  let rival = null;
+  let rivalV = 0;
+  const l = (c && c.liens) || {};
+  for (const id of Object.keys(l)) {
+    const v = l[id];
+    if (v >= 25 && (!ami || v > amiV)) {
+      const p = parId.get(id);
+      if (p && p.etat !== 'mort') { ami = p; amiV = v; }
+    } else if (v <= -25 && (!rival || v < rivalV)) {
+      const p = parId.get(id);
+      if (p && p.etat !== 'mort') { rival = p; rivalV = v; }
+    }
+  }
+  return { ami, rival };
+}
+
 /** Résumé court pour l'UI. */
 export function etatCourt(c) {
   if (c.etat === 'mort') return 'MORT';

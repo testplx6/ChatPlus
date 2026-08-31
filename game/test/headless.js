@@ -76,7 +76,9 @@ import { enGuerre as enGuerreImp, leverArmee as leverArmeeImp } from '../src/fac
 import { dirigeant as dirigeantDe } from '../src/dirigeants.js';
 import { peutExercer as peutExercerImp } from '../src/influence.js';
 import { drapeauDe as drapeauDeImp } from '../src/data.js';
-import { LIENS, relationsNotables, pvTotal as pvTotalImp } from '../src/characters.js';
+import {
+  LIENS, relationsNotables, relationsDepuisLiens, pvTotal as pvTotalImp,
+} from '../src/characters.js';
 import { meilleurs } from '../src/groupes.js';
 import { vueMetiers, chefMetier, contremaitre } from '../src/base.js';
 import { METIER_KEYS as METIER_KEYS_IMP } from '../src/data.js';
@@ -14292,6 +14294,70 @@ section('PERF 3. Un seul passage pour dix-sept métiers');
     const v3 = vueMetiers(s3);
     ok(!!v3 && !chefMetier(s3, METIER_KEYS_IMP[0], v3),
       'sans camp, personne ne commande rien');
+  }
+}
+
+
+// ===========================================================================
+section('PERF 4. L’ami et le rival se lisent dans les liens, pas dans la foule');
+// L'écran ESCOUADE est devenu le plus cher du jeu : 69 ms sur le téléphone du
+// propriétaire, mille deux cent quatre-vingts vivants. Chaque fiche affichée
+// appelait `relationsNotables(c, tousLesMembres(S))` — qui ALLOUE un tableau
+// de mille deux cent quatre-vingts personnes, puis le parcourt en entier, pour
+// trouver deux noms.
+//
+// Or depuis l'élagage des liens, une personne n'en porte que vingt-quatre. Ce
+// qu'on cherche est là, et nulle part ailleurs : un lien absent vaut zéro,
+// donc ni ami (≥ 25) ni rival (≤ −25). Les deux chemins sont strictement
+// équivalents — c'est ce que cette section vérifie, parce qu'une optimisation
+// qui change ce qui s'affiche est un défaut.
+{
+  const rngR = new Rng(515);
+  const gens = [];
+  for (let i = 0; i < 200; i++) {
+    gens.push({ id: `p${i}`, nom: `N${i}`, etat: 'ok', liens: {} });
+  }
+  // Des liens comme le jeu en fabrique : quelques-uns par personne, des deux
+  // signes, et quelques morts au milieu.
+  for (const c of gens) {
+    for (let n = 0; n < 24; n++) {
+      const autre = gens[rngR.irange(0, gens.length - 1)];
+      if (autre.id === c.id) continue;
+      c.liens[autre.id] = rngR.irange(-100, 100);
+    }
+  }
+  for (let i = 0; i < 200; i += 17) gens[i].etat = 'mort';
+  const parId = new Map(gens.map((c) => [c.id, c]));
+
+  // On compare la FORCE du lien, pas l'identité : quand deux personnes sont
+  // exactement aussi proches, chaque chemin prend celle qu'il rencontre en
+  // premier, et les deux réponses sont aussi vraies l'une que l'autre. C'est le
+  // même piège que pour `meilleurs`, et la même réponse — mesurer la grandeur
+  // qui compte, pas celle qui est commode.
+  const force = (c, p) => (p ? (c.liens[p.id] || 0) : null);
+  let pareils = 0;
+  for (const c of gens) {
+    const a = relationsNotables(c, gens);
+    const b = relationsDepuisLiens(c, parId);
+    if (force(c, a.ami) === force(c, b.ami) && force(c, a.rival) === force(c, b.rival)) pareils++;
+  }
+  ok(pareils === gens.length,
+    'l’ami est aussi proche et le rival aussi lointain qu’avant, pour tout le monde',
+    `${pareils} / ${gens.length}`);
+
+  // Un lien vers quelqu'un qui n'est plus là ne désigne personne — l'ancien
+  // chemin ne le trouvait pas non plus, puisqu'il parcourait les présents.
+  {
+    const seul = { id: 'seul', nom: 'Seul', etat: 'ok', liens: { fantome: 90 } };
+    const r = relationsDepuisLiens(seul, new Map([['seul', seul]]));
+    ok(!r.ami && !r.rival, 'un lien vers un absent ne désigne personne');
+  }
+
+  // Et sans liens du tout, on n'a ni ami ni rival.
+  {
+    const vierge = { id: 'v', nom: 'V', etat: 'ok' };
+    const r = relationsDepuisLiens(vierge, new Map());
+    ok(!r.ami && !r.rival, 'et qui n’a de lien avec personne n’a ni l’un ni l’autre');
   }
 }
 
