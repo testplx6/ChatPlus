@@ -1809,6 +1809,7 @@ const distanceCases = distance;
 const deboutDe = debout;
 const nivBat = niveau;
 const vivantsDe = vivants;
+const tenusMetiers = tenus;
 const progresContrat = progres;
 const creditInfluence = credit;
 const toucherRationsA = toucherRations;
@@ -6526,6 +6527,40 @@ function retirerGroupe(state, g) {
 /** Un groupe rejoint par un autre au même endroit peut être absorbé. */
 function fusionnablesAvec(state, g) {
   return groupes(state).filter((o) => o.id !== g.id && o.regionId === g.regionId);
+}
+
+/**
+ * Les k meilleurs d'une liste, et combien il y en avait en tout — en un seul
+ * passage, sans tri et sans tableau intermédiaire.
+ *
+ * Écrite pour le bloc école (76 ms sur le téléphone du propriétaire, soixante
+ * pour cent de son écran BASE). Il filtrait les mille deux cent quarante-deux
+ * personnes POUR CHAQUE MATIÈRE enseignée, puis triait la liste entière —
+ * pour n'en garder que huit. On n'a jamais besoin de l'ordre complet : on a
+ * besoin de la tête et du compte.
+ *
+ * L'insertion dans une tête de huit coûte huit comparaisons au pire, et rien
+ * du tout dès que le candidat est moins bon que le dernier retenu — ce qui est
+ * le cas général. Le résultat est identique à `filter().sort().slice(0, k)`,
+ * et une sonde le vérifie sur trois valeurs de k.
+ */
+function meilleurs(liste, k, apte, note) {
+  const tete = [];
+  let total = 0;
+  for (const x of liste) {
+    if (apte && !apte(x)) continue;
+    total++;
+    if (k <= 0) continue;
+    const n = note(x);
+    // Le cas courant : moins bon que le dernier de la tête, et la tête est
+    // pleine. Une comparaison, et l'on passe.
+    if (tete.length === k && n <= note(tete[tete.length - 1])) continue;
+    let i = tete.length;
+    while (i > 0 && note(tete[i - 1]) < n) i--;
+    tete.splice(i, 0, x);
+    if (tete.length > k) tete.pop();
+  }
+  return { tete, total };
 }
 
 // ===== src/faits.js ==================================================
@@ -32155,8 +32190,14 @@ function blocBras() {
  * plus lisible et où il faut néanmoins savoir si l'on doit ouvrir.
  */
 function resumeMetiers(b) {
+  // La répartition, UNE fois. `affectes(b, k, S)` la recalcule en entier à
+  // chaque appel — et elle passe par `brasEscouade`, qui parcourt tout le
+  // monde. Douze métiers, douze parcours de mille deux cents personnes, pour
+  // une réponse qui ne dépend pas du métier : c'est le motif de l'école, au
+  // même endroit et pour la même raison.
+  const parPoste = tenusMetiers(b, S);
   const tenus = METIER_KEYS
-    .map((k) => [k, affectes(b, k, S)])
+    .map((k) => [k, parPoste[k] || 0])
     .filter(([, v]) => v > 0)
     .sort((x, y) => y[1] - x[1]);
   if (!tenus.length) return 'aucun poste tenu';
@@ -32261,11 +32302,12 @@ function blocMetiers() {
     </section>`;
   }
 
+  const parPoste = tenusMetiers(b, S);
   const lignes = ouverts.map((k) => {
     const m = METIERS[k];
     const places = placesMetier(b, k);
     const veut = voulus(b, k);
-    const n0 = affectes(b, k, S);
+    const n0 = parPoste[k] || 0;
     const rd = rendementMetier(S, k);
     // Deux nombres différents, et il faut les deux : ce qu'on a réglé, et ce
     // qui est tenu aujourd'hui. Les confondre était tout le problème.
@@ -32368,11 +32410,17 @@ function blocEcoleBase() {
     // Les plus aptes d'abord, et pas tout le monde : une colonne de mille
     // boutons ne se lit pas, ne se parcourt pas, et coûte une seconde à
     // fabriquer. On propose les meilleurs, on dit combien d'autres attendent.
-    const eligibles = tous.filter((c) => peutApprendreChezSoi(S, c, o.key, vueEcole).ok);
-    const candidats = eligibles
-      .slice()
-      .sort((a, x) => comp(x, DIPLOMES[o.key].skill) - comp(a, DIPLOMES[o.key].skill))
-      .slice(0, CANDIDATS_MONTRES);
+    // En un passage, sans trier mille deux cents personnes pour n'en garder
+    // que huit — et sans le tableau intermédiaire qui allait avec. Voir
+    // `meilleurs` : le résultat est identique, une sonde le vérifie.
+    const choix = meilleurs(
+      tous,
+      CANDIDATS_MONTRES,
+      (c) => peutApprendreChezSoi(S, c, o.key, vueEcole).ok,
+      (c) => comp(c, d.skill),
+    );
+    const candidats = choix.tete;
+    const eligibles = { length: choix.total };
     return `<div class="contrat">
       <div class="contrat-t">${e(d.court)} — ${e(o.instructeur.nom)} enseigne</div>
       <div class="ligne"><span class="k">À la sortie</span>

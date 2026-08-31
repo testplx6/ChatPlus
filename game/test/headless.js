@@ -77,6 +77,7 @@ import { dirigeant as dirigeantDe } from '../src/dirigeants.js';
 import { peutExercer as peutExercerImp } from '../src/influence.js';
 import { drapeauDe as drapeauDeImp } from '../src/data.js';
 import { LIENS, relationsNotables, pvTotal as pvTotalImp } from '../src/characters.js';
+import { meilleurs } from '../src/groupes.js';
 import { tickFaits as tickFaitsImp } from '../src/faits.js';
 import { retenirEnVille as retenirEnVilleImp } from '../src/services.js';
 import { classement, puissance } from '../src/factions.js';
@@ -14180,6 +14181,52 @@ section('PAC 2. Une parole donnée finit par coûter (PACTES.md, P2)');
       'promettre de ne pas attaquer n’est pas promettre de venir');
     ok(!!pacteEntre(s2.world, a, b), 'et le pacte n’en souffre pas');
   }
+}
+
+
+// ===========================================================================
+section('PERF 2. Choisir les meilleurs sans trier tout le monde');
+// Le bloc école coûte 76 ms sur le téléphone du propriétaire, soit soixante
+// pour cent de son écran BASE. La cause est un produit : pour CHAQUE matière
+// enseignée, on filtrait les mille deux cent quarante-deux personnes, puis on
+// les triait en entier — pour n'en garder que huit.
+//
+// On n'a jamais besoin de l'ordre complet : seulement des k premiers et du
+// compte. `meilleurs` fait les deux en un passage, sans tri et sans tableau
+// intermédiaire. Ce qui compte ici, c'est qu'il rende EXACTEMENT ce que
+// rendait l'ancien chemin — une optimisation qui change l'affichage est un
+// défaut, pas un gain.
+{
+  const rngM = new Rng(4242);
+  const gens = [];
+  for (let i = 0; i < 300; i++) gens.push({ id: `c${i}`, n: rngM.irange(0, 100) });
+  const apte = (c) => c.n % 7 !== 0;
+  const note = (c) => c.n;
+
+  const ancienne = (k) => {
+    const eligibles = gens.filter(apte);
+    return {
+      tete: eligibles.slice().sort((a, b) => note(b) - note(a)).slice(0, k).map((c) => c.id),
+      total: eligibles.length,
+    };
+  };
+
+  for (const k of [1, 8, 25]) {
+    const a = ancienne(k);
+    const b = meilleurs(gens, k, apte, note);
+    ok(b.total === a.total, `le compte est le même (k=${k})`, `${a.total} / ${b.total}`);
+    // Les notes, et non les identités : à note égale, deux ordres sont aussi
+    // justes l'un que l'autre, et l'affichage montre la note.
+    ok(JSON.stringify(b.tete.map(note)) === JSON.stringify(a.tete.map((id) => note(gens.find((c) => c.id === id)))),
+      `et les ${k} premiers sont les mêmes`,
+      JSON.stringify(b.tete.map(note)));
+  }
+
+  // Les cas qui cassent les sélections écrites à la main.
+  ok(meilleurs([], 8, apte, note).total === 0, 'personne, c’est personne');
+  ok(meilleurs(gens, 0, apte, note).tete.length === 0, 'zéro tête, zéro élément');
+  ok(meilleurs(gens, 5000, apte, note).tete.length === gens.filter(apte).length,
+    'et l’on n’invente personne quand on en demande plus qu’il n’y en a');
 }
 
 // ===========================================================================

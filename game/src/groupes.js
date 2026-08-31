@@ -358,3 +358,37 @@ export function retirerGroupe(state, g) {
 export function fusionnablesAvec(state, g) {
   return groupes(state).filter((o) => o.id !== g.id && o.regionId === g.regionId);
 }
+
+/**
+ * Les k meilleurs d'une liste, et combien il y en avait en tout — en un seul
+ * passage, sans tri et sans tableau intermédiaire.
+ *
+ * Écrite pour le bloc école (76 ms sur le téléphone du propriétaire, soixante
+ * pour cent de son écran BASE). Il filtrait les mille deux cent quarante-deux
+ * personnes POUR CHAQUE MATIÈRE enseignée, puis triait la liste entière —
+ * pour n'en garder que huit. On n'a jamais besoin de l'ordre complet : on a
+ * besoin de la tête et du compte.
+ *
+ * L'insertion dans une tête de huit coûte huit comparaisons au pire, et rien
+ * du tout dès que le candidat est moins bon que le dernier retenu — ce qui est
+ * le cas général. Le résultat est identique à `filter().sort().slice(0, k)`,
+ * et une sonde le vérifie sur trois valeurs de k.
+ */
+export function meilleurs(liste, k, apte, note) {
+  const tete = [];
+  let total = 0;
+  for (const x of liste) {
+    if (apte && !apte(x)) continue;
+    total++;
+    if (k <= 0) continue;
+    const n = note(x);
+    // Le cas courant : moins bon que le dernier de la tête, et la tête est
+    // pleine. Une comparaison, et l'on passe.
+    if (tete.length === k && n <= note(tete[tete.length - 1])) continue;
+    let i = tete.length;
+    while (i > 0 && note(tete[i - 1]) < n) i--;
+    tete.splice(i, 0, x);
+    if (tete.length > k) tete.pop();
+  }
+  return { tete, total };
+}

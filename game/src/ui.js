@@ -31,7 +31,7 @@ import {
   bureauDe, devisChange,
 } from './economy.js';
 import {
-  populationMax, mainDoeuvre, placesMetier, affectes, manoeuvres, affecter,
+  populationMax, mainDoeuvre, placesMetier, manoeuvres, affecter, tenus as tenusMetiers,
   voulus, brasDisponibles, postesDegarnis,
   rendementMetier,
   niveau as nivBat, niveauRech, coutBatiment, tempsBatiment, coutRecherche,
@@ -115,7 +115,7 @@ import {
 import {
   groupeActif, groupes, groupeParId, choisirGroupe, tousLesMembres, tacheDe,
   assignerTache, scinder, fusionner, fusionnablesAvec, porteeOrdres, joignable, repartition,
-  TACHES_INDIVIDUELLES, noyau, plafondCohesion, rendementCohesion, placesSociables,
+  TACHES_INDIVIDUELLES, noyau, plafondCohesion, rendementCohesion, placesSociables, meilleurs,
   vivants as vivantsDe,
 } from './groupes.js';
 import { RAID_VILLE, SIEGE } from './assaut.js';
@@ -3639,8 +3639,14 @@ function blocBras() {
  * plus lisible et où il faut néanmoins savoir si l'on doit ouvrir.
  */
 function resumeMetiers(b) {
+  // La répartition, UNE fois. `affectes(b, k, S)` la recalcule en entier à
+  // chaque appel — et elle passe par `brasEscouade`, qui parcourt tout le
+  // monde. Douze métiers, douze parcours de mille deux cents personnes, pour
+  // une réponse qui ne dépend pas du métier : c'est le motif de l'école, au
+  // même endroit et pour la même raison.
+  const parPoste = tenusMetiers(b, S);
   const tenus = METIER_KEYS
-    .map((k) => [k, affectes(b, k, S)])
+    .map((k) => [k, parPoste[k] || 0])
     .filter(([, v]) => v > 0)
     .sort((x, y) => y[1] - x[1]);
   if (!tenus.length) return 'aucun poste tenu';
@@ -3745,11 +3751,12 @@ function blocMetiers() {
     </section>`;
   }
 
+  const parPoste = tenusMetiers(b, S);
   const lignes = ouverts.map((k) => {
     const m = METIERS[k];
     const places = placesMetier(b, k);
     const veut = voulus(b, k);
-    const n0 = affectes(b, k, S);
+    const n0 = parPoste[k] || 0;
     const rd = rendementMetier(S, k);
     // Deux nombres différents, et il faut les deux : ce qu'on a réglé, et ce
     // qui est tenu aujourd'hui. Les confondre était tout le problème.
@@ -3852,11 +3859,17 @@ function blocEcoleBase() {
     // Les plus aptes d'abord, et pas tout le monde : une colonne de mille
     // boutons ne se lit pas, ne se parcourt pas, et coûte une seconde à
     // fabriquer. On propose les meilleurs, on dit combien d'autres attendent.
-    const eligibles = tous.filter((c) => peutApprendreChezSoi(S, c, o.key, vueEcole).ok);
-    const candidats = eligibles
-      .slice()
-      .sort((a, x) => comp(x, DIPLOMES[o.key].skill) - comp(a, DIPLOMES[o.key].skill))
-      .slice(0, CANDIDATS_MONTRES);
+    // En un passage, sans trier mille deux cents personnes pour n'en garder
+    // que huit — et sans le tableau intermédiaire qui allait avec. Voir
+    // `meilleurs` : le résultat est identique, une sonde le vérifie.
+    const choix = meilleurs(
+      tous,
+      CANDIDATS_MONTRES,
+      (c) => peutApprendreChezSoi(S, c, o.key, vueEcole).ok,
+      (c) => comp(c, d.skill),
+    );
+    const candidats = choix.tete;
+    const eligibles = { length: choix.total };
     return `<div class="contrat">
       <div class="contrat-t">${e(d.court)} — ${e(o.instructeur.nom)} enseigne</div>
       <div class="ligne"><span class="k">À la sortie</span>
