@@ -121,11 +121,29 @@ peut ; ce qu'elle subit, il le subit.
   donc rien ne se crée de rien : c'est un monde qui tourne autrement, pas un
   trou. Reste à savoir pourquoi.
 
-  **Une piste, non instruite** : `DIPLOMATIE.entretien` (une parole tenue
-  rapproche, 1,5 point par conseil) a été ajouté parce que sans lui, cinq
-  pactes se signaient et zéro ne tenait — les relations dérivent vers le bas et
-  tout finissait sous le plancher de rupture. C'est une symétrie qui va de soi
-  (rompre coûte 22 points, tenir devait rapporter), mais c'est aussi un
-  mécanisme qui remonte les relations de tout le monde en permanence, et donc
-  un candidat sérieux pour expliquer un monde qui se comporte autrement. Il
-  faudrait le balayer avant de conclure.
+  **La piste que j'avais désignée est fausse, et c'est instruit.**
+  `DIPLOMATIE.entretien` — une parole tenue rapproche — était le suspect
+  évident : il remonte les relations de tout le monde en permanence. Balayé à
+  0 / 0,5 / 1,5 :
+
+  | entretien | villes | masse | fourchette des cours |
+  |---:|---:|---:|---|
+  | témoin (pas de P3) | 370 | 3,02 M | 0,07–3,44 |
+  | 0 | 338 | **25,84 M** | 0,01–9,16 |
+  | 0,5 | 334 | 2,97 M | 0,10–114,92 |
+  | 1,5 | 335 | 5,60 M | 0,04–312,53 |
+
+  **Il est innocent** : à zéro, la masse explose davantage encore. Et les trois
+  valeurs perdent les mêmes trente-cinq villes. Ce n'est donc pas l'entretien
+  des relations, c'est la diplomatie elle-même.
+
+  **La piste suivante, non instruite** : la clause `secours` coûte. Chaque
+  levée sort 234 du trésor de celui qui tient parole (`SECOURS.force ×
+  parHomme`), et rien ne vérifie qu'il en a les moyens **avant** de promettre —
+  seulement au moment de venir. Des pays s'engagent donc au-delà de leurs
+  moyens, se vident, et leurs conseils compensent en battant monnaie : c'est le
+  chemin le plus court entre « le monde se lie » et « la masse monétaire
+  quadruple ». Ce qui se vérifierait en balayant `SECOURS.force`, ou en faisant
+  peser à `peserPacte` ce que la clause coûterait vraiment à celui qui la
+  donne — un pauvre refuserait alors de promettre son sang, ce qui est
+  exactement ce qu'on attend d'un pauvre.
