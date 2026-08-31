@@ -185,6 +185,7 @@ import {
   acheter, vendre, prixJoueur, actifs, emploi, productionColonie, consommationColonie,
   capacitePortage, poidsInventaire, simulerAchat, simulerVente,
 } from '../src/economy.js';
+import { faireSecession } from '../src/economy.js';
 import { vocation, notable, POIDS_CUPIDITE } from '../src/notables.js';
 import {
   tickServices, honorer, demandesIci, souvenirs, faveurChef, renfortSoin,
@@ -14358,6 +14359,82 @@ section('PERF 4. L’ami et le rival se lisent dans les liens, pas dans la foule
     const vierge = { id: 'v', nom: 'V', etat: 'ok' };
     const r = relationsDepuisLiens(vierge, new Map());
     ok(!r.ami && !r.rival, 'et qui n’a de lien avec personne n’a ni l’un ni l’autre');
+  }
+}
+
+
+// ===========================================================================
+// FACTIONS-NEUVES, la reprise : un pays doit pouvoir mourir
+// ===========================================================================
+//
+// Le propriétaire, août 2026 : « il faut aussi que les factions puissent être
+// détruites et que de nouvelles puissent apparaître, actuellement il y a un
+// blocage contre la simulation à ce niveau-là ». Le banc lui donne raison sans
+// appel : sur six graines × 6 000 heures, **zéro** extinction et **zéro**
+// fondation, pendant que trois pays traînent sans une ville ni une colonne.
+//
+// La règle d'extinction est pourtant écrite, et elle est du propriétaire lui
+// aussi : un pays s'éteint quand il n'a « ni ville, ni colonne, ni dirigeant »
+// — un chef seul a le droit d'essayer de se refaire (4.3 bis). Sa troisième
+// condition ne peut simplement jamais devenir vraie : `tickDirigeant` fabrique
+// un successeur dès qu'il n'y en a plus, sans jamais demander s'il reste
+// quelqu'un pour le fournir. Un pays sans terre, sans troupe et sans habitant
+// se voit donc couronner un chef nouveau à perpétuité.
+{
+  const sK = nouvellePartie(818100, { maintenant: 0 });
+  for (let i = 0; i < 100; i++) tick(sK);
+  const cleK = clesDe(sK.world).find((k) => k !== 'essaim'
+    && sK.world.factions[k] && sK.world.factions[k].colonies.length >= 1);
+  const fK = sK.world.factions[cleK];
+  // On lui retire tout, par le mécanisme du moteur : ses villes s'effondrent,
+  // ses colonnes sont dissoutes. Il ne reste que le chef.
+  for (const id of fK.colonies.slice()) {
+    const c = sK.world.colonies.find((x) => x.id === id);
+    if (c) effondrer(sK.world, c);
+  }
+  sK.world.armees = sK.world.armees.filter((a) => a.faction !== cleK);
+  ok(!coloniesDe(sK.world, cleK).length && !sK.world.armees.some((a) => a.faction === cleK),
+    'le décor : un pays sans une ville et sans une colonne',
+    `${coloniesDe(sK.world, cleK).length} ville(s)`);
+
+  // Le chef seul vit : c'est la règle, on n'y touche pas.
+  ok(!!fK.dirigeant && !fK.morte, 'son chef seul le tient encore debout',
+    fK.dirigeant ? 'un chef' : 'personne');
+
+  // Mais quand il meurt, personne ne lui succède : il n'y a plus un habitant
+  // pour monter sur le trône. C'est ici que le blocage se lève.
+  fK.dirigeant = null;
+  tickDirigeant(sK.world, cleK, new Rng(11), 24, sK.temps, () => {});
+  ok(!fK.dirigeant, 'un pays sans personne ne se couronne pas un chef neuf',
+    fK.dirigeant ? 'un chef sorti de nulle part' : 'personne');
+
+  // Et alors seulement le conseil peut faire son office : la règle d'extinction
+  // trouve enfin ses trois conditions réunies.
+  for (let i = 0; i < 400 && !fK.morte; i++) tick(sK);
+  ok(!!fK.morte, 'et le pays s’éteint pour de bon',
+    fK.morte ? `éteint à ${fK.morte} h` : 'toujours au tableau');
+
+  // --- Et le chemin du retour, qui était écrit à moitié.
+  //
+  // `faireSecession` s'annonce comme rendant une ville à sa faction d'origine
+  // « en la ressuscitant s'il le faut » : elle lui rend la ville, lui remet un
+  // conseil sous vingt heures — et laisse la marque `morte` en place. Le pays
+  // délibérait donc en étant officiellement éteint : hors de la diplomatie,
+  // hors des successions, invisible pour tout ce qui lit `diploDe`. Personne ne
+  // l'avait vu parce que, avant ce lot, aucune faction ne mourait jamais.
+  const villeK = sK.world.colonies.find((c) => !c.ruine && c.faction && c.faction !== cleK
+    && c.factionOrigine !== c.faction);
+  if (villeK) {
+    villeK.factionOrigine = cleK;
+    faireSecession(sK.world, villeK);
+    ok(villeK.faction === cleK, 'une ville peut revenir à son drapeau d’origine',
+      `${villeK.nom} → ${villeK.faction}`);
+    ok(!fK.morte, 'et ce drapeau-là n’est plus mort : le pays renaît',
+      fK.morte ? `toujours marqué éteint (${fK.morte})` : 'vivant');
+    // Les chefs se jugent une fois par jour de jeu, pas à chaque heure.
+    for (let i = 0; i < 25; i++) tick(sK);
+    ok(!!fK.dirigeant, 'il retrouve quelqu’un à sa tête',
+      fK.dirigeant ? 'un chef' : 'personne');
   }
 }
 

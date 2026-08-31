@@ -68,7 +68,7 @@ quelqu'un d'autre.
 | `ECONOMIE.md` | le cahier des charges du chantier économie |
 | `MAILLE.md` | l'invariance à la maille — **livré** : les cinq grandeurs sont sous le plancher de bruit |
 | `INDIVIDUS.md` | **livré** : les individus sans payer le prix de Dwarf Fortress, six lots sur six |
-| `FACTIONS-NEUVES.md` | **livré** : naissance et mort des factions — les cinq règles sont tranchées |
+| `FACTIONS-NEUVES.md` | naissance et mort des factions — neuf lots livrés, **puis repris en août 2026** : le chantier était coché et la carte politique ne bougeait pas (zéro extinction, zéro fondation sur six graines). §8 : la mort marche enfin — la règle d'extinction était écrite mais sa troisième condition inatteignable, `tickDirigeant` couronnant un chef neuf à partir de rien, à perpétuité ; un pays sans personne ne se couronne plus, et **3 pays s'éteignent** là où aucun ne mourait. Le défaut voisin est tombé dans la foulée : une faction ressuscitée par la sécession d'une de ses villes restait marquée morte — un revenant qui délibérait hors de la diplomatie. **La naissance reste bloquée** et la cause est mesurée : l'ardoise maximale du monde vaut zéro, les pays sont trop riches pour manquer une solde, et le défaut de solde est le seul motif de sécession écrit — élargir les motifs est une règle de jeu, décision au propriétaire (§8.3) |
 | `CHANTIER.md` §Lot E | la monnaie du joueur — **E1 à E6 faits**, sauf trois prérogatives bloquées par le cahier des charges |
 | `CARTOGRAPHIE.md` | ce que chaque constante commande — produit par la mesure, à lire avant de régler |
 | `CIBLES.json` | les gardes du monde vérifiées par `verifier --complet` |

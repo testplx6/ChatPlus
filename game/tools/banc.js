@@ -145,8 +145,17 @@ function jouer({ sim, data, eco, eco2 }, graine, horizon) {
   // pendant des mois une intention et une mesure qui ne parlaient pas du même
   // objet.
   let saisies = 0;
+  // La plus longue ardoise qu'une colonne ait portée PENDANT la partie, et non
+  // à la dernière heure : une colonne impayée finit payée, retournée ou
+  // débandée, et l'état final ne garde donc aucune trace de ce qu'elle a
+  // enduré. C'est ce compteur-là qui doit franchir `loyauté × COLONNE.patience`
+  // pour qu'une compagnie franche se fonde.
+  let ardoiseMax = 0;
   for (let t = 0; t < horizon; t++) {
     sim.tick(s);
+    for (const a of s.world.armees) {
+      if ((a.impayees || 0) > ardoiseMax) ardoiseMax = a.impayees;
+    }
     const j = s.journal || [];
     for (let i = j.length - 1; i >= 0; i--) {
       if (j[i].t !== s.temps) break;
@@ -173,6 +182,26 @@ function jouer({ sim, data, eco, eco2 }, graine, horizon) {
     (k) => s.world.factions[k].colonies.length <= 2
   ).length;
 
+  // La carte politique bouge-t-elle vraiment ? « nés » et « morts » comptent
+  // les événements du journal, et le journal est borné : ils disent zéro sans
+  // qu'on sache si le mécanisme n'a pas tourné ou si sa trace a été perdue.
+  // Ces trois nombres-là se lisent sur l'état, pas sur le récit.
+  //
+  // `zombies` : les pays qui n'ont plus une ville ni une colonne et qui vivent
+  // encore, parce que la règle d'extinction exige EN PLUS qu'ils n'aient plus
+  // de dirigeant — et un dirigeant, la succession en refait toujours un.
+  // `ardoise` : la plus longue ardoise d'une colonne impayée, en heures. C'est
+  // le compteur qui doit franchir `loyaute × COLONNE.patience` pour qu'une
+  // compagnie franche se fonde ; s'il reste bas, aucun pays ne peut naître.
+  const vivantes = Object.keys(s.world.factions).filter(
+    (k) => k !== 'essaim' && !s.world.factions[k].morte);
+  const zombies = vivantes.filter(
+    (k) => !(s.world.factions[k].colonies || []).length
+      && !s.world.armees.some((a) => a.faction === k)).length;
+  const mortes = Object.keys(s.world.factions).filter(
+    (k) => s.world.factions[k].morte).length;
+  const ardoise = ardoiseMax;
+
   // Le cours d'un pays, pour ramener ses unités en ancien crédit. Une ville
   // sans drapeau bat la monnaie de personne : elle compte pour elle-même.
   const cours = (k) => (k && eco2.coursMonnaie ? eco2.coursMonnaie(s.world, k) : 1);
@@ -184,6 +213,10 @@ function jouer({ sim, data, eco, eco2 }, graine, horizon) {
     caisses: cols.map((c) => Math.round(c.caisse || 0)),
     tresors: tresors.map(Math.round),
     ecrasees,
+    zombies,
+    mortes,
+    ardoise,
+    vivants: vivantes.length,
     bourses: data.DIPLO_FACTIONS.filter((k) => s.world.factions[k].bourse).length,
     accords: (s.world.accords || []).length,
     convois: convoisVus.size,
@@ -332,6 +365,11 @@ function agreger(cfg) {
     pop: som(cfg, 'pop'),
     nourries: som(cfg, 'nourries'),
     ecrasees: `${som(cfg, 'ecrasees')}/${tresors.length}`,
+    zombies: som(cfg, 'zombies'),
+    mortes: som(cfg, 'mortes'),
+    drapeaux: som(cfg, 'drapeaux'),
+    vivants: som(cfg, 'vivants'),
+    ardoise: Math.max(...cfg.parties.map((p2) => p2.ardoise)),
     tresorMed: Math.round(med(tresors)),
     fauchees: `${tresors.filter((t) => t < 2500).length}/${tresors.length}`,
     caisseMed: caisses.length ? Math.round(med(caisses)) : 0,
@@ -416,6 +454,8 @@ const COLONNES = [
   ['retournements', 'vestes', 7], ['saisies', 'saisies', 8],
   ['debandades', 'débandes', 9],
   ['fondations', 'nés', 5], ['extinctions', 'morts', 6],
+  ['vivants', 'pays', 5], ['drapeaux', 'fondés', 7], ['zombies', 'zombies', 7],
+  ['mortes', 'éteintes', 8], ['ardoise', 'ardoise', 7],
   ['voies', 'rapide/simple/reprix', 28],
   ['usParTick', 'µs/tick', 7],
 ];

@@ -2027,7 +2027,22 @@ export function faireSecession(world, col) {
   const cible = world.factions[rendue];
   if (!cible.colonies.includes(col.id)) cible.colonies.push(col.id);
   if (!cible.capitale) cible.capitale = col.id;
-  cible.prochainConseil = Math.min(cible.prochainConseil, 20);
+  // « En la ressuscitant s'il le faut » : le geste manquait. Un pays éteint à
+  // qui une ville revient délibérait de nouveau, levait des colonnes, prenait
+  // des villes — et restait marqué mort, donc hors de `diploDe` : pas de
+  // relations, pas de succession, pas de ligne au tableau. Un revenant, au
+  // sens propre. Le défaut était inatteignable tant qu'aucune faction ne
+  // mourait ; il s'est levé le jour où elles ont pu.
+  //
+  // La marque `morte` s'efface donc ici, et c'est le seul chemin par lequel un
+  // drapeau tombé revient : il faut qu'une de ses anciennes villes se soulève
+  // et le rappelle. Personne ne le décide d'en haut.
+  if (cible.morte) {
+    cible.morte = undefined;
+    cible.prochainConseil = 20;
+  } else {
+    cible.prochainConseil = Math.min(cible.prochainConseil, 20);
+  }
   world.regions[col.regionId].controle = rendue;
   col.unrest = 0.3;
   col.defense = Math.round(col.defenseMax * 0.5);

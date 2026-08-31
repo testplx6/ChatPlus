@@ -242,10 +242,37 @@ export function etatDuBut(world, guerre, key) {
  * qu'on a perdu trop de villes. Le successeur n'a pas forcément le même
  * tempérament : c'est ainsi qu'une faction pacifique se réveille conquérante.
  */
+/**
+ * Reste-t-il quelqu'un dans ce pays pour porter une couronne ?
+ *
+ * Une ville tenue ou une colonne en campagne : c'est la définition qu'a donnée
+ * le propriétaire de ce qui compose une faction (FACTIONS-NEUVES §4.3, « une
+ * faction doit au moins avoir des membres qui la composent »). Un trône ne se
+ * remplit pas depuis le vide.
+ */
+function quelquUn(world, key) {
+  return world.colonies.some((c) => c.faction === key && !c.ruine)
+    || world.armees.some((a) => a.faction === key);
+}
+
 export function tickDirigeant(world, key, rng, dt, t, log, grogne = 0) {
   const f = world.factions[key];
   if (!f) return;
-  if (!f.dirigeant) { f.dirigeant = creerDirigeant(rng, key, t, undefined, world); return; }
+  // Un pays qui n'a plus une ville ni une colonne ne se couronne pas un chef
+  // neuf. La règle d'extinction — ni ville, ni colonne, ni dirigeant — était
+  // écrite et inatteignable : la succession refabriquait la troisième
+  // condition à perpétuité, et le banc comptait zéro extinction sur six
+  // graines pendant que trois pays traînaient sans rien ni personne.
+  //
+  // Ce que ça ne retire pas : le chef SEUL vit toujours et garde le droit
+  // d'essayer de se refaire (§4.3 bis, règle du propriétaire). C'est sa mort,
+  // et elle seule, qui devient définitive quand il ne reste personne derrière
+  // lui.
+  if (!f.dirigeant) {
+    if (!quelquUn(world, key)) return;
+    f.dirigeant = creerDirigeant(rng, key, t, undefined, world);
+    return;
+  }
   const d = f.dirigeant;
   // Une année de jeu, c'est quatre saisons de trente jours — pas 360 jours.
   // L'erreur faisait vieillir les chefs trois fois trop lentement, donc aucun
@@ -282,8 +309,12 @@ export function tickDirigeant(world, key, rng, dt, t, log, grogne = 0) {
   const parLePays = ecarte && (sortant.grogne || 0) > 0.35;
   const cause = parLePays ? 'renversé par son propre conseil'
     : ecarte ? 'écarté' : 'remplacé';
-  const neuf = creerDirigeant(rng, key, t,
-    ecarte ? (parLePays ? 'grogne' : 'faiblesse') : null, world);
+  // Et le même vide au moment de la succession : un chef qui meurt sans qu'il
+  // reste un habitant ni un soldat ne laisse pas un successeur, il laisse un
+  // pays fini.
+  const neuf = quelquUn(world, key)
+    ? creerDirigeant(rng, key, t, ecarte ? (parLePays ? 'grogne' : 'faiblesse') : null, world)
+    : null;
   f.dirigeant = neuf;
   // Le pays continue sans vous : c'est un pays, pas un objet qu'on possède.
   // L'appelant coupe le lien avec le joueur — le monde, lui, n'a pas à savoir
@@ -296,8 +327,13 @@ export function tickDirigeant(world, key, rng, dt, t, log, grogne = 0) {
         ? 'on ne vous suit plus. Vous êtes écarté de la maison que vous avez fondée.'
         : `${sortant.titre} ${sortant.nom} est ${cause}.`} `
         + `${bilanRegne(sortant, t)} `
-        + `${neuf.titre} ${neuf.nom} prend la suite — ${TEMPERAMENTS[neuf.temperament].nom.toLowerCase()}. `
-        + `« ${TEMPERAMENTS[neuf.temperament].mot} »`,
+        // Personne derrière : c'est la dernière ligne d'un pays, et elle mérite
+        // d'être dite autrement qu'un couronnement de plus.
+        + (neuf
+          ? `${neuf.titre} ${neuf.nom} prend la suite — `
+            + `${TEMPERAMENTS[neuf.temperament].nom.toLowerCase()}. `
+            + `« ${TEMPERAMENTS[neuf.temperament].mot} »`
+          : 'Et personne ne prend la suite : il ne reste plus rien à gouverner.'),
       factions: [key],
       important: true,
     });

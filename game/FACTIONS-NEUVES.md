@@ -515,3 +515,85 @@ identiques octet pour octet. Les règles de jeu n'arrivent qu'à N5.
   Reste à faire : `CIBLES.json`, dont le « /36 » des factions écrasées ne
   survit pas à un nombre de drapeaux variable — six factions × six graines
   n'est plus un dénominateur.
+
+---
+
+## 8. La reprise d'août 2026 : le chantier était livré, la carte ne bougeait pas
+
+> « il faut aussi que les factions puissent être détruites et que de nouvelles
+> puissent apparaître, actuellement il y a un blocage contre la simulation à ce
+> niveau là » — le propriétaire
+
+Le chantier était coché sur ses neuf lots, et il avait raison. Le banc, avec
+quatre sondes neuves posées pour l'occasion :
+
+| | témoin | après |
+|---|---:|---:|
+| pays éteints en 6 000 h | **0** | **3** |
+| pays fondés en 6 000 h | **0** | 0 |
+| pays sans une ville ni une colonne, vivants | 3 | 2 |
+| ardoise maximale d'une colonne, en heures | **0** | 0 |
+| villes debout | 370 | 370 |
+| écart comptable | 0 | 0 |
+
+### 8.1 Pourquoi personne ne mourait — et ce n'était pas la règle
+
+La règle d'extinction est celle du propriétaire (§4.3 et 4.3 bis) : un pays
+s'éteint quand il n'a **ni ville, ni colonne, ni dirigeant** — un chef seul
+garde le droit d'essayer de se refaire. Elle est correctement écrite dans
+`conseil`.
+
+Sa troisième condition ne pouvait simplement jamais devenir vraie.
+`tickDirigeant` ouvrait sur `if (!f.dirigeant) { f.dirigeant = creerDirigeant(…) }`
+et la succession se terminait sur `f.dirigeant = neuf`, **sans jamais demander
+s'il restait quelqu'un pour fournir ce chef**. Un pays sans une terre, sans une
+troupe et sans un habitant se voyait couronner un souverain neuf à perpétuité.
+Trois pays étaient dans cet état à la fin de chaque partie : ni vivants — rien
+ne leur permettait de se refaire — ni morts.
+
+Le correctif est une question posée avant chaque couronnement : `quelquUn(world,
+key)` — une ville tenue ou une colonne en campagne, la définition même qu'a
+donnée le propriétaire de ce qui compose une faction. Le chef seul vit toujours
+et garde son droit ; c'est **sa mort** qui devient définitive quand il ne reste
+personne derrière lui. Et le journal le dit : « Et personne ne prend la suite :
+il ne reste plus rien à gouverner. »
+
+### 8.2 Le revenant, découvert dans la foulée
+
+Faire mourir des pays a immédiatement révélé un défaut voisin, inatteignable
+tant qu'aucun ne mourait. `faireSecession` s'annonce, dans son propre
+commentaire, comme rendant une ville à sa faction d'origine « **en la
+ressuscitant s'il le faut** » : elle lui rend la ville, lui remet un conseil
+sous vingt heures — et laissait la marque `morte` en place. Le pays délibérait
+donc, levait des colonnes et prenait des villes **en étant officiellement
+éteint** : hors de `diploDe`, donc sans relations, sans succession, sans ligne
+au tableau. Un revenant au sens propre, attrapé par une sonde d'invariant qui
+n'avait jamais eu l'occasion de crier.
+
+La marque s'efface désormais là, et c'est **le seul chemin par lequel un drapeau
+tombé revient** : il faut qu'une de ses anciennes villes se soulève et le
+rappelle. Personne ne le décide d'en haut. C'est aussi, en l'état, la seule
+façon dont un drapeau neuf apparaît dans le monde.
+
+### 8.3 Ce qui reste bloqué : la naissance
+
+Aucun pays ne naît, et la cause est mesurée. Une compagnie franche se fonde
+quand une colonne a cessé d'espérer sa solde : `impayees > loyauté ×
+COLONNE.patience`, soit environ 72 heures d'ardoise. Or **l'ardoise maximale du
+monde entier vaut zéro** sur six graines × 6 000 heures — une seule colonne a
+atteint 25 heures, sur une seule graine. Les pays sont trop riches pour manquer
+une solde : trésor médian 23 609 pour une solde de l'ordre de 150.
+
+Le seuil n'est donc pas mal calibré, il est hors d'atteinte. Et le baisser
+serait le mauvais geste : ça ferait des sécessions de misère, pas des pays
+neufs.
+
+**La question à trancher, et c'est une règle de jeu, donc elle revient au
+propriétaire** : est-ce que le défaut de solde doit rester le *seul* motif de
+sécession ? Dans un monde vrai, on plante son propre drapeau aussi par ambition
+(un capitaine que sa légitimité dépasse), par distance (une colonne loin de
+tout, depuis longtemps), par victoire (celui qui vient de prendre une ville et
+ne voit pas pourquoi la rendre), ou parce que le pays qu'on sert s'effondre. Le
+mécanisme de fondation existe et fonctionne — `fonderColonne` est écrite,
+testée, et sait déjà faire naître un pays avec ses hommes et sa ville. Il ne lui
+manque que des raisons d'être appelée.
