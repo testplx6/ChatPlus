@@ -120,6 +120,7 @@ import {
   vivants as vivantsDe,
 } from './groupes.js';
 import { RAID_VILLE, SIEGE } from './assaut.js';
+import { CLAUSES, pacteEntre } from './pactes.js';
 import { derniereVille } from './factions.js';
 import { MANIERES_SIEGE } from './world.js';
 
@@ -5546,6 +5547,30 @@ function blocBourses() {
   </section>`;
 }
 
+/**
+ * Ce qui vous lie à un drapeau, et ce qu'on peut lui proposer (PACTES.md).
+ *
+ * Les pactes n'avaient que leur moteur : on pouvait les décrire, pas les
+ * signer. C'est l'erreur déjà faite deux fois dans le chantier des
+ * implantations — un verbe que personne ne peut prononcer — et on ne la refait
+ * pas une troisième.
+ *
+ * Rien ne s'affiche tant qu'on n'a pas de couleurs à soi : sans drapeau, on ne
+ * donne sa parole au nom de personne.
+ */
+function blocPacteAvec(key) {
+  const mien = S.player.drapeau;
+  if (!mien || key === mien || key === 'essaim') return '';
+  const p = pacteEntre(S.world, mien, key);
+  if (p) {
+    return `<div class="aide ok">Parole donnée : ${e(p.clauses
+      .map((c) => CLAUSES[c].nom.toLowerCase()).join(', '))}.
+      <button class="act mini danger" style="margin-left:6px"
+        data-a="rompre-pacte" data-k="${e(key)}">Reprendre sa parole</button></div>`;
+  }
+  return `<button class="act mini" data-a="pacte" data-k="${e(key)}">Proposer un pacte</button>`;
+}
+
 function ecranMonde() {
   const crypto = (S.base.recherche.cryptographie || 0) > 0;
   const cl = classement(S.world);
@@ -5623,6 +5648,7 @@ function ecranMonde() {
       ${pl(f.emissions || 0, 'émission')}. Loyer de l’argent :
       ${e(dir.nom.toLowerCase())} (${(l2.directeur * 100).toFixed(0)} %).</div>`;
   })()}
+    ${blocPacteAvec(f.key)}
     </div>`;
   }).join('');
 
@@ -6229,6 +6255,44 @@ function rendreModale() {
   restaurerAncre(boite, ancre);
 }
 
+/** Les clauses qu'on est en train de cocher, le temps d'une proposition. */
+let clausesChoisies = [];
+
+/**
+ * Proposer un pacte à un drapeau (PACTES.md, P1).
+ *
+ * On dit ce que chaque clause promet et ce qu'elle engage, avant de cocher :
+ * une parole donnée sans savoir ce qu'elle coûte n'est pas une parole. On ne
+ * dit PAS d'avance ce que l'autre en pensera — un refus est une information,
+ * et la connaître à l'avance viderait la diplomatie de son sel.
+ */
+function modalePacte() {
+  const key = modale.c;
+  const mien = S.player.drapeau;
+  if (!mien) return '<div class="aide">Vous n’avez pas de couleurs à engager.</div>';
+  const nom = drapeauDe(S.world, key).nom;
+  const repu = S.player.reputation[key] || 0;
+  return `<h2 class="titre">Proposer un pacte à ${e(nom)}</h2>
+  <div class="aide">Ce qu’on promet engage : ${e(nom)} accepte ce qui l’arrange, et
+    refuse le reste. Ils vous estiment ${e(palierEstime(repu).nom.toLowerCase())} —
+    c’est de là qu’ils jugeront.</div>
+  <div class="sep"></div>
+  ${Object.keys(CLAUSES).map((k) => {
+    const c = CLAUSES[k];
+    const pris = clausesChoisies.includes(k);
+    return `<button class="act mini" style="width:100%;text-align:left;margin-top:4px"
+      data-a="clause" data-k="${k}" aria-pressed="${pris}">
+      <span class="o-n">${pris ? '▸ ' : ''}${e(c.nom)}</span>
+      <span class="aide" style="display:block">${e(c.desc)}</span>
+    </button>`;
+  }).join('')}
+  <div class="sep"></div>
+  <button class="act primaire" data-a="signer-pacte" data-k="${e(key)}"
+    ${clausesChoisies.length ? '' : 'disabled'}>${clausesChoisies.length
+    ? `Donner sa parole (${pl(clausesChoisies.length, 'clause')})`
+    : 'Choisissez au moins une clause'}</button>`;
+}
+
 function contenuModale() {
   const fermer = '<button class="act mini" data-a="fermer" style="margin-top:10px">Fermer</button>';
   switch (modale.m) {
@@ -6245,6 +6309,7 @@ function contenuModale() {
     case 'entrainement': return modaleEntrainement() + fermer;
     case 'recrutement': return modaleRecrutement() + fermer;
     case 'drapeau': return modaleDrapeau() + fermer;
+    case 'pacte': return modalePacte() + fermer;
     case 'sauvegardes': return modaleSauvegardes() + fermer;
     default: return fermer;
   }
@@ -7208,6 +7273,37 @@ function surClic(ev) {
       modale = { m: el.dataset.m, c: el.dataset.c };
       rendreModale();
       break;
+
+    case 'pacte':
+      // On repart d'une feuille blanche : les clauses cochées la dernière fois
+      // ne valent pas pour un autre drapeau.
+      clausesChoisies = [];
+      modale = { m: 'pacte', c: el.dataset.k };
+      rendreModale();
+      break;
+
+    case 'clause': {
+      const k = el.dataset.k;
+      clausesChoisies = clausesChoisies.includes(k)
+        ? clausesChoisies.filter((x) => x !== k) : clausesChoisies.concat([k]);
+      rendreModale();
+      break;
+    }
+
+    case 'signer-pacte': {
+      const r = ACTIONS.proposerPacte(el.dataset.k, clausesChoisies);
+      toast(r.ok ? 'La parole est donnée.' : r.motif, !r.ok);
+      if (r.ok) { modale = null; rendreModale(); }
+      rafraichir(true);
+      break;
+    }
+
+    case 'rompre-pacte': {
+      const r = ACTIONS.romprePacte(el.dataset.k);
+      toast(r.ok ? 'Vous reprenez votre parole.' : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
 
     case 'fermer':
       fermerModale();

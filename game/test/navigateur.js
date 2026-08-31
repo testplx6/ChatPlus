@@ -22,6 +22,7 @@ import { ecolesDe } from '../src/formation.js';
 import { confierSecteur } from '../src/secteur.js';
 import { capturables, fairePrisonniers } from '../src/justice.js';
 import { loisDe } from '../src/lois.js';
+import { fonderDrapeau } from '../src/factions.js';
 import { genererBande } from '../src/combat.js';
 import { Rng } from '../src/rng.js';
 import { monnaieIci } from '../src/monnaie.js';
@@ -3049,6 +3050,61 @@ console.log('\n8 nonies sexies. Planter ses propres couleurs (IMPLANTATIONS.md, 
     ok(apresDr.tresor === 0, 'et l’on ne s’est pas enrichi en se proclamant');
     ok(apresDr.ville === apresDr.cle, 'la place où l’on est porte désormais les siennes');
     ok(/les vôtres/.test(apresDr.texte), 'et l’écran le dit');
+  }
+}
+
+console.log('\n8 undecies. Donner sa parole depuis l’écran (PACTES.md)');
+{
+  // Les pactes n'avaient que leur moteur : on pouvait les décrire, pas les
+  // signer. C'est l'erreur qu'on a déjà faite deux fois dans le chantier des
+  // implantations — un verbe que personne ne peut prononcer.
+  const pac = partieAvancee();
+  // Un drapeau à soi, et un voisin qui vous estime assez pour écouter.
+  const videP = pac.world.regions.find((r) => !r.colonie && r.decouvert)
+    || pac.world.regions.find((r) => !r.colonie);
+  groupeActif(pac).regionId = videP.i;
+  fonderDrapeau(pac, 'Les Cendres', () => {});
+  const mien = pac.player.drapeau;
+  const voisin = Object.keys(pac.world.factions).find(
+    (k) => k !== 'essaim' && k !== mien && pac.world.factions[k].colonies.length > 1);
+  pac.world.factions[voisin].relations[mien] = 70;
+  pac.world.factions[mien].relations[voisin] = 70;
+  pac.dernierReel = Date.now();
+
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(pac));
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.click('[data-a="onglet"][data-k="monde"]');
+  await page.waitForTimeout(500);
+
+  const texteP = await page.evaluate(() => document.querySelector('#ecran').textContent);
+  ok(/Parole donnée|Proposer un pacte/i.test(texteP),
+    'l’écran du monde parle des paroles données', texteP.slice(0, 160));
+  const boutonP = await page.$(`[data-a="pacte"][data-k="${voisin}"]`);
+  ok(!!boutonP, 'et l’on peut proposer quelque chose à un voisin');
+  if (boutonP) {
+    await page.click(`[data-a="pacte"][data-k="${voisin}"]`);
+    await page.waitForTimeout(400);
+    const modaleP = await page.evaluate(() => document.querySelector('#modale').textContent);
+    ok(/Ne pas s’attaquer/.test(modaleP), 'la modale liste les clauses', modaleP.slice(0, 120));
+    ok(/promesse/i.test(modaleP) || /engage/i.test(modaleP),
+      'et dit que ce qu’on promet engage');
+    await page.click('[data-a="clause"][data-k="nonAgression"]');
+    await page.waitForTimeout(200);
+    await page.click('[data-a="signer-pacte"]');
+    await page.waitForTimeout(600);
+    const lie = await page.evaluate((v) => {
+      const s2 = JSON.parse(window.__sauvegardeTexte());
+      const mienne = s2.player.drapeau;
+      return (s2.world.pactes || []).some((x) => x.rompu === undefined
+        && ((x.a === mienne && x.b === v) || (x.a === v && x.b === mienne))
+        && x.clauses.includes('nonAgression'));
+    }, voisin);
+    ok(lie, 'la parole est donnée, et le monde la porte');
+    await page.waitForTimeout(300);
+    const apresP = await page.evaluate(() => document.querySelector('#ecran').textContent);
+    ok(/ne pas s’attaquer/i.test(apresP), 'et l’écran dit ce qui vous lie désormais');
   }
 }
 

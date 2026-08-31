@@ -17,6 +17,7 @@ import {
   attaquerCaravane, passerOrdre, ordresEnCours, ESCORTES,
 } from './caravanes.js';
 import { attaquerVille, livrerPlace, raserPlace } from './assaut.js';
+import { proposerPacte, romprePacteJoueur } from './pactes.js';
 import { fonderDrapeau } from './factions.js';
 import { peutTraiter, comptoirsPossibles, comptoirActif, chiffrerOrdre } from './bourse.js';
 import { sEngager, quitter, toucherRations as toucherRationsA } from './allegeance.js';
@@ -492,6 +493,21 @@ const API = {
   /** Planter ses propres couleurs (IMPLANTATIONS.md, M3). */
   fonderDrapeau(nom) {
     const r = fonderDrapeau(state, nom, creerLogger(state));
+    if (r.ok) sauver();
+    return r;
+  },
+
+  /** Proposer un pacte à un drapeau, en son nom propre. */
+  proposerPacte(contre, clauses) {
+    if (!state.player.drapeau) return { ok: false, motif: 'Vous n’avez pas de couleurs.' };
+    const r = proposerPacte(state, state.player.drapeau, contre, clauses, creerLogger(state));
+    if (r.ok) sauver();
+    return r;
+  },
+
+  /** Et la reprendre. Ce qui se paie, et se sait. */
+  romprePacte(contre) {
+    const r = romprePacteJoueur(state, contre, creerLogger(state));
     if (r.ok) sauver();
     return r;
   },
