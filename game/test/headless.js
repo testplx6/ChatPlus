@@ -14361,6 +14361,7 @@ section('PERF 4. L’ami et le rival se lisent dans les liens, pas dans la foule
   }
 }
 
+
 // ===========================================================================
 console.log('\n' + '='.repeat(42));
 console.log(`${total - echecs}/${total} tests passés`);

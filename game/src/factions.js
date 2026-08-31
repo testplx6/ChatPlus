@@ -920,6 +920,7 @@ function conseil(world, key, t, log, ctx) {
   // monnaie au lieu de la faire disparaître.
   const heures = Math.max(1, t - (f.dernierConseil || 0));
   f.dernierConseil = t;
+
   for (const col of mesColonies) {
     // Divisé par le cours, comme les salaires des villes : ce que coûte une
     // garnison est un salaire, et `ETAT` le chiffre en ancien crédit. Sans

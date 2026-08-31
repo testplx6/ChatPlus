@@ -19,6 +19,7 @@
 import { drapeauDe, diploDe } from './data.js';
 import { commettre, delaiVersFaction } from './faits.js';
 import { leverArmee } from './factions.js';
+import { depenser } from './monnaie.js';
 
 /**
  * Ce qu'on peut se promettre.
@@ -303,7 +304,12 @@ export function appelerSecours(state, place, agresseur, log) {
     if (!depuis) { impuissants.push(ami); continue; }
     const colonne = leverArmee(world, ami, SECOURS.force, depuis.regionId, place.id, log);
     if (!colonne) { impuissants.push(ami); continue; }
-    f.tresor = Math.max(0, (f.tresor || 0) - cout);
+    // Par la porte comptable, et non en retranchant du trésor : `depenser` fait
+    // aussi sortir la somme de la MASSE. Sans elle, lever une colonne de
+    // secours détruisait de la monnaie — invisible tant que personne ne
+    // signait, et l'écart comptable du banc est passé de 0 à 42 828 le jour où
+    // le monde s'est mis à se lier.
+    depenser(world, ami, cout);
     venus.push(ami);
     if (log) {
       log({

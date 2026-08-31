@@ -90,7 +90,42 @@ peut ; ce qu'elle subit, il le subit.
   Une sonde est née verte et a dû être resserrée : elle comptait les colonnes
   de l'allié, or une faction en lève tout le temps pour ses propres raisons.
   Elle compte maintenant celles qui vont vers la place assiégée.
-- **P3 — Le monde s'en sert.** Les conseils proposent et rompent d'eux-mêmes ;
-  la carte politique se recompose par la diplomatie et plus seulement par les
-  armes. Mesure au banc obligatoire : c'est un mécanisme qui touche toutes les
-  factions à la fois, et le précédent de S3 est dans toutes les mémoires.
+- **P3 — Le monde s'en sert.** 🛑 **Écrit, mesuré, retiré. Blocage — décision
+  au propriétaire.** Les conseils proposaient et rompaient d'eux-mêmes, sans
+  aucun tirage : qui est menacé demande le secours, qui est tranquille demande
+  la paix, et l'on s'adresse d'abord à qui l'on estime le plus. Le mécanisme
+  marche — quatre sondes vertes, cinq pactes signés en quatre mille heures,
+  aucun contre nature, aucun parjure.
+
+  **Mais il déstabilise le monde**, et le banc le dit sans appel (6 graines ×
+  6 000 h, témoin `f820edb`) :
+
+  | | témoin | P3 |
+  |---|---:|---:|
+  | villes debout | 370 | 335 |
+  | guerres | 18 | 27 |
+  | convois | 15 825 | 12 038 |
+  | **masse monétaire** | **3,02 M** | **5,60 M** |
+  | **fourchette des cours** | **0,07–3,44** | **0,04–312,53** |
+
+  Et une sonde de sauvegarde casse avec lui (« coller un export comprimé
+  recharge la partie entière »), ce qui n'a pas été instruit.
+
+  **Deux trouvailles, dont une gardée.** La première mesure donnait un écart
+  comptable de 42 828 là où il est toujours de zéro : `appelerSecours`
+  retranchait le coût de la levée du trésor **sans le sortir de la masse** —
+  de la monnaie détruite à chaque secours porté. Invisible tant que personne ne
+  signait ; le jour où le monde s'est lié, l'invariant a crié. Corrigé par
+  `depenser`, et **ce correctif reste** : il vaut pour les pactes du joueur.
+  La masse à 5,6 M, elle, n'est pas expliquée — l'écart comptable est à zéro,
+  donc rien ne se crée de rien : c'est un monde qui tourne autrement, pas un
+  trou. Reste à savoir pourquoi.
+
+  **Une piste, non instruite** : `DIPLOMATIE.entretien` (une parole tenue
+  rapproche, 1,5 point par conseil) a été ajouté parce que sans lui, cinq
+  pactes se signaient et zéro ne tenait — les relations dérivent vers le bas et
+  tout finissait sous le plancher de rupture. C'est une symétrie qui va de soi
+  (rompre coûte 22 points, tenir devait rapporter), mais c'est aussi un
+  mécanisme qui remonte les relations de tout le monde en permanence, et donc
+  un candidat sérieux pour expliquer un monde qui se comporte autrement. Il
+  faudrait le balayer avant de conclure.
