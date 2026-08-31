@@ -68,7 +68,11 @@ import { primeLivraison, prixEsclave } from '../src/justice.js';
 import { attaquerVille, RAID_VILLE, livrerPlace, raserPlace } from '../src/assaut.js';
 import { estAssiegee, vivresCoupees, negoceCoupe } from '../src/world.js';
 import { fonderDrapeau } from '../src/factions.js';
-import { CLAUSES, proposerPacte, pacteEntre, romprePacte } from '../src/pactes.js';
+import {
+  CLAUSES, proposerPacte, pacteEntre, romprePacte, appelerSecours,
+} from '../src/pactes.js';
+import { declarerGuerreA as declarerGuerreAImp, cibleGuerre as cibleGuerreImp } from '../src/influence.js';
+import { enGuerre as enGuerreImp, leverArmee as leverArmeeImp } from '../src/factions.js';
 import { dirigeant as dirigeantDe } from '../src/dirigeants.js';
 import { peutExercer as peutExercerImp } from '../src/influence.js';
 import { drapeauDe as drapeauDeImp } from '../src/data.js';
@@ -14042,6 +14046,139 @@ section('PAC 1. Les pactes entre drapeaux (PACTES.md, P1)');
     s2.world.factions[mien].relations[a] = 55;
     ok(proposerPacte(s2, mien, a, ['nonAgression'], rienP).ok,
       'un drapeau neuf peut donner sa parole comme les autres');
+  }
+}
+
+
+// ===========================================================================
+section('PAC 2. Une parole donnée finit par coûter (PACTES.md, P2)');
+// Un pacte qui ne fait rien n'est pas un pacte. Les clauses mordent :
+// « se protéger les uns les autres », comme le disait la demande. Et parce que
+// « tant que les parties le respectent », chaque clause peut être TRAHIE —
+// ce n'est pas une pénalité automatique, c'est une décision, prise par
+// quelqu'un, qui se sait.
+{
+  const rienQ = () => {};
+  const deux = (graine) => {
+    const s2 = nouvellePartie(graine, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const [a, b, c] = Object.keys(s2.world.factions)
+      .filter((k) => k !== 'essaim' && s2.world.factions[k].colonies.length > 1);
+    const lier = (x, y, v) => {
+      s2.world.factions[x].relations[y] = v;
+      s2.world.factions[y].relations[x] = v;
+    };
+    return { s: s2, a, b, c, lier };
+  };
+
+  // 1) On ne déclare pas la guerre à qui l'on a promis de ne pas attaquer —
+  //    sans reprendre sa parole d'abord, et ça se voit.
+  {
+    const { s: s2, a, b, lier } = deux(9801);
+    lier(a, b, 60);
+    proposerPacte(s2, a, b, ['nonAgression'], rienQ);
+    const r = declarerGuerreAImp(s2, a, b, new Rng(3), rienQ);
+    ok(!r.ok || !enGuerreImp(s2.world, a, b),
+      'la parole donnée tient la main de celui qui allait dégainer', r.motif);
+  }
+
+  // 2) Un conseil ne choisit pas pour cible quelqu'un à qui il a promis la paix.
+  {
+    const { s: s2, a, b, lier } = deux(9802);
+    lier(a, b, 60);
+    proposerPacte(s2, a, b, ['nonAgression'], rienQ);
+    ok(!cibleGuerreImp(s2, a).includes(b),
+      'et ceux qu’on a jurés ne figurent plus sur la liste des cibles');
+  }
+
+  // 3) Le secours : un allié assiégé appelle, et l'on vient.
+  {
+    const { s: s2, a, b, lier } = deux(9803);
+    lier(a, b, 75);
+    s2.world.factions[a].tresor = 90000;
+    proposerPacte(s2, b, a, ['secours'], rienQ);
+    const place = s2.world.colonies.find((x) => x.faction === b && !x.ruine);
+    const avant = s2.world.armees.filter((x) => x.faction === a).length;
+    const r = appelerSecours(s2, place, 'agresseur-test', rienQ);
+    ok(r.venus.includes(a), 'celui qui a promis lève une colonne',
+      JSON.stringify(r));
+    ok(s2.world.armees.filter((x) => x.faction === a).length > avant,
+      'et elle existe pour de bon');
+  }
+
+  // 4) Mais on ne lève pas ce qu'on n'a pas : une caisse vide n'est pas une
+  //    trahison. Manquer par impuissance et manquer par choix ne se paient
+  //    pas au même prix — le premier ne se paie pas du tout.
+  {
+    const { s: s2, a, b, lier } = deux(9804);
+    lier(a, b, 75);
+    s2.world.factions[a].tresor = 0;
+    proposerPacte(s2, b, a, ['secours'], rienQ);
+    const place = s2.world.colonies.find((x) => x.faction === b && !x.ruine);
+    const rel = s2.world.factions[b].relations[a];
+    const r = appelerSecours(s2, place, 'agresseur-test', rienQ);
+    ok(!r.venus.includes(a) && r.impuissants.includes(a),
+      'sans un sou, on ne vient pas — et ce n’est pas manquer à sa parole');
+    ok(s2.world.factions[b].relations[a] === rel, 'personne ne vous en veut pour ça');
+    ok(!!pacteEntre(s2.world, a, b), 'et le pacte tient toujours');
+  }
+
+  // 5) Manquer par choix, c'est autre chose : le pacte tombe, et l'on s'en
+  //    souvient. C'est tout ce qui tient une parole ici — pas une règle, une
+  //    réputation.
+  {
+    const { s: s2, a, b, lier } = deux(9805);
+    lier(a, b, 75);
+    s2.world.factions[a].tresor = 90000;
+    proposerPacte(s2, b, a, ['secours'], rienQ);
+    // Un chef qui ne veut pas y aller : on le lui fait dire.
+    s2.world.factions[a].refuseSecours = true;
+    const place = s2.world.colonies.find((x) => x.faction === b && !x.ruine);
+    const rel = s2.world.factions[b].relations[a];
+    const r = appelerSecours(s2, place, 'agresseur-test', rienQ);
+    ok(r.manques.includes(a), 'on peut choisir de ne pas venir');
+    ok(!pacteEntre(s2.world, a, b), 'la parole reprise, le pacte tombe');
+    ok(s2.world.factions[b].relations[a] < rel,
+      'et celui qu’on a laissé seul s’en souvient',
+      `${rel} → ${s2.world.factions[b].relations[a]}`);
+  }
+
+  // 5 bis) Et l'appel part tout seul quand un siège commence — sinon ce serait
+  //        un verbe que personne ne prononce, l'erreur qu'on a déjà faite deux
+  //        fois dans ce chantier.
+  {
+    const { s: s2, a, b, lier } = deux(9807);
+    lier(a, b, 75);
+    s2.world.factions[a].tresor = 90000;
+    proposerPacte(s2, b, a, ['secours'], rienQ);
+    const place = s2.world.colonies.find((x) => x.faction === b && !x.ruine);
+    // On compte les colonnes qui vont VERS LA PLACE : une faction en lève tout
+    // le temps pour ses propres raisons, et compter les siennes ferait passer
+    // la sonde sans que le secours existe. Elle est d'ailleurs née verte comme
+    // ça, ce qui ne prouvait rien.
+    const secourent = () => s2.world.armees.filter(
+      (x) => x.faction === a && x.cible === place.id).length;
+    const avant = secourent();
+    const c2 = Object.keys(s2.world.factions).find(
+      (k) => k !== 'essaim' && k !== a && k !== b && s2.world.factions[k].colonies.length);
+    const depuis = s2.world.colonies.find((x) => x.faction === c2);
+    leverArmeeImp(s2.world, c2, 60, depuis.regionId, place.id, rienQ);
+    for (let i = 0; i < 900 && secourent() === avant; i++) avancer(s2, 1);
+    ok(secourent() > avant,
+      'le siège commence, et l’allié lève sa colonne sans qu’on ait à le lui demander',
+      `${avant} → ${secourent()}`);
+  }
+
+  // 6) Ce qui ne nous lie pas ne nous oblige à rien.
+  {
+    const { s: s2, a, b, lier } = deux(9806);
+    lier(a, b, 75);
+    s2.world.factions[a].tresor = 90000;
+    proposerPacte(s2, b, a, ['nonAgression'], rienQ);
+    const place = s2.world.colonies.find((x) => x.faction === b && !x.ruine);
+    const r = appelerSecours(s2, place, 'agresseur-test', rienQ);
+    ok(!r.venus.includes(a) && !r.manques.includes(a),
+      'promettre de ne pas attaquer n’est pas promettre de venir');
+    ok(!!pacteEntre(s2.world, a, b), 'et le pacte n’en souffre pas');
   }
 }
 

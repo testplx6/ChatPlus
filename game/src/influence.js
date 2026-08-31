@@ -22,6 +22,7 @@
 // pouvoir n'est pas gratuit ; il est simplement réel.
 
 import { FACTIONS, DIPLO_FACTIONS, diploDe, drapeauDe, symboleDe } from './data.js';
+import { lieePar } from './pactes.js';
 import { rangDe, groupesEngages, RANGS } from './allegeance.js';
 import { dirigeant, crediterDirigeant, butDeGuerre, TEMPERAMENTS } from './dirigeants.js';
 import {
@@ -879,6 +880,11 @@ export function fonderPoste(state, faction, regionIndex, rng, log) {
 export function cibleGuerre(state, faction) {
   return diploDe(state.world).filter((k) => k !== faction
     && !enGuerre(state.world, faction, k)
+    // On ne dégaine pas contre qui l'on a juré de ne pas attaquer. Ce n'est
+    // pas une interdiction morale posée sur le joueur : c'est la parole
+    // donnée, et il suffit de la reprendre pour que la cible réapparaisse
+    // — au prix que reprendre sa parole coûte (PACTES.md, P2).
+    && !lieePar(state.world, faction, k, 'nonAgression')
     && coloniesDe(state.world, k).length > 0);
 }
 

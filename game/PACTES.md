@@ -68,8 +68,28 @@ peut ; ce qu'elle subit, il le subit.
 - **P1 — Les pactes existent.** La table, les clauses, proposer, peser,
   accepter ou refuser, rompre. Le joueur propose avec son drapeau (M3), une
   faction propose par son conseil.
-- **P2 — Les clauses mordent.** Le secours qu'on honore ou non, la guerre
-  commune, le passage, la vue. C'est le lot où une parole donnée a un prix.
+- **P2 — Les clauses mordent.** ✅ **Livré pour les deux qui comptent.**
+
+  **Non-agression** : on ne dégaine pas contre qui l'on a juré. Ce n'est pas
+  une interdiction morale posée sur le joueur — la cible disparaît de la liste,
+  et il suffit de reprendre sa parole pour qu'elle réapparaisse, au prix que
+  reprendre sa parole coûte. La règle vaut pour les conseils du monde comme
+  pour vous.
+
+  **Secours** : quand un siège commence — celui d'une colonne du monde comme
+  celui de votre escouade —, ceux qui ont promis leur secours à cette place
+  l'apprennent et décident. Une distinction commande tout : **manquer par
+  impuissance n'est pas manquer par choix**. Un allié dont la caisse est vide
+  ne peut pas lever ; il n'a trahi personne, le pacte tient, et personne ne lui
+  en veut. Celui qui pouvait et n'est pas venu a repris sa parole : le pacte
+  tombe, et celui qu'on a laissé seul s'en souvient.
+
+  Treize sondes. **Passage** et **vue** restent à câbler : elles touchent le
+  déplacement et la connaissance, deux mécaniques à part.
+
+  Une sonde est née verte et a dû être resserrée : elle comptait les colonnes
+  de l'allié, or une faction en lève tout le temps pour ses propres raisons.
+  Elle compte maintenant celles qui vont vers la place assiégée.
 - **P3 — Le monde s'en sert.** Les conseils proposent et rompent d'eux-mêmes ;
   la carte politique se recompose par la diplomatie et plus seulement par les
   armes. Mesure au banc obligatoire : c'est un mécanisme qui touche toutes les

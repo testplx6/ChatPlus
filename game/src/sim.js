@@ -3,6 +3,7 @@
 // côté serveur en multijoueur), `state.player` / `state.base` la moitié privée.
 
 import { Rng, grainDe } from './rng.js';
+import { appelerSecours } from './pactes.js';
 import { FACTIONS, DIPLO_FACTIONS, drapeauDe } from './data.js';
 import { genererMonde, decouvrir, colonieParId, nomRegion, distance } from './world.js';
 import { makeCharacter, idDepuisRng, ARCHETYPE_KEYS } from './characters.js';
@@ -668,6 +669,9 @@ export function tick(state) {
       }
     }
   }
+  // Ce que les pactes exigent quand un siège commence : ceux qui ont promis
+  // leur secours viennent, ne peuvent pas, ou n'ont pas voulu.
+  ctx.appelerSecours = (place, agresseur) => appelerSecours(state, place, agresseur, log);
   tickFactions(state.world, state.temps, log, ctx);
   // Le pays du joueur l'a-t-il écarté ? Le monde a posé la marque ; c'est ici,
   // du côté du joueur, qu'on en tire les conséquences — le monde n'a jamais à

@@ -59,10 +59,12 @@ const MODULES = [
   'factions.js',
   // Les prérogatives d'un gradé s'exercent sur ce que factions.js sait faire :
   // lever, fonder, déclarer, signer. Elle vient donc après lui.
-  'influence.js',
-  // Les pactes entre drapeaux : ils lisent les factions et le registre des
-  // faits, et tout ce qui gouverne les lit en retour.
+  // Les pactes entre drapeaux : ils lisent les factions — dont la levée d'une
+  // colonne, pour le secours — et le registre des faits. Placés AVANT
+  // influence.js, qui les lit en retour : on ne déclare pas la guerre à qui
+  // l'on a juré de ne pas attaquer.
   'pactes.js',
+  'influence.js',
   // Ce qu'on fait des gens qu'on n'a pas tués, et les lois qui l'encadrent.
   'justice.js',
   // Et la question jumelle : ce qu'on fait de ses morts.

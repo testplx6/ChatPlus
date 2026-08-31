@@ -18,6 +18,7 @@
 
 import { drapeauDe, diploDe } from './data.js';
 import { commettre, delaiVersFaction } from './faits.js';
+import { leverArmee } from './factions.js';
 
 /**
  * Ce qu'on peut se promettre.
@@ -236,4 +237,83 @@ export function pactesPossibles(state, faction) {
     && !pacteEntre(state.world, faction, k)
     && !(state.world.guerres || []).some(
       (g) => (g.a === faction && g.b === k) || (g.a === k && g.b === faction)));
+}
+
+// ---------------------------------------------------------------------------
+// Les clauses mordent (PACTES.md, lot P2)
+// ---------------------------------------------------------------------------
+//
+// Un pacte qui ne fait rien n'est pas un pacte. Mais « tant que les parties le
+// respectent » : chaque clause peut être trahie, et ce n'est jamais une
+// pénalité automatique — c'est une décision, prise par quelqu'un, qui se sait.
+//
+// Une distinction commande tout ce qui suit : **manquer par impuissance n'est
+// pas manquer par choix**. Un allié sans un sou ne peut pas lever de colonne ;
+// il n'a trahi personne, et personne ne lui en veut. Celui qui pouvait et n'est
+// pas venu, lui, a repris sa parole.
+
+/** Ce qu'il faut en caisse pour lever une colonne de secours. */
+export const SECOURS = { force: 45, parHomme: 5.2 };
+
+/**
+ * Un allié est attaqué : ceux qui lui ont promis leur secours décident.
+ *
+ * Rend qui est venu, qui n'a pas pu, et qui n'a pas voulu.
+ */
+export function appelerSecours(state, place, agresseur, log) {
+  const world = state.world;
+  const venus = [];
+  const impuissants = [];
+  const manques = [];
+  if (!place || !place.faction) return { venus, impuissants, manques };
+  const attaque = place.faction;
+
+  for (const p of pactesDe(world, attaque)) {
+    if (!p.clauses.includes('secours')) continue;
+    const ami = p.a === attaque ? p.b : p.a;
+    if (ami === agresseur) continue;
+    const f = world.factions[ami];
+    if (!f || f.morte) continue;
+
+    // Ce qu'il faudrait sortir de la caisse. Une caisse vide n'est pas un
+    // refus : on ne lève pas ce qu'on n'a pas.
+    const cout = Math.round(SECOURS.force * SECOURS.parHomme);
+    if ((f.tresor || 0) < cout) { impuissants.push(ami); continue; }
+
+    // Et la décision, qui appartient à celui qui l'a promis. `refuseSecours`
+    // est ce que pose celui qui a décidé de ne pas y aller — le conseil au lot
+    // suivant, la sonde ici.
+    if (f.refuseSecours) {
+      manques.push(ami);
+      romprePacte(state, ami, attaque, log);
+      if (log) {
+        log({
+          type: 'accord',
+          texte: `${drapeauDe(world, ami).nom} avai${drapeauDe(world, ami).pluriel ? 'ent' : 't'} `
+            + `promis son secours à ${place.nom}. Personne n’est venu.`,
+          important: true,
+          factions: [ami, attaque],
+        });
+      }
+      continue;
+    }
+
+    const depuis = (f.colonies || []).map((id) => (world.colonies.find((c) => c.id === id)))
+      .filter((c) => c && !c.ruine)[0];
+    if (!depuis) { impuissants.push(ami); continue; }
+    const colonne = leverArmee(world, ami, SECOURS.force, depuis.regionId, place.id, log);
+    if (!colonne) { impuissants.push(ami); continue; }
+    f.tresor = Math.max(0, (f.tresor || 0) - cout);
+    venus.push(ami);
+    if (log) {
+      log({
+        type: 'armee',
+        texte: `${drapeauDe(world, ami).nom} tien${drapeauDe(world, ami).pluriel ? 'nent' : 't'} `
+          + `parole : une colonne part pour ${place.nom}.`,
+        important: true,
+        factions: [ami, attaque],
+      });
+    }
+  }
+  return { venus, impuissants, manques };
 }

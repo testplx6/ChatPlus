@@ -30,6 +30,7 @@ import { poidsInventaire, capacitePortage } from './economy.js';
 import { commettre, delaiVersFaction } from './faits.js';
 import { forceDeGroupe } from './base.js';
 import { basculerPlace, derniereVille } from './factions.js';
+import { appelerSecours } from './pactes.js';
 import { effondrer } from './economy.js';
 import { estDebout, blesser, pvTotal } from './characters.js';
 import {
@@ -332,6 +333,13 @@ export function tickSiege(state, g, rng, log) {
   // monde lit pour savoir ce qui est coupé. Elle vit sur la colonie, donc dans
   // le monde — aucun calcul du monde n'a jamais à regarder du côté du joueur.
   const maniere = MANIERES_SIEGE[g.ordre.maniere] ? g.ordre.maniere : 'investir';
+  // Le premier tour de siège appelle ceux qui ont promis leur secours à cette
+  // place. Ce qu'une colonne du monde déclenche, votre escouade le déclenche :
+  // on ne se donne pas le droit d'assiéger dans le dos des alliances.
+  if (!g.ordre.appelLance) {
+    g.ordre.appelLance = true;
+    appelerSecours(state, col, state.player.drapeau || null, log);
+  }
   col.siege = { t: state.temps, maniere };
   // Le repère qui dispense le monde de chercher : seul un siège qui coupe
   // quelque chose l'avance. Voir `aucuneCoupure`.

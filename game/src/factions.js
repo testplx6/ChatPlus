@@ -256,7 +256,12 @@ function colonieDepart(world, key, regionId) {
   return meilleure;
 }
 
-function leverArmee(world, key, force, depuis, cibleId, log) {
+/**
+ * Lever une colonne. Publique depuis que les pactes en ont besoin : celui qui
+ * a promis son secours en lève une, et c'est le même geste que celui d'un
+ * conseil qui décide d'une campagne (PACTES.md, P2).
+ */
+export function leverArmee(world, key, force, depuis, cibleId, log) {
   const f = world.factions[key];
   const col = colonieParId(world, cibleId);
   if (!col) return null;
@@ -695,6 +700,11 @@ function tickArmee(world, armee, t, log, ctx) {
       }
       armee.etat = 'siege';
       armee.regionId = cible.regionId;
+      // Ceux qui ont promis leur secours à cette place l'apprennent, et
+      // décident. L'appel arrive par `ctx` — même patron que `usureMurs` et
+      // `perdreAvantPoste` : `pactes.js` lit ce module, il ne peut pas être lu
+      // par lui (PACTES.md, P2).
+      if (ctx && ctx.appelerSecours) ctx.appelerSecours(cible, armee.faction);
       log({
         type: 'siege',
         texte: `${drapeauDe(world, armee.faction).nom} `
