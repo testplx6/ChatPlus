@@ -3343,6 +3343,32 @@ console.log('\n8 quater bis. Par défaut, le monde attend');
   await page.waitForTimeout(400);
   const choix = await page.locator('[data-a="temps-hors-ligne"]').count();
   ok(choix === 2, 'le panneau propose les deux temps hors ligne', `${choix} boutons`);
+
+  // « Tu peux rajouter un bouton pour rajouter directement les datas dans le
+  // presse-papier ? » Le propriétaire recopiait ces lignes à la main depuis le
+  // début de la chasse à la lenteur — et c'est cette recopie qui a trouvé la
+  // moitié des causes. Autant qu'elle ne coûte rien.
+  //
+  // Sondé ici, et non dans une section à soi : monter son propre décor
+  // rouvrait une modale au chargement, qui interceptait tous les clics. Le
+  // panneau est déjà ouvert à cet endroit, et proprement.
+  ok(await page.locator('[data-a="copier-mesures"]').count() === 1,
+    'le panneau propose de copier ses chiffres');
+  await page.evaluate(() => {
+    // On observe ce qui part au presse-papier sans dépendre des permissions du
+    // navigateur de test : c'est le texte qu'on vérifie, pas l'API.
+    window.__copie = null;
+    navigator.clipboard.writeText = (t) => { window.__copie = t; return Promise.resolve(); };
+  });
+  await page.click('[data-a="copier-mesures"]');
+  await page.waitForTimeout(300);
+  const copie = await page.evaluate(() => window.__copie);
+  ok(!!copie && /Cet appareil : un rendu coûte/.test(copie),
+    'et ce qui part au presse-papier commence comme ce qui s’affiche',
+    String(copie).slice(0, 70));
+  ok(/Partie : jour \d+/.test(copie || ''),
+    'avec de quoi situer la partie : sans ça, des millisecondes ne veulent rien dire',
+    String(copie).split('\n').pop());
   await page.click('[data-a="temps-hors-ligne"][data-v="1"]');
   await page.waitForTimeout(500);
   const allume = await page.evaluate(

@@ -5972,18 +5972,10 @@ function modaleSauvegardes() {
   // celui-ci se lit sur le téléphone qui joue, et il se rapporte.
   const parEcran = Object.keys(coutParEcran).sort((a, b) => coutParEcran[b] - coutParEcran[a])
     .map((k) => `${k} ${coutParEcran[k]} ms`).join(' · ');
-  const mesure = `<div class="aide">Cet appareil : un rendu coûte
-    ${coutRendu.toFixed(0)} ms en moyenne${ETAT_SAUVEGARDE_TAILLE() ? `, la partie écrite pèse
-    ${(ETAT_SAUVEGARDE_TAILLE() / 1024).toFixed(0)} Ko` : ''}.</div>
-    ${parEcran ? `<div class="aide">Le pire par écran : ${e(parEcran)}.</div>` : ''}
-    ${(() => {
-    const b2 = Object.keys(coutParBloc).filter((k) => coutParBloc[k] >= 5)
-      .sort((a, b3) => coutParBloc[b3] - coutParBloc[a]).slice(0, 6)
-      .map((k) => `${k} ${coutParBloc[k]} ms`).join(' · ');
-    return b2 ? `<div class="aide">Les blocs les plus chers : ${e(b2)}.</div>` : '';
-  })()}
-    ${pesee ? `<div class="aide">Ce qui pèse : ${e(pesee)}.</div>`
-    : '<button class="act mini" data-a="peser">Peser la partie</button>'}`;
+  const lignesMesure = lignesDeMesure();
+  const mesure = `${lignesMesure.map((l) => `<div class="aide">${e(l)}</div>`).join('')}
+    ${pesee ? '' : '<button class="act mini" data-a="peser">Peser la partie</button>'}
+    <button class="act mini" data-a="copier-mesures">Copier ces chiffres</button>`;
   const confort = S ? `<div class="sep"></div>
     <h2 class="titre">Le confort de l’écran</h2>
     <div class="rang-tous">
@@ -6134,6 +6126,69 @@ function fermerModale() {
  * On garde donc la boîte et l'on ne remplace que son contenu — et seulement s'il
  * a changé.
  */
+/**
+ * Les mesures de cet appareil, en texte.
+ *
+ * Écrite le jour où le propriétaire a demandé un bouton pour les copier : il
+ * les recopiait à la main depuis le début de la chasse à la lenteur, et c'est
+ * cette recopie qui a trouvé la moitié des causes. L'affichage et le
+ * presse-papier lisent la même liste — deux fabriques auraient fini par dire
+ * deux choses différentes.
+ */
+function lignesDeMesure() {
+  const l = [];
+  const taille = ETAT_SAUVEGARDE_TAILLE();
+  l.push(`Cet appareil : un rendu coûte ${coutRendu.toFixed(0)} ms en moyenne${
+    taille ? `, la partie écrite pèse ${(taille / 1024).toFixed(0)} Ko` : ''}.`);
+  const parEcran = Object.keys(coutParEcran).sort((a, b) => coutParEcran[b] - coutParEcran[a])
+    .map((k) => `${k} ${coutParEcran[k]} ms`).join(' · ');
+  if (parEcran) l.push(`Le pire par écran : ${parEcran}.`);
+  const blocs = Object.keys(coutParBloc).filter((k) => coutParBloc[k] >= 5)
+    .sort((a, b) => coutParBloc[b] - coutParBloc[a]).slice(0, 6)
+    .map((k) => `${k} ${coutParBloc[k]} ms`).join(' · ');
+  if (blocs) l.push(`Les blocs les plus chers : ${blocs}.`);
+  if (pesee) l.push(`Ce qui pèse : ${pesee}.`);
+  if (S) {
+    // Ce qui rend les chiffres lisibles : une partie de mille deux cents
+    // personnes au jour 748 ne se compare pas à une partie neuve.
+    const gens = groupes(S).reduce((a, g) => a + g.membres.filter(estVivant).length, 0);
+    l.push(`Partie : jour ${Math.floor(S.temps / 24)}, ${gens} vivants, `
+      + `écran ${S.reglages && S.reglages.allege ? 'allégé' : 'complet'}.`);
+  }
+  return l;
+}
+
+/**
+ * Mettre du texte dans le presse-papier. Rend une promesse de succès.
+ *
+ * L'API moderne demande un contexte sécurisé ; le repli par zone de texte
+ * cachée marche partout, et il faut les deux — un bouton qui ne fait rien
+ * selon le navigateur est pire que pas de bouton.
+ */
+function copierTexte(txt) {
+  if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(txt).then(() => true, () => replique(txt));
+  }
+  return Promise.resolve(replique(txt));
+}
+
+function replique(txt) {
+  try {
+    const z = document.createElement('textarea');
+    z.value = txt;
+    z.setAttribute('readonly', '');
+    z.style.position = 'fixed';
+    z.style.opacity = '0';
+    document.body.appendChild(z);
+    z.select();
+    const ok = document.execCommand && document.execCommand('copy');
+    document.body.removeChild(z);
+    return !!ok;
+  } catch (err) {
+    return false;
+  }
+}
+
 function rendreModale() {
   const el = $('#modale');
   const rapport = !modale && S.rapport && S.rapport.apres;
@@ -7365,6 +7420,14 @@ function surClic(ev) {
       if (!r.ok) toast(r.motif, true);
       rendreModale();
       rafraichir(true);
+      break;
+    }
+
+    case 'copier-mesures': {
+      const txt = lignesDeMesure().join('\n');
+      copierTexte(txt).then((bon) => {
+        toast(bon ? 'Chiffres copiés.' : 'Le navigateur a refusé la copie.', !bon);
+      });
       break;
     }
 
