@@ -68,6 +68,8 @@ import { primeLivraison, prixEsclave } from '../src/justice.js';
 import { attaquerVille, RAID_VILLE, livrerPlace, raserPlace } from '../src/assaut.js';
 import { estAssiegee, vivresCoupees, negoceCoupe } from '../src/world.js';
 import { fonderDrapeau } from '../src/factions.js';
+import { dirigeant as dirigeantDe } from '../src/dirigeants.js';
+import { peutExercer as peutExercerImp } from '../src/influence.js';
 import { drapeauDe as drapeauDeImp } from '../src/data.js';
 import { LIENS, relationsNotables, pvTotal as pvTotalImp } from '../src/characters.js';
 import { tickFaits as tickFaitsImp } from '../src/faits.js';
@@ -13829,6 +13831,111 @@ section('IMP 5. Planter ses propres couleurs (IMPLANTATIONS.md, M3)');
     const r = livrerPlace(s2, col, cle, rienD);
     ok(r.ok, 'une place à terre se garde pour soi, désormais', r.motif);
     ok(col.faction === cle, 'et elle est à vous');
+  }
+}
+
+
+// ===========================================================================
+section('IMP 6. Un pays vivant, et c’est vous qui le tenez (IMPLANTATIONS.md, M3)');
+// « Vivant : vos gens ont des avis » — décision D2 du propriétaire. Un conseil,
+// une humeur, des gens qui jugent, et qui peuvent vous démettre. Ce que vous
+// tenez, vous le tenez parce qu'on vous suit.
+//
+// Tout existait pour une faction du monde : `tickDirigeant` fait vivre une
+// légitimité, la grogne du pays la ronge, et `peutExercer` donne toutes les
+// prérogatives à qui porte la couronne — puis les retire à zéro. Il manquait
+// que le dirigeant de VOTRE drapeau soit vous.
+{
+  const rienV = () => {};
+  const monterPays = (graine) => {
+    const s2 = nouvellePartie(graine, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const vide = s2.world.regions.find((r) => !r.colonie && r.decouvert)
+      || s2.world.regions.find((r) => !r.colonie);
+    groupeActif(s2).regionId = vide.i;
+    Object.assign(groupeActif(s2).inventaire, { ferraille: 200 });
+    fonderBase(s2, rienV);
+    // Un camp qui tient debout : des lits pour ses gens et de quoi les nourrir.
+    // Sans ça il se vide en quelques jours — c'est le comportement juste d'un
+    // camp qui ne loge personne, mais on mesurerait alors la mort d'un hameau
+    // et non la vie d'un pays.
+    s2.base.batiments.baraquement = 4;
+    s2.base.batiments.halle = 1;
+    s2.base.stock.rations = 400000;
+    s2.base.pop = POP_RECONNUE + 6;
+    reconnaitreAvantPoste(s2, rienV);
+    fonderDrapeau(s2, 'Les Cendres', rienV);
+    return { s: s2, cle: s2.player.drapeau };
+  };
+
+  // 1) C'est vous qui tenez la maison, pas un inconnu.
+  {
+    const { s: s2, cle } = monterPays(9601);
+    const d = dirigeantDe(s2.world, cle);
+    ok(!!d && d.joueur === true, 'le drapeau qu’on plante, c’est soi qui le porte');
+    ok(d.legitimite > 0, 'et l’on commence avec de quoi se faire obéir',
+      `${d && d.legitimite}`);
+  }
+
+  // 2) Le monde ne vous remplace pas par quelqu'un d'autre pendant que vous
+  //    regardez ailleurs. C'était le vrai risque : `tickDirigeant` fabrique un
+  //    chef à toute faction qui n'en a pas, et il remplace les chefs par usure
+  //    du temps. Ni l'un ni l'autre ne doit vous arriver : seule une
+  //    légitimité tombée vous démet, et c'est alors un jugement, pas un tirage.
+  //
+  //    On tient la légitimité pour isoler ce qu'on mesure. Sans ça, la sonde
+  //    mesurerait autre chose — et l'a fait : plantez vos couleurs, et une
+  //    faction voisine met le siège devant votre camp dès la quarante-sixième
+  //    heure. Le pays d'une seule ville, sans allié ni armée, tombe. C'est le
+  //    monde qui fonctionne, pas un défaut.
+  {
+    const { s: s2, cle } = monterPays(9602);
+    for (let i = 0; i < 20; i++) {
+      dirigeantDe(s2.world, cle).legitimite = 80;
+      avancer(s2, 100);
+    }
+    const d = dirigeantDe(s2.world, cle);
+    ok(!!d && d.joueur === true,
+      'deux mille heures plus tard, tant qu’on vous suit, c’est toujours vous',
+      d ? `${d.titre} ${d.nom}` : 'personne');
+  }
+
+  // 3) La légitimité n'est pas un acquis : un pays qui gronde vous use.
+  {
+    const { s: s2, cle } = monterPays(9603);
+    const d = dirigeantDe(s2.world, cle);
+    d.legitimite = 60;
+    // On tient la grogne haute tout du long : laissée à elle-même, une ville
+    // en paix s'apaise en quelques jours, et l'on mesurerait sa convalescence
+    // au lieu de ce qu'un pays qui gronde coûte à son chef.
+    for (let i = 0; i < 80; i++) {
+      for (const c of s2.world.colonies) if (c.faction === cle) c.unrest = 1;
+      avancer(s2, 12);
+    }
+    ok(dirigeantDe(s2.world, cle).legitimite < 60,
+      'gouverner un pays qui gronde se paie',
+      `60 → ${Math.round(dirigeantDe(s2.world, cle).legitimite)}`);
+  }
+
+  // 4) Et à bout de légitimité, on vous démet. Le drapeau continue sans vous :
+  //    c'est un pays, pas un objet qu'on possède.
+  {
+    const { s: s2, cle } = monterPays(9604);
+    const d = dirigeantDe(s2.world, cle);
+    d.legitimite = 0;
+    d.grogne = 1;
+    let vu = 0;
+    for (let i = 0; i < 400 && s2.player.drapeau; i++) { avancer(s2, 24); vu++; }
+    ok(!s2.player.drapeau, 'un pays qui ne vous suit plus ne vous appartient plus',
+      `au bout de ${vu} jours`);
+    const apres = dirigeantDe(s2.world, cle);
+    ok(!!apres && !apres.joueur, 'quelqu’un d’autre prend la suite, et le pays continue');
+  }
+
+  // 5) Tant qu'on tient, les verbes d'un pays sont à nous.
+  {
+    const { s: s2, cle } = monterPays(9605);
+    ok(peutExercerImp(s2, cle, 'loi').ok,
+      'chez soi, on fait la loi', peutExercerImp(s2, cle, 'loi').motif);
   }
 }
 

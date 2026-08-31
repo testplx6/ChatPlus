@@ -6136,6 +6136,12 @@ function tickDirigeant(world, key, rng, dt, t, log, grogne = 0) {
 
   const sortant = d;
   const ecarte = sortant.legitimite < LEGITIMITE_CRITIQUE;
+  // Le joueur ne se fait pas remplacer par l'usure du temps : on ne meurt pas
+  // de vieillesse à la tête de son propre pays au détour d'un tirage. Seule
+  // une légitimité tombée le démet — et c'est alors un moment de jeu, pas une
+  // ligne de journal parmi d'autres (IMPLANTATIONS.md, M3, décision D2 :
+  // « vivant : vos gens ont des avis »).
+  if (sortant.joueur && !ecarte) return;
   // Renversé par le pays ou par les défaites : ce n'est pas le même reproche,
   // et ce n'est donc pas le même successeur.
   const parLePays = ecarte && (sortant.grogne || 0) > 0.35;
@@ -6144,10 +6150,16 @@ function tickDirigeant(world, key, rng, dt, t, log, grogne = 0) {
   const neuf = creerDirigeant(rng, key, t,
     ecarte ? (parLePays ? 'grogne' : 'faiblesse') : null, world);
   f.dirigeant = neuf;
+  // Le pays continue sans vous : c'est un pays, pas un objet qu'on possède.
+  // L'appelant coupe le lien avec le joueur — le monde, lui, n'a pas à savoir
+  // qui joue (règle d'or).
+  if (sortant.joueur) f.demisJoueur = t;
   if (log) {
     log({
       type: 'dirigeant',
-      texte: `${drapeauDe(world, key).nom} : ${sortant.titre} ${sortant.nom} est ${cause}. `
+      texte: `${drapeauDe(world, key).nom} : ${sortant.joueur
+        ? 'on ne vous suit plus. Vous êtes écarté de la maison que vous avez fondée.'
+        : `${sortant.titre} ${sortant.nom} est ${cause}.`} `
         + `${bilanRegne(sortant, t)} `
         + `${neuf.titre} ${neuf.nom} prend la suite — ${TEMPERAMENTS[neuf.temperament].nom.toLowerCase()}. `
         + `« ${TEMPERAMENTS[neuf.temperament].mot} »`,
@@ -16899,6 +16911,27 @@ function fonderDrapeau(state, nom, log) {
     prochainConseil: 1e9,
     dernierConseil: state.temps,
     joueur: true,
+    // C'est vous qui tenez la maison — et `peutExercer` le sait déjà : la
+    // couronne portée, tous les verbes sont à vous, et à légitimité nulle plus
+    // personne n'exécute vos ordres. Sans ce dirigeant, `tickDirigeant` en
+    // fabriquerait un au hasard au premier jour : votre pays serait gouverné
+    // par un inconnu.
+    dirigeant: {
+      id: `d-joueur-${state.seed}`,
+      nom: propre,
+      titre: 'Chef',
+      temperament: 'batisseur',
+      age: 40,
+      depuis: state.temps,
+      // On ne naît pas légitime : on l'est autant qu'un chef ordinaire, et
+      // c'est ce qu'on en fait qui décide de la suite.
+      legitimite: 55,
+      grogne: 0,
+      guerres: 0,
+      prises: 0,
+      pertes: 0,
+      joueur: true,
+    },
     lois: null,
     masse: 0,
     cours: 1,
@@ -27998,6 +28031,20 @@ function tick(state) {
     }
   }
   tickFactions(state.world, state.temps, log, ctx);
+  // Le pays du joueur l'a-t-il écarté ? Le monde a posé la marque ; c'est ici,
+  // du côté du joueur, qu'on en tire les conséquences — le monde n'a jamais à
+  // savoir qui joue (règle d'or). Le drapeau continue sans vous : vos villes
+  // restent à lui, et c'est bien ce qui fait mal.
+  if (state.player.drapeau) {
+    const mien = state.world.factions[state.player.drapeau];
+    if (mien && mien.demisJoueur !== undefined) {
+      delete mien.joueur;
+      delete mien.demisJoueur;
+      // Le conseil se remet à battre : il n'attendait plus que vous.
+      mien.prochainConseil = 24;
+      state.player.drapeau = null;
+    }
+  }
   tickCaravanes(state, log, ctx);
   // Le loyer des coffres court, qu'on soit là ou non.
   tickCoffres(state, log);

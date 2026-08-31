@@ -1763,6 +1763,27 @@ export function fonderDrapeau(state, nom, log) {
     prochainConseil: 1e9,
     dernierConseil: state.temps,
     joueur: true,
+    // C'est vous qui tenez la maison — et `peutExercer` le sait déjà : la
+    // couronne portée, tous les verbes sont à vous, et à légitimité nulle plus
+    // personne n'exécute vos ordres. Sans ce dirigeant, `tickDirigeant` en
+    // fabriquerait un au hasard au premier jour : votre pays serait gouverné
+    // par un inconnu.
+    dirigeant: {
+      id: `d-joueur-${state.seed}`,
+      nom: propre,
+      titre: 'Chef',
+      temperament: 'batisseur',
+      age: 40,
+      depuis: state.temps,
+      // On ne naît pas légitime : on l'est autant qu'un chef ordinaire, et
+      // c'est ce qu'on en fait qui décide de la suite.
+      legitimite: 55,
+      grogne: 0,
+      guerres: 0,
+      prises: 0,
+      pertes: 0,
+      joueur: true,
+    },
     lois: null,
     masse: 0,
     cours: 1,

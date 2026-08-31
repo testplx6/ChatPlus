@@ -271,6 +271,12 @@ export function tickDirigeant(world, key, rng, dt, t, log, grogne = 0) {
 
   const sortant = d;
   const ecarte = sortant.legitimite < LEGITIMITE_CRITIQUE;
+  // Le joueur ne se fait pas remplacer par l'usure du temps : on ne meurt pas
+  // de vieillesse à la tête de son propre pays au détour d'un tirage. Seule
+  // une légitimité tombée le démet — et c'est alors un moment de jeu, pas une
+  // ligne de journal parmi d'autres (IMPLANTATIONS.md, M3, décision D2 :
+  // « vivant : vos gens ont des avis »).
+  if (sortant.joueur && !ecarte) return;
   // Renversé par le pays ou par les défaites : ce n'est pas le même reproche,
   // et ce n'est donc pas le même successeur.
   const parLePays = ecarte && (sortant.grogne || 0) > 0.35;
@@ -279,10 +285,16 @@ export function tickDirigeant(world, key, rng, dt, t, log, grogne = 0) {
   const neuf = creerDirigeant(rng, key, t,
     ecarte ? (parLePays ? 'grogne' : 'faiblesse') : null, world);
   f.dirigeant = neuf;
+  // Le pays continue sans vous : c'est un pays, pas un objet qu'on possède.
+  // L'appelant coupe le lien avec le joueur — le monde, lui, n'a pas à savoir
+  // qui joue (règle d'or).
+  if (sortant.joueur) f.demisJoueur = t;
   if (log) {
     log({
       type: 'dirigeant',
-      texte: `${drapeauDe(world, key).nom} : ${sortant.titre} ${sortant.nom} est ${cause}. `
+      texte: `${drapeauDe(world, key).nom} : ${sortant.joueur
+        ? 'on ne vous suit plus. Vous êtes écarté de la maison que vous avez fondée.'
+        : `${sortant.titre} ${sortant.nom} est ${cause}.`} `
         + `${bilanRegne(sortant, t)} `
         + `${neuf.titre} ${neuf.nom} prend la suite — ${TEMPERAMENTS[neuf.temperament].nom.toLowerCase()}. `
         + `« ${TEMPERAMENTS[neuf.temperament].mot} »`,

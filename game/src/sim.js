@@ -669,6 +669,20 @@ export function tick(state) {
     }
   }
   tickFactions(state.world, state.temps, log, ctx);
+  // Le pays du joueur l'a-t-il écarté ? Le monde a posé la marque ; c'est ici,
+  // du côté du joueur, qu'on en tire les conséquences — le monde n'a jamais à
+  // savoir qui joue (règle d'or). Le drapeau continue sans vous : vos villes
+  // restent à lui, et c'est bien ce qui fait mal.
+  if (state.player.drapeau) {
+    const mien = state.world.factions[state.player.drapeau];
+    if (mien && mien.demisJoueur !== undefined) {
+      delete mien.joueur;
+      delete mien.demisJoueur;
+      // Le conseil se remet à battre : il n'attendait plus que vous.
+      mien.prochainConseil = 24;
+      state.player.drapeau = null;
+    }
+  }
   tickCaravanes(state, log, ctx);
   // Le loyer des coffres court, qu'on soit là ou non.
   tickCoffres(state, log);

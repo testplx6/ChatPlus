@@ -213,6 +213,24 @@ la ville qu'il est devenu s'il en est une.
 Ce que ça ouvre : **une place prise se garde**. `livrerPlace` accepte
 désormais vos propres couleurs, et c'est tout l'objet de la marche.
 
+**Et le pays est vivant** (décision D2), second lot livré. Le dirigeant de
+votre faction porte `joueur: true` — ce que `peutExercer` sait déjà lire : tous
+les verbes sont à vous, et à légitimité nulle plus personne n'exécute vos
+ordres. C'était un piège : `tickDirigeant` fabrique un chef à toute faction qui
+n'en a pas, si bien que votre pays était gouverné par un inconnu dès le premier
+jour. On ne se fait pas non plus remplacer par l'usure du temps ; seule une
+légitimité tombée démet, et c'est alors un moment : « on ne vous suit plus.
+Vous êtes écarté de la maison que vous avez fondée. » Le pays continue sans
+vous, vos villes lui restant. Le monde pose la marque, `sim.js` en tire les
+conséquences côté joueur — le monde n'a jamais à savoir qui joue.
+
+**Une trouvaille, et elle est du monde, pas du code** : plantez vos couleurs,
+et une faction voisine met le siège devant votre camp dès la quarante-sixième
+heure, sans le lever. Se proclamer, c'est se séparer de son protecteur et se
+désigner. Personne n'a eu à l'écrire — et une sonde a d'abord pris cette mort
+annoncée pour un défaut, ce qui a coûté un correctif inutile avant que la
+grogne tracée heure par heure ne dise la vérité.
+
 *Ce qui manque encore* : le pays **vivant** (D2) — un conseil qui soit le
 vôtre, une humeur, des gens qui jugent et qui peuvent vous démettre. Pour
 l'instant votre conseil ne se réunit pas (`prochainConseil` à l'infini, même
