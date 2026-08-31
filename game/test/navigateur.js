@@ -3002,6 +3002,56 @@ console.log('\n8 nonies quinquies. Donner l’assaut à une ville (IMPLANTATIONS
   }
 }
 
+console.log('\n8 nonies sexies. Planter ses propres couleurs (IMPLANTATIONS.md, M3)');
+{
+  // Le verbe qui ferme la boucle : sans drapeau à soi, une place prise n'a
+  // aucune case où être rangée — c'est ce que disait `declarerIndependance` en
+  // laissant le camp affranchi à personne.
+  const dr = partieAvancee();
+  dr.base.pop = 30;
+  dr.base.batiments.halle = 1;
+  reconnaitreAvantPoste(dr, () => {});
+  dr.dernierReel = Date.now();
+
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(dr));
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.click('[data-a="onglet"][data-k="base"]');
+  await page.waitForTimeout(500);
+
+  const boutonDr = await page.$('[data-a="modale"][data-m="drapeau"]');
+  ok(!!boutonDr, 'un camp qui ne porte les couleurs de personne peut planter les siennes');
+  if (boutonDr) {
+    await page.click('[data-a="modale"][data-m="drapeau"]');
+    await page.waitForTimeout(300);
+    const texteDr = await page.evaluate(() => document.querySelector('#modale').textContent);
+    ok(/Votre trésor\s*rien|trésor/.test(texteDr), 'la modale dit qu’on part sans un sou');
+    ok(/personne/.test(texteDr), 'et que personne ne vous connaît');
+    await page.fill('#nom-drapeau', 'Les Cendres');
+    await page.click('[data-a="planter-drapeau"]');
+    await page.waitForTimeout(700);
+    const apresDr = await page.evaluate(() => {
+      const s2 = JSON.parse(window.__sauvegardeTexte());
+      const cle = s2.player.drapeau;
+      const f = cle && s2.world.factions[cle];
+      const col = s2.world.colonies.find((c) => c.id === s2.base.colonieId);
+      return {
+        cle,
+        nom: cle && s2.world.drapeaux[cle] && s2.world.drapeaux[cle].nom,
+        tresor: f && f.tresor,
+        ville: col && col.faction,
+        texte: document.querySelector('#ecran').textContent,
+      };
+    });
+    ok(!!apresDr.cle && apresDr.nom === 'Les Cendres',
+      'les couleurs portent le nom qu’on leur a donné', JSON.stringify(apresDr).slice(0, 120));
+    ok(apresDr.tresor === 0, 'et l’on ne s’est pas enrichi en se proclamant');
+    ok(apresDr.ville === apresDr.cle, 'la place où l’on est porte désormais les siennes');
+    ok(/les vôtres/.test(apresDr.texte), 'et l’écran le dit');
+  }
+}
+
 console.log('\n8 decies. Métiers de l’avant-poste');
 const bourg = partieAvancee();
 Object.assign(bourg.base.batiments, { hydroponie: 2, entrepot: 3, mur: 2, baraquement: 1 });

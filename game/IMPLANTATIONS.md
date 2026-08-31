@@ -187,7 +187,7 @@ porté au dossier (`porterMerite`), le crédit, les charges. *Ce qui manque* :
 que l'escouade puisse déclencher `capturer` au nom d'une faction, et le prix
 politique si l'on prend une ville que le conseil n'avait pas demandée.
 
-### M3 — Votre drapeau, vivant
+### M3 — Votre drapeau — 🟩 planté
 
 *Ce qui existe* : `fonderColonne` (factions.js:1675) fabrique une faction
 entière en cours de partie — identité dans `world.drapeaux`, couleur et
@@ -195,9 +195,29 @@ symbole dérivés, relations vides, trésor et masse monétaire nuls, donc
 invariant comptable intact par construction. La couronne donne déjà les 18
 prérogatives (`peutExercer`), et la légitimité peut déjà vous faire tomber.
 
-*Ce qui manque* : la porte (à quelles conditions on plante ses couleurs), un
-conseil qui soit le vôtre (D2), et que le tick du monde ne joue pas votre
-drapeau à votre place.
+**Livré** : `fonderDrapeau` (factions.js), jumeau exact de `fonderColonne` —
+identité dans `world.drapeaux`, couleur et symbole dérivés, relations vides,
+trésor et masse monétaire nuls. Le geste est dans le panneau des couleurs de
+l'avant-poste, par une modale qui dit ce qu'on emporte (rien) et qui vous
+connaît (personne). Seize sondes moteur, six au navigateur.
+
+**Les deux questions étaient déjà tranchées, et je les ai reposées à tort.**
+La porte : il n'y en a pas — « la reconnaissance se fait naturellement selon
+que les autres factions nous reconnaissent ou non ; à partir du moment où elles
+traitent avec nous d'une façon ou d'une autre, on peut considérer qu'elles nous
+reconnaissent d'une certaine façon ». Rien à mécaniser, donc : le drapeau naît
+inconnu, `relations` vide, et le premier voisin qui traite le reconnaît de
+fait. La dot : « il a simplement ce qui est sur place » — le camp, ses gens, et
+la ville qu'il est devenu s'il en est une.
+
+Ce que ça ouvre : **une place prise se garde**. `livrerPlace` accepte
+désormais vos propres couleurs, et c'est tout l'objet de la marche.
+
+*Ce qui manque encore* : le pays **vivant** (D2) — un conseil qui soit le
+vôtre, une humeur, des gens qui jugent et qui peuvent vous démettre. Pour
+l'instant votre conseil ne se réunit pas (`prochainConseil` à l'infini, même
+patron qu'une faction éteinte) : le monde ne lève aucune colonne et ne déclare
+aucune guerre en votre nom. C'est le lot suivant.
 
 ### M4 — Autant de camps qu'on veut
 

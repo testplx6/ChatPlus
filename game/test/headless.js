@@ -67,6 +67,8 @@ import { loiIci } from '../src/lois.js';
 import { primeLivraison, prixEsclave } from '../src/justice.js';
 import { attaquerVille, RAID_VILLE, livrerPlace, raserPlace } from '../src/assaut.js';
 import { estAssiegee, vivresCoupees, negoceCoupe } from '../src/world.js';
+import { fonderDrapeau } from '../src/factions.js';
+import { drapeauDe as drapeauDeImp } from '../src/data.js';
 import { LIENS, relationsNotables, pvTotal as pvTotalImp } from '../src/characters.js';
 import { tickFaits as tickFaitsImp } from '../src/faits.js';
 import { retenirEnVille as retenirEnVilleImp } from '../src/services.js';
@@ -13719,6 +13721,114 @@ section('IMP 4. La manière d’assiéger (IMPLANTATIONS.md, M1c-S3)');
     ok(vivresCoupees(s2.world, col, s2.temps), 'coupée à l’heure du dernier assaut');
     ok(!vivresCoupees(s2.world, col, s2.temps + 48),
       'et libre deux jours après le départ des assiégeants');
+  }
+}
+
+
+// ===========================================================================
+section('IMP 5. Planter ses propres couleurs (IMPLANTATIONS.md, M3)');
+// « La reconnaissance se fait naturellement selon que les autres factions nous
+// reconnaissent ou non ; à partir du moment où elles traitent avec nous d'une
+// façon ou d'une autre, on peut considérer qu'elles nous reconnaissent d'une
+// certaine façon. » — le propriétaire, août 2026. Il n'y a donc AUCUNE
+// condition à écrire, et aucun mécanisme de reconnaissance : le drapeau naît
+// inconnu de tous, et le premier voisin qui traite le reconnaît de fait.
+//
+// Et ce qu'on emporte, c'est « simplement ce qui est sur place ». Pas de dot,
+// pas de trésor sorti de nulle part : c'est ce qui rend la naissance sûre pour
+// l'économie — une masse monétaire nulle ne peut rien casser.
+{
+  const rienD = () => {};
+  const monterCamp = (graine) => {
+    const s2 = nouvellePartie(graine, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const vide = s2.world.regions.find((r) => !r.colonie && r.decouvert)
+      || s2.world.regions.find((r) => !r.colonie);
+    groupeActif(s2).regionId = vide.i;
+    Object.assign(groupeActif(s2).inventaire, { ferraille: 200 });
+    fonderBase(s2, rienD);
+    return s2;
+  };
+
+  // 1) Sans rien sur place, il n'y a rien à proclamer.
+  {
+    const s2 = nouvellePartie(9501, { maintenant: 0, depart: 'ville', equipe: 3 });
+    ok(!fonderDrapeau(s2, 'Les Cendres', rienD).ok,
+      'on ne plante pas un drapeau sur rien');
+  }
+
+  // 2) Planté : la puissance existe dans le monde, et elle est nue.
+  {
+    const s2 = monterCamp(9502);
+    const r = fonderDrapeau(s2, 'Les Cendres', rienD);
+    ok(r.ok, 'depuis son camp, on plante ses couleurs', r.motif);
+    const cle = s2.player.drapeau;
+    ok(!!cle && !!s2.world.factions[cle], 'la puissance a une entrée dans le monde');
+    ok(!!drapeauDeImp(s2.world, cle) && drapeauDeImp(s2.world, cle).nom === 'Les Cendres',
+      'et une identité : un nom, une couleur, un symbole');
+    const f = s2.world.factions[cle];
+    ok(f.tresor === 0 && (f.masse || 0) === 0,
+      'elle naît sans un sou : on ne crée pas de richesse en se proclamant',
+      `trésor ${f.tresor}, masse ${f.masse}`);
+    ok(Object.keys(f.relations).length === 0,
+      'et inconnue de tous — la reconnaissance viendra de ceux qui traiteront');
+  }
+
+  // 3) Ce qu'on emporte, c'est ce qui est sur place.
+  {
+    const s2 = monterCamp(9503);
+    s2.base.pop = POP_RECONNUE + 6;
+    s2.base.batiments.halle = 1;
+    reconnaitreAvantPoste(s2, rienD);
+    fonderDrapeau(s2, 'Les Cendres', rienD);
+    const cle = s2.player.drapeau;
+    const ville = s2.world.colonies.find((c) => c.id === s2.base.colonieId);
+    ok(ville.faction === cle, 'la place où l’on se tient porte ses couleurs');
+    ok(s2.world.regions[ville.regionId].controle === cle, 'et la région avec elle');
+    ok(s2.world.factions[cle].colonies.includes(ville.id), 'la puissance la compte');
+  }
+
+  // 4) On ne se proclame pas deux fois.
+  {
+    const s2 = monterCamp(9504);
+    ok(fonderDrapeau(s2, 'Les Cendres', rienD).ok, 'une fois');
+    ok(!fonderDrapeau(s2, 'Les Autres', rienD).ok, 'et pas deux');
+  }
+
+  // 5) Le monde ne joue pas votre drapeau à votre place : son conseil ne lève
+  //    pas d'armée et ne déclare rien pendant que vous regardez ailleurs.
+  {
+    const s2 = monterCamp(9505);
+    s2.base.pop = POP_RECONNUE + 6;
+    s2.base.batiments.halle = 1;
+    reconnaitreAvantPoste(s2, rienD);
+    fonderDrapeau(s2, 'Les Cendres', rienD);
+    const cle = s2.player.drapeau;
+    avancer(s2, 2000);
+    ok(!s2.world.armees.some((a) => a.faction === cle),
+      'aucune colonne levée en votre nom sans vous');
+    // On regarde l'INITIATEUR, pas la présence d'une guerre : que le monde
+    // vous déclare la guerre est son droit le plus strict, et c'est même tout
+    // l'intérêt d'avoir un drapeau. Ce qu'on vérifie, c'est que personne ne
+    // dégaine en votre nom.
+    ok(!(s2.world.guerres || []).some((g) => g.initiateur === cle),
+      'et aucune guerre déclarée en votre nom');
+  }
+
+  // 6) Dès lors, une place prise peut être gardée. C'est tout l'objet.
+  {
+    const s2 = monterCamp(9506);
+    fonderDrapeau(s2, 'Les Cendres', rienD);
+    const cle = s2.player.drapeau;
+    const g2 = groupeActif(s2);
+    const col = s2.world.colonies.find(
+      (c) => !c.ruine && c.faction && c.faction !== cle && !c.avantPoste);
+    const f = s2.world.factions[col.faction];
+    if (f && f.capitale === col.id) f.capitale = f.colonies.find((x) => x !== col.id) || null;
+    g2.regionId = col.regionId;
+    col.defense = 0;
+    const r = livrerPlace(s2, col, cle, rienD);
+    ok(r.ok, 'une place à terre se garde pour soi, désormais', r.motif);
+    ok(col.faction === cle, 'et elle est à vous');
   }
 }
 

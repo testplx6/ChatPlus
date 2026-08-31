@@ -1701,6 +1701,104 @@ function numeroColonne(a) {
  * Le nom se dérive de l'origine, comme le veut §4.5 : la ville d'où la colonne
  * a été levée, ou le nom de son capitaine si elle n'en a plus.
  */
+/**
+ * Planter ses propres couleurs (IMPLANTATIONS.md, M3).
+ *
+ * **Aucune condition, et c'est une décision** : « la reconnaissance se fait
+ * naturellement selon que les autres factions nous reconnaissent ou non, mais
+ * à partir du moment où elles traitent avec nous d'une façon ou d'une autre,
+ * on peut considérer qu'elles nous reconnaissent d'une certaine façon » (le
+ * propriétaire, août 2026). Il n'y a donc pas de seuil à franchir ni de
+ * reconnaissance à mécaniser : le drapeau naît inconnu de tous, `relations`
+ * vide, et le premier voisin qui traite le reconnaît de fait.
+ *
+ * **Ce qu'on emporte est ce qui est sur place** — dit par le propriétaire dans
+ * les mêmes termes. Votre camp, ses gens, et la ville qu'il est devenu s'il en
+ * est une. Rien d'autre : trésor nul, masse monétaire nulle. C'est ce qui rend
+ * la naissance sûre pour l'économie, et c'est déjà la règle des compagnies
+ * franches — voir `fonderColonne`, juste en dessous, dont ceci est le jumeau.
+ */
+export function fonderDrapeau(state, nom, log) {
+  const world = state.world;
+  if (state.player.drapeau && world.factions[state.player.drapeau]) {
+    return { ok: false, motif: 'Vous avez déjà vos couleurs.' };
+  }
+  if (!state.base || !state.base.fonde) {
+    return { ok: false, motif: 'On ne plante pas un drapeau sur rien. Il faut un camp.' };
+  }
+  const propre = String(nom || '').trim() || state.base.nom;
+  const cle = `joueur${state.seed}`;
+  if (world.factions[cle]) return { ok: false, motif: 'Ces couleurs existent déjà.' };
+
+  world.drapeaux[cle] = {
+    nom: propre,
+    court: propre.slice(0, 5).toUpperCase(),
+    pluriel: /^(les|des)\s/i.test(propre),
+    datif: `à ${propre}`,
+    genitif: `de ${propre}`,
+    couleur: couleurNeuve(world),
+    symbole: symboleNeuf(world),
+    devise: 'Ce que nous tenons, nous le tenons nous-mêmes.',
+    // Dérivés de la graine, jamais tirés : un tirage de plus décalerait tout
+    // le monde (CLAUDE.md, piège n°1).
+    agression: Number((0.35 + (state.seed % 5) * 0.08).toFixed(2)),
+    cupidite: Number((0.4 + (state.seed % 4) * 0.12).toFixed(2)),
+    style: 'commune',
+    biomes: [world.regions[state.base.regionId].biome],
+  };
+  world.factions[cle] = {
+    key: cle,
+    nom: propre,
+    tresor: 0,
+    agression: world.drapeaux[cle].agression,
+    relations: {},
+    colonies: [],
+    capitale: null,
+    humeur: 0,
+    // Le monde ne joue pas votre drapeau à votre place : personne ne lève de
+    // colonne ni ne déclare de guerre en votre nom pendant que vous regardez
+    // ailleurs. Ce qu'il fait, c'est vous qui le faites — par les prérogatives,
+    // qui existent déjà. Même patron qu'une faction éteinte, pour la même
+    // raison : ce conseil-là ne se réunit pas tout seul.
+    prochainConseil: 1e9,
+    dernierConseil: state.temps,
+    joueur: true,
+    lois: null,
+    masse: 0,
+    cours: 1,
+    gageRef: 0,
+    emissions: 0,
+    bourse: false,
+  };
+  state.player.drapeau = cle;
+
+  // Ce qui est sur place. Si le camp est devenu une ville aux yeux du monde,
+  // elle porte désormais vos couleurs — et la région avec elle.
+  const ville = state.base.colonieId && colonieParId(world, state.base.colonieId);
+  if (ville) {
+    const ancien = ville.faction;
+    if (ancien && world.factions[ancien]) {
+      const fa = world.factions[ancien];
+      fa.colonies = fa.colonies.filter((c) => c !== ville.id);
+      if (fa.capitale === ville.id) fa.capitale = fa.colonies[0] || null;
+    }
+    ville.faction = cle;
+    world.factions[cle].colonies.push(ville.id);
+    world.factions[cle].capitale = ville.id;
+    world.regions[ville.regionId].controle = cle;
+  }
+
+  if (log) {
+    log({
+      type: 'fondation',
+      texte: `${propre} : vos couleurs sont plantées. Personne ne les connaît encore.`,
+      regionId: state.base.regionId,
+      important: true,
+    });
+  }
+  return { ok: true, cle };
+}
+
 function fonderColonne(world, a, key, t, log) {
   const f = world.factions[key];
   if (!f || !f.colonies || f.colonies.length === 0) return false;

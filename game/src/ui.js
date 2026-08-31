@@ -3165,9 +3165,51 @@ function blocMemorial() {
  * les couleurs de ceux qu'on sert, c'est être défendu, payer l'impôt, et
  * hériter de leurs guerres.
  */
+/**
+ * Planter ses propres couleurs (IMPLANTATIONS.md, M3).
+ *
+ * Une modale et non un bouton sec : il faut un nom, et il faut savoir ce qu'on
+ * fait. Le nom est la seule chose que le joueur apporte — tout le reste, c'est
+ * « simplement ce qui est sur place » (le propriétaire).
+ */
+function modaleDrapeau() {
+  const b = S.base;
+  const col = b.colonieId && S.world.colonies.find((c) => c.id === b.colonieId);
+  return `<h2 class="titre">Planter vos propres couleurs</h2>
+  <div class="aide">Vous cessez de servir. Ce que vous tiendrez, vous le tiendrez
+    en votre nom : ni impôt versé, ni guerre héritée, ni conseil au-dessus de vous.
+    Et une place prise pourra être gardée, ce qui est impossible aujourd’hui.</div>
+  <div class="sep"></div>
+  <div class="ligne"><span class="k">Ce que vous emportez</span>
+    <span class="v">${col ? e(col.nom) : e(b.nom)}, et ce qui s’y trouve</span></div>
+  <div class="ligne"><span class="k">Votre trésor</span><span class="v">rien</span></div>
+  <div class="ligne"><span class="k">Ceux qui vous connaissent</span>
+    <span class="v">personne</span></div>
+  <div class="aide">On ne crée pas de richesse en se proclamant, et l’on ne se fait
+    pas reconnaître en le demandant : ceux qui traiteront avec vous vous
+    reconnaîtront de fait. Les autres apprendront votre nom autrement.</div>
+  <div class="sep"></div>
+  <label class="aide" for="nom-drapeau">Le nom que vous vous donnez</label>
+  <input id="nom-drapeau" class="champ" type="text" maxlength="28"
+    value="${e(b.nom)}" style="width:100%;margin:4px 0 8px">
+  <button class="act primaire" data-a="planter-drapeau">Planter le drapeau</button>`;
+}
+
 function blocDrapeau(b) {
   const col = S.world.colonies.find((c) => c.id === b.colonieId);
   if (!col) return '';
+  // Les vôtres : il n'y a plus de choix à faire, il y a un pays à tenir.
+  if (S.player.drapeau && col.faction === S.player.drapeau) {
+    const d = drapeauDe(S.world, S.player.drapeau);
+    const f = S.world.factions[S.player.drapeau];
+    const connus = Object.keys(f.relations || {}).length;
+    return `<div class="aide">${e(b.nom)} porte
+      <span style="color:${couleurFaction(S.player.drapeau)}">${e(d.nom)}</span> —
+      les vôtres. Vous ne payez d’impôt à personne et n’héritez des guerres de
+      personne. ${connus
+    ? `${n(connus)} puissance${connus > 1 ? 's ont' : ' a'} déjà eu affaire à vous.`
+    : 'Personne ne vous connaît encore : cela viendra de ceux qui traiteront avec vous.'}</div>`;
+  }
   if (col.faction) {
     const l = loisDe(S.world, col.faction);
     return `<div class="aide">${e(b.nom)} porte les couleurs
@@ -3181,6 +3223,8 @@ function blocDrapeau(b) {
   return `<div class="aide">${e(b.nom)} est écrite sur les cartes et ne porte les
     couleurs de personne : on ne vient pas la prendre tant qu’on n’a rien à vous
     reprocher. C’est tenable, et c’est fragile.</div>
+    <button class="act mini primaire" data-a="modale" data-m="drapeau"
+      style="margin-bottom:6px">Planter vos propres couleurs</button>
     ${possibles.map((k) => `<button class="act mini" data-a="rattacher" data-k="${e(k)}"
       style="margin-bottom:4px;text-align:left">Prendre les couleurs
       ${e(drapeauDe(S.world, k).genitif)}<br><span class="aide">Défendue comme les leurs,
@@ -6115,6 +6159,7 @@ function contenuModale() {
     case 'equipement': return modaleEquipement() + fermer;
     case 'entrainement': return modaleEntrainement() + fermer;
     case 'recrutement': return modaleRecrutement() + fermer;
+    case 'drapeau': return modaleDrapeau() + fermer;
     case 'sauvegardes': return modaleSauvegardes() + fermer;
     default: return fermer;
   }
@@ -7588,6 +7633,15 @@ function surClic(ev) {
     case 'rattacher': {
       const r = ACTIONS.rattacher(el.dataset.k);
       toast(r.ok ? 'La ville a changé de drapeau.' : r.motif, !r.ok);
+      break;
+    }
+
+    case 'planter-drapeau': {
+      const champ = document.getElementById('nom-drapeau');
+      const r = ACTIONS.fonderDrapeau(champ ? champ.value : '');
+      if (!r.ok) toast(r.motif, true);
+      else { modale = null; toast('Vos couleurs sont plantées.'); }
+      rafraichir(true);
       break;
     }
 

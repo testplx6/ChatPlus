@@ -432,8 +432,13 @@ export function livrerPlace(state, col, faction, log) {
   const v = placePrenable(state, col);
   if (!v.ok) return v;
   const g = v.g;
-  const servie = g.allegeance && g.allegeance.faction;
-  if (!servie || servie !== faction) {
+  // Les vôtres, ou celles qu'on sert. Garder une place pour soi n'est possible
+  // qu'à qui a planté ses propres couleurs (M3) — sinon il n'existe aucune
+  // case où la ranger, et c'est exactement ce que disait
+  // `declarerIndependance` en laissant le camp affranchi à personne.
+  const sienne = state.player.drapeau === faction;
+  const servie = g.allegeance && g.allegeance.faction === faction;
+  if (!sienne && !servie) {
     return { ok: false, motif: 'Vous ne servez pas ces couleurs.' };
   }
   if (col.faction === faction) return { ok: false, motif: 'Elle porte déjà leurs couleurs.' };

@@ -17,6 +17,7 @@ import {
   attaquerCaravane, passerOrdre, ordresEnCours, ESCORTES,
 } from './caravanes.js';
 import { attaquerVille, livrerPlace, raserPlace } from './assaut.js';
+import { fonderDrapeau } from './factions.js';
 import { peutTraiter, comptoirsPossibles, comptoirActif, chiffrerOrdre } from './bourse.js';
 import { sEngager, quitter, toucherRations as toucherRationsA } from './allegeance.js';
 import { genererBande, TACTIQUES } from './combat.js';
@@ -486,6 +487,13 @@ const API = {
     state.rngState = rng.save();
     sauver();
     return res;
+  },
+
+  /** Planter ses propres couleurs (IMPLANTATIONS.md, M3). */
+  fonderDrapeau(nom) {
+    const r = fonderDrapeau(state, nom, creerLogger(state));
+    if (r.ok) sauver();
+    return r;
   },
 
   /** Livrer une place à terre à ceux dont on porte les couleurs. */
