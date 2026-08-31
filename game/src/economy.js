@@ -9,7 +9,9 @@ import {
 import { comp, gagnerXp, portage, XP_PRATIQUE } from './characters.js';
 import { combienDeFois } from './rng.js';
 import { remiseDe, palierBonus } from './allegeance.js';
-import { distance as distanceCases, rendementRegion, colonieParId } from './world.js';
+import {
+  distance as distanceCases, rendementRegion, colonieParId, vivresCoupees, SIEGE_FAIM,
+} from './world.js';
 import { prixAvecBourse } from './bourse.js';
 import { groupeActif } from './groupes.js';
 import {
@@ -1802,6 +1804,15 @@ export function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log
     // calcul ici redevient un mécanisme mort et silencieux.
     if (!(tension >= 0)) throw new Error(`tension de surextension incalculable pour ${col.id}`);
     if (tension > 0) col.unrest = Math.min(1, col.unrest + tension);
+  }
+
+  // Coupée de ses vivres et le ventre vide, la garnison fond : on ne tient pas
+  // des murs en jeûnant. C'est ce qui permet de prendre une place sans l'avoir
+  // abattue pierre par pierre — mais seulement à qui a choisi de l'affamer,
+  // jamais par le seul fait qu'une colonne campe devant (M1c-S3).
+  if (satiete < SIEGE_FAIM.seuil && vivresCoupees(world, col, t)) {
+    const manque = (SIEGE_FAIM.seuil - satiete) / SIEGE_FAIM.seuil;
+    col.defense = Math.max(0, col.defense * (1 - SIEGE_FAIM.fonte * manque * dt));
   }
 
   if (satiete < 0.8) {

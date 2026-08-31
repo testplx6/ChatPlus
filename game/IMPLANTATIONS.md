@@ -124,45 +124,35 @@ l'escouade. On retourne ce qui existe, formule comprise — aucune règle neuve.
 
   « Pour soi » reste impossible faute de drapeau (M3) — et le panneau le dit
   aussi, plutôt que de laisser chercher un bouton qui n'existe pas.
-- **S3, la faim.** 🛑 **Écrit, mesuré, retiré. Blocage — décision au
-  propriétaire.** Un siège coupe les convois ; une place affamée se rend sans
-  qu'on ait à monter dedans. Le mécanisme marche : sept sondes vertes, la
-  place s'affame, sa garnison fond, le marqueur s'efface tout seul quand
-  l'assiégeant s'en va. **Mais il abîme l'économie du monde**, et le banc le
-  dit sans ambiguïté (6 graines × 6 000 h, témoin `72b410c`) :
+- **S3, la manière d'assiéger.** 🟩 **Débloqué par le propriétaire.** La
+  première version coupait le commerce de toute place assiégée — donc des
+  dizaines de sièges que les factions se livrent en permanence — et le banc
+  l'a refusée : douze villes de moins, un tiers de guerres en plus, et une
+  monnaie à 547 là où le maximum était 3,44. Aucun réglage n'y survivait.
 
-  | | témoin | S3 complet | sans la fonte |
-  |---|---:|---:|---:|
-  | villes debout | 370 | 351 | 358 |
-  | factions écrasées | 8/36 | 10/36 | 6/36 |
-  | guerres | 18 | 24 | 23 |
-  | villes effondrées | 1 | 2 | 0 |
-  | **fourchette des cours** | **0,07–3,44** | **0,02–547,89** | **0,15–8,18** |
+  **La décision (août 2026)** : « c'est un choix multiple pour le joueur, plus
+  réaliste ; il a le choix entre le type de siège, mais bien entendu un siège
+  qui affame le peuple, ou qui coupe les routes commerciales, sera perçu
+  différemment et n'aura pas les mêmes conséquences. C'est une simulation. »
 
-  Le cours d'une monnaie est l'indicateur le plus sensible du monde, et il part
-  en vrille : une monnaie à 547 n'est plus une monnaie. Un balayage de
-  `SIEGE_FAIM.fonte` (0 / 0,004 / 0,012) ne trouve aucune valeur saine — à
-  0,004 la masse monétaire double (3,0 → 6,9 M). Et même **fonte à zéro**, donc
-  la seule coupure des convois, coûte douze villes et double la fourchette des
-  cours.
+  Ce n'est pas un contournement du blocage, c'en est la sortie par le haut : il
+  n'y a plus **une** règle de siège appliquée à tout le monde, mais une manière
+  d'assiéger que l'assiégeant choisit. Les colonnes du monde continuent
+  d'investir les places comme elles l'ont toujours fait — l'économie n'est pas
+  touchée —, et ce qui coupe est un acte, avec un auteur et un prix.
 
-  Ce n'est pas un réglage à trouver, c'est une conséquence de fond : couper le
-  commerce vers toute place assiégée touche les dizaines de sièges que les
-  factions se livrent en permanence, pas seulement le vôtre. Le monde n'a
-  jamais eu à vivre sans ces routes.
+  Trois manières, et ce qu'elles coûtent :
+  - **Investir la place** — on tient les portes, on use la garde. Rien d'autre.
+    C'est ce qui est livré, et ce que fait le monde.
+  - **Affamer la ville** — les vivres n'entrent plus. La garnison fond, mais ce
+    sont les habitants qui paient, et ce sont eux qui s'en souviennent : le
+    prix se lit dans la mémoire d'ici, longtemps après.
+  - **Couper les routes** — le négoce s'arrête. La ville s'appauvrit et son
+    drapeau perd des revenus ; la rancune est celle d'un pays, pas d'un
+    quartier.
 
-  **Trois voies possibles, aucune engagée** :
-  1. *Affamer sans couper le commerce* — la place assiégée reçoit encore, mais
-     la garnison mange moins (une règle sur la garnison, pas sur les routes).
-  2. *Ne couper que le dernier kilomètre* — les convois arrivent, mais ne
-     peuvent pas entrer et repartent chargés : la ville jeûne, le commerce du
-     monde continue de tourner.
-  3. *Renoncer à la faim* — un siège reste un combat long. C'est ce qui est
-     livré aujourd'hui, et ça marche.
-
-  Une quatrième possibilité existe et demande une mesure à part : le monde
-  supporterait peut-être la coupure si les factions **levaient les sièges
-  qu'elles ne peuvent pas conclure**, au lieu de les tenir indéfiniment.
+  La même mesure au banc jugera : si l'économie du monde tient — parce que rien
+  ne coupe tant que personne ne le décide —, la faim entre dans le jeu.
 
 Deux garde-fous du monde s'appliqueront tels quels, parce que ce sont des
 règles du monde et non des règles dirigées contre le joueur : une capitale se
@@ -238,7 +228,17 @@ quand on saura ce qu'est « une place à soi ».
   suffit-il ? Faut-il des hommes, une victoire, une ville ?
 - **Q5 — Ce qu'on emporte en naissant (M3).** Rien, comme les Affranchis ? Le
   camp et ses gens ? Les places déjà tenues sous une autre couronne ?
-- **Q6 — La réponse du monde.** Un drapeau neuf qui prend des villes : les
+- **Q6 — La réponse du monde.** ✅ **Tranchée** (propriétaire, août 2026) :
+  « la reconnaissance se fait naturellement selon que les autres factions nous
+  reconnaissent ou non, mais à partir du moment où elles traitent avec nous
+  d'une façon ou d'une autre, on peut considérer qu'elles nous reconnaissent
+  d'une certaine façon ». Pas de mécanisme de reconnaissance à écrire, donc :
+  elle est **émergente**, et le moteur la porte déjà. `fonderColonne` fait
+  naître une faction « reconnue de personne au départ, par construction :
+  `relations` vide, aucune guerre, aucun accord » — le premier voisin qui se
+  positionne la reconnaît de fait. Traiter, c'est reconnaître.
+
+  Reste, pour mémoire : Un drapeau neuf qui prend des villes : les
   voisins s'allient contre lui ? Le pays quitté fulmine (c'est déjà écrit pour
   l'indépendance) ? Ça se règle avec l'existant, mais il faut le dire.
 

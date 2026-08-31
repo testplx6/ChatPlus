@@ -6,7 +6,10 @@
 import { COMMODITIES, COMMODITY_KEYS, FACTIONS, drapeauDe } from './data.js';
 import { commettre, delaiVersFaction, CANAUX } from './faits.js';
 import { Rng, grainDe } from './rng.js';
-import { chemin, colonieParId, colonieDe, nomRegion, distance, damer } from './world.js';
+import {
+  chemin, colonieParId, colonieDe, nomRegion, distance, damer,
+  negoceCoupe, vivresCoupees, aucuneCoupure,
+} from './world.js';
 import {
   reseauDe, reseaux, idReseau, villesDuReseau, peutTraiter, chiffrerOrdre,
 } from './bourse.js';
@@ -153,7 +156,14 @@ export function tenterDepart(state, rng, log) {
   const world = state.world;
   if (world.caravanes.length >= plafondCaravanes(world)) return null;
 
-  const vendeurs = world.colonies.filter((c) => vivante(c) && aDuSurplus(c));
+  // On ne charge pas depuis une place dont on a fermé les routes : c'est tout
+  // l'objet d'un blocus (M1c-S3). Rien de tel n'arrive tant que personne ne
+  // l'a décidé — une colonne qui investit une ville ne coupe rien.
+  // Tant que personne ne coupe rien — le cas de presque toute partie —, on ne
+  // pose aucune de ces questions.
+  const libre = aucuneCoupure(world, state.temps);
+  const vendeurs = world.colonies.filter(
+    (c) => vivante(c) && aDuSurplus(c) && (libre || !negoceCoupe(world, c, state.temps)));
   if (!vendeurs.length) return null;
   const de = rng.pick(vendeurs);
   const dispo = surplus(de);
@@ -175,10 +185,17 @@ export function tenterDepart(state, rng, log) {
   const portee = [];
   for (const vers of world.colonies) {
     if (!vivante(vers) || vers.id === de.id) continue;
+    // Et l'on ne charge pas pour elle non plus : ses portes sont fermées.
+    if (!libre && negoceCoupe(world, vers, state.temps)) continue;
     const lie = chezSoi && dedans(vers);
     const d = distance(de.regionId, vers.regionId);
     if (d > (lie ? 12 : 7)) continue;
-    portee.push({ vers, d, lie });
+    // Lu une fois par ville, et non une fois par ville ET par marchandise : la
+    // boucle qui suit est un produit, et y glisser un appel coûtait douze pour
+    // cent du tick du monde — mesuré au banc, pour un mécanisme qui ne fait
+    // rien tant que personne n'assiège (METHODE.md §11, « vérifie que tu n'as
+    // pas déplacé le coût »).
+    portee.push({ vers, d, lie, sansVivres: !libre && vivresCoupees(world, vers, state.temps) });
   }
   if (!portee.length) return null;
 
@@ -186,6 +203,9 @@ export function tenterDepart(state, rng, log) {
   for (const [k, qteDispo] of dispo) {
     const prixIci = prixUnitaire(de, k);
     for (const p of portee) {
+      // Affamer, c'est fermer la ville au pain et à rien d'autre : le reste
+      // du négoce continue, et c'est ce qui distingue cette manière du blocus.
+      if (k === 'rations' && p.sansVivres) continue;
       const manque = besoin(p.vers, k);
       if (manque < 12) continue;
       // Le gain vaut-il le trajet ? Écart de prix contre distance.

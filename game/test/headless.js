@@ -66,6 +66,7 @@ import { verdict } from '../tools/vitesse.js';
 import { loiIci } from '../src/lois.js';
 import { primeLivraison, prixEsclave } from '../src/justice.js';
 import { attaquerVille, RAID_VILLE, livrerPlace, raserPlace } from '../src/assaut.js';
+import { estAssiegee, vivresCoupees, negoceCoupe } from '../src/world.js';
 import { LIENS, relationsNotables, pvTotal as pvTotalImp } from '../src/characters.js';
 import { tickFaits as tickFaitsImp } from '../src/faits.js';
 import { retenirEnVille as retenirEnVilleImp } from '../src/services.js';
@@ -13604,6 +13605,120 @@ section('IMP 3. La chute et ses suites (IMPLANTATIONS.md, M1c-S2)');
     ok(!livrerPlace(s2, col, sien, rienC).ok,
       'la dernière ville d’un pays ne se prend pas');
     ok(!raserPlace(s2, col, rienC).ok, 'et ne se rase pas davantage');
+  }
+}
+
+
+// ===========================================================================
+section('IMP 4. La manière d’assiéger (IMPLANTATIONS.md, M1c-S3)');
+// « C'est un choix multiple pour le joueur, plus réaliste : un siège qui
+// affame le peuple, ou qui coupe les routes commerciales, sera perçu
+// différemment et n'aura pas les mêmes conséquences. C'est une simulation. »
+//
+// La première version imposait une seule règle à tout le monde — toute place
+// assiégée coupée du commerce — et le banc l'a refusée : le monde entier
+// vivait sur ces routes. Ici, rien ne coupe tant que personne ne le décide :
+// les colonnes du monde investissent les places comme elles l'ont toujours
+// fait, et ce qui coupe est un acte, avec un auteur et un prix.
+{
+  const rienF = () => {};
+  const monterS3 = (graine) => {
+    const s2 = nouvellePartie(graine, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g2 = groupeActif(s2);
+    const col = s2.world.colonies.find((c) => !c.ruine && c.faction && c.regionId === g2.regionId)
+      || s2.world.colonies.find((c) => !c.ruine && c.faction);
+    g2.regionId = col.regionId;
+    for (const m of g2.membres) {
+      m.skills.melee = 85; m.skills.tir = 85; m.skills.endurance = 85;
+      for (const part of Object.keys(m.corps)) m.corps[part].pv = m.corps[part].max;
+    }
+    const f = s2.world.factions[col.faction];
+    if (f && f.capitale === col.id) f.capitale = f.colonies.find((x) => x !== col.id) || null;
+    col.defense = 300; col.defenseMax = 300; col.murs = 0;
+    return { s: s2, g: g2, col };
+  };
+
+  // 1) Trois manières, et l'ordre retient laquelle.
+  {
+    const { s: s2, g: g2, col } = monterS3(9401);
+    ok(!donnerOrdre(s2, { type: 'siege', maniere: 'chanter' }, g2).ok,
+      'on n’assiège pas d’une manière qui n’existe pas');
+    ok(donnerOrdre(s2, { type: 'siege' }, g2).ok
+      && g2.ordre.maniere === 'investir',
+      'sans rien préciser, on investit la place — la manière la plus sobre',
+      g2.ordre.maniere);
+    ok(donnerOrdre(s2, { type: 'siege', maniere: 'affamer' }, g2).ok
+      && g2.ordre.maniere === 'affamer', 'et l’on peut choisir d’affamer');
+    ok(g2.ordre.cible === col.id, 'devant la place où l’on se tient');
+  }
+
+  // 2) Investir ne coupe rien : c'est ce que fait le monde, et c'est pourquoi
+  //    l'économie n'a pas à en souffrir.
+  {
+    const { s: s2, g: g2, col } = monterS3(9402);
+    donnerOrdre(s2, { type: 'siege', maniere: 'investir' }, g2);
+    avancer(s2, 6);
+    ok(!vivresCoupees(s2.world, col, s2.temps), 'investir n’affame personne');
+    ok(!negoceCoupe(s2.world, col, s2.temps), 'et ne coupe aucune route');
+  }
+
+  // 3) Affamer coupe les vivres — et la garnison finit par ne plus tenir.
+  {
+    const { s: s2, g: g2, col } = monterS3(9403);
+    col.stock.rations = 0;
+    donnerOrdre(s2, { type: 'siege', maniere: 'affamer' }, g2);
+    avancer(s2, 3);
+    ok(vivresCoupees(s2.world, col, s2.temps), 'affamer ferme la ville aux vivres');
+    ok(!negoceCoupe(s2.world, col, s2.temps),
+      'mais laisse passer le reste : on affame le peuple, on ne ruine pas le pays');
+    const defAvant = col.defense;
+    avancer(s2, 240);
+    ok(col.satiete < 0.5, 'la ville s’affame', `satiété ${(col.satiete ?? 1).toFixed(2)}`);
+    ok(col.defense < defAvant * 0.7,
+      'et l’on ne tient pas des murs le ventre vide',
+      `${defAvant} → ${Math.round(col.defense)}`);
+  }
+
+  // 4) Et ceux d'ici s'en souviennent. C'est le prix, et il ne se paie pas au
+  //    même guichet que celui d'un blocus.
+  {
+    const { s: s2, g: g2, col } = monterS3(9404);
+    col.stock.rations = 0;
+    donnerOrdre(s2, { type: 'siege', maniere: 'affamer' }, g2);
+    avancer(s2, 30);
+    ok((s2.player.faits || []).some((f) => f.type === 'siege-famine'),
+      'affamer une ville s’inscrit au registre des faits');
+  }
+
+  // 5) Couper les routes ruine la place sans toucher à son pain.
+  {
+    const { s: s2, g: g2, col } = monterS3(9405);
+    donnerOrdre(s2, { type: 'siege', maniere: 'bloquer' }, g2);
+    avancer(s2, 6);
+    ok(negoceCoupe(s2.world, col, s2.temps), 'bloquer ferme les routes');
+    ok(!vivresCoupees(s2.world, col, s2.temps), 'et laisse entrer les vivres');
+    avancer(s2, 30);
+    ok((s2.player.faits || []).some((f) => f.type === 'siege-blocus'),
+      'et le blocus aussi s’inscrit, mais ce n’est pas le même fait');
+  }
+
+  // 6) Le monde, lui, ne coupe rien : une colonne qui assiège investit, comme
+  //    elle l'a toujours fait. C'est ce qui sauve l'économie.
+  {
+    const { s: s2, col } = monterS3(9406);
+    col.siege = { t: s2.temps, maniere: 'investir' };
+    ok(estAssiegee(s2.world, col, s2.temps), 'une place tenue par une colonne est assiégée');
+    ok(!vivresCoupees(s2.world, col, s2.temps) && !negoceCoupe(s2.world, col, s2.temps),
+      'mais rien n’est coupé pour autant');
+  }
+
+  // 7) La marque s'efface d'elle-même : personne n'a à la retirer.
+  {
+    const { s: s2, col } = monterS3(9407);
+    col.siege = { t: s2.temps, maniere: 'affamer' };
+    ok(vivresCoupees(s2.world, col, s2.temps), 'coupée à l’heure du dernier assaut');
+    ok(!vivresCoupees(s2.world, col, s2.temps + 48),
+      'et libre deux jours après le départ des assiégeants');
   }
 }
 

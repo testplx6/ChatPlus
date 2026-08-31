@@ -411,6 +411,95 @@ export function colonieDe(world, regionId) {
   return index(world).get(r.colonie) || null;
 }
 
+/**
+ * Combien d'heures une place reste tenue après le dernier assaut reçu.
+ *
+ * Un siège n'est pas un état qu'on déclare, c'est une présence qu'on
+ * entretient : l'assiégeant repose la marque à chaque heure, et elle s'efface
+ * d'elle-même quand il s'en va. Personne n'a donc à la retirer — ni la colonne
+ * qu'on disperse, ni l'escouade qui change d'ordre, ni une partie rechargée.
+ */
+export const SIEGE_MARQUE_H = 6;
+
+/**
+ * Les manières d'assiéger (IMPLANTATIONS.md, M1c-S3).
+ *
+ * « C'est un choix multiple pour le joueur, plus réaliste : un siège qui
+ * affame le peuple, ou qui coupe les routes commerciales, sera perçu
+ * différemment et n'aura pas les mêmes conséquences. C'est une simulation. »
+ * (Le propriétaire, août 2026.)
+ *
+ * La première version imposait une seule règle à tout le monde — toute place
+ * assiégée coupée du commerce. Le banc l'a refusée : les factions se livrent
+ * des dizaines de sièges en permanence, le monde entier vivait sur ces routes,
+ * et une monnaie montait à 547 contre 3,44 au témoin. Ici, **rien ne coupe
+ * tant que personne ne le décide** : les colonnes du monde investissent les
+ * places comme elles l'ont toujours fait, et ce qui coupe est un acte, avec un
+ * auteur et un prix.
+ */
+export const MANIERES_SIEGE = {
+  investir: {
+    nom: 'Investir la place',
+    desc: 'Tenir les portes et user la garde. Rien d’autre : ni le pain ni le négoce.',
+    vivres: false,
+    negoce: false,
+  },
+  affamer: {
+    nom: 'Affamer la ville',
+    desc: 'Plus un grain n’entre. La garde finit par ne plus tenir — ce sont les '
+      + 'habitants qui paient, et ce sont eux qui s’en souviendront.',
+    vivres: true,
+    negoce: false,
+  },
+  bloquer: {
+    nom: 'Couper les routes',
+    desc: 'Le négoce s’arrête. La ville s’appauvrit et son drapeau perd des '
+      + 'revenus : la rancune sera celle d’un pays, pas d’un quartier.',
+    vivres: false,
+    negoce: true,
+  },
+};
+
+/**
+ * Jusqu'à quelle heure une coupure court quelque part dans le monde.
+ *
+ * Les colonnes du monde assiègent en permanence, mais elles **investissent** :
+ * elles ne coupent ni le pain ni les routes. Sans ce repère, chaque départ de
+ * convoi interrogeait chaque ville pour une réponse toujours négative — six
+ * pour cent du tick du monde, mesuré au banc, pour rien. Posé par qui coupe,
+ * et par personne d'autre.
+ */
+export function aucuneCoupure(world, t) {
+  return !((world.coupureJusqua || 0) > t);
+}
+
+/** La manière dont une place est tenue en ce moment, s'il y en a une. */
+export function maniereSiege(world, col, t) {
+  const m = col && col.siege;
+  if (!m || t - m.t >= SIEGE_MARQUE_H) return null;
+  return MANIERES_SIEGE[m.maniere] ? m.maniere : 'investir';
+}
+
+/** Cette place est-elle tenue, de quelque manière que ce soit ? */
+export function estAssiegee(world, col, t) {
+  return maniereSiege(world, col, t) !== null;
+}
+
+/** Les vivres n'entrent plus. */
+export function vivresCoupees(world, col, t) {
+  const m = maniereSiege(world, col, t);
+  return !!(m && MANIERES_SIEGE[m].vivres);
+}
+
+/** Le négoce s'est arrêté. */
+export function negoceCoupe(world, col, t) {
+  const m = maniereSiege(world, col, t);
+  return !!(m && MANIERES_SIEGE[m].negoce);
+}
+
+/** Ce que la faim fait à une garnison qu'on a coupée de ses vivres. */
+export const SIEGE_FAIM = { seuil: 0.6, fonte: 0.012 };
+
 export function colonieParId(world, id) {
   return index(world).get(id) || null;
 }

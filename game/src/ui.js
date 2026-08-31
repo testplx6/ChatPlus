@@ -120,6 +120,7 @@ import {
 } from './groupes.js';
 import { RAID_VILLE, SIEGE } from './assaut.js';
 import { derniereVille } from './factions.js';
+import { MANIERES_SIEGE } from './world.js';
 
 // ---------------------------------------------------------------------------
 // État local de l'interface
@@ -2358,16 +2359,42 @@ function blocAssaut(col) {
     ? 'Donner l’assaut' : 'Personne ne tient debout'}</button>
       ${assiege
     ? `<button class="act mini" data-a="ordre" data-k="repos">Lever le siège</button>`
-    : `<button class="act mini" data-a="ordre" data-k="siege"
-        ${debout.length && !aTerre ? '' : 'disabled'}>${aTerre
-      ? 'Sa garde est à terre' : 'Mettre le siège'}</button>`}
+    : ''}
     </div>
+    ${aTerre ? '' : blocManieresSiege(col, assiege, debout.length)}
     ${assiege ? `<div class="aide">Vous tenez la place depuis ${
   dureeTexte(Math.max(0, S.temps - (G().ordre.depuis || S.temps)))}. Sa garde s’use, et vous
-      prenez des coups : un siège se paie des deux côtés.</div>` : `<div class="aide">Un siège
-      use sa garde jusqu’à ce qu’elle ne tienne plus. C’est plus long qu’un coup de main, et
-      c’est le seul chemin vers une place qu’on garde.</div>`}
+      prenez des coups : un siège se paie des deux côtés.</div>` : ''}
   </section>`;
+}
+
+/**
+ * Les manières d'assiéger, et ce que chacune coûte (M1c-S3).
+ *
+ * « C'est un choix multiple pour le joueur, plus réaliste : un siège qui
+ * affame le peuple, ou qui coupe les routes commerciales, sera perçu
+ * différemment et n'aura pas les mêmes conséquences. C'est une simulation. »
+ * (Le propriétaire, août 2026.)
+ *
+ * Le prix se dit AVANT le clic, et il n'est pas le même selon le guichet où
+ * il se paie : affamer se retient dans les rues, longtemps ; un blocus se
+ * retient au palais. Choisir sans savoir ça ne serait pas choisir.
+ */
+function blocManieresSiege(col, assiege, debout) {
+  const courante = assiege ? G().ordre.maniere : null;
+  return `<div class="aide" style="margin-top:6px">Un siège use sa garde jusqu’à ce qu’elle
+    ne tienne plus. C’est plus long qu’un coup de main, et c’est le seul chemin vers une
+    place qu’on garde. La manière, elle, se choisit — et elle se paiera.</div>
+  ${Object.keys(MANIERES_SIEGE).map((k) => {
+    const m = MANIERES_SIEGE[k];
+    return `<button class="act mini ${k === 'investir' ? '' : 'danger'}"
+      style="width:100%;text-align:left;margin-top:4px"
+      data-a="ordre" data-k="siege" data-r="${k}"
+      aria-pressed="${courante === k}" ${debout ? '' : 'disabled'}>
+      <span class="o-n">${courante === k ? '▸ ' : ''}${e(m.nom)}</span>
+      <span class="aide" style="display:block">${e(m.desc)}</span>
+    </button>`;
+  }).join('')}`;
 }
 
 /**
@@ -6973,7 +7000,8 @@ function surClic(ev) {
       break;
 
     case 'ordre': {
-      const r = donnerOrdre(S, { type: el.dataset.k });
+      // `data-r` porte la manière d'assiéger, quand il y en a une.
+      const r = donnerOrdre(S, { type: el.dataset.k, maniere: el.dataset.r });
       if (!r.ok) toast(r.motif, true);
       rafraichir(true);
       break;

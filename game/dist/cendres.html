@@ -4570,6 +4570,95 @@ function colonieDe(world, regionId) {
   return index(world).get(r.colonie) || null;
 }
 
+/**
+ * Combien d'heures une place reste tenue après le dernier assaut reçu.
+ *
+ * Un siège n'est pas un état qu'on déclare, c'est une présence qu'on
+ * entretient : l'assiégeant repose la marque à chaque heure, et elle s'efface
+ * d'elle-même quand il s'en va. Personne n'a donc à la retirer — ni la colonne
+ * qu'on disperse, ni l'escouade qui change d'ordre, ni une partie rechargée.
+ */
+const SIEGE_MARQUE_H = 6;
+
+/**
+ * Les manières d'assiéger (IMPLANTATIONS.md, M1c-S3).
+ *
+ * « C'est un choix multiple pour le joueur, plus réaliste : un siège qui
+ * affame le peuple, ou qui coupe les routes commerciales, sera perçu
+ * différemment et n'aura pas les mêmes conséquences. C'est une simulation. »
+ * (Le propriétaire, août 2026.)
+ *
+ * La première version imposait une seule règle à tout le monde — toute place
+ * assiégée coupée du commerce. Le banc l'a refusée : les factions se livrent
+ * des dizaines de sièges en permanence, le monde entier vivait sur ces routes,
+ * et une monnaie montait à 547 contre 3,44 au témoin. Ici, **rien ne coupe
+ * tant que personne ne le décide** : les colonnes du monde investissent les
+ * places comme elles l'ont toujours fait, et ce qui coupe est un acte, avec un
+ * auteur et un prix.
+ */
+const MANIERES_SIEGE = {
+  investir: {
+    nom: 'Investir la place',
+    desc: 'Tenir les portes et user la garde. Rien d’autre : ni le pain ni le négoce.',
+    vivres: false,
+    negoce: false,
+  },
+  affamer: {
+    nom: 'Affamer la ville',
+    desc: 'Plus un grain n’entre. La garde finit par ne plus tenir — ce sont les '
+      + 'habitants qui paient, et ce sont eux qui s’en souviendront.',
+    vivres: true,
+    negoce: false,
+  },
+  bloquer: {
+    nom: 'Couper les routes',
+    desc: 'Le négoce s’arrête. La ville s’appauvrit et son drapeau perd des '
+      + 'revenus : la rancune sera celle d’un pays, pas d’un quartier.',
+    vivres: false,
+    negoce: true,
+  },
+};
+
+/**
+ * Jusqu'à quelle heure une coupure court quelque part dans le monde.
+ *
+ * Les colonnes du monde assiègent en permanence, mais elles **investissent** :
+ * elles ne coupent ni le pain ni les routes. Sans ce repère, chaque départ de
+ * convoi interrogeait chaque ville pour une réponse toujours négative — six
+ * pour cent du tick du monde, mesuré au banc, pour rien. Posé par qui coupe,
+ * et par personne d'autre.
+ */
+function aucuneCoupure(world, t) {
+  return !((world.coupureJusqua || 0) > t);
+}
+
+/** La manière dont une place est tenue en ce moment, s'il y en a une. */
+function maniereSiege(world, col, t) {
+  const m = col && col.siege;
+  if (!m || t - m.t >= SIEGE_MARQUE_H) return null;
+  return MANIERES_SIEGE[m.maniere] ? m.maniere : 'investir';
+}
+
+/** Cette place est-elle tenue, de quelque manière que ce soit ? */
+function estAssiegee(world, col, t) {
+  return maniereSiege(world, col, t) !== null;
+}
+
+/** Les vivres n'entrent plus. */
+function vivresCoupees(world, col, t) {
+  const m = maniereSiege(world, col, t);
+  return !!(m && MANIERES_SIEGE[m].vivres);
+}
+
+/** Le négoce s'est arrêté. */
+function negoceCoupe(world, col, t) {
+  const m = maniereSiege(world, col, t);
+  return !!(m && MANIERES_SIEGE[m].negoce);
+}
+
+/** Ce que la faim fait à une garnison qu'on a coupée de ses vivres. */
+const SIEGE_FAIM = { seuil: 0.6, fonte: 0.012 };
+
 function colonieParId(world, id) {
   return index(world).get(id) || null;
 }
@@ -12404,6 +12493,15 @@ function tickColonie(world, col, rng, climat, dt = 1, reputation = 0, log = null
     if (tension > 0) col.unrest = Math.min(1, col.unrest + tension);
   }
 
+  // Coupée de ses vivres et le ventre vide, la garnison fond : on ne tient pas
+  // des murs en jeûnant. C'est ce qui permet de prendre une place sans l'avoir
+  // abattue pierre par pierre — mais seulement à qui a choisi de l'affamer,
+  // jamais par le seul fait qu'une colonne campe devant (M1c-S3).
+  if (satiete < SIEGE_FAIM.seuil && vivresCoupees(world, col, t)) {
+    const manque = (SIEGE_FAIM.seuil - satiete) / SIEGE_FAIM.seuil;
+    col.defense = Math.max(0, col.defense * (1 - SIEGE_FAIM.fonte * manque * dt));
+  }
+
   if (satiete < 0.8) {
     // On se serre la ceinture, puis on s'énerve, puis on s'en va.
     //
@@ -14281,7 +14379,14 @@ function tenterDepart(state, rng, log) {
   const world = state.world;
   if (world.caravanes.length >= plafondCaravanes(world)) return null;
 
-  const vendeurs = world.colonies.filter((c) => vivante(c) && aDuSurplus(c));
+  // On ne charge pas depuis une place dont on a fermé les routes : c'est tout
+  // l'objet d'un blocus (M1c-S3). Rien de tel n'arrive tant que personne ne
+  // l'a décidé — une colonne qui investit une ville ne coupe rien.
+  // Tant que personne ne coupe rien — le cas de presque toute partie —, on ne
+  // pose aucune de ces questions.
+  const libre = aucuneCoupure(world, state.temps);
+  const vendeurs = world.colonies.filter(
+    (c) => vivante(c) && aDuSurplus(c) && (libre || !negoceCoupe(world, c, state.temps)));
   if (!vendeurs.length) return null;
   const de = rng.pick(vendeurs);
   const dispo = surplus(de);
@@ -14303,10 +14408,17 @@ function tenterDepart(state, rng, log) {
   const portee = [];
   for (const vers of world.colonies) {
     if (!vivante(vers) || vers.id === de.id) continue;
+    // Et l'on ne charge pas pour elle non plus : ses portes sont fermées.
+    if (!libre && negoceCoupe(world, vers, state.temps)) continue;
     const lie = chezSoi && dedans(vers);
     const d = distance(de.regionId, vers.regionId);
     if (d > (lie ? 12 : 7)) continue;
-    portee.push({ vers, d, lie });
+    // Lu une fois par ville, et non une fois par ville ET par marchandise : la
+    // boucle qui suit est un produit, et y glisser un appel coûtait douze pour
+    // cent du tick du monde — mesuré au banc, pour un mécanisme qui ne fait
+    // rien tant que personne n'assiège (METHODE.md §11, « vérifie que tu n'as
+    // pas déplacé le coût »).
+    portee.push({ vers, d, lie, sansVivres: !libre && vivresCoupees(world, vers, state.temps) });
   }
   if (!portee.length) return null;
 
@@ -14314,6 +14426,9 @@ function tenterDepart(state, rng, log) {
   for (const [k, qteDispo] of dispo) {
     const prixIci = prixUnitaire(de, k);
     for (const p of portee) {
+      // Affamer, c'est fermer la ville au pain et à rien d'autre : le reste
+      // du négoce continue, et c'est ce qui distingue cette manière du blocus.
+      if (k === 'rations' && p.sansVivres) continue;
       const manque = besoin(p.vers, k);
       if (manque < 12) continue;
       // Le gain vaut-il le trajet ? Écart de prix contre distance.
@@ -23592,6 +23707,14 @@ const SIEGE = {
   grogne: 0.004,
   /** En dessous, la garde ne tient plus : le siège n'a plus d'objet. */
   plancher: 1,
+  /** Au bout de combien d'heures tenues le geste devient un fait qu'on inscrit. */
+  jourQuiCompte: 24,
+  /** Ce qu'une ville affamée retient de vous, et ce que son drapeau en dit. */
+  memoireFamine: -40,
+  rancuneFamine: -55,
+  /** Un blocus se paie moins cher dans les rues, et plus cher au palais. */
+  memoireBlocus: -14,
+  rancuneBlocus: -35,
 };
 
 /** Ce que la prise ou la destruction d'une place vaut au registre des faits. */
@@ -23605,6 +23728,42 @@ const PRISE = {
   /** Raser une ville ne s'oublie pas. */
   rase: -70,
 };
+
+/**
+ * Ce qu'une manière de faire coûte, quand la ville l'a subie assez longtemps
+ * pour que ce soit un fait et non une menace.
+ *
+ * Affamer se paie chez les habitants : ce sont eux qui ont eu faim, et une
+ * ville se souvient longtemps de qui l'a affamée. Bloquer se paie chez le
+ * drapeau : c'est lui qui perd des revenus, et c'est lui qui compte.
+ */
+function inscrireSiege(state, col, maniere) {
+  const dur = maniere === 'affamer';
+  const effets = [{
+    ville: col.id,
+    memoire: dur ? 'famine' : 'blocus',
+    delta: dur ? SIEGE.memoireFamine : SIEGE.memoireBlocus,
+    su: state.temps + 1,
+  }];
+  if (col.faction && col.faction !== 'essaim') {
+    effets.push({
+      faction: col.faction,
+      delta: dur ? SIEGE.rancuneFamine : SIEGE.rancuneBlocus,
+      su: state.temps + delaiVersFaction(state, 'rumeur', col.regionId, col.faction),
+      dit: dur
+        ? `${drapeauDe(state.world, col.faction).nom} sa${drapeauDe(state.world, col.faction).pluriel ? 'vent' : 'it'} `
+          + `qui affame ${col.nom}.`
+        : `${drapeauDe(state.world, col.faction).nom} sa${drapeauDe(state.world, col.faction).pluriel ? 'vent' : 'it'} `
+          + `qui a fermé les routes de ${col.nom}.`,
+    });
+  }
+  commettre(state, {
+    type: dur ? 'siege-famine' : 'siege-blocus',
+    regionId: col.regionId,
+    t: state.temps,
+    effets,
+  });
+}
 
 /** L'acharnement d'une place : la règle du monde, lue au même endroit. */
 function acharnementDe(world, col) {
@@ -23647,6 +23806,27 @@ function tickSiege(state, g, rng, log) {
 
   col.defense = Math.max(0, col.defense - assaut * (domine ? SIEGE.usure : SIEGE.usureFaible));
   col.unrest = Math.min(1, (col.unrest || 0) + SIEGE.grogne);
+
+  // La marque, reposée à chaque heure, avec la manière : c'est elle que le
+  // monde lit pour savoir ce qui est coupé. Elle vit sur la colonie, donc dans
+  // le monde — aucun calcul du monde n'a jamais à regarder du côté du joueur.
+  const maniere = MANIERES_SIEGE[g.ordre.maniere] ? g.ordre.maniere : 'investir';
+  col.siege = { t: state.temps, maniere };
+  // Le repère qui dispense le monde de chercher : seul un siège qui coupe
+  // quelque chose l'avance. Voir `aucuneCoupure`.
+  if (MANIERES_SIEGE[maniere].vivres || MANIERES_SIEGE[maniere].negoce) {
+    state.world.coupureJusqua = Math.max(
+      state.world.coupureJusqua || 0, state.temps + SIEGE_MARQUE_H);
+  }
+
+  // Ce qu'on fait à une ville se sait, et ne se paie pas au même guichet selon
+  // ce qu'on lui fait. On l'inscrit une fois par siège — au premier jour tenu,
+  // quand le geste devient un fait et non une menace.
+  if (maniere !== 'investir' && state.temps - (g.ordre.depuis || 0) >= SIEGE.jourQuiCompte
+    && !g.ordre.inscrit) {
+    g.ordre.inscrit = true;
+    inscrireSiege(state, col, maniere);
+  }
 
   // Et la place rend les coups. Un siège sans blessés serait un siège gratuit :
   // on s'installe, on attend, la ville tombe. Ce que la colonne du monde perd
@@ -24783,6 +24963,11 @@ function donnerOrdre(state, ordre, groupe) {
   }
   if (!ORDRES[ordre.type]) return { ok: false, motif: 'Ordre inconnu.' };
   if (ordre.type === 'siege') {
+    // La manière d'assiéger est un choix, et il a des conséquences : voir
+    // MANIERES_SIEGE (world.js). Sans rien préciser, on investit — la plus
+    // sobre, et celle que le monde pratique.
+    const maniere = ordre.maniere === undefined ? 'investir' : ordre.maniere;
+    if (!MANIERES_SIEGE[maniere]) return { ok: false, motif: 'On n’assiège pas comme ça.' };
     const place = assiegeable(state, g);
     if (!place) {
       const col = colonieDe(state.world, g.regionId);
@@ -24797,7 +24982,7 @@ function donnerOrdre(state, ordre, groupe) {
     if (place.defense <= SIEGE.plancher) {
       return { ok: false, motif: `La garde de ${place.nom} ne tient déjà plus : entrez.` };
     }
-    g.ordre = { type: 'siege', cible: place.id, depuis: state.temps };
+    g.ordre = { type: 'siege', cible: place.id, maniere, depuis: state.temps };
     return { ok: true };
   }
   if (ordre.type === 'travaux' && !(state.base.fonde && state.base.regionId === g.regionId)) {
@@ -25197,7 +25382,10 @@ function tickGroupe(state, g, log, ctx) {
   const heure = state.temps % 24;
   const nuit = heure >= 22 || heure < 6;
   const forcee = ordre.type === 'voyage' && ordre.allure === 'forcee';
-  const travaille = !nuit || forcee;
+  // Un siège ne dort pas : on ne lève pas les portes au coucher du soleil pour
+  // laisser la place se ravitailler à la faveur de la nuit. C'est le prix de
+  // l'ordre — personne ne récupère tant qu'on tient devant.
+  const travaille = !nuit || forcee || ordre.type === 'siege';
   g.nuit = nuit;
 
   const debout = deboutDe(g);
@@ -30194,16 +30382,42 @@ function blocAssaut(col) {
     ? 'Donner l’assaut' : 'Personne ne tient debout'}</button>
       ${assiege
     ? `<button class="act mini" data-a="ordre" data-k="repos">Lever le siège</button>`
-    : `<button class="act mini" data-a="ordre" data-k="siege"
-        ${debout.length && !aTerre ? '' : 'disabled'}>${aTerre
-      ? 'Sa garde est à terre' : 'Mettre le siège'}</button>`}
+    : ''}
     </div>
+    ${aTerre ? '' : blocManieresSiege(col, assiege, debout.length)}
     ${assiege ? `<div class="aide">Vous tenez la place depuis ${
   dureeTexte(Math.max(0, S.temps - (G().ordre.depuis || S.temps)))}. Sa garde s’use, et vous
-      prenez des coups : un siège se paie des deux côtés.</div>` : `<div class="aide">Un siège
-      use sa garde jusqu’à ce qu’elle ne tienne plus. C’est plus long qu’un coup de main, et
-      c’est le seul chemin vers une place qu’on garde.</div>`}
+      prenez des coups : un siège se paie des deux côtés.</div>` : ''}
   </section>`;
+}
+
+/**
+ * Les manières d'assiéger, et ce que chacune coûte (M1c-S3).
+ *
+ * « C'est un choix multiple pour le joueur, plus réaliste : un siège qui
+ * affame le peuple, ou qui coupe les routes commerciales, sera perçu
+ * différemment et n'aura pas les mêmes conséquences. C'est une simulation. »
+ * (Le propriétaire, août 2026.)
+ *
+ * Le prix se dit AVANT le clic, et il n'est pas le même selon le guichet où
+ * il se paie : affamer se retient dans les rues, longtemps ; un blocus se
+ * retient au palais. Choisir sans savoir ça ne serait pas choisir.
+ */
+function blocManieresSiege(col, assiege, debout) {
+  const courante = assiege ? G().ordre.maniere : null;
+  return `<div class="aide" style="margin-top:6px">Un siège use sa garde jusqu’à ce qu’elle
+    ne tienne plus. C’est plus long qu’un coup de main, et c’est le seul chemin vers une
+    place qu’on garde. La manière, elle, se choisit — et elle se paiera.</div>
+  ${Object.keys(MANIERES_SIEGE).map((k) => {
+    const m = MANIERES_SIEGE[k];
+    return `<button class="act mini ${k === 'investir' ? '' : 'danger'}"
+      style="width:100%;text-align:left;margin-top:4px"
+      data-a="ordre" data-k="siege" data-r="${k}"
+      aria-pressed="${courante === k}" ${debout ? '' : 'disabled'}>
+      <span class="o-n">${courante === k ? '▸ ' : ''}${e(m.nom)}</span>
+      <span class="aide" style="display:block">${e(m.desc)}</span>
+    </button>`;
+  }).join('')}`;
 }
 
 /**
@@ -34809,7 +35023,8 @@ function surClic(ev) {
       break;
 
     case 'ordre': {
-      const r = donnerOrdre(S, { type: el.dataset.k });
+      // `data-r` porte la manière d'assiéger, quand il y en a une.
+      const r = donnerOrdre(S, { type: el.dataset.k, maniere: el.dataset.r });
       if (!r.ok) toast(r.motif, true);
       rafraichir(true);
       break;

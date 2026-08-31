@@ -2945,18 +2945,34 @@ console.log('\n8 nonies quinquies. Donner l’assaut à une ville (IMPLANTATIONS
   // Et le second verbe devant une place : s'installer devant elle. Un siège
   // qui n'existe que dans le moteur ne se joue pas — c'est l'erreur de la
   // veille, on ne la refait pas.
-  const boutonSiege = await page.$('[data-a="ordre"][data-k="siege"]');
+  const boutonSiege = await page.$('[data-a="ordre"][data-k="siege"][data-r="investir"]');
   ok(!!boutonSiege, 'on peut aussi mettre le siège devant la place');
+  // Trois manières, et ce que chacune coûte, dit avant le clic : « un siège qui
+  // affame le peuple, ou qui coupe les routes commerciales, sera perçu
+  // différemment ». Le choix n'en est un que si le prix est lisible.
+  const manieres = await page.$$eval('[data-a="ordre"][data-k="siege"]',
+    (els) => els.map((x) => x.dataset.r));
+  ok(manieres.length === 3 && manieres.includes('affamer') && manieres.includes('bloquer'),
+    'et l’on choisit sa manière : investir, affamer, couper les routes',
+    JSON.stringify(manieres));
+  const texteManieres = await page.evaluate(
+    () => document.querySelector('#ecran').textContent);
+  ok(/habitants qui paient|s’en souviendront/.test(texteManieres),
+    'affamer dit qui paiera, avant le clic');
+  ok(/rancune sera celle d’un pays/.test(texteManieres),
+    'et bloquer dit que la rancune n’est pas la même');
   if (boutonSiege) {
-    await page.click('[data-a="ordre"][data-k="siege"]');
+    await page.click('[data-a="ordre"][data-k="siege"][data-r="investir"]');
     await page.waitForTimeout(500);
     const enSiege = await page.evaluate(() => {
       const s2 = JSON.parse(window.__sauvegardeTexte());
       const g = s2.player.groupes.find((x) => x.id === s2.player.groupeActif);
-      return { type: g.ordre.type, cible: g.ordre.cible };
+      return { type: g.ordre.type, cible: g.ordre.cible, maniere: g.ordre.maniere };
     });
     ok(enSiege.type === 'siege' && enSiege.cible === cible.id,
       'et l’escouade s’installe devant celle-là', JSON.stringify(enSiege));
+    ok(enSiege.maniere === 'investir', 'de la manière qu’on a choisie',
+      enSiege.maniere);
     const texteSiege = await page.evaluate(() => document.querySelector('#ecran').textContent);
     ok(/Lever le siège/.test(texteSiege), 'on peut le lever d’un geste');
   }

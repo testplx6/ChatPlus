@@ -7,6 +7,7 @@
 import { BIOMES, POSTURES, COMMODITIES, POI, SKILLS } from './data.js';
 import {
   chemin, coutTraversee, decouvrir, nomRegion, colonieDe, distance, damer,
+  MANIERES_SIEGE,
   rendementRegion,
 } from './world.js';
 import {
@@ -116,6 +117,11 @@ export function donnerOrdre(state, ordre, groupe) {
   }
   if (!ORDRES[ordre.type]) return { ok: false, motif: 'Ordre inconnu.' };
   if (ordre.type === 'siege') {
+    // La manière d'assiéger est un choix, et il a des conséquences : voir
+    // MANIERES_SIEGE (world.js). Sans rien préciser, on investit — la plus
+    // sobre, et celle que le monde pratique.
+    const maniere = ordre.maniere === undefined ? 'investir' : ordre.maniere;
+    if (!MANIERES_SIEGE[maniere]) return { ok: false, motif: 'On n’assiège pas comme ça.' };
     const place = assiegeable(state, g);
     if (!place) {
       const col = colonieDe(state.world, g.regionId);
@@ -130,7 +136,7 @@ export function donnerOrdre(state, ordre, groupe) {
     if (place.defense <= SIEGE.plancher) {
       return { ok: false, motif: `La garde de ${place.nom} ne tient déjà plus : entrez.` };
     }
-    g.ordre = { type: 'siege', cible: place.id, depuis: state.temps };
+    g.ordre = { type: 'siege', cible: place.id, maniere, depuis: state.temps };
     return { ok: true };
   }
   if (ordre.type === 'travaux' && !(state.base.fonde && state.base.regionId === g.regionId)) {
@@ -530,7 +536,10 @@ function tickGroupe(state, g, log, ctx) {
   const heure = state.temps % 24;
   const nuit = heure >= 22 || heure < 6;
   const forcee = ordre.type === 'voyage' && ordre.allure === 'forcee';
-  const travaille = !nuit || forcee;
+  // Un siège ne dort pas : on ne lève pas les portes au coucher du soleil pour
+  // laisser la place se ravitailler à la faveur de la nuit. C'est le prix de
+  // l'ordre — personne ne récupère tant qu'on tient devant.
+  const travaille = !nuit || forcee || ordre.type === 'siege';
   g.nuit = nuit;
 
   const debout = deboutDe(g);

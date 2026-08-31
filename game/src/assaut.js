@@ -32,7 +32,9 @@ import { forceDeGroupe } from './base.js';
 import { basculerPlace, derniereVille } from './factions.js';
 import { effondrer } from './economy.js';
 import { estDebout, blesser, pvTotal } from './characters.js';
-import { colonieParId, colonieDe } from './world.js';
+import {
+  colonieParId, colonieDe, MANIERES_SIEGE, SIEGE_MARQUE_H,
+} from './world.js';
 
 /**
  * Ce qu'une place oppose, et ce qu'un coup de main lui coûte.
@@ -226,6 +228,14 @@ export const SIEGE = {
   grogne: 0.004,
   /** En dessous, la garde ne tient plus : le siège n'a plus d'objet. */
   plancher: 1,
+  /** Au bout de combien d'heures tenues le geste devient un fait qu'on inscrit. */
+  jourQuiCompte: 24,
+  /** Ce qu'une ville affamée retient de vous, et ce que son drapeau en dit. */
+  memoireFamine: -40,
+  rancuneFamine: -55,
+  /** Un blocus se paie moins cher dans les rues, et plus cher au palais. */
+  memoireBlocus: -14,
+  rancuneBlocus: -35,
 };
 
 /** Ce que la prise ou la destruction d'une place vaut au registre des faits. */
@@ -239,6 +249,42 @@ export const PRISE = {
   /** Raser une ville ne s'oublie pas. */
   rase: -70,
 };
+
+/**
+ * Ce qu'une manière de faire coûte, quand la ville l'a subie assez longtemps
+ * pour que ce soit un fait et non une menace.
+ *
+ * Affamer se paie chez les habitants : ce sont eux qui ont eu faim, et une
+ * ville se souvient longtemps de qui l'a affamée. Bloquer se paie chez le
+ * drapeau : c'est lui qui perd des revenus, et c'est lui qui compte.
+ */
+function inscrireSiege(state, col, maniere) {
+  const dur = maniere === 'affamer';
+  const effets = [{
+    ville: col.id,
+    memoire: dur ? 'famine' : 'blocus',
+    delta: dur ? SIEGE.memoireFamine : SIEGE.memoireBlocus,
+    su: state.temps + 1,
+  }];
+  if (col.faction && col.faction !== 'essaim') {
+    effets.push({
+      faction: col.faction,
+      delta: dur ? SIEGE.rancuneFamine : SIEGE.rancuneBlocus,
+      su: state.temps + delaiVersFaction(state, 'rumeur', col.regionId, col.faction),
+      dit: dur
+        ? `${drapeauDe(state.world, col.faction).nom} sa${drapeauDe(state.world, col.faction).pluriel ? 'vent' : 'it'} `
+          + `qui affame ${col.nom}.`
+        : `${drapeauDe(state.world, col.faction).nom} sa${drapeauDe(state.world, col.faction).pluriel ? 'vent' : 'it'} `
+          + `qui a fermé les routes de ${col.nom}.`,
+    });
+  }
+  commettre(state, {
+    type: dur ? 'siege-famine' : 'siege-blocus',
+    regionId: col.regionId,
+    t: state.temps,
+    effets,
+  });
+}
 
 /** L'acharnement d'une place : la règle du monde, lue au même endroit. */
 function acharnementDe(world, col) {
@@ -281,6 +327,27 @@ export function tickSiege(state, g, rng, log) {
 
   col.defense = Math.max(0, col.defense - assaut * (domine ? SIEGE.usure : SIEGE.usureFaible));
   col.unrest = Math.min(1, (col.unrest || 0) + SIEGE.grogne);
+
+  // La marque, reposée à chaque heure, avec la manière : c'est elle que le
+  // monde lit pour savoir ce qui est coupé. Elle vit sur la colonie, donc dans
+  // le monde — aucun calcul du monde n'a jamais à regarder du côté du joueur.
+  const maniere = MANIERES_SIEGE[g.ordre.maniere] ? g.ordre.maniere : 'investir';
+  col.siege = { t: state.temps, maniere };
+  // Le repère qui dispense le monde de chercher : seul un siège qui coupe
+  // quelque chose l'avance. Voir `aucuneCoupure`.
+  if (MANIERES_SIEGE[maniere].vivres || MANIERES_SIEGE[maniere].negoce) {
+    state.world.coupureJusqua = Math.max(
+      state.world.coupureJusqua || 0, state.temps + SIEGE_MARQUE_H);
+  }
+
+  // Ce qu'on fait à une ville se sait, et ne se paie pas au même guichet selon
+  // ce qu'on lui fait. On l'inscrit une fois par siège — au premier jour tenu,
+  // quand le geste devient un fait et non une menace.
+  if (maniere !== 'investir' && state.temps - (g.ordre.depuis || 0) >= SIEGE.jourQuiCompte
+    && !g.ordre.inscrit) {
+    g.ordre.inscrit = true;
+    inscrireSiege(state, col, maniere);
+  }
 
   // Et la place rend les coups. Un siège sans blessés serait un siège gratuit :
   // on s'installe, on attend, la ville tombe. Ce que la colonne du monde perd
