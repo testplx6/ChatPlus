@@ -68,6 +68,7 @@ import { primeLivraison, prixEsclave } from '../src/justice.js';
 import { attaquerVille, RAID_VILLE, livrerPlace, raserPlace } from '../src/assaut.js';
 import { estAssiegee, vivresCoupees, negoceCoupe } from '../src/world.js';
 import { fonderDrapeau } from '../src/factions.js';
+import { CLAUSES, proposerPacte, pacteEntre, romprePacte } from '../src/pactes.js';
 import { dirigeant as dirigeantDe } from '../src/dirigeants.js';
 import { peutExercer as peutExercerImp } from '../src/influence.js';
 import { drapeauDe as drapeauDeImp } from '../src/data.js';
@@ -13936,6 +13937,111 @@ section('IMP 6. Un pays vivant, et c’est vous qui le tenez (IMPLANTATIONS.md, 
     const { s: s2, cle } = monterPays(9605);
     ok(peutExercerImp(s2, cle, 'loi').ok,
       'chez soi, on fait la loi', peutExercerImp(s2, cle, 'loi').motif);
+  }
+}
+
+
+// ===========================================================================
+section('PAC 1. Les pactes entre drapeaux (PACTES.md, P1)');
+// « C'est une simulation : tous les types de pactes sont possibles et
+// envisageables tant que les différentes parties sont d'accord et le
+// respectent. » — le propriétaire, août 2026, après que je lui ai proposé de
+// choisir UN type d'alliance. Le cadrage ferme d'avance la mauvaise solution :
+// on n'écrit pas « l'alliance défensive » comme un objet du jeu, on écrit ce
+// qu'un pacte EST — des clauses qu'on propose, qu'on accepte si l'on y trouve
+// son compte, qu'on tient ou qu'on trahit.
+{
+  const rienP = () => {};
+  const deuxDrapeaux = (graine) => {
+    const s2 = nouvellePartie(graine, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const [a, b] = Object.keys(s2.world.factions)
+      .filter((k) => k !== 'essaim' && s2.world.factions[k].colonies.length > 1);
+    return { s: s2, a, b };
+  };
+
+  // 1) Les clauses sont de la donnée, pas du code.
+  {
+    ok(Object.keys(CLAUSES).length >= 3, 'il y a plusieurs clauses possibles',
+      Object.keys(CLAUSES).join(', '));
+    ok(!!CLAUSES.secours && !!CLAUSES.nonAgression,
+      'dont se porter secours et ne pas s’attaquer');
+  }
+
+  // 2) On ne signe pas tout seul : l'autre pèse, et il peut dire non.
+  {
+    const { s: s2, a, b } = deuxDrapeaux(9701);
+    // Deux pays en guerre ouverte ne se lient pas.
+    s2.world.factions[a].relations[b] = -100;
+    s2.world.factions[b].relations[a] = -100;
+    const r = proposerPacte(s2, a, b, ['nonAgression'], rienP);
+    ok(!r.ok, 'on ne signe rien avec qui vous hait', r.motif);
+  }
+
+  // 3) Ce qui arrange les deux se signe.
+  {
+    const { s: s2, a, b } = deuxDrapeaux(9702);
+    s2.world.factions[a].relations[b] = 40;
+    s2.world.factions[b].relations[a] = 40;
+    const r = proposerPacte(s2, a, b, ['nonAgression'], rienP);
+    ok(r.ok, 'entre gens qui s’estiment, la parole se donne', r.motif);
+    const p = pacteEntre(s2.world, a, b);
+    ok(!!p && p.clauses.includes('nonAgression'), 'et le pacte porte sa clause');
+    ok(!p.rompu, 'il tient tant que personne ne le rompt');
+  }
+
+  // 4) Un pacte porte ce qu'on y met — une clause, ou plusieurs.
+  {
+    const { s: s2, a, b } = deuxDrapeaux(9703);
+    s2.world.factions[a].relations[b] = 70;
+    s2.world.factions[b].relations[a] = 70;
+    const r = proposerPacte(s2, a, b, ['nonAgression', 'passage', 'vue'], rienP);
+    ok(r.ok, 'trois clauses d’un coup, si les deux y trouvent leur compte', r.motif);
+    ok(pacteEntre(s2.world, a, b).clauses.length === 3, 'et les trois sont dedans');
+  }
+
+  // 5) Ce qui coûte cher se refuse plus facilement. Le secours engage à lever
+  //    une colonne pour quelqu'un d'autre : on ne le donne pas à un tiède.
+  {
+    const { s: s2, a, b } = deuxDrapeaux(9704);
+    s2.world.factions[a].relations[b] = 12;
+    s2.world.factions[b].relations[a] = 12;
+    ok(!proposerPacte(s2, a, b, ['secours'], rienP).ok,
+      'on ne promet pas son sang à une simple connaissance');
+    ok(proposerPacte(s2, a, b, ['nonAgression'], rienP).ok,
+      'mais on veut bien promettre de ne pas l’attaquer');
+  }
+
+  // 6) On ne signe pas deux fois, et l'on rompt quand on veut — c'est un acte,
+  //    et il se sait.
+  {
+    const { s: s2, a, b } = deuxDrapeaux(9705);
+    s2.world.factions[a].relations[b] = 60;
+    s2.world.factions[b].relations[a] = 60;
+    proposerPacte(s2, a, b, ['nonAgression'], rienP);
+    ok(!proposerPacte(s2, a, b, ['passage'], rienP).ok, 'un pacte à la fois');
+    const rel = s2.world.factions[b].relations[a];
+    ok(romprePacte(s2, a, b, rienP).ok, 'et l’on reprend sa parole quand on veut');
+    ok(!pacteEntre(s2.world, a, b), 'le pacte n’est plus');
+    ok(s2.world.factions[b].relations[a] < rel,
+      'mais reprendre sa parole ne se fait pas sans qu’on vous en veuille',
+      `${rel} → ${s2.world.factions[b].relations[a]}`);
+  }
+
+  // 7) La règle vaut pour le joueur comme pour les autres : avec son drapeau,
+  //    il propose et il subit exactement la même chose.
+  {
+    const { s: s2, a } = deuxDrapeaux(9706);
+    const vide = s2.world.regions.find((r) => !r.colonie && r.decouvert)
+      || s2.world.regions.find((r) => !r.colonie);
+    groupeActif(s2).regionId = vide.i;
+    Object.assign(groupeActif(s2).inventaire, { ferraille: 200 });
+    fonderBase(s2, rienP);
+    fonderDrapeau(s2, 'Les Cendres', rienP);
+    const mien = s2.player.drapeau;
+    s2.world.factions[a].relations[mien] = 55;
+    s2.world.factions[mien].relations[a] = 55;
+    ok(proposerPacte(s2, mien, a, ['nonAgression'], rienP).ok,
+      'un drapeau neuf peut donner sa parole comme les autres');
   }
 }
 
