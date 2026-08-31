@@ -271,14 +271,63 @@ export function mainDoeuvre(base, state) {
  * Ce qu'un métier rend, tout compris : les ouvriers, et le contremaître s'il y
  * en a un sur place. Un diplômé qui supervise vaut plusieurs bras.
  */
-export function rendementMetier(state, key) {
+export function rendementMetier(state, key, vue) {
   const base = state.base;
-  const n = affectes(base, key, state);
+  const n = vue ? (vue.tenus[key] || 0) : affectes(base, key, state);
   if (!n) return { ouvriers: 0, mult: 1, contremaitre: null };
   const m = METIERS[key];
-  const chef = contremaitre(state, key);
+  const chef = vue ? chefMetier(state, key, vue) : contremaitre(state, key);
   const bonusChef = chef ? 1 + Math.min(0.6, comp(chef, m.skill) / 100) : 1;
   return { ouvriers: n, mult: 1 + n * m.apport * bonusChef, contremaitre: chef };
+}
+
+/**
+ * Tout ce qu'un écran de métiers a besoin de savoir, en UN passage.
+ *
+ * Le panneau du propriétaire, après la première passe : métiers 35 ms sur les
+ * 68 de son écran BASE, la moitié. La première correction n'avait touché que
+ * les appels directs de l'interface ; le coût était dessous, dans
+ * `rendementMetier` — qui, pour CHAQUE métier, recalcule toute la répartition
+ * (`affectes`) et parcourt tous les gens du camp (`contremaitre`).
+ *
+ * Dix-sept métiers, dix-sept parcours de mille deux cents personnes — alors
+ * qu'il n'y a que **six compétences distinctes** derrière ces dix-sept métiers.
+ * On les relève toutes en une fois : le meilleur par compétence, et la
+ * répartition avec.
+ */
+export function vueMetiers(state) {
+  const base = state.base;
+  const parPoste = tenus(base, state);
+  const chefs = {};
+  if (base.fonde) {
+    // Les compétences qui servent, et elles seules — six, pas dix-sept.
+    const utiles = [];
+    for (const k of METIER_KEYS) {
+      const sk = METIERS[k] && METIERS[k].skill;
+      if (sk && !utiles.includes(sk)) utiles.push(sk);
+    }
+    for (const g of state.player.groupes) {
+      if (g.regionId !== base.regionId) continue;
+      for (const c of g.membres) {
+        if (!estDebout(c)) continue;
+        for (const sk of utiles) {
+          const v = comp(c, sk);
+          const best = chefs[sk];
+          if (!best || v > best.v) chefs[sk] = { c, v };
+        }
+      }
+    }
+  }
+  return { tenus: parPoste, chefs };
+}
+
+/** Le contremaître d'un métier, lu dans la vue plutôt que recherché. */
+export function chefMetier(state, key, vue) {
+  const m = METIERS[key];
+  if (!m) return null;
+  const best = vue && vue.chefs[m.skill];
+  // Un quidam qui passe n'est pas un contremaître : il faut en savoir un peu.
+  return best && best.v >= 20 ? best.c : null;
 }
 
 /** Le meilleur des vôtres présent à l'avant-poste dans la compétence du métier. */

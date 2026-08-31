@@ -78,6 +78,8 @@ import { peutExercer as peutExercerImp } from '../src/influence.js';
 import { drapeauDe as drapeauDeImp } from '../src/data.js';
 import { LIENS, relationsNotables, pvTotal as pvTotalImp } from '../src/characters.js';
 import { meilleurs } from '../src/groupes.js';
+import { vueMetiers, chefMetier, contremaitre } from '../src/base.js';
+import { METIER_KEYS as METIER_KEYS_IMP } from '../src/data.js';
 import { tickFaits as tickFaitsImp } from '../src/faits.js';
 import { retenirEnVille as retenirEnVilleImp } from '../src/services.js';
 import { classement, puissance } from '../src/factions.js';
@@ -14227,6 +14229,70 @@ section('PERF 2. Choisir les meilleurs sans trier tout le monde');
   ok(meilleurs(gens, 0, apte, note).tete.length === 0, 'zéro tête, zéro élément');
   ok(meilleurs(gens, 5000, apte, note).tete.length === gens.filter(apte).length,
     'et l’on n’invente personne quand on en demande plus qu’il n’y en a');
+}
+
+
+// ===========================================================================
+section('PERF 3. Un seul passage pour dix-sept métiers');
+// Après l'école, le panneau du propriétaire désigne les métiers : 35 ms sur
+// les 68 de son écran BASE, soit la moitié. La première passe n'avait touché
+// que les appels directs depuis l'interface ; le vrai coût était dessous.
+//
+// `rendementMetier(state, k)` fait deux choses coûteuses par métier :
+// `affectes` recalcule TOUTE la répartition, et `contremaitre` parcourt tous
+// les gens présents au camp. Dix-sept métiers, dix-sept parcours — alors qu'il
+// n'y a que six compétences distinctes derrière.
+{
+  const rienN = () => {};
+  const s2 = nouvellePartie(9901, { maintenant: 0, depart: 'ville', equipe: 3 });
+  const vide = s2.world.regions.find((r) => !r.colonie && r.decouvert)
+    || s2.world.regions.find((r) => !r.colonie);
+  groupeActif(s2).regionId = vide.i;
+  Object.assign(groupeActif(s2).inventaire, { ferraille: 200 });
+  fonderBase(s2, rienN);
+  s2.base.batiments.baraquement = 4;
+  s2.base.batiments.halle = 1;
+  s2.base.pop = 40;
+  // Du monde au camp, avec des compétences variées : c'est ce qui décide des
+  // contremaîtres.
+  const rngN = new Rng(77);
+  const g2 = groupeActif(s2);
+  g2.regionId = s2.base.regionId;
+  while (g2.membres.length < 60) g2.membres.push(makeCharacter(rngN, { niveau: 1 }));
+
+  // La vue rend exactement ce que rendaient les appels un par un.
+  const vue = vueMetiers(s2);
+  let pareils = 0;
+  for (const k of METIER_KEYS_IMP) {
+    const avant = contremaitre(s2, k);
+    const apres = chefMetier(s2, k, vue);
+    if ((avant && avant.id) === (apres && apres.id)) pareils++;
+  }
+  ok(pareils === METIER_KEYS_IMP.length,
+    'le contremaître de chaque métier est le même qu’avant',
+    `${pareils} / ${METIER_KEYS_IMP.length}`);
+
+  // Et le rendement aussi — c'est lui que l'écran montre.
+  let rendementsPareils = 0;
+  for (const k of METIER_KEYS_IMP) {
+    const a = rendementMetier(s2, k);
+    const b = rendementMetier(s2, k, vue);
+    if (a.ouvriers === b.ouvriers && Math.abs(a.mult - b.mult) < 1e-9
+      && (a.contremaitre && a.contremaitre.id) === (b.contremaitre && b.contremaitre.id)) {
+      rendementsPareils++;
+    }
+  }
+  ok(rendementsPareils === METIER_KEYS_IMP.length,
+    'et le rendement affiché ne bouge pas d’un chiffre',
+    `${rendementsPareils} / ${METIER_KEYS_IMP.length}`);
+
+  // Un camp désert n'a pas de contremaître, et ça ne doit pas jeter.
+  {
+    const s3 = nouvellePartie(9902, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const v3 = vueMetiers(s3);
+    ok(!!v3 && !chefMetier(s3, METIER_KEYS_IMP[0], v3),
+      'sans camp, personne ne commande rien');
+  }
 }
 
 // ===========================================================================

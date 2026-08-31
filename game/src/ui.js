@@ -32,6 +32,7 @@ import {
 } from './economy.js';
 import {
   populationMax, mainDoeuvre, placesMetier, manoeuvres, affecter, tenus as tenusMetiers,
+  vueMetiers,
   voulus, brasDisponibles, postesDegarnis,
   rendementMetier,
   niveau as nivBat, niveauRech, coutBatiment, tempsBatiment, coutRecherche,
@@ -3751,13 +3752,15 @@ function blocMetiers() {
     </section>`;
   }
 
-  const parPoste = tenusMetiers(b, S);
+  // Tout en un passage : la répartition et les contremaîtres. `rendementMetier`
+  // les recalculait pour chacun des dix-sept métiers — voir `vueMetiers`.
+  const vue = vueMetiers(S);
   const lignes = ouverts.map((k) => {
     const m = METIERS[k];
     const places = placesMetier(b, k);
     const veut = voulus(b, k);
-    const n0 = parPoste[k] || 0;
-    const rd = rendementMetier(S, k);
+    const n0 = vue.tenus[k] || 0;
+    const rd = rendementMetier(S, k, vue);
     // Deux nombres différents, et il faut les deux : ce qu'on a réglé, et ce
     // qui est tenu aujourd'hui. Les confondre était tout le problème.
     const puce = n0 === veut
