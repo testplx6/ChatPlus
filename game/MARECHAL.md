@@ -261,7 +261,7 @@ pouvoir emprunte un flux que la faction a déjà.
 
 ## Blocages
 
-- **L'investissement du conseil est quasi mort, et personne ne l'avait vu**
+- ~~**L'investissement du conseil est quasi mort, et personne ne l'avait vu**~~ — **levé, septembre 2026** : `INVESTISSEMENT.md` est livré. Le propriétaire a tranché plus large que les trois options (« à lui de voir, avec ce qu'il possède, ce qu'il emprunte »), `veutBatir` ne dit plus que le besoin et `financerMur` dit avec quel argent — 37 → 379 chantiers, dix gardes tenues. Le constat d'origine, conservé :
   — trouvé en écrivant le décor de M4. La séquence d'une séance :
   `remonterCaisses` balaie TOUT ce qui dépasse le fonds de roulement (la
   capacité d'emprunt retombe à zéro par construction), puis chaque

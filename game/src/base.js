@@ -78,6 +78,10 @@ export function creerBase() {
     // quatre cents lignes : on ne peut pas l'utiliser pour compter quoi que ce
     // soit sur la durée d'une partie.
     marchands: 0,
+    // Ce que les mules ont emporté, daté (P6). Présent dès la fondation :
+    // absente, `normaliser` l'ajouterait au rechargement et l'aller-retour
+    // JSON d'un camp neuf ne serait plus exact.
+    charges: [],
     // Un avant-poste n'est pas un entrepôt avec des murs : des gens finissent
     // par s'y installer, y travailler, et y manger.
     pop: 0,
@@ -2177,6 +2181,12 @@ export function visiteMarchand(state, rng, log) {
   }
 
   if (vendu || achete) base.marchands = (base.marchands || 0) + 1;
+  // Ce qui sort par la porte se voit sur la route (P6). Bornée comme toute
+  // mémoire de fait : douze charges suffisent — au-delà, les plus vieilles
+  // sont de toute façon sorties de la rumeur.
+  if (vendu > 0) {
+    base.charges = (base.charges || []).concat([{ t: state.temps, q: vendu }]).slice(-12);
+  }
   if (log && (vendu || achete)) {
     // Pas discret quand il emporte quelque chose : c'est la réponse à « mon
     // entrepôt s'est vidé et je ne sais pas pourquoi ». Le colporteur prend le
@@ -2369,6 +2379,19 @@ export function assaillantDe(state) {
 export const RAID_JAUGE = {
   parTete: 3,        // le butin supposé d'une bouche à nourrir
   parColporteur: 2,  // ce que raconte chaque colporteur passé
+  /**
+   * Ce que raconte une mule qui repart pleine, par unité emportée.
+   *
+   * P6 promettait « les colporteurs repartis chargés » et le code ne comptait
+   * que leurs passages : deux camps qui reçoivent autant de monde, dont l'un
+   * charge à ras bord et l'autre renvoie à vide, valaient le même coup. Le
+   * banc d'équilibrage l'a chiffré une fois la mesure posée — la richesse d'un
+   * camp à l'heure où les pillards se décident était celle d'un camp
+   * ordinaire, au centième près (×1,00 sur trente parties). C'est le canal par
+   * lequel la richesse devient visible SANS qu'on lise le registre : ce qui
+   * sort par la porte se voit sur la route.
+   */
+  parCharge: 0.06,
   parTaille: 20,     // une place sur les cartes se raconte toute seule
   equilibre: 8,      // le socle du dénominateur : petit coup, petit intérêt
   rumeur: 240,       // heures pendant lesquelles un raid repoussé se raconte
@@ -2385,8 +2408,16 @@ export function jaugeRaid(state) {
   const base = state.base;
   const col = base.colonieId
     ? state.world.colonies.find((c) => c.id === base.colonieId) : null;
+  // Ce que les mules ont emporté récemment, et rien de plus vieux que la
+  // rumeur : une liste de faits datés lue au moment où l'agent décide — le
+  // patron de `rachatsFaits` (MEMOIRE.md), pas un cumul qui monte à vie.
+  let emporte = 0;
+  for (const c of base.charges || []) {
+    if (state.temps - c.t < RAID_JAUGE.rumeur) emporte += c.q;
+  }
   const butin = (base.pop || 0) * RAID_JAUGE.parTete
     + (base.marchands || 0) * RAID_JAUGE.parColporteur
+    + emporte * RAID_JAUGE.parCharge
     + (col && !col.ruine ? (col.taille || 1) * RAID_JAUGE.parTaille : 0);
   let risque = niveau(base, 'mur') * 22 * (base.brecheEtat ?? 1)
     + (base.pop || 0) * 2.5;

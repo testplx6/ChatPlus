@@ -11689,6 +11689,40 @@ section('P. Les promesses tenues — P1, la milice s’arme à l’arsenal (PROM
   echaude.temps = 0;
   ok(jaugeRaid(echaude).appetit < jaugeRaid(riche).appetit,
     'une bande repoussée se raconte : on y va moins');
+
+  // Ce que les colporteurs remportent, et que le cahier promettait.
+  //
+  // P6 dit « les colporteurs repartis chargés » ; le code ne comptait que
+  // leurs passages. Deux camps qui reçoivent autant de monde, dont l'un charge
+  // les mules à ras bord et l'autre les renvoie à vide, valaient exactement le
+  // même coup à l'œil d'une bande — et le banc d'équilibrage l'a chiffré : la
+  // richesse d'un camp à l'heure où les pillards se décident est celle d'un
+  // camp ordinaire, au centième près. « Un camp riche et nu est une proie »
+  // n'était pas faux, il n'était simplement branché sur rien.
+  const vide = decor();
+  vide.base.pop = 20;
+  vide.base.marchands = 10;
+  vide.base.batiments = { mur: 1 };
+  vide.temps = 500;
+  const charge = decor();
+  charge.base.pop = 20;
+  charge.base.marchands = 10;
+  charge.base.batiments = { mur: 1 };
+  charge.temps = 500;
+  charge.base.charges = [{ t: 400, q: 300 }, { t: 480, q: 250 }];
+  ok(jaugeRaid(charge).appetit > jaugeRaid(vide).appetit,
+    'un camp dont les mules repartent pleines se convoite plus qu’un camp qui n’a rien à vendre',
+    `${jaugeRaid(vide).appetit.toFixed(2)} → ${jaugeRaid(charge).appetit.toFixed(2)}`);
+
+  // Et cela s'oublie : une charge partie il y a longtemps ne se raconte plus.
+  const vieilleCharge = decor();
+  vieilleCharge.base.pop = 20;
+  vieilleCharge.base.marchands = 10;
+  vieilleCharge.base.batiments = { mur: 1 };
+  vieilleCharge.temps = 500;
+  vieilleCharge.base.charges = [{ t: 500 - RAID_JAUGE.rumeur - 1, q: 550 }];
+  ok(Math.abs(jaugeRaid(vieilleCharge).appetit - jaugeRaid(vide).appetit) < 1e-9,
+    'une charge partie il y a longtemps ne se raconte plus');
 }
 
 // ===========================================================================

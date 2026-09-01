@@ -384,6 +384,9 @@ export function normaliser(state) {
     if (b.commerce === undefined) b.commerce = true;
     if (b.dernierMarchand === undefined) b.dernierMarchand = -9999;
     if (b.marchands === undefined) b.marchands = 0;
+    // Avant que ce qui sort du camp ne se raconte (P6), aucune charge n'était
+    // datée : un camp d'avant n'a rien à faire dire à ses colporteurs.
+    if (!Array.isArray(b.charges)) b.charges = [];
     if (b.majVitrine === undefined) b.majVitrine = -999;
     if (b.majEmploi === undefined) b.majEmploi = -999;
     if (b.gaspilleJour === undefined) b.gaspilleJour = 0;

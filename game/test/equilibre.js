@@ -119,7 +119,7 @@ import {
   fonderBase, lancerConstruction, lancerRecherche, deposer, retirer, affecter, niveau as nivBat,
   peutReconnaitre, reconnaitreAvantPoste,
   placesMetier, affectes, voulus, coutBatiment, peutPayer, capaciteStock, totalStock,
-  COUT_FONDATION,
+  COUT_FONDATION, jaugeRaid, RAID_JAUGE,
 } from '../src/base.js';
 import { ITEMS, BUILDING_KEYS, METIER_KEYS, METIERS, BIOMES as BIOMES_BAT } from '../src/data.js';
 import { acheterBete, prixBete, betesDe, portageAttelage, conduite } from '../src/betes.js';
@@ -208,6 +208,20 @@ const TRACE = {
   titres: {},
   hPatrouille: 0, victoires: 0,
   mortsCombat: 0, koSubis: 0, piste: 0, pisteVues: 0, reconnus: 0, popCamp: 0,
+  // La pression des raids sur le camp (PROMESSES.md, P6 — la dette de mesure
+  // que ce chantier avait laissée : « aucune métrique joueur du banc ne la
+  // voit »). Elle ne pouvait pas vivre dans `tools/banc.js`, qui ne joue aucun
+  // joueur et n'a donc pas de camp ; sa place est ici, le seul banc où
+  // quelqu'un tient une place à piller.
+  //
+  // Relevée sur l'ÉTAT et non sur le journal — celui-ci est borné à quatre
+  // cents entrées et une partie de quatre mille heures n'en garde que la fin,
+  // exactement le piège qui a fait compter les révoltes à côté. `raids` suit
+  // `derniereAttaque`, que la jauge pose elle-même ; `repousses` suit
+  // `dernierRepousse`, qui vaut pour les deux défenses — la milice et la
+  // garnison —, alors que le récit n'en raconte qu'une.
+  hCamp: 0, raids: 0, repousses: 0, sacs: 0, voleSacs: 0,
+  richesseCamp: 0, richesseAuRaid: 0, appetitCumul: 0, forceRaids: 0,
   // Ce que les conseils votent quand personne ne les tient.
   impots: {}, peines: {}, esclavagistes: 0, factionsVues: 0,
   // Un compteur par échelon, dérivé de l'échelle plutôt que recopié : le jour
@@ -226,6 +240,16 @@ const TRACE = {
   // de sortir du bois, events.js) et 0 (l'ardoise est effacée).
   rachats: [],
 };
+// Le balayage de la jauge des pillards, que P6 n'a jamais pu faire faute de
+// mesure : `JAUGE=avidite=0.5,parTete=6`. Les objets calibrables se règlent au
+// banc, jamais à vue — et celui-ci ne se règle pas dans `tools/banc.js`, qui
+// n'a pas de camp à piller.
+for (const p of (process.env.JAUGE || '').split(',').filter(Boolean)) {
+  const [k, v] = p.split('=');
+  if (!(k in RAID_JAUGE)) throw new Error(`JAUGE : ${k} n’est pas une clé de RAID_JAUGE`);
+  RAID_JAUGE[k] = Number(v);
+}
+
 const HEURES = Number(process.argv[2]) || 4000;
 // Trente parties par défaut, pas huit. À huit, l'écart-type sur un taux de
 // survie de 85 % vaut douze points : on lit du bruit et on croit lire un
@@ -2111,6 +2135,36 @@ for (let n = 0; n < PARTIES; n++) {
     }
     const remplisAvant = state.stats.ordresRemplis || 0;
     tick(state);
+    // La pression des raids, heure par heure tant qu'on tient un camp.
+    if (state.base && state.base.fonde) {
+      const b = state.base;
+      let valeur = 0;
+      for (const k of Object.keys(b.stock || {})) {
+        valeur += (b.stock[k] || 0) * ((COMMODITIES[k] || {}).prix || 0);
+      }
+      TRACE.hCamp += 1;
+      TRACE.richesseCamp += valeur;
+      TRACE.appetitCumul += jaugeRaid(state).appetit;
+      if ((b.derniereAttaque ?? null) !== (memo.vuAttaque ?? null)) {
+        memo.vuAttaque = b.derniereAttaque;
+        TRACE.raids += 1;
+        // La richesse au moment où la bande se décide : c'est ce couple-là qui
+        // dit si « un camp riche et nu est une proie » est vrai ou récité.
+        TRACE.richesseAuRaid += valeur;
+        TRACE.forceRaids += jaugeRaid(state).force;
+      }
+      if ((b.dernierRepousse ?? null) !== (memo.vuRepousse ?? null)) {
+        memo.vuRepousse = b.dernierRepousse;
+        TRACE.repousses += 1;
+      }
+      const j = state.journal || [];
+      for (let i = j.length - 1; i >= 0; i--) {
+        if (j[i].t !== state.temps) break;
+        const m = j[i].type === 'raid' && /mis à sac par/.test(j[i].texte)
+          ? j[i].texte.match(/(\d+) unités emportées/) : null;
+        if (m) { TRACE.sacs += 1; TRACE.voleSacs += Number(m[1]); }
+      }
+    }
     // Le sommet de l'estime chez celui qu'on courtise, pas sa valeur finale :
     // l'érosion rabote tout, et lire le chiffre du dernier jour dirait « 9 »
     // d'une partie où l'on est monté à 38. Ce qu'on veut savoir, c'est si le
@@ -2575,6 +2629,20 @@ console.log('Chronique : ' + Object.entries(TRACE.titres).sort((a, b) => b[1] - 
 console.log(`Colporteurs reçus : ${(TRACE.marchands / PARTIES).toFixed(1)} par partie`);
 console.log(`Avant-postes écrits sur les cartes : ${TRACE.reconnus}/${PARTIES} — `
   + `${(TRACE.popCamp / PARTIES).toFixed(1)} habitants en moyenne`);
+if (TRACE.hCamp > 0) {
+  const par1000 = (n) => (n / TRACE.hCamp * 1000).toFixed(2);
+  const moyenne = TRACE.richesseCamp / TRACE.hCamp;
+  const auRaid = TRACE.raids ? TRACE.richesseAuRaid / TRACE.raids : 0;
+  console.log(`Pillards (P6) : ${par1000(TRACE.raids)} raid(s) pour 1 000 h de camp — `
+    + `${TRACE.repousses} repoussé(s), ${TRACE.sacs} sac(s) `
+    + `(${Math.round(TRACE.voleSacs / Math.max(1, TRACE.sacs))} unités par sac), `
+    + `force moyenne ${Math.round(TRACE.forceRaids / Math.max(1, TRACE.raids))}`);
+  console.log(`  appétit moyen ${(TRACE.appetitCumul / TRACE.hCamp).toFixed(2)} — `
+    + `camp à ${Math.round(moyenne)} de marchandise en moyenne, `
+    + `${Math.round(auRaid)} à l’heure où la bande se décide `
+    + `(×${(auRaid / Math.max(1, moyenne)).toFixed(2)} : au-dessus de 1, `
+    + `les pillards visent bien ce qui est gras)`);
+}
 console.log(`Pistes : ${(TRACE.piste / Math.max(1, TRACE.pisteVues)).toFixed(2)} de damage moyen `
   + `sur les cases connues (0 = friche vierge, 1 = route faite)`);
 console.log(`Combat : ${(TRACE.koSubis / PARTIES).toFixed(1)} des nôtres mis à terre par partie`);

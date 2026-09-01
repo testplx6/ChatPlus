@@ -211,12 +211,45 @@ ci-dessus est porté par un agent qui a sa logique.
 
 ## Blocages
 
-- **Le balayage au banc des constantes de P6** (RAID_JAUGE) attend que
-  `jouer()` sache mesurer la pression des raids sur un camp — aucune
-  métrique joueur du banc ne la voit aujourd'hui, et la règle interdit
-  les scripts de mesure à côté. En attendant : ancrage par équivalence
-  à l'ancienne pression (test), verdict final au propriétaire en
-  jouant.
+- ~~**Le balayage au banc des constantes de P6** (RAID_JAUGE) attend une
+  mesure de la pression des raids sur un camp~~ — **soldé, septembre 2026**,
+  et il a rendu un défaut au passage.
+
+  *La mesure d'abord.* Elle ne pouvait pas vivre dans `tools/banc.js`, qui ne
+  joue aucun joueur et n'a donc aucun camp à piller : sa place était dans
+  `test/equilibre.js`, le seul banc où quelqu'un tient une place. Elle est
+  relevée sur l'**état** et non sur le journal — celui-ci est borné à quatre
+  cents entrées et une partie de quatre mille heures n'en garde que la fin,
+  exactement le piège qui fait compter les révoltes à côté. Et le balayage a
+  son interrupteur, comme les autres : `JAUGE=parCharge=0,0.06,0.15`.
+
+  *Ce qu'elle a trouvé.* « Les colporteurs repartis chargés » était dans le
+  cahier ; le code ne comptait que **leurs passages**. Deux camps qui
+  reçoivent autant de monde, dont l'un charge les mules à ras bord et l'autre
+  les renvoie à vide, valaient exactement le même coup à l'œil d'une bande —
+  et « un camp riche et nu est une proie » n'était pas faux, il n'était
+  branché sur rien. D'où `base.charges`, une liste de charges datées lue au
+  moment où la bande décide (le patron de `rachatsFaits`, MEMOIRE.md : une
+  mémoire de faits bornée, jamais un cumul qui monte à vie), et
+  `RAID_JAUGE.parCharge`. C'est le canal par lequel la richesse devient
+  visible **sans** qu'on lise le registre : ce qui sort par la porte se voit
+  sur la route.
+
+  *Ce que le balayage établit, et ce qu'il n'établit pas.* Établi : la
+  pression suit le réglage (2,15 → 2,26 raids pour mille heures de camp,
+  force moyenne 58 → 65, 186 → 206 unités par sac, soixante parties), et la
+  survie n'en souffre pas (56/60 escouades vivantes des deux côtés). Non
+  établi : le **ciblage** lui-même. Le rapport « richesse du camp à l'heure du
+  raid / richesse moyenne » donnait ×1,00 contre ×1,10 sur trente parties —
+  de quoi croire à une démonstration —, et le témoin remonte à ×1,08 sur
+  soixante. L'instrument est plus bruité que le gain cherché, donc il ne
+  cherche rien (METHODE §11) ; ce qui prouve la causalité est le test
+  unitaire, deux camps identiques dont l'un a chargé les mules. Le banc, lui,
+  prouve l'innocuité. C'est la bonne division du travail, et la leçon de
+  METHODE §12 une fois de plus : la mesure ment aussi.
+
+  `parCharge` reste à 0,06 — 0,15 monte la pression à 2,50 raids sans mieux
+  cibler, l'appétit saturant son plafond pour tout le monde.
 - ~~**La mesure d'ancre du navigateur** (« ce qu'on lit reste sous les
   yeux ») oscille d'un run à l'autre~~ — **enquête close, l'ancre
   innocentée par la sonde (août 2026, chantier ALLURE G1)**. Deux
