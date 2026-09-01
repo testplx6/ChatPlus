@@ -18,6 +18,7 @@ import { estVivant } from './characters.js';
 import { rangDe } from './allegeance.js';
 import { REGISTRES_SEUIL } from './services.js';
 import { pactesDe } from './pactes.js';
+import { campsDe } from './base.js';
 import { notable } from './notables.js';
 // Les canaux et le voyage des nouvelles vivent dans faits.js (ordre des
 // modules : la porte des faits est citée bien avant la connaissance) — on les
@@ -53,7 +54,10 @@ export function regionsVues(state) {
   for (const g of groupes(state)) {
     if (g.membres.some(estVivant)) ajouter(g.regionId);
   }
-  if (state.base.fonde) ajouter(state.base.regionId);
+  // Chacun des camps, et pas seulement celui qu'on habite : un camp est un lieu
+  // habité, il voit ce qui passe devant lui. En tenir deux et n'en voir qu'un,
+  // c'est n'en tenir qu'un.
+  for (const c of campsDe(state)) if (c.fonde) ajouter(c.regionId);
 
   // Servir une faction, c'est recevoir ses rapports. À partir d'Agent, ses
   // villes ne sont plus jamais une surprise : c'est la contrepartie concrète
@@ -297,8 +301,11 @@ export function estSurveillee(state, regionId) {
     if (portee && distance(g.regionId, regionId) <= portee) return true;
   }
   if (state.base.fonde) {
-    if (state.base.regionId === regionId) return true;
-    if (portee && distance(state.base.regionId, regionId) <= portee) return true;
+    for (const c of campsDe(state)) {
+      if (!c.fonde) continue;
+      if (c.regionId === regionId) return true;
+      if (portee && distance(c.regionId, regionId) <= portee) return true;
+    }
   }
   const col = state.world.colonies.find((c) => c.regionId === regionId);
   if (col && !col.ruine) {

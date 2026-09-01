@@ -1,5 +1,6 @@
 import { gagner, regler, soldeIci, signeIci, monnaieIci } from './monnaie.js';
 import { commettre } from './faits.js';
+import { auCamp } from './base.js';
 import { lieePar } from './pactes.js';
 // Journal de bord et rencontres. Tout se résout automatiquement selon la
 // posture et les consignes de l'escouade : c'est ce qui permet à la simulation
@@ -798,7 +799,9 @@ export function tenterAlea(state, log, ctx, exposition = 1, groupe) {
   if (!h) return false;
   const col = colonieDe(state.world, regionId);
   const abri = col && !col.ruine ? 0.25 : 1;
-  const protege = state.base.fonde && state.base.regionId === regionId ? 0.3 : 1;
+  // N'importe lequel des siens : on est à l'abri chez soi, et « chez soi » ne
+  // veut plus dire « le camp qu'on habite en ce moment ».
+  const protege = auCamp(state, regionId) ? 0.3 : 1;
   const climat = ctx.climat ? ctx.climat.aleas : 1;
   if (!rng.chance(h.p * exposition * abri * protege * climat)) return false;
 

@@ -14,6 +14,7 @@ import { regler, soldeIci } from './monnaie.js';
 import { DIPLOMES, DIPLOME_KEYS, FACTIONS, SKILLS, drapeauDe} from './data.js';
 import { accorderDiplome, estVivant, comp, gagnerXp, XP_PRATIQUE } from './characters.js';
 import { groupes } from './groupes.js';
+import { auCamp } from './base.js';
 import { estAuService } from './allegeance.js';
 import { loiIci } from './lois.js';
 
@@ -109,7 +110,9 @@ export function tickFormation(state, log) {
   const base = state.base;
   for (const g of groupes(state)) {
     const col = state.world.colonies.find((c) => c.regionId === g.regionId && !c.ruine);
-    const aLaBase = base && base.fonde && g.regionId === base.regionId;
+    // Le maître de maison est là où l'on a bâti, dans n'importe lequel des
+    // siens — pas seulement dans celui qu'on habite en ce moment.
+    const aLaBase = !!auCamp(state, g.regionId);
     for (const c of g.membres) {
       if (!c.formation || !estVivant(c)) continue;
 

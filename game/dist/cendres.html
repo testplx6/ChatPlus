@@ -9303,7 +9303,10 @@ function regionsVues(state) {
   for (const g of groupes(state)) {
     if (g.membres.some(estVivant)) ajouter(g.regionId);
   }
-  if (state.base.fonde) ajouter(state.base.regionId);
+  // Chacun des camps, et pas seulement celui qu'on habite : un camp est un lieu
+  // habité, il voit ce qui passe devant lui. En tenir deux et n'en voir qu'un,
+  // c'est n'en tenir qu'un.
+  for (const c of campsDe(state)) if (c.fonde) ajouter(c.regionId);
 
   // Servir une faction, c'est recevoir ses rapports. À partir d'Agent, ses
   // villes ne sont plus jamais une surprise : c'est la contrepartie concrète
@@ -9547,8 +9550,11 @@ function estSurveillee(state, regionId) {
     if (portee && distance(g.regionId, regionId) <= portee) return true;
   }
   if (state.base.fonde) {
-    if (state.base.regionId === regionId) return true;
-    if (portee && distance(state.base.regionId, regionId) <= portee) return true;
+    for (const c of campsDe(state)) {
+      if (!c.fonde) continue;
+      if (c.regionId === regionId) return true;
+      if (portee && distance(c.regionId, regionId) <= portee) return true;
+    }
   }
   const col = state.world.colonies.find((c) => c.regionId === regionId);
   if (col && !col.ruine) {
@@ -9773,7 +9779,9 @@ function tickFormation(state, log) {
   const base = state.base;
   for (const g of groupes(state)) {
     const col = state.world.colonies.find((c) => c.regionId === g.regionId && !c.ruine);
-    const aLaBase = base && base.fonde && g.regionId === base.regionId;
+    // Le maître de maison est là où l'on a bâti, dans n'importe lequel des
+    // siens — pas seulement dans celui qu'on habite en ce moment.
+    const aLaBase = !!auCamp(state, g.regionId);
     for (const c of g.membres) {
       if (!c.formation || !estVivant(c)) continue;
 
@@ -21906,6 +21914,22 @@ function campsDe(state) {
   return state.camps;
 }
 
+/**
+ * Cette case porte-t-elle un de vos camps ?
+ *
+ * La question se posait partout sous la forme `g.regionId === state.base.regionId`
+ * — « suis-je à MON camp », au singulier — et elle a cessé d'être la bonne le
+ * jour où l'on a pu en tenir plusieurs. On est chez soi dans n'importe lequel
+ * des siens : on y voit, on s'y abrite, on s'y exerce.
+ */
+function auCamp(state, regionId) {
+  if (regionId == null) return null;
+  for (const c of campsDe(state)) {
+    if (c.fonde && c.regionId === regionId) return c;
+  }
+  return null;
+}
+
 /** Habiter un autre camp. L'index, parce qu'un camp n'a pas d'identité stable. */
 function changerDeCamp(state, i) {
   const camps = campsDe(state);
@@ -25799,7 +25823,9 @@ function tenterAlea(state, log, ctx, exposition = 1, groupe) {
   if (!h) return false;
   const col = colonieDe(state.world, regionId);
   const abri = col && !col.ruine ? 0.25 : 1;
-  const protege = state.base.fonde && state.base.regionId === regionId ? 0.3 : 1;
+  // N'importe lequel des siens : on est à l'abri chez soi, et « chez soi » ne
+  // veut plus dire « le camp qu'on habite en ce moment ».
+  const protege = auCamp(state, regionId) ? 0.3 : 1;
   const climat = ctx.climat ? ctx.climat.aleas : 1;
   if (!rng.chance(h.p * exposition * abri * protege * climat)) return false;
 

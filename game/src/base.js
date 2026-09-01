@@ -1138,6 +1138,22 @@ export function campsDe(state) {
   return state.camps;
 }
 
+/**
+ * Cette case porte-t-elle un de vos camps ?
+ *
+ * La question se posait partout sous la forme `g.regionId === state.base.regionId`
+ * — « suis-je à MON camp », au singulier — et elle a cessé d'être la bonne le
+ * jour où l'on a pu en tenir plusieurs. On est chez soi dans n'importe lequel
+ * des siens : on y voit, on s'y abrite, on s'y exerce.
+ */
+export function auCamp(state, regionId) {
+  if (regionId == null) return null;
+  for (const c of campsDe(state)) {
+    if (c.fonde && c.regionId === regionId) return c;
+  }
+  return null;
+}
+
 /** Habiter un autre camp. L'index, parce qu'un camp n'a pas d'identité stable. */
 export function changerDeCamp(state, i) {
   const camps = campsDe(state);

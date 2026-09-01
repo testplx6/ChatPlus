@@ -287,9 +287,26 @@ case est libre, qu'aucun des vôtres n'y est déjà, et que le sac porte de quoi
 Il n'y avait aucun chemin vers un second camp — la fondation n'apparaissait que
 sur l'écran « Aucun avant-poste », qu'on ne revoyait jamais.
 
-**Ce qui reste** : ce que le rendu montre du camp qu'on n'habite pas (aujourd'hui
-on n'en voit que le nom, la population et la distance), et les ordres qui visent
-un camp précis — ravitailler celui-là, rentrer à celui-ci.
+**M4c — un camp est un camp, lequel qu'il soit. ✅ Livré (septembre 2026).**
+
+Trois effets posaient encore la question au singulier — `g.regionId ===
+state.base.regionId`, « suis-je à MON camp » — et elle a cessé d'être la bonne
+le jour où l'on a pu en tenir plusieurs. `auCamp(state, regionId)` rend le camp
+qui s'y trouve, s'il y en a un des vôtres :
+
+- **les yeux.** Chaque camp fondé ouvre les siens sur la carte, pas seulement
+  celui qu'on habite : un camp est un lieu habité, il voit ce qui passe devant
+  lui. En tenir deux et n'en voir qu'un, c'est n'en tenir qu'un.
+- **l'abri.** Le danger d'une case est divisé par trois chez soi — dans
+  n'importe lequel des siens désormais.
+- **le maître de maison.** L'exercice se fait dans le camp où l'on se tient.
+
+Le comptoir, lui, n'avait pas à bouger : on passe un ordre depuis le comptoir
+devant lequel on se tient, ce qui est déjà juste.
+
+**Ce qui reste de M4** : ce que le rendu montre d'un camp qu'on n'habite pas —
+aujourd'hui son nom, sa population et sa distance, pas son entrepôt ni ce qui
+lui manque.
 
 ## 5. Ce qui reste à trancher avant d'écrire M1
 

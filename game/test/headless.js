@@ -69,7 +69,8 @@ import { attaquerVille, RAID_VILLE, livrerPlace, raserPlace } from '../src/assau
 import { estAssiegee, vivresCoupees, negoceCoupe } from '../src/world.js';
 import { fonderDrapeau } from '../src/factions.js';
 import { laissePasser } from '../src/events.js';
-import { changerDeCamp } from '../src/base.js';
+import { changerDeCamp, auCamp } from '../src/base.js';
+import { regionsVues } from '../src/connaissance.js';
 import {
   CLAUSES, proposerPacte, pacteEntre, romprePacte, appelerSecours,
 } from '../src/pactes.js';
@@ -14467,6 +14468,52 @@ section('M4a. Autant de camps qu’on veut — la structure (IMPLANTATIONS.md)')
   ok(Array.isArray(migre.camps) && migre.camps.length === 1 && migre.base === migre.camps[0],
     'une partie d’avant garde son camp, désormais dans la liste',
     `${migre.camps ? migre.camps.length : 'aucun'}`);
+}
+
+
+// ===========================================================================
+section('M4c. Un camp est un camp, lequel qu’il soit (IMPLANTATIONS.md)');
+// Trois effets supposaient encore « le camp » au singulier : les yeux qu'il
+// donne sur la carte, l'abri qu'il offre quand ça tourne mal, et le maître de
+// maison chez qui l'on s'exerce. Tenir deux camps et n'en voir qu'un, c'est
+// n'en tenir qu'un.
+{
+  const rienC = () => {};
+  const planterC = (st) => {
+    Object.assign(groupeActif(st).inventaire, { ferraille: 300, polymere: 120, composant: 20 });
+    const libre = st.world.regions.find(
+      (r) => !r.colonie && r.biome !== 'relais'
+        && !(st.camps || []).some((c) => c.fonde && c.regionId === r.i));
+    groupeActif(st).regionId = libre.i;
+    return fonderBase(st, rienC);
+  };
+
+  const sc = nouvellePartie(9501, { maintenant: 0, depart: 'ville', equipe: 3 });
+  for (let i = 0; i < 20; i++) tick(sc);
+  ok(planterC(sc).ok && planterC(sc).ok, 'le décor : deux camps plantés',
+    `${sc.camps.length} camps`);
+  const [c1, c2] = sc.camps;
+  // On habite le second ; on s'éloigne des deux pour que seuls les camps
+  // donnent des yeux, et pas l'escouade.
+  ok(sc.base === c2, 'et l’on habite le second');
+  const loinDeTout = sc.world.regions.find(
+    (r) => distance(r.i, c1.regionId) > 6 && distance(r.i, c2.regionId) > 6);
+  groupeActif(sc).regionId = loinDeTout.i;
+
+  const vues = regionsVues(sc);
+  ok(vues.has(c2.regionId), 'le camp qu’on habite ouvre les yeux là où il est');
+  ok(vues.has(c1.regionId), 'et celui qu’on a quitté aussi : il est habité, il voit',
+    vues.has(c1.regionId) ? 'vu' : 'aveugle');
+
+  // L'abri : on est chez soi dans n'importe lequel des siens.
+  groupeActif(sc).regionId = c1.regionId;
+  ok(estSurveillee(sc, c1.regionId),
+    'on surveille les abords du camp où l’on se tient, même si l’on n’y habite pas');
+
+  // Et le maître de maison : l'exercice se fait dans le camp où l'on est.
+  ok(auCamp(sc, c1.regionId), 'le premier camp est bien un des siens');
+  ok(auCamp(sc, c2.regionId), 'le second aussi');
+  ok(!auCamp(sc, loinDeTout.i), 'et une case vide n’en est pas un');
 }
 
 
