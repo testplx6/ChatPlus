@@ -565,9 +565,44 @@ Maréchal 1** sur trente parties, là où l'instruction d'août lisait « tous l
 drapeaux hors d'atteinte ». Le monde a rebougé entre-temps (économie,
 investissement des conseils), dans le bon sens cette fois.
 
-**Ce qui reste à faire, et qui ne se devine pas** : apprendre au bot ce que le
-propriétaire fait et que personne n'a écrit. Tant qu'on ne le sait pas, aucun
-réglage de cette famille ne doit être touché — et aucun ne l'a été.
+**Instruction 4 — le dossier est clos, et par un mot du propriétaire
+(septembre 2026).** Interrogé sur sa méthode : *« je sais pas, je fais rien de
+spécial, ça monte tout seul »*.
+
+« Tout seul » ne veut pas dire « sans rien faire » : ça veut dire **avec le
+temps**. Sa partie dépasse 750 jours de jeu, soit plus de dix-huit mille
+heures ; le banc d'équilibrage s'arrête à quatre mille, c'est-à-dire cent
+soixante-six jours. Il mesurait le premier cinquième d'une partie et concluait
+sur la carrière entière.
+
+Remesuré au vrai horizon, 20 parties × 16 000 h :
+
+| | 4 000 h | 16 000 h |
+|---|---|---|
+| ASSIDU, parties sans engagement | 19/30 | **4/20** |
+| ASSIDU, drapeaux à portée | 1/6 | **5/6** (seul SIGNL, seuil 40, résiste) |
+| CARRIERE, Commandeur / Maréchal | 2 / 0 | **3 / 3** |
+| bot par défaut, sans engagement | 19/30 | 10/20 |
+
+La voie du service n'a jamais été cassée. Les seuils par style — jusqu'à
+quarante pour les fanatiques — sont **faits** pour demander une carrière, et
+une carrière prend des années de jeu. Les mesurer sur cent soixante-six jours,
+c'est déclarer une porte murée parce qu'on n'a pas marché jusqu'à elle. Le
+tarif d'estime et les seuils sont donc laissés **exactement** où ils étaient,
+et le blocage est levé.
+
+**Et le banc ne pouvait pas mesurer plus loin : il plantait.** À seize mille
+heures, une bonne part des villes appartient à des pays nés en cours de partie
+— ils vivent dans `world.drapeaux`, pas dans les sept de `data.js` — et deux
+lectures `FACTIONS[…].style` explosaient sur `undefined`. Un référentiel figé
+de plus (FACTIONS-NEUVES §8.4), corrigé par `drapeauDe`. C'est très
+probablement la raison pour laquelle personne n'avait jamais mesuré la partie
+longue, et donc la cause première de tout ce dossier.
+
+**La leçon d'outillage, à retenir** : l'horizon par défaut du banc (4 000 h)
+est un compromis de vitesse, pas une durée de partie. Toute question qui porte
+sur une **progression** — carrière, réputation, patrimoine tardif — se mesure
+à 16 000 h, sinon elle répond sur une autre question que celle posée.
 
 ~~**Dette de mesure — le temps de rachat du pillard**~~ — **soldée**
 (août 2026). Le banc a son profil repenti (`REPENTIR=2000` dans

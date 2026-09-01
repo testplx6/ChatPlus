@@ -114,7 +114,7 @@ import {
   sEngager, peutSEngager, rangDe, RANGS, avancementOrdre, droitIntendance, toucherRations,
   estimeEngagement, ESTIME_ENGAGEMENT,
 } from '../src/allegeance.js';
-import { FACTIONS, DIPLO_FACTIONS } from '../src/data.js';
+import { FACTIONS, DIPLO_FACTIONS, drapeauDe } from '../src/data.js';
 import {
   fonderBase, lancerConstruction, lancerRecherche, deposer, retirer, affecter, niveau as nivBat,
   peutReconnaitre, reconnaitreAvantPoste,
@@ -267,6 +267,16 @@ for (const p of (process.env.REGLE || '').split(',').filter(Boolean)) {
   REGLAGES.push(p);
 }
 
+// L'HORIZON EST UN COMPROMIS DE VITESSE, PAS UNE DURÉE DE PARTIE.
+//
+// Quatre mille heures font cent soixante-six jours de jeu ; la partie du
+// propriétaire en dépasse sept cent cinquante. Toute question qui porte sur
+// une PROGRESSION — carrière, réputation, patrimoine tardif — doit être posée
+// à 16 000 h (`node test/equilibre.js 16000 20`), sinon elle répond sur une
+// autre question que celle posée. Le dossier « la voie du service est quasi
+// morte » (MEMOIRE.md §Blocages) a vécu des mois sur cette confusion : à
+// quatre mille heures, un seul drapeau sur six est à portée du bot le plus
+// dévoué ; à seize mille, cinq sur six, et le Maréchal existe.
 const HEURES = Number(process.argv[2]) || 4000;
 // Trente parties par défaut, pas huit. À huit, l'écart-type sur un taux de
 // survie de 85 % vaut douze points : on lit du bruit et on croit lire un
@@ -1426,7 +1436,13 @@ function jouerPrincipal(state, g, memo) {
       const repli = state.temps >= REPLI_H;
       if (colIci.faction === memo.visee || repli) {
         sEngager(state, colIci.faction, () => {});
-        const st = FACTIONS[colIci.faction].style;
+        // `drapeauDe` et non `FACTIONS` : à seize mille heures, la moitié
+        // des villes appartient à des pays nés en cours de partie, qui vivent
+        // dans `world.drapeaux` et pas dans les sept d'origine. Le banc
+        // plantait sec — un référentiel figé de plus (FACTIONS-NEUVES §8.4),
+        // et c'est probablement pour ça que personne n'avait jamais mesuré la
+        // partie longue.
+        const st = (drapeauDe(state.world, colIci.faction) || {}).style || '?';
         TRACE.servis[st] = (TRACE.servis[st] || 0) + 1;
         if (colIci.faction !== memo.visee) TRACE.replis += 1;
       }
@@ -2378,7 +2394,7 @@ for (let n = 0; n < PARTIES; n++) {
   // par nous prendre. Un drapeau visé trente fois et servi zéro fois est un
   // drapeau qui n'existe pas, quels que soient ses avantages sur le papier.
   {
-    const st = FACTIONS[memo.visee].style;
+    const st = (drapeauDe(state.world, memo.visee) || {}).style || '?';
     TRACE.estimeVisee[st] = (TRACE.estimeVisee[st] || 0) + memo.estimeVisee;
     TRACE.nVisee[st] = (TRACE.nVisee[st] || 0) + 1;
     if (!groupes(state).some((gg) => gg.allegeance)) TRACE.jamais += 1;
