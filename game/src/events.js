@@ -1,6 +1,6 @@
 import { gagner, regler, soldeIci, signeIci, monnaieIci } from './monnaie.js';
 import { commettre } from './faits.js';
-import { auCamp } from './base.js';
+import { auCamp, savoir } from './base.js';
 import { lieePar } from './pactes.js';
 // Journal de bord et rencontres. Tout se résout automatiquement selon la
 // posture et les consignes de l'escouade : c'est ce qui permet à la simulation
@@ -223,8 +223,8 @@ export function combatContre(state, bande, log, ctx, groupe) {
     rng,
     biome: state.world.regions[g.regionId].biome,
     posture,
-    bonusDegats: (state.base.recherche.balistique || 0) * 0.1,
-    bonusArmure: (state.base.recherche.blindage || 0) * 0.1,
+    bonusDegats: savoir(state, 'balistique') * 0.1,
+    bonusArmure: savoir(state, 'blindage') * 0.1,
     // On n'achève pas les hommes à terre sans l'avoir décidé. À 0,06 « par
     // défaut », l'escouade assassinait des blessés que personne ne lui avait
     // demandé de tuer — et se privait des prisonniers qui vont avec.

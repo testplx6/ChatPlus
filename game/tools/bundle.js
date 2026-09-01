@@ -289,6 +289,53 @@ if (manquants.length) {
 // c'est une ReferenceError au chargement. Le bundle annonçait « 0 collision »
 // sur un jeu qui ne démarrait pas.
 //
+/**
+ * Ce qu'un module importe, un autre doit l'exporter.
+ *
+ * Le bundle aplatit tout dans une seule portée : un `export` oublié ne s'y voit
+ * PAS, et le jeu livré marche. Le chargement ESM, lui, refuse — et c'est la
+ * suite navigateur qui le découvre, trois minutes plus tard, sous la forme d'une
+ * page noire. Deux fois dans la même journée (septembre 2026), pour la même
+ * raison : une insertion de code qui mange le mot `export` de la ligne qu'elle
+ * remplace.
+ *
+ * Ce contrôle-ci coûte un balayage de regex et le dit avec le nom du symbole.
+ * C'est METHODE §11, « fais échouer vite ce qui va échouer ».
+ */
+function importsSansExport(sources) {
+  const exportes = new Map();
+  for (const [nom, src] of sources) {
+    const re = /^export\s+(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z_$][\w$]*)/gm;
+    let m;
+    while ((m = re.exec(src))) exportes.set(m[1], nom);
+    // `export { a, b as c };` — la forme liste, que le bundle laisse passer.
+    const re2 = /^export\s*\{([^}]*)\}/gm;
+    while ((m = re2.exec(src))) {
+      for (const brut of m[1].split(',')) {
+        const t = brut.trim().split(/\s+as\s+/);
+        const nomExp = (t[1] || t[0] || '').trim();
+        if (nomExp) exportes.set(nomExp, nom);
+      }
+    }
+  }
+  const manques = [];
+  for (const [nom, src] of sources) {
+    const re = /^import\s*\{([^}]*)\}\s*from\s*'\.\/([\w.-]+)'/gms;
+    let m;
+    while ((m = re.exec(src))) {
+      for (const brut of m[1].split(',')) {
+        const t = brut.trim().split(/\s+as\s+/);
+        const voulu = (t[0] || '').trim();
+        if (!voulu || !/^[\w$]+$/.test(voulu)) continue;
+        if (!exportes.has(voulu)) {
+          manques.push(`  « ${voulu} » importé par src/${nom} depuis src/${m[2]}, qui ne l'exporte pas`);
+        }
+      }
+    }
+  }
+  return manques;
+}
+
 // On ne fait pas d'analyse de portée ici : on cherche l'usage d'un nom exporté
 // par un *autre* module, absent des imports de celui-ci et de ses propres
 // déclarations. Assez pour attraper l'oubli, sans prétendre à un compilateur.
@@ -322,6 +369,18 @@ if (manquants.length) {
     console.error('Symboles utilisés sans être importés (le bundle passerait, pas les modules) :');
     for (const l of oublis) console.error(l);
     console.error('\nAjoutez l’import. Abandon.');
+    process.exit(1);
+  }
+
+  // Et le défaut symétrique : on importe un nom que la source n'exporte pas.
+  // `brut` et non `code` : le pipeline a déjà retiré les lignes d'import de
+  // `code`, et le contrôle n'aurait plus rien à lire — il serait né vert, ce
+  // que ce projet interdit à toute sonde.
+  const sansExport = importsSansExport(sourcesParModule.map((x) => [x.nom, x.brut]));
+  if (sansExport.length) {
+    console.error('Noms importés que personne n’exporte (le bundle passerait, pas les modules) :');
+    for (const l of sansExport) console.error(l);
+    console.error('\nRétablissez l’export. Abandon.');
     process.exit(1);
   }
 }

@@ -18,7 +18,7 @@ import { estVivant } from './characters.js';
 import { rangDe } from './allegeance.js';
 import { REGISTRES_SEUIL } from './services.js';
 import { pactesDe } from './pactes.js';
-import { campsDe } from './base.js';
+import { campsDe, savoir } from './base.js';
 import { notable } from './notables.js';
 // Les canaux et le voyage des nouvelles vivent dans faits.js (ordre des
 // modules : la porte des faits est citée bien avant la connaissance) — on les
@@ -43,7 +43,7 @@ export function creerConnaissance(t = 0) {
  */
 export function regionsVues(state) {
   const vues = new Set();
-  const portee = state.base.recherche.optique || 0;
+  const portee = savoir(state, 'optique');
   const ajouter = (rid) => {
     vues.add(rid);
     if (!portee) return;
@@ -294,7 +294,7 @@ export function vueRegion(state, regionId) {
  * mentirait d'une heure, pour économiser quelques dizaines d'itérations.
  */
 export function estSurveillee(state, regionId) {
-  const portee = state.base.recherche.optique || 0;
+  const portee = savoir(state, 'optique');
   for (const g of groupes(state)) {
     if (!g.membres.some(estVivant)) continue;
     if (g.regionId === regionId) return true;
@@ -336,7 +336,7 @@ function estDeLaMaison(state, faction) {
 export function vueArmee(state, a) {
   if (!a) return null;
   const frais = estSurveillee(state, a.regionId)
-    || (state.base.recherche.cryptographie || 0) > 0
+    || savoir(state, 'cryptographie') > 0
     || estDeLaMaison(state, a.faction);
   if (frais) {
     return {

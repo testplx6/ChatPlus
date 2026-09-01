@@ -21,7 +21,7 @@ import {
 } from './events.js';
 import { commettre } from './faits.js';
 import { poidsInventaire, capacitePortage } from './economy.js';
-import { niveau as nivBat, abriDe } from './base.js';
+import { niveau as nivBat, abriDe, savoir } from './base.js';
 import { conditions } from './climat.js';
 import {
   groupeActif, tacheDe, debout as deboutDe, vivants as vivantsDe, retirerGroupe,
@@ -105,7 +105,7 @@ export function donnerOrdre(state, ordre, groupe) {
   const port = joignable(state, g);
   if (!port.ok) return port;
   if (ordre.type === 'voyage') {
-    const m = { reductionVoyage: (state.base.recherche.logistique || 0) * 0.06 };
+    const m = { reductionVoyage: savoir(state, 'logistique') * 0.06 };
     const route = chemin(state.world, g.regionId, ordre.dest, m);
     if (!route || !route.length) return { ok: false, motif: 'Aucune route.' };
     g.ordre = {
@@ -324,7 +324,7 @@ function explorer(state, g, eclaireurs, log, ctx) {
   const rng = ctx.rng;
   if (!eclaireurs.length) return;
 
-  let portee = 2 + (state.base.recherche.optique || 0);
+  let portee = 2 + savoir(state, 'optique');
   const meilleur = Math.max(...eclaireurs.map((c) => comp(c, 'furtivite')));
   if (meilleur > 45) portee += 1;
 
@@ -379,7 +379,7 @@ function qualiteSoin(state, g, auRepos) {
   let medic = 0;
   for (const c of deboutDe(g)) medic = Math.max(medic, comp(c, 'medecine'));
   let q = 0.25 + medic / 90;
-  q *= 1 + (state.base.recherche.medecine || 0) * 0.25;
+  q *= 1 + savoir(state, 'medecine') * 0.25;
   if (state.base.fonde && g.regionId === state.base.regionId) {
     // Le camp lui-même compte, avant la moindre infirmerie : on recoud à
     // l'abri, sur une table, avec de l'eau propre.
@@ -449,7 +449,7 @@ function avancerVoyage(state, g, log, ctx) {
 
   o.progres += vitesse;
   const prochaine = o.route[o.etape];
-  const m = { reductionVoyage: (state.base.recherche.logistique || 0) * 0.06 };
+  const m = { reductionVoyage: savoir(state, 'logistique') * 0.06 };
   // Le climat alourdit la marche, mais à moitié : le coût de base tient déjà
   // compte du terrain, et cumuler les deux pleinement immobilise l'escouade.
   const gene = ctx.climat ? 1 + (ctx.climat.marche - 1) * 0.6 : 1;
@@ -462,7 +462,7 @@ function avancerVoyage(state, g, log, ctx) {
     // On tasse la terre en passant. Un convoi lourd marque plus qu'un homme
     // seul, et c'est ce qui fait qu'un circuit qu'on répète devient une route.
     damer(state.world, prochaine, 1 + (g.membres.length + betesDe(g).length) * 0.12);
-    const rayon = 1 + (state.base.recherche.optique || 0);
+    const rayon = 1 + savoir(state, 'optique');
     decouvrir(state.world, prochaine, rayon);
     for (const c of debout) gagnerXp(c, 'endurance', XP_PRATIQUE);
 
@@ -1056,7 +1056,7 @@ export function apercuEscouade(state, g) {
   vitesse *= 1 - lenteurDepouilles(g);
   vitesse = Math.max(0.15, vitesse);
   const coutIci = coutTraversee(state.world, g.regionId,
-    { reductionVoyage: (state.base.recherche.logistique || 0) * 0.06 });
+    { reductionVoyage: savoir(state, 'logistique') * 0.06 });
 
   return {
     debout: debout.length,

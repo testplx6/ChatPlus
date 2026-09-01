@@ -658,3 +658,21 @@ lui seul.
 > jouée n'était plus la même. On mesure alors le fait, pas le temps : huit
 > villes sur quatre-vingt-dix paient la maille fine, et elles pèsent quarante-six
 > pour cent des appels. Ça, c'est un nombre qui ne ment pas.
+
+
+**Le bundle ne prouve pas que les modules chargent.**
+
+> **Incident, septembre 2026, deux fois dans la même journée.** Une insertion de
+> code mange le mot `export` de la ligne qu'elle remplace — `export const X` +
+> un bloc inséré devant `const X` donne `export /** … */ const X`, qu'on
+> « répare » en supprimant l'`export`. Le bundle aplatit tout dans une seule
+> portée : il ne voit rien, et le jeu livré marche. Les modules ESM, eux,
+> refusent — et c'est la suite navigateur qui le découvre trois minutes plus
+> tard, sous la forme d'une page noire et d'un délai dépassé sur un sélecteur
+> sans rapport.
+>
+> `tools/bundle.js` connaissait déjà le défaut inverse (« utilisé sans être
+> importé ») ; il contrôle maintenant les deux. Le premier essai du contrôle est
+> **né vert** — il lisait le code après retrait des imports, donc il n'avait
+> plus rien à lire. Une sonde qui ne peut pas crier ne garde rien : celle-ci a
+> été remise devant la faute pour vérifier qu'elle criait.

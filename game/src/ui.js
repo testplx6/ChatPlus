@@ -7,7 +7,7 @@ import {
 import {
   BIOMES, FACTIONS, DIPLO_FACTIONS, drapeauDe, diploDe, symboleDe, clesDe,
   COMMODITIES, COMMODITY_KEYS, BUILDINGS, BUILDING_KEYS,
-  RESEARCH, RESEARCH_KEYS, ITEMS, SKILLS, SKILL_KEYS, BODY_PARTS, BODY_KEYS,
+  RESEARCH, RESEARCH_KEYS, porteeRecherche, ITEMS, SKILLS, SKILL_KEYS, BODY_PARTS, BODY_KEYS,
   POSTURES, POSTURE_KEYS, TRAITS, POI, CONTRATS, DIPLOMES, METIERS, METIER_KEYS,
   METIERS_VILLE, METIER_VILLE_KEYS,
   RECETTES_KEYS, ARRET, ENTREES,
@@ -4518,8 +4518,20 @@ function ecranBase() {
     // fugace pour comprendre. Une condition se lit avant d'agir, pas après.
     const amont = rd.exige && niveauRech(b, rd.exige) < 1 ? RESEARCH[rd.exige] : null;
     return `<div style="border-bottom:1px solid #26211a;padding:6px 0">
-      <div class="ligne"><span class="k">${e(rd.nom)}</span><span class="v"><span class="puce">niv ${niv}/${rd.max}</span></span></div>
+      <div class="ligne"><span class="k">${e(rd.nom)}</span><span class="v">${
+  // Ce qui voyage et ce qui reste (M4e). Sans ça, le joueur ne peut pas
+  // décider : deux recherches au même prix, l'une acquise pour toute la
+  // maison, l'autre à refaire dans chaque camp, et rien ne les distinguait.
+  // La puce n'apparaît qu'à partir du second camp — avant, la question ne se
+  // pose pas et la mention serait du bruit.
+  camps.length > 1
+    ? `<span class="puce ${porteeRecherche(k) === 'camp' ? 'att' : 'ok'}">${
+      porteeRecherche(k) === 'camp' ? 'ce camp' : 'partout'}</span> ` : ''
+}<span class="puce">niv ${niv}/${rd.max}</span></span></div>
       <div class="aide">${e(rd.desc)}</div>
+      ${camps.length > 1 && porteeRecherche(k) === 'camp' ? `<div class="aide">
+        Elle se refait dans chaque camp — ses fours et ses bacs sont ici, pas
+        ailleurs. La ${e(RESEARCH.transmission.nom)} la fait circuler.</div>` : ''}
       ${rd.exige ? `<div class="aide ${amont ? 'ambre' : ''}">${amont
     ? `Demande d’abord la recherche ${e(amont.nom)}.`
     : `Ouverte par la recherche ${e(RESEARCH[rd.exige].nom)}.`}</div>` : ''}

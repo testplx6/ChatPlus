@@ -847,6 +847,24 @@ export const RESEARCH = {
     tempsMul: 1.7,
     max: 3,
   },
+  transmission: {
+    nom: 'Transmission du savoir',
+    desc: 'Ce qu’un de vos camps sait faire, les autres l’apprennent — un cinquième de plus par niveau, jusqu’à tout.',
+    // La règle est du propriétaire : « les autres camps n'héritent de rien sauf
+    // à développer la recherche transmission du savoir, jusqu'à transmission
+    // complète au meilleur niveau ». Un second camp n'est donc pas un clone du
+    // premier : ses fours ne savent rien, et c'est à vous de décider si vous
+    // payez pour que le savoir circule.
+    //
+    // Chère, et c'est voulu : elle vaut cinq recherches d'un coup dès qu'on
+    // tient deux camps. Elle ne demande rien d'autre — on peut la chercher tôt
+    // et monter tous ses camps ensemble, ou l'ignorer et n'en tenir qu'un vrai.
+    cout: { composant: 26, credits: 520 },
+    coutMul: 1.9,
+    heures: 20,
+    tempsMul: 1.75,
+    max: 5,
+  },
   cryptographie: {
     nom: 'Cryptographie',
     desc: 'Révèle les intentions militaires des factions.',
@@ -857,6 +875,42 @@ export const RESEARCH = {
     max: 2,
   },
 };
+
+/**
+ * Où porte une recherche : dans le sac ou dans la maison.
+ *
+ * « Il faut distinguer les technos propres au camp et celles qui ont une portée
+ * globale. » — le propriétaire, septembre 2026. La question s'est posée le jour
+ * où l'on a pu tenir plusieurs camps, et le code y répondait déjà sans le
+ * savoir : il suffit de regarder SUR QUOI l'effet s'applique.
+ *
+ * `escouade` — l'effet porte sur les gens et ce qu'ils portent, et les gens
+ * voyagent. Viser, encaisser, recoudre, marcher chargé, voir loin, lire les
+ * transmissions, greffer : ça ne reste pas dans un camp, c'est dans les mains
+ * et dans les têtes. Le niveau qui vaut est donc le meilleur atteint où que ce
+ * soit.
+ *
+ * `camp` — l'effet porte sur les chaînes d'un lieu : un four, des bacs, un
+ * alambic, des capteurs, un comptoir. Ça se bâtit, ça se règle, et ça ne
+ * déménage pas. Un camp neuf n'en hérite pas — sauf à savoir transmettre.
+ */
+export const PORTEE_RECHERCHE = {
+  balistique: 'escouade',
+  blindage: 'escouade',
+  medecine: 'escouade',
+  logistique: 'escouade',
+  optique: 'escouade',
+  cryptographie: 'escouade',
+  cybernetique: 'escouade',
+  // Et celle qui décide de ce que les camps se passent entre eux : c'est un
+  // savoir d'organisation, il vaut pour toute la maison.
+  transmission: 'escouade',
+};
+
+/** Cette recherche voyage-t-elle avec les gens ? */
+export function porteeRecherche(key) {
+  return PORTEE_RECHERCHE[key] || 'camp';
+}
 
 export const RESEARCH_KEYS = Object.keys(RESEARCH);
 

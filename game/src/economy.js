@@ -8,6 +8,7 @@ import {
 } from './data.js';
 import { comp, gagnerXp, portage, XP_PRATIQUE } from './characters.js';
 import { combienDeFois } from './rng.js';
+import { savoir } from './base.js';
 import { remiseDe, palierBonus } from './allegeance.js';
 import {
   distance as distanceCases, rendementRegion, colonieParId, vivresCoupees, SIEGE_FAIM,
@@ -2274,7 +2275,7 @@ export function vendre(state, col, key, qte, groupe) {
 export function capacitePortage(state, groupe) {
   const g = groupe || groupeActif(state);
   let cap = 0;
-  const bonus = (state.base.recherche.logistique || 0) * 0.15;
+  const bonus = savoir(state, 'logistique') * 0.15;
   for (const c of (g ? g.membres : [])) {
     // Un mort ne porte plus rien, un K.O. est lui-même porté par les autres, et
     // un élève est resté en ville avec ses affaires.

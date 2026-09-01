@@ -69,7 +69,7 @@ import { attaquerVille, RAID_VILLE, livrerPlace, raserPlace } from '../src/assau
 import { estAssiegee, vivresCoupees, negoceCoupe } from '../src/world.js';
 import { fonderDrapeau } from '../src/factions.js';
 import { laissePasser } from '../src/events.js';
-import { changerDeCamp, auCamp } from '../src/base.js';
+import { changerDeCamp, auCamp, savoir } from '../src/base.js';
 import { regionsVues } from '../src/connaissance.js';
 import {
   CLAUSES, proposerPacte, pacteEntre, romprePacte, appelerSecours,
@@ -14514,6 +14514,82 @@ section('M4c. Un camp est un camp, lequel qu’il soit (IMPLANTATIONS.md)');
   ok(auCamp(sc, c1.regionId), 'le premier camp est bien un des siens');
   ok(auCamp(sc, c2.regionId), 'le second aussi');
   ok(!auCamp(sc, loinDeTout.i), 'et une case vide n’en est pas un');
+}
+
+
+// ===========================================================================
+section('M4e. Le savoir du sac et le savoir de la maison (IMPLANTATIONS.md)');
+// « Il faut distinguer les technos propres au camp et celles qui ont une portée
+// globale. » — le propriétaire, septembre 2026.
+//
+// La question tombait sur un défaut que M4 venait d'introduire : les recherches
+// vivent sur le camp, et DOUZE lectures ailleurs interrogeaient « le camp qu'on
+// habite ». Changer de camp faisait donc perdre à l'escouade sa balistique, son
+// blindage, sa médecine, son optique et sa logistique — des choses qui vivent
+// dans les mains et dans les têtes, pas dans un four.
+//
+// Et la règle du transfert est tranchée : « les autres camps n'héritent de rien
+// sauf à développer la recherche transmission du savoir, jusqu'à transmission
+// complète au meilleur niveau ».
+{
+  const rienT = () => {};
+  const planterT = (st) => {
+    Object.assign(groupeActif(st).inventaire, { ferraille: 300, polymere: 120, composant: 20 });
+    const libre = st.world.regions.find(
+      (r) => !r.colonie && r.biome !== 'relais'
+        && !(st.camps || []).some((c) => c.fonde && c.regionId === r.i));
+    groupeActif(st).regionId = libre.i;
+    return fonderBase(st, rienT);
+  };
+
+  const st = nouvellePartie(9601, { maintenant: 0, depart: 'ville', equipe: 3 });
+  for (let i = 0; i < 20; i++) tick(st);
+  ok(planterT(st).ok, 'le décor : un premier camp');
+  const camp1 = st.base;
+  camp1.recherche.balistique = 3;   // le sac : viser
+  camp1.recherche.optique = 2;      // le sac : voir loin
+  camp1.recherche.metallurgie = 4;  // la maison : le four
+  ok(planterT(st).ok, 'et un second');
+  const camp2 = st.base;
+
+  // Ce qui se porte suit celui qui le porte.
+  ok(savoir(st, 'balistique') === 3,
+    'la balistique ne reste pas dans le premier camp : elle est dans les mains',
+    `${savoir(st, 'balistique')}`);
+  ok(savoir(st, 'optique') === 2, 'l’optique non plus : elle est dans les yeux',
+    `${savoir(st, 'optique')}`);
+
+  // Ce qui est bâti reste où c'est bâti.
+  ok(savoir(st, 'metallurgie') === 0,
+    'la métallurgie, elle, ne suit pas : le four du premier camp n’est pas ici',
+    `${savoir(st, 'metallurgie')}`);
+
+  // Et la transmission, qui est justement ce qu'on peut apprendre à faire.
+  ok(!!RESEARCH.transmission, 'la transmission du savoir est une recherche du jeu',
+    RESEARCH.transmission ? RESEARCH.transmission.nom : 'absente');
+  camp1.recherche.transmission = 2;
+  for (let i = 0; i < 30; i++) tick(st);
+  ok(savoir(st, 'metallurgie') === 1,
+    'à deux niveaux sur cinq, le camp neuf reçoit deux cinquièmes du meilleur four',
+    `${savoir(st, 'metallurgie')} sur 4`);
+
+  camp1.recherche.transmission = 5;
+  for (let i = 0; i < 30; i++) tick(st);
+  ok(savoir(st, 'metallurgie') === 4,
+    'à cinq, la transmission est complète : le camp neuf est au meilleur niveau',
+    `${savoir(st, 'metallurgie')} sur 4`);
+
+  // La contre-épreuve : sans transmission, rien ne passe. Un mécanisme qui
+  // transmet toujours ne distingue rien.
+  const st2 = nouvellePartie(9602, { maintenant: 0, depart: 'ville', equipe: 3 });
+  for (let i = 0; i < 20; i++) tick(st2);
+  planterT(st2);
+  st2.base.recherche.metallurgie = 5;
+  planterT(st2);
+  for (let i = 0; i < 60; i++) tick(st2);
+  ok(savoir(st2, 'metallurgie') === 0,
+    'sans transmission, le second camp ne reçoit rien du tout',
+    `${savoir(st2, 'metallurgie')}`);
 }
 
 

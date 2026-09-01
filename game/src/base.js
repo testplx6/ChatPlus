@@ -2,7 +2,7 @@
 // production contrainte par l'énergie, stockage plafonné, raids à encaisser.
 
 import {
-  BUILDINGS, RESEARCH, COMMODITY_KEYS, COMMODITIES, METIERS, METIER_KEYS, BIOMES,
+  BUILDINGS, RESEARCH, porteeRecherche, COMMODITY_KEYS, COMMODITIES, METIERS, METIER_KEYS, BIOMES,
   FACTIONS, RECETTES, ARRET, drapeauDe, ITEMS, PALIERS_ITEM,
 } from './data.js';
 import { Rng, grainDe } from './rng.js';
@@ -1156,6 +1156,66 @@ export function auCamp(state, regionId) {
   return null;
 }
 
+/**
+ * Ce qu'on sait, vu d'ici.
+ *
+ * Une recherche du sac (`escouade`) rend le meilleur niveau atteint où que ce
+ * soit : viser, encaisser, recoudre et voir loin sont dans les mains de ceux qui
+ * marchent, et ils marchent. Une recherche de la maison (`camp`) ne rend que ce
+ * que CE camp sait faire — son four, ses bacs, son comptoir.
+ *
+ * Le défaut que ça répare est né avec les camps multiples, ce matin : douze
+ * lectures du moteur interrogeaient `state.base.recherche`, c'est-à-dire « le
+ * camp qu'on habite ». Changer de camp faisait perdre à l'escouade sa
+ * balistique et son optique — un vétéran désapprenait à viser en déménageant.
+ */
+export function savoir(state, key, camp = null) {
+  if (porteeRecherche(key) === 'camp') {
+    const b = camp || state.base;
+    return (b && b.recherche && b.recherche[key]) || 0;
+  }
+  let mieux = 0;
+  for (const c of campsDe(state)) {
+    const n = (c.recherche && c.recherche[key]) || 0;
+    if (n > mieux) mieux = n;
+  }
+  return mieux;
+}
+
+/**
+ * Ce qu'un camp reçoit de ce que les autres savent faire.
+ *
+ * Rien, par défaut — un camp neuf est un camp neuf. La recherche « Transmission
+ * du savoir » ouvre la porte d'un cinquième par niveau, jusqu'à l'ouvrir en
+ * grand : à cinq, le camp le moins avancé rejoint le mieux loti.
+ *
+ * Le rattrapage est continu et non seulement à la fondation : développer la
+ * transmission après coup profite aux camps déjà plantés, ce qui est la seule
+ * lecture qui ne piège pas le joueur.
+ */
+export function transmettreLeSavoir(state) {
+  const camps = campsDe(state).filter((c) => c.fonde);
+  if (camps.length < 2) return 0;
+  const part = Math.min(1, savoir(state, 'transmission') / RESEARCH.transmission.max);
+  if (part <= 0) return 0;
+  // Le meilleur niveau de chaque savoir de maison, tous camps confondus.
+  const mieux = {};
+  for (const c of camps) {
+    for (const k of Object.keys(c.recherche || {})) {
+      if (porteeRecherche(k) !== 'camp') continue;
+      if ((c.recherche[k] || 0) > (mieux[k] || 0)) mieux[k] = c.recherche[k];
+    }
+  }
+  let passes = 0;
+  for (const c of camps) {
+    for (const k of Object.keys(mieux)) {
+      const du = Math.floor(mieux[k] * part);
+      if (du > (c.recherche[k] || 0)) { c.recherche[k] = du; passes += 1; }
+    }
+  }
+  return passes;
+}
+
 /** Habiter un autre camp. L'index, parce qu'un camp n'a pas d'identité stable. */
 export function changerDeCamp(state, i) {
   const camps = campsDe(state);
@@ -1311,6 +1371,10 @@ function consommer(base, key, qte, ignorerReserve) {
  */
 export function tickCamps(state, log, ctx) {
   const camps = campsDe(state);
+  // Ce que les camps se passent entre eux, une fois par jour de jeu : c'est un
+  // rattrapage, pas un flux — le faire à chaque heure coûterait vingt-quatre
+  // fois plus pour le même résultat.
+  if (state.temps % 24 === 0) transmettreLeSavoir(state);
   if (camps.length <= 1) return tickBase(state, log, ctx);
   const habite = state.base;
   let sien = null;

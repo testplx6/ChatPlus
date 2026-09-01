@@ -2827,6 +2827,24 @@ const RESEARCH = {
     tempsMul: 1.7,
     max: 3,
   },
+  transmission: {
+    nom: 'Transmission du savoir',
+    desc: 'Ce qu’un de vos camps sait faire, les autres l’apprennent — un cinquième de plus par niveau, jusqu’à tout.',
+    // La règle est du propriétaire : « les autres camps n'héritent de rien sauf
+    // à développer la recherche transmission du savoir, jusqu'à transmission
+    // complète au meilleur niveau ». Un second camp n'est donc pas un clone du
+    // premier : ses fours ne savent rien, et c'est à vous de décider si vous
+    // payez pour que le savoir circule.
+    //
+    // Chère, et c'est voulu : elle vaut cinq recherches d'un coup dès qu'on
+    // tient deux camps. Elle ne demande rien d'autre — on peut la chercher tôt
+    // et monter tous ses camps ensemble, ou l'ignorer et n'en tenir qu'un vrai.
+    cout: { composant: 26, credits: 520 },
+    coutMul: 1.9,
+    heures: 20,
+    tempsMul: 1.75,
+    max: 5,
+  },
   cryptographie: {
     nom: 'Cryptographie',
     desc: 'Révèle les intentions militaires des factions.',
@@ -2837,6 +2855,42 @@ const RESEARCH = {
     max: 2,
   },
 };
+
+/**
+ * Où porte une recherche : dans le sac ou dans la maison.
+ *
+ * « Il faut distinguer les technos propres au camp et celles qui ont une portée
+ * globale. » — le propriétaire, septembre 2026. La question s'est posée le jour
+ * où l'on a pu tenir plusieurs camps, et le code y répondait déjà sans le
+ * savoir : il suffit de regarder SUR QUOI l'effet s'applique.
+ *
+ * `escouade` — l'effet porte sur les gens et ce qu'ils portent, et les gens
+ * voyagent. Viser, encaisser, recoudre, marcher chargé, voir loin, lire les
+ * transmissions, greffer : ça ne reste pas dans un camp, c'est dans les mains
+ * et dans les têtes. Le niveau qui vaut est donc le meilleur atteint où que ce
+ * soit.
+ *
+ * `camp` — l'effet porte sur les chaînes d'un lieu : un four, des bacs, un
+ * alambic, des capteurs, un comptoir. Ça se bâtit, ça se règle, et ça ne
+ * déménage pas. Un camp neuf n'en hérite pas — sauf à savoir transmettre.
+ */
+const PORTEE_RECHERCHE = {
+  balistique: 'escouade',
+  blindage: 'escouade',
+  medecine: 'escouade',
+  logistique: 'escouade',
+  optique: 'escouade',
+  cryptographie: 'escouade',
+  cybernetique: 'escouade',
+  // Et celle qui décide de ce que les camps se passent entre eux : c'est un
+  // savoir d'organisation, il vaut pour toute la maison.
+  transmission: 'escouade',
+};
+
+/** Cette recherche voyage-t-elle avec les gens ? */
+function porteeRecherche(key) {
+  return PORTEE_RECHERCHE[key] || 'camp';
+}
 
 const RESEARCH_KEYS = Object.keys(RESEARCH);
 
@@ -9292,7 +9346,7 @@ function creerConnaissance(t = 0) {
  */
 function regionsVues(state) {
   const vues = new Set();
-  const portee = state.base.recherche.optique || 0;
+  const portee = savoir(state, 'optique');
   const ajouter = (rid) => {
     vues.add(rid);
     if (!portee) return;
@@ -9543,7 +9597,7 @@ function vueRegion(state, regionId) {
  * mentirait d'une heure, pour économiser quelques dizaines d'itérations.
  */
 function estSurveillee(state, regionId) {
-  const portee = state.base.recherche.optique || 0;
+  const portee = savoir(state, 'optique');
   for (const g of groupes(state)) {
     if (!g.membres.some(estVivant)) continue;
     if (g.regionId === regionId) return true;
@@ -9585,7 +9639,7 @@ function estDeLaMaison(state, faction) {
 function vueArmee(state, a) {
   if (!a) return null;
   const frais = estSurveillee(state, a.regionId)
-    || (state.base.recherche.cryptographie || 0) > 0
+    || savoir(state, 'cryptographie') > 0
     || estDeLaMaison(state, a.faction);
   if (frais) {
     return {
@@ -13127,7 +13181,7 @@ function vendre(state, col, key, qte, groupe) {
 function capacitePortage(state, groupe) {
   const g = groupe || groupeActif(state);
   let cap = 0;
-  const bonus = (state.base.recherche.logistique || 0) * 0.15;
+  const bonus = savoir(state, 'logistique') * 0.15;
   for (const c of (g ? g.membres : [])) {
     // Un mort ne porte plus rien, un K.O. est lui-même porté par les autres, et
     // un élève est resté en ville avec ses affaires.
@@ -21932,6 +21986,66 @@ function auCamp(state, regionId) {
   return null;
 }
 
+/**
+ * Ce qu'on sait, vu d'ici.
+ *
+ * Une recherche du sac (`escouade`) rend le meilleur niveau atteint où que ce
+ * soit : viser, encaisser, recoudre et voir loin sont dans les mains de ceux qui
+ * marchent, et ils marchent. Une recherche de la maison (`camp`) ne rend que ce
+ * que CE camp sait faire — son four, ses bacs, son comptoir.
+ *
+ * Le défaut que ça répare est né avec les camps multiples, ce matin : douze
+ * lectures du moteur interrogeaient `state.base.recherche`, c'est-à-dire « le
+ * camp qu'on habite ». Changer de camp faisait perdre à l'escouade sa
+ * balistique et son optique — un vétéran désapprenait à viser en déménageant.
+ */
+function savoir(state, key, camp = null) {
+  if (porteeRecherche(key) === 'camp') {
+    const b = camp || state.base;
+    return (b && b.recherche && b.recherche[key]) || 0;
+  }
+  let mieux = 0;
+  for (const c of campsDe(state)) {
+    const n = (c.recherche && c.recherche[key]) || 0;
+    if (n > mieux) mieux = n;
+  }
+  return mieux;
+}
+
+/**
+ * Ce qu'un camp reçoit de ce que les autres savent faire.
+ *
+ * Rien, par défaut — un camp neuf est un camp neuf. La recherche « Transmission
+ * du savoir » ouvre la porte d'un cinquième par niveau, jusqu'à l'ouvrir en
+ * grand : à cinq, le camp le moins avancé rejoint le mieux loti.
+ *
+ * Le rattrapage est continu et non seulement à la fondation : développer la
+ * transmission après coup profite aux camps déjà plantés, ce qui est la seule
+ * lecture qui ne piège pas le joueur.
+ */
+function transmettreLeSavoir(state) {
+  const camps = campsDe(state).filter((c) => c.fonde);
+  if (camps.length < 2) return 0;
+  const part = Math.min(1, savoir(state, 'transmission') / RESEARCH.transmission.max);
+  if (part <= 0) return 0;
+  // Le meilleur niveau de chaque savoir de maison, tous camps confondus.
+  const mieux = {};
+  for (const c of camps) {
+    for (const k of Object.keys(c.recherche || {})) {
+      if (porteeRecherche(k) !== 'camp') continue;
+      if ((c.recherche[k] || 0) > (mieux[k] || 0)) mieux[k] = c.recherche[k];
+    }
+  }
+  let passes = 0;
+  for (const c of camps) {
+    for (const k of Object.keys(mieux)) {
+      const du = Math.floor(mieux[k] * part);
+      if (du > (c.recherche[k] || 0)) { c.recherche[k] = du; passes += 1; }
+    }
+  }
+  return passes;
+}
+
 /** Habiter un autre camp. L'index, parce qu'un camp n'a pas d'identité stable. */
 function changerDeCamp(state, i) {
   const camps = campsDe(state);
@@ -22087,6 +22201,10 @@ function consommer(base, key, qte, ignorerReserve) {
  */
 function tickCamps(state, log, ctx) {
   const camps = campsDe(state);
+  // Ce que les camps se passent entre eux, une fois par jour de jeu : c'est un
+  // rattrapage, pas un flux — le faire à chaque heure coûterait vingt-quatre
+  // fois plus pour le même résultat.
+  if (state.temps % 24 === 0) transmettreLeSavoir(state);
   if (camps.length <= 1) return tickBase(state, log, ctx);
   const habite = state.base;
   let sien = null;
@@ -25249,8 +25367,8 @@ function combatContre(state, bande, log, ctx, groupe) {
     rng,
     biome: state.world.regions[g.regionId].biome,
     posture,
-    bonusDegats: (state.base.recherche.balistique || 0) * 0.1,
-    bonusArmure: (state.base.recherche.blindage || 0) * 0.1,
+    bonusDegats: savoir(state, 'balistique') * 0.1,
+    bonusArmure: savoir(state, 'blindage') * 0.1,
     // On n'achève pas les hommes à terre sans l'avoir décidé. À 0,06 « par
     // défaut », l'escouade assassinait des blessés que personne ne lui avait
     // demandé de tuer — et se privait des prisonniers qui vont avec.
@@ -26038,7 +26156,7 @@ function donnerOrdre(state, ordre, groupe) {
   const port = joignable(state, g);
   if (!port.ok) return port;
   if (ordre.type === 'voyage') {
-    const m = { reductionVoyage: (state.base.recherche.logistique || 0) * 0.06 };
+    const m = { reductionVoyage: savoir(state, 'logistique') * 0.06 };
     const route = chemin(state.world, g.regionId, ordre.dest, m);
     if (!route || !route.length) return { ok: false, motif: 'Aucune route.' };
     g.ordre = {
@@ -26257,7 +26375,7 @@ function explorer(state, g, eclaireurs, log, ctx) {
   const rng = ctx.rng;
   if (!eclaireurs.length) return;
 
-  let portee = 2 + (state.base.recherche.optique || 0);
+  let portee = 2 + savoir(state, 'optique');
   const meilleur = Math.max(...eclaireurs.map((c) => comp(c, 'furtivite')));
   if (meilleur > 45) portee += 1;
 
@@ -26312,7 +26430,7 @@ function qualiteSoin(state, g, auRepos) {
   let medic = 0;
   for (const c of deboutDe(g)) medic = Math.max(medic, comp(c, 'medecine'));
   let q = 0.25 + medic / 90;
-  q *= 1 + (state.base.recherche.medecine || 0) * 0.25;
+  q *= 1 + savoir(state, 'medecine') * 0.25;
   if (state.base.fonde && g.regionId === state.base.regionId) {
     // Le camp lui-même compte, avant la moindre infirmerie : on recoud à
     // l'abri, sur une table, avec de l'eau propre.
@@ -26382,7 +26500,7 @@ function avancerVoyage(state, g, log, ctx) {
 
   o.progres += vitesse;
   const prochaine = o.route[o.etape];
-  const m = { reductionVoyage: (state.base.recherche.logistique || 0) * 0.06 };
+  const m = { reductionVoyage: savoir(state, 'logistique') * 0.06 };
   // Le climat alourdit la marche, mais à moitié : le coût de base tient déjà
   // compte du terrain, et cumuler les deux pleinement immobilise l'escouade.
   const gene = ctx.climat ? 1 + (ctx.climat.marche - 1) * 0.6 : 1;
@@ -26395,7 +26513,7 @@ function avancerVoyage(state, g, log, ctx) {
     // On tasse la terre en passant. Un convoi lourd marque plus qu'un homme
     // seul, et c'est ce qui fait qu'un circuit qu'on répète devient une route.
     damer(state.world, prochaine, 1 + (g.membres.length + betesDe(g).length) * 0.12);
-    const rayon = 1 + (state.base.recherche.optique || 0);
+    const rayon = 1 + savoir(state, 'optique');
     decouvrir(state.world, prochaine, rayon);
     for (const c of debout) gagnerXp(c, 'endurance', XP_PRATIQUE);
 
@@ -26989,7 +27107,7 @@ function apercuEscouade(state, g) {
   vitesse *= 1 - lenteurDepouilles(g);
   vitesse = Math.max(0.15, vitesse);
   const coutIci = coutTraversee(state.world, g.regionId,
-    { reductionVoyage: (state.base.recherche.logistique || 0) * 0.06 });
+    { reductionVoyage: savoir(state, 'logistique') * 0.06 });
 
   return {
     debout: debout.length,
@@ -33709,8 +33827,20 @@ function ecranBase() {
     // fugace pour comprendre. Une condition se lit avant d'agir, pas après.
     const amont = rd.exige && niveauRech(b, rd.exige) < 1 ? RESEARCH[rd.exige] : null;
     return `<div style="border-bottom:1px solid #26211a;padding:6px 0">
-      <div class="ligne"><span class="k">${e(rd.nom)}</span><span class="v"><span class="puce">niv ${niv}/${rd.max}</span></span></div>
+      <div class="ligne"><span class="k">${e(rd.nom)}</span><span class="v">${
+  // Ce qui voyage et ce qui reste (M4e). Sans ça, le joueur ne peut pas
+  // décider : deux recherches au même prix, l'une acquise pour toute la
+  // maison, l'autre à refaire dans chaque camp, et rien ne les distinguait.
+  // La puce n'apparaît qu'à partir du second camp — avant, la question ne se
+  // pose pas et la mention serait du bruit.
+  camps.length > 1
+    ? `<span class="puce ${porteeRecherche(k) === 'camp' ? 'att' : 'ok'}">${
+      porteeRecherche(k) === 'camp' ? 'ce camp' : 'partout'}</span> ` : ''
+}<span class="puce">niv ${niv}/${rd.max}</span></span></div>
       <div class="aide">${e(rd.desc)}</div>
+      ${camps.length > 1 && porteeRecherche(k) === 'camp' ? `<div class="aide">
+        Elle se refait dans chaque camp — ses fours et ses bacs sont ici, pas
+        ailleurs. La ${e(RESEARCH.transmission.nom)} la fait circuler.</div>` : ''}
       ${rd.exige ? `<div class="aide ${amont ? 'ambre' : ''}">${amont
     ? `Demande d’abord la recherche ${e(amont.nom)}.`
     : `Ouverte par la recherche ${e(RESEARCH[rd.exige].nom)}.`}</div>` : ''}

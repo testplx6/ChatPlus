@@ -316,8 +316,49 @@ qui invente sa propre arithmétique ment tôt ou tard.
 Le seuil de couleur est celui du reste du jeu : rouge sous trois jours, ambre
 sous huit.
 
+**M4e — le savoir du sac et le savoir de la maison. ✅ Livré (septembre 2026).**
+
+> « Il faut distinguer les technos propres au camp et celles qui ont une portée
+> globale. » — le propriétaire
+
+La question tombait sur un défaut que M4 venait d'introduire le matin même : les
+recherches vivent sur le camp, et **douze lectures du moteur** interrogeaient
+`state.base.recherche`, c'est-à-dire « le camp qu'on habite ». Changer de camp
+faisait perdre à l'escouade sa balistique, son blindage, sa médecine, son optique
+et sa logistique — un vétéran désapprenait à viser en déménageant.
+
+Le code disait déjà où porte chaque recherche ; il suffisait de le lire :
+
+- **`escouade`** — l'effet est sur les gens et ce qu'ils portent, et les gens
+  voyagent : viser, encaisser, recoudre, marcher chargé, voir loin, lire les
+  transmissions, greffer. `savoir(state, key)` rend le meilleur niveau atteint
+  où que ce soit.
+- **`camp`** — l'effet est sur les chaînes d'un lieu : un four, des bacs, un
+  alambic, des capteurs, un comptoir. Ça se bâtit et ça ne déménage pas.
+
+**Et la règle du transfert est du propriétaire** : « les autres camps n'héritent
+de rien sauf à développer la recherche transmission du savoir, jusqu'à
+transmission complète au meilleur niveau ». D'où une recherche neuve,
+**Transmission du savoir** (max 5) : chaque niveau ouvre un cinquième de ce que
+le camp le mieux loti sait faire, jusqu'à l'ouvrir en grand. Le rattrapage est
+continu, une fois par jour de jeu — la développer après coup profite aux camps
+déjà plantés, ce qui est la seule lecture qui ne piège pas le joueur.
+
+L'écran le dit : une puce « ce camp » ou « partout » sur chaque recherche, et la
+mention qu'elle se refait ailleurs — mais seulement à partir du second camp,
+avant quoi la question ne se pose pas.
+
+**Un piège d'outillage rencontré deux fois dans la journée** : une insertion de
+code qui mange le mot `export` de la ligne qu'elle remplace. Le bundle aplatit
+tout dans une seule portée et ne le voit pas ; le jeu livré marche ; c'est la
+suite navigateur qui le découvre trois minutes plus tard, sous la forme d'une
+page noire. `tools/bundle.js` contrôle désormais le défaut symétrique de celui
+qu'il connaissait déjà : **un nom importé que personne n'exporte**, avec le
+symbole et les deux fichiers. Vérifié non complaisant — remis à l'état fautif,
+il crie.
+
 **M4 est complet** : la structure, le sélecteur, les effets qui valent pour
-chacun des camps, et ce qu'on en voit de loin.
+chacun des camps, ce qu'on en voit de loin, et ce que les camps se transmettent.
 
 ## 5. Ce qui reste à trancher avant d'écrire M1
 
