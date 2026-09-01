@@ -391,28 +391,99 @@ export function saisir(world, col, ancien, repreneur, log) {
 }
 
 /**
- * Emprunter pour bâtir, quand l'argent est bon marché.
+ * Une ville veut-elle des murs ? C'est un besoin, pas un budget.
  *
- * Comparaison, pas seuil : la ville emprunte si elle peut porter l'intérêt sans
- * s'étrangler — le service de la dette contre ce qu'elle dégage réellement au
- * delà de son fonds de roulement.
+ * Cette fonction a longtemps répondu aux deux questions à la fois, et c'est ce
+ * qui a tué l'investissement des conseils sans que personne le voie
+ * (INVESTISSEMENT.md) : elle comparait le service d'un emprunt à la capacité de
+ * remboursement de la ville — `caisse − fonds de roulement` — alors que son
+ * seul appelant est la séance du conseil, qui vient précisément de **remonter
+ * ce surplus au trésor** (`remonterCaisses`, factions.js:915). La capacité
+ * testée valait donc zéro par construction, et la réponse était non. Quarante
+ * chantiers pour trente-six pays et six mille heures : un mur toutes les huit
+ * cents heures de monde entier, quand les trésors en payaient des dizaines.
  *
- * Une première version comparait la valeur du mur à l'intérêt : on mettait en
- * face du loyer le stock que le mur protège, soit des milliers de crédits
- * contre quelques dizaines. La réponse était « oui » à tous les taux, ce qui
- * revenait à n'avoir pas de règle. Comparer un gain hypothétique à un coût
- * certain demande une probabilité d'assaut, qu'il aurait fallu inventer ;
- * comparer une charge à une capacité ne demande rien à personne.
+ * Le besoin, lui, ne dépend d'aucune caisse : une ville sous-murée pour sa
+ * taille veut ses murs. Comment on les paie est la question suivante, et elle
+ * appartient au conseil — voir `financerMur`.
  */
 export function veutBatir(world, col) {
   if (!col.faction || col.avantPoste) return false;
-  if (col.murs >= col.taille * 6) return false;
-  // Le mur se paie en vrai : le principal s'indexe sur le cours (E10), et le
-  // service de la dette avec — sinon un pays effondré bâtissait pour rien.
-  const service = (COUT_MUR / Math.max(0.001, coursMonnaie(world, col.faction)))
-    * loisDe(world, col.faction).directeur;
-  return service <= capaciteRemboursement(world, col) * CREDIT.partServiceDette;
+  return col.murs < col.taille * 6;
 }
 
 /** Ce qu'un niveau de mur coûte à une ville qui se le paie elle-même. */
 export const COUT_MUR = 400;
+
+/** Le prix d'un niveau de mur pour ce pays-ci, au cours du jour (E10). */
+export function coutMur(world, key) {
+  return COUT_MUR / Math.max(0.001, coursMonnaie(world, key));
+}
+
+/**
+ * Ce qu'un conseil consent à un ouvrage. Trois nombres, tous balayables.
+ *
+ * La règle est du propriétaire, et elle est plus large que les trois options
+ * qui lui étaient soumises : « à lui de voir, avec ce qu'il possède, ce qu'il
+ * emprunte ou autre solution, tout est possible » (septembre 2026). Le conseil
+ * n'a donc pas UNE façon de payer : il a une situation, et il en tire ce qu'il
+ * peut.
+ */
+export const INVESTIR = {
+  /**
+   * Ce qu'il faut avoir devant soi pour poser l'argent sur la table. C'est la
+   * marge qui vivait en dur dans la séance (`tresor > coutMur × 2,25`) : elle
+   * n'a pas changé de valeur, elle a changé de statut — de garde unique, elle
+   * devient le seuil de la voie comptant.
+   */
+  margeComptant: 2.25,
+  /**
+   * Ce qu'un pays avance sur une seule ville pour un ouvrage, en part de son
+   * trésor. Un prêt n'est pas un don : l'argent revient, avec l'intérêt. C'est
+   * pour ça qu'un pays juste assez fourni bâtit à crédit là où il ne bâtirait
+   * pas comptant — et c'est ce qui rend la voie du crédit utile plutôt que
+   * décorative.
+   */
+  partDuTresor: 0.8,
+  /**
+   * La part de ce que la ville dégage réellement — ce qu'elle a versé à son
+   * pays à la dernière séance — qui peut aller au service d'une dette neuve.
+   * Au-delà, l'ouvrage attendra : une ville qu'on endette au-delà de son
+   * rendement devient insolvable, et l'insolvabilité a déjà ses conséquences
+   * (défaut, grogne, saisie par un créancier étranger).
+   */
+  partServiceDette: 0.35,
+};
+
+/**
+ * Avec quel argent ce conseil-ci bâtirait ce mur-là : `'comptant'`, `'credit'`
+ * ou rien. C'est une décision d'agent, prise sur ce qu'il a sous les yeux.
+ *
+ * - **Comptant** : le trésor porte le coût avec de la marge. Le pays paie ses
+ *   maçons et n'en reparle plus.
+ * - **Crédit** : il n'a pas cette marge, mais il peut avancer la somme sans se
+ *   vider — et la ville dégage assez pour porter l'intérêt. L'argent sort du
+ *   même trésor et va aux mêmes maçons ; ce qui change est qu'il reste une
+ *   créance, donc que le pays sera remboursé, et que la ville peut y laisser
+ *   sa liberté si elle ne suit pas.
+ * - **Rien** : ni l'un ni l'autre. Un pays ruiné cesse visiblement de bâtir, et
+ *   l'on peut dire de quelle ville il s'agit.
+ *
+ * Une ville dont un **autre** porte déjà la créance n'emprunte pas ici : son
+ * drapeau paierait les maçons pour grossir une dette dont le rival encaisse
+ * l'intérêt — et c'est par cette dette-là qu'on lui prendra la ville
+ * (`saisir`). Elle peut toujours recevoir des murs comptant.
+ */
+export function financerMur(world, key, col) {
+  const f = world.factions[key];
+  if (!f || !veutBatir(world, col) || col.faction !== key) return null;
+  const cout = coutMur(world, key);
+  if (f.tresor > cout * INVESTIR.margeComptant) return 'comptant';
+  if (col.creancier && col.creancier !== key) return null;
+  if (cout > f.tresor * INVESTIR.partDuTresor) return null;
+  // Le service de la dette contre ce que la ville a réellement versé à son
+  // pays à la dernière séance. C'est une mesure de flux, et c'est la seule qui
+  // survive au balayage : la caisse, elle, vient d'être ramenée à sa réserve.
+  const service = cout * loisDe(world, key).directeur;
+  return service <= (col.remonte || 0) * INVESTIR.partServiceDette ? 'credit' : null;
+}

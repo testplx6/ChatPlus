@@ -116,3 +116,25 @@ y a trouvé mieux que prévu (la prise de ville, les dix-huit prérogatives et
 la naissance d'une faction sont déjà écrites ; il manque un drapeau au
 joueur), une troisième architecture s'y est ajoutée, et six questions
 attendent le propriétaire. Rien n'est engagé tant qu'il n'a pas tranché.**
+
+---
+
+## Le prêteur tiers — financer les murs du voisin pour tenir sa ville
+
+**Trouvé par la mesure, septembre 2026**, à la livraison d'`INVESTISSEMENT.md` :
+la voie du crédit ouverte aux conseils est vraie mais presque déserte — deux
+murs sur trois cent soixante-dix-neuf. La raison n'est pas un réglage, elle est
+structurelle : **un pays ne s'emprunte pas à lui-même l'argent qu'il n'a pas.**
+L'argent sort du même trésor dans les deux cas ; le crédit ne change que le
+fait qu'il revienne.
+
+Le verbe « emprunter » ne prend son sens qu'avec quelqu'un d'autre en face :
+le voisin qui paie vos maçons et tient ensuite votre ville par la dette. Les
+deux bouts existent déjà — `racheterCreance` (on achète la dette d'autrui) et
+`saisir` (on encaisse le drapeau quand elle ne suit plus) —, et la conquête
+par l'argent s'en nourrirait par le haut au lieu d'attendre la détresse.
+
+Ce qu'il faudrait trancher avant d'écrire quoi que ce soit : qui propose (le
+riche qui cherche un débiteur, ou le pauvre qui cherche un prêteur), ce qu'un
+conseil accepte de devoir à un rival, et ce que les siens en pensent. Rien
+n'est engagé.

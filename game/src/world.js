@@ -227,6 +227,11 @@ function genererColonies(rng, regions, graine) {
       dette: 0,
       creancier: null,
       cession: null,
+      // Ce qu'elle a versé à son pays à la dernière séance. Présent dès la
+      // naissance, comme `declin` et `satiete` et pour la même raison :
+      // absent, `normaliser` l'ajouterait au rechargement et l'aller-retour
+      // JSON d'une partie neuve ne serait plus exact.
+      remonte: 0,
     };
     col.caisse = Math.round(col.pop * 1.2);
     col.menages = Math.round(col.pop * MENAGES.parTete);

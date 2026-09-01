@@ -311,6 +311,9 @@ export function normaliser(state) {
     }
     // Avant le crédit, personne ne devait rien à personne.
     if (c.dette === undefined) c.dette = 0;
+    // Avant la réforme de l'investissement, personne ne notait ce qu'une
+    // ville verse à son pays : elle n'a encore rien versé de mesuré.
+    if (c.remonte === undefined) c.remonte = 0;
     if (c.creancier === undefined) c.creancier = null;
     if (c.cession === undefined) c.cession = null;
     if (c.prises === undefined) c.prises = 0;

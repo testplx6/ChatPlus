@@ -26,9 +26,11 @@ import {
   effondrer,
   solvabilite, cibleStock,
   servable, valeurTranche,
-  reserveVille, VOIES, TRANCHE,
+  reserveVille, VOIES, TRANCHE, remonterCaisses,
 } from '../src/economy.js';
-import { tickCredit, insolvable, veutBatir } from '../src/credit.js';
+import {
+  tickCredit, insolvable, veutBatir, financerMur, coutMur,
+} from '../src/credit.js';
 import {
   auditer, emettre, ecartChange, transferer, transfererVille,
   solde, crediterBourse, debiterBourse, valeurBourse,
@@ -58,6 +60,7 @@ import {
 } from '../src/bourse.js';
 import {
   distanceMorale, enGuerre, COLONNE, declarerGuerre, ETAT, ramasserMagot,
+  batirMur,
 } from '../src/factions.js';
 import {
   recenser, elasticite, planchers, significatif, asymetrique, ecarts,
@@ -7428,18 +7431,86 @@ section('14. Économie — lot B : le crédit et le taux directeur');
     'un créancier qui ne prête plus laisse tomber : la dette s’efface, la ville gronde',
     `dette → ${vD.dette}, grogne ${grogneD.toFixed(2)} → ${vD.unrest.toFixed(2)}`);
 
-  // B5. On n'emprunte pour bâtir que si l'ouvrage rapporte plus que l'intérêt.
+  // I1. Le besoin ne dépend plus d'une caisse que le conseil vient de vider.
+  //
+  // C'est le défaut entier d'INVESTISSEMENT.md en un test : la séance remonte
+  // le surplus des villes AVANT de regarder qui veut bâtir, si bien que la
+  // capacité de remboursement testée retombait à zéro par construction. Une
+  // ville sous-murée veut ses murs, caisse balayée ou non — comment on les
+  // paie est une autre question, et c'est celle de `financerMur`.
   const sW = nouvellePartie(606, { maintenant: 0, depart: 'ville' });
   const vW = sW.world.colonies.find((c) => !c.ruine && c.faction);
   vW.murs = 1;
-  vW.caisse = reserveVille(vW, 0.05) + 60;
+  remonterCaisses(sW.world, vW.faction, [vW]);
+  ok(veutBatir(sW.world, vW),
+    'une ville sous-murée veut bâtir, même la caisse remontée à sa réserve',
+    `murs ${vW.murs}/${vW.taille * 6}, caisse ${Math.round(vW.caisse)}`);
+
+  // I2. Les trois réponses du conseil, et ce sont trois situations, pas trois
+  // règles : j'ai les moyens, je peux avancer, je ne peux rien.
+  const fW = sW.world.factions[vW.faction];
+  const coutW = coutMur(sW.world, vW.faction);
+  // Ce qu'elle a versé au dernier conseil : le dixième du prix d'un mur.
+  vW.remonte = coutW * 0.1;
+  loisDe(sW.world, vW.faction).directeur = 0.02;
+  fW.tresor = coutW * 10;
+  const richeW = financerMur(sW.world, vW.faction, vW);
+  fW.tresor = coutW * 1.5;
+  const justeW = financerMur(sW.world, vW.faction, vW);
+  fW.tresor = 0;
+  const secW = financerMur(sW.world, vW.faction, vW);
+  ok(richeW === 'comptant' && justeW === 'credit' && secW === null,
+    'le conseil paie comptant s’il le peut, avance s’il le doit, renonce sinon',
+    `${richeW} / ${justeW} / ${secW}`);
+
+  // I3. Et le taux directeur mord vraiment : c'est le pays lui-même qui rend
+  // ses propres chantiers impayables en tenant sa caisse trop serrée.
+  fW.tresor = coutW * 1.5;
   loisDe(sW.world, vW.faction).directeur = 0.01;
-  const bonMarche = veutBatir(sW.world, vW);
+  const bonMarche = financerMur(sW.world, vW.faction, vW);
   loisDe(sW.world, vW.faction).directeur = 0.07;
-  const cherPaye = veutBatir(sW.world, vW);
-  ok(bonMarche && !cherPaye,
-    'l’argent bon marché fait bâtir, l’argent cher arrête les chantiers',
-    `à 1 % ${bonMarche ? 'oui' : 'non'}, à 7 % ${cherPaye ? 'oui' : 'non'}`);
+  const cherPaye = financerMur(sW.world, vW.faction, vW);
+  ok(bonMarche === 'credit' && cherPaye === null,
+    'l’argent bon marché fait bâtir à crédit, l’argent cher arrête les chantiers',
+    `à 1 % ${bonMarche}, à 7 % ${cherPaye}`);
+
+  // I4. Bâtir à crédit n'invente pas un sou : le trésor paie les maçons, qui
+  // habitent la ville, et il reste une créance — qui n'est pas de la monnaie.
+  loisDe(sW.world, vW.faction).directeur = 0.02;
+  fW.tresor = coutW * 1.5;
+  // L'écart AVANT : ce test pose lui-même le trésor à la main, ce qui casse
+  // l'égalité « ce qui existe = ce qui a été émis ». Ce qu'on vérifie est donc
+  // que bâtir à crédit ne la creuse pas davantage — c'est bien la question.
+  const ecartAvantW = auditer(sW.world).reduce((a, e) => a + Math.abs(e.ecart), 0);
+  const tresorAvantW = fW.tresor;
+  const menagesAvantW = vW.menages || 0;
+  const mursAvantW = vW.murs;
+  batirMur(sW.world, vW.faction, vW, 'credit', () => {});
+  ok(vW.murs === mursAvantW + 1
+    && Math.round(fW.tresor) === Math.round(tresorAvantW - coutW)
+    && Math.round(vW.menages) === Math.round(menagesAvantW + coutW)
+    && Math.round(vW.dette) === Math.round(coutW)
+    && vW.creancier === vW.faction
+    && Math.abs(auditer(sW.world).reduce((a, e) => a + Math.abs(e.ecart), 0)
+      - ecartAvantW) < 0.01,
+  'un mur à crédit endette la ville sans créer un sou',
+  `murs +${vW.murs - mursAvantW}, dette ${Math.round(vW.dette)}, `
+    + `écart ${(auditer(sW.world).reduce((a, e) => a + Math.abs(e.ecart), 0)
+      - ecartAvantW).toFixed(3)}`);
+
+  // I5. On n'emprunte pas quand c'est un autre qui porte la créance : le pays
+  // paierait les maçons pour grossir la dette dont son rival encaissera les
+  // intérêts — et c'est par cette dette-là qu'on lui prend ses villes.
+  const autreW = DIPLO_FACTIONS.find((k) => k !== vW.faction);
+  vW.dette = 50;
+  vW.creancier = autreW;
+  fW.tresor = coutW * 1.5;
+  const sousHypotheque = financerMur(sW.world, vW.faction, vW);
+  fW.tresor = coutW * 10;
+  const riantMalgreTout = financerMur(sW.world, vW.faction, vW);
+  ok(sousHypotheque === null && riantMalgreTout === 'comptant',
+    'on n’emprunte pas à soi-même quand un autre tient déjà la créance',
+    `trésor juste → ${sousHypotheque}, trésor plein → ${riantMalgreTout}`);
 }
 
 section('15. Économie — lot C : la monnaie');
@@ -9058,11 +9129,20 @@ section('27. Un drapeau qui n’était pas là au départ');
   // encore une ville. Une colonne déjà sans terre se débande, sinon la même
   // troupe fonderait un pays par conseil, indéfiniment.
   const fonder = () => {
-    const st = nouvellePartie(4141, { maintenant: 0 });
+    // La graine a changé, et la raison vaut d'être dite : cette sonde lisait
+    // `st.journal` sans l'avoir vidé après sa mise en place, si bien qu'une
+    // fondation survenue pendant les six cents premiers tours — hors de sa
+    // fenêtre, et déjà comptée dans `avant` — la faisait passer pour verte
+    // avec un décompte de factions qui, lui, ne bougeait pas. Un référentiel
+    // figé de plus (FACTIONS-NEUVES §8.4). Le journal est vidé, la fenêtre est
+    // donc vraiment la fenêtre, et la fixture est une graine où la colonne
+    // impayée fonde dedans plutôt qu'avant.
+    const st = nouvellePartie(606, { maintenant: 0 });
     for (let i = 0; i < 600; i++) tick(st);
     const a0 = (st.world.armees || [])[0];
     if (!a0) return null;
     const lignes = [];
+    st.journal = [];
     const avant = Object.keys(st.world.factions).length;
     let pire = 0;
     // Deux fixtures écartées avant celle-ci, et les deux échecs valent d'être

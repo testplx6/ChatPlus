@@ -922,6 +922,12 @@ export function remonterCaisses(world, key, colonies) {
   let leve = 0;
   for (const col of colonies) {
     const surplus = (col.caisse || 0) - reserveVille(col, taux, cours);
+    // Ce qu'elle a versé cette fois-ci, gardé sur elle. C'est le rendement
+    // d'une ville pour son pays, mesuré et non estimé — et c'est la seule
+    // mesure de son flux qui survive au balayage, puisque le balayage EST
+    // l'opération qui ramène sa caisse à sa réserve. Le conseil s'en sert pour
+    // savoir ce qu'elle peut porter comme dette (`financerMur`).
+    col.remonte = Math.max(0, surplus);
     if (surplus <= 0) continue;
     col.caisse -= surplus;
     leve += surplus;

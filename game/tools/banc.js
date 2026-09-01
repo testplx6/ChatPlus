@@ -145,6 +145,7 @@ function jouer({ sim, data, eco, eco2 }, graine, horizon) {
   // pendant des mois une intention et une mesure qui ne parlaient pas du même
   // objet.
   let saisies = 0;
+  let aCredit = 0;
   // La plus longue ardoise qu'une colonne ait portée PENDANT la partie, et non
   // à la dernière heure : une colonne impayée finit payée, retournée ou
   // débandée, et l'état final ne garde donc aucune trace de ce qu'elle a
@@ -160,6 +161,11 @@ function jouer({ sim, data, eco, eco2 }, graine, horizon) {
     for (let i = j.length - 1; i >= 0; i--) {
       if (j[i].t !== s.temps) break;
       evts[j[i].type] = (evts[j[i].type] || 0) + 1;
+      if (j[i].type === 'chantier' && j[i].texte.includes('qui le rendra')) {
+        // Les murs que la ville porte elle-même : sans ce compte, on ne sait
+        // pas si la voie du crédit sert ou si elle décore.
+        aCredit += 1;
+      }
       if (j[i].type === 'colonne') {
         if (j[i].texte.includes('retourné sa veste')) retournements += 1;
         else if (j[i].texte.includes('faute de solde')) debandades += 1;
@@ -278,6 +284,16 @@ function jouer({ sim, data, eco, eco2 }, graine, horizon) {
     // 0,3 derrière neuf villes à 1,0.
     creve: cols.filter((c) => (c.satiete === undefined ? 1 : c.satiete) < 0.8).length,
     dette: Math.round(cols.reduce((a2, c) => a2 + (c.dette || 0), 0)),
+    // Ce que les conseils bâtissent, et ce que la carte en garde
+    // (INVESTISSEMENT.md, lot 0). Le premier compte les séances qui ont posé
+    // une pierre — `type: 'chantier'` n'a qu'un émetteur, la section 5 du
+    // conseil, et le banc ne joue aucun joueur —, le second dit à quoi
+    // ressemblent les villes à la fin. Sans les deux, « les pays ne
+    // fortifient plus » reste une impression : le journal est borné à 400
+    // entrées et n'en garde que la dernière journée.
+    chantiers: evts.chantier || 0,
+    aCredit,
+    murs: cols.length ? cols.reduce((a2, c) => a2 + (c.murs || 0), 0) / cols.length : 0,
     evts,
     // Les monnaies effondrées — cours au dixième de l'ancien crédit ou moins.
     //
@@ -402,6 +418,14 @@ function agreger(cfg) {
     paliers: [...new Set(cfg.parties.flatMap((p2) => p2.paliers))]
       .sort((a4, b4) => a4 - b4).map((x) => `${Math.round(x * 100)}`).join('/'),
     dette: som(cfg, 'dette'),
+    chantiers: som(cfg, 'chantiers'),
+    aCredit: som(cfg, 'aCredit'),
+    // Les murs se moyennent sur les villes, pas sur les parties : une graine
+    // qui rend quatre-vingts villes ne pèse pas comme une qui en rend trente.
+    murs: (() => {
+      const tot = cfg.parties.reduce((a4, p2) => a4 + p2.villes, 0) || 1;
+      return (cfg.parties.reduce((a4, p2) => a4 + p2.murs * p2.villes, 0) / tot).toFixed(2);
+    })(),
     effondrees: som(cfg, 'effondrees'),
     retournements: som(cfg, 'retournements'),
     saisies: som(cfg, 'saisies'),
@@ -451,6 +475,8 @@ const COLONNES = [
   ['cours', 'cours', 11], ['effondrees', 'effondrées', 10],
   ['ecart', 'écart', 6], ['creances', 'créances', 9],
   ['paliers', 'taux %', 12],
+  ['chantiers', 'chantiers', 10], ['aCredit', 'à crédit', 9],
+  ['murs', 'murs/ville', 10],
   ['retournements', 'vestes', 7], ['saisies', 'saisies', 8],
   ['debandades', 'débandes', 9],
   ['fondations', 'nés', 5], ['extinctions', 'morts', 6],

@@ -20,7 +20,7 @@ import {
   prixUnitaire, encaisser,
 } from './economy.js';
 import {
-  tickCredit, veutBatir, racheterCreance, valeurNette,
+  tickCredit, veutBatir, racheterCreance, valeurNette, financerMur, coutMur,
 } from './credit.js';
 import {
   transferer, transfererVille, annuler, majCours, taux, convertirMasse, coursMonnaie,
@@ -1189,27 +1189,63 @@ function conseil(world, key, t, log, ctx) {
   // 5) Sinon, investir : murs et défense — mais seulement là où l'ouvrage vaut
   //    ce que l'argent coûte. Un pays au loyer étouffant cesse visiblement de
   //    bâtir, et l'on peut dire de quelle ville il s'agit. Voir `veutBatir`.
-  const aBatir = mesColonies.filter((c) => veutBatir(world, c));
-  // Les maçons aussi se paient en vrai (E10) : le cours divise, le seuil suit.
-  const coutMur = Math.round(400 / Math.max(0.001, coursMonnaie(world, key)));
-  if (!couronne && !guerresDe(world, key).length && f.tresor > coutMur * 2.25 && aBatir.length
-      && rng.chance(0.6)) {
+  //
+  // `veutBatir` ne dit plus que le besoin ; c'est `financerMur` qui dit avec
+  // quel argent, ville par ville — comptant, à crédit, ou pas du tout
+  // (INVESTISSEMENT.md). Le seuil `tresor > coutMur × 2,25` qui vivait ici est
+  // devenu `INVESTIR.margeComptant` : il n'a pas changé de valeur, il ne barre
+  // plus la route au reste.
+  const aBatir = [];
+  for (const c of mesColonies) {
+    const voie = financerMur(world, key, c);
+    if (voie) aBatir.push([c, voie]);
+  }
+  if (!couronne && !guerresDe(world, key).length && aBatir.length && rng.chance(0.6)) {
     // M4 (MARECHAL.md) : la place désignée d'abord — le Maréchal dit ce qu'on
     // tient, le sort ne décide plus que sans lui. Tant qu'elle veut bâtir.
     const designee = ctx && ctx.marechal === key && ctx.placeATenir
-      ? aBatir.find((c) => c.id === ctx.placeATenir) : null;
-    const col = designee || rng.pick(aBatir);
-    col.murs += 1;
-    // Des murs se paient à des maçons, et les maçons habitent la ville.
-    verser(world, key, col, coutMur);
+      ? aBatir.find(([c]) => c.id === ctx.placeATenir) : null;
+    const [col, voie] = designee || rng.pick(aBatir);
+    batirMur(world, key, col, voie, log);
+  }
+}
+
+/**
+ * Poser une pierre de plus, et la payer de la manière choisie.
+ *
+ * Les deux voies déplacent exactement le même argent : le trésor paie les
+ * maçons, et les maçons habitent la ville (`verser` — trésor → ménages). Rien
+ * n'apparaît, rien ne disparaît. Ce que le crédit ajoute n'est pas de la
+ * monnaie, c'est une **créance** : la ville devra rendre, l'intérêt court au
+ * taux du pays, et si elle ne suit pas, elle passe par où passent toutes les
+ * villes qui ne suivent pas — le défaut, la grogne, ou le créancier qui saisit.
+ *
+ * Le mur ne se pose que si les maçons sont payés : un trésor qui ne peut pas
+ * honorer la somme ne bâtit rien du tout, plutôt qu'un demi-mur gratuit.
+ */
+export function batirMur(world, key, col, voie, log) {
+  const cout = coutMur(world, key);
+  const paye = verser(world, key, col, cout);
+  if (paye <= 0) return false;
+  col.murs += 1;
+  if (voie === 'credit') {
+    col.dette = (col.dette || 0) + paye;
+    if (!col.creancier) col.creancier = key;
+  }
+  if (log) {
     log({
       type: 'chantier',
-      texte: `${drapeauDe(world, key).nom} renforce${drapeauDe(world, key).pluriel ? 'nt' : ''} les défenses de ${col.nom}.`,
+      texte: `${drapeauDe(world, key).nom} renforce${drapeauDe(world, key).pluriel ? 'nt' : ''} `
+        + `les défenses de ${col.nom}`
+        + (voie === 'credit'
+          ? ` — l’ouvrage est porté par la ville, qui le rendra.`
+          : `.`),
       regionId: col.regionId,
       factions: [key],
       discret: true,
     });
   }
+  return true;
 }
 
 const NOMS_NEUFS = [
@@ -1242,6 +1278,7 @@ export function fonderColonie(world, key, region, rng, t) {
     // de la première partie mesurée.
     caisse: 0,
     menages: 0,
+    remonte: 0,
     dette: 0,
     creancier: null,
     cession: null,

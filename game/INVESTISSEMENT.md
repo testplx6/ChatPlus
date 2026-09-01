@@ -43,9 +43,41 @@ vient de vider — pour un emprunt qu'aucun des deux ne contracte. Ce
 n'est pas une règle qui vise le joueur (aucune odeur du prisme) : c'est
 un garde-fou resté branché sur un circuit démonté.
 
-## 3. La décision — au propriétaire
+## 3. La décision — tranchée par le propriétaire (septembre 2026)
 
-Une seule question : **que doit regarder le conseil avant de bâtir ?**
+Une seule question était posée : **que doit regarder le conseil avant de
+bâtir ?** — avec trois réponses au choix. La réponse est plus large que les
+trois :
+
+> « À lui de voir, avec ce qu'il possède, ce qu'il emprunte ou autre
+> solution, tout est possible. »
+
+Ce n'est pas B, ni C : c'est **B et C réunis, le choix revenant à l'agent**.
+Le conseil n'a donc pas une façon de payer, il a une situation, et il en tire
+ce qu'il peut — c'est la doctrine du projet appliquée à la lettre (« quel agent
+la porte, et que sait-il ? »). D'où `financerMur`, qui rend trois réponses :
+
+- **comptant**, quand le trésor porte le coût avec de la marge — c'est le
+  seuil `tresor > coutMur × 2,25` qui vivait en dur dans la séance, devenu
+  `INVESTIR.margeComptant` ; il n'a pas changé de valeur, il a cessé d'être la
+  seule porte ;
+- **à crédit**, quand il n'a pas cette marge mais peut avancer la somme sans
+  se vider, et que la ville dégage assez pour porter l'intérêt ;
+- **rien**, quand il ne peut ni l'un ni l'autre — un pays ruiné cesse
+  visiblement de bâtir, et l'on peut dire de quelle ville il s'agit.
+
+Et `veutBatir` cesse de répondre aux deux questions à la fois : il ne dit plus
+que le **besoin** (`murs < taille × 6`), qui ne dépend d'aucune caisse.
+
+**Ce que le conseil sait de la ville, et qui n'existait pas.** Le service d'une
+dette se compare à ce que la ville dégage. Aucune mesure de ce flux n'existait :
+`capaciteRemboursement` est un **stock** (`caisse − fonds de roulement`), et le
+balayage l'annule par construction — c'est le défaut entier. `remonterCaisses`
+calculait pourtant déjà la bonne grandeur sans la garder : ce que la ville vient
+de verser. Elle est désormais notée sur la ville (`col.remonte`), et c'est une
+mesure, pas une estimation.
+
+### Les trois options qui étaient soumises, pour mémoire
 
 - **A. Statu quo, consigné comme voulu.** « Un pays ne fortifie que
   quand sa monnaie respire » — défendable, mais alors c'est un effet du
@@ -91,10 +123,60 @@ profiterait de la réforme au même titre que le sort).
 
 ## L'avancement
 
-- [ ] Décision A/B/C du propriétaire
-- [ ] Lot 0 — la métrique des chantiers du conseil dans `jouer()`,
-      l'avant revérifié
-- [ ] Lot 1 — la réforme choisie, test rouge d'abord, contre témoin
+- [x] Décision du propriétaire — « à lui de voir » (section 3)
+- [x] Lot 0 — la métrique des chantiers du conseil dans `jouer()`,
+      l'avant revérifié : **37 chantiers**, 9,36 murs par ville, six graines
+      et six mille heures. Le cahier annonçait 44 sur une mesure antérieure ;
+      l'ordre de grandeur est le même — un mur toutes les huit cents heures de
+      monde entier, pour trente-six pays.
+- [x] Lot 1 — la réforme, cinq tests rouges d'abord, mesurée contre témoin
+      (`df4e5a8`, mêmes graines) :
+
+| | témoin | après |
+|---|---|---|
+| chantiers du conseil | 37 | **379** |
+| murs par ville | 9,36 | 10,17 |
+| villes debout | 355 | 326 |
+| trésor médian | 36 588 | 16 860 |
+| satiété | 0,979 | 0,969 |
+| écart comptable | 0 | **0** (exact) |
+
+Les dix gardes de `CIBLES.json` tiennent sans qu'aucune ne soit touchée
+(villes 326 ≥ 260, pop 146 397 ≥ 120 000, satiété 0,969 ≥ 0,7, bourses 26,
+convois 14 442, guerres 19, endettées 225, écrasées 8/36, saisies 683,
+effondrées 1 — cette dernière juste sur son plancher, à surveiller).
+
+**Ce que ça coûte, et c'est voulu** : vingt-neuf villes de moins et un trésor
+médian divisé par deux. Un pays qui bâtit a moins pour nourrir — le crédit de
+détresse se dimensionne sur le trésor (`CREDIT.partDuTresor`) — et fortifier a
+donc enfin un coût d'opportunité. C'est la simulation qui se referme, pas une
+avarie : la production rapportée à la consommation s'améliore (1,26 → 1,30) et
+l'invariant comptable reste exact au centime.
+
+**La « masse monétaire » qui tombe de 7,7 à 2,7 millions n'est pas une
+destruction d'argent** : c'est une somme d'unités de trente-six monnaies dont
+les cours vont de 0,03 à 32, et la trajectoire ne fait plus naître le pays
+hyper-coté qui pesait la moitié du total. La grandeur homogène — la même somme
+ramenée en ancien crédit — ne bouge que de −2 % entre les deux réglages du
+crédit. METHODE §12, une fois de plus.
+
+## Ce que la mesure a appris, et qui n'était pas prévu
+
+**La voie du crédit est vraie, et presque personne ne l'emprunte : 2 murs sur
+379.** Le compteur est permanent (`à crédit` au banc). Ce n'est pas un réglage
+manqué — relâcher `partServiceDette` de 0,35 à 3 ne change rien, et ouvrir
+`partDuTresor` de 0 à 0,8 ne déplace que seize chantiers. La raison est
+structurelle : **un pays ne peut pas s'emprunter à lui-même l'argent qu'il n'a
+pas.** L'argent d'un mur sort du même trésor dans les deux cas ; ce que le
+crédit change est qu'il revient. La voie ne sert donc que dans la bande étroite
+où le trésor tient entre 1,25 et 2,25 fois le coût d'un mur — rare dans un
+monde où les trésors sont à seize mille pour un mur à quatre cents.
+
+Pour que « ce qu'il emprunte » ait toute sa portée, il faudrait un **prêteur
+tiers** : le voisin qui finance vos murs et tient votre ville par la dette. Le
+moteur en a déjà les deux bouts (`racheterCreance`, `saisir` — la conquête par
+l'argent). C'est une piste, pas une tâche : elle n'est pas dans ce cahier et ne
+s'écrira pas sans être ouverte.
 
 ## Blocages
 
