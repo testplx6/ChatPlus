@@ -22,6 +22,7 @@ import { ecolesDe } from '../src/formation.js';
 import { confierSecteur } from '../src/secteur.js';
 import { capturables, fairePrisonniers } from '../src/justice.js';
 import { loisDe } from '../src/lois.js';
+import { prixUnitaire } from '../src/economy.js';
 import { fonderDrapeau } from '../src/factions.js';
 import { genererBande } from '../src/combat.js';
 import { Rng } from '../src/rng.js';
@@ -2757,6 +2758,95 @@ console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit
       + releves.map((r) => `${r.haut}${r.e ? '†' : r.texte === debut.texte ? '' : '≠'}`).join(' '));
     await page.click('[data-a="vitesse"][data-v="1"]');
   }
+}
+
+console.log('\n8 nonies sexies. Le convoi à gages (CONVOI.md)');
+{
+  // Le carnet propose la course, on l'envoie. Deux relevés de prix suffisent —
+  // c'est toute la règle : on ne commerce qu'avec des places où l'on est passé.
+  // On les pose comme le ferait une escouade qui a fait la tournée.
+  const cg = partieAvancee();
+  const riche = DIPLO_FACTIONS.find((k) => cg.world.factions[k].colonies.length >= 4);
+  cg.world.factions[riche].tresor = 9000;
+  ouvrirBourse(cg.world, riche, 0);
+  tickBourses(cg.world, 0);
+  cg.player.reputation[riche] = 80;
+  cg.player.bourse = { [monnaieIci(cg)]: 60000 };
+  cg.base.batiments.comptoir = 1;
+  cg.base.colonieId = 'poste-gages';
+  cg.world.colonies.push({
+    id: 'poste-gages', nom: 'Votre camp', regionId: cg.base.regionId,
+    faction: null, pop: 40, taille: 1, stock: {}, unrest: 0, murs: 0,
+    defense: 0, defenseMax: 0, contrats: [], notables: [], ruine: false,
+  });
+  // Deux places, l'une pleine de ferraille et l'autre à sec : l'écart naît du
+  // monde, il n'est pas décrété. Et le carnet relève le prix RÉEL — un décor
+  // qui inscrirait au carnet un prix que la ville n'a pas ferait échouer le
+  // devis pour de bonnes raisons, et la sonde accuserait l'écran.
+  const paire = cg.world.colonies.filter((c) => !c.ruine && c.faction).slice(0, 2);
+  cg.connaissance = cg.connaissance || { colonies: {}, regions: {}, armees: {}, t: cg.temps };
+  cg.connaissance.colonies = {};
+  paire.forEach((col, i) => {
+    col.stock.ferraille = i === 0 ? 3000 : 2;
+    col.caisse = 200000;
+    cg.connaissance.colonies[col.id] = {
+      t: cg.temps, nom: col.nom, regionId: col.regionId, faction: col.faction,
+      taille: col.taille, pop: Math.round(col.pop), defense: 0, defenseMax: 0,
+      unrest: 0, ruine: false, stock: { ferraille: col.stock.ferraille },
+      prix: { ferraille: prixUnitaire(col, 'ferraille', undefined, cg.world) },
+    };
+  });
+  cg.dernierReel = Date.now();
+
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(cg));
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.click('[data-a="onglet"][data-k="base"]');
+  await page.waitForTimeout(500);
+
+  const texteG = await page.evaluate(() => {
+    const b = document.querySelector('[data-a="ordre-k"][data-k="ferraille"]');
+    if (b) b.click();
+    return document.querySelector('#ecran').textContent;
+  });
+  ok(!/n’a pas pu s’afficher/.test(texteG), 'l’écran tient avec le bloc en plus');
+  ok(/Convoi à gages/.test(texteG), 'le convoi à gages a son bloc au comptoir',
+    texteG.slice(0, 140));
+  ok(/La course/.test(texteG) && /Payé à l’arrivée/.test(texteG),
+    'et il dit la course, ce qu’on avance et ce qu’on touche');
+
+  await page.evaluate(() => {
+    const b = document.querySelector('[data-a="envoyer-gages"]');
+    if (b) b.scrollIntoView({ block: 'center' });
+  });
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: join(CAPTURES, '25b-convoi-gages.png') });
+
+  const avantG = await page.evaluate(() => {
+    const s = JSON.parse(window.__sauvegardeTexte());
+    return {
+      convois: (s.world.caravanes || []).filter((c) => c.pour === 'joueur').length,
+      credits: Object.values(s.player.bourse || {}).reduce((a, b) => a + b, 0),
+    };
+  });
+  await page.click('[data-a="envoyer-gages"]');
+  await page.waitForTimeout(600);
+  const apresG = await page.evaluate(() => {
+    const s = JSON.parse(window.__sauvegardeTexte());
+    const miens = (s.world.caravanes || []).filter((c) => c.pour === 'joueur');
+    return {
+      gages: miens.filter((c) => c.sens === 'gages').length,
+      credits: Object.values(s.player.bourse || {}).reduce((a, b) => a + b, 0),
+      texte: document.querySelector('#ecran').textContent,
+    };
+  });
+  ok(apresG.gages === 1, 'le convoi à gages part, et il est bien à vous',
+    JSON.stringify(apresG).slice(0, 140));
+  ok(apresG.credits < avantG.credits,
+    'la marchandise et les gages sont avancés tout de suite',
+    `${avantG.credits} → ${apresG.credits}`);
+  ok(/En route/.test(apresG.texte), 'et le convoi se suit à l’écran');
 }
 
 console.log('\n8 nonies quater. Le comptoir, à l’écran');

@@ -551,7 +551,7 @@ export function gagesConvoi(state, deId, versId) {
  * vous, et c'est une autre ville qui le reçoit. L'arrivée, elle, était déjà
  * écrite : `arriver` sait payer le joueur et faire débourser la ville.
  */
-export function passerOrdreGages(state, deId, versId, key, qte, escorteId, rng, log) {
+export function devisGages(state, deId, versId, key, qte, escorteId) {
   const v = peutTraiter(state);
   if (!v.ok) return v;
   const world = state.world;
@@ -559,7 +559,7 @@ export function passerOrdreGages(state, deId, versId, key, qte, escorteId, rng, 
   const b = colonieParId(world, versId);
   if (!a || !b || a.id === b.id) return { ok: false, motif: 'Il faut deux villes différentes.' };
   if (!vivante(a) || !vivante(b)) return { ok: false, motif: 'Une des deux places n’est plus.' };
-  if (!(COMMODITIES[key])) return { ok: false, motif: 'Cette matière n’existe pas.' };
+  if (!COMMODITIES[key]) return { ok: false, motif: 'Cette matière n’existe pas.' };
 
   // Une charrette, pas plus que ce qu'ils ont en magasin — et pas plus que ce
   // que la ville d'arrivée peut régler. C'est le patron du monde
@@ -567,13 +567,10 @@ export function passerOrdreGages(state, deId, versId, key, qte, escorteId, rng, 
   // payer ») et non une prudence inventée ici : sans lui, on avance l'argent
   // d'un lot que personne au bout de la route n'a les moyens de vous acheter.
   const magasin = Math.min(Math.floor(qte), GAGES.charge, Math.floor(a.stock[key] || 0));
-  if (magasin <= 0) {
-    return { ok: false, motif: `${a.nom} n’a rien de tel à vendre.` };
-  }
+  if (magasin <= 0) return { ok: false, motif: `${a.nom} n’a rien de tel à vendre.` };
   const n = qteSolvable(b, key, magasin);
-  if (n <= 0) {
-    return { ok: false, motif: `${b.nom} n’a pas de quoi vous acheter cela.` };
-  }
+  if (n <= 0) return { ok: false, motif: `${b.nom} n’a pas de quoi vous acheter cela.` };
+
   const route = chemin(world, a.regionId, b.regionId);
   if (!route || !route.length) return { ok: false, motif: 'Aucune route entre ces deux places.' };
 
@@ -586,7 +583,32 @@ export function passerOrdreGages(state, deId, versId, key, qte, escorteId, rng, 
   const esc = ESCORTES.find((x) => x.id === escorteId) || ESCORTES[0];
   const fret = !!avantage(state, 'fret');
   const fraisEscorte = fret ? 0 : Math.round(achat * esc.cout);
-  const du = achat + gages + fraisEscorte;
+  return {
+    ok: true,
+    comptoir: v.comptoir,
+    de: a,
+    vers: b,
+    qte: n,
+    achat,
+    vente,
+    gages,
+    frais: fraisEscorte,
+    escorte: esc,
+    route,
+    avance: achat + gages + fraisEscorte,
+    gain: vente - (achat + gages + fraisEscorte),
+    cases: route.length,
+  };
+}
+
+export function passerOrdreGages(state, deId, versId, key, qte, escorteId, rng, log) {
+  const d = devisGages(state, deId, versId, key, qte, escorteId);
+  if (!d.ok) return d;
+  const world = state.world;
+  const {
+    de: a, vers: b, qte: n, achat, vente, gages, frais: fraisEscorte, escorte: esc, route,
+  } = d;
+  const du = d.avance;
   if (soldeIci(state) < du) {
     return { ok: false, motif: `Il manque ${du - soldeIci(state)} ${signeIci(state)}.` };
   }
@@ -602,7 +624,7 @@ export function passerOrdreGages(state, deId, versId, key, qte, escorteId, rng, 
     id: idDepuisRng(rng, 'g'),
     rngEtat: 0,
     faction: a.faction,
-    reseau: v.comptoir.id,
+    reseau: d.comptoir.id,
     pour: 'joueur',
     sens: 'gages',
     versBase: false,

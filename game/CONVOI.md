@@ -98,5 +98,11 @@ tarif négocié avec un convoyeur nommé. Un ordre, un convoi, une course payée
       l'appliquait pas. Corrigé, et le joueur n'encaisse plus que ce que la
       ville a réellement en caisse (l'ancien « elle vous paie en entier »
       fabriquait la différence).
-- [ ] L'écran : le geste au comptoir
+- [x] L'écran : le geste au comptoir. **Le carnet propose la course** plutôt
+      que de demander de choisir deux villes dans une liste — au pouce, sur un
+      téléphone, ce serait injouable. `carnetPrix` donnait déjà, par matière, la
+      place la moins chère et la plus chère qu'on ait **relevées** ; le bloc
+      affiche la course, l'âge du relevé (un écart de trois semaines n'est pas
+      un écart, c'est un souvenir), ce qu'on avance et ce qu'on touche. Six
+      sondes navigateur.
 - [ ] La mesure au banc, aux deux horizons

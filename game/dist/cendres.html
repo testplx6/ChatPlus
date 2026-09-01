@@ -15090,7 +15090,7 @@ function gagesConvoi(state, deId, versId) {
  * vous, et c'est une autre ville qui le reçoit. L'arrivée, elle, était déjà
  * écrite : `arriver` sait payer le joueur et faire débourser la ville.
  */
-function passerOrdreGages(state, deId, versId, key, qte, escorteId, rng, log) {
+function devisGages(state, deId, versId, key, qte, escorteId) {
   const v = peutTraiter(state);
   if (!v.ok) return v;
   const world = state.world;
@@ -15098,7 +15098,7 @@ function passerOrdreGages(state, deId, versId, key, qte, escorteId, rng, log) {
   const b = colonieParId(world, versId);
   if (!a || !b || a.id === b.id) return { ok: false, motif: 'Il faut deux villes différentes.' };
   if (!vivante(a) || !vivante(b)) return { ok: false, motif: 'Une des deux places n’est plus.' };
-  if (!(COMMODITIES[key])) return { ok: false, motif: 'Cette matière n’existe pas.' };
+  if (!COMMODITIES[key]) return { ok: false, motif: 'Cette matière n’existe pas.' };
 
   // Une charrette, pas plus que ce qu'ils ont en magasin — et pas plus que ce
   // que la ville d'arrivée peut régler. C'est le patron du monde
@@ -15106,13 +15106,10 @@ function passerOrdreGages(state, deId, versId, key, qte, escorteId, rng, log) {
   // payer ») et non une prudence inventée ici : sans lui, on avance l'argent
   // d'un lot que personne au bout de la route n'a les moyens de vous acheter.
   const magasin = Math.min(Math.floor(qte), GAGES.charge, Math.floor(a.stock[key] || 0));
-  if (magasin <= 0) {
-    return { ok: false, motif: `${a.nom} n’a rien de tel à vendre.` };
-  }
+  if (magasin <= 0) return { ok: false, motif: `${a.nom} n’a rien de tel à vendre.` };
   const n = qteSolvable(b, key, magasin);
-  if (n <= 0) {
-    return { ok: false, motif: `${b.nom} n’a pas de quoi vous acheter cela.` };
-  }
+  if (n <= 0) return { ok: false, motif: `${b.nom} n’a pas de quoi vous acheter cela.` };
+
   const route = chemin(world, a.regionId, b.regionId);
   if (!route || !route.length) return { ok: false, motif: 'Aucune route entre ces deux places.' };
 
@@ -15125,7 +15122,32 @@ function passerOrdreGages(state, deId, versId, key, qte, escorteId, rng, log) {
   const esc = ESCORTES.find((x) => x.id === escorteId) || ESCORTES[0];
   const fret = !!avantage(state, 'fret');
   const fraisEscorte = fret ? 0 : Math.round(achat * esc.cout);
-  const du = achat + gages + fraisEscorte;
+  return {
+    ok: true,
+    comptoir: v.comptoir,
+    de: a,
+    vers: b,
+    qte: n,
+    achat,
+    vente,
+    gages,
+    frais: fraisEscorte,
+    escorte: esc,
+    route,
+    avance: achat + gages + fraisEscorte,
+    gain: vente - (achat + gages + fraisEscorte),
+    cases: route.length,
+  };
+}
+
+function passerOrdreGages(state, deId, versId, key, qte, escorteId, rng, log) {
+  const d = devisGages(state, deId, versId, key, qte, escorteId);
+  if (!d.ok) return d;
+  const world = state.world;
+  const {
+    de: a, vers: b, qte: n, achat, vente, gages, frais: fraisEscorte, escorte: esc, route,
+  } = d;
+  const du = d.avance;
   if (soldeIci(state) < du) {
     return { ok: false, motif: `Il manque ${du - soldeIci(state)} ${signeIci(state)}.` };
   }
@@ -15141,7 +15163,7 @@ function passerOrdreGages(state, deId, versId, key, qte, escorteId, rng, log) {
     id: idDepuisRng(rng, 'g'),
     rngEtat: 0,
     faction: a.faction,
-    reseau: v.comptoir.id,
+    reseau: d.comptoir.id,
     pour: 'joueur',
     sens: 'gages',
     versBase: false,
@@ -33905,10 +33927,57 @@ function blocComptoir() {
     <button class="act primaire" style="margin-top:6px" data-a="passer-ordre"
       ${niv ? '' : 'disabled'}>Passer l’ordre</button>`
     : `<div class="aide alerte">${e(devis.motif || '')}</div>`}
+    ${blocGages(niv)}
     ${messageComptoir ? `<div class="aide ${messageComptoir.ok ? 'ok' : 'alerte'}"
       style="margin-top:6px">${e(messageComptoir.texte)}</div>` : ''}
     ${suivi}
   </section>`;
+}
+
+/**
+ * Le convoi à gages (CONVOI.md) : le carnet gagne ses bras.
+ *
+ * On ne demande pas de choisir deux villes dans une liste — au pouce, sur un
+ * téléphone, ce serait injouable. Le carnet **propose la course** : la place la
+ * moins chère et la plus chère qu'on ait relevées pour cette matière, avec
+ * l'âge du relevé, et l'on décide d'envoyer ou non. C'est exactement ce qui
+ * manquait : « le carnet a créé le désir, pas le verbe ».
+ *
+ * L'âge est dit, et il compte : un écart vieux de trois semaines n'est pas un
+ * écart, c'est un souvenir — et le convoi, lui, part pour de bon.
+ */
+function blocGages(niv) {
+  if (!niv) return '';
+  const c = ACTIONS.courseGages(ordreKey, ordreQte, ordreEscorte);
+  const titre = `<div class="sep"></div>
+    <div class="titre">Convoi à gages</div>`;
+  if (!c.ok) {
+    return `${titre}<div class="aide">${e(c.motif || '')}
+      Il faut avoir relevé les prix de deux places différentes — c'est à ça que
+      sert de passer partout.</div>`;
+  }
+  return `${titre}
+    <div class="aide">On paie des gens pour aller acheter là-bas et revendre ailleurs.
+      Vous ne portez rien et vous ne marchez pas ; le convoi, lui, peut être pillé.</div>
+    <div class="ligne"><span class="k">La course</span>
+      <span class="v">${e(c.deNom)} → ${e(c.versNom)}
+        <span class="aide">${c.cases} case${c.cases > 1 ? 's' : ''} · relevé ${
+  e(ageTexte(c.depuis))}</span></span></div>
+    <div class="ligne"><span class="k">Lot</span>
+      <span class="v">${n(c.qte)} ${e(COMMODITIES[ordreKey].nom.toLowerCase())}</span></div>
+    <div class="ligne"><span class="k">Achat sur place</span>
+      <span class="v">${n(c.achat)} ${sym()}</span></div>
+    <div class="ligne"><span class="k">Gages${c.frais ? ' et escorte' : ''}</span>
+      <span class="v">${n(c.gages + c.frais)} ${sym()}</span></div>
+    <div class="ligne"><span class="k">Avancé maintenant</span>
+      <span class="v alerte">${n(c.avance)} ${sym()}</span></div>
+    <div class="ligne"><span class="k">Payé à l’arrivée</span>
+      <span class="v ok">${n(c.vente)} ${sym()}</span></div>
+    <div class="ligne"><span class="k">Ce qu’il reste si tout va bien</span>
+      <span class="v ${c.gain > 0 ? 'ok' : 'alerte'}">${c.gain > 0 ? '+' : ''}${
+  n(c.gain)} ${sym()}</span></div>
+    <button class="act ${c.gain > 0 ? 'primaire' : ''}" style="margin-top:6px"
+      data-a="envoyer-gages">Envoyer le convoi</button>`;
 }
 
 function ecranBase() {
@@ -37720,6 +37789,15 @@ function surClic(ev) {
       break;
     }
 
+    case 'envoyer-gages': {
+      const r = ACTIONS.envoyerGages(ordreKey, ordreQte, ordreEscorte);
+      messageComptoir = r.ok
+        ? { ok: true, texte: `Le convoi part de ${r.de.nom} pour ${r.vers.nom}.` }
+        : { ok: false, texte: r.motif };
+      rafraichir(true);
+      break;
+    }
+
     case 'terraformer': {
       // La chaîne vide vaut « rien » : une station sans cible ne travaille pas,
       // et c'est un choix qu'on doit pouvoir faire — le carburant sert ailleurs.
@@ -38193,6 +38271,57 @@ const API = {
     const rng = new Rng(state.rngState);
     const r = passerOrdre(
       state, sens, key, Number(qte), escorte, rng, creerLogger(state), groupe || null);
+    state.rngState = rng.save();
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /**
+   * La course que votre carnet propose pour cette matière (CONVOI.md).
+   *
+   * Le carnet montrait les écarts depuis longtemps sans qu'on puisse rien en
+   * faire ; il propose désormais la course elle-même. **Sur vos relevés, pas
+   * sur l'état du monde** : `carnetPrix` ne connaît que les villes où vous
+   * êtes passé, avec la date de votre passage — un écart peut donc être périmé,
+   * et c'est très bien ainsi.
+   */
+  courseGages(key, qte, escorte) {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    const carnet = carnetPrix(state)[key];
+    if (!carnet || !carnet.vente || !carnet.achat) {
+      return { ok: false, motif: 'Votre carnet ne connaît pas deux places où traiter cela.' };
+    }
+    const d = devisGages(
+      state, carnet.achat.colonieId, carnet.vente.colonieId, key, Number(qte), escorte);
+    if (!d.ok) return d;
+    return {
+      ok: true,
+      deId: carnet.achat.colonieId,
+      versId: carnet.vente.colonieId,
+      deNom: carnet.achat.nom,
+      versNom: carnet.vente.nom,
+      // L'âge des deux relevés : un écart vieux de trois semaines n'est pas un
+      // écart, c'est un souvenir.
+      depuis: Math.max(carnet.achat.depuis, carnet.vente.depuis),
+      qte: d.qte,
+      achat: d.achat,
+      vente: d.vente,
+      gages: d.gages,
+      frais: d.frais,
+      avance: d.avance,
+      gain: d.gain,
+      cases: d.cases,
+    };
+  },
+
+  /** Et l'envoyer. Le convoi part de la ville d'achat, pas de chez vous. */
+  envoyerGages(key, qte, escorte) {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    const c = this.courseGages(key, qte, escorte);
+    if (!c.ok) return c;
+    const rng = new Rng(state.rngState);
+    const r = passerOrdreGages(
+      state, c.deId, c.versId, key, Number(qte), escorte, rng, creerLogger(state));
     state.rngState = rng.save();
     if (r.ok) { sauver(); rafraichir(true); }
     return r;

@@ -15,6 +15,7 @@ import { makeCharacter, estVivant } from './characters.js';
 import { creerLogger, fouillerSite, combatContre } from './events.js';
 import {
   attaquerCaravane, passerOrdre, ordresEnCours, ESCORTES,
+  passerOrdreGages, devisGages, GAGES,
 } from './caravanes.js';
 import { attaquerVille, livrerPlace, raserPlace } from './assaut.js';
 import { proposerPacte, romprePacteJoueur } from './pactes.js';
@@ -49,6 +50,7 @@ import {
   ouvrirBourseA, signerAccordAvec, rompreAccordAvec,
 } from './influence.js';
 import { disposer, disposerTous } from './justice.js';
+import { carnetPrix } from './connaissance.js';
 
 let state = null;
 let boucle = null;
@@ -435,6 +437,57 @@ const API = {
     const rng = new Rng(state.rngState);
     const r = passerOrdre(
       state, sens, key, Number(qte), escorte, rng, creerLogger(state), groupe || null);
+    state.rngState = rng.save();
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /**
+   * La course que votre carnet propose pour cette matière (CONVOI.md).
+   *
+   * Le carnet montrait les écarts depuis longtemps sans qu'on puisse rien en
+   * faire ; il propose désormais la course elle-même. **Sur vos relevés, pas
+   * sur l'état du monde** : `carnetPrix` ne connaît que les villes où vous
+   * êtes passé, avec la date de votre passage — un écart peut donc être périmé,
+   * et c'est très bien ainsi.
+   */
+  courseGages(key, qte, escorte) {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    const carnet = carnetPrix(state)[key];
+    if (!carnet || !carnet.vente || !carnet.achat) {
+      return { ok: false, motif: 'Votre carnet ne connaît pas deux places où traiter cela.' };
+    }
+    const d = devisGages(
+      state, carnet.achat.colonieId, carnet.vente.colonieId, key, Number(qte), escorte);
+    if (!d.ok) return d;
+    return {
+      ok: true,
+      deId: carnet.achat.colonieId,
+      versId: carnet.vente.colonieId,
+      deNom: carnet.achat.nom,
+      versNom: carnet.vente.nom,
+      // L'âge des deux relevés : un écart vieux de trois semaines n'est pas un
+      // écart, c'est un souvenir.
+      depuis: Math.max(carnet.achat.depuis, carnet.vente.depuis),
+      qte: d.qte,
+      achat: d.achat,
+      vente: d.vente,
+      gages: d.gages,
+      frais: d.frais,
+      avance: d.avance,
+      gain: d.gain,
+      cases: d.cases,
+    };
+  },
+
+  /** Et l'envoyer. Le convoi part de la ville d'achat, pas de chez vous. */
+  envoyerGages(key, qte, escorte) {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    const c = this.courseGages(key, qte, escorte);
+    if (!c.ok) return c;
+    const rng = new Rng(state.rngState);
+    const r = passerOrdreGages(
+      state, c.deId, c.versId, key, Number(qte), escorte, rng, creerLogger(state));
     state.rngState = rng.save();
     if (r.ok) { sauver(); rafraichir(true); }
     return r;

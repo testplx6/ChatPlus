@@ -4281,10 +4281,57 @@ function blocComptoir() {
     <button class="act primaire" style="margin-top:6px" data-a="passer-ordre"
       ${niv ? '' : 'disabled'}>Passer l’ordre</button>`
     : `<div class="aide alerte">${e(devis.motif || '')}</div>`}
+    ${blocGages(niv)}
     ${messageComptoir ? `<div class="aide ${messageComptoir.ok ? 'ok' : 'alerte'}"
       style="margin-top:6px">${e(messageComptoir.texte)}</div>` : ''}
     ${suivi}
   </section>`;
+}
+
+/**
+ * Le convoi à gages (CONVOI.md) : le carnet gagne ses bras.
+ *
+ * On ne demande pas de choisir deux villes dans une liste — au pouce, sur un
+ * téléphone, ce serait injouable. Le carnet **propose la course** : la place la
+ * moins chère et la plus chère qu'on ait relevées pour cette matière, avec
+ * l'âge du relevé, et l'on décide d'envoyer ou non. C'est exactement ce qui
+ * manquait : « le carnet a créé le désir, pas le verbe ».
+ *
+ * L'âge est dit, et il compte : un écart vieux de trois semaines n'est pas un
+ * écart, c'est un souvenir — et le convoi, lui, part pour de bon.
+ */
+function blocGages(niv) {
+  if (!niv) return '';
+  const c = ACTIONS.courseGages(ordreKey, ordreQte, ordreEscorte);
+  const titre = `<div class="sep"></div>
+    <div class="titre">Convoi à gages</div>`;
+  if (!c.ok) {
+    return `${titre}<div class="aide">${e(c.motif || '')}
+      Il faut avoir relevé les prix de deux places différentes — c'est à ça que
+      sert de passer partout.</div>`;
+  }
+  return `${titre}
+    <div class="aide">On paie des gens pour aller acheter là-bas et revendre ailleurs.
+      Vous ne portez rien et vous ne marchez pas ; le convoi, lui, peut être pillé.</div>
+    <div class="ligne"><span class="k">La course</span>
+      <span class="v">${e(c.deNom)} → ${e(c.versNom)}
+        <span class="aide">${c.cases} case${c.cases > 1 ? 's' : ''} · relevé ${
+  e(ageTexte(c.depuis))}</span></span></div>
+    <div class="ligne"><span class="k">Lot</span>
+      <span class="v">${n(c.qte)} ${e(COMMODITIES[ordreKey].nom.toLowerCase())}</span></div>
+    <div class="ligne"><span class="k">Achat sur place</span>
+      <span class="v">${n(c.achat)} ${sym()}</span></div>
+    <div class="ligne"><span class="k">Gages${c.frais ? ' et escorte' : ''}</span>
+      <span class="v">${n(c.gages + c.frais)} ${sym()}</span></div>
+    <div class="ligne"><span class="k">Avancé maintenant</span>
+      <span class="v alerte">${n(c.avance)} ${sym()}</span></div>
+    <div class="ligne"><span class="k">Payé à l’arrivée</span>
+      <span class="v ok">${n(c.vente)} ${sym()}</span></div>
+    <div class="ligne"><span class="k">Ce qu’il reste si tout va bien</span>
+      <span class="v ${c.gain > 0 ? 'ok' : 'alerte'}">${c.gain > 0 ? '+' : ''}${
+  n(c.gain)} ${sym()}</span></div>
+    <button class="act ${c.gain > 0 ? 'primaire' : ''}" style="margin-top:6px"
+      data-a="envoyer-gages">Envoyer le convoi</button>`;
 }
 
 function ecranBase() {
@@ -8091,6 +8138,15 @@ function surClic(ev) {
         ordreEscouade && g ? g.id : null);
       messageComptoir = r.ok
         ? { ok: true, texte: `Le convoi part de ${r.place.nom}.` }
+        : { ok: false, texte: r.motif };
+      rafraichir(true);
+      break;
+    }
+
+    case 'envoyer-gages': {
+      const r = ACTIONS.envoyerGages(ordreKey, ordreQte, ordreEscorte);
+      messageComptoir = r.ok
+        ? { ok: true, texte: `Le convoi part de ${r.de.nom} pour ${r.vers.nom}.` }
         : { ok: false, texte: r.motif };
       rafraichir(true);
       break;
