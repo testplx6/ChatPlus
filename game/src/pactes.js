@@ -18,7 +18,7 @@
 
 import { drapeauDe, diploDe } from './data.js';
 import { commettre, delaiVersFaction } from './faits.js';
-import { leverArmee } from './factions.js';
+import { leverArmee, puissance, guerresDe } from './factions.js';
 import { depenser } from './monnaie.js';
 
 /**
@@ -324,4 +324,116 @@ export function appelerSecours(state, place, agresseur, log) {
   return { venus, impuissants, manques };
 }
 
+// ---------------------------------------------------------------------------
+// P3 — le monde s'en sert
+// ---------------------------------------------------------------------------
+//
+// Les pactes existaient et personne ne les signait : seul le joueur pouvait en
+// proposer. Un monde où l'on est le seul à savoir donner sa parole n'est pas un
+// monde diplomatique, c'est un monde qui vous attend.
+//
+// Ce lot a été écrit, mesuré, retiré, puis instruit pendant deux jours contre
+// un chiffre qui mentait — la « masse monétaire » du banc additionne les unités
+// nominales de pays dont les cours vont de 0,01 à 186, et enflait dès que les
+// cours divergeaient sans qu'un sou ait été créé (METHODE §12). En valeur
+// réelle, ce monde-ci vaut davantage que le témoin et l'invariant comptable est
+// resté à zéro exact du premier jour au dernier. Il a ensuite attendu un budget
+// de tick, rouvert par le propriétaire en septembre 2026.
 
+/** Ce qui pousse un conseil à chercher une parole. Calibré au banc. */
+export const DIPLOMATIE = {
+  // L'envie d'aller chercher une parole quand rien ne presse, par séance.
+  envie: 0.1,
+  // Ce que le fait de se savoir menacé ajoute à cette envie.
+  envieMenace: 0.45,
+  // À partir de quel rapport de force on se sait menacé.
+  menaceForte: 1.35,
+  // Ce qu'une parole tenue rapproche, à chaque séance. Innocenté au banc d'une
+  // accusation qui visait la mauvaise chose : à zéro, le monde ne se portait
+  // pas mieux.
+  entretien: 1.5,
+};
+
+/**
+ * Le plus fort de ceux qui pourraient nous tomber dessus, rapporté à nous.
+ *
+ * On ne compte pas ceux avec qui l'on est déjà lié, ni ceux qu'on estime : une
+ * menace est quelqu'un de fort qui n'a aucune raison de s'abstenir.
+ */
+export function menaceSur(world, key) {
+  const moi = Math.max(1, puissance(world, key));
+  const rel = world.factions[key].relations || {};
+  let pire = 0;
+  for (const k of diploDe(world)) {
+    if (k === key) continue;
+    // L'ordre des filtres n'est pas gratuit : `puissance` balaie les villes du
+    // pays ET toutes les colonnes du monde. On écarte d'abord ceux qui ne
+    // peuvent pas être une menace — quelqu'un qu'on estime, un pays sans une
+    // ville, un allié — et l'on ne paie le calcul que pour les autres.
+    if ((rel[k] ?? 0) > 20) continue;
+    if (!world.factions[k].colonies.length) continue;
+    if (pacteEntre(world, key, k)) continue;
+    const p = puissance(world, k) / moi;
+    if (p > pire) pire = p;
+  }
+  return pire;
+}
+
+/**
+ * Un conseil cherche une parole.
+ *
+ * Aucun tirage propre : l'envie passe par le `rng` du conseil, comme toutes ses
+ * autres décisions — un dé de plus décalerait le flux scellé.
+ */
+export function tenterPacte(state, key, log, rng) {
+  const world = state.world;
+  const f = world.factions[key];
+  if (!f || f.morte) return null;
+
+  // Ce qu'on tient déjà rapproche : une parole donnée et jamais reprise finit
+  // par valoir mieux qu'une simple connaissance. C'est aussi ce qui rend une
+  // alliance ancienne difficile à trahir — la confiance qu'elle a bâtie est
+  // exactement ce que la rupture coûterait.
+  for (const p of pactesDe(world, key)) {
+    const autre = p.a === key ? p.b : p.a;
+    if (f.relations) {
+      f.relations[autre] = Math.min(100, (f.relations[autre] ?? 0) + DIPLOMATIE.entretien);
+    }
+  }
+
+  // Un seul tirage, et la menace n'est calculée que lorsqu'elle peut changer la
+  // réponse. Sous l'envie de base on cherche de toute façon ; au-dessus de
+  // l'envie maximale on ne cherche pas, quelle que soit la menace. Entre les
+  // deux seulement, il faut savoir. Le flux scellé ne bouge pas : on consomme
+  // exactement un tirage, quoi qu'il arrive.
+  const d = rng.f();
+  let presse = false;
+  if (d >= DIPLOMATIE.envie) {
+    if (d >= DIPLOMATIE.envie + DIPLOMATIE.envieMenace) return null;
+    presse = menaceSur(world, key) >= DIPLOMATIE.menaceForte;
+    if (!presse) return null;
+  }
+
+  const enGuerreAvec = new Set(guerresDe(world, key).map((g) => (g.a === key ? g.b : g.a)));
+  let meilleur = null;
+  let meilleurRel = -Infinity;
+  for (const k of diploDe(world)) {
+    if (k === key || enGuerreAvec.has(k)) continue;
+    // `colonies.length` et non `coloniesDe` : celle-ci alloue deux tableaux et
+    // rebalaie les villes, une fois par pays et par séance. Ce filtre-ci est
+    // grossier, et il n'a pas à être exact : `proposerPacte` refuse tout seul
+    // ce qui ne tient pas.
+    if (!world.factions[k].colonies.length) continue;
+    if (pacteEntre(world, key, k)) continue;
+    const rel = (f.relations || {})[k] ?? 0;
+    if (rel > meilleurRel) { meilleurRel = rel; meilleur = k; }
+  }
+  if (!meilleur) return null;
+
+  // Qui se sait menacé demande du secours ; qui est tranquille demande la paix.
+  // Le contenu d'un pacte du monde dépend donc de la situation de celui qui le
+  // propose, et pas d'une clause tirée au hasard.
+  const clauses = presse ? ['nonAgression', 'secours'] : ['nonAgression'];
+  const r = proposerPacte(state, key, meilleur, clauses, log);
+  return r.ok ? r : null;
+}

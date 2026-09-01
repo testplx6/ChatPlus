@@ -1027,6 +1027,10 @@ function conseil(world, key, t, log, ctx) {
     }
   }
 
+  // 1bis) Chercher une parole avant d'en venir aux armes. Pas sous la couronne :
+  //       une alliance qui n'est pas de vous n'existe pas, comme la paix (M7).
+  if (!couronne && ctx && ctx.tenterPacte) ctx.tenterPacte(key, rng);
+
   // 2) Déclarer une guerre si une cible est faible et mal aimée
   const enGuerreAvec = new Set(guerresDe(world, key).map((g) => (g.a === key ? g.b : g.a)));
   // Une cause donne du courage à qui n'en aurait pas eu : un chef que la guerre

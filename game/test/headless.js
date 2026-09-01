@@ -14251,6 +14251,70 @@ section('PAC 2. Une parole donnée finit par coûter (PACTES.md, P2)');
 
 
 // ===========================================================================
+section('PAC 3. Le monde s’en sert (PACTES.md, P3)');
+// Les pactes existaient et personne ne les signait : seul le joueur pouvait en
+// proposer. Un monde où l'on est le seul à savoir donner sa parole n'est pas un
+// monde diplomatique, c'est un monde qui vous attend.
+//
+// Les conseils décident donc eux-mêmes, sans aucun tirage propre : qui se sait
+// menacé cherche du secours, qui est tranquille cherche la paix, et l'on
+// s'adresse d'abord à celui qu'on estime le plus — c'est là qu'on a une chance
+// d'être entendu.
+{
+  // 1) Un conseil va chercher une parole, tout seul.
+  {
+    const s3 = nouvellePartie(7311, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const signes = () => (s3.world.pactes || []).filter((p) => p.rompu === undefined).length;
+    ok(signes() === 0, 'au départ, personne n’a donné sa parole à personne', `${signes()}`);
+    for (let i = 0; i < 4000 && signes() === 0; i++) tick(s3);
+    ok(signes() > 0, 'les conseils finissent par se lier d’eux-mêmes',
+      `${signes()} pacte(s) après ${s3.temps} h`);
+
+    // 2) Et ce qu'ils signent tient debout.
+    const p3 = (s3.world.pactes || []).filter((p) => p.rompu === undefined);
+    ok(p3.every((p) => p.a !== p.b), 'personne ne se lie à soi-même');
+    ok(p3.every((p) => s3.world.factions[p.a] && s3.world.factions[p.b]),
+      'et jamais à un drapeau qui n’existe pas');
+    const paires = p3.map((p) => [p.a, p.b].sort().join('|'));
+    ok(new Set(paires).size === paires.length, 'ni deux fois la même paire',
+      `${paires.length} pactes, ${new Set(paires).size} paires`);
+    ok(p3.every((p) => p.clauses && p.clauses.length
+      && p.clauses.every((c) => CLAUSES[c])), 'et toutes les clauses existent');
+
+    // 3) On ne signe pas avec qui l'on se bat : la règle de `proposerPacte`
+    //    doit tenir quand c'est le monde qui propose et non le joueur.
+    ok(p3.every((p) => !(s3.world.guerres || []).some(
+      (g) => (g.a === p.a && g.b === p.b) || (g.a === p.b && g.b === p.a))),
+      'et jamais avec celui qu’on affronte');
+
+    // 4) Le contenu dépend de la situation : la non-agression est ce qu'on se
+    //    promet quand rien ne presse, et c'est donc le cas courant.
+    ok(p3.some((p) => p.clauses.includes('nonAgression')),
+      'la non-agression est ce qu’on se promet le plus souvent',
+      p3.map((p) => p.clauses.join('+')).join(' · ').slice(0, 90));
+  }
+
+  // 5) La contre-épreuve : entre gens qui se détestent, on ne signe rien. Un
+  //    mécanisme qui signe toujours ne simule pas plus qu'un qui ne signe
+  //    jamais.
+  {
+    const s5p = nouvellePartie(7313, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const tenir = () => {
+      const cles = Object.keys(s5p.world.factions).filter((k) => k !== 'essaim');
+      for (const x of cles) for (const y of cles) {
+        if (x !== y) s5p.world.factions[x].relations[y] = -95;
+      }
+    };
+    tenir();
+    for (let i = 0; i < 1200; i++) { tick(s5p); tenir(); }
+    const p5 = (s5p.world.pactes || []).filter((p) => p.rompu === undefined);
+    ok(p5.length === 0, 'entre gens qui se haïssent, aucune parole n’est donnée',
+      `${p5.length} pacte(s)`);
+  }
+}
+
+
+// ===========================================================================
 section('PERF 2. Choisir les meilleurs sans trier tout le monde');
 // Le bloc école coûte 76 ms sur le téléphone du propriétaire, soit soixante
 // pour cent de son écran BASE. La cause est un produit : pour CHAQUE matière

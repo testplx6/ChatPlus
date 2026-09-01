@@ -186,13 +186,22 @@ peut ; ce qu'elle subit, il le subit.
   **La métrique reste**, elle : `tools/banc.js` porte désormais la colonne
   « en crédit » à côté de « masse », et toute mesure future s'y lira.
 
-  **Écrit, testé, mis de côté — pour le budget de tick, pas pour le monde.**
-  P3 a été réécrit proprement (septembre 2026) avec ses sondes : les conseils se
-  lient d'eux-mêmes, jamais avec qui l'on affronte, jamais deux fois la même
-  paire, et entre gens qui se haïssent personne ne signe rien. Mesuré, le monde
-  y **gagne** : 371 villes debout contre 361, moins de guerres (21 contre 24),
-  la carte politique plus vivante encore (31 pays nés contre 11), invariant
-  comptable à zéro.
+  **P3 est livré (septembre 2026).** Les conseils se lient d'eux-mêmes : qui se
+  sait menacé cherche du secours, qui est tranquille cherche la paix, et l'on
+  s'adresse d'abord à celui qu'on estime le plus. Aucun tirage propre — l'envie
+  passe par le dé du conseil, et un seul, la menace n'étant calculée que
+  lorsqu'elle peut changer la réponse.
+
+  Mesuré, le monde y **gagne** : 371 villes debout contre 361, moins de guerres
+  (21 contre 24), la carte politique plus vivante encore (31 pays nés contre
+  11), invariant comptable à zéro exact. Ce qu'il coûte : 14 % de tick, parce
+  que le monde qu'il produit est plus grand — neuf drapeaux par partie au lieu
+  de sept, dix villes de plus. Le plafond de rattrapage a été rouvert pour ça
+  par le propriétaire (« on va augmenter la tolérance pour le moment et passer
+  à la suite »), la décision et son motif sont dans `CIBLES.json`.
+
+  **Ce qui reste du chantier** : les clauses `passage` et `vue` se signent mais
+  ne font rien — ni le déplacement ni la connaissance ne les lisent.
 
   Ce qui bloque est ailleurs : le monde que P3 produit est plus grand — neuf
   drapeaux vivants par partie au lieu de sept, et dix villes de plus — et le
