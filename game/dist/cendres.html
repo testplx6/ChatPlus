@@ -11769,6 +11769,7 @@ function revenuInterne(world, col, prod, cons) {
  */
 function encaisser(world, col, montant) {
   if (!(montant > 0) || !col) return 0;
+
   const f = col.faction && world.factions[col.faction];
   const impot = f ? montant * loisDe(world, col.faction).impot : 0;
   if (f) f.tresor += impot;
@@ -13147,6 +13148,7 @@ function simulerVente(state, col, key, qte, groupe) {
 
 function acheter(state, col, key, qte, groupe) {
   const g = groupe || groupeActif(state);
+  if (!col || col.ruine) return { ok: false, motif: 'Il n’y a plus personne ici.', qte: 0, cout: 0 };
   // On chiffre d'abord, on encaisse ensuite, avec le même code : le prix affiché
   // et le prix payé ne peuvent pas diverger.
   const sim = simulerAchat(state, col, key, qte, g);
@@ -13170,6 +13172,18 @@ function acheter(state, col, key, qte, groupe) {
 
 function vendre(state, col, key, qte, groupe) {
   const g = groupe || groupeActif(state);
+  // On ne commerce pas avec une ruine, et c'est par là que fuyaient les
+  // comptes : l'audit a le droit de ne pas compter une ville morte
+  // (`effondrer` vide ses caisses — « laisser les comptes garnis sur une
+  // ruine, c'était un avoir fantôme »), mais rien n'empêchait d'y vendre
+  // ENSUITE. L'argent entrait dans une caisse que personne ne compte plus.
+  // Trouvé en remontant un écart de 586 crédits sur seize mille heures : la
+  // caisse d'une ruine était montée de 124 à 586, au crédit près.
+  //
+  // Le garde est ici et non dans `encaisser` : là-bas il romprait la paire
+  // `encaisser` + `entrerDehors`, et la masse monterait sans contrepartie —
+  // essayé, mesuré, l'écart avait doublé.
+  if (!col || col.ruine) return { ok: false, motif: 'Il n’y a plus personne ici.', qte: 0, gain: 0 };
   const sim = simulerVente(state, col, key, qte, g);
   if (sim.qte === 0) return { ok: false, motif: 'Rien à vendre.', qte: 0, gain: 0 };
   col.stock[key] = (col.stock[key] || 0) + sim.qte;

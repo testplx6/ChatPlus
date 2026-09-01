@@ -7127,6 +7127,36 @@ section('9 sexvicies quater. Le comptoir : traiter sans bouger de chez soi');
       `écart ${avant.toFixed(2)} → ${apres.toFixed(2)}`);
   }
 
+  // --- Une ruine n'encaisse rien. Défaut trouvé en cherchant d'où venait un
+  //     écart comptable de 586 en partie longue (CONVOI.md §Blocages).
+  //
+  //     `effondrer` vide les comptes d'une ville morte — « laisser les comptes
+  //     garnis sur une ruine, c'était un avoir fantôme », dit son commentaire —
+  //     mais rien n'empêchait d'y verser ENSUITE. Le bot du banc continuait d'y
+  //     vendre : la caisse d'une ruine montait de 124 à 586 crédits pendant que
+  //     l'audit, qui a le droit de ne pas compter les ruines, voyait l'argent
+  //     du pays fondre d'autant. Rien n'était créé — de l'argent sortait des
+  //     comptes par une porte que personne n'avait vue.
+  {
+    const sR = nouvellePartie(606, { maintenant: 0, depart: 'ville' });
+    const vR = sR.world.colonies.find((c) => !c.ruine && c.faction);
+    vR.ruine = true;
+    const avantCaisse = Math.round(vR.caisse || 0);
+    const avantEcart = auditer(sR.world).reduce((x, e) => x + Math.abs(e.ecart), 0);
+    const g0 = groupeActif(sR);
+    g0.regionId = vR.regionId;
+    g0.inventaire.ferraille = 200;
+    const vent = vendre(sR, vR, 'ferraille', 50, g0);
+    const ach = acheter(sR, vR, 'rations', 10, g0);
+    ok(!vent.ok && !ach.ok && Math.round(vR.caisse || 0) === avantCaisse,
+      'on ne commerce pas avec une ruine, ni dans un sens ni dans l’autre',
+      `${vent.motif} / ${ach.motif}`);
+    const apresEcart = auditer(sR.world).reduce((x, e) => x + Math.abs(e.ecart), 0);
+    ok(Math.abs(apresEcart - avantEcart) < 0.01,
+      'et les comptes du pays ne bougent pas d’un sou',
+      `${avantEcart.toFixed(2)} → ${apresEcart.toFixed(2)}`);
+  }
+
   // --- Entre vos camps (CONVOI.md, question du propriétaire) : « mais si je
   //     transporte des matériaux entre mes bases, comment ça se passe ? »
   {

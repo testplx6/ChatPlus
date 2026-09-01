@@ -82,7 +82,31 @@ sur le premier cinquième d'une partie) :
 
 ## Blocages
 
-**La cible « le patrimoine ne double pas » ne tranche pas, telle qu'elle est
+### Tranchés
+
+**La cible se juge à la médiane — décision du propriétaire (septembre 2026)** :
+*« c'est conforme tant que c'est la simulation qui en est responsable »*, après
+avoir lu la distribution et jugé qu'elle était cohérente (« il y a donc plus de
+pauvres que de riches, ça paraît cohérent non ? »). Elle l'est, et pas par
+hasard : **il faut avancer l'argent pour en gagner** — la marchandise, les
+gages et l'escorte sont payés au départ, l'encaissement vient à l'arrivée et
+seulement si le convoi arrive. Celui qui n'a rien ne peut pas jouer à ce jeu ;
+celui qui a du capital le fait travailler ; celui qui avance mal se ruine plus
+vite. Le geste étire donc la distribution **aux deux bouts** — 11 parties sur
+20 sous 10 000 crédits contre 10 au témoin, et 6 au-dessus de 100 000 contre 2.
+Aucune règle n'a été écrite pour ça : elle sort du risque et de l'avance de
+fonds.
+
+**Et la condition posée a été vérifiée, pas supposée.** « Tant que c'est la
+simulation qui en est responsable » exigeait de lever le seul indice contraire :
+l'écart comptable de 586 en partie longue. Il est instruit et corrigé
+(ci-dessous), et l'invariant est **exact des deux côtés** sur vingt parties de
+seize mille heures — écart maximal 0,00, avec et sans le geste. Rien n'était
+créé ; de l'argent sortait des comptes par une porte que personne n'avait vue.
+
+### L'ancien blocage, pour mémoire
+
+**La cible « le patrimoine ne double pas » ne tranchait pas, telle qu'elle était
 écrite.** Sur la moyenne elle est violée (×10) ; sur la médiane elle est tenue
 (×0,8). Les deux portent le même nom et disent le contraire.
 
@@ -99,11 +123,32 @@ qu'il faut trancher est donc au propriétaire :
    — moins de convois simultanés, gages plus chers, ou charrette plus petite.
    Tous sont balayables (`REGLE=`), aucun n'a été touché.
 
-**Et une seconde chose, sans rapport avec ce chantier, à instruire** : à
-16 000 h le **témoin** rend un écart comptable de 586,15 (le run avec gages :
-0,58). Le monde seul est exact à cet horizon et l'invariant joueur l'était
-aussi dans PARTIE-LONGUE.md ; quelque chose fuit sur une trajectoire longue et
-ce n'est pas le convoi à gages. À reprendre à part.
+### L'écart de 586 : instruit, trouvé, corrigé
+
+Il n'avait rien à voir avec ce chantier, et c'est **une ruine qui encaissait**.
+
+L'enquête a d'abord buté sur un piège d'outillage : rejouer « la graine 143542 »
+donnait un invariant exact là où le run complet montrait 586 d'écart, et l'on a
+cru dix minutes à une contamination entre parties du moteur. Le monde vient bien
+de la graine, mais le **drapeau que le bot courtise est tiré sur l'index de la
+partie** : on rejouait le même monde avec un autre bot. Le banc sait désormais
+rejouer *une partie* (`PARTIE=18`) et dire *quand* l'invariant se casse
+(`ECART=fin`, avec le journal de l'heure et les villes hors comptes).
+
+Le coupable, en trois lignes de trace : `Halte-Bréchant`, ville **ruinée**,
+gardait son drapeau et sa **caisse montait** — 124, 236, 586 crédits, au crédit
+près l'écart mesuré. `effondrer` vide bien les comptes d'une ville morte
+(« laisser les comptes garnis sur une ruine, c'était un avoir fantôme »), mais
+rien n'empêchait d'y vendre **ensuite**, et le bot y allait encore. L'audit a le
+droit de ne pas compter une ruine : l'argent entrait donc dans une caisse que
+personne ne compte plus.
+
+**Le garde est à la porte, pas dans la caisse.** Premier essai : refuser
+l'encaissement dans `encaisser`. Mesuré : l'écart **double** (586 → 1 243),
+parce que ce garde rompt la paire `encaisser` + `entrerDehors` — la masse
+monte, la caisse non. Le geste entier est donc refusé, dans `acheter` et
+`vendre` : on ne commerce pas avec une ruine, ni dans un sens ni dans l'autre.
+Invariant exact à 16 000 h, des deux côtés.
 
 ## 6. Ce qu'on ne fait pas
 

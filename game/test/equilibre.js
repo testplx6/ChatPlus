@@ -182,6 +182,7 @@ const TRACE = {
   // tourner un monde SANS joueur, et le banc du monde n'en a pas non plus —
   // deux instruments qui regardaient à côté du seul endroit où ça se voyait.
   pireEcart: 0,
+  pireOu: null,
   pasDeChange: {
     sansMonnaie: 0, pasDeVille: 0, chezSoi: 0, ruine: 0, sansComptoir: 0,
     enRevolte: 0, rienAChanger: 0, refuse: 0,
@@ -2110,7 +2111,17 @@ for (let n = 0; n < PARTIES; n++) {
   // évite de confondre un changement de règle avec un mauvais tirage de départ.
   // La contrepartie est connue et assumée — il ne mesure pas les premières
   // heures telles que le joueur les vit.
-  const state = nouvellePartie(1000 + n * 7919, { maintenant: 0, depart: 'ville' });
+  // `PARTIE=18` rejoue une partie et une seule : quand une enquête a une
+  // adresse, il faut pouvoir y retourner sans rejouer les dix-neuf autres.
+  //
+  // L'index, et non la graine — la leçon a coûté une fausse piste. Le monde
+  // vient bien de la graine, mais le drapeau que le bot courtise est tiré sur
+  // `n` (voir `rngVise`) : rejouer « la graine 143542 » donnait le même monde
+  // avec un AUTRE bot, une autre trajectoire, et un invariant exact là où le
+  // run complet montrait 586 d'écart. On a cru dix minutes à une contamination
+  // entre parties du moteur.
+  const rang = process.env.PARTIE ? Number(process.env.PARTIE) : n;
+  const state = nouvellePartie(1000 + rang * 7919, { maintenant: 0, depart: 'ville' });
   state.player.posture = 'neutre';
   if (process.env.CAMP === '1') {
     // On plante le camp sur la première case vide à portée, avec de quoi le
@@ -2160,7 +2171,7 @@ for (let n = 0; n < PARTIES; n++) {
   // pas sur celui du monde : sinon changer le tirage décalerait toute la
   // simulation et l'on comparerait deux mondes différents en croyant comparer
   // deux stratégies.
-  const rngVise = new Rng(4242 + n * 131);
+  const rngVise = new Rng(4242 + rang * 131);
   const visee = VISE || rngVise.pick(DIPLO_FACTIONS);
   TRACE.vises[visee] = (TRACE.vises[visee] || 0) + 1;
   const memo = { origine: new Map(), eclaireur: null, detachements: 0, courtisee: visee, services: 0,
@@ -2232,6 +2243,41 @@ for (let n = 0; n < PARTIES; n++) {
         state.rngState = rngG.save();
         if (r.ok) { TRACE.gagesEnvoyes += 1; TRACE.gagesAvance += d.avance; }
         break;
+      }
+    }
+    // `ECART=1` : où et quand l'invariant comptable se casse, pendant la partie
+    // et non à la fin. Un « écart maximal 586 » relevé au dernier tour ne dit
+    // ni l'heure ni le geste ; celui-ci nomme les deux.
+    if (process.env.ECART
+        && (process.env.ECART === 'fin' || state.temps % 25 === 0)) {
+      for (const e of auditer(state.world)) {
+        const v = Math.abs(e.ecart);
+        const cle = e.key || e.faction || '?';
+        const vu = memo.ecarts || (memo.ecarts = {});
+        if (v > (vu[cle] || 0) + 0.01) {
+          console.log(`  [écart] t=${state.temps} ${cle} : `
+            + `${(vu[cle] || 0).toFixed(2)} → ${e.ecart.toFixed(2)} `
+            + `(existe ${Math.round(e.existe)} · émis ${Math.round(e.masse)} · `
+            + `${state.world.colonies.filter((c) => c.faction === cle && !c.ruine
+              && !c.avantPoste).length} villes comptées, `
+            + `${state.world.colonies.filter((c) => c.faction === cle).length} au drapeau) `
+            + `| groupe en ${state.world.regions[groupes(state)[0].regionId].x},`
+            + `${state.world.regions[groupes(state)[0].regionId].y}`);
+          for (const c of state.world.colonies) {
+            if (c.faction !== cle || (!c.ruine && !c.avantPoste)) continue;
+            console.log(`      ! hors comptes : ${c.nom} (${c.id}) `
+              + `${c.ruine ? 'ruine' : ''}${c.avantPoste ? 'avant-poste' : ''} `
+              + `caisse ${Math.round(c.caisse || 0)} · ménages ${Math.round(c.menages || 0)}`);
+          }
+          if (process.env.ECART === 'fin') {
+            // Ce que le monde a raconté à cette heure-là : la cause est
+            // presque toujours dans les deux ou trois dernières lignes.
+            for (const j of (state.journal || []).slice(-6)) {
+              console.log(`      · [${j.type}] ${String(j.texte || '').slice(0, 130)}`);
+            }
+          }
+          vu[cle] = v;
+        }
       }
     }
     const remplisAvant = state.stats.ordresRemplis || 0;
@@ -2406,8 +2452,16 @@ for (let n = 0; n < PARTIES; n++) {
   }
   {
     // L'invariant comptable, à la fin d'une partie où un joueur a commercé.
+    //
+    // Et **quel pays, dans quelle partie** : un « écart maximal 586 » sans
+    // adresse n'est pas une piste, c'est une inquiétude. Le jour où il est
+    // apparu (partie longue, 16 000 h), il a fallu tout relancer pour savoir
+    // où regarder.
     for (const e of auditer(state.world)) {
-      TRACE.pireEcart = Math.max(TRACE.pireEcart, Math.abs(e.ecart));
+      if (Math.abs(e.ecart) > TRACE.pireEcart) {
+        TRACE.pireEcart = Math.abs(e.ecart);
+        TRACE.pireOu = { graine: state.seed, faction: e.key || e.faction || '?' };
+      }
     }
   }
   {
@@ -2552,7 +2606,8 @@ console.log(`Recrues engagées : ${(TRACE.recrues / PARTIES).toFixed(1)} par par
 console.log(`Intendance : ${Math.round(TRACE.rationsTouchees / PARTIES)} rations touchées par partie`
   + ` — bêtes achetées : ${(TRACE.betes / PARTIES).toFixed(1)} par partie`);
 console.log(`Invariant comptable, joueur compris : écart maximal `
-  + `${TRACE.pireEcart < 1e-6 ? 'exact' : TRACE.pireEcart.toFixed(2)}`);
+  + `${TRACE.pireEcart < 1e-6 ? 'exact' : TRACE.pireEcart.toFixed(2)}`
+  + `${TRACE.pireOu ? ` (graine ${TRACE.pireOu.graine}, ${TRACE.pireOu.faction})` : ''}`);
 console.log('Change : '
   + `${(100 * TRACE.bourseEtrangere / Math.max(1, TRACE.bourseTotale)).toFixed(1)} % `
   + 'de la bourse dans une monnaie qui n’a pas cours là où l’on est · '
