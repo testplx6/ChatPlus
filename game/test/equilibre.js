@@ -221,6 +221,7 @@ const TRACE = {
   // `derniereAttaque`, que la jauge pose elle-même ; `repousses` suit
   // `dernierRepousse`, qui vaut pour les deux défenses — la milice et la
   // garnison —, alors que le récit n'en raconte qu'une.
+  pasEntraine: { faim: 0, collecte: 0, blesses: 0, oui: 0, assezBon: 0 },
   hCamp: 0, raids: 0, repousses: 0, sacs: 0, voleSacs: 0,
   richesseCamp: 0, richesseAuRaid: 0, appetitCumul: 0, forceRaids: 0,
   // Ce que les conseils votent quand personne ne les tient.
@@ -277,6 +278,10 @@ for (const p of (process.env.REGLE || '').split(',').filter(Boolean)) {
 // morte » (MEMOIRE.md §Blocages) a vécu des mois sur cette confusion : à
 // quatre mille heures, un seul drapeau sur six est à portée du bot le plus
 // dévoué ; à seize mille, cinq sur six, et le Maréchal existe.
+// Jusqu'où le bot entraîne sa troupe avant de ranger les armes. Paramètre du
+// bot : le jeu, lui, laisse monter jusqu'à cent.
+const CIBLE_COMBAT = Number(process.env.COMBAT || 26);
+
 const HEURES = Number(process.argv[2]) || 4000;
 // Trente parties par défaut, pas huit. À huit, l'écart-type sur un taux de
 // survie de 85 % vaut douze points : on lit du bruit et on croit lire un
@@ -1833,7 +1838,23 @@ function jouerPrincipal(state, g, memo) {
   // On s'entraîne au combat, et à rien d'autre : la première version montait
   // l'endurance tant que le combat était sous quatorze, donc n'atteignait jamais
   // quatorze de combat. Le bot est resté à cinq de compétence, comme avant.
-  if (combat < 26 && rations > 150 && !collecteUrgente(state)
+  //
+  // Le seuil est un PARAMÈTRE DU BOT, pas une limite du jeu, et il est
+  // explorable (`COMBAT=70`) depuis qu'on a compris ce qu'il coûtait : à
+  // seize mille heures, les anciens du premier jour plafonnaient à 21,7 de
+  // compétence brute — le même gain qu'à quatre mille — et l'on a failli
+  // conclure que le jeu ne fabrique pas de vétérans. C'est le bot qui range
+  // ses armes dès que la moyenne du groupe atteint vingt-six.
+  // Pourquoi l'on ne s'entraîne pas, quand on ne s'entraîne pas. Sans ce
+  // détail, « le bot ne progresse plus » n'a pas de cause : c'est une règle à
+  // quatre conditions, et savoir laquelle mord est tout ce qui compte.
+  if (combat < CIBLE_COMBAT) {
+    if (!(rations > 150)) TRACE.pasEntraine.faim += 1;
+    else if (collecteUrgente(state)) TRACE.pasEntraine.collecte += 1;
+    else if (!vivants.every((c) => pvTotal(c).pct > 0.7)) TRACE.pasEntraine.blesses += 1;
+    else TRACE.pasEntraine.oui += 1;
+  } else TRACE.pasEntraine.assezBon += 1;
+  if (combat < CIBLE_COMBAT && rations > 150 && !collecteUrgente(state)
       && vivants.every((c) => pvTotal(c).pct > 0.7)) {
     if (g.ordre.type !== 'entrainement') {
       donnerOrdre(state, { type: 'entrainement', skill: 'melee' }, g);
@@ -2680,6 +2701,16 @@ if (TRACE.hCamp > 0) {
 console.log(`Pistes : ${(TRACE.piste / Math.max(1, TRACE.pisteVues)).toFixed(2)} de damage moyen `
   + `sur les cases connues (0 = friche vierge, 1 = route faite)`);
 console.log(`Combat : ${(TRACE.koSubis / PARTIES).toFixed(1)} des nôtres mis à terre par partie`);
+{
+  const e = TRACE.pasEntraine;
+  const tot = Math.max(1, e.faim + e.collecte + e.blesses + e.oui + e.assezBon);
+  console.log(`À l’entraînement : ${Math.round(e.oui / tot * 100)} % des tours — `
+    + `on y renonce pour la faim ${Math.round(e.faim / tot * 100)} %, `
+    + `une collecte urgente ${Math.round(e.collecte / tot * 100)} %, `
+    + `des blessés ${Math.round(e.blesses / tot * 100)} % — `
+    + `et l’on se juge assez bon ${Math.round(e.assezBon / tot * 100)} % `
+    + `(cible ${CIBLE_COMBAT})`);
+}
 console.log(`Défaites : ${TRACE.defaites} pour ${TRACE.crPilles} cr pillés `
   + `(${TRACE.defaites ? Math.round(TRACE.crPilles / TRACE.defaites) : 0} cr par défaite)`);
 
