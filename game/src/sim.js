@@ -95,6 +95,19 @@ export const PAS_COLONIE = 3;
 export const PAS_LOIN = 24;
 /** En deçà de cette distance d'un groupe ou de l'avant-poste, on regarde de près. */
 export const RAYON_DETAIL = 4;
+
+/**
+ * La maille, en objet mutable — donc balayable au banc, ce que trois `const`
+ * scalaires n'étaient pas.
+ *
+ * `pres` et `loin` sont calibrés et documentés au-dessus : trois près du
+ * joueur (à quatre, la survie tombe de 42 à 31 sur soixante parties), vingt-
+ * quatre au loin. `rayon`, lui, ne l'avait jamais été — il valait quatre depuis
+ * le premier jour, et c'est LUI qui décide du nombre de villes payées au prix
+ * fort : un disque de rayon quatre couvre quarante et une cases, contre
+ * vingt-cinq à rayon trois et treize à rayon deux.
+ */
+export const MAILLE = { pres: PAS_COLONIE, loin: PAS_LOIN, rayon: RAYON_DETAIL };
 /** On démarre déjà accéléré : à ×1 il ne se passe visiblement rien. */
 export const VITESSE_DEFAUT = 4;
 
@@ -431,11 +444,22 @@ function regardsDuJoueur(state) {
  * même heure — sinon le tick ferait un pic toutes les douze heures au lieu d'un
  * coût plat.
  */
-function pasColonie(yeux, col, i) {
+function pasColonie(yeux, col, i, absent) {
+  // Pendant une absence, personne ne regarde — et c'est précisément le moment
+  // où le moteur travaille le plus : le rattrapage rejoue des milliers
+  // d'heures d'un coup. Les villes du monde autour du camp n'ont alors aucune
+  // raison d'avancer huit fois plus finement que les autres : le joueur ne
+  // verra que l'état final, et l'invariance à la maille dit que les deux
+  // trajectoires se rejoignent (MAILLE.md — mesurée à 6,6 % de volume brassé,
+  // sous le plancher de bruit).
+  //
+  // L'avant-poste garde sa maille fine : c'est de son camp qu'on lui rend
+  // compte au retour, et le rapport d'absence se lit ligne à ligne.
+  if (absent && !col.avantPoste) return MAILLE.loin + (i % 5);
   for (const rid of yeux) {
-    if (distance(rid, col.regionId) <= RAYON_DETAIL) return PAS_COLONIE;
+    if (distance(rid, col.regionId) <= MAILLE.rayon) return MAILLE.pres;
   }
-  return PAS_LOIN + (i % 5); // 24 à 28 : de quoi étaler la charge sur l'heure
+  return MAILLE.loin + (i % 5); // 24 à 28 : de quoi étaler la charge sur l'heure
 }
 
 /** Fait passer une heure de jeu. */
@@ -547,10 +571,10 @@ export function tick(state) {
     // Aucune maille n'est plus fine que PAS_COLONIE : sous ce seuil, inutile
     // d'aller calculer la distance au joueur. C'est ce test-là qui rend la
     // boucle sur cinquante-quatre villes gratuite les trois quarts du temps.
-    if (du < PAS_COLONIE) continue;
+    if (du < MAILLE.pres) continue;
     // Décalage par indice : sans ça les villes lointaines tomberaient toutes
     // sur la même heure et le tick ferait des pics toutes les douze heures.
-    const pas = pasColonie(yeux, col, i);
+    const pas = pasColonie(yeux, col, i, state.absent);
     if (du < pas) continue;
     col.vuA = state.temps;
     // La réputation locale infléchit ce que les gens d'ici pensent de vous.

@@ -271,10 +271,18 @@ export function tickMemoireLieux(state, log) {
  * tient au moins deux jours, sauf le tout premier.
  */
 export function tickChapitres(state, log) {
-  const ch = chapitreDe(state);
   const courant = state.player.chapitre;
-  if (courant && courant.cle === ch.cle) return;
+  // Le délai AVANT le calcul, et non après. `chapitreDe` relit tous les faits
+  // de la partie pour dire où l'on en est du récit ; il tournait à chaque
+  // heure de jeu pour se voir répondre, une ligne plus bas, qu'un chapitre ne
+  // tourne pas deux fois en deux jours. Quarante-sept lectures sur quarante-
+  // huit étaient jetées — trois pour cent du tick, mesurés au profileur, pour
+  // une question dont la réponse ne pouvait pas avoir changé.
+  //
+  // `chapitreDe` est pure : la retarder ne retarde rien d'autre.
   if (courant && state.temps - (courant.t || 0) < 48) return;
+  const ch = chapitreDe(state);
+  if (courant && courant.cle === ch.cle) return;
   state.player.chapitreN = (state.player.chapitreN || 0) + 1;
   state.player.chapitre = { cle: ch.cle, t: state.temps };
   if (!state.player.chapitres) state.player.chapitres = [];

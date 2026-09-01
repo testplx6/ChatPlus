@@ -185,3 +185,19 @@ peut ; ce qu'elle subit, il le subit.
 
   **La métrique reste**, elle : `tools/banc.js` porte désormais la colonne
   « en crédit » à côté de « masse », et toute mesure future s'y lira.
+
+  **Écrit, testé, mis de côté — pour le budget de tick, pas pour le monde.**
+  P3 a été réécrit proprement (septembre 2026) avec ses sondes : les conseils se
+  lient d'eux-mêmes, jamais avec qui l'on affronte, jamais deux fois la même
+  paire, et entre gens qui se haïssent personne ne signe rien. Mesuré, le monde
+  y **gagne** : 371 villes debout contre 361, moins de guerres (21 contre 24),
+  la carte politique plus vivante encore (31 pays nés contre 11), invariant
+  comptable à zéro.
+
+  Ce qui bloque est ailleurs : le monde que P3 produit est plus grand — neuf
+  drapeaux vivants par partie au lieu de sept, et dix villes de plus — et le
+  tick coûte **14 % de plus**, ce qui passe le plafond de rattrapage vécu (3,71 s
+  contre 3,60 autorisés). Le propriétaire a tranché : « améliore les
+  performances » — donc P3 attend, et il attend écrit, pas à réécrire une
+  quatrième fois. Ce qu'il faut pour l'allumer : environ dix pour cent de tick,
+  ou la décision de relever le plafond.

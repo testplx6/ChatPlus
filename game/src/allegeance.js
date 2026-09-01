@@ -1023,11 +1023,22 @@ function tickEngagement(state, g, log, ctx) {
   const rng = ctx.rng;
   const f = state.world.factions[all.faction];
 
-  // Une faction éteinte ne commande plus personne.
+  // Une faction éteinte ne commande plus personne — et une faction qui a perdu
+  // sa dernière ville non plus, même si son chef vit encore et garde le droit
+  // d'essayer de se refaire (FACTIONS-NEUVES §4.3 bis). Les deux cas se disent
+  // autrement : depuis que les pays peuvent tomber pour de bon, annoncer
+  // « n'existe plus » à propos d'un drapeau qui tient encore debout par son
+  // seul chef est faux, et le joueur le vérifie d'un coup d'œil au tableau.
   if (!f || !f.colonies.length) {
+    const eteinte = !f || f.morte;
     log({
       type: 'allegeance',
-      texte: `${drapeauDe(state.world, all.faction).nom} n’existe plus. L’engagement de ${g.nom} tombe avec elle.`,
+      texte: eteinte
+        ? `${drapeauDe(state.world, all.faction).nom} n’existe plus. `
+          + `L’engagement de ${g.nom} tombe avec elle.`
+        : `${drapeauDe(state.world, all.faction).nom} n’a plus une ville à `
+          + `${drapeauDe(state.world, all.faction).pluriel ? 'eux' : 'elle'}. `
+          + `L’engagement de ${g.nom} n’a plus d’objet : on ne sert pas un drapeau sans terre.`,
       important: true,
       groupe: g.id,
     });

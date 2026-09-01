@@ -323,3 +323,5 @@ export function appelerSecours(state, place, agresseur, log) {
   }
   return { venus, impuissants, manques };
 }
+
+

@@ -1313,7 +1313,12 @@ export function distanceMorale(world, key, autre) {
 function jugerLesAutres(world, key) {
   for (const autre of diploDe(world)) {
     if (autre === key) continue;
-    if (!coloniesDe(world, autre).length) continue;
+    // `colonies.length` et non `coloniesDe` : celle-ci alloue deux tableaux et
+    // résout chaque identifiant, et cette boucle-ci est en n² sur le nombre de
+    // drapeaux — ce qui ne coûtait rien tant qu'ils étaient sept et se voit
+    // dès qu'ils naissent. `effondrer` retire la ville de la liste du pays,
+    // donc les deux comptes disent la même chose.
+    if (!world.factions[autre].colonies.length) continue;
     const d = distanceMorale(world, key, autre);
     if (d > 0.25) majRelation(world, key, autre, -d * 2.2);
     else if (d < 0.05) majRelation(world, key, autre, 0.4);

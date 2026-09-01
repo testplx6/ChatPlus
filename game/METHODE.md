@@ -632,3 +632,29 @@ un maillon est faux ne se teste pas au banc pendant deux jours, elle se lit.
 > mesure. On la refait dans une unité qu'on sait homogène — ici la valeur en
 > ancien crédit, le pivot du bureau de change — et on regarde si la surprise
 > tient. Elle n'a pas tenu.
+
+**Optimise sur le chemin que la garde mesure, pas sur celui que tu imagines.**
+
+> **Incident, septembre 2026.** Le plafond de vitesse était dépassé de trois
+> pour cent. J'ai commencé par alléger le rattrapage — la maille grossière
+> pendant une absence, puisque personne ne regarde — et je n'ai rien gagné :
+> `tools/vitesse.js` ne joue pas de rattrapage, il chronomètre trois mille
+> ticks ordinaires et multiplie. Le « rattrapage max » de l'étape vitesse est
+> une **extrapolation**, pas un rejeu. La même erreur a suivi avec le banc, qui
+> ne joue aucun joueur : la maille fine n'y sert donc jamais, et un balayage du
+> rayon de détail y rend trois fois le même chiffre à vingt microsecondes près.
+> Deux optimisations réelles, mesurées sur deux instruments qui ne pouvaient ni
+> l'une ni l'autre les voir.
+
+**Un instrument plus bruité que le gain cherché ne cherche rien.** Les cinq
+mesures du plafond sur du code identique ont rendu 3,64 · 3,71 · 3,73 · 3,83
+secondes — cinq pour cent d'écart pour un gain visé de trois. Le rapport au
+témoin (A,B,B,A dans la même minute), lui, tient : c'est lui qu'il faut lire, et
+lui seul.
+
+> Corollaire tiré du même jour : quand le monde change AVEC le réglage qu'on
+> mesure, le chiffre ne dit plus rien du réglage. Le rayon de détail à 3 sortait
+> **plus lent** qu'à 4 — non parce qu'il coûte plus, mais parce que la partie
+> jouée n'était plus la même. On mesure alors le fait, pas le temps : huit
+> villes sur quatre-vingt-dix paient la maille fine, et elles pèsent quarante-six
+> pour cent des appels. Ça, c'est un nombre qui ne ment pas.

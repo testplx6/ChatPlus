@@ -1714,8 +1714,22 @@ s9c.player.reputation.hexa = 40;
 const eng = sEngager(s9c, 'hexa', () => {});
 ok(eng.ok, 'on peut entrer au service d’une faction', eng.motif);
 ok(rangDe(groupeActif(s9c).allegeance).def.nom === 'Affilié', 'on démarre au premier grade');
-for (let i = 0; i < 8000; i++) tick(s9c);
-ok(!!groupeActif(s9c).allegeance, 'la faction servie existe encore après 8 000 h');
+// Le service peut tomber, et c'est légitime depuis que les pays tombent : ce
+// qu'on vérifie est qu'il ne tombe JAMAIS sans raison. On regarde donc l'INSTANT
+// de la chute et non l'état final — hexa perd tout à la cinq mille deux cent
+// cinquante et unième heure, puis se refait par une sécession, et l'état final
+// ne garde aucune trace de ce qui a coûté son service au joueur.
+let villesALaChute = -1;
+for (let i = 0; i < 8000; i++) {
+  tick(s9c);
+  if (!groupeActif(s9c).allegeance && villesALaChute < 0) {
+    villesALaChute = s9c.world.factions.hexa.colonies.length;
+  }
+}
+ok(villesALaChute < 0 || villesALaChute === 0,
+  'on ne perd son service que si le pays qu’on sert a tout perdu',
+  villesALaChute < 0 ? 'toujours au service à 8 000 h'
+    : `service tombé quand hexa n’avait plus que ${villesALaChute} ville(s)`);
 const debout9c = DIPLO_FACTIONS.filter((k) => s9c.world.factions[k].colonies.length);
 // Tranché par le propriétaire (août 2026) : **qu'une faction soit éliminée ne
 // pose aucun problème** — c'est le drame qu'on cherchait, et le monde doit en
@@ -5893,8 +5907,14 @@ section('9 quattuorvicies. Les ordres de mission aussi : le délai est l’excep
     sEngager(so, colO.faction, () => {}, go);
 
     for (let i = 0; i < 60; i++) {
+      // Le pays qu'on sert peut disparaître pendant qu'on compte : depuis que
+      // les drapeaux naissent et s'éteignent, une allégeance de mille huit
+      // cents heures n'est plus acquise. On passe à la graine suivante plutôt
+      // que de lire dans le vide.
+      if (!go.allegeance) break;
       go.allegeance.prochainOrdre = so.temps;
       avancer(so, 30);
+      if (!go.allegeance) break;
       const o = go.allegeance.ordre;
       if (o && !vus.some((x) => x.id === o.id)) {
         vus.push({
@@ -8280,13 +8300,20 @@ section('23 ter. M2 et M3 — un compte ne se regroupe pas non plus');
   // **−40,3 %** avant ce lot.
   const sC = nouvellePartie(4646, { maintenant: 0 });
   for (let i = 0; i < 300; i++) tick(sC);
-  const modele = sC.world.colonies.find(
-    (c) => !c.ruine && !c.avantPoste && c.faction && c.pop > 300);
+  // DOUZE villes, et non la première venue. La sonde en prenait une seule et
+  // mesurait donc le tirage autant que l'invariance : ville par ville, l'écart
+  // va de 0,4 % à 17,7 % pour une moyenne de 6,6, et le jour où le monde a
+  // servi une autre ville à `find` — parce que les drapeaux naissent
+  // désormais — elle est passée au rouge sans que la maille ait bougé d'un
+  // cheveu. Le critère, lui, ne bouge pas : c'est la mesure qui devient
+  // représentative. Voir METHODE §12.
+  const modeles = sC.world.colonies.filter(
+    (c) => !c.ruine && !c.avantPoste && c.faction && c.pop > 300).slice(0, 12);
 
   // Un mois, la même ville, les deux mailles, depuis le même état. On compte ce
   // qui bouge en valeur absolue : un volume, pas une différence de trajectoire,
   // donc pas de plancher de bruit à franchir.
-  const remue = (dt) => {
+  const remue = (modele, dt) => {
     let total = 0;
     for (let rep = 0; rep < 6; rep++) {
       const c = JSON.parse(JSON.stringify(modele));
@@ -8299,13 +8326,25 @@ section('23 ter. M2 et M3 — un compte ne se regroupe pas non plus');
     }
     return total / 6;
   };
-  const finM = remue(1);
-  const grosM = remue(24);
+  let finM = 0;
+  let grosM = 0;
+  let pireM = 0;
+  for (const m of modeles) {
+    const f = remue(m, 1);
+    const g = remue(m, 24);
+    finM += f;
+    grosM += g;
+    if (f > 0) pireM = Math.max(pireM, Math.abs(g - f) / f);
+  }
+  finM /= modeles.length;
+  grosM /= modeles.length;
   const ecartM = finM > 0 ? Math.abs(grosM - finM) / finM : 0;
-  ok(finM > 5, 'la ville remue assez de monde pour qu’on mesure quelque chose',
-    `${finM.toFixed(1)} habitants par mois en maille fine`);
+  ok(modeles.length >= 8 && finM > 5,
+    'les villes remuent assez de monde pour qu’on mesure quelque chose',
+    `${modeles.length} villes, ${finM.toFixed(1)} habitants par mois en maille fine`);
   ok(ecartM < 0.15, 'une tranche de 24 h remue autant de gens que 24 heures fines',
-    `${finM.toFixed(1)} contre ${grosM.toFixed(1)} — ${(ecartM * 100).toFixed(1)} %`);
+    `${finM.toFixed(1)} contre ${grosM.toFixed(1)} — ${(ecartM * 100).toFixed(1)} % `
+    + `en moyenne, ${(pireM * 100).toFixed(1)} % pour la pire des ${modeles.length}`);
 
   // Et la relève d'une charge, même défaut, même correctif (M3).
   const avecNotables = sC.world.colonies.find(
