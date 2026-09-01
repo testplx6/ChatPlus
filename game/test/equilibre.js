@@ -103,6 +103,9 @@ import {
 import { donnerOrdre } from '../src/squad.js';
 import { estVivant, estDebout, comp, pvTotal } from '../src/characters.js';
 import { colonieDe, colonieParId, distance } from '../src/world.js';
+import { peutTraiter } from '../src/bourse.js';
+import { carnetPrix } from '../src/connaissance.js';
+import { devisGages, passerOrdreGages, ordresEnCours } from '../src/caravanes.js';
 import {
   acheter, vendre, poidsInventaire, capacitePortage, acheterItem, prixItem, prixJoueur,
   prixUnitaire, cibleStock, bureauDe, changer,
@@ -222,6 +225,7 @@ const TRACE = {
   // `dernierRepousse`, qui vaut pour les deux défenses — la milice et la
   // garnison —, alors que le récit n'en raconte qu'une.
   pasEntraine: { faim: 0, collecte: 0, blesses: 0, oui: 0, assezBon: 0 },
+  gagesEnvoyes: 0, gagesAvance: 0,
   hCamp: 0, raids: 0, repousses: 0, sacs: 0, voleSacs: 0,
   richesseCamp: 0, richesseAuRaid: 0, appetitCumul: 0, forceRaids: 0,
   // Ce que les conseils votent quand personne ne les tient.
@@ -2124,6 +2128,29 @@ for (let n = 0; n < PARTIES; n++) {
     fonderBase(state, () => {}, g0);
     g0.regionId = dep;
   }
+  if (process.env.COMPTOIR === '1') {
+    // Le comptoir donné, comme le camp de `CAMP=1` et pour la même raison : on
+    // ne mesure pas ici la difficulté de s'en offrir un — recherche, bâtiment,
+    // estime — mais ce qu'il vaut une fois qu'on l'a. Le bot ne l'a JAMAIS
+    // monté de lui-même, si bien que tout ce pan du jeu (les convois du
+    // joueur, le comptoir, et maintenant le convoi à gages) n'avait jamais été
+    // mesuré par personne.
+    const g0 = groupes(state)[0];
+    const vide = state.world.regions.find(
+      (r) => !r.colonie && distance(r.i, g0.regionId) <= 2
+    ) || state.world.regions.find((r) => !r.colonie);
+    const dep = g0.regionId;
+    g0.regionId = vide.i;
+    for (const k of Object.keys(COUT_FONDATION)) {
+      g0.inventaire[k] = (g0.inventaire[k] || 0) + COUT_FONDATION[k];
+    }
+    fonderBase(state, () => {}, g0);
+    g0.regionId = dep;
+    state.base.batiments = { ...(state.base.batiments || {}), comptoir: 1, entrepot: 2 };
+    // Et de quoi être reçu quelque part : un réseau ne traite pas avec un
+    // inconnu. On donne l'estime, pas l'argent.
+    for (const k of DIPLO_FACTIONS) state.player.reputation[k] = 40;
+  }
   // Mémoire du bot : hors de l'état de jeu, donc rien à sérialiser.
   if (SANS.has('lois')) state.sansLois = true;
   if (SANS.has('preleve')) state.sansPreleve = true;
@@ -2185,6 +2212,26 @@ for (let n = 0; n < PARTIES; n++) {
         if (!vues.has(car.id)) { vues.add(car.id); TRACE.caravanesNees++; }
         const gg = groupes(state)[0];
         if (gg && car.regionId === gg.regionId) TRACE.passagesGuet++;
+      }
+    }
+    // Le convoi à gages (CONVOI.md) : le bot regarde son carnet quand il est
+    // chez lui, et envoie si la course paie. Rien de malin — c'est le geste
+    // qu'un joueur ferait en lisant l'écran, pas un arbitragiste.
+    if (!SANS.has('gages') && state.base && state.base.fonde
+        && state.temps % 24 === 0 && ordresEnCours(state).length < 3
+        && peutTraiter(state).ok) {
+      const carnet = carnetPrix(state);
+      for (const k of Object.keys(carnet)) {
+        const c = carnet[k];
+        if (!c || !c.vente || !c.achat) continue;
+        const d = devisGages(state, c.achat.colonieId, c.vente.colonieId, k, 120, 'aucune');
+        if (!d.ok || d.gain <= 0 || soldeIci(state) < d.avance) continue;
+        const rngG = new Rng(state.rngState);
+        const r = passerOrdreGages(state, c.achat.colonieId, c.vente.colonieId, k, 120,
+          'aucune', rngG, () => {});
+        state.rngState = rngG.save();
+        if (r.ok) { TRACE.gagesEnvoyes += 1; TRACE.gagesAvance += d.avance; }
+        break;
       }
     }
     const remplisAvant = state.stats.ordresRemplis || 0;
@@ -2700,6 +2747,11 @@ if (TRACE.hCamp > 0) {
 }
 console.log(`Pistes : ${(TRACE.piste / Math.max(1, TRACE.pisteVues)).toFixed(2)} de damage moyen `
   + `sur les cases connues (0 = friche vierge, 1 = route faite)`);
+if (TRACE.gagesEnvoyes) {
+  console.log(`Convois à gages : ${(TRACE.gagesEnvoyes / PARTIES).toFixed(1)} par partie, `
+    + `${Math.round(TRACE.gagesAvance / Math.max(1, TRACE.gagesEnvoyes))} ${'cr'} avancés `
+    + `en moyenne par convoi`);
+}
 console.log(`Combat : ${(TRACE.koSubis / PARTIES).toFixed(1)} des nôtres mis à terre par partie`);
 {
   const e = TRACE.pasEntraine;

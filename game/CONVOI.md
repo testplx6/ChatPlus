@@ -80,6 +80,31 @@ sur le premier cinquième d'une partie) :
 - les gardes de `CIBLES.json` tiennent — `convois` en tête, puisqu'on ajoute
   des convois au monde.
 
+## Blocages
+
+**La cible « le patrimoine ne double pas » ne tranche pas, telle qu'elle est
+écrite.** Sur la moyenne elle est violée (×10) ; sur la médiane elle est tenue
+(×0,8). Les deux portent le même nom et disent le contraire.
+
+Je ne la corrige pas moi-même : préciser un critère **après** avoir vu la
+mesure est exactement le glissement que `CLAUDE.md` interdit, même quand
+l'argument est bon — et il l'est ici, METHODE §12 disant depuis longtemps
+qu'une moyenne sur une distribution à queue lourde n'est pas une mesure. Ce
+qu'il faut trancher est donc au propriétaire :
+
+1. **Juger à la médiane** (et le dire dans le cahier) : le geste est alors
+   conforme, et ce qu'il amplifie est une queue qui existait déjà — une partie
+   sur vingt finissait à 123 millions **avant** ce chantier (PARTIE-LONGUE.md).
+2. **Juger à la moyenne** : le geste est refusé en l'état, et il faut le brider
+   — moins de convois simultanés, gages plus chers, ou charrette plus petite.
+   Tous sont balayables (`REGLE=`), aucun n'a été touché.
+
+**Et une seconde chose, sans rapport avec ce chantier, à instruire** : à
+16 000 h le **témoin** rend un écart comptable de 586,15 (le run avec gages :
+0,58). Le monde seul est exact à cet horizon et l'invariant joueur l'était
+aussi dans PARTIE-LONGUE.md ; quelque chose fuit sur une trajectoire longue et
+ce n'est pas le convoi à gages. À reprendre à part.
+
 ## 6. Ce qu'on ne fait pas
 
 Pas de flotte à gérer, pas de contrat de transport pour autrui, pas de
@@ -130,4 +155,35 @@ bras. À l'écran, le bloc ne paraît qu'à partir du second camp.
       un écart, c'est un souvenir), ce qu'on avance et ce qu'on touche. Six
       sondes navigateur.
 - [x] Entre vos camps (§7), et le défaut d'adresse qu'il a rendu
-- [ ] La mesure au banc, aux deux horizons
+- [x] La mesure au banc, aux deux horizons — **et elle ne conclut pas
+      proprement : voir Blocages.**
+
+      Il a d'abord fallu que le banc puisse mesurer quoi que ce soit : **le bot
+      n'a jamais monté un comptoir de sa vie**, si bien que tout ce pan du jeu
+      — les convois du joueur, livrés depuis longtemps — n'avait jamais été
+      mesuré par personne. D'où `COMPTOIR=1`, qui donne le comptoir comme
+      `CAMP=1` donne le camp, et pour la raison déjà écrite dans le fichier :
+      on ne mesure pas ici la difficulté de s'en offrir un, mais ce qu'il vaut
+      une fois qu'on l'a. Le bot regarde son carnet une fois par jour et envoie
+      si la course paie — le geste qu'un joueur ferait en lisant l'écran, pas
+      un arbitragiste.
+
+      Témoin `SANS=gages`, mêmes graines.
+
+      **À 4 000 h, rien à signaler** : crédits moyens 1 407 → 1 092 (le geste
+      coûte plutôt qu'il ne rapporte), survie 29/30 → 30/30, invariant exact,
+      motifs de départ inchangés. 8,9 convois par partie.
+
+      **À 16 000 h, la mesure se dédouble** — et c'est tout l'intérêt de
+      l'avoir faite aux deux horizons :
+
+      | | témoin | avec le geste |
+      |---|---|---|
+      | patrimoine médian | 11 869 | 9 357 |
+      | patrimoine moyen | 202 674 | 2 037 443 |
+      | la partie la plus riche | 3,3 M | 31,5 M |
+
+      Le joueur **médian** ne s'enrichit pas, il s'appauvrit légèrement. La
+      moyenne, elle, est multipliée par dix — parce que la distribution a une
+      queue lourde et que le geste **amplifie les parties déjà
+      exceptionnelles** : quatre parties au-dessus de 500 000 contre deux.
