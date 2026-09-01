@@ -73,6 +73,16 @@ export function deballer(txt) {
 export const VERSION = 2;
 
 export function serialiser(state) {
+  // `base` et `camps[campActif]` sont le MÊME objet en mémoire (M4), et
+  // `JSON.stringify` en écrit donc deux copies. C'est voulu, après essai de
+  // l'inverse : retirer `base` de la sortie déplaçait la clé en fin d'objet au
+  // rechargement — `normaliser` la repose — et l'aller-retour JSON cessait
+  // d'être exact au caractère près, ce qui est un invariant déclaré du projet
+  // et deux sondes du moteur.
+  //
+  // La duplication ne peut pas diverger : `normaliser` réunifie les deux
+  // références au chargement, et rien n'écrit jamais dans `base` sans écrire
+  // dans le camp — c'est le même objet.
   return JSON.stringify(state);
 }
 
@@ -347,6 +357,16 @@ export function normaliser(state) {
       if (c.enseigne === undefined) delete c.enseigne;
     }
   }
+  // Les camps (M4). Une partie d'avant ce lot n'a que `base` : il entre dans la
+  // liste, et rien d'autre ne change pour elle. Une partie d'après n'a que la
+  // liste : on rétablit le regard, qui n'est jamais sauvé.
+  if (!Array.isArray(state.camps) || !state.camps.length) {
+    state.camps = state.base ? [state.base] : [];
+    state.campActif = 0;
+  }
+  if (!(state.campActif >= 0 && state.campActif < state.camps.length)) state.campActif = 0;
+  if (state.camps.length) state.base = state.camps[state.campActif];
+
   const b = state.base;
   if (b) {
     if (b.pop === undefined) b.pop = 0;

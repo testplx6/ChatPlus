@@ -239,14 +239,44 @@ aucune guerre en votre nom. C'est le lot suivant.
 
 ### M4 — Autant de camps qu'on veut
 
-*Ce qui manque* : les **133 références** à `state.base` au pluriel (43 dans
-`base.js`, 27 dans `ui.js`), un sélecteur de camp dans l'interface, l'énergie
-et les sièges par camp, la migration des parties en cours, et une mesure du
-tick avant/après.
+> « Autant de camps qu'on veut, tout est possible. » — le propriétaire, août 2026
 
-C'est le chantier lourd, et il vient en dernier non par réticence mais parce
-que les trois autres ne l'attendent pas — et qu'il sera plus simple à écrire
-quand on saura ce qu'est « une place à soi ».
+**M4a — la structure. ✅ Livré (septembre 2026).**
+
+Le moteur n'en connaissait qu'un : `state.base`, **cent trente-six fois** dans
+le code, et `fonderBase` refusait le second d'un mot — « Avant-poste déjà
+fondé ». Réécrire cent trente-six lectures aurait été un chantier de
+réécriture, pas de jeu, et chacune une occasion de casser quelque chose.
+
+On ne les réécrit donc pas. `state.camps` porte la liste, `state.campActif` dit
+lequel on habite, et **`state.base` reste ce qu'il a toujours été : une
+référence sur le camp sous les yeux**. Changer de camp, c'est déplacer ce
+regard — `changerDeCamp(state, i)` — pas recopier un état. Le corps de
+`fonderBase` n'a pas eu à bouger : il a toujours travaillé sur « le camp
+courant », et le camp courant est désormais le dernier planté.
+
+Trois pièges, tous rencontrés :
+
+- **La sauvegarde dédoublait le camp.** `base` et `camps[actif]` sont le même
+  objet en mémoire ; `JSON.stringify` en écrit deux copies. Les retirer de la
+  sortie déplaçait la clé en fin d'objet au rechargement, et **l'aller-retour
+  JSON cessait d'être exact au caractère près** — un invariant déclaré du
+  projet, tenu par deux sondes. On garde donc la duplication : elle ne peut pas
+  diverger, `normaliser` réunifiant les deux références au chargement.
+- **Le camp quitté s'arrêtait de vivre.** `tickBase` travaille sur
+  `state.base` : `tickCamps` lui prête chaque camp à son tour et rend le regard
+  là où il était. Ses gens mangent, ses chaînes tournent, son entrepôt déborde
+  même quand on est ailleurs.
+- **Un refus laissait une coquille vide.** Ouvrir le camp neuf avant de vérifier
+  qu'on peut payer laissait un camp non fondé dans la liste quand le sac était
+  trop léger. L'ouverture se défait maintenant avant de rendre la main.
+
+La migration est en place : une partie d'avant ce lot voit son camp entrer dans
+la liste, et rien d'autre ne change pour elle.
+
+**Ce qui reste** : le sélecteur dans l'interface — un camp qu'on ne peut pas
+choisir n'existe pas —, ce que le rendu montre du camp qu'on n'habite pas, et
+les ordres qui visent un camp précis (ravitailler, rentrer).
 
 ## 5. Ce qui reste à trancher avant d'écrire M1
 

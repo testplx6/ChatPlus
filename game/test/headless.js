@@ -69,6 +69,7 @@ import { attaquerVille, RAID_VILLE, livrerPlace, raserPlace } from '../src/assau
 import { estAssiegee, vivresCoupees, negoceCoupe } from '../src/world.js';
 import { fonderDrapeau } from '../src/factions.js';
 import { laissePasser } from '../src/events.js';
+import { changerDeCamp } from '../src/base.js';
 import {
   CLAUSES, proposerPacte, pacteEntre, romprePacte, appelerSecours,
 } from '../src/pactes.js';
@@ -14390,6 +14391,82 @@ section('PAC 4. Les clauses muettes prennent la parole (PACTES.md)');
     // ses barrages, pacte ou pas.
     ok(laissePasser(sv, gv, 'bandits') === null, 'un barrage de bandits ne se négocie pas');
   }
+}
+
+
+// ===========================================================================
+section('M4a. Autant de camps qu’on veut — la structure (IMPLANTATIONS.md)');
+// « Autant de camps qu'on veut, tout est possible » (le propriétaire, août
+// 2026). Le moteur n'en connaissait qu'un : `state.base`, cent trente-six fois
+// dans le code, et `fonderBase` refusait le second d'un mot — « Avant-poste
+// déjà fondé ».
+//
+// On ne réécrit pas cent trente-six lectures. `state.camps` porte la liste,
+// `state.campActif` dit lequel on habite, et `state.base` reste ce qu'il a
+// toujours été : le camp sous les yeux. Changer de camp, c'est déplacer ce
+// regard — pas recopier un état.
+{
+  const rienM = () => {};
+  const planter = (st) => {
+    Object.assign(groupeActif(st).inventaire, { ferraille: 300, polymere: 120, composant: 20 });
+    const libre = st.world.regions.find(
+      (r) => !r.colonie && r.biome !== 'relais'
+        && !(st.camps || []).some((c) => c.fonde && c.regionId === r.i));
+    groupeActif(st).regionId = libre.i;
+    return fonderBase(st, rienM);
+  };
+
+  const sm = nouvellePartie(9401, { maintenant: 0, depart: 'ville', equipe: 3 });
+  for (let i = 0; i < 30; i++) tick(sm);
+  ok(Array.isArray(sm.camps) && sm.camps.length === 1,
+    'une partie neuve a déjà une liste de camps, avec le sien dedans',
+    `${sm.camps ? sm.camps.length : 'aucune'}`);
+  ok(sm.base === sm.camps[sm.campActif],
+    'et `state.base` EST le camp actif, pas une copie');
+
+  ok(planter(sm).ok, 'on plante le premier camp');
+  const premier = sm.base;
+  ok(premier.fonde, 'il est fondé', premier.nom || '—');
+
+  // Le second : c'est tout l'objet du lot.
+  const deux = planter(sm);
+  ok(deux.ok, 'et on en plante un SECOND sans qu’on nous le refuse', deux.motif || 'fondé');
+  ok(sm.camps.length === 2, 'la liste en porte deux', `${sm.camps.length}`);
+  ok(sm.camps[0] === premier && sm.base !== premier,
+    'le premier n’a pas été écrasé : on habite le neuf, l’ancien tient debout');
+  ok(sm.camps[0].regionId !== sm.camps[1].regionId,
+    'et ils sont à deux endroits différents',
+    `${sm.camps[0].regionId} / ${sm.camps[1].regionId}`);
+
+  // On revient dans le premier.
+  ok(changerDeCamp(sm, 0).ok, 'on rentre au premier camp');
+  ok(sm.base === sm.camps[0], 'et c’est lui qu’on habite de nouveau');
+
+  // Les deux vivent : le monde ne s'arrête pas dans le camp qu'on a quitté.
+  sm.camps[1].stock.ferraille = 0;
+  sm.camps[1].batiments = { halle: 1, generateur: 1 };
+  sm.camps[1].pop = 6;
+  const avant1 = sm.camps[1].majEmploi;
+  for (let i = 0; i < 30; i++) tick(sm);
+  ok(sm.camps[1].majEmploi !== avant1 || (sm.camps[1].stock.ferraille || 0) > 0,
+    'le camp qu’on a quitté continue de tourner',
+    `maj ${avant1} → ${sm.camps[1].majEmploi}`);
+
+  // Et la sauvegarde ne dédouble pas le camp actif.
+  const repris = deserialiser(serialiser(sm));
+  ok(repris.camps.length === 2, 'une partie rechargée retrouve ses deux camps',
+    `${repris.camps.length}`);
+  ok(repris.base === repris.camps[repris.campActif],
+    'et `base` pointe de nouveau sur le camp actif, pas sur une copie orpheline');
+
+  // La migration : une partie d'avant ce lot n'a que `base`.
+  const vieille = deserialiser(serialiser(nouvellePartie(9402, { maintenant: 0 })));
+  delete vieille.camps;
+  delete vieille.campActif;
+  const migre = normaliser(vieille);
+  ok(Array.isArray(migre.camps) && migre.camps.length === 1 && migre.base === migre.camps[0],
+    'une partie d’avant garde son camp, désormais dans la liste',
+    `${migre.camps ? migre.camps.length : 'aucun'}`);
 }
 
 

@@ -8,7 +8,7 @@ import { FACTIONS, DIPLO_FACTIONS, drapeauDe } from './data.js';
 import { genererMonde, decouvrir, colonieParId, nomRegion, distance } from './world.js';
 import { makeCharacter, idDepuisRng, ARCHETYPE_KEYS } from './characters.js';
 import {
-  creerBase, tickBase, perdreAvantPoste, saccagerAvantPoste, forceEscouade,
+  creerBase, tickBase, tickCamps, campsDe, perdreAvantPoste, saccagerAvantPoste, forceEscouade,
   userMursSiege,
 } from './base.js';
 import {
@@ -339,7 +339,12 @@ export function nouvellePartie(seed, opts = {}) {
       chefs: {},
       conseilsVus: {},
     },
-    base: creerBase(),
+    // Le camp, et la liste qui le porte (M4). `base` est une RÉFÉRENCE sur le
+    // camp actif, posée juste après la création de l'état — les deux clés
+    // désignent le même objet, et `serialiser` n'en écrit qu'une.
+    base: null,
+    camps: [],
+    campActif: 0,
     journal: [],
     // Le compteur d'entrées — même valeur que poserait `normaliser`, pour un
     // aller-retour JSON exact d'une partie neuve.
@@ -405,6 +410,12 @@ export function nouvellePartie(seed, opts = {}) {
   // bien que l'invariant comptable naît vrai. Tout ce qui le brisera ensuite est
   // un bug qu'on pourra dater — voir `auditer` dans monnaie.js.
   poserMasseInitiale(world);
+  // Le camp, enfin : il entre dans la liste, et `base` le désigne. L'ordre
+  // compte peu ici, mais la règle est simple — `state.base` n'est jamais un
+  // objet à lui, toujours l'élément que `campActif` montre.
+  state.camps = [creerBase()];
+  state.campActif = 0;
+  state.base = state.camps[0];
 
   decouvrir(world, regionDepart, 2);
   observer(state, prixReleves);
@@ -743,7 +754,7 @@ export function tick(state) {
   // monde. C'est la bascule qui rend le monde indifférent au trajet.
   const rngJoueur = new Rng(state.player.rngEtat);
   ctx.rng = rngJoueur;
-  tickBase(state, log, ctx);
+  tickCamps(state, log, ctx);
   // La fin ne gèle RIEN : « le temps devrait continuer même quand tout le
   // monde est mort » (le propriétaire, août 2026) — c'est la devise du jeu
   // prise au mot. Une escouade éteinte est un joueur absent, pas un monde à

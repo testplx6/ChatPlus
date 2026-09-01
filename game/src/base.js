@@ -1117,16 +1117,68 @@ export function lancerRecherche(state, key) {
   return { ok: true };
 }
 
+/**
+ * Les camps du joueur, et celui qu'il habite.
+ *
+ * « Autant de camps qu'on veut, tout est possible » (le propriétaire, août
+ * 2026). Le moteur n'en connaissait qu'un — `state.base`, cent trente-six fois
+ * dans le code — et les réécrire toutes serait un chantier de réécriture, pas
+ * de jeu. On ne les réécrit donc pas : `state.camps` porte la liste,
+ * `state.campActif` dit lequel on habite, et **`state.base` reste ce qu'il a
+ * toujours été, une référence sur le camp sous les yeux**. Changer de camp,
+ * c'est déplacer ce regard.
+ *
+ * La conséquence à ne pas rater est dans la sauvegarde : `base` et
+ * `camps[actif]` sont le MÊME objet en mémoire, et `JSON.stringify` en ferait
+ * deux copies distinctes qui divergeraient au rechargement. `serialiser` laisse
+ * donc `base` de côté et `normaliser` le rétablit — voir save.js.
+ */
+export function campsDe(state) {
+  if (!Array.isArray(state.camps)) state.camps = state.base ? [state.base] : [];
+  return state.camps;
+}
+
+/** Habiter un autre camp. L'index, parce qu'un camp n'a pas d'identité stable. */
+export function changerDeCamp(state, i) {
+  const camps = campsDe(state);
+  if (!camps.length) return { ok: false, motif: 'Vous n’avez pas de camp.' };
+  if (!(i >= 0 && i < camps.length)) return { ok: false, motif: 'Ce camp n’existe pas.' };
+  state.campActif = i;
+  state.base = camps[i];
+  return { ok: true, camp: camps[i] };
+}
+
 export function fonderBase(state, log, groupe) {
   const g = groupe || groupeActif(state);
+  const camps = campsDe(state);
+  // Un camp déjà fondé n'est plus un emplacement libre : on en ouvre un neuf
+  // à côté de lui, on ne le remplace pas. C'est tout M4 — le reste de cette
+  // fonction n'a pas eu à bouger, parce qu'elle a toujours travaillé sur « le
+  // camp courant » et que le camp courant est désormais le dernier planté.
+  if (state.base && state.base.fonde) {
+    const neuf = creerBase();
+    camps.push(neuf);
+    state.campActif = camps.length - 1;
+    state.base = neuf;
+  }
   const base = state.base;
   if (base.fonde) return { ok: false, motif: 'Avant-poste déjà fondé.' };
   const inv = g.inventaire;
+  // Un refus ne doit pas laisser une coquille vide dans la liste : on défait
+  // l'ouverture avant de rendre la main.
+  const annuler = () => {
+    if (camps.length > 1 && camps[camps.length - 1] === base && !base.fonde) {
+      camps.pop();
+      state.campActif = camps.length - 1;
+      state.base = camps[state.campActif];
+    }
+  };
   if (!peutPayer(inv, COUT_FONDATION)) {
+    annuler();
     return { ok: false, motif: 'Il faut 120 ferraille, 40 polymère, 5 composants dans le sac.' };
   }
   const r = state.world.regions[g.regionId];
-  if (r.colonie) return { ok: false, motif: 'Impossible de bâtir dans une ville existante.' };
+  if (r.colonie) { annuler(); return { ok: false, motif: 'Impossible de bâtir dans une ville existante.' }; }
   payer(inv, COUT_FONDATION);
   base.fonde = true;
   base.regionId = g.regionId;
@@ -1231,6 +1283,28 @@ function consommer(base, key, qte, ignorerReserve) {
 }
 
 /** Une heure de vie de l'avant-poste. Retourne un résumé pour l'UI. */
+/**
+ * Une heure dans TOUS les camps.
+ *
+ * Le monde ne s'arrête pas dans celui qu'on a quitté : ses gens mangent, ses
+ * chaînes tournent, son entrepôt déborde. `tickBase` travaille sur
+ * `state.base` — on lui prête donc chaque camp à son tour, et l'on rend le
+ * regard là où il était.
+ */
+export function tickCamps(state, log, ctx) {
+  const camps = campsDe(state);
+  if (camps.length <= 1) return tickBase(state, log, ctx);
+  const habite = state.base;
+  let sien = null;
+  for (const c of camps) {
+    state.base = c;
+    const r = tickBase(state, log, ctx);
+    if (c === habite) sien = r;
+  }
+  state.base = habite;
+  return sien;
+}
+
 export function tickBase(state, log, ctx) {
   const base = state.base;
   if (!base.fonde) return null;
