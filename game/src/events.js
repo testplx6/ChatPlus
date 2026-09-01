@@ -1,5 +1,6 @@
 import { gagner, regler, soldeIci, signeIci, monnaieIci } from './monnaie.js';
 import { commettre } from './faits.js';
+import { lieePar } from './pactes.js';
 // Journal de bord et rencontres. Tout se résout automatiquement selon la
 // posture et les consignes de l'escouade : c'est ce qui permet à la simulation
 // de tourner pendant que le joueur est hors ligne.
@@ -449,6 +450,27 @@ function perdreCombat(state, bande, log, ctx, lieu, g) {
 // Table de rencontres
 // ---------------------------------------------------------------------------
 
+/**
+ * Passe-t-on le barrage sans payer, et à quel titre ?
+ *
+ * Deux raisons, et elles se valent au poste de garde : on sert ce drapeau —
+ * les siens ne rançonnent pas les leurs, dès le grade d'Agent —, ou l'on a
+ * donné et reçu sa parole là-dessus. « Laisser passer » se signait depuis deux
+ * semaines et ne faisait rien : la clause était une ligne dans un contrat que
+ * personne ne lisait à la barrière.
+ *
+ * Rend `'service'`, `'pacte'`, ou `null` — le motif change ce que le garde
+ * dit, et c'est tout ce qui les distingue.
+ */
+export function laissePasser(state, g, f) {
+  if (!f || f === 'bandits') return null;
+  const grade = g && g.allegeance && g.allegeance.faction === f ? rangDe(g.allegeance) : null;
+  if (grade && grade.index >= 1) return 'service';
+  const mien = state.player && state.player.drapeau;
+  if (mien && lieePar(state.world, mien, f, 'passage')) return 'pacte';
+  return null;
+}
+
 export function bandeLocale(state, ctx, groupe) {
   const rng = ctx.rng;
   const g = groupe || groupeActif(state);
@@ -721,12 +743,14 @@ export function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
     case 'peage': {
       const f = r.controle || 'bandits';
       const taxe = rng.irange(40, 220);
-      // Les siens ne rançonnent pas les leurs, dès le grade d'Agent.
-      const monGrade = g.allegeance && g.allegeance.faction === f ? rangDe(g.allegeance) : null;
-      if (monGrade && monGrade.index >= 1) {
+      const franchise = laissePasser(state, g, f);
+      if (franchise) {
         log({
           type: 'peage',
-          texte: `Barrage ${drapeauDe(state.world, f).genitif} : on vous reconnaît, on vous laisse passer.`,
+          texte: franchise === 'pacte'
+            ? `Barrage ${drapeauDe(state.world, f).genitif} : le laissez-passer est en règle. `
+              + 'On vous ouvre la barrière sans un mot.'
+            : `Barrage ${drapeauDe(state.world, f).genitif} : on vous reconnaît, on vous laisse passer.`,
           regionId,
           discret: true,
         });

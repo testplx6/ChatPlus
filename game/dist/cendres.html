@@ -9396,14 +9396,45 @@ function observer(state, prixDe) {
   // -même que par tranches de trois (voir PAS_COLONIE), donc relever plus
   // souvent ne relève rien de neuf — et balayer la carte à chaque tick coûtait
   // un cinquième du budget pour ça.
+  // Et ce qu'un allié partage. « Partager ce qu'on sait » se signait depuis
+  // deux semaines et ne faisait rien : une promesse qui n'engage à rien est
+  // pire que pas de promesse — elle apprend au joueur que la parole donnée est
+  // un décor. Ce que l'allié voit de chez lui, c'est ses villes : elles
+  // entrent au carnet comme si l'on avait un contremaître dans chacune.
+  //
+  // Le monde n'a pas à savoir qui joue (règle d'or) : c'est le carnet du
+  // joueur qui va chercher le pacte, pas le pacte qui vient remplir le carnet.
+  const partagent = new Set();
+  if (state.player && state.player.drapeau) {
+    for (const p of pactesDe(state.world, state.player.drapeau)) {
+      if (!p.clauses.includes('vue')) continue;
+      partagent.add(p.a === state.player.drapeau ? p.b : p.a);
+    }
+  }
+
   if (t % 3 === 0) {
     for (const col of state.world.colonies) {
       if (col.ruine) continue;
+      if (partagent.has(col.faction)) {
+        c.colonies[col.id] = releverColonie(col, t,
+          prixDe ? prixDe(col, state.world) : null);
+        c.regions[col.regionId] = releverRegion(state.world.regions[col.regionId], t);
+        continue;
+      }
       const cm = notable(col, 'contremaitre');
       if (cm && (cm.opinion || 0) >= REGISTRES_SEUIL) {
         c.colonies[col.id] = releverColonie(col, t,
           prixDe ? prixDe(col, state.world) : null);
       }
+    }
+  }
+
+  // Les colonnes que l'allié croise chez lui : ce qui passe sur ses terres, il
+  // le voit, et il le dit. C'est la moitié militaire de la même promesse.
+  if (partagent.size) {
+    for (const a of state.world.armees || []) {
+      const r = state.world.regions[a.regionId];
+      if (r && partagent.has(r.controle)) c.armees[a.id] = releverArmee(a, t);
     }
   }
   c.maj = t;
@@ -25345,6 +25376,27 @@ function perdreCombat(state, bande, log, ctx, lieu, g) {
 // Table de rencontres
 // ---------------------------------------------------------------------------
 
+/**
+ * Passe-t-on le barrage sans payer, et à quel titre ?
+ *
+ * Deux raisons, et elles se valent au poste de garde : on sert ce drapeau —
+ * les siens ne rançonnent pas les leurs, dès le grade d'Agent —, ou l'on a
+ * donné et reçu sa parole là-dessus. « Laisser passer » se signait depuis deux
+ * semaines et ne faisait rien : la clause était une ligne dans un contrat que
+ * personne ne lisait à la barrière.
+ *
+ * Rend `'service'`, `'pacte'`, ou `null` — le motif change ce que le garde
+ * dit, et c'est tout ce qui les distingue.
+ */
+function laissePasser(state, g, f) {
+  if (!f || f === 'bandits') return null;
+  const grade = g && g.allegeance && g.allegeance.faction === f ? rangDe(g.allegeance) : null;
+  if (grade && grade.index >= 1) return 'service';
+  const mien = state.player && state.player.drapeau;
+  if (mien && lieePar(state.world, mien, f, 'passage')) return 'pacte';
+  return null;
+}
+
 function bandeLocale(state, ctx, groupe) {
   const rng = ctx.rng;
   const g = groupe || groupeActif(state);
@@ -25617,12 +25669,14 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
     case 'peage': {
       const f = r.controle || 'bandits';
       const taxe = rng.irange(40, 220);
-      // Les siens ne rançonnent pas les leurs, dès le grade d'Agent.
-      const monGrade = g.allegeance && g.allegeance.faction === f ? rangDe(g.allegeance) : null;
-      if (monGrade && monGrade.index >= 1) {
+      const franchise = laissePasser(state, g, f);
+      if (franchise) {
         log({
           type: 'peage',
-          texte: `Barrage ${drapeauDe(state.world, f).genitif} : on vous reconnaît, on vous laisse passer.`,
+          texte: franchise === 'pacte'
+            ? `Barrage ${drapeauDe(state.world, f).genitif} : le laissez-passer est en règle. `
+              + 'On vous ouvre la barrière sans un mot.'
+            : `Barrage ${drapeauDe(state.world, f).genitif} : on vous reconnaît, on vous laisse passer.`,
           regionId,
           discret: true,
         });

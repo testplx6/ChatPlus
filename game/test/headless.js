@@ -68,6 +68,7 @@ import { primeLivraison, prixEsclave } from '../src/justice.js';
 import { attaquerVille, RAID_VILLE, livrerPlace, raserPlace } from '../src/assaut.js';
 import { estAssiegee, vivresCoupees, negoceCoupe } from '../src/world.js';
 import { fonderDrapeau } from '../src/factions.js';
+import { laissePasser } from '../src/events.js';
 import {
   CLAUSES, proposerPacte, pacteEntre, romprePacte, appelerSecours,
 } from '../src/pactes.js';
@@ -14310,6 +14311,84 @@ section('PAC 3. Le monde s’en sert (PACTES.md, P3)');
     const p5 = (s5p.world.pactes || []).filter((p) => p.rompu === undefined);
     ok(p5.length === 0, 'entre gens qui se haïssent, aucune parole n’est donnée',
       `${p5.length} pacte(s)`);
+  }
+}
+
+
+// ===========================================================================
+section('PAC 4. Les clauses muettes prennent la parole (PACTES.md)');
+// « Partager ce qu'on sait » et « laisser passer » se signaient et ne faisaient
+// rien : ni la connaissance ni le déplacement ne les lisaient. Une promesse qui
+// n'engage à rien est pire que pas de promesse — elle apprend au joueur que la
+// parole donnée est un décor.
+{
+  const rienV = () => {};
+
+  // --- « Partager ce qu'on sait » : les villes de l'allié entrent au carnet,
+  //     fraîches, sans qu'on ait à y aller.
+  {
+    const sv = nouvellePartie(8801, { maintenant: 0, depart: 'ville', equipe: 3 });
+    for (let i = 0; i < 60; i++) tick(sv);
+    // Un camp : on ne plante pas un drapeau sur rien. On paie de vrais
+    // matériaux — le décor ne triche pas sur ce que ça coûte.
+    Object.assign(groupeActif(sv).inventaire, { ferraille: 200, polymere: 80, composant: 12 });
+    // Et sur une case libre : on ne bâtit pas dans une ville qui existe déjà.
+    const libreV = sv.world.regions.find((r) => !r.colonie && r.biome !== 'relais');
+    groupeActif(sv).regionId = libreV.i;
+    const fondV = fonderBase(sv, rienV);
+    ok(fondV.ok || sv.base.fonde, 'le décor : un camp est planté', fondV.motif || 'fondé');
+    const mien = fonderDrapeau(sv, 'Les Nôtres', rienV);
+    ok(mien.ok, 'le décor : on a un drapeau à soi', mien.motif || mien.cle);
+    const ami = clesDe(sv.world).find((k) => k !== 'essaim' && k !== mien.cle
+      && sv.world.factions[k] && sv.world.factions[k].colonies.length >= 2);
+    // Une ville de l'allié, choisie LOIN de nous : si on la voyait déjà, la
+    // sonde naîtrait verte et ne prouverait rien.
+    const nous = groupeActif(sv).regionId;
+    const villes = sv.world.colonies.filter((c) => c.faction === ami && !c.ruine)
+      .sort((a, b) => distance(b.regionId, nous) - distance(a.regionId, nous));
+    const loin = villes[0];
+    ok(!!loin && distance(loin.regionId, nous) > 6,
+      'et une ville alliée hors de vue', loin ? `${loin.nom} à ${distance(loin.regionId, nous)}` : '—');
+    ok(vueColonie(sv, loin).inconnu, 'qu’on ne connaît pas encore');
+
+    sv.world.factions[ami].relations[mien.cle] = 80;
+    sv.world.factions[mien.cle].relations[ami] = 80;
+    const r = proposerPacte(sv, mien.cle, ami, ['vue'], rienV);
+    ok(r.ok, 'on signe le partage de ce qu’on sait', r.motif || 'signé');
+    for (let i = 0; i < 6; i++) tick(sv);
+    const vu = vueColonie(sv, loin);
+    ok(!vu.inconnu, 'et la ville alliée entre au carnet sans qu’on y soit allé',
+      vu.inconnu ? 'toujours inconnue' : `${vu.nom}, relevé de ${vu.depuis} h`);
+
+    // La contre-épreuve : la clause rompue, le carnet cesse de se rafraîchir.
+    const avant = sv.connaissance.colonies[loin.id].t;
+    romprePacte(sv, mien.cle, ami, rienV);
+    for (let i = 0; i < 12; i++) tick(sv);
+    ok(sv.connaissance.colonies[loin.id].t === avant,
+      'parole reprise, registres refermés : le relevé ne bouge plus',
+      `${avant} → ${sv.connaissance.colonies[loin.id].t}`);
+
+    // --- « Laisser passer » : la barrière s'ouvre sans qu'on paie. Le péage
+    //     existait déjà (40 à 220 crédits), et il ne connaissait qu'une
+    //     dispense : servir le drapeau qui le tient. Une parole donnée en vaut
+    //     une autre au poste de garde.
+    const gv = groupeActif(sv);
+    ok(laissePasser(sv, gv, ami) === null,
+      'sans rien avoir promis, on paie le péage comme tout le monde',
+      String(laissePasser(sv, gv, ami)));
+    const rp = proposerPacte(sv, mien.cle, ami, ['passage'], rienV);
+    ok(rp.ok, 'on signe le laissez-passer', rp.motif || 'signé');
+    ok(laissePasser(sv, gv, ami) === 'pacte',
+      'et la barrière s’ouvre : le laissez-passer est en règle',
+      String(laissePasser(sv, gv, ami)));
+    romprePacte(sv, mien.cle, ami, rienV);
+    ok(laissePasser(sv, gv, ami) === null,
+      'parole reprise, la barrière retombe',
+      String(laissePasser(sv, gv, ami)));
+
+    // Et ce qui existait avant ne bouge pas : servir un drapeau ouvre toujours
+    // ses barrages, pacte ou pas.
+    ok(laissePasser(sv, gv, 'bandits') === null, 'un barrage de bandits ne se négocie pas');
   }
 }
 

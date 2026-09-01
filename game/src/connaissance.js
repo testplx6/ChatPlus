@@ -17,6 +17,7 @@ import { groupes } from './groupes.js';
 import { estVivant } from './characters.js';
 import { rangDe } from './allegeance.js';
 import { REGISTRES_SEUIL } from './services.js';
+import { pactesDe } from './pactes.js';
 import { notable } from './notables.js';
 // Les canaux et le voyage des nouvelles vivent dans faits.js (ordre des
 // modules : la porte des faits est citée bien avant la connaissance) — on les
@@ -146,14 +147,45 @@ export function observer(state, prixDe) {
   // -même que par tranches de trois (voir PAS_COLONIE), donc relever plus
   // souvent ne relève rien de neuf — et balayer la carte à chaque tick coûtait
   // un cinquième du budget pour ça.
+  // Et ce qu'un allié partage. « Partager ce qu'on sait » se signait depuis
+  // deux semaines et ne faisait rien : une promesse qui n'engage à rien est
+  // pire que pas de promesse — elle apprend au joueur que la parole donnée est
+  // un décor. Ce que l'allié voit de chez lui, c'est ses villes : elles
+  // entrent au carnet comme si l'on avait un contremaître dans chacune.
+  //
+  // Le monde n'a pas à savoir qui joue (règle d'or) : c'est le carnet du
+  // joueur qui va chercher le pacte, pas le pacte qui vient remplir le carnet.
+  const partagent = new Set();
+  if (state.player && state.player.drapeau) {
+    for (const p of pactesDe(state.world, state.player.drapeau)) {
+      if (!p.clauses.includes('vue')) continue;
+      partagent.add(p.a === state.player.drapeau ? p.b : p.a);
+    }
+  }
+
   if (t % 3 === 0) {
     for (const col of state.world.colonies) {
       if (col.ruine) continue;
+      if (partagent.has(col.faction)) {
+        c.colonies[col.id] = releverColonie(col, t,
+          prixDe ? prixDe(col, state.world) : null);
+        c.regions[col.regionId] = releverRegion(state.world.regions[col.regionId], t);
+        continue;
+      }
       const cm = notable(col, 'contremaitre');
       if (cm && (cm.opinion || 0) >= REGISTRES_SEUIL) {
         c.colonies[col.id] = releverColonie(col, t,
           prixDe ? prixDe(col, state.world) : null);
       }
+    }
+  }
+
+  // Les colonnes que l'allié croise chez lui : ce qui passe sur ses terres, il
+  // le voit, et il le dit. C'est la moitié militaire de la même promesse.
+  if (partagent.size) {
+    for (const a of state.world.armees || []) {
+      const r = state.world.regions[a.regionId];
+      if (r && partagent.has(r.controle)) c.armees[a.id] = releverArmee(a, t);
     }
   }
   c.maj = t;

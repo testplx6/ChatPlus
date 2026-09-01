@@ -200,8 +200,25 @@ peut ; ce qu'elle subit, il le subit.
   par le propriétaire (« on va augmenter la tolérance pour le moment et passer
   à la suite »), la décision et son motif sont dans `CIBLES.json`.
 
-  **Ce qui reste du chantier** : les clauses `passage` et `vue` se signent mais
-  ne font rien — ni le déplacement ni la connaissance ne les lisent.
+  **Les cinq clauses mordent (septembre 2026).** `passage` et `vue` se signaient
+  depuis deux semaines sans rien engager — une promesse qui n'engage à rien est
+  pire que pas de promesse : elle apprend au joueur que la parole donnée est un
+  décor. Elles sont câblées là où le monde les attendait déjà, sans qu'une règle
+  nouvelle soit écrite :
+
+  - **`vue`** — les villes de l'allié entrent au carnet comme si l'on avait un
+    contremaître dans chacune, et les colonnes qui passent sur ses terres sont
+    relevées. C'est le carnet du joueur qui va chercher le pacte, jamais le
+    monde qui vient le remplir : la règle d'or tient.
+  - **`passage`** — le péage existait (40 à 220 crédits) et ne connaissait
+    qu'une dispense, servir le drapeau qui tient la barrière. Une parole donnée
+    en vaut une autre au poste de garde. La décision est sortie du corps de la
+    rencontre : `laissePasser(state, groupe, faction)` rend `'service'`,
+    `'pacte'` ou `null`, et le garde ne dit pas la même chose dans les deux
+    premiers cas.
+
+  Les deux ont leur contre-épreuve : parole reprise, les registres se referment
+  et la barrière retombe.
 
   Ce qui bloque est ailleurs : le monde que P3 produit est plus grand — neuf
   drapeaux vivants par partie au lieu de sept, et dix villes de plus — et le
