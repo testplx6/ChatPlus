@@ -537,6 +537,38 @@ pour que la logistique se délègue au lieu de se marcher). Décision au
 propriétaire, toujours : rien n'est réglé, `ESTIME_CONTRAT` garde ses valeurs
 d'origine.
 
+**Instruction 3 — le propriétaire a joué, et l'instrument est en cause
+(septembre 2026).** Mis devant les quatre options ci-dessus, sa réponse a
+fermé le dossier autrement : *« Je comprends pas le problème, moi j'arrive
+très facilement à atteindre le grade. »*
+
+Elle vaut mieux que toutes les mesures précédentes, et elle les réfute : si un
+joueur y arrive facilement, alors le banc ne mesure pas la voie du service, il
+mesure **un bot qui ne sait pas la jouer**. Un thermomètre faux est pire que
+pas de thermomètre — deux chantiers (le tarif, la navette) allaient être
+décidés sur ses chiffres. METHODE §12, à son degré le plus fort : la mesure
+ment aussi, et ce jour-là c'est l'instrument qui mentait.
+
+*Une hypothèse essayée, et réfutée par la mesure* : le penchant « on fait ses
+courses chez celui qu'on sert » n'existait que l'engagement signé, jamais
+pendant qu'on courtise — le bot allait donc manger et vendre au hasard de la
+carte et ne voyait presque jamais les panneaux de ceux qu'il visait. Étendu au
+drapeau courtisé pour les deux profils de carrière : **sans effet** (ASSIDU
+17/30 sans engagement contre 19, motifs de départ inchangés ; CARRIERE
+identique au témoin joué le même jour, au contrat près). Le correctif a été
+retiré — un changement d'instrument que la mesure ne montre pas ne se garde
+pas, il déplace le témoin historique pour rien.
+
+*Et le constat d'août est partiellement périmé*, ce que personne n'avait
+revérifié : le profil CARRIERE d'aujourd'hui atteint **Commandeur 2 et
+Maréchal 1** sur trente parties, là où l'instruction d'août lisait « tous les
+drapeaux hors d'atteinte ». Le monde a rebougé entre-temps (économie,
+investissement des conseils), dans le bon sens cette fois.
+
+**Ce qui reste à faire, et qui ne se devine pas** : apprendre au bot ce que le
+propriétaire fait et que personne n'a écrit. Tant qu'on ne le sait pas, aucun
+réglage de cette famille ne doit être touché — et aucun ne l'a été.
+
 ~~**Dette de mesure — le temps de rachat du pillard**~~ — **soldée**
 (août 2026). Le banc a son profil repenti (`REPENTIR=2000` dans
 test/equilibre.js : pillard jusqu'à l'heure dite, bot ordinaire
