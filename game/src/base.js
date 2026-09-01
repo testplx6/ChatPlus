@@ -839,8 +839,10 @@ export const GAIN_ECOUTE = 0.33;
  * et de rendre deux nombres différents. **Un paramètre qu'on peut omettre finit
  * par l'être** — c'est la deuxième fois dans ce fichier, après `arriver()`.
  */
-export function capaciteStock(state) {
-  const base = state.base;
+export function capaciteStock(state, camp = null) {
+  // Le camp en argument : depuis M4 on en tient plusieurs, et l'écran doit
+  // pouvoir dire l'entrepôt de celui qu'on n'habite pas.
+  const base = camp || state.base;
   const m = 1 + affectes(base, 'magasinier', state) * METIERS.magasinier.apport;
   return Math.round((800 + niveau(base, 'entrepot') * 800) * m);
 }

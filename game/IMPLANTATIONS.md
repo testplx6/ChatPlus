@@ -304,9 +304,20 @@ qui s'y trouve, s'il y en a un des vôtres :
 Le comptoir, lui, n'avait pas à bouger : on passe un ordre depuis le comptoir
 devant lequel on se tient, ce qui est déjà juste.
 
-**Ce qui reste de M4** : ce que le rendu montre d'un camp qu'on n'habite pas —
-aujourd'hui son nom, sa population et sa distance, pas son entrepôt ni ce qui
-lui manque.
+**M4d — ce qu'on voit d'un camp qu'on n'habite pas. ✅ Livré (septembre 2026).**
+
+Le sélecteur donnait le nom, la population et la distance. On ne va pas voir un
+camp pour lire son nom : la ligne porte maintenant les trois nombres qui
+décident d'y retourner — combien de gens, **combien de jours de vivres devant
+eux**, et si l'entrepôt déborde. Les vivres se comptent avec la règle du tick du
+camp, cantine comprise, et non avec un chiffre réinventé pour l'écran : un écran
+qui invente sa propre arithmétique ment tôt ou tard.
+
+Le seuil de couleur est celui du reste du jeu : rouge sous trois jours, ambre
+sous huit.
+
+**M4 est complet** : la structure, le sélecteur, les effets qui valent pour
+chacun des camps, et ce qu'on en voit de loin.
 
 ## 5. Ce qui reste à trancher avant d'écrire M1
 

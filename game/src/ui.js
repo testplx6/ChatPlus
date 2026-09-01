@@ -4317,6 +4317,33 @@ function ecranBase() {
 
   // Vos camps (M4). Un camp qu'on ne peut pas choisir n'existe pas : la liste
   // n'apparaît qu'à partir du second, sinon elle ne dit rien qu'on ne sache.
+  //
+  // Et ce qu'elle en dit, ce sont les trois nombres qui décident d'y retourner :
+  // combien de gens, combien de jours devant eux, et si l'entrepôt déborde. Le
+  // nom seul ne dit rien — on ne va pas voir un camp pour lire son nom.
+  const etatCamp = (c, loin) => {
+    const gens = Math.round(c.pop || 0);
+    const rations = Math.round(c.stock.rations || 0);
+    // La même règle que le tick du camp (`base.js`) : chaque habitant mange
+    // 0,014 ration par heure, la cantine en économisant jusqu'à un tiers. On ne
+    // recopie pas le chiffre par confort — c'est le seul endroit d'où il vient,
+    // et l'écran ment s'il en invente un autre.
+    const cantine = nivBat(c, 'cantine');
+    const eco = cantine > 0 ? 1 - Math.min(0.33, cantine * 0.055) : 1;
+    const parJour = Math.max(0.001, gens * 0.014 * eco * 24);
+    const jours = rations / parJour;
+    const capa = capaciteStock(S, c);
+    const plein = totalStock(c) / Math.max(1, capa);
+    const bouts = [`${n(gens)} habitant${gens > 1 ? 's' : ''}`];
+    if (gens > 0) {
+      bouts.push(`<span class="${jours < 3 ? 'alerte' : jours < 8 ? 'retenue' : ''}">${
+        jours < 10 ? jours.toFixed(1).replace('.', ',') : Math.round(jours)} j de vivres</span>`);
+    }
+    if (plein > 0.9) bouts.push('<span class="retenue">entrepôt plein</span>');
+    bouts.push(loin === 0 ? 'vous y êtes'
+      : loin != null ? `à ${loin} case${loin > 1 ? 's' : ''}` : '');
+    return bouts.filter(Boolean).join(' · ');
+  };
   const camps = S.camps || [];
   const rIci = S.world.regions[G().regionId];
   const peutPlanter = !rIci.colonie && !camps.some((c) => c.fonde && c.regionId === G().regionId)
@@ -4331,10 +4358,7 @@ function ecranBase() {
     return `<button class="act ${ici ? '' : 'mini'}" data-a="camp" data-i="${i}"
         aria-pressed="${ici}" ${ici ? 'disabled' : ''}>
         ${e(c.nom || 'Camp sans nom')}
-        <span class="fait">${c.fonde
-      ? `${n(Math.round(c.pop || 0))} habitant${(c.pop || 0) > 1 ? 's' : ''}`
-        + `${loin === 0 ? ' · vous y êtes' : loin != null ? ` · à ${loin} case${loin > 1 ? 's' : ''}` : ''}`
-      : 'pas encore planté'}</span>
+        <span class="fait">${c.fonde ? etatCamp(c, loin) : 'pas encore planté'}</span>
       </button>`;
   }).join('')}
       ${peutPlanter ? `<button class="act primaire" data-a="fonder">
