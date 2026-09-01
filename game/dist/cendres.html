@@ -1813,6 +1813,7 @@ const tenusMetiers = tenus;
 const progresContrat = progres;
 const creditInfluence = credit;
 const toucherRationsA = toucherRations;
+const changerDeCampA = changerDeCamp;
 const honorerService = honorer;
 const changerA = changer;
 const louerCoffreA = louerCoffre;
@@ -33477,6 +33478,35 @@ function ecranBase() {
   const stock = totalStock(b);
   const capa = capaciteStock(S);
 
+  // Vos camps (M4). Un camp qu'on ne peut pas choisir n'existe pas : la liste
+  // n'apparaît qu'à partir du second, sinon elle ne dit rien qu'on ne sache.
+  const camps = S.camps || [];
+  const rIci = S.world.regions[G().regionId];
+  const peutPlanter = !rIci.colonie && !camps.some((c) => c.fonde && c.regionId === G().regionId)
+    && Object.keys(COUT_FONDATION).every((k) => (G().inventaire[k] || 0) >= COUT_FONDATION[k]);
+  const campsHtml = camps.length > 1 || peutPlanter ? `<section class="panneau pliable">
+    <h2 class="titre">Vos camps <span class="droite">${camps.filter((c) => c.fonde).length}</span></h2>
+    <div class="pile">
+      ${camps.map((c, i) => {
+    const ici = i === (S.campActif || 0);
+    const loin = c.fonde && c.regionId != null
+      ? distance(c.regionId, G().regionId) : null;
+    return `<button class="act ${ici ? '' : 'mini'}" data-a="camp" data-i="${i}"
+        aria-pressed="${ici}" ${ici ? 'disabled' : ''}>
+        ${e(c.nom || 'Camp sans nom')}
+        <span class="fait">${c.fonde
+      ? `${n(Math.round(c.pop || 0))} habitant${(c.pop || 0) > 1 ? 's' : ''}`
+        + `${loin === 0 ? ' · vous y êtes' : loin != null ? ` · à ${loin} case${loin > 1 ? 's' : ''}` : ''}`
+      : 'pas encore planté'}</span>
+      </button>`;
+  }).join('')}
+      ${peutPlanter ? `<button class="act primaire" data-a="fonder">
+        Planter un camp de plus, ici</button>` : ''}
+    </div>
+    <div class="aide">On en tient autant qu’on veut. Celui qu’on quitte continue de
+    vivre — ses gens mangent, ses chaînes tournent, son entrepôt se remplit.</div>
+  </section>` : '';
+
   // Ce qui marche sur vous, en tête d'écran et pas au fond du journal.
   const menaces = menacesSurLaBase(S);
   const menaceHtml = menaces.length ? `<section class="panneau urgent">
@@ -33673,6 +33703,7 @@ function ecranBase() {
   ${siegeHtml}
   ${vigieHtml}
   ${menaceHtml}
+  ${campsHtml}
   ${bandeauEcran(b.nom, [
     [n(Math.round(b.pop || 0)), 'habitants'],
     [n(b.defense), 'défense'],
@@ -36382,6 +36413,15 @@ function surClic(ev) {
 
     // --- Groupes ----------------------------------------------------------
 
+    // Habiter un autre camp (M4). Le rendu suit tout seul : `S.base` est une
+    // référence, et l'écran lit `S.base`.
+    case 'camp': {
+      const r = ACTIONS.changerDeCamp(Number(el.dataset.i));
+      if (!r.ok) replique(r.motif);
+      else replique(`Vous êtes à ${r.camp.nom || 'votre camp'}.`);
+      break;
+    }
+
     case 'groupe':
       ACTIONS.choisirGroupe(el.dataset.k);
       selection = G().regionId;
@@ -37904,6 +37944,13 @@ const API = {
   accorderCredit(faction, colId, montant) {
     const r = accorderCreditA(state, faction, colId, montant, creerLogger(state));
     if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Habiter un autre camp (M4, IMPLANTATIONS.md). */
+  changerDeCamp(i) {
+    const r = changerDeCampA(state, i);
+    if (r.ok) sauver();
     return r;
   },
 

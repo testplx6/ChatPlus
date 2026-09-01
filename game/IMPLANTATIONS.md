@@ -274,9 +274,22 @@ Trois pièges, tous rencontrés :
 La migration est en place : une partie d'avant ce lot voit son camp entrer dans
 la liste, et rien d'autre ne change pour elle.
 
-**Ce qui reste** : le sélecteur dans l'interface — un camp qu'on ne peut pas
-choisir n'existe pas —, ce que le rendu montre du camp qu'on n'habite pas, et
-les ordres qui visent un camp précis (ravitailler, rentrer).
+**M4b — le sélecteur. ✅ Livré (septembre 2026).**
+
+Un camp qu'on ne peut pas choisir n'existe pas. L'écran du camp porte en tête
+« Vos camps » — un bouton par camp, celui qu'on habite marqué et désactivé, avec
+ce qui le distingue : ses habitants, et à combien de cases il est. La liste
+n'apparaît qu'à partir du second, ou quand on se tient sur une case où l'on
+pourrait en planter un : avant ça, elle ne dirait rien qu'on ne sache.
+
+Et le bouton qui manquait : **« Planter un camp de plus, ici »**, actif quand la
+case est libre, qu'aucun des vôtres n'y est déjà, et que le sac porte de quoi.
+Il n'y avait aucun chemin vers un second camp — la fondation n'apparaissait que
+sur l'écran « Aucun avant-poste », qu'on ne revoyait jamais.
+
+**Ce qui reste** : ce que le rendu montre du camp qu'on n'habite pas (aujourd'hui
+on n'en voit que le nom, la population et la distance), et les ordres qui visent
+un camp précis — ravitailler celui-là, rentrer à celui-ci.
 
 ## 5. Ce qui reste à trancher avant d'écrire M1
 

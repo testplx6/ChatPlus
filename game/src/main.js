@@ -25,6 +25,7 @@ import { genererBande, TACTIQUES } from './combat.js';
 import { groupeActif, tousLesMembres, scinder, fusionner, choisirGroupe, assignerTache } from './groupes.js';
 import {
   reconnaitreAvantPoste, peutReconnaitre, rattacherVille,
+  changerDeCamp as changerDeCampA,
   declarerIndependance, reglerRecette, reglerReserve,
   negocierSiege, sortieContreSiege, evacuerCamp,
 } from './base.js';
@@ -682,6 +683,13 @@ const API = {
   accorderCredit(faction, colId, montant) {
     const r = accorderCreditA(state, faction, colId, montant, creerLogger(state));
     if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Habiter un autre camp (M4, IMPLANTATIONS.md). */
+  changerDeCamp(i) {
+    const r = changerDeCampA(state, i);
+    if (r.ok) sauver();
     return r;
   },
 
