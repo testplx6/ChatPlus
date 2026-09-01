@@ -478,6 +478,14 @@ export function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEs
     pour: 'joueur',
     sens,
     versBase: sens === 'achat',
+    // L'ADRESSE, et non « le camp sous les yeux ».
+    //
+    // Depuis les camps multiples (IMPLANTATIONS.md, M4), `state.base` est une
+    // référence mouvante : celui qu'on habite. `arriver` y rangeait la
+    // cargaison, si bien qu'un convoi commandé chez soi puis attendu ailleurs
+    // suivait le regard du joueur au lieu d'aller à son adresse. Une case ne
+    // bouge pas : c'est elle, l'adresse d'un camp.
+    versRegion: base.regionId,
     paiement: sens === 'vente' ? devis.total : 0,
     // Le camp n'a pas besoin d'être une ville inscrite : `versBase` suffit à dire
     // où va le convoi, et `destinationTenable` le sait. On garde l'identifiant
@@ -655,6 +663,83 @@ export function passerOrdreGages(state, deId, versId, key, qte, escorteId, rng, 
   return { ok: true, caravane: car, qte: n, achat, vente, gages, frais: fraisEscorte, de: a, vers: b };
 }
 
+/**
+ * Porter d'un de vos camps à un autre, à gages (CONVOI.md).
+ *
+ * Question du propriétaire, en jouant : « mais si je transporte des matériaux
+ * entre mes bases, comment ça se passe ? » — il ne se passait rien. On pouvait
+ * planter autant de camps qu'on voulait (M4) et chacun vivait sur son propre
+ * entrepôt ; le seul transport possible était le sac de l'escouade.
+ *
+ * Aucune règle neuve : ce sont les mêmes gens qu'on paie à la course, la même
+ * charrette, la même escorte et la même route que le convoi à gages. Ce qui
+ * change est qu'il n'y a rien à acheter ni à vendre — la marchandise est déjà à
+ * vous — donc on ne paie que les bras.
+ */
+export function passerOrdreCamps(state, deRegion, versRegion, key, qte, escorteId, rng, log) {
+  const camps = Array.isArray(state.camps) && state.camps.length
+    ? state.camps : [state.base].filter(Boolean);
+  const a = camps.find((c) => c && c.fonde && c.regionId === deRegion);
+  const b = camps.find((c) => c && c.fonde && c.regionId === versRegion);
+  if (!a || !b) return { ok: false, motif: 'Il faut deux camps à vous, tous les deux debout.' };
+  if (a === b) return { ok: false, motif: 'Ce camp est déjà là où il est.' };
+  if (!COMMODITIES[key]) return { ok: false, motif: 'Cette matière n’existe pas.' };
+
+  const n = Math.min(Math.floor(qte), GAGES.charge, Math.floor(a.stock[key] || 0));
+  if (n <= 0) return { ok: false, motif: `${a.nom || 'Le camp'} n’a pas cela en magasin.` };
+
+  const route = chemin(state.world, a.regionId, b.regionId);
+  if (!route || !route.length) return { ok: false, motif: 'Aucune route entre vos deux camps.' };
+
+  // Les bras se paient à la course, comme partout ailleurs. L'escorte, elle,
+  // se chiffre sur ce que vaut la cargaison : c'est ce qu'on risque de perdre.
+  const gages = Math.round(GAGES.socle + distance(a.regionId, b.regionId) * GAGES.parRegion);
+  const esc = ESCORTES.find((x) => x.id === escorteId) || ESCORTES[0];
+  const fret = !!avantage(state, 'fret');
+  const valeur = Math.round(COMMODITIES[key].prix * n);
+  const fraisEscorte = fret ? 0 : Math.round(valeur * esc.cout);
+  const du = gages + fraisEscorte;
+  if (soldeIci(state) < du) {
+    return { ok: false, motif: `Il manque ${du - soldeIci(state)} ${signeIci(state)}.` };
+  }
+  regler(state, du);
+  a.stock[key] = Math.max(0, (a.stock[key] || 0) - n);
+
+  const car = {
+    id: idDepuisRng(rng, 'p'),
+    rngEtat: 0,
+    faction: null,
+    pour: 'joueur',
+    sens: 'camps',
+    versBase: true,
+    versRegion: b.regionId,
+    paiement: 0,
+    deId: a.colonieId || null,
+    versId: b.colonieId || null,
+    regionId: a.regionId,
+    route,
+    etape: 0,
+    progres: 0,
+    cargaison: { [key]: n },
+    escorte: esc.force,
+    escorteGroupe: null,
+    depuis: state.temps,
+  };
+  car.rngEtat = grainDe(state.world.graine, 'convoi', car.id);
+  state.world.caravanes.push(car);
+  if (log) {
+    log({
+      type: 'bourse',
+      texte: `Convoi entre vos camps : ${n} ${COMMODITIES[key].nom.toLowerCase()} `
+        + `de ${a.nom || 'votre camp'} vers ${b.nom || 'l’autre'}. `
+        + `${du} ${signeIci(state)} de gages.`,
+      regionId: a.regionId,
+      important: true,
+    });
+  }
+  return { ok: true, caravane: car, qte: n, gages, frais: fraisEscorte, de: a, vers: b };
+}
+
 /** Vos convois en cours, pour les suivre. */
 export function ordresEnCours(state) {
   return (state.world.caravanes || []).filter((c) => c.pour === 'joueur');
@@ -706,15 +791,24 @@ function arriver(state, car, log) {
   // dans son entrepôt, ou il rapporte ce qu'on lui devait.
   if (car.pour === 'joueur') {
     if (car.versBase) {
+      // Le camp que ce convoi-ci visait, retrouvé par sa case. On lit
+      // `state.camps` à la main plutôt que d'appeler `campsDe` : `base.js`
+      // vient APRÈS ce module dans le bundle, et un module ne cite pas ses
+      // successeurs. Les convois d'avant l'adresse n'ont pas de `versRegion` —
+      // ils retombent sur le camp habité, ce qu'ils ont toujours fait.
+      const camps = Array.isArray(state.camps) && state.camps.length
+        ? state.camps : [state.base];
+      const chez = (car.versRegion != null
+        && camps.find((c) => c && c.fonde && c.regionId === car.versRegion)) || state.base;
       for (const k of Object.keys(car.cargaison)) {
-        state.base.stock[k] = (state.base.stock[k] || 0) + car.cargaison[k];
+        chez.stock[k] = (chez.stock[k] || 0) + car.cargaison[k];
       }
       if (log) {
         log({
           type: 'bourse',
           texte: `Le convoi arrive : ${Object.keys(car.cargaison).map(
             (k) => `${Math.round(car.cargaison[k])} ${COMMODITIES[k].nom.toLowerCase()}`
-          ).join(', ')} dans l’entrepôt.`,
+          ).join(', ')} dans l’entrepôt${chez.nom ? ` de ${chez.nom}` : ''}.`,
           regionId: car.regionId,
           important: true,
         });
@@ -846,9 +940,14 @@ function forceEscorte(state, car) {
 /** Le convoi a-t-il encore quelque part où aller ? */
 function destinationTenable(state, car) {
   if (car.pour === 'joueur') {
-    return car.versBase
-      ? !!(state.base && state.base.fonde)
-      : vivante(colonieParId(state.world, car.versId));
+    if (!car.versBase) return vivante(colonieParId(state.world, car.versId));
+    // Le camp visé tient-il encore ? Un camp abandonné ne reçoit plus rien —
+    // et sans `versRegion` (convois d'avant l'adresse), on s'en remet au camp
+    // habité, comme avant.
+    if (car.versRegion == null) return !!(state.base && state.base.fonde);
+    const camps = Array.isArray(state.camps) && state.camps.length
+      ? state.camps : [state.base];
+    return camps.some((c) => c && c.fonde && c.regionId === car.versRegion);
   }
   return vivante(colonieParId(state.world, car.versId));
 }

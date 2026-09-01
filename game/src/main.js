@@ -15,7 +15,7 @@ import { makeCharacter, estVivant } from './characters.js';
 import { creerLogger, fouillerSite, combatContre } from './events.js';
 import {
   attaquerCaravane, passerOrdre, ordresEnCours, ESCORTES,
-  passerOrdreGages, devisGages, GAGES,
+  passerOrdreGages, passerOrdreCamps, devisGages, GAGES,
 } from './caravanes.js';
 import { attaquerVille, livrerPlace, raserPlace } from './assaut.js';
 import { proposerPacte, romprePacteJoueur } from './pactes.js';
@@ -51,6 +51,7 @@ import {
 } from './influence.js';
 import { disposer, disposerTous } from './justice.js';
 import { carnetPrix } from './connaissance.js';
+import { distance } from './world.js';
 
 let state = null;
 let boucle = null;
@@ -488,6 +489,40 @@ const API = {
     const rng = new Rng(state.rngState);
     const r = passerOrdreGages(
       state, c.deId, c.versId, key, Number(qte), escorte, rng, creerLogger(state));
+    state.rngState = rng.save();
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /**
+   * Vos autres camps, et ce qu'il en coûterait de leur porter le lot choisi.
+   *
+   * Question du propriétaire : « si je transporte des matériaux entre mes
+   * bases, comment ça se passe ? » — il n'y avait rien. Chaque camp vivait sur
+   * son entrepôt, et le seul transport était le sac de l'escouade.
+   */
+  campsJoignables(key, qte) {
+    if (!state || !state.base) return [];
+    const camps = Array.isArray(state.camps) && state.camps.length
+      ? state.camps : [state.base].filter(Boolean);
+    const ici = state.base;
+    const stock = Math.floor(ici.stock[key] || 0);
+    return camps.filter((c) => c && c.fonde && c !== ici).map((c) => ({
+      regionId: c.regionId,
+      nom: c.nom || 'Camp',
+      cases: distance(ici.regionId, c.regionId),
+      gages: Math.round(GAGES.socle + distance(ici.regionId, c.regionId) * GAGES.parRegion),
+      qte: Math.min(Math.floor(qte), GAGES.charge, stock),
+      stock,
+    }));
+  },
+
+  /** Et le convoi lui-même, d'un de vos camps vers un autre. */
+  envoyerAuCamp(versRegion, key, qte, escorte) {
+    if (!state || !state.base) return { ok: false, motif: 'Aucune partie en cours.' };
+    const rng = new Rng(state.rngState);
+    const r = passerOrdreCamps(state, state.base.regionId, Number(versRegion), key,
+      Number(qte), escorte, rng, creerLogger(state));
     state.rngState = rng.save();
     if (r.ok) { sauver(); rafraichir(true); }
     return r;

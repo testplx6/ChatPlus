@@ -85,6 +85,30 @@ sur le premier cinquième d'une partie) :
 Pas de flotte à gérer, pas de contrat de transport pour autrui, pas de
 tarif négocié avec un convoyeur nommé. Un ordre, un convoi, une course payée.
 
+## 7. Entre vos camps — et un défaut né avec eux
+
+**Question du propriétaire, en jouant** : « mais si je transporte des matériaux
+entre mes bases, comment ça se passe ? » — il ne se passait rien. On peut
+planter autant de camps qu'on veut (M4) et chacun vit sur son propre entrepôt ;
+le seul transport était le sac de l'escouade.
+
+Et la question a rendu un défaut que M4 avait laissé derrière lui. `arriver`
+rangeait la cargaison d'un convoi dans `state.base` — c'est-à-dire **le camp
+qu'on habite à l'instant de la livraison**, puisque `state.base` est une
+référence mouvante depuis les camps multiples. On commandait chez soi, on
+allait voir ailleurs, et le convoi suivait le regard : mesuré au test, cent
+rations commandées depuis un camp atterrissaient dans l'autre. Avant M4
+c'était juste ; depuis, un convoi n'avait plus d'adresse.
+
+Une case ne bouge pas : c'est elle, l'adresse d'un camp (`car.versRegion`). Les
+convois d'avant n'en ont pas et retombent sur le camp habité, ce qu'ils ont
+toujours fait.
+
+Le geste lui-même n'ajoute **aucune règle** : mêmes gages à la course, même
+charrette, même escorte, même route, même risque. Il n'y a simplement rien à
+acheter ni à vendre — la marchandise est déjà à vous —, donc on ne paie que les
+bras. À l'écran, le bloc ne paraît qu'à partir du second camp.
+
 ## L'avancement
 
 - [x] Le geste moteur (`passerOrdreGages`), sept tests rouges d'abord —
@@ -105,4 +129,5 @@ tarif négocié avec un convoyeur nommé. Un ordre, un convoi, une course payée
       affiche la course, l'âge du relevé (un écart de trois semaines n'est pas
       un écart, c'est un souvenir), ce qu'on avance et ce qu'on touche. Six
       sondes navigateur.
+- [x] Entre vos camps (§7), et le défaut d'adresse qu'il a rendu
 - [ ] La mesure au banc, aux deux horizons

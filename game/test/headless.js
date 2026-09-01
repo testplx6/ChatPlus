@@ -41,7 +41,7 @@ import { prixCession, effetCession, valeurNette } from '../src/credit.js';
 import { BETES } from '../src/betes.js';
 import {
   attaquerCaravane, passerOrdre, ordresEnCours, ESCORTES,
-  passerOrdreGages, gagesConvoi, GAGES,
+  passerOrdreGages, passerOrdreCamps, gagesConvoi, GAGES,
 } from '../src/caravanes.js';
 import {
   combatContre, fouillerSite, inscrireAuMemorial, creerLogger, solderPrime,
@@ -7125,6 +7125,89 @@ section('9 sexvicies quater. Le comptoir : traiter sans bouger de chez soi');
     ok(Math.abs(apres - avant) < 0.01,
       'une ville qui paie un convoi du joueur retire l’argent de sa masse',
       `écart ${avant.toFixed(2)} → ${apres.toFixed(2)}`);
+  }
+
+  // --- Entre vos camps (CONVOI.md, question du propriétaire) : « mais si je
+  //     transporte des matériaux entre mes bases, comment ça se passe ? »
+  {
+    // Un second camp, planté à la main : le décor du comptoir n'en connaît
+    // qu'un, et c'est justement le sujet.
+    const secondCamp = (st) => {
+      const libre = st.world.regions.find(
+        (r) => !r.colonie && r.biome !== 'relais' && r.i !== st.base.regionId
+          && !(st.camps || []).some((c) => c.fonde && c.regionId === r.i));
+      const camp = {
+        ...st.base,
+        regionId: libre.i,
+        nom: 'Camp du fond',
+        stock: { ferraille: 0, rations: 0 },
+        colonieId: null,
+      };
+      st.camps = [st.base, camp];
+      st.campActif = 0;
+      return camp;
+    };
+
+    // A1. Une livraison va au camp qui l'a commandée, pas à celui qu'on habite
+    //     à l'arrivée. C'est un défaut né avec les camps multiples : `arriver`
+    //     rangeait la cargaison dans `state.base`, c'est-à-dire « le camp sous
+    //     les yeux ». On commandait chez soi, on allait voir ailleurs, et le
+    //     convoi suivait le regard.
+    {
+      const { st, riche } = monteComptoir(2024);
+      semerEstime(st, riche, 80);
+      const loin = secondCamp(st);
+      const chezMoi = st.base;
+      const avantIci = Math.floor(chezMoi.stock.rations || 0);
+      const r = passerOrdre(st, 'achat', 'rations', 100, 'aucune', new Rng(9), () => {}, null);
+      ok(r.ok, 'l’ordre part du camp que l’on habite', r.motif || '');
+      const car = ordresEnCours(st)[0];
+      if (car) car.escorte = 9999;
+      // On déménage pendant que le convoi roule.
+      changerDeCamp(st, 1);
+      for (let i = 0; i < 900 && ordresEnCours(st).length; i++) tick(st);
+      ok(Math.floor(chezMoi.stock.rations || 0) > avantIci,
+        'la cargaison arrive au camp qui l’a commandée',
+        `${avantIci} → ${Math.floor(chezMoi.stock.rations || 0)}`);
+      ok(Math.floor(loin.stock.rations || 0) === 0,
+        'et pas dans celui où l’on se trouve à ce moment-là',
+        `${Math.floor(loin.stock.rations || 0)}`);
+    }
+
+    // A2. Et le geste demandé : porter d'un camp à l'autre, à gages.
+    {
+      const { st, riche } = monteComptoir(2024);
+      semerEstime(st, riche, 80);
+      const loin = secondCamp(st);
+      const chezMoi = st.base;
+      chezMoi.stock.ferraille = 300;
+      const avantCr = soldeIci(st);
+      const r = passerOrdreCamps(st, chezMoi.regionId, loin.regionId, 'ferraille', 80,
+        'aucune', new Rng(9), () => {});
+      ok(r.ok, 'un convoi part d’un camp à l’autre', r.motif || '');
+      ok(Math.round(chezMoi.stock.ferraille) === 220,
+        'la marchandise quitte l’entrepôt de départ tout de suite',
+        `${Math.round(chezMoi.stock.ferraille)}`);
+      ok(soldeIci(st) < avantCr, 'et les gages sont payés d’avance',
+        `${avantCr} → ${soldeIci(st)}`);
+      const car = ordresEnCours(st)[0];
+      if (car) car.escorte = 9999;
+      for (let i = 0; i < 900 && ordresEnCours(st).length; i++) tick(st);
+      ok(Math.round(loin.stock.ferraille || 0) === 80,
+        'et elle arrive dans l’entrepôt de l’autre camp',
+        `${Math.round(loin.stock.ferraille || 0)}`);
+    }
+
+    // A3. On ne s'envoie rien à soi-même.
+    {
+      const { st, riche } = monteComptoir(2024);
+      semerEstime(st, riche, 80);
+      secondCamp(st);
+      st.base.stock.ferraille = 300;
+      const r = passerOrdreCamps(st, st.base.regionId, st.base.regionId, 'ferraille', 50,
+        'aucune', new Rng(9), () => {});
+      ok(!r.ok, 'un camp ne s’envoie pas un convoi à lui-même', r.motif || 'passé !');
+    }
   }
 
   // --- Le convoi à gages (CONVOI.md) : on paie des gens pour aller acheter

@@ -2847,6 +2847,52 @@ console.log('\n8 nonies sexies. Le convoi à gages (CONVOI.md)');
     'la marchandise et les gages sont avancés tout de suite',
     `${avantG.credits} → ${apresG.credits}`);
   ok(/En route/.test(apresG.texte), 'et le convoi se suit à l’écran');
+
+  // Et entre ses propres camps : le bloc ne paraît qu'à partir du second.
+  ok(!/Entre vos camps/.test(texteG),
+    'avec un seul camp, le bloc « entre vos camps » ne paraît pas');
+  const cg2 = deserialiser(await page.evaluate(() => window.__sauvegardeTexte()));
+  const libre = cg2.world.regions.find(
+    (r) => !r.colonie && r.biome !== 'relais' && r.i !== cg2.base.regionId);
+  const second = {
+    ...cg2.base, regionId: libre.i, nom: 'Camp du fond', colonieId: null,
+    stock: { ferraille: 0 },
+  };
+  cg2.camps = [cg2.base, second];
+  cg2.campActif = 0;
+  cg2.base.stock.ferraille = 500;
+  cg2.dernierReel = Date.now();
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(cg2));
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.click('[data-a="onglet"][data-k="base"]');
+  await page.waitForTimeout(400);
+  const texteC = await page.evaluate(() => {
+    const b = document.querySelector('[data-a="ordre-k"][data-k="ferraille"]');
+    if (b) b.click();
+    return document.querySelector('#ecran').textContent;
+  });
+  ok(/Entre vos camps/.test(texteC) && /Camp du fond/.test(texteC),
+    'avec deux camps, l’autre est proposé avec ses gages',
+    texteC.slice(0, 120));
+  await page.evaluate(() => {
+    const b = document.querySelector('[data-a="envoyer-camp"]');
+    if (b) b.scrollIntoView({ block: 'center' });
+  });
+  await page.waitForTimeout(150);
+  await page.click('[data-a="envoyer-camp"]');
+  await page.waitForTimeout(600);
+  const apresC = await page.evaluate(() => {
+    const s = JSON.parse(window.__sauvegardeTexte());
+    return {
+      camps: (s.world.caravanes || []).filter((c) => c.sens === 'camps').length,
+      ici: Math.round((s.camps ? s.camps[0].stock.ferraille : s.base.stock.ferraille) || 0),
+    };
+  });
+  ok(apresC.camps === 1 && apresC.ici < 500,
+    'le convoi entre camps part, et la marchandise quitte l’entrepôt',
+    JSON.stringify(apresC));
 }
 
 console.log('\n8 nonies quater. Le comptoir, à l’écran');

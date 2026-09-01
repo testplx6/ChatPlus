@@ -4331,7 +4331,37 @@ function blocGages(niv) {
       <span class="v ${c.gain > 0 ? 'ok' : 'alerte'}">${c.gain > 0 ? '+' : ''}${
   n(c.gain)} ${sym()}</span></div>
     <button class="act ${c.gain > 0 ? 'primaire' : ''}" style="margin-top:6px"
-      data-a="envoyer-gages">Envoyer le convoi</button>`;
+      data-a="envoyer-gages">Envoyer le convoi</button>
+    ${blocEntreCamps()}`;
+}
+
+/**
+ * Porter d'un de ses camps à un autre (CONVOI.md).
+ *
+ * « Si je transporte des matériaux entre mes bases, comment ça se passe ? » —
+ * il ne se passait rien : chaque camp vivait sur son entrepôt, et le seul
+ * transport était le sac de l'escouade. Ce sont les mêmes gens qu'on paie à la
+ * course, la même charrette et la même route ; il n'y a simplement rien à
+ * acheter ni à vendre, donc on ne paie que les bras.
+ *
+ * Le bloc ne paraît qu'à partir du second camp : avant, la question ne se pose
+ * pas.
+ */
+function blocEntreCamps() {
+  const autres = ACTIONS.campsJoignables(ordreKey, ordreQte);
+  if (!autres.length) return '';
+  const quoi = COMMODITIES[ordreKey].nom.toLowerCase();
+  return `<div class="sep"></div>
+    <div class="titre">Entre vos camps</div>
+    <div class="aide">On paie les bras, pas la marchandise : elle est déjà à vous.
+      ${n(autres[0].stock)} ${e(quoi)} en magasin ici.</div>
+    ${autres.map((c) => `<div class="ligne souple">
+      <span class="k">${e(c.nom)}
+        <span class="aide">${c.cases} case${c.cases > 1 ? 's' : ''} · ${n(c.gages)} ${sym()} de gages</span></span>
+      <span class="v"><button class="act mini" data-a="envoyer-camp"
+        data-r="${c.regionId}" ${c.qte > 0 ? '' : 'disabled'}>${c.qte > 0
+  ? `Porter ${n(c.qte)}` : 'Rien à porter'}</button></span>
+    </div>`).join('')}`;
 }
 
 function ecranBase() {
@@ -8138,6 +8168,16 @@ function surClic(ev) {
         ordreEscouade && g ? g.id : null);
       messageComptoir = r.ok
         ? { ok: true, texte: `Le convoi part de ${r.place.nom}.` }
+        : { ok: false, texte: r.motif };
+      rafraichir(true);
+      break;
+    }
+
+    case 'envoyer-camp': {
+      const r = ACTIONS.envoyerAuCamp(el.dataset.r, ordreKey, ordreQte, ordreEscorte);
+      messageComptoir = r.ok
+        ? { ok: true, texte: `${r.qte} ${COMMODITIES[ordreKey].nom.toLowerCase()} `
+          + `partent pour ${r.vers.nom || 'l’autre camp'}.` }
         : { ok: false, texte: r.motif };
       rafraichir(true);
       break;
