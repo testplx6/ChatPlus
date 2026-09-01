@@ -488,6 +488,55 @@ fourchettes `reputation` des quatre types de contrats, contrats.js:117,
 les panneaux), les seuils (`ESTIME_ENGAGEMENT`, balayage). Décision au
 propriétaire.
 
+**Instruction 2 — les trois leviers, balayés (septembre 2026).** Ils ne
+l'avaient jamais été, et pour une raison bête : le tarif d'estime vivait en
+littéraux dans les quatre générateurs de contrats, donc impossible à essayer
+sans réécrire le fichier — une constante qu'on ne peut pas essayer finit
+choisie à vue. Elle est sortie au jour (`ESTIME_CONTRAT`, contrats.js, mêmes
+valeurs), et le banc d'équilibrage a désormais son interrupteur, comme le banc
+du monde a `--balaye` : `REGLE=contrat.livraison=14:30,seuil.militaire=20`.
+C'est le seul banc qui puisse porter ces trois familles-là — elles ne se
+mesurent que devant quelqu'un qui sert.
+
+Profil ASSIDU (le témoin du haut : celui qui ne fait que courtiser),
+30 parties × 4 000 h par configuration :
+
+| | drapeaux à portée | Commandeur | Maréchal | sans engagement |
+|---|---|---|---|---|
+| témoin | 1/6 | 0 | 0 | 19/30 |
+| tarif ×2 | 4/6 | 2 | 0 | 18/30 |
+| tarif ×3 | 5/6 | 2 | 0 | 16/30 |
+| seuils ÷1,7 | 4/6 | 3 | 1 | 17/30 |
+
+Le tarif ouvre les drapeaux : à ×2, quatre sur six passent à portée et le
+Commandeur existe. Les seuils abaissés ouvrent plus haut encore (un Maréchal),
+mais dénaturent la voie — le bot signe chez le premier venu, quatre-vingt-dix
+replis contre trois, et courtiser cesse d'être un choix.
+
+**Et aucun des trois ne touche au vrai goulot.** « Sans engagement » ne bouge
+pas (19 → 16-18), et les contrats rendus non plus (1,4 → 1,7 par partie de
+quatre mille heures). La cause est dans une ligne que personne n'était allé
+lire pour ce sujet — les motifs de départ du bot **le plus dévoué à sa
+carrière** :
+
+> chercher à manger 42 % · marché 35 % · rentrer au camp 9 % ·
+> courtiser un drapeau 5 % · **honorer un contrat 4 %**
+
+Quatre-vingt-six pour cent de ses voyages sont de la logistique de survie. La
+voie du service n'est pas fermée par son tarif ni par ses seuils : elle est
+**étouffée par la navette**, exactement le n° 1 du top 5 de REVUE.md (« le
+milieu de partie est une navette », 59 % du temps sur les pistes, 70 % des
+départs en logistique). On ne sert pas parce qu'on passe sa vie à chercher à
+manger et à aller vendre.
+
+Ce qui change la décision : les trois leviers nommés plus haut sont des
+cache-misères qui achètent des points d'estime sans acheter du **temps**. Le
+quatrième levier, celui que la mesure désigne, est la navette elle-même — et
+il a déjà son remède proposé dans REVUE.md (le convoi à gages ville→ville,
+pour que la logistique se délègue au lieu de se marcher). Décision au
+propriétaire, toujours : rien n'est réglé, `ESTIME_CONTRAT` garde ses valeurs
+d'origine.
+
 ~~**Dette de mesure — le temps de rachat du pillard**~~ — **soldée**
 (août 2026). Le banc a son profil repenti (`REPENTIR=2000` dans
 test/equilibre.js : pillard jusqu'à l'heure dite, bot ordinaire

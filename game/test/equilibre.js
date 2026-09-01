@@ -112,7 +112,7 @@ import {
 } from '../src/contrats.js';
 import {
   sEngager, peutSEngager, rangDe, RANGS, avancementOrdre, droitIntendance, toucherRations,
-  estimeEngagement,
+  estimeEngagement, ESTIME_ENGAGEMENT,
 } from '../src/allegeance.js';
 import { FACTIONS, DIPLO_FACTIONS } from '../src/data.js';
 import {
@@ -121,6 +121,7 @@ import {
   placesMetier, affectes, voulus, coutBatiment, peutPayer, capaciteStock, totalStock,
   COUT_FONDATION, jaugeRaid, RAID_JAUGE,
 } from '../src/base.js';
+import { ESTIME_CONTRAT } from '../src/contrats.js';
 import { ITEMS, BUILDING_KEYS, METIER_KEYS, METIERS, BIOMES as BIOMES_BAT } from '../src/data.js';
 import { acheterBete, prixBete, betesDe, portageAttelage, conduite } from '../src/betes.js';
 import { makeCharacter } from '../src/characters.js';
@@ -240,14 +241,30 @@ const TRACE = {
   // de sortir du bois, events.js) et 0 (l'ardoise est effacée).
   rachats: [],
 };
-// Le balayage de la jauge des pillards, que P6 n'a jamais pu faire faute de
-// mesure : `JAUGE=avidite=0.5,parTete=6`. Les objets calibrables se règlent au
-// banc, jamais à vue — et celui-ci ne se règle pas dans `tools/banc.js`, qui
-// n'a pas de camp à piller.
-for (const p of (process.env.JAUGE || '').split(',').filter(Boolean)) {
-  const [k, v] = p.split('=');
-  if (!(k in RAID_JAUGE)) throw new Error(`JAUGE : ${k} n’est pas une clé de RAID_JAUGE`);
-  RAID_JAUGE[k] = Number(v);
+// Le balayage des constantes qui ne se règlent QUE devant un joueur.
+//
+// `tools/banc.js --balaye` couvre tout ce qui vit dans le monde, et c'est la
+// règle : une constante calibrable est un objet mutable exporté, essayée au
+// banc et jamais à vue. Mais trois familles ne se mesurent que là où quelqu'un
+// joue — la jauge des pillards (il faut un camp à piller), le tarif d'estime
+// des contrats et les seuils d'engagement (il faut quelqu'un qui serve). Ce
+// banc-ci est le seul à avoir un joueur : c'est donc ici qu'elles se règlent.
+//
+//   REGLE=jauge.parCharge=0.15
+//   REGLE=contrat.livraison=14:30            (une fourchette, min:max)
+//   REGLE=seuil.militaire=20,seuil.fanatique=24
+const REGLABLES = {
+  jauge: RAID_JAUGE, contrat: ESTIME_CONTRAT, seuil: ESTIME_ENGAGEMENT,
+};
+const REGLAGES = [];
+for (const p of (process.env.REGLE || '').split(',').filter(Boolean)) {
+  const [cle, v] = p.split('=');
+  const [famille, champ] = cle.split('.');
+  const cible = REGLABLES[famille];
+  if (!cible) throw new Error(`REGLE : ${famille} n’est pas réglable ici`);
+  if (!(champ in cible)) throw new Error(`REGLE : ${champ} n’est pas une clé de ${famille}`);
+  cible[champ] = v.includes(':') ? v.split(':').map(Number) : Number(v);
+  REGLAGES.push(p);
 }
 
 const HEURES = Number(process.argv[2]) || 4000;
@@ -2414,6 +2431,7 @@ for (const l of lignes) {
 }
 
 console.log('='.repeat(52));
+if (REGLAGES.length) console.log(`Réglages : ${REGLAGES.join(' · ')}`);
 console.log(`Escouades encore vivantes après ${HEURES} h : ${survivants}/${PARTIES}`);
 const moy = (k) => Math.round(lignes.reduce((s, l) => s + (typeof l[k] === 'number' ? l[k] : 0), 0) / lignes.length);
 console.log(`Crédits moyens : ${moy('cr')} — compétence de combat moyenne : ${moy('comp')}`);

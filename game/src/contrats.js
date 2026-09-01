@@ -41,6 +41,26 @@ export const PRIME_URGENCE = 1.5;
 export const POIDS_COLLECTE_MAX = 80;
 
 /**
+ * Ce qu'un contrat rendu vaut en estime, par type.
+ *
+ * Les quatre fourchettes vivaient en littéraux dans les quatre générateurs, ce
+ * qui les rendait **impossibles à balayer** : le seul moyen de les essayer
+ * était de réécrire le fichier, et une constante qu'on ne peut pas essayer
+ * finit choisie à vue. C'est justement le levier n° 1 des trois que
+ * `MEMOIRE.md` §Blocages laisse au propriétaire sur la voie du service, et il
+ * a déjà été bougé une fois — le tarif a été doublé « c'était le tarif, pas
+ * les seuils » — avant que le monde ne rebouge sans remesure.
+ *
+ * Aucune valeur ne change ici : ce sont les mêmes fourchettes, sorties au jour.
+ */
+export const ESTIME_CONTRAT = {
+  collecte: [5, 11],
+  livraison: [7, 15],
+  prime: [7, 16],
+  reconnaissance: [4, 10],
+};
+
+/**
  * Ce qu'un contrat rapporte vraiment à votre nom, ici et maintenant.
  *
  * Le chiffre écrit sur l'offre est ce que vaut le travail ; ce qu'on en retire
@@ -114,7 +134,7 @@ function contratCollecte(rng, state, col, t) {
     ressource,
     quantite,
     recompense: Math.round(valeur * rng.range(2.6, 3.6)),
-    reputation: rng.irange(5, 11),
+    reputation: rng.irange(ESTIME_CONTRAT.collecte[0], ESTIME_CONTRAT.collecte[1]),
     duree: rng.irange(180, 400),
     titre: `Rassembler ${quantite} ${COMMODITIES[ressource].nom.toLowerCase()}`,
   };
@@ -137,7 +157,7 @@ function contratLivraison(rng, state, col, t) {
     quantite,
     poids: Number(poids.toFixed(1)),
     recompense: Math.round((80 + d * 55 + poids * 6) * rng.range(0.9, 1.4)),
-    reputation: rng.irange(7, 15),
+    reputation: rng.irange(ESTIME_CONTRAT.livraison[0], ESTIME_CONTRAT.livraison[1]),
     duree: Math.round(d * rng.range(14, 24)),
     titre: `Porter ${quantite} ${COMMODITIES[ressource].nom.toLowerCase()} `
       + `à ${dest.nom} (${coordonnee(state.world, dest.regionId)})`,
@@ -162,7 +182,7 @@ function contratPrime(rng, state, col, t) {
     victoires,
     progres: 0,
     recompense: Math.round(victoires * rng.irange(220, 460)),
-    reputation: rng.irange(7, 16),
+    reputation: rng.irange(ESTIME_CONTRAT.prime[0], ESTIME_CONTRAT.prime[1]),
     duree: rng.irange(240, 500),
     titre: `${victoires} victoire${victoires > 1 ? 's' : ''} contre ${cible === 'bandits' ? 'les pillards' : drapeauDe(state.world, cible).nom}`,
   };
@@ -179,7 +199,7 @@ function contratReconnaissance(rng, state, col, t) {
     type: 'reconnaissance',
     regionId: r.i,
     recompense: Math.round((70 + d * 45) * rng.range(0.9, 1.3)),
-    reputation: rng.irange(4, 10),
+    reputation: rng.irange(ESTIME_CONTRAT.reconnaissance[0], ESTIME_CONTRAT.reconnaissance[1]),
     // Aller **et** revenir : un relevé se rend au panneau qui l'a affiché, et
     // la durée ne payait que l'aller. Une escouade arrivée sur la case à midi
     // voyait donc le contrat échoir à treize heures, à trois régions de la ville
