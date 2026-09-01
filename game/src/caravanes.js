@@ -21,12 +21,13 @@ export function plafondCaravanes(world) {
 import { groupeActif } from './groupes.js';
 import {
   cibleStock, prixUnitaire, capacitePortage, poidsInventaire, encaisser, debourser,
+  prixJoueur,
 } from './economy.js';
 import { idDepuisRng, estDebout, comp } from './characters.js';
 import { retenirEnVille } from './services.js';
 import { avantage } from './allegeance.js';
 import {
-  transferer, convertirMasse, ecartChange, taux, entrerDehors,
+  transferer, convertirMasse, ecartChange, taux, entrerDehors, sortirDehors,
   gagner, regler, soldeIci, signeIci,
 } from './monnaie.js';
 
@@ -509,6 +510,129 @@ export function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEs
   return { ok: true, caravane: car, devis, escorte: esc, frais: fraisEscorte, place };
 }
 
+/**
+ * Le convoi à gages (CONVOI.md) : on paie des gens pour aller acheter dans une
+ * ville et revendre dans une autre. Le carnet montrait les écarts de prix
+ * depuis longtemps ; il n'avait pas de bras.
+ *
+ * Trois nombres, tous calibrables — et **les gages se paient à la course**, pas
+ * à la valeur de la cargaison. Un pourcentage du chargement rendrait les gros
+ * lots lointains presque gratuits ; des gens qui marchent se paient au trajet,
+ * et c'est ce qui garde la marche du joueur intéressante sur les gros lots.
+ *
+ * Rien d'autre n'est ajouté pour borner l'arbitrage : `prixJoueur` applique
+ * déjà la marge du marchand des deux côtés — on achète cher et l'on vend bon
+ * marché —, si bien qu'un écart doit être réel pour rapporter un sou. Le monde
+ * se défend avec ce qu'il a.
+ */
+export const GAGES = {
+  /** Une charrette, pas un train : ce qu'un convoi emporte au plus. */
+  charge: 120,
+  /** Ce qu'il en coûte de lever une équipe, quelle que soit la course. */
+  socle: 40,
+  /** ... et par région traversée. */
+  parRegion: 18,
+};
+
+/** Ce que coûtent les bras pour cette course-là. */
+export function gagesConvoi(state, deId, versId) {
+  const a = colonieParId(state.world, deId);
+  const b = colonieParId(state.world, versId);
+  if (!a || !b) return 0;
+  return Math.round(GAGES.socle + distance(a.regionId, b.regionId) * GAGES.parRegion);
+}
+
+/**
+ * Commander un convoi à gages, depuis le comptoir de son camp.
+ *
+ * Même porte que les autres ordres (`peutTraiter`), même transport que tous les
+ * convois du monde : il traverse, il peut être pillé, on peut l'escorter. Ce
+ * qui change tient en une ligne — il part d'une ville au lieu de partir de chez
+ * vous, et c'est une autre ville qui le reçoit. L'arrivée, elle, était déjà
+ * écrite : `arriver` sait payer le joueur et faire débourser la ville.
+ */
+export function passerOrdreGages(state, deId, versId, key, qte, escorteId, rng, log) {
+  const v = peutTraiter(state);
+  if (!v.ok) return v;
+  const world = state.world;
+  const a = colonieParId(world, deId);
+  const b = colonieParId(world, versId);
+  if (!a || !b || a.id === b.id) return { ok: false, motif: 'Il faut deux villes différentes.' };
+  if (!vivante(a) || !vivante(b)) return { ok: false, motif: 'Une des deux places n’est plus.' };
+  if (!(COMMODITIES[key])) return { ok: false, motif: 'Cette matière n’existe pas.' };
+
+  // Une charrette, pas plus que ce qu'ils ont en magasin — et pas plus que ce
+  // que la ville d'arrivée peut régler. C'est le patron du monde
+  // (`qteSolvable`, « un marchand ne charge pas pour une ville qui ne peut pas
+  // payer ») et non une prudence inventée ici : sans lui, on avance l'argent
+  // d'un lot que personne au bout de la route n'a les moyens de vous acheter.
+  const magasin = Math.min(Math.floor(qte), GAGES.charge, Math.floor(a.stock[key] || 0));
+  if (magasin <= 0) {
+    return { ok: false, motif: `${a.nom} n’a rien de tel à vendre.` };
+  }
+  const n = qteSolvable(b, key, magasin);
+  if (n <= 0) {
+    return { ok: false, motif: `${b.nom} n’a pas de quoi vous acheter cela.` };
+  }
+  const route = chemin(world, a.regionId, b.regionId);
+  if (!route || !route.length) return { ok: false, motif: 'Aucune route entre ces deux places.' };
+
+  // Le prix d'un marchand, des deux côtés : on achète au prix d'achat de l'une
+  // et l'on vend au prix de vente de l'autre. La double marge est le vrai
+  // garde-fou de ce geste.
+  const achat = Math.round(prixJoueur(a, key, 0, 0, 0, undefined, world).achat * n);
+  const vente = Math.round(prixJoueur(b, key, 0, 0, 0, undefined, world).vente * n);
+  const gages = gagesConvoi(state, deId, versId);
+  const esc = ESCORTES.find((x) => x.id === escorteId) || ESCORTES[0];
+  const fret = !!avantage(state, 'fret');
+  const fraisEscorte = fret ? 0 : Math.round(achat * esc.cout);
+  const du = achat + gages + fraisEscorte;
+  if (soldeIci(state) < du) {
+    return { ok: false, motif: `Il manque ${du - soldeIci(state)} ${signeIci(state)}.` };
+  }
+
+  regler(state, du);
+  // Ce que vous payez, la ville l'encaisse — et comme il vient d'une poche que
+  // le registre ne connaît pas, il faut l'émettre (même patron que `passerOrdre`).
+  encaisser(world, a, achat);
+  entrerDehors(world, a.faction, achat);
+  a.stock[key] = Math.max(0, (a.stock[key] || 0) - n);
+
+  const car = {
+    id: idDepuisRng(rng, 'g'),
+    rngEtat: 0,
+    faction: a.faction,
+    reseau: v.comptoir.id,
+    pour: 'joueur',
+    sens: 'gages',
+    versBase: false,
+    paiement: vente,
+    deId: a.id,
+    versId: b.id,
+    regionId: a.regionId,
+    route,
+    etape: 0,
+    progres: 0,
+    cargaison: { [key]: n },
+    escorte: esc.force,
+    escorteGroupe: null,
+    depuis: state.temps,
+  };
+  car.rngEtat = grainDe(world.graine, 'convoi', car.id);
+  world.caravanes.push(car);
+  if (log) {
+    log({
+      type: 'bourse',
+      texte: `Convoi à gages : ${n} ${COMMODITIES[key].nom.toLowerCase()} pris à ${a.nom} `
+        + `pour ${b.nom}. ${du} ${signeIci(state)} avancés, ${vente} à l’arrivée `
+        + `s’il arrive.`,
+      regionId: a.regionId,
+      important: true,
+    });
+  }
+  return { ok: true, caravane: car, qte: n, achat, vente, gages, frais: fraisEscorte, de: a, vers: b };
+}
+
 /** Vos convois en cours, pour les suivre. */
 export function ordresEnCours(state) {
   return (state.world.caravanes || []).filter((c) => c.pour === 'joueur');
@@ -574,18 +698,33 @@ function arriver(state, car, log) {
         });
       }
     } else {
-      gagner(state, car.paiement || 0);
-      // La ville qui vous a acheté règle sur sa caisse. Elle vous paie en
-      // entier — le prix était convenu à la commande, et un ordre honoré se
-      // paie ; ce qu'elle n'a pas, elle ne l'aura simplement plus pour se
-      // ravitailler. Le crédit qu'elle vous consent ainsi n'est pas modélisé :
-      // c'est la première approximation qu'il faudra reprendre le jour où les
-      // villes auront des dettes.
-      debourser(colonieParId(world, car.versId), car.paiement || 0);
+      // La ville qui vous a acheté règle sur sa caisse — et **la masse bouge
+      // exactement de ce que la caisse a bougé** (`monnaie.js`, la règle des
+      // deux). C'est ce dernier point qui manquait : on faisait `gagner` puis
+      // `debourser` sans jamais `sortirDehors`, si bien que le pays continuait
+      // de déclarer émis un argent parti dans une poche que le registre ne
+      // connaît pas. Mesuré au moment de l'écrire : 179 crédits d'écart pour
+      // une seule vente de cent ferrailles. La vente en ville au comptant
+      // (`economy.js`) appliquait la règle depuis toujours ; le convoi, non.
+      //
+      // Et l'on n'encaisse que ce qu'elle a. L'ancien commentaire assumait de
+      // vous payer en entier « le crédit qu'elle vous consent n'est pas
+      // modélisé » — mais ce crédit-là fabriquait de la monnaie, ce qu'aucune
+      // approximation ne justifie. Le patron du monde est déjà l'autre :
+      // `qteSolvable` fait qu'un marchand ne charge pas pour une ville qui ne
+      // peut pas régler.
+      const place = colonieParId(world, car.versId);
+      const paye = debourser(place, car.paiement || 0);
+      if (place) sortirDehors(world, place.faction, paye);
+      gagner(state, paye);
       if (log) {
         log({
           type: 'bourse',
-          texte: `Livraison honorée : ${car.paiement || 0} ${signeIci(state)} encaissés.`,
+          texte: `Livraison honorée : ${paye} ${signeIci(state)} encaissés.`
+            + (paye < (car.paiement || 0)
+              ? ` ${place ? place.nom : 'La ville'} n’avait pas de quoi solder `
+                + `les ${car.paiement} convenus.`
+              : ''),
           regionId: car.regionId,
           important: true,
         });

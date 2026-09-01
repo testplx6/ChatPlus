@@ -41,6 +41,7 @@ import { prixCession, effetCession, valeurNette } from '../src/credit.js';
 import { BETES } from '../src/betes.js';
 import {
   attaquerCaravane, passerOrdre, ordresEnCours, ESCORTES,
+  passerOrdreGages, gagesConvoi, GAGES,
 } from '../src/caravanes.js';
 import {
   combatContre, fouillerSite, inscrireAuMemorial, creerLogger, solderPrime,
@@ -7101,6 +7102,139 @@ section('9 sexvicies quater. Le comptoir : traiter sans bouger de chez soi');
     for (let i = 0; i < 900 && ordresEnCours(st).length; i++) tick(st);
     ok(soldeIci(st) > avantCr, 'on est payé à l’arrivée, pas au départ',
       `${avantCr} → ${soldeIci(st)}`);
+  }
+
+  // --- Ce qu'une ville paie au joueur doit sortir de sa masse.
+  //
+  // Défaut trouvé en écrivant le convoi à gages, et il est plus ancien que
+  // lui : `arriver` faisait `gagner` + `debourser` sans jamais appeler
+  // `sortirDehors`, alors que la règle des deux est écrite noir sur blanc dans
+  // `monnaie.js` — « une ville qui paie le joueur sort de sa caisse un argent
+  // qui n'est plus nulle part dans le registre ». La vente en ville au comptant
+  // (economy.js) l'applique ; le convoi du comptoir, non. Mesuré : l'écart
+  // comptable bougeait de 179 sur une seule vente de cent ferrailles.
+  {
+    const { st, riche } = monteComptoir(2024);
+    semerEstime(st, riche, 80);
+    const avant = auditer(st.world).reduce((x, e) => x + Math.abs(e.ecart), 0);
+    passerOrdre(st, 'vente', 'ferraille', 100, 'aucune', new Rng(9), () => {}, null);
+    const car = ordresEnCours(st)[0];
+    if (car) car.escorte = 9999;
+    for (let i = 0; i < 1200 && ordresEnCours(st).length; i++) tick(st);
+    const apres = auditer(st.world).reduce((x, e) => x + Math.abs(e.ecart), 0);
+    ok(Math.abs(apres - avant) < 0.01,
+      'une ville qui paie un convoi du joueur retire l’argent de sa masse',
+      `écart ${avant.toFixed(2)} → ${apres.toFixed(2)}`);
+  }
+
+  // --- Le convoi à gages (CONVOI.md) : on paie des gens pour aller acheter
+  //     dans une ville et revendre dans une autre. On ne marche pas.
+  {
+    const villesDe = (st, k) => st.world.colonies.filter(
+      (c) => c.faction === k && !c.ruine);
+
+    // G1. Le geste, et ce qu'il crée : un convoi comme les autres, mais à vous.
+    {
+      const { st, riche } = monteComptoir(2024);
+      semerEstime(st, riche, 80);
+      const [a, b] = villesDe(st, riche);
+      a.stock.ferraille = 400;
+      const avantCr = soldeIci(st);
+      const avantStockA = a.stock.ferraille;
+      const r = passerOrdreGages(st, a.id, b.id, 'ferraille', 60, 'aucune',
+        new Rng(9), () => {});
+      ok(r.ok, 'un convoi à gages part d’une ville vers une autre', r.motif || '');
+      const car = ordresEnCours(st)[0];
+      ok(car && car.deId === a.id && car.versId === b.id && !car.versBase,
+        'il part de la ville d’achat et va vers celle de vente');
+      ok(soldeIci(st) < avantCr,
+        'la marchandise, les gages et l’escorte sont réglés à la commande',
+        `${avantCr} → ${soldeIci(st)}`);
+      ok(Math.round(a.stock.ferraille) === avantStockA - 60,
+        'et la ville d’achat se dessaisit tout de suite',
+        `${avantStockA} → ${Math.round(a.stock.ferraille)}`);
+
+      // G2. On est payé à l'arrivée, par la ville qui reçoit.
+      //
+      // On relève le solde juste AVANT l'heure de l'arrivée, et non celui du
+      // départ : entre les deux il se passe mille deux cents heures de vie, où
+      // l'escouade mange et se soigne. Le premier jet comparait au départ et
+      // voyait une fortune fondre — il mesurait la vie, pas le convoi.
+      car.escorte = 9999;
+      let avantArrivee = soldeIci(st);
+      let n = 0;
+      while (ordresEnCours(st).length && n < 1200) {
+        avantArrivee = soldeIci(st);
+        tick(st);
+        n += 1;
+      }
+      ok(!ordresEnCours(st).length && soldeIci(st) > avantArrivee,
+        'la ville d’arrivée paie ce qui était convenu',
+        `${avantArrivee} → ${soldeIci(st)} après ${n} h`);
+    }
+
+    // G3. Les gages se paient à la course : des gens qui marchent se paient au
+    //     trajet, pas à la valeur de ce qu'ils portent.
+    {
+      const { st, riche } = monteComptoir(2024);
+      semerEstime(st, riche, 80);
+      const villes = villesDe(st, riche);
+      const a = villes[0];
+      const tri = villes.slice(1).sort(
+        (x, y) => distance(a.regionId, x.regionId) - distance(a.regionId, y.regionId));
+      const pres = tri[0];
+      const loin = tri[tri.length - 1];
+      a.stock.ferraille = 900;
+      const dPres = gagesConvoi(st, a.id, pres.id);
+      const dLoin = gagesConvoi(st, a.id, loin.id);
+      ok(dLoin > dPres,
+        'un convoi qui va deux fois plus loin coûte deux fois plus de gages',
+        `${dPres} → ${dLoin} pour ${distance(a.regionId, pres.regionId)} → `
+          + `${distance(a.regionId, loin.regionId)} régions`);
+    }
+
+    // G4. Une charrette, pas un train.
+    {
+      const { st, riche } = monteComptoir(2024);
+      semerEstime(st, riche, 80);
+      const [a, b] = villesDe(st, riche);
+      a.stock.ferraille = 90000;
+      const r = passerOrdreGages(st, a.id, b.id, 'ferraille', 100000, 'aucune',
+        new Rng(9), () => {});
+      ok(r.ok && r.qte === GAGES.charge,
+        'on ne charge qu’une charrette, quoi qu’on demande',
+        r.ok ? `${r.qte} au lieu de 100000` : r.motif);
+    }
+
+    // G5. L'invariant comptable, joueur compris, sur un cycle entier. C'est le
+    //     test qui compte : un convoi qui achète ici et vend là-bas touche aux
+    //     deux caisses et à la poche du joueur.
+    {
+      const { st, riche } = monteComptoir(2024);
+      semerEstime(st, riche, 80);
+      const [a, b] = villesDe(st, riche);
+      a.stock.ferraille = 400;
+      const avant = auditer(st.world).reduce((x, e) => x + Math.abs(e.ecart), 0);
+      passerOrdreGages(st, a.id, b.id, 'ferraille', 60, 'aucune', new Rng(9), () => {});
+      const car = ordresEnCours(st)[0];
+      if (car) car.escorte = 9999;
+      for (let i = 0; i < 1200 && ordresEnCours(st).length; i++) tick(st);
+      const apres = auditer(st.world).reduce((x, e) => x + Math.abs(e.ecart), 0);
+      ok(Math.abs(apres - avant) < 0.01,
+        'acheter ici et vendre là-bas ne crée pas un sou',
+        `écart ${avant.toFixed(3)} → ${apres.toFixed(3)}`);
+    }
+
+    // G6. La même porte que les autres ordres : pas de comptoir, pas de convoi.
+    {
+      const { st, riche } = monteComptoir(2024);
+      semerEstime(st, riche, 80);
+      const [a, b] = villesDe(st, riche);
+      st.base.batiments = { entrepot: 3 };
+      const r = passerOrdreGages(st, a.id, b.id, 'ferraille', 60, 'aucune',
+        new Rng(9), () => {});
+      ok(!r.ok, 'sans comptoir, on ne commande rien du tout', r.motif || 'passé !');
+    }
   }
 
   // --- Le convoi pillé. C'est ce qui empêche le comptoir d'être un
