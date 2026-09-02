@@ -110,6 +110,24 @@ n'est pas la même qu'une parole en l'air.
   **une recrue de la veille ne gage pas mieux qu'un captif de même valeur**, et
   un ancien que la troupe aime vaut plusieurs fois davantage. Personne ne l'a
   décrété.
+
+  **Et l'échelle est ouverte** — le propriétaire l'a demandé en lisant le
+  premier compte rendu (« un ancien vaudrait éventuellement beaucoup plus que le
+  double, non ? »). Elle l'était déjà ; c'était le plancher du test, à ×1,8, qui
+  disait trop peu. Mesuré, troupe de vingt-quatre :
+
+  | l'otage | valeur |
+  |---|---|
+  | captif ramassé hier | 16 |
+  | recrue que personne ne connaît | **9** — moins qu'un captif |
+  | un an, troupe tiède | 91 · ×5,7 |
+  | trois ans, troupe qui l'aime | 233 · ×14,6 |
+  | dix ans, troupe dévouée, maître de son art | 466 · **×29** |
+
+  Rien ne plafonne : plus la troupe est grande et attachée, plus les années
+  passent, plus il est irremplaçable. Et qu'une recrue anonyme vaille **moins**
+  qu'un captif est juste, non un défaut : un captif vaut au moins une rançon,
+  tandis que perdre un bleu que personne n'aime ne vous coûte rien.
 - **D3 — le prix d'une parole rompue : ce que le monde en sait, rien de plus.**
   La rancune de qui l'a subie et ce que les témoins racontent — le moteur sait
   déjà faire, et « pas vu, pas su » vaut ici comme partout. **Pas de réputation

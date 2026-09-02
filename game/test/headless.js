@@ -12047,6 +12047,33 @@ section('P. La parole donnée (PAROLE.md, T1)');
       'mais un ancien que la troupe aime engage bien davantage — et rien ne l’a décrété',
       `recrue ${vBleu} → ancien ${vAncien}`);
 
+    // Et **l'échelle est ouverte** : c'est le point que le facteur fixe
+    // interdisait, et qu'un plancher timide à ×1,8 ne disait pas non plus.
+    // « Un ancien vaudrait éventuellement beaucoup plus que le double, non ? »
+    // (le propriétaire) — oui, et sans borne : plus la troupe est grande et
+    // attachée, plus les années passent, plus il devient irremplaçable.
+    const troupe = { membres: [...g.membres] };
+    const rngT = new Rng(5);
+    while (troupe.membres.length < 24) troupe.membres.push(makeCharacter(rngT, { niveau: 1 }));
+    const attacher = (c, jours, force, niveau) => {
+      c.joursSurvecus = jours;
+      if (niveau) for (const m of Object.keys(c.skills)) c.skills[m] = niveau;
+      c.liens = {};
+      for (const a of troupe.membres) {
+        if (a === c) continue;
+        a.liens = a.liens || {};
+        a.liens[c.id] = force;
+        c.liens[a.id] = force;
+      }
+    };
+    attacher(ancien, 1080, 80);
+    const vTroisAns = valeurGage(st, ancien, true, troupe);
+    attacher(ancien, 3600, 100, 90);
+    const vDixAns = valeurGage(st, ancien, true, troupe);
+    ok(vTroisAns > vCaptif * 10 && vDixAns > vTroisAns * 1.5,
+      'trois ans dans une troupe qui l’aime valent dix captifs, et rien ne plafonne',
+      `captif ${vCaptif} · trois ans ${vTroisAns} · dix ans ${vDixAns}`);
+
     st.player.reputation[k] = 10;
     const sec = promettre(st, k, 'treve', 240, null, () => {});
     ok(!sec.ok, 'l’estime seule ne suffisait pas', sec.motif || 'accepté !');
