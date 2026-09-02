@@ -31,7 +31,9 @@
 
 import { nouvellePartie, tick } from '../src/sim.js';
 import { Rng } from '../src/rng.js';
-import { soldeIci, monnaieIci, gagner, regler, auditer } from '../src/monnaie.js';
+import {
+  soldeIci, monnaieIci, gagner, regler, auditer, coursMonnaie,
+} from '../src/monnaie.js';
 
 /**
  * Ce que la bourse par drapeau coûte au bot, relevé là où il achète.
@@ -184,6 +186,7 @@ const TRACE = {
   // deux instruments qui regardaient à côté du seul endroit où ça se voyait.
   pireEcart: 0,
   pireOu: null,
+  fortunes: [], fortunesNominales: [],
   pasDeChange: {
     sansMonnaie: 0, pasDeVille: 0, chezSoi: 0, ruine: 0, sansComptoir: 0,
     enRevolte: 0, rienAChanger: 0, refuse: 0,
@@ -273,6 +276,9 @@ for (const p of (process.env.REGLE || '').split(',').filter(Boolean)) {
   cible[champ] = v.includes(':') ? v.split(':').map(Number) : Number(v);
   REGLAGES.push(p);
 }
+
+/** Un nombre lisible dans un rapport : 1 234 567 plutôt que 1234567. */
+const n0 = (x) => Math.round(x).toLocaleString('fr-FR');
 
 // L'HORIZON EST UN COMPROMIS DE VITESSE, PAS UNE DURÉE DE PARTIE.
 //
@@ -2484,6 +2490,24 @@ for (let n = 0; n < PARTIES; n++) {
     }
   }
   {
+    // Ce que la fortune du joueur vaut VRAIMENT, ramenée en ancien crédit — le
+    // pivot du bureau de change, celui qu'emploie déjà le banc du monde.
+    //
+    // Sans cela, « une partie sur vingt finit à cent vingt-trois millions » ne
+    // dit rien : cent vingt-trois millions d'une monnaie effondrée à 0,01 font
+    // un million d'ancien crédit, et cent vingt-trois millions d'une monnaie à
+    // 2 en font deux cent quarante-six. Une somme d'unités hétérogènes n'est
+    // pas une mesure (METHODE §12) — la leçon a déjà coûté deux jours sur la
+    // « masse monétaire » du monde.
+    const b = state.player.bourse || {};
+    let credit = 0;
+    for (const k of Object.keys(b)) {
+      credit += (b[k] || 0) * (k && state.world.factions[k] ? coursMonnaie(state.world, k) : 1);
+    }
+    TRACE.fortunes.push(Math.round(credit));
+    TRACE.fortunesNominales.push(Math.round(bourseTotale(state)));
+  }
+  {
     // L'invariant comptable, à la fin d'une partie où un joueur a commercé.
     //
     // Et **quel pays, dans quelle partie** : un « écart maximal 586 » sans
@@ -2638,6 +2662,14 @@ console.log(`Temps : ${Math.round(100 * TRACE.voyage / totH)} % en marche · `
 console.log(`Recrues engagées : ${(TRACE.recrues / PARTIES).toFixed(1)} par partie`);
 console.log(`Intendance : ${Math.round(TRACE.rationsTouchees / PARTIES)} rations touchées par partie`
   + ` — bêtes achetées : ${(TRACE.betes / PARTIES).toFixed(1)} par partie`);
+{
+  const med2 = (a) => (a.length ? a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)] : 0);
+  const nom = TRACE.fortunesNominales;
+  const cre = TRACE.fortunes;
+  console.log(`Fortune du joueur : médiane ${n0(med2(nom))} en unités, `
+    + `${n0(med2(cre))} en ancien crédit — la plus riche `
+    + `${n0(Math.max(0, ...nom))} → ${n0(Math.max(0, ...cre))}`);
+}
 console.log(`Invariant comptable, joueur compris : écart maximal `
   + `${TRACE.pireEcart < 1e-6 ? 'exact' : TRACE.pireEcart.toFixed(2)}`
   + `${TRACE.pireOu ? ` (graine ${TRACE.pireOu.graine}, ${TRACE.pireOu.faction})` : ''}`);

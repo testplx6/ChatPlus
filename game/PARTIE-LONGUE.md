@@ -107,7 +107,34 @@ entre les deux (cinquante refus par passage) est assez violent pour mériter
 qu'on regarde si un joueur ordinaire le vit aussi. C'est le pendant long de
 l'exploit « portefeuille-ambassade » déjà consigné dans REVUE.md.
 
-### 3. Une partie sur vingt finit à cent vingt-trois millions
+### 3. Une partie sur vingt finit à cent vingt-trois millions — **instruit : l'unité ne vaut plus rien**
+
+**Verdict (septembre 2026).** Ce n'était pas une fortune, c'était une monnaie
+effondrée — et la mesure qui manquait est celle que le banc du monde emploie
+depuis toujours : ramener la somme en **ancien crédit**, le pivot du bureau de
+change. Mesuré à 16 000 h, vingt parties :
+
+| | en unités | en ancien crédit |
+|---|---|---|
+| joueur médian | 42 016 | **5 471** |
+| le plus riche | 8 602 219 289 | **4 651 708** |
+
+Un facteur **1 850** entre le nominal et le réel chez le plus riche. Compter des
+unités de monnaies dont les cours vont de 0,0005 à 2 n'est pas une mesure
+(METHODE §12) — la même leçon avait déjà coûté deux jours sur la « masse
+monétaire » du monde, et elle vient de resservir.
+
+**Ce que ça apprend en jeu, et qui vaut mieux que le chiffre** : le joueur
+médian tient une bourse dont l'unité a perdu presque toute sa valeur. Garder
+ses gains dans une monnaie qui s'effondre est une perte réelle, silencieuse et
+progressive ; le contre-jeu existe (changer dans une vraie ville, ou tenir de
+la marchandise plutôt que du papier), et c'est un vrai sujet de partie longue.
+
+L'invariant comptable reste exact à cet horizon (écart 0,05 sur vingt parties,
+le bruit de la virgule flottante) : **rien n'est créé nulle part.** La queue
+haute est du négoce accumulé, pas une fuite.
+
+### 3 bis. Le relevé d'origine, pour mémoire
 
 Les autres vont de 4 à 764 406 crédits. L'invariant étant exact, ce n'est pas
 de l'argent créé : c'est soit une monnaie effondrée dont il faut beaucoup
