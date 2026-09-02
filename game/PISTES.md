@@ -138,3 +138,48 @@ Ce qu'il faudrait trancher avant d'écrire quoi que ce soit : qui propose (le
 riche qui cherche un débiteur, ou le pauvre qui cherche un prêteur), ce qu'un
 conseil accepte de devoir à un rival, et ce que les siens en pensent. Rien
 n'est engagé.
+
+---
+
+## « Je ne sais jamais ce qui se passe » — la lisibilité du monde
+
+**Dit par le propriétaire en jouant, septembre 2026** : « je vois que ma base
+est désormais sur le territoire d'une faction ennemie, bien sûr je ne sais pas
+comment c'est arrivé (je ne sais jamais ce qui se passe ni quoi ni comment ni
+pourquoi c'est un gros problème du jeu sur lequel il faudra travailler) ».
+
+Le fait qu'il décrit est réel et le moteur l'a bien produit : sa case a changé
+de couleur sans qu'un homme approche du camp. `basculerPlace`
+(`factions.js:343-346`) donne au vainqueur la région de la ville prise **et
+toutes les cases voisines qui étaient à l'ancien** — la frontière glisse d'un
+rayon à chaque ville qui tombe. Trois autres portes font la même chose plus
+discrètement : `fonderColonie` (une ville neuve prend sa case),
+`saisir` (`credit.js:374`, une ville passe à son créancier) et `faireSecession`
+(`economy.js:2054`).
+
+Ce qui manque n'est pas l'événement : la dépêche existe, elle est même écrite
+avec sa cause (`depecheChute` — « la faim avait fait le gros du travail »,
+« les murs n'ont pas tenu »). Ce qui manque est le chemin jusqu'au joueur :
+
+- l'entrée `capture` n'est pas marquée `important`, donc elle ne sonne jamais
+  la cloche (`creerLogger`, `events.js:62`) ;
+- le journal ne garde que `LOG_MAX` lignes, et une longue absence en produit
+  des milliers : la dépêche a défilé bien avant qu'il rouvre l'onglet ;
+- rien ne relie le fait (« telle ville est tombée à deux cases ») à sa
+  conséquence sur lui (« votre camp est désormais en territoire ennemi ») —
+  c'est le glissement des cases voisines, et il n'est écrit nulle part ;
+- la carte dit l'état présent, jamais le changement : elle ne se souvient pas
+  de la couleur d'hier.
+
+Deux directions, à trancher avant la moindre ligne — et la première question
+est de savoir laquelle des deux il veut, parce qu'elles ne coûtent pas la même
+chose. **A — le journal qui vise** : ce qui touche vos affaires (vos cases, vos
+voisins, vos routes, ceux à qui vous devez ou qui vous doivent) monte d'un cran
+et sonne, le reste passe au fond. Peu de code, aucun mécanisme neuf, et ça ne
+règle que ce qui est déjà écrit. **B — le monde qui se raconte** : une page
+« Ce qui a changé depuis » qui compare deux relevés du monde (le `rapport` sait
+déjà retenir ce que le journal oublie) et dit les basculements, pas les
+événements. Plus cher, mais c'est la seule des deux qui répond à « ni quoi ni
+comment ni pourquoi » pour un joueur qui revient après trois jours.
+
+Rien n'est engagé.
