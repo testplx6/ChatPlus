@@ -77,7 +77,9 @@ import {
   promettre, romprePromesse, paroleAvec, valeurGage, PAROLES, GAGE,
   tributDemande, tickParoles,
 } from '../src/parole.js';
-import { changerDeCamp, auCamp, savoir } from '../src/base.js';
+import {
+  changerDeCamp, auCamp, savoir, enfermerAuCamp, detenusDuCamp, capaciteGeole,
+} from '../src/base.js';
 import { regionsVues } from '../src/connaissance.js';
 import {
   CLAUSES, proposerPacte, pacteEntre, romprePacte, appelerSecours,
@@ -12157,6 +12159,66 @@ section('P. La parole donnée (PAROLE.md, T1)');
     ok((st.player.reputation[k] || 0) < repu,
       'et ils s’en souviennent — ils attendaient cet argent',
       `${repu} → ${Math.round(st.player.reputation[k] || 0)}`);
+  }
+
+  // T3. La geôle du camp : on pose ses captifs au lieu de les traîner.
+  {
+    const st = nouvellePartie(814, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const g = groupeActif(st);
+    st.base.fonde = true;
+    st.base.regionId = g.regionId;
+    st.base.stock = { rations: 400 };
+    // Trois captifs sur les bras : ils mangent, ils ralentissent, ils s'évadent.
+    // Les captifs vivent dans `g.prisonniers`, pas parmi les membres : les
+    // poser dans la troupe en faisait des camarades, et le décor mentait.
+    const rngC = new Rng(11);
+    g.prisonniers = [];
+    for (let i = 0; i < 3; i++) {
+      const c = makeCharacter(rngC, { niveau: 0 });
+      c.captif = { faction: 'hexa', depuis: 0 };
+      g.prisonniers.push(c);
+    }
+    const captifs = prisonniersDe(g);
+    ok(captifs.length === 3, 'on tient trois captifs', `${captifs.length}`);
+
+    // G1. Sans geôle bâtie, on ne pose personne : il faut un endroit où tenir
+    //     quelqu'un, et c'est un bâtiment comme les autres.
+    const sans = enfermerAuCamp(st, g, captifs[0].id, () => {});
+    ok(!sans.ok, 'sans geôle, on ne peut enfermer personne', sans.motif || 'passé !');
+
+    // G2. Avec la geôle, on pose — et l'escouade retrouve ses jambes.
+    st.base.batiments = { ...(st.base.batiments || {}), geole: 1 };
+    const lentAvant = lenteurPrisonniers(g);
+    const r = enfermerAuCamp(st, g, captifs[0].id, () => {});
+    ok(r.ok, 'avec une geôle, le captif y entre', r.motif || '');
+    ok(prisonniersDe(g).length === 2 && detenusDuCamp(st.base).length === 1,
+      'il quitte la colonne et reste au camp',
+      `${prisonniersDe(g).length} portés · ${detenusDuCamp(st.base).length} au camp`);
+    ok(lenteurPrisonniers(g) < lentAvant,
+      'et l’on marche moins lourd', `${lentAvant.toFixed(3)} → ${lenteurPrisonniers(g).toFixed(3)}`);
+
+    // G3. Ils mangent le grain du camp : garder quelqu'un coûte.
+    const avantRations = st.base.stock.rations;
+    for (let i = 0; i < 240; i++) tick(st);
+    ok(st.base.stock.rations < avantRations,
+      'un détenu mange ce que le camp produit',
+      `${avantRations} → ${Math.round(st.base.stock.rations)}`);
+
+    // G4. Au-delà de ce qu'on sait tenir, on s'évade — rien ne l'interdit, ça
+    //     se paie. C'est la règle du projet : jamais une limite écrite.
+    const trop = capaciteGeole(st.base) + 2;
+    st.base.geole.detenus = [];
+    const rngE = new Rng(21);
+    for (let i = 0; i < trop; i++) {
+      const c = makeCharacter(rngE, { niveau: 0 });
+      c.captif = { faction: 'hexa', depuis: st.temps };
+      st.base.geole.detenus.push(c);
+    }
+    const pleine = detenusDuCamp(st.base).length;
+    for (let i = 0; i < 900; i++) tick(st);
+    ok(detenusDuCamp(st.base).length < pleine,
+      'une geôle trop pleine finit par se vider toute seule',
+      `${pleine} → ${detenusDuCamp(st.base).length} (elle en tient ${capaciteGeole(st.base)})`);
   }
 
   // P4. Ce que la trêve fait vraiment : leurs chasseurs rentrent chez eux.

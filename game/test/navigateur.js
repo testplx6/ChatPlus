@@ -2760,6 +2760,61 @@ console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit
   }
 }
 
+console.log('\n8 nonies octies. La geôle du camp (PAROLE.md, T3)');
+{
+  // On pose ses captifs au lieu de les traîner : le bouton est sur la fiche du
+  // prisonnier, et le panneau de la geôle dit ce qu'on tient.
+  const cg = partieAvancee();
+  const g0 = groupeActif(cg);
+  cg.base.fonde = true;
+  cg.base.regionId = g0.regionId;
+  cg.base.batiments = { ...(cg.base.batiments || {}), geole: 1 };
+  cg.base.stock = { ...(cg.base.stock || {}), rations: 300 };
+  cg.player.groupes[0].prisonniers = [];
+  const rngP = new Rng(31);
+  for (let i = 0; i < 2; i++) {
+    const c = makeCharacter(rngP, { niveau: 0 });
+    c.captif = { faction: 'hexa', depuis: 0 };
+    cg.player.groupes[0].prisonniers.push(c);
+  }
+  cg.dernierReel = Date.now();
+
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(cg));
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.click('[data-a="onglet"][data-k="escouade"]');
+  await page.waitForTimeout(400);
+
+  const texteG = await page.evaluate(() => {
+    const d = document.querySelector('[data-id^="captif-"]');
+    if (d) { d.open = true; d.scrollIntoView({ block: 'center' }); }
+    return document.querySelector('#ecran').textContent;
+  });
+  ok(/Prisonniers/.test(texteG), 'les prisonniers ont leur panneau', texteG.slice(0, 80));
+  const aBouton = await page.evaluate(
+    () => !!document.querySelector('[data-a="enfermer"]'));
+  ok(aBouton, 'et au camp, on peut les laisser à la geôle');
+
+  await page.waitForTimeout(150);
+  await page.screenshot({ path: join(CAPTURES, '28-geole.png') });
+  await page.click('[data-a="enfermer"]');
+  await page.waitForTimeout(500);
+  const apresG = await page.evaluate(() => {
+    const s = JSON.parse(window.__sauvegardeTexte());
+    const camp = (s.camps && s.camps[s.campActif]) || s.base;
+    return {
+      portes: (s.player.groupes[0].prisonniers || []).length,
+      geole: ((camp.geole || {}).detenus || []).length,
+      texte: document.querySelector('#ecran').textContent,
+    };
+  });
+  ok(apresG.portes === 1 && apresG.geole === 1,
+    'le captif quitte la colonne et entre à la geôle', JSON.stringify(apresG).slice(0, 120));
+  ok(/Geôle/.test(apresG.texte) && /Le reprendre/.test(apresG.texte),
+    'la geôle se montre, avec de quoi le reprendre');
+}
+
 console.log('\n8 nonies septies. La parole donnée (PAROLE.md, T1)');
 {
   // Une escouade traite pour elle-même, sans avoir planté de drapeau : elle

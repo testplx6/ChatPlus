@@ -607,6 +607,17 @@ export const BUILDINGS = {
     energie: 0,
     max: 2,
   },
+  geole: {
+    nom: 'Geôle',
+    desc: 'Tenir des gens chez soi au lieu de les traîner. Ils mangent, ils '
+      + 'attendent, et ceux qu’on ne sait pas garder s’en vont.',
+    cout: { ferraille: 55, polymere: 20, composant: 4 },
+    coutMul: 1.55,
+    heures: 6,
+    tempsMul: 1.4,
+    energie: -1,
+    max: 4,
+  },
   infirmerie: {
     nom: 'Infirmerie',
     desc: 'Soigne l’escouade au repos, produit des medkits.',

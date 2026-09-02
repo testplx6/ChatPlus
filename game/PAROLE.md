@@ -234,7 +234,31 @@ promesse, un prix, une échéance, et quelqu'un en face qui accepte ou non.
       L'écran propose les deux paroles côte à côte, annonce le tarif avant
       qu'on s'engage, et **dit désormais pourquoi c'est refusé** — un refus muet
       laissait cliquer trois fois sans comprendre.
-- [ ] T3 — la geôle du camp
+- [x] T3 — la geôle du camp : **livrée, moteur et écran**.
+
+      La clé attendait depuis les débuts : chaque camp naît avec `geole: null`,
+      exactement comme les villes, qui savent détenir, juger et relâcher depuis
+      longtemps. Côté joueur elle n'a jamais été remplie — on traînait ses
+      captifs, ils mangeaient sur le sac, ralentissaient la colonne et
+      s'évadaient quand personne ne regardait. On ne pouvait pas **poser**
+      quelqu'un chez soi.
+
+      Un bâtiment (`geole`, rangé dans « Se défendre et soigner ») et quatre
+      gestes : enfermer, reprendre, nourrir, et la fuite de ceux qu'on ne sait
+      pas garder. **Rien n'interdit d'en tenir plus que la geôle n'en garde** —
+      comme pour le portage, les bêtes ou les captifs en chemin, c'est le coût
+      qui borne et non une règle écrite : les hommes en trop trouvent la sortie,
+      et un détenu qu'on ne nourrit pas cherche plus fort.
+
+      Ce que le camp y gagne se mesure : la colonne retrouve ses jambes
+      (`lenteurPrisonniers` baisse), et le grain du camp paie ce que le sac
+      payait. Sept tests moteur, quatre sondes navigateur.
+
+      **Un piège d'outillage attrapé au vol** : `tickGeole` existait déjà pour
+      les geôles des villes. Le bundle aplatit tout dans une seule portée — deux
+      fonctions du même nom, et le jeu livré casse sans que les tests le disent.
+      Le vérificateur l'a refusé avant le commit ; la mienne est
+      `tickGeoleCamp`.
 - [ ] T4 — l'otage
 
 ## Blocages

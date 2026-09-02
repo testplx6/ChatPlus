@@ -3360,7 +3360,8 @@ function blocTactique() {
 function blocPrisonniers() {
   const g = G();
   const gens = prisonniersDe(g);
-  if (!gens.length) return '';
+  const geole = ACTIONS.geoleDuCamp && ACTIONS.geoleDuCamp();
+  if (!gens.length) return geole && (geole.capacite || geole.detenus.length) ? blocGeole() : '';
   const col = colonieDe(S.world, g.regionId);
   const garde = capaciteGarde(g);
   const manque = surveillanceManquante(g);
@@ -3391,8 +3392,40 @@ function blocPrisonniers() {
         ${opts.map((o) => `<button class="act mini" style="margin-top:4px;text-align:left"
           data-a="captif" data-c="${e(c.id)}" data-k="${o.key}">${e(o.nom)}${
   o.prix ? ` — ${n(o.prix)} ${sym()}` : ''}<br><span class="aide">${e(o.aide)}</span></button>`).join('')}
+        ${geole && geole.ici && geole.capacite > 0
+    ? `<button class="act mini" style="margin-top:4px;text-align:left"
+          data-a="enfermer" data-c="${e(c.id)}">Le laisser à la geôle<br>
+          <span class="aide">Il cesse de manger sur le sac et de ralentir la colonne.</span>
+        </button>` : ''}
       </details>`;
   }).join('')}
+  </section>
+  ${blocGeole()}`;
+}
+
+/**
+ * La geôle du camp (PAROLE.md, T3) : ce qu'on tient chez soi.
+ *
+ * Le panneau ne paraît qu'une fois la geôle bâtie ou si quelqu'un y est encore
+ * — un camp sans geôle n'a pas à parler de détenus.
+ */
+function blocGeole() {
+  const geole = ACTIONS.geoleDuCamp && ACTIONS.geoleDuCamp();
+  if (!geole || (!geole.capacite && !geole.detenus.length)) return '';
+  const trop = geole.detenus.length > geole.capacite;
+  return `<section class="panneau">
+    <h2 class="titre">Geôle <span class="droite ${trop ? 'alerte' : ''}">${
+  geole.detenus.length} / ${geole.capacite}</span></h2>
+    <div class="aide">${trop
+    ? 'Vous en tenez plus que la geôle n’en garde : ceux-là finiront par sortir.'
+    : 'Ils mangent le grain du camp et attendent.'}</div>
+    ${geole.detenus.length ? geole.detenus.map((c) => `<div class="ligne souple">
+      <span class="k">${e(c.nom)}<span class="aide">${e(c.metier)}${c.faction
+    ? ` · ${e(drapeauDe(S.world, c.faction).nom)}` : ''}</span></span>
+      <span class="v">${geole.ici
+    ? `<button class="act mini" data-a="reprendre-geole" data-c="${e(c.id)}">Le reprendre</button>`
+    : '<span class="aide">vous n’êtes pas au camp</span>'}</span>
+    </div>`).join('') : '<div class="aide">Personne, pour l’instant.</div>'}
   </section>`;
 }
 
@@ -4611,7 +4644,7 @@ function ecranBase() {
     { nom: 'Changer la terre', clefs: ['semoir', 'terraformeur'] },
     { nom: 'Alimenter', clefs: ['generateur', 'solaire', 'eolienne'] },
     { nom: 'Produire', clefs: ['entrepot', 'fonderie', 'raffinerie', 'distillerie', 'atelier', 'forge'] },
-    { nom: 'Se défendre et soigner', clefs: ['mur', 'poste', 'infirmerie', 'salle'] },
+    { nom: 'Se défendre et soigner', clefs: ['mur', 'poste', 'infirmerie', 'salle', 'geole'] },
     { nom: 'Savoir et commercer', clefs: ['antenne', 'comptoir', 'attelage'] },
   ];
   // Un bâtiment absent de ces listes n'existe pour personne : il ne s'affiche
@@ -8239,6 +8272,16 @@ function surClic(ev) {
         ? { ok: true, texte: `Le convoi part de ${r.place.nom}.` }
         : { ok: false, texte: r.motif };
       rafraichir(true);
+      break;
+    }
+
+    case 'enfermer': {
+      ACTIONS.enfermerIci(el.dataset.c);
+      break;
+    }
+
+    case 'reprendre-geole': {
+      ACTIONS.reprendreIci(el.dataset.c);
       break;
     }
 

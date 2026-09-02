@@ -29,6 +29,7 @@ import {
   changerDeCamp as changerDeCampA,
   declarerIndependance, reglerRecette, reglerReserve,
   negocierSiege, sortieContreSiege, evacuerCamp,
+  enfermerAuCamp, reprendreDuCamp, detenusDuCamp, capaciteGeole,
 } from './base.js';
 import { verifierExercice } from './squad.js';
 import { honorer as honorerService } from './services.js';
@@ -600,6 +601,38 @@ const API = {
   reprendreParole(faction, quoi = 'treve') {
     if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
     const r = romprePromesse(state, faction, quoi, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** La geôle du camp : qui l'on tient, et ce qu'elle sait tenir (PAROLE.md, T3). */
+  geoleDuCamp() {
+    if (!state || !state.base || !state.base.fonde) return null;
+    const g = groupeActif(state);
+    return {
+      capacite: capaciteGeole(state.base),
+      ici: g.regionId === state.base.regionId,
+      nom: state.base.nom,
+      detenus: detenusDuCamp(state.base).map((c) => ({
+        id: c.id,
+        nom: c.nom,
+        metier: c.archetypeNom || '',
+        faction: (c.captif || {}).faction || null,
+      })),
+    };
+  },
+
+  /** Poser un captif au camp, ou le reprendre avec soi. */
+  enfermerIci(captifId) {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    const r = enfermerAuCamp(state, groupeActif(state), captifId, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  reprendreIci(captifId) {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    const r = reprendreDuCamp(state, groupeActif(state), captifId, creerLogger(state));
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },

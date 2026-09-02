@@ -2587,6 +2587,17 @@ const BUILDINGS = {
     energie: 0,
     max: 2,
   },
+  geole: {
+    nom: 'Geôle',
+    desc: 'Tenir des gens chez soi au lieu de les traîner. Ils mangent, ils '
+      + 'attendent, et ceux qu’on ne sait pas garder s’en vont.',
+    cout: { ferraille: 55, polymere: 20, composant: 4 },
+    coutMul: 1.55,
+    heures: 6,
+    tempsMul: 1.4,
+    energie: -1,
+    max: 4,
+  },
   infirmerie: {
     nom: 'Infirmerie',
     desc: 'Soigne l’escouade au repos, produit des medkits.',
@@ -22442,6 +22453,120 @@ function transmettreLeSavoir(state) {
   return passes;
 }
 
+/**
+ * La geôle du camp (PAROLE.md, T3).
+ *
+ * La clé attendait depuis les débuts : chaque camp naît avec `geole: null`,
+ * exactement comme les villes, qui savent détenir depuis longtemps. Côté
+ * joueur, elle n'a jamais été remplie — on traînait ses captifs avec soi, ils
+ * mangeaient sur le sac, ils ralentissaient la colonne et s'évadaient quand
+ * personne ne les regardait. On ne pouvait pas **poser** quelqu'un chez soi.
+ */
+const GEOLE = {
+  /** Ce qu'un niveau de geôle sait tenir. */
+  parNiveau: 3,
+  /** Ce qu'un détenu mange par jour — la même écuelle qu'en chemin. */
+  ration: RATION_PRISONNIER,
+  /** La chance, par heure, qu'un homme de trop trouve la sortie. */
+  fuite: 0.02,
+  /** Ce que la faim ajoute à cette chance : on garde mal qui a faim. */
+  fuiteAffame: 0.05,
+};
+
+/** Ce que ce camp-ci sait tenir. */
+function capaciteGeole(base) {
+  return niveau(base, 'geole') * GEOLE.parNiveau;
+}
+
+/** Qui le camp garde en ce moment. */
+function detenusDuCamp(base) {
+  if (!base) return [];
+  if (!base.geole) base.geole = { detenus: [] };
+  if (!Array.isArray(base.geole.detenus)) base.geole.detenus = [];
+  return base.geole.detenus;
+}
+
+/**
+ * Poser un captif au camp. Il quitte la colonne, qui retrouve ses jambes.
+ *
+ * Rien n'interdit d'en tenir plus qu'on ne sait garder — comme pour les bêtes,
+ * le portage ou les captifs en chemin, c'est le coût qui borne, pas une règle
+ * écrite (`tickGeole`).
+ */
+function enfermerAuCamp(state, groupe, captifId, log) {
+  const base = state.base;
+  if (!base || !base.fonde) return { ok: false, motif: 'Vous n’avez pas de camp.' };
+  if (groupe.regionId !== base.regionId) {
+    return { ok: false, motif: 'Il faut être au camp pour l’y laisser.' };
+  }
+  if (!niveau(base, 'geole')) {
+    return { ok: false, motif: 'Il n’y a pas de geôle ici : on ne tient personne dans un hangar.' };
+  }
+  const c = prisonniersDe(groupe).find((x) => x.id === captifId);
+  if (!c) return { ok: false, motif: 'Cette personne n’est pas de vos captifs.' };
+  groupe.prisonniers = prisonniersDe(groupe).filter((x) => x !== c);
+  detenusDuCamp(base).push(c);
+  if (log) {
+    log({
+      type: 'prisonnier',
+      texte: `${c.nom} entre à la geôle de ${base.nom}.`,
+      regionId: base.regionId,
+    });
+  }
+  return { ok: true, detenu: c };
+}
+
+/** Le reprendre avec soi — pour le livrer, le rançonner, ou le relâcher ailleurs. */
+function reprendreDuCamp(state, groupe, captifId, log) {
+  const base = state.base;
+  const detenus = detenusDuCamp(base);
+  const i = detenus.findIndex((x) => x.id === captifId);
+  if (i < 0) return { ok: false, motif: 'Il n’est pas ici.' };
+  if (groupe.regionId !== base.regionId) {
+    return { ok: false, motif: 'Il faut être au camp pour le reprendre.' };
+  }
+  const [c] = detenus.splice(i, 1);
+  if (!Array.isArray(groupe.prisonniers)) groupe.prisonniers = [];
+  groupe.prisonniers.push(c);
+  if (log) log({ type: 'prisonnier', texte: `${c.nom} sort de la geôle et suit la colonne.` });
+  return { ok: true, detenu: c };
+}
+
+/**
+ * Une heure de geôle, côté camp — `tickGeole` est déjà pris par celle des
+ * villes (justice.js), et le bundle aplatit tout dans une seule portée : deux
+ * fonctions du même nom, et le jeu livré casse sans que rien ne le dise ici.
+ *
+ * Le camp les nourrit sur son grenier — garder quelqu'un coûte, et c'est ce qui
+ * empêche la geôle d'être un entrepôt gratuit. Au-delà de ce qu'elle tient, les
+ * hommes en trop trouvent la sortie ; affamés, tous cherchent plus fort.
+ */
+function tickGeoleCamp(state, base, log) {
+  const detenus = base && base.geole ? detenusDuCamp(base) : [];
+  if (!detenus.length) return;
+  const veut = detenus.length * GEOLE.ration / 24;
+  const dispo = base.stock.rations || 0;
+  const servi = Math.min(dispo, veut);
+  base.stock.rations = dispo - servi;
+  const affames = veut > 0 && servi < veut * 0.9;
+
+  const trop = Math.max(0, detenus.length - capaciteGeole(base));
+  const chance = trop * GEOLE.fuite + (affames ? GEOLE.fuiteAffame : 0);
+  if (chance <= 0) return;
+  const rng = new Rng(grainDe(state.world.graine, 'geole', `${base.regionId}-${state.temps}`));
+  if (!rng.chance(chance)) return;
+  const parti = detenus.pop();
+  if (log && parti) {
+    log({
+      type: 'prisonnier',
+      texte: `${parti.nom} a forcé la geôle de ${base.nom} et s’est enfui.`
+        + (affames ? ' On ne garde pas longtemps des gens qu’on ne nourrit pas.' : ''),
+      regionId: base.regionId,
+      important: true,
+    });
+  }
+}
+
 /** Habiter un autre camp. L'index, parce qu'un camp n'a pas d'identité stable. */
 function changerDeCamp(state, i) {
   const camps = campsDe(state);
@@ -22616,6 +22741,9 @@ function tickCamps(state, log, ctx) {
 function tickBase(state, log, ctx) {
   const base = state.base;
   if (!base.fonde) return null;
+  // Ceux que le camp garde mangent son grain, et ceux qu'il ne sait pas garder
+  // s'en vont (PAROLE.md, T3). Chaque camp tient sa propre geôle.
+  tickGeoleCamp(state, base, log);
   const gaspilleAvant = base.gaspille || 0;
   const t0 = state.temps;
   const rng = ctx.rng;
@@ -33528,7 +33656,8 @@ function blocTactique() {
 function blocPrisonniers() {
   const g = G();
   const gens = prisonniersDe(g);
-  if (!gens.length) return '';
+  const geole = ACTIONS.geoleDuCamp && ACTIONS.geoleDuCamp();
+  if (!gens.length) return geole && (geole.capacite || geole.detenus.length) ? blocGeole() : '';
   const col = colonieDe(S.world, g.regionId);
   const garde = capaciteGarde(g);
   const manque = surveillanceManquante(g);
@@ -33559,8 +33688,40 @@ function blocPrisonniers() {
         ${opts.map((o) => `<button class="act mini" style="margin-top:4px;text-align:left"
           data-a="captif" data-c="${e(c.id)}" data-k="${o.key}">${e(o.nom)}${
   o.prix ? ` — ${n(o.prix)} ${sym()}` : ''}<br><span class="aide">${e(o.aide)}</span></button>`).join('')}
+        ${geole && geole.ici && geole.capacite > 0
+    ? `<button class="act mini" style="margin-top:4px;text-align:left"
+          data-a="enfermer" data-c="${e(c.id)}">Le laisser à la geôle<br>
+          <span class="aide">Il cesse de manger sur le sac et de ralentir la colonne.</span>
+        </button>` : ''}
       </details>`;
   }).join('')}
+  </section>
+  ${blocGeole()}`;
+}
+
+/**
+ * La geôle du camp (PAROLE.md, T3) : ce qu'on tient chez soi.
+ *
+ * Le panneau ne paraît qu'une fois la geôle bâtie ou si quelqu'un y est encore
+ * — un camp sans geôle n'a pas à parler de détenus.
+ */
+function blocGeole() {
+  const geole = ACTIONS.geoleDuCamp && ACTIONS.geoleDuCamp();
+  if (!geole || (!geole.capacite && !geole.detenus.length)) return '';
+  const trop = geole.detenus.length > geole.capacite;
+  return `<section class="panneau">
+    <h2 class="titre">Geôle <span class="droite ${trop ? 'alerte' : ''}">${
+  geole.detenus.length} / ${geole.capacite}</span></h2>
+    <div class="aide">${trop
+    ? 'Vous en tenez plus que la geôle n’en garde : ceux-là finiront par sortir.'
+    : 'Ils mangent le grain du camp et attendent.'}</div>
+    ${geole.detenus.length ? geole.detenus.map((c) => `<div class="ligne souple">
+      <span class="k">${e(c.nom)}<span class="aide">${e(c.metier)}${c.faction
+    ? ` · ${e(drapeauDe(S.world, c.faction).nom)}` : ''}</span></span>
+      <span class="v">${geole.ici
+    ? `<button class="act mini" data-a="reprendre-geole" data-c="${e(c.id)}">Le reprendre</button>`
+    : '<span class="aide">vous n’êtes pas au camp</span>'}</span>
+    </div>`).join('') : '<div class="aide">Personne, pour l’instant.</div>'}
   </section>`;
 }
 
@@ -34779,7 +34940,7 @@ function ecranBase() {
     { nom: 'Changer la terre', clefs: ['semoir', 'terraformeur'] },
     { nom: 'Alimenter', clefs: ['generateur', 'solaire', 'eolienne'] },
     { nom: 'Produire', clefs: ['entrepot', 'fonderie', 'raffinerie', 'distillerie', 'atelier', 'forge'] },
-    { nom: 'Se défendre et soigner', clefs: ['mur', 'poste', 'infirmerie', 'salle'] },
+    { nom: 'Se défendre et soigner', clefs: ['mur', 'poste', 'infirmerie', 'salle', 'geole'] },
     { nom: 'Savoir et commercer', clefs: ['antenne', 'comptoir', 'attelage'] },
   ];
   // Un bâtiment absent de ces listes n'existe pour personne : il ne s'affiche
@@ -38410,6 +38571,16 @@ function surClic(ev) {
       break;
     }
 
+    case 'enfermer': {
+      ACTIONS.enfermerIci(el.dataset.c);
+      break;
+    }
+
+    case 'reprendre-geole': {
+      ACTIONS.reprendreIci(el.dataset.c);
+      break;
+    }
+
     case 'parole-duree': {
       dureeParole = Number(el.dataset.q) || 240;
       rafraichir(true);
@@ -39090,6 +39261,38 @@ const API = {
   reprendreParole(faction, quoi = 'treve') {
     if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
     const r = romprePromesse(state, faction, quoi, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** La geôle du camp : qui l'on tient, et ce qu'elle sait tenir (PAROLE.md, T3). */
+  geoleDuCamp() {
+    if (!state || !state.base || !state.base.fonde) return null;
+    const g = groupeActif(state);
+    return {
+      capacite: capaciteGeole(state.base),
+      ici: g.regionId === state.base.regionId,
+      nom: state.base.nom,
+      detenus: detenusDuCamp(state.base).map((c) => ({
+        id: c.id,
+        nom: c.nom,
+        metier: c.archetypeNom || '',
+        faction: (c.captif || {}).faction || null,
+      })),
+    };
+  },
+
+  /** Poser un captif au camp, ou le reprendre avec soi. */
+  enfermerIci(captifId) {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    const r = enfermerAuCamp(state, groupeActif(state), captifId, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  reprendreIci(captifId) {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    const r = reprendreDuCamp(state, groupeActif(state), captifId, creerLogger(state));
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },

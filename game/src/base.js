@@ -16,6 +16,7 @@ import { garnison, avantage } from './allegeance.js';
 import { estSurveillee } from './connaissance.js';
 import { noterArgent } from './rapport.js';
 import { capacitePortage, poidsInventaire, depouillerRuine } from './economy.js';
+import { prisonniersDe, RATION_PRISONNIER } from './justice.js';
 import { BETES, creerBete } from './betes.js';
 import { depenser, entrerDehors, gagner, regler, soldeIci, signeIci } from './monnaie.js';
 
@@ -1220,6 +1221,120 @@ export function transmettreLeSavoir(state) {
   return passes;
 }
 
+/**
+ * La geôle du camp (PAROLE.md, T3).
+ *
+ * La clé attendait depuis les débuts : chaque camp naît avec `geole: null`,
+ * exactement comme les villes, qui savent détenir depuis longtemps. Côté
+ * joueur, elle n'a jamais été remplie — on traînait ses captifs avec soi, ils
+ * mangeaient sur le sac, ils ralentissaient la colonne et s'évadaient quand
+ * personne ne les regardait. On ne pouvait pas **poser** quelqu'un chez soi.
+ */
+export const GEOLE = {
+  /** Ce qu'un niveau de geôle sait tenir. */
+  parNiveau: 3,
+  /** Ce qu'un détenu mange par jour — la même écuelle qu'en chemin. */
+  ration: RATION_PRISONNIER,
+  /** La chance, par heure, qu'un homme de trop trouve la sortie. */
+  fuite: 0.02,
+  /** Ce que la faim ajoute à cette chance : on garde mal qui a faim. */
+  fuiteAffame: 0.05,
+};
+
+/** Ce que ce camp-ci sait tenir. */
+export function capaciteGeole(base) {
+  return niveau(base, 'geole') * GEOLE.parNiveau;
+}
+
+/** Qui le camp garde en ce moment. */
+export function detenusDuCamp(base) {
+  if (!base) return [];
+  if (!base.geole) base.geole = { detenus: [] };
+  if (!Array.isArray(base.geole.detenus)) base.geole.detenus = [];
+  return base.geole.detenus;
+}
+
+/**
+ * Poser un captif au camp. Il quitte la colonne, qui retrouve ses jambes.
+ *
+ * Rien n'interdit d'en tenir plus qu'on ne sait garder — comme pour les bêtes,
+ * le portage ou les captifs en chemin, c'est le coût qui borne, pas une règle
+ * écrite (`tickGeole`).
+ */
+export function enfermerAuCamp(state, groupe, captifId, log) {
+  const base = state.base;
+  if (!base || !base.fonde) return { ok: false, motif: 'Vous n’avez pas de camp.' };
+  if (groupe.regionId !== base.regionId) {
+    return { ok: false, motif: 'Il faut être au camp pour l’y laisser.' };
+  }
+  if (!niveau(base, 'geole')) {
+    return { ok: false, motif: 'Il n’y a pas de geôle ici : on ne tient personne dans un hangar.' };
+  }
+  const c = prisonniersDe(groupe).find((x) => x.id === captifId);
+  if (!c) return { ok: false, motif: 'Cette personne n’est pas de vos captifs.' };
+  groupe.prisonniers = prisonniersDe(groupe).filter((x) => x !== c);
+  detenusDuCamp(base).push(c);
+  if (log) {
+    log({
+      type: 'prisonnier',
+      texte: `${c.nom} entre à la geôle de ${base.nom}.`,
+      regionId: base.regionId,
+    });
+  }
+  return { ok: true, detenu: c };
+}
+
+/** Le reprendre avec soi — pour le livrer, le rançonner, ou le relâcher ailleurs. */
+export function reprendreDuCamp(state, groupe, captifId, log) {
+  const base = state.base;
+  const detenus = detenusDuCamp(base);
+  const i = detenus.findIndex((x) => x.id === captifId);
+  if (i < 0) return { ok: false, motif: 'Il n’est pas ici.' };
+  if (groupe.regionId !== base.regionId) {
+    return { ok: false, motif: 'Il faut être au camp pour le reprendre.' };
+  }
+  const [c] = detenus.splice(i, 1);
+  if (!Array.isArray(groupe.prisonniers)) groupe.prisonniers = [];
+  groupe.prisonniers.push(c);
+  if (log) log({ type: 'prisonnier', texte: `${c.nom} sort de la geôle et suit la colonne.` });
+  return { ok: true, detenu: c };
+}
+
+/**
+ * Une heure de geôle, côté camp — `tickGeole` est déjà pris par celle des
+ * villes (justice.js), et le bundle aplatit tout dans une seule portée : deux
+ * fonctions du même nom, et le jeu livré casse sans que rien ne le dise ici.
+ *
+ * Le camp les nourrit sur son grenier — garder quelqu'un coûte, et c'est ce qui
+ * empêche la geôle d'être un entrepôt gratuit. Au-delà de ce qu'elle tient, les
+ * hommes en trop trouvent la sortie ; affamés, tous cherchent plus fort.
+ */
+export function tickGeoleCamp(state, base, log) {
+  const detenus = base && base.geole ? detenusDuCamp(base) : [];
+  if (!detenus.length) return;
+  const veut = detenus.length * GEOLE.ration / 24;
+  const dispo = base.stock.rations || 0;
+  const servi = Math.min(dispo, veut);
+  base.stock.rations = dispo - servi;
+  const affames = veut > 0 && servi < veut * 0.9;
+
+  const trop = Math.max(0, detenus.length - capaciteGeole(base));
+  const chance = trop * GEOLE.fuite + (affames ? GEOLE.fuiteAffame : 0);
+  if (chance <= 0) return;
+  const rng = new Rng(grainDe(state.world.graine, 'geole', `${base.regionId}-${state.temps}`));
+  if (!rng.chance(chance)) return;
+  const parti = detenus.pop();
+  if (log && parti) {
+    log({
+      type: 'prisonnier',
+      texte: `${parti.nom} a forcé la geôle de ${base.nom} et s’est enfui.`
+        + (affames ? ' On ne garde pas longtemps des gens qu’on ne nourrit pas.' : ''),
+      regionId: base.regionId,
+      important: true,
+    });
+  }
+}
+
 /** Habiter un autre camp. L'index, parce qu'un camp n'a pas d'identité stable. */
 export function changerDeCamp(state, i) {
   const camps = campsDe(state);
@@ -1394,6 +1509,9 @@ export function tickCamps(state, log, ctx) {
 export function tickBase(state, log, ctx) {
   const base = state.base;
   if (!base.fonde) return null;
+  // Ceux que le camp garde mangent son grain, et ceux qu'il ne sait pas garder
+  // s'en vont (PAROLE.md, T3). Chaque camp tient sa propre geôle.
+  tickGeoleCamp(state, base, log);
   const gaspilleAvant = base.gaspille || 0;
   const t0 = state.temps;
   const rng = ctx.rng;
