@@ -2760,6 +2760,59 @@ console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit
   }
 }
 
+console.log('\n8 nonies septies. La parole donnée (PAROLE.md, T1)');
+{
+  // Une escouade traite pour elle-même, sans avoir planté de drapeau : elle
+  // demande une trêve dans la ville où elle se tient, met éventuellement l'un
+  // des siens en gage, et l'autre accepte ou non.
+  const cp = partieAvancee();
+  const g0 = groupeActif(cp);
+  const ville = cp.world.colonies.find((c) => !c.ruine && c.faction);
+  g0.regionId = ville.regionId;
+  cp.player.reputation[ville.faction] = 40;
+  cp.dernierReel = Date.now();
+
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(cp));
+  await page.click('[data-a="continuer"]');
+  await page.waitForSelector('#carte');
+  await page.waitForTimeout(400);
+
+  const texteP = await page.evaluate(() => document.querySelector('#ecran').textContent);
+  ok(!/n’a pas pu s’afficher/.test(texteP), 'l’écran tient avec le bloc de la parole');
+  ok(/Donner sa parole/.test(texteP), 'la ville où l’on se tient propose de donner sa parole',
+    texteP.slice(0, 120));
+  ok(/Ce qu’ils exigent/.test(texteP) && /Ce que vous valez/.test(texteP),
+    'et elle dit ce qu’ils exigent et ce qu’on leur offre, avant de cliquer');
+
+  await page.evaluate(() => {
+    const b = document.querySelector('[data-a="donner-parole"]');
+    if (b) b.scrollIntoView({ block: 'center' });
+  });
+  await page.waitForTimeout(150);
+  await page.screenshot({ path: join(CAPTURES, '26-parole.png') });
+  await page.click('[data-a="donner-parole"]');
+  await page.waitForTimeout(500);
+  const apresP = await page.evaluate(() => {
+    const s = JSON.parse(window.__sauvegardeTexte());
+    return {
+      paroles: (s.player.paroles || []).length,
+      texte: document.querySelector('#ecran').textContent,
+    };
+  });
+  ok(apresP.paroles === 1, 'la parole est donnée et elle court', `${apresP.paroles}`);
+  ok(/Votre parole/.test(apresP.texte) && /Reprendre sa parole/.test(apresP.texte),
+    'l’écran la montre, avec de quoi la reprendre');
+
+  await page.click('[data-a="reprendre-parole"]');
+  await page.waitForTimeout(500);
+  const repris = await page.evaluate(() => {
+    const s = JSON.parse(window.__sauvegardeTexte());
+    return (s.player.paroles || []).filter((x) => !x.rompue).length;
+  });
+  ok(repris === 0, 'et la reprendre la fait cesser', `${repris} encore en cours`);
+}
+
 console.log('\n8 nonies sexies. Le convoi à gages (CONVOI.md)');
 {
   // Le carnet propose la course, on l'envoie. Deux relevés de prix suffisent —

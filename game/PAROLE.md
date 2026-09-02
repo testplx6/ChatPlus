@@ -181,7 +181,7 @@ promesse, un prix, une échéance, et quelqu'un en face qui accepte ou non.
 ## L'avancement
 
 - [x] Décisions D1–D4 (section 4)
-- [~] T1 — la parole d'une escouade : **moteur livré**, écran à venir.
+- [x] T1 — la parole d'une escouade : **livré, moteur et écran**.
       `src/parole.js` (module neuf, placé avant `events.js` qui le lit) :
       `PAROLES` dit ce qu'on peut promettre et ce que ça pèse, `pesePromesse`
       dit ce qu'en pense celui d'en face — votre estime, ce que vous demandez,
@@ -198,6 +198,12 @@ promesse, un prix, une échéance, et quelqu'un en face qui accepte ou non.
       chasse étant rare (une visite sur quatre mille heures). Deux pays vous
       traquent, un seul a votre parole, et toutes les visites viennent de
       l'autre.
+      **L'écran** : dans la ville où l'on se tient, sous l'engagement. Il dit ce
+      qu'ils exigent et ce qu'on leur offre **avant** de cliquer, propose les
+      gages possibles avec ce que chacun vaut à leurs yeux (les siens d'abord,
+      les captifs ensuite), et une fois la parole donnée il la montre avec son
+      échéance et de quoi la reprendre — en prévenant qu'ici, on vous voit. Six
+      sondes navigateur.
 - [ ] T2 — le tribut
 - [ ] T3 — la geôle du camp
 - [ ] T4 — l'otage

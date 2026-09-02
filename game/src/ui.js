@@ -2312,8 +2312,63 @@ function blocColonie(col) {
       ${portesDeVille(col, libre, repu)}
     </div>
     ${blocEngagement(col)}
+    ${blocParole(col, libre)}
   </section>
   ${blocAssaut(col)}`;
+}
+
+// Ce qu'on est en train de proposer : un gage choisi, une durée. Hors de la
+// partie — c'est ce qu'on tape, pas ce qui est arrivé au monde.
+let gageChoisi = null;
+let dureeParole = 240;
+const DUREES_PAROLE = [72, 240, 720];
+
+/**
+ * La parole donnée, dans la ville où l'on se tient (PAROLE.md, T1).
+ *
+ * On ne pouvait rien promettre sans avoir planté son drapeau. Ici, une escouade
+ * traite pour elle-même : elle demande une trêve, elle met éventuellement
+ * quelqu'un en gage, et l'autre accepte ou non — l'écran dit ce qu'ils exigent
+ * et ce qu'on leur offre, avant de cliquer.
+ */
+function blocParole(col, libre) {
+  if (libre || !col.faction) return '';
+  const p = ACTIONS.paroleIci(col.faction, gageChoisi);
+  if (!p) return '';
+  const nom = drapeauDe(S.world, col.faction).nom;
+  if (p.courante) {
+    const j = Math.round(p.courante.reste / 24);
+    return `<div class="sep"></div>
+      <div class="titre">Votre parole <span class="droite ok">donnée</span></div>
+      <div class="aide">Trêve avec ${e(nom)} : ${j > 0 ? `encore ${j} jour${j > 1 ? 's' : ''}`
+  : 'elle expire'}. Leurs chasseurs restent chez eux tant qu'elle tient.</div>
+      <button class="act mini" data-a="reprendre-parole" data-r="${e(col.faction)}">
+        Reprendre sa parole</button>
+      <div class="aide">Ce que ça coûte dépend de qui est là pour le voir. Ici, on vous voit.</div>`;
+  }
+  return `<div class="sep"></div>
+    <div class="titre">Donner sa parole</div>
+    <div class="aide">${e(p.quoi.desc)}</div>
+    <div class="taches" style="margin-top:5px">Durée
+      ${DUREES_PAROLE.filter((d) => d <= p.dureeMax).map((d) => `<button
+        class="act mini ${dureeParole === d ? 'primaire' : ''}"
+        data-a="parole-duree" data-q="${d}">${Math.round(d / 24)} j</button>`).join('')}
+    </div>
+    ${p.gages.length ? `<div class="taches" style="margin-top:5px">Gage
+      <button class="act mini ${!gageChoisi ? 'primaire' : ''}"
+        data-a="parole-gage" data-r="">aucun</button>
+      ${p.gages.map((c) => `<button class="act mini ${gageChoisi === c.id ? 'primaire' : ''}"
+        data-a="parole-gage" data-r="${e(c.id)}"><span>${e(c.nom)}<br>
+        <span class="aide">${c.sien ? 'des vôtres' : 'captif'} · vaut ${n(c.valeur)}</span></span>
+      </button>`).join('')}
+    </div>` : ''}
+    <div class="ligne"><span class="k">Ce qu’ils exigent</span>
+      <span class="v">${n(p.exige)}</span></div>
+    <div class="ligne"><span class="k">Ce que vous valez${p.choisi ? ' avec le gage' : ''}</span>
+      <span class="v ${p.ok ? 'ok' : 'alerte'}">${n(p.offert)}</span></div>
+    <button class="act ${p.ok ? 'primaire' : ''}" data-a="donner-parole"
+      data-r="${e(col.faction)}">Demander la trêve</button>
+    ${p.ok ? '' : `<div class="aide alerte">${e(p.motif || '')}</div>`}`;
 }
 
 /**
@@ -8169,6 +8224,31 @@ function surClic(ev) {
       messageComptoir = r.ok
         ? { ok: true, texte: `Le convoi part de ${r.place.nom}.` }
         : { ok: false, texte: r.motif };
+      rafraichir(true);
+      break;
+    }
+
+    case 'parole-duree': {
+      dureeParole = Number(el.dataset.q) || 240;
+      rafraichir(true);
+      break;
+    }
+
+    case 'parole-gage': {
+      gageChoisi = el.dataset.r || null;
+      rafraichir(true);
+      break;
+    }
+
+    case 'donner-parole': {
+      const r = ACTIONS.promettreIci(el.dataset.r, dureeParole, gageChoisi);
+      if (r.ok) gageChoisi = null;
+      rafraichir(true);
+      break;
+    }
+
+    case 'reprendre-parole': {
+      ACTIONS.reprendreParole(el.dataset.r);
       rafraichir(true);
       break;
     }

@@ -49,9 +49,12 @@ import {
   accorderCredit as accorderCreditA, battreMonnaie as battreMonnaieA,
   ouvrirBourseA, signerAccordAvec, rompreAccordAvec,
 } from './influence.js';
-import { disposer, disposerTous } from './justice.js';
+import { disposer, disposerTous, prisonniersDe } from './justice.js';
 import { carnetPrix } from './connaissance.js';
 import { distance } from './world.js';
+import {
+  promettre, romprePromesse, paroleAvec, valeurGage, pesePromesse, PAROLES, ACCORD,
+} from './parole.js';
 
 let state = null;
 let boucle = null;
@@ -524,6 +527,69 @@ const API = {
     const r = passerOrdreCamps(state, state.base.regionId, Number(versRegion), key,
       Number(qte), escorte, rng, creerLogger(state));
     state.rngState = rng.save();
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /**
+   * Ce qu'on peut promettre ici, et ce qu'ils en pensent (PAROLE.md, T1).
+   *
+   * L'écran ne doit jamais deviner : c'est le moteur qui dit ce qu'ils exigent,
+   * ce qu'on leur offre, et ce que chaque gage possible changerait.
+   */
+  paroleIci(faction, gageId) {
+    if (!state || !faction) return null;
+    const g = groupeActif(state);
+    const courante = paroleAvec(state, faction, 'treve');
+    const candidats = [];
+    for (const c of g.membres) {
+      if (!estVivant(c)) continue;
+      candidats.push({
+        id: c.id, nom: c.nom, sien: true, valeur: valeurGage(state, c, true, g),
+      });
+    }
+    for (const c of prisonniersDe(g)) {
+      candidats.push({
+        id: c.id, nom: c.nom, sien: false, valeur: valeurGage(state, c, false, g),
+      });
+    }
+    candidats.sort((a, b) => b.valeur - a.valeur);
+    const choisi = candidats.find((c) => c.id === gageId) || null;
+    const pese = pesePromesse(state, faction, 'treve', choisi ? choisi.valeur : 0);
+    return {
+      quoi: PAROLES.treve,
+      dureeMax: ACCORD.dureeMax,
+      courante: courante
+        ? { jusqua: courante.jusqua, reste: courante.jusqua - state.temps }
+        : null,
+      gages: candidats.slice(0, 6),
+      choisi,
+      exige: pese.exige,
+      offert: pese.offert,
+      ok: pese.ok,
+      motif: pese.motif,
+    };
+  },
+
+  /** Donner sa parole ici. */
+  promettreIci(faction, duree, gageId) {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    const g = groupeActif(state);
+    let gage = null;
+    if (gageId) {
+      const sien = g.membres.find((c) => c.id === gageId);
+      const captif = sien ? null : prisonniersDe(g).find((c) => c.id === gageId);
+      if (sien || captif) gage = { personne: sien || captif, sien: !!sien, groupe: g };
+    }
+    const r = promettre(state, faction, 'treve', Number(duree), gage, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Et la reprendre — le prix dépend de qui est là pour le voir. */
+  reprendreParole(faction) {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    const r = romprePromesse(state, faction, 'treve', creerLogger(state));
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },

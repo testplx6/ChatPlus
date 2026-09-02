@@ -32324,8 +32324,63 @@ function blocColonie(col) {
       ${portesDeVille(col, libre, repu)}
     </div>
     ${blocEngagement(col)}
+    ${blocParole(col, libre)}
   </section>
   ${blocAssaut(col)}`;
+}
+
+// Ce qu'on est en train de proposer : un gage choisi, une durée. Hors de la
+// partie — c'est ce qu'on tape, pas ce qui est arrivé au monde.
+let gageChoisi = null;
+let dureeParole = 240;
+const DUREES_PAROLE = [72, 240, 720];
+
+/**
+ * La parole donnée, dans la ville où l'on se tient (PAROLE.md, T1).
+ *
+ * On ne pouvait rien promettre sans avoir planté son drapeau. Ici, une escouade
+ * traite pour elle-même : elle demande une trêve, elle met éventuellement
+ * quelqu'un en gage, et l'autre accepte ou non — l'écran dit ce qu'ils exigent
+ * et ce qu'on leur offre, avant de cliquer.
+ */
+function blocParole(col, libre) {
+  if (libre || !col.faction) return '';
+  const p = ACTIONS.paroleIci(col.faction, gageChoisi);
+  if (!p) return '';
+  const nom = drapeauDe(S.world, col.faction).nom;
+  if (p.courante) {
+    const j = Math.round(p.courante.reste / 24);
+    return `<div class="sep"></div>
+      <div class="titre">Votre parole <span class="droite ok">donnée</span></div>
+      <div class="aide">Trêve avec ${e(nom)} : ${j > 0 ? `encore ${j} jour${j > 1 ? 's' : ''}`
+  : 'elle expire'}. Leurs chasseurs restent chez eux tant qu'elle tient.</div>
+      <button class="act mini" data-a="reprendre-parole" data-r="${e(col.faction)}">
+        Reprendre sa parole</button>
+      <div class="aide">Ce que ça coûte dépend de qui est là pour le voir. Ici, on vous voit.</div>`;
+  }
+  return `<div class="sep"></div>
+    <div class="titre">Donner sa parole</div>
+    <div class="aide">${e(p.quoi.desc)}</div>
+    <div class="taches" style="margin-top:5px">Durée
+      ${DUREES_PAROLE.filter((d) => d <= p.dureeMax).map((d) => `<button
+        class="act mini ${dureeParole === d ? 'primaire' : ''}"
+        data-a="parole-duree" data-q="${d}">${Math.round(d / 24)} j</button>`).join('')}
+    </div>
+    ${p.gages.length ? `<div class="taches" style="margin-top:5px">Gage
+      <button class="act mini ${!gageChoisi ? 'primaire' : ''}"
+        data-a="parole-gage" data-r="">aucun</button>
+      ${p.gages.map((c) => `<button class="act mini ${gageChoisi === c.id ? 'primaire' : ''}"
+        data-a="parole-gage" data-r="${e(c.id)}"><span>${e(c.nom)}<br>
+        <span class="aide">${c.sien ? 'des vôtres' : 'captif'} · vaut ${n(c.valeur)}</span></span>
+      </button>`).join('')}
+    </div>` : ''}
+    <div class="ligne"><span class="k">Ce qu’ils exigent</span>
+      <span class="v">${n(p.exige)}</span></div>
+    <div class="ligne"><span class="k">Ce que vous valez${p.choisi ? ' avec le gage' : ''}</span>
+      <span class="v ${p.ok ? 'ok' : 'alerte'}">${n(p.offert)}</span></div>
+    <button class="act ${p.ok ? 'primaire' : ''}" data-a="donner-parole"
+      data-r="${e(col.faction)}">Demander la trêve</button>
+    ${p.ok ? '' : `<div class="aide alerte">${e(p.motif || '')}</div>`}`;
 }
 
 /**
@@ -38185,6 +38240,31 @@ function surClic(ev) {
       break;
     }
 
+    case 'parole-duree': {
+      dureeParole = Number(el.dataset.q) || 240;
+      rafraichir(true);
+      break;
+    }
+
+    case 'parole-gage': {
+      gageChoisi = el.dataset.r || null;
+      rafraichir(true);
+      break;
+    }
+
+    case 'donner-parole': {
+      const r = ACTIONS.promettreIci(el.dataset.r, dureeParole, gageChoisi);
+      if (r.ok) gageChoisi = null;
+      rafraichir(true);
+      break;
+    }
+
+    case 'reprendre-parole': {
+      ACTIONS.reprendreParole(el.dataset.r);
+      rafraichir(true);
+      break;
+    }
+
     case 'envoyer-camp': {
       const r = ACTIONS.envoyerAuCamp(el.dataset.r, ordreKey, ordreQte, ordreEscorte);
       messageComptoir = r.ok
@@ -38763,6 +38843,69 @@ const API = {
     const r = passerOrdreCamps(state, state.base.regionId, Number(versRegion), key,
       Number(qte), escorte, rng, creerLogger(state));
     state.rngState = rng.save();
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /**
+   * Ce qu'on peut promettre ici, et ce qu'ils en pensent (PAROLE.md, T1).
+   *
+   * L'écran ne doit jamais deviner : c'est le moteur qui dit ce qu'ils exigent,
+   * ce qu'on leur offre, et ce que chaque gage possible changerait.
+   */
+  paroleIci(faction, gageId) {
+    if (!state || !faction) return null;
+    const g = groupeActif(state);
+    const courante = paroleAvec(state, faction, 'treve');
+    const candidats = [];
+    for (const c of g.membres) {
+      if (!estVivant(c)) continue;
+      candidats.push({
+        id: c.id, nom: c.nom, sien: true, valeur: valeurGage(state, c, true, g),
+      });
+    }
+    for (const c of prisonniersDe(g)) {
+      candidats.push({
+        id: c.id, nom: c.nom, sien: false, valeur: valeurGage(state, c, false, g),
+      });
+    }
+    candidats.sort((a, b) => b.valeur - a.valeur);
+    const choisi = candidats.find((c) => c.id === gageId) || null;
+    const pese = pesePromesse(state, faction, 'treve', choisi ? choisi.valeur : 0);
+    return {
+      quoi: PAROLES.treve,
+      dureeMax: ACCORD.dureeMax,
+      courante: courante
+        ? { jusqua: courante.jusqua, reste: courante.jusqua - state.temps }
+        : null,
+      gages: candidats.slice(0, 6),
+      choisi,
+      exige: pese.exige,
+      offert: pese.offert,
+      ok: pese.ok,
+      motif: pese.motif,
+    };
+  },
+
+  /** Donner sa parole ici. */
+  promettreIci(faction, duree, gageId) {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    const g = groupeActif(state);
+    let gage = null;
+    if (gageId) {
+      const sien = g.membres.find((c) => c.id === gageId);
+      const captif = sien ? null : prisonniersDe(g).find((c) => c.id === gageId);
+      if (sien || captif) gage = { personne: sien || captif, sien: !!sien, groupe: g };
+    }
+    const r = promettre(state, faction, 'treve', Number(duree), gage, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
+  },
+
+  /** Et la reprendre — le prix dépend de qui est là pour le voir. */
+  reprendreParole(faction) {
+    if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
+    const r = romprePromesse(state, faction, 'treve', creerLogger(state));
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },
