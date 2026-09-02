@@ -17,6 +17,8 @@
 import { drapeauDe } from './data.js';
 import { commettre, delaiVersFaction } from './faits.js';
 import { colonieDe, distance } from './world.js';
+import { comp, lien } from './characters.js';
+import { valeurCaptif } from './justice.js';
 
 /**
  * Ce qu'on peut promettre, et ce que ça vaut à celui d'en face.
@@ -56,19 +58,69 @@ export function paroleAvec(state, faction, quoi = 'treve') {
   return parolesDe(state).find((x) => x.faction === faction && x.quoi === quoi) || null;
 }
 
+/** Ce qui fait qu'un otage garantit une promesse. Calibré au banc. */
+export const GAGE = {
+  /** Ce que pèse ce qu'il sait faire — la seule chose visible d'un inconnu. */
+  parCompetence: 0.55,
+  /** Ce que pèse chaque saison passée dans la troupe : l'attachement se voit. */
+  parSaison: 1.6,
+  /** Ce que pèse l'affection que les autres lui portent, par point de lien. */
+  parLien: 0.09,
+  /** Ce que pèse d'être le seul chez vous à savoir faire quelque chose. */
+  irremplacable: 14,
+};
+
 /**
- * Ce que vaut ce qu'on laisse en gage (D2).
+ * Ce que vaut un otage aux yeux de celui qui le garde (D2).
  *
- * Un captif ramassé la veille n'engage à rien ; un des siens engage pour de
- * bon, et l'on sait faire la différence en face. La valeur est celle de la
- * personne — ce qu'elle sait faire —, pas un forfait par tête.
+ * **Aucun multiplicateur.** La première version valait « ×1,6 si c'est un des
+ * vôtres, ×0,5 si c'est un captif », et le propriétaire l'a refusée d'une
+ * phrase : « pourquoi ce facteur fixe et limité ? c'est justement ce qu'on
+ * chasse ici ». Un multiplicateur sans agent est la première des quatre odeurs
+ * de l'audit, et celle-ci puait.
+ *
+ * La bonne question est : **qui juge, et sur quoi ?** Celui qui garde l'otage,
+ * et il ne juge que sur ce qu'il voit. Un otage ne garantit rien par nature ;
+ * il garantit dans la mesure où **le perdre vous coûterait**.
+ *
+ * - **Un captif** n'est pas des vôtres, et cela se voit. Pour son gardien c'est
+ *   une marchandise : il vaut ce qu'on peut en tirer, ni plus ni moins —
+ *   `valeurCaptif`, qui existe déjà et sert la rançon et la vente.
+ * - **Un des vôtres** vaut ce que sa perte vous ferait : ce qu'il sait faire,
+ *   les saisons qu'il a passées avec vous, l'affection que la troupe lui porte,
+ *   et s'il est le seul chez vous à savoir quelque chose. Tout cela se voit du
+ *   dehors — on regarde qui parle à qui, qui marche devant, qui recoud.
+ *
+ * D'où la conséquence que le facteur fixe interdisait : **une recrue de la
+ * veille laissée en gage ne vaut pas mieux qu'un captif**, et un ancien que la
+ * troupe aime vaut plusieurs fois davantage. Personne ne l'a décrété.
  */
-export function valeurGage(personne, sien) {
+export function valeurGage(state, personne, sien, groupe) {
   if (!personne) return 0;
-  const skills = personne.skills || {};
-  const meilleure = Math.max(
-    skills.melee || 0, skills.tir || 0, skills.ingenierie || 0, skills.medecine || 0);
-  return Math.round(meilleure * (sien ? 1.6 : 0.5));
+  const savoir = Math.max(
+    comp(personne, 'melee'), comp(personne, 'tir'),
+    comp(personne, 'ingenierie'), comp(personne, 'medecine'));
+  if (!sien) {
+    // Une marchandise, au prix de la marchandise : ce que ses gens en
+    // donneraient, ramené à l'échelle de l'estime.
+    return Math.round(valeurCaptif(personne) / 12);
+  }
+  const membres = (groupe && groupe.membres) || [];
+  const saisons = (personne.joursSurvecus || 0) / 30;
+  let affection = 0;
+  for (const autre of membres) {
+    if (autre === personne || !autre.id) continue;
+    affection += Math.max(0, lien(autre, personne));
+  }
+  // Le seul à savoir faire : on le remarque, et son absence se remarquerait
+  // davantage. On compare sur le métier où il est le meilleur des siens.
+  const metier = ['medecine', 'ingenierie', 'tir', 'melee'].find(
+    (m) => membres.every((a) => a === personne || comp(a, m) < comp(personne, m) * 0.7));
+  return Math.round(
+    savoir * GAGE.parCompetence
+    + saisons * GAGE.parSaison
+    + affection * GAGE.parLien
+    + (metier ? GAGE.irremplacable : 0));
 }
 
 /**
@@ -117,7 +169,7 @@ export function promettre(state, faction, quoi, duree, gage, log) {
   if (paroleAvec(state, faction, quoi)) {
     return { ok: false, motif: 'Vous leur avez déjà donné votre parole.' };
   }
-  const valeur = gage ? valeurGage(gage.personne, !!gage.sien) : 0;
+  const valeur = gage ? valeurGage(state, gage.personne, !!gage.sien, gage.groupe) : 0;
   const pese = pesePromesse(state, faction, quoi, valeur);
   if (!pese.ok) return pese;
 

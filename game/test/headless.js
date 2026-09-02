@@ -74,7 +74,7 @@ import { estAssiegee, vivresCoupees, negoceCoupe } from '../src/world.js';
 import { fonderDrapeau } from '../src/factions.js';
 import { laissePasser } from '../src/events.js';
 import {
-  promettre, romprePromesse, paroleAvec, valeurGage, PAROLES,
+  promettre, romprePromesse, paroleAvec, valeurGage, PAROLES, GAGE,
 } from '../src/parole.js';
 import { changerDeCamp, auCamp, savoir } from '../src/base.js';
 import { regionsVues } from '../src/connaissance.js';
@@ -12004,20 +12004,54 @@ section('P. La parole donnée (PAROLE.md, T1)');
       'et elle court jusqu’à l’échéance dite', p ? `${p.jusqua}` : 'aucune');
   }
 
-  // P3. Le gage (D2) : un des siens vaut plus qu'un captif ramassé la veille.
+  // P3. Le gage (D2) : ce que vaut un otage, c'est ce que sa perte vous
+  //     coûterait — et c'est celui d'en face qui l'estime, sur ce qu'il voit.
+  //
+  //     La première version multipliait par 1,6 « un des vôtres » et par 0,5 un
+  //     captif. Le propriétaire l'a refusé, et il avait raison : « pourquoi ce
+  //     facteur fixe et limité ? c'est justement ce qu'on chasse ici » — un
+  //     multiplicateur sans agent est la première des quatre odeurs de
+  //     l'audit. Ces trois tests disent ce qui l'a remplacé.
   {
     const { st, k } = decor();
+    const g = groupeActif(st);
+    const bleu = g.membres[0];
+    const ancien = g.membres[1];
+    // Deux hommes de même métier : l'un vient d'arriver, l'autre a fait la
+    // route avec la troupe et elle l'aime.
+    ancien.skills = { ...bleu.skills };
+    ancien.joursSurvecus = 400;
+    bleu.joursSurvecus = 0;
+    for (const autre of g.membres) {
+      if (autre === ancien) continue;
+      autre.liens = { ...(autre.liens || {}), [ancien.id]: 80 };
+      ancien.liens = { ...(ancien.liens || {}), [autre.id]: 80 };
+      if (autre !== bleu) {
+        autre.liens[bleu.id] = 0;
+        bleu.liens = { ...(bleu.liens || {}), [autre.id]: 0 };
+      }
+    }
+    // Un vrai personnage, identique au bleu : `valeurCaptif` lit le corps et
+    // l'équipement, un objet de fortune rend NaN et le test accuse le code.
+    const captif = JSON.parse(JSON.stringify(bleu));
+    captif.id = 'captif-x1';
+
+    const vCaptif = valeurGage(st, captif, false, g);
+    const vBleu = valeurGage(st, bleu, true, g);
+    const vAncien = valeurGage(st, ancien, true, g);
+
+    ok(Math.abs(vBleu - vCaptif) <= Math.max(2, vCaptif * 0.35),
+      'un des vôtres sans attaches ne gage pas mieux qu’un captif de même valeur',
+      `captif ${vCaptif} ≈ recrue ${vBleu}`);
+    ok(vAncien > vBleu * 1.8,
+      'mais un ancien que la troupe aime engage bien davantage — et rien ne l’a décrété',
+      `recrue ${vBleu} → ancien ${vAncien}`);
+
     st.player.reputation[k] = 10;
     const sec = promettre(st, k, 'treve', 240, null, () => {});
-    const membre = groupeActif(st).membres[0];
-    const captif = { skills: { ...membre.skills } };
-    const avecCaptif = valeurGage(captif, false);
-    const avecSien = valeurGage(membre, true);
-    ok(!sec.ok && avecSien > avecCaptif,
-      'un des siens laissé en gage pèse plus qu’un captif',
-      `captif ${avecCaptif} < sien ${avecSien}`);
-    const r = promettre(st, k, 'treve', 240, { personne: membre, sien: true }, () => {});
-    ok(r.ok, 'et il emporte l’accord là où l’estime seule échouait', r.motif || '');
+    ok(!sec.ok, 'l’estime seule ne suffisait pas', sec.motif || 'accepté !');
+    const r = promettre(st, k, 'treve', 240, { personne: ancien, sien: true }, () => {});
+    ok(r.ok, 'et c’est l’ancien laissé en gage qui emporte l’accord', r.motif || '');
   }
 
   // P4. Ce que la trêve fait vraiment : leurs chasseurs rentrent chez eux.

@@ -88,6 +88,28 @@ n'est pas la même qu'une parole en l'air.
   pareil.** Laisser un captif ramassé la veille n'engage à rien ; laisser un de
   ses vétérans engage pour de bon. En face, on sait faire la différence : **la
   valeur du gage décide de ce que la parole vaut**.
+
+  **Et surtout : aucun multiplicateur.** La première version écrivait « ×1,6
+  pour un des vôtres, ×0,5 pour un captif » ; le propriétaire l'a refusée d'une
+  phrase — « pourquoi ce facteur fixe et limité ? c'est justement ce qu'on
+  chasse ici ». Il avait raison : un multiplicateur sans agent est la première
+  des quatre odeurs de l'AUDIT. La bonne question est *qui juge, et sur quoi* —
+  celui qui garde l'otage, sur ce qu'il voit. Un otage ne garantit rien par
+  nature : il garantit dans la mesure où **le perdre vous coûterait**.
+
+  - Un **captif** n'est pas des vôtres et cela se voit : pour son gardien c'est
+    une marchandise, il vaut ce qu'on peut en tirer (`valeurCaptif`, qui sert
+    déjà la rançon et la vente).
+  - Un des **vôtres** vaut ce que sa perte vous ferait : ce qu'il sait faire,
+    les saisons passées avec vous, l'affection que la troupe lui porte
+    (`liens`), et s'il est le seul chez vous à savoir quelque chose. Tout cela
+    se voit du dehors — on regarde qui parle à qui, qui marche devant, qui
+    recoud.
+
+  Conséquence que le facteur fixe interdisait, et qui est vérifiée par test :
+  **une recrue de la veille ne gage pas mieux qu'un captif de même valeur**, et
+  un ancien que la troupe aime vaut plusieurs fois davantage. Personne ne l'a
+  décrété.
 - **D3 — le prix d'une parole rompue : ce que le monde en sait, rien de plus.**
   La rancune de qui l'a subie et ce que les témoins racontent — le moteur sait
   déjà faire, et « pas vu, pas su » vaut ici comme partout. **Pas de réputation
