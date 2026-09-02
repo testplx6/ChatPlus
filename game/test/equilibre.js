@@ -174,6 +174,7 @@ const TRACE = {
   // de deux mille sans rien dire du change. C'est le critère d'E6 : une ruine
   // par accident de change se verrait là, et nulle part ailleurs.
   bourseEtrangere: 0, bourseTotale: 0, bloquesChange: 0, changesFaits: 0,
+  venduPourChanger: 0,
   // L'invariant comptable, relevé là où il y a un joueur qui commerce.
   //
   // C'est la garde qui manquait, et son absence a laissé passer un défaut
@@ -1255,8 +1256,26 @@ function jouerPrincipal(state, g, memo) {
         // Le bot va donc au bureau — c'est exactement ce que le lot E rend
         // possible, et ce qu'E6 doit vérifier autrement qu'en le supposant.
         TRACE.bloquesChange++;
-        if (changerPourManger(state, colIci)) {
-          TRACE.changesFaits++;
+        let faisable = changerPourManger(state, colIci);
+        if (faisable) TRACE.changesFaits++;
+        else {
+          // Pas de bureau ici — la moitié des places n'en tient pas, et c'est
+          // assumé (« on change mieux dans une vraie ville »). Reste le recours
+          // que tout joueur emploie sans y penser : **vendre sur place**, qui
+          // paie dans la monnaie d'ici. Le bot ne l'avait jamais fait, et
+          // comptait ses échecs comme si le jeu l'avait coincé.
+          const parValeur = Object.keys(g.inventaire)
+            .filter((k) => COMMODITIES[k] && (g.inventaire[k] || 0) > 0
+              && k !== 'rations' && k !== 'medkit')
+            .sort((a, b) => (g.inventaire[b] * COMMODITIES[b].prix)
+              - (g.inventaire[a] * COMMODITIES[a].prix));
+          for (const k of parValeur) {
+            const r = vendre(state, colIci, k, g.inventaire[k], g);
+            if (r.ok) TRACE.venduPourChanger += 1;
+            if (soldeIci(state) > 200) { faisable = true; break; }
+          }
+        }
+        if (faisable) {
           const av = soldeIci(state);
           acheter(state, colIci, 'rations', cible - rations, g);
           TRACE.payeVivres += av - soldeIci(state);
@@ -2612,7 +2631,8 @@ console.log('Change : '
   + `${(100 * TRACE.bourseEtrangere / Math.max(1, TRACE.bourseTotale)).toFixed(1)} % `
   + 'de la bourse dans une monnaie qui n’a pas cours là où l’on est · '
   + `${TRACE.bloquesChange} achat(s) refusés faute d’avoir la bonne monnaie, `
-  + `${TRACE.changesFaits} passage(s) au bureau`);
+  + `${TRACE.changesFaits} passage(s) au bureau, `
+  + `${TRACE.venduPourChanger} fois vendu sur place faute de bureau`);
 console.log('  quand le change ne se fait pas : '
   + Object.entries(TRACE.pasDeChange).filter(([, v]) => v)
     .map(([k, v]) => `${k} ${v}`).join(' · '));

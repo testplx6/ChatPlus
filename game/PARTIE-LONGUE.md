@@ -49,7 +49,28 @@ heures — le même gain qu'en quatre mille. Avec un camp qui produit, 13,4 à
 entraîne. Tant que le bot court après sa nourriture, **le banc ne peut rien
 dire des vétérans** — ni qu'ils existent, ni qu'ils manquent.
 
-### 2. La moitié de la fortune est dans une monnaie qui n'a pas cours
+### 2. La moitié de la fortune est dans une monnaie qui n'a pas cours — **instruit, ce n'est pas un défaut**
+
+**Verdict (septembre 2026)** : le jeu n'est pas en cause, et le bot ne l'était
+qu'à moitié. Le premier motif d'échec du change n'est pas la rareté des
+bureaux mais **l'endroit** : `sansComptoir` domine (1 388 sur 2 350), parce
+qu'une place sur deux n'en tient pas — un choix assumé d'ECONOMIE §5.1, « on
+change mieux dans une vraie ville ».
+
+Or le contre-jeu existe et le bot ne le prenait pas : **vendre sur place paie
+dans la monnaie d'ici**. Il restait bloqué avec de l'argent ailleurs et un sac
+plein de marchandise, et comptait cet échec comme si le jeu l'avait coincé. Le
+recours lui est donné (526 ventes sur place par run de trente parties, survie
+30/30).
+
+Et le résultat contre-intuitif vaut d'être dit : la part en monnaie étrangère
+**monte** (61 % → 74 %), parce que plus on vend partout, plus on accumule de
+monnaies diverses. C'est la simulation qui parle, pas une avarie : un nomade
+dans un monde à sept monnaies finit avec sept poches, et les vider demande de
+passer par les vraies villes ou de tenir un comptoir. La friction a son
+contre-jeu — les quatre odeurs de l'audit sont saines.
+
+### 2 bis. Le relevé d'origine, pour mémoire
 
 À seize mille heures avec un camp : **50,3 % de la bourse** dans une monnaie
 qui n'a pas cours là où l'on se trouve, **3 307 achats refusés** faute d'avoir
