@@ -33,7 +33,34 @@ Les trois sont des **relevés**, pas des verdicts : dans les trois cas il reste
 à établir si c'est le jeu ou le bot qui parle — la leçon du jour, payée deux
 fois.
 
-### 1. Le bot ne s'entraîne jamais, et ce n'est pas le jeu qui l'en empêche
+### 1. Le bot ne s'entraîne jamais — **instruit : le jeu fait très bien des vétérans**
+
+**Verdict (septembre 2026).** Le plafond était entièrement dans l'instrument, et
+la question de fond a une réponse nette. Deux corrections, puis une expérience :
+
+- **Le grenier compte.** Le bot renonçait faute de cent cinquante rations *dans
+  le sac*, alors qu'un joueur installé s'exerce au camp, à côté de ses bacs. En
+  comptant le grenier quand on est chez soi : l'entraînement passe de 0 % à 3 %
+  des tours, et la faim de 65 % à 27 % des renoncements.
+- **Le blocage s'est alors déplacé** sur `collecteUrgente` (59 %) : le bot a
+  toujours une collecte en cours.
+- **Le témoin du haut** (`ENTRAINE=1`, l'exercice avant la collecte tant qu'on
+  est chez soi) répond enfin à la question :
+
+| anciens du premier jour, 16 000 h | compétence brute |
+|---|---|
+| bot ordinaire | 15,6 → 21,7 |
+| bot qui s'entraîne vraiment | 16,7 → **50,9** |
+
+Compétence de combat des survivants 18,5 → **43,6** (max 73), et « mort en
+route » tombe de 70 à **14** : des gens compétents meurent beaucoup moins.
+
+**Le jeu fabrique donc parfaitement des vétérans** — il faut s'entraîner, ce
+que le bot ne faisait jamais. Et l'arbitrage est vrai des deux côtés : le
+patrimoine moyen tombe de 246 747 à 23 455, parce que les heures d'exercice ne
+sont pas des heures de travail. Les vétérans ou la fortune, pas les deux.
+
+### 1 bis. Le relevé d'origine, pour mémoire
 
 Mesuré (compteur permanent, `À l'entraînement` au rapport) : **2 % des tours**
 sans camp, **0 % avec camp**. La raison n'est pas le plafond du bot — le porter

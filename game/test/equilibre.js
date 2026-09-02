@@ -1872,13 +1872,27 @@ function jouerPrincipal(state, g, memo) {
   // Pourquoi l'on ne s'entraîne pas, quand on ne s'entraîne pas. Sans ce
   // détail, « le bot ne progresse plus » n'a pas de cause : c'est une règle à
   // quatre conditions, et savoir laquelle mord est tout ce qui compte.
+  // Ce qu'on a sous la main pour tenir pendant l'exercice : le sac, plus le
+  // grenier quand on est chez soi. C'est la correction du troisième relevé de
+  // PARTIE-LONGUE.md — le bot renonçait à s'entraîner faute de cent cinquante
+  // rations DANS LE SAC, alors qu'un joueur installé s'exerce au camp, à côté
+  // de ses bacs. Il ne s'entraînait donc jamais (2 % des tours, 0 % avec un
+  // camp), et toute mesure de progression passait par là.
+  const auCampIci = state.base && state.base.fonde && state.base.regionId === g.regionId;
+  const vivresIci = rations + (auCampIci ? Math.floor(state.base.stock.rations || 0) : 0);
   if (combat < CIBLE_COMBAT) {
-    if (!(rations > 150)) TRACE.pasEntraine.faim += 1;
+    if (!(vivresIci > 150)) TRACE.pasEntraine.faim += 1;
     else if (collecteUrgente(state)) TRACE.pasEntraine.collecte += 1;
     else if (!vivants.every((c) => pvTotal(c).pct > 0.7)) TRACE.pasEntraine.blesses += 1;
     else TRACE.pasEntraine.oui += 1;
   } else TRACE.pasEntraine.assezBon += 1;
-  if (combat < CIBLE_COMBAT && rations > 150 && !collecteUrgente(state)
+  // `ENTRAINE=1` : l'exercice passe avant la collecte tant qu'on est chez soi,
+  // le ventre plein et debout. Ce n'est pas le bot ordinaire — c'est le témoin
+  // du haut, celui qui répond à « le jeu sait-il faire des vétérans ? » sans
+  // qu'on ait à le supposer.
+  const exercicePrime = process.env.ENTRAINE === '1' && auCampIci;
+  if (combat < CIBLE_COMBAT && vivresIci > 150
+      && (exercicePrime || !collecteUrgente(state))
       && vivants.every((c) => pvTotal(c).pct > 0.7)) {
     if (g.ordre.type !== 'entrainement') {
       donnerOrdre(state, { type: 'entrainement', skill: 'melee' }, g);
