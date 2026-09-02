@@ -2312,7 +2312,8 @@ function blocColonie(col) {
       ${portesDeVille(col, libre, repu)}
     </div>
     ${blocEngagement(col)}
-    ${blocParole(col, libre)}
+    ${blocParole(col, libre, 'treve')}
+    ${blocParole(col, libre, 'tribut')}
   </section>
   ${blocAssaut(col)}`;
 }
@@ -2321,6 +2322,9 @@ function blocColonie(col) {
 // partie — c'est ce qu'on tape, pas ce qui est arrivé au monde.
 let gageChoisi = null;
 let dureeParole = 240;
+// Ce que la dernière tentative a répondu : un refus muet laisse le joueur
+// cliquer trois fois sans comprendre.
+let messageParole = null;
 const DUREES_PAROLE = [72, 240, 720];
 
 /**
@@ -2331,24 +2335,30 @@ const DUREES_PAROLE = [72, 240, 720];
  * quelqu'un en gage, et l'autre accepte ou non — l'écran dit ce qu'ils exigent
  * et ce qu'on leur offre, avant de cliquer.
  */
-function blocParole(col, libre) {
+function blocParole(col, libre, quoi) {
   if (libre || !col.faction) return '';
-  const p = ACTIONS.paroleIci(col.faction, gageChoisi);
+  const p = ACTIONS.paroleIci(col.faction, gageChoisi, quoi);
   if (!p) return '';
   const nom = drapeauDe(S.world, col.faction).nom;
   if (p.courante) {
     const j = Math.round(p.courante.reste / 24);
+    const ech = p.courante.montant
+      ? ` Prochain versement de ${n(p.courante.montant)} ${sym()} dans `
+        + `${Math.max(0, Math.round(p.courante.prochain))} h.`
+      : ' Leurs chasseurs restent chez eux tant qu’elle tient.';
     return `<div class="sep"></div>
-      <div class="titre">Votre parole <span class="droite ok">donnée</span></div>
-      <div class="aide">Trêve avec ${e(nom)} : ${j > 0 ? `encore ${j} jour${j > 1 ? 's' : ''}`
-  : 'elle expire'}. Leurs chasseurs restent chez eux tant qu'elle tient.</div>
-      <button class="act mini" data-a="reprendre-parole" data-r="${e(col.faction)}">
-        Reprendre sa parole</button>
+      <div class="titre">${e(p.quoi.nom)} <span class="droite ok">en cours</span></div>
+      <div class="aide">Avec ${e(nom)} : ${j > 0 ? `encore ${j} jour${j > 1 ? 's' : ''}`
+  : 'elle expire'}.${ech}</div>
+      <button class="act mini" data-a="reprendre-parole" data-r="${e(col.faction)}"
+        data-k="${e(p.cle)}">Reprendre sa parole</button>
       <div class="aide">Ce que ça coûte dépend de qui est là pour le voir. Ici, on vous voit.</div>`;
   }
   return `<div class="sep"></div>
-    <div class="titre">Donner sa parole</div>
+    <div class="titre">${e(p.quoi.nom)}</div>
     <div class="aide">${e(p.quoi.desc)}</div>
+    ${p.montant ? `<div class="ligne"><span class="k">Ce qu’ils réclament</span>
+      <span class="v">${n(p.montant)} ${sym()} tous les 10 jours</span></div>` : ''}
     <div class="taches" style="margin-top:5px">Durée
       ${DUREES_PAROLE.filter((d) => d <= p.dureeMax).map((d) => `<button
         class="act mini ${dureeParole === d ? 'primaire' : ''}"
@@ -2367,8 +2377,12 @@ function blocParole(col, libre) {
     <div class="ligne"><span class="k">Ce que vous valez${p.choisi ? ' avec le gage' : ''}</span>
       <span class="v ${p.ok ? 'ok' : 'alerte'}">${n(p.offert)}</span></div>
     <button class="act ${p.ok ? 'primaire' : ''}" data-a="donner-parole"
-      data-r="${e(col.faction)}">Demander la trêve</button>
-    ${p.ok ? '' : `<div class="aide alerte">${e(p.motif || '')}</div>`}`;
+      data-r="${e(col.faction)}" data-k="${e(p.cle)}">${p.cle === 'tribut'
+    ? 'Proposer le tribut' : 'Demander la trêve'}</button>
+    ${p.ok ? '' : `<div class="aide alerte">${e(p.motif || '')}</div>`}
+    ${messageParole && messageParole.cle === p.cle
+    ? `<div class="aide ${messageParole.ok ? 'ok' : 'alerte'}">${e(messageParole.texte)}</div>`
+    : ''}`;
 }
 
 /**
@@ -8241,14 +8255,19 @@ function surClic(ev) {
     }
 
     case 'donner-parole': {
-      const r = ACTIONS.promettreIci(el.dataset.r, dureeParole, gageChoisi);
+      const r = ACTIONS.promettreIci(el.dataset.r, dureeParole, gageChoisi, el.dataset.k);
       if (r.ok) gageChoisi = null;
+      messageParole = {
+        cle: el.dataset.k,
+        ok: !!r.ok,
+        texte: r.ok ? 'Votre parole est donnée.' : (r.motif || 'Refusé.'),
+      };
       rafraichir(true);
       break;
     }
 
     case 'reprendre-parole': {
-      ACTIONS.reprendreParole(el.dataset.r);
+      ACTIONS.reprendreParole(el.dataset.r, el.dataset.k);
       rafraichir(true);
       break;
     }

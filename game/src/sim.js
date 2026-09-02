@@ -11,6 +11,7 @@ import {
   creerBase, tickBase, tickCamps, campsDe, perdreAvantPoste, saccagerAvantPoste, forceEscouade,
   userMursSiege,
 } from './base.js';
+import { tickParoles } from './parole.js';
 import {
   tickColonie, etalDe, effondrer, faireSecession, faireRevolte, emploisInitiaux,
   reserveVille, prixReleves,
@@ -729,6 +730,9 @@ export function tick(state) {
       state.player.drapeau = null;
     }
   }
+  // Les échéances des paroles données (PAROLE.md, T2) : un tribut se verse, ou
+  // ceux qui l'attendent s'aperçoivent qu'il n'arrive pas.
+  tickParoles(state, log);
   tickCaravanes(state, log, ctx);
   // Le loyer des coffres court, qu'on soit là ou non.
   tickCoffres(state, log);

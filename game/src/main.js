@@ -54,6 +54,7 @@ import { carnetPrix } from './connaissance.js';
 import { distance } from './world.js';
 import {
   promettre, romprePromesse, paroleAvec, valeurGage, pesePromesse, PAROLES, ACCORD,
+  tributDemande,
 } from './parole.js';
 
 let state = null;
@@ -537,10 +538,10 @@ const API = {
    * L'écran ne doit jamais deviner : c'est le moteur qui dit ce qu'ils exigent,
    * ce qu'on leur offre, et ce que chaque gage possible changerait.
    */
-  paroleIci(faction, gageId) {
+  paroleIci(faction, gageId, quoi = 'treve') {
     if (!state || !faction) return null;
     const g = groupeActif(state);
-    const courante = paroleAvec(state, faction, 'treve');
+    const courante = paroleAvec(state, faction, quoi);
     const candidats = [];
     for (const c of g.membres) {
       if (!estVivant(c)) continue;
@@ -555,12 +556,21 @@ const API = {
     }
     candidats.sort((a, b) => b.valeur - a.valeur);
     const choisi = candidats.find((c) => c.id === gageId) || null;
-    const pese = pesePromesse(state, faction, 'treve', choisi ? choisi.valeur : 0);
+    const pese = pesePromesse(state, faction, quoi, choisi ? choisi.valeur : 0);
     return {
-      quoi: PAROLES.treve,
+      cle: quoi,
+      quoi: PAROLES[quoi],
+      // Ce qu'ils réclameraient pour vous oublier : ils le disent avant qu'on
+      // s'engage, sinon promettre serait signer les yeux fermés.
+      montant: quoi === 'tribut' ? tributDemande(state, faction) : 0,
       dureeMax: ACCORD.dureeMax,
       courante: courante
-        ? { jusqua: courante.jusqua, reste: courante.jusqua - state.temps }
+        ? {
+          jusqua: courante.jusqua,
+          reste: courante.jusqua - state.temps,
+          montant: courante.montant || 0,
+          prochain: courante.prochain ? courante.prochain - state.temps : 0,
+        }
         : null,
       gages: candidats.slice(0, 6),
       choisi,
@@ -572,7 +582,7 @@ const API = {
   },
 
   /** Donner sa parole ici. */
-  promettreIci(faction, duree, gageId) {
+  promettreIci(faction, duree, gageId, quoi = 'treve') {
     if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
     const g = groupeActif(state);
     let gage = null;
@@ -581,15 +591,15 @@ const API = {
       const captif = sien ? null : prisonniersDe(g).find((c) => c.id === gageId);
       if (sien || captif) gage = { personne: sien || captif, sien: !!sien, groupe: g };
     }
-    const r = promettre(state, faction, 'treve', Number(duree), gage, creerLogger(state));
+    const r = promettre(state, faction, quoi, Number(duree), gage, creerLogger(state));
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },
 
   /** Et la reprendre — le prix dépend de qui est là pour le voir. */
-  reprendreParole(faction) {
+  reprendreParole(faction, quoi = 'treve') {
     if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
-    const r = romprePromesse(state, faction, 'treve', creerLogger(state));
+    const r = romprePromesse(state, faction, quoi, creerLogger(state));
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
   },

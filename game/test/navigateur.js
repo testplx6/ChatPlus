@@ -2780,7 +2780,7 @@ console.log('\n8 nonies septies. La parole donnée (PAROLE.md, T1)');
 
   const texteP = await page.evaluate(() => document.querySelector('#ecran').textContent);
   ok(!/n’a pas pu s’afficher/.test(texteP), 'l’écran tient avec le bloc de la parole');
-  ok(/Donner sa parole/.test(texteP), 'la ville où l’on se tient propose de donner sa parole',
+  ok(/Une trêve/.test(texteP), 'la ville où l’on se tient propose de donner sa parole',
     texteP.slice(0, 120));
   ok(/Ce qu’ils exigent/.test(texteP) && /Ce que vous valez/.test(texteP),
     'et elle dit ce qu’ils exigent et ce qu’on leur offre, avant de cliquer');
@@ -2801,7 +2801,7 @@ console.log('\n8 nonies septies. La parole donnée (PAROLE.md, T1)');
     };
   });
   ok(apresP.paroles === 1, 'la parole est donnée et elle court', `${apresP.paroles}`);
-  ok(/Votre parole/.test(apresP.texte) && /Reprendre sa parole/.test(apresP.texte),
+  ok(/en cours/.test(apresP.texte) && /Reprendre sa parole/.test(apresP.texte),
     'l’écran la montre, avec de quoi la reprendre');
 
   await page.click('[data-a="reprendre-parole"]');
@@ -2811,6 +2811,43 @@ console.log('\n8 nonies septies. La parole donnée (PAROLE.md, T1)');
     return (s.player.paroles || []).filter((x) => !x.rompue).length;
   });
   ok(repris === 0, 'et la reprendre la fait cesser', `${repris} encore en cours`);
+
+  // Le tribut (T2) : ils annoncent leur prix avant qu'on s'engage.
+  const texteT = await page.evaluate(() => document.querySelector('#ecran').textContent);
+  ok(/Un tribut/.test(texteT), 'la même ville propose aussi le tribut', texteT.slice(0, 120));
+  ok(/Ce qu’ils réclament/.test(texteT),
+    'et elle annonce ce qu’ils réclament avant qu’on s’engage');
+  const boutons = await page.evaluate(
+    () => [...document.querySelectorAll('[data-a="donner-parole"]')]
+      .map((b) => `${b.dataset.k}:${b.textContent.trim().slice(0, 20)}`));
+  ok(boutons.length === 2 && boutons.some((b) => b.startsWith('tribut')),
+    'les deux paroles se proposent côte à côte, chacune identifiée',
+    JSON.stringify(boutons));
+  await page.evaluate(() => {
+    const b = document.querySelector('[data-a="donner-parole"][data-k="tribut"]');
+    if (b) b.scrollIntoView({ block: 'center' });
+  });
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: join(CAPTURES, '27-tribut.png') });
+  await page.click('[data-a="donner-parole"][data-k="tribut"]');
+  await page.waitForTimeout(600);
+  const apresT = await page.evaluate(() => {
+    const s = JSON.parse(window.__sauvegardeTexte());
+    const t = (s.player.paroles || []).find((x) => x.quoi === 'tribut');
+    return {
+      montant: t ? t.montant : 0,
+      prochain: t ? t.prochain : 0,
+      toutes: (s.player.paroles || []).map((x) => `${x.quoi}${x.rompue ? '(rompue)' : ''}`),
+      ecran: (() => {
+        const t = document.querySelector('#ecran').textContent;
+        const i = t.indexOf('Un tribut');
+        return i < 0 ? t.slice(0, 200) : t.slice(i, i + 320).replace(/\s+/g, ' ');
+      })(),
+    };
+  });
+  ok(apresT.montant > 0 && apresT.prochain > 0,
+    'le tribut promis porte un montant et une échéance',
+    JSON.stringify(apresT));
 }
 
 console.log('\n8 nonies sexies. Le convoi à gages (CONVOI.md)');

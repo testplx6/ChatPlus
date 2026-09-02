@@ -75,6 +75,7 @@ import { fonderDrapeau } from '../src/factions.js';
 import { laissePasser } from '../src/events.js';
 import {
   promettre, romprePromesse, paroleAvec, valeurGage, PAROLES, GAGE,
+  tributDemande, tickParoles,
 } from '../src/parole.js';
 import { changerDeCamp, auCamp, savoir } from '../src/base.js';
 import { regionsVues } from '../src/connaissance.js';
@@ -12079,6 +12080,83 @@ section('P. La parole donnée (PAROLE.md, T1)');
     ok(!sec.ok, 'l’estime seule ne suffisait pas', sec.motif || 'accepté !');
     const r = promettre(st, k, 'treve', 240, { personne: ancien, sien: true }, () => {});
     ok(r.ok, 'et c’est l’ancien laissé en gage qui emporte l’accord', r.motif || '');
+  }
+
+  // T2. Le tribut : payer d'avance pour qu'on vous oublie.
+  {
+    const { st, k } = decor();
+    const g = groupeActif(st);
+    st.base.fonde = true;
+    st.base.regionId = g.regionId;
+    st.base.pop = 8;
+    st.base.marchands = 2;
+
+    // Ce qu'ils réclament suit ce qu'ils CROIENT pouvoir vous prendre : un camp
+    // qui grossit et qui reçoit du monde se voit, et le tarif suit. Rien n'est
+    // décrété — c'est la jauge des pillards, lue par un conseil.
+    const petit = tributDemande(st, k);
+    st.base.pop = 40;
+    st.base.marchands = 60;
+    const gros = tributDemande(st, k);
+    ok(gros > petit * 1.5,
+      'on réclame davantage à qui a visiblement davantage',
+      `hameau ${petit} → place courue ${gros}`);
+
+    // Et l'estime le fait baisser : on rançonne moins ceux qu'on apprécie.
+    st.player.reputation[k] = 60;
+    const ami = tributDemande(st, k);
+    ok(ami < gros, 'et moins à qui l’on estime', `${gros} → ${ami}`);
+
+    // La haine, elle, se paie — et c'est le point qu'une sonde a rendu :
+    // un pays qui vous déteste refusait votre tribut « faute d'estime », alors
+    // qu'un tribut est justement ce qu'on propose quand on est mal vu. Un
+    // prédateur qui vous hait ne refuse pas votre argent : il le fait payer.
+    st.player.reputation[k] = -60;
+    const hai = tributDemande(st, k);
+    ok(hai > gros, 'on réclame davantage à qui l’on déteste', `${gros} → ${hai}`);
+    const r = promettre(st, k, 'tribut', 720, null, () => {});
+    ok(r.ok, 'et l’on accepte son argent quand même — l’argent parle pour lui',
+      r.motif || '');
+
+    // Mais tout ne s'achète pas : une trêve, à −60, reste refusée. Payer, ce
+    // n'est pas être aimé.
+    const t = promettre(st, k, 'treve', 240, null, () => {});
+    ok(!t.ok, 'une trêve, en revanche, ne s’achète pas à ce prix-là', t.motif || 'accepté !');
+  }
+
+  // T2b. Le tribut se paie à l'échéance — ou la parole tombe d'elle-même.
+  {
+    const { st, k } = decor();
+    const g = groupeActif(st);
+    st.base.fonde = true;
+    st.base.regionId = g.regionId;
+    st.player.reputation[k] = 40;
+    poser(st, 20000);
+    const r = promettre(st, k, 'tribut', 720, null, () => {});
+    ok(r.ok, 'un tribut se promet comme le reste', r.motif || '');
+    const p = paroleAvec(st, k, 'tribut');
+    ok(p && p.montant > 0 && p.prochain > st.temps,
+      'avec un montant et une échéance', p ? `${p.montant} tous les ${p.cadence} h` : 'aucun');
+
+    const avant = soldeIci(st);
+    st.temps = p.prochain;
+    tickParoles(st, () => {});
+    ok(soldeIci(st) < avant, 'à l’échéance, on verse',
+      `${avant} → ${soldeIci(st)}`);
+    ok(paroleAvec(st, k, 'tribut'), 'et la parole tient');
+
+    // À sec : on ne peut plus payer, et la parole tombe. Ils attendaient
+    // l'argent : nul besoin de témoin pour qu'ils s'en aperçoivent.
+    const p2 = paroleAvec(st, k, 'tribut');
+    st.player.bourse = {};
+    st.temps = p2.prochain;
+    const repu = st.player.reputation[k];
+    tickParoles(st, () => {});
+    ok(!paroleAvec(st, k, 'tribut'), 'un tribut qu’on ne verse plus n’est plus une parole');
+    for (let i = 0; i < 300; i++) tick(st);
+    ok((st.player.reputation[k] || 0) < repu,
+      'et ils s’en souviennent — ils attendaient cet argent',
+      `${repu} → ${Math.round(st.player.reputation[k] || 0)}`);
   }
 
   // P4. Ce que la trêve fait vraiment : leurs chasseurs rentrent chez eux.

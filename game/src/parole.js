@@ -18,6 +18,9 @@ import { drapeauDe } from './data.js';
 import { commettre, delaiVersFaction } from './faits.js';
 import { colonieDe, distance } from './world.js';
 import { comp, lien } from './characters.js';
+import { jaugeRaid } from './base.js';
+import { encaisser } from './economy.js';
+import { regler, soldeIci, signeIci, entrerDehors } from './monnaie.js';
 import { valeurCaptif } from './justice.js';
 
 /**
@@ -32,7 +35,68 @@ export const PAROLES = {
     desc: 'On ne se cherche plus. Leurs chasseurs rentrent chez eux le temps dit.',
     poids: 18,
   },
+  tribut: {
+    nom: 'Un tribut',
+    desc: 'On verse, et l’on vous oublie. Tant que ça tombe — et le jour où ça '
+      + 'cesse, ils ne mettront pas longtemps à s’en apercevoir.',
+    poids: 6,
+    /** Ce qui se verse se promet moins cher : l'argent parle pour vous. */
+    verse: true,
+  },
 };
+
+/** Ce qui règle un tribut. Calibré au banc. */
+export const TRIBUT = {
+  /**
+   * Ce qu'ils réclament, en crédits, par point de butin qu'ils croient voir.
+   *
+   * `jaugeRaid` mesure un **appétit**, pas une somme : sans conversion, un
+   * hameau et une place courue tombaient tous deux sur le plancher et le tarif
+   * ne variait plus du tout. Ce nombre-ci est le pont entre les deux, et il se
+   * balaie comme le reste.
+   */
+  parPoint: 2.6,
+  /** Ce que le risque qu'ils voient retire à leur appétit : on rançonne moins qui mord. */
+  parRisque: 0.35,
+  /** Ce que l'estime fait baisser, par point. */
+  parEstime: 0.008,
+  /**
+   * Ce que la haine fait monter, par point d'estime négative.
+   *
+   * On ne refuse pas l'argent de qui l'on déteste — on le fait payer. Sans
+   * cela, un pays qui vous hait refusait votre tribut « faute d'estime », ce
+   * qui est exactement à l'envers : le tribut est ce qu'on propose QUAND on
+   * est mal vu.
+   */
+  parHaine: 0.014,
+  /** Le plancher : on ne se dérange pas pour trois crédits. */
+  minimum: 40,
+  /** Chaque combien on verse, en heures. */
+  cadence: 240,
+};
+
+/**
+ * Ce qu'un pays réclame pour vous laisser tranquille.
+ *
+ * **Personne ne fixe un tarif.** Ils demandent une part de ce qu'ils croient
+ * pouvoir vous prendre — c'est-à-dire exactement ce que les pillards jaugent
+ * déjà (`jaugeRaid`, PROMESSES P6) : les bouches à nourrir, les colporteurs qui
+ * repartent chargés, la place inscrite sur les cartes. Ce qui se voit, jamais
+ * votre registre.
+ *
+ * Et l'on rançonne moins ceux qui mordent (le risque qu'ils voient) et moins
+ * ceux qu'on apprécie (l'estime). Un tribut, c'est un calcul de prédateur qui
+ * préfère être payé que de se battre.
+ */
+export function tributDemande(state, faction) {
+  const j = state.base && state.base.fonde ? jaugeRaid(state) : { butin: 60, risque: 0 };
+  const estime = state.player.reputation[faction] || 0;
+  const brut = j.butin * TRIBUT.parPoint;
+  const remise = 1 - Math.min(0.6, Math.max(0, estime) * TRIBUT.parEstime)
+    + Math.min(1.5, Math.max(0, -estime) * TRIBUT.parHaine);
+  const peur = 1 / (1 + (j.risque / 100) * TRIBUT.parRisque);
+  return Math.max(TRIBUT.minimum, Math.round(brut * remise * peur));
+}
 
 /** Ce qui pèse dans la décision d'en face. Calibré au banc. */
 export const ACCORD = {
@@ -44,6 +108,8 @@ export const ACCORD = {
   enGuerre: 25,
   /** La durée maximale qu'on accorde, en heures de jeu. */
   dureeMax: 720,
+  /** Ce qu'un crédit promis pèse dans la balance, quand la parole se verse. */
+  parCredit: 0.35,
 };
 
 /** Les paroles qu'on a données et qui courent encore. */
@@ -142,7 +208,30 @@ export function pesePromesse(state, faction, quoi, gage = 0) {
   const mien = state.player.drapeau;
   const enGuerre = mien && guerres.some(
     (g) => (g.a === mien && g.b === faction) || (g.b === mien && g.a === faction));
-  const exige = def.poids * ACCORD.parPoids + (enGuerre ? ACCORD.enGuerre : 0);
+  // Ce qui se verse se règle autrement : **c'est eux qui fixent le prix**, et
+  // le payer suffit. L'estime ne décide pas de l'accord, elle décide du tarif
+  // (`tributDemande` fait remise à qui l'on apprécie et majore de qui l'on
+  // déteste). La première version faisait les deux à la fois, et un pays
+  // refusait son propre tarif à un petit camp mal vu : on ne pouvait acheter
+  // la paix que quand on n'en avait pas besoin.
+  //
+  // Ce qui les fait refuser quand même : une guerre ouverte. On ne s'achète
+  // pas une paix qu'on n'a pas fini de perdre — mais on peut toujours proposer
+  // (D4), et c'est à eux de voir.
+  if (def.verse) {
+    const prix = tributDemande(state, faction);
+    return {
+      ok: !enGuerre,
+      exige: prix,
+      offert: prix,
+      motif: enGuerre
+        ? `${drapeauDe(state.world, faction).nom} ${drapeauDe(state.world, faction).pluriel
+          ? 'sont en guerre contre vous' : 'est en guerre contre vous'} : `
+          + `ce n’est plus une affaire d’argent.`
+        : null,
+    };
+  }
+  const exige = def.poids * ACCORD.parPoids;
   const offert = estime + gage * ACCORD.parGage;
   return {
     ok: offert >= exige,
@@ -180,6 +269,11 @@ export function promettre(state, faction, quoi, duree, gage, log) {
     quoi,
     donnee: state.temps,
     jusqua: state.temps + h,
+    // Ce qui se verse a un montant et une échéance : une promesse d'argent
+    // sans date n'est pas un tribut, c'est une intention.
+    montant: def.verse ? tributDemande(state, faction) : 0,
+    cadence: def.verse ? TRIBUT.cadence : 0,
+    prochain: def.verse ? state.temps + TRIBUT.cadence : 0,
     // Ce qu'on a laissé en gage, pour mémoire : le transfert lui-même est
     // l'affaire de l'otage (T4).
     gage: valeur || null,
@@ -241,4 +335,66 @@ export function romprePromesse(state, faction, quoi, log) {
     });
   }
   return { ok: true, vu: temoins };
+}
+
+
+/**
+ * Les échéances qui tombent (PAROLE.md, T2).
+ *
+ * Un tribut se verse ou ne se verse pas, et il n'y a pas de troisième issue :
+ * ceux qui l'attendent s'aperçoivent tout seuls qu'il n'arrive pas. C'est la
+ * seule parole du jeu qui puisse se rompre **sans qu'on l'ait décidé** — on
+ * s'est appauvri, et l'on ne suit plus. Manquer par impuissance n'est pas
+ * manquer par choix (PACTES) : ils vous en veulent de la somme promise, pas
+ * davantage.
+ */
+export function tickParoles(state, log) {
+  const p = state.player;
+  if (!Array.isArray(p.paroles) || !p.paroles.length) return;
+  for (const w of p.paroles) {
+    if (w.rompue || !w.montant || w.jusqua <= state.temps) continue;
+    if (state.temps < w.prochain) continue;
+    const du = Math.round(w.montant);
+    if (soldeIci(state) >= du) {
+      regler(state, du);
+      // Ce qu'on leur verse entre chez eux : la ville la plus proche des
+      // leurs l'encaisse, et leur drapeau y prélève sa part comme sur le
+      // reste. Rien ne se crée : c'est votre poche qui se vide.
+      const col = colonieDe(state.world, (state.player.groupes[0] || {}).regionId)
+        || (state.world.colonies.find((c) => c.faction === w.faction && !c.ruine));
+      if (col && col.faction === w.faction) {
+        encaisser(state.world, col, du);
+        entrerDehors(state.world, col.faction, du);
+      }
+      w.prochain = state.temps + w.cadence;
+      if (log) {
+        log({
+          type: 'parole',
+          texte: `Tribut versé à ${drapeauDe(state.world, w.faction).nom} : ${du} ${signeIci(state)}.`,
+          discret: true,
+        });
+      }
+    } else {
+      w.rompue = true;
+      commettre(state, {
+        type: 'tribut-manque', regionId: (state.player.groupes[0] || {}).regionId || 0,
+        t: state.temps,
+        effets: [{
+          faction: w.faction, delta: -PAROLES.tribut.poids - Math.round(du / 20),
+          su: state.temps + delaiVersFaction(
+            state, 'rumeur', (state.player.groupes[0] || {}).regionId || 0, w.faction),
+          dit: `${drapeauDe(state.world, w.faction).nom} attend${drapeauDe(state.world, w.faction).pluriel ? 'ent' : ''} `
+            + `un tribut qui n'est pas venu.`,
+        }],
+      });
+      if (log) {
+        log({
+          type: 'parole',
+          texte: `Vous n’avez pas de quoi verser le tribut promis à `
+            + `${drapeauDe(state.world, w.faction).nom}. Ils l’apprendront.`,
+          important: true,
+        });
+      }
+    }
+  }
 }

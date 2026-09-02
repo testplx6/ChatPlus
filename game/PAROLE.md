@@ -204,7 +204,36 @@ promesse, un prix, une échéance, et quelqu'un en face qui accepte ou non.
       les captifs ensuite), et une fois la parole donnée il la montre avec son
       échéance et de quoi la reprendre — en prévenant qu'ici, on vous voit. Six
       sondes navigateur.
-- [ ] T2 — le tribut
+- [x] T2 — le tribut : **livré, moteur et écran**.
+
+      **Le prix n'est pas décrété** : ils réclament une part de ce qu'ils
+      croient pouvoir vous prendre — la jauge des pillards (`jaugeRaid`,
+      PROMESSES P6), lue par un conseil. Ce qui se voit, jamais votre registre :
+      les bouches, les colporteurs repartis chargés, la place sur les cartes.
+      On réclame moins à qui l'on apprécie, **davantage à qui l'on déteste**, et
+      moins à qui mord (le risque qu'ils voient).
+
+      Deux défauts de conception que les sondes ont rendus, et c'est tout
+      l'intérêt de les écrire :
+      1. *Un pays qui vous hait refusait votre tribut « faute d'estime »* —
+         alors qu'un tribut est justement ce qu'on propose quand on est mal vu.
+         Un prédateur ne refuse pas votre argent : il le fait payer.
+      2. *Puis il refusait son propre tarif* à un petit camp mal vu : on ne
+         pouvait acheter la paix que lorsqu'on n'en avait pas besoin. **Ce sont
+         eux qui fixent le prix ; le payer suffit.** L'estime décide du tarif,
+         pas de l'accord. Ce qui les fait refuser quand même : une guerre
+         ouverte — on ne s'achète pas une paix qu'on n'a pas fini de perdre.
+
+      Le versement tombe à échéance (`tickParoles`) : l'argent sort de votre
+      poche, entre dans une de leurs villes et leur drapeau y prélève sa part,
+      comme sur le reste — rien ne se crée. Et **un tribut qu'on ne verse plus
+      n'est plus une parole** : c'est la seule du jeu qui se rompe sans qu'on
+      l'ait décidé, quand on s'est appauvri. Nul besoin de témoin, ils
+      attendaient cet argent.
+
+      L'écran propose les deux paroles côte à côte, annonce le tarif avant
+      qu'on s'engage, et **dit désormais pourquoi c'est refusé** — un refus muet
+      laissait cliquer trois fois sans comprendre.
 - [ ] T3 — la geôle du camp
 - [ ] T4 — l'otage
 
