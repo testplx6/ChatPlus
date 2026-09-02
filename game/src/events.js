@@ -18,6 +18,7 @@ import { genererBande, resoudreCombat, butin } from './combat.js';
 import { perdreBete, visibiliteAttelage } from './betes.js';
 import { menace } from './secteur.js';
 import { capturables, fairePrisonniers } from './justice.js';
+import { paroleAvec } from './parole.js';
 import { rendementCohesion } from './groupes.js';
 import {
   comp, gagnerXp, estDebout, estVivant, makeCharacter, blesser, pvTotal,
@@ -573,7 +574,12 @@ export function tenterChasseurs(state, log, ctx) {
     }
   }
 
-  const traques = Object.keys(primes).filter((k) => primes[k] > 0 && drapeauDe(state.world, k));
+  // Une trêve donnée tient tant qu'elle court : leurs chasseurs rentrent chez
+  // eux (PAROLE.md, T1). C'est le premier effet d'une parole du joueur, et il
+  // se voit tout de suite — la prime, elle, reste inscrite : on n'a pas été
+  // blanchi, on a été laissé tranquille.
+  const traques = Object.keys(primes).filter(
+    (k) => primes[k] > 0 && drapeauDe(state.world, k) && !paroleAvec(state, k, 'treve'));
   if (!traques.length) return false;
 
   // Le recel : ce que le Syndicat Ombrelle donne aux siens. Ils ne vous

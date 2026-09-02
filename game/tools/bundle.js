@@ -79,6 +79,10 @@ const MODULES = [
   // Frapper une ville : lit l'économie (le portage), le registre des faits
   // et les données. Le combat lui arrive en paramètre, comme aux sièges —
   // c'est pourquoi il peut précéder events.js, qui le lui fournit.
+  // La parole donnée (PAROLE.md) : elle lit les drapeaux, le registre des faits
+  // et les notables ; `events.js` la lit en retour — une trêve écarte les
+  // chasseurs de prime — donc elle vient avant lui.
+  'parole.js',
   'assaut.js',
   'events.js',
   'squad.js',

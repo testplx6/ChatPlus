@@ -73,6 +73,9 @@ import { attaquerVille, RAID_VILLE, livrerPlace, raserPlace } from '../src/assau
 import { estAssiegee, vivresCoupees, negoceCoupe } from '../src/world.js';
 import { fonderDrapeau } from '../src/factions.js';
 import { laissePasser } from '../src/events.js';
+import {
+  promettre, romprePromesse, paroleAvec, valeurGage, PAROLES,
+} from '../src/parole.js';
 import { changerDeCamp, auCamp, savoir } from '../src/base.js';
 import { regionsVues } from '../src/connaissance.js';
 import {
@@ -11973,6 +11976,119 @@ section('P. Les promesses tenues — P1, la milice s’arme à l’arsenal (PROM
 }
 
 // ===========================================================================
+section('P. La parole donnée (PAROLE.md, T1)');
+{
+  const decor = (graine = 812) => {
+    const st = nouvellePartie(graine, { maintenant: 0, depart: 'ville', equipe: 3 });
+    const k = DIPLO_FACTIONS.find((x) => st.world.factions[x].colonies.length >= 3);
+    return { st, k };
+  };
+
+  // P1. On ne promet pas à qui ne vous doit rien : il faut valoir quelque chose
+  //     à ses yeux. Rien d'automatique — c'est lui qui pèse.
+  {
+    const { st, k } = decor();
+    st.player.reputation[k] = 0;
+    const r = promettre(st, k, 'treve', 240, null, () => {});
+    ok(!r.ok, 'un pays qui ne vous connaît pas ne vous promet rien', r.motif || 'accepté !');
+  }
+
+  // P2. Avec assez d'estime, la parole est donnée et elle court.
+  {
+    const { st, k } = decor();
+    st.player.reputation[k] = 40;
+    const r = promettre(st, k, 'treve', 240, null, () => {});
+    ok(r.ok, 'qui vous estime assez accepte la trêve', r.motif || '');
+    const p = paroleAvec(st, k);
+    ok(p && p.jusqua === st.temps + 240,
+      'et elle court jusqu’à l’échéance dite', p ? `${p.jusqua}` : 'aucune');
+  }
+
+  // P3. Le gage (D2) : un des siens vaut plus qu'un captif ramassé la veille.
+  {
+    const { st, k } = decor();
+    st.player.reputation[k] = 10;
+    const sec = promettre(st, k, 'treve', 240, null, () => {});
+    const membre = groupeActif(st).membres[0];
+    const captif = { skills: { ...membre.skills } };
+    const avecCaptif = valeurGage(captif, false);
+    const avecSien = valeurGage(membre, true);
+    ok(!sec.ok && avecSien > avecCaptif,
+      'un des siens laissé en gage pèse plus qu’un captif',
+      `captif ${avecCaptif} < sien ${avecSien}`);
+    const r = promettre(st, k, 'treve', 240, { personne: membre, sien: true }, () => {});
+    ok(r.ok, 'et il emporte l’accord là où l’estime seule échouait', r.motif || '');
+  }
+
+  // P4. Ce que la trêve fait vraiment : leurs chasseurs rentrent chez eux.
+  //
+  //     Deux pays vous traquent, un seul a votre parole : toutes les visites
+  //     doivent venir de l'autre. Un test qui se contenterait de compter zéro
+  //     visite chez un seul traqué serait complaisant — vérifié, il l'était :
+  //     la chasse est rare (une visite sur quatre mille heures), et « zéro »
+  //     ne prouvait rien.
+  {
+    const { st, k } = decor();
+    const autre = DIPLO_FACTIONS.find((x) => x !== k && st.world.factions[x].colonies.length >= 3);
+    st.player.reputation[k] = -80;
+    st.player.reputation[autre] = -80;
+    st.player.primes = { [k]: 2, [autre]: 2 };
+    st.player.paroles = [{
+      id: 'p1', faction: k, quoi: 'treve', jusqua: st.temps + 40000, donnee: st.temps,
+      gage: null, rompue: false,
+    }];
+    const vus = {};
+    const log = (e) => {
+      if (e.type !== 'chasseurs') return;
+      const qui = String(e.texte || '').includes(identiteDe(st.world, k).genitif)
+        ? 'sousTreve' : 'autre';
+      vus[qui] = (vus[qui] || 0) + 1;
+    };
+    const ctx = { rng: new Rng(7), genererBande, combatContre };
+    for (let i = 0; i < 12000; i++) { st.temps += 1; tenterChasseurs(st, log, ctx); }
+    ok(!vus.sousTreve && (vus.autre || 0) > 0,
+      'pendant la trêve leurs chasseurs restent chez eux, ceux des autres viennent',
+      `sous trêve ${vus.sousTreve || 0} · autres ${vus.autre || 0}`);
+  }
+
+  // P5. La rompre devant témoins se paie — en rancune, et par eux seuls.
+  {
+    const { st, k } = decor();
+    st.player.reputation[k] = 40;
+    promettre(st, k, 'treve', 240, null, () => {});
+    const avant = st.player.reputation[k];
+    const g = groupeActif(st);
+    const ville = st.world.colonies.find((c) => c.faction === k && !c.ruine);
+    g.regionId = ville.regionId;
+    romprePromesse(st, k, 'treve', () => {});
+    for (let i = 0; i < 400; i++) tick(st);
+    ok((st.player.reputation[k] || 0) < avant,
+      'une parole rompue sous leurs yeux leur revient',
+      `${avant} → ${Math.round(st.player.reputation[k] || 0)}`);
+    ok(!paroleAvec(st, k), 'et la parole ne court plus');
+  }
+
+  // P6. Mais « pas vu, pas su » vaut ici aussi (D3) : trahir au désert ne coûte
+  //     rien tant que personne ne l'a vu. C'est le calcul du traître.
+  {
+    const { st, k } = decor();
+    st.player.reputation[k] = 40;
+    promettre(st, k, 'treve', 240, null, () => {});
+    const avant = st.player.reputation[k];
+    const g = groupeActif(st);
+    const desert = st.world.regions.find(
+      (r) => !r.colonie && r.controle !== k
+        && !st.world.colonies.some((c) => c.faction === k
+          && distance(c.regionId, r.i) <= 2));
+    g.regionId = desert.i;
+    romprePromesse(st, k, 'treve', () => {});
+    for (let i = 0; i < 400; i++) tick(st);
+    ok(Math.abs((st.player.reputation[k] || 0) - avant) < 1,
+      'rompue au désert, personne ne l’apprend',
+      `${avant} → ${Math.round(st.player.reputation[k] || 0)}`);
+  }
+}
+
 section('M. Le Maréchal — M5, l’état-major et la fin de l’omniscience (MARECHAL.md)');
 {
   const s = nouvellePartie(791, { maintenant: 0, depart: 'ville', equipe: 3 });

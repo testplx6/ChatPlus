@@ -313,6 +313,10 @@ export function nouvellePartie(seed, opts = {}) {
       },
       contrats: [],
       primes: {},
+      // Ce qu'on a promis, et à qui (PAROLE.md). Présent dès la création :
+      // absent, `normaliser` l'ajouterait au rechargement et l'aller-retour
+      // JSON d'une partie neuve ne serait plus exact — un invariant du projet.
+      paroles: [],
       // Le récit (HISTOIRE.md, lot A) : le premier tick ouvre le chapitre
       // que l'état raconte. Initialisé ici pour que l'aller-retour JSON
       // d'une partie neuve soit exact — normaliser pose les mêmes valeurs.
