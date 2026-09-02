@@ -259,7 +259,25 @@ promesse, un prix, une échéance, et quelqu'un en face qui accepte ou non.
       fonctions du même nom, et le jeu livré casse sans que les tests le disent.
       Le vérificateur l'a refusé avant le commit ; la mienne est
       `tickGeoleCamp`.
-- [ ] T4 — l'otage
+- [x] T4 — l'otage : **livré**, et c'est lui qui donne son poids au reste.
+
+      Jusqu'ici le gage pesait dans la balance sans que personne ne bouge : on
+      **annonçait** quelqu'un et on le gardait. Une garantie qu'on ne remet pas
+      n'est pas une garantie, c'est un mot de plus.
+
+      Désormais il **change de mains** : il quitte la troupe (ou vos captifs) au
+      moment où la parole est donnée, et il reste chez eux. Trois issues, et
+      elles sont toutes dans `tickParoles` :
+      - la parole **tenue jusqu'au terme** : il revient, et le journal le dit ;
+      - la parole **reprise** : il ne revient pas, et le journal le nomme — ce
+        n'est pas une ligne comptable, c'est quelqu'un ;
+      - le tribut **qu'on cesse de verser** : même chose, sans qu'on l'ait
+        décidé.
+
+      C'est ce qui referme le chantier : la valeur d'un otage se calcule sur ce
+      que sa perte vous coûterait (§4, D2), et cette perte est maintenant réelle
+      — un ancien que la troupe aime vaut trente fois un captif ramassé la
+      veille, et le laisser derrière soi se paie exactement autant.
 
 ## Blocages
 

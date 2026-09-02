@@ -263,6 +263,19 @@ export function promettre(state, faction, quoi, duree, gage, log) {
   if (!pese.ok) return pese;
 
   if (!Array.isArray(state.player.paroles)) state.player.paroles = [];
+  // **Il part.** Sans cela, le gage était une promesse de plus : on annonçait
+  // quelqu'un et on le gardait. Un otage garantit parce qu'il change de mains
+  // — il quitte la troupe (ou la geôle du groupe) et reste chez eux jusqu'au
+  // terme. C'est ce qui fait la différence entre une garantie et un mot.
+  let otage = null;
+  if (gage && gage.personne) {
+    const gr = gage.groupe || (state.player.groupes || [])[0];
+    if (gr) {
+      if (gage.sien) gr.membres = (gr.membres || []).filter((x) => x !== gage.personne);
+      else gr.prisonniers = (gr.prisonniers || []).filter((x) => x !== gage.personne);
+    }
+    otage = { personne: gage.personne, sien: !!gage.sien, rendu: false };
+  }
   const parole = {
     id: `w${state.temps}-${faction}`,
     faction,
@@ -277,6 +290,7 @@ export function promettre(state, faction, quoi, duree, gage, log) {
     // Ce qu'on a laissé en gage, pour mémoire : le transfert lui-même est
     // l'affaire de l'otage (T4).
     gage: valeur || null,
+    otage,
     rompue: false,
   };
   state.player.paroles.push(parole);
@@ -284,7 +298,8 @@ export function promettre(state, faction, quoi, duree, gage, log) {
     log({
       type: 'parole',
       texte: `Parole donnée à ${drapeauDe(state.world, faction).nom} : ${def.nom.toLowerCase()}, `
-        + `${h} heures.${valeur ? ' Un gage reste entre leurs mains.' : ''}`,
+        + `${h} heures.`
+        + (otage ? ` ${otage.personne.nom} reste entre leurs mains.` : ''),
       important: true,
     });
   }
@@ -327,14 +342,17 @@ export function romprePromesse(state, faction, quoi, log) {
     type: 'parole-rompue', regionId: rid, t: state.temps, effets, anonyme: !temoins,
   });
   if (log) {
+    const nomOtage = p.otage && !p.otage.rendu && p.otage.personne
+      ? p.otage.personne.nom : null;
     log({
       type: 'parole',
       texte: `Vous reprenez votre parole à ${drapeauDe(state.world, faction).nom}.`
-        + (temoins ? ' On vous a vu.' : ' Personne, ici, pour le voir.'),
+        + (temoins ? ' On vous a vu.' : ' Personne, ici, pour le voir.')
+        + (nomOtage ? ` ${nomOtage} reste entre leurs mains — vous ne le reverrez pas.` : ''),
       important: true,
     });
   }
-  return { ok: true, vu: temoins };
+  return { ok: true, vu: temoins, otagePerdu: !!(p.otage && !p.otage.rendu) };
 }
 
 
@@ -351,6 +369,33 @@ export function romprePromesse(state, faction, quoi, log) {
 export function tickParoles(state, log) {
   const p = state.player;
   if (!Array.isArray(p.paroles) || !p.paroles.length) return;
+  // Les otages, d'abord : une parole tenue jusqu'au terme rend celui qu'on
+  // avait laissé. Une parole rompue ne le rend pas — on ne le revoit plus, et
+  // c'est tout le poids du geste.
+  for (const w of p.paroles) {
+    if (!w.otage || w.otage.rendu) continue;
+    const finie = w.jusqua <= state.temps;
+    if (!finie && !w.rompue) continue;
+    w.otage.rendu = true;
+    const gr = (p.groupes || [])[0];
+    if (!w.rompue && gr) {
+      if (w.otage.sien) gr.membres.push(w.otage.personne);
+      else {
+        if (!Array.isArray(gr.prisonniers)) gr.prisonniers = [];
+        gr.prisonniers.push(w.otage.personne);
+      }
+      if (log) {
+        log({
+          type: 'parole',
+          texte: `${w.otage.personne.nom} revient : `
+            + `${drapeauDe(state.world, w.faction).nom} avai${drapeauDe(state.world, w.faction).pluriel ? 'ent' : 't'} `
+            + `votre parole, vous l'avez tenue.`,
+          important: true,
+        });
+      }
+    }
+    w.otage.personne = w.rompue ? null : w.otage.personne;
+  }
   for (const w of p.paroles) {
     if (w.rompue || !w.montant || w.jusqua <= state.temps) continue;
     if (state.temps < w.prochain) continue;

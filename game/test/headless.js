@@ -12221,6 +12221,59 @@ section('P. La parole donnée (PAROLE.md, T1)');
       `${pleine} → ${detenusDuCamp(st.base).length} (elle en tient ${capaciteGeole(st.base)})`);
   }
 
+  // T4. L'otage change vraiment de mains — sans quoi le gage était une
+  //     promesse de plus, pas une garantie.
+  {
+    const { st, k } = decor(816);
+    const g = groupeActif(st);
+    st.player.reputation[k] = 10;
+    const ancien = g.membres[1];
+    ancien.joursSurvecus = 600;
+    for (const a of g.membres) {
+      if (a === ancien) continue;
+      a.liens = { ...(a.liens || {}), [ancien.id]: 70 };
+      ancien.liens = { ...(ancien.liens || {}), [a.id]: 70 };
+    }
+    const avant = g.membres.length;
+    const r = promettre(st, k, 'treve', 240, { personne: ancien, sien: true, groupe: g }, () => {});
+    ok(r.ok, 'la parole est donnée sur la foi d’un des vôtres', r.motif || '');
+    ok(g.membres.length === avant - 1 && !g.membres.includes(ancien),
+      'et il quitte la troupe : il est entre leurs mains',
+      `${avant} → ${g.membres.length}`);
+
+    // O2. Tenir jusqu'au bout : il revient.
+    const w = paroleAvec(st, k, 'treve');
+    st.temps = w.jusqua;
+    tickParoles(st, () => {});
+    ok(g.membres.some((c) => c.id === ancien.id),
+      'la parole tenue jusqu’au terme, on le récupère',
+      `${g.membres.length} au retour`);
+  }
+
+  // O3. La rompre, c'est le perdre.
+  {
+    const { st, k } = decor(817);
+    const g = groupeActif(st);
+    st.player.reputation[k] = 10;
+    const otage = g.membres[1];
+    otage.joursSurvecus = 600;
+    for (const a of g.membres) {
+      if (a === otage) continue;
+      a.liens = { ...(a.liens || {}), [otage.id]: 70 };
+      otage.liens = { ...(otage.liens || {}), [a.id]: 70 };
+    }
+    promettre(st, k, 'treve', 240, { personne: otage, sien: true, groupe: g }, () => {});
+    const dit = [];
+    romprePromesse(st, k, 'treve', (x) => dit.push(x.texte || ''));
+    st.temps += 400;
+    tickParoles(st, () => {});
+    ok(!g.membres.some((c) => c.id === otage.id),
+      'reprendre sa parole, c’est laisser son otage derrière soi');
+    ok(dit.some((x) => x.includes(otage.nom)),
+      'et le journal le nomme — ce n’est pas une ligne comptable',
+      dit.join(' | ').slice(0, 140));
+  }
+
   // P4. Ce que la trêve fait vraiment : leurs chasseurs rentrent chez eux.
   //
   //     Deux pays vous traquent, un seul a votre parole : toutes les visites
