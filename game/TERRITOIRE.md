@@ -235,3 +235,139 @@ de cesser de l'être.
    pouvoir d'une frontière.
 
 Rien n'est engagé tant que le propriétaire n'a pas tranché.
+
+---
+
+# Revue de game master — « ça me semble léger comme mécanisme »
+
+Demandée par le propriétaire, septembre 2026, à la livraison d'A2. Troisième
+passage du même consultant : le premier avait amendé `BATIMENTS.md`, le second
+a produit `REVUE.md`. Même protocole — ses affirmations porteuses sont
+revérifiées dans le code, fichier et ligne, avant consignation. Rien ici n'est
+engagé.
+
+## Le verdict, sans détour : il a raison
+
+**A2 est un minuteur.** Rester soixante-douze heures sur une case, et elle est
+à vous. Pas de choix, pas de risque, pas de coût, pas d'adversaire, pas de
+décision à aucun moment. Le dépôt a un mot pour ça dans ses quatre odeurs
+(`AUDIT.md`) : *un minuteur vécu comme une taxe*. Le retourner en récompense
+n'en change pas la nature — c'est toujours une mécanique qui demande d'attendre
+plutôt que de jouer.
+
+Et la mesure le dit déjà, sans qu'on ait besoin d'un avis : **zéro
+appropriation par le monde**, et le balayage 24 h → 168 h ne bouge pas ce zéro.
+Un mécanisme dont aucun agent ne se sert n'est pas un mécanisme léger : c'est
+un mécanisme absent. Le seul à s'en servir est le joueur, ce qui en fait — une
+fois de plus dans ce dossier — une règle qui ne concerne que lui.
+
+## Le diagnostic : le territoire n'est pas une surface
+
+L'erreur est en amont d'A2, et elle est dans le modèle lui-même. Ce jeu traite
+le territoire comme une **surface à colorier** : 432 cases, un nom de drapeau
+sur chacune. Or la carte est une grille 24×18 à quatre voisins où **rien n'est
+infranchissable** — `chemin` ne connaît que des coûts, jamais des murs
+(`world.js:822`). Sur une telle carte, une surface ne produit ni goulot, ni
+frontière, ni enjeu : tout se contourne pour presque rien. On peut colorier les
+432 cases, il ne se passera rien.
+
+Trois systèmes du jeu prétendent déjà parler de territoire, et **les trois ne
+mordent que sur le joueur** :
+
+| système | ce qu'il promet | ce que le code fait |
+|---|---|---|
+| `controle` | qui tient quoi | trois effets, tous côté joueur : ce qui sort du bois, les renforts du gradé, les témoins d'une parole rompue |
+| `insecurite` (`secteur.js`) | « multiplie les mauvaises rencontres **pour tout le monde**, joueur compris, et saigne la ville dont le secteur dépend » (en-tête du module) | `menace()` n'est lu qu'**une seule fois dans tout le moteur** — `events.js:674`, les rencontres du joueur. Les convois n'y sont pas soumis, les colonnes non plus, et « saigner la ville » se réduit à durcir ses lois (`factions.js:1496`) |
+| `danger` | le risque d'une région | les convois s'y exposent (`caravanes.js:1190`) — mais c'est une **autre grandeur** que l'insécurité, et les deux ne se parlent pas |
+
+Un module qui promet dans son en-tête ce que son code ne fait pas est le
+symptôme le plus net du dossier : personne n'a menti, c'est la **surface** qui
+ne se branche sur rien.
+
+## La trouvaille : l'objet territorial existe déjà, et ce n'est pas la case
+
+C'est **la route**. Le moteur la fabrique tout seul, et depuis longtemps :
+
+- `damer(world, i, force)` (`world.js:699`) tasse la terre à chaque passage —
+  un convoi ×1,6, une colonne ×2,5, le joueur en marchant.
+- `coutTraversee` et le Dijkstra de `chemin` **relisent** cette piste
+  (`world.js:694` et `world.js:822`) : une case damée coûte moins cher.
+- Donc la route **s'auto-renforce** : plus on y passe, moins elle coûte, plus
+  on y passe. Personne ne l'a dessinée ; elle sort du trafic réel.
+
+Mesuré au banc pour cette revue, six graines × 6 000 h : **22 % de la carte est
+damée**, et les 5 % de cases les plus passantes portent **19 % du trafic
+cumulé** — quatre fois la part uniforme. Les corridors sont là. Aucun mécanisme
+du jeu ne les regarde.
+
+## Ce qui manque, en une phrase
+
+**Aucun voyageur de ce monde ne choisit son chemin en fonction de ce qu'il
+craint.** `chemin` ne coûte que le biome et la piste. Il ignore l'insécurité,
+les frontières, les péages, la guerre, et jusqu'à savoir si l'on est en pays
+ami.
+
+C'est le verrou de tout le dossier, et il faut le dire dans cet ordre : **tant
+qu'il tient, rien de ce qu'on fera au territoire ne pourra se voir**, parce que
+le seul effet mesurable d'une frontière — dans la vraie vie comme ici — est de
+**déplacer du trafic**. Une frontière qui ne déplace rien n'est pas une
+frontière, c'est une couleur.
+
+## Ce que le consultant propose : tenir une route, pas une surface
+
+Trois crans, chacun mesurable seul, du moins cher au plus cher.
+
+**T1 — le voyageur pèse ce qu'il craint.** `chemin` prend un coût de risque en
+plus du coût de terrain : l'insécurité de la case, le péage attendu, les terres
+de qui vous fait la guerre. Une seule fonction touchée, et d'un coup quatre
+choses existent : les convois **contournent** les barrages (c'est l'option (c)
+du propriétaire, gratuitement) ; un secteur mal tenu **détourne le commerce**,
+donc saigne enfin la ville — ce que `secteur.js` promet depuis son écriture ;
+tenir une case sur un corridor devient un acte de pouvoir ; et les deux
+grandeurs de danger cessent d'être parallèles. Le coût technique est connu et
+déjà consigné : le Dijkstra tourne plusieurs fois par minute de jeu, le cache
+des routes de convois attend dans les optimisations reportées.
+
+**T2 — on tient un point, pas des heures.** Ce qu'on tient sur une route, c'est
+un **ouvrage** : un poste, un pont, un gué (c'est A3, et il devient le cœur du
+dossier au lieu d'une variante). Il coûte à bâtir, il se voit de loin, il se
+prend d'assaut, il se perd. Le minuteur disparaît : on ne tient pas parce qu'on
+a attendu, on tient parce qu'on a bâti — et parce qu'on défend. A2 redevient ce
+qu'il aurait dû être, la **conséquence** d'une occupation, jamais le moyen
+d'une conquête.
+
+**T3 — le trafic est la récompense.** Le péage encaissé (B1, livré) devient un
+revenu **proportionnel au trafic** de la route tenue. Un conseil a alors une
+raison chiffrée de vouloir un corridor, de le fortifier, de s'allier pour
+l'ouvrir ou de faire la guerre pour le fermer. Et A2 cesse d'être lettre morte
+sans qu'on y touche : les colonnes stationneront là où il y a quelque chose à
+tenir, parce qu'un agent aura enfin une réponse à « pourquoi ici ? ».
+
+## Ce que le consultant déconseille
+
+- **L'appropriation au temps passé, seule.** À garder comme conséquence, pas
+  comme moyen. Livrée telle quelle, elle enseigne au joueur que le territoire
+  s'obtient en ne faisant rien.
+- **La ressource par case (B3) en premier.** Elle multiplie les revenus sans
+  créer un seul conflit : on obtient un jeu de gestion plus riche, pas un monde
+  plus disputé. À faire après T1, où elle donnera une raison de se battre pour
+  un endroit précis.
+- **La case « disputée » entre deux drapeaux** (§6, question 5). Le conflit
+  intéressant n'est pas sur la case, il est sur le **passage**. Deux couleurs
+  sur une même case, c'est de la comptabilité ; deux pays qui veulent la même
+  route, c'est une guerre.
+
+## Le risque à surveiller, et il est réel
+
+Faire dépendre le trafic du risque peut **affamer des villes** : des convois
+qui contournent sont des convois qui ne livrent pas. T1 doit donc être un
+**coût, jamais un interdit** — un chemin dangereux reste praticable, il coûte
+plus cher —, et il se mesure contre les gardes `villes`, `satiete` et
+`convois`, qui sont précisément là pour attraper ça.
+
+## La question au propriétaire
+
+T1 est petit à écrire et change tout ce qui suit. Il change aussi le monde
+entier d'un coup, puisque chaque convoi recalcule ses routes. Le consultant
+recommande de le prendre seul, de le mesurer, et de ne décider de T2 et T3
+qu'après avoir vu ce que le commerce fait quand il a peur.
