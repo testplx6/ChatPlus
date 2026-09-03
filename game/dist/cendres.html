@@ -4735,6 +4735,49 @@ function colonieParId(world, id) {
   return index(world).get(id) || null;
 }
 
+/** Une ville vivante de ce drapeau se tient-elle sur cette case ? */
+function villeTenante(world, i, faction) {
+  const r = world.regions[i];
+  if (!r || r.colonie == null) return false;
+  const col = colonieParId(world, r.colonie);
+  return !!(col && !col.ruine && col.faction === faction);
+}
+
+/**
+ * Le territoire n'a jamais été autre chose qu'un halo peint autour des villes :
+ * la naissance du monde peint les quatre voisines d'une ville, et la prise
+ * d'une place donne au vainqueur la case et ses voisines. Ce qui manquait,
+ * c'est qu'on le relise. Une ville morte, affranchie ou passée à l'ennemi
+ * laissait derrière elle des cases à son nom que plus rien ne tenait — vingt-
+ * trois d'entre elles en quinze cents heures, parfois au nom d'un pays éteint.
+ *
+ * La règle ne fait qu'appliquer la définition jusqu'au bout : **une case n'est
+ * tenue que si une ville vivante de ce drapeau est dessus ou la touche.** Le
+ * premier arrivé garde tout ce qu'il a pris ; il cesse seulement de tenir ce
+ * qu'il n'a plus les moyens de tenir, et la case redevient libre pour le
+ * suivant qui viendra (TERRITOIRE.md, A5).
+ *
+ * `autour` : la case dont on vient de changer quelque chose. On ne relit
+ * qu'elle et ses voisines, parce que le halo d'une ville ne va pas plus loin.
+ * Sans elle, on relit toute la carte — ce que fait `normaliser` au chargement
+ * d'une partie d'avant.
+ */
+function libererOrphelines(world, autour) {
+  const cases = autour == null
+    ? world.regions.map((r) => r.i)
+    : [autour, ...voisins(autour)];
+  let liberees = 0;
+  for (const i of cases) {
+    const r = world.regions[i];
+    if (!r || !r.controle) continue;
+    if (villeTenante(world, i, r.controle)) continue;
+    if (voisins(i).some((v) => villeTenante(world, v, r.controle))) continue;
+    r.controle = null;
+    liberees++;
+  }
+  return liberees;
+}
+
 // Le coût d'un secteur n'a pas bougé avec l'agrandissement de la carte, et le
 // banc a montré que ce n'était pas là qu'était le problème : le diviser par
 // deux ne fait passer le temps de marche que de 39 à 35 %, sans rien changer au
@@ -12939,6 +12982,9 @@ function faireRevolte(world, col, rng, t) {
   col.defense = Math.round(col.defenseMax * 0.2);
   col.pop = Math.max(40, Math.round(col.pop * 0.9));
   world.regions[col.regionId].controle = null;
+  // Elle ne tient plus rien pour personne : ce qu'elle peignait autour d'elle
+  // au nom de son ancien drapeau redevient libre (TERRITOIRE.md, A5).
+  libererOrphelines(world, col.regionId);
   return { issue: 'affranchie', liberes, ancienne };
 }
 
@@ -12974,6 +13020,7 @@ function faireSecession(world, col) {
     cible.prochainConseil = Math.min(cible.prochainConseil, 20);
   }
   world.regions[col.regionId].controle = rendue;
+  libererOrphelines(world, col.regionId);
   col.unrest = 0.3;
   col.defense = Math.round(col.defenseMax * 0.5);
   return { ancienne, rendue, renaissance: cible.colonies.length === 1 };
@@ -13055,6 +13102,10 @@ function effondrer(world, col) {
   col.faction = null;
   const r = world.regions[col.regionId];
   r.controle = null;
+  // Une ville morte ne tient plus rien autour d'elle non plus. Sans ça, ses
+  // quatre voisines gardaient son nom pour toujours — parfois celui d'un pays
+  // éteint (TERRITOIRE.md, A5).
+  libererOrphelines(world, col.regionId);
   // Ce qu'il reste se fouille : une ville morte, c'est un site de plus.
   r.site = { type: 'ville_morte', connu: true, fouille: false };
   return ancienne;
@@ -13781,6 +13832,9 @@ function saisir(world, col, ancien, repreneur, log) {
   }
   col.faction = repreneur;
   world.regions[col.regionId].controle = repreneur;
+  // Ce que l'ancien tenait encore ici sans y avoir de ville cesse d'être à lui
+  // (TERRITOIRE.md, A5).
+  libererOrphelines(world, col.regionId);
   col.unrest = Math.min(1, col.unrest + 0.15);
   if (log) {
     log({
@@ -16081,6 +16135,9 @@ function basculerPlace(world, col, nouveau, log, ctx) {
   for (const v of voisins(col.regionId)) {
     if (world.regions[v].controle === ancien) world.regions[v].controle = nouveau;
   }
+  // Le perdant peut n'avoir plus rien alentour : ce qu'il tenait encore ici
+  // sans y avoir de ville cesse d'être à lui (TERRITOIRE.md, A5).
+  libererOrphelines(world, col.regionId);
   col.pop = Math.max(50, Math.round(col.pop * 0.82));
   col.unrest = Math.min(1, col.unrest + 0.35);
   col.prises = (col.prises || 0) + 1;
@@ -17601,6 +17658,7 @@ function fonderDrapeau(state, nom, log) {
     world.factions[cle].colonies.push(ville.id);
     world.factions[cle].capitale = ville.id;
     world.regions[ville.regionId].controle = cle;
+    libererOrphelines(world, ville.regionId);
   }
 
   if (log) {
@@ -23352,6 +23410,7 @@ function rattacherVille(state, faction, log) {
   const f = state.world.factions[faction];
   if (!f.colonies.includes(col.id)) f.colonies.push(col.id);
   state.world.regions[col.regionId].controle = faction;
+  libererOrphelines(state.world, col.regionId);
   if (log) {
     log({
       type: 'base',
@@ -23378,6 +23437,7 @@ function declarerIndependance(state, log) {
   if (f) f.colonies = f.colonies.filter((id) => id !== col.id);
   col.faction = null;
   state.world.regions[col.regionId].controle = null;
+  libererOrphelines(state.world, col.regionId);
   // Une proclamation : on décroche un drapeau pour que ça se sache (L3,
   // MEMOIRE.md). Mais le protecteur ne fulmine qu'à l'arrivée de la nouvelle.
   commettre(state, {
@@ -28972,6 +29032,12 @@ function normaliser(state) {
     // Avant les pistes, on traversait une friche vierge à chaque passage.
     if (r.piste === undefined) r.piste = 0;
   }
+  // Les couleurs orphelines des parties d'avant : une case tenue par un drapeau
+  // qui n'a plus une seule ville dessus ni à côté redevient libre. Le halo n'a
+  // jamais été relu jusqu'ici, et une partie longue en accumule (vingt-trois en
+  // quinze cents heures, parfois au nom d'un pays éteint). Voir TERRITOIRE.md,
+  // A5 — le défaut ne doit pas survivre à sa correction.
+  libererOrphelines(w);
   for (const c of w.colonies) {
     if (c.declin === undefined) c.declin = 0;
     // Avant la caisse, une ville n'avait pas de crédits : elle recevait sans

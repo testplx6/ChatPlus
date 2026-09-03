@@ -59,7 +59,8 @@ async function chargerMoteur(src) {
   const eco = await import(pathToFileURL(join(src, 'economy.js')).href);
   let eco2 = { auditer: () => [] };
   try { eco2 = await import(pathToFileURL(join(src, 'monnaie.js')).href); } catch (e) { /* témoin */ }
-  return { sim, data, eco, eco2 };
+  const monde = await import(pathToFileURL(join(src, 'world.js')).href);
+  return { sim, data, eco, eco2, monde };
 }
 
 /**
@@ -109,7 +110,7 @@ async function appliquerRegles(src, regles) {
  * campagne de cette session a recalculées à la main, réunies une fois pour
  * toutes. En ajouter une ici la donne à toutes les mesures futures.
  */
-function jouer({ sim, data, eco, eco2 }, graine, horizon) {
+function jouer({ sim, data, eco, eco2, monde }, graine, horizon) {
   const t0 = performance.now();
   const s = sim.nouvellePartie(graine);
   // Attribution M6 : quelle voie du circuit prend chaque tranche. Les
@@ -208,11 +209,29 @@ function jouer({ sim, data, eco, eco2 }, graine, horizon) {
     (k) => s.world.factions[k].morte).length;
   const ardoise = ardoiseMax;
 
+  const cours = (k) => (k && eco2.coursMonnaie ? eco2.coursMonnaie(s.world, k) : 1);
+  // Le territoire (TERRITOIRE.md) : combien de cases portent une couleur, et
+  // combien la portent sans qu'aucune ville vivante de ce drapeau soit dessus
+  // ou à côté. La seconde doit valoir zéro — le halo n'a de sens qu'accroché
+  // aux villes qui le peignent, et une revendication que plus personne ne porte
+  // est une couleur qui traîne. Avant la correction : vingt-trois en quinze
+  // cents heures.
+  const villeTient = (i, faction) => {
+    const r = s.world.regions[i];
+    if (!r || r.colonie == null) return false;
+    const c = s.world.colonies.find((x) => x.id === r.colonie);
+    return !!(c && !c.ruine && c.faction === faction);
+  };
+  const tenues = s.world.regions.filter((r) => r.controle);
+  const orphelines = tenues.filter((r) => !villeTient(r.i, r.controle)
+    && !monde.voisins(r.i).some((v) => villeTient(v, r.controle))).length;
+
   // Le cours d'un pays, pour ramener ses unités en ancien crédit. Une ville
   // sans drapeau bat la monnaie de personne : elle compte pour elle-même.
-  const cours = (k) => (k && eco2.coursMonnaie ? eco2.coursMonnaie(s.world, k) : 1);
   return {
     graine,
+    tenues: tenues.length,
+    orphelines,
     villes: cols.length,
     pop: Math.round(cols.reduce((a, c) => a + c.pop, 0)),
     nourries: cols.filter((c) => (c.stock.rations || 0) >= c.pop * 0.5).length,
@@ -377,6 +396,8 @@ function agreger(cfg) {
   const caisses = cfg.parties.flatMap((p) => p.caisses);
   return {
     nom: cfg.nom,
+    tenues: som(cfg, 'tenues'),
+    orphelines: som(cfg, 'orphelines'),
     villes: som(cfg, 'villes'),
     pop: som(cfg, 'pop'),
     nourries: som(cfg, 'nourries'),
@@ -463,6 +484,7 @@ function agreger(cfg) {
 
 const COLONNES = [
   ['nom', 'config', 18], ['villes', 'villes', 7], ['pop', 'pop', 8],
+  ['tenues', 'cases tenues', 12], ['orphelines', 'orphelines', 10],
   ['nourries', 'nourries', 8], ['ecrasees', 'écrasées', 8],
   ['tresorMed', 'trésor méd', 10], ['fauchees', '<2500', 6],
   ['caisseMed', 'caisse méd', 10], ['bourses', 'bourses', 7],

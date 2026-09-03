@@ -12,6 +12,7 @@ import { savoir } from './base.js';
 import { remiseDe, palierBonus } from './allegeance.js';
 import {
   distance as distanceCases, rendementRegion, colonieParId, vivresCoupees, SIEGE_FAIM,
+  libererOrphelines,
 } from './world.js';
 import { prixAvecBourse } from './bourse.js';
 import { groupeActif } from './groupes.js';
@@ -2017,6 +2018,9 @@ export function faireRevolte(world, col, rng, t) {
   col.defense = Math.round(col.defenseMax * 0.2);
   col.pop = Math.max(40, Math.round(col.pop * 0.9));
   world.regions[col.regionId].controle = null;
+  // Elle ne tient plus rien pour personne : ce qu'elle peignait autour d'elle
+  // au nom de son ancien drapeau redevient libre (TERRITOIRE.md, A5).
+  libererOrphelines(world, col.regionId);
   return { issue: 'affranchie', liberes, ancienne };
 }
 
@@ -2052,6 +2056,7 @@ export function faireSecession(world, col) {
     cible.prochainConseil = Math.min(cible.prochainConseil, 20);
   }
   world.regions[col.regionId].controle = rendue;
+  libererOrphelines(world, col.regionId);
   col.unrest = 0.3;
   col.defense = Math.round(col.defenseMax * 0.5);
   return { ancienne, rendue, renaissance: cible.colonies.length === 1 };
@@ -2133,6 +2138,10 @@ export function effondrer(world, col) {
   col.faction = null;
   const r = world.regions[col.regionId];
   r.controle = null;
+  // Une ville morte ne tient plus rien autour d'elle non plus. Sans ça, ses
+  // quatre voisines gardaient son nom pour toujours — parfois celui d'un pays
+  // éteint (TERRITOIRE.md, A5).
+  libererOrphelines(world, col.regionId);
   // Ce qu'il reste se fouille : une ville morte, c'est un site de plus.
   r.site = { type: 'ville_morte', connu: true, fouille: false };
   return ancienne;

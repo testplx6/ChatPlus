@@ -11,6 +11,7 @@ import { MENAGES } from './data.js';
 import { comprimer, decomprimer, sourceLz } from './lz.js';
 import { elaguerLiens } from './characters.js';
 import { depouillerRuine } from './economy.js';
+import { libererOrphelines } from './world.js';
 
 export const CLE = 'cendres.save.v1';
 
@@ -299,6 +300,12 @@ export function normaliser(state) {
     // Avant les pistes, on traversait une friche vierge à chaque passage.
     if (r.piste === undefined) r.piste = 0;
   }
+  // Les couleurs orphelines des parties d'avant : une case tenue par un drapeau
+  // qui n'a plus une seule ville dessus ni à côté redevient libre. Le halo n'a
+  // jamais été relu jusqu'ici, et une partie longue en accumule (vingt-trois en
+  // quinze cents heures, parfois au nom d'un pays éteint). Voir TERRITOIRE.md,
+  // A5 — le défaut ne doit pas survivre à sa correction.
+  libererOrphelines(w);
   for (const c of w.colonies) {
     if (c.declin === undefined) c.declin = 0;
     // Avant la caisse, une ville n'avait pas de crédits : elle recevait sans

@@ -87,9 +87,30 @@ de cesser de l'être.
   péage bâti. On tient ce qu'on a construit, pas ce qu'on a traversé.
 - **A4 — l'accord** : une case cédée, échangée ou concédée par traité. Les
   pactes savent déjà porter des clauses.
-- **A5 — l'abandon** : plus rien à ce drapeau ne touche la case → elle
-  redevient libre, et le suivant qui arrive se l'approprie. C'est le seul point
-  du dossier qui corrige un défaut plutôt que d'ajouter une possibilité.
+- **A5 — l'abandon** — **LIVRÉ, septembre 2026.** Plus rien à ce drapeau ne
+  touche la case → elle redevient libre, et le suivant qui arrive se
+  l'approprie. C'est le seul point du dossier qui corrigeait un défaut au lieu
+  d'ajouter une possibilité, et le défaut était bien plus gros que prévu :
+  **635 cases orphelines sur 1 434 tenues** (44 % du territoire du monde) à
+  six mille heures, six graines — des couleurs au nom de villes mortes, de
+  villes affranchies, parfois de pays éteints. Après : **756 tenues, zéro
+  orpheline**, et la carte politique dit enfin qui tient quoi.
+
+  La règle ne fait qu'appliquer la définition du halo jusqu'au bout : *une case
+  n'est tenue que si une ville vivante de ce drapeau est dessus ou la touche.*
+  Le premier arrivé garde tout ce qu'il a pris — la règle du propriétaire est
+  intacte ; il cesse seulement de tenir ce qu'il n'a plus les moyens de tenir.
+  `libererOrphelines` (world.js) relit la case et ses quatre voisines à chaque
+  fois qu'une ville meurt, s'affranchit, fait sécession, est saisie, est prise,
+  ou change de couleur pour le joueur — et toute la carte au chargement d'une
+  partie d'avant, pour que le défaut ne survive pas à sa correction.
+
+  Le banc porte la mesure (`cases tenues`, `orphelines` dans `jouer()`). Les
+  dix gardes tiennent, le tick est à ×0,974, et l'écart comptable reste exact.
+  Ce que la comparaison montre par ailleurs — zombies, guerres, masse nominale —
+  est du chaos de graine et non un effet : sur six graines indépendantes les
+  zombies vont dans l'autre sens (18 → 14), et la masse en ancien crédit ne
+  bouge que de 3,5 %.
 
 ## 5. Les avantages candidats
 

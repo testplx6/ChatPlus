@@ -509,6 +509,49 @@ export function colonieParId(world, id) {
   return index(world).get(id) || null;
 }
 
+/** Une ville vivante de ce drapeau se tient-elle sur cette case ? */
+function villeTenante(world, i, faction) {
+  const r = world.regions[i];
+  if (!r || r.colonie == null) return false;
+  const col = colonieParId(world, r.colonie);
+  return !!(col && !col.ruine && col.faction === faction);
+}
+
+/**
+ * Le territoire n'a jamais été autre chose qu'un halo peint autour des villes :
+ * la naissance du monde peint les quatre voisines d'une ville, et la prise
+ * d'une place donne au vainqueur la case et ses voisines. Ce qui manquait,
+ * c'est qu'on le relise. Une ville morte, affranchie ou passée à l'ennemi
+ * laissait derrière elle des cases à son nom que plus rien ne tenait — vingt-
+ * trois d'entre elles en quinze cents heures, parfois au nom d'un pays éteint.
+ *
+ * La règle ne fait qu'appliquer la définition jusqu'au bout : **une case n'est
+ * tenue que si une ville vivante de ce drapeau est dessus ou la touche.** Le
+ * premier arrivé garde tout ce qu'il a pris ; il cesse seulement de tenir ce
+ * qu'il n'a plus les moyens de tenir, et la case redevient libre pour le
+ * suivant qui viendra (TERRITOIRE.md, A5).
+ *
+ * `autour` : la case dont on vient de changer quelque chose. On ne relit
+ * qu'elle et ses voisines, parce que le halo d'une ville ne va pas plus loin.
+ * Sans elle, on relit toute la carte — ce que fait `normaliser` au chargement
+ * d'une partie d'avant.
+ */
+export function libererOrphelines(world, autour) {
+  const cases = autour == null
+    ? world.regions.map((r) => r.i)
+    : [autour, ...voisins(autour)];
+  let liberees = 0;
+  for (const i of cases) {
+    const r = world.regions[i];
+    if (!r || !r.controle) continue;
+    if (villeTenante(world, i, r.controle)) continue;
+    if (voisins(i).some((v) => villeTenante(world, v, r.controle))) continue;
+    r.controle = null;
+    liberees++;
+  }
+  return liberees;
+}
+
 // Le coût d'un secteur n'a pas bougé avec l'agrandissement de la carte, et le
 // banc a montré que ce n'était pas là qu'était le problème : le diviser par
 // deux ne fait passer le temps de marche que de 39 à 35 %, sans rien changer au

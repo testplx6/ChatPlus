@@ -7,7 +7,7 @@ import {
 } from './data.js';
 import { Rng, grainDe } from './rng.js';
 import { commettre, delaiVersFaction } from './faits.js';
-import { rendementRegion } from './world.js';
+import { rendementRegion, libererOrphelines } from './world.js';
 import { METEO } from './climat.js';
 import { loisDe } from './lois.js';
 import { comp, gagnerXp, estDebout, estVivant, makeCharacter, XP_PRATIQUE } from './characters.js';
@@ -2120,6 +2120,7 @@ export function rattacherVille(state, faction, log) {
   const f = state.world.factions[faction];
   if (!f.colonies.includes(col.id)) f.colonies.push(col.id);
   state.world.regions[col.regionId].controle = faction;
+  libererOrphelines(state.world, col.regionId);
   if (log) {
     log({
       type: 'base',
@@ -2146,6 +2147,7 @@ export function declarerIndependance(state, log) {
   if (f) f.colonies = f.colonies.filter((id) => id !== col.id);
   col.faction = null;
   state.world.regions[col.regionId].controle = null;
+  libererOrphelines(state.world, col.regionId);
   // Une proclamation : on décroche un drapeau pour que ça se sache (L3,
   // MEMOIRE.md). Mais le protecteur ne fulmine qu'à l'arrivée de la nouvelle.
   commettre(state, {

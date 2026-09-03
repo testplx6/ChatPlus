@@ -26,7 +26,9 @@ import {
   transferer, transfererVille, annuler, majCours, taux, convertirMasse, coursMonnaie,
 } from './monnaie.js';
 import { pourvoirCharges, nommerActeur } from './notables.js';
-import { chemin, colonieDe, colonieParId, distance, voisins, damer } from './world.js';
+import {
+  chemin, colonieDe, colonieParId, distance, voisins, damer, libererOrphelines,
+} from './world.js';
 import {
   loisDe, pressionFiscale, IMPOTS, PEINES, REGIMES, DIRECTEURS, directeurInitial,
   DISCIPLINES,
@@ -344,6 +346,9 @@ export function basculerPlace(world, col, nouveau, log, ctx) {
   for (const v of voisins(col.regionId)) {
     if (world.regions[v].controle === ancien) world.regions[v].controle = nouveau;
   }
+  // Le perdant peut n'avoir plus rien alentour : ce qu'il tenait encore ici
+  // sans y avoir de ville cesse d'être à lui (TERRITOIRE.md, A5).
+  libererOrphelines(world, col.regionId);
   col.pop = Math.max(50, Math.round(col.pop * 0.82));
   col.unrest = Math.min(1, col.unrest + 0.35);
   col.prises = (col.prises || 0) + 1;
@@ -1864,6 +1869,7 @@ export function fonderDrapeau(state, nom, log) {
     world.factions[cle].colonies.push(ville.id);
     world.factions[cle].capitale = ville.id;
     world.regions[ville.regionId].controle = cle;
+    libererOrphelines(world, ville.regionId);
   }
 
   if (log) {

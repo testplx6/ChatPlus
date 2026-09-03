@@ -27,6 +27,7 @@ import {
   cibleStock, reserveVille, prixUnitaire, productionColonie, contextePrix,
 } from './economy.js';
 import { FACTIONS } from './data.js';
+import { libererOrphelines } from './world.js';
 
 /**
  * Les réglages du crédit. Tous décrivent un prix ou une durée ; aucun ne
@@ -372,6 +373,9 @@ export function saisir(world, col, ancien, repreneur, log) {
   }
   col.faction = repreneur;
   world.regions[col.regionId].controle = repreneur;
+  // Ce que l'ancien tenait encore ici sans y avoir de ville cesse d'être à lui
+  // (TERRITOIRE.md, A5).
+  libererOrphelines(world, col.regionId);
   col.unrest = Math.min(1, col.unrest + 0.15);
   if (log) {
     log({

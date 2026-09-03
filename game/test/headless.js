@@ -187,7 +187,7 @@ import {
   occupeParEcole, MARGE_INSTRUCTEUR, prixFormation, peutSInscrire,
 } from '../src/formation.js';
 import {
-  colonieDe, colonieParId, nomRegion, lieuAvecCoord, coordonnee,
+  colonieDe, colonieParId, nomRegion, lieuAvecCoord, coordonnee, voisins,
 } from '../src/world.js';
 import {
   groupeActif, groupes, tousLesMembres, scinder, fusionner, assignerTache, tactiqueDe,
@@ -15717,6 +15717,122 @@ section('PERF 4. L’ami et le rival se lisent dans les liens, pas dans la foule
       ok(!!s.world.drapeaux[a.faction].couleur && !!s.world.drapeaux[a.faction].nom,
         'et il naît complet : un nom, une couleur à lui',
         `${s.world.drapeaux[a.faction].nom}`);
+    }
+  }
+}
+
+
+
+// ===========================================================================
+section('TER 1. Une revendication ne survit pas à celui qui la portait (TERRITOIRE.md, A5)');
+// Le propriétaire, en jouant : sa base s'est retrouvée en terre ennemie sans
+// qu'il perde un homme, et il a demandé comment un pays peut posséder un
+// territoire où il n'est pas. La réponse du code : `controle` est un halo
+// peint autour des VILLES — à la naissance du monde (`world.js`, les quatre
+// voisines), et à chaque prise (`basculerPlace`). Jusque-là c'est juste : la
+// case est collée à une ville de ce drapeau.
+//
+// Ce qui ne l'est pas, c'est qu'il n'est JAMAIS relu. La ville meurt, ses
+// quatre cases gardent son nom — parfois celui d'un pays éteint. Il reste sur
+// la carte des revendications que plus personne ne porte, et personne — pas
+// même mille deux cents hommes campés dessus — ne peut les contester.
+//
+// La règle, et elle ne fait qu'appliquer la définition du halo jusqu'au bout :
+// une case n'est tenue que si une ville vivante de ce drapeau est dessus ou la
+// touche. Le premier arrivé garde tout ce qu'il a pris — il cesse seulement de
+// tenir ce qu'il n'a plus les moyens de tenir.
+{
+  const sT = nouvellePartie(730411, { maintenant: 0 });
+  const wT = sT.world;
+  const villeDe = (i, faction) => {
+    const r = wT.regions[i];
+    if (!r || r.colonie == null) return false;
+    const c = colonieParId(wT, r.colonie);
+    return !!(c && !c.ruine && c.faction === faction);
+  };
+  const tenue = (i) => {
+    const f = wT.regions[i].controle;
+    if (!f) return true;
+    return villeDe(i, f) || voisins(i).some((v) => villeDe(v, f));
+  };
+
+  // Un monde neuf est cohérent par construction : le halo vient d'être peint.
+  const orphelinesNaissance = wT.regions.filter((r) => !tenue(r.i)).length;
+  ok(orphelinesNaissance === 0,
+    'à la naissance du monde, toute case tenue touche une ville de son drapeau',
+    `${orphelinesNaissance} orpheline(s)`);
+
+  // Le décor : une ville, et une case voisine que ses couleurs tiennent sans
+  // qu'aucune autre de ses villes ne la touche. Quand elle mourra, plus rien
+  // de ce drapeau ne sera à portée de cette case.
+  let cible = null;
+  let halo = -1;
+  for (const col of wT.colonies) {
+    if (col.ruine || !col.faction) continue;
+    for (const v of voisins(col.regionId)) {
+      if (wT.regions[v].controle !== col.faction) continue;
+      const seule = !villeDe(v, col.faction)
+        && !voisins(v).some((x) => x !== col.regionId && villeDe(x, col.faction));
+      if (seule) { cible = col; halo = v; break; }
+    }
+    if (cible) break;
+  }
+  ok(!!cible, 'décor : une ville, et une case qu’elle seule tient',
+    cible ? `${cible.nom} tient ${halo}` : 'aucune');
+
+  if (cible) {
+    const drapeau = cible.faction;
+    // Et une seconde case du même drapeau, celle-là adossée à une AUTRE de ses
+    // villes : elle doit survivre à la mort de la première.
+    const gardee = wT.regions.find((r) => r.controle === drapeau && r.i !== halo
+      && voisins(r.i).some((v) => v !== cible.regionId && villeDe(v, drapeau)));
+
+    effondrer(wT, cible);
+    ok(wT.regions[halo].controle === null,
+      'la ville meurt, et la revendication qu’elle portait meurt avec elle',
+      `${halo} : ${wT.regions[halo].controle}`);
+    if (gardee) {
+      ok(wT.regions[gardee.i].controle === drapeau,
+        'mais ce qu’une autre de ses villes touche encore reste à elle',
+        `${gardee.i} : ${wT.regions[gardee.i].controle}`);
+    }
+  }
+
+  // Et l'invariant tient sur un monde qui a vécu : villes prises, révoltées,
+  // affranchies, écroulées. Aucune couleur ne traîne derrière son porteur.
+  const sV = nouvellePartie(730412, { maintenant: 0 });
+  for (let i = 0; i < 1500; i++) tick(sV);
+  const villeV = (i, faction) => {
+    const r = sV.world.regions[i];
+    if (!r || r.colonie == null) return false;
+    const c = colonieParId(sV.world, r.colonie);
+    return !!(c && !c.ruine && c.faction === faction);
+  };
+  const orphelines = sV.world.regions.filter((r) => r.controle
+    && !villeV(r.i, r.controle)
+    && !voisins(r.i).some((v) => villeV(v, r.controle))).length;
+  ok(orphelines === 0,
+    'et après quinze cents heures de prises et de ruines, plus une seule couleur orpheline',
+    `${orphelines} orpheline(s)`);
+
+  // Une vieille sauvegarde porte les orphelines de l'ancien monde : on les
+  // ramasse au chargement, sinon le défaut survit à sa correction.
+  {
+    const sO = nouvellePartie(730413, { maintenant: 0 });
+    const perdue = sO.world.regions.find((r) => !r.colonie && r.controle);
+    if (perdue) {
+      perdue.controle = 'essaim';
+      const dedans = normaliser(deserialiser(serialiser(sO)));
+      const villeO = (i) => {
+        const r = dedans.world.regions[i];
+        if (!r || r.colonie == null) return false;
+        const c = colonieParId(dedans.world, r.colonie);
+        return !!(c && !c.ruine && c.faction === 'essaim');
+      };
+      const encore = dedans.world.regions[perdue.i].controle === 'essaim'
+        && !villeO(perdue.i) && !voisins(perdue.i).some(villeO);
+      ok(!encore, 'et une partie d’avant se relit sans ses couleurs orphelines',
+        `${dedans.world.regions[perdue.i].controle}`);
     }
   }
 }
