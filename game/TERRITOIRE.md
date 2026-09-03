@@ -1,0 +1,128 @@
+# Territoire — s'approprier une case, et y gagner quelque chose
+
+**Ouvert en septembre 2026 sur une remarque du propriétaire, en jouant** : sa
+base s'est retrouvée en terre ennemie sans qu'il perde un homme. Puis, la
+discussion instruite : « il faut différents mécanismes d'appropriation, et
+différents avantages également, aujourd'hui j'en vois très peu ».
+
+Ce document est un **relevé de l'existant et un cahier des charges** :
+rien n'est engagé, rien n'est chiffré. Les décisions sont au propriétaire.
+
+---
+
+## 1. Ce que le code appelle « tenir une case » aujourd'hui
+
+Une région porte un champ `controle` : un nom de drapeau, rien d'autre. Pas de
+garnison, pas d'entretien, pas de date. Il n'est écrit qu'à cinq endroits :
+
+| où | quand |
+|---|---|
+| `world.js:330` | à la naissance du monde — chaque ville peint ses 4 voisines libres, 7 fois sur 10 |
+| `factions.js:343-346` | à la prise d'une ville — le vainqueur prend sa case **et les voisines qui étaient au perdant** |
+| `factions.js:1306` | une ville fondée prend sa propre case |
+| `credit.js:374` / `economy.js:2054` | une ville saisie par son créancier, ou rendue par sécession |
+| `economy.js:2135` | une ville qui meurt libère **sa** case (pas les quatre qu'elle avait peintes) |
+| `base.js:2122` / `:2148` | le camp du joueur prend un drapeau, ou reprend le sien |
+
+Il n'est **jamais recalculé**. Personne ne peut le contester. Deux conséquences
+que le propriétaire a trouvées seul en jouant :
+
+- **la revendication survit à celui qui la portait** — une ville meurt, ses
+  quatre cases gardent son nom, parfois celui d'un pays éteint ;
+- **la présence ne vaut rien** — mille deux cents hommes campés sur une case
+  n'y changent absolument rien.
+
+## 2. Ce que tenir une case rapporte aujourd'hui : rien à son propriétaire
+
+Relevé exhaustif de toutes les lectures de `controle` dans le moteur.
+
+**Pour la faction qui tient — zéro.** Pas de revenu, pas de ressource (la
+`richesse` de la case ne va qu'à qui la fouille), pas de défense, pas de droit
+d'expansion (`conseil` étape 5 cherche ses cases à fonder à trois cases de ses
+**villes**, jamais de son territoire), pas de point de départ pour lever une
+colonne (elle part d'une ville ; seul l'Essaim naît d'une case, et il choisit
+justement les cases **sans** contrôle).
+
+**Le péage n'enrichit personne.** 40 à 220 pris au joueur (`events.js:750`),
+et `regler` ne fait que débiter sa bourse : la somme n'entre dans aucune caisse,
+dans aucune masse monétaire. Elle disparaît.
+
+**Trois effets, et les trois ne visent que le joueur** : ce qui sort du bois
+sur ses terres (`bandeLocale`), les renforts qu'un gradé n'obtient que sur les
+terres de son drapeau (`allegeance.js:1239`), et les témoins d'une parole
+rompue ou d'un convoi pillé (`parole.js:326`, `caravanes.js:1151`).
+
+C'est très exactement l'odeur n°3 de l'`AUDIT.md` : **une règle qui ne vise que
+le joueur.** Le territoire est aujourd'hui un décor pour les pays, et une
+friction pour lui.
+
+## 3. Ce qui existe déjà et qu'il ne faut pas réécrire
+
+Le jeu contient **un deuxième modèle du territoire, bien plus vrai**, et il
+ignore `controle` : `secteur.js`. Chaque case porte une `insecurite` avec son
+niveau de repos ; la **présence y agit** (`effetPresence` : une patrouille fait
+baisser l'insécurité de 0,011 par heure, racine du nombre de bras) ; la menace
+se lit **en écart à la normale** (`menace`, centrée sur 0,28) ; l'état des
+routes remonte au conseil et pèse sur le pays (`etatDuPays.routes`).
+
+Autrement dit : « occuper le terrain par la présence, et en sentir l'effet » est
+**déjà écrit, mesuré et calibré**. Il n'est branché que sur la charge de
+Lieutenant du joueur. Aucun pays ne s'en sert.
+
+De même, les pactes câblent déjà `passage` (le péage s'ouvre) et `vue` (on voit
+les colonnes qui passent sur les terres de l'allié) : le territoire sait déjà
+être l'objet d'un accord.
+
+## 4. Les mécanismes d'appropriation candidats
+
+Le premier arrivé s'approprie — la règle du propriétaire est gardée. Ce qui
+manque, c'est qu'il y ait **plusieurs façons d'être le premier**, et une façon
+de cesser de l'être.
+
+- **A1 — la ville** (existe) : fonder ou prendre. Le halo d'aujourd'hui.
+- **A2 — la présence** : y camper, y patrouiller, y faire passer les siens.
+  `effetPresence` existe ; il faudrait qu'il compte aussi pour les colonnes des
+  pays, et qu'une présence durable sur une case libre finisse par la nommer.
+- **A3 — l'ouvrage** : une route entretenue, un relais, un pont, un poste de
+  péage bâti. On tient ce qu'on a construit, pas ce qu'on a traversé.
+- **A4 — l'accord** : une case cédée, échangée ou concédée par traité. Les
+  pactes savent déjà porter des clauses.
+- **A5 — l'abandon** : plus rien à ce drapeau ne touche la case → elle
+  redevient libre, et le suivant qui arrive se l'approprie. C'est le seul point
+  du dossier qui corrige un défaut plutôt que d'ajouter une possibilité.
+
+## 5. Les avantages candidats
+
+- **B1 — le péage encaissé** : ce que le barrage prélève entre dans la caisse
+  de celui qui tient, et se prélève sur **tout le monde**, pas sur le seul
+  joueur. C'est le plus petit changement du lot, et il retourne à lui seul
+  l'odeur n°3.
+- **B2 — la route sûre** : ses convois traversent ses terres moins cher et
+  moins dangereusement. `insecurite` et `menace` sont déjà là ; les convois
+  savent déjà se faire piller.
+- **B3 — la ressource** : la `richesse` d'une case tenue alimente la ville qui
+  la tient. Attention : c'est le levier qui touche le plus l'économie, donc
+  celui qui demande le plus de mesure.
+- **B4 — la vue** : on voit ce qui traverse chez soi. Le mécanisme existe
+  (`connaissance.js:192`), il est aujourd'hui réservé à l'allié par pacte.
+- **B5 — le ravitaillement** : une colonne se refait sur ses terres et
+  s'épuise ailleurs. Donne enfin une raison militaire de tenir du terrain, et
+  une raison d'en refuser le passage.
+- **B6 — le droit d'y fonder** : on ne pousse une ville que chez soi ou chez
+  personne. Aujourd'hui l'expansion ignore complètement les frontières.
+
+## 6. Ce qu'il faut trancher avant d'écrire une ligne
+
+1. **Combien de mécanismes d'appropriation, et lesquels** ? A5 seul est une
+   correction ; A2 à A4 sont des chantiers séparés.
+2. **Combien d'avantages, et lesquels** ? B1 est petit et juste ; B3 et B5
+   changent l'équilibre du monde et demandent le banc.
+3. **Le territoire doit-il coûter quelque chose ?** Tenir des cases sans
+   entretien, c'est un empire gratuit — et c'est ce qui produit aujourd'hui
+   les cases orphelines.
+4. **Le joueur peut-il tenir du territoire sans drapeau ?** Ses 1 200 hommes
+   sont la question qui a ouvert le dossier.
+5. **Deux drapeaux peuvent-ils tenir la même case ?** Aujourd'hui non, et un
+   « disputé » n'existe pas.
+
+Rien n'est engagé tant que le propriétaire n'a pas tranché.
