@@ -26296,6 +26296,54 @@ function ajouterAuSac(state, key, qte, groupe) {
 }
 
 
+/**
+ * Qui tient le barrage, concrètement. Un péage n'est pas une propriété du
+ * terrain : ce sont des hommes, et ils viennent de quelque part. La ville
+ * vivante la plus proche, sous ce drapeau — depuis `libererOrphelines`
+ * (TERRITOIRE.md, A5), une case tenue en a toujours une à portée.
+ */
+function villeDuBarrage(world, faction, regionId) {
+  if (!faction || !world.factions[faction]) return null;
+  let place = null;
+  let mieux = Infinity;
+  for (const c of world.colonies) {
+    if (c.ruine || c.faction !== faction) continue;
+    const d = distance(c.regionId, regionId);
+    if (d < mieux) { mieux = d; place = c; }
+  }
+  return place;
+}
+
+/**
+ * Ce que le barrage prélève, quelqu'un l'encaisse.
+ *
+ * Avant, non : `regler` débitait la bourse du joueur et la somme n'entrait
+ * dans aucune caisse ni dans aucune masse — quarante à deux cent vingt unités
+ * qui s'évaporaient à chaque barrage. Tenir une case ne rapportait donc rien à
+ * qui la tenait, et le péage n'était rien d'autre qu'une friction dirigée
+ * contre le joueur (l'odeur n°3 de l'AUDIT). Lui donner un agent, c'est le
+ * faire entrer quelque part.
+ *
+ * `paye` est la monnaie dans laquelle le joueur a réglé. Si ce n'est pas celle
+ * du drapeau, la somme entre au cours du jour — le même chemin qu'une ville qui
+ * change de drapeau (`saisir`), et la seule façon de ne créer ni détruire de la
+ * monnaie en route. Rend ce qui est réellement entré.
+ */
+function percevoirPeage(state, faction, regionId, montant, paye) {
+  const world = state.world;
+  const place = villeDuBarrage(world, faction, regionId);
+  if (!place || !(montant > 0)) return 0;
+  const recu = paye === faction ? montant : montant * taux(world, paye, faction);
+  if (!(recu > 0)) return 0;
+  // La paire obligatoire : ce qui entre en caisse entre aussi dans la masse,
+  // parce que la bourse du joueur est hors de tout registre (« la règle des
+  // deux », voir `entrerDehors`). L'impôt monte au trésor comme sur toute
+  // recette — c'est `encaisser` qui le sait.
+  encaisser(world, place, recu);
+  entrerDehors(world, faction, recu);
+  return recu;
+}
+
 function factionDominante(state, regionId) {
   const r = state.world.regions[regionId];
   if (r.controle) return r.controle;
@@ -26980,6 +27028,9 @@ function tenterRencontre(state, log, ctx, multiplicateur = 1, groupe) {
       const agressif = state.player.posture === 'agressif';
       if (!agressif && soldeIci(state) >= taxe && state.player.politique.payerPeage) {
         regler(state, taxe);
+        // Et il va quelque part : la ville la plus proche de ce drapeau tient
+        // le barrage, et c'est elle qui l'encaisse (TERRITOIRE.md, B1).
+        percevoirPeage(state, f, regionId, taxe, monnaieIci(state));
         noterArgent(state, 'péages', -taxe);
         commettre(state, {
           type: 'peage', regionId, t: state.temps,

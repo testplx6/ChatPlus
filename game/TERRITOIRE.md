@@ -114,10 +114,24 @@ de cesser de l'être.
 
 ## 5. Les avantages candidats
 
-- **B1 — le péage encaissé** : ce que le barrage prélève entre dans la caisse
-  de celui qui tient, et se prélève sur **tout le monde**, pas sur le seul
-  joueur. C'est le plus petit changement du lot, et il retourne à lui seul
-  l'odeur n°3.
+- **B1 — le péage encaissé** — **PREMIÈRE MOITIÉ LIVRÉE, septembre 2026.** Ce
+  que le barrage prélève entre désormais dans la caisse d'une ville : la ville
+  vivante la plus proche sous le drapeau qui tient la case (`villeDuBarrage`).
+  L'impôt monte au trésor comme sur toute recette, et la masse du pays bouge
+  d'exactement ce que la caisse a bougé — la règle des deux, sans quoi le
+  barrage aurait fabriqué de la monnaie. Payé dans une autre monnaie, il entre
+  au cours du jour, comme une ville qui change de drapeau. Un barrage de bandits
+  n'encaisse rien : on ne leur invente pas un pays.
+
+  Avant, `regler` débitait la bourse du joueur et la somme n'entrait nulle part.
+  Mesuré au banc d'équilibrage — le seul qui ait un joueur — sur une partie
+  complète : **91 barrages croisés, 43 payés, 5 196 unités** qui s'évaporaient
+  et qui entrent maintenant quelque part. L'invariant comptable reste exact.
+
+  **La seconde moitié n'est pas faite** : « se prélève sur tout le monde ». Les
+  convois du monde traversent toujours les terres d'autrui sans rien payer, si
+  bien que le péage reste une chose que seul le joueur subit. La corriger
+  demande de trancher une règle qui n'est pas à moi (voir §6, question 6).
 - **B2 — la route sûre** : ses convois traversent ses terres moins cher et
   moins dangereusement. `insecurite` et `menace` sont déjà là ; les convois
   savent déjà se faire piller.
@@ -145,5 +159,16 @@ de cesser de l'être.
    sont la question qui a ouvert le dossier.
 5. **Deux drapeaux peuvent-ils tenir la même case ?** Aujourd'hui non, et un
    « disputé » n'existe pas.
+6. **Sur quoi un convoi paie-t-il le péage ?** (bloque la seconde moitié de B1)
+   Un convoi n'a pas de bourse : il porte une cargaison et une créance sur la
+   ville qui l'attend. Trois façons, et elles ne disent pas la même chose du
+   monde : *(a)* la ville qui l'a expédié règle sur sa caisse — l'argent passe
+   d'un pays à l'autre, le commerce lointain devient cher, et tenir des cases
+   sur une route rapporte vraiment ; *(b)* le barrage prend de la marchandise —
+   plus vrai pour un péage de piste, ça remplit les greniers de celui qui tient
+   plutôt que sa caisse, et ça déborde sur B3 (la ressource) ; *(c)* le convoi
+   choisit sa route pour éviter les barrages, et alors le péage ne rapporte
+   presque rien mais **détourne le commerce**, ce qui est peut-être le vrai
+   pouvoir d'une frontière.
 
 Rien n'est engagé tant que le propriétaire n'a pas tranché.

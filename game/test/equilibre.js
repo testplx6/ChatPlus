@@ -232,6 +232,10 @@ const TRACE = {
   pasEntraine: { faim: 0, collecte: 0, blesses: 0, oui: 0, assezBon: 0 },
   gagesEnvoyes: 0, gagesAvance: 0,
   hCamp: 0, raids: 0, repousses: 0, sacs: 0, voleSacs: 0,
+  // Les barrages croisés (TERRITOIRE.md, B1) : payés, franchis sur laissez-
+  // passer, refusés — et ce que les payés ont coûté. Cet argent entre désormais
+  // dans la caisse de la ville qui tient le barrage au lieu de disparaître.
+  peages: 0, peagePaye: 0, peagesFranchis: 0, peagesRefuses: 0,
   richesseCamp: 0, richesseAuRaid: 0, appetitCumul: 0, forceRaids: 0,
   // Ce que les conseils votent quand personne ne les tient.
   impots: {}, peines: {}, esclavagistes: 0, factionsVues: 0,
@@ -2321,6 +2325,21 @@ for (let n = 0; n < PARTIES; n++) {
     }
     const remplisAvant = state.stats.ordresRemplis || 0;
     tick(state);
+    // Les barrages : combien on en croise, et ce qu'ils prennent. Depuis
+    // TERRITOIRE B1, cet argent n'est plus détruit — il entre dans la caisse de
+    // la ville qui tient le barrage. C'est le seul banc qui ait un joueur, donc
+    // le seul endroit d'où le chiffre puisse sortir.
+    {
+      const j = state.journal || [];
+      for (let i = j.length - 1; i >= 0; i--) {
+        if (j[i].t !== state.temps) break;
+        if (j[i].type !== 'peage') continue;
+        const m = j[i].texte.match(/Péage .*? : (\d+)/);
+        if (m) { TRACE.peages += 1; TRACE.peagePaye += Number(m[1]); }
+        else if (/laisse[rz] passer|sans un mot/.test(j[i].texte)) TRACE.peagesFranchis += 1;
+        else if (/refusé/.test(j[i].texte)) TRACE.peagesRefuses += 1;
+      }
+    }
     // La pression des raids, heure par heure tant qu'on tient un camp.
     if (state.base && state.base.fonde) {
       const b = state.base;
@@ -2852,6 +2871,14 @@ console.log('Chronique : ' + Object.entries(TRACE.titres).sort((a, b) => b[1] - 
 console.log(`Colporteurs reçus : ${(TRACE.marchands / PARTIES).toFixed(1)} par partie`);
 console.log(`Avant-postes écrits sur les cartes : ${TRACE.reconnus}/${PARTIES} — `
   + `${(TRACE.popCamp / PARTIES).toFixed(1)} habitants en moyenne`);
+{
+  const croises = TRACE.peages + TRACE.peagesFranchis + TRACE.peagesRefuses;
+  console.log(`Barrages (B1) : ${croises} croisé(s) — ${TRACE.peages} payé(s) pour `
+    + `${TRACE.peagePaye} unités encaissées par les villes qui les tiennent, `
+    + `${TRACE.peagesFranchis} franchi(s) sur laissez-passer, `
+    + `${TRACE.peagesRefuses} refusé(s)`);
+}
+
 if (TRACE.hCamp > 0) {
   const par1000 = (n) => (n / TRACE.hCamp * 1000).toFixed(2);
   const moyenne = TRACE.richesseCamp / TRACE.hCamp;

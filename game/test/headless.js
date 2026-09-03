@@ -48,7 +48,7 @@ import {
   detrousser, FOUILLE,
 } from '../src/events.js';
 import {
-  bandeLocale, tenterChasseurs,
+  bandeLocale, tenterChasseurs, percevoirPeage, villeDuBarrage,
 } from '../src/events.js';
 import { texteFil, texteFilInacheve } from '../src/histoire.js';
 import { rencontresDe, retenirContrat, retenirAccrochage } from '../src/rapport.js';
@@ -15834,6 +15834,82 @@ section('TER 1. Une revendication ne survit pas à celui qui la portait (TERRITO
       ok(!encore, 'et une partie d’avant se relit sans ses couleurs orphelines',
         `${dedans.world.regions[perdue.i].controle}`);
     }
+  }
+}
+
+
+
+// ===========================================================================
+section('TER 2. Le péage entre dans une caisse (TERRITOIRE.md, B1)');
+// Le propriétaire : « il faut différents mécanismes d'appropriation, et
+// différents avantages également, aujourd'hui j'en vois très peu ». Le relevé
+// lui donnait raison plus durement que prévu : tenir une case ne rapporte
+// RIEN à qui la tient. Le péage lui-même n'enrichissait personne — `regler`
+// débitait la bourse du joueur et la somme n'entrait dans aucune caisse, dans
+// aucune masse. Quarante à deux cent vingt unités qui s'évaporaient à chaque
+// barrage.
+//
+// Ce que ça veut dire dans ce moteur : le barrage n'avait pas d'agent. Il
+// n'était rien d'autre qu'une friction dirigée contre le joueur — l'odeur n°3
+// de l'AUDIT. Le corriger, c'est lui en donner un : le barrage est tenu depuis
+// la ville la plus proche du drapeau qui tient la case, et c'est elle qui
+// encaisse — avec l'impôt qui monte au trésor, comme toute recette.
+{
+  const sP = nouvellePartie(551900, { maintenant: 0 });
+  const wP = sP.world;
+  // Une case tenue, et le drapeau qui la tient.
+  const caseTenue = wP.regions.find((r) => r.controle
+    && wP.factions[r.controle]
+    && wP.colonies.some((c) => !c.ruine && c.faction === r.controle));
+  ok(!!caseTenue, 'décor : une case tenue par un drapeau qui a des villes');
+
+  const drapeau = caseTenue.controle;
+  const place = villeDuBarrage(wP, drapeau, caseTenue.i);
+  ok(!!place && place.faction === drapeau,
+    'le barrage est tenu depuis une ville de ce drapeau',
+    place ? place.nom : 'aucune');
+
+  if (place) {
+    const caisseAvant = place.caisse || 0;
+    const tresorAvant = wP.factions[drapeau].tresor;
+    const masseAvant = wP.factions[drapeau].masse || 0;
+    const ecartAvant = auditer(wP).reduce((x, e) => x + Math.abs(e.ecart), 0);
+
+    const recu = percevoirPeage(sP, drapeau, caseTenue.i, 200, drapeau);
+    ok(recu === 200, 'ce que le barrage prélève, quelqu’un l’encaisse', `${recu}`);
+    const entre = (place.caisse || 0) - caisseAvant
+      + (wP.factions[drapeau].tresor - tresorAvant);
+    ok(Math.abs(entre - 200) < 0.01,
+      'la caisse de la ville et le trésor du pays montent d’exactement la somme',
+      `${entre.toFixed(2)}`);
+    ok(Math.abs((wP.factions[drapeau].masse || 0) - masseAvant - 200) < 0.01,
+      'et la masse du pays bouge de ce que la caisse a bougé — la règle des deux',
+      `${((wP.factions[drapeau].masse || 0) - masseAvant).toFixed(2)}`);
+    const ecartApres = auditer(wP).reduce((x, e) => x + Math.abs(e.ecart), 0);
+    ok(Math.abs(ecartApres - ecartAvant) < 0.01,
+      'l’invariant comptable ne bouge pas d’un centime',
+      `${ecartAvant.toFixed(2)} → ${ecartApres.toFixed(2)}`);
+  }
+
+  // Payé dans une autre monnaie que la leur, le barrage encaisse quand même —
+  // au cours du jour, comme une ville qui change de drapeau (`saisir`). Ce
+  // n'est pas un privilège : c'est la seule façon de ne pas créer ou détruire
+  // de la monnaie en route.
+  if (place) {
+    const autre = Object.keys(wP.factions).find((k) => k !== drapeau
+      && wP.factions[k] && !wP.factions[k].morte);
+    const masseAvant = wP.factions[drapeau].masse || 0;
+    const recu = percevoirPeage(sP, drapeau, caseTenue.i, 200, autre);
+    ok(recu > 0 && Math.abs((wP.factions[drapeau].masse || 0) - masseAvant - recu) < 0.01,
+      'et ce qui est payé dans une autre monnaie entre au cours du jour',
+      `${recu.toFixed(2)} pour 200 ${autre}`);
+  }
+
+  // Un barrage de bandits n'a pas de caisse : ce qu'ils prennent ne rentre
+  // dans aucun registre. On ne leur invente pas un pays.
+  {
+    const recu = percevoirPeage(sP, 'bandits', caseTenue.i, 200, drapeau);
+    ok(recu === 0, 'les bandits, eux, n’ont pas de caisse où le mettre', `${recu}`);
   }
 }
 
