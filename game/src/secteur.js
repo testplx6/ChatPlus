@@ -22,6 +22,7 @@
 import { FACTIONS, drapeauDe} from './data.js';
 import {
   distance, colonieParId, nomRegion, voisins, coord, idx, LARGEUR, HAUTEUR,
+  monterLaGarde,
 } from './world.js';
 import { rangDe } from './allegeance.js';
 import { porterFaute, porterMerite } from './influence.js';
@@ -307,6 +308,18 @@ export function effetPresence(state, g, dt) {
 export function tickSecteurs(state, log, ctx) {
   const dt = 1;
   tickInsecurite(state);
+  // On tient ce qu'on occupe (TERRITOIRE.md, A2) : rester quelque part, c'est
+  // le tenir. Sous les couleurs qu'on porte — les siennes propres, ou celles
+  // qu'on sert —, la case finit par les prendre ; sans couleurs, on occupe
+  // sans nommer. Ceci vaut pour TOUS les groupes, pas seulement pour ceux qui
+  // répondent d'un secteur : camper est à la portée de n'importe qui.
+  for (const g of state.player.groupes) {
+    if (!(g.membres || []).some((c) => estVivant(c))) continue;
+    const all0 = g.allegeance;
+    const couleurs = (state.player && state.player.drapeau)
+      || (all0 && all0.faction) || 'joueur';
+    monterLaGarde(state.world, g.regionId, couleurs, state.temps);
+  }
   for (const g of state.player.groupes) {
     const all = g.allegeance;
     if (!all) continue;

@@ -97,6 +97,10 @@ function genererBiomes(rng) {
         danger: Number((BIOMES[best].danger * rng.range(0.7, 1.35)).toFixed(3)),
         colonie: null,
         controle: null,
+        // Qui occupe la case, et depuis quand (TERRITOIRE.md, A2). Présente à
+        // la création plutôt qu'ajoutée par `normaliser`, sinon l'aller-retour
+        // JSON cesse d'être exact dès la première partie.
+        garde: null,
         decouvert: false,
         fouille: 0, // épuisement local par la fouille répétée
         // Ce que les routes sont devenues faute d'être tenues. Voir secteur.js.
@@ -379,6 +383,9 @@ export function genererMonde(rng, graine = 0) {
     drapeaux: {},
     armees: [],
     guerres: [],
+    // Les cases qu'on occupe (TERRITOIRE.md, A2). Une liste plutôt qu'un
+    // balayage : elles se comptent en dizaines, la carte en milliers.
+    gardes: [],
     prochainArmeeId: 1,
   };
 }
@@ -510,6 +517,95 @@ export function colonieParId(world, id) {
 }
 
 /**
+ * Combien de temps il faut rester sur une case pour qu'elle porte vos
+ * couleurs. Calibrable : c'est le prix de l'occupation, et le monde n'a pas
+ * dit son mot.
+ */
+export const GARDE = { heures: 72 };
+
+/**
+ * On tient ce qu'on occupe (TERRITOIRE.md, A2).
+ *
+ * Le contrôle se gagnait par les VILLES et par elles seules : mille deux cents
+ * hommes campés sur une case n'y changeaient rien, et aucun agent ne pouvait
+ * contester une couleur. La présence existait pourtant déjà à moitié —
+ * `effetPresence` fait baisser l'insécurité là où l'on patrouille ; il lui
+ * manquait de nommer la case.
+ *
+ * Deux bornes, et elles ne sont pas des précautions. **Seulement une case que
+ * personne ne tient** : prendre à quelqu'un, c'est prendre sa ville, pas
+ * camper à côté — la règle du premier arrivé n'est pas touchée. Et **une
+ * occupation à la fois** : le premier installé y est, les autres passent.
+ */
+export function monterLaGarde(world, regionId, faction, t) {
+  const r = world.regions[regionId];
+  if (!r || !faction) return false;
+  // Chez quelqu'un d'autre, on ne fait que passer.
+  if (r.controle && r.controle !== faction) return false;
+  const g = r.garde;
+  if (!g || g.faction !== faction) {
+    // La place est libre, ou c'était quelqu'un d'autre qui n'y est plus : on
+    // s'installe. `depuis` date l'occupation — c'est elle qui court, pas un
+    // compteur, pour qu'une sauvegarde reprise dise la même chose.
+    if (g && g.faction !== faction && t - g.vu <= 1) return false;
+    r.garde = { faction, depuis: t, vu: t, pris: false };
+    if (!world.gardes) world.gardes = [];
+    if (!world.gardes.includes(regionId)) world.gardes.push(regionId);
+    return false;
+  }
+  g.vu = t;
+  // « Joueur » n'est pas un drapeau : on ne plante pas des couleurs qu'on n'a
+  // pas. L'occupation compte quand même — personne d'autre ne peut s'installer
+  // sur une case où vous êtes —, elle ne nomme simplement rien.
+  if (faction === 'joueur') return false;
+  if (r.controle === faction) return false;
+  if (t - g.depuis < GARDE.heures) return false;
+  r.controle = faction;
+  // La case est tenue par des hommes et non par une ville : c'est ce que dit
+  // `pris`, et c'est la seule chose qui distingue une appropriation d'une
+  // colonne campée chez elle. Sans ce drapeau, la mesure comptait les
+  // secondes pour des premières (METHODE.md §12).
+  g.pris = true;
+  return true;
+}
+
+/**
+ * Les gardes qu'on ne relève plus : celui qui occupait est parti, mort, ou
+ * dissous. Sans ce passage, une case garderait ses couleurs derrière une
+ * troupe qui n'y est plus — le défaut d'A5, revenu par la porte de service.
+ *
+ * `world.gardes` tient la liste des cases occupées : elles se comptent en
+ * dizaines (les colonnes du monde et les groupes du joueur), pas en milliers.
+ */
+export function tickGardes(world, t) {
+  const liste = world.gardes;
+  if (!liste || !liste.length) return 0;
+  let leves = 0;
+  for (let k = liste.length - 1; k >= 0; k--) {
+    const r = world.regions[liste[k]];
+    if (r && r.garde && t - r.garde.vu <= 1) continue;
+    if (r && r.garde) { leverLaGarde(world, r.i, null); leves++; }
+    liste.splice(k, 1);
+  }
+  return leves;
+}
+
+/** On s'en va : on cesse de tenir ce qu'on n'occupe plus. */
+export function leverLaGarde(world, regionId, faction) {
+  const r = world.regions[regionId];
+  if (!r || !r.garde || (faction && r.garde.faction !== faction)) return false;
+  const tenait = r.garde.faction;
+  r.garde = null;
+  // Ce que la seule présence tenait retombe à personne. Ce qu'une ville
+  // soutient, elle continue de le soutenir : `libererOrphelines` en juge.
+  if (r.controle === tenait) {
+    libererOrphelines(world, regionId);
+    return r.controle !== tenait;
+  }
+  return false;
+}
+
+/**
  * Qui tient le barrage, concrètement. Un péage n'est pas une propriété du
  * terrain : ce sont des hommes, et ils viennent de quelque part. La ville
  * vivante la plus proche, sous ce drapeau — depuis `libererOrphelines`
@@ -563,6 +659,9 @@ export function libererOrphelines(world, autour) {
     const r = world.regions[i];
     if (!r || !r.controle) continue;
     if (villeTenante(world, i, r.controle)) continue;
+    // Une case tenue par des HOMMES n'est pas une couleur orpheline : elle a
+    // très exactement quelqu'un pour la porter (TERRITOIRE.md, A2).
+    if (r.garde && r.garde.faction === r.controle) continue;
     if (voisins(i).some((v) => villeTenante(world, v, r.controle))) continue;
     r.controle = null;
     liberees++;

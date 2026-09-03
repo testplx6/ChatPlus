@@ -5,7 +5,9 @@
 import { Rng, grainDe } from './rng.js';
 import { appelerSecours, tenterPacte } from './pactes.js';
 import { FACTIONS, DIPLO_FACTIONS, drapeauDe } from './data.js';
-import { genererMonde, decouvrir, colonieParId, nomRegion, distance } from './world.js';
+import {
+  genererMonde, decouvrir, colonieParId, nomRegion, distance, tickGardes,
+} from './world.js';
 import { makeCharacter, idDepuisRng, ARCHETYPE_KEYS } from './characters.js';
 import {
   creerBase, tickBase, tickCamps, campsDe, perdreAvantPoste, saccagerAvantPoste, forceEscouade,
@@ -779,6 +781,9 @@ export function tick(state) {
   // Ce dont un gradé répond tous les jours, guerre ou pas : l'état de ses
   // routes. Avant le jugement, qui lit le bilan qu'il vient d'écrire.
   tickSecteurs(state, log, ctx);
+  // Les gardes qu'on ne relève plus : une case ne garde pas ses couleurs
+  // derrière une troupe qui n'y est plus (TERRITOIRE.md, A2).
+  tickGardes(state.world, state.temps);
   // On rend des comptes de ce qu'on a ordonné : d'abord l'issue des actes, puis
   // la charge elle-même, qu'on perd quand le crédit est épuisé.
   jugerActes(state, log);

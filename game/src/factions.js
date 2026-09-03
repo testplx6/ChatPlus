@@ -28,6 +28,7 @@ import {
 import { pourvoirCharges, nommerActeur } from './notables.js';
 import {
   chemin, colonieDe, colonieParId, distance, voisins, damer, libererOrphelines,
+  monterLaGarde, leverLaGarde,
 } from './world.js';
 import {
   loisDe, pressionFiscale, IMPOTS, PEINES, REGIMES, DIRECTEURS, directeurInitial,
@@ -313,6 +314,7 @@ export function leverArmee(world, key, force, depuis, cibleId, log) {
 }
 
 function dissoudre(world, armee) {
+  leverLaGarde(world, armee.regionId, armee.faction);
   const i = world.armees.indexOf(armee);
   if (i >= 0) world.armees.splice(i, 1);
 }
@@ -641,6 +643,11 @@ export function ravitailler(world, armee) {
 }
 
 function tickArmee(world, armee, t, log, ctx) {
+  // On tient ce qu'on occupe (TERRITOIRE.md, A2). Une colonne qui stationne
+  // finit par faire porter ses couleurs à la case — et cela vaut pour les
+  // pays comme pour le joueur : une règle qui ne viserait que lui n'aurait
+  // rien à faire ici.
+  monterLaGarde(world, armee.regionId, armee.faction, t);
   const rng = ctx.rng;
 
   // Ravitaillement : ce qu'on trouve d'abord, ce qu'on consomme ensuite. Une
@@ -724,6 +731,8 @@ function tickArmee(world, armee, t, log, ctx) {
     const cout = Math.max(2, Math.round(2 + (world.regions[prochaine] ? 1 : 0)));
     if (armee.progres >= cout) {
       armee.progres = 0;
+      // On quitte la case : on cesse de la tenir.
+      leverLaGarde(world, armee.regionId, armee.faction);
       armee.regionId = prochaine;
       armee.etape++;
       // Une colonne en marche entretient la route qu'elle emprunte. Le monde

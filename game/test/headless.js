@@ -189,6 +189,7 @@ import {
 } from '../src/formation.js';
 import {
   colonieDe, colonieParId, nomRegion, lieuAvecCoord, coordonnee, voisins,
+  monterLaGarde, leverLaGarde, GARDE, libererOrphelines,
 } from '../src/world.js';
 import {
   groupeActif, groupes, tousLesMembres, scinder, fusionner, assignerTache, tactiqueDe,
@@ -16020,6 +16021,112 @@ section('TER 3. Les convois paient aussi (TERRITOIRE.md, B1, seconde moitié)');
       const r = passerBarrage(sB, convoi, libre.i, {});
       ok(!r || r.reponse === 'laissez', 'et une terre sans maître ne prélève rien',
         r ? r.reponse : 'rien');
+    }
+  }
+}
+
+
+
+// ===========================================================================
+section('TER 4. On tient ce qu’on occupe (TERRITOIRE.md, A2)');
+// La question du propriétaire, en jouant : « je me demande ce que ça change
+// car je peux continuer à utiliser ma base comme avant […] je n’ai subi aucune
+// perte j’ai plus de 1 200 hommes sur place ». Le code lui répondait : rien.
+// Le contrôle se gagnait par les VILLES et par elles seules ; mille deux cents
+// hommes campés sur une case n’y changeaient absolument rien, et aucun agent
+// ne pouvait contester une couleur.
+//
+// La présence, elle, existait déjà à moitié : `effetPresence` (secteur.js)
+// fait baisser l’insécurité là où l’on patrouille. Il lui manquait de nommer
+// la case. C’est A2 : on tient ce qu’on occupe, tant qu’on l’occupe — et
+// **seulement ce que personne ne tient**, parce que prendre à quelqu’un, c’est
+// prendre sa ville, pas camper à côté.
+{
+  const sG = nouvellePartie(661200, { maintenant: 0 });
+  const wG = sG.world;
+  const libre = wG.regions.find((r) => !r.controle && !r.colonie
+    && !voisins(r.i).some((v) => wG.regions[v].colonie));
+  ok(!!libre, 'décor : une case que personne ne tient');
+
+  const drapeau = 'rouilleurs';
+  if (libre) {
+    // Une heure de présence ne fait pas une frontière.
+    monterLaGarde(wG, libre.i, drapeau, 0);
+    for (let t = 1; t < GARDE.heures - 1; t++) monterLaGarde(wG, libre.i, drapeau, t);
+    ok(libre.controle == null, 'quelques jours de présence ne suffisent pas',
+      `${libre.controle}`);
+
+    // La durée y suffit.
+    for (let t = GARDE.heures - 1; t <= GARDE.heures + 1; t++) {
+      monterLaGarde(wG, libre.i, drapeau, t);
+    }
+    ok(libre.controle === drapeau,
+      'y rester assez longtemps la fait porter vos couleurs', `${libre.controle}`);
+
+    // Et l’on cesse de la tenir quand on s’en va — c’est ce qui distingue
+    // occuper de posséder.
+    leverLaGarde(wG, libre.i, drapeau);
+    ok(libre.controle == null, 'on cesse de la tenir quand on s’en va',
+      `${libre.controle}`);
+  }
+
+  // On ne prend pas à quelqu’un en campant à côté : la case tenue par un
+  // drapeau ne se gagne pas à la présence. Le premier arrivé garde ce qu’il a
+  // pris — sa ville est la seule porte.
+  {
+    const tenue = wG.regions.find((r) => r.controle && r.controle !== 'rouilleurs');
+    if (tenue) {
+      const sien = tenue.controle;
+      for (let t = 0; t <= GARDE.heures + 5; t++) {
+        monterLaGarde(wG, tenue.i, 'rouilleurs', t);
+      }
+      ok(tenue.controle === sien, 'et l’on ne prend pas à autrui en campant à côté',
+        `${tenue.controle}`);
+    }
+  }
+
+  // Une case gardée n’est pas orpheline : elle est tenue par des hommes, pas
+  // par une ville. Sans ça, `libererOrphelines` (A5) la dépouillerait au
+  // premier événement venu.
+  {
+    const loin = wG.regions.find((r) => !r.controle && !r.colonie
+      && !voisins(r.i).some((v) => wG.regions[v].colonie));
+    if (loin) {
+      for (let t = 0; t <= GARDE.heures + 1; t++) {
+        monterLaGarde(wG, loin.i, 'rouilleurs', t);
+      }
+      const avant = loin.controle;
+      libererOrphelines(wG);
+      ok(avant === 'rouilleurs' && loin.controle === 'rouilleurs',
+        'une case tenue par des hommes n’est pas une couleur orpheline',
+        `${avant} → ${loin.controle}`);
+    }
+  }
+
+  // Et en jeu : l’escouade qui reste sur une case libre finit par la tenir.
+  // C’est la réponse à la question qui a ouvert le dossier.
+  {
+    const sJ = nouvellePartie(661201, { maintenant: 0 });
+    const g = sJ.player.groupes[0];
+    const ou = sJ.world.regions.find((r) => !r.controle && !r.colonie);
+    if (ou) {
+      // Sans couleurs, on occupe sans nommer : on ne plante pas un drapeau
+      // qu’on n’a pas. C’est enregistré quand même — personne d’autre ne peut
+      // s’installer sur une case où vous êtes.
+      for (let i = 0; i < 6; i++) { g.regionId = ou.i; tick(sJ); }
+      ok(ou.garde && ou.garde.faction === 'joueur' && ou.controle == null,
+        'sans drapeau, on occupe la case sans pouvoir la nommer',
+        `${ou.garde ? ou.garde.faction : 'rien'} / ${ou.controle}`);
+
+      // Avec des couleurs, la case finit par les porter.
+      sJ.player.drapeau = 'rouilleurs';
+      for (let i = 0; i < GARDE.heures + 40 && !ou.controle; i++) {
+        g.regionId = ou.i;
+        tick(sJ);
+      }
+      ok(ou.controle === 'rouilleurs',
+        'sous vos couleurs, l’escouade qui reste sur place finit par tenir la case',
+        `${ou.controle}`);
     }
   }
 }

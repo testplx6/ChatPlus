@@ -80,9 +80,36 @@ manque, c'est qu'il y ait **plusieurs façons d'être le premier**, et une faço
 de cesser de l'être.
 
 - **A1 — la ville** (existe) : fonder ou prendre. Le halo d'aujourd'hui.
-- **A2 — la présence** : y camper, y patrouiller, y faire passer les siens.
-  `effetPresence` existe ; il faudrait qu'il compte aussi pour les colonnes des
-  pays, et qu'une présence durable sur une case libre finisse par la nommer.
+- **A2 — la présence** — **LIVRÉ, septembre 2026 — et mesuré MORT côté monde.**
+  Une troupe qui reste sur une case que personne ne tient finit par la faire
+  porter ses couleurs (`monterLaGarde`, `GARDE.heures` = 72), et cesse de la
+  tenir quand elle s'en va (`leverLaGarde`, `tickGardes` pour celles qu'on ne
+  relève plus). Deux bornes, et ce ne sont pas des précautions : **seulement
+  une case libre** — prendre à quelqu'un, c'est prendre sa ville, pas camper à
+  côté, et la règle du premier arrivé n'est pas touchée — et **une occupation à
+  la fois**. Sans couleurs, on occupe sans nommer : on ne plante pas un drapeau
+  qu'on n'a pas, mais personne d'autre ne peut s'installer où vous êtes. Une
+  case tenue par des hommes n'est pas une couleur orpheline au sens d'A5.
+
+  Ça marche, et ça répond à la question qui a ouvert le dossier : l'escouade
+  qui reste sur place tient la case. **Le monde, lui, ne s'en sert pas du
+  tout** : zéro appropriation sur six graines × 6 000 h, et le balayage le
+  confirme — ni 24 h ni 168 h ne changent ce zéro. Le monde ne diverge pas d'un
+  iota du témoin : mêmes villes, même population, même masse, mêmes convois.
+
+  La cause n'est pas un réglage, elle est de conception, et elle est exactement
+  la question que ce dépôt pose avant d'écrire une règle : *quel agent la
+  porte, et que sait-il ?* Une colonne est toujours en marche, en siège devant
+  une ville, ou en garnison chez elle — **aucun agent du monde n'a la moindre
+  raison de stationner sur une case vide.** Occuper ne rapporte rien tant que
+  tenir du terrain ne rapporte rien. A2 restera donc lettre morte pour les pays
+  jusqu'à ce qu'un des avantages du §5 existe : le ravitaillement (B5), la
+  ressource (B3) ou le droit d'y fonder (B6) — celui-là surtout, puisque
+  l'expansion ignore aujourd'hui complètement les frontières.
+
+  `GARDE.heures` = 72 : le balayage (24 → 168) ne discrimine pas, la valeur ne
+  mord donc que sur le joueur. Trois jours, c'est le temps qu'il faut pour que
+  « on est passé » devienne « on est installé ».
 - **A3 — l'ouvrage** : une route entretenue, un relais, un pont, un poste de
   péage bâti. On tient ce qu'on a construit, pas ce qu'on a traversé.
 - **A4 — l'accord** : une case cédée, échangée ou concédée par traité. Les

@@ -293,12 +293,16 @@ export function normaliser(state) {
   for (const a of w.armees || []) {
     if (typeof a.impayees !== 'number') a.impayees = 0;
   }
+  // Avant qu'on puisse tenir du terrain, personne n'occupait rien.
+  if (!w.gardes) w.gardes = [];
   for (const r of w.regions) {
     // Les routes d'avant les secteurs : sûres par défaut, elles se dégraderont
     // toutes seules si personne ne les tient.
     if (r.insecurite === undefined) r.insecurite = 0;
     // Avant les pistes, on traversait une friche vierge à chaque passage.
     if (r.piste === undefined) r.piste = 0;
+    // Avant qu'on puisse tenir du terrain, personne n'occupait rien.
+    if (r.garde === undefined) r.garde = null;
   }
   // Les couleurs orphelines des parties d'avant : une case tenue par un drapeau
   // qui n'a plus une seule ville dessus ni à côté redevient libre. Le halo n'a

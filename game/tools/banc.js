@@ -237,6 +237,9 @@ function jouer({ sim, data, eco, eco2, monde }, graine, horizon) {
     // d'avant, où traverser un pays était gratuit pour tout le monde sauf le
     // joueur.
     barrages: evts.peage || 0,
+    // Les cases tenues par des HOMMES et non par une ville (TERRITOIRE.md,
+    // A2) : c'est tout ce que l'occupation ajoute à la carte politique.
+    gardees: s.world.regions.filter((r) => r.garde && r.garde.pris).length,
     villes: cols.length,
     pop: Math.round(cols.reduce((a, c) => a + c.pop, 0)),
     nourries: cols.filter((c) => (c.stock.rations || 0) >= c.pop * 0.5).length,
@@ -404,6 +407,7 @@ function agreger(cfg) {
     tenues: som(cfg, 'tenues'),
     orphelines: som(cfg, 'orphelines'),
     barrages: som(cfg, 'barrages'),
+    gardees: som(cfg, 'gardees'),
     villes: som(cfg, 'villes'),
     pop: som(cfg, 'pop'),
     nourries: som(cfg, 'nourries'),
@@ -491,7 +495,7 @@ function agreger(cfg) {
 const COLONNES = [
   ['nom', 'config', 18], ['villes', 'villes', 7], ['pop', 'pop', 8],
   ['tenues', 'cases tenues', 12], ['orphelines', 'orphelines', 10],
-  ['barrages', 'barrages', 9],
+  ['barrages', 'barrages', 9], ['gardees', 'gardées', 8],
   ['nourries', 'nourries', 8], ['ecrasees', 'écrasées', 8],
   ['tresorMed', 'trésor méd', 10], ['fauchees', '<2500', 6],
   ['caisseMed', 'caisse méd', 10], ['bourses', 'bourses', 7],
