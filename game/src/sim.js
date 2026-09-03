@@ -23,6 +23,7 @@ import { tickCoffres } from './coffres.js';
 import { tickFactions } from './factions.js';
 import { tickSquad } from './squad.js';
 import { creerLogger, combatContre } from './events.js';
+import { lieePar } from './pactes.js';
 import { genererBande } from './combat.js';
 import { VERSION } from './save.js';
 import { groupeVide } from './groupes.js';
@@ -541,6 +542,10 @@ export function tick(state) {
   // dans l'ordre des modules et ne peut pas l'importer — la bataille lui est
   // prêtée par ici, comme la caravane l'emprunte via main.js.
   ctx.genererBande = genererBande;
+  // Ce qu'un pacte ouvre aux convois : `caravanes.js` précède `pactes.js` dans
+  // l'ordre des modules et ne peut pas le citer — la clause lui est prêtée par
+  // ici, comme la bataille l'est au camp (TERRITOIRE.md, B1).
+  ctx.pactePassage = (a, b) => !!(a && b && lieePar(state.world, a, b, 'passage'));
   ctx.combatContre = combatContre;
   // Qui a une raison de venir prendre votre ville : ceux qui vous détestent, et
   // ceux à qui vous faites la guerre en portant d'autres couleurs. Les autres

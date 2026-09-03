@@ -128,10 +128,43 @@ de cesser de l'être.
   complète : **91 barrages croisés, 43 payés, 5 196 unités** qui s'évaporaient
   et qui entrent maintenant quelque part. L'invariant comptable reste exact.
 
-  **La seconde moitié n'est pas faite** : « se prélève sur tout le monde ». Les
-  convois du monde traversent toujours les terres d'autrui sans rien payer, si
-  bien que le péage reste une chose que seul le joueur subit. La corriger
-  demande de trancher une règle qui n'est pas à moi (voir §6, question 6).
+  **SECONDE MOITIÉ LIVRÉE.** Le propriétaire, interrogé sur ce qu'un convoi
+  paie : « toutes les réponses sont possibles et plus encore ». Ce n'est donc
+  pas un choix mais une **table** — `REPONSES_BARRAGE`, le même parti que
+  `MOTIFS_SECESSION` —, lue dans l'ordre, la première qui peut faisant :
+
+  - `laissez` : on est chez soi, ou un pacte de passage nous couvre ;
+  - `dedans` : on est déjà chez eux, on a payé à la frontière ;
+  - `bourse` : c'est le convoi du joueur, et il a de quoi — dans leur monnaie
+    ou dans une autre, prise au cours ;
+  - `argent` : la ville qui a expédié règle sur sa caisse, et l'argent change
+    de pays au taux du jour ;
+  - `nature` : à qui ne peut ni l'un ni l'autre, le barrage prend de la
+    marchandise, qui entre dans les réserves de la ville qui tient la case.
+
+  Pour en ajouter une, il suffit d'écrire une entrée : rien d'autre dans le
+  moteur ne connaît la liste. C'est le « et plus encore » rendu possible.
+
+  **On paie en ENTRANT chez quelqu'un, pas à chaque pas** — et c'est la mesure
+  qui l'a imposé. Écrit d'abord par case, le péage prenait deux pour cent dix
+  fois de suite : un convoi entre deux camps du joueur arrivait avec 57 unités
+  sur 80. Ce n'était pas un péage mais un barrage tous les kilomètres, c'est-à-
+  dire un prélèvement que personne ne tient. Une frontière, elle, a des hommes
+  dessus. De même, un barrage **accepte la monnaie étrangère** au cours :
+  exiger la leur et se servir dans la cargaison sinon revenait à taxer en
+  marchandise quiconque voyage loin de chez lui.
+
+  Ce que ça fait au monde, six graines × 6 000 h : **2 barrages payés → 16 156**.
+  Les pays qui tiennent du territoire s'enrichissent nettement (trésor médian
+  20 530 → 42 655, et les pays fauchés passent de 10 sur 36 à 4), le monde
+  porte 347 villes debout contre 330, et — le plus parlant — **les accords
+  doublent, de 8 à 17** : la clause `passage` des pactes vaut enfin quelque
+  chose, puisqu'elle ouvre une frontière qui coûte. L'écart comptable reste
+  exact à zéro.
+
+  `PEAGE_CONVOI.part` vaut 0,02, balayée de 0,005 à 0,04 : le monde est
+  indifférent à la valeur (villes 355 contre 345, sous le plancher de bruit de
+  4,6 %) — c'est l'existence du péage qui compte, pas son tarif.
 - **B2 — la route sûre** : ses convois traversent ses terres moins cher et
   moins dangereusement. `insecurite` et `menace` sont déjà là ; les convois
   savent déjà se faire piller.
@@ -159,7 +192,10 @@ de cesser de l'être.
    sont la question qui a ouvert le dossier.
 5. **Deux drapeaux peuvent-ils tenir la même case ?** Aujourd'hui non, et un
    « disputé » n'existe pas.
-6. **Sur quoi un convoi paie-t-il le péage ?** (bloque la seconde moitié de B1)
+6. ~~**Sur quoi un convoi paie-t-il le péage ?**~~ **Tranché** : « toutes les
+   réponses sont possibles et plus encore » — d'où la table `REPONSES_BARRAGE`,
+   ouverte. Ce qui suit est ce qui avait été proposé, gardé pour mémoire.
+   (bloquait la seconde moitié de B1)
    Un convoi n'a pas de bourse : il porte une cargaison et une créance sur la
    ville qui l'attend. Trois façons, et elles ne disent pas la même chose du
    monde : *(a)* la ville qui l'a expédié règle sur sa caisse — l'argent passe

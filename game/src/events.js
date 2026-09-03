@@ -1,6 +1,7 @@
 import {
   gagner, regler, soldeIci, signeIci, monnaieIci, entrerDehors, taux,
 } from './monnaie.js';
+export { villeDuBarrage };
 import { commettre } from './faits.js';
 import { auCamp, savoir } from './base.js';
 import { lieePar } from './pactes.js';
@@ -11,7 +12,9 @@ import { lieePar } from './pactes.js';
 import {
   FACTIONS, POSTURES, COMMODITIES, COMMODITY_KEYS, ITEMS, BIOMES,
   POI, SKILLS, SKILL_KEYS, PALIERS_ITEM, SURNOMS, TRAITS, drapeauDe,} from './data.js';
-import { colonieDe, voisins, nomRegion, distance } from './world.js';
+import {
+  colonieDe, voisins, nomRegion, distance, villeDuBarrage,
+} from './world.js';
 import { compterVictoire } from './contrats.js';
 import {
   compterVictoireOrdre, crediter, estAuService, rangDe, renfortsDisponibles, avantage,
@@ -83,24 +86,6 @@ export function ajouterAuSac(state, key, qte, groupe) {
   return reel;
 }
 
-
-/**
- * Qui tient le barrage, concrètement. Un péage n'est pas une propriété du
- * terrain : ce sont des hommes, et ils viennent de quelque part. La ville
- * vivante la plus proche, sous ce drapeau — depuis `libererOrphelines`
- * (TERRITOIRE.md, A5), une case tenue en a toujours une à portée.
- */
-export function villeDuBarrage(world, faction, regionId) {
-  if (!faction || !world.factions[faction]) return null;
-  let place = null;
-  let mieux = Infinity;
-  for (const c of world.colonies) {
-    if (c.ruine || c.faction !== faction) continue;
-    const d = distance(c.regionId, regionId);
-    if (d < mieux) { mieux = d; place = c; }
-  }
-  return place;
-}
 
 /**
  * Ce que le barrage prélève, quelqu'un l'encaisse.

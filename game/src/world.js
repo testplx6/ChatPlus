@@ -509,6 +509,24 @@ export function colonieParId(world, id) {
   return index(world).get(id) || null;
 }
 
+/**
+ * Qui tient le barrage, concrètement. Un péage n'est pas une propriété du
+ * terrain : ce sont des hommes, et ils viennent de quelque part. La ville
+ * vivante la plus proche, sous ce drapeau — depuis `libererOrphelines`
+ * (TERRITOIRE.md, A5), une case tenue en a toujours une à portée.
+ */
+export function villeDuBarrage(world, faction, regionId) {
+  if (!faction || !world.factions || !world.factions[faction]) return null;
+  let place = null;
+  let mieux = Infinity;
+  for (const c of world.colonies) {
+    if (c.ruine || c.faction !== faction) continue;
+    const d = distance(c.regionId, regionId);
+    if (d < mieux) { mieux = d; place = c; }
+  }
+  return place;
+}
+
 /** Une ville vivante de ce drapeau se tient-elle sur cette case ? */
 function villeTenante(world, i, faction) {
   const r = world.regions[i];

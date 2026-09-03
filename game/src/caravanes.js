@@ -8,7 +8,7 @@ import { commettre, delaiVersFaction, CANAUX } from './faits.js';
 import { Rng, grainDe } from './rng.js';
 import {
   chemin, colonieParId, colonieDe, nomRegion, distance, damer,
-  negoceCoupe, vivresCoupees, aucuneCoupure,
+  negoceCoupe, vivresCoupees, aucuneCoupure, villeDuBarrage,
 } from './world.js';
 import {
   reseauDe, reseaux, idReseau, villesDuReseau, peutTraiter, chiffrerOrdre,
@@ -28,7 +28,7 @@ import { retenirEnVille } from './services.js';
 import { avantage } from './allegeance.js';
 import {
   transferer, convertirMasse, ecartChange, taux, entrerDehors, sortirDehors,
-  gagner, regler, soldeIci, signeIci,
+  gagner, regler, soldeIci, signeIci, aDeQuoi, solde,
 } from './monnaie.js';
 
 /**
@@ -773,6 +773,199 @@ export function qteSolvable(vers, k, qte) {
   return Math.min(qte, Math.floor((vers.caisse || 0) / prix));
 }
 
+/**
+ * Ce qu'un barrage prélève sur un convoi, en part de ce qu'il transporte.
+ *
+ * Une part et non un forfait : un barrage regarde passer la marchandise, et
+ * quatre cents de ferraille ne se rançonnent pas comme une caisse d'isotopes.
+ * Une part, aussi, parce qu'il ne faut **jamais un tirage de plus** : le péage
+ * du joueur, lui, est tiré (40 à 220) parce qu'il l'était déjà.
+ */
+export const PEAGE_CONVOI = { part: 0.02 };
+
+/**
+ * Ce qu'un convoi fait devant un barrage.
+ *
+ * Le propriétaire, interrogé sur ce qu'un convoi paie : « toutes les réponses
+ * sont possibles et plus encore ». Ce n'est donc pas un choix mais une table —
+ * le même parti que `MOTIFS_SECESSION`. On la lit dans l'ordre, et la première
+ * qui peut, fait. Pour en ajouter une, il suffit d'écrire une entrée : rien
+ * d'autre dans le moteur ne connaît la liste.
+ */
+export const REPONSES_BARRAGE = {
+  laissez: {
+    nom: 'on vous ouvre',
+    dit: 'on est chez soi, ou l’on a de quoi montrer',
+    peut: (v) => !v.faction || v.faction === v.convoi.faction
+      || (v.ctx.pactePassage && v.ctx.pactePassage(v.convoi.faction, v.faction)),
+    faire: () => 0,
+  },
+  dedans: {
+    nom: 'on a déjà payé à la frontière',
+    dit: 'on est entré chez eux à la case d’avant',
+    // **On paie en ENTRANT chez quelqu'un, pas à chaque pas.** Écrit d'abord
+    // par case, le péage prenait deux pour cent de la cargaison dix fois de
+    // suite : un convoi entre deux camps du joueur arrivait avec 57 unités sur
+    // 80. Ce n'était pas un péage, c'était un barrage tous les kilomètres — un
+    // prélèvement sans personne pour le tenir. La frontière, elle, a des
+    // hommes dessus.
+    peut: (v) => v.venantDe === v.faction,
+    faire: () => 0,
+  },
+  bourse: {
+    nom: 'le maître du convoi paie',
+    dit: 'c’est son convoi, et il a de quoi dans la monnaie d’ici',
+    // Un convoi du joueur n'a pas de ville derrière lui — souvent il part d'un
+    // camp, qui n'a pas de caisse. Mais lui en a une. Il paie donc comme
+    // n'importe quel expéditeur, dans la monnaie de ceux qui tiennent la case :
+    // s'il ne l'a pas, il paiera en marchandise comme les autres.
+    peut: (v) => v.convoi.pour === 'joueur' && !!v.place && !!monnaieDuPeage(v),
+    faire: (v) => payerDeSaPoche(v),
+  },
+  argent: {
+    nom: 'la ville règle',
+    dit: 'celle qui a expédié paie, et l’argent change de pays',
+    peut: (v) => !!v.de && (v.de.caisse || 0) >= v.du,
+    faire: (v) => payerEnArgent(v),
+  },
+  nature: {
+    nom: 'le barrage se sert',
+    dit: 'à qui n’a pas de quoi payer, on prend de la marchandise',
+    peut: (v) => !!v.place && valeurCargaison(v.convoi) > 0,
+    faire: (v) => prendreEnNature(v),
+  },
+};
+
+/**
+ * Avec quoi le maître du convoi peut régler ce barrage.
+ *
+ * Un barrage accepte la monnaie étrangère : il la prend au cours, comme
+ * n'importe qui. Exiger la leur et se servir dans la cargaison sinon revenait
+ * à taxer en marchandise quiconque voyage loin de chez lui — c'est-à-dire tout
+ * le monde. On prend la leur si on l'a, sinon celle dont on a le plus.
+ */
+function monnaieDuPeage(v) {
+  const p = v.state.player;
+  if (!p || !p.bourse) return null;
+  if (solde(p, v.faction) >= v.du) return v.faction;
+  let mieux = null;
+  let plus = 0;
+  for (const k of Object.keys(p.bourse)) {
+    const t = taux(v.state.world, k, v.faction);
+    if (!(t > 0)) continue;
+    const vaut = solde(p, k) * t;
+    if (vaut >= v.du && vaut > plus) { plus = vaut; mieux = k; }
+  }
+  return mieux;
+}
+
+/**
+ * Le maître du convoi paie de sa poche. Sa bourse est hors de tout registre :
+ * ce qui entre en caisse entre donc aussi dans la masse — la règle des deux.
+ */
+function payerDeSaPoche(v) {
+  const m = monnaieDuPeage(v);
+  if (!m) return 0;
+  const t = m === v.faction ? 1 : taux(v.state.world, m, v.faction);
+  const paye = regler(v.state, v.du / t, m);
+  const recu = paye * t;
+  if (!(recu > 0)) return 0;
+  encaisser(v.state.world, v.place, recu);
+  entrerDehors(v.state.world, v.faction, recu);
+  return recu;
+}
+
+/**
+ * La ville qui a expédié règle sur sa caisse, et le barrage encaisse.
+ *
+ * D'un pays à l'autre, les unités sorties et les unités entrées ne sont pas
+ * les mêmes en nombre : c'est le taux. Le même chemin que le marché conclu à
+ * l'arrivée d'un convoi — sans l'écart de change, parce qu'un barrage ne tient
+ * pas un bureau.
+ */
+function payerEnArgent(v) {
+  const world = v.state.world;
+  const paye = debourser(v.de, v.du);
+  if (!(paye > 0)) return 0;
+  if (v.de.faction === v.faction) {
+    encaisser(world, v.place, paye);
+    return paye;
+  }
+  const recu = paye * taux(world, v.de.faction, v.faction);
+  convertirMasse(world, v.de.faction, v.faction, paye, recu);
+  encaisser(world, v.place, recu);
+  return recu;
+}
+
+/**
+ * À qui n'a pas de quoi payer, on prend de la marchandise — et elle va dans
+ * les réserves de la ville qui tient la case, pas dans le vide. On se sert
+ * dans ce qu'il y a de plus abondant, ce qui est la façon la plus simple de
+ * dire « on prend ce qu'on peut porter ».
+ */
+function prendreEnNature(v) {
+  const world = v.state.world;
+  let pris = 0;
+  let du = v.du;
+  const dedans = Object.keys(v.convoi.cargaison || {})
+    .filter((k) => (v.convoi.cargaison[k] || 0) > 0 && COMMODITIES[k])
+    .sort((a, b) => (v.convoi.cargaison[b] * COMMODITIES[b].prix)
+      - (v.convoi.cargaison[a] * COMMODITIES[a].prix));
+  for (const k of dedans) {
+    if (du <= 0) break;
+    const prix = COMMODITIES[k].prix || 1;
+    const veut = Math.min(v.convoi.cargaison[k], Math.ceil(du / prix));
+    if (veut <= 0) continue;
+    v.convoi.cargaison[k] -= veut;
+    v.place.stock[k] = (v.place.stock[k] || 0) + veut;
+    du -= veut * prix;
+    pris += veut * prix;
+  }
+  return pris;
+}
+
+/**
+ * Le convoi entre sur une case tenue : qu'est-ce qu'il fait ?
+ *
+ * On lit `REPONSES_BARRAGE` dans l'ordre et la première qui peut, fait. Rend
+ * `{ reponse, montant }`. Le contexte porte ce que `caravanes.js` ne peut pas
+ * citer — `pactes.js` vient après lui —, comme la bataille prêtée au camp.
+ */
+export function passerBarrage(state, car, regionId, ctx, log, venantDe) {
+  const world = state.world;
+  const r = world.regions[regionId];
+  const faction = r && r.controle;
+  const v = {
+    state,
+    convoi: car,
+    faction,
+    venantDe: venantDe || null,
+    ctx: ctx || {},
+    de: car.deId ? colonieParId(world, car.deId) : null,
+    place: faction ? villeDuBarrage(world, faction, regionId) : null,
+    du: 0,
+  };
+  if (v.de && v.de.ruine) v.de = null;
+  v.du = Math.round(valeurCargaison(car) * PEAGE_CONVOI.part);
+  for (const cle of Object.keys(REPONSES_BARRAGE)) {
+    const rep = REPONSES_BARRAGE[cle];
+    if (!rep.peut(v)) continue;
+    const montant = rep.faire(v);
+    if (cle !== 'laissez' && log && montant > 0) {
+      log({
+        type: 'peage',
+        texte: `Barrage ${drapeauDe(world, faction).genitif} sur la piste : `
+          + `${v.de ? v.de.nom : 'le convoi'} ${cle === 'nature'
+            ? 'y laisse de la marchandise' : `y laisse ${Math.round(montant)}`}.`,
+        regionId,
+        discret: true,
+      });
+    }
+    return { reponse: cle, montant };
+  }
+  return null;
+}
+
 export function valeurCargaison(car) {
   let v = 0;
   for (const k of Object.keys(car.cargaison)) {
@@ -1014,7 +1207,15 @@ export function tickCaravanes(state, log, ctx) {
     car.progres = 0;
 
     if (car.etape >= car.route.length) { arriver(state, car, log); continue; }
+    // D'où l'on vient : c'est ce qui dit si l'on ENTRE chez quelqu'un ou si
+    // l'on continue de le traverser. Relevé avant de bouger.
+    const veniat = world.regions[car.regionId] && world.regions[car.regionId].controle;
     car.regionId = car.route[car.etape];
+    // Entrer sur les terres d'un autre drapeau se paie (TERRITOIRE.md, B1) :
+    // ce que le barrage prélève entre chez celui qui tient la case — de la
+    // poche du maître du convoi, de la caisse de la ville qui a expédié, ou de
+    // la cargaison quand ni l'un ni l'autre ne peut.
+    passerBarrage(state, car, car.regionId, ctx, log, veniat);
     // Le commerce trace les routes mieux que personne : c'est lui qui passe.
     damer(world, car.regionId, 1.6);
     car.etape++;

@@ -42,6 +42,7 @@ import { BETES } from '../src/betes.js';
 import {
   attaquerCaravane, passerOrdre, ordresEnCours, ESCORTES,
   passerOrdreGages, passerOrdreCamps, gagesConvoi, GAGES,
+  passerBarrage, PEAGE_CONVOI, valeurCargaison,
 } from '../src/caravanes.js';
 import {
   combatContre, fouillerSite, inscrireAuMemorial, creerLogger, solderPrime,
@@ -15910,6 +15911,116 @@ section('TER 2. Le péage entre dans une caisse (TERRITOIRE.md, B1)');
   {
     const recu = percevoirPeage(sP, 'bandits', caseTenue.i, 200, drapeau);
     ok(recu === 0, 'les bandits, eux, n’ont pas de caisse où le mettre', `${recu}`);
+  }
+}
+
+
+
+// ===========================================================================
+section('TER 3. Les convois paient aussi (TERRITOIRE.md, B1, seconde moitié)');
+// Le péage ne se prélevait que sur le joueur : les convois du monde
+// traversaient les terres d'autrui sans rien payer. Tant que c'était vrai, le
+// barrage restait une friction dirigée contre lui — l'odeur n°3 de l'AUDIT —
+// et tenir une case sur une route ne rapportait rien.
+//
+// Le propriétaire, quand on lui a demandé sur quoi un convoi paie : « toutes
+// les réponses sont possibles et plus encore ». Ce n'est donc pas un choix
+// mais une TABLE — `REPONSES_BARRAGE` —, comme les motifs de sécession :
+// on laisse passer les siens et ceux qu'un pacte couvre, la ville qui a
+// expédié règle quand elle en a les moyens, et le barrage se sert dans la
+// cargaison quand elle ne les a pas.
+{
+  const sB = nouvellePartie(884120, { maintenant: 0 });
+  const wB = sB.world;
+  const vivantes = wB.colonies.filter((c) => !c.ruine && c.faction);
+  const depart = vivantes.find((c) => (c.caisse || 0) > 4000);
+  ok(!!depart, 'décor : une ville solvable pour expédier', depart ? depart.nom : 'aucune');
+
+  // Une case tenue par un AUTRE drapeau que celui de l'expéditrice.
+  const barrage = depart && wB.regions.find((r) => r.controle
+    && r.controle !== depart.faction
+    && wB.factions[r.controle]
+    && wB.colonies.some((c) => !c.ruine && c.faction === r.controle));
+  ok(!!barrage, 'décor : une case tenue par un drapeau étranger');
+
+  if (depart && barrage) {
+    const drapeau = barrage.controle;
+    const tenant = wB.colonies.filter((c) => !c.ruine && c.faction === drapeau)
+      .reduce((a, c) => a, null);
+    const convoi = {
+      id: 'test1', faction: depart.faction, deId: depart.id,
+      versId: null, cargaison: { ferraille: 400 }, regionId: barrage.i,
+      route: [barrage.i], etape: 0,
+    };
+    const attendu = valeurCargaison(convoi) * PEAGE_CONVOI.part;
+    ok(attendu > 0, 'un barrage se chiffre sur ce que le convoi transporte',
+      `${attendu.toFixed(1)} pour ${valeurCargaison(convoi)} de cargaison`);
+
+    const caisseAvant = depart.caisse || 0;
+    const ecartAvant = auditer(wB).reduce((x, e) => x + Math.abs(e.ecart), 0);
+    const r1 = passerBarrage(sB, convoi, barrage.i, {});
+    ok(r1 && r1.reponse === 'argent',
+      'la ville qui a expédié règle, et le convoi passe',
+      r1 ? r1.reponse : 'rien');
+    ok((depart.caisse || 0) < caisseAvant,
+      'sa caisse en porte la trace',
+      `${Math.round(caisseAvant)} → ${Math.round(depart.caisse || 0)}`);
+    const ecartApres = auditer(wB).reduce((x, e) => x + Math.abs(e.ecart), 0);
+    ok(Math.abs(ecartApres - ecartAvant) < 0.01,
+      'et l’argent a changé de pays sans que rien ne s’en crée ni ne s’en perde',
+      `${ecartAvant.toFixed(2)} → ${ecartApres.toFixed(2)}`);
+
+    // Chez soi, on ne paie pas.
+    {
+      const sien = wB.colonies.find((c) => !c.ruine && c.faction === drapeau);
+      const mien = { ...convoi, faction: drapeau, deId: sien.id };
+      const r = passerBarrage(sB, mien, barrage.i, {});
+      ok(r && r.reponse === 'laissez', 'on ne rançonne pas les siens',
+        r ? r.reponse : 'rien');
+    }
+
+    // Ni ceux qu'un pacte couvre. Le pacte se demande au monde par le
+    // contexte : `pactes.js` vient après `caravanes.js` et ne peut pas être
+    // cité d'ici — le même chemin que la bataille prêtée au camp.
+    {
+      const r = passerBarrage(sB, convoi, barrage.i,
+        { pactePassage: () => true });
+      ok(r && r.reponse === 'laissez', 'ni ceux qu’un pacte de passage couvre',
+        r ? r.reponse : 'rien');
+    }
+
+    // Une ville sans un sou ne paie pas en argent : le barrage se sert.
+    {
+      const fauchee = vivantes.find((c) => c.faction !== drapeau);
+      fauchee.caisse = 0;
+      const pauvre = {
+        id: 'test2', faction: fauchee.faction, deId: fauchee.id,
+        versId: null, cargaison: { ferraille: 400 }, regionId: barrage.i,
+        route: [barrage.i], etape: 0,
+      };
+      const place = wB.colonies.filter((c) => !c.ruine && c.faction === drapeau)
+        .reduce((a, c) => (!a || distance(c.regionId, barrage.i)
+          < distance(a.regionId, barrage.i) ? c : a), null);
+      const stockAvant = (place.stock.ferraille || 0);
+      const chargeAvant = pauvre.cargaison.ferraille;
+      const r = passerBarrage(sB, pauvre, barrage.i, {});
+      ok(r && r.reponse === 'nature',
+        'à qui n’a pas de quoi payer, le barrage prend de la marchandise',
+        r ? r.reponse : 'rien');
+      ok(pauvre.cargaison.ferraille < chargeAvant
+        && (place.stock.ferraille || 0) > stockAvant,
+        'elle quitte la cargaison et entre dans les réserves de qui tient la case',
+        `${chargeAvant} → ${pauvre.cargaison.ferraille}, `
+        + `stock ${Math.round(stockAvant)} → ${Math.round(place.stock.ferraille || 0)}`);
+    }
+
+    // Une case que personne ne tient ne prélève rien.
+    {
+      const libre = wB.regions.find((r) => !r.controle);
+      const r = passerBarrage(sB, convoi, libre.i, {});
+      ok(!r || r.reponse === 'laissez', 'et une terre sans maître ne prélève rien',
+        r ? r.reponse : 'rien');
+    }
   }
 }
 

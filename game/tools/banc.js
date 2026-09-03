@@ -232,6 +232,11 @@ function jouer({ sim, data, eco, eco2, monde }, graine, horizon) {
     graine,
     tenues: tenues.length,
     orphelines,
+    // Les barrages payés sur les pistes : ce que les convois laissent en
+    // entrant chez les autres (TERRITOIRE.md, B1). Zéro sur les révisions
+    // d'avant, où traverser un pays était gratuit pour tout le monde sauf le
+    // joueur.
+    barrages: evts.peage || 0,
     villes: cols.length,
     pop: Math.round(cols.reduce((a, c) => a + c.pop, 0)),
     nourries: cols.filter((c) => (c.stock.rations || 0) >= c.pop * 0.5).length,
@@ -398,6 +403,7 @@ function agreger(cfg) {
     nom: cfg.nom,
     tenues: som(cfg, 'tenues'),
     orphelines: som(cfg, 'orphelines'),
+    barrages: som(cfg, 'barrages'),
     villes: som(cfg, 'villes'),
     pop: som(cfg, 'pop'),
     nourries: som(cfg, 'nourries'),
@@ -485,6 +491,7 @@ function agreger(cfg) {
 const COLONNES = [
   ['nom', 'config', 18], ['villes', 'villes', 7], ['pop', 'pop', 8],
   ['tenues', 'cases tenues', 12], ['orphelines', 'orphelines', 10],
+  ['barrages', 'barrages', 9],
   ['nourries', 'nourries', 8], ['ecrasees', 'écrasées', 8],
   ['tresorMed', 'trésor méd', 10], ['fauchees', '<2500', 6],
   ['caisseMed', 'caisse méd', 10], ['bourses', 'bourses', 7],
