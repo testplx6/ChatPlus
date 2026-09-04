@@ -295,6 +295,10 @@ export function normaliser(state) {
   }
   // Avant qu'on puisse tenir du terrain, personne n'occupait rien.
   if (!w.gardes) w.gardes = [];
+  // Avant qu'on puisse acheter un passage, personne ne comptait ses péages.
+  for (const k of Object.keys(w.factions || {})) {
+    if (!w.factions[k].peages) w.factions[k].peages = {};
+  }
   for (const r of w.regions) {
     // Les routes d'avant les secteurs : sûres par défaut, elles se dégraderont
     // toutes seules si personne ne les tient.
@@ -317,6 +321,7 @@ export function normaliser(state) {
   // A5 — le défaut ne doit pas survivre à sa correction.
   libererOrphelines(w);
   for (const c of w.colonies) {
+    if (c.blocusDit === undefined) c.blocusDit = false;
     if (c.declin === undefined) c.declin = 0;
     // Avant la caisse, une ville n'avait pas de crédits : elle recevait sans
     // payer et vendait sans encaisser. On leur ouvre un compte à hauteur de ce

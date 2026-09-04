@@ -3,7 +3,8 @@
 // côté serveur en multijoueur), `state.player` / `state.base` la moitié privée.
 
 import { Rng, grainDe } from './rng.js';
-import { appelerSecours, tenterPacte } from './pactes.js';
+import { appelerSecours, tenterPacte, noterPeagePaye,
+} from './pactes.js';
 import { FACTIONS, DIPLO_FACTIONS, drapeauDe } from './data.js';
 import {
   genererMonde, decouvrir, colonieParId, nomRegion, distance, tickGardes,
@@ -22,7 +23,7 @@ import { tickClimat, conditions, saison } from './climat.js';
 import { tickChapitres, tickFils, tickMemoireLieux } from './histoire.js';
 import { tickCaravanes } from './caravanes.js';
 import { tickCoffres } from './coffres.js';
-import { tickFactions } from './factions.js';
+import { tickFactions, tenirBlocus } from './factions.js';
 import { tickSquad } from './squad.js';
 import { creerLogger, combatContre } from './events.js';
 import { lieePar } from './pactes.js';
@@ -552,6 +553,10 @@ export function tick(state) {
   // Qui a une raison de venir prendre votre ville : ceux qui vous détestent, et
   // ceux à qui vous faites la guerre en portant d'autres couleurs. Les autres
   // savent qu'elle a un propriétaire et regardent ailleurs.
+  // Ce que les convois d'un pays versent en péages à un autre : le monde le
+  // retient, et c'est ce qui permet à un conseil d'aller acheter sa franchise
+  // (TERRITOIRE.md, E2).
+  ctx.noterPeage = (qui, a, montant) => noterPeagePaye(state.world, qui, a, montant);
   ctx.rancune = (faction) => {
     if ((state.player.reputation[faction] || 0) <= -20) return true;
     for (const g of state.player.groupes) {
@@ -784,6 +789,9 @@ export function tick(state) {
   // Les gardes qu'on ne relève plus : une case ne garde pas ses couleurs
   // derrière une troupe qui n'y est plus (TERRITOIRE.md, A2).
   tickGardes(state.world, state.temps);
+  // Les blocus : une colonne postée sur la route d'une ville ennemie la prive
+  // sans l'assiéger (TERRITOIRE.md, E3).
+  tenirBlocus(state, log);
   // On rend des comptes de ce qu'on a ordonné : d'abord l'issue des actes, puis
   // la charge elle-même, qu'on perd quand le crédit est épuisé.
   jugerActes(state, log);

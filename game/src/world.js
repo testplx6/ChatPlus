@@ -286,6 +286,8 @@ function genererColonies(rng, regions, graine) {
       bancPris: null,
       // Les noms que la ville garde en mémoire — voir `pousserAuVivier`.
       vivier: [],
+      // Le blocus a-t-il déjà été dit pour cette ville (TERRITOIRE.md, E3) ?
+      blocusDit: false,
       // Qui la ville tient enfermé. Voir justice.js.
       geole: null,
       marche: 1 + taille * 0.35,
@@ -350,6 +352,8 @@ function attribuerFactions(rng, regions, colonies) {
       key: k,
       nom: FACTIONS[k].nom,
       tresor: rng.irange(1200, 4200),
+      // Ce que ses convois versent en péages, et à qui (TERRITOIRE.md, E2).
+      peages: {},
       agression: Number((FACTIONS[k].agression * rng.range(0.85, 1.15)).toFixed(2)),
       relations: {},
       colonies: [],
@@ -364,6 +368,7 @@ function attribuerFactions(rng, regions, colonies) {
     key: 'essaim',
     nom: FACTIONS.essaim.nom,
     tresor: 0,
+    peages: {},
     agression: 0.95,
     relations: {},
     colonies: [],

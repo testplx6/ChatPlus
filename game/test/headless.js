@@ -84,7 +84,9 @@ import {
 import { regionsVues } from '../src/connaissance.js';
 import {
   CLAUSES, proposerPacte, pacteEntre, romprePacte, appelerSecours,
+  PEAGE_PAYE, noterPeagePaye, prixDuPassage, lieePar,
 } from '../src/pactes.js';
+import { BLOCUS, bloqueePar, tenirBlocus } from '../src/factions.js';
 import { declarerGuerreA as declarerGuerreAImp, cibleGuerre as cibleGuerreImp } from '../src/influence.js';
 import { enGuerre as enGuerreImp, leverArmee as leverArmeeImp } from '../src/factions.js';
 import { envieDeFonder, SECESSION, MOTIFS_SECESSION } from '../src/factions.js';
@@ -4878,13 +4880,19 @@ ok(prixAvare > prixDroit * 1.1,
 const s9v = nouvellePartie(5252, { maintenant: 0, depart: 'ville', equipe: 3 });
 const suivi = s9v.world.colonies[0];
 avancer(s9v, 5);
-const nomsAvant = (suivi.notables || []).map((p) => p.nom).join('|');
+// On identifie les gens par leur `id`, jamais par leur nom : le générateur
+// resservait « Orme » à un remplaçant de trente ans, et la sonde croyait donc
+// voir le même homme rajeunir de huit ans. Elle tombait alors en annonçant que
+// personne n'avait ni vieilli ni cédé la place, alors que les deux étaient
+// arrivés — deux personnes différentes derrière le même nom (METHODE.md §12).
+const idsAvant = (suivi.notables || []).map((p) => p.id).join('|');
 const ageAvant = (suivi.notables || []).reduce((t, p) => t + p.age, 0);
 avancer(s9v, 6000);
 const ageApres = (suivi.notables || []).reduce((t, p) => t + p.age, 0);
-const nomsApres = (suivi.notables || []).map((p) => p.nom).join('|');
-ok(ageApres > ageAvant || nomsApres !== nomsAvant,
-  'les notables vieillissent, ou cèdent la place');
+const idsApres = (suivi.notables || []).map((p) => p.id).join('|');
+ok(ageApres > ageAvant || idsApres !== idsAvant,
+  'les notables vieillissent, ou cèdent la place',
+  `âge ${ageAvant.toFixed(1)} → ${ageApres.toFixed(1)}`);
 // La ville suivie peut être MORTE au bout de six mille heures — celle-ci l'est,
 // dépeuplée et en ruine, et une ruine n'a pas de charges à pourvoir. Le décor
 // pariait qu'elle survivrait ; il tenait tant que la carte politique ne bougeait
@@ -16573,6 +16581,142 @@ section('GEO 2. La carte a des noms (GEOGRAPHIE.md, G2)');
     && PASSAGE_A.length >= 4 && PASSAGE_B.length >= 8,
     'les mots dont on fait les noms sont de la donnée',
     `${PASSAGE_A.length} × ${PASSAGE_B.length}`);
+}
+
+
+
+// ===========================================================================
+section('TER 8. Le passage se négocie (TERRITOIRE.md, E2)');
+// La revue de game master : « dès que le détour a un prix (T1), vendre le droit
+// de passage devient un marché ». Jusqu’ici la clause `passage` d’un pacte
+// était une faveur qu’on accordait ou non ; elle ne s’achetait pas, et un
+// conseil qui saignait en péages chez son voisin n’avait aucun moyen de dire
+// « combien pour qu’on nous laisse passer ? ».
+//
+// Il faut deux choses : que les pays SACHENT ce qu’ils versent à chacun, et
+// qu’une parole puisse s’acheter — le paiement pesant dans la balance de celui
+// qui la donne, comme n’importe quel argument.
+{
+  const sE = nouvellePartie(529400, { maintenant: 0 });
+  const wE = sE.world;
+
+  // Ce qu'on verse à chacun se retient, sinon personne ne peut rien négocier.
+  noterPeagePaye(wE, 'rouilleurs', 'ombrelle', 120);
+  noterPeagePaye(wE, 'rouilleurs', 'ombrelle', 80);
+  noterPeagePaye(wE, 'rouilleurs', 'cendre', 30);
+  ok((wE.factions.rouilleurs.peages || {}).ombrelle === 200
+    && (wE.factions.rouilleurs.peages || {}).cendre === 30,
+    'un pays sait ce que ses convois versent, et à qui',
+    JSON.stringify(wE.factions.rouilleurs.peages));
+
+  // Le prix d'une franchise se déduit de ce qu'elle fait perdre à l'autre.
+  const prix = prixDuPassage(wE, 'rouilleurs', 'ombrelle');
+  ok(prix > 200, 'le prix du passage vaut plus que ce qu’on versait',
+    `${prix} pour 200 versés`);
+  ok(prixDuPassage(wE, 'rouilleurs', 'signal') === 0,
+    'et l’on ne paie rien pour un passage qui ne coûte rien');
+
+  // Payer pèse dans la balance : la même clause se refuse à main nue et
+  // s’accepte contre argent.
+  {
+    const sP = nouvellePartie(529401, { maintenant: 0 });
+    const wP = sP.world;
+    wP.factions.rouilleurs.relations.ombrelle = -10;
+    wP.factions.ombrelle.relations.rouilleurs = -10;
+    const nu = proposerPacte(sP, 'rouilleurs', 'ombrelle', ['passage'], null);
+    ok(!nu.ok, 'à main nue, on refuse', `${nu.motif}`);
+
+    const tresorAvant = wP.factions.rouilleurs.tresor;
+    const recuAvant = wP.factions.ombrelle.tresor;
+    wP.factions.rouilleurs.tresor = 40000;
+    const ecartAvant = auditer(wP).reduce((x, e) => x + Math.abs(e.ecart), 0);
+    const paye = proposerPacte(sP, 'rouilleurs', 'ombrelle', ['passage'], null, 30000);
+    ok(paye.ok, 'mais une parole s’achète', `${paye.motif || 'signé'}`);
+    ok(wP.factions.ombrelle.tresor > recuAvant,
+      'et celui qui la donne encaisse',
+      `${Math.round(recuAvant)} → ${Math.round(wP.factions.ombrelle.tresor)}`);
+    const ecartApres = auditer(wP).reduce((x, e) => x + Math.abs(e.ecart), 0);
+    ok(Math.abs(ecartApres - ecartAvant) < 0.01,
+      'l’argent change de trésor, il n’en apparaît pas',
+      `${ecartAvant.toFixed(2)} → ${ecartApres.toFixed(2)}`);
+    ok(lieePar(wP, 'rouilleurs', 'ombrelle', 'passage'),
+      'et le barrage s’ouvre pour de bon');
+    wP.factions.rouilleurs.tresor = tresorAvant;
+  }
+
+  // Et l'on ne s'achète pas ce qu'on n'a pas les moyens de payer.
+  {
+    const sQ = nouvellePartie(529402, { maintenant: 0 });
+    sQ.world.factions.rouilleurs.tresor = 10;
+    const r = proposerPacte(sQ, 'rouilleurs', 'ombrelle', ['passage'], null, 30000);
+    ok(!r.ok || sQ.world.factions.rouilleurs.tresor >= 0,
+      'un trésor vide n’achète rien qu’il ne peut payer',
+      `${Math.round(sQ.world.factions.rouilleurs.tresor)}`);
+  }
+
+  ok(PEAGE_PAYE && typeof PEAGE_PAYE.seuil === 'number',
+    'le seuil à partir duquel on va négocier est calibrable',
+    JSON.stringify(PEAGE_PAYE));
+}
+
+
+
+// ===========================================================================
+section('TER 9. Le blocus : un siège à distance (TERRITOIRE.md, E3)');
+// La revue de game master : « le siège existe, mais il faut se planter devant
+// les murs. Un blocus de corridor est un siège à distance : la ville au bout
+// dépérit sans qu'on l'assiège, et l'on n'a pris aucun risque. »
+//
+// C'est aussi ce qui remplit le zéro d'A2 : une colonne postée sur une route a
+// enfin une réponse à « pourquoi ici ? ». Elle ne prend pas la ville, elle la
+// prive — et priver quelqu'un est un acte de guerre qui se voit.
+{
+  const sB = nouvellePartie(392700, { maintenant: 0 });
+  const wB = sB.world;
+  const ville = wB.colonies.find((c) => !c.ruine && c.faction && c.faction !== 'essaim');
+  const rid = ville.regionId;
+
+  ok(!bloqueePar(wB, ville), 'une ville sans colonne autour n’est bloquée par personne');
+
+  // Une colonne ennemie postée à côté, en guerre : la ville est bloquée.
+  const ennemi = Object.keys(wB.factions)
+    .find((k) => k !== ville.faction && k !== 'essaim' && wB.factions[k].colonies.length);
+  wB.guerres.push({ a: ennemi, b: ville.faction, depuis: 0, batailles: 0 });
+  const voisine = voisins(rid)[0];
+  wB.armees.push({
+    id: 'aBlo', rngEtat: 1, faction: ennemi, regionId: voisine,
+    force: 80, forceMax: 80, cible: null, route: [], etape: 0,
+    progres: 0, etat: 'garnison', attente: 999, ravitaillement: 900, impayees: 0,
+  });
+  ok(bloqueePar(wB, ville) === ennemi,
+    'une colonne ennemie postée à côté la bloque', `${bloqueePar(wB, ville)}`);
+
+  // Ce que ça lui fait : elle ne reçoit plus, et elle le sent.
+  {
+    const stockAvant = { ...ville.stock };
+    const t = tenirBlocus(sB, null);
+    ok(t > 0, 'le blocus se tient, et il compte', `${t} ville(s)`);
+    ok(ville.unrest > 0, 'la ville qu’on prive gronde', `${ville.unrest.toFixed(2)}`);
+    ok(Object.keys(stockAvant).length > 0, 'décor : elle avait des vivres');
+  }
+
+  // Un allié de passage ne bloque rien : c'est la guerre qui fait le blocus.
+  {
+    const sC = nouvellePartie(392701, { maintenant: 0 });
+    const wC = sC.world;
+    const v2 = wC.colonies.find((c) => !c.ruine && c.faction && c.faction !== 'essaim');
+    const ami = Object.keys(wC.factions)
+      .find((k) => k !== v2.faction && k !== 'essaim' && wC.factions[k].colonies.length);
+    wC.armees.push({
+      id: 'aAmi', rngEtat: 1, faction: ami, regionId: voisins(v2.regionId)[0],
+      force: 80, forceMax: 80, cible: null, route: [], etape: 0,
+      progres: 0, etat: 'garnison', attente: 999, ravitaillement: 900, impayees: 0,
+    });
+    ok(!bloqueePar(wC, v2), 'mais une colonne avec qui l’on n’est pas en guerre ne bloque rien');
+  }
+
+  ok(BLOCUS && typeof BLOCUS.grogne === 'number', 'ce qu’un blocus fait est calibrable',
+    JSON.stringify(BLOCUS));
 }
 
 

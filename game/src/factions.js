@@ -1278,6 +1278,84 @@ function conseil(world, key, t, log, ctx) {
 }
 
 /**
+ * Le blocus : un siège à distance (TERRITOIRE.md, E3).
+ *
+ * Le siège existait, mais il fallait se planter devant les murs et prendre le
+ * risque de l'assaut. Une colonne postée sur la route d'une ville ennemie fait
+ * autre chose, et de bien moins cher : elle ne la prend pas, elle la prive. La
+ * ville ne reçoit plus, et elle gronde.
+ *
+ * C'est aussi ce qui répond au zéro d'A2 : une colonne qui stationne a enfin
+ * une raison de le faire, et cette raison est un endroit précis.
+ */
+export const BLOCUS = {
+  // PAR HEURE, et c'est tout le sujet : la première version valait 0,02, soit
+  // une ville à bout de nerfs en deux jours et un monde qui part en révoltes en
+  // cascade — le test moteur ne terminait plus. Une grogne se compte à l'heure
+  // dans ce moteur, pas à la journée.
+  grogne: 0.0006,
+  // Ce qu'on ne reçoit plus, en part de ration horaire.
+  faim: 0.02,
+};
+
+/**
+ * Qui prive cette ville, s'il y a quelqu'un. Une colonne d'un pays en guerre
+ * avec elle, postée sur une case voisine ou sur la sienne, et qui ne marche
+ * pas — on ne bloque pas en passant.
+ */
+export function bloqueePar(world, col) {
+  if (!col || col.ruine || !col.faction) return null;
+  for (const a of world.armees || []) {
+    if (a.faction === col.faction) continue;
+    if (a.etat === 'marche') continue;
+    if (distance(a.regionId, col.regionId) > 1) continue;
+    if (!enGuerre(world, a.faction, col.faction)) continue;
+    return a.faction;
+  }
+  return null;
+}
+
+/**
+ * Ce que les blocus font, cette heure-ci. Rend le nombre de villes privées.
+ *
+ * On ne balaie pas les villes : on part des COLONNES, qui se comptent en
+ * dizaines quand les villes se comptent en centaines — et une ville n'est
+ * bloquée que s'il y a une colonne à côté.
+ */
+export function tenirBlocus(state, log) {
+  const world = state.world;
+  const vues = new Set();
+  let n = 0;
+  for (const a of world.armees || []) {
+    if (a.etat === 'marche') continue;
+    for (const i of [a.regionId, ...voisins(a.regionId)]) {
+      const col = colonieDe(world, i);
+      if (!col || col.ruine || !col.faction || vues.has(col.id)) continue;
+      if (col.faction === a.faction || !enGuerre(world, a.faction, col.faction)) continue;
+      vues.add(col.id);
+      n++;
+      // Privée, elle gronde et elle mange ses réserves plus vite : c'est le
+      // même mal qu'un siège, sans le risque de l'assaut.
+      col.unrest = Math.min(1, (col.unrest || 0) + BLOCUS.grogne);
+      const r = col.stock.rations || 0;
+      if (r > 0) col.stock.rations = Math.max(0, r - Math.ceil(col.pop * BLOCUS.faim / 100));
+      if (log && !col.blocusDit) {
+        col.blocusDit = true;
+        log({
+          type: 'blocus',
+          texte: `${col.nom} ne reçoit plus rien : `
+            + `${drapeauDe(world, a.faction).nom} tient la route.`,
+          regionId: col.regionId,
+          important: true,
+          factions: [a.faction, col.faction].filter(Boolean),
+        });
+      }
+    }
+  }
+  return n;
+}
+
+/**
  * Combien de postes un pays tient (TERRITOIRE.md, T3).
  *
  * Un plafond, et il n'est pas une taxe : sans lui, un trésor gras couvrirait la
@@ -1432,6 +1510,8 @@ export function fonderColonie(world, key, region, rng, t) {
     change: false,
     fondeeA: t,
     factionOrigine: key,
+    // Le blocus a-t-il déjà été dit pour cette ville (TERRITOIRE.md, E3) ?
+    blocusDit: false,
   };
   col.defenseMax = Math.round(col.pop * 0.09 + col.murs * 12);
   col.defense = col.defenseMax;

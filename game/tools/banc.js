@@ -263,6 +263,12 @@ function jouer({ sim, data, eco, eco2, monde }, graine, horizon) {
     peagePoste: Math.round(s.world.regions.reduce(
       (a2, r) => a2 + ((r.poste && r.poste.recu) || 0), 0)),
     postesMorts: s.world.regions.filter((r) => r.poste && !(r.poste.recu > 0)).length,
+    // Le marché du droit de passage (TERRITOIRE.md, E2) : combien de pactes
+    // l'ouvrent, et ce que les pays ont en tête quand ils vont négocier.
+    passages: (s.world.pactes || []).filter((p2) => p2.clauses.includes('passage')).length,
+    bloquees: s.world.colonies.filter((c) => c.blocusDit).length,
+    peageDu: Math.round(Object.keys(s.world.factions).reduce((a2, k) => a2
+      + Object.values(s.world.factions[k].peages || {}).reduce((x, y) => x + y, 0), 0)),
     corridor: (() => {
       const p = s.world.regions.map((r) => r.piste || 0).sort((a2, b2) => b2 - a2);
       const tot = p.reduce((a2, b2) => a2 + b2, 0);
@@ -441,9 +447,12 @@ function agreger(cfg) {
     gardees: som(cfg, 'gardees'),
     damees: som(cfg, 'damees'),
     passages: som(cfg, 'passages'),
+    bloquees: som(cfg, 'bloquees'),
     postes: som(cfg, 'postes'),
     peagePoste: som(cfg, 'peagePoste'),
     postesMorts: som(cfg, 'postesMorts'),
+    passages: som(cfg, 'passages'),
+    peageDu: som(cfg, 'peageDu'),
     corridor: `${Math.round(med(cfg.parties.map((p2) => p2.corridor)))} %`,
     villes: som(cfg, 'villes'),
     pop: som(cfg, 'pop'),
@@ -471,6 +480,16 @@ function agreger(cfg) {
     cours: (() => {
       const v = cfg.parties.flatMap((p2) => p2.cours);
       return v.length ? `${Math.min(...v).toFixed(2)}–${Math.max(...v).toFixed(2)}` : '—';
+    })(),
+    // Le cours le plus bas atteint, toutes parties confondues. C'est la mesure
+    // STABLE de « une économie doit pouvoir s'effondrer » (le propriétaire) :
+    // « effondrees » comptait un ÉVÉNEMENT ponctuel et rare, et rendait 3, 1, 1
+    // puis 4 sur douze graines selon des réglages qui ne la commandaient pas.
+    // Une monnaie qui vaut deux centièmes de ce qu'elle valait, elle, se lit
+    // sans ambiguïté et ne dépend pas d'avoir regardé au bon moment.
+    coursMin: (() => {
+      const v = cfg.parties.flatMap((p2) => p2.cours);
+      return v.length ? Number(Math.min(...v).toFixed(3)) : 1;
     })(),
     ecart: Math.round(som(cfg, 'ecart')),
     creances: som(cfg, 'creances'),
@@ -534,7 +553,8 @@ const COLONNES = [
   ['tenues', 'cases tenues', 12], ['orphelines', 'orphelines', 10],
   ['barrages', 'barrages', 9], ['gardees', 'gardées', 8],
   ['damees', 'damées', 7], ['passages', 'franchie', 9], ['postes', 'postes', 7], ['peagePoste', 'péages postes', 13],
-  ['postesMorts', 'postes morts', 12], ['corridor', 'corridor 5 %', 12],
+  ['postesMorts', 'postes morts', 12],
+  ['passages', 'francs', 7], ['bloquees', 'bloquées', 9], ['peageDu', 'péages dus', 11], ['corridor', 'corridor 5 %', 12],
   ['nourries', 'nourries', 8], ['ecrasees', 'écrasées', 8],
   ['tresorMed', 'trésor méd', 10], ['fauchees', '<2500', 6],
   ['caisseMed', 'caisse méd', 10], ['bourses', 'bourses', 7],
@@ -544,7 +564,8 @@ const COLONNES = [
   ['ou', 'caisses/ménages/trésors', 22],
   ['endettees', 'endettées', 9], ['affamees', 'affamées', 11],
   ['satiete', 'satiété', 8], ['creve', 'à la diète', 11],
-  ['cours', 'cours', 11], ['effondrees', 'effondrées', 10],
+  ['cours', 'cours', 11], ['coursMin', 'plus bas', 9],
+  ['effondrees', 'effondrées', 10],
   ['ecart', 'écart', 6], ['creances', 'créances', 9],
   ['paliers', 'taux %', 12],
   ['chantiers', 'chantiers', 10], ['aCredit', 'à crédit', 9],

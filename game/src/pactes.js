@@ -19,7 +19,7 @@
 import { drapeauDe, diploDe } from './data.js';
 import { commettre, delaiVersFaction } from './faits.js';
 import { leverArmee, puissance, guerresDe } from './factions.js';
-import { depenser } from './monnaie.js';
+import { depenser, convertirMasse, taux } from './monnaie.js';
 
 /**
  * Ce qu'on peut se promettre.
@@ -126,6 +126,51 @@ export function peserPacte(world, qui, avec, clauses, poids = 1) {
   return gain * poids * (0.5 + conf) - charge * (1 - conf);
 }
 
+/**
+ * Ce qu'un pays verse en péages, et à qui (TERRITOIRE.md, E2).
+ *
+ * La clause `passage` existait, mais elle était une faveur : on l'accordait ou
+ * non, elle ne s'achetait pas — et un conseil qui saignait chez son voisin
+ * n'avait aucun moyen de dire « combien pour qu'on nous laisse passer ? ».
+ * Négocier suppose de savoir ce qu'on paie ; c'est ce que ce registre garde.
+ *
+ * `seuil` : à partir de combien on trouve que ça suffit et qu'on va parler.
+ * `forfait` : ce qu'on met sur la table, en multiples de ce qu'on versait.
+ */
+export const PEAGE_PAYE = {
+  // Balayé : à 60 le marché s'emballe (quinze franchises, les péages chutent
+  // d'un tiers et le monde perd dix-neuf villes) ; à 250 il n'existe presque
+  // pas (deux franchises). Cent vingt rend six franchises, le plus de villes
+  // debout et la plus grosse population des quatre essais.
+  seuil: 120,
+  forfait: 4,
+  // Ce qu'on oublie à chaque séance du conseil. Sans lui, le registre est le
+  // cumul de TOUTE la partie : plus elle dure, plus la franchise coûte cher, ce
+  // qui n'a aucun sens — on paie pour ce qu'on versera, pas pour ce qu'on a
+  // versé. Avec lui, le compteur dit ce qu'on paie ces temps-ci.
+  oubli: 0.85,
+};
+
+/** Un convoi de `qui` vient de payer à `a`. */
+export function noterPeagePaye(world, qui, a, montant) {
+  const f = qui && world.factions[qui];
+  if (!f || !a || a === qui || !(montant > 0)) return 0;
+  if (!f.peages) f.peages = {};
+  f.peages[a] = (f.peages[a] || 0) + montant;
+  return f.peages[a];
+}
+
+/**
+ * Ce qu'il en coûterait d'acheter la franchise. Zéro si l'on ne paie rien : on
+ * ne s'achète pas un passage qui ne coûte rien.
+ */
+export function prixDuPassage(world, qui, a) {
+  const f = qui && world.factions[qui];
+  const verse = (f && f.peages && f.peages[a]) || 0;
+  if (!(verse > 0)) return 0;
+  return Math.round(verse * PEAGE_PAYE.forfait);
+}
+
 /** À partir d'ici, on signe. */
 export const SEUIL_PACTE = 0;
 
@@ -133,7 +178,7 @@ export const SEUIL_PACTE = 0;
  * Proposer un pacte. Rend `{ ok: true }` s'il est signé, et sinon le motif du
  * refus — dit du point de vue de celui qui refuse.
  */
-export function proposerPacte(state, faction, contre, clauses, log) {
+export function proposerPacte(state, faction, contre, clauses, log, offre = 0) {
   const world = state.world;
   if (!world.factions[faction] || !world.factions[contre]) {
     return { ok: false, motif: 'Ce drapeau n’existe pas.' };
@@ -151,7 +196,13 @@ export function proposerPacte(state, faction, contre, clauses, log) {
     return { ok: false, motif: 'On ne signe pas pendant qu’on se bat. Faites la paix d’abord.' };
   }
 
-  const avis = peserPacte(world, contre, faction, clauses);
+  // Une parole s'achète, et l'argent pèse dans la balance comme n'importe quel
+  // argument : il grossit ce que l'autre croit recevoir (TERRITOIRE.md, E2). On
+  // n'offre que ce qu'on a — un trésor vide ne promet rien.
+  const somme = Math.max(0, Math.min(offre || 0, world.factions[faction].tresor || 0));
+  const contreTresor = Math.max(1, world.factions[contre].tresor || 0);
+  const poids = 1 + Math.min(3, somme / contreTresor);
+  const avis = peserPacte(world, contre, faction, clauses, poids);
   if (avis === null) return { ok: false, motif: 'Cette clause n’existe pas.' };
   if (avis <= SEUIL_PACTE) {
     return {
@@ -161,6 +212,17 @@ export function proposerPacte(state, faction, contre, clauses, log) {
     };
   }
 
+  // Signé : on paie ce qu'on avait promis. D'un trésor à l'autre, au cours du
+  // jour — rien n'apparaît, rien ne disparaît.
+  if (somme > 0) {
+    // Le même chemin qu'une ville qui change de drapeau : les unités sorties et
+    // les unités entrées ne sont pas les mêmes en nombre, c'est le taux — et la
+    // masse suit exactement les trésors.
+    const recu = somme * taux(world, faction, contre);
+    world.factions[faction].tresor -= somme;
+    world.factions[contre].tresor += recu;
+    convertirMasse(world, faction, contre, somme, recu);
+  }
   if (!world.pactes) world.pactes = [];
   const pacte = { a: faction, b: contre, clauses: clauses.slice(), depuis: state.temps };
   world.pactes.push(pacte);
@@ -406,15 +468,36 @@ export function tenterPacte(state, key, log, rng) {
   // l'envie maximale on ne cherche pas, quelle que soit la menace. Entre les
   // deux seulement, il faut savoir. Le flux scellé ne bouge pas : on consomme
   // exactement un tirage, quoi qu'il arrive.
+  const enGuerreAvec = new Set(guerresDe(world, key).map((g) => (g.a === key ? g.b : g.a)));
+
+  // Celui à qui l'on paie le plus, s'il dépasse ce qu'on accepte de saigner.
+  // Calculé AVANT le dé, parce qu'une frontière qui coûte cher est une raison
+  // d'aller parler au même titre qu'une menace : sans ça, le marché du passage
+  // n'existait que les jours où le conseil avait par ailleurs envie de
+  // diplomatie — deux franchises achetées pour cent trente-quatre mille unités
+  // versées (TERRITOIRE.md, E2).
+  const verses = f.peages || {};
+  for (const k of Object.keys(verses)) {
+    verses[k] *= PEAGE_PAYE.oubli;
+    if (verses[k] < 1) delete verses[k];
+  }
+  let pire = null;
+  for (const k of Object.keys(verses)) {
+    if (k === key || enGuerreAvec.has(k) || pacteEntre(world, key, k)) continue;
+    if (!world.factions[k] || !world.factions[k].colonies.length) continue;
+    if (verses[k] < PEAGE_PAYE.seuil) continue;
+    if (!pire || verses[k] > verses[pire]) pire = k;
+  }
+  const prixPire = pire ? prixDuPassage(world, key, pire) : 0;
+  const saigne = !!pire && prixPire > 0 && (f.tresor || 0) > prixPire;
+
   const d = rng.f();
   let presse = false;
-  if (d >= DIPLOMATIE.envie) {
+  if (d >= DIPLOMATIE.envie && !saigne) {
     if (d >= DIPLOMATIE.envie + DIPLOMATIE.envieMenace) return null;
     presse = menaceSur(world, key) >= DIPLOMATIE.menaceForte;
     if (!presse) return null;
   }
-
-  const enGuerreAvec = new Set(guerresDe(world, key).map((g) => (g.a === key ? g.b : g.a)));
   let meilleur = null;
   let meilleurRel = -Infinity;
   for (const k of diploDe(world)) {
@@ -428,12 +511,27 @@ export function tenterPacte(state, key, log, rng) {
     const rel = (f.relations || {})[k] ?? 0;
     if (rel > meilleurRel) { meilleurRel = rel; meilleur = k; }
   }
-  if (!meilleur) return null;
+  if (!meilleur && !saigne) return null;
 
   // Qui se sait menacé demande du secours ; qui est tranquille demande la paix.
   // Le contenu d'un pacte du monde dépend donc de la situation de celui qui le
   // propose, et pas d'une clause tirée au hasard.
-  const clauses = presse ? ['nonAgression', 'secours'] : ['nonAgression'];
-  const r = proposerPacte(state, key, meilleur, clauses, log);
+  //
+  // Et qui saigne en péages va d'abord voir CELUI-LÀ, la bourse à la main
+  // (TERRITOIRE.md, E2) : ce n'est pas la meilleure relation qu'on choisit
+  // alors, c'est celui à qui l'on paie le plus. Une frontière qui coûte cher
+  // est la première raison d'aller parler à quelqu'un.
+  let cible = meilleur;
+  let offre = 0;
+  let clauses = presse ? ['nonAgression', 'secours'] : ['nonAgression'];
+  if (saigne) {
+    cible = pire;
+    offre = prixPire;
+    clauses = ['nonAgression', 'passage'];
+  }
+
+  const r = proposerPacte(state, key, cible, clauses, log, offre);
+  // Payé, on repart de zéro : le compteur dit ce qu'on verse SANS franchise.
+  if (r.ok && offre > 0 && f.peages) f.peages[cible] = 0;
   return r.ok ? r : null;
 }
