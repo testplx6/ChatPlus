@@ -189,7 +189,7 @@ import {
 } from '../src/formation.js';
 import {
   colonieDe, colonieParId, nomRegion, lieuAvecCoord, coordonnee, voisins,
-  monterLaGarde, leverLaGarde, GARDE, libererOrphelines,
+  monterLaGarde, leverLaGarde, GARDE, libererOrphelines, chemin, ROUTE, idx,
 } from '../src/world.js';
 import {
   groupeActif, groupes, tousLesMembres, scinder, fusionner, assignerTache, tactiqueDe,
@@ -15810,8 +15810,13 @@ section('TER 1. Une revendication ne survit pas à celui qui la portait (TERRITO
     const c = colonieParId(sV.world, r.colonie);
     return !!(c && !c.ruine && c.faction === faction);
   };
+  // Une case tenue par des HOMMES présents n'est pas orpheline (TER 4, A2) :
+  // elle a très exactement quelqu'un pour la porter. Ce n'est pas un critère
+  // élargi, c'est la définition complétée — vérifié sur le cas réel qui a fait
+  // tomber cette sonde : une colonne campée sur la case d'une ville morte.
   const orphelines = sV.world.regions.filter((r) => r.controle
     && !villeV(r.i, r.controle)
+    && !(r.garde && r.garde.faction === r.controle)
     && !voisins(r.i).some((v) => villeV(v, r.controle))).length;
   ok(orphelines === 0,
     'et après quinze cents heures de prises et de ruines, plus une seule couleur orpheline',
@@ -16129,6 +16134,112 @@ section('TER 4. On tient ce qu’on occupe (TERRITOIRE.md, A2)');
         `${ou.controle}`);
     }
   }
+}
+
+
+
+// ===========================================================================
+section('TER 5. Le voyageur pèse ce qu’il craint (TERRITOIRE.md, T1)');
+// La revue de game master, septembre 2026 : « aucun voyageur de ce monde ne
+// choisit son chemin en fonction de ce qu’il craint ». `chemin` ne coûtait que
+// le biome et la piste — il ignorait l’insécurité que `secteur.js` calcule
+// pourtant case par case, les frontières, les péages et la guerre.
+//
+// C’est le verrou du dossier entier : le seul effet mesurable d’une frontière
+// est de DÉPLACER DU TRAFIC. Tant qu’aucun trajet ne se détourne, rien de ce
+// qu’on fait au territoire ne peut se voir — une frontière qui ne déplace rien
+// n’est pas une frontière, c’est une couleur.
+//
+// Et la règle est un COÛT, jamais un interdit : un chemin dangereux reste
+// praticable, il coûte plus cher. Des convois qui ne peuvent plus passer sont
+// des villes qui ne mangent plus.
+{
+  const sR = nouvellePartie(884300, { maintenant: 0 });
+  const wR = sR.world;
+  // Un couloir de deux routes équivalentes : on part de (2,5) vers (6,5), et
+  // l’on peut passer par la ligne du dessus ou celle du dessous. Le terrain est
+  // égalisé pour que seul le risque décide.
+  const ligne = (y) => [3, 4, 5].map((x) => idx(x, y));
+  const depart = idx(2, 5);
+  const arrivee = idx(6, 5);
+  for (const i of [depart, arrivee, ...ligne(5), ...ligne(4)]) {
+    const r = wR.regions[i];
+    r.biome = 'steppe';
+    r.piste = 0;
+    r.insecurite = 0;
+    r.controle = null;
+    r.garde = null;
+  }
+  // On barre le contournement par le bas pour n’avoir que deux voies.
+  for (const i of ligne(6)) wR.regions[i].biome = 'plastique';
+
+  const parLeHaut = (route) => route.some((i) => ligne(4).includes(i));
+  const avant = chemin(wR, depart, arrivee);
+  ok(!!avant && !parLeHaut(avant), 'décor : à risque égal, on passe tout droit',
+    avant ? `${avant.length} cases` : 'aucune route');
+
+  // Des routes mal famées sur la voie directe : on prend l’autre.
+  for (const i of ligne(5)) wR.regions[i].insecurite = 0.9;
+  const apres = chemin(wR, depart, arrivee, { craint: true });
+  ok(!!apres && parLeHaut(apres),
+    'des routes mal famées détournent le trajet',
+    apres ? `${apres.length} cases` : 'aucune route');
+
+  // Mais qui ne craint rien passe tout droit : le risque est un poids qu’on
+  // porte, pas une propriété du terrain.
+  const insouciant = chemin(wR, depart, arrivee);
+  ok(!!insouciant && !parLeHaut(insouciant),
+    'et qui ne craint rien passe toujours tout droit',
+    insouciant ? `${insouciant.length} cases` : 'aucune route');
+
+  // Un coût, jamais un interdit : même quand TOUTES les voies sont infâmes, on
+  // passe encore. Une ville qu’on ne peut plus livrer est une ville morte.
+  for (const i of [...ligne(4), ...ligne(5)]) wR.regions[i].insecurite = 1;
+  const quandMeme = chemin(wR, depart, arrivee, { craint: true });
+  ok(!!quandMeme && quandMeme.length > 0,
+    'et quand tout est infâme, on passe quand même — c’est un coût, pas un mur',
+    quandMeme ? `${quandMeme.length} cases` : 'aucune route');
+
+  // Le péage : les terres d’un drapeau qui vous fait payer coûtent plus cher
+  // que le détour, tant que le détour est court.
+  {
+    for (const i of [...ligne(4), ...ligne(5)]) wR.regions[i].insecurite = 0;
+    for (const i of ligne(5)) wR.regions[i].controle = 'rouilleurs';
+    const evite = chemin(wR, depart, arrivee, { craint: true, sien: 'nomades' });
+    ok(!!evite && parLeHaut(evite),
+      'on contourne les terres de qui vous fait payer',
+      evite ? `${evite.length} cases` : 'aucune route');
+    // Chez soi, on ne paie pas : on passe tout droit.
+    const chezSoi = chemin(wR, depart, arrivee, { craint: true, sien: 'rouilleurs' });
+    ok(!!chezSoi && !parLeHaut(chezSoi), 'mais chez soi, on ne paie rien',
+      chezSoi ? `${chezSoi.length} cases` : 'aucune route');
+  }
+
+  // La guerre pèse plus lourd qu’un péage : on ne traverse pas les terres de
+  // qui nous fait la guerre pour économiser une case.
+  {
+    // Le détour devient franchement plus long (désert, coût 5, et deux cases de
+    // plus) : un simple péage ne le justifie plus, on passe chez eux et l’on
+    // paie. La guerre, elle, le justifie.
+    for (const i of [2, 3, 4, 5, 6].map((x) => idx(x, 4))) {
+      wR.regions[i].biome = 'desert';
+      wR.regions[i].controle = null;
+    }
+    for (const i of ligne(5)) {
+      wR.regions[i].biome = 'steppe';
+      wR.regions[i].controle = 'rouilleurs';
+    }
+    const enPaix = chemin(wR, depart, arrivee, { craint: true, sien: 'nomades' });
+    const enGuerre = chemin(wR, depart, arrivee,
+      { craint: true, sien: 'nomades', ennemis: new Set(['rouilleurs']) });
+    ok(!parLeHaut(enPaix) && parLeHaut(enGuerre),
+      'un péage ne vaut pas un long détour, la guerre si',
+      `paix ${parLeHaut(enPaix) ? 'détour' : 'tout droit'} · `
+      + `guerre ${parLeHaut(enGuerre) ? 'détour' : 'tout droit'}`);
+  }
+
+  ok(ROUTE && typeof ROUTE.parInsecurite === 'number',
+    'les trois poids sont calibrables', `${JSON.stringify(ROUTE)}`);
 }
 
 

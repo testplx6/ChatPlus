@@ -4743,6 +4743,22 @@ function colonieParId(world, id) {
 }
 
 /**
+ * Ce qu'un voyageur craint, en unités de coût de terrain (une case coûte de 3
+ * à 7). Calibrable : c'est le prix qu'on met à sa peau et à sa bourse.
+ *
+ * Avant, `chemin` ne coûtait que le biome et la piste : aucun voyageur de ce
+ * monde ne choisissait sa route en fonction de ce qu'il craignait. C'était le
+ * verrou du dossier territoire tout entier — le seul effet mesurable d'une
+ * frontière est de DÉPLACER DU TRAFIC, et tant que rien ne se détournait, rien
+ * de ce qu'on faisait au territoire ne pouvait se voir.
+ *
+ * Un coût, jamais un interdit : un chemin dangereux reste praticable, il coûte
+ * plus cher. Des convois qui ne peuvent plus passer, ce sont des villes qui ne
+ * mangent plus.
+ */
+const ROUTE = { parInsecurite: 6, parPeage: 3, parEnnemi: 14 };
+
+/**
  * Combien de temps il faut rester sur une case pour qu'elle porte vos
  * couleurs. Calibrable : c'est le prix de l'occupation, et le monde n'a pas
  * dit son mot.
@@ -4990,6 +5006,11 @@ function chemin(world, from, to, mods = {}) {
   // Le facteur des mods ne change pas d'une case à l'autre : il sortait de la
   // boucle une fois par arête.
   const red = 1 - (mods.reductionVoyage || 0);
+  // Ce que ce voyageur-ci craint : rien par défaut, pour que les appels qui ne
+  // demandent qu'une distance restent ce qu'ils étaient.
+  const craint = !!mods.craint;
+  const sien = mods.sien || null;
+  const ennemis = mods.ennemis || null;
 
   // Tas binaire minimal : deux tableaux plats, pas d'objets alloués par nœud.
   const tasN = ardoiseTasN;
@@ -5046,7 +5067,19 @@ function chemin(world, from, to, mods = {}) {
       if (genVus[v] === gen) continue;
       const r = world.regions[v];
       const piste = world.sansPistes ? 1 : 1 - (r.piste || 0) * PISTE_GAIN;
-      const nd = du + Math.max(1, BIOMES[r.biome].cout * piste * red);
+      let arete = Math.max(1, BIOMES[r.biome].cout * piste * red);
+      // Ce que le voyageur craint s'ajoute au terrain (TERRITOIRE.md, T1). On
+      // n'y touche que si quelqu'un l'a demandé : une colonne qui marche sur
+      // une ville ennemie n'évite évidemment pas les terres ennemies, et un
+      // trajet calculé pour l'affichage n'a rien à craindre.
+      if (craint) {
+        arete += (r.insecurite || 0) * ROUTE.parInsecurite;
+        if (r.controle && r.controle !== sien) {
+          arete += ennemis && ennemis.has(r.controle)
+            ? ROUTE.parEnnemi : ROUTE.parPeage;
+        }
+      }
+      const nd = du + arete;
       if (genDist[v] !== gen || nd < dist[v]) {
         dist[v] = nd; prev[v] = u; genDist[v] = gen; pousser(v, nd);
       }
@@ -14762,6 +14795,23 @@ function veillerMonnaies(state, log) {
 
 
 /** Sept, plus ce que les bourses financent. */
+
+/**
+ * Ce que craint un convoi (TERRITOIRE.md, T1). Un marchand n'est pas une
+ * colonne : il évite les routes mal famées, il évite de payer un péage quand
+ * le détour coûte moins cher, et il ne traverse pas les terres de qui fait la
+ * guerre à sa maison. Rien de tout cela n'est un interdit — ce sont des coûts,
+ * et un convoi passe encore là où tout est infâme.
+ */
+function craintesDe(world, faction) {
+  const ennemis = new Set();
+  for (const g of world.guerres || []) {
+    if (g.a === faction) ennemis.add(g.b);
+    else if (g.b === faction) ennemis.add(g.a);
+  }
+  return { craint: true, sien: faction || null, ennemis };
+}
+
 function plafondCaravanes(world) {
   return MAX_CARAVANES + reseaux(world).length * CARAVANES_PAR_RESEAU;
 }
@@ -14955,7 +15005,8 @@ function tenterDepart(state, rng, log) {
   }
   if (!meilleur) return null;
 
-  const route = chemin(world, de.regionId, meilleur.vers.regionId);
+  const route = chemin(world, de.regionId, meilleur.vers.regionId,
+    craintesDe(world, de.faction));
   if (!route || !route.length) return null;
 
   // Un marchand ne charge pas pour une ville qui ne peut pas régler.
@@ -15100,7 +15151,8 @@ function departsDuReseau(state, _rng, log) {
       if (qte < 6) continue;
 
       enCours++;
-      const route = chemin(world, source.col.regionId, pire.col.regionId);
+      const route = chemin(world, source.col.regionId, pire.col.regionId,
+        craintesDe(world, source.col.faction));
       if (!route || !route.length) continue;
       servies.add(pire.col.id);
       source.col.stock[pire.k] = Math.max(0, (source.col.stock[pire.k] || 0) - qte);
@@ -15314,7 +15366,7 @@ function devisGages(state, deId, versId, key, qte, escorteId) {
   const n = qteSolvable(b, key, magasin);
   if (n <= 0) return { ok: false, motif: `${b.nom} n’a pas de quoi vous acheter cela.` };
 
-  const route = chemin(world, a.regionId, b.regionId);
+  const route = chemin(world, a.regionId, b.regionId, craintesDe(world, a.faction));
   if (!route || !route.length) return { ok: false, motif: 'Aucune route entre ces deux places.' };
 
   // Le prix d'un marchand, des deux côtés : on achète au prix d'achat de l'une

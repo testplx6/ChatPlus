@@ -15,6 +15,23 @@ import {
 } from './bourse.js';
 
 /** Sept, plus ce que les bourses financent. */
+
+/**
+ * Ce que craint un convoi (TERRITOIRE.md, T1). Un marchand n'est pas une
+ * colonne : il évite les routes mal famées, il évite de payer un péage quand
+ * le détour coûte moins cher, et il ne traverse pas les terres de qui fait la
+ * guerre à sa maison. Rien de tout cela n'est un interdit — ce sont des coûts,
+ * et un convoi passe encore là où tout est infâme.
+ */
+function craintesDe(world, faction) {
+  const ennemis = new Set();
+  for (const g of world.guerres || []) {
+    if (g.a === faction) ennemis.add(g.b);
+    else if (g.b === faction) ennemis.add(g.a);
+  }
+  return { craint: true, sien: faction || null, ennemis };
+}
+
 export function plafondCaravanes(world) {
   return MAX_CARAVANES + reseaux(world).length * CARAVANES_PAR_RESEAU;
 }
@@ -220,7 +237,8 @@ export function tenterDepart(state, rng, log) {
   }
   if (!meilleur) return null;
 
-  const route = chemin(world, de.regionId, meilleur.vers.regionId);
+  const route = chemin(world, de.regionId, meilleur.vers.regionId,
+    craintesDe(world, de.faction));
   if (!route || !route.length) return null;
 
   // Un marchand ne charge pas pour une ville qui ne peut pas régler.
@@ -365,7 +383,8 @@ export function departsDuReseau(state, _rng, log) {
       if (qte < 6) continue;
 
       enCours++;
-      const route = chemin(world, source.col.regionId, pire.col.regionId);
+      const route = chemin(world, source.col.regionId, pire.col.regionId,
+        craintesDe(world, source.col.faction));
       if (!route || !route.length) continue;
       servies.add(pire.col.id);
       source.col.stock[pire.k] = Math.max(0, (source.col.stock[pire.k] || 0) - qte);
@@ -579,7 +598,7 @@ export function devisGages(state, deId, versId, key, qte, escorteId) {
   const n = qteSolvable(b, key, magasin);
   if (n <= 0) return { ok: false, motif: `${b.nom} n’a pas de quoi vous acheter cela.` };
 
-  const route = chemin(world, a.regionId, b.regionId);
+  const route = chemin(world, a.regionId, b.regionId, craintesDe(world, a.faction));
   if (!route || !route.length) return { ok: false, motif: 'Aucune route entre ces deux places.' };
 
   // Le prix d'un marchand, des deux côtés : on achète au prix d'achat de l'une

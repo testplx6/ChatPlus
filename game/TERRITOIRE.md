@@ -317,7 +317,8 @@ frontière, c'est une couleur.
 
 Trois crans, chacun mesurable seul, du moins cher au plus cher.
 
-**T1 — le voyageur pèse ce qu'il craint.** `chemin` prend un coût de risque en
+**T1 — le voyageur pèse ce qu'il craint** — **LIVRÉ, septembre 2026.**
+`chemin` prend un coût de risque en
 plus du coût de terrain : l'insécurité de la case, le péage attendu, les terres
 de qui vous fait la guerre. Une seule fonction touchée, et d'un coup quatre
 choses existent : les convois **contournent** les barrages (c'est l'option (c)
@@ -327,6 +328,32 @@ tenir une case sur un corridor devient un acte de pouvoir ; et les deux
 grandeurs de danger cessent d'être parallèles. Le coût technique est connu et
 déjà consigné : le Dijkstra tourne plusieurs fois par minute de jeu, le cache
 des routes de convois attend dans les optimisations reportées.
+
+*Ce que la livraison a donné.* `ROUTE = { parInsecurite: 6, parPeage: 3,
+parEnnemi: 14 }`, en unités de coût de terrain (une case coûte 3 à 7). Le
+risque ne s'applique qu'à qui le demande (`mods.craint`) : une colonne qui
+marche sur une ville ennemie n'évite évidemment pas les terres ennemies, et un
+trajet calculé pour l'affichage n'a rien à craindre. Les convois du monde, eux,
+craignent — `craintesDe` (caravanes.js) leur donne leurs guerres et leur
+drapeau.
+
+**Le seul effet reproductible est exactement celui qu'on cherchait : le trafic
+se détourne.** Barrages croisés, deux jeux de six graines indépendants :
+16 156 → 11 827 (−27 %) et 16 113 → 10 397 (−35 %). Et la crainte redoutée —
+affamer les villes en les privant de convois — ne se produit pas, c'est
+l'inverse : la satiété monte des deux côtés (0,975 → 0,982 et 0,967 → 0,977),
+les affamées baissent. Un convoi qui évite les routes mal famées est un convoi
+qui arrive.
+
+Tout le reste bouge dans les deux sens selon les graines et n'est donc que du
+chaos : les zombies font 0 → 53 sur un jeu et 49 → 0 sur l'autre, la masse en
+ancien crédit +115 % puis −2,5 %. Dix gardes tenues.
+
+Le balayage tranche le poids : à 2, le monde mange moins bien (satiété 0,960,
+83 villes affamées) ; à 12, rien de plus qu'à 6 (0,980) et **moins** de péages
+évités (14 230), parce qu'un voyageur qui ne craint que l'insécurité se jette
+sur les terres à péage pour fuir les mauvaises routes. Six est le point où le
+monde mange le mieux et où la frontière déplace le plus de trafic.
 
 **T2 — on tient un point, pas des heures.** Ce qu'on tient sur une route, c'est
 un **ouvrage** : un poste, un pont, un gué (c'est A3, et il devient le cœur du

@@ -223,7 +223,11 @@ function jouer({ sim, data, eco, eco2, monde }, graine, horizon) {
     return !!(c && !c.ruine && c.faction === faction);
   };
   const tenues = s.world.regions.filter((r) => r.controle);
+  // Une case tenue par des HOMMES présents n'est pas orpheline (TERRITOIRE.md,
+  // A2) : elle a quelqu'un pour la porter. Sans cette ligne, la mesure comptait
+  // les colonnes en campagne comme des couleurs abandonnées.
   const orphelines = tenues.filter((r) => !villeTient(r.i, r.controle)
+    && !(r.garde && r.garde.faction === r.controle)
     && !monde.voisins(r.i).some((v) => villeTient(v, r.controle))).length;
 
   // Le cours d'un pays, pour ramener ses unités en ancien crédit. Une ville

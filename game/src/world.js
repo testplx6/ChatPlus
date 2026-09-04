@@ -517,6 +517,22 @@ export function colonieParId(world, id) {
 }
 
 /**
+ * Ce qu'un voyageur craint, en unités de coût de terrain (une case coûte de 3
+ * à 7). Calibrable : c'est le prix qu'on met à sa peau et à sa bourse.
+ *
+ * Avant, `chemin` ne coûtait que le biome et la piste : aucun voyageur de ce
+ * monde ne choisissait sa route en fonction de ce qu'il craignait. C'était le
+ * verrou du dossier territoire tout entier — le seul effet mesurable d'une
+ * frontière est de DÉPLACER DU TRAFIC, et tant que rien ne se détournait, rien
+ * de ce qu'on faisait au territoire ne pouvait se voir.
+ *
+ * Un coût, jamais un interdit : un chemin dangereux reste praticable, il coûte
+ * plus cher. Des convois qui ne peuvent plus passer, ce sont des villes qui ne
+ * mangent plus.
+ */
+export const ROUTE = { parInsecurite: 6, parPeage: 3, parEnnemi: 14 };
+
+/**
  * Combien de temps il faut rester sur une case pour qu'elle porte vos
  * couleurs. Calibrable : c'est le prix de l'occupation, et le monde n'a pas
  * dit son mot.
@@ -764,6 +780,11 @@ export function chemin(world, from, to, mods = {}) {
   // Le facteur des mods ne change pas d'une case à l'autre : il sortait de la
   // boucle une fois par arête.
   const red = 1 - (mods.reductionVoyage || 0);
+  // Ce que ce voyageur-ci craint : rien par défaut, pour que les appels qui ne
+  // demandent qu'une distance restent ce qu'ils étaient.
+  const craint = !!mods.craint;
+  const sien = mods.sien || null;
+  const ennemis = mods.ennemis || null;
 
   // Tas binaire minimal : deux tableaux plats, pas d'objets alloués par nœud.
   const tasN = ardoiseTasN;
@@ -820,7 +841,19 @@ export function chemin(world, from, to, mods = {}) {
       if (genVus[v] === gen) continue;
       const r = world.regions[v];
       const piste = world.sansPistes ? 1 : 1 - (r.piste || 0) * PISTE_GAIN;
-      const nd = du + Math.max(1, BIOMES[r.biome].cout * piste * red);
+      let arete = Math.max(1, BIOMES[r.biome].cout * piste * red);
+      // Ce que le voyageur craint s'ajoute au terrain (TERRITOIRE.md, T1). On
+      // n'y touche que si quelqu'un l'a demandé : une colonne qui marche sur
+      // une ville ennemie n'évite évidemment pas les terres ennemies, et un
+      // trajet calculé pour l'affichage n'a rien à craindre.
+      if (craint) {
+        arete += (r.insecurite || 0) * ROUTE.parInsecurite;
+        if (r.controle && r.controle !== sien) {
+          arete += ennemis && ennemis.has(r.controle)
+            ? ROUTE.parEnnemi : ROUTE.parPeage;
+        }
+      }
+      const nd = du + arete;
       if (genDist[v] !== gen || nd < dist[v]) {
         dist[v] = nd; prev[v] = u; genDist[v] = gen; pousser(v, nd);
       }
