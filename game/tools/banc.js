@@ -228,6 +228,7 @@ function jouer({ sim, data, eco, eco2, monde }, graine, horizon) {
   // les colonnes en campagne comme des couleurs abandonnées.
   const orphelines = tenues.filter((r) => !villeTient(r.i, r.controle)
     && !(r.garde && r.garde.faction === r.controle)
+    && !(r.poste && r.poste.faction === r.controle)
     && !monde.voisins(r.i).some((v) => villeTient(v, r.controle))).length;
 
   // Le cours d'un pays, pour ramener ses unités en ancien crédit. Une ville
@@ -253,6 +254,9 @@ function jouer({ sim, data, eco, eco2, monde }, graine, horizon) {
     // Le trafic qui franchit la Faille : s'il est nul, la carte est coupée en
     // deux mondes et ce n'est plus une barrière, c'est un mur (GEOGRAPHIE.md).
     passages: s.world.regions.filter((r) => r.faille && (r.piste || 0) > 0.2).length,
+    // Les ouvrages debout (TERRITOIRE.md, T2) : c'est la mesure qui dit si les
+    // pays ont enfin une raison de tenir une route. A2 mesurait zéro.
+    postes: s.world.regions.filter((r) => r.poste).length,
     corridor: (() => {
       const p = s.world.regions.map((r) => r.piste || 0).sort((a2, b2) => b2 - a2);
       const tot = p.reduce((a2, b2) => a2 + b2, 0);
@@ -431,6 +435,7 @@ function agreger(cfg) {
     gardees: som(cfg, 'gardees'),
     damees: som(cfg, 'damees'),
     passages: som(cfg, 'passages'),
+    postes: som(cfg, 'postes'),
     corridor: `${Math.round(med(cfg.parties.map((p2) => p2.corridor)))} %`,
     villes: som(cfg, 'villes'),
     pop: som(cfg, 'pop'),
@@ -520,7 +525,7 @@ const COLONNES = [
   ['nom', 'config', 18], ['villes', 'villes', 7], ['pop', 'pop', 8],
   ['tenues', 'cases tenues', 12], ['orphelines', 'orphelines', 10],
   ['barrages', 'barrages', 9], ['gardees', 'gardées', 8],
-  ['damees', 'damées', 7], ['passages', 'franchie', 9], ['corridor', 'corridor 5 %', 12],
+  ['damees', 'damées', 7], ['passages', 'franchie', 9], ['postes', 'postes', 7], ['corridor', 'corridor 5 %', 12],
   ['nourries', 'nourries', 8], ['ecrasees', 'écrasées', 8],
   ['tresorMed', 'trésor méd', 10], ['fauchees', '<2500', 6],
   ['caisseMed', 'caisse méd', 10], ['bourses', 'bourses', 7],

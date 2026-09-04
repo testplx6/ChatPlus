@@ -99,6 +99,8 @@ function genererBiomes(rng) {
         // La Faille (GEOGRAPHIE.md, G1) : le sol qu'on ne traverse qu'à grand
         // prix. Posée à la création, comme tout le reste.
         faille: false,
+        // L'ouvrage qui tient la case, s'il y en a un (TERRITOIRE.md, T2).
+        poste: null,
         controle: null,
         // Qui occupe la case, et depuis quand (TERRITOIRE.md, A2). Présente à
         // la création plutôt qu'ajoutée par `normaliser`, sinon l'aller-retour
@@ -582,6 +584,61 @@ export function colonieParId(world, id) {
 }
 
 /**
+ * Le poste : ce qu'on bâtit sur une route pour la tenir (TERRITOIRE.md, T2).
+ *
+ * A2 faisait tenir une case au temps passé — un minuteur, sans choix, sans
+ * risque et sans adversaire, et que le monde n'a jamais utilisé une seule fois.
+ * Ce qu'on tient sur une route, ce n'est pas du temps : c'est un ouvrage. Il
+ * coûte à bâtir, il se voit, il se prend, il se perd. C'est ce qui transforme
+ * « attendre » en « décider ».
+ *
+ * `cout` sort du trésor, comme un mur. `trafic` : à partir de quelle piste une
+ * case vaut qu'on y bâtisse — un poste au milieu de nulle part ne tient rien
+ * que du vide. `portee` : à quelle distance de ses villes un conseil accepte
+ * d'aller le poser.
+ */
+export const POSTE = { cout: 900, trafic: 0.45, portee: 5 };
+
+/** L'ouvrage qui tient cette case, s'il y en a un. */
+export function posteDe(world, regionId) {
+  const r = world.regions[regionId];
+  return (r && r.poste) || null;
+}
+
+/**
+ * Bâtir. On ne bâtit pas chez quelqu'un d'autre — la règle du premier arrivé
+ * vaut ici comme ailleurs : prendre à autrui, c'est prendre sa ville ou raser
+ * son poste, jamais poser une pierre à côté.
+ *
+ * L'argent ne passe PAS par ici : `world.js` ne connaît ni les caisses ni la
+ * masse monétaire, et un `tresor -= cout` posé là détruisait de la monnaie —
+ * l'invariant comptable l'a dit dans la minute. C'est `poserPoste`
+ * (factions.js) qui paie les maçons, comme `batirMur` paie les siens.
+ */
+export function batirPoste(world, regionId, faction) {
+  const r = world.regions[regionId];
+  const f = world.factions[faction];
+  if (!r || !f || r.poste || r.colonie != null || r.faille) return null;
+  if (r.controle && r.controle !== faction) return null;
+  r.poste = { faction, depuis: 0 };
+  r.controle = faction;
+  return r.poste;
+}
+
+/**
+ * Raser. Ce qu'on a bâti, quelqu'un peut venir le défaire — et la case retombe
+ * à qui saura la reprendre. C'est là que le minuteur meurt.
+ */
+export function raserPoste(world, regionId) {
+  const r = world.regions[regionId];
+  if (!r || !r.poste) return null;
+  const tenait = r.poste.faction;
+  r.poste = null;
+  if (r.controle === tenait) libererOrphelines(world, regionId);
+  return tenait;
+}
+
+/**
  * Ce qu'un voyageur craint, en unités de coût de terrain (une case coûte de 3
  * à 7). Calibrable : c'est le prix qu'on met à sa peau et à sa bourse.
  *
@@ -741,8 +798,10 @@ export function libererOrphelines(world, autour) {
     if (!r || !r.controle) continue;
     if (villeTenante(world, i, r.controle)) continue;
     // Une case tenue par des HOMMES n'est pas une couleur orpheline : elle a
-    // très exactement quelqu'un pour la porter (TERRITOIRE.md, A2).
+    // très exactement quelqu'un pour la porter (TERRITOIRE.md, A2). Un ouvrage
+    // debout non plus — il y a quelque chose dessus (T2).
     if (r.garde && r.garde.faction === r.controle) continue;
+    if (r.poste && r.poste.faction === r.controle) continue;
     if (voisins(i).some((v) => villeTenante(world, v, r.controle))) continue;
     r.controle = null;
     liberees++;

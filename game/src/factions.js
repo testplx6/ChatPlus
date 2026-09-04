@@ -28,7 +28,7 @@ import {
 import { pourvoirCharges, nommerActeur } from './notables.js';
 import {
   chemin, colonieDe, colonieParId, distance, voisins, damer, libererOrphelines,
-  monterLaGarde, leverLaGarde,
+  monterLaGarde, leverLaGarde, POSTE, batirPoste, raserPoste, posteDe, nomRegion,
 } from './world.js';
 import {
   loisDe, pressionFiscale, IMPOTS, PEINES, REGIMES, DIRECTEURS, directeurInitial,
@@ -648,6 +648,24 @@ function tickArmee(world, armee, t, log, ctx) {
   // pays comme pour le joueur : une règle qui ne viserait que lui n'aurait
   // rien à faire ici.
   monterLaGarde(world, armee.regionId, armee.faction, t);
+  // Ce qu'on a bâti, quelqu'un peut venir le défaire (TERRITOIRE.md, T2). Une
+  // colonne qui passe sur l'ouvrage de qui lui fait la guerre le rase — c'est
+  // ce qui fait qu'un poste se DÉFEND, et que tenir une route est un acte et
+  // non un acquis.
+  {
+    const p = posteDe(world, armee.regionId);
+    if (p && p.faction !== armee.faction && enGuerre(world, armee.faction, p.faction)) {
+      raserPoste(world, armee.regionId);
+      log({
+        type: 'poste',
+        texte: `${drapeauDe(world, armee.faction).nom} `
+          + `rase${drapeauDe(world, armee.faction).pluriel ? 'nt' : ''} le poste `
+          + `${drapeauDe(world, p.faction).genitif} sur la route.`,
+        regionId: armee.regionId,
+        factions: [armee.faction, p.faction],
+      });
+    }
+  }
   const rng = ctx.rng;
 
   // Ravitaillement : ce qu'on trouve d'abord, ce qu'on consomme ensuite. Une
@@ -1210,6 +1228,26 @@ function conseil(world, key, t, log, ctx) {
   // (INVESTISSEMENT.md). Le seuil `tresor > coutMur × 2,25` qui vivait ici est
   // devenu `INVESTIR.margeComptant` : il n'a pas changé de valeur, il ne barre
   // plus la route au reste.
+  // Tenir une route (TERRITOIRE.md, T2). Un conseil qui a de quoi pose un poste
+  // là où le trafic passe — la piste dit le trafic, et elle sort du passage
+  // réel, personne ne l'a dessinée. C'est ce qui donne enfin à un pays une
+  // raison de tenir autre chose que ses murs : A2 mesurait zéro appropriation
+  // parce qu'aucun agent n'avait de réponse à « pourquoi ici ? ».
+  if (!couronne && f.tresor > POSTE.cout * 2.5) {
+    let mieux = null;
+    for (const r of world.regions) {
+      if (r.poste || r.colonie != null || r.faille) continue;
+      if (r.controle && r.controle !== key) continue;
+      if ((r.piste || 0) < POSTE.trafic) continue;
+      if (!mesColonies.some((c) => distance(c.regionId, r.i) <= POSTE.portee)) continue;
+      if (!mieux || (r.piste || 0) > (mieux.piste || 0)) mieux = r;
+    }
+    if (mieux && rng.chance(0.5 * penchant(world, key, 'expansion'))) {
+      if (poserPoste(world, key, mieux, log)) {
+      }
+    }
+  }
+
   const aBatir = [];
   for (const c of mesColonies) {
     const voie = financerMur(world, key, c);
@@ -1223,6 +1261,36 @@ function conseil(world, key, t, log, ctx) {
     const [col, voie] = designee || rng.pick(aBatir);
     batirMur(world, key, col, voie, log);
   }
+}
+
+/**
+ * Poser un poste et payer les maçons (TERRITOIRE.md, T2).
+ *
+ * Même comptabilité qu'un mur ou qu'une levée : le trésor paie, et les maçons
+ * habitent une ville — `verser` déplace l'argent du trésor vers les ménages.
+ * Rien n'apparaît, rien ne disparaît. La première version débitait le trésor
+ * sans créditer personne, et l'invariant comptable l'a dit dans la minute.
+ */
+export function poserPoste(world, key, region, log) {
+  const f = world.factions[key];
+  if (!f || (f.tresor || 0) < POSTE.cout) return null;
+  const chez = colonieDepart(world, key, region.i);
+  if (!chez) return null;
+  const paye = verser(world, key, chez, POSTE.cout);
+  if (!(paye > 0)) return null;
+  const p = batirPoste(world, region.i, key);
+  if (!p && log) return null;
+  if (log) {
+    log({
+      type: 'poste',
+      texte: `${drapeauDe(world, key).nom} `
+        + `pose${drapeauDe(world, key).pluriel ? 'nt' : ''} un poste sur la route `
+        + `de ${nomRegion(world, region.i)}.`,
+      regionId: region.i,
+      factions: [key],
+    });
+  }
+  return p;
 }
 
 /**

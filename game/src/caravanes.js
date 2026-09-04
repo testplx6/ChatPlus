@@ -844,7 +844,14 @@ export const REPONSES_BARRAGE = {
   argent: {
     nom: 'la ville règle',
     dit: 'celle qui a expédié paie, et l’argent change de pays',
-    peut: (v) => !!v.de && (v.de.caisse || 0) >= v.du,
+    // `!!v.place` n'est pas une précaution : un barrage dont le drapeau n'a
+    // plus une seule ville vivante n'a personne pour encaisser. Sans cette
+    // condition, `convertirMasse` créditait la masse du receveur pendant que
+    // `encaisser(null)` ne mettait l'argent nulle part — deux unités de masse
+    // fabriquées à chaque passage. Trouvé par l'invariant comptable quand les
+    // postes (T2) ont fait monter les barrages de moitié : le défaut existait
+    // avant eux, il était simplement trop rare pour se voir.
+    peut: (v) => !!v.place && !!v.de && (v.de.caisse || 0) >= v.du,
     faire: (v) => payerEnArgent(v),
   },
   nature: {

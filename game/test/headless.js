@@ -190,8 +190,9 @@ import {
 import {
   colonieDe, colonieParId, nomRegion, lieuAvecCoord, coordonnee, voisins,
   monterLaGarde, leverLaGarde, GARDE, libererOrphelines, chemin, ROUTE, idx,
-  FAILLE, LARGEUR, HAUTEUR,
+  FAILLE, LARGEUR, HAUTEUR, POSTE, batirPoste, raserPoste, posteDe,
 } from '../src/world.js';
+import { poserPoste } from '../src/factions.js';
 import {
   groupeActif, groupes, tousLesMembres, scinder, fusionner, assignerTache, tactiqueDe,
   tacheDe, debout, noyau, plafondCohesion, rendementCohesion,
@@ -15818,6 +15819,7 @@ section('TER 1. Une revendication ne survit pas à celui qui la portait (TERRITO
   const orphelines = sV.world.regions.filter((r) => r.controle
     && !villeV(r.i, r.controle)
     && !(r.garde && r.garde.faction === r.controle)
+    && !(r.poste && r.poste.faction === r.controle)
     && !voisins(r.i).some((v) => villeV(v, r.controle))).length;
   ok(orphelines === 0,
     'et après quinze cents heures de prises et de ruines, plus une seule couleur orpheline',
@@ -16206,7 +16208,7 @@ section('TER 5. Le voyageur pèse ce qu’il craint (TERRITOIRE.md, T1)');
   {
     for (const i of [...ligne(4), ...ligne(5)]) wR.regions[i].insecurite = 0;
     for (const i of ligne(5)) wR.regions[i].controle = 'rouilleurs';
-    const evite = chemin(wR, depart, arrivee, { craint: true, sien: 'nomades' });
+    const evite = chemin(wR, depart, arrivee, { craint: true, sien: 'cendre' });
     ok(!!evite && parLeHaut(evite),
       'on contourne les terres de qui vous fait payer',
       evite ? `${evite.length} cases` : 'aucune route');
@@ -16230,9 +16232,9 @@ section('TER 5. Le voyageur pèse ce qu’il craint (TERRITOIRE.md, T1)');
       wR.regions[i].biome = 'steppe';
       wR.regions[i].controle = 'rouilleurs';
     }
-    const enPaix = chemin(wR, depart, arrivee, { craint: true, sien: 'nomades' });
+    const enPaix = chemin(wR, depart, arrivee, { craint: true, sien: 'cendre' });
     const enGuerre = chemin(wR, depart, arrivee,
-      { craint: true, sien: 'nomades', ennemis: new Set(['rouilleurs']) });
+      { craint: true, sien: 'cendre', ennemis: new Set(['rouilleurs']) });
     ok(!parLeHaut(enPaix) && parLeHaut(enGuerre),
       'un péage ne vaut pas un long détour, la guerre si',
       `paix ${parLeHaut(enPaix) ? 'détour' : 'tout droit'} · `
@@ -16318,6 +16320,112 @@ section('GEO 1. La carte a une ligne, et la ligne a des passages (GEOGRAPHIE.md,
 
   ok(FAILLE && typeof FAILLE.cout === 'number', 'son coût est calibrable',
     `${JSON.stringify(FAILLE)}`);
+}
+
+
+
+// ===========================================================================
+section('TER 6. On tient un ouvrage, pas des heures (TERRITOIRE.md, T2)');
+// La revue de game master sur A2 : « rester soixante-douze heures sur une case
+// et elle est à vous — pas de choix, pas de risque, pas de coût, pas
+// d’adversaire ». Un minuteur. Ce qu’on tient sur une route, ce n’est pas du
+// temps passé : c’est un OUVRAGE. Il coûte à bâtir, il se voit, il se prend,
+// il se perd — et c’est la seule chose qui transforme « attendre » en
+// « décider ».
+//
+// Depuis la Faille (GEOGRAPHIE G1), il y a enfin où le mettre : les passages.
+{
+  const sO = nouvellePartie(447100, { maintenant: 0 });
+  const wO = sO.world;
+  const libre = wO.regions.find((r) => !r.faille && !r.colonie && !r.controle
+    && !voisins(r.i).some((v) => wO.regions[v].colonie));
+  ok(!!libre, 'décor : une case libre où bâtir');
+
+  if (libre) {
+    const f = wO.factions.rouilleurs;
+    const tresor = f.tresor;
+    f.tresor = POSTE.cout * 3;
+
+    ok(!posteDe(wO, libre.i), 'il n’y a rien là avant qu’on bâtisse');
+    // Le paiement passe par `poserPoste` : le trésor paie, les maçons
+    // encaissent, et la masse ne bouge pas d'un centime. La première version
+    // débitait le trésor sans créditer personne — l'invariant l'a dit dans la
+    // minute, et c'est exactement à ça qu'il sert.
+    const ecartAvant = auditer(wO).reduce((x, e) => x + Math.abs(e.ecart), 0);
+    const fait = poserPoste(wO, 'rouilleurs', libre, null);
+    ok(!!fait, 'on bâtit un poste', `${fait ? 'oui' : 'non'}`);
+    ok(f.tresor <= POSTE.cout * 3 - POSTE.cout + 0.01,
+      'et il se paie sur le trésor — un ouvrage n’est pas gratuit',
+      `${Math.round(f.tresor)}`);
+    const ecartApres = auditer(wO).reduce((x, e) => x + Math.abs(e.ecart), 0);
+    ok(Math.abs(ecartApres - ecartAvant) < 0.01,
+      'et les maçons l’encaissent : rien ne se crée, rien ne se perd',
+      `${ecartAvant.toFixed(2)} → ${ecartApres.toFixed(2)}`);
+    ok(libre.controle === 'rouilleurs',
+      'un ouvrage debout tient la case, sans que personne y campe',
+      `${libre.controle}`);
+
+    // Il ne se prend pas à autrui : la règle du premier arrivé vaut ici aussi.
+    {
+      const tenue = wO.regions.find((r) => r.controle && r.controle !== 'rouilleurs'
+        && !r.faille && !r.colonie);
+      if (tenue) {
+        const sien = tenue.controle;
+        wO.factions.rouilleurs.tresor = POSTE.cout * 3;
+        const vole = batirPoste(wO, tenue.i, 'rouilleurs');
+        ok(!vole && tenue.controle === sien,
+          'et l’on ne bâtit pas chez quelqu’un pour lui prendre sa case',
+          `${tenue.controle}`);
+      }
+    }
+
+    // Sans le sou, on ne bâtit pas.
+    {
+      const ailleurs = wO.regions.find((r) => !r.faille && !r.colonie && !r.controle
+        && r.i !== libre.i);
+      wO.factions.rouilleurs.tresor = POSTE.cout - 1;
+      ok(!poserPoste(wO, 'rouilleurs', ailleurs, null),
+        'et un trésor vide ne bâtit rien');
+    }
+
+    // Une case tenue par un ouvrage n’est pas une couleur orpheline : il y a
+    // très exactement quelque chose dessus.
+    libererOrphelines(wO);
+    ok(libre.controle === 'rouilleurs',
+      'un ouvrage n’est pas une couleur orpheline', `${libre.controle}`);
+
+    // Et il se perd. C’est là que le minuteur meurt : ce qu’on a bâti,
+    // quelqu’un peut venir le raser, et la case retombe.
+    raserPoste(wO, libre.i);
+    ok(!posteDe(wO, libre.i) && libre.controle == null,
+      'rasé, il ne tient plus rien — on perd ce qu’on a bâti',
+      `${libre.controle}`);
+    f.tresor = tresor;
+  }
+
+  // En jeu : une colonne ennemie qui passe sur un poste le rase. Un ouvrage
+  // sans défense au milieu des terres de son ennemi ne dure pas.
+  {
+    const sX = nouvellePartie(447101, { maintenant: 0 });
+    const wX = sX.world;
+    const ou = wX.regions.find((r) => !r.faille && !r.colonie && !r.controle);
+    wX.factions.rouilleurs.tresor = POSTE.cout * 2;
+    batirPoste(wX, ou.i, 'rouilleurs');
+    wX.guerres.push({ a: 'rouilleurs', b: 'cendre', depuis: 0, batailles: 0 });
+    const cible = wX.colonies.find((c) => c.faction === 'rouilleurs');
+    wX.armees.push({
+      id: 'aT2', rngEtat: 1, faction: 'cendre', regionId: ou.i,
+      force: 90, forceMax: 90, cible: cible.id, route: [], etape: 0,
+      progres: 0, etat: 'marche', ravitaillement: 900, impayees: 0,
+    });
+    for (let i = 0; i < 6 && posteDe(wX, ou.i); i++) tick(sX);
+    ok(!posteDe(wX, ou.i),
+      'et une colonne ennemie qui passe dessus le rase',
+      `${posteDe(wX, ou.i) ? 'debout' : 'rasé'}`);
+  }
+
+  ok(POSTE && typeof POSTE.cout === 'number', 'son prix est calibrable',
+    `${JSON.stringify(POSTE)}`);
 }
 
 

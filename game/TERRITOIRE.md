@@ -355,13 +355,43 @@ Le balayage tranche le poids : à 2, le monde mange moins bien (satiété 0,960,
 sur les terres à péage pour fuir les mauvaises routes. Six est le point où le
 monde mange le mieux et où la frontière déplace le plus de trafic.
 
-**T2 — on tient un point, pas des heures.** Ce qu'on tient sur une route, c'est
+**T2 — on tient un point, pas des heures** — **LIVRÉ, septembre 2026.** Ce qu'on tient sur une route, c'est
 un **ouvrage** : un poste, un pont, un gué (c'est A3, et il devient le cœur du
 dossier au lieu d'une variante). Il coûte à bâtir, il se voit de loin, il se
 prend d'assaut, il se perd. Le minuteur disparaît : on ne tient pas parce qu'on
 a attendu, on tient parce qu'on a bâti — et parce qu'on défend. A2 redevient ce
 qu'il aurait dû être, la **conséquence** d'une occupation, jamais le moyen
 d'une conquête.
+
+*Ce que la livraison a donné.* `POSTE = { cout: 900, trafic: 0.45, portee: 5 }`.
+Un conseil qui a de quoi pose un poste **là où le trafic passe** — la piste dit
+le trafic, et elle sort du passage réel, personne ne l'a dessinée. Le poste
+tient la case sans que personne y campe, on ne le bâtit ni chez autrui ni sur
+la Faille, il se paie sur le trésor et les maçons l'encaissent, et **une
+colonne ennemie qui passe dessus le rase** — c'est là que le minuteur d'A2
+meurt : ce qu'on a bâti, quelqu'un peut venir le défaire.
+
+**Les pays s'en servent, et c'est tout ce qu'A2 n'avait pas.** 207 et 172
+postes debout sur deux jeux de six graines indépendants, contre zéro
+appropriation par le temps passé. Les cases tenues montent de 763 à 964 et
+915 ; les barrages croisés de moitié (+49 % et +61 %). L'invariant comptable
+reste exact.
+
+*Ce que le balayage apprend, et ce qu'il refuse de trancher.* Le prix ne
+commande pas grand-chose : à 400, 900 et 2 500, on compte 219, 207 et 245
+postes — les trésors sont largement au-dessus dans les trois cas. Et la
+satiété qu'on croyait voir baisser (0,974 → 0,965 sur les deux jeux) **n'est
+pas monotone en prix** : 0,984 à 400, 0,965 à 900, 0,975 à 2 500. C'est du
+bruit de graine, pas un effet des postes, et il ne faut donc pas l'écrire comme
+un coût. Neuf cents reste, faute que rien ne le distingue.
+
+*Un défaut préexistant, trouvé par l'échelle.* La réponse « la ville règle » de
+`REPONSES_BARRAGE` ne vérifiait pas qu'il y avait **quelqu'un** au barrage :
+un drapeau sans une seule ville vivante voyait `convertirMasse` créditer sa
+masse pendant que `encaisser(null)` ne mettait l'argent nulle part. Deux unités
+fabriquées à chaque passage. Le défaut datait de la seconde moitié de B1 ; il
+était trop rare pour se voir, et les cinquante pour cent de barrages en plus
+l'ont rendu visible dans la minute. C'est exactement le métier de l'invariant.
 
 **T3 — le trafic est la récompense.** Le péage encaissé (B1, livré) devient un
 revenu **proportionnel au trafic** de la route tenue. Un conseil a alors une

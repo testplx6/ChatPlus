@@ -4325,6 +4325,8 @@ function genererBiomes(rng) {
         // La Faille (GEOGRAPHIE.md, G1) : le sol qu'on ne traverse qu'à grand
         // prix. Posée à la création, comme tout le reste.
         faille: false,
+        // L'ouvrage qui tient la case, s'il y en a un (TERRITOIRE.md, T2).
+        poste: null,
         controle: null,
         // Qui occupe la case, et depuis quand (TERRITOIRE.md, A2). Présente à
         // la création plutôt qu'ajoutée par `normaliser`, sinon l'aller-retour
@@ -4808,6 +4810,61 @@ function colonieParId(world, id) {
 }
 
 /**
+ * Le poste : ce qu'on bâtit sur une route pour la tenir (TERRITOIRE.md, T2).
+ *
+ * A2 faisait tenir une case au temps passé — un minuteur, sans choix, sans
+ * risque et sans adversaire, et que le monde n'a jamais utilisé une seule fois.
+ * Ce qu'on tient sur une route, ce n'est pas du temps : c'est un ouvrage. Il
+ * coûte à bâtir, il se voit, il se prend, il se perd. C'est ce qui transforme
+ * « attendre » en « décider ».
+ *
+ * `cout` sort du trésor, comme un mur. `trafic` : à partir de quelle piste une
+ * case vaut qu'on y bâtisse — un poste au milieu de nulle part ne tient rien
+ * que du vide. `portee` : à quelle distance de ses villes un conseil accepte
+ * d'aller le poser.
+ */
+const POSTE = { cout: 900, trafic: 0.45, portee: 5 };
+
+/** L'ouvrage qui tient cette case, s'il y en a un. */
+function posteDe(world, regionId) {
+  const r = world.regions[regionId];
+  return (r && r.poste) || null;
+}
+
+/**
+ * Bâtir. On ne bâtit pas chez quelqu'un d'autre — la règle du premier arrivé
+ * vaut ici comme ailleurs : prendre à autrui, c'est prendre sa ville ou raser
+ * son poste, jamais poser une pierre à côté.
+ *
+ * L'argent ne passe PAS par ici : `world.js` ne connaît ni les caisses ni la
+ * masse monétaire, et un `tresor -= cout` posé là détruisait de la monnaie —
+ * l'invariant comptable l'a dit dans la minute. C'est `poserPoste`
+ * (factions.js) qui paie les maçons, comme `batirMur` paie les siens.
+ */
+function batirPoste(world, regionId, faction) {
+  const r = world.regions[regionId];
+  const f = world.factions[faction];
+  if (!r || !f || r.poste || r.colonie != null || r.faille) return null;
+  if (r.controle && r.controle !== faction) return null;
+  r.poste = { faction, depuis: 0 };
+  r.controle = faction;
+  return r.poste;
+}
+
+/**
+ * Raser. Ce qu'on a bâti, quelqu'un peut venir le défaire — et la case retombe
+ * à qui saura la reprendre. C'est là que le minuteur meurt.
+ */
+function raserPoste(world, regionId) {
+  const r = world.regions[regionId];
+  if (!r || !r.poste) return null;
+  const tenait = r.poste.faction;
+  r.poste = null;
+  if (r.controle === tenait) libererOrphelines(world, regionId);
+  return tenait;
+}
+
+/**
  * Ce qu'un voyageur craint, en unités de coût de terrain (une case coûte de 3
  * à 7). Calibrable : c'est le prix qu'on met à sa peau et à sa bourse.
  *
@@ -4967,8 +5024,10 @@ function libererOrphelines(world, autour) {
     if (!r || !r.controle) continue;
     if (villeTenante(world, i, r.controle)) continue;
     // Une case tenue par des HOMMES n'est pas une couleur orpheline : elle a
-    // très exactement quelqu'un pour la porter (TERRITOIRE.md, A2).
+    // très exactement quelqu'un pour la porter (TERRITOIRE.md, A2). Un ouvrage
+    // debout non plus — il y a quelque chose dessus (T2).
     if (r.garde && r.garde.faction === r.controle) continue;
+    if (r.poste && r.poste.faction === r.controle) continue;
     if (voisins(i).some((v) => villeTenante(world, v, r.controle))) continue;
     r.controle = null;
     liberees++;
@@ -15681,7 +15740,14 @@ const REPONSES_BARRAGE = {
   argent: {
     nom: 'la ville règle',
     dit: 'celle qui a expédié paie, et l’argent change de pays',
-    peut: (v) => !!v.de && (v.de.caisse || 0) >= v.du,
+    // `!!v.place` n'est pas une précaution : un barrage dont le drapeau n'a
+    // plus une seule ville vivante n'a personne pour encaisser. Sans cette
+    // condition, `convertirMasse` créditait la masse du receveur pendant que
+    // `encaisser(null)` ne mettait l'argent nulle part — deux unités de masse
+    // fabriquées à chaque passage. Trouvé par l'invariant comptable quand les
+    // postes (T2) ont fait monter les barrages de moitié : le défaut existait
+    // avant eux, il était simplement trop rare pour se voir.
+    peut: (v) => !!v.place && !!v.de && (v.de.caisse || 0) >= v.du,
     faire: (v) => payerEnArgent(v),
   },
   nature: {
@@ -16875,6 +16941,24 @@ function tickArmee(world, armee, t, log, ctx) {
   // pays comme pour le joueur : une règle qui ne viserait que lui n'aurait
   // rien à faire ici.
   monterLaGarde(world, armee.regionId, armee.faction, t);
+  // Ce qu'on a bâti, quelqu'un peut venir le défaire (TERRITOIRE.md, T2). Une
+  // colonne qui passe sur l'ouvrage de qui lui fait la guerre le rase — c'est
+  // ce qui fait qu'un poste se DÉFEND, et que tenir une route est un acte et
+  // non un acquis.
+  {
+    const p = posteDe(world, armee.regionId);
+    if (p && p.faction !== armee.faction && enGuerre(world, armee.faction, p.faction)) {
+      raserPoste(world, armee.regionId);
+      log({
+        type: 'poste',
+        texte: `${drapeauDe(world, armee.faction).nom} `
+          + `rase${drapeauDe(world, armee.faction).pluriel ? 'nt' : ''} le poste `
+          + `${drapeauDe(world, p.faction).genitif} sur la route.`,
+        regionId: armee.regionId,
+        factions: [armee.faction, p.faction],
+      });
+    }
+  }
   const rng = ctx.rng;
 
   // Ravitaillement : ce qu'on trouve d'abord, ce qu'on consomme ensuite. Une
@@ -17437,6 +17521,26 @@ function conseil(world, key, t, log, ctx) {
   // (INVESTISSEMENT.md). Le seuil `tresor > coutMur × 2,25` qui vivait ici est
   // devenu `INVESTIR.margeComptant` : il n'a pas changé de valeur, il ne barre
   // plus la route au reste.
+  // Tenir une route (TERRITOIRE.md, T2). Un conseil qui a de quoi pose un poste
+  // là où le trafic passe — la piste dit le trafic, et elle sort du passage
+  // réel, personne ne l'a dessinée. C'est ce qui donne enfin à un pays une
+  // raison de tenir autre chose que ses murs : A2 mesurait zéro appropriation
+  // parce qu'aucun agent n'avait de réponse à « pourquoi ici ? ».
+  if (!couronne && f.tresor > POSTE.cout * 2.5) {
+    let mieux = null;
+    for (const r of world.regions) {
+      if (r.poste || r.colonie != null || r.faille) continue;
+      if (r.controle && r.controle !== key) continue;
+      if ((r.piste || 0) < POSTE.trafic) continue;
+      if (!mesColonies.some((c) => distance(c.regionId, r.i) <= POSTE.portee)) continue;
+      if (!mieux || (r.piste || 0) > (mieux.piste || 0)) mieux = r;
+    }
+    if (mieux && rng.chance(0.5 * penchant(world, key, 'expansion'))) {
+      if (poserPoste(world, key, mieux, log)) {
+      }
+    }
+  }
+
   const aBatir = [];
   for (const c of mesColonies) {
     const voie = financerMur(world, key, c);
@@ -17450,6 +17554,36 @@ function conseil(world, key, t, log, ctx) {
     const [col, voie] = designee || rng.pick(aBatir);
     batirMur(world, key, col, voie, log);
   }
+}
+
+/**
+ * Poser un poste et payer les maçons (TERRITOIRE.md, T2).
+ *
+ * Même comptabilité qu'un mur ou qu'une levée : le trésor paie, et les maçons
+ * habitent une ville — `verser` déplace l'argent du trésor vers les ménages.
+ * Rien n'apparaît, rien ne disparaît. La première version débitait le trésor
+ * sans créditer personne, et l'invariant comptable l'a dit dans la minute.
+ */
+function poserPoste(world, key, region, log) {
+  const f = world.factions[key];
+  if (!f || (f.tresor || 0) < POSTE.cout) return null;
+  const chez = colonieDepart(world, key, region.i);
+  if (!chez) return null;
+  const paye = verser(world, key, chez, POSTE.cout);
+  if (!(paye > 0)) return null;
+  const p = batirPoste(world, region.i, key);
+  if (!p && log) return null;
+  if (log) {
+    log({
+      type: 'poste',
+      texte: `${drapeauDe(world, key).nom} `
+        + `pose${drapeauDe(world, key).pluriel ? 'nt' : ''} un poste sur la route `
+        + `de ${nomRegion(world, region.i)}.`,
+      regionId: region.i,
+      factions: [key],
+    });
+  }
+  return p;
 }
 
 /**
@@ -29532,6 +29666,8 @@ function normaliser(state) {
     // Une partie d'avant la Faille n'en a pas : sa carte reste ce qu'elle
     // était, on ne creuse pas un gouffre sous les pieds d'une partie en cours.
     if (r.faille === undefined) r.faille = false;
+    // Avant les ouvrages, on ne tenait rien qu'avec des hommes.
+    if (r.poste === undefined) r.poste = null;
   }
   // Les couleurs orphelines des parties d'avant : une case tenue par un drapeau
   // qui n'a plus une seule ville dessus ni à côté redevient libre. Le halo n'a
