@@ -86,6 +86,28 @@ async function jusqua(p, plafond, condition, arg) {
 /** L'heure de la partie, telle que la sauvegarde la porte. */
 const heure = (p) => p.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
 
+/**
+ * Le chronomètre des sections. Sans lui, « le test est lent » ne désigne rien :
+ * la chasse au gras de septembre 2026 a commencé par mesurer, et a trouvé que
+ * cinq minutes vingt-cinq de mur ne portaient que trente-sept secondes de
+ * calcul. On garde l'instrument.
+ */
+const T_DEBUT = Date.now();
+let tSection = Date.now();
+const logBrut = console.log.bind(console);
+console.log = (...a) => {
+  const t = typeof a[0] === 'string' && a[0].startsWith('\n') && a[0].length > 2;
+  if (t) {
+    const d = Date.now() - tSection;
+    if (d > 400) logBrut(`   … ${(d / 1000).toFixed(1)} s`);
+    tSection = Date.now();
+  }
+  logBrut(...a);
+};
+process.on('exit', () => {
+  logBrut(`\ntotal ${((Date.now() - T_DEBUT) / 1000).toFixed(1)} s`);
+});
+
 const SILENCE = 60;
 async function calme(p, plafond = 400) {
   await p.evaluate(([silence, max]) => new Promise((res) => {
@@ -227,7 +249,7 @@ page.on('pageerror', (e) => erreurs.push(e.message));
 console.log('Test navigateur (390×844)\n' + '='.repeat(42));
 
 console.log('\n1. Démarrage d’une partie');
-await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'networkidle' });
+await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
 await page.screenshot({ path: join(CAPTURES, '00-accueil.png') });
 await page.fill('#graine', 'kenshi');
 await page.click('[data-a="nouvelle"]');
@@ -460,7 +482,7 @@ ok(ressources.display === 'standalone' && ressources.nbIcones >= 2, 'le manifest
 
 console.log('\n6. Persistance');
 const avantRechargement = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
-await page.reload({ waitUntil: 'networkidle' });
+await page.reload({ waitUntil: 'load' });
 ok(await page.locator('[data-a="continuer"]').count() > 0, 'la reprise est proposée');
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte');
@@ -473,7 +495,7 @@ const sauvegarde = serialiser(partieAvancee());
 // L'ordre compte : le jeu sauvegarde sur `pagehide`, donc injecter avant un
 // rechargement ferait écraser la sauvegarde par la partie encore en cours.
 // On recharge d'abord (l'accueil ne fait pas tourner la boucle), puis on injecte.
-await page.reload({ waitUntil: 'networkidle' });
+await page.reload({ waitUntil: 'load' });
 await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), sauvegarde);
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte');
@@ -507,7 +529,7 @@ ok(await page.locator('[data-a="annuler"]').count() > filesAvant, 'un chantier s
     s2.player.groupes[0].ordre = { type: 'repos' };
     return JSON.stringify(s2);
   });
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), auCamp);
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
@@ -544,9 +566,9 @@ ok(await page.locator('[data-a="annuler"]').count() > filesAvant, 'un chantier s
 console.log('\n8. Écran large');
 const large = await navigateur.newPage({ viewport: { width: 1280, height: 900 } });
 await epinglerPolices(large);
-await large.goto(`http://localhost:${PORT}/`, { waitUntil: 'networkidle' });
+await large.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
 await large.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), sauvegarde);
-await large.reload({ waitUntil: 'networkidle' });
+await large.reload({ waitUntil: 'load' });
 await large.click('[data-a="continuer"]');
 await large.waitForSelector('#carte');
 await calme(large, 400);
@@ -588,7 +610,7 @@ console.log('\n8 bis. Contenu de jeu : contrats, étal, sites');
 // Le vrai premier écran : une partie neuve, celle qu'un joueur lance.
 {
   await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   // L'accueil propose plusieurs départs : ce n'est pas une difficulté, c'est
   // une situation, et le joueur doit pouvoir lire ce qu'il choisit.
   const choix = await page.locator('[data-a="choisir-depart"]').count();
@@ -671,7 +693,7 @@ console.log('\n8 bis. Contenu de jeu : contrats, étal, sites');
     maintenant: Date.now(), depart: 'ville',
   }));
   await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), enVille);
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
@@ -781,7 +803,7 @@ const colonnes = (p) => p.evaluate(() => {
     for (const c of g.membres) c.skills.ingenierie = Math.max(c.skills.ingenierie || 0, 70);
     return t;
   })());
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), surSite);
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
@@ -804,7 +826,7 @@ const colonnes = (p) => p.evaluate(() => {
     await page.screenshot({ path: join(CAPTURES, '01c-site.png') });
   }
   await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt),
     serialiser(nouvellePartie(20260729, { maintenant: Date.now(), depart: 'ville' })));
   await page.click('[data-a="continuer"]');
@@ -830,7 +852,7 @@ const colonnes = (p) => p.evaluate(() => {
     t.base.batiments = {};
     return t;
   })());
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), camp);
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
@@ -848,7 +870,7 @@ const colonnes = (p) => p.evaluate(() => {
     'les bâtiments sont groupés par ce qu’ils font');
   await page.screenshot({ path: join(CAPTURES, '07b-camp-neuf.png'), fullPage: true });
   await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.click('[data-a="nouvelle"]');
   await page.waitForSelector('#carte');
   await calme(page, 600);
@@ -862,7 +884,7 @@ const colonnes = (p) => p.evaluate(() => {
     g.inventaire.rations = 1;
     return t;
   })());
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), affame);
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
@@ -877,7 +899,7 @@ const colonnes = (p) => p.evaluate(() => {
   // On rend la ville que la suite attend. Une partie neuve démarre désormais
   // dans le désert : on injecte donc explicitement un départ en ville.
   await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), (() => {
     // Et elle tient un comptoir : le bloc du bureau de change, plus bas, en a
     // besoin. Posé ici plutôt qu'en rechargeant la page au milieu du script —
@@ -966,7 +988,7 @@ await calme(page, 200);
   // On recharge AVANT d'écrire : tant qu'une partie tourne, sa sauvegarde
   // automatique repasse par-dessus ce qu'on vient de poser, et le décor est
   // effacé avant même d'avoir servi.
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   const posee = await page.evaluate(() => {
     const s2 = JSON.parse(window.__sauvegardeTexte());
     const k = Object.keys(s2.player.bourse || {})[0]
@@ -1132,7 +1154,7 @@ await calme(page, 300);
     t.player.groupes[0].allegeance = null;
     return t;
   })());
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), libre);
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
@@ -1162,7 +1184,7 @@ await calme(page, 300);
     t.player.bilanContrats = { honores: 1, echus: 1, caducs: 0, cr: 640, rep: 6 };
     return t;
   })());
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), avecDossier);
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
@@ -1215,7 +1237,7 @@ await calme(page, 300);
   })());
   // On recharge d'abord, puis on injecte : la partie en cours sauvegarde sur
   // `pagehide` et écraserait l'injection. Même piège que plus haut.
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), avecOrdre);
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
@@ -1258,7 +1280,7 @@ await calme(page, 300);
     return t;
   })());
   await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), sansEcheance);
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
@@ -1283,7 +1305,7 @@ await calme(page, 300);
   // vérifications du marché comptent sur son étal et sa bourse. Une partie
   // neuve, elle, démarre maintenant dans le désert.
   await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt),
     serialiser(nouvellePartie(20260729, { maintenant: Date.now(), depart: 'ville' })));
   await page.click('[data-a="continuer"]');
@@ -1592,7 +1614,7 @@ avancer(politique, 3000);
 politique.world.regions.forEach((r) => { r.decouvert = true; });
 politique.base.recherche.cryptographie = 1;
 politique.dernierReel = Date.now();
-await page.reload({ waitUntil: 'networkidle' });
+await page.reload({ waitUntil: 'load' });
 await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(politique));
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte');
@@ -1628,7 +1650,7 @@ console.log('\n8 undecies. Métiers et gens d’une ville');
 // Départ en ville explicite : le jeu commence dans le désert, et il faut bien
 // une ville pour regarder qui y vit.
 await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
-await page.reload({ waitUntil: 'networkidle' });
+await page.reload({ waitUntil: 'load' });
 await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt),
   serialiser(nouvellePartie(20260729, { maintenant: Date.now(), depart: 'ville' })));
 await page.click('[data-a="continuer"]');
@@ -1730,7 +1752,7 @@ if (!carriere.world.guerres.some((w) => w.a === villeCar.faction || w.b === vill
 // l'aller-retour JSON.
 confierSecteur(carriere, gCar, () => {});
 carriere.dernierReel = Date.now();
-await page.reload({ waitUntil: 'networkidle' });
+await page.reload({ waitUntil: 'load' });
 await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(carriere));
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte');
@@ -1875,7 +1897,7 @@ const bandeCap = genererBande(new Rng(4242), 'bandits', 3, 1);
 for (const c of bandeCap.membres) { c.etat = 'ko'; c.corps.torse.pv = 0; }
 fairePrisonniers(captifs, gCap, bandeCap, capturables(gCap, bandeCap), () => {});
 captifs.dernierReel = Date.now();
-await page.reload({ waitUntil: 'networkidle' });
+await page.reload({ waitUntil: 'load' });
 await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(captifs));
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte');
@@ -1969,7 +1991,7 @@ colAff.contrats = [];
 affranchie.world.regions[colAff.regionId].controle = null;
 gAff.regionId = colAff.regionId;
 affranchie.dernierReel = Date.now();
-await page.reload({ waitUntil: 'networkidle' });
+await page.reload({ waitUntil: 'load' });
 await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(affranchie));
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte');
@@ -2000,7 +2022,7 @@ ruines.world.regions[colMorte.regionId].controle = null;
 ruines.world.regions[colMorte.regionId].site = { type: 'ville_morte', connu: true, fouille: false };
 groupeActif(ruines).regionId = colMorte.regionId;
 ruines.dernierReel = Date.now();
-await page.reload({ waitUntil: 'networkidle' });
+await page.reload({ waitUntil: 'load' });
 await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(ruines));
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte', { timeout: 15000 });
@@ -2012,7 +2034,7 @@ ok(!/undefined|NaN/.test(texteRuine), 'et n’affiche ni undefined ni NaN');
 
 console.log('\n8 quaterdecies. Manœuvrer la carte');
 await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
-await page.reload({ waitUntil: 'networkidle' });
+await page.reload({ waitUntil: 'load' });
 await page.click('[data-a="nouvelle"]');
 await page.waitForSelector('#carte');
 await calme(page, 400);
@@ -2174,7 +2196,7 @@ colS.notables[0].demande = {
 };
 colS.notables[0].memoire = [{ quoi: 'pillage', detail: null, t: 0 }];
 service.dernierReel = Date.now();
-await page.reload({ waitUntil: 'networkidle' });
+await page.reload({ waitUntil: 'load' });
 await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(service));
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte');
@@ -2228,7 +2250,7 @@ console.log('\n8 vicies quater. Tout bâtiment se voit et se bâtit');
   });
   bat.player.bourse = { [monnaieIci(bat)]: 999999 };
   bat.dernierReel = Date.now();
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((t) => localStorage.setItem('cendres.save.v1', t), serialiser(bat));
   await page.evaluate(() => localStorage.removeItem('cendres.replis.v1'));
   await page.click('[data-a="continuer"]');
@@ -2260,7 +2282,7 @@ console.log('\n8 vicies quater. Tout bâtiment se voit et se bâtit');
   Object.assign(neuf.base.stock, { composant: 9000, isotope: 9000, ferraille: 9000 });
   neuf.player.bourse = { [monnaieIci(neuf)]: 999999 };
   neuf.dernierReel = Date.now();
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((t) => localStorage.setItem('cendres.save.v1', t), serialiser(neuf));
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
@@ -2297,7 +2319,7 @@ console.log('\n8 vicies ter. Les bourses du monde, enfin visibles');
   tickBourses(mb.world, 0);
   mb.dernierReel = Date.now();
 
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((t) => localStorage.setItem('cendres.save.v1', t), serialiser(mb));
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
@@ -2357,7 +2379,7 @@ console.log('\n8 vicies bis. Toutes les fiches, pas seulement celle qu’on a si
   const pp = await navigateur.newPage({ viewport: { width: 390, height: 300 } });
   const err = [];
   pp.on('pageerror', (x) => err.push(x.message));
-  await pp.goto(`http://localhost:${PORT}/`, { waitUntil: 'networkidle' });
+  await pp.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
 
   const ville = nouvellePartie(20260729, { maintenant: Date.now(), depart: 'ville' });
   const gv = groupeActif(ville);
@@ -2368,7 +2390,7 @@ console.log('\n8 vicies bis. Toutes les fiches, pas seulement celle qu’on a si
   avancer(ville, 30);
   ville.dernierReel = Date.now();
   await pp.evaluate((t) => localStorage.setItem('cendres.save.v1', t), serialiser(ville));
-  await pp.reload({ waitUntil: 'networkidle' });
+  await pp.reload({ waitUntil: 'load' });
   await pp.click('[data-a="continuer"]');
   await pp.waitForSelector('#carte');
   await pp.click('[data-a="vitesse"][data-v="16"]');
@@ -2444,7 +2466,7 @@ console.log('\n8 vicies semel. Recruter : le clic engage vraiment');
     s.dernierReel = Date.now();
     return s;
   })();
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(enVille));
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
@@ -2487,7 +2509,7 @@ console.log('\n8 vicies semel bis. La fin ne gèle pas l’horloge de l’écran
     s.dernierReel = Date.now();
     return s;
   })());
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), eteinte);
   await page.evaluate(() => { window.__momentsAuto = false; });
   await page.click('[data-a="continuer"]');
@@ -2522,7 +2544,7 @@ console.log('\n8 vicies semel ter. Morts et prisonniers : la décision s’appli
     t.dernierReel = Date.now();
     return t;
   })());
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), surTous);
   await page.evaluate(() => { window.__momentsAuto = true; });
   await page.click('[data-a="continuer"]');
@@ -2577,7 +2599,7 @@ console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit
     gF.membres.push(c);
   }
   foule.dernierReel = Date.now();
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate(() => localStorage.removeItem('cendres.replis.v1'));
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(foule));
   await page.click('[data-a="continuer"]');
@@ -2598,7 +2620,7 @@ console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit
     nesPlies.join(' · ') || 'aucun');
   await page.evaluate(() => document.querySelector('h2.titre[data-k="Posture"]').click());
   await calme(page, 250);
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await page.click('[data-a="onglet"][data-k="escouade"]');
@@ -2654,7 +2676,7 @@ console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit
     && dejaPlies.every((k) => plie.includes(k)),
   'et lui seul s’est ajouté aux plis', plie.join(', '));
 
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await page.click('[data-a="onglet"][data-k="escouade"]');
@@ -2851,7 +2873,7 @@ console.log('\n8 nonies octies. La geôle du camp (PAROLE.md, T3)');
   }
   cg.dernierReel = Date.now();
 
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(cg));
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
@@ -2899,7 +2921,7 @@ console.log('\n8 nonies septies. La parole donnée (PAROLE.md, T1)');
   cp.player.reputation[ville.faction] = 40;
   cp.dernierReel = Date.now();
 
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(cp));
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
@@ -3015,7 +3037,7 @@ console.log('\n8 nonies sexies. Le convoi à gages (CONVOI.md)');
   });
   cg.dernierReel = Date.now();
 
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(cg));
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
@@ -3079,7 +3101,7 @@ console.log('\n8 nonies sexies. Le convoi à gages (CONVOI.md)');
   cg2.campActif = 0;
   cg2.base.stock.ferraille = 500;
   cg2.dernierReel = Date.now();
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(cg2));
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
@@ -3135,7 +3157,7 @@ console.log('\n8 nonies quater. Le comptoir, à l’écran');
   Object.assign(cp.base.stock, { ferraille: 500 });
   cp.dernierReel = Date.now();
 
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(cp));
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
@@ -3250,7 +3272,7 @@ console.log('\n8 nonies quinquies. Donner l’assaut à une ville (IMPLANTATIONS
   }
   as.dernierReel = Date.now();
 
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(as));
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
@@ -3367,7 +3389,7 @@ console.log('\n8 nonies sexies. Planter ses propres couleurs (IMPLANTATIONS.md, 
   reconnaitreAvantPoste(dr, () => {});
   dr.dernierReel = Date.now();
 
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(dr));
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
@@ -3424,7 +3446,7 @@ console.log('\n8 undecies. Donner sa parole depuis l’écran (PACTES.md)');
   pac.world.factions[mien].relations[voisin] = 70;
   pac.dernierReel = Date.now();
 
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(pac));
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
@@ -3468,7 +3490,7 @@ bourg.base.pop = 8;
 Object.assign(bourg.base.stock, { biomasse: 900, rations: 400, carburant: 200 });
 groupeActif(bourg).regionId = bourg.base.regionId;
 bourg.dernierReel = Date.now();
-await page.reload({ waitUntil: 'networkidle' });
+await page.reload({ waitUntil: 'load' });
 await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(bourg));
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte');
@@ -3501,7 +3523,7 @@ await page.screenshot({ path: join(CAPTURES, '20b-consignes.png') });
   Object.assign(seche.base.stock, { biomasse: 0, rations: 400, carburant: 200 });
   groupeActif(seche).regionId = seche.base.regionId;
   seche.dernierReel = Date.now();
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(seche));
   const sec = true;
   await page.click('[data-a="continuer"]');
@@ -3583,7 +3605,7 @@ for (const c of [gTr.membres[0], gTr.membres[1]]) {
 gTr.membres[0].skills.medecine = 75;   // le vétéran qui peut enseigner
 gTr.membres[1].skills.medecine = 6;
 transmet.dernierReel = Date.now();
-await page.reload({ waitUntil: 'networkidle' });
+await page.reload({ waitUntil: 'load' });
 await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(transmet));
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte');
@@ -3621,7 +3643,7 @@ loisDe(ecolier.world, villeEcole.faction).regime = 'charte';
 ecolier.player.bourse = { [monnaieIci(ecolier)]: 9000 };
 avancer(ecolier, 3);
 ecolier.dernierReel = Date.now();
-await page.reload({ waitUntil: 'networkidle' });
+await page.reload({ waitUntil: 'load' });
 await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(ecolier));
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte');
@@ -3675,7 +3697,7 @@ avancer(espion, 300);
 espion.world.regions.forEach((r) => { r.decouvert = true; });
 espion.dernierReel = Date.now();
 
-await page.reload({ waitUntil: 'networkidle' });
+await page.reload({ waitUntil: 'load' });
 await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(espion));
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte');
@@ -3731,13 +3753,13 @@ console.log('\n8 quater bis. Par défaut, le monde attend');
   // où on l'a laissée : rien ne défile, et le réglage se change à l'écran.
   const dort = nouvellePartie(20260731, { maintenant: Date.now(), depart: 'ville' });
   const dortTxt = serialiser(dort);
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => {
     const s = JSON.parse(txt);
     s.dernierReel = Date.now() - 4 * 3600 * 1000; // des milliers d'heures de jeu
     localStorage.setItem('cendres.save.v1', JSON.stringify(s));
   }, dortTxt);
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   const avantDort = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte', { timeout: 8000 });
@@ -3801,7 +3823,7 @@ const veille = nouvellePartie(20260729, { maintenant: Date.now(), depart: 'ville
 groupeActif(veille).inventaire.rations = 200000;
 groupeActif(veille).inventaire.medkit = 500;
 const veilleTxt = serialiser(veille);
-await page.reload({ waitUntil: 'networkidle' });
+await page.reload({ waitUntil: 'load' });
 await page.evaluate((txt) => {
   const s = JSON.parse(txt);
   // Quatre heures de vraie absence à la vitesse par défaut : près de six mille
@@ -3917,7 +3939,7 @@ console.log('\n8 septies. Sauvegardes : plusieurs parties côte à côte');
   // les sauvegardes. **Un test doit poser lui-même les conditions qu'il mesure.**
   const vivante = partieAvancee();
   vivante.dernierReel = Date.now();
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate(() => {
     for (const k of Object.keys(localStorage)) {
       if (k.startsWith('cendres.emp')) localStorage.removeItem(k);
@@ -3991,7 +4013,7 @@ console.log('\n8 septies. Sauvegardes : plusieurs parties côte à côte');
   // Elles se voient aussi depuis l'accueil : un fichier reçu de quelqu'un doit
   // pouvoir s'ouvrir sans avoir de partie en cours.
   await page.click('[data-a="vitesse"][data-v="1"]');
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   const accueil = await page.locator('#ecran').innerText();
   ok(/Sauvegardes/i.test(accueil) && /Essai/.test(accueil),
     'l’accueil montre les copies gardées',
@@ -4015,9 +4037,9 @@ console.log('\n8 octies ter. Une partie déjà avancée maigrit en s’ouvrant')
   })();
   const idRuine = grasse.world.colonies.find((c) => c.ruine).id;
   const texteGras = serialiser(grasse);
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), texteGras);
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await calme(page, 600);
@@ -4048,15 +4070,17 @@ console.log('\n8 octies bis. La compression part dans un fil de côté');
   // s'écrit sur `pagehide` et écraserait le décor), on pose la sauvegarde, PUIS
   // on recharge encore — sans quoi l'accueil déjà affiché ne propose pas de
   // reprise, et le clic attend un bouton qui n'existe pas.
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(partieAvancee()));
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await page.click('[data-a="vitesse"][data-v="16"]');
   // Deux battements de la minuterie : le premier peut tomber sur un état
-  // inchangé, et alors rien ne part au fil.
-  await page.waitForTimeout(11000);
+  // inchangé, et alors rien ne part au fil. On n'attend plus les deux
+  // battements, on attend leur RÉSULTAT — la tête comprimée dans le stockage.
+  await jusqua(page, 11000,
+    () => (localStorage.getItem('cendres.save.v1') || '').startsWith('CZ1|'));
   const ecrit = await page.evaluate(() => {
     const brut = localStorage.getItem('cendres.save.v1') || '';
     return { tete: brut.slice(0, 4), ko: Math.round(brut.length / 1024) };
@@ -4076,10 +4100,12 @@ console.log('\n8 octies. Une sauvegarde qui échoue le dit');
   // personne ne le lisait : on pouvait jouer des heures sur un stockage refusé,
   // fermer l'onglet, et tout perdre sans avoir vu passer le moindre signe.
   await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.click('[data-a="nouvelle"]');
   await page.waitForSelector('#carte');
-  await page.waitForTimeout(6500);
+  // On attend que la partie soit écrite quelque part, pas un temps de montre.
+  await jusqua(page, 6500,
+    () => (localStorage.getItem('cendres.save.v1') || '').length > 0);
 
   await page.click('[data-a="modale"][data-m="sauvegardes"]');
   await calme(page, 400);
@@ -4141,7 +4167,7 @@ console.log('\n8 octies. Une sauvegarde qui échoue le dit');
     'et il suit sur les autres écrans — tant que ça dure, ça se voit');
 
   // On rend l'écriture, et l'on repart d'une partie saine pour la suite.
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
 }
 
 console.log('\n8 undecies bis. Le jeu enfermé dans une page isolée');
@@ -4166,7 +4192,7 @@ console.log('\n8 undecies bis. Le jeu enfermé dans une page isolée');
     const bac = await navigateur.newPage({ viewport: { width: 420, height: 900 } });
     const errBac = [];
     bac.on('pageerror', (err) => errBac.push(err.message));
-    await bac.goto(`file://${join(RACINE, 'dist', 'cadre.html')}`, { waitUntil: 'networkidle' });
+    await bac.goto(`file://${join(RACINE, 'dist', 'cadre.html')}`, { waitUntil: 'load' });
     const f = bac.frameLocator('#f');
     const dedans = () => bac.frames().find((x) => x.url().includes('cendres.html'));
     await f.locator('[data-a="nouvelle"]').click();
@@ -4249,7 +4275,7 @@ console.log('\n8 ter. Un drapeau né en cours de partie s’affiche');
 
   const errNeuf = [];
   page.on('pageerror', (e) => errNeuf.push(e.message));
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => {
     localStorage.setItem('cendres.save.v1', txt);
   }, serialiser(neuf));
@@ -4281,9 +4307,9 @@ console.log('\n8 vicies quinquies. Les grands moments (M2, ALLURE.md)');
   })());
   // L'origine d'abord : la section précédente peut avoir laissé la page
   // ailleurs, et un setItem hors de chez nous écrit dans le mauvais stockage.
-  await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'networkidle' });
+  await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), surChapitre);
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate(() => { window.__momentsAuto = false; });
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#moment', { timeout: 12000 });
@@ -4335,7 +4361,7 @@ console.log('\n8 vicies quinquies. Les grands moments (M2, ALLURE.md)');
   })());
   // On recharge d'abord, puis on injecte : la partie en cours sauvegarde sur
   // `pagehide` et écraserait le décor. Même piège que partout dans ce fichier.
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), surMort);
   await page.evaluate(() => { window.__momentsAuto = false; });
   await page.click('[data-a="continuer"]');
@@ -4378,7 +4404,7 @@ console.log('\n8 vicies quinquies. Les grands moments (M2, ALLURE.md)');
     t.dernierReel = Date.now();
     return t;
   })());
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), surMort2);
   // Sans quoi le harnais-joueur-pressé referme la stèle en 200 ms et l'on
   // mesure un écran déjà fermé.
@@ -4420,7 +4446,7 @@ console.log('\n8 vicies quinquies. Les grands moments (M2, ALLURE.md)');
     t.dernierReel = Date.now();
     return t;
   })());
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), surSiege);
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte', { timeout: 8000 });
@@ -4440,9 +4466,9 @@ console.log('\n8 vicies sexies. La carte-affiche (G1, ALLURE.md)');
   // mesure du garde « ce qu'on lit reste sous les yeux » sur un orage de
   // guerre à ×60 — on ne touche pas à un garde pour faire passer un décor,
   // on déplace le décor. Partie fraîche, la carte du premier écran.
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.fill('#graine', 'kenshi');
   await page.click('[data-a="nouvelle"]');
   await page.waitForSelector('#carte', { timeout: 5000 });
