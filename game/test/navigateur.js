@@ -52,6 +52,44 @@ const CHEMINS_CHROMIUM = [
   '/usr/bin/google-chrome',
 ].filter(Boolean);
 
+/**
+ * Attendre que l'écran se taise, au lieu de dormir un temps fixe.
+ *
+ * Le test passait 165 secondes en `waitForTimeout` — deux cent cinquante-trois
+ * pauses « au cas où », dont soixante-sept de quatre cents millisecondes. Sur
+ * cinq minutes vingt-cinq de suite navigateur, trente-sept secondes seulement
+ * étaient du calcul : le reste était du sommeil.
+ *
+ * Ce que ces pauses attendaient réellement, c'est un re-rendu. On l'attend donc
+ * pour de bon : un `MutationObserver` sur l'écran, et l'on repart dès qu'il
+ * n'a plus rien à dire pendant `SILENCE` millisecondes. Le plafond est la
+ * durée d'origine — au pire, on se comporte exactement comme avant, et jamais
+ * plus longtemps.
+ */
+const SILENCE = 60;
+async function calme(p, plafond = 400) {
+  await p.evaluate(([silence, max]) => new Promise((res) => {
+    const cible = document.querySelector('#ecran') || document.body;
+    let t = null;
+    let dur = null;
+    const obs = new MutationObserver(() => {
+      clearTimeout(t);
+      t = setTimeout(fini, silence);
+    });
+    function fini() {
+      clearTimeout(t);
+      clearTimeout(dur);
+      obs.disconnect();
+      requestAnimationFrame(() => res());
+    }
+    obs.observe(cible, {
+      childList: true, subtree: true, attributes: true, characterData: true,
+    });
+    t = setTimeout(fini, silence);
+    dur = setTimeout(fini, max);
+  }), [SILENCE, Math.max(plafond, 80)]);
+}
+
 // --------------------------------------------------------------------------
 // Serveur statique éphémère
 // --------------------------------------------------------------------------
@@ -241,11 +279,11 @@ console.log('\n2 bis. La carte vivante (M1, ALLURE.md)');
     return String(h);
   });
   const v1 = await prend();
-  await page.waitForTimeout(450);
+  await calme(page, 450);
   const v2 = await prend();
   ok(v1 !== '' && v1 !== v2, 'et la cendre dérive : deux instants diffèrent', `${v1} / ${v2}`);
   const sauveAvant = await page.evaluate(() => localStorage.getItem('cendres.save.v1').length);
-  await page.waitForTimeout(300);
+  await calme(page, 300);
   ok(typeof sauveAvant === 'number' && sauveAvant > 0,
     'la couche vit en lecture seule (la partie continue de s’écrire)');
 }
@@ -253,7 +291,7 @@ console.log('\n2 bis. La carte vivante (M1, ALLURE.md)');
 console.log('\n3. Navigation entre les écrans');
 for (const [k, nom] of [['escouade', '02-escouade'], ['base', '03-base'], ['monde', '04-monde'], ['journal', '05-journal']]) {
   await page.click(`[data-a="onglet"][data-k="${k}"]`);
-  await page.waitForTimeout(300);
+  await calme(page, 300);
   const vide = await page.evaluate(() => document.querySelector('#ecran').textContent.trim().length);
   ok(vide > 60, `l’écran ${k} a du contenu`, `${vide} caractères`);
   await page.screenshot({ path: join(CAPTURES, `${nom}.png`), fullPage: true });
@@ -291,7 +329,7 @@ await page.click('[data-a="onglet"][data-k="escouade"]');
 // « on se parle, on se couvre » sont des phrases de bande — absurdes pour un
 // homme seul (défaut vu à l'écran, U4 ter).
 {
-  await page.waitForTimeout(300);
+  await calme(page, 300);
   const txtSolo = await page.evaluate(() => document.querySelector('#ecran').textContent);
   ok(/Tenue de/.test(txtSolo) && !/Cohésion de/.test(txtSolo),
     'seul, le panneau s’appelle « Tenue », pas « Cohésion »');
@@ -347,7 +385,7 @@ console.log('\n5 ter. L’en-tête qui s’explique et les vraies icônes (M4+M5
     'chaque onglet de nav porte une icône dessinée', `${nav.svg}/${nav.boutons}`);
   // M5 : les cases à cocher sont de vraies cases, plus des [×] ASCII.
   await page.click('[data-a="onglet"][data-k="escouade"]');
-  await page.waitForTimeout(350);
+  await calme(page, 350);
   const cases = await page.evaluate(() => {
     const ecran = document.querySelector('#ecran');
     return {
@@ -366,7 +404,7 @@ console.log('\n5 ter. L’en-tête qui s’explique et les vraies icônes (M4+M5
   });
   ok(/onnaie/.test(monnaie), 'l’en-tête nomme la monnaie derrière son signe', monnaie);
   await page.click('[data-a="onglet"][data-k="carte"]');
-  await page.waitForTimeout(300);
+  await calme(page, 300);
 }
 
 console.log('\n5 bis. Installation sur l’écran d’accueil');
@@ -406,16 +444,16 @@ await page.reload({ waitUntil: 'networkidle' });
 await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), sauvegarde);
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte');
-await page.waitForTimeout(400);
+await calme(page, 400);
 await page.click('[data-a="onglet"][data-k="base"]');
-await page.waitForTimeout(300);
+await calme(page, 300);
 await page.screenshot({ path: join(CAPTURES, '07-base.png'), fullPage: true });
 const filesAvant = await page.locator('[data-a="annuler"]').count();
 const constructibles = await page.locator('[data-a="construire"]:not([disabled])').count();
 ok(constructibles > 0, 'au moins un bâtiment est finançable', `${constructibles} disponibles`);
 if (constructibles > 0) {
   await page.click('[data-a="construire"]:not([disabled])');
-  await page.waitForTimeout(500);
+  await calme(page, 500);
 }
 ok(await page.locator('[data-a="annuler"]').count() > filesAvant, 'un chantier se met en file au clic');
 
@@ -423,7 +461,7 @@ ok(await page.locator('[data-a="annuler"]').count() > filesAvant, 'un chantier s
 // demandait de tout déposer puis d'en reprendre les trois quarts.
 {
   await page.click('[data-a="onglet"][data-k="carte"]');
-  await page.waitForTimeout(300);
+  await calme(page, 300);
   // La sauvegarde de référence a fait marcher l'escouade depuis : on la remet au
   // camp, faute de quoi le bouton de transfert n'existe pas — il n'a pas à
   // exister quand on est ailleurs.
@@ -440,14 +478,14 @@ ok(await page.locator('[data-a="annuler"]').count() > filesAvant, 'un chantier s
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), auCamp);
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   if (await page.locator('[data-a="modale"][data-m="transfert"]').count()) {
     await page.click('[data-a="modale"][data-m="transfert"]');
-    await page.waitForTimeout(350);
+    await calme(page, 350);
     ok((await page.locator('[data-a="qte-transfert"]').count()) > 0,
       'le transfert avec l’avant-poste propose une quantité');
     await page.click('[data-a="qte-transfert"][data-q="1"]');
-    await page.waitForTimeout(250);
+    await calme(page, 250);
     const dep = page.locator('[data-a="deposer"]:not([disabled])').first();
     if (await dep.count()) {
       const cle = await dep.getAttribute('data-k');
@@ -457,17 +495,17 @@ ok(await page.locator('[data-a="annuler"]').count() > filesAvant, 'un chantier s
       }, k);
       const avant = await lire(cle);
       await dep.click();
-      await page.waitForTimeout(350);
+      await calme(page, 350);
       ok(avant - (await lire(cle)) === 1,
         'à ×1, on ne dépose qu’une unité à l’avant-poste',
         `${avant} → ${await lire(cle)}`);
     }
     await page.screenshot({ path: join(CAPTURES, '07c-transfert.png') });
     await page.click('[data-a="fermer"]');
-    await page.waitForTimeout(200);
+    await calme(page, 200);
   }
   await page.click('[data-a="onglet"][data-k="base"]');
-  await page.waitForTimeout(250);
+  await calme(page, 250);
 }
 
 console.log('\n8. Écran large');
@@ -478,7 +516,7 @@ await large.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), sauv
 await large.reload({ waitUntil: 'networkidle' });
 await large.click('[data-a="continuer"]');
 await large.waitForSelector('#carte');
-await large.waitForTimeout(400);
+await calme(large, 400);
 await large.screenshot({ path: join(CAPTURES, '08-large.png') });
 ok(!(await large.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)),
   'pas de débordement en écran large');
@@ -497,7 +535,7 @@ ok(!(await large.evaluate(() => document.documentElement.scrollWidth > window.in
 // téléphone étiré. À 1280 px, leurs panneaux coulent sur deux colonnes.
 {
   await large.click('[data-a="onglet"][data-k="escouade"]');
-  await large.waitForTimeout(400);
+  await calme(large, 400);
   const m6 = await large.evaluate(() => {
     const ecran = document.querySelector('#ecran');
     const cc = getComputedStyle(ecran).columnCount;
@@ -510,7 +548,7 @@ ok(!(await large.evaluate(() => document.documentElement.scrollWidth > window.in
   ok(!m6.deborde, 'sans déborder de l’écran');
   await large.screenshot({ path: join(CAPTURES, '08b-large-escouade.png'), fullPage: false });
   await large.click('[data-a="onglet"][data-k="carte"]');
-  await large.waitForTimeout(300);
+  await calme(large, 300);
 }
 
 console.log('\n8 bis. Contenu de jeu : contrats, étal, sites');
@@ -528,10 +566,10 @@ console.log('\n8 bis. Contenu de jeu : contrats, étal, sites');
     texteAccueil.slice(0, 240).replace(/\n+/g, ' | '));
   // On choisit le départ le plus nu, et l'on vérifie qu'il est bien appliqué.
   await page.click('[data-a="choisir-depart"][data-k="survivant"]');
-  await page.waitForTimeout(200);
+  await calme(page, 200);
   await page.click('[data-a="nouvelle"]');
   await page.waitForSelector('#carte');
-  await page.waitForTimeout(600);
+  await calme(page, 600);
   const premierEcran = await page.locator('#ecran').innerText();
   ok(!/MARCHÉ|RECRUTER/i.test(premierEcran),
     'une partie neuve ne commence plus dans une ville',
@@ -604,7 +642,7 @@ console.log('\n8 bis. Contenu de jeu : contrats, étal, sites');
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), enVille);
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
-  await page.waitForTimeout(600);
+  await calme(page, 600);
 }
 
 // Rien ne doit descendre lettre par lettre — ni à droite, ni à gauche.
@@ -636,13 +674,13 @@ const colonnes = (p) => p.evaluate(() => {
 });
 {
   await page.click('[data-a="onglet"][data-k="escouade"]');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   const verticales = await colonnes(page);
   ok(verticales.length === 0, 'aucune valeur ne s’affiche en colonne sur mobile',
     verticales.slice(0, 3).join(' | '));
   // On rend l'onglet où la suite attend le panneau de la ville.
   await page.click('[data-a="onglet"][data-k="carte"]');
-  await page.waitForTimeout(300);
+  await calme(page, 300);
 }
 
 // Ce que le bandeau doit dire sans qu'on aille le chercher : combien de jours
@@ -661,7 +699,7 @@ const colonnes = (p) => p.evaluate(() => {
     'la fiche de ville dit à quoi sert l’estime qu’on y a',
     texteVille.slice(0, 200).replace(/\n+/g, ' | '));
   await page.click('summary:has-text("estime change ici")');
-  await page.waitForTimeout(250);
+  await calme(page, 250);
   const deplie = await page.locator('#ecran').innerText();
   ok(/intendance|engagement|coffre|prix|prime/i.test(deplie),
     'et déplié, il énumère des conséquences concrètes');
@@ -669,7 +707,7 @@ const colonnes = (p) => p.evaluate(() => {
     'avec la distance au palier suivant, en points');
   // On le replie : la suite de la section compte sur la fiche telle qu'elle est.
   await page.click('summary:has-text("estime change ici")');
-  await page.waitForTimeout(200);
+  await calme(page, 200);
   // La fiche de ville porte le régime, dont la description est un texte libre à
   // *droite* d'une étiquette courte — le cas inverse de la feuille de service,
   // et celui qui a fait tomber « Domaine » lettre par lettre.
@@ -695,7 +733,7 @@ const colonnes = (p) => p.evaluate(() => {
     const b = document.querySelector('[data-a="engager"]');
     if (b) b.scrollIntoView({ block: 'center' });
   });
-  await page.waitForTimeout(200);
+  await calme(page, 200);
   await page.screenshot({ path: join(CAPTURES, '30-service.png') });
 }
 
@@ -714,10 +752,10 @@ const colonnes = (p) => p.evaluate(() => {
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), surSite);
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   if (await page.locator('[data-a="fouiller-site"]:not([disabled])').count()) {
     await page.click('[data-a="fouiller-site"]:not([disabled])');
-    await page.waitForTimeout(600);
+    await calme(page, 600);
     const bulle = await page.locator('.toast').count()
       ? await page.locator('.toast').innerText() : '';
     const ecranSite = await page.locator('#ecran').innerText();
@@ -738,7 +776,7 @@ const colonnes = (p) => p.evaluate(() => {
     serialiser(nouvellePartie(20260729, { maintenant: Date.now(), depart: 'ville' })));
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
-  await page.waitForTimeout(500);
+  await calme(page, 500);
 }
 
 // L'avant-poste doit dire ce qu'il lui manque, sinon on croit qu'il n'y a rien.
@@ -764,7 +802,7 @@ const colonnes = (p) => p.evaluate(() => {
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await page.click('[data-a="onglet"][data-k="base"]');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   const vuBase = await page.locator('#ecran').innerText();
   ok(/CHAÎNE DE L’AUTONOMIE/i.test(vuBase),
     'un camp neuf montre la chaîne de l’autonomie',
@@ -780,7 +818,7 @@ const colonnes = (p) => p.evaluate(() => {
   await page.reload({ waitUntil: 'networkidle' });
   await page.click('[data-a="nouvelle"]');
   await page.waitForSelector('#carte');
-  await page.waitForTimeout(600);
+  await calme(page, 600);
 }
 
 // Le point de situation : muet quand tout va bien, net quand ça presse.
@@ -795,7 +833,7 @@ const colonnes = (p) => p.evaluate(() => {
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), affame);
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   const vu = await page.locator('#ecran').innerText();
   ok(/POINT DE SITUATION/i.test(vu),
     'un point de situation s’affiche quand quelque chose presse',
@@ -821,12 +859,12 @@ const colonnes = (p) => p.evaluate(() => {
   })());
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
-  await page.waitForTimeout(600);
+  await calme(page, 600);
 }
 
 // Le coffre en ville : louer, y mettre, reprendre.
 await page.click('[data-a="modale"][data-m="coffre"]');
-await page.waitForTimeout(400);
+await calme(page, 400);
 ok((await page.locator('[data-a="coffre-louer"]').count()) > 0,
   'une ville propose un coffre à louer');
 // L'aide annonçait un seuil d'estime écrit en dur, d'avant les régimes : elle
@@ -844,7 +882,7 @@ ok((await page.locator('[data-a="coffre-louer"]').count()) > 0,
 await page.screenshot({ path: join(CAPTURES, '09e-coffre.png') });
 if ((await page.locator('[data-a="coffre-louer"]:not([disabled])').count()) > 0) {
   await page.click('[data-a="coffre-louer"]');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   ok((await page.locator('[data-a="coffre-deposer"]').count()) > 0,
     'et une fois loué, on peut y déposer');
   const dedansAvant = await page.evaluate(
@@ -852,7 +890,7 @@ if ((await page.locator('[data-a="coffre-louer"]:not([disabled])').count()) > 0)
   ok(dedansAvant === 1, 'le coffre est bien enregistré', `${dedansAvant}`);
   if ((await page.locator('[data-a="coffre-deposer"]:not([disabled])').count()) > 0) {
     await page.click('[data-a="coffre-deposer"]:not([disabled])');
-    await page.waitForTimeout(400);
+    await calme(page, 400);
     const contenu = await page.evaluate(() => {
       const c = JSON.parse(window.__sauvegardeTexte()).player.coffres;
       const k = Object.keys(c)[0];
@@ -866,7 +904,7 @@ if ((await page.locator('[data-a="coffre-louer"]:not([disabled])').count()) > 0)
   ok((await page.locator('[data-a="qte-transfert"]').count()) > 0,
     'le coffre propose de choisir la quantité');
   await page.click('[data-a="qte-transfert"][data-q="1"]');
-  await page.waitForTimeout(250);
+  await calme(page, 250);
   const cible1 = page.locator('[data-a="coffre-deposer"]:not([disabled])').first();
   if (await cible1.count()) {
     const cle1 = await cible1.getAttribute('data-k');
@@ -875,7 +913,7 @@ if ((await page.locator('[data-a="coffre-louer"]:not([disabled])').count()) > 0)
       return Math.floor(s2.player.groupes[0].inventaire[k] || 0);
     }, cle1);
     await cible1.click();
-    await page.waitForTimeout(350);
+    await calme(page, 350);
     const sacApres = await page.evaluate((k) => {
       const s2 = JSON.parse(window.__sauvegardeTexte());
       return Math.floor(s2.player.groupes[0].inventaire[k] || 0);
@@ -886,7 +924,7 @@ if ((await page.locator('[data-a="coffre-louer"]:not([disabled])').count()) > 0)
   }
 }
 await page.click('[data-a="fermer"]');
-await page.waitForTimeout(200);
+await calme(page, 200);
 
 // Le bandeau de dévaluation (ECONOMIE §10). Il est au-dessus de tous les
 // écrans, il survit au rechargement, et il ne s'efface que quand on l'a vu :
@@ -907,20 +945,20 @@ await page.waitForTimeout(200);
   });
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   const vu = await page.evaluate(() => document.querySelector('#ecran').textContent);
   ok(/Votre argent a fondu/.test(vu), 'le bandeau de dévaluation se lève', posee);
   ok(/−23 %/.test(vu), 'et dit de combien', (vu.match(/−\d+ %[^·]*/) || ['—'])[0]);
   // Sur un autre onglet aussi : une monnaie qui s'effondre ne se range pas
   // sous « monde » ou sous « escouade ».
   await page.click('[data-a="onglet"][data-k="escouade"]');
-  await page.waitForTimeout(300);
+  await calme(page, 300);
   ok(/Votre argent a fondu/.test(
     await page.evaluate(() => document.querySelector('#ecran').textContent)),
   'et il suit d’un écran à l’autre');
   await page.screenshot({ path: join(CAPTURES, '09g-devaluation.png') });
   await page.click('[data-a="devaluation-vue"]');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   ok(!/Votre argent a fondu/.test(
     await page.evaluate(() => document.querySelector('#ecran').textContent)),
   'une fois vu, il s’efface');
@@ -928,7 +966,7 @@ await page.waitForTimeout(200);
     () => JSON.parse(window.__sauvegardeTexte()).player.alertesMonnaie.length);
   ok(reste === 0, 'et ça tient dans la sauvegarde', `${reste}`);
   await page.click('[data-a="onglet"][data-k="carte"]');
-  await page.waitForTimeout(300);
+  await calme(page, 300);
 }
 
 // Le bureau de change (ECONOMIE §5 et §10). Sans cet écran, la bascule du lot E
@@ -944,7 +982,7 @@ await page.waitForTimeout(200);
   const aBureau = await page.locator('[data-a="modale"][data-m="change"]').count();
   ok(aBureau > 0, 'une ville qui tient un comptoir propose le change');
   await page.click('[data-a="modale"][data-m="change"]');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   const txtCh = await page.locator('#modale').innerText();
   ok(/vaut/.test(txtCh) && /écart/.test(txtCh),
     'le bureau annonce le taux et son écart',
@@ -959,7 +997,7 @@ await page.waitForTimeout(200);
     const avant = await page.evaluate(
       () => JSON.parse(window.__sauvegardeTexte()).player.bourse);
     await bouton.click();
-    await page.waitForTimeout(450);
+    await calme(page, 450);
     const apres = await page.evaluate(
       () => JSON.parse(window.__sauvegardeTexte()).player.bourse);
     const bougé = Object.keys({ ...avant, ...apres })
@@ -968,12 +1006,12 @@ await page.waitForTimeout(200);
       bougé.join(' / ') || 'aucune');
   }
   await page.click('[data-a="fermer"]');
-  await page.waitForTimeout(200);
+  await calme(page, 200);
 }
 
 // Étal d'équipement : le catalogue existait, rien n'était achetable.
 await page.click('[data-a="modale"][data-m="etal"]');
-await page.waitForTimeout(400);
+await calme(page, 400);
 const articles = await page.locator('[data-a="acheter-item"]').count();
 ok(articles > 0, 'l’armurier propose de l’équipement', `${articles} articles`);
 await page.screenshot({ path: join(CAPTURES, '09-etal.png') });
@@ -981,13 +1019,13 @@ const objetsAvant = await page.evaluate(() => JSON.parse(window.__sauvegardeText
 const abordable = await page.locator('[data-a="acheter-item"]:not([disabled])').count();
 if (abordable) {
   await page.click('[data-a="acheter-item"]:not([disabled])');
-  await page.waitForTimeout(500);
+  await calme(page, 500);
 }
 const objetsApres = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).player.groupes[0].objets.length);
 ok(!abordable || objetsApres > objetsAvant, 'un achat d’équipement arrive dans la réserve',
   `${objetsAvant} → ${objetsApres}`);
 await page.click('[data-a="fermer"]');
-await page.waitForTimeout(300);
+await calme(page, 300);
 
 // U1 (INTERFACE.md) — l'écran de ville : des portes qui parlent. Neuf boutons
 // typographiquement identiques ne disent pas si les vivres sont chers, si
@@ -1042,7 +1080,7 @@ await page.waitForTimeout(300);
   ok(!/px\/secteur/.test(pied), 'le pied de carte ne parle plus au développeur', pied);
   // Le constat se prend carte en haut d'écran, sinon la capture montre le bas.
   await page.evaluate(() => { document.getElementById('ecran').scrollTop = 0; });
-  await page.waitForTimeout(300);
+  await calme(page, 300);
   await page.screenshot({ path: join(CAPTURES, '01f-carte-noms.png') });
 }
 
@@ -1065,17 +1103,17 @@ await page.waitForTimeout(300);
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), libre);
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
-  await page.waitForTimeout(500);
+  await calme(page, 500);
   ok((await page.locator('[data-a="modale"][data-m="marche"]').count()) > 0,
     'une ville sans drapeau garde son marché');
   ok((await page.locator('[data-a="modale"][data-m="recrutement"]').count()) > 0,
     'et son banc de recrutement');
   await page.click('[data-a="modale"][data-m="marche"]');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   ok((await page.locator('[data-a="acheter"]').count()) > 0,
     'et l’on peut y commercer');
   await page.click('[data-a="fermer"]');
-  await page.waitForTimeout(200);
+  await calme(page, 200);
 }
 
 // Le dossier des contrats : on doit pouvoir relire ce qu'on a signé.
@@ -1096,7 +1134,7 @@ await page.waitForTimeout(300);
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await page.click('[data-a="onglet"][data-k="contrats"]');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   const vuD = await page.locator('#ecran').innerText();
   ok(/DOSSIER DES CONTRATS/i.test(vuD),
     'les contrats passés ont leur dossier, comme les ordres ont leur feuille',
@@ -1149,7 +1187,7 @@ await page.waitForTimeout(300);
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await page.click('[data-a="onglet"][data-k="contrats"]');
-  await page.waitForTimeout(500);
+  await calme(page, 500);
   const txtO = await page.locator('#ecran').innerText();
   ok(/région/i.test(txtO) && /marche/i.test(txtO),
     'un ordre de mission dit où aller et combien de marche ça représente',
@@ -1192,7 +1230,7 @@ await page.waitForTimeout(300);
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await page.click('[data-a="onglet"][data-k="contrats"]');
-  await page.waitForTimeout(500);
+  await calme(page, 500);
   const txtSD = await page.locator('#ecran').innerText();
   ok(!/NaN/.test(txtSD), 'un ordre sans échéance n’affiche pas « NaN »',
     (txtSD.match(/.{0,60}NaN.{0,40}/) || [''])[0]);
@@ -1203,7 +1241,7 @@ await page.waitForTimeout(300);
     (txtSD.match(/.{0,80}ne le permet pas/) || [''])[0]);
   // Le point de situation ne doit pas non plus l'inscrire parmi les urgences.
   await page.click('[data-a="onglet"][data-k="carte"]');
-  await page.waitForTimeout(300);
+  await calme(page, 300);
   const txtSit = await page.locator('#ecran').innerText();
   ok(!/NaN/.test(txtSit), 'et le point de situation reste net de « NaN »',
     (txtSit.match(/.{0,60}NaN.{0,40}/) || [''])[0]);
@@ -1217,12 +1255,12 @@ await page.waitForTimeout(300);
     serialiser(nouvellePartie(20260729, { maintenant: Date.now(), depart: 'ville' })));
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
-  await page.waitForTimeout(600);
+  await calme(page, 600);
 }
 
 // Écran d'escouade : qui fait quoi, et où passent les vivres.
 await page.click('[data-a="onglet"][data-k="escouade"]');
-await page.waitForTimeout(400);
+await calme(page, 400);
 ok((await page.locator('.panneau').filter({ hasText: 'Qui fait quoi' }).count()) > 0,
   'l’escouade affiche qui fait quoi en une table');
 await page.screenshot({ path: join(CAPTURES, '09c-escouade.png'), fullPage: true });
@@ -1232,7 +1270,7 @@ await page.screenshot({ path: join(CAPTURES, '09c-escouade.png'), fullPage: true
   ok(/autonomie|vivres/i.test(txt), 'et le même écran dit où passent les vivres');
 }
 await page.click('[data-a="onglet"][data-k="carte"]');
-await page.waitForTimeout(300);
+await calme(page, 300);
 
 // Marché : la quantité se choisit, et le montant est annoncé avant de cliquer.
 //
@@ -1240,7 +1278,7 @@ await page.waitForTimeout(300);
 // « tout » est précisément le geste qui ruine une cargaison, puisque le prix
 // baisse à chaque unité vendue.
 await page.click('[data-a="modale"][data-m="marche"]');
-await page.waitForTimeout(400);
+await calme(page, 400);
 ok(await page.locator('[data-a="qte-marche"]').count() >= 3,
   'le marché propose plusieurs quantités');
 await page.screenshot({ path: join(CAPTURES, '09b-marche.png') });
@@ -1248,7 +1286,7 @@ await page.screenshot({ path: join(CAPTURES, '09b-marche.png') });
   const libelle = () => page.locator('[data-a="acheter"]:not([disabled])').first().innerText();
   const avant = await libelle();
   await page.click('[data-a="qte-marche"][data-q="50"]');
-  await page.waitForTimeout(300);
+  await calme(page, 300);
   const apres = await libelle();
   ok(avant !== apres, 'changer la quantité change ce qui est annoncé',
     `${avant.replace(/\n/g, ' ')} → ${apres.replace(/\n/g, ' ')}`);
@@ -1256,18 +1294,18 @@ await page.screenshot({ path: join(CAPTURES, '09b-marche.png') });
   const promis = Number((apres.match(/([0-9]+)\s+\S+\s*$/) || [])[1] || 0);
   const crAvant = await page.evaluate(() => { const s2 = JSON.parse(window.__sauvegardeTexte()); return Object.values((s2.player.bourse) || {}).reduce((a, b) => a + b, 0); });
   await page.click('[data-a="acheter"]:not([disabled])');
-  await page.waitForTimeout(500);
+  await calme(page, 500);
   const crApres = await page.evaluate(() => { const s2 = JSON.parse(window.__sauvegardeTexte()); return Object.values((s2.player.bourse) || {}).reduce((a, b) => a + b, 0); });
   ok(promis > 0 && Math.abs((crAvant - crApres) - promis) <= 1,
     'et le prix annoncé est exactement le prix payé',
     `annoncé ${promis}, payé ${crAvant - crApres}`);
 }
 await page.click('[data-a="fermer"]');
-await page.waitForTimeout(300);
+await calme(page, 300);
 
 // Panneau de contrats
 await page.click('[data-a="modale"][data-m="panneau"]');
-await page.waitForTimeout(400);
+await calme(page, 400);
 const offres = await page.locator('[data-a="accepter"]').count();
 ok(offres > 0, 'la ville affiche des contrats', `${offres} offres`);
 {
@@ -1286,12 +1324,12 @@ ok(offres > 0, 'la ville affiche des contrats', `${offres} offres`);
 await page.screenshot({ path: join(CAPTURES, '10-panneau.png') });
 if (offres) {
   await page.click('[data-a="accepter"]');
-  await page.waitForTimeout(600);
+  await calme(page, 600);
 }
 const pris = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).player.contrats.length);
 ok(pris > 0, 'un contrat accepté part en cours', `${pris} en cours`);
 await page.click('[data-a="onglet"][data-k="contrats"]');
-await page.waitForTimeout(400);
+await calme(page, 400);
 await page.screenshot({ path: join(CAPTURES, '11-contrats.png'), fullPage: true });
 
 // U4 (INTERFACE.md) — les finitions qui se voient. La revue du 20 août sur
@@ -1330,7 +1368,7 @@ await page.screenshot({ path: join(CAPTURES, '11-contrats.png'), fullPage: true 
   ok(!/\((?:s|x)\)/.test(texteContrats), 'les pluriels de l’écran contrats s’accordent');
 
   await page.click('[data-a="onglet"][data-k="monde"]');
-  await page.waitForTimeout(500);
+  await calme(page, 500);
   const texteMonde = await page.evaluate(
     () => document.getElementById('ecran').textContent);
   ok(!/\((?:s|x)\)/.test(texteMonde), 'les pluriels de l’écran monde s’accordent',
@@ -1373,21 +1411,21 @@ await page.screenshot({ path: join(CAPTURES, '11-contrats.png'), fullPage: true 
 
   // f. La fiche d'un membre étiquette son pourcentage.
   await page.click('[data-a="onglet"][data-k="escouade"]');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   const resume = await page.locator('details.perso summary').first().innerText();
   ok(/santé/i.test(resume), 'le pourcentage de la fiche porte son nom',
     resume.replace(/\n/g, ' ').slice(0, 80));
 
   // g. Le marché nomme ses colonnes.
   await page.click('[data-a="onglet"][data-k="carte"]');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   await page.click('[data-a="modale"][data-m="marche"]');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   const marcheTxt = await page.locator('#modale').innerText();
   ok(/Acheter/i.test(marcheTxt) && /Vendre/i.test(marcheTxt),
     'le marché dit quelle colonne achète et laquelle vend');
   await page.click('[data-a="fermer"]');
-  await page.waitForTimeout(300);
+  await calme(page, 300);
 }
 
 // Fil d'actualité sur la carte
@@ -1419,7 +1457,7 @@ ok(!!monde.meteo, 'une météo est en cours', String(monde.meteo));
 ok(monde.sites > 10, 'des sites sont semés sur la carte', `${monde.sites}`);
 ok(typeof monde.cohesion === 'number', 'la cohésion d’escouade est suivie', String(monde.cohesion));
 await page.click('[data-a="onglet"][data-k="monde"]');
-await page.waitForTimeout(400);
+await calme(page, 400);
 const texteMonde = await page.evaluate(() => document.querySelector('#ecran').textContent);
 ok(/Climat/.test(texteMonde), 'l’écran Monde annonce le climat');
 ok(/Chronique du monde/.test(texteMonde), 'l’écran Monde tient une chronique');
@@ -1428,14 +1466,14 @@ await page.screenshot({ path: join(CAPTURES, '13-monde.png'), fullPage: true });
 
 console.log('\n8 quinquies. Groupes : détacher, assigner, regrouper');
 await page.click('[data-a="onglet"][data-k="escouade"]');
-await page.waitForTimeout(300);
+await calme(page, 300);
 ok(await page.locator('.grp').count() >= 1, 'la barre de groupes est affichée');
 
 // Tâche individuelle : on ouvre une fiche et on donne un ordre à une personne.
 await page.locator('details.perso summary').first().click();
-await page.waitForTimeout(250);
+await calme(page, 250);
 await page.locator('[data-a="tache"][data-k="chasse"]').first().click();
-await page.waitForTimeout(400);
+await calme(page, 400);
 const tacheOk = await page.evaluate(() => {
   const s = JSON.parse(window.__sauvegardeTexte());
   return s.player.groupes.some((g) => g.membres.some((c) => c.tache && c.tache.type === 'chasse'));
@@ -1450,13 +1488,13 @@ await page.evaluate(() => {
   const h = document.querySelector('h2.titre[data-k="Détacher"]');
   if (h && h.parentElement.classList.contains('plie')) h.click();
 });
-await page.waitForTimeout(250);
+await calme(page, 250);
 await page.locator('[data-a="detacher-sel"]').first().click();
-await page.waitForTimeout(300);
+await calme(page, 300);
 const boutonDetacher = page.locator('[data-a="detacher"]:not([disabled])');
 ok(await boutonDetacher.count() > 0, 'le bouton de détachement s’active une fois quelqu’un choisi');
 await boutonDetacher.first().click();
-await page.waitForTimeout(500);
+await calme(page, 500);
 const apres = await page.evaluate(() => {
   const s = JSON.parse(window.__sauvegardeTexte());
   return {
@@ -1472,7 +1510,7 @@ await page.screenshot({ path: join(CAPTURES, '15-groupes.png'), fullPage: true }
 
 // La carte doit montrer les deux groupes, pas seulement celui qu'on regarde.
 await page.click('[data-a="onglet"][data-k="carte"]');
-await page.waitForTimeout(400);
+await calme(page, 400);
 const marqueurs = await page.evaluate(() => {
   const s = JSON.parse(window.__sauvegardeTexte());
   const c = document.querySelector('#carte');
@@ -1495,11 +1533,11 @@ const marqueurs = await page.evaluate(() => {
 ok(marqueurs.every((m) => m > 0), 'chaque groupe est marqué sur la carte', marqueurs.join(' / '));
 await page.screenshot({ path: join(CAPTURES, '16-carte-groupes.png') });
 await page.click('[data-a="onglet"][data-k="escouade"]');
-await page.waitForTimeout(300);
+await calme(page, 300);
 
 // On bascule d'un groupe à l'autre : le point de vue suit.
 await page.locator('.grp').nth(1).click();
-await page.waitForTimeout(400);
+await calme(page, 400);
 const bascule = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).player.groupeActif);
 ok(!!bascule, 'on peut changer de groupe affiché');
 
@@ -1507,7 +1545,7 @@ ok(!!bascule, 'on peut changer de groupe affiché');
 const fusion = page.locator('[data-a="fusionner"]');
 ok(await fusion.count() > 0, 'le regroupement est proposé quand les groupes se croisent');
 await fusion.first().click();
-await page.waitForTimeout(500);
+await calme(page, 500);
 const refusion = await page.evaluate(() => {
   const s = JSON.parse(window.__sauvegardeTexte());
   return { n: s.player.groupes.length, membres: s.player.groupes.reduce((t, g) => t + g.membres.length, 0) };
@@ -1526,7 +1564,7 @@ await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), seria
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte');
 await page.click('[data-a="onglet"][data-k="monde"]');
-await page.waitForTimeout(500);
+await calme(page, 500);
 const textePol = await page.evaluate(() => document.querySelector('#ecran').textContent);
 ok(/Directeur|Commandant|Parrain|Porte-parole|Voix du Signal|Chef de convoi/.test(textePol),
   'chaque faction montre qui la dirige');
@@ -1562,14 +1600,14 @@ await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt),
   serialiser(nouvellePartie(20260729, { maintenant: Date.now(), depart: 'ville' })));
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte');
-await page.waitForTimeout(600);
+await calme(page, 600);
 ok(await page.locator('[data-a="modale"][data-m="ville"]').count() > 0,
   'la ville propose de voir qui y vit');
 // La vitesse se règle avant d'ouvrir : la modale couvre tout l'écran, et le
 // sélecteur de vitesse est dessous — un clic dessus n'arriverait jamais.
 await page.click('[data-a="vitesse"][data-v="16"]');
 await page.click('[data-a="modale"][data-m="ville"]');
-await page.waitForTimeout(400);
+await calme(page, 400);
 
 {
   // « Si je vais dans "qui vit ici", je scroll vers le bas et au bout de
@@ -1585,7 +1623,7 @@ await page.waitForTimeout(400);
   ok(taille.h > taille.vue + 200, 'la liste des habitants dépasse l’écran',
     `${taille.h}px pour ${taille.vue}px visibles`);
   await page.evaluate(() => { document.querySelector('#modale .boite').scrollTop = 400; });
-  await page.waitForTimeout(300);
+  await calme(page, 300);
   const lu = () => page.evaluate(() => {
     const b = document.querySelector('#modale .boite');
     const el = document.elementFromPoint(200, b.getBoundingClientRect().top + 10);
@@ -1594,7 +1632,7 @@ await page.waitForTimeout(400);
   const debut = await lu();
   let ramene = 0;
   for (let i = 0; i < 6; i++) {
-    await page.waitForTimeout(400);
+    await calme(page, 400);
     const v = await lu();
     if (v.s !== debut.s || v.t !== debut.t) ramene++;
   }
@@ -1602,7 +1640,7 @@ await page.waitForTimeout(400);
     `${ramene}/6 relevés déplacés · ${debut.s}px « ${debut.t} »`);
   // On remonte en haut pour la suite du bloc, qui capture la fiche.
   await page.evaluate(() => { document.querySelector('#modale .boite').scrollTop = 0; });
-  await page.waitForTimeout(200);
+  await calme(page, 200);
 }
 const texteVille = await page.evaluate(() => document.querySelector('#modale').textContent);
 ok(/MÉTIERS/i.test(texteVille) && /actifs/.test(texteVille),
@@ -1620,7 +1658,7 @@ const notables = await page.evaluate(() => {
 ok(notables && notables.n >= 2 && notables.ok,
   'les notables sont bien dans la sauvegarde, avec leur état', JSON.stringify(notables));
 await page.click('[data-a="fermer"]');
-await page.waitForTimeout(300);
+await calme(page, 300);
 
 console.log('\n8 sexdecies. Un grade n’est pas une voix, c’est une charge');
 const carriere = partieAvancee();
@@ -1664,7 +1702,7 @@ await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), seria
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte');
 await page.click('[data-a="onglet"][data-k="contrats"]');
-await page.waitForTimeout(500);
+await calme(page, 500);
 const texteCar = await page.evaluate(() => document.querySelector('#ecran').textContent);
 ok(/VOTRE CHARGE/i.test(texteCar), 'un gradé a une charge, pas une requête');
 ok(!/d’être écouté/.test(texteCar),
@@ -1705,12 +1743,12 @@ const avantOrdre = await page.evaluate(() => {
 const charge = page.locator('details[data-id^="prero-"]')
   .filter({ has: page.locator('[data-a="ordonner"]') }).first();
 await charge.locator('summary').click();
-await page.waitForTimeout(300);
+await calme(page, 300);
 const aOrdonne = await charge.locator('[data-a="ordonner"]').count() > 0;
 ok(aOrdonne, 'au moins un ordre concret est proposé, pas une abstraction');
 if (aOrdonne) {
   await charge.locator('[data-a="ordonner"]').first().click();
-  await page.waitForTimeout(600);
+  await calme(page, 600);
   const apresOrdre = await page.evaluate(() => {
     const s2 = JSON.parse(window.__sauvegardeTexte());
     return {
@@ -1756,7 +1794,7 @@ ok(ouEstLEngagement.colonne && ouEstLEngagement.joueur,
 // Comment on gouverne chez les autres : c'est ce qui fait de « qui servir » un
 // choix informé plutôt qu'un tirage entre six drapeaux de couleurs.
 await page.click('[data-a="onglet"][data-k="monde"]');
-await page.waitForTimeout(400);
+await calme(page, 400);
 // Le même chiffre, la même couleur, partout. Cinq endroits coloraient l'estime
 // avec trois bornes différentes : « +22 » était vert sur un panneau et ambre sur
 // l'autre, pour la même faction, à la même seconde.
@@ -1809,7 +1847,7 @@ await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), seria
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte');
 await page.click('[data-a="onglet"][data-k="escouade"]');
-await page.waitForTimeout(500);
+await calme(page, 500);
 const texteCap = await page.evaluate(() => document.querySelector('#ecran').textContent);
 ok(/PRISONNIERS/i.test(texteCap), 'les prisonniers ont leur panneau');
 ok(await page.locator('[data-a="captif"]').count() >= 2,
@@ -1825,11 +1863,11 @@ const crAvantCap = await page.evaluate(
 // invisible. Le décor supposait que le premier captif était le bon.
 const volets = page.locator('details[data-id^="captif-"] > summary');
 for (let i = 0; i < await volets.count(); i++) await volets.nth(i).click();
-await page.waitForTimeout(300);
+await calme(page, 300);
 const livrable = page.locator('[data-a="captif"][data-k="livrer"]:visible').first();
 if (await livrable.count()) {
   await livrable.click();
-  await page.waitForTimeout(500);
+  await calme(page, 500);
   const apresCap = await page.evaluate(() => {
     const s2 = JSON.parse(window.__sauvegardeTexte());
     const col = s2.world.colonies.find((c) => c.geole && c.geole.detenus.length);
@@ -1841,7 +1879,7 @@ if (await livrable.count()) {
 
 console.log('\n8 octodecies. La chronique');
 await page.click('[data-a="onglet"][data-k="journal"]');
-await page.waitForTimeout(400);
+await calme(page, 400);
 const texteChro = await page.evaluate(() => document.querySelector('#ecran').textContent);
 ok(/CHRONIQUE/i.test(texteChro), 'le journal s’ouvre sur ce qu’on est devenu');
 ok(/(Vagabond|Ferrailleur|Officier|Bâtisseur|Fondateur|Négrier|Commandeur|Bienfaiteur|Maison marchande|Chasseur de primes|Seigneur de guerre)/
@@ -1855,7 +1893,7 @@ await page.screenshot({ path: join(CAPTURES, '29-chronique.png'), fullPage: true
 
 console.log('\n8 septdecies. Une tactique qu’on choisit en sachant ce qu’elle vaut');
 await page.click('[data-a="onglet"][data-k="escouade"]');
-await page.waitForTimeout(400);
+await calme(page, 400);
 const texteTac = await page.evaluate(() => document.querySelector('#ecran').textContent);
 ok(/TACTIQUE/i.test(texteTac), 'l’escouade a une tactique');
 ok(await page.locator('[data-a="tactique"]').count() === 5,
@@ -1867,9 +1905,9 @@ await page.evaluate(() => {
   const h = document.querySelector('h2.titre[data-k="Tactique"]');
   if (h && h.parentElement.classList.contains('plie')) h.click();
 });
-await page.waitForTimeout(250);
+await calme(page, 250);
 await page.locator('[data-a="tactique"][data-k="harcelement"]').click();
-await page.waitForTimeout(500);
+await calme(page, 500);
 // Depuis P2 (PROMESSES.md), la consigne est celle de la colonne affichée —
 // le repli global reste pour les colonnes sans consigne.
 const tacRetenue = await page.evaluate(() => {
@@ -1905,7 +1943,7 @@ await page.waitForSelector('#carte');
 const erreursAff = erreurs.length;
 for (const k of ['carte', 'escouade', 'monde', 'contrats', 'base']) {
   await page.click(`[data-a="onglet"][data-k="${k}"]`);
-  await page.waitForTimeout(250);
+  await calme(page, 250);
 }
 ok(erreurs.length === erreursAff,
   'une ville sans drapeau ne casse aucun écran',
@@ -1933,7 +1971,7 @@ await page.reload({ waitUntil: 'networkidle' });
 await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(ruines));
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte', { timeout: 15000 });
-await page.waitForTimeout(400);
+await calme(page, 400);
 const texteRuine = await page.evaluate(() => document.querySelector('#ecran').textContent);
 ok(texteRuine.length > 200, 'l’écran tient debout sur une ville sans drapeau',
   `${texteRuine.length} caractères`);
@@ -1944,7 +1982,7 @@ await page.evaluate(() => localStorage.removeItem('cendres.save.v1'));
 await page.reload({ waitUntil: 'networkidle' });
 await page.click('[data-a="nouvelle"]');
 await page.waitForSelector('#carte');
-await page.waitForTimeout(400);
+await calme(page, 400);
 const dims = await page.evaluate(() => {
   const s2 = JSON.parse(window.__sauvegardeTexte());
   const cv = document.querySelector('#carte');
@@ -1958,18 +1996,18 @@ const boite = page.locator('#carte-boite');
 const bb = await boite.boundingBox();
 await page.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2);
 await page.mouse.wheel(0, 400);
-await page.waitForTimeout(200);
+await calme(page, 200);
 const dezoome = await page.evaluate(() => document.querySelector('#carte').width);
 ok(dezoome < dims.w, 'la molette vers le bas dézoome', `${dims.w} → ${dezoome}`);
 await page.mouse.wheel(0, -800);
-await page.waitForTimeout(200);
+await calme(page, 200);
 const rezoome = await page.evaluate(() => document.querySelector('#carte').width);
 ok(rezoome > dezoome, 'et vers le haut, zoome', `${dezoome} → ${rezoome}`);
 
 // Le zoom est continu, pas par crans : deux crans de molette différents ne
 // doivent pas tomber sur la même valeur.
 await page.mouse.wheel(0, 40);
-await page.waitForTimeout(150);
+await calme(page, 150);
 const fin = await page.evaluate(() => document.querySelector('#carte').width);
 ok(fin !== rezoome, 'le zoom est continu, pas par paliers', `${rezoome} → ${fin}`);
 
@@ -1980,7 +2018,7 @@ await page.mouse.move(bb.x + bb.width * 0.7, bb.y + bb.height * 0.5);
 await page.mouse.down();
 await page.mouse.move(bb.x + bb.width * 0.3, bb.y + bb.height * 0.5, { steps: 8 });
 await page.mouse.up();
-await page.waitForTimeout(250);
+await calme(page, 250);
 const apresGlisse = await page.evaluate(() => document.querySelector('#carte-boite').scrollLeft);
 ok(apresGlisse > avantGlisse, 'glisser vers la gauche fait avancer la vue vers l’est',
   `${Math.round(avantGlisse)} → ${Math.round(apresGlisse)}`);
@@ -1991,24 +2029,24 @@ ok(apresGlisse > avantGlisse, 'glisser vers la gauche fait avancer la vue vers l
 // arme désormais le même répit qu'un clic, et la boîte SURVIT au glissement.
 {
   await page.click('[data-a="vitesse"][data-v="60"]');
-  await page.waitForTimeout(300);
+  await calme(page, 300);
   const boiteAvant = await page.evaluateHandle(() => document.querySelector('#carte-boite'));
   await page.mouse.move(bb.x + bb.width * 0.5, bb.y + bb.height * 0.5);
   await page.mouse.down();
   for (let i = 0; i < 14; i++) {
     await page.mouse.move(bb.x + bb.width * 0.5 + i * 5, bb.y + bb.height * 0.5 + (i % 2 ? 3 : -3));
-    await page.waitForTimeout(100);
+    await calme(page, 100);
   }
   await page.mouse.up();
   const survit = await page.evaluate((el) => el === document.querySelector('#carte-boite'), boiteAvant);
   ok(survit, 'la boîte de carte survit à un glissement d’une seconde et demie à ×60');
   await page.click('[data-a="vitesse"][data-v="1"]');
-  await page.waitForTimeout(300);
+  await calme(page, 300);
 }
 
 // Un clic franc, lui, sélectionne bien une région.
 await page.mouse.click(bb.x + bb.width * 0.5, bb.y + bb.height * 0.5);
-await page.waitForTimeout(300);
+await calme(page, 300);
 const texteSel = await page.evaluate(() => document.querySelector('#ecran').textContent);
 ok(/SECTEUR|Secteur|POSITION/i.test(texteSel), 'un clic sans glissement sélectionne une région');
 
@@ -2018,7 +2056,7 @@ await page.evaluate(() => { document.querySelector('#carte-boite').scrollLeft = 
 // double tape, pour que ça marche au doigt comme à la souris.
 await page.mouse.click(bb.x + bb.width * 0.5, bb.y + bb.height * 0.5);
 await page.mouse.click(bb.x + bb.width * 0.5, bb.y + bb.height * 0.5, { delay: 20 });
-await page.waitForTimeout(300);
+await calme(page, 300);
 const recentre = await page.evaluate(() => {
   const s2 = JSON.parse(window.__sauvegardeTexte());
   const g2 = s2.player.groupes[0];
@@ -2051,7 +2089,7 @@ await page.screenshot({ path: join(CAPTURES, '24-carte-vaste.png'), fullPage: tr
     return { px: r.left + (cx + 0.5) * cell, py: r.top + (y + 0.5) * cell };
   });
   await page.mouse.click(ou.px, ou.py);
-  await page.waitForTimeout(350);
+  await calme(page, 350);
   const cible = await page.evaluate(() => {
     const b = document.querySelector('#barre-cible [data-a="voyage"]');
     if (!b || b.offsetParent === null) return { present: false };
@@ -2084,7 +2122,7 @@ await page.screenshot({ path: join(CAPTURES, '24-carte-vaste.png'), fullPage: tr
   ok(defil > 100, 'le défilement du dock survit aux ticks — les boutons restent où on les a mis',
     `scrollLeft ${defil}`);
   await page.click('[data-a="vitesse"][data-v="1"]');
-  await page.waitForTimeout(300);
+  await calme(page, 300);
 }
 
 console.log('\n8 terdecies. Quelqu’un vous demande quelque chose');
@@ -2108,7 +2146,7 @@ await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), seria
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte');
 await page.click('[data-a="modale"][data-m="ville"]');
-await page.waitForTimeout(400);
+await calme(page, 400);
 const texteServ = await page.evaluate(() => document.querySelector('#modale').textContent);
 ok(/Il me faut 6 medkits/.test(texteServ), 'la demande est dite à la première personne');
 ok(/pillé une caravane/.test(texteServ), 'et il se souvient de ce qu’on lui a fait');
@@ -2117,13 +2155,13 @@ await page.evaluate(() => {
   const b = document.querySelector('[data-a="honorer"]');
   if (b) b.scrollIntoView({ block: 'center' });
 });
-await page.waitForTimeout(200);
+await calme(page, 200);
 await page.screenshot({ path: join(CAPTURES, '23-service.png'), fullPage: true });
 ok(await page.locator('[data-a="honorer"]:not([disabled])').count() > 0,
   'on peut lui remettre la marchandise puisqu’on l’a');
 const creditsAv = await page.evaluate(() => { const s2 = JSON.parse(window.__sauvegardeTexte()); return Object.values((s2.player.bourse) || {}).reduce((a, b) => a + b, 0); });
 await page.click('[data-a="honorer"]');
-await page.waitForTimeout(500);
+await calme(page, 500);
 const apresServ = await page.evaluate(() => {
   const s = JSON.parse(window.__sauvegardeTexte());
   const c = s.world.colonies.find((x) => x.notables && x.notables.some((p) => p.memoire && p.memoire.length));
@@ -2137,7 +2175,7 @@ ok(apresServ.credits > creditsAv && !apresServ.demande && apresServ.opinion > 0,
 const texteApres = await page.evaluate(() => document.querySelector('#modale').textContent);
 ok(/apporté des medkits/.test(texteApres), 'et il s’en souvient à l’écran');
 await page.click('[data-a="fermer"]');
-await page.waitForTimeout(300);
+await calme(page, 300);
 
 console.log('\n8 vicies quater. Tout bâtiment se voit et se bâtit');
 {
@@ -2163,7 +2201,7 @@ console.log('\n8 vicies quater. Tout bâtiment se voit et se bâtit');
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await page.click('[data-a="onglet"][data-k="base"]');
-  await page.waitForTimeout(600);
+  await calme(page, 600);
 
   const affiches = await page.evaluate(
     () => [...document.querySelectorAll('[data-a="construire"]')].map((b) => b.dataset.k));
@@ -2194,7 +2232,7 @@ console.log('\n8 vicies quater. Tout bâtiment se voit et se bâtit');
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await page.click('[data-a="onglet"][data-k="base"]');
-  await page.waitForTimeout(600);
+  await calme(page, 600);
   const bloques = await page.evaluate((liste) => liste.map((k) => {
     const b = document.querySelector(`[data-a="chercher"][data-k="${k}"]`);
     return { k, vu: !!b, off: b ? b.disabled : null, txt: b ? b.textContent.trim() : '' };
@@ -2231,7 +2269,7 @@ console.log('\n8 vicies ter. Les bourses du monde, enfin visibles');
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await page.click('[data-a="onglet"][data-k="monde"]');
-  await page.waitForTimeout(500);
+  await calme(page, 500);
 
   const bourses = await page.evaluate(() => {
     const sec = [...document.querySelectorAll('#ecran > section')].find((x) => /BOURSES/i.test(x.textContent));
@@ -2264,7 +2302,7 @@ console.log('\n8 vicies ter. Les bourses du monde, enfin visibles');
     const sec = [...document.querySelectorAll('#ecran > section')].find((x) => /BOURSES/i.test(x.textContent));
     if (sec) sec.scrollIntoView({ block: 'center' });
   });
-  await page.waitForTimeout(200);
+  await calme(page, 200);
   await page.screenshot({ path: join(CAPTURES, '42-bourses.png') });
 }
 
@@ -2301,13 +2339,13 @@ console.log('\n8 vicies bis. Toutes les fiches, pas seulement celle qu’on a si
   await pp.click('[data-a="continuer"]');
   await pp.waitForSelector('#carte');
   await pp.click('[data-a="vitesse"][data-v="16"]');
-  await pp.waitForTimeout(400);
+  await calme(pp, 400);
 
   const testees = [];
   const trop = [];
   for (const ecranNom of ['carte', 'escouade']) {
     await pp.click(`[data-a="onglet"][data-k="${ecranNom}"]`);
-    await pp.waitForTimeout(400);
+    await calme(pp, 400);
     const liste = [...new Set(await pp.evaluate(
       () => [...document.querySelectorAll('[data-a="modale"]')].map((b) => b.dataset.m)))];
     for (const m of liste) {
@@ -2316,7 +2354,7 @@ console.log('\n8 vicies bis. Toutes les fiches, pas seulement celle qu’on a si
         const b = document.querySelector(`[data-a="modale"][data-m="${k}"]`);
         if (b) b.click();
       }, m);
-      await pp.waitForTimeout(400);
+      await calme(pp, 400);
       const t = await pp.evaluate(() => {
         const b = document.querySelector('#modale .boite');
         return b ? { h: b.scrollHeight, vue: b.clientHeight } : null;
@@ -2326,7 +2364,7 @@ console.log('\n8 vicies bis. Toutes les fiches, pas seulement celle qu’on a si
       } else {
         await pp.evaluate((y) => { document.querySelector('#modale .boite').scrollTop = y; },
           Math.max(20, Math.min(300, t.h - t.vue - 20)));
-        await pp.waitForTimeout(250);
+        await calme(pp, 250);
         const idx = await pp.evaluate(() => {
           const b = document.querySelector('#modale .boite');
           const haut = b.getBoundingClientRect().top;
@@ -2342,7 +2380,7 @@ console.log('\n8 vicies bis. Toutes les fiches, pas seulement celle qu’on a si
         const d0 = await pos();
         let bouge = 0;
         for (let i = 0; i < 5; i++) {
-          await pp.waitForTimeout(350);
+          await calme(pp, 350);
           const v = await pos();
           if (v === null || Math.abs(v - d0) > 2) bouge++;
         }
@@ -2351,7 +2389,7 @@ console.log('\n8 vicies bis. Toutes les fiches, pas seulement celle qu’on a si
           `${bouge}/5 relevés déplacés · enfant ${idx} à ${d0}px`);
       }
       await pp.evaluate(() => { const b = document.querySelector('[data-a="fermer"]'); if (b) b.click(); });
-      await pp.waitForTimeout(250);
+      await calme(pp, 250);
     }
   }
   ok(testees.length >= 8, 'et l’on en a vraiment essayé une bonne partie',
@@ -2377,20 +2415,20 @@ console.log('\n8 vicies semel. Recruter : le clic engage vraiment');
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(enVille));
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   await page.click('[data-a="modale"][data-m="recrutement"]');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   const bEngager = page.locator('[data-a="recruter"]:not([disabled])').first();
   ok(await bEngager.count() >= 1, 'la ville propose au moins une personne engageable');
   const avantN = await page.evaluate(
     () => JSON.parse(window.__sauvegardeTexte()).player.groupes[0].membres.length);
   await bEngager.click();
-  await page.waitForTimeout(600);
+  await calme(page, 600);
   const apresN = await page.evaluate(
     () => JSON.parse(window.__sauvegardeTexte()).player.groupes[0].membres.length);
   ok(apresN === avantN + 1, 'cliquer « Engager » engage vraiment', `${avantN} → ${apresN}`);
   await page.click('[data-a="fermer"]');
-  await page.waitForTimeout(250);
+  await calme(page, 250);
 }
 
 console.log('\n8 vicies semel bis. La fin ne gèle pas l’horloge de l’écran');
@@ -2455,9 +2493,9 @@ console.log('\n8 vicies semel ter. Morts et prisonniers : la décision s’appli
   await page.evaluate(() => { window.__momentsAuto = true; });
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
-  await page.waitForTimeout(600);
+  await calme(page, 600);
   await page.click('[data-a="onglet"][data-k="escouade"]');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
 
   const avantTous = await page.evaluate(() => {
     const s2 = JSON.parse(window.__sauvegardeTexte());
@@ -2471,13 +2509,13 @@ console.log('\n8 vicies semel ter. Morts et prisonniers : la décision s’appli
   ok(await bEnterrer.count() === 1, 'le panneau des morts porte la décision « pour tous »');
   if (await bEnterrer.count()) {
     await bEnterrer.click();
-    await page.waitForTimeout(600);
+    await calme(page, 600);
   }
   const bRelacher = page.locator('[data-a="captif-tous"][data-k="relacher"]');
   ok(await bRelacher.count() === 1, 'celui des prisonniers aussi');
   if (await bRelacher.count()) {
     await bRelacher.click();
-    await page.waitForTimeout(600);
+    await calme(page, 600);
   }
   const apresTous = await page.evaluate(() => {
     const s2 = JSON.parse(window.__sauvegardeTexte());
@@ -2511,7 +2549,7 @@ console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await page.click('[data-a="onglet"][data-k="escouade"]');
-  await page.waitForTimeout(500);
+  await calme(page, 500);
 
   // --- Le pli par défaut (refonte, avis du game master) : l'écran s'ouvre sur
   //     les gens et ce qui se décide. Les réglages qu'on touche une fois par
@@ -2525,12 +2563,12 @@ console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit
     'les réglages naissent repliés — l’écran s’ouvre sur les gens',
     nesPlies.join(' · ') || 'aucun');
   await page.evaluate(() => document.querySelector('h2.titre[data-k="Posture"]').click());
-  await page.waitForTimeout(250);
+  await calme(page, 250);
   await page.reload({ waitUntil: 'networkidle' });
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await page.click('[data-a="onglet"][data-k="escouade"]');
-  await page.waitForTimeout(500);
+  await calme(page, 500);
   const nesPlies2 = await page.evaluate(
     () => [...document.querySelectorAll('#ecran > section.plie > h2.titre')].map((h) => h.dataset.k));
   ok(!nesPlies2.includes('Posture') && nesPlies2.includes('Tactique'),
@@ -2573,7 +2611,7 @@ console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit
     () => [...document.querySelectorAll('.panneau.plie > h2.titre')].map((h) => h.dataset.k));
   const avant = await page.evaluate(() => document.querySelector('#ecran').scrollHeight);
   await page.click(`h2.titre[data-k="${gros}"]`);
-  await page.waitForTimeout(350);
+  await calme(page, 350);
   const apres = await page.evaluate(() => document.querySelector('#ecran').scrollHeight);
   ok(apres < avant, 'replier un encart raccourcit vraiment la page', `${avant} → ${apres}px`);
   const plie = await page.evaluate(
@@ -2586,7 +2624,7 @@ console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await page.click('[data-a="onglet"][data-k="escouade"]');
-  await page.waitForTimeout(500);
+  await calme(page, 500);
   const encore = await page.evaluate(
     () => [...document.querySelectorAll('.panneau.plie > h2.titre')].map((h) => h.dataset.k));
   ok(encore.includes(gros), 'le pli survit au rechargement', encore.join(', ') || 'aucun');
@@ -2602,9 +2640,9 @@ console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit
         const h = document.querySelector(`h2.titre[data-k="${CSS.escape(c)}"]`);
         if (h && !h.parentElement.classList.contains('plie')) h.click();
       }, k);
-      await page.waitForTimeout(50);
+      await calme(page, 50);
     }
-    await page.waitForTimeout(300);
+    await calme(page, 300);
     const barres = await page.evaluate(() => [...document.querySelectorAll('#ecran > section.plie')]
       .map((sec) => {
         const h = sec.querySelector(':scope > h2.titre');
@@ -2637,9 +2675,9 @@ console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit
         const h = document.querySelector(`h2.titre[data-k="${CSS.escape(c)}"]`);
         if (h && h.parentElement.classList.contains('plie')) h.click();
       }, k);
-      await page.waitForTimeout(50);
+      await calme(page, 50);
     }
-    await page.waitForTimeout(300);
+    await calme(page, 300);
   }
 
   // --- Et l'ancre de défilement : c'est le texte qui doit rester en place, pas
@@ -2648,7 +2686,7 @@ console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit
   //     retrouvait ailleurs sans avoir touché à rien.
   for (const tab of ['carte', 'journal']) {
     await page.click(`[data-a="onglet"][data-k="${tab}"]`);
-    await page.waitForTimeout(400);
+    await calme(page, 400);
     await page.click('[data-a="vitesse"][data-v="60"]');
     // On se place là où il reste de la place en dessous. Tout en bas, garder le
     // texte immobile quand un encart apparaît au-dessus demanderait de défiler
@@ -2661,7 +2699,7 @@ console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit
     if (mesures.h < mesures.vue + 500) continue;
     const cible = Math.min(Math.floor(mesures.h / 2), mesures.h - mesures.vue - 400);
     await page.evaluate((y) => { document.querySelector('#ecran').scrollTop = y; }, cible);
-    await page.waitForTimeout(300);
+    await calme(page, 300);
     // On compare **la ligne**, pas ce qui s'y accroche : les chiffres sont
     // gommés et les clauses ajoutées après un « · » coupées.
     //
@@ -2742,7 +2780,7 @@ console.log('\n8 vicies. Lire sans se faire bouger, et replier ce qu’on ne lit
     let precedent = debut.texte;
     const releves = [];
     for (let i = 0; i < 8 && !evincee; i++) {
-      await page.waitForTimeout(400);
+      await calme(page, 400);
       const r = await lu();
       releves.push(r);
       if (r.texte !== precedent) {
@@ -2784,7 +2822,7 @@ console.log('\n8 nonies octies. La geôle du camp (PAROLE.md, T3)');
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await page.click('[data-a="onglet"][data-k="escouade"]');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
 
   const texteG = await page.evaluate(() => {
     const d = document.querySelector('[data-id^="captif-"]');
@@ -2796,10 +2834,10 @@ console.log('\n8 nonies octies. La geôle du camp (PAROLE.md, T3)');
     () => !!document.querySelector('[data-a="enfermer"]'));
   ok(aBouton, 'et au camp, on peut les laisser à la geôle');
 
-  await page.waitForTimeout(150);
+  await calme(page, 150);
   await page.screenshot({ path: join(CAPTURES, '28-geole.png') });
   await page.click('[data-a="enfermer"]');
-  await page.waitForTimeout(500);
+  await calme(page, 500);
   const apresG = await page.evaluate(() => {
     const s = JSON.parse(window.__sauvegardeTexte());
     const camp = (s.camps && s.camps[s.campActif]) || s.base;
@@ -2831,7 +2869,7 @@ console.log('\n8 nonies septies. La parole donnée (PAROLE.md, T1)');
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(cp));
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
 
   const texteP = await page.evaluate(() => document.querySelector('#ecran').textContent);
   ok(!/n’a pas pu s’afficher/.test(texteP), 'l’écran tient avec le bloc de la parole');
@@ -2844,10 +2882,10 @@ console.log('\n8 nonies septies. La parole donnée (PAROLE.md, T1)');
     const b = document.querySelector('[data-a="donner-parole"]');
     if (b) b.scrollIntoView({ block: 'center' });
   });
-  await page.waitForTimeout(150);
+  await calme(page, 150);
   await page.screenshot({ path: join(CAPTURES, '26-parole.png') });
   await page.click('[data-a="donner-parole"]');
-  await page.waitForTimeout(500);
+  await calme(page, 500);
   const apresP = await page.evaluate(() => {
     const s = JSON.parse(window.__sauvegardeTexte());
     return {
@@ -2860,7 +2898,7 @@ console.log('\n8 nonies septies. La parole donnée (PAROLE.md, T1)');
     'l’écran la montre, avec de quoi la reprendre');
 
   await page.click('[data-a="reprendre-parole"]');
-  await page.waitForTimeout(500);
+  await calme(page, 500);
   const repris = await page.evaluate(() => {
     const s = JSON.parse(window.__sauvegardeTexte());
     return (s.player.paroles || []).filter((x) => !x.rompue).length;
@@ -2882,10 +2920,10 @@ console.log('\n8 nonies septies. La parole donnée (PAROLE.md, T1)');
     const b = document.querySelector('[data-a="donner-parole"][data-k="tribut"]');
     if (b) b.scrollIntoView({ block: 'center' });
   });
-  await page.waitForTimeout(200);
+  await calme(page, 200);
   await page.screenshot({ path: join(CAPTURES, '27-tribut.png') });
   await page.click('[data-a="donner-parole"][data-k="tribut"]');
-  await page.waitForTimeout(600);
+  await calme(page, 600);
   const apresT = await page.evaluate(() => {
     const s = JSON.parse(window.__sauvegardeTexte());
     const t = (s.player.paroles || []).find((x) => x.quoi === 'tribut');
@@ -2948,7 +2986,7 @@ console.log('\n8 nonies sexies. Le convoi à gages (CONVOI.md)');
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await page.click('[data-a="onglet"][data-k="base"]');
-  await page.waitForTimeout(500);
+  await calme(page, 500);
 
   const texteG = await page.evaluate(() => {
     const b = document.querySelector('[data-a="ordre-k"][data-k="ferraille"]');
@@ -2965,7 +3003,7 @@ console.log('\n8 nonies sexies. Le convoi à gages (CONVOI.md)');
     const b = document.querySelector('[data-a="envoyer-gages"]');
     if (b) b.scrollIntoView({ block: 'center' });
   });
-  await page.waitForTimeout(200);
+  await calme(page, 200);
   await page.screenshot({ path: join(CAPTURES, '25b-convoi-gages.png') });
 
   const avantG = await page.evaluate(() => {
@@ -2976,7 +3014,7 @@ console.log('\n8 nonies sexies. Le convoi à gages (CONVOI.md)');
     };
   });
   await page.click('[data-a="envoyer-gages"]');
-  await page.waitForTimeout(600);
+  await calme(page, 600);
   const apresG = await page.evaluate(() => {
     const s = JSON.parse(window.__sauvegardeTexte());
     const miens = (s.world.caravanes || []).filter((c) => c.pour === 'joueur');
@@ -3012,7 +3050,7 @@ console.log('\n8 nonies sexies. Le convoi à gages (CONVOI.md)');
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await page.click('[data-a="onglet"][data-k="base"]');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   const texteC = await page.evaluate(() => {
     const b = document.querySelector('[data-a="ordre-k"][data-k="ferraille"]');
     if (b) b.click();
@@ -3025,9 +3063,9 @@ console.log('\n8 nonies sexies. Le convoi à gages (CONVOI.md)');
     const b = document.querySelector('[data-a="envoyer-camp"]');
     if (b) b.scrollIntoView({ block: 'center' });
   });
-  await page.waitForTimeout(150);
+  await calme(page, 150);
   await page.click('[data-a="envoyer-camp"]');
-  await page.waitForTimeout(600);
+  await calme(page, 600);
   const apresC = await page.evaluate(() => {
     const s = JSON.parse(window.__sauvegardeTexte());
     return {
@@ -3068,7 +3106,7 @@ console.log('\n8 nonies quater. Le comptoir, à l’écran');
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await page.click('[data-a="onglet"][data-k="base"]');
-  await page.waitForTimeout(500);
+  await calme(page, 500);
 
   const texteCp = await page.evaluate(() => document.querySelector('#ecran').textContent);
   ok(!/n’a pas pu s’afficher/.test(texteCp),
@@ -3083,24 +3121,24 @@ console.log('\n8 nonies quater. Le comptoir, à l’écran');
     const b = document.querySelector('[data-a="ordre-sens"]');
     if (b) b.scrollIntoView({ block: 'center' });
   });
-  await page.waitForTimeout(200);
+  await calme(page, 200);
   await page.screenshot({ path: join(CAPTURES, '24-comptoir.png') });
 
   // Le bon de commande : on choisit le sens, la matière, la quantité, la garde.
   await page.click('[data-a="ordre-sens"][data-r="vente"]');
-  await page.waitForTimeout(200);
+  await calme(page, 200);
   await page.click('[data-a="ordre-k"][data-k="ferraille"]');
-  await page.waitForTimeout(200);
+  await calme(page, 200);
   await page.click('[data-a="ordre-q"][data-q="200"]');
-  await page.waitForTimeout(200);
+  await calme(page, 200);
   await page.click('[data-a="ordre-escorte"][data-r="lourde"]');
-  await page.waitForTimeout(200);
+  await calme(page, 200);
 
   await page.evaluate(() => {
     const b = document.querySelector('[data-a="passer-ordre"]');
     if (b) b.scrollIntoView({ block: 'center' });
   });
-  await page.waitForTimeout(200);
+  await calme(page, 200);
   await page.screenshot({ path: join(CAPTURES, '25-comptoir-devis.png') });
 
   const devis = await page.evaluate(() => document.querySelector('#ecran').textContent);
@@ -3110,7 +3148,7 @@ console.log('\n8 nonies quater. Le comptoir, à l’écran');
   const crAvant = await page.evaluate(
     () => { const s2 = JSON.parse(window.__sauvegardeTexte()); return Object.values((s2.player.bourse) || {}).reduce((a, b) => a + b, 0); });
   await page.click('[data-a="passer-ordre"]');
-  await page.waitForTimeout(600);
+  await calme(page, 600);
   const apresOrdre = await page.evaluate(() => {
     const s = JSON.parse(window.__sauvegardeTexte());
     return {
@@ -3182,7 +3220,7 @@ console.log('\n8 nonies quinquies. Donner l’assaut à une ville (IMPLANTATIONS
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(as));
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
 
   const texteAs = await page.evaluate(() => document.querySelector('#ecran').textContent);
   ok(/Coup de main/i.test(texteAs), 'la ville où l’on se tient propose d’y entrer de force',
@@ -3203,7 +3241,7 @@ console.log('\n8 nonies quinquies. Donner l’assaut à une ville (IMPLANTATIONS
   });
   await page.screenshot({ path: join(CAPTURES, '26-assaut.png') });
   await page.click('[data-a="assaut"]');
-  await page.waitForTimeout(700);
+  await calme(page, 700);
 
   const apresAs = await page.evaluate((id) => {
     const s2 = JSON.parse(window.__sauvegardeTexte());
@@ -3245,7 +3283,7 @@ console.log('\n8 nonies quinquies. Donner l’assaut à une ville (IMPLANTATIONS
     'et bloquer dit que la rancune n’est pas la même');
   if (boutonSiege) {
     await page.click('[data-a="ordre"][data-k="siege"][data-r="investir"]');
-    await page.waitForTimeout(500);
+    await calme(page, 500);
     const enSiege = await page.evaluate(() => {
       const s2 = JSON.parse(window.__sauvegardeTexte());
       const g = s2.player.groupes.find((x) => x.id === s2.player.groupeActif);
@@ -3265,7 +3303,7 @@ console.log('\n8 nonies quinquies. Donner l’assaut à une ville (IMPLANTATIONS
     // vérifie ici, c'est le menu, pas la durée d'un siège.
     window.__testAbattreGarde(id);
   }, cible.id);
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   const texteChute = await page.evaluate(() => document.querySelector('#ecran').textContent);
   ok(/garde ne tient plus|garde est à terre/i.test(texteChute),
     'le panneau annonce que la place est ouverte', texteChute.slice(0, 160));
@@ -3273,7 +3311,7 @@ console.log('\n8 nonies quinquies. Donner l’assaut à une ville (IMPLANTATIONS
   ok(!!boutonRaser, 'on peut choisir de la raser');
   if (boutonRaser) {
     await page.click('[data-a="raser"]');
-    await page.waitForTimeout(600);
+    await calme(page, 600);
     const apresRase = await page.evaluate((id) => {
       const s2 = JSON.parse(window.__sauvegardeTexte());
       const col = s2.world.colonies.find((c) => c.id === id);
@@ -3300,19 +3338,19 @@ console.log('\n8 nonies sexies. Planter ses propres couleurs (IMPLANTATIONS.md, 
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await page.click('[data-a="onglet"][data-k="base"]');
-  await page.waitForTimeout(500);
+  await calme(page, 500);
 
   const boutonDr = await page.$('[data-a="modale"][data-m="drapeau"]');
   ok(!!boutonDr, 'un camp qui ne porte les couleurs de personne peut planter les siennes');
   if (boutonDr) {
     await page.click('[data-a="modale"][data-m="drapeau"]');
-    await page.waitForTimeout(300);
+    await calme(page, 300);
     const texteDr = await page.evaluate(() => document.querySelector('#modale').textContent);
     ok(/Votre trésor\s*rien|trésor/.test(texteDr), 'la modale dit qu’on part sans un sou');
     ok(/personne/.test(texteDr), 'et que personne ne vous connaît');
     await page.fill('#nom-drapeau', 'Les Cendres');
     await page.click('[data-a="planter-drapeau"]');
-    await page.waitForTimeout(700);
+    await calme(page, 700);
     const apresDr = await page.evaluate(() => {
       const s2 = JSON.parse(window.__sauvegardeTexte());
       const cle = s2.player.drapeau;
@@ -3357,7 +3395,7 @@ console.log('\n8 undecies. Donner sa parole depuis l’écran (PACTES.md)');
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await page.click('[data-a="onglet"][data-k="monde"]');
-  await page.waitForTimeout(500);
+  await calme(page, 500);
 
   const texteP = await page.evaluate(() => document.querySelector('#ecran').textContent);
   ok(/Parole donnée|Proposer un pacte/i.test(texteP),
@@ -3366,15 +3404,15 @@ console.log('\n8 undecies. Donner sa parole depuis l’écran (PACTES.md)');
   ok(!!boutonP, 'et l’on peut proposer quelque chose à un voisin');
   if (boutonP) {
     await page.click(`[data-a="pacte"][data-k="${voisin}"]`);
-    await page.waitForTimeout(400);
+    await calme(page, 400);
     const modaleP = await page.evaluate(() => document.querySelector('#modale').textContent);
     ok(/Ne pas s’attaquer/.test(modaleP), 'la modale liste les clauses', modaleP.slice(0, 120));
     ok(/promesse/i.test(modaleP) || /engage/i.test(modaleP),
       'et dit que ce qu’on promet engage');
     await page.click('[data-a="clause"][data-k="nonAgression"]');
-    await page.waitForTimeout(200);
+    await calme(page, 200);
     await page.click('[data-a="signer-pacte"]');
-    await page.waitForTimeout(600);
+    await calme(page, 600);
     const lie = await page.evaluate((v) => {
       const s2 = JSON.parse(window.__sauvegardeTexte());
       const mienne = s2.player.drapeau;
@@ -3383,7 +3421,7 @@ console.log('\n8 undecies. Donner sa parole depuis l’écran (PACTES.md)');
         && x.clauses.includes('nonAgression'));
     }, voisin);
     ok(lie, 'la parole est donnée, et le monde la porte');
-    await page.waitForTimeout(300);
+    await calme(page, 300);
     const apresP = await page.evaluate(() => document.querySelector('#ecran').textContent);
     ok(/ne pas s’attaquer/i.test(apresP), 'et l’écran dit ce qui vous lie désormais');
   }
@@ -3401,7 +3439,7 @@ await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), seria
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte');
 await page.click('[data-a="onglet"][data-k="base"]');
-await page.waitForTimeout(500);
+await calme(page, 500);
 const texteMetiers = await page.evaluate(() => document.querySelector('#ecran').textContent);
 ok(/MÉTIERS/i.test(texteMetiers), 'l’avant-poste affiche ses métiers');
 ok(/manœuvre/i.test(texteMetiers), 'et compte les habitants sans poste');
@@ -3414,7 +3452,7 @@ await page.evaluate(() => {
   const b = document.querySelector('[data-a="recette"]');
   if (b) b.scrollIntoView({ block: 'center' });
 });
-await page.waitForTimeout(200);
+await calme(page, 200);
 await page.screenshot({ path: join(CAPTURES, '20b-consignes.png') });
 {
   // Et quand elle ne tourne pas, elle dit pourquoi. On coupe la biomasse : c'est
@@ -3435,7 +3473,7 @@ await page.screenshot({ path: join(CAPTURES, '20b-consignes.png') });
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await page.click('[data-a="onglet"][data-k="base"]');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   const etatSec = await page.evaluate(() => {
     const s = JSON.parse(window.__sauvegardeTexte());
     return {
@@ -3453,13 +3491,13 @@ await page.evaluate(() => {
   const b = document.querySelector('[data-a="poste"]');
   if (b) b.scrollIntoView({ block: 'center' });
 });
-await page.waitForTimeout(200);
+await calme(page, 200);
 await page.screenshot({ path: join(CAPTURES, '20-metiers.png') });
 
 const plus = page.locator('[data-a="poste"][data-n="max"]:not([disabled])');
 ok(await plus.count() > 0, 'des postes sont ouverts et pourvoyables', `${await plus.count()}`);
 await plus.first().click();
-await page.waitForTimeout(500);
+await calme(page, 500);
 const apresPostes = await page.evaluate(() => {
   const s = JSON.parse(window.__sauvegardeTexte());
   const p = s.base.postes || {};
@@ -3482,7 +3520,7 @@ ok(apresPostes.auto === false, 'et régler un poste prend la main sur l’embauc
   await page.click('[data-a="vitesse"][data-v="60"]');
   await page.waitForTimeout(3000);
   await page.click('[data-a="onglet"][data-k="base"]');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   const apres = await page.evaluate(() => {
     const s = JSON.parse(window.__sauvegardeTexte());
     return { postes: s.base.postes, temps: s.temps, texte: document.querySelector('#ecran').textContent };
@@ -3516,7 +3554,7 @@ await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), seria
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte');
 await page.click('[data-a="onglet"][data-k="base"]');
-await page.waitForTimeout(500);
+await calme(page, 500);
 const texteBase = await page.evaluate(() => document.querySelector('#ecran').textContent);
 ok(/TRANSMISSION/i.test(texteBase), 'l’avant-poste propose de transmettre');
 const former = page.locator('[data-a="apprendre-maison"]');
@@ -3524,7 +3562,7 @@ ok(await former.count() > 0, 'un vétéran présent rend une matière enseignabl
 await page.screenshot({ path: join(CAPTURES, '19-transmission.png'), fullPage: true });
 if (await former.count() > 0) {
   await former.first().click();
-  await page.waitForTimeout(500);
+  await calme(page, 500);
   const etat = await page.evaluate(() => {
     const s = JSON.parse(window.__sauvegardeTexte());
     const gens = s.player.groupes.flatMap((g) => g.membres);
@@ -3553,12 +3591,12 @@ await page.reload({ waitUntil: 'networkidle' });
 await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(ecolier));
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte');
-await page.waitForTimeout(500);
+await calme(page, 500);
 
 ok(await page.locator('[data-a="modale"][data-m="ecole"]').count() > 0,
   'la ville propose ses écoles');
 await page.click('[data-a="modale"][data-m="ecole"]');
-await page.waitForTimeout(400);
+await calme(page, 400);
 const texteEcole = await page.evaluate(() => document.querySelector('#modale').textContent);
 ok(/au minimum/.test(texteEcole) && /Apprentissage ensuite/.test(texteEcole),
   'chaque diplôme annonce son plancher et son gain d’apprentissage');
@@ -3567,7 +3605,7 @@ await page.screenshot({ path: join(CAPTURES, '18-ecole.png') });
 const inscriptible = page.locator('[data-a="inscrire"]:not([disabled])');
 ok(await inscriptible.count() > 0, 'quelqu’un peut s’inscrire');
 await inscriptible.first().click();
-await page.waitForTimeout(500);
+await calme(page, 500);
 const apresInscription = await page.evaluate(() => {
   const s = JSON.parse(window.__sauvegardeTexte());
   const gens = s.player.groupes.flatMap((g) => g.membres);
@@ -3579,13 +3617,13 @@ const apresInscription = await page.evaluate(() => {
 ok(apresInscription.enFormation === 1, 'l’élève est inscrit', `${apresInscription.enFormation}`);
 ok(apresInscription.credits < 9000, 'et la formation a été payée', `${apresInscription.credits} cr`);
 await page.click('[data-a="fermer"]');
-await page.waitForTimeout(300);
+await calme(page, 300);
 // La fiche du membre doit dire qu'il est à l'école.
 await page.click('[data-a="onglet"][data-k="escouade"]');
-await page.waitForTimeout(300);
+await calme(page, 300);
 const fiches = page.locator('details.perso summary');
 for (let i = 0; i < await fiches.count(); i++) await fiches.nth(i).click();
-await page.waitForTimeout(400);
+await calme(page, 400);
 ok(/À L’ÉCOLE|Indisponible/i.test(await page.evaluate(() => document.querySelector('#ecran').textContent)),
   'la fiche du membre annonce qu’il est indisponible');
 
@@ -3607,11 +3645,11 @@ await page.reload({ waitUntil: 'networkidle' });
 await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), serialiser(espion));
 await page.click('[data-a="continuer"]');
 await page.waitForSelector('#carte');
-await page.waitForTimeout(500);
+await calme(page, 500);
 
 // Le registre du monde doit dater ses relevés.
 await page.click('[data-a="onglet"][data-k="monde"]');
-await page.waitForTimeout(400);
+await calme(page, 400);
 const texteRegistre = await page.evaluate(() => document.querySelector('#ecran').textContent);
 ok(/il y a \d+ [hj]/.test(texteRegistre), 'les relevés de villes portent leur date');
 ok(/trésor inconnu/.test(texteRegistre), 'le trésor des factions n’est pas su sans cryptographie');
@@ -3619,7 +3657,7 @@ await page.screenshot({ path: join(CAPTURES, '17-connaissance.png'), fullPage: t
 
 // Une ville jamais visitée ne livre rien, même repérée sur la carte.
 await page.click('[data-a="onglet"][data-k="carte"]');
-await page.waitForTimeout(300);
+await calme(page, 300);
 const jamaisVue = await page.evaluate(() => {
   const s = JSON.parse(window.__sauvegardeTexte());
   const connues = new Set(Object.keys(s.connaissance.colonies));
@@ -3647,7 +3685,7 @@ if (jamaisVue != null) {
     boite.dispatchEvent(new PointerEvent('pointerdown', opts));
     boite.dispatchEvent(new PointerEvent('pointerup', opts));
   }, jamaisVue);
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   const txt = await page.evaluate(() => document.querySelector('#ecran').textContent);
   ok(/jamais mis les pieds/.test(txt), 'une ville jamais visitée ne livre ni drapeau ni population');
 }
@@ -3677,7 +3715,7 @@ console.log('\n8 quater bis. Par défaut, le monde attend');
 
   // Et le choix se prend à l'écran, dans le panneau des sauvegardes.
   await page.click('#barre-haut [data-a="modale"][data-m="sauvegardes"]');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   const choix = await page.locator('[data-a="temps-hors-ligne"]').count();
   ok(choix === 2, 'le panneau propose les deux temps hors ligne', `${choix} boutons`);
 
@@ -3698,7 +3736,7 @@ console.log('\n8 quater bis. Par défaut, le monde attend');
     navigator.clipboard.writeText = (t) => { window.__copie = t; return Promise.resolve(); };
   });
   await page.click('[data-a="copier-mesures"]');
-  await page.waitForTimeout(300);
+  await calme(page, 300);
   const copie = await page.evaluate(() => window.__copie);
   ok(!!copie && /Cet appareil : un rendu coûte/.test(copie),
     'et ce qui part au presse-papier commence comme ce qui s’affiche',
@@ -3707,17 +3745,17 @@ console.log('\n8 quater bis. Par défaut, le monde attend');
     'avec de quoi situer la partie : sans ça, des millisecondes ne veulent rien dire',
     String(copie).split('\n').pop());
   await page.click('[data-a="temps-hors-ligne"][data-v="1"]');
-  await page.waitForTimeout(500);
+  await calme(page, 500);
   const allume = await page.evaluate(
     () => JSON.parse(window.__sauvegardeTexte()).reglages.rattrapage);
   ok(allume === true, 'et l’allumer se garde dans la partie');
   await page.click('[data-a="temps-hors-ligne"][data-v="0"]');
-  await page.waitForTimeout(500);
+  await calme(page, 500);
   const eteint = await page.evaluate(
     () => JSON.parse(window.__sauvegardeTexte()).reglages.rattrapage);
   ok(eteint === false, 'et l’éteindre aussi');
   await page.click('[data-a="fermer"]');
-  await page.waitForTimeout(250);
+  await calme(page, 250);
 }
 
 console.log('\n8 quater. Retour après une longue absence');
@@ -3762,7 +3800,7 @@ for (let i = 0; i < 200; i++) {
     progression = Math.max(progression, pct);
     if (!capture) { await page.screenshot({ path: join(CAPTURES, '14-rattrapage.png') }); capture = true; }
   }
-  await page.waitForTimeout(40);
+  await calme(page, 40);
 }
 ok(progression > 0, 'la page répond et la barre progresse pendant le rattrapage',
   `${progression.toFixed(0)} %`);
@@ -3795,7 +3833,7 @@ ok(tApres - tAvant > 2000, 'le temps passé a bien été rejoué', `${tAvant} �
     serifRapport);
   await page.screenshot({ path: join(CAPTURES, '14b-rapport.png') });
   await page.click('[data-a="rapport-vu"]');
-  await page.waitForTimeout(300);
+  await calme(page, 300);
   ok(await page.locator('#modale').isHidden(), 'et il se referme quand on l’a lu');
   const encore = await page.evaluate(
     () => JSON.parse(window.__sauvegardeTexte()).rapport);
@@ -3803,7 +3841,7 @@ ok(tApres - tAvant > 2000, 'le temps passé a bien été rejoué', `${tAvant} �
 }
 
 await page.click('[data-a="onglet"][data-k="monde"]');
-await page.waitForTimeout(300);
+await calme(page, 300);
 ok((await page.evaluate(() => document.querySelector('#ecran').textContent.trim().length)) > 60,
   'le jeu est jouable au sortir du rattrapage');
 
@@ -3816,12 +3854,12 @@ console.log('\n8 sexties. Changer d’écran remet la lecture en haut');
   // gestes tombant dans le vide. Le défaut ne s'est vu que parce qu'il a cassé
   // la manœuvre de la carte quatre sections plus haut.
   await page.click('[data-a="onglet"][data-k="journal"]');
-  await page.waitForTimeout(300);
+  await calme(page, 300);
   await page.evaluate(() => { document.querySelector('#ecran').scrollTop = 400; });
   const descendu = await page.evaluate(() => document.querySelector('#ecran').scrollTop);
   ok(descendu > 100, 'on descend dans un écran long', `${descendu} px`);
   await page.click('[data-a="onglet"][data-k="carte"]');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   ok((await page.evaluate(() => document.querySelector('#ecran').scrollTop)) === 0,
     'et l’écran suivant s’ouvre par le haut');
   const hautCarte = await page.evaluate(() => {
@@ -3859,7 +3897,7 @@ console.log('\n8 septies. Sauvegardes : plusieurs parties côte à côte');
   ok(enVie, 'la partie de départ est bien en cours');
 
   await page.click('[data-a="modale"][data-m="sauvegardes"]');
-  await page.waitForTimeout(300);
+  await calme(page, 300);
   const vide = await page.locator('#modale').innerText();
   ok(/Sauvegardes/i.test(vide), 'le panneau des sauvegardes s’ouvre',
     vide.slice(0, 120).replace(/\n+/g, ' | '));
@@ -3870,7 +3908,7 @@ console.log('\n8 septies. Sauvegardes : plusieurs parties côte à côte');
   // boîtes natives — voir la section « page isolée » plus bas.
   await page.fill('#nom-sauvegarde', 'Essai');
   await page.click('[data-a="enregistrer-emp"]');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   const apres = await page.locator('#modale').innerText();
   ok(/Essai/.test(apres), 'une copie nommée apparaît dans la liste',
     apres.slice(0, 240).replace(/\n+/g, ' | '));
@@ -3900,13 +3938,13 @@ console.log('\n8 septies. Sauvegardes : plusieurs parties côte à côte');
     `${tCopie} → ${tPlusTard}`);
 
   await page.click('[data-a="modale"][data-m="sauvegardes"]');
-  await page.waitForTimeout(300);
+  await calme(page, 300);
   // Deux temps : le premier clic arme, le second fait. C'est ce qui remplace
   // `confirm`, lequel répond « non » sans rien afficher dans une page isolée.
   await page.click('[data-a="charger-emp"]');
-  await page.waitForTimeout(250);
+  await calme(page, 250);
   await page.click('[data-a="charger-emp"]');
-  await page.waitForTimeout(700);
+  await calme(page, 700);
   const tRevenu = await page.evaluate(() => JSON.parse(
     window.__sauvegardeTexte()).temps);
   ok(Math.abs(tRevenu - tCopie) < 60,
@@ -3947,7 +3985,7 @@ console.log('\n8 octies ter. Une partie déjà avancée maigrit en s’ouvrant')
   await page.reload({ waitUntil: 'networkidle' });
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
-  await page.waitForTimeout(600);
+  await calme(page, 600);
   const apres = await page.evaluate((id) => {
     const s2 = JSON.parse(window.__sauvegardeTexte());
     const r = s2.world.colonies.find((c) => c.id === id);
@@ -3993,7 +4031,7 @@ console.log('\n8 octies bis. La compression part dans un fil de côté');
   const relu = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
   ok(Number.isFinite(relu) && relu > 0, 'et elle se relit', `heure ${relu}`);
   await page.click('[data-a="vitesse"][data-v="1"]');
-  await page.waitForTimeout(300);
+  await calme(page, 300);
 }
 
 console.log('\n8 octies. Une sauvegarde qui échoue le dit');
@@ -4009,7 +4047,7 @@ console.log('\n8 octies. Une sauvegarde qui échoue le dit');
   await page.waitForTimeout(6500);
 
   await page.click('[data-a="modale"][data-m="sauvegardes"]');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   ok(/s’écrit normalement/i.test(await page.locator('#modale').innerText()),
     'quand tout va bien, le panneau dit que la partie s’écrit');
   await page.click('[data-a="fermer"]');
@@ -4031,7 +4069,7 @@ console.log('\n8 octies. Une sauvegarde qui échoue le dit');
   ok((await page.locator('#barre-haut [data-a="modale"][data-m="sauvegardes"]').innerText()).trim() === '⚠',
     'l’écriture refusée se voit dans la barre du haut, sans rien ouvrir');
   await page.click('#barre-haut [data-a="modale"][data-m="sauvegardes"]');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   const casse = await page.locator('#modale').innerText();
   ok(/ne passe pas/i.test(casse), 'et le panneau nomme la panne',
     casse.slice(0, 140).replace(/\n+/g, ' | '));
@@ -4044,7 +4082,7 @@ console.log('\n8 octies. Une sauvegarde qui échoue le dit');
   // qui ne passe pas s'impose désormais SUR l'écran, comme la dévaluation et
   // le siège, et porte son verbe.
   await page.click('[data-a="fermer"]');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   const bandeauSauve = await page.evaluate(() => {
     const b = document.querySelector('#bandeau-sauvegarde');
     if (!b || b.offsetParent === null) return null;
@@ -4060,7 +4098,7 @@ console.log('\n8 octies. Une sauvegarde qui échoue le dit');
   ok(!!bandeauSauve && bandeauSauve.verbe >= 1,
     'et le bandeau porte son verbe : de quoi mettre la partie à l’abri');
   await page.click('[data-a="onglet"][data-k="escouade"]');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   ok(await page.locator('#bandeau-sauvegarde').count() === 1,
     'et il suit sur les autres écrans — tant que ça dure, ça se voit');
 
@@ -4104,10 +4142,10 @@ console.log('\n8 undecies bis. Le jeu enfermé dans une page isolée');
       JSON.stringify(bloque));
 
     await f.locator('[data-a="modale"][data-m="sauvegardes"]').click();
-    await bac.waitForTimeout(300);
+    await calme(bac, 300);
     await f.locator('#nom-sauvegarde').fill('Ma partie');
     await f.locator('[data-a="enregistrer-emp"]').click();
-    await bac.waitForTimeout(500);
+    await calme(bac, 500);
     const liste = await dedans().evaluate(
       () => JSON.parse(localStorage.getItem('cendres.emplacements.v1') || '[]'));
     ok(liste.length === 1 && liste[0].nom === 'Ma partie',
@@ -4115,7 +4153,7 @@ console.log('\n8 undecies bis. Le jeu enfermé dans une page isolée');
       JSON.stringify(liste.map((x) => x.nom)));
 
     await f.locator('[data-a="exporter-partie"]').click();
-    await bac.waitForTimeout(600);
+    await calme(bac, 600);
     const txt = await f.locator('#texte-partie').inputValue().catch(() => '');
     // L'export part désormais COMPRIMÉ (marqué CZ1|) : c'est ce qui rend le
     // copier-coller possible au téléphone. Petit, marqué, et pas vide.
@@ -4124,11 +4162,11 @@ console.log('\n8 undecies bis. Le jeu enfermé dans une page isolée');
       `${(txt.length / 1024).toFixed(0)} Ko, tête « ${txt.slice(0, 4)} »`);
 
     await f.locator('[data-a="suppr-emp"]').first().click();
-    await bac.waitForTimeout(300);
+    await calme(bac, 300);
     const arme = (await f.locator('[data-a="suppr-emp"]').first().innerText()).trim();
     ok(arme === 'Confirmer', 'supprimer demande confirmation sur le bouton lui-même', arme);
     await f.locator('[data-a="suppr-emp"]').first().click();
-    await bac.waitForTimeout(400);
+    await calme(bac, 400);
     const reste = await dedans().evaluate(
       () => JSON.parse(localStorage.getItem('cendres.emplacements.v1') || '[]').length);
     ok(reste === 0, 'et le second clic supprime pour de bon', `${reste} restant(s)`);
@@ -4178,7 +4216,7 @@ console.log('\n8 ter. Un drapeau né en cours de partie s’affiche');
     localStorage.setItem('cendres.save.v1', txt);
   }, serialiser(neuf));
   await page.click('[data-a="continuer"]');
-  await page.waitForTimeout(600);
+  await calme(page, 600);
 
   const vu = await page.evaluate(() => document.body.textContent);
   ok(vu.includes('La Main Ouverte'),
@@ -4221,7 +4259,7 @@ console.log('\n8 vicies quinquies. Les grands moments (M2, ALLURE.md)');
   ok(/serif/i.test(mSerif), 'et parle en serif — la voix de la chronique', mSerif);
   await page.screenshot({ path: join(CAPTURES, '21-moment-chapitre.png') });
   await page.click('#moment');
-  await page.waitForTimeout(250);
+  await calme(page, 250);
   ok(await page.evaluate(() => !document.querySelector('#moment')), 'un tap le referme');
   const revu = await page.evaluate(() => {
     const s = JSON.parse(window.__sauvegardeTexte());
@@ -4269,7 +4307,7 @@ console.log('\n8 vicies quinquies. Les grands moments (M2, ALLURE.md)');
     'la stèle donne le nom, le métier et la cause', sTxt.slice(0, 100).replace(/\n+/g, ' | '));
   await page.screenshot({ path: join(CAPTURES, '22-moment-stele.png') });
   await page.click('#moment');
-  await page.waitForTimeout(250);
+  await calme(page, 250);
   // À ×60 un autre moment peut suivre immédiatement — c'est la file qui
   // marche. Ce qu'on vérifie : CELUI-LÀ est fermé, pas « plus rien ».
   ok(await page.evaluate((avant) => {
@@ -4347,11 +4385,11 @@ console.log('\n8 vicies quinquies. Les grands moments (M2, ALLURE.md)');
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), surSiege);
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte', { timeout: 8000 });
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   const vuSiege = await page.evaluate(() => document.querySelector('#ecran').textContent);
   ok(/siège/i.test(vuSiege), 'le bandeau de siège se lève sur l’écran de carte', vuSiege.slice(0, 90));
   await page.click('[data-a="onglet"][data-k="escouade"]');
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   ok(/siège/i.test(await page.evaluate(() => document.querySelector('#ecran').textContent)),
     'et il suit sur les autres écrans — tant que ça dure, ça se voit');
   await page.screenshot({ path: join(CAPTURES, '23-bandeau-siege.png') });
@@ -4369,7 +4407,7 @@ console.log('\n8 vicies sexies. La carte-affiche (G1, ALLURE.md)');
   await page.fill('#graine', 'kenshi');
   await page.click('[data-a="nouvelle"]');
   await page.waitForSelector('#carte', { timeout: 5000 });
-  await page.waitForTimeout(400);
+  await calme(page, 400);
   // La carte est 60 % du premier écran : c'est elle qui décide si le jeu a
   // l'air fait ou fait maison. Deux exigences mesurables : l'inexploré n'est
   // plus un aplat noir, et une case découverte porte une vraie matière.
@@ -4428,7 +4466,7 @@ if (!existsSync(chemin)) {
   });
   ok(couleurs > 10, 'la carte est dessinée en file://', `${couleurs} couleurs`);
   await seul.click('[data-a="onglet"][data-k="escouade"]');
-  await seul.waitForTimeout(300);
+  await calme(seul, 300);
   ok((await seul.evaluate(() => document.querySelector('#ecran').textContent.length)) > 200,
     'la navigation fonctionne en file://');
   ok(errSeul.length === 0, 'aucune erreur dans le fichier unique', errSeul.join(' | '));
