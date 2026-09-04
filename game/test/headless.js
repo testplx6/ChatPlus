@@ -190,6 +190,7 @@ import {
 import {
   colonieDe, colonieParId, nomRegion, lieuAvecCoord, coordonnee, voisins,
   monterLaGarde, leverLaGarde, GARDE, libererOrphelines, chemin, ROUTE, idx,
+  FAILLE, LARGEUR, HAUTEUR,
 } from '../src/world.js';
 import {
   groupeActif, groupes, tousLesMembres, scinder, fusionner, assignerTache, tactiqueDe,
@@ -16240,6 +16241,83 @@ section('TER 5. Le voyageur pèse ce qu’il craint (TERRITOIRE.md, T1)');
 
   ok(ROUTE && typeof ROUTE.parInsecurite === 'number',
     'les trois poids sont calibrables', `${JSON.stringify(ROUTE)}`);
+}
+
+
+
+// ===========================================================================
+section('GEO 1. La carte a une ligne, et la ligne a des passages (GEOGRAPHIE.md, G1 / TERRITOIRE E1)');
+// Le relevé de GEOGRAPHIE.md : neuf biomes tous traversables, de coût 3 à 7 —
+// le pire terrain vaut 2,3 fois le meilleur et RIEN n'est infranchissable.
+// Autrement dit, aucun endroit n'est un passage obligé, et la génération n'y
+// peut rien : un Voronoï bruité ne produit que des TACHES, jamais une ligne.
+//
+// Or ce sont les lignes qui font une géographie. Une seule suffit, parce
+// qu'elle fait trois choses à la fois : elle sépare (c'est la dureté que
+// réclame TERRITOIRE E1), elle se franchit en des POINTS — et ces points sont
+// les ouvrages de T2, le pont, le gué, le col —, et elle canalise le trafic
+// puisque `chemin` relit la piste.
+//
+// Elle reste un COÛT, jamais un mur : une carte coupée en deux morceaux
+// étanches serait deux mondes, et des villes que rien ne peut plus livrer.
+{
+  const sF = nouvellePartie(915600, { maintenant: 0 });
+  const wF = sF.world;
+  const failles = wF.regions.filter((r) => r.faille);
+  ok(failles.length > 8, 'le monde porte une faille', `${failles.length} cases`);
+
+  // Elle traverse : elle touche les deux bords opposés.
+  const hauts = failles.some((r) => r.y === 0);
+  const bas = failles.some((r) => r.y === HAUTEUR - 1);
+  ok(hauts && bas, 'et elle va d’un bord à l’autre',
+    `haut ${hauts} · bas ${bas}`);
+
+  // Elle a des passages : sur sa colonne, des cases qui ne sont pas dures.
+  // Sans eux, la carte serait deux mondes.
+  const parLigne = new Map();
+  for (const r of failles) parLigne.set(r.y, (parLigne.get(r.y) || 0) + 1);
+  const lignesSansFaille = [];
+  for (let y = 0; y < HAUTEUR; y++) if (!parLigne.get(y)) lignesSansFaille.push(y);
+  ok(lignesSansFaille.length >= 1 && lignesSansFaille.length <= 6,
+    'et des passages : quelques lignes où elle s’ouvre',
+    `${lignesSansFaille.length} passage(s)`);
+
+  // Traverser coûte cher — assez pour qu'un détour de plusieurs cases se
+  // justifie, jamais assez pour être un mur.
+  {
+    const dure = failles[0];
+    const steppe = wF.regions.find((r) => !r.faille && r.biome === 'steppe');
+    const cd = coutTraversee(wF, dure.i);
+    const cs = coutTraversee(wF, steppe.i);
+    ok(cd > cs * 4, 'la traverser coûte plusieurs cases de détour',
+      `${cd.toFixed(1)} contre ${cs.toFixed(1)}`);
+    ok(Number.isFinite(cd), 'mais elle se traverse : c’est un coût, pas un mur',
+      `${cd.toFixed(1)}`);
+  }
+
+  // Un trajet d’un bord à l’autre emprunte un passage plutôt que de forcer.
+  {
+    const y = Math.floor(HAUTEUR / 2);
+    const route = chemin(wF, idx(0, y), idx(LARGEUR - 1, y));
+    ok(!!route, 'on peut toujours aller d’un bout à l’autre du monde',
+      route ? `${route.length} cases` : 'aucune route');
+    if (route) {
+      const dures = route.filter((i) => wF.regions[i].faille).length;
+      ok(dures <= 1, 'et l’on passe par une ouverture plutôt que de forcer',
+        `${dures} case(s) dure(s) traversée(s)`);
+    }
+  }
+
+  // Aucune ville n’est jamais bâtie sur la faille — ni à la naissance du
+  // monde, ni par un conseil plus tard.
+  {
+    const dessus = wF.colonies.filter((c) => wF.regions[c.regionId].faille);
+    ok(dessus.length === 0, 'et personne ne bâtit sur la faille',
+      `${dessus.length} ville(s)`);
+  }
+
+  ok(FAILLE && typeof FAILLE.cout === 'number', 'son coût est calibrable',
+    `${JSON.stringify(FAILLE)}`);
 }
 
 

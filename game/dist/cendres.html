@@ -4322,6 +4322,9 @@ function genererBiomes(rng) {
         richesse: Number(rng.range(0.65, 1.45).toFixed(2)),
         danger: Number((BIOMES[best].danger * rng.range(0.7, 1.35)).toFixed(3)),
         colonie: null,
+        // La Faille (GEOGRAPHIE.md, G1) : le sol qu'on ne traverse qu'à grand
+        // prix. Posée à la création, comme tout le reste.
+        faille: false,
         controle: null,
         // Qui occupe la case, et depuis quand (TERRITOIRE.md, A2). Présente à
         // la création plutôt qu'ajoutée par `normaliser`, sinon l'aller-retour
@@ -4373,6 +4376,65 @@ function stockInitial(rng, taille) {
   s.composant = rng.irange(5, 30) * taille;
   s.medkit = rng.irange(2, 12) * taille;
   return s;
+}
+
+/**
+ * La Faille : ce que coûte de la traverser, et combien d'ouvertures elle a.
+ *
+ * Le relevé de `GEOGRAPHIE.md` : neuf biomes tous traversables, de coût 3 à 7,
+ * et une génération en Voronoï qui ne produit que des taches. Rien
+ * n'était un passage obligé, donc tenir une route était toujours contournable,
+ * donc jamais décisif. Une ligne — une seule — répare ça : elle sépare, elle
+ * se franchit en des points, et elle canalise.
+ *
+ * `cout` est un coût de terrain, comparable aux 3 à 7 des biomes : à 40, un
+ * détour d'une dizaine de cases vaut mieux que de forcer. **Jamais un mur** :
+ * une carte coupée en deux morceaux étanches serait deux mondes, et des villes
+ * que plus rien ne peut livrer.
+ */
+const FAILLE = { cout: 40, passages: 3 };
+
+/**
+ * Trace la Faille : une ligne brisée du nord au sud, avec ses ouvertures.
+ *
+ * Son dé lui est propre (`grainDe(graine, 'faille')`) et ne touche PAS le flux
+ * principal : c'est ce qui permet d'ajouter une structure à la carte sans
+ * décaler d'un cran tous les tirages qui suivent — les biomes, les villes et
+ * les factions d'une graine donnée restent exactement ce qu'ils étaient
+ * (piège n°1 de `CLAUDE.md`).
+ *
+ * Une ville n'est jamais dure : on ne bâtit pas dans un gouffre, et une ville
+ * posée là où passe la ligne EST une ouverture — celle que quelqu'un garde.
+ */
+function tracerFaille(regions, graine) {
+  const rng = new Rng(grainDe(graine, 'faille'));
+  // Les ouvertures : des lignes entières où la faille ne passe pas. Tirées
+  // d'abord pour qu'elles soient réparties, jamais toutes au même bout.
+  const ouvertures = new Set();
+  const pas = Math.max(2, Math.floor(HAUTEUR / (FAILLE.passages + 1)));
+  for (let k = 1; k <= FAILLE.passages; k++) {
+    ouvertures.add(Math.min(HAUTEUR - 1, k * pas + rng.irange(-1, 1)));
+  }
+  // Le tracé : on part d'une colonne du milieu et l'on serpente vers le sud.
+  let x = rng.irange(Math.floor(LARGEUR * 0.3), Math.floor(LARGEUR * 0.7));
+  for (let y = 0; y < HAUTEUR; y++) {
+    if (!ouvertures.has(y)) {
+      // Ni une ville, ni un Relais : la ligne les CONTOURNE — elle se décale
+      // d'une case plutôt que de sauter la ligne. Sautée, elle laissait sept
+      // trous sur dix-huit lignes et ne séparait plus rien ; décalée, elle
+      // reste une barrière et les villes de son bord en deviennent les
+      // gardiennes sans qu'on ait rien à écrire pour ça.
+      let ou = -1;
+      for (const dx of [0, 1, -1, 2, -2]) {
+        const xx = x + dx;
+        if (xx < 0 || xx >= LARGEUR) continue;
+        const r = regions[idx(xx, y)];
+        if (r.colonie == null && r.biome !== 'relais') { ou = xx; break; }
+      }
+      if (ou >= 0) { regions[idx(ou, y)].faille = true; x = ou; }
+    }
+    x = Math.max(0, Math.min(LARGEUR - 1, x + rng.irange(-1, 1)));
+  }
 }
 
 function genererColonies(rng, regions, graine) {
@@ -4592,6 +4654,9 @@ function semerSites(rng, regions) {
 function genererMonde(rng, graine = 0) {
   const regions = genererBiomes(rng);
   const colonies = genererColonies(rng, regions, graine);
+  // Après les villes, pour que la ligne les contourne au lieu de les avaler —
+  // et avec son propre dé, pour ne décaler aucun tirage de ce qui précède.
+  tracerFaille(regions, graine);
   semerSites(rng, regions);
   const factions = attribuerFactions(rng, regions, colonies);
   return {
@@ -4934,7 +4999,8 @@ function coutTraversee(world, i, mods = {}) {
   // Témoin du banc : on annule le gain des pistes pour mesurer par différence
   // ce qu'elles rapportent. Voir test/equilibre.js, SANS=pistes.
   const piste = world.sansPistes ? 1 : 1 - (r.piste || 0) * PISTE_GAIN;
-  return Math.max(1, base * piste * (1 - (mods.reductionVoyage || 0)));
+  const dur = r.faille ? FAILLE.cout : 0;
+  return Math.max(1, base * piste * (1 - (mods.reductionVoyage || 0)) + dur);
 }
 
 /** On tasse la terre en passant. Le gain est lent à venir et lent à s'en aller. */
@@ -5068,6 +5134,9 @@ function chemin(world, from, to, mods = {}) {
       const r = world.regions[v];
       const piste = world.sansPistes ? 1 : 1 - (r.piste || 0) * PISTE_GAIN;
       let arete = Math.max(1, BIOMES[r.biome].cout * piste * red);
+      // La Faille se paie avant tout le reste : elle n'est pas un terrain
+      // pénible, c'est un gouffre qu'on longe.
+      if (r.faille) arete += FAILLE.cout;
       // Ce que le voyageur craint s'ajoute au terrain (TERRITOIRE.md, T1). On
       // n'y touche que si quelqu'un l'a demandé : une colonne qui marche sur
       // une ville ennemie n'évite évidemment pas les terres ennemies, et un
@@ -17329,7 +17398,8 @@ function conseil(world, key, t, log, ctx) {
     // séance de conseil pour un résultat identique.
     const candidates = [];
     for (const r of world.regions) {
-      if (r.colonie || r.biome === 'relais') continue;
+      // On ne bâtit pas dans un gouffre (GEOGRAPHIE.md, G1).
+      if (r.colonie || r.biome === 'relais' || r.faille) continue;
       const aPortee = mesColonies.some((c) => distance(c.regionId, r.i) <= 3);
       if (!aPortee) continue;
       const tropPres = world.colonies.some((c) => !c.ruine && distance(c.regionId, r.i) < 2);
@@ -29459,6 +29529,9 @@ function normaliser(state) {
     if (r.piste === undefined) r.piste = 0;
     // Avant qu'on puisse tenir du terrain, personne n'occupait rien.
     if (r.garde === undefined) r.garde = null;
+    // Une partie d'avant la Faille n'en a pas : sa carte reste ce qu'elle
+    // était, on ne creuse pas un gouffre sous les pieds d'une partie en cours.
+    if (r.faille === undefined) r.faille = false;
   }
   // Les couleurs orphelines des parties d'avant : une case tenue par un drapeau
   // qui n'a plus une seule ville dessus ni à côté redevient libre. Le halo n'a
@@ -32172,6 +32245,15 @@ function peindreTerrain(g, w, L, H) {
     g.fillStyle = 'rgba(0,0,0,.32)';
     if (voisinE && voisinE.decouvert && voisinE.biome !== r.biome) g.fillRect(x + CELL - 1, y, 1, CELL);
     if (voisinS && voisinS.decouvert && voisinS.biome !== r.biome) g.fillRect(x, y + CELL - 1, CELL, 1);
+    // La Faille : le sol qu'on ne traverse qu'à grand prix (GEOGRAPHIE.md, G1).
+    // Elle se voit, sinon le joueur constate que ses routes s'allongent sans
+    // pouvoir dire pourquoi — et c'est exactement le grief du propriétaire.
+    if (r.faille) {
+      g.fillStyle = 'rgba(10,8,8,0.82)';
+      g.fillRect(x, y, CELL, CELL);
+      g.fillStyle = 'rgba(217,160,58,0.5)';
+      g.fillRect(x, y + CELL / 2 - 1, CELL, 2);
+    }
     // Les pistes tassées par ceux qui passent. Un trait clair au milieu de la
     // case, d'autant plus net que la terre est damée : c'est ce qui fait qu'une
     // carte parcourue ne ressemble pas à une carte vierge.

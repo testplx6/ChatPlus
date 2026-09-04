@@ -1171,7 +1171,8 @@ function conseil(world, key, t, log, ctx) {
     // séance de conseil pour un résultat identique.
     const candidates = [];
     for (const r of world.regions) {
-      if (r.colonie || r.biome === 'relais') continue;
+      // On ne bâtit pas dans un gouffre (GEOGRAPHIE.md, G1).
+      if (r.colonie || r.biome === 'relais' || r.faille) continue;
       const aPortee = mesColonies.some((c) => distance(c.regionId, r.i) <= 3);
       if (!aPortee) continue;
       const tropPres = world.colonies.some((c) => !c.ruine && distance(c.regionId, r.i) < 2);

@@ -47,7 +47,7 @@ qu'un autre, donc qu'on se batte pour lui, donc qu'il ait une histoire.
 
 ## 3. Les sept pistes
 
-### G1 — des lignes, pas des taches
+### G1 — des lignes, pas des taches — **LIVRÉ, septembre 2026**
 
 Ajouter à la génération **une structure linéaire** : une faille, une chaîne, un
 fleuve mort, une ancienne autoroute qui traverse la carte. Une seule suffit à
@@ -62,6 +62,35 @@ tout changer, parce qu'une ligne fait trois choses à la fois :
 
 C'est la piste la plus rentable du document : elle donne d'un coup à E1, T2 et
 T3 leur objet physique.
+
+**Ce qui a été livré : la Faille.** Une ligne brisée du nord au sud, de coût 40
+là où un biome coûte 3 à 7, percée de trois ouvertures. Elle **contourne** les
+villes et les Relais au lieu de les avaler — se contenter de sauter la ligne
+laissait sept trous sur dix-huit et ne séparait plus rien —, si bien qu'une
+ville de son bord en devient la gardienne sans qu'on ait rien eu à écrire pour
+ça. On n'y bâtit pas, ni à la naissance du monde ni par un conseil ensuite. Et
+elle se voit sur la carte : sans ça, le joueur constaterait que ses routes
+s'allongent sans pouvoir dire pourquoi, ce qui est très exactement son grief.
+
+Son dé lui est propre (`grainDe(graine, 'faille')`) : elle ne consomme pas un
+seul tirage du flux principal, donc les biomes, les villes et les factions
+d'une graine donnée restent exactement ce qu'ils étaient. Ajouter une structure
+à la carte sans redistribuer le monde entier, c'est ce que le piège n°1 de
+`CLAUDE.md` exige, et c'était loin d'être acquis.
+
+**Ce que la mesure dit.** Personne ne force : deux cases de faille damées sur
+six parties, et zéro dans le témoin — le trafic passe par les ouvertures, ce
+qui est la définition d'un passage obligé. Le prix est réel et modeste, dans le
+même sens sur deux jeux de graines indépendants : la population baisse de 3,7 %
+et 4,7 %, les convois de 1,3 % et 5,7 %, la satiété de 0,982 à 0,974 et de
+0,977 à 0,972. C'est ce que coûte une carte plus dure, et les dix gardes
+tiennent.
+
+`FAILLE.cout` = 40, et le balayage discrimine pour de bon cette fois : à 15 on
+force la faille neuf fois au lieu de deux et le monde perd trente-quatre villes
+(320 contre 354) ; à 80 plus personne ne passe et une ville sur quatre a faim
+(91 affamées contre 68). Quarante est le point où la ligne est une barrière
+sans être un mur.
 
 ### G2 — la carte doit avoir des noms
 

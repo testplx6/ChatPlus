@@ -303,6 +303,9 @@ export function normaliser(state) {
     if (r.piste === undefined) r.piste = 0;
     // Avant qu'on puisse tenir du terrain, personne n'occupait rien.
     if (r.garde === undefined) r.garde = null;
+    // Une partie d'avant la Faille n'en a pas : sa carte reste ce qu'elle
+    // était, on ne creuse pas un gouffre sous les pieds d'une partie en cours.
+    if (r.faille === undefined) r.faille = false;
   }
   // Les couleurs orphelines des parties d'avant : une case tenue par un drapeau
   // qui n'a plus une seule ville dessus ni à côté redevient libre. Le halo n'a

@@ -1330,6 +1330,15 @@ function peindreTerrain(g, w, L, H) {
     g.fillStyle = 'rgba(0,0,0,.32)';
     if (voisinE && voisinE.decouvert && voisinE.biome !== r.biome) g.fillRect(x + CELL - 1, y, 1, CELL);
     if (voisinS && voisinS.decouvert && voisinS.biome !== r.biome) g.fillRect(x, y + CELL - 1, CELL, 1);
+    // La Faille : le sol qu'on ne traverse qu'à grand prix (GEOGRAPHIE.md, G1).
+    // Elle se voit, sinon le joueur constate que ses routes s'allongent sans
+    // pouvoir dire pourquoi — et c'est exactement le grief du propriétaire.
+    if (r.faille) {
+      g.fillStyle = 'rgba(10,8,8,0.82)';
+      g.fillRect(x, y, CELL, CELL);
+      g.fillStyle = 'rgba(217,160,58,0.5)';
+      g.fillRect(x, y + CELL / 2 - 1, CELL, 2);
+    }
     // Les pistes tassées par ceux qui passent. Un trait clair au milieu de la
     // case, d'autant plus net que la terre est damée : c'est ce qui fait qu'une
     // carte parcourue ne ressemble pas à une carte vierge.

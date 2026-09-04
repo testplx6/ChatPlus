@@ -250,6 +250,9 @@ function jouer({ sim, data, eco, eco2, monde }, graine, horizon) {
     // ici — et alors « tenir du territoire » veut dire « tenir une route »,
     // pas « colorier une surface » (TERRITOIRE.md, revue de game master).
     damees: s.world.regions.filter((r) => (r.piste || 0) > 0.5).length,
+    // Le trafic qui franchit la Faille : s'il est nul, la carte est coupée en
+    // deux mondes et ce n'est plus une barrière, c'est un mur (GEOGRAPHIE.md).
+    passages: s.world.regions.filter((r) => r.faille && (r.piste || 0) > 0.2).length,
     corridor: (() => {
       const p = s.world.regions.map((r) => r.piste || 0).sort((a2, b2) => b2 - a2);
       const tot = p.reduce((a2, b2) => a2 + b2, 0);
@@ -427,6 +430,7 @@ function agreger(cfg) {
     barrages: som(cfg, 'barrages'),
     gardees: som(cfg, 'gardees'),
     damees: som(cfg, 'damees'),
+    passages: som(cfg, 'passages'),
     corridor: `${Math.round(med(cfg.parties.map((p2) => p2.corridor)))} %`,
     villes: som(cfg, 'villes'),
     pop: som(cfg, 'pop'),
@@ -516,7 +520,7 @@ const COLONNES = [
   ['nom', 'config', 18], ['villes', 'villes', 7], ['pop', 'pop', 8],
   ['tenues', 'cases tenues', 12], ['orphelines', 'orphelines', 10],
   ['barrages', 'barrages', 9], ['gardees', 'gardées', 8],
-  ['damees', 'damées', 7], ['corridor', 'corridor 5 %', 12],
+  ['damees', 'damées', 7], ['passages', 'franchie', 9], ['corridor', 'corridor 5 %', 12],
   ['nourries', 'nourries', 8], ['ecrasees', 'écrasées', 8],
   ['tresorMed', 'trésor méd', 10], ['fauchees', '<2500', 6],
   ['caisseMed', 'caisse méd', 10], ['bourses', 'bourses', 7],
