@@ -371,3 +371,54 @@ T1 est petit à écrire et change tout ce qui suit. Il change aussi le monde
 entier d'un coup, puisque chaque convoi recalcule ses routes. Le consultant
 recommande de le prendre seul, de le mesurer, et de ne décider de T2 et T3
 qu'après avoir vu ce que le commerce fait quand il a peur.
+
+## Au-delà de T1-T3 : ce qui enrichirait vraiment
+
+Demandé par le propriétaire dans la foulée de la revue. Même règle : rien
+n'est engagé, et chaque affirmation est vérifiée dans le code. Deux idées
+pressenties sont d'ailleurs tombées à la vérification — les pistes **s'érodent
+déjà** (`secteur.js:270`, 0,06 % par heure : deux mois d'abandon effacent une
+route), et la carte **les dessine déjà** (`ui.js:1337`). Il en reste cinq.
+
+**E1 — la géographie n'est pas assez dure.** Les coûts de terrain vont de 3 à 7
+(`data.js`) et **rien n'est infranchissable** : le pire détour coûte le double
+du meilleur chemin, ce qui revient à dire qu'aucun endroit n'est un passage
+obligé. Une poignée de cases vraiment dures — un massif, un gouffre, une ruine
+qu'on ne traverse pas — et la carte se met à avoir des cols. C'est la condition
+géographique de tout le reste : sans goulot, tenir une route est toujours
+contournable, donc jamais décisif. Petit à écrire, mais ça change le monde
+entier : à mesurer contre les gardes `villes`, `convois` et `satiete`.
+
+**E2 — le passage se négocie, il ne se décrète pas.** Aujourd'hui `passage` est
+une clause binaire d'un pacte : on l'a ou on ne l'a pas. Avec T1, le détour a
+enfin un prix chiffrable — et dès qu'un détour a un prix, **vendre le droit de
+passage devient un marché**. Tout est déjà là : `parole.js` sait faire un
+accord daté avec un tarif et un gage, `pactes.js` sait porter la clause. Ça
+crée la décision la plus banale et la plus riche qui soit, pour un conseil
+comme pour le joueur : payer le passage, payer le détour, ou forcer.
+
+**E3 — le blocus.** Le siège existe (`assaut.js`, vivres coupées) mais il faut
+se planter devant les murs. Un blocus de corridor est un siège à distance : la
+ville au bout dépérit sans qu'on l'assiège, et l'on n'a pris aucun risque. Ça
+ouvre la guerre économique là où il n'y a aujourd'hui que l'assaut — et ça
+remplit tout seul le zéro d'A2, puisqu'une colonne a enfin une réponse à
+« pourquoi stationner ici ? ».
+
+**E4 — le trafic est une information.** `connaissance.js` sait déjà relever ce
+qui bouge sur les terres d'un allié. Faire du trafic un renseignement — « il
+passe trois convois par semaine par ce col » — crée deux métiers d'un coup :
+le brigand qui choisit son embuscade au lieu de la subir, et le marchand qui
+paie pour savoir. Et la contrebande devient le contre-jeu naturel du péage,
+au lieu d'un mécanisme à inventer.
+
+**E5 — « tenir » comme quatrième voie du joueur.** La revue de `REVUE.md`
+listait trois voies lisibles : servir, bâtir, commercer. Un ouvrage sur une
+route (T2) qu'on entretient, qu'on défend et qui rapporte le péage des convois
+du monde (T3) en fait une quatrième, complète : elle a son revenu, ses ennemis,
+son entretien et son siège — le camp assiégé est déjà écrit (`SIEGE.md`).
+
+L'ordre que le consultant recommande, si l'on veut que chaque cran se voie :
+**T1, puis E1** (le risque d'abord, la dureté du terrain ensuite — l'inverse
+donnerait des goulots que personne ne contourne, donc invisibles), puis T2/E3,
+et E2/E4/T3 quand il y a un trafic à convoiter.
+
