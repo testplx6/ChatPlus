@@ -1207,7 +1207,13 @@ function conseil(world, key, t, log, ctx) {
       if (!tropPres) candidates.push(r);
     }
     if (candidates.length) {
-      const r = rng.pick(candidates);
+      // On ne fonde pas au hasard quand il y a une veine à portée : une
+      // ressource SITUÉE est une raison d'aller là et pas ailleurs, et c'est
+      // tout l'objet de G4 (GEOGRAPHIE.md). Le tirage reste le même — on ne
+      // consomme pas un dé de plus, on trie juste ce qu'on lui donne.
+      const veines = candidates.filter((c) => c.gisement
+        || voisins(c.i).some((v) => world.regions[v].gisement));
+      const r = rng.pick(veines.length ? veines : candidates);
       const col = fonderColonie(world, key, r, rng, t);
       // Ce que coûte de fonder va aux colons : c'est toute leur mise de départ,
       // et elle sort du trésor. Un tiers passe aussitôt en caisse commune — de

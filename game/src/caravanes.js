@@ -24,13 +24,28 @@ import {
  * guerre à sa maison. Rien de tout cela n'est un interdit — ce sont des coûts,
  * et un convoi passe encore là où tout est infâme.
  */
+// Le mémo des craintes, valable une heure de jeu. `departsDuReseau` calcule
+// plusieurs routes par passage et pèse 9 % du tick : reconstruire l'ensemble
+// des guerres d'un pays à chaque course était de l'allocation pure.
+let craintesHeure = -1;
+let craintesCache = null;
 function craintesDe(world, faction) {
+  const h = world.heure || 0;
+  if (craintesHeure !== h || !craintesCache) {
+    craintesHeure = h;
+    craintesCache = new Map();
+  }
+  const cle = faction || '—';
+  const vu = craintesCache.get(cle);
+  if (vu) return vu;
   const ennemis = new Set();
   for (const g of world.guerres || []) {
     if (g.a === faction) ennemis.add(g.b);
     else if (g.b === faction) ennemis.add(g.a);
   }
-  return { craint: true, sien: faction || null, ennemis };
+  const out = { craint: true, sien: faction || null, ennemis };
+  craintesCache.set(cle, out);
+  return out;
 }
 
 export function plafondCaravanes(world) {

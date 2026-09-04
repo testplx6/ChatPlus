@@ -195,8 +195,8 @@ import {
   FAILLE, LARGEUR, HAUTEUR, POSTE, batirPoste, raserPoste, posteDe,
 } from '../src/world.js';
 import { PASSAGE_A, PASSAGE_B } from '../src/data.js';
-import { SAISON_BIOME, coutSaison } from '../src/climat.js';
-import { marquerLieu, TRACES } from '../src/world.js';
+import { SAISON_BIOME, coutSaison, poserSaison } from '../src/climat.js';
+import { marquerLieu, TRACES, GISEMENTS, gisementsDe } from '../src/world.js';
 import {
   poserPoste, plafondPostes, fermerLeMoinsUtile,
 } from '../src/factions.js';
@@ -16776,9 +16776,9 @@ section('GEO 3. Le climat a une géographie (GEOGRAPHIE.md, G3)');
       r.garde = null; r.poste = null;
     }
     const parLeHaut = (route) => route.some((i) => haut.includes(i));
-    wS.saisonKey = 'accalmie';
+    poserSaison(wS, 'accalmie');
     const calme = chemin(wS, depart, arrivee);
-    wS.saisonKey = 'pluies';
+    poserSaison(wS, 'pluies');
     const sousLaPluie = chemin(wS, depart, arrivee);
     ok(!!calme && !!sousLaPluie, 'les deux routes existent');
     ok(!parLeHaut(calme) && parLeHaut(sousLaPluie),
@@ -16845,6 +16845,52 @@ section('GEO 5. La carte se souvient (GEOGRAPHIE.md, G5)');
   ok(TRACES && Object.keys(TRACES).length >= 2,
     'les traces que la carte sait garder sont de la donnée',
     Object.keys(TRACES).join(' · '));
+}
+
+
+
+// ===========================================================================
+section('GEO 4. La richesse est quelque part (GEOGRAPHIE.md, G4)');
+// Le relevé : `richesse` était un scalaire tiré une fois pour toutes, ×0,65 à
+// ×1,45. Aucune ressource n’était SITUÉE — il n’y avait pas de gisement
+// d’alliage, seulement des cases un peu plus généreuses que d’autres. On ne se
+// bat pas pour « un peu plus généreux » ; on se bat pour une veine.
+{
+  const sG = nouvellePartie(447800, { maintenant: 0 });
+  const wG = sG.world;
+  const gis = gisementsDe(wG);
+  ok(gis.length >= 4, 'le monde porte des gisements', `${gis.length}`);
+  ok(gis.every((r) => r.gisement.key && r.gisement.debit > 0),
+    'chacun donne quelque chose de précis',
+    gis.slice(0, 4).map((r) => `${r.gisement.key}×${r.gisement.debit}`).join(' · '));
+
+  // Une veine donne plus que la terre autour : c'est ce qui la rend convoitable.
+  {
+    const r0 = gis[0];
+    const ici = rendementRegion(wG, r0.i)[r0.gisement.key] || 0;
+    const memeBiome = wG.regions.find((r) => r.biome === r0.biome && !r.gisement);
+    const ailleurs = memeBiome
+      ? (rendementRegion(wG, memeBiome.i)[r0.gisement.key] || 0) : 0;
+    ok(ici > ailleurs, 'et la veine donne plus que la même terre sans elle',
+      `${ici.toFixed(2)} contre ${ailleurs.toFixed(2)}`);
+  }
+
+  // Un gisement a un nom : c'est un endroit, pas une statistique.
+  ok(gis.every((r) => typeof r.trace === 'string' && r.trace.length > 3),
+    'et chacun est un endroit qu’on peut nommer',
+    gis.slice(0, 3).map((r) => r.trace).join(' · '));
+
+  // Déterminisme, et la sauvegarde les garde.
+  {
+    const sH = nouvellePartie(447800, { maintenant: 0 });
+    ok(gisementsDe(sH.world).map((r) => r.i).join('|') === gis.map((r) => r.i).join('|'),
+      'à graine égale, les mêmes veines aux mêmes endroits');
+    const dedans = normaliser(deserialiser(serialiser(sG)));
+    ok(gisementsDe(dedans.world).length === gis.length, 'et la sauvegarde les garde');
+  }
+
+  ok(GISEMENTS && typeof GISEMENTS.combien === 'number',
+    'combien il y en a est calibrable', JSON.stringify(GISEMENTS));
 }
 
 

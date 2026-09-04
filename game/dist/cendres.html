@@ -3097,6 +3097,11 @@ const TRACE_A = {
   ville_morte: ['Ruine', 'Carcasse', 'Vestige'],
 };
 
+/** Ce dont on nomme une veine (G4). */
+const VEINE_A = [
+  'la Veine', 'le Filon', 'la Coulée', 'le Puits', 'la Poche', 'le Gisement',
+];
+
 /** Et ce qui nomme la Faille elle-même. */
 const FAILLE_NOM = [
   'la Faille', 'la Cassure', 'la Grande Entaille', 'le Sillon', 'la Déchirure',
@@ -3861,6 +3866,22 @@ const SAISON_BIOME = {
   },
 };
 
+/**
+ * Le monde entre dans une saison. Un seul endroit sait comment : la clé ET la
+ * table du ciel, sans quoi l'une dit une chose et l'autre une autre.
+ *
+ * La table est construite une fois par SAISON et non une fois par course :
+ * `chemin` tourne plusieurs fois par minute de jeu, et neuf lectures plus un
+ * objet alloué à chaque appel se voyaient au chronomètre.
+ */
+function poserSaison(world, key) {
+  if (world.saisonKey === key && world.coutCiel) return world.coutCiel;
+  world.saisonKey = key;
+  world.coutCiel = {};
+  for (const b of BIOME_KEYS) world.coutCiel[b] = coutSaison(key, b);
+  return world.coutCiel;
+}
+
 /** Ce que cette saison fait à ce sol. Un, si elle ne lui fait rien. */
 function coutSaison(saisonKey, biome) {
   const t = SAISON_BIOME[saisonKey];
@@ -3965,7 +3986,7 @@ function creerMeteo(rng, t) {
 function tickClimat(world, t, rng) {
   // Le monde retient sa saison : `chemin` la lit à chaque arête et n'a pas à
   // la recalculer une fois par case (GEOGRAPHIE.md, G3).
-  world.saisonKey = saison(t).key;
+  poserSaison(world, saison(t).key);
   // L'heure du monde, pour ce qui doit dater un fait sans qu'on la lui passe
   // de main en main sur dix appels (GEOGRAPHIE.md, G5).
   world.heure = t;
@@ -4428,6 +4449,8 @@ function genererBiomes(rng) {
         // Le nom de ce qui s'est passé là, quand il s'y est passé quelque
         // chose (GEOGRAPHIE.md, G5).
         trace: null,
+        // La veine que cette case porte, s'il y en a une (GEOGRAPHIE.md, G4).
+        gisement: null,
         // L'ouvrage qui tient la case, s'il y en a un (TERRITOIRE.md, T2).
         poste: null,
         controle: null,
@@ -4498,6 +4521,10 @@ function stockInitial(rng, taille) {
  * que plus rien ne peut livrer.
  */
 const FAILLE = { cout: 40, passages: 3 };
+
+/** Le ciel qui ne fait rien : le repli quand le monde n'a pas encore sa table. */
+const SANS_CIEL = {};
+for (const b of BIOME_KEYS) SANS_CIEL[b] = 1;
 
 /**
  * Trace la Faille : une ligne brisée du nord au sud, avec ses ouvertures.
@@ -4790,6 +4817,8 @@ function genererMonde(rng, graine = 0) {
   // Après les villes, pour que la ligne les contourne au lieu de les avaler —
   // et avec son propre dé, pour ne décaler aucun tirage de ce qui précède.
   const failleNom = tracerFaille(regions, graine);
+  // Les veines, après les villes elles aussi, et avec leur propre dé.
+  semerGisements(regions, graine);
   semerSites(rng, regions);
   const factions = attribuerFactions(rng, regions, colonies);
   return {
@@ -4815,6 +4844,7 @@ function genererMonde(rng, graine = 0) {
     // La saison courante, pour que le calcul d'itinéraire n'ait pas à la
     // redériver du temps à chaque arête (GEOGRAPHIE.md, G3).
     saisonKey: 'accalmie',
+    coutCiel: null,
     heure: 0,
     prochainArmeeId: 1,
   };
@@ -4966,6 +4996,44 @@ const POSTE = {
   // sur zéro passage, c'est juger l'heure à laquelle on regarde.
   epreuve: 720,
 };
+
+/**
+ * Les gisements (GEOGRAPHIE.md, G4).
+ *
+ * `richesse` était un scalaire tiré une fois pour toutes, de 0,65 à 1,45 :
+ * aucune ressource n'était SITUÉE. Il n'y avait pas de veine d'alliage, il y
+ * avait des cases un peu plus généreuses que d'autres — et l'on ne se bat pas
+ * pour « un peu plus généreux », on se bat pour une veine.
+ *
+ * `combien` : pour la carte entière. `debit` : ce que la veine ajoute au
+ * rendement de sa case, en plus de ce que le biome donne déjà.
+ */
+const GISEMENTS = { combien: 14, debit: [0.6, 1.8] };
+
+/** Les cases qui portent une veine. */
+function gisementsDe(world) {
+  return world.regions.filter((r) => r.gisement);
+}
+
+/**
+ * Sème les veines. Dé propre, comme la Faille : rien de ce qui précède ne
+ * bouge. Elles évitent les villes et la Faille — on ne pose pas une mine sous
+ * une place ni dans un gouffre — et elles prennent le nom de ce qu'elles
+ * donnent, parce qu'un gisement est un endroit et pas une statistique.
+ */
+function semerGisements(regions, graine) {
+  const rng = new Rng(grainDe(graine, 'gisements'));
+  const riches = ['alliage', 'carburant', 'isotope', 'composant', 'minerai', 'medkit'];
+  const libres = regions.filter((r) => r.colonie == null && !r.faille && r.biome !== 'relais');
+  const choisies = rng.shuffle(libres.map((r) => r.i)).slice(0, GISEMENTS.combien);
+  for (const i of choisies) {
+    const r = regions[i];
+    const key = rng.pick(riches);
+    const debit = Number(rng.range(GISEMENTS.debit[0], GISEMENTS.debit[1]).toFixed(2));
+    r.gisement = { key, debit, connu: false };
+    r.trace = `${rng.pick(VEINE_A)} ${rng.pick(PASSAGE_B)}`;
+  }
+}
 
 /**
  * Ce que la carte sait garder (GEOGRAPHIE.md, G5).
@@ -5328,9 +5396,9 @@ function chemin(world, from, to, mods = {}) {
   const red = 1 - (mods.reductionVoyage || 0);
   // Ce que ce voyageur-ci craint : rien par défaut, pour que les appels qui ne
   // demandent qu'une distance restent ce qu'ils étaient.
-  // La table de la saison, lue une fois par course et non par arête.
-  const ciel = {};
-  for (const b of BIOME_KEYS) ciel[b] = coutSaison(world.saisonKey, b);
+  // La table de la saison : construite une fois par SAISON par `tickClimat`,
+  // pas une fois par course. Le repli sert les mondes d'avant la migration.
+  const ciel = world.coutCiel || SANS_CIEL;
   const craint = !!mods.craint;
   const sien = mods.sien || null;
   const ennemis = mods.ennemis || null;
@@ -5460,6 +5528,15 @@ function siteConnu(world, i) {
 function rendementRegion(world, i) {
   const r = world.regions[i];
   const out = Object.assign({}, BIOMES[r.biome].yields || {});
+  // La veine donne plus que la terre autour : c'est ce qui la rend convoitable
+  // (GEOGRAPHIE.md, G4).
+  if (r.gisement) {
+    const g = r.gisement;
+    // Pas de `toFixed` ici : il fabrique une chaîne, et cette fonction est
+    // lue à chaque heure de travail de chaque case. L'arrondi n'apporte rien
+    // à un rendement qu'on multiplie ensuite par le climat.
+    out[g.key] = (out[g.key] || 0) + g.debit;
+  }
   if (!r.amendement) return out;
   for (const k of Object.keys(r.amendement)) {
     const a = r.amendement[k];
@@ -15142,13 +15219,28 @@ function veillerMonnaies(state, log) {
  * guerre à sa maison. Rien de tout cela n'est un interdit — ce sont des coûts,
  * et un convoi passe encore là où tout est infâme.
  */
+// Le mémo des craintes, valable une heure de jeu. `departsDuReseau` calcule
+// plusieurs routes par passage et pèse 9 % du tick : reconstruire l'ensemble
+// des guerres d'un pays à chaque course était de l'allocation pure.
+let craintesHeure = -1;
+let craintesCache = null;
 function craintesDe(world, faction) {
+  const h = world.heure || 0;
+  if (craintesHeure !== h || !craintesCache) {
+    craintesHeure = h;
+    craintesCache = new Map();
+  }
+  const cle = faction || '—';
+  const vu = craintesCache.get(cle);
+  if (vu) return vu;
   const ennemis = new Set();
   for (const g of world.guerres || []) {
     if (g.a === faction) ennemis.add(g.b);
     else if (g.b === faction) ennemis.add(g.a);
   }
-  return { craint: true, sien: faction || null, ennemis };
+  const out = { craint: true, sien: faction || null, ennemis };
+  craintesCache.set(cle, out);
+  return out;
 }
 
 function plafondCaravanes(world) {
@@ -17720,7 +17812,13 @@ function conseil(world, key, t, log, ctx) {
       if (!tropPres) candidates.push(r);
     }
     if (candidates.length) {
-      const r = rng.pick(candidates);
+      // On ne fonde pas au hasard quand il y a une veine à portée : une
+      // ressource SITUÉE est une raison d'aller là et pas ailleurs, et c'est
+      // tout l'objet de G4 (GEOGRAPHIE.md). Le tirage reste le même — on ne
+      // consomme pas un dé de plus, on trie juste ce qu'on lui donne.
+      const veines = candidates.filter((c) => c.gisement
+        || voisins(c.i).some((v) => world.regions[v].gisement));
+      const r = rng.pick(veines.length ? veines : candidates);
       const col = fonderColonie(world, key, r, rng, t);
       // Ce que coûte de fonder va aux colons : c'est toute leur mise de départ,
       // et elle sort du trésor. Un tiers passe aussitôt en caisse commune — de
@@ -30116,6 +30214,7 @@ function normaliser(state) {
   // Avant qu'on puisse tenir du terrain, personne n'occupait rien.
   if (!w.gardes) w.gardes = [];
   if (!w.saisonKey) w.saisonKey = 'accalmie';
+  if (w.coutCiel === undefined) w.coutCiel = null;
   if (typeof w.heure !== 'number') w.heure = state.temps || 0;
   // Avant qu'on puisse acheter un passage, personne ne comptait ses péages.
   for (const k of Object.keys(w.factions || {})) {
@@ -30134,6 +30233,7 @@ function normaliser(state) {
     if (r.faille === undefined) r.faille = false;
     if (r.passage === undefined) r.passage = null;
     if (r.trace === undefined) r.trace = null;
+    if (r.gisement === undefined) r.gisement = null;
     // Avant les ouvrages, on ne tenait rien qu'avec des hommes.
     if (r.poste === undefined) r.poste = null;
   }

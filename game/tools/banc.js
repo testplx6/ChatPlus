@@ -269,6 +269,11 @@ function jouer({ sim, data, eco, eco2, monde }, graine, horizon) {
     bloquees: s.world.colonies.filter((c) => c.blocusDit).length,
     // Ce que la carte a retenu de ce qui s'y est passé (GEOGRAPHIE.md, G5).
     traces: s.world.regions.filter((r) => r.trace).length,
+    // Les veines qu'une ville est venue prendre (GEOGRAPHIE.md, G4) : si le
+    // chiffre reste à zéro, une ressource située ne change rien à la carte.
+    veinesPrises: s.world.regions.filter((r) => r.gisement
+      && s.world.colonies.some((c) => !c.ruine && c.faction
+        && monde.distance(c.regionId, r.i) <= 1)).length,
     peageDu: Math.round(Object.keys(s.world.factions).reduce((a2, k) => a2
       + Object.values(s.world.factions[k].peages || {}).reduce((x, y) => x + y, 0), 0)),
     corridor: (() => {
@@ -451,6 +456,7 @@ function agreger(cfg) {
     passages: som(cfg, 'passages'),
     bloquees: som(cfg, 'bloquees'),
     traces: som(cfg, 'traces'),
+    veinesPrises: som(cfg, 'veinesPrises'),
     postes: som(cfg, 'postes'),
     peagePoste: som(cfg, 'peagePoste'),
     postesMorts: som(cfg, 'postesMorts'),
@@ -557,7 +563,7 @@ const COLONNES = [
   ['barrages', 'barrages', 9], ['gardees', 'gardées', 8],
   ['damees', 'damées', 7], ['passages', 'franchie', 9], ['postes', 'postes', 7], ['peagePoste', 'péages postes', 13],
   ['postesMorts', 'postes morts', 12],
-  ['passages', 'francs', 7], ['bloquees', 'bloquées', 9], ['traces', 'traces', 7], ['peageDu', 'péages dus', 11], ['corridor', 'corridor 5 %', 12],
+  ['passages', 'francs', 7], ['bloquees', 'bloquées', 9], ['traces', 'traces', 7], ['veinesPrises', 'veines tenues', 13], ['peageDu', 'péages dus', 11], ['corridor', 'corridor 5 %', 12],
   ['nourries', 'nourries', 8], ['ecrasees', 'écrasées', 8],
   ['tresorMed', 'trésor méd', 10], ['fauchees', '<2500', 6],
   ['caisseMed', 'caisse méd', 10], ['bourses', 'bourses', 7],

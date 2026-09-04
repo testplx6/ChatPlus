@@ -144,9 +144,42 @@ plus** (5 777 → 15 773) : le commerce se range sur des couloirs stables, donc
 sur ce que quelqu'un tient. Le monde y gagne huit villes et deux mille
 habitants. Dix gardes tenues.
 
-### G4 — la richesse doit être située
+### G4 — la richesse doit être située — **ÉCRIT, NON POUSSÉ : le plafond de
+vitesse est atteint à un demi pour cent près, voir Blocages**
 
-Remplacer (ou doubler) le scalaire par des **gisements** : nommés, localisés,
+**Ce qui a été livré (et attend le feu vert).** `GISEMENTS` sème quatorze veines
+sur la carte, chacune donnant une marchandise précise en plus de ce que le biome
+donne déjà, chacune portant un nom — « la Veine du Sel Noir », parce qu'un
+gisement est un endroit et pas une statistique. Dé propre, comme la Faille :
+rien de ce qui précède ne bouge. Et les conseils **les convoitent** : quand une
+case libre à portée touche une veine, c'est là qu'on fonde. Mesuré : **cinquante
+veines sur quatre-vingt-quatre finissent sous une ville**, et la population monte
+de trois pour cent — les villes sont mieux placées.
+
+## Blocages
+
+**G4 est écrit, testé et mesuré, non poussé.** Le rapport de vitesse est bon
+(×1,06 de la livraison précédente), mais le **plafond vécu** — le temps que
+prend le rattrapage de dix-sept mille heures — atteint 4,22 s pour un budget de
+4,20 s. Un demi pour cent, très en dessous du bruit de cette machine (±10 %),
+mais un budget est un budget et il appartient au propriétaire.
+
+Ce qui a été tenté avant d'en arriver là : le `toFixed` retiré de
+`rendementRegion` (il fabriquait une chaîne à chaque heure de travail de chaque
+case), la table du ciel construite une fois par saison au lieu d'une fois par
+course, et le mémo des craintes dans `caravanes.js` (`departsDuReseau` pèse
+9,2 % du tick et reconstruisait l'ensemble des guerres d'un pays à chaque
+course). Les deux premiers ont payé ; le troisième est juste mais son gain est
+sous le bruit — et la règle du dépôt est claire : un instrument plus bruité que
+le gain cherché ne cherche rien.
+
+Trois issues, au propriétaire : payer le budget (relever `plafondMs`, comme il
+l'a déjà fait une fois pour les prix libres), ouvrir un vrai chantier
+d'optimisation (le profil désigne `tickCaravanes` à 18,9 % et `tickFactions` à
+15,4 %), ou renoncer à G4.
+
+*(la description d'origine)* Remplacer (ou doubler) le scalaire par des
+**gisements** : nommés, localisés,
 épuisables — `fouille` sait déjà épuiser une case. Une veine d'alliage, une
 nappe de carburant, une source d'eau claire. Alors un endroit précis vaut mieux
 qu'un autre, et l'on se bat pour lui plutôt que pour de la surface. C'est aussi

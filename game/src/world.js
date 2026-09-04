@@ -5,6 +5,7 @@
 import {
   BIOMES, BIOME_KEYS, FACTIONS, DIPLO_FACTIONS, VILLE_A, VILLE_B, COMMODITY_KEYS,
   POI, POI_KEYS, MENAGES, drapeauDe, PASSAGE_A, PASSAGE_B, FAILLE_NOM, TRACE_A,
+  VEINE_A,
 } from './data.js';
 import { coutSaison } from './climat.js';
 import { grainDe, Rng } from './rng.js';
@@ -106,6 +107,8 @@ function genererBiomes(rng) {
         // Le nom de ce qui s'est passé là, quand il s'y est passé quelque
         // chose (GEOGRAPHIE.md, G5).
         trace: null,
+        // La veine que cette case porte, s'il y en a une (GEOGRAPHIE.md, G4).
+        gisement: null,
         // L'ouvrage qui tient la case, s'il y en a un (TERRITOIRE.md, T2).
         poste: null,
         controle: null,
@@ -176,6 +179,10 @@ function stockInitial(rng, taille) {
  * que plus rien ne peut livrer.
  */
 export const FAILLE = { cout: 40, passages: 3 };
+
+/** Le ciel qui ne fait rien : le repli quand le monde n'a pas encore sa table. */
+const SANS_CIEL = {};
+for (const b of BIOME_KEYS) SANS_CIEL[b] = 1;
 
 /**
  * Trace la Faille : une ligne brisée du nord au sud, avec ses ouvertures.
@@ -468,6 +475,8 @@ export function genererMonde(rng, graine = 0) {
   // Après les villes, pour que la ligne les contourne au lieu de les avaler —
   // et avec son propre dé, pour ne décaler aucun tirage de ce qui précède.
   const failleNom = tracerFaille(regions, graine);
+  // Les veines, après les villes elles aussi, et avec leur propre dé.
+  semerGisements(regions, graine);
   semerSites(rng, regions);
   const factions = attribuerFactions(rng, regions, colonies);
   return {
@@ -493,6 +502,7 @@ export function genererMonde(rng, graine = 0) {
     // La saison courante, pour que le calcul d'itinéraire n'ait pas à la
     // redériver du temps à chaque arête (GEOGRAPHIE.md, G3).
     saisonKey: 'accalmie',
+    coutCiel: null,
     heure: 0,
     prochainArmeeId: 1,
   };
@@ -644,6 +654,44 @@ export const POSTE = {
   // sur zéro passage, c'est juger l'heure à laquelle on regarde.
   epreuve: 720,
 };
+
+/**
+ * Les gisements (GEOGRAPHIE.md, G4).
+ *
+ * `richesse` était un scalaire tiré une fois pour toutes, de 0,65 à 1,45 :
+ * aucune ressource n'était SITUÉE. Il n'y avait pas de veine d'alliage, il y
+ * avait des cases un peu plus généreuses que d'autres — et l'on ne se bat pas
+ * pour « un peu plus généreux », on se bat pour une veine.
+ *
+ * `combien` : pour la carte entière. `debit` : ce que la veine ajoute au
+ * rendement de sa case, en plus de ce que le biome donne déjà.
+ */
+export const GISEMENTS = { combien: 14, debit: [0.6, 1.8] };
+
+/** Les cases qui portent une veine. */
+export function gisementsDe(world) {
+  return world.regions.filter((r) => r.gisement);
+}
+
+/**
+ * Sème les veines. Dé propre, comme la Faille : rien de ce qui précède ne
+ * bouge. Elles évitent les villes et la Faille — on ne pose pas une mine sous
+ * une place ni dans un gouffre — et elles prennent le nom de ce qu'elles
+ * donnent, parce qu'un gisement est un endroit et pas une statistique.
+ */
+function semerGisements(regions, graine) {
+  const rng = new Rng(grainDe(graine, 'gisements'));
+  const riches = ['alliage', 'carburant', 'isotope', 'composant', 'minerai', 'medkit'];
+  const libres = regions.filter((r) => r.colonie == null && !r.faille && r.biome !== 'relais');
+  const choisies = rng.shuffle(libres.map((r) => r.i)).slice(0, GISEMENTS.combien);
+  for (const i of choisies) {
+    const r = regions[i];
+    const key = rng.pick(riches);
+    const debit = Number(rng.range(GISEMENTS.debit[0], GISEMENTS.debit[1]).toFixed(2));
+    r.gisement = { key, debit, connu: false };
+    r.trace = `${rng.pick(VEINE_A)} ${rng.pick(PASSAGE_B)}`;
+  }
+}
 
 /**
  * Ce que la carte sait garder (GEOGRAPHIE.md, G5).
@@ -1006,9 +1054,9 @@ export function chemin(world, from, to, mods = {}) {
   const red = 1 - (mods.reductionVoyage || 0);
   // Ce que ce voyageur-ci craint : rien par défaut, pour que les appels qui ne
   // demandent qu'une distance restent ce qu'ils étaient.
-  // La table de la saison, lue une fois par course et non par arête.
-  const ciel = {};
-  for (const b of BIOME_KEYS) ciel[b] = coutSaison(world.saisonKey, b);
+  // La table de la saison : construite une fois par SAISON par `tickClimat`,
+  // pas une fois par course. Le repli sert les mondes d'avant la migration.
+  const ciel = world.coutCiel || SANS_CIEL;
   const craint = !!mods.craint;
   const sien = mods.sien || null;
   const ennemis = mods.ennemis || null;
@@ -1138,6 +1186,15 @@ export function siteConnu(world, i) {
 export function rendementRegion(world, i) {
   const r = world.regions[i];
   const out = Object.assign({}, BIOMES[r.biome].yields || {});
+  // La veine donne plus que la terre autour : c'est ce qui la rend convoitable
+  // (GEOGRAPHIE.md, G4).
+  if (r.gisement) {
+    const g = r.gisement;
+    // Pas de `toFixed` ici : il fabrique une chaîne, et cette fonction est
+    // lue à chaque heure de travail de chaque case. L'arrondi n'apporte rien
+    // à un rendement qu'on multiplie ensuite par le climat.
+    out[g.key] = (out[g.key] || 0) + g.debit;
+  }
   if (!r.amendement) return out;
   for (const k of Object.keys(r.amendement)) {
     const a = r.amendement[k];

@@ -1117,6 +1117,11 @@ export const TRACE_A = {
   ville_morte: ['Ruine', 'Carcasse', 'Vestige'],
 };
 
+/** Ce dont on nomme une veine (G4). */
+export const VEINE_A = [
+  'la Veine', 'le Filon', 'la Coulée', 'le Puits', 'la Poche', 'le Gisement',
+];
+
 /** Et ce qui nomme la Faille elle-même. */
 export const FAILLE_NOM = [
   'la Faille', 'la Cassure', 'la Grande Entaille', 'le Sillon', 'la Déchirure',

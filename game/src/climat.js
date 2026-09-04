@@ -2,7 +2,7 @@
 // qu'au milieu d'un hiver de cendre : les rendements, la marche, les aléas et
 // même la fréquence des rencontres en dépendent.
 
-import { BIOMES } from './data.js';
+import { BIOME_KEYS, BIOMES } from './data.js';
 
 export const JOURS_PAR_SAISON = 30;
 export const HEURES_PAR_SAISON = JOURS_PAR_SAISON * 24;
@@ -104,6 +104,22 @@ export const SAISON_BIOME = {
     steppe: 1.15,
   },
 };
+
+/**
+ * Le monde entre dans une saison. Un seul endroit sait comment : la clé ET la
+ * table du ciel, sans quoi l'une dit une chose et l'autre une autre.
+ *
+ * La table est construite une fois par SAISON et non une fois par course :
+ * `chemin` tourne plusieurs fois par minute de jeu, et neuf lectures plus un
+ * objet alloué à chaque appel se voyaient au chronomètre.
+ */
+export function poserSaison(world, key) {
+  if (world.saisonKey === key && world.coutCiel) return world.coutCiel;
+  world.saisonKey = key;
+  world.coutCiel = {};
+  for (const b of BIOME_KEYS) world.coutCiel[b] = coutSaison(key, b);
+  return world.coutCiel;
+}
 
 /** Ce que cette saison fait à ce sol. Un, si elle ne lui fait rien. */
 export function coutSaison(saisonKey, biome) {
@@ -209,7 +225,7 @@ export function creerMeteo(rng, t) {
 export function tickClimat(world, t, rng) {
   // Le monde retient sa saison : `chemin` la lit à chaque arête et n'a pas à
   // la recalculer une fois par case (GEOGRAPHIE.md, G3).
-  world.saisonKey = saison(t).key;
+  poserSaison(world, saison(t).key);
   // L'heure du monde, pour ce qui doit dater un fait sans qu'on la lui passe
   // de main en main sur dix appels (GEOGRAPHIE.md, G5).
   world.heure = t;
