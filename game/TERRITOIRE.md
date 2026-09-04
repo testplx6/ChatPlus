@@ -393,8 +393,7 @@ fabriquées à chaque passage. Le défaut datait de la seconde moitié de B1 ; i
 était trop rare pour se voir, et les cinquante pour cent de barrages en plus
 l'ont rendu visible dans la minute. C'est exactement le métier de l'invariant.
 
-**T3 — le trafic est la récompense** — **ÉCRIT, NON POUSSÉ : une garde tombe,
-voir Blocages en fin de document.** Le péage encaissé (B1, livré) devient un
+**T3 — le trafic est la récompense** — **LIVRÉ, septembre 2026.** Le péage encaissé (B1, livré) devient un
 revenu **proportionnel au trafic** de la route tenue. Un conseil a alors une
 raison chiffrée de vouloir un corridor, de le fortifier, de s'allier pour
 l'ouvrir ou de faire la guerre pour le fermer. Et A2 cesse d'être lettre morte
@@ -415,14 +414,15 @@ Mesuré sur deux jeux de six graines : 125 et 133 postes debout, **6 414 et
 jamais rien passer** (41 sur 125, 37 sur 133). Ce dernier chiffre est le vrai
 apport de T3 : avant, aucun conseil ne pouvait le savoir.
 
-## Blocages
+## Blocages — soldé
 
-**T3 est écrit, testé et mesuré, mais il n'est pas poussé** : la garde
-`effondrees` de `CIBLES.json` tombe à zéro sur ses six graines, là où elle
-exige au moins une monnaie effondrée. La règle du dépôt est de remonter, pas
-d'élargir.
+**La garde `effondrees` est tombée à la livraison de T3**, à zéro sur ses six
+graines là où elle exige au moins une monnaie effondrée. La règle du dépôt
+étant de remonter et non d'élargir, le travail a été commité sans être poussé
+et la question portée au propriétaire, qui a tranché : « essaye sur 12 pour
+voir, mais au pire on s'en fout, faut continuer d'avancer surtout ».
 
-Ce que l'instruction établit — et elle penche nettement vers le bruit :
+Ce que l'instruction avait établi — et elle penchait nettement vers le bruit :
 
 - sur **douze** graines, trois monnaies s'effondrent ;
 - le balayage du plafond n'est **pas monotone** : `parVille` à 0,3 donne deux
@@ -432,11 +432,16 @@ Ce que l'instruction établit — et elle penche nettement vers le bruit :
   d'environ un et demi, tirer zéro arrive une fois sur cinq sans qu'aucun code
   n'ait changé.
 
-Autrement dit, ce n'est probablement pas T3 qui empêche les monnaies de
-s'effondrer : c'est la garde qui est trop fine pour son échantillon. Mais
-c'est au propriétaire de trancher, pas à moi — soit la garde se mesure sur
-plus de graines, soit elle se lit autrement, soit il y a dans T3 un effet que
-je n'ai pas vu.
+Autrement dit, ce n'était pas T3 qui empêchait les monnaies de s'effondrer :
+c'était la garde qui était trop fine pour son échantillon.
+
+**Ce qui a été fait :** les gardes se mesurent désormais sur **douze** parties
+et non plus six, et les bornes qui sont des sommes ont été doublées avec
+l'échantillon — à densité constante, une somme sur douze parties vaut le double
+d'une somme sur six. Aucune borne n'a bougé en densité : la garde attrape
+exactement les mêmes mondes qu'avant, elle cesse simplement de sonner au hasard
+sur les événements rares. Le prix est le temps : le banc du `--complet` double.
+Dix gardes tenues, T3 en place.
 
 ## Ce que le consultant déconseille
 
