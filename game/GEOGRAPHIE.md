@@ -144,10 +144,9 @@ plus** (5 777 → 15 773) : le commerce se range sur des couloirs stables, donc
 sur ce que quelqu'un tient. Le monde y gagne huit villes et deux mille
 habitants. Dix gardes tenues.
 
-### G4 — la richesse doit être située — **ÉCRIT, NON POUSSÉ : le plafond de
-vitesse est atteint à un demi pour cent près, voir Blocages**
+### G4 — la richesse doit être située — **LIVRÉ, septembre 2026**
 
-**Ce qui a été livré (et attend le feu vert).** `GISEMENTS` sème quatorze veines
+**Ce qui a été livré.** `GISEMENTS` sème quatorze veines
 sur la carte, chacune donnant une marchandise précise en plus de ce que le biome
 donne déjà, chacune portant un nom — « la Veine du Sel Noir », parce qu'un
 gisement est un endroit et pas une statistique. Dé propre, comme la Faille :
@@ -156,9 +155,10 @@ case libre à portée touche une veine, c'est là qu'on fonde. Mesuré : **cinqu
 veines sur quatre-vingt-quatre finissent sous une ville**, et la population monte
 de trois pour cent — les villes sont mieux placées.
 
-## Blocages
+## Blocages — soldé
 
-**G4 est écrit, testé et mesuré, non poussé.** Le rapport de vitesse est bon
+**G4 a buté sur le plafond de vitesse, et le propriétaire a payé.** Le rapport
+de vitesse était bon
 (×1,06 de la livraison précédente), mais le **plafond vécu** — le temps que
 prend le rattrapage de dix-sept mille heures — atteint 4,22 s pour un budget de
 4,20 s. Un demi pour cent, très en dessous du bruit de cette machine (±10 %),
@@ -173,10 +173,13 @@ course). Les deux premiers ont payé ; le troisième est juste mais son gain est
 sous le bruit — et la règle du dépôt est claire : un instrument plus bruité que
 le gain cherché ne cherche rien.
 
-Trois issues, au propriétaire : payer le budget (relever `plafondMs`, comme il
-l'a déjà fait une fois pour les prix libres), ouvrir un vrai chantier
-d'optimisation (le profil désigne `tickCaravanes` à 18,9 % et `tickFactions` à
-15,4 %), ou renoncer à G4.
+Trois issues lui ont été portées : payer le budget, ouvrir un vrai chantier
+d'optimisation, ou renoncer à G4. **Sa décision : payer maintenant, et ouvrir le
+chantier quand la lenteur redeviendra sensible en jeu** — ce que la note de
+`CIBLES.json` prévoyait déjà noir sur blanc. `plafondMs` passe de 4 200 à
+4 600 ms, avec son motif ; `rapportMax` ne bouge pas, parce que c'est LUI qui
+attrape les régressions — le plafond ne dit que ce que le joueur ressent au
+rattrapage.
 
 *(la description d'origine)* Remplacer (ou doubler) le scalaire par des
 **gisements** : nommés, localisés,
