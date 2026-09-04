@@ -195,6 +195,7 @@ import {
   FAILLE, LARGEUR, HAUTEUR, POSTE, batirPoste, raserPoste, posteDe,
 } from '../src/world.js';
 import { PASSAGE_A, PASSAGE_B } from '../src/data.js';
+import { SAISON_BIOME, coutSaison } from '../src/climat.js';
 import {
   poserPoste, plafondPostes, fermerLeMoinsUtile,
 } from '../src/factions.js';
@@ -16717,6 +16718,84 @@ section('TER 9. Le blocus : un siège à distance (TERRITOIRE.md, E3)');
 
   ok(BLOCUS && typeof BLOCUS.grogne === 'number', 'ce qu’un blocus fait est calibrable',
     JSON.stringify(BLOCUS));
+}
+
+
+
+// ===========================================================================
+section('GEO 3. Le climat a une géographie (GEOGRAPHIE.md, G3)');
+// Le relevé : `conditions(world, t)` rendait UNE saison et UNE météo pour
+// quatre cent trente-deux cases. Il ne pleuvait jamais ici sans pleuvoir
+// là-bas, et la saison ne faisait que multiplier le monde entier par un
+// nombre. Un ciel de carton.
+//
+// Ce qui manquait n'est pas plus de météo : c'est que la saison agisse
+// DIFFÉREMMENT selon le sol. Le marais impraticable aux pluies, le désert
+// l'été. Alors la meilleure route change avec les mois, et le territoire se
+// renégocie tout seul — sans qu'aucun agent n'ait à le vouloir. C'est le
+// mariage naturel de T1 : un voyageur qui pèse ce qu'il craint doit craindre
+// des choses qui changent, sinon il calcule une fois pour toutes.
+{
+  ok(SAISON_BIOME && SAISON_BIOME.pluies && SAISON_BIOME.seche,
+    'chaque saison dit ce qu’elle fait au sol');
+  ok(coutSaison('pluies', 'marais') > 1.4,
+    'le marais ne se traverse pas sous les grandes pluies',
+    `×${coutSaison('pluies', 'marais')}`);
+  ok(coutSaison('seche', 'marais') < 1,
+    'mais il s’assèche à la saison sèche, et l’on y passe mieux',
+    `×${coutSaison('seche', 'marais')}`);
+  ok(coutSaison('seche', 'desert') > 1.4,
+    'le désert acide, lui, se referme en saison sèche',
+    `×${coutSaison('seche', 'desert')}`);
+  ok(coutSaison('accalmie', 'steppe') === 1,
+    'et l’accalmie ne coûte rien à personne');
+
+  // En jeu : le même trajet ne passe pas par les mêmes cases selon la saison.
+  {
+    const sS = nouvellePartie(704900, { maintenant: 0 });
+    const wS = sS.world;
+    // Un couloir : deux voies, l'une par le marais, l'autre par la steppe, la
+    // première un peu plus courte.
+    const bas = [3, 4, 5].map((x) => idx(x, 9));
+    const haut = [2, 3, 4, 5, 6].map((x) => idx(x, 8));
+    const depart = idx(2, 9);
+    const arrivee = idx(6, 9);
+    for (const i of [depart, arrivee, ...bas]) {
+      const r = wS.regions[i];
+      r.biome = 'marais'; r.piste = 0; r.faille = false; r.controle = null;
+      r.garde = null; r.poste = null;
+    }
+    for (const i of haut) {
+      const r = wS.regions[i];
+      // Le détour passe par le désert : plus long, mais la pluie ne lui fait
+      // rien. En accalmie il coûte trente contre vingt-quatre pour le marais,
+      // donc on passe tout droit ; sous les pluies le marais monte à cinquante,
+      // et le détour devient la bonne route.
+      r.biome = 'desert'; r.piste = 0; r.faille = false; r.controle = null;
+      r.garde = null; r.poste = null;
+    }
+    const parLeHaut = (route) => route.some((i) => haut.includes(i));
+    wS.saisonKey = 'accalmie';
+    const calme = chemin(wS, depart, arrivee);
+    wS.saisonKey = 'pluies';
+    const sousLaPluie = chemin(wS, depart, arrivee);
+    ok(!!calme && !!sousLaPluie, 'les deux routes existent');
+    ok(!parLeHaut(calme) && parLeHaut(sousLaPluie),
+      'la même course ne prend pas le même chemin selon la saison',
+      `accalmie ${parLeHaut(calme) ? 'détour' : 'tout droit'} · `
+      + `pluies ${parLeHaut(sousLaPluie) ? 'détour' : 'tout droit'}`);
+  }
+
+  // Le monde retient la saison courante : sans ça, `chemin` devrait la
+  // recalculer à chaque arête.
+  {
+    const sT = nouvellePartie(704901, { maintenant: 0 });
+    for (let i = 0; i < 30; i++) tick(sT);
+    ok(typeof sT.world.saisonKey === 'string' && sT.world.saisonKey.length > 3,
+      'le monde sait en quelle saison il est', `${sT.world.saisonKey}`);
+    const dedans = normaliser(deserialiser(serialiser(sT)));
+    ok(dedans.world.saisonKey === sT.world.saisonKey, 'et la sauvegarde le garde');
+  }
 }
 
 

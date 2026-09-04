@@ -295,6 +295,7 @@ export function normaliser(state) {
   }
   // Avant qu'on puisse tenir du terrain, personne n'occupait rien.
   if (!w.gardes) w.gardes = [];
+  if (!w.saisonKey) w.saisonKey = 'accalmie';
   // Avant qu'on puisse acheter un passage, personne ne comptait ses péages.
   for (const k of Object.keys(w.factions || {})) {
     if (!w.factions[k].peages) w.factions[k].peages = {};

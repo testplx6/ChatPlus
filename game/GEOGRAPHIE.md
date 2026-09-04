@@ -116,7 +116,7 @@ c'est-à-dire rien.
 Restent à nommer, si l'on veut aller plus loin : les sites, les ruines, et les
 hauteurs quand il y en aura (G6).
 
-### G3 — le climat doit avoir une géographie
+### G3 — le climat doit avoir une géographie — **LIVRÉ, septembre 2026**
 
 Une seule météo pour 432 cases, c'est un ciel de carton. Des climats régionaux
 rendraient les routes **saisonnières** : le marais impraticable aux pluies, le
@@ -126,6 +126,23 @@ n'ait à le vouloir.
 
 C'est le mariage naturel de T1 : un voyageur qui pèse ce qu'il craint doit
 craindre des choses qui changent, sinon il calcule une fois pour toutes.
+
+**Ce qui a été livré.** `SAISON_BIOME` dit ce que chaque saison fait à chaque
+sol : le marais se ferme aux grandes pluies (×2,1) et s'assèche à la saison
+sèche (×0,7), le désert acide et les terres brûlées se referment l'été, les
+canyons et la friche deviennent traîtres sous le ciel bas de l'hiver de cendre,
+et les dalles urbaines drainent — on y circule mieux quand il pleut.
+L'accalmie, elle, ne coûte rien à personne : c'est la saison où l'on voyage.
+`coutTraversee` et le calcul d'itinéraire le lisent, le monde retient sa saison
+(`world.saisonKey`) pour n'avoir pas à la redériver à chaque arête, et la table
+est lue une fois par course.
+
+**Ce que la mesure dit, et c'est mieux qu'espéré.** Le trafic se **concentre** :
+818 cases damées deviennent 599, parce qu'une route qui tient toute l'année vaut
+mieux que deux qui alternent. Et les postes encaissent **presque trois fois
+plus** (5 777 → 15 773) : le commerce se range sur des couloirs stables, donc
+sur ce que quelqu'un tient. Le monde y gagne huit villes et deux mille
+habitants. Dix gardes tenues.
 
 ### G4 — la richesse doit être située
 

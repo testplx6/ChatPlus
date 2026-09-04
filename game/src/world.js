@@ -6,6 +6,7 @@ import {
   BIOMES, BIOME_KEYS, FACTIONS, DIPLO_FACTIONS, VILLE_A, VILLE_B, COMMODITY_KEYS,
   POI, POI_KEYS, MENAGES, drapeauDe, PASSAGE_A, PASSAGE_B, FAILLE_NOM,
 } from './data.js';
+import { coutSaison } from './climat.js';
 import { grainDe, Rng } from './rng.js';
 
 // Une carte de 10×8 se traversait de bout en bout en deux jours de jeu : au
@@ -486,6 +487,9 @@ export function genererMonde(rng, graine = 0) {
     // Les cases qu'on occupe (TERRITOIRE.md, A2). Une liste plutôt qu'un
     // balayage : elles se comptent en dizaines, la carte en milliers.
     gardes: [],
+    // La saison courante, pour que le calcul d'itinéraire n'ait pas à la
+    // redériver du temps à chaque arête (GEOGRAPHIE.md, G3).
+    saisonKey: 'accalmie',
     prochainArmeeId: 1,
   };
 }
@@ -887,7 +891,8 @@ export function coutTraversee(world, i, mods = {}) {
   // ce qu'elles rapportent. Voir test/equilibre.js, SANS=pistes.
   const piste = world.sansPistes ? 1 : 1 - (r.piste || 0) * PISTE_GAIN;
   const dur = r.faille ? FAILLE.cout : 0;
-  return Math.max(1, base * piste * (1 - (mods.reductionVoyage || 0)) + dur);
+  const ciel = coutSaison(world.saisonKey, r.biome);
+  return Math.max(1, base * ciel * piste * (1 - (mods.reductionVoyage || 0)) + dur);
 }
 
 /** On tasse la terre en passant. Le gain est lent à venir et lent à s'en aller. */
@@ -961,6 +966,9 @@ export function chemin(world, from, to, mods = {}) {
   const red = 1 - (mods.reductionVoyage || 0);
   // Ce que ce voyageur-ci craint : rien par défaut, pour que les appels qui ne
   // demandent qu'une distance restent ce qu'ils étaient.
+  // La table de la saison, lue une fois par course et non par arête.
+  const ciel = {};
+  for (const b of BIOME_KEYS) ciel[b] = coutSaison(world.saisonKey, b);
   const craint = !!mods.craint;
   const sien = mods.sien || null;
   const ennemis = mods.ennemis || null;
@@ -1020,7 +1028,10 @@ export function chemin(world, from, to, mods = {}) {
       if (genVus[v] === gen) continue;
       const r = world.regions[v];
       const piste = world.sansPistes ? 1 : 1 - (r.piste || 0) * PISTE_GAIN;
-      let arete = Math.max(1, BIOMES[r.biome].cout * piste * red);
+      // Ce que la saison fait à ce sol-là (GEOGRAPHIE.md, G3) : le marais se
+      // ferme aux pluies, le désert en saison sèche. La meilleure route change
+      // donc avec les mois.
+      let arete = Math.max(1, BIOMES[r.biome].cout * ciel[r.biome] * piste * red);
       // La Faille se paie avant tout le reste : elle n'est pas un terrain
       // pénible, c'est un gouffre qu'on longe.
       if (r.faille) arete += FAILLE.cout;

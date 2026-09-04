@@ -63,6 +63,54 @@ export const SAISONS = {
   },
 };
 
+/**
+ * Ce que la saison fait au SOL, biome par biome (GEOGRAPHIE.md, G3).
+ *
+ * `conditions` ne rendait qu'une saison et une météo pour quatre cent trente-
+ * deux cases : la saison multipliait le monde entier par un nombre, et il ne
+ * pleuvait jamais ici sans pleuvoir là-bas. Un ciel de carton.
+ *
+ * Ce qui manquait n'est pas plus de météo, c'est que la saison agisse
+ * DIFFÉREMMENT selon le terrain. Le marais impraticable aux pluies, le désert
+ * acide qui se referme l'été. Alors la meilleure route change avec les mois et
+ * le territoire se renégocie tout seul, sans qu'aucun agent ait à le vouloir —
+ * c'est le mariage naturel de T1 : un voyageur qui pèse ce qu'il craint doit
+ * craindre des choses qui changent, sinon il calcule une fois pour toutes.
+ *
+ * Un multiplicateur de coût de traversée. Absent = 1, et l'accalmie ne coûte
+ * rien à personne : c'est la saison où l'on circule.
+ */
+export const SAISON_BIOME = {
+  accalmie: {},
+  seche: {
+    // La poussière et l'acide : ce qui est déjà sec devient hostile.
+    desert: 1.7,
+    brulees: 1.45,
+    // Et le marais s'assèche — la seule saison où l'on y passe bien.
+    marais: 0.7,
+  },
+  pluies: {
+    // L'eau monte : le marais se ferme, la mer de plastique devient une soupe.
+    marais: 2.1,
+    plastique: 1.5,
+    canyons: 1.35,
+    // Les dalles urbaines drainent : on y circule mieux qu'ailleurs.
+    dalles: 0.85,
+  },
+  cendres: {
+    // Le ciel bas : on ne voit pas où l'on met les pieds dans les reliefs.
+    canyons: 1.4,
+    friche: 1.2,
+    steppe: 1.15,
+  },
+};
+
+/** Ce que cette saison fait à ce sol. Un, si elle ne lui fait rien. */
+export function coutSaison(saisonKey, biome) {
+  const t = SAISON_BIOME[saisonKey];
+  return (t && t[biome]) || 1;
+}
+
 export const ORDRE_SAISONS = ['accalmie', 'seche', 'pluies', 'cendres'];
 
 /** Une année de jeu : quatre saisons de trente jours. Tout ce qui vieillit s'y
@@ -159,6 +207,9 @@ export function creerMeteo(rng, t) {
  * sinon null — un changement de météo mérite d'être dit.
  */
 export function tickClimat(world, t, rng) {
+  // Le monde retient sa saison : `chemin` la lit à chaque arête et n'a pas à
+  // la recalculer une fois par case (GEOGRAPHIE.md, G3).
+  world.saisonKey = saison(t).key;
   if (!world.meteo) {
     world.meteo = creerMeteo(rng, t);
     return null;
