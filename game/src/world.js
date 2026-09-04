@@ -4,7 +4,7 @@
 
 import {
   BIOMES, BIOME_KEYS, FACTIONS, DIPLO_FACTIONS, VILLE_A, VILLE_B, COMMODITY_KEYS,
-  POI, POI_KEYS, MENAGES, drapeauDe, PASSAGE_A, PASSAGE_B, FAILLE_NOM,
+  POI, POI_KEYS, MENAGES, drapeauDe, PASSAGE_A, PASSAGE_B, FAILLE_NOM, TRACE_A,
 } from './data.js';
 import { coutSaison } from './climat.js';
 import { grainDe, Rng } from './rng.js';
@@ -103,6 +103,9 @@ function genererBiomes(rng) {
         faille: false,
         // Le nom du passage, quand la case en est un (GEOGRAPHIE.md, G2).
         passage: null,
+        // Le nom de ce qui s'est passé là, quand il s'y est passé quelque
+        // chose (GEOGRAPHIE.md, G5).
+        trace: null,
         // L'ouvrage qui tient la case, s'il y en a un (TERRITOIRE.md, T2).
         poste: null,
         controle: null,
@@ -490,6 +493,7 @@ export function genererMonde(rng, graine = 0) {
     // La saison courante, pour que le calcul d'itinéraire n'ait pas à la
     // redériver du temps à chaque arête (GEOGRAPHIE.md, G3).
     saisonKey: 'accalmie',
+    heure: 0,
     prochainArmeeId: 1,
   };
 }
@@ -640,6 +644,42 @@ export const POSTE = {
   // sur zéro passage, c'est juger l'heure à laquelle on regarde.
   epreuve: 720,
 };
+
+/**
+ * Ce que la carte sait garder (GEOGRAPHIE.md, G5).
+ *
+ * L'amorce existait — une ville morte laisse un site à fouiller, une embuscade
+ * laisse du danger — mais une bataille rangée, un poste rasé, une place prise
+ * ne laissaient rien : le monde oubliait tout ce qu'il faisait. C'est pourtant
+ * le seul contenu qui se fabrique tout seul, sans que personne l'écrive, et qui
+ * grandit avec la partie. Au bout de mille heures, la carte EST le récit de ce
+ * qui s'y est passé.
+ */
+export const TRACES = {
+  charnier: 'on s’y est battu',
+  ruine_poste: 'un ouvrage y est tombé',
+  ville_morte: 'une ville y est morte',
+};
+
+/**
+ * Poser une trace. Rend le nom du lieu, ou null si la case garde déjà une
+ * histoire — **une case n'en porte qu'une, et c'est la première** : sinon la
+ * dernière escarmouche effacerait la ville morte, et la carte ne se souviendrait
+ * que d'hier.
+ *
+ * Le nom se dérive de la case et de l'heure, sans un seul tirage : deux mondes
+ * de même graine racontent la même histoire.
+ */
+export function marquerLieu(world, regionId, type, t) {
+  const r = world.regions[regionId];
+  if (!r || r.site || r.colonie != null || !TRACES[type]) return null;
+  r.site = { type, connu: false, fouille: false, quand: t || 0 };
+  const mots = TRACE_A[type] || TRACE_A.charnier;
+  const a = mots[(regionId * 7 + (t || 0)) % mots.length];
+  const b = PASSAGE_B[(regionId * 13 + Math.floor((t || 0) / 24)) % PASSAGE_B.length];
+  r.trace = `${a} ${b}`;
+  return r.trace;
+}
 
 /** L'ouvrage qui tient cette case, s'il y en a un. */
 export function posteDe(world, regionId) {
@@ -1120,6 +1160,9 @@ export function nomRegion(world, i) {
   if (col) return col.nom;
   // Un lieu-dit se retient, une coordonnée non (GEOGRAPHIE.md, G2).
   if (r && r.passage) return r.passage;
+  // Un lieu où il s'est passé quelque chose porte le nom de ce qui s'y est
+  // passé (GEOGRAPHIE.md, G5).
+  if (r && r.trace) return r.trace;
   return `${BIOMES[r.biome].court} ${coordonnee(world, i)}`;
 }
 

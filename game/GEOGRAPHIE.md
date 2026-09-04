@@ -155,14 +155,24 @@ déconseille de prendre en premier — et cette piste dit pourquoi : B3 sans
 gisements, c'est un revenu de plus ; B3 avec gisements, c'est une carte
 disputée.
 
-### G5 — la carte se souvient
+### G5 — la carte se souvient — **LIVRÉ, septembre 2026**
 
-L'amorce existe : une ville morte laisse un site à fouiller (`economy.js:2136`),
-une embuscade laisse du danger sur la région (`caravanes.js:1382`). L'étendre —
-un champ de bataille, un charnier, un camp abandonné, une route mal famée qui
-garde sa réputation — fait de la carte **l'archive du monde**. C'est le seul
-contenu qui se fabrique tout seul, sans que personne l'écrive, et il grandit
-avec la partie.
+L'amorce existait : une ville morte laisse un site à fouiller, une embuscade
+laisse du danger sur la région. Mais une bataille rangée et un poste rasé ne
+laissaient rien — le monde oubliait tout ce qu'il faisait.
+
+**Ce qui a été livré.** `marquerLieu` pose une trace, la date, et **nomme
+l'endroit de ce qui s'y est passé** : une place qui tombe laisse un charnier
+devant ses murs, un poste rasé laisse ses quatre murs bas. Le nom se dérive de
+la case et de l'heure, sans un seul tirage — deux mondes de même graine
+racontent la même histoire. Et une case ne porte **qu'une** histoire, la
+première : sinon la dernière escarmouche effacerait la ville morte, et la carte
+ne se souviendrait que d'hier.
+
+**860 traces sur six parties** — un tiers de la carte finit par porter une
+histoire, et chacune est un site qu'on peut aller fouiller. Le monde, lui, est
+rigoureusement identique au témoin : mêmes villes, même population, mêmes
+convois. G5 n'a rien changé au monde ; il l'a rendu lisible.
 
 ### G6 — voir loin
 

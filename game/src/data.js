@@ -1110,6 +1110,13 @@ export const PASSAGE_B = [
   'des Mille Traces', 'de l’Aube Grise', 'du Fil Rouge',
 ];
 
+/** Ce dont on nomme un lieu où il s'est passé quelque chose (G5). */
+export const TRACE_A = {
+  charnier: ['Charnier', 'Champ', 'Fosse', 'Ossuaire'],
+  ruine_poste: ['Poste', 'Guérite', 'Barrage', 'Reste'],
+  ville_morte: ['Ruine', 'Carcasse', 'Vestige'],
+};
+
 /** Et ce qui nomme la Faille elle-même. */
 export const FAILLE_NOM = [
   'la Faille', 'la Cassure', 'la Grande Entaille', 'le Sillon', 'la Déchirure',
@@ -1265,6 +1272,14 @@ export const POI = {
     credits: [80, 400],
     objet: 2,
     danger: 0.35,
+  },
+  ruine_poste: {
+    nom: 'Poste rasé',
+    texte: 'Quatre murs bas, une porte arrachée. Quelqu’un tenait la route ici.',
+    loot: { ferraille: [15, 60], polymere: [5, 20], composant: [0, 5] },
+    credits: [20, 160],
+    objet: 1,
+    danger: 0.25,
   },
   charnier: {
     nom: 'Charnier',

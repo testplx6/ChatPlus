@@ -29,6 +29,7 @@ import { pourvoirCharges, nommerActeur } from './notables.js';
 import {
   chemin, colonieDe, colonieParId, distance, voisins, damer, libererOrphelines,
   monterLaGarde, leverLaGarde, POSTE, batirPoste, raserPoste, posteDe, nomRegion,
+  marquerLieu,
 } from './world.js';
 
 import {
@@ -379,6 +380,11 @@ export function basculerPlace(world, col, nouveau, log, ctx) {
     regionId: col.regionId,
     factions: [nouveau, ancien].filter(Boolean),
   });
+  // On s'est battu ici, et la terre s'en souvient. Sur une case VOISINE : la
+  // ville, elle, tient toujours debout — c'est devant ses murs qu'on est tombé.
+  for (const v of voisins(col.regionId)) {
+    if (marquerLieu(world, v, 'charnier', world.heure || 0)) break;
+  }
   if (ancien) majRelation(world, nouveau, ancien, -25);
 }
 
@@ -657,6 +663,9 @@ function tickArmee(world, armee, t, log, ctx) {
     const p = posteDe(world, armee.regionId);
     if (p && p.faction !== armee.faction && enGuerre(world, armee.faction, p.faction)) {
       raserPoste(world, armee.regionId);
+      // Ce qu'on a rasé ne disparaît pas de la carte : il en reste quatre murs
+      // bas, et un nom (GEOGRAPHIE.md, G5).
+      marquerLieu(world, armee.regionId, 'ruine_poste', t);
       log({
         type: 'poste',
         texte: `${drapeauDe(world, armee.faction).nom} `

@@ -210,6 +210,9 @@ export function tickClimat(world, t, rng) {
   // Le monde retient sa saison : `chemin` la lit à chaque arête et n'a pas à
   // la recalculer une fois par case (GEOGRAPHIE.md, G3).
   world.saisonKey = saison(t).key;
+  // L'heure du monde, pour ce qui doit dater un fait sans qu'on la lui passe
+  // de main en main sur dix appels (GEOGRAPHIE.md, G5).
+  world.heure = t;
   if (!world.meteo) {
     world.meteo = creerMeteo(rng, t);
     return null;

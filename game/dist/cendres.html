@@ -3090,6 +3090,13 @@ const PASSAGE_B = [
   'des Mille Traces', 'de l’Aube Grise', 'du Fil Rouge',
 ];
 
+/** Ce dont on nomme un lieu où il s'est passé quelque chose (G5). */
+const TRACE_A = {
+  charnier: ['Charnier', 'Champ', 'Fosse', 'Ossuaire'],
+  ruine_poste: ['Poste', 'Guérite', 'Barrage', 'Reste'],
+  ville_morte: ['Ruine', 'Carcasse', 'Vestige'],
+};
+
 /** Et ce qui nomme la Faille elle-même. */
 const FAILLE_NOM = [
   'la Faille', 'la Cassure', 'la Grande Entaille', 'le Sillon', 'la Déchirure',
@@ -3245,6 +3252,14 @@ const POI = {
     credits: [80, 400],
     objet: 2,
     danger: 0.35,
+  },
+  ruine_poste: {
+    nom: 'Poste rasé',
+    texte: 'Quatre murs bas, une porte arrachée. Quelqu’un tenait la route ici.',
+    loot: { ferraille: [15, 60], polymere: [5, 20], composant: [0, 5] },
+    credits: [20, 160],
+    objet: 1,
+    danger: 0.25,
   },
   charnier: {
     nom: 'Charnier',
@@ -3951,6 +3966,9 @@ function tickClimat(world, t, rng) {
   // Le monde retient sa saison : `chemin` la lit à chaque arête et n'a pas à
   // la recalculer une fois par case (GEOGRAPHIE.md, G3).
   world.saisonKey = saison(t).key;
+  // L'heure du monde, pour ce qui doit dater un fait sans qu'on la lui passe
+  // de main en main sur dix appels (GEOGRAPHIE.md, G5).
+  world.heure = t;
   if (!world.meteo) {
     world.meteo = creerMeteo(rng, t);
     return null;
@@ -4407,6 +4425,9 @@ function genererBiomes(rng) {
         faille: false,
         // Le nom du passage, quand la case en est un (GEOGRAPHIE.md, G2).
         passage: null,
+        // Le nom de ce qui s'est passé là, quand il s'y est passé quelque
+        // chose (GEOGRAPHIE.md, G5).
+        trace: null,
         // L'ouvrage qui tient la case, s'il y en a un (TERRITOIRE.md, T2).
         poste: null,
         controle: null,
@@ -4794,6 +4815,7 @@ function genererMonde(rng, graine = 0) {
     // La saison courante, pour que le calcul d'itinéraire n'ait pas à la
     // redériver du temps à chaque arête (GEOGRAPHIE.md, G3).
     saisonKey: 'accalmie',
+    heure: 0,
     prochainArmeeId: 1,
   };
 }
@@ -4944,6 +4966,42 @@ const POSTE = {
   // sur zéro passage, c'est juger l'heure à laquelle on regarde.
   epreuve: 720,
 };
+
+/**
+ * Ce que la carte sait garder (GEOGRAPHIE.md, G5).
+ *
+ * L'amorce existait — une ville morte laisse un site à fouiller, une embuscade
+ * laisse du danger — mais une bataille rangée, un poste rasé, une place prise
+ * ne laissaient rien : le monde oubliait tout ce qu'il faisait. C'est pourtant
+ * le seul contenu qui se fabrique tout seul, sans que personne l'écrive, et qui
+ * grandit avec la partie. Au bout de mille heures, la carte EST le récit de ce
+ * qui s'y est passé.
+ */
+const TRACES = {
+  charnier: 'on s’y est battu',
+  ruine_poste: 'un ouvrage y est tombé',
+  ville_morte: 'une ville y est morte',
+};
+
+/**
+ * Poser une trace. Rend le nom du lieu, ou null si la case garde déjà une
+ * histoire — **une case n'en porte qu'une, et c'est la première** : sinon la
+ * dernière escarmouche effacerait la ville morte, et la carte ne se souviendrait
+ * que d'hier.
+ *
+ * Le nom se dérive de la case et de l'heure, sans un seul tirage : deux mondes
+ * de même graine racontent la même histoire.
+ */
+function marquerLieu(world, regionId, type, t) {
+  const r = world.regions[regionId];
+  if (!r || r.site || r.colonie != null || !TRACES[type]) return null;
+  r.site = { type, connu: false, fouille: false, quand: t || 0 };
+  const mots = TRACE_A[type] || TRACE_A.charnier;
+  const a = mots[(regionId * 7 + (t || 0)) % mots.length];
+  const b = PASSAGE_B[(regionId * 13 + Math.floor((t || 0) / 24)) % PASSAGE_B.length];
+  r.trace = `${a} ${b}`;
+  return r.trace;
+}
 
 /** L'ouvrage qui tient cette case, s'il y en a un. */
 function posteDe(world, regionId) {
@@ -5424,6 +5482,9 @@ function nomRegion(world, i) {
   if (col) return col.nom;
   // Un lieu-dit se retient, une coordonnée non (GEOGRAPHIE.md, G2).
   if (r && r.passage) return r.passage;
+  // Un lieu où il s'est passé quelque chose porte le nom de ce qui s'y est
+  // passé (GEOGRAPHIE.md, G5).
+  if (r && r.trace) return r.trace;
   return `${BIOMES[r.biome].court} ${coordonnee(world, i)}`;
 }
 
@@ -16832,6 +16893,11 @@ function basculerPlace(world, col, nouveau, log, ctx) {
     regionId: col.regionId,
     factions: [nouveau, ancien].filter(Boolean),
   });
+  // On s'est battu ici, et la terre s'en souvient. Sur une case VOISINE : la
+  // ville, elle, tient toujours debout — c'est devant ses murs qu'on est tombé.
+  for (const v of voisins(col.regionId)) {
+    if (marquerLieu(world, v, 'charnier', world.heure || 0)) break;
+  }
   if (ancien) majRelation(world, nouveau, ancien, -25);
 }
 
@@ -17110,6 +17176,9 @@ function tickArmee(world, armee, t, log, ctx) {
     const p = posteDe(world, armee.regionId);
     if (p && p.faction !== armee.faction && enGuerre(world, armee.faction, p.faction)) {
       raserPoste(world, armee.regionId);
+      // Ce qu'on a rasé ne disparaît pas de la carte : il en reste quatre murs
+      // bas, et un nom (GEOGRAPHIE.md, G5).
+      marquerLieu(world, armee.regionId, 'ruine_poste', t);
       log({
         type: 'poste',
         texte: `${drapeauDe(world, armee.faction).nom} `
@@ -30047,6 +30116,7 @@ function normaliser(state) {
   // Avant qu'on puisse tenir du terrain, personne n'occupait rien.
   if (!w.gardes) w.gardes = [];
   if (!w.saisonKey) w.saisonKey = 'accalmie';
+  if (typeof w.heure !== 'number') w.heure = state.temps || 0;
   // Avant qu'on puisse acheter un passage, personne ne comptait ses péages.
   for (const k of Object.keys(w.factions || {})) {
     if (!w.factions[k].peages) w.factions[k].peages = {};
@@ -30063,6 +30133,7 @@ function normaliser(state) {
     // était, on ne creuse pas un gouffre sous les pieds d'une partie en cours.
     if (r.faille === undefined) r.faille = false;
     if (r.passage === undefined) r.passage = null;
+    if (r.trace === undefined) r.trace = null;
     // Avant les ouvrages, on ne tenait rien qu'avec des hommes.
     if (r.poste === undefined) r.poste = null;
   }

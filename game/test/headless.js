@@ -196,6 +196,7 @@ import {
 } from '../src/world.js';
 import { PASSAGE_A, PASSAGE_B } from '../src/data.js';
 import { SAISON_BIOME, coutSaison } from '../src/climat.js';
+import { marquerLieu, TRACES } from '../src/world.js';
 import {
   poserPoste, plafondPostes, fermerLeMoinsUtile,
 } from '../src/factions.js';
@@ -16796,6 +16797,54 @@ section('GEO 3. Le climat a une géographie (GEOGRAPHIE.md, G3)');
     const dedans = normaliser(deserialiser(serialiser(sT)));
     ok(dedans.world.saisonKey === sT.world.saisonKey, 'et la sauvegarde le garde');
   }
+}
+
+
+
+// ===========================================================================
+section('GEO 5. La carte se souvient (GEOGRAPHIE.md, G5)');
+// L’amorce existait : une ville morte laisse un site à fouiller, une embuscade
+// laisse du danger sur la région. Mais une bataille rangée, un poste rasé, une
+// place prise — rien. Le monde oubliait tout ce qu’il faisait.
+//
+// C’est pourtant le seul contenu qui se fabrique tout seul, sans que personne
+// l’écrive, et qui grandit avec la partie : au bout de mille heures, la carte
+// EST le récit de ce qui s’y est passé.
+{
+  const sM = nouvellePartie(836100, { maintenant: 0 });
+  const wM = sM.world;
+  const vierge = wM.regions.find((r) => !r.site && !r.colonie && !r.faille);
+
+  const t = marquerLieu(wM, vierge.i, 'charnier', 120);
+  ok(!!t && !!vierge.site && vierge.site.type === 'charnier',
+    'ce qui se passe quelque part y laisse une trace', `${vierge.site.type}`);
+  ok(vierge.site.quand === 120, 'et la trace est datée', `${vierge.site.quand}`);
+  ok(typeof vierge.trace === 'string' && vierge.trace.length > 3,
+    'l’endroit prend le nom de ce qui s’y est passé', `${vierge.trace}`);
+  ok(nomRegion(wM, vierge.i) === vierge.trace,
+    'et c’est ainsi qu’on l’appelle désormais', `${nomRegion(wM, vierge.i)}`);
+
+  // On n'efface pas ce qui était déjà là : une case ne porte qu'une histoire,
+  // et c'est la première — sinon la dernière bataille effacerait la ville morte.
+  {
+    const avant = vierge.site.type;
+    marquerLieu(wM, vierge.i, 'ruine', 300);
+    ok(vierge.site.type === avant, 'et la carte ne réécrit pas ce qu’elle a déjà retenu',
+      `${vierge.site.type}`);
+  }
+
+  // En jeu : une ville qui tombe laisse quelque chose derrière elle.
+  {
+    const sV = nouvellePartie(836101, { maintenant: 0 });
+    for (let i = 0; i < 2500; i++) tick(sV);
+    const traces = sV.world.regions.filter((r) => r.trace).length;
+    ok(traces > 0, 'après deux mille cinq cents heures, le monde a laissé des traces',
+      `${traces} lieu(x)`);
+  }
+
+  ok(TRACES && Object.keys(TRACES).length >= 2,
+    'les traces que la carte sait garder sont de la donnée',
+    Object.keys(TRACES).join(' · '));
 }
 
 

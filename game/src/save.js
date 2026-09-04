@@ -296,6 +296,7 @@ export function normaliser(state) {
   // Avant qu'on puisse tenir du terrain, personne n'occupait rien.
   if (!w.gardes) w.gardes = [];
   if (!w.saisonKey) w.saisonKey = 'accalmie';
+  if (typeof w.heure !== 'number') w.heure = state.temps || 0;
   // Avant qu'on puisse acheter un passage, personne ne comptait ses péages.
   for (const k of Object.keys(w.factions || {})) {
     if (!w.factions[k].peages) w.factions[k].peages = {};
@@ -312,6 +313,7 @@ export function normaliser(state) {
     // était, on ne creuse pas un gouffre sous les pieds d'une partie en cours.
     if (r.faille === undefined) r.faille = false;
     if (r.passage === undefined) r.passage = null;
+    if (r.trace === undefined) r.trace = null;
     // Avant les ouvrages, on ne tenait rien qu'avec des hommes.
     if (r.poste === undefined) r.poste = null;
   }

@@ -267,6 +267,8 @@ function jouer({ sim, data, eco, eco2, monde }, graine, horizon) {
     // l'ouvrent, et ce que les pays ont en tête quand ils vont négocier.
     passages: (s.world.pactes || []).filter((p2) => p2.clauses.includes('passage')).length,
     bloquees: s.world.colonies.filter((c) => c.blocusDit).length,
+    // Ce que la carte a retenu de ce qui s'y est passé (GEOGRAPHIE.md, G5).
+    traces: s.world.regions.filter((r) => r.trace).length,
     peageDu: Math.round(Object.keys(s.world.factions).reduce((a2, k) => a2
       + Object.values(s.world.factions[k].peages || {}).reduce((x, y) => x + y, 0), 0)),
     corridor: (() => {
@@ -448,6 +450,7 @@ function agreger(cfg) {
     damees: som(cfg, 'damees'),
     passages: som(cfg, 'passages'),
     bloquees: som(cfg, 'bloquees'),
+    traces: som(cfg, 'traces'),
     postes: som(cfg, 'postes'),
     peagePoste: som(cfg, 'peagePoste'),
     postesMorts: som(cfg, 'postesMorts'),
@@ -554,7 +557,7 @@ const COLONNES = [
   ['barrages', 'barrages', 9], ['gardees', 'gardées', 8],
   ['damees', 'damées', 7], ['passages', 'franchie', 9], ['postes', 'postes', 7], ['peagePoste', 'péages postes', 13],
   ['postesMorts', 'postes morts', 12],
-  ['passages', 'francs', 7], ['bloquees', 'bloquées', 9], ['peageDu', 'péages dus', 11], ['corridor', 'corridor 5 %', 12],
+  ['passages', 'francs', 7], ['bloquees', 'bloquées', 9], ['traces', 'traces', 7], ['peageDu', 'péages dus', 11], ['corridor', 'corridor 5 %', 12],
   ['nourries', 'nourries', 8], ['ecrasees', 'écrasées', 8],
   ['tresorMed', 'trésor méd', 10], ['fauchees', '<2500', 6],
   ['caisseMed', 'caisse méd', 10], ['bourses', 'bourses', 7],
