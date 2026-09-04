@@ -192,6 +192,7 @@ import {
   monterLaGarde, leverLaGarde, GARDE, libererOrphelines, chemin, ROUTE, idx,
   FAILLE, LARGEUR, HAUTEUR, POSTE, batirPoste, raserPoste, posteDe,
 } from '../src/world.js';
+import { PASSAGE_A, PASSAGE_B } from '../src/data.js';
 import {
   poserPoste, plafondPostes, fermerLeMoinsUtile,
 } from '../src/factions.js';
@@ -16502,6 +16503,76 @@ section('TER 7. Le trafic est la récompense (TERRITOIRE.md, T3)');
       'et jamais celui que tout le monde emprunte',
       `${wA.regions[cases[0].i].poste ? 'debout' : 'fermé'}`);
   }
+}
+
+
+
+// ===========================================================================
+section('GEO 2. La carte a des noms (GEOGRAPHIE.md, G2)');
+// Le propriétaire, en jouant : « je ne sais jamais ce qui se passe ni quoi ni
+// comment ni pourquoi ». Une part de ce grief tient à un détail bête : une case
+// sans ville s’appelait « Friche K5 ». Une coordonnée ne se retient pas, un
+// lieu-dit si — et depuis la Faille, il y a enfin des endroits qui méritent un
+// nom : les passages, ces trous dans la ligne par où tout le monde doit passer.
+//
+// « La colonne est passée au Gué des Cendres » se lit. « Région 217 » non.
+{
+  const sN = nouvellePartie(618200, { maintenant: 0 });
+  const wN = sN.world;
+
+  ok(typeof wN.failleNom === 'string' && wN.failleNom.length > 3,
+    'la Faille porte un nom', `${wN.failleNom}`);
+
+  const passages = wN.regions.filter((r) => r.passage);
+  ok(passages.length >= 2, 'et ses passages sont repérés',
+    `${passages.length}`);
+  ok(passages.every((r) => typeof r.passage === 'string' && r.passage.length > 3),
+    'chacun porte un nom, pas une coordonnée',
+    passages.map((r) => r.passage).join(' · '));
+  ok(new Set(passages.map((r) => r.passage)).size === passages.length,
+    'et deux passages ne portent pas le même',
+    `${new Set(passages.map((r) => r.passage)).size} / ${passages.length}`);
+
+  // Le nom est ce que le monde répond quand on lui demande où l’on est.
+  if (passages.length) {
+    const p0 = passages[0];
+    ok(nomRegion(wN, p0.i) === p0.passage,
+      'et c’est ce nom que le monde donne du lieu',
+      `${nomRegion(wN, p0.i)}`);
+    ok(!/^[A-Z]\d+$/.test(nomRegion(wN, p0.i)), 'jamais une coordonnée nue');
+  }
+
+  // Déterminisme : deux mondes de même graine portent les mêmes noms. Sans
+  // quoi deux joueurs ne parleraient pas du même endroit.
+  {
+    const sB = nouvellePartie(618200, { maintenant: 0 });
+    ok(sB.world.failleNom === wN.failleNom
+      && sB.world.regions.filter((r) => r.passage).map((r) => r.passage).join('|')
+        === passages.map((r) => r.passage).join('|'),
+      'à graine égale, les mêmes lieux portent les mêmes noms');
+  }
+
+  // Et deux graines ne donnent pas la même carte de noms.
+  {
+    const sC = nouvellePartie(618201, { maintenant: 0 });
+    ok(sC.world.failleNom !== wN.failleNom
+      || sC.world.regions.filter((r) => r.passage).map((r) => r.passage).join('|')
+        !== passages.map((r) => r.passage).join('|'),
+      'et deux mondes différents ne portent pas les mêmes');
+  }
+
+  // Une partie d’avant se relit sans perdre ses noms.
+  {
+    const dedans = normaliser(deserialiser(serialiser(sN)));
+    ok(dedans.world.failleNom === wN.failleNom
+      && dedans.world.regions.filter((r) => r.passage).length === passages.length,
+      'et la sauvegarde les garde');
+  }
+
+  ok(Array.isArray(PASSAGE_A) && Array.isArray(PASSAGE_B)
+    && PASSAGE_A.length >= 4 && PASSAGE_B.length >= 8,
+    'les mots dont on fait les noms sont de la donnée',
+    `${PASSAGE_A.length} × ${PASSAGE_B.length}`);
 }
 
 

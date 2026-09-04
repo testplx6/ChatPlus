@@ -306,6 +306,7 @@ export function normaliser(state) {
     // Une partie d'avant la Faille n'en a pas : sa carte reste ce qu'elle
     // était, on ne creuse pas un gouffre sous les pieds d'une partie en cours.
     if (r.faille === undefined) r.faille = false;
+    if (r.passage === undefined) r.passage = null;
     // Avant les ouvrages, on ne tenait rien qu'avec des hommes.
     if (r.poste === undefined) r.poste = null;
   }

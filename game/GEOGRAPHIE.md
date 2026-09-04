@@ -92,13 +92,29 @@ force la faille neuf fois au lieu de deux et le monde perd trente-quatre villes
 (91 affamées contre 68). Quarante est le point où la ligne est une barrière
 sans être un mur.
 
-### G2 — la carte doit avoir des noms
+### G2 — la carte doit avoir des noms — **LIVRÉ, septembre 2026**
 
-« Friche K5 » ne se retient pas ; « le Gué des Cendres » se retient. Le
-générateur existe déjà (`nomVille`, deux tables de mots). Nommer les cases
-remarquables — les passages de G1, les sites, les hauteurs — coûte peu et
-touche directement ce que le propriétaire appelle « un gros problème du jeu » :
-« la colonne est passée au Gué des Cendres » se lit, « région 217 » non.
+« Friche K5 » ne se retient pas ; « le Gué des Cendres » se retient.
+
+**Ce qui a été livré.** La Faille porte un nom, et chacun de ses passages — ces
+trous dans la ligne par où tout le monde doit passer — porte le sien, tiré de
+deux tables de mots (`PASSAGE_A`, `PASSAGE_B`) qui sont de la donnée : pour
+ajouter un mot, on ajoute un mot. `nomRegion` rend ce nom, `lieuAvecCoord` le
+garde avec sa coordonnée, et la carte cerne le passage d'un liseré. Le journal
+dit donc désormais « la colonne est passée au Gué des Cendres » là où il disait
+une coordonnée, ce qui touche directement le grief du propriétaire.
+
+**Ce que la livraison a appris, et c'est le piège n°1 lu jusqu'au bout.** La
+première version tirait les noms au fil du tracé, sur le dé de la faille. Elle
+consommait donc des nombres au milieu d'une séquence existante et **déplaçait
+la ligne elle-même** : le monde changeait, et il se trouve qu'il coûtait six
+pour cent de tick de plus — assez pour faire tomber la garde de vitesse.
+Corrigé en retenant les ouvertures et en les baptisant après le tracé, avec un
+dé à elles. Un nom ne doit pas déplacer une montagne. Après : +0,9 % de tick,
+c'est-à-dire rien.
+
+Restent à nommer, si l'on veut aller plus loin : les sites, les ruines, et les
+hauteurs quand il y en aura (G6).
 
 ### G3 — le climat doit avoir une géographie
 

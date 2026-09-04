@@ -1086,6 +1086,35 @@ export const VILLE_A = [
   'Fort', 'Poste', 'Halte', 'Nœud', 'Dépôt', 'Cité', 'Enclos', 'Puits', 'Relais', 'Camp',
 ];
 
+/**
+ * Les mots dont on fait les noms de lieux-dits (GEOGRAPHIE.md, G2).
+ *
+ * Une case sans ville s'appelait « Friche K5 ». Une coordonnée ne se retient
+ * pas ; un lieu-dit si — et depuis la Faille, il y a des endroits qui méritent
+ * un nom : les passages, ces trous dans la ligne par où tout le monde doit
+ * passer. « La colonne est passée au Gué des Cendres » se lit ; « région 217 »
+ * non, et c'est une part du grief du propriétaire sur ce qu'on ne comprend pas
+ * du monde.
+ *
+ * De la donnée, comme `MOTIFS_SECESSION` : pour ajouter un mot, on ajoute un
+ * mot, et rien d'autre dans le moteur ne connaît la liste.
+ */
+export const PASSAGE_A = [
+  'Gué', 'Col', 'Passe', 'Défilé', 'Brèche', 'Seuil', 'Pas',
+];
+
+export const PASSAGE_B = [
+  'des Cendres', 'du Vieux Fer', 'de l’Ossuaire', 'des Corbeaux', 'du Silence',
+  'des Deux Ombres', 'du Sel Noir', 'de la Rouille', 'des Suppliants',
+  'du Dernier Souffle', 'des Verrous', 'de la Bête', 'du Passeur',
+  'des Mille Traces', 'de l’Aube Grise', 'du Fil Rouge',
+];
+
+/** Et ce qui nomme la Faille elle-même. */
+export const FAILLE_NOM = [
+  'la Faille', 'la Cassure', 'la Grande Entaille', 'le Sillon', 'la Déchirure',
+];
+
 export const VILLE_B = [
   'Kalvar', 'Ossane', 'Tréfonds', 'Vermeil', 'Zéro', 'Dix-Sept', 'Ostrande', 'Cinabre',
   'Vesper', 'Krœn', 'Malemer', 'Sablon', 'Ferrant', 'Tourbe', 'Nadir', 'Ambre',

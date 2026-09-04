@@ -4,7 +4,8 @@
 
 import {
   BIOMES, BIOME_KEYS, FACTIONS, DIPLO_FACTIONS, VILLE_A, VILLE_B, COMMODITY_KEYS,
-  POI, POI_KEYS, MENAGES, drapeauDe,} from './data.js';
+  POI, POI_KEYS, MENAGES, drapeauDe, PASSAGE_A, PASSAGE_B, FAILLE_NOM,
+} from './data.js';
 import { grainDe, Rng } from './rng.js';
 
 // Une carte de 10×8 se traversait de bout en bout en deux jours de jeu : au
@@ -99,6 +100,8 @@ function genererBiomes(rng) {
         // La Faille (GEOGRAPHIE.md, G1) : le sol qu'on ne traverse qu'à grand
         // prix. Posée à la création, comme tout le reste.
         faille: false,
+        // Le nom du passage, quand la case en est un (GEOGRAPHIE.md, G2).
+        passage: null,
         // L'ouvrage qui tient la case, s'il y en a un (TERRITOIRE.md, T2).
         poste: null,
         controle: null,
@@ -184,6 +187,11 @@ export const FAILLE = { cout: 40, passages: 3 };
  */
 function tracerFaille(regions, graine) {
   const rng = new Rng(grainDe(graine, 'faille'));
+  // Les ouvertures sont retenues et nommées APRÈS, avec leur propre dé. Tirer
+  // les noms au fil du tracé consommait des nombres dans le dé de la faille et
+  // déplaçait donc la ligne elle-même : le monde changeait, et il s'est trouvé
+  // qu'il coûtait six pour cent de tick de plus. Un nom ne doit pas déplacer
+  // une montagne (piège n°1 de CLAUDE.md, lu jusqu'au bout).
   // Les ouvertures : des lignes entières où la faille ne passe pas. Tirées
   // d'abord pour qu'elles soient réparties, jamais toutes au même bout.
   const ouvertures = new Set();
@@ -192,6 +200,7 @@ function tracerFaille(regions, graine) {
     ouvertures.add(Math.min(HAUTEUR - 1, k * pas + rng.irange(-1, 1)));
   }
   // Le tracé : on part d'une colonne du milieu et l'on serpente vers le sud.
+  const ouverts = [];
   let x = rng.irange(Math.floor(LARGEUR * 0.3), Math.floor(LARGEUR * 0.7));
   for (let y = 0; y < HAUTEUR; y++) {
     if (!ouvertures.has(y)) {
@@ -208,9 +217,26 @@ function tracerFaille(regions, graine) {
         if (r.colonie == null && r.biome !== 'relais') { ou = xx; break; }
       }
       if (ou >= 0) { regions[idx(ou, y)].faille = true; x = ou; }
+    } else {
+      // Une ouverture : la case que la ligne aurait prise est le passage, et
+      // c'est par là que tout le monde devra passer. Elle a donc un nom.
+      const r = regions[idx(x, y)];
+      if (r.colonie == null) ouverts.push(r);
     }
     x = Math.max(0, Math.min(LARGEUR - 1, x + rng.irange(-1, 1)));
   }
+  // Le baptême, à part : son dé lui est propre, donc aucun nom ne déplace rien.
+  const des = new Rng(grainDe(graine, 'lieux'));
+  const pris = new Set();
+  for (const r of ouverts) {
+    let n = '';
+    for (let essai = 0; essai < 40 && (!n || pris.has(n)); essai++) {
+      n = `${des.pick(PASSAGE_A)} ${des.pick(PASSAGE_B)}`;
+    }
+    pris.add(n);
+    r.passage = n;
+  }
+  return `${des.pick(FAILLE_NOM)} ${des.pick(PASSAGE_B)}`;
 }
 
 function genererColonies(rng, regions, graine) {
@@ -432,7 +458,7 @@ export function genererMonde(rng, graine = 0) {
   const colonies = genererColonies(rng, regions, graine);
   // Après les villes, pour que la ligne les contourne au lieu de les avaler —
   // et avec son propre dé, pour ne décaler aucun tirage de ce qui précède.
-  tracerFaille(regions, graine);
+  const failleNom = tracerFaille(regions, graine);
   semerSites(rng, regions);
   const factions = attribuerFactions(rng, regions, colonies);
   return {
@@ -450,6 +476,8 @@ export function genererMonde(rng, graine = 0) {
     drapeaux: {},
     armees: [],
     guerres: [],
+    // Le nom de la Faille, et de ses passages (GEOGRAPHIE.md, G2).
+    failleNom,
     // Les cases qu'on occupe (TERRITOIRE.md, A2). Une liste plutôt qu'un
     // balayage : elles se comptent en dizaines, la carte en milliers.
     gardes: [],
@@ -1074,6 +1102,8 @@ export function nomRegion(world, i) {
   const r = world.regions[i];
   const col = colonieDe(world, i);
   if (col) return col.nom;
+  // Un lieu-dit se retient, une coordonnée non (GEOGRAPHIE.md, G2).
+  if (r && r.passage) return r.passage;
   return `${BIOMES[r.biome].court} ${coordonnee(world, i)}`;
 }
 
@@ -1097,5 +1127,10 @@ export function coordonnee(world, i) {
 export function lieuAvecCoord(world, i) {
   const col = colonieDe(world, i);
   const c = coordonnee(world, i);
-  return col ? `${col.nom} (${c})` : nomRegion(world, i);
+  if (col) return `${col.nom} (${c})`;
+  // Un lieu-dit garde sa coordonnée à côté : le nom se retient, la coordonnée
+  // se retrouve sur la carte (GEOGRAPHIE.md, G2).
+  const r = world.regions[i];
+  if (r && r.passage) return `${r.passage} (${c})`;
+  return nomRegion(world, i);
 }

@@ -1330,6 +1330,13 @@ function peindreTerrain(g, w, L, H) {
     g.fillStyle = 'rgba(0,0,0,.32)';
     if (voisinE && voisinE.decouvert && voisinE.biome !== r.biome) g.fillRect(x + CELL - 1, y, 1, CELL);
     if (voisinS && voisinS.decouvert && voisinS.biome !== r.biome) g.fillRect(x, y + CELL - 1, CELL, 1);
+    // Un passage : le trou dans la ligne, par où tout le monde doit passer. Il
+    // se voit, et il a un nom (GEOGRAPHIE.md, G2).
+    if (r.passage) {
+      g.strokeStyle = 'rgba(217,160,58,0.55)';
+      g.lineWidth = 1;
+      g.strokeRect(x + 1.5, y + 1.5, CELL - 3, CELL - 3);
+    }
     // La Faille : le sol qu'on ne traverse qu'à grand prix (GEOGRAPHIE.md, G1).
     // Elle se voit, sinon le joueur constate que ses routes s'allongent sans
     // pouvoir dire pourquoi — et c'est exactement le grief du propriétaire.
