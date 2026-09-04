@@ -66,6 +66,26 @@ const CHEMINS_CHROMIUM = [
  * durée d'origine — au pire, on se comporte exactement comme avant, et jamais
  * plus longtemps.
  */
+
+/**
+ * Attendre qu'une chose arrive, au lieu d'attendre le temps qu'elle met
+ * d'habitude. Le plafond est la durée qui dormait là avant — si la condition
+ * ne vient pas, on repart au même moment qu'avant, et l'assertion qui suit dira
+ * la vérité comme elle l'aurait dite.
+ *
+ * Deux des pauses longues ne passent PAS par ici et n'y passeront jamais :
+ * celles qui vérifient que l'horloge NE bouge PAS (la stèle ouverte gèle le
+ * monde). Prouver qu'il ne se passe rien demande d'attendre pour de bon.
+ */
+async function jusqua(p, plafond, condition, arg) {
+  try {
+    await p.waitForFunction(condition, arg, { timeout: plafond, polling: 100 });
+  } catch (err) { /* le plafond est atteint : on repart comme avant */ }
+}
+
+/** L'heure de la partie, telle que la sauvegarde la porte. */
+const heure = (p) => p.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
+
 const SILENCE = 60;
 async function calme(p, plafond = 400) {
   await p.evaluate(([silence, max]) => new Promise((res) => {
@@ -251,8 +271,8 @@ console.log('\n1 bis. Le dock d’ordres — les verbes vivent sur la carte (dir
 console.log('\n2. Ordres et temps réel');
 await page.click('[data-a="ordre"][data-k="fouille"]');
 await page.click('[data-a="vitesse"][data-v="16"]');
-const t0 = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
-await page.waitForTimeout(6000);
+const t0 = await heure(page);
+await jusqua(page, 6000, (t) => JSON.parse(window.__sauvegardeTexte()).temps > t, t0);
 await page.screenshot({ path: join(CAPTURES, '01-carte.png') });
 const t1 = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
 ok(t1 > t0, 'l’horloge avance en temps réel', `${t0} → ${t1}`);
@@ -279,7 +299,20 @@ console.log('\n2 bis. La carte vivante (M1, ALLURE.md)');
     return String(h);
   });
   const v1 = await prend();
-  await calme(page, 450);
+  // Ici `calme` ne vaut rien et c'est instructif : la cendre vit dans un
+  // CANVAS, qui se redessine sans muter le DOM. L'observateur ne voyait donc
+  // rien bouger et repartait au bout de soixante millisecondes, avec deux fois
+  // la même image. Ce qu'on attend, c'est que l'empreinte change — on l'attend
+  // donc directement, avec le même plafond qu'avant.
+  await jusqua(page, 450, (avant) => {
+    const v = document.querySelector('#carte-vie');
+    if (!v || !v.width) return false;
+    const d = v.getContext('2d')
+      .getImageData(0, 0, Math.min(400, v.width), Math.min(400, v.height)).data;
+    let h = 0;
+    for (let i = 0; i < d.length; i += 7) h = ((h * 31) + d[i + 3]) >>> 0;
+    return String(h) !== avant;
+  }, v1);
   const v2 = await prend();
   ok(v1 !== '' && v1 !== v2, 'et la cendre dérive : deux instants diffèrent', `${v1} / ${v2}`);
   const sauveAvant = await page.evaluate(() => localStorage.getItem('cendres.save.v1').length);
@@ -2460,8 +2493,9 @@ console.log('\n8 vicies semel bis. La fin ne gèle pas l’horloge de l’écran
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   const tFige = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
-  // La sauvegarde s'écrit toutes les 5 s : on attend au-delà, comme au § 2.
-  await page.waitForTimeout(6000);
+  // La sauvegarde s'écrit toutes les 5 s : on attendait au-delà, comme au § 2.
+  // On attend maintenant qu'elle ait bougé, ce qui vient bien plus tôt.
+  await jusqua(page, 6000, (t) => JSON.parse(window.__sauvegardeTexte()).temps > t, tFige);
   const tApres = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
   ok(tApres > tFige, 'le monde tourne à l’écran même quand tout le monde est mort',
     `${tFige} → ${tApres}`);
@@ -3931,7 +3965,8 @@ console.log('\n8 septies. Sauvegardes : plusieurs parties côte à côte');
   // Plus de cinq secondes : c'est le pas de l'écriture automatique, et lire
   // avant elle donne l'heure d'avant. La première version attendait 2,5 s et
   // relevait deux fois le même chiffre.
-  await page.waitForTimeout(7000);
+  await jusqua(page, 7000,
+    (t) => JSON.parse(window.__sauvegardeTexte()).temps > t, tCopie);
   const tPlusTard = await page.evaluate(() => JSON.parse(
     window.__sauvegardeTexte()).temps);
   ok(tPlusTard > tCopie, 'la partie a avancé depuis la copie',
@@ -4065,7 +4100,10 @@ console.log('\n8 octies. Une sauvegarde qui échoue le dit');
       return vrai.call(this, k, v);
     };
   });
-  await page.waitForTimeout(6500);
+  await jusqua(page, 6500, () => {
+    const b = document.querySelector('#barre-haut [data-a="modale"][data-m="sauvegardes"]');
+    return b && b.innerText.trim() === '⚠';
+  });
   ok((await page.locator('#barre-haut [data-a="modale"][data-m="sauvegardes"]').innerText()).trim() === '⚠',
     'l’écriture refusée se voit dans la barre du haut, sans rien ouvrir');
   await page.click('#barre-haut [data-a="modale"][data-m="sauvegardes"]');
@@ -4359,7 +4397,8 @@ console.log('\n8 vicies quinquies. Les grands moments (M2, ALLURE.md)');
   // c'est la règle. On rend donc la main au joueur pressé du harnais, qui
   // referme toute la file — et le temps doit repartir.
   await page.evaluate(() => { window.__momentsAuto = true; });
-  await page.waitForTimeout(6500);
+  await jusqua(page, 6500,
+    (t) => JSON.parse(window.__sauvegardeTexte()).temps > t, tB);
   const tC = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
   ok(tC > tB, 'la file refermée, le temps repart', `${tB} → ${tC}`);
 }
