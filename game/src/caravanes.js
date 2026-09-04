@@ -9,6 +9,7 @@ import { Rng, grainDe } from './rng.js';
 import {
   chemin, colonieParId, colonieDe, nomRegion, distance, damer,
   negoceCoupe, vivresCoupees, aucuneCoupure, villeDuBarrage,
+  noterAuPoste,
 } from './world.js';
 import {
   reseauDe, reseaux, idReseau, villesDuReseau, peutTraiter, chiffrerOrdre,
@@ -977,6 +978,9 @@ export function passerBarrage(state, car, regionId, ctx, log, venantDe) {
     const rep = REPONSES_BARRAGE[cle];
     if (!rep.peut(v)) continue;
     const montant = rep.faire(v);
+    // Le poste compte ce qu'il a vu passer (TERRITOIRE.md, T3) : c'est la seule
+    // information qu'un conseil aura sur ce que vaut cette route.
+    if (cle !== 'laissez' && cle !== 'dedans') noterAuPoste(world, regionId, montant);
     if (cle !== 'laissez' && log && montant > 0) {
       log({
         type: 'peage',

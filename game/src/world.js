@@ -597,7 +597,12 @@ export function colonieParId(world, id) {
  * que du vide. `portee` : à quelle distance de ses villes un conseil accepte
  * d'aller le poser.
  */
-export const POSTE = { cout: 900, trafic: 0.45, portee: 5 };
+export const POSTE = {
+  cout: 900, trafic: 0.45, portee: 5, parVille: 0.5,
+  // Le temps qu'on laisse à un ouvrage avant de le juger. Juger un poste neuf
+  // sur zéro passage, c'est juger l'heure à laquelle on regarde.
+  epreuve: 720,
+};
 
 /** L'ouvrage qui tient cette case, s'il y en a un. */
 export function posteDe(world, regionId) {
@@ -620,9 +625,25 @@ export function batirPoste(world, regionId, faction) {
   const f = world.factions[faction];
   if (!r || !f || r.poste || r.colonie != null || r.faille) return null;
   if (r.controle && r.controle !== faction) return null;
-  r.poste = { faction, depuis: 0 };
+  // `recu` et `passages` sont la seule information qu'un conseil aura jamais
+  // sur ce que vaut une route (TERRITOIRE.md, T3) : ce que SON ouvrage a vu
+  // passer, pas une statistique tombée du ciel.
+  r.poste = { faction, depuis: 0, recu: 0, passages: 0 };
   r.controle = faction;
   return r.poste;
+}
+
+/**
+ * Ce qui passe, le poste le compte. C'est ce qui transforme le trafic en
+ * récompense : sans ce chiffre, un poste posé au mauvais endroit y reste pour
+ * toujours et le conseil n'apprend jamais rien.
+ */
+export function noterAuPoste(world, regionId, montant) {
+  const p = posteDe(world, regionId);
+  if (!p) return 0;
+  p.passages = (p.passages || 0) + 1;
+  if (montant > 0) p.recu = (p.recu || 0) + montant;
+  return p.recu;
 }
 
 /**

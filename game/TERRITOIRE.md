@@ -393,12 +393,50 @@ fabriquées à chaque passage. Le défaut datait de la seconde moitié de B1 ; i
 était trop rare pour se voir, et les cinquante pour cent de barrages en plus
 l'ont rendu visible dans la minute. C'est exactement le métier de l'invariant.
 
-**T3 — le trafic est la récompense.** Le péage encaissé (B1, livré) devient un
+**T3 — le trafic est la récompense** — **ÉCRIT, NON POUSSÉ : une garde tombe,
+voir Blocages en fin de document.** Le péage encaissé (B1, livré) devient un
 revenu **proportionnel au trafic** de la route tenue. Un conseil a alors une
 raison chiffrée de vouloir un corridor, de le fortifier, de s'allier pour
 l'ouvrir ou de faire la guerre pour le fermer. Et A2 cesse d'être lettre morte
 sans qu'on y touche : les colonnes stationneront là où il y a quelque chose à
 tenir, parce qu'un agent aura enfin une réponse à « pourquoi ici ? ».
+
+*Ce que la livraison a donné.* Le poste **compte ce qui passe** (`recu`,
+`passages`) — c'est la seule information qu'un conseil aura jamais sur ce que
+vaut une route, et elle vient de son propre ouvrage, pas d'une statistique
+tombée du ciel. Un pays ne tient qu'un nombre de postes proportionnel à ses
+villes (`POSTE.parVille`) : sans plafond, un trésor gras couvre la carte et il
+n'y a **aucun arbitrage à faire**. Au plafond, le conseil ferme le poste que
+personne n'emprunte pour ouvrir mieux ailleurs — et jamais un ouvrage trop
+neuf pour avoir eu sa chance (`POSTE.epreuve`, trente jours).
+
+Mesuré sur deux jeux de six graines : 125 et 133 postes debout, **6 414 et
+7 346 unités réellement encaissées** par eux, et **un tiers d'entre eux ne voit
+jamais rien passer** (41 sur 125, 37 sur 133). Ce dernier chiffre est le vrai
+apport de T3 : avant, aucun conseil ne pouvait le savoir.
+
+## Blocages
+
+**T3 est écrit, testé et mesuré, mais il n'est pas poussé** : la garde
+`effondrees` de `CIBLES.json` tombe à zéro sur ses six graines, là où elle
+exige au moins une monnaie effondrée. La règle du dépôt est de remonter, pas
+d'élargir.
+
+Ce que l'instruction établit — et elle penche nettement vers le bruit :
+
+- sur **douze** graines, trois monnaies s'effondrent ;
+- le balayage du plafond n'est **pas monotone** : `parVille` à 0,3 donne deux
+  effondrements, à 0,5 zéro, à 1,0 trois. Un levier qui donne 2, 0, 3 ne
+  commande rien ;
+- la garde porte sur un événement rare compté sur six parties. À une moyenne
+  d'environ un et demi, tirer zéro arrive une fois sur cinq sans qu'aucun code
+  n'ait changé.
+
+Autrement dit, ce n'est probablement pas T3 qui empêche les monnaies de
+s'effondrer : c'est la garde qui est trop fine pour son échantillon. Mais
+c'est au propriétaire de trancher, pas à moi — soit la garde se mesure sur
+plus de graines, soit elle se lit autrement, soit il y a dans T3 un effet que
+je n'ai pas vu.
 
 ## Ce que le consultant déconseille
 

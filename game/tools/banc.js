@@ -257,6 +257,12 @@ function jouer({ sim, data, eco, eco2, monde }, graine, horizon) {
     // Les ouvrages debout (TERRITOIRE.md, T2) : c'est la mesure qui dit si les
     // pays ont enfin une raison de tenir une route. A2 mesurait zéro.
     postes: s.world.regions.filter((r) => r.poste).length,
+    // Ce que les postes ont réellement encaissé, et la part de ceux que
+    // personne n'emprunte : c'est la mesure de T3 — un poste qui ne voit rien
+    // passer n'est pas un territoire, c'est une dépense.
+    peagePoste: Math.round(s.world.regions.reduce(
+      (a2, r) => a2 + ((r.poste && r.poste.recu) || 0), 0)),
+    postesMorts: s.world.regions.filter((r) => r.poste && !(r.poste.recu > 0)).length,
     corridor: (() => {
       const p = s.world.regions.map((r) => r.piste || 0).sort((a2, b2) => b2 - a2);
       const tot = p.reduce((a2, b2) => a2 + b2, 0);
@@ -436,6 +442,8 @@ function agreger(cfg) {
     damees: som(cfg, 'damees'),
     passages: som(cfg, 'passages'),
     postes: som(cfg, 'postes'),
+    peagePoste: som(cfg, 'peagePoste'),
+    postesMorts: som(cfg, 'postesMorts'),
     corridor: `${Math.round(med(cfg.parties.map((p2) => p2.corridor)))} %`,
     villes: som(cfg, 'villes'),
     pop: som(cfg, 'pop'),
@@ -525,7 +533,8 @@ const COLONNES = [
   ['nom', 'config', 18], ['villes', 'villes', 7], ['pop', 'pop', 8],
   ['tenues', 'cases tenues', 12], ['orphelines', 'orphelines', 10],
   ['barrages', 'barrages', 9], ['gardees', 'gardées', 8],
-  ['damees', 'damées', 7], ['passages', 'franchie', 9], ['postes', 'postes', 7], ['corridor', 'corridor 5 %', 12],
+  ['damees', 'damées', 7], ['passages', 'franchie', 9], ['postes', 'postes', 7], ['peagePoste', 'péages postes', 13],
+  ['postesMorts', 'postes morts', 12], ['corridor', 'corridor 5 %', 12],
   ['nourries', 'nourries', 8], ['ecrasees', 'écrasées', 8],
   ['tresorMed', 'trésor méd', 10], ['fauchees', '<2500', 6],
   ['caisseMed', 'caisse méd', 10], ['bourses', 'bourses', 7],

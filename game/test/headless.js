@@ -192,7 +192,10 @@ import {
   monterLaGarde, leverLaGarde, GARDE, libererOrphelines, chemin, ROUTE, idx,
   FAILLE, LARGEUR, HAUTEUR, POSTE, batirPoste, raserPoste, posteDe,
 } from '../src/world.js';
-import { poserPoste } from '../src/factions.js';
+import {
+  poserPoste, plafondPostes, fermerLeMoinsUtile,
+} from '../src/factions.js';
+import { noterAuPoste } from '../src/world.js';
 import {
   groupeActif, groupes, tousLesMembres, scinder, fusionner, assignerTache, tactiqueDe,
   tacheDe, debout, noyau, plafondCohesion, rendementCohesion,
@@ -16426,6 +16429,79 @@ section('TER 6. On tient un ouvrage, pas des heures (TERRITOIRE.md, T2)');
 
   ok(POSTE && typeof POSTE.cout === 'number', 'son prix est calibrable',
     `${JSON.stringify(POSTE)}`);
+}
+
+
+
+// ===========================================================================
+section('TER 7. Le trafic est la récompense (TERRITOIRE.md, T3)');
+// La revue de game master : « un conseil a alors une raison chiffrée de vouloir
+// un corridor ». T2 lui donnait de quoi bâtir, mais il choisissait sur la
+// piste — la trace du passé — et n’apprenait jamais rien de ce que son ouvrage
+// rapportait vraiment. Un poste posé au mauvais endroit y restait pour
+// toujours.
+//
+// Deux choses, donc : le poste COMPTE ce qui passe, et le conseil ARBITRE. Un
+// pays ne tient qu'un nombre de postes proportionnel à ses villes ; au
+// plafond, il ferme le moins rentable pour ouvrir mieux ailleurs. C’est ce qui
+// fait du trafic une récompense et non une décoration.
+{
+  const sT3 = nouvellePartie(773400, { maintenant: 0 });
+  const wT = sT3.world;
+  const libre = wT.regions.find((r) => !r.faille && !r.colonie && !r.controle);
+  wT.factions.rouilleurs.tresor = POSTE.cout * 4;
+  const p = poserPoste(wT, 'rouilleurs', libre, null);
+  ok(!!p && p.recu === 0 && p.passages === 0,
+    'un poste neuf n’a encore rien vu passer',
+    p ? `${p.recu} / ${p.passages}` : 'aucun');
+
+  // Ce qui passe, il le compte — c’est la seule information qu’un conseil
+  // aura jamais sur ce que vaut une route.
+  if (p) {
+    noterAuPoste(wT, libre.i, 140);
+    noterAuPoste(wT, libre.i, 60);
+    ok(p.recu === 200 && p.passages === 2,
+      'et ce qui passe, il le compte', `${p.recu} en ${p.passages} passages`);
+  }
+
+  // Le plafond : un pays ne tient pas plus de postes que ses villes n’en
+  // portent. Sans plafond, un trésor gras couvrirait la carte et il n’y aurait
+  // aucun arbitrage à faire.
+  {
+    const n = plafondPostes(wT, 'rouilleurs');
+    ok(n >= 1 && n < wT.regions.length,
+      'un pays ne tient qu’un nombre de postes proportionnel à ses villes',
+      `${n}`);
+  }
+
+  // L’arbitrage : au plafond, on ferme le moins rentable pour ouvrir mieux.
+  // Un poste que rien n’emprunte n’est pas un territoire, c’est une dépense.
+  {
+    const sA = nouvellePartie(773401, { maintenant: 0 });
+    const wA = sA.world;
+    wA.factions.rouilleurs.tresor = POSTE.cout * 40;
+    const cases = wA.regions.filter((r) => !r.faille && !r.colonie && !r.controle)
+      .slice(0, plafondPostes(wA, 'rouilleurs'));
+    for (const r of cases) poserPoste(wA, 'rouilleurs', r, null);
+    const combien = wA.regions.filter((r) => r.poste
+      && r.poste.faction === 'rouilleurs').length;
+    ok(combien === cases.length, 'décor : le pays est à son plafond', `${combien}`);
+
+    // Le plus fréquenté d’un côté, un mort-né de l’autre.
+    for (let k = 0; k < 30; k++) noterAuPoste(wA, cases[0].i, 500);
+    const stérile = cases[cases.length - 1];
+    const ailleurs = wA.regions.find((r) => !r.faille && !r.colonie && !r.controle
+      && (r.piste || 0) > 0.2);
+    ok(!poserPoste(wA, 'rouilleurs', ailleurs, null),
+      'au plafond, on ne pose plus rien de plus');
+    const ferme = fermerLeMoinsUtile(wA, 'rouilleurs');
+    ok(ferme === stérile.i || (ferme != null && !wA.regions[ferme].poste),
+      'mais on ferme le moins fréquenté pour retrouver une place',
+      `${ferme}`);
+    ok(!!wA.regions[cases[0].i].poste,
+      'et jamais celui que tout le monde emprunte',
+      `${wA.regions[cases[0].i].poste ? 'debout' : 'fermé'}`);
+  }
 }
 
 

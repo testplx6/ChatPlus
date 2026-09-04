@@ -14,6 +14,7 @@ import {
   POI, SKILLS, SKILL_KEYS, PALIERS_ITEM, SURNOMS, TRAITS, drapeauDe,} from './data.js';
 import {
   colonieDe, voisins, nomRegion, distance, villeDuBarrage,
+  noterAuPoste,
 } from './world.js';
 import { compterVictoire } from './contrats.js';
 import {
@@ -114,6 +115,7 @@ export function percevoirPeage(state, faction, regionId, montant, paye) {
   // recette — c'est `encaisser` qui le sait.
   encaisser(world, place, recu);
   entrerDehors(world, faction, recu);
+  noterAuPoste(world, regionId, recu);
   return recu;
 }
 

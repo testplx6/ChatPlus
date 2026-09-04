@@ -30,6 +30,7 @@ import {
   chemin, colonieDe, colonieParId, distance, voisins, damer, libererOrphelines,
   monterLaGarde, leverLaGarde, POSTE, batirPoste, raserPoste, posteDe, nomRegion,
 } from './world.js';
+
 import {
   loisDe, pressionFiscale, IMPOTS, PEINES, REGIMES, DIRECTEURS, directeurInitial,
   DISCIPLINES,
@@ -1234,6 +1235,19 @@ function conseil(world, key, t, log, ctx) {
   // raison de tenir autre chose que ses murs : A2 mesurait zéro appropriation
   // parce qu'aucun agent n'avait de réponse à « pourquoi ici ? ».
   if (!couronne && f.tresor > POSTE.cout * 2.5) {
+    // Au plafond, on ne pose plus rien tant qu'on n'a pas lâché autre chose.
+    // Le conseil ferme alors le poste que personne n'emprunte : ses hommes
+    // valent mieux là où il se passe quelque chose (TERRITOIRE.md, T3). Il ne
+    // le fait qu'une fois le poste installé depuis assez longtemps pour avoir
+    // eu sa chance — juger un ouvrage neuf sur zéro passage, c'est juger le
+    // hasard de l'heure à laquelle on regarde.
+    const miens = postesDe(world, key);
+    if (miens.length >= plafondPostes(world, key)) {
+      const murs = miens.filter((r) => t - (r.poste.depuis || 0) > POSTE.epreuve);
+      if (murs.length >= 2 && murs.some((r) => (r.poste.recu || 0) <= 0)) {
+        fermerLeMoinsUtile(world, key, t);
+      }
+    }
     let mieux = null;
     for (const r of world.regions) {
       if (r.poste || r.colonie != null || r.faille) continue;
@@ -1243,7 +1257,7 @@ function conseil(world, key, t, log, ctx) {
       if (!mieux || (r.piste || 0) > (mieux.piste || 0)) mieux = r;
     }
     if (mieux && rng.chance(0.5 * penchant(world, key, 'expansion'))) {
-      if (poserPoste(world, key, mieux, log)) {
+      if (poserPoste(world, key, mieux, log, t)) {
       }
     }
   }
@@ -1264,6 +1278,42 @@ function conseil(world, key, t, log, ctx) {
 }
 
 /**
+ * Combien de postes un pays tient (TERRITOIRE.md, T3).
+ *
+ * Un plafond, et il n'est pas une taxe : sans lui, un trésor gras couvrirait la
+ * carte de postes et il n'y aurait **aucun arbitrage à faire**. Avec lui, tenir
+ * une route de plus veut dire en lâcher une autre — c'est là que le trafic
+ * devient une récompense et pas une décoration.
+ */
+export function plafondPostes(world, key) {
+  return Math.max(1, Math.round(coloniesDe(world, key).length * POSTE.parVille));
+}
+
+/** Ceux qu'on tient. */
+export function postesDe(world, key) {
+  return world.regions.filter((r) => r.poste && r.poste.faction === key);
+}
+
+/**
+ * Fermer le moins fréquenté. Un poste que rien n'emprunte n'est pas un
+ * territoire, c'est une dépense : le conseil y retire ses hommes pour les
+ * mettre où il se passe quelque chose. Rend la case libérée, ou null.
+ */
+export function fermerLeMoinsUtile(world, key, t) {
+  const tous = postesDe(world, key);
+  const miens = t == null ? tous
+    : tous.filter((r) => t - (r.poste.depuis || 0) > POSTE.epreuve);
+  if (miens.length < 2) return null;
+  let pire = null;
+  for (const r of miens) {
+    if (!pire || (r.poste.recu || 0) < (pire.poste.recu || 0)) pire = r;
+  }
+  if (!pire) return null;
+  raserPoste(world, pire.i);
+  return pire.i;
+}
+
+/**
  * Poser un poste et payer les maçons (TERRITOIRE.md, T2).
  *
  * Même comptabilité qu'un mur ou qu'une levée : le trésor paie, et les maçons
@@ -1271,14 +1321,16 @@ function conseil(world, key, t, log, ctx) {
  * Rien n'apparaît, rien ne disparaît. La première version débitait le trésor
  * sans créditer personne, et l'invariant comptable l'a dit dans la minute.
  */
-export function poserPoste(world, key, region, log) {
+export function poserPoste(world, key, region, log, t) {
   const f = world.factions[key];
   if (!f || (f.tresor || 0) < POSTE.cout) return null;
+  if (postesDe(world, key).length >= plafondPostes(world, key)) return null;
   const chez = colonieDepart(world, key, region.i);
   if (!chez) return null;
   const paye = verser(world, key, chez, POSTE.cout);
   if (!(paye > 0)) return null;
   const p = batirPoste(world, region.i, key);
+  if (p) p.depuis = t || 0;
   if (!p && log) return null;
   if (log) {
     log({

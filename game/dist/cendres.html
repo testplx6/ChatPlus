@@ -4823,7 +4823,12 @@ function colonieParId(world, id) {
  * que du vide. `portee` : à quelle distance de ses villes un conseil accepte
  * d'aller le poser.
  */
-const POSTE = { cout: 900, trafic: 0.45, portee: 5 };
+const POSTE = {
+  cout: 900, trafic: 0.45, portee: 5, parVille: 0.5,
+  // Le temps qu'on laisse à un ouvrage avant de le juger. Juger un poste neuf
+  // sur zéro passage, c'est juger l'heure à laquelle on regarde.
+  epreuve: 720,
+};
 
 /** L'ouvrage qui tient cette case, s'il y en a un. */
 function posteDe(world, regionId) {
@@ -4846,9 +4851,25 @@ function batirPoste(world, regionId, faction) {
   const f = world.factions[faction];
   if (!r || !f || r.poste || r.colonie != null || r.faille) return null;
   if (r.controle && r.controle !== faction) return null;
-  r.poste = { faction, depuis: 0 };
+  // `recu` et `passages` sont la seule information qu'un conseil aura jamais
+  // sur ce que vaut une route (TERRITOIRE.md, T3) : ce que SON ouvrage a vu
+  // passer, pas une statistique tombée du ciel.
+  r.poste = { faction, depuis: 0, recu: 0, passages: 0 };
   r.controle = faction;
   return r.poste;
+}
+
+/**
+ * Ce qui passe, le poste le compte. C'est ce qui transforme le trafic en
+ * récompense : sans ce chiffre, un poste posé au mauvais endroit y reste pour
+ * toujours et le conseil n'apprend jamais rien.
+ */
+function noterAuPoste(world, regionId, montant) {
+  const p = posteDe(world, regionId);
+  if (!p) return 0;
+  p.passages = (p.passages || 0) + 1;
+  if (montant > 0) p.recu = (p.recu || 0) + montant;
+  return p.recu;
 }
 
 /**
@@ -15873,6 +15894,9 @@ function passerBarrage(state, car, regionId, ctx, log, venantDe) {
     const rep = REPONSES_BARRAGE[cle];
     if (!rep.peut(v)) continue;
     const montant = rep.faire(v);
+    // Le poste compte ce qu'il a vu passer (TERRITOIRE.md, T3) : c'est la seule
+    // information qu'un conseil aura sur ce que vaut cette route.
+    if (cle !== 'laissez' && cle !== 'dedans') noterAuPoste(world, regionId, montant);
     if (cle !== 'laissez' && log && montant > 0) {
       log({
         type: 'peage',
@@ -16326,6 +16350,7 @@ function attaquerCaravane(state, car, rng, log, combatContre, genererBande, grou
 // ===== src/factions.js ===============================================
 // Le monde tourne sans le joueur : les factions lèvent des armées, assiègent,
 // prennent des colonies, signent des paix. C'est le cœur « vivant » de la sim.
+
 
 
 // ---------------------------------------------------------------------------
@@ -17527,6 +17552,19 @@ function conseil(world, key, t, log, ctx) {
   // raison de tenir autre chose que ses murs : A2 mesurait zéro appropriation
   // parce qu'aucun agent n'avait de réponse à « pourquoi ici ? ».
   if (!couronne && f.tresor > POSTE.cout * 2.5) {
+    // Au plafond, on ne pose plus rien tant qu'on n'a pas lâché autre chose.
+    // Le conseil ferme alors le poste que personne n'emprunte : ses hommes
+    // valent mieux là où il se passe quelque chose (TERRITOIRE.md, T3). Il ne
+    // le fait qu'une fois le poste installé depuis assez longtemps pour avoir
+    // eu sa chance — juger un ouvrage neuf sur zéro passage, c'est juger le
+    // hasard de l'heure à laquelle on regarde.
+    const miens = postesDe(world, key);
+    if (miens.length >= plafondPostes(world, key)) {
+      const murs = miens.filter((r) => t - (r.poste.depuis || 0) > POSTE.epreuve);
+      if (murs.length >= 2 && murs.some((r) => (r.poste.recu || 0) <= 0)) {
+        fermerLeMoinsUtile(world, key, t);
+      }
+    }
     let mieux = null;
     for (const r of world.regions) {
       if (r.poste || r.colonie != null || r.faille) continue;
@@ -17536,7 +17574,7 @@ function conseil(world, key, t, log, ctx) {
       if (!mieux || (r.piste || 0) > (mieux.piste || 0)) mieux = r;
     }
     if (mieux && rng.chance(0.5 * penchant(world, key, 'expansion'))) {
-      if (poserPoste(world, key, mieux, log)) {
+      if (poserPoste(world, key, mieux, log, t)) {
       }
     }
   }
@@ -17557,6 +17595,42 @@ function conseil(world, key, t, log, ctx) {
 }
 
 /**
+ * Combien de postes un pays tient (TERRITOIRE.md, T3).
+ *
+ * Un plafond, et il n'est pas une taxe : sans lui, un trésor gras couvrirait la
+ * carte de postes et il n'y aurait **aucun arbitrage à faire**. Avec lui, tenir
+ * une route de plus veut dire en lâcher une autre — c'est là que le trafic
+ * devient une récompense et pas une décoration.
+ */
+function plafondPostes(world, key) {
+  return Math.max(1, Math.round(coloniesDe(world, key).length * POSTE.parVille));
+}
+
+/** Ceux qu'on tient. */
+function postesDe(world, key) {
+  return world.regions.filter((r) => r.poste && r.poste.faction === key);
+}
+
+/**
+ * Fermer le moins fréquenté. Un poste que rien n'emprunte n'est pas un
+ * territoire, c'est une dépense : le conseil y retire ses hommes pour les
+ * mettre où il se passe quelque chose. Rend la case libérée, ou null.
+ */
+function fermerLeMoinsUtile(world, key, t) {
+  const tous = postesDe(world, key);
+  const miens = t == null ? tous
+    : tous.filter((r) => t - (r.poste.depuis || 0) > POSTE.epreuve);
+  if (miens.length < 2) return null;
+  let pire = null;
+  for (const r of miens) {
+    if (!pire || (r.poste.recu || 0) < (pire.poste.recu || 0)) pire = r;
+  }
+  if (!pire) return null;
+  raserPoste(world, pire.i);
+  return pire.i;
+}
+
+/**
  * Poser un poste et payer les maçons (TERRITOIRE.md, T2).
  *
  * Même comptabilité qu'un mur ou qu'une levée : le trésor paie, et les maçons
@@ -17564,14 +17638,16 @@ function conseil(world, key, t, log, ctx) {
  * Rien n'apparaît, rien ne disparaît. La première version débitait le trésor
  * sans créditer personne, et l'invariant comptable l'a dit dans la minute.
  */
-function poserPoste(world, key, region, log) {
+function poserPoste(world, key, region, log, t) {
   const f = world.factions[key];
   if (!f || (f.tresor || 0) < POSTE.cout) return null;
+  if (postesDe(world, key).length >= plafondPostes(world, key)) return null;
   const chez = colonieDepart(world, key, region.i);
   if (!chez) return null;
   const paye = verser(world, key, chez, POSTE.cout);
   if (!(paye > 0)) return null;
   const p = batirPoste(world, region.i, key);
+  if (p) p.depuis = t || 0;
   if (!p && log) return null;
   if (log) {
     log({
@@ -26918,6 +26994,7 @@ function percevoirPeage(state, faction, regionId, montant, paye) {
   // recette — c'est `encaisser` qui le sait.
   encaisser(world, place, recu);
   entrerDehors(world, faction, recu);
+  noterAuPoste(world, regionId, recu);
   return recu;
 }
 
