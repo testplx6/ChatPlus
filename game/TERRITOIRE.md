@@ -646,3 +646,56 @@ Reste, dit et non fait :
   `plafondPostes`. Ce qui le borne, c'est le sac et les jambes.
 - `coteFaille` est retiré : G7 a été essayé puis abandonné, la fonction n'avait
   plus un seul appelant.
+
+## E4, seconde moitié : le trafic est une information, la contrebande son contre-jeu
+
+La première moitié d'E4 avait donné le trafic au monde — les brigands suivent
+les routes passantes. Le joueur, lui, ne pouvait l'apprendre qu'en allant se
+planter sur la case : **c'est-à-dire précisément là où il n'a aucune raison
+d'aller tant qu'il ignore qu'il s'y passe quelque chose.** Le renseignement qui
+décide où planter un poste (E5), où tendre une embuscade et quelle route un
+convoi doit éviter n'existait pas.
+
+**Le relevé des routes.** Dans une ville, les rouliers vendent ce qu'ils savent
+de leurs propres routes : `RELEVE.portee` cases à la ronde, le passage et les
+barrages, daté d'aujourd'hui. Ce n'est pas la carte — on achète ce que des gens
+savent, pas une vue du ciel —, ça se paie au nombre de cases, ça entre dans leur
+caisse par la paire habituelle (`encaisser` + `entrerDehors`), et **ça vieillit**
+comme tout ce que porte `connaissance.js` : dans un mois, ce sera un souvenir.
+On ne renseigne pas qui l'on n'estime pas.
+
+Le carnet des routes, sur l'écran du monde, est le pendant du carnet du
+négociant : les cases relevées triées par ce qui y passe, avec la date, et la
+ligne qui transforme le carnet en décision — *à prendre : tant de passage,
+personne dessus, à tant de cases*.
+
+**La contrebande.** Le péage était une friction sans contre-jeu (`AUDIT.md`,
+odeur n°4) : on payait, ou l'on prenait le détour que T1 chiffre. Il y a
+maintenant un troisième terme, et c'est lui qui rend les deux autres
+intéressants — gratuit quand ça marche, plus cher que le péage quand ça rate.
+
+Ce qui décide n'est pas un chiffre en l'air, c'est **ce que le barrage voit** :
+une route où passent cent convois cache le cent-unième (`CONTREBANDE.foule`),
+et une escorte armée arrêtée devant une barrière se remarque
+(`CONTREBANDE.escorte`). Pris, on laisse `amende` fois le péage en marchandise
+et `estime` points à ceux qui tiennent la case — c'est l'estime, et non un
+tarif, qui borne la contrebande.
+
+Le dé est **celui du convoi**, dérivé de son nom et de la case : jamais un
+tirage de plus dans la séquence du monde (CLAUDE.md, piège n°1), et le même
+convoi devant le même barrage a toujours le même sort. Le risque est **dit avant
+le départ**, au pire barrage connu : un risque qu'on ne connaît pas n'est pas une
+décision, c'est un pari.
+
+**Ce que la mesure ne peut pas dire.** Ni l'un ni l'autre ne se mesure au banc :
+il ne joue aucun joueur (METHODE.md §12), n'achète pas de relevé et n'envoie pas
+de convoi en fraude. Le monde est identique au témoin **par construction** — la
+réponse `fraude` ne se déclenche que sur `car.fraude`, qu'aucun convoi de ville
+ne porte — et le dire autrement serait une mesure qui ment. Ce qui est vérifié,
+ce sont les vingt-quatre sondes de TER 13 et TER 14, dont l'invariant comptable
+sur l'achat du relevé.
+
+Le piège n°2 s'est refermé au passage, et le test l'a attrapé : `fraude` était né
+sur les trois convois du joueur et dans `normaliser`, mais pas sur les deux
+convois du monde — l'aller-retour JSON cessait d'être exact à la première
+caravane.

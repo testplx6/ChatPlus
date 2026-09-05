@@ -25,6 +25,12 @@ import { notable } from './notables.js';
 // ré-exporte ici, où l'écran et les tests viennent naturellement les chercher.
 import { CANAUX, CANAL_PAR_TYPE, ROUTE_MOYENNE, delaiNouvelle } from './faits.js';
 export { CANAUX, CANAL_PAR_TYPE, ROUTE_MOYENNE, delaiNouvelle };
+// Le relevé s'achète, donc il se paie : la bourse du joueur d'un côté, la
+// caisse de la ville de l'autre. Les deux modules viennent après celui-ci dans
+// l'ordre du paquet, et c'est sans conséquence — ce sont des fonctions, donc
+// hissées, comme `gagner` l'est déjà pour `services.js`.
+import { regler, solde, entrerDehors } from './monnaie.js';
+import { encaisser } from './economy.js';
 
 /** Au-delà, l'information est trop vieille pour valoir mieux que rien. */
 export const PEREMPTION = 24 * 120; // quatre saisons
@@ -105,7 +111,17 @@ function releverColonie(col, t, prix) {
 }
 
 function releverRegion(r, t) {
-  return { t, controle: r.controle, colonie: r.colonie };
+  // Ce qui passe, et ce qui barre. C'est la moitié de E4 (TERRITOIRE.md) : le
+  // trafic est une information, et jusqu'ici le joueur ne pouvait l'apprendre
+  // qu'en allant se planter sur la case — c'est-à-dire précisément là où il
+  // n'a aucune raison d'aller tant qu'il ignore qu'il s'y passe quelque chose.
+  return {
+    t,
+    controle: r.controle,
+    colonie: r.colonie,
+    piste: r.piste || 0,
+    poste: r.poste ? { faction: r.poste.faction, passages: r.poste.passages || 0 } : null,
+  };
 }
 
 function releverArmee(a, t) {
@@ -281,13 +297,26 @@ export function vueRegion(state, regionId) {
   const r = state.world.regions[regionId];
   if (!r) return null;
   if (estSurveillee(state, regionId)) {
-    return { controle: r.controle, colonie: r.colonie, frais: true, depuis: 0, inconnu: false };
+    return {
+      controle: r.controle,
+      colonie: r.colonie,
+      piste: r.piste || 0,
+      poste: r.poste ? { faction: r.poste.faction, passages: r.poste.passages || 0 } : null,
+      frais: true,
+      depuis: 0,
+      inconnu: false,
+    };
   }
   const releve = state.connaissance && state.connaissance.regions[regionId];
   if (!releve) return { controle: null, colonie: r.colonie, frais: false, depuis: null, inconnu: true };
   return {
     controle: releve.controle,
     colonie: releve.colonie,
+    // `undefined` et non zéro pour un relevé d'avant E4 : « on ne sait pas »
+    // et « il ne passe personne » sont deux réponses différentes, et l'écran
+    // doit pouvoir les distinguer.
+    piste: releve.piste,
+    poste: releve.poste,
     frais: false,
     depuis: state.temps - releve.t,
     inconnu: false,
@@ -427,5 +456,127 @@ export function nouvellesConnues(state, entrees) {
     if (state.temps - x.t < delai) continue;
     out.push(Object.assign({}, x, { rapporte: delai > 0 }));
   }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Le relevé des routes : le trafic qu'on achète (TERRITOIRE.md, E4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ce que les gens d'ici savent de leurs propres routes, et ce qu'ils le font
+ * payer.
+ *
+ * Le brigand suit déjà le trafic : le monde sait où l'on passe. Le joueur, lui,
+ * ne l'apprenait qu'en allant se planter sur la case — c'est-à-dire là où il
+ * n'a aucune raison d'aller tant qu'il ignore qu'il s'y passe quelque chose.
+ * C'est le renseignement qui décide où planter un poste (E5), où tendre une
+ * embuscade, et quelle route un convoi doit éviter : il n'existait pas.
+ *
+ * Ce n'est PAS la carte : `portee` borne le relevé au voisinage de la ville.
+ * On achète ce que des gens savent, pas une vue du ciel — et l'on paie au
+ * nombre de cases, parce qu'une grande ville au carrefour en connaît plus
+ * qu'un bourg au fond d'un canyon.
+ */
+export const RELEVE = {
+  /** Jusqu'où portent les habitudes des rouliers d'une place. */
+  portee: 4,
+  /** Ce qu'on paie pour s'asseoir à la table. */
+  socle: 40,
+  /** Et par case relevée. */
+  parCase: 5,
+  /** En dessous de cette estime, on ne vous dit rien. */
+  estime: -20,
+};
+
+/** Les cases dont cette place a quelque chose à dire. */
+function casesDuReleve(world, col) {
+  const out = [];
+  for (const r of world.regions) {
+    if (distance(r.i, col.regionId) > RELEVE.portee) continue;
+    out.push(r);
+  }
+  return out;
+}
+
+/**
+ * Le devis, avant de payer. L'écran ne devine rien : c'est le moteur qui dit
+ * combien de cases, combien de crédits, et pourquoi c'est refusé.
+ */
+export function prixReleve(state, col) {
+  if (!col || col.ruine) return { ok: false, motif: 'Il n’y a personne à qui demander.' };
+  const rep = (state.player.reputation || {})[col.faction] || 0;
+  if (col.faction && rep <= RELEVE.estime) {
+    return { ok: false, motif: 'On ne renseigne pas qui l’on n’estime pas.' };
+  }
+  const cases = casesDuReleve(state.world, col).length;
+  const prix = Math.round(RELEVE.socle + cases * RELEVE.parCase);
+  const monnaie = col.faction || null;
+  return {
+    ok: true, cases, prix, monnaie, dispo: solde(state.player, monnaie),
+  };
+}
+
+/**
+ * L'acheter. Le relevé est daté de MAINTENANT — ce sont des locaux, ils
+ * connaissent leurs routes d'aujourd'hui — et il vieillit ensuite comme tout
+ * le reste de ce module : dans un mois, ce sera un souvenir.
+ */
+export function acheterReleve(state, col, log) {
+  const d = prixReleve(state, col);
+  if (!d.ok) return d;
+  if (d.dispo < d.prix) {
+    return { ok: false, motif: `Bourse trop courte : il faut ${d.prix}.` };
+  }
+  const paye = regler(state, d.prix, d.monnaie);
+  if (!(paye > 0)) return { ok: false, motif: 'Bourse trop courte.' };
+  // La paire, comme partout : ce qui sort de votre bourse entre dans leur
+  // caisse et dans la masse de leur pays — vous êtes hors des registres.
+  encaisser(state.world, col, paye);
+  entrerDehors(state.world, col.faction, paye);
+
+  const c = state.connaissance || (state.connaissance = creerConnaissance(state.temps));
+  const t = state.temps;
+  let neuves = 0;
+  for (const r of casesDuReleve(state.world, col)) {
+    if (!c.regions[r.i]) neuves++;
+    c.regions[r.i] = releverRegion(r, t);
+  }
+  if (log) {
+    log({
+      type: 'renseignement',
+      texte: `On vous dit ce qui passe autour de ${col.nom} : ${d.cases} cases, `
+        + `dont ${neuves} dont vous ne saviez rien.`,
+      regionId: col.regionId,
+      important: false,
+    });
+  }
+  return { ok: true, cases: d.cases, prix: paye, neuves };
+}
+
+/**
+ * Ce que votre carnet dit des routes, trié par ce qui y passe. Des relevés
+ * datés, jamais la vérité du monde — la date vaut le chiffre.
+ */
+export function carnetRoutes(state, depuis) {
+  const c = state.connaissance;
+  if (!c) return [];
+  const out = [];
+  for (const cle of Object.keys(c.regions)) {
+    const rid = Number(cle);
+    const v = vueRegion(state, rid);
+    if (!v || v.piste === undefined) continue;
+    if (v.piste < 0.02) continue;
+    out.push({
+      regionId: rid,
+      piste: v.piste,
+      poste: v.poste || null,
+      colonie: v.colonie,
+      frais: v.frais,
+      depuis: v.depuis,
+      loin: depuis == null ? null : distance(rid, depuis),
+    });
+  }
+  out.sort((a, b) => b.piste - a.piste);
   return out;
 }

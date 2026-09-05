@@ -42,7 +42,7 @@ import { BETES } from '../src/betes.js';
 import {
   attaquerCaravane, passerOrdre, ordresEnCours, ESCORTES,
   passerOrdreGages, passerOrdreCamps, gagesConvoi, GAGES,
-  passerBarrage, PEAGE_CONVOI, valeurCargaison,
+  passerBarrage, PEAGE_CONVOI, valeurCargaison, CONTREBANDE, risqueFraude,
 } from '../src/caravanes.js';
 import {
   combatContre, fouillerSite, inscrireAuMemorial, creerLogger, solderPrime,
@@ -241,6 +241,7 @@ import {
 import {
   vueColonie, estSurveillee, ageTexte, nouvellesConnues, delaiNouvelle, observer,
   carnetPrix, PEREMPTION, vueArmee, armeesConnues,
+  vueRegion, RELEVE, prixReleve, acheterReleve,
 } from '../src/connaissance.js';
 import { distance } from '../src/world.js';
 import { conditions } from '../src/climat.js';
@@ -17147,6 +17148,195 @@ section('TER 12. Ce que la revue a trouvé sous le poste du joueur');
         'et le conseil de votre pays ne le compte pas parmi les siens');
     }
   }
+}
+
+section('TER 13. Le trafic est une information qu’on achète (TERRITOIRE.md, E4)');
+// Le brigand suit déjà le trafic (E4, première moitié) : le monde sait où l'on
+// passe. Le joueur, lui, ne pouvait l'apprendre qu'en y allant — et il n'y a
+// aucune raison d'aller voir une case où il ne se passe rien. Or c'est très
+// exactement le renseignement qui décide où planter un poste (E5), où tendre
+// une embuscade, et quelle route un convoi doit éviter.
+//
+// Ce qui s'achète, c'est ce que les gens d'ici savent de leurs propres routes :
+// daté, borné à leur voisinage, et refusé à qui les vole.
+{
+  const s = nouvellePartie(311800, { maintenant: 0 });
+  const g = groupeActif(s);
+  const col = s.world.colonies.find((c) => !c.ruine && c.faction);
+  g.regionId = col.regionId;
+  // De quoi payer, dans la monnaie d'ici.
+  crediterBourse(s.player, col.faction, 5000);
+  // Du trafic quelque part autour, sinon il n'y a rien à vendre.
+  const autour = s.world.regions.filter(
+    (r) => distance(r.i, col.regionId) > 0 && distance(r.i, col.regionId) <= RELEVE.portee);
+  ok(autour.length > 0, 'décor : des cases autour de la ville', `${autour.length}`);
+  autour[0].piste = 0.62;
+  const loin = s.world.regions.find((r) => distance(r.i, col.regionId) > RELEVE.portee + 2);
+  loin.piste = 0.99;
+
+  // Avant, on ne sait rien de ce qu'on n'a pas vu.
+  ok(vueRegion(s, autour[0].i).inconnu || vueRegion(s, autour[0].i).piste === undefined,
+    'avant, on ne sait rien du passage sur une case où l’on n’est pas allé');
+
+  const devis = prixReleve(s, col);
+  ok(devis.ok && devis.prix > 0 && devis.cases > 0,
+    'le relevé se chiffre : tant de cases, tant de crédits',
+    `${devis.cases} cases, ${devis.prix}`);
+
+  const avant = solde(s.player, col.faction);
+  const caisseAvant = col.caisse || 0;
+  const ecartAvant = auditer(s.world).reduce((x, e) => x + Math.abs(e.ecart), 0);
+  const r = acheterReleve(s, col, null);
+  ok(r.ok, 'on l’achète', r.motif || 'acheté');
+  ok(solde(s.player, col.faction) < avant && (col.caisse || 0) > caisseAvant,
+    'ça sort de votre bourse et entre dans leur caisse',
+    `${Math.round(avant)} → ${Math.round(solde(s.player, col.faction))}`);
+  const ecartApres = auditer(s.world).reduce((x, e) => x + Math.abs(e.ecart), 0);
+  ok(Math.abs(ecartApres - ecartAvant) < 0.01,
+    'et rien ne s’est créé ni perdu en chemin',
+    `${ecartAvant.toFixed(2)} → ${ecartApres.toFixed(2)}`);
+
+  const vu = vueRegion(s, autour[0].i);
+  ok(vu && Math.abs((vu.piste || 0) - 0.62) < 0.001,
+    'on sait maintenant ce qui passe autour de chez eux', `${vu && vu.piste}`);
+  ok(vueRegion(s, loin.i).piste === undefined,
+    'mais pas au-delà de ce qu’ils connaissent : ils vendent leurs routes, pas la carte');
+
+  // Ce qu'on a acheté vieillit comme tout le reste.
+  s.temps += 400;
+  const vieux = vueRegion(s, autour[0].i);
+  ok(vieux.depuis >= 400 && !vieux.frais,
+    'un relevé acheté porte sa date, et vieillit', `${vieux.depuis}`);
+
+  // On ne renseigne pas qui vous vole.
+  {
+    const s2 = nouvellePartie(311801, { maintenant: 0 });
+    const g2 = groupeActif(s2);
+    const c2 = s2.world.colonies.find((c) => !c.ruine && c.faction);
+    g2.regionId = c2.regionId;
+    crediterBourse(s2.player, c2.faction, 5000);
+    s2.player.reputation[c2.faction] = RELEVE.estime - 1;
+    const v2 = prixReleve(s2, c2);
+    ok(!v2.ok, 'on ne renseigne pas qui l’on n’estime pas', v2.motif);
+    ok(!acheterReleve(s2, c2, null).ok, 'et le geste est refusé, pas seulement grisé');
+  }
+
+  // Bourse trop courte : on le dit avant.
+  {
+    const s3 = nouvellePartie(311802, { maintenant: 0 });
+    const g3 = groupeActif(s3);
+    const c3 = s3.world.colonies.find((c) => !c.ruine && c.faction);
+    g3.regionId = c3.regionId;
+    const r3 = acheterReleve(s3, c3, null);
+    ok(!r3.ok && /bourse|payer|court/i.test(r3.motif || ''),
+      'sans de quoi payer, on le dit', r3.motif);
+  }
+
+  ok(RELEVE && typeof RELEVE.socle === 'number' && typeof RELEVE.portee === 'number',
+    'ce que coûte un relevé est de la donnée', JSON.stringify(RELEVE));
+}
+
+section('TER 14. La contrebande, contre-jeu du péage (TERRITOIRE.md, E4)');
+// Le péage était une friction sans contre-jeu (AUDIT.md, odeur n°4) : on
+// payait, ou l'on prenait le détour que T1 chiffre. Rien d'autre. Or « la
+// contrebande est le contre-jeu naturel du péage » — on charge sans le dire,
+// on passe, et si l'on est pris, ça coûte plus cher que le péage.
+{
+  const s = nouvellePartie(311900, { maintenant: 0 });
+  const w = s.world;
+  const vivantes = w.colonies.filter((c) => !c.ruine && c.faction);
+  const depart = vivantes.find((c) => (c.caisse || 0) > 800);
+  const barrage = w.regions.find((r) => r.controle && r.controle !== depart.faction
+    && !r.colonie && w.factions[r.controle]
+    && w.colonies.some((c) => !c.ruine && c.faction === r.controle));
+  ok(!!barrage, 'décor : une case tenue par un drapeau étranger');
+
+  const faire = (fraude, id) => ({
+    id, faction: depart.faction, deId: depart.id, versId: null, pour: 'joueur',
+    cargaison: { ferraille: 400 }, regionId: barrage.i, route: [barrage.i], etape: 0,
+    escorte: 0, fraude, rngEtat: grainDe(w.graine, 'convoi', id),
+  });
+
+  // Au grand jour, on paie : c'est la règle d'avant, et elle ne bouge pas.
+  {
+    const c = faire(false, 'ter14-jour');
+    const r = passerBarrage(s, c, barrage.i, {}, null);
+    ok(r && r.reponse !== 'fraude' && r.reponse !== 'laissez',
+      'au grand jour, un convoi du joueur traite avec le barrage',
+      r ? r.reponse : 'rien');
+  }
+
+  // En fraude, la table répond « fraude » — passé ou pris, mais jamais payé
+  // au tarif.
+  {
+    const c = faire(true, 'ter14-nuit');
+    const charge = c.cargaison.ferraille;
+    const r = passerBarrage(s, c, barrage.i, {}, null);
+    ok(r && r.reponse === 'fraude', 'en fraude, on ne se présente pas au péage',
+      r ? r.reponse : 'rien');
+    ok(r.pris === true || r.pris === false,
+      'et l’on est pris, ou l’on passe', `pris=${r.pris}`);
+    if (r.pris) {
+      ok(c.cargaison.ferraille < charge,
+        'pris, on y laisse plus que le péage',
+        `${charge} → ${c.cargaison.ferraille}`);
+    } else {
+      ok(c.cargaison.ferraille === charge,
+        'passé, on n’y laisse rien', `${c.cargaison.ferraille}`);
+    }
+  }
+
+  // Le dé est CELUI DU CONVOI, dérivé de son nom : deux fois la même situation
+  // donne deux fois la même réponse, et rien d'autre dans le monde n'est
+  // décalé (CLAUDE.md, piège n°1).
+  {
+    const a = passerBarrage(s, faire(true, 'ter14-meme'), barrage.i, {}, null);
+    const b = passerBarrage(s, faire(true, 'ter14-meme'), barrage.i, {}, null);
+    ok(a.pris === b.pris, 'le même convoi devant le même barrage a le même sort',
+      `${a.pris} / ${b.pris}`);
+  }
+
+  // Se faire prendre coûte l'estime de qui tient la case : c'est ce qui borne
+  // la contrebande, et pas un tarif.
+  {
+    let prise = null;
+    for (let i = 0; i < 40 && !prise; i++) {
+      const c = faire(true, `ter14-e${i}`);
+      const r = passerBarrage(s, c, barrage.i, {}, null);
+      if (r && r.pris) prise = { c, r };
+    }
+    ok(!!prise, 'on finit par se faire prendre — le risque est réel');
+    if (prise) {
+      const avant = s.player.reputation[barrage.controle] || 0;
+      const c2 = faire(true, prise.c.id);
+      passerBarrage(s, c2, barrage.i, {}, null);
+      ok((s.player.reputation[barrage.controle] || 0) < avant,
+        'et l’on perd leur estime', `${avant} → ${s.player.reputation[barrage.controle]}`);
+    }
+  }
+
+  // Une escorte armée devant une barrière, ça se remarque.
+  {
+    const nu = { ...faire(true, 'ter14-cmp'), escorte: 0 };
+    const arme = { ...faire(true, 'ter14-cmp'), escorte: 55 };
+    ok(risqueFraude(s, nu, barrage.i) < risqueFraude(s, arme, barrage.i),
+      'une escorte armée se remarque : elle rend la fraude plus risquée',
+      `${risqueFraude(s, nu, barrage.i).toFixed(3)} < ${risqueFraude(s, arme, barrage.i).toFixed(3)}`);
+  }
+
+  // Une route fréquentée cache : on se fond dans le trafic.
+  {
+    const c = faire(true, 'ct-piste');
+    barrage.piste = 0;
+    const seul = risqueFraude(s, c, barrage.i);
+    barrage.piste = 0.9;
+    const foule = risqueFraude(s, c, barrage.i);
+    ok(foule < seul, 'sur une route passante, on se fond dans le trafic',
+      `${foule.toFixed(3)} < ${seul.toFixed(3)}`);
+  }
+
+  ok(CONTREBANDE && typeof CONTREBANDE.risque === 'number',
+    'ce que risque un contrebandier est de la donnée', JSON.stringify(CONTREBANDE));
 }
 
 

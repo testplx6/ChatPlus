@@ -279,6 +279,10 @@ export function tenterDepart(state, rng, log) {
     cargaison: { [meilleur.k]: qte },
     // Une caravane riche paie des gardes.
     escorte: Math.round(6 + qte * 0.25 * rng.range(0.7, 1.4)),
+    // Un convoi de ville se présente aux barrages : la fraude est un verbe du
+    // joueur (TERRITOIRE.md, E4). La clé naît quand même ici — un état qui
+    // n'existe qu'à moitié ne survit pas à un aller-retour JSON.
+    fraude: false,
     depuis: state.temps,
   };
   car.rngEtat = grainDe(world.graine, 'convoi', car.id);
@@ -419,6 +423,7 @@ export function departsDuReseau(state, _rng, log) {
         cargaison: { [pire.k]: qte },
         // Un convoi de bourse voyage escorté : c'est un service, pas une aventure.
         escorte: Math.round(14 + qte * 0.3),
+        fraude: false,
         depuis: state.temps,
       }));
     }
@@ -448,7 +453,7 @@ export const ESCORTES = [
  * convoi comme les autres : il traverse des régions, il peut être pillé, et
  * l'on peut le faire escorter.
  */
-export function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEscorte) {
+export function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEscorte, fraude) {
   const v = peutTraiter(state);
   if (!v.ok) return v;
   const devis = chiffrerOrdre(state, sens, key, qte);
@@ -534,6 +539,10 @@ export function passerOrdre(state, sens, key, qte, escorteId, rng, log, groupeEs
     progres: 0,
     cargaison: { [key]: devis.qte },
     escorte: esc.force,
+    // On ne déclare pas la charge (TERRITOIRE.md, E4). Le champ vit sur le
+    // convoi et non sur le camp : c'est une décision par départ, pas un
+    // réglage — on passe en fraude quand la route en vaut la peine.
+    fraude: !!fraude,
     escorteGroupe: groupeEscorte || null,
     depuis: state.temps,
   };
@@ -645,7 +654,7 @@ export function devisGages(state, deId, versId, key, qte, escorteId) {
   };
 }
 
-export function passerOrdreGages(state, deId, versId, key, qte, escorteId, rng, log) {
+export function passerOrdreGages(state, deId, versId, key, qte, escorteId, rng, log, fraude) {
   const d = devisGages(state, deId, versId, key, qte, escorteId);
   if (!d.ok) return d;
   const world = state.world;
@@ -681,6 +690,10 @@ export function passerOrdreGages(state, deId, versId, key, qte, escorteId, rng, 
     progres: 0,
     cargaison: { [key]: n },
     escorte: esc.force,
+    // On ne déclare pas la charge (TERRITOIRE.md, E4). Le champ vit sur le
+    // convoi et non sur le camp : c'est une décision par départ, pas un
+    // réglage — on passe en fraude quand la route en vaut la peine.
+    fraude: !!fraude,
     escorteGroupe: null,
     depuis: state.temps,
   };
@@ -712,7 +725,7 @@ export function passerOrdreGages(state, deId, versId, key, qte, escorteId, rng, 
  * change est qu'il n'y a rien à acheter ni à vendre — la marchandise est déjà à
  * vous — donc on ne paie que les bras.
  */
-export function passerOrdreCamps(state, deRegion, versRegion, key, qte, escorteId, rng, log) {
+export function passerOrdreCamps(state, deRegion, versRegion, key, qte, escorteId, rng, log, fraude) {
   const camps = Array.isArray(state.camps) && state.camps.length
     ? state.camps : [state.base].filter(Boolean);
   const a = camps.find((c) => c && c.fonde && c.regionId === deRegion);
@@ -758,6 +771,10 @@ export function passerOrdreCamps(state, deRegion, versRegion, key, qte, escorteI
     progres: 0,
     cargaison: { [key]: n },
     escorte: esc.force,
+    // On ne déclare pas la charge (TERRITOIRE.md, E4). Le champ vit sur le
+    // convoi et non sur le camp : c'est une décision par départ, pas un
+    // réglage — on passe en fraude quand la route en vaut la peine.
+    fraude: !!fraude,
     escorteGroupe: null,
     depuis: state.temps,
   };
@@ -828,6 +845,95 @@ export const PEAGE_CONVOI = { part: 0.02 };
  * qui peut, fait. Pour en ajouter une, il suffit d'écrire une entrée : rien
  * d'autre dans le moteur ne connaît la liste.
  */
+/**
+ * Ce que risque un convoi qui passe sans se présenter (TERRITOIRE.md, E4).
+ *
+ * Le péage était une friction sans contre-jeu — l'odeur n°4 d'`AUDIT.md` : on
+ * payait, ou l'on prenait le détour que T1 chiffre, et c'était tout. La
+ * contrebande est le troisième terme, et c'est celui qui rend les deux autres
+ * intéressants : elle est gratuite quand elle marche, et plus chère que le
+ * péage quand elle rate.
+ *
+ * Ce qui décide n'est pas un chiffre en l'air : c'est ce que le barrage VOIT.
+ * Une route où il passe cent convois cache le cent-unième ; une escorte armée
+ * arrêtée devant une barrière se remarque. Le reste — la valeur du chargement
+ * confisqué, l'estime perdue — est le prix de s'être fait prendre.
+ */
+export const CONTREBANDE = {
+  /** Le risque de base d'être fouillé, sur une route déserte et sans escorte. */
+  risque: 0.34,
+  /** Ce que la foule d'une route passante retire à ce risque. */
+  foule: 0.22,
+  /** Ce qu'une escorte ajoute, par point de force. */
+  escorte: 0.0032,
+  /** Jamais certain, jamais impossible. */
+  min: 0.04,
+  max: 0.8,
+  /** Pris, on laisse ce multiple du péage qu'on refusait de payer. */
+  amende: 3.5,
+  /** Et leur estime en prend un coup. */
+  estime: 4,
+};
+
+/**
+ * Le risque, chiffré. Exporté parce que l'écran doit pouvoir le DIRE avant le
+ * départ : une décision qu'on prend sans connaître son risque n'est pas une
+ * décision, c'est un pari.
+ */
+export function risqueFraude(state, car, regionId) {
+  const r = state.world.regions[regionId];
+  const piste = (r && r.piste) || 0;
+  const brut = CONTREBANDE.risque
+    - piste * CONTREBANDE.foule
+    + (car.escorte || 0) * CONTREBANDE.escorte;
+  return Math.max(CONTREBANDE.min, Math.min(CONTREBANDE.max, brut));
+}
+
+/**
+ * On passe sans se présenter. Le dé est CELUI DU CONVOI, dérivé de son nom et
+ * de la case : jamais un tirage de plus dans la séquence du monde (CLAUDE.md,
+ * piège n°1) — le même convoi devant le même barrage a toujours le même sort.
+ */
+function passerEnFraude(v) {
+  const world = v.state.world;
+  const risque = risqueFraude(v.state, v.convoi, v.convoi.regionId);
+  const de = new Rng(grainDe(world.graine, 'fraude', v.convoi.id, v.convoi.regionId));
+  v.pris = de.f() < risque;
+  if (!v.pris) return 0;
+  // Pris : on ne paie pas le péage, on paie l'amende — et l'on ne l'a pas en
+  // caisse, donc c'est la cargaison qui part. Sans place pour l'encaisser, la
+  // marchandise se perd tout de même : le barrage n'est pas une ville.
+  const duAvant = v.du;
+  v.du = Math.round(v.du * CONTREBANDE.amende);
+  const pris = v.place ? prendreEnNature(v) : perdreDeSaCharge(v);
+  v.du = duAvant;
+  // Et l'on sait maintenant qui vous êtes. L'estime est le vrai prix : elle
+  // décide de ce qu'on vous vend, de qui vous enrôle et de qui vous cherche.
+  if (v.convoi.pour === 'joueur' && v.faction && v.state.player.reputation) {
+    const rep = v.state.player.reputation;
+    rep[v.faction] = (rep[v.faction] || 0) - CONTREBANDE.estime;
+  }
+  return pris;
+}
+
+/** Quand personne n'est là pour la ramasser, la marchandise part quand même. */
+function perdreDeSaCharge(v) {
+  let du = v.du;
+  let perdu = 0;
+  const dedans = Object.keys(v.convoi.cargaison || {})
+    .filter((k) => (v.convoi.cargaison[k] || 0) > 0 && COMMODITIES[k]);
+  for (const k of dedans) {
+    if (du <= 0) break;
+    const prix = COMMODITIES[k].prix || 1;
+    const veut = Math.min(v.convoi.cargaison[k], Math.ceil(du / prix));
+    if (veut <= 0) continue;
+    v.convoi.cargaison[k] -= veut;
+    du -= veut * prix;
+    perdu += veut * prix;
+  }
+  return perdu;
+}
+
 export const REPONSES_BARRAGE = {
   laissez: {
     nom: 'on vous ouvre',
@@ -851,6 +957,15 @@ export const REPONSES_BARRAGE = {
     // hommes dessus.
     peut: (v) => v.venantDe === v.faction,
     faire: () => 0,
+  },
+  fraude: {
+    nom: 'on ne se présente pas',
+    dit: 'la charge n’est pas déclarée, et l’on tente sa chance',
+    // Avant tout ce qui paie : un contrebandier ne discute pas le tarif. Mais
+    // pas devant son propre poste — `laissez` a déjà répondu — ni là où
+    // personne ne tient la route.
+    peut: (v) => !!v.convoi.fraude && !!v.faction,
+    faire: (v) => passerEnFraude(v),
   },
   votre: {
     nom: 'votre poste perçoit',
@@ -1045,15 +1160,31 @@ export function passerBarrage(state, car, regionId, ctx, log, venantDe) {
     const montant = rep.faire(v);
     // Le poste compte ce qu'il a vu passer (TERRITOIRE.md, T3) : c'est la seule
     // information qu'un conseil aura sur ce que vaut cette route.
-    if (cle !== 'laissez' && cle !== 'dedans') {
-      noterAuPoste(world, regionId, montant, cle === 'nature');
+    // Un contrebandier qui passe n'est vu de personne : le poste ne le compte
+    // pas. Pris, en revanche, il est un passage comme un autre — et ce qu'on
+    // lui a saisi est de la marchandise, pas de la monnaie (METHODE.md §12).
+    const compte = cle !== 'laissez' && cle !== 'dedans'
+      && (cle !== 'fraude' || v.pris);
+    if (compte) {
+      noterAuPoste(world, regionId, montant, cle === 'nature' || cle === 'fraude');
       // Et le pays qui paie s'en souvient : sans ce registre, personne ne peut
       // aller demander « combien pour qu'on nous laisse passer ? »
       // (TERRITOIRE.md, E2). Prêté par `ctx` — `pactes.js` lit ce module et ne
       // peut donc pas en être lu, même patron que `pactePassage` juste au-dessus.
       if (v.ctx.noterPeage) v.ctx.noterPeage((v.de && v.de.faction) || car.faction, faction, montant);
     }
-    if (cle !== 'laissez' && log && montant > 0) {
+    // Se faire prendre n'est pas un détail de comptabilité : ça se lit.
+    if (cle === 'fraude' && log && v.pris) {
+      log({
+        type: 'peage',
+        texte: `Fouillé au barrage ${drapeauDe(world, faction)
+          ? drapeauDe(world, faction).genitif : 'du coin'} : la charge n’était pas `
+          + 'déclarée. On y laisse la marchandise, et l’on saura qui vous êtes.',
+        regionId,
+        important: true,
+      });
+    }
+    if (cle !== 'laissez' && cle !== 'fraude' && log && montant > 0) {
       // « Le vôtre » plutôt qu'un drapeau : le poste que le joueur a bâti de
       // ses mains n'en a pas forcément un derrière lui, et `drapeauDe` ne
       // rendait rien pour « joueur » — le tick des caravanes tombait au
@@ -1069,7 +1200,7 @@ export function passerBarrage(state, car, regionId, ctx, log, venantDe) {
         discret: true,
       });
     }
-    return { reponse: cle, montant };
+    return { reponse: cle, montant, pris: cle === 'fraude' ? !!v.pris : undefined };
   }
   return null;
 }

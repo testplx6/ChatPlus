@@ -272,6 +272,10 @@ export function normaliser(state) {
   }
   const w = state.world;
   if (!w.caravanes) w.caravanes = [];
+  // Avant la contrebande, tout convoi se présentait au barrage.
+  for (const c of w.caravanes) {
+    if (c.fraude === undefined) c.fraude = false;
+  }
   // Avant les dirigeants, les factions décidaient comme des moyennes. Le
   // premier tick leur donne quelqu'un à leur tête.
   for (const k of Object.keys(w.factions || {})) {

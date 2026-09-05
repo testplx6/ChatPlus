@@ -69,7 +69,9 @@ import {
   bilanService, effetsEstime, palierEstime, estimeEngagement, ESTIME_ENGAGEMENT,
   droitIntendance, garnison, RANG_GARNISON, JOURS_INTENDANCE,
 } from './allegeance.js';
-import { caravanesIci, valeurCargaison } from './caravanes.js';
+import {
+  caravanesIci, valeurCargaison, risqueFraude, CONTREBANDE,
+} from './caravanes.js';
 import { couleurLog, creerLogger } from './events.js';
 import {
   ecolesDe, prixFormation, peutSInscrire, inscrire, abandonnerFormation,
@@ -111,6 +113,7 @@ import {
 import { dirigeant, TEMPERAMENTS, LEGITIMITE_CRITIQUE } from './dirigeants.js';
 import {
   vueColonie, vueRegion, estSurveillee, ageTexte, nouvellesConnues, carnetPrix,
+  carnetRoutes, prixReleve, RELEVE,
   vueArmee, armeesConnues,
 } from './connaissance.js';
 import {
@@ -2328,11 +2331,52 @@ function blocColonie(col) {
     <div class="grille2" style="gap:5px">
       ${portesDeVille(col, libre, repu)}
     </div>
+    ${blocReleve(col)}
     ${blocEngagement(col)}
     ${blocParole(col, libre, 'treve')}
     ${blocParole(col, libre, 'tribut')}
   </section>
   ${blocAssaut(col)}`;
+}
+
+/** Ce que la dernière tentative d'achat de relevé a répondu. */
+let messageReleve = null;
+
+/**
+ * Acheter ce que les gens d'ici savent de leurs routes (TERRITOIRE.md, E4).
+ *
+ * Le geste vit dans la fiche de la ville où l'on se tient — c'est là qu'on
+ * parle aux rouliers, pas au fond d'un écran de réglages. Le bouton dit le
+ * prix et le nombre de cases AVANT le clic : on n'achète pas un renseignement
+ * dont on ne connaît ni l'étendue ni le coût.
+ */
+function blocReleve(col) {
+  const d = prixReleve(S, col);
+  const dit = messageReleve && messageReleve.cle === col.id
+    ? `<div class="aide ${messageReleve.ok ? 'ok' : 'alerte'}">${e(messageReleve.texte)}</div>` : '';
+  if (!d.ok) {
+    return `<div class="sep"></div>
+      <div class="aide">Les routes d’ici : ${e(d.motif || '')}</div>${dit}`;
+  }
+  // Ce qu'on en sait déjà, et de quand : racheter un relevé de la veille n'a
+  // pas de sens, et rien ne le disait.
+  const connu = carnetRoutes(S, G().regionId)
+    .filter((x) => distance(x.regionId, col.regionId) <= RELEVE.portee);
+  const vieux = connu.length
+    ? connu.reduce((a, x) => Math.max(a, x.frais ? 0 : (x.depuis || 0)), 0) : null;
+  return `<div class="sep"></div>
+    <div class="titre">Ce qui passe par ici</div>
+    <div class="aide">Les rouliers savent quelles routes portent le trafic à
+      ${RELEVE.portee} cases à la ronde, et où l’on barre le passage. C’est ce
+      qui dit où planter un poste, où tendre une embuscade, et quelle route un
+      convoi doit éviter.${connu.length
+    ? ` Vous en connaissez déjà ${connu.length}${vieux
+      ? `, le plus vieux relevé ${e(ageTexte(vieux))}` : ''}.` : ''}</div>
+    <button class="act mini ${d.dispo >= d.prix ? 'primaire' : ''}" data-a="acheter-releve"
+      ${d.dispo >= d.prix ? '' : 'disabled'}>${d.dispo >= d.prix
+    ? `Payer ${n(d.prix)} ${e(sym(col.faction))} pour le relevé de ${d.cases} cases`
+    : `Il faudrait ${n(d.prix)} ${e(sym(col.faction))} — vous en avez ${n(Math.floor(d.dispo))}`}</button>
+    ${dit}`;
 }
 
 // Ce qu'on est en train de proposer : un gage choisi, une durée. Hors de la
@@ -4295,6 +4339,8 @@ let ordreKey = 'rations';
 let ordreQte = 50;
 let ordreEscorte = 'aucune';
 let ordreEscouade = false;
+/** Charger sans le déclarer (TERRITOIRE.md, E4). */
+let ordreFraude = false;
 let messageComptoir = null;
 
 const QTES_ORDRE = [10, 50, 200, 1000];
@@ -4311,6 +4357,35 @@ const QTES_ORDRE = [10, 50, 200, 1000];
  * Ce qui n'est jamais offert, en revanche, c'est la sécurité du convoi. Voir
  * `ESCORTES` : un convoi qu'on ne peut pas perdre annulerait la carte.
  */
+/**
+ * Ce que la fraude coûte et ce qu'elle risque, DIT AVANT le départ
+ * (TERRITOIRE.md, E4).
+ *
+ * Un risque qu'on ne connaît pas n'est pas une décision, c'est un pari. On
+ * chiffre donc sur la route la plus dure du monde connu — le pire barrage —
+ * plutôt que d'annoncer une moyenne que personne ne rencontrera jamais.
+ */
+function blocFraude(esc) {
+  if (!ordreFraude) {
+    return `<div class="aide">Le convoi se présente aux barrages et paie ce qu’on lui
+      demande. C’est cher sur une route tenue, et c’est sans histoire.</div>`;
+  }
+  // Le convoi qu'on est en train de composer, tel que le moteur le lira.
+  const modele = { escorte: esc ? esc.force : 0 };
+  const cases = S.world.regions.filter((r) => r.controle && r.poste);
+  const pire = cases.length
+    ? cases.reduce((a, r) => (risqueFraude(S, modele, r.i) > risqueFraude(S, modele, a.i) ? r : a))
+    : null;
+  const r0 = pire ? risqueFraude(S, modele, pire.i) : CONTREBANDE.risque;
+  return `<div class="aide">La charge n’est pas déclarée : aucun péage tant qu’on
+    ne vous fouille pas. Fouillé, vous laissez ${CONTREBANDE.amende.toFixed(1)} fois
+    le péage en marchandise et ${CONTREBANDE.estime} d’estime à ceux qui tiennent la
+    case. Une route passante vous cache${esc && esc.force
+    ? ` ; une escorte de ${esc.force} hommes arrêtée devant une barrière, non` : ''}.</div>
+    <div class="ligne"><span class="k">Au pire barrage connu</span>
+      <span class="v ${r0 > 0.45 ? 'alerte' : 'retenue'}">${Math.round(r0 * 100)} % d’être fouillé</span></div>`;
+}
+
 /** Le panneau du comptoir se redessine seul : il lui faut un nom dans l'écran. */
 const ID_COMPTOIR = 'bloc-comptoir';
 
@@ -4418,6 +4493,16 @@ function blocComptoir() {
     ? 'Elle ne protège le convoi que tant qu’elle est sur la même case que lui : '
       + 'il faut vraiment faire la route avec.'
     : 'L’escouade n’est pas au camp — elle ne peut pas partir avec le convoi d’ici.'}</div>
+
+    <div class="sep"></div>
+    <div class="titre">Ce qu’on déclare</div>
+    <div class="taches" style="margin-top:5px">
+      <button class="act mini ${ordreFraude ? '' : 'primaire'}"
+        data-a="ordre-fraude" data-v="0" aria-pressed="${!ordreFraude}">Au grand jour</button>
+      <button class="act mini ${ordreFraude ? 'primaire' : ''}"
+        data-a="ordre-fraude" data-v="1" aria-pressed="${ordreFraude}">En fraude</button>
+    </div>
+    ${blocFraude(esc)}
 
     <div class="sep"></div>
     ${devis.ok ? `<div class="ligne"><span class="k">${ordreSens === 'achat'
@@ -5773,6 +5858,58 @@ function blocOuVousEnEtes() {
 }
 
 /**
+ * Le carnet des routes (TERRITOIRE.md, E4) : ce qu'on SAIT du trafic.
+ *
+ * Le pendant du carnet du négociant, et la même règle : des relevés datés,
+ * jamais la vérité du monde. Ce qu'un carnet de prix fait pour le commerce,
+ * celui-ci le fait pour le territoire — il dit où il vaut la peine de planter
+ * un poste, où tendre une embuscade, et quelle route un convoi doit éviter.
+ * Sans lui, le renseignement acheté serait un chiffre qu'on ne lit nulle part.
+ */
+function blocCarnetRoutes() {
+  const ici = G() && G().regionId;
+  const routes = carnetRoutes(S, ici);
+  if (!routes.length) {
+    return `<section class="panneau">
+      <h2 class="titre">Carnet des routes <span class="droite">vide</span></h2>
+      <div class="aide">Vous ne savez de quelles routes on use que là où vous êtes
+        passé. Dans une ville, les rouliers vendent ce qu’ils savent des leurs :
+        c’est ce qui dit où planter un poste et où tendre une embuscade.</div>
+    </section>`;
+  }
+  // Le meilleur endroit LIBRE : la ligne qui transforme le carnet en décision.
+  const libre = routes.find((x) => !x.poste && x.colonie == null && x.piste >= 0.15);
+  const lignes = routes.slice(0, 12).map((x) => {
+    const p = Math.round(x.piste * 100);
+    return `<div class="ligne souple">
+      <span class="k">${e(lieuAvecCoord(S.world, x.regionId))}
+        <span class="aide">${x.loin === 0 ? 'vous y êtes'
+    : `à ${x.loin} case${x.loin > 1 ? 's' : ''}`}${x.frais
+      ? '' : ` · ${e(ageTexte(x.depuis))}`}</span></span>
+      <span class="v">${p} %${x.poste
+    ? `<br><span class="aide" style="color:${couleurFaction(x.poste.faction)}">barré ${
+      e(drapeauDe(S.world, x.poste.faction)
+        ? drapeauDe(S.world, x.poste.faction).genitif : 'du vôtre')}</span>` : ''}</span>
+    </div>`;
+  }).join('');
+  return `<section class="panneau">
+    <h2 class="titre">Carnet des routes
+      <span class="resume">${routes.length} case${routes.length > 1 ? 's' : ''} relevée${
+  routes.length > 1 ? 's' : ''}</span>
+      <span class="droite">${Math.round(routes[0].piste * 100)} % au mieux</span></h2>
+    <div class="aide">Ce qu’on sait du passage, avec la date du relevé. Une piste
+      s’efface toute seule si plus personne n’y va : un relevé de trois semaines
+      n’est pas un état des routes, c’est un souvenir.</div>
+    ${libre ? `<div class="aide"><b>À prendre :</b>
+      ${e(lieuAvecCoord(S.world, libre.regionId))} — ${Math.round(libre.piste * 100)} %
+      de passage, personne dessus${libre.loin != null
+    ? `, à ${libre.loin} case${libre.loin > 1 ? 's' : ''}` : ''}.</div>` : ''}
+    <div class="sep"></div>
+    ${lignes}
+  </section>`;
+}
+
+/**
  * Les bourses du monde, et ce qu'elles cotent.
  *
  * Toute cette couche tournait sans que le joueur en voie rien : des factions
@@ -6100,6 +6237,7 @@ function ecranMonde() {
   </section>`;
   })()}
 
+  ${blocCarnetRoutes()}
   ${blocBourses()}
 
   <section class="panneau">
@@ -8171,6 +8309,20 @@ function surClic(ev) {
       break;
     }
 
+    case 'acheter-releve': {
+      const col = colonieDe(S.world, G().regionId);
+      const r = ACTIONS.acheterReleve(col && col.id);
+      messageReleve = {
+        cle: col && col.id,
+        ok: !!r.ok,
+        texte: r.ok
+          ? `${r.cases} cases relevées, dont ${r.neuves} dont vous ne saviez rien.`
+          : (r.motif || 'Refusé.'),
+      };
+      rafraichir(true);
+      break;
+    }
+
     case 'commerce': {
       ACTIONS.commerce();
       break;
@@ -8335,10 +8487,16 @@ function surClic(ev) {
       rafraichirComptoir();
       break;
 
+    case 'ordre-fraude':
+      ordreFraude = el.dataset.v === '1';
+      messageComptoir = null;
+      rafraichirComptoir();
+      break;
+
     case 'passer-ordre': {
       const g = G();
       const r = ACTIONS.passerOrdre(ordreSens, ordreKey, ordreQte, ordreEscorte,
-        ordreEscouade && g ? g.id : null);
+        ordreEscouade && g ? g.id : null, ordreFraude);
       messageComptoir = r.ok
         ? { ok: true, texte: `Le convoi part de ${r.place.nom}.` }
         : { ok: false, texte: r.motif };
@@ -8387,7 +8545,8 @@ function surClic(ev) {
     }
 
     case 'envoyer-camp': {
-      const r = ACTIONS.envoyerAuCamp(el.dataset.r, ordreKey, ordreQte, ordreEscorte);
+      const r = ACTIONS.envoyerAuCamp(el.dataset.r, ordreKey, ordreQte, ordreEscorte,
+        ordreFraude);
       messageComptoir = r.ok
         ? { ok: true, texte: `${r.qte} ${COMMODITIES[ordreKey].nom.toLowerCase()} `
           + `partent pour ${r.vers.nom || 'l’autre camp'}.` }
@@ -8397,7 +8556,7 @@ function surClic(ev) {
     }
 
     case 'envoyer-gages': {
-      const r = ACTIONS.envoyerGages(ordreKey, ordreQte, ordreEscorte);
+      const r = ACTIONS.envoyerGages(ordreKey, ordreQte, ordreEscorte, ordreFraude);
       messageComptoir = r.ok
         ? { ok: true, texte: `Le convoi part de ${r.de.nom} pour ${r.vers.nom}.` }
         : { ok: false, texte: r.motif };

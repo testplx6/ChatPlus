@@ -51,7 +51,7 @@ import {
   ouvrirBourseA, signerAccordAvec, rompreAccordAvec,
 } from './influence.js';
 import { disposer, disposerTous, prisonniersDe } from './justice.js';
-import { carnetPrix } from './connaissance.js';
+import { carnetPrix, acheterReleve } from './connaissance.js';
 import { distance } from './world.js';
 import {
   promettre, romprePromesse, paroleAvec, valeurGage, pesePromesse, PAROLES, ACCORD,
@@ -438,11 +438,12 @@ const API = {
   },
 
   /** Et l'ordre lui-même : le convoi part, avec ce qu'on a payé pour le garder. */
-  passerOrdre(sens, key, qte, escorte, groupe) {
+  passerOrdre(sens, key, qte, escorte, groupe, fraude) {
     if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
     const rng = new Rng(state.rngState);
     const r = passerOrdre(
-      state, sens, key, Number(qte), escorte, rng, creerLogger(state), groupe || null);
+      state, sens, key, Number(qte), escorte, rng, creerLogger(state), groupe || null,
+      !!fraude);
     state.rngState = rng.save();
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
@@ -487,13 +488,13 @@ const API = {
   },
 
   /** Et l'envoyer. Le convoi part de la ville d'achat, pas de chez vous. */
-  envoyerGages(key, qte, escorte) {
+  envoyerGages(key, qte, escorte, fraude) {
     if (!state) return { ok: false, motif: 'Aucune partie en cours.' };
     const c = this.courseGages(key, qte, escorte);
     if (!c.ok) return c;
     const rng = new Rng(state.rngState);
     const r = passerOrdreGages(
-      state, c.deId, c.versId, key, Number(qte), escorte, rng, creerLogger(state));
+      state, c.deId, c.versId, key, Number(qte), escorte, rng, creerLogger(state), !!fraude);
     state.rngState = rng.save();
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
@@ -523,11 +524,11 @@ const API = {
   },
 
   /** Et le convoi lui-même, d'un de vos camps vers un autre. */
-  envoyerAuCamp(versRegion, key, qte, escorte) {
+  envoyerAuCamp(versRegion, key, qte, escorte, fraude) {
     if (!state || !state.base) return { ok: false, motif: 'Aucune partie en cours.' };
     const rng = new Rng(state.rngState);
     const r = passerOrdreCamps(state, state.base.regionId, Number(versRegion), key,
-      Number(qte), escorte, rng, creerLogger(state));
+      Number(qte), escorte, rng, creerLogger(state), !!fraude);
     state.rngState = rng.save();
     if (r.ok) { sauver(); rafraichir(true); }
     return r;
@@ -962,6 +963,18 @@ const API = {
     sauver();
     rafraichir(true);
     return { ok: true };
+  },
+
+  /**
+   * Acheter ce que les gens d'une place savent de leurs routes
+   * (TERRITOIRE.md, E4). Aucun tirage : on paie, on sait.
+   */
+  acheterReleve(colId) {
+    const col = state.world.colonies.find((c) => c.id === colId);
+    if (!col) return { ok: false, motif: 'Aucune ville ici.' };
+    const r = acheterReleve(state, col, creerLogger(state));
+    if (r.ok) { sauver(); rafraichir(true); }
+    return r;
   },
 
   /** Se faire écrire sur les cartes. Irréversible, et l'on vous convoitera. */
