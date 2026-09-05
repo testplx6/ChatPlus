@@ -900,9 +900,15 @@ section('4 ter. Un coffre en ville');
 {
   const cf = nouvellePartie(4546, { maintenant: 0, depart: 'ville', equipe: 3 });
   const gc = groupeActif(cf);
-  const ville = cf.world.colonies.find((c) => !c.ruine && c.faction && c.faction !== 'essaim');
-  gc.regionId = ville.regionId;
   poser(cf, 5000);
+  // Une ville QUI LOUE, et pas simplement la première venue : le décor prenait
+  // la première ville sous drapeau, et le jour où la carte politique a changé
+  // il est tombé sur une place qui ne loue rien. Ce que la section vérifie est
+  // le coffre, pas le nom du bailleur.
+  const ville = cf.world.colonies.find((c) => !c.ruine && c.faction
+    && c.faction !== 'essaim' && peutLouer(cf, c).ok);
+  ok(!!ville, 'décor : une ville qui loue');
+  gc.regionId = ville.regionId;
   semerEstime(cf, ville.faction, 0);
 
   ok(!coffreDe(cf, ville.id), 'on n’a pas de coffre au départ');
@@ -17002,6 +17008,7 @@ section('TER 11. Tenir une route, quatrième voie (TERRITOIRE.md, E5)');
   ok(COUT_BARRAGE && typeof COUT_BARRAGE.ferraille === 'number',
     'ce que coûte un poste est de la donnée', JSON.stringify(COUT_BARRAGE));
 }
+
 
 
 // ===========================================================================

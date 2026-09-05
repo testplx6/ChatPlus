@@ -217,13 +217,36 @@ Le brouillard est déjà « le meilleur qu'on connaisse en jeu textuel » (revue
 hauteur **voit** les cases alentour : tenir un sommet devient une valeur
 d'information et non de force, et le renseignement s'accroche enfin au sol.
 
-### G7 — la frontière suit la géographie
+### G7 — la frontière suit la géographie — **ESSAYÉ, MESURÉ, RETIRÉ**
 
 Une fois qu'il y a des lignes (G1) et des climats (G3), l'attribution initiale
-des factions peut épouser le relief plutôt que se tirer au sort pondéré
-(`attribuerFactions`, `world.js:300`). Les pays se formeraient le long des
-bassins, et la carte politique deviendrait **lisible** : on comprendrait au
-premier regard pourquoi la frontière est là.
+des factions peut épouser le relief plutôt que se tirer au sort pondéré. Les
+pays se formeraient le long des bassins, et la carte politique deviendrait
+lisible.
+
+**Écrit, mesuré, puis retiré — et c'est le résultat qui compte.** L'attribution
+a reçu un poids de voisinage : ce qu'un drapeau tient déjà à quatre cases pèse
+dans le choix, et **de l'autre côté de la Faille ne compte pas**. Sans un
+tirage de plus — `rng.weighted` en consomme un quoi qu'il arrive, on ne fait
+que trier ce qu'on lui donne.
+
+Ça marche, à la naissance : la part des villes ayant une sœur du même drapeau à
+trois cases passe de **50 % à 81 %** (66 % à un poids de 2,5, 75 % à 6, 81 % à
+14, 80 % à 30 — saturation nette), et les six pays cessent d'être tous à cheval
+sur la Faille.
+
+**Mais le monde rebrasse la carte.** Après six mille heures de conquêtes, de
+sécessions et de fondations, l'écart tombe à **un point** : 78 % contre 77 %.
+La carte politique de la fin de partie ne doit presque rien à celle du début —
+ce qui est, en soi, une bonne nouvelle sur la vivacité du monde.
+
+Le prix, lui, était réel : cinq décors de test profonds cassés (les coffres, la
+maille, l'oubli de l'estime, la caisse d'une ville), parce que changer
+l'attribution change *toutes* les villes de *toutes* les graines. Payer ça pour
+un point à l'arrivée n'a pas de sens. **Le bon levier n'est pas l'attribution
+initiale ; c'est ce qui fait bouger les frontières en cours de partie** — les
+conquêtes, les sécessions, et le territoire lui-même. Autrement dit, ce que le
+reste de ce document a livré.
 
 ## 4. L'ordre qui se défend
 

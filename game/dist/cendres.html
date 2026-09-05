@@ -4698,6 +4698,21 @@ function genererColonies(rng, regions, graine) {
   return colonies;
 }
 
+/**
+ * De quel côté de la Faille se trouve cette case (GEOGRAPHIE.md, G7).
+ *
+ * La ligne serpente, donc « à gauche » se lit rangée par rangée : on regarde la
+ * colonne qu'elle occupe sur celle-ci. Une rangée d'ouverture n'a pas de côté —
+ * c'est le propre d'un passage.
+ */
+function coteFaille(regions, i) {
+  const y = (i / LARGEUR) | 0;
+  for (let x = 0; x < LARGEUR; x++) {
+    if (regions[y * LARGEUR + x].faille) return (i % LARGEUR) < x ? -1 : 1;
+  }
+  return 0;
+}
+
 function attribuerFactions(rng, regions, colonies) {
   const factions = {};
   for (const k of DIPLO_FACTIONS) {

@@ -276,6 +276,15 @@ function jouer({ sim, data, eco, eco2, monde, pays }, graine, horizon) {
     traces: s.world.regions.filter((r) => r.trace).length,
     // Les veines qu'une ville est venue prendre (GEOGRAPHIE.md, G4) : si le
     // chiffre reste à zéro, une ressource située ne change rien à la carte.
+    // Un pays est-il un morceau de carte ou un semis (GEOGRAPHIE.md, G7) ?
+    // Part des villes qui ont au moins une sœur du même drapeau à trois cases.
+    groupees: (() => {
+      const avec = s.world.colonies.filter((c) => !c.ruine && c.faction);
+      if (!avec.length) return 0;
+      const n2 = avec.filter((c) => avec.some((o) => o !== c && o.faction === c.faction
+        && monde.distance(o.regionId, c.regionId) <= 3)).length;
+      return Math.round(n2 / avec.length * 100);
+    })(),
     veinesPrises: s.world.regions.filter((r) => r.gisement
       && s.world.colonies.some((c) => !c.ruine && c.faction
         && monde.distance(c.regionId, r.i) <= 1)).length,
@@ -462,6 +471,7 @@ function agreger(cfg) {
     bloquees: som(cfg, 'bloquees'),
     traces: som(cfg, 'traces'),
     veinesPrises: som(cfg, 'veinesPrises'),
+    groupees: `${Math.round(med(cfg.parties.map((p2) => p2.groupees)))} %`,
     postes: som(cfg, 'postes'),
     peagePoste: som(cfg, 'peagePoste'),
     postesMorts: som(cfg, 'postesMorts'),
@@ -568,7 +578,7 @@ const COLONNES = [
   ['barrages', 'barrages', 9], ['gardees', 'gardées', 8],
   ['damees', 'damées', 7], ['passages', 'franchie', 9], ['postes', 'postes', 7], ['peagePoste', 'péages postes', 13],
   ['postesMorts', 'postes morts', 12],
-  ['passages', 'francs', 7], ['bloquees', 'bloquées', 9], ['traces', 'traces', 7], ['veinesPrises', 'veines tenues', 13], ['peageDu', 'péages dus', 11], ['corridor', 'corridor 5 %', 12],
+  ['passages', 'francs', 7], ['bloquees', 'bloquées', 9], ['traces', 'traces', 7], ['veinesPrises', 'veines tenues', 13], ['groupees', 'pays groupés', 12], ['peageDu', 'péages dus', 11], ['corridor', 'corridor 5 %', 12],
   ['nourries', 'nourries', 8], ['ecrasees', 'écrasées', 8],
   ['tresorMed', 'trésor méd', 10], ['fauchees', '<2500', 6],
   ['caisseMed', 'caisse méd', 10], ['bourses', 'bourses', 7],
