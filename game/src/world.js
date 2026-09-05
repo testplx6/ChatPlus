@@ -753,7 +753,7 @@ export function batirPoste(world, regionId, faction) {
   // `recu` et `passages` sont la seule information qu'un conseil aura jamais
   // sur ce que vaut une route (TERRITOIRE.md, T3) : ce que SON ouvrage a vu
   // passer, pas une statistique tombée du ciel.
-  r.poste = { faction, depuis: 0, recu: 0, passages: 0 };
+  r.poste = { faction, depuis: 0, recu: 0, pris: 0, passages: 0 };
   r.controle = faction;
   return r.poste;
 }
@@ -763,11 +763,18 @@ export function batirPoste(world, regionId, faction) {
  * récompense : sans ce chiffre, un poste posé au mauvais endroit y reste pour
  * toujours et le conseil n'apprend jamais rien.
  */
-export function noterAuPoste(world, regionId, montant) {
+export function noterAuPoste(world, regionId, montant, enNature) {
   const p = posteDe(world, regionId);
   if (!p) return 0;
   p.passages = (p.passages || 0) + 1;
-  if (montant > 0) p.recu = (p.recu || 0) + montant;
+  // Deux registres, et c'est METHODE §12 : ce qu'on encaisse est en monnaie du
+  // pays, ce qu'on prélève en nature est une valeur de marchandise en prix de
+  // base. Les additionner faisait une somme d'unités hétérogènes — et c'était
+  // la SEULE grandeur sur laquelle le conseil décidait quel poste fermer.
+  if (montant > 0) {
+    if (enNature) p.pris = (p.pris || 0) + montant;
+    else p.recu = (p.recu || 0) + montant;
+  }
   return p.recu;
 }
 

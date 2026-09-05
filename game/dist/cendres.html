@@ -5095,7 +5095,7 @@ function batirPoste(world, regionId, faction) {
   // `recu` et `passages` sont la seule information qu'un conseil aura jamais
   // sur ce que vaut une route (TERRITOIRE.md, T3) : ce que SON ouvrage a vu
   // passer, pas une statistique tombée du ciel.
-  r.poste = { faction, depuis: 0, recu: 0, passages: 0 };
+  r.poste = { faction, depuis: 0, recu: 0, pris: 0, passages: 0 };
   r.controle = faction;
   return r.poste;
 }
@@ -5105,11 +5105,18 @@ function batirPoste(world, regionId, faction) {
  * récompense : sans ce chiffre, un poste posé au mauvais endroit y reste pour
  * toujours et le conseil n'apprend jamais rien.
  */
-function noterAuPoste(world, regionId, montant) {
+function noterAuPoste(world, regionId, montant, enNature) {
   const p = posteDe(world, regionId);
   if (!p) return 0;
   p.passages = (p.passages || 0) + 1;
-  if (montant > 0) p.recu = (p.recu || 0) + montant;
+  // Deux registres, et c'est METHODE §12 : ce qu'on encaisse est en monnaie du
+  // pays, ce qu'on prélève en nature est une valeur de marchandise en prix de
+  // base. Les additionner faisait une somme d'unités hétérogènes — et c'était
+  // la SEULE grandeur sur laquelle le conseil décidait quel poste fermer.
+  if (montant > 0) {
+    if (enNature) p.pris = (p.pris || 0) + montant;
+    else p.recu = (p.recu || 0) + montant;
+  }
   return p.recu;
 }
 
@@ -16179,7 +16186,7 @@ function passerBarrage(state, car, regionId, ctx, log, venantDe) {
     // Le poste compte ce qu'il a vu passer (TERRITOIRE.md, T3) : c'est la seule
     // information qu'un conseil aura sur ce que vaut cette route.
     if (cle !== 'laissez' && cle !== 'dedans') {
-      noterAuPoste(world, regionId, montant);
+      noterAuPoste(world, regionId, montant, cle === 'nature');
       // Et le pays qui paie s'en souvient : sans ce registre, personne ne peut
       // aller demander « combien pour qu'on nous laisse passer ? »
       // (TERRITOIRE.md, E2). Prêté par `ctx` — `pactes.js` lit ce module et ne
@@ -17864,7 +17871,7 @@ function conseil(world, key, t, log, ctx) {
     const miens = postesDe(world, key);
     if (miens.length >= plafondPostes(world, key)) {
       const murs = miens.filter((r) => t - (r.poste.depuis || 0) > POSTE.epreuve);
-      if (murs.length >= 2 && murs.some((r) => (r.poste.recu || 0) <= 0)) {
+      if (murs.length >= 2 && murs.some((r) => (r.poste.passages || 0) <= 0)) {
         fermerLeMoinsUtile(world, key, t);
       }
     }
@@ -17877,8 +17884,7 @@ function conseil(world, key, t, log, ctx) {
       if (!mieux || (r.piste || 0) > (mieux.piste || 0)) mieux = r;
     }
     if (mieux && rng.chance(0.5 * penchant(world, key, 'expansion'))) {
-      if (poserPoste(world, key, mieux, log, t)) {
-      }
+      poserPoste(world, key, mieux, log, t);
     }
   }
 
@@ -18002,9 +18008,13 @@ function fermerLeMoinsUtile(world, key, t) {
   const miens = t == null ? tous
     : tous.filter((r) => t - (r.poste.depuis || 0) > POSTE.epreuve);
   if (miens.length < 2) return null;
+  // On juge sur les PASSAGES et non sur une somme d'argent : c'est la seule
+  // grandeur homogène qu'un poste connaisse — ce qu'il encaisse est en monnaie
+  // du pays, ce qu'il prélève en nature est une valeur de marchandise, et les
+  // additionner ne veut rien dire (METHODE.md §12).
   let pire = null;
   for (const r of miens) {
-    if (!pire || (r.poste.recu || 0) < (pire.poste.recu || 0)) pire = r;
+    if (!pire || (r.poste.passages || 0) < (pire.poste.passages || 0)) pire = r;
   }
   if (!pire) return null;
   raserPoste(world, pire.i);
@@ -18644,6 +18654,11 @@ function fonderDrapeau(state, nom, log) {
     tresor: 0,
     agression: world.drapeaux[cle].agression,
     relations: {},
+    // Ce que ses convois versent en péages, et à qui (TERRITOIRE.md, E2).
+    // Présent à la naissance comme à la création du monde : sans lui,
+    // l'aller-retour JSON cesse d'être exact dès qu'un drapeau est fondé,
+    // `normaliser` rajoutant l'objet au rechargement.
+    peages: {},
     colonies: [],
     capitale: null,
     humeur: 0,
@@ -18751,6 +18766,11 @@ function fonderColonne(world, a, key, t, log, motif) {
     tresor: 0,
     agression: world.drapeaux[cle].agression,
     relations: {},
+    // Ce que ses convois versent en péages, et à qui (TERRITOIRE.md, E2).
+    // Présent à la naissance comme à la création du monde : sans lui,
+    // l'aller-retour JSON cesse d'être exact dès qu'un drapeau est fondé,
+    // `normaliser` rajoutant l'objet au rechargement.
+    peages: {},
     colonies: [],
     capitale: null,
     humeur: 0,
@@ -22273,6 +22293,28 @@ function rendreSecteur(g) {
  * quand personne ne les tient. Ce qui la fait baisser, c'est la présence armée
  * — les colonnes des factions, les garnisons, et vous.
  */
+/**
+ * Ce que le trafic attire (TERRITOIRE.md, E4).
+ *
+ * L'insécurité d'une case ne dépendait que de sa distance à une ville, du
+ * désordre de celle-ci et de la sévérité de sa loi. Le TRAFIC n'entrait pas
+ * dans le calcul : une route où passent trente convois par saison n'était pas
+ * plus mal famée qu'une piste que personne n'emprunte. Or les pillards vont là
+ * où il y a quelque chose à prendre — c'est la règle du propriétaire sur le
+ * butin, appliquée aux routes plutôt qu'aux camps.
+ *
+ * Et c'est le contre-jeu qui manquait aux postes : une route qui rapporte est
+ * une route qu'il faut tenir, sinon elle se gâte toute seule.
+ */
+const BRIGANDS = {
+  // Balayé sur trois points : à 0,08 le monde compte 317 villes, à 0,4 il en
+  // compte 365, à 0,7 il retombe à 346. Quatre dixièmes est un maximum, et pas
+  // par hasard — au-dessus, les convois fuient tellement les grandes routes
+  // qu'ils cessent de livrer ; au-dessous, tenir une route ne sert à rien
+  // puisqu'elle ne se gâte pas.
+  parPiste: 0.4,
+};
+
 function tickInsecurite(state) {
   const w = state.world;
   if (w.majInsecurite === undefined) w.majInsecurite = state.temps;
@@ -22347,7 +22389,10 @@ function tickInsecurite(state) {
     const dissuasion = source[r.i] >= 0 ? (dissuasionDe.get(source[r.i]) || 1) : 1;
     const cible = Math.max(0, Math.min(1,
       REPOS_BASE + REPOS_PAR_CASE * Math.min(4, d === 9 ? 4 : d) + trouble * 0.22
-        - (dissuasion - 1) * 0.07));
+        - (dissuasion - 1) * 0.07
+        // Là où l'on passe, on guette : la piste dit le trafic, et le trafic
+        // dit le butin (TERRITOIRE.md, E4).
+        + (r.piste || 0) * BRIGANDS.parPiste));
     const v0 = r.insecurite || 0;
     const v = v0 + ((cible - v0) * RAPPEL - (tenu.get(r.i) || 0)) * dt;
     r.insecurite = v <= 0 ? 0 : v >= 1 ? 1 : v;
@@ -24457,6 +24502,9 @@ function reconnaitreAvantPoste(state, log) {
     // Le registre des engagements du banc. Le banc lui-même se dérive.
     bancPris: null,
     vivier: [],
+    // Le blocus a-t-il déjà été dit pour cette place (TERRITOIRE.md, E3) ?
+    // Troisième lieu de création d'une colonie, celui qu'on oublie.
+    blocusDit: false,
     geole: null,
     emplois: null,
     notables: [],
@@ -30214,6 +30262,8 @@ function normaliser(state) {
   // Avant qu'on puisse tenir du terrain, personne n'occupait rien.
   if (!w.gardes) w.gardes = [];
   if (!w.saisonKey) w.saisonKey = 'accalmie';
+  // Une partie d'avant la Faille n'a pas de nom pour elle.
+  if (!w.failleNom) w.failleNom = 'la Faille';
   if (w.coutCiel === undefined) w.coutCiel = null;
   if (typeof w.heure !== 'number') w.heure = state.temps || 0;
   // Avant qu'on puisse acheter un passage, personne ne comptait ses péages.

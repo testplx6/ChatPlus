@@ -996,7 +996,7 @@ export function passerBarrage(state, car, regionId, ctx, log, venantDe) {
     // Le poste compte ce qu'il a vu passer (TERRITOIRE.md, T3) : c'est la seule
     // information qu'un conseil aura sur ce que vaut cette route.
     if (cle !== 'laissez' && cle !== 'dedans') {
-      noterAuPoste(world, regionId, montant);
+      noterAuPoste(world, regionId, montant, cle === 'nature');
       // Et le pays qui paie s'en souvient : sans ce registre, personne ne peut
       // aller demander « combien pour qu'on nous laisse passer ? »
       // (TERRITOIRE.md, E2). Prêté par `ctx` — `pactes.js` lit ce module et ne

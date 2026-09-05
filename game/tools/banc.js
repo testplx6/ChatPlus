@@ -55,12 +55,13 @@ const SRC = join(JEU, 'src');
 
 async function chargerMoteur(src) {
   const sim = await import(pathToFileURL(join(src, 'sim.js')).href);
+  const pays = await import(pathToFileURL(join(src, 'factions.js')).href);
   const data = await import(pathToFileURL(join(src, 'data.js')).href);
   const eco = await import(pathToFileURL(join(src, 'economy.js')).href);
   let eco2 = { auditer: () => [] };
   try { eco2 = await import(pathToFileURL(join(src, 'monnaie.js')).href); } catch (e) { /* témoin */ }
   const monde = await import(pathToFileURL(join(src, 'world.js')).href);
-  return { sim, data, eco, eco2, monde };
+  return { sim, data, eco, eco2, monde, pays };
 }
 
 /**
@@ -110,7 +111,7 @@ async function appliquerRegles(src, regles) {
  * campagne de cette session a recalculées à la main, réunies une fois pour
  * toutes. En ajouter une ici la donne à toutes les mesures futures.
  */
-function jouer({ sim, data, eco, eco2, monde }, graine, horizon) {
+function jouer({ sim, data, eco, eco2, monde, pays }, graine, horizon) {
   const t0 = performance.now();
   const s = sim.nouvellePartie(graine);
   // Attribution M6 : quelle voie du circuit prend chaque tranche. Les
@@ -266,7 +267,11 @@ function jouer({ sim, data, eco, eco2, monde }, graine, horizon) {
     // Le marché du droit de passage (TERRITOIRE.md, E2) : combien de pactes
     // l'ouvrent, et ce que les pays ont en tête quand ils vont négocier.
     passages: (s.world.pactes || []).filter((p2) => p2.clauses.includes('passage')).length,
-    bloquees: s.world.colonies.filter((c) => c.blocusDit).length,
+    // Les villes privées EN CE MOMENT, et non « au moins une fois depuis le
+    // début » : `blocusDit` ne sert qu'à ne pas redire la même nouvelle, et le
+    // prendre pour la mesure comptait des blocus levés depuis des mois
+    // (METHODE.md §12, relevé en revue).
+    bloquees: s.world.colonies.filter((c) => !c.ruine && pays.bloqueePar(s.world, c)).length,
     // Ce que la carte a retenu de ce qui s'y est passé (GEOGRAPHIE.md, G5).
     traces: s.world.regions.filter((r) => r.trace).length,
     // Les veines qu'une ville est venue prendre (GEOGRAPHIE.md, G4) : si le

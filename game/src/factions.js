@@ -1259,7 +1259,7 @@ function conseil(world, key, t, log, ctx) {
     const miens = postesDe(world, key);
     if (miens.length >= plafondPostes(world, key)) {
       const murs = miens.filter((r) => t - (r.poste.depuis || 0) > POSTE.epreuve);
-      if (murs.length >= 2 && murs.some((r) => (r.poste.recu || 0) <= 0)) {
+      if (murs.length >= 2 && murs.some((r) => (r.poste.passages || 0) <= 0)) {
         fermerLeMoinsUtile(world, key, t);
       }
     }
@@ -1272,8 +1272,7 @@ function conseil(world, key, t, log, ctx) {
       if (!mieux || (r.piste || 0) > (mieux.piste || 0)) mieux = r;
     }
     if (mieux && rng.chance(0.5 * penchant(world, key, 'expansion'))) {
-      if (poserPoste(world, key, mieux, log, t)) {
-      }
+      poserPoste(world, key, mieux, log, t);
     }
   }
 
@@ -1397,9 +1396,13 @@ export function fermerLeMoinsUtile(world, key, t) {
   const miens = t == null ? tous
     : tous.filter((r) => t - (r.poste.depuis || 0) > POSTE.epreuve);
   if (miens.length < 2) return null;
+  // On juge sur les PASSAGES et non sur une somme d'argent : c'est la seule
+  // grandeur homogène qu'un poste connaisse — ce qu'il encaisse est en monnaie
+  // du pays, ce qu'il prélève en nature est une valeur de marchandise, et les
+  // additionner ne veut rien dire (METHODE.md §12).
   let pire = null;
   for (const r of miens) {
-    if (!pire || (r.poste.recu || 0) < (pire.poste.recu || 0)) pire = r;
+    if (!pire || (r.poste.passages || 0) < (pire.poste.passages || 0)) pire = r;
   }
   if (!pire) return null;
   raserPoste(world, pire.i);
@@ -2039,6 +2042,11 @@ export function fonderDrapeau(state, nom, log) {
     tresor: 0,
     agression: world.drapeaux[cle].agression,
     relations: {},
+    // Ce que ses convois versent en péages, et à qui (TERRITOIRE.md, E2).
+    // Présent à la naissance comme à la création du monde : sans lui,
+    // l'aller-retour JSON cesse d'être exact dès qu'un drapeau est fondé,
+    // `normaliser` rajoutant l'objet au rechargement.
+    peages: {},
     colonies: [],
     capitale: null,
     humeur: 0,
@@ -2146,6 +2154,11 @@ function fonderColonne(world, a, key, t, log, motif) {
     tresor: 0,
     agression: world.drapeaux[cle].agression,
     relations: {},
+    // Ce que ses convois versent en péages, et à qui (TERRITOIRE.md, E2).
+    // Présent à la naissance comme à la création du monde : sans lui,
+    // l'aller-retour JSON cesse d'être exact dès qu'un drapeau est fondé,
+    // `normaliser` rajoutant l'objet au rechargement.
+    peages: {},
     colonies: [],
     capitale: null,
     humeur: 0,

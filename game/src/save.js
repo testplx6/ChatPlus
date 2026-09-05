@@ -296,6 +296,8 @@ export function normaliser(state) {
   // Avant qu'on puisse tenir du terrain, personne n'occupait rien.
   if (!w.gardes) w.gardes = [];
   if (!w.saisonKey) w.saisonKey = 'accalmie';
+  // Une partie d'avant la Faille n'a pas de nom pour elle.
+  if (!w.failleNom) w.failleNom = 'la Faille';
   if (w.coutCiel === undefined) w.coutCiel = null;
   if (typeof w.heure !== 'number') w.heure = state.temps || 0;
   // Avant qu'on puisse acheter un passage, personne ne comptait ses péages.

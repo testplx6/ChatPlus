@@ -522,3 +522,70 @@ L'ordre que le consultant recommande, si l'on veut que chaque cran se voie :
 donnerait des goulots que personne ne contourne, donc invisibles), puis T2/E3,
 et E2/E4/T3 quand il y a un trafic à convoiter.
 
+---
+
+# Revue de conformité — ce que la relecture a trouvé
+
+Passée sur les vingt-quatre commits de la journée, au prisme des cinq pièges de
+`CLAUDE.md`, de `METHODE.md` §11-§12 et des quatre odeurs d'`AUDIT.md`. Six
+défauts réels, tous corrigés dans la foulée ; un point écarté avec son motif.
+
+**Un tirage de plus au milieu du conseil (piège n°1).** `conseil` tirait
+`rng.chance` pour poser un poste, mais **seulement quand une case valait la
+peine** : tous les tirages suivants de la séance se décalaient, et ils se
+décalaient de façon dépendante de l'état. C'est le piège n°1 dans sa forme
+littérale — et deux lignes plus haut, le même commit prenait soin de l'éviter
+pour le choix du site. Le geste a maintenant son propre dé, dérivé du pays et de
+l'heure.
+
+**Trois clés d'état incomplètes (piège n°2).** `faction.peages` manquait aux
+deux naissances de faction en cours de partie (le drapeau du joueur, la faction
+née d'une colonne) ; `colonie.blocusDit` manquait au **troisième** lieu de
+création d'une colonie, le camp livré comme place — celui qu'on oublie ; et
+`world.failleNom` n'était pas dans `normaliser`. Aucun ne plantait, tous
+cassaient l'exactitude de l'aller-retour JSON.
+
+**Deux mesures qui mentaient (METHODE §12).** `poste.recu` additionnait de la
+monnaie du pays et des valeurs de marchandise en prix de base — une somme
+d'unités hétérogènes, et c'était **la seule grandeur** sur laquelle le conseil
+décidait quel poste fermer. Deux registres désormais (`recu`, `pris`), et
+l'arbitrage se fait sur les **passages**, seule grandeur homogène. Et la mesure
+`bloquees` du banc comptait `blocusDit`, qui n'est jamais remis à faux : elle
+disait « villes bloquées au moins une fois depuis le début » là où le chiffre
+annoncé était « villes privées ». Corrigée, elle compte celles qui le sont en ce
+moment.
+
+**Un point écarté, et pourquoi.** La revue signale que le péage d'une case sans
+drapeau s'évapore encore (`f = r.controle || 'bandits'`). C'est vrai et c'est
+voulu : des bandits ne tiennent pas de caisse, on ne leur invente pas un pays —
+`percevoirPeage` le dit et le test TER 2 le vérifie. B1 visait le barrage d'un
+**pays**, qui n'encaissait rien alors qu'il avait des hommes et une ville
+derrière lui. Comptablement, rien ne se crée ni ne se perd : le joueur comme la
+bande sont hors des registres.
+
+**Deux scories** balayées au passage : un bloc `if` vide et un import inutilisé.
+
+## Ce que E4 a révélé dans les tests, et qui n'avait rien à voir avec lui
+
+Trois vérifications du navigateur sont tombées à sa livraison. **Aucune ne
+visait le mécanisme** : toutes tenaient un décor que le monde, devenu plus dur,
+ne produisait plus.
+
+- « le monde tourne même quand tout le monde est mort » : le décor bloquait la
+  fermeture automatique des stèles, et une stèle ouverte gèle l'horloge — ce qui
+  est la règle, testée dans sa propre section. Le jour où le monde a changé
+  assez pour qu'une stèle s'ouvre pendant ces six secondes, la sonde a accusé la
+  fin de partie d'un gel dont elle n'était pas responsable.
+- « décor : deux morts portés » exigeait **exactement** deux morts là où six
+  cents millisecondes de jeu suffisent parfois à ce qu'un blessé succombe.
+- « ce qu'on a pris est dans le sac » : le décor remettait les PV à plein sans
+  **relever** ceux que la partie avancée avait laissés morts. Tant que le monde
+  était doux il n'y en avait pas ; sinon l'escouade perd le combat, et la sonde
+  conclut qu'un assaut gagné ne rapporte rien. Au passage, un bandeau de
+  dévaluation pouvait recouvrir le bouton : Playwright cliquait alors sur le
+  bandeau, et rien ne disait que l'assaut n'avait pas eu lieu.
+
+Et un défaut dans l'outil lui-même : `jusqua`, l'attente de condition qui a
+remplacé les pauses fixes, **avalait les exceptions et repartait aussitôt** au
+lieu de dormir le reste du plafond. « Au pire on se comporte comme avant » n'est
+vrai que si l'on attend vraiment.

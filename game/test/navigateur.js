@@ -78,9 +78,20 @@ const CHEMINS_CHROMIUM = [
  * monde). Prouver qu'il ne se passe rien demande d'attendre pour de bon.
  */
 async function jusqua(p, plafond, condition, arg) {
+  const t0 = Date.now();
   try {
     await p.waitForFunction(condition, arg, { timeout: plafond, polling: 100 });
-  } catch (err) { /* le plafond est atteint : on repart comme avant */ }
+  } catch (err) {
+    // On DORT LE RESTE du plafond. La première version se contentait d'avaler
+    // l'erreur : quand la condition levait au lieu d'être fausse — un accesseur
+    // pas encore posé sur la page, par exemple —, `waitForFunction` rendait la
+    // main aussitôt et l'on repartait au bout de dix millisecondes au lieu de
+    // six secondes. Trois vérifications sont tombées là-dessus, et elles
+    // avaient raison : « au pire, on se comporte exactement comme avant » n'est
+    // vrai que si l'on attend vraiment.
+    const reste = plafond - (Date.now() - t0);
+    if (reste > 20) await p.waitForTimeout(reste);
+  }
 }
 
 /** L'heure de la partie, telle que la sauvegarde la porte. */
@@ -2511,7 +2522,12 @@ console.log('\n8 vicies semel bis. La fin ne gèle pas l’horloge de l’écran
   })());
   await page.reload({ waitUntil: 'load' });
   await page.evaluate((txt) => localStorage.setItem('cendres.save.v1', txt), eteinte);
-  await page.evaluate(() => { window.__momentsAuto = false; });
+  // Les stèles se referment seules ici. Ce qu'on teste est l'horloge d'une
+  // partie ÉTEINTE, pas le gel volontaire d'un grand moment — qui a sa propre
+  // section. Le décor les bloquait, et le jour où le monde a changé assez pour
+  // qu'une stèle s'ouvre pendant ces six secondes, la sonde a accusé la fin de
+  // partie d'un gel dont elle n'était pas responsable.
+  await page.evaluate(() => { window.__momentsAuto = true; });
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   const tFige = await page.evaluate(() => JSON.parse(window.__sauvegardeTexte()).temps);
@@ -2558,7 +2574,11 @@ console.log('\n8 vicies semel ter. Morts et prisonniers : la décision s’appli
     const g2 = s2.player.groupes[0];
     return { morts: g2.membres.filter((m) => m.etat === 'mort').length, captifs: (g2.prisonniers || []).length };
   });
-  ok(avantTous.morts === 2 && avantTous.captifs >= 2, 'décor : deux morts portés, des prisonniers',
+  // « au moins deux » et non « exactement deux » : le décor en pose deux, et
+  // six cents millisecondes de jeu suffisent parfois à ce qu'un blessé succombe.
+  // Ce que la section vérifie est qu'une décision s'applique À TOUS ; un mort de
+  // plus la sert plutôt qu'elle ne la gêne.
+  ok(avantTous.morts >= 2 && avantTous.captifs >= 2, 'décor : deux morts portés au moins, des prisonniers',
     JSON.stringify(avantTous));
 
   const bEnterrer = page.locator('[data-a="corps-tous"][data-k="enterrer"]');
@@ -3267,6 +3287,12 @@ console.log('\n8 nonies quinquies. Donner l’assaut à une ville (IMPLANTATIONS
   for (const k of Object.keys(cible.stock)) cible.stock[k] = 0;
   cible.stock.alliage = 90;
   for (const m of gAs.membres) {
+    // Debout, et pas seulement rafistolés : le décor remettait les PV à plein
+    // sans relever ceux que la partie avancée avait laissés morts ou à terre.
+    // Tant que le monde était doux, il n'y en avait pas ; le jour où il a
+    // durci, l'escouade perdait le combat et la sonde concluait qu'un assaut
+    // gagné ne rapportait rien.
+    m.etat = 'ok';
     m.skills.melee = 95; m.skills.endurance = 95; m.skills.tir = 95;
     for (const part of Object.keys(m.corps)) m.corps[part].pv = m.corps[part].max;
   }
@@ -3277,6 +3303,18 @@ console.log('\n8 nonies quinquies. Donner l’assaut à une ville (IMPLANTATIONS
   await page.click('[data-a="continuer"]');
   await page.waitForSelector('#carte');
   await calme(page, 400);
+
+  // Un bandeau a pu se lever au chargement — la monnaie qui fond, par exemple —
+  // et prendre le haut de l'écran. On le congédie AVANT de lire quoi que ce
+  // soit : le jour où le monde a changé assez pour qu'une dévaluation tombe
+  // ici, la sonde a conclu qu'un assaut ne rapportait rien alors qu'il n'avait
+  // simplement pas eu lieu.
+  for (let k = 0; k < 3; k++) {
+    const f = await page.$('[data-a="devaluation-vue"]');
+    if (!f) break;
+    await f.click();
+    await calme(page, 250);
+  }
 
   const texteAs = await page.evaluate(() => document.querySelector('#ecran').textContent);
   ok(/Coup de main/i.test(texteAs), 'la ville où l’on se tient propose d’y entrer de force',
@@ -3296,6 +3334,16 @@ console.log('\n8 nonies quinquies. Donner l’assaut à une ville (IMPLANTATIONS
     if (b) b.scrollIntoView({ block: 'center' });
   });
   await page.screenshot({ path: join(CAPTURES, '26-assaut.png') });
+  // Et une dernière fois juste avant le geste : un bandeau qui se lève entre le
+  // relevé et le clic recouvre le bouton, et Playwright clique alors sur le
+  // bandeau. On ne saurait pas que l'assaut n'a pas eu lieu.
+  for (let k = 0; k < 3; k++) {
+    const f = await page.$('[data-a="devaluation-vue"]');
+    if (!f) break;
+    await f.click();
+    await calme(page, 250);
+  }
+  ok(!!(await page.$('[data-a="assaut"]')), 'et il est encore là au moment de frapper');
   await page.click('[data-a="assaut"]');
   await calme(page, 700);
 
@@ -3311,7 +3359,8 @@ console.log('\n8 nonies quinquies. Donner l’assaut à une ville (IMPLANTATIONS
     };
   }, cible.id);
   ok(apresAs.alliage > sacAvant, 'ce qu’on a pris est dans le sac',
-    `${sacAvant} → ${apresAs.alliage}`);
+    `${sacAvant} → ${apresAs.alliage}, ville ${apresAs.villeAlliage} · `
+    + `${apresAs.texte.replace(/\s+/g, ' ').slice(0, 200)}`);
   ok(apresAs.villeAlliage === 90 - (apresAs.alliage - sacAvant),
     'et la ville a perdu exactement ça',
     `ville ${apresAs.villeAlliage}, sac +${apresAs.alliage - sacAvant}`);

@@ -197,6 +197,7 @@ import {
 import { PASSAGE_A, PASSAGE_B } from '../src/data.js';
 import { SAISON_BIOME, coutSaison, poserSaison } from '../src/climat.js';
 import { marquerLieu, TRACES, GISEMENTS, gisementsDe } from '../src/world.js';
+import { BRIGANDS } from '../src/secteur.js';
 import {
   poserPoste, plafondPostes, fermerLeMoinsUtile,
 } from '../src/factions.js';
@@ -16462,7 +16463,7 @@ section('TER 7. Le trafic est la récompense (TERRITOIRE.md, T3)');
   const libre = wT.regions.find((r) => !r.faille && !r.colonie && !r.controle);
   wT.factions.rouilleurs.tresor = POSTE.cout * 4;
   const p = poserPoste(wT, 'rouilleurs', libre, null);
-  ok(!!p && p.recu === 0 && p.passages === 0,
+  ok(!!p && p.recu === 0 && p.pris === 0 && p.passages === 0,
     'un poste neuf n’a encore rien vu passer',
     p ? `${p.recu} / ${p.passages}` : 'aucun');
 
@@ -16473,6 +16474,12 @@ section('TER 7. Le trafic est la récompense (TERRITOIRE.md, T3)');
     noterAuPoste(wT, libre.i, 60);
     ok(p.recu === 200 && p.passages === 2,
       'et ce qui passe, il le compte', `${p.recu} en ${p.passages} passages`);
+    // Ce qu'on prélève en nature ne s'additionne pas à ce qu'on encaisse : deux
+    // registres, deux unités (METHODE.md §12, relevé en revue).
+    noterAuPoste(wT, libre.i, 90, true);
+    ok(p.recu === 200 && p.pris === 90,
+      'et ce qu’il prend en nature se compte à part',
+      `${p.recu} en monnaie, ${p.pris} en marchandise`);
   }
 
   // Le plafond : un pays ne tient pas plus de postes que ses villes n’en
@@ -16498,7 +16505,10 @@ section('TER 7. Le trafic est la récompense (TERRITOIRE.md, T3)');
       && r.poste.faction === 'rouilleurs').length;
     ok(combien === cases.length, 'décor : le pays est à son plafond', `${combien}`);
 
-    // Le plus fréquenté d’un côté, un mort-né de l’autre.
+    // Le plus fréquenté d’un côté, un mort-né de l’autre. On juge sur les
+    // PASSAGES : ce qu'un poste encaisse est en monnaie du pays, ce qu'il
+    // prélève en nature est une valeur de marchandise, et l'on n'additionne pas
+    // les deux (METHODE.md §12).
     for (let k = 0; k < 30; k++) noterAuPoste(wA, cases[0].i, 500);
     const stérile = cases[cases.length - 1];
     const ailleurs = wA.regions.find((r) => !r.faille && !r.colonie && !r.controle
@@ -16891,6 +16901,42 @@ section('GEO 4. La richesse est quelque part (GEOGRAPHIE.md, G4)');
 
   ok(GISEMENTS && typeof GISEMENTS.combien === 'number',
     'combien il y en a est calibrable', JSON.stringify(GISEMENTS));
+}
+
+
+
+// ===========================================================================
+section('TER 10. Les brigands suivent le trafic (TERRITOIRE.md, E4)');
+// La revue de game master : « faire du trafic un renseignement crée deux
+// métiers d’un coup — le brigand qui choisit son embuscade au lieu de la subir,
+// et le marchand qui paie pour savoir ».
+//
+// Le premier des deux se code d’un mot, et il manquait : l’insécurité d’une
+// case ne dépendait que de sa distance à une ville, du désordre de celle-ci et
+// de la sévérité de sa loi. Le TRAFIC n’entrait pas dans le calcul — une route
+// où passent trente convois par saison n’était pas plus mal famée qu’une piste
+// que personne n’emprunte. Or les pillards vont là où il y a quelque chose à
+// prendre : c’est la règle du propriétaire sur le butin, appliquée aux routes.
+//
+// Et c’est le contre-jeu qui manquait aux postes : une route qui rapporte est
+// une route qu’il faut tenir, sinon elle se gâte.
+{
+  const sB4 = nouvellePartie(551200, { maintenant: 0 });
+  const wB4 = sB4.world;
+  // Deux cases jumelles, loin de tout, l'une damée jusqu'à l'os.
+  const paire = wB4.regions.filter((r) => !r.colonie && !r.faille
+    && !voisins(r.i).some((v) => wB4.regions[v].colonie)).slice(0, 2);
+  ok(paire.length === 2, 'décor : deux cases loin de toute ville');
+  for (const r of paire) { r.piste = 0; r.insecurite = 0.3; r.biome = 'steppe'; }
+  paire[1].piste = 1;
+
+  for (let i = 0; i < 400; i++) tick(sB4);
+  ok(paire[1].insecurite > paire[0].insecurite,
+    'la route fréquentée devient la plus mal famée des deux',
+    `${paire[0].insecurite.toFixed(3)} contre ${paire[1].insecurite.toFixed(3)}`);
+
+  ok(BRIGANDS && typeof BRIGANDS.parPiste === 'number',
+    'ce que le trafic attire est calibrable', JSON.stringify(BRIGANDS));
 }
 
 

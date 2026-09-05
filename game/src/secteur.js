@@ -202,6 +202,28 @@ export function rendreSecteur(g) {
  * quand personne ne les tient. Ce qui la fait baisser, c'est la présence armée
  * — les colonnes des factions, les garnisons, et vous.
  */
+/**
+ * Ce que le trafic attire (TERRITOIRE.md, E4).
+ *
+ * L'insécurité d'une case ne dépendait que de sa distance à une ville, du
+ * désordre de celle-ci et de la sévérité de sa loi. Le TRAFIC n'entrait pas
+ * dans le calcul : une route où passent trente convois par saison n'était pas
+ * plus mal famée qu'une piste que personne n'emprunte. Or les pillards vont là
+ * où il y a quelque chose à prendre — c'est la règle du propriétaire sur le
+ * butin, appliquée aux routes plutôt qu'aux camps.
+ *
+ * Et c'est le contre-jeu qui manquait aux postes : une route qui rapporte est
+ * une route qu'il faut tenir, sinon elle se gâte toute seule.
+ */
+export const BRIGANDS = {
+  // Balayé sur trois points : à 0,08 le monde compte 317 villes, à 0,4 il en
+  // compte 365, à 0,7 il retombe à 346. Quatre dixièmes est un maximum, et pas
+  // par hasard — au-dessus, les convois fuient tellement les grandes routes
+  // qu'ils cessent de livrer ; au-dessous, tenir une route ne sert à rien
+  // puisqu'elle ne se gâte pas.
+  parPiste: 0.4,
+};
+
 export function tickInsecurite(state) {
   const w = state.world;
   if (w.majInsecurite === undefined) w.majInsecurite = state.temps;
@@ -276,7 +298,10 @@ export function tickInsecurite(state) {
     const dissuasion = source[r.i] >= 0 ? (dissuasionDe.get(source[r.i]) || 1) : 1;
     const cible = Math.max(0, Math.min(1,
       REPOS_BASE + REPOS_PAR_CASE * Math.min(4, d === 9 ? 4 : d) + trouble * 0.22
-        - (dissuasion - 1) * 0.07));
+        - (dissuasion - 1) * 0.07
+        // Là où l'on passe, on guette : la piste dit le trafic, et le trafic
+        // dit le butin (TERRITOIRE.md, E4).
+        + (r.piste || 0) * BRIGANDS.parPiste));
     const v0 = r.insecurite || 0;
     const v = v0 + ((cible - v0) * RAPPEL - (tenu.get(r.i) || 0)) * dt;
     r.insecurite = v <= 0 ? 0 : v >= 1 ? 1 : v;

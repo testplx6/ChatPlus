@@ -2016,6 +2016,9 @@ export function reconnaitreAvantPoste(state, log) {
     // Le registre des engagements du banc. Le banc lui-même se dérive.
     bancPris: null,
     vivier: [],
+    // Le blocus a-t-il déjà été dit pour cette place (TERRITOIRE.md, E3) ?
+    // Troisième lieu de création d'une colonie, celui qu'on oublie.
+    blocusDit: false,
     geole: null,
     emplois: null,
     notables: [],
