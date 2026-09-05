@@ -533,7 +533,10 @@ export function planterPoste(state, log) {
     return { ok: false, motif: 'Il faut 70 ferraille, 20 polymère, 3 composants dans le sac.' };
   }
   payer(g.inventaire, COUT_BARRAGE);
-  batirPoste(state.world, g.regionId, sien);
+  // L'heure, et la marque : un poste daté de zéro était éligible d'emblée à la
+  // fermeture par le conseil du pays dont on porte les couleurs, et rien ne le
+  // distinguait de ceux que ce conseil avait posés lui-même.
+  batirPoste(state.world, g.regionId, sien, state.temps, true);
   if (log) {
     log({
       type: 'poste',
@@ -553,18 +556,22 @@ export function raserPosteIci(state, log) {
   const r = state.world.regions[g.regionId];
   if (!r || !r.poste) return { ok: false, motif: 'Il n’y a rien à abattre ici.' };
   const a = r.poste.faction;
+  // Le vôtre se reconnaît à sa marque : sans couleurs il est au nom de
+  // « joueur », et une fois les couleurs prises il porte les mêmes que celui
+  // du conseil. Le drapeau ne suffit donc ni avant ni après.
+  const votre = !!r.poste.votre;
   raserPoste(state.world, g.regionId);
   marquerLieu(state.world, g.regionId, 'ruine_poste', state.temps);
   if (log) {
     log({
       type: 'poste',
-      texte: a === 'joueur'
+      texte: votre
         ? 'Vous démontez votre poste. La route redevient à tout le monde.'
         : `Le poste ${drapeauDe(state.world, a).genitif} est à terre. `
           + 'On saura qui l’a mis par terre.',
       regionId: g.regionId,
       important: true,
-      factions: a === 'joueur' ? [] : [a],
+      factions: votre ? [] : [a],
     });
   }
   return { ok: true, a };

@@ -320,6 +320,10 @@ export function normaliser(state) {
     if (r.gisement === undefined) r.gisement = null;
     // Avant les ouvrages, on ne tenait rien qu'avec des hommes.
     if (r.poste === undefined) r.poste = null;
+    // Et avant la marque, on ne distinguait pas l'ouvrage du joueur de celui
+    // du conseil dont il porte les couleurs. Une partie d'avant n'en a donc
+    // aucun qui soit sien : c'est la seule lecture qui ne perde personne.
+    if (r.poste && r.poste.votre === undefined) r.poste.votre = false;
   }
   // Les couleurs orphelines des parties d'avant : une case tenue par un drapeau
   // qui n'a plus une seule ville dessus ni à côté redevient libre. Le halo n'a

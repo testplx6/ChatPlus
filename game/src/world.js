@@ -356,21 +356,6 @@ function genererColonies(rng, regions, graine) {
   return colonies;
 }
 
-/**
- * De quel côté de la Faille se trouve cette case (GEOGRAPHIE.md, G7).
- *
- * La ligne serpente, donc « à gauche » se lit rangée par rangée : on regarde la
- * colonne qu'elle occupe sur celle-ci. Une rangée d'ouverture n'a pas de côté —
- * c'est le propre d'un passage.
- */
-export function coteFaille(regions, i) {
-  const y = (i / LARGEUR) | 0;
-  for (let x = 0; x < LARGEUR; x++) {
-    if (regions[y * LARGEUR + x].faille) return (i % LARGEUR) < x ? -1 : 1;
-  }
-  return 0;
-}
-
 function attribuerFactions(rng, regions, colonies) {
   const factions = {};
   for (const k of DIPLO_FACTIONS) {
@@ -760,7 +745,7 @@ export function posteDe(world, regionId) {
  * l'invariant comptable l'a dit dans la minute. C'est `poserPoste`
  * (factions.js) qui paie les maçons, comme `batirMur` paie les siens.
  */
-export function batirPoste(world, regionId, faction) {
+export function batirPoste(world, regionId, faction, t = 0, votre = false) {
   const r = world.regions[regionId];
   // On n'exige PAS que le drapeau soit au tableau des pays : le joueur tient
   // une route comme n'importe qui, et `monterLaGarde` l'accepte déjà de la
@@ -770,8 +755,20 @@ export function batirPoste(world, regionId, faction) {
   // `recu` et `passages` sont la seule information qu'un conseil aura jamais
   // sur ce que vaut une route (TERRITOIRE.md, T3) : ce que SON ouvrage a vu
   // passer, pas une statistique tombée du ciel.
-  r.poste = { faction, depuis: 0, recu: 0, pris: 0, passages: 0 };
-  r.controle = faction;
+  //
+  // `votre` dit que c'est le joueur qui l'a bâti de ses mains, et non le
+  // conseil du pays dont il porte les couleurs. Les deux postes portent le
+  // même drapeau et ne se distinguent par rien d'autre : sans cette marque,
+  // le conseil rasait l'ouvrage que le joueur avait payé, le comptait dans
+  // son plafond, et le joueur encaissait les péages de son pays.
+  r.poste = { faction, depuis: t || 0, recu: 0, pris: 0, passages: 0, votre: !!votre };
+  // « Joueur » n'est pas un drapeau, et la case ne peut pas porter des
+  // couleurs qui n'existent pas : `drapeauDe` ne rend rien pour cette
+  // chaîne-là, et tout lecteur de `r.controle` tombait dessus — le tick des
+  // caravanes, celui des colonnes, l'écran de la région. C'est la règle que
+  // `monterLaGarde` tient depuis toujours, quelques lignes plus bas :
+  // l'occupation compte, elle ne nomme rien.
+  if (faction !== 'joueur') r.controle = faction;
   return r.poste;
 }
 

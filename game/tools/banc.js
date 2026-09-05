@@ -276,8 +276,11 @@ function jouer({ sim, data, eco, eco2, monde, pays }, graine, horizon) {
     traces: s.world.regions.filter((r) => r.trace).length,
     // Les veines qu'une ville est venue prendre (GEOGRAPHIE.md, G4) : si le
     // chiffre reste à zéro, une ressource située ne change rien à la carte.
-    // Un pays est-il un morceau de carte ou un semis (GEOGRAPHIE.md, G7) ?
-    // Part des villes qui ont au moins une sœur du même drapeau à trois cases.
+    // Un pays est-il un morceau de carte ou un semis ? Part des villes qui ont
+    // au moins une sœur du même drapeau à trois cases. La question venait de
+    // G7 — la frontière épousant la Faille —, qui a été essayé puis retiré ;
+    // la mesure, elle, reste : c'est elle qui dira si une prochaine tentative
+    // groupe vraiment les pays, et elle ne coûte rien à porter.
     groupees: (() => {
       const avec = s.world.colonies.filter((c) => !c.ruine && c.faction);
       if (!avec.length) return 0;

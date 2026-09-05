@@ -832,7 +832,11 @@ export const REPONSES_BARRAGE = {
   laissez: {
     nom: 'on vous ouvre',
     dit: 'on est chez soi, ou l’on a de quoi montrer',
+    // Et votre convoi devant votre propre poste : vous ne vous rançonnez pas
+    // vous-même. Sans cette ligne, la table n'avait plus rien à répondre et
+    // le convoi passait par la porte de derrière — juste, mais muet.
     peut: (v) => !v.faction || v.faction === v.convoi.faction
+      || (v.convoi.pour === 'joueur' && !!v.poste && !!v.poste.votre)
       || (v.ctx.pactePassage && v.ctx.pactePassage(v.convoi.faction, v.faction)),
     faire: () => 0,
   },
@@ -856,9 +860,16 @@ export const REPONSES_BARRAGE = {
     // son pays et entre dans sa bourse — la paire `debourser` + `sortirDehors`,
     // celle-là même qu'une ville emploie quand elle vous paie une livraison.
     peut: (v) => {
+      // Le vôtre, et pas celui du conseil dont vous portez les couleurs : ces
+      // postes-là sont payés sur le trésor du pays, et ce qu'ils encaissent
+      // revient à ses villes, pas à votre bourse.
       const p = posteDe(v.state.world, v.convoi.regionId);
-      return !!p && p.faction === sienDuJoueur(v.state)
-        && !!v.de && (v.de.caisse || 0) >= v.du;
+      if (!p || !p.votre) return false;
+      // Et pas votre propre convoi : il passait devant votre barrière et
+      // c'était la ville qui l'avait chargé qui réglait — vous achetiez, vous
+      // faisiez passer, et le vendeur payait. Une pompe à monnaie.
+      if (v.convoi.pour === 'joueur') return false;
+      return !!v.de && (v.de.caisse || 0) >= v.du;
     },
     faire: (v) => payerAuJoueur(v),
   },
@@ -920,11 +931,6 @@ function monnaieDuPeage(v) {
  * Le maître du convoi paie de sa poche. Sa bourse est hors de tout registre :
  * ce qui entre en caisse entre donc aussi dans la masse — la règle des deux.
  */
-/** Le drapeau sous lequel le joueur tient une route : le sien, ou « joueur ». */
-function sienDuJoueur(state) {
-  return (state.player && state.player.drapeau) || 'joueur';
-}
-
 /**
  * Un convoi passe devant VOTRE poste. La ville qui l'a expédié règle sur sa
  * caisse, et l'argent quitte le circuit de son pays pour entrer dans votre
@@ -936,8 +942,10 @@ function payerAuJoueur(v) {
   if (!(paye > 0)) return 0;
   sortirDehors(world, v.de.faction, paye);
   gagner(v.state, paye, v.de.faction);
-  const p = posteDe(world, v.convoi.regionId);
-  if (p) { p.passages = (p.passages || 0) + 1; p.recu = (p.recu || 0) + paye; }
+  // On ne tient PAS le compteur ici : `passerBarrage` appelle `noterAuPoste`
+  // pour toute réponse qui prélève quelque chose. Le tenir des deux côtés
+  // comptait chaque convoi deux fois — dans le chiffre montré au joueur, et
+  // dans la seule grandeur sur laquelle un conseil décide (METHODE.md §12).
   return paye;
 }
 
@@ -1012,11 +1020,17 @@ function prendreEnNature(v) {
 export function passerBarrage(state, car, regionId, ctx, log, venantDe) {
   const world = state.world;
   const r = world.regions[regionId];
-  const faction = r && r.controle;
+  const poste = r && r.poste;
+  // Ce qui tient la case, ou à défaut ce qui tient la route. Le poste du
+  // joueur sans couleurs ne NOMME pas la case — « joueur » n'est pas un
+  // drapeau —, mais il a des hommes dessus : c'est bien un barrage, et sans
+  // cette seconde lecture il laissait tout passer.
+  const faction = (r && r.controle) || (poste && poste.faction) || null;
   const v = {
     state,
     convoi: car,
     faction,
+    poste,
     venantDe: venantDe || null,
     ctx: ctx || {},
     de: car.deId ? colonieParId(world, car.deId) : null,
@@ -1040,9 +1054,15 @@ export function passerBarrage(state, car, regionId, ctx, log, venantDe) {
       if (v.ctx.noterPeage) v.ctx.noterPeage((v.de && v.de.faction) || car.faction, faction, montant);
     }
     if (cle !== 'laissez' && log && montant > 0) {
+      // « Le vôtre » plutôt qu'un drapeau : le poste que le joueur a bâti de
+      // ses mains n'en a pas forcément un derrière lui, et `drapeauDe` ne
+      // rendait rien pour « joueur » — le tick des caravanes tombait au
+      // premier convoi qui payait.
+      const aQui = poste && poste.votre
+        ? 'du vôtre' : `${drapeauDe(world, faction).genitif}`;
       log({
         type: 'peage',
-        texte: `Barrage ${drapeauDe(world, faction).genitif} sur la piste : `
+        texte: `Barrage ${aQui} sur la piste : `
           + `${v.de ? v.de.nom : 'le convoi'} ${cle === 'nature'
             ? 'y laisse de la marchandise' : `y laisse ${Math.round(montant)}`}.`,
         regionId,

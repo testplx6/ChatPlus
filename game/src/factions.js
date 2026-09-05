@@ -665,9 +665,13 @@ function tickArmee(world, armee, t, log, ctx) {
     // de lui en vouloir (`ctx.rancune`, la même qui décide qui vient prendre
     // son camp). Sans ça, tenir une route serait un revenu que rien ne menace —
     // une voie sans risque n'est pas une voie (TERRITOIRE.md, E5).
-    const sien = ctx && ctx.sienDuJoueur && ctx.sienDuJoueur();
-    const contreVous = !!sien && p && p.faction === sien
-      && ctx.rancune && ctx.rancune(armee.faction);
+    // Le poste du joueur se reconnaît à sa marque, et non au drapeau qu'il
+    // porte : sans couleurs il est au nom de « joueur », qui n'est pas un
+    // drapeau, et `drapeauDe` ne rend rien pour lui. C'est cette lecture-là
+    // qui faisait tomber le tick des colonnes dès qu'une bande de l'Essaim —
+    // en guerre avec tout le monde par raccourci — passait sur l'ouvrage.
+    const votre = !!p && !!p.votre;
+    const contreVous = votre && ctx && ctx.rancune && ctx.rancune(armee.faction);
     if (p && p.faction !== armee.faction
       && (contreVous || enGuerre(world, armee.faction, p.faction))) {
       raserPoste(world, armee.regionId);
@@ -678,11 +682,11 @@ function tickArmee(world, armee, t, log, ctx) {
         type: 'poste',
         texte: `${drapeauDe(world, armee.faction).nom} `
           + `rase${drapeauDe(world, armee.faction).pluriel ? 'nt' : ''} `
-          + `${contreVous ? 'votre poste' : `le poste ${drapeauDe(world, p.faction).genitif}`} `
+          + `${votre ? 'votre poste' : `le poste ${drapeauDe(world, p.faction).genitif}`} `
           + 'sur la route.',
-        important: contreVous,
+        important: votre,
         regionId: armee.regionId,
-        factions: [armee.faction, p.faction],
+        factions: votre ? [armee.faction] : [armee.faction, p.faction],
       });
     }
   }
@@ -1391,9 +1395,13 @@ export function plafondPostes(world, key) {
   return Math.max(1, Math.round(coloniesDe(world, key).length * POSTE.parVille));
 }
 
-/** Ceux qu'on tient. */
+/**
+ * Ceux qu'on tient. Pas ceux que le joueur a bâtis de ses mains sous les mêmes
+ * couleurs : le conseil ne les a pas payés, il n'a pas à les compter dans son
+ * plafond ni à les raser quand ils rapportent peu.
+ */
 export function postesDe(world, key) {
-  return world.regions.filter((r) => r.poste && r.poste.faction === key);
+  return world.regions.filter((r) => r.poste && r.poste.faction === key && !r.poste.votre);
 }
 
 /**
@@ -1435,8 +1443,7 @@ export function poserPoste(world, key, region, log, t) {
   if (!chez) return null;
   const paye = verser(world, key, chez, POSTE.cout);
   if (!(paye > 0)) return null;
-  const p = batirPoste(world, region.i, key);
-  if (p) p.depuis = t || 0;
+  const p = batirPoste(world, region.i, key, t || 0);
   if (!p && log) return null;
   if (log) {
     log({
@@ -2113,6 +2120,18 @@ export function fonderDrapeau(state, nom, log) {
     world.factions[cle].capitale = ville.id;
     world.regions[ville.regionId].controle = cle;
     libererOrphelines(world, ville.regionId);
+  }
+
+  // Et les postes plantés avant d'avoir des couleurs les prennent. Tant qu'on
+  // n'avait rien, ils étaient au nom de « joueur » — une chaîne derrière
+  // laquelle il n'y a pas de drapeau, et que le monde cessait de reconnaître
+  // comme vôtre dès qu'on en fondait un : ils arrêtaient de payer, en
+  // silence. Ce sont les mêmes ouvrages, tenus par les mêmes hommes ; ils
+  // gardent leur marque, donc le conseil ne les compte toujours pas siens.
+  for (const r of world.regions) {
+    if (!r.poste || r.poste.faction !== 'joueur') continue;
+    r.poste.faction = cle;
+    if (!r.controle) r.controle = cle;
   }
 
   if (log) {

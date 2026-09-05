@@ -589,3 +589,60 @@ Et un défaut dans l'outil lui-même : `jusqua`, l'attente de condition qui a
 remplacé les pauses fixes, **avalait les exceptions et repartait aussitôt** au
 lieu de dormir le reste du plafond. « Au pire on se comporte comme avant » n'est
 vrai que si l'on attend vraiment.
+
+## Ce que la revue de E5 a trouvé sous le poste du joueur
+
+E5 a levé le garde-fou de `batirPoste` pour que le joueur puisse tenir une route
+sans avoir de couleurs. Il a du même coup fait entrer la chaîne `'joueur'` là où
+tout le reste du jeu attend un drapeau — et `'joueur'` n'en est pas un :
+`drapeauDe` ne rend rien pour lui. **Trois chemins tombaient**, tous les trois
+sur le même `.genitif` d'un `undefined`, et tous les trois hors du banc, qui ne
+joue aucun joueur (METHODE.md §12) : le tick des caravanes au premier convoi qui
+payait, le tick des colonnes dès qu'une bande de l'Essaim passait sur l'ouvrage,
+et l'écran de la région dès qu'on s'y tenait.
+
+La règle était pourtant écrite quinze lignes plus bas, dans `monterLaGarde` :
+« *« Joueur » n'est pas un drapeau : on ne plante pas des couleurs qu'on n'a
+pas. L'occupation compte quand même, elle ne nomme simplement rien.* »
+`batirPoste` l'avait enfreinte en écrivant `r.controle = 'joueur'`. Elle est
+rétablie — la case n'est nommée que par un drapeau qui existe —, et
+`passerBarrage` lit désormais le POSTE quand la case n'a pas de nom : c'est lui
+qui a des hommes dessus, et c'est lui le barrage.
+
+**Une marque, plutôt qu'un drapeau.** Un poste que le joueur a bâti de ses mains
+et un poste que le conseil de son propre pays a payé sur le trésor portent les
+mêmes couleurs, et rien ne les distinguait. Conséquences mesurées : le conseil
+comptait l'ouvrage du joueur dans son plafond et pouvait le raser, et **tous**
+les postes du pays versaient dans la bourse privée du joueur au lieu de la
+caisse des villes. `poste.votre` tranche, et il est né dans `batirPoste` comme
+dans `normaliser`.
+
+**Deux compteurs mentaient.** `payerAuJoueur` tenait ses propres `passages` et
+`recu` en plus de `noterAuPoste`, qui les tient déjà pour toute réponse qui
+prélève : chaque convoi comptait double — dans le chiffre montré au joueur, et
+dans la seule grandeur homogène sur laquelle un conseil décide quel poste
+fermer (METHODE.md §12).
+
+**Une pompe à monnaie.** La réponse `votre` ne regardait pas à qui était le
+convoi : le joueur achetait, faisait passer sa marchandise devant sa propre
+barrière, et la ville qui l'avait chargé payait. Un convoi à soi devant son
+propre poste passe désormais par `laissez` — on ne se rançonne pas soi-même.
+
+**Et le poste datait de zéro**, quelle que soit l'heure où on l'avait planté :
+il était éligible d'emblée à la fermeture par le conseil.
+
+Reste, dit et non fait :
+
+- Un pays qui saigne devant le poste d'un joueur sans couleurs enregistre le
+  péage mais ne pourra jamais venir acheter sa franchise (E2) : `tenterPacte`
+  n'appelle que des drapeaux du tableau des pays. C'est cohérent — sans
+  couleurs, il n'y a personne à qui parler — et les postes prennent les
+  couleurs dès qu'on en fonde ; mais c'est bien de la friction sans porte de
+  sortie tant qu'on n'en a pas.
+- Le poste du joueur tombe sur `rancune` là où celui d'un pays ne tombe qu'en
+  guerre déclarée : une règle qui ne vise que lui, tenue pour l'instant comme
+  substitut de diplomatie.
+- Rien ne plafonne le nombre de postes du joueur, là où les pays ont
+  `plafondPostes`. Ce qui le borne, c'est le sac et les jambes.
+- `coteFaille` est retiré : G7 a été essayé puis abandonné, la fonction n'avait
+  plus un seul appelant.

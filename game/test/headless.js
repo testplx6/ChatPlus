@@ -202,7 +202,7 @@ import { porteeDe, decouvrir } from '../src/world.js';
 import { PORTEE_VUE } from '../src/data.js';
 import { COUT_BARRAGE, planterPoste, raserPosteIci } from '../src/base.js';
 import {
-  poserPoste, plafondPostes, fermerLeMoinsUtile,
+  poserPoste, plafondPostes, fermerLeMoinsUtile, postesDe,
 } from '../src/factions.js';
 import { noterAuPoste } from '../src/world.js';
 import {
@@ -17009,6 +17009,144 @@ section('TER 11. Tenir une route, quatrième voie (TERRITOIRE.md, E5)');
 
   ok(COUT_BARRAGE && typeof COUT_BARRAGE.ferraille === 'number',
     'ce que coûte un poste est de la donnée', JSON.stringify(COUT_BARRAGE));
+}
+
+section('TER 12. Ce que la revue a trouvé sous le poste du joueur');
+// Le lot E5 a levé le garde-fou de `batirPoste` pour que le joueur puisse
+// tenir une route sans avoir de couleurs. Il a du même coup fait entrer la
+// chaîne « joueur » là où le reste du jeu attend un drapeau — et « joueur »
+// n'en est pas un : `drapeauDe` ne lui rend rien. Trois chemins tombaient,
+// et deux compteurs mentaient.
+{
+  const monter = (graine) => {
+    const s = nouvellePartie(graine, { maintenant: 0 });
+    const g = groupeActif(s);
+    const ou = s.world.regions.find((r) => !r.faille && !r.colonie && !r.controle);
+    g.regionId = ou.i;
+    for (const k of Object.keys(COUT_BARRAGE)) g.inventaire[k] = COUT_BARRAGE[k] * 2;
+    planterPoste(s, null);
+    return { s, g, ou };
+  };
+  const convoiVers = (s, ou, id) => {
+    const de = s.world.colonies.find((c) => !c.ruine && c.faction && (c.caisse || 0) > 800);
+    return {
+      convoi: {
+        id, faction: de.faction, deId: de.id, versId: null,
+        cargaison: { ferraille: 400 }, regionId: ou.i, route: [ou.i], etape: 0,
+      },
+      de,
+    };
+  };
+
+  // 1. Le monde ne tombe pas quand un convoi paie devant votre poste. Le
+  // journal nomme le drapeau du barrage, et « joueur » n'en a pas.
+  {
+    const { s, ou } = monter(311710);
+    const { convoi } = convoiVers(s, ou, 'ter12a');
+    const dit = [];
+    let creve = null;
+    try { passerBarrage(s, convoi, ou.i, {}, (m) => dit.push(m)); } catch (e) { creve = e; }
+    ok(!creve, 'un convoi paie devant votre poste sans faire tomber le monde',
+      creve ? creve.message : 'passé');
+  }
+
+  // 2. Un convoi, un passage. `payerAuJoueur` tenait son propre compteur en
+  // plus de `noterAuPoste`, et les deux chiffres sont ceux que l'écran montre
+  // — et celui sur lequel un conseil décide quel poste fermer (METHODE §12).
+  {
+    const { s, ou } = monter(311711);
+    const { convoi } = convoiVers(s, ou, 'ter12b');
+    passerBarrage(s, convoi, ou.i, {}, null);
+    const p = posteDe(s.world, ou.i);
+    ok(p.passages === 1, 'un convoi ne compte que pour un passage', `${p.passages}`);
+  }
+
+  // 3. On ne se paie pas son propre péage. Le convoi du joueur passait devant
+  // sa propre barrière et la ville vendeuse réglait : une pompe à monnaie.
+  {
+    const { s, ou } = monter(311712);
+    const { convoi, de } = convoiVers(s, ou, 'ter12c');
+    convoi.pour = 'joueur';
+    const avant = de.caisse || 0;
+    const r = passerBarrage(s, convoi, ou.i, {}, null);
+    ok(r && r.reponse === 'laissez',
+      'votre propre convoi ne fait pas payer la ville qui l’a chargé',
+      r ? r.reponse : 'rien');
+    ok((de.caisse || 0) <= avant + 0.01 || r.reponse === 'bourse',
+      'et personne ne vous verse rien pour être passé chez vous',
+      `${Math.round(avant)} → ${Math.round(de.caisse || 0)}`);
+  }
+
+  // 4. Une colonne qui rase votre poste ne fait pas tomber le monde. L'Essaim
+  // est en guerre avec tout le monde par raccourci : il prend la branche qui
+  // nomme le drapeau du poste, et « joueur » n'en a pas.
+  {
+    const { s, ou } = monter(311713);
+    s.world.armees.push({
+      id: 'aTest', rngEtat: 1, faction: 'essaim', regionId: ou.i,
+      force: 60, forceMax: 60, cible: null, route: [ou.i], etape: 0,
+      progres: 0, etat: 'marche', ravitaillement: 40, impayees: 0,
+    });
+    let creve = null;
+    try {
+      tickFactions(s.world, s.temps + 1, () => {}, {
+        rng: new Rng(grainDe(s.world.graine, 'ter12', 1)),
+        rancune: () => false,
+      });
+    } catch (e) { creve = e; }
+    ok(!creve, 'une colonne rase votre poste sans faire tomber le monde',
+      creve ? creve.message : 'rasé ou passé');
+  }
+
+  // 5. Votre poste ne NOMME pas la case tant que vous n'avez pas de couleurs.
+  // C'est la règle que `monterLaGarde` tient depuis toujours : l'occupation
+  // compte, elle ne nomme rien. `batirPoste` l'avait enfreinte, et tout
+  // lecteur de `r.controle` héritait d'une chaîne sans drapeau derrière.
+  {
+    const { s, ou } = monter(311714);
+    ok(!!ou.poste && ou.controle !== 'joueur',
+      'sans couleurs, le poste tient la route sans nommer la case',
+      `${ou.controle}`);
+    ok(drapeauDeImp(s.world, ou.controle) || !ou.controle,
+      'et tout ce qui tient une case a un drapeau derrière');
+  }
+
+  // 6. Un poste planté à la trois-centième heure date de la trois-centième
+  // heure. À zéro, il était éligible d'emblée à la fermeture par le conseil.
+  {
+    const s = nouvellePartie(311715, { maintenant: 0 });
+    s.temps = 300;
+    const g = groupeActif(s);
+    const ou = s.world.regions.find((r) => !r.faille && !r.colonie && !r.controle);
+    g.regionId = ou.i;
+    for (const k of Object.keys(COUT_BARRAGE)) g.inventaire[k] = COUT_BARRAGE[k] * 2;
+    planterPoste(s, null);
+    ok(ou.poste && ou.poste.depuis === 300,
+      'un poste date de l’heure où on l’a planté', `${ou.poste && ou.poste.depuis}`);
+  }
+
+  // 7. Vos couleurs prises, vos postes les portent — et le conseil de votre
+  // propre pays ne les compte pas pour siens : il les rasait, et il encaissait
+  // à votre place.
+  {
+    const s = nouvellePartie(311716, { maintenant: 0 });
+    const g = groupeActif(s);
+    const ou = s.world.regions.find((r) => !r.faille && !r.colonie && !r.controle);
+    g.regionId = ou.i;
+    for (const k of Object.keys(COUT_BARRAGE)) g.inventaire[k] = COUT_BARRAGE[k] * 2;
+    planterPoste(s, null);
+    s.base.fonde = true;
+    s.base.regionId = ou.i;
+    const rD = fonderDrapeau(s, 'Les Cendres', null);
+    ok(rD.ok, 'décor : on prend ses couleurs', rD.motif || 'planté');
+    if (rD.ok) {
+      const cle = s.player.drapeau;
+      ok(ou.poste.faction === cle && ou.controle === cle,
+        'le poste planté avant les couleurs les prend', `${ou.poste.faction}`);
+      ok(!postesDe(s.world, cle).some((r) => r.i === ou.i),
+        'et le conseil de votre pays ne le compte pas parmi les siens');
+    }
+  }
 }
 
 

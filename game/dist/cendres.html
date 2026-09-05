@@ -4724,21 +4724,6 @@ function genererColonies(rng, regions, graine) {
   return colonies;
 }
 
-/**
- * De quel côté de la Faille se trouve cette case (GEOGRAPHIE.md, G7).
- *
- * La ligne serpente, donc « à gauche » se lit rangée par rangée : on regarde la
- * colonne qu'elle occupe sur celle-ci. Une rangée d'ouverture n'a pas de côté —
- * c'est le propre d'un passage.
- */
-function coteFaille(regions, i) {
-  const y = (i / LARGEUR) | 0;
-  for (let x = 0; x < LARGEUR; x++) {
-    if (regions[y * LARGEUR + x].faille) return (i % LARGEUR) < x ? -1 : 1;
-  }
-  return 0;
-}
-
 function attribuerFactions(rng, regions, colonies) {
   const factions = {};
   for (const k of DIPLO_FACTIONS) {
@@ -5128,7 +5113,7 @@ function posteDe(world, regionId) {
  * l'invariant comptable l'a dit dans la minute. C'est `poserPoste`
  * (factions.js) qui paie les maçons, comme `batirMur` paie les siens.
  */
-function batirPoste(world, regionId, faction) {
+function batirPoste(world, regionId, faction, t = 0, votre = false) {
   const r = world.regions[regionId];
   // On n'exige PAS que le drapeau soit au tableau des pays : le joueur tient
   // une route comme n'importe qui, et `monterLaGarde` l'accepte déjà de la
@@ -5138,8 +5123,20 @@ function batirPoste(world, regionId, faction) {
   // `recu` et `passages` sont la seule information qu'un conseil aura jamais
   // sur ce que vaut une route (TERRITOIRE.md, T3) : ce que SON ouvrage a vu
   // passer, pas une statistique tombée du ciel.
-  r.poste = { faction, depuis: 0, recu: 0, pris: 0, passages: 0 };
-  r.controle = faction;
+  //
+  // `votre` dit que c'est le joueur qui l'a bâti de ses mains, et non le
+  // conseil du pays dont il porte les couleurs. Les deux postes portent le
+  // même drapeau et ne se distinguent par rien d'autre : sans cette marque,
+  // le conseil rasait l'ouvrage que le joueur avait payé, le comptait dans
+  // son plafond, et le joueur encaissait les péages de son pays.
+  r.poste = { faction, depuis: t || 0, recu: 0, pris: 0, passages: 0, votre: !!votre };
+  // « Joueur » n'est pas un drapeau, et la case ne peut pas porter des
+  // couleurs qui n'existent pas : `drapeauDe` ne rend rien pour cette
+  // chaîne-là, et tout lecteur de `r.controle` tombait dessus — le tick des
+  // caravanes, celui des colonnes, l'écran de la région. C'est la règle que
+  // `monterLaGarde` tient depuis toujours, quelques lignes plus bas :
+  // l'occupation compte, elle ne nomme rien.
+  if (faction !== 'joueur') r.controle = faction;
   return r.poste;
 }
 
@@ -16075,7 +16072,11 @@ const REPONSES_BARRAGE = {
   laissez: {
     nom: 'on vous ouvre',
     dit: 'on est chez soi, ou l’on a de quoi montrer',
+    // Et votre convoi devant votre propre poste : vous ne vous rançonnez pas
+    // vous-même. Sans cette ligne, la table n'avait plus rien à répondre et
+    // le convoi passait par la porte de derrière — juste, mais muet.
     peut: (v) => !v.faction || v.faction === v.convoi.faction
+      || (v.convoi.pour === 'joueur' && !!v.poste && !!v.poste.votre)
       || (v.ctx.pactePassage && v.ctx.pactePassage(v.convoi.faction, v.faction)),
     faire: () => 0,
   },
@@ -16099,9 +16100,16 @@ const REPONSES_BARRAGE = {
     // son pays et entre dans sa bourse — la paire `debourser` + `sortirDehors`,
     // celle-là même qu'une ville emploie quand elle vous paie une livraison.
     peut: (v) => {
+      // Le vôtre, et pas celui du conseil dont vous portez les couleurs : ces
+      // postes-là sont payés sur le trésor du pays, et ce qu'ils encaissent
+      // revient à ses villes, pas à votre bourse.
       const p = posteDe(v.state.world, v.convoi.regionId);
-      return !!p && p.faction === sienDuJoueur(v.state)
-        && !!v.de && (v.de.caisse || 0) >= v.du;
+      if (!p || !p.votre) return false;
+      // Et pas votre propre convoi : il passait devant votre barrière et
+      // c'était la ville qui l'avait chargé qui réglait — vous achetiez, vous
+      // faisiez passer, et le vendeur payait. Une pompe à monnaie.
+      if (v.convoi.pour === 'joueur') return false;
+      return !!v.de && (v.de.caisse || 0) >= v.du;
     },
     faire: (v) => payerAuJoueur(v),
   },
@@ -16163,11 +16171,6 @@ function monnaieDuPeage(v) {
  * Le maître du convoi paie de sa poche. Sa bourse est hors de tout registre :
  * ce qui entre en caisse entre donc aussi dans la masse — la règle des deux.
  */
-/** Le drapeau sous lequel le joueur tient une route : le sien, ou « joueur ». */
-function sienDuJoueur(state) {
-  return (state.player && state.player.drapeau) || 'joueur';
-}
-
 /**
  * Un convoi passe devant VOTRE poste. La ville qui l'a expédié règle sur sa
  * caisse, et l'argent quitte le circuit de son pays pour entrer dans votre
@@ -16179,8 +16182,10 @@ function payerAuJoueur(v) {
   if (!(paye > 0)) return 0;
   sortirDehors(world, v.de.faction, paye);
   gagner(v.state, paye, v.de.faction);
-  const p = posteDe(world, v.convoi.regionId);
-  if (p) { p.passages = (p.passages || 0) + 1; p.recu = (p.recu || 0) + paye; }
+  // On ne tient PAS le compteur ici : `passerBarrage` appelle `noterAuPoste`
+  // pour toute réponse qui prélève quelque chose. Le tenir des deux côtés
+  // comptait chaque convoi deux fois — dans le chiffre montré au joueur, et
+  // dans la seule grandeur sur laquelle un conseil décide (METHODE.md §12).
   return paye;
 }
 
@@ -16255,11 +16260,17 @@ function prendreEnNature(v) {
 function passerBarrage(state, car, regionId, ctx, log, venantDe) {
   const world = state.world;
   const r = world.regions[regionId];
-  const faction = r && r.controle;
+  const poste = r && r.poste;
+  // Ce qui tient la case, ou à défaut ce qui tient la route. Le poste du
+  // joueur sans couleurs ne NOMME pas la case — « joueur » n'est pas un
+  // drapeau —, mais il a des hommes dessus : c'est bien un barrage, et sans
+  // cette seconde lecture il laissait tout passer.
+  const faction = (r && r.controle) || (poste && poste.faction) || null;
   const v = {
     state,
     convoi: car,
     faction,
+    poste,
     venantDe: venantDe || null,
     ctx: ctx || {},
     de: car.deId ? colonieParId(world, car.deId) : null,
@@ -16283,9 +16294,15 @@ function passerBarrage(state, car, regionId, ctx, log, venantDe) {
       if (v.ctx.noterPeage) v.ctx.noterPeage((v.de && v.de.faction) || car.faction, faction, montant);
     }
     if (cle !== 'laissez' && log && montant > 0) {
+      // « Le vôtre » plutôt qu'un drapeau : le poste que le joueur a bâti de
+      // ses mains n'en a pas forcément un derrière lui, et `drapeauDe` ne
+      // rendait rien pour « joueur » — le tick des caravanes tombait au
+      // premier convoi qui payait.
+      const aQui = poste && poste.votre
+        ? 'du vôtre' : `${drapeauDe(world, faction).genitif}`;
       log({
         type: 'peage',
-        texte: `Barrage ${drapeauDe(world, faction).genitif} sur la piste : `
+        texte: `Barrage ${aQui} sur la piste : `
           + `${v.de ? v.de.nom : 'le convoi'} ${cle === 'nature'
             ? 'y laisse de la marchandise' : `y laisse ${Math.round(montant)}`}.`,
         regionId,
@@ -17366,9 +17383,13 @@ function tickArmee(world, armee, t, log, ctx) {
     // de lui en vouloir (`ctx.rancune`, la même qui décide qui vient prendre
     // son camp). Sans ça, tenir une route serait un revenu que rien ne menace —
     // une voie sans risque n'est pas une voie (TERRITOIRE.md, E5).
-    const sien = ctx && ctx.sienDuJoueur && ctx.sienDuJoueur();
-    const contreVous = !!sien && p && p.faction === sien
-      && ctx.rancune && ctx.rancune(armee.faction);
+    // Le poste du joueur se reconnaît à sa marque, et non au drapeau qu'il
+    // porte : sans couleurs il est au nom de « joueur », qui n'est pas un
+    // drapeau, et `drapeauDe` ne rend rien pour lui. C'est cette lecture-là
+    // qui faisait tomber le tick des colonnes dès qu'une bande de l'Essaim —
+    // en guerre avec tout le monde par raccourci — passait sur l'ouvrage.
+    const votre = !!p && !!p.votre;
+    const contreVous = votre && ctx && ctx.rancune && ctx.rancune(armee.faction);
     if (p && p.faction !== armee.faction
       && (contreVous || enGuerre(world, armee.faction, p.faction))) {
       raserPoste(world, armee.regionId);
@@ -17379,11 +17400,11 @@ function tickArmee(world, armee, t, log, ctx) {
         type: 'poste',
         texte: `${drapeauDe(world, armee.faction).nom} `
           + `rase${drapeauDe(world, armee.faction).pluriel ? 'nt' : ''} `
-          + `${contreVous ? 'votre poste' : `le poste ${drapeauDe(world, p.faction).genitif}`} `
+          + `${votre ? 'votre poste' : `le poste ${drapeauDe(world, p.faction).genitif}`} `
           + 'sur la route.',
-        important: contreVous,
+        important: votre,
         regionId: armee.regionId,
-        factions: [armee.faction, p.faction],
+        factions: votre ? [armee.faction] : [armee.faction, p.faction],
       });
     }
   }
@@ -18092,9 +18113,13 @@ function plafondPostes(world, key) {
   return Math.max(1, Math.round(coloniesDe(world, key).length * POSTE.parVille));
 }
 
-/** Ceux qu'on tient. */
+/**
+ * Ceux qu'on tient. Pas ceux que le joueur a bâtis de ses mains sous les mêmes
+ * couleurs : le conseil ne les a pas payés, il n'a pas à les compter dans son
+ * plafond ni à les raser quand ils rapportent peu.
+ */
 function postesDe(world, key) {
-  return world.regions.filter((r) => r.poste && r.poste.faction === key);
+  return world.regions.filter((r) => r.poste && r.poste.faction === key && !r.poste.votre);
 }
 
 /**
@@ -18136,8 +18161,7 @@ function poserPoste(world, key, region, log, t) {
   if (!chez) return null;
   const paye = verser(world, key, chez, POSTE.cout);
   if (!(paye > 0)) return null;
-  const p = batirPoste(world, region.i, key);
-  if (p) p.depuis = t || 0;
+  const p = batirPoste(world, region.i, key, t || 0);
   if (!p && log) return null;
   if (log) {
     log({
@@ -18814,6 +18838,18 @@ function fonderDrapeau(state, nom, log) {
     world.factions[cle].capitale = ville.id;
     world.regions[ville.regionId].controle = cle;
     libererOrphelines(world, ville.regionId);
+  }
+
+  // Et les postes plantés avant d'avoir des couleurs les prennent. Tant qu'on
+  // n'avait rien, ils étaient au nom de « joueur » — une chaîne derrière
+  // laquelle il n'y a pas de drapeau, et que le monde cessait de reconnaître
+  // comme vôtre dès qu'on en fondait un : ils arrêtaient de payer, en
+  // silence. Ce sont les mêmes ouvrages, tenus par les mêmes hommes ; ils
+  // gardent leur marque, donc le conseil ne les compte toujours pas siens.
+  for (const r of world.regions) {
+    if (!r.poste || r.poste.faction !== 'joueur') continue;
+    r.poste.faction = cle;
+    if (!r.controle) r.controle = cle;
   }
 
   if (log) {
@@ -23115,7 +23151,10 @@ function planterPoste(state, log) {
     return { ok: false, motif: 'Il faut 70 ferraille, 20 polymère, 3 composants dans le sac.' };
   }
   payer(g.inventaire, COUT_BARRAGE);
-  batirPoste(state.world, g.regionId, sien);
+  // L'heure, et la marque : un poste daté de zéro était éligible d'emblée à la
+  // fermeture par le conseil du pays dont on porte les couleurs, et rien ne le
+  // distinguait de ceux que ce conseil avait posés lui-même.
+  batirPoste(state.world, g.regionId, sien, state.temps, true);
   if (log) {
     log({
       type: 'poste',
@@ -23135,18 +23174,22 @@ function raserPosteIci(state, log) {
   const r = state.world.regions[g.regionId];
   if (!r || !r.poste) return { ok: false, motif: 'Il n’y a rien à abattre ici.' };
   const a = r.poste.faction;
+  // Le vôtre se reconnaît à sa marque : sans couleurs il est au nom de
+  // « joueur », et une fois les couleurs prises il porte les mêmes que celui
+  // du conseil. Le drapeau ne suffit donc ni avant ni après.
+  const votre = !!r.poste.votre;
   raserPoste(state.world, g.regionId);
   marquerLieu(state.world, g.regionId, 'ruine_poste', state.temps);
   if (log) {
     log({
       type: 'poste',
-      texte: a === 'joueur'
+      texte: votre
         ? 'Vous démontez votre poste. La route redevient à tout le monde.'
         : `Le poste ${drapeauDe(state.world, a).genitif} est à terre. `
           + 'On saura qui l’a mis par terre.',
       regionId: g.regionId,
       important: true,
-      factions: a === 'joueur' ? [] : [a],
+      factions: votre ? [] : [a],
     });
   }
   return { ok: true, a };
@@ -30462,6 +30505,10 @@ function normaliser(state) {
     if (r.gisement === undefined) r.gisement = null;
     // Avant les ouvrages, on ne tenait rien qu'avec des hommes.
     if (r.poste === undefined) r.poste = null;
+    // Et avant la marque, on ne distinguait pas l'ouvrage du joueur de celui
+    // du conseil dont il porte les couleurs. Une partie d'avant n'en a donc
+    // aucun qui soit sien : c'est la seule lecture qui ne perde personne.
+    if (r.poste && r.poste.votre === undefined) r.poste.votre = false;
   }
   // Les couleurs orphelines des parties d'avant : une case tenue par un drapeau
   // qui n'a plus une seule ville dessus ni à côté redevient libre. Le halo n'a
@@ -31533,9 +31580,6 @@ function tick(state) {
   // retient, et c'est ce qui permet à un conseil d'aller acheter sa franchise
   // (TERRITOIRE.md, E2).
   ctx.noterPeage = (qui, a, montant) => noterPeagePaye(state.world, qui, a, montant);
-  // Sous quel drapeau le joueur tient une route (TERRITOIRE.md, E5) : le monde
-  // ne lit pas le joueur, on le lui prête.
-  ctx.sienDuJoueur = () => (state.player && state.player.drapeau) || 'joueur';
   ctx.rancune = (faction) => {
     if ((state.player.reputation[faction] || 0) <= -20) return true;
     for (const g of state.player.groupes) {
@@ -34727,7 +34771,10 @@ function blocTenirLaRoute(rid) {
   const p = r.poste;
   const sien = (S.player && S.player.drapeau) || 'joueur';
   const piste = Math.round((r.piste || 0) * 100);
-  if (p && p.faction === sien) {
+  // La marque, et non le drapeau : un poste planté avant qu'on ait des
+  // couleurs porte le nom « joueur », derrière lequel il n'y a pas de drapeau
+  // à nommer. On le lisait comme celui d'un étranger, et l'écran tombait.
+  if (p && p.votre) {
     return `<div class="sep"></div>
       <div class="ligne"><span class="k">Votre poste</span>
         <span class="v">${n(p.passages || 0)} passage${(p.passages || 0) > 1 ? 's' : ''}
@@ -34735,10 +34782,16 @@ function blocTenirLaRoute(rid) {
       <button class="act mini" data-a="raser-poste">Démonter le poste</button>`;
   }
   if (p) {
+    // Celui du conseil dont on porte les couleurs n'est pas celui d'un
+    // étranger : on ne propose pas de l'abattre en rouge.
+    const desNotres = p.faction === sien;
     return `<div class="sep"></div>
       <div class="ligne"><span class="k">Poste</span>
         <span class="v" style="color:${couleurFaction(p.faction)}">${e(drapeauDe(S.world, p.faction).nom)}</span></div>
-      <button class="act mini danger" data-a="raser-poste">Abattre ce poste</button>`;
+      ${desNotres
+    ? `<div class="aide">Il est de vos couleurs, mais ce n’est pas le vôtre :
+        le conseil l’a payé, et ce qui y passe revient à ses villes.</div>`
+    : '<button class="act mini danger" data-a="raser-poste">Abattre ce poste</button>'}`;
   }
   if (r.controle && r.controle !== sien) return '';
   return `<div class="sep"></div>

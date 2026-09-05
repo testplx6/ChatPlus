@@ -2871,7 +2871,10 @@ function blocTenirLaRoute(rid) {
   const p = r.poste;
   const sien = (S.player && S.player.drapeau) || 'joueur';
   const piste = Math.round((r.piste || 0) * 100);
-  if (p && p.faction === sien) {
+  // La marque, et non le drapeau : un poste planté avant qu'on ait des
+  // couleurs porte le nom « joueur », derrière lequel il n'y a pas de drapeau
+  // à nommer. On le lisait comme celui d'un étranger, et l'écran tombait.
+  if (p && p.votre) {
     return `<div class="sep"></div>
       <div class="ligne"><span class="k">Votre poste</span>
         <span class="v">${n(p.passages || 0)} passage${(p.passages || 0) > 1 ? 's' : ''}
@@ -2879,10 +2882,16 @@ function blocTenirLaRoute(rid) {
       <button class="act mini" data-a="raser-poste">Démonter le poste</button>`;
   }
   if (p) {
+    // Celui du conseil dont on porte les couleurs n'est pas celui d'un
+    // étranger : on ne propose pas de l'abattre en rouge.
+    const desNotres = p.faction === sien;
     return `<div class="sep"></div>
       <div class="ligne"><span class="k">Poste</span>
         <span class="v" style="color:${couleurFaction(p.faction)}">${e(drapeauDe(S.world, p.faction).nom)}</span></div>
-      <button class="act mini danger" data-a="raser-poste">Abattre ce poste</button>`;
+      ${desNotres
+    ? `<div class="aide">Il est de vos couleurs, mais ce n’est pas le vôtre :
+        le conseil l’a payé, et ce qui y passe revient à ses villes.</div>`
+    : '<button class="act mini danger" data-a="raser-poste">Abattre ce poste</button>'}`;
   }
   if (r.controle && r.controle !== sien) return '';
   return `<div class="sep"></div>
