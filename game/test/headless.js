@@ -198,6 +198,8 @@ import { PASSAGE_A, PASSAGE_B } from '../src/data.js';
 import { SAISON_BIOME, coutSaison, poserSaison } from '../src/climat.js';
 import { marquerLieu, TRACES, GISEMENTS, gisementsDe } from '../src/world.js';
 import { BRIGANDS } from '../src/secteur.js';
+import { porteeDe, decouvrir } from '../src/world.js';
+import { PORTEE_VUE } from '../src/data.js';
 import { COUT_BARRAGE, planterPoste, raserPosteIci } from '../src/base.js';
 import {
   poserPoste, plafondPostes, fermerLeMoinsUtile,
@@ -17009,6 +17011,47 @@ section('TER 11. Tenir une route, quatrième voie (TERRITOIRE.md, E5)');
     'ce que coûte un poste est de la donnée', JSON.stringify(COUT_BARRAGE));
 }
 
+
+
+
+// ===========================================================================
+section('GEO 6. On ne voit pas pareil de partout (GEOGRAPHIE.md, G6)');
+// Le brouillard de ce jeu est bon — la revue le dit — mais il ne devait rien à
+// la géographie : on découvrait un rayon fixe, le même dans une steppe rase et
+// au fond d’un canyon. Or ce qu’on voit d’un endroit est la première chose que
+// le terrain décide, et c’est ce qui donne à une hauteur une valeur qui n’est
+// pas militaire mais informationnelle.
+{
+  ok(PORTEE_VUE && typeof PORTEE_VUE.relais === 'number',
+    'chaque terrain dit ce qu’on y voit', JSON.stringify(PORTEE_VUE));
+  ok(porteeDe('relais') > porteeDe('steppe'),
+    'd’un Relais Orbital on voit plus loin que d’une steppe',
+    `${porteeDe('relais')} contre ${porteeDe('steppe')}`);
+  ok(porteeDe('canyons') < porteeDe('steppe'),
+    'et du fond d’un canyon, on ne voit rien venir',
+    `${porteeDe('canyons')}`);
+  ok(porteeDe('steppe') === 0, 'la steppe est l’étalon : elle ne change rien');
+
+  // En jeu : la même marche découvre plus de carte depuis une hauteur.
+  {
+    const compte = (biome) => {
+      const s6 = nouvellePartie(482100, { maintenant: 0 });
+      const w = s6.world;
+      for (const r of w.regions) { r.decouvert = false; r.biome = biome; }
+      const g = groupeActif(s6);
+      const centre = idx(12, 9);
+      g.regionId = centre;
+      decouvrir(w, centre, 1 + porteeDe(biome));
+      return w.regions.filter((r) => r.decouvert).length;
+    };
+    const haut = compte('relais');
+    const plat = compte('steppe');
+    const creux = compte('canyons');
+    ok(haut > plat && plat > creux,
+      'on découvre plus de carte d’en haut, moins d’en bas',
+      `relais ${haut} · steppe ${plat} · canyons ${creux}`);
+  }
+}
 
 
 // ===========================================================================

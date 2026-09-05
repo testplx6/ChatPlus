@@ -1117,6 +1117,32 @@ export const TRACE_A = {
   ville_morte: ['Ruine', 'Carcasse', 'Vestige'],
 };
 
+/**
+ * Ce qu'on voit d'un terrain, en cases de rayon ajoutées ou retirées
+ * (GEOGRAPHIE.md, G6).
+ *
+ * Le brouillard de ce jeu est bon, mais il ne devait rien à la géographie : on
+ * découvrait un rayon fixe, le même dans une steppe rase et au fond d'un
+ * canyon. Or ce qu'on voit d'un endroit est la première chose que le terrain
+ * décide — et c'est ce qui donne à une hauteur une valeur qui n'est pas
+ * militaire mais informationnelle.
+ *
+ * La steppe est l'étalon : zéro. Un Relais Orbital est une structure haute d'où
+ * l'on embrasse le pays ; un canyon, une friche encombrée et une mer de
+ * plastique bouchent le regard.
+ */
+export const PORTEE_VUE = {
+  relais: 2,
+  steppe: 0,
+  desert: 1,
+  brulees: 1,
+  dalles: -1,
+  friche: -1,
+  marais: -1,
+  canyons: -1,
+  plastique: -1,
+};
+
 /** Ce dont on nomme une veine (G4). */
 export const VEINE_A = [
   'la Veine', 'le Filon', 'la Coulée', 'le Puits', 'la Poche', 'le Gisement',

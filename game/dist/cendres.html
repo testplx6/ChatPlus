@@ -3097,6 +3097,32 @@ const TRACE_A = {
   ville_morte: ['Ruine', 'Carcasse', 'Vestige'],
 };
 
+/**
+ * Ce qu'on voit d'un terrain, en cases de rayon ajoutées ou retirées
+ * (GEOGRAPHIE.md, G6).
+ *
+ * Le brouillard de ce jeu est bon, mais il ne devait rien à la géographie : on
+ * découvrait un rayon fixe, le même dans une steppe rase et au fond d'un
+ * canyon. Or ce qu'on voit d'un endroit est la première chose que le terrain
+ * décide — et c'est ce qui donne à une hauteur une valeur qui n'est pas
+ * militaire mais informationnelle.
+ *
+ * La steppe est l'étalon : zéro. Un Relais Orbital est une structure haute d'où
+ * l'on embrasse le pays ; un canyon, une friche encombrée et une mer de
+ * plastique bouchent le regard.
+ */
+const PORTEE_VUE = {
+  relais: 2,
+  steppe: 0,
+  desert: 1,
+  brulees: 1,
+  dalles: -1,
+  friche: -1,
+  marais: -1,
+  canyons: -1,
+  plastique: -1,
+};
+
 /** Ce dont on nomme une veine (G4). */
 const VEINE_A = [
   'la Veine', 'le Filon', 'la Coulée', 'le Puits', 'la Poche', 'le Gisement',
@@ -5517,6 +5543,11 @@ function chemin(world, from, to, mods = {}) {
 }
 
 /** Révèle une région et ses alentours. */
+/** Ce que ce terrain-ci ajoute ou retire à la portée du regard (G6). */
+function porteeDe(biome) {
+  return PORTEE_VUE[biome] || 0;
+}
+
 function decouvrir(world, i, rayon = 1) {
   const { x, y } = coord(i);
   for (let dy = -rayon; dy <= rayon; dy++) {
@@ -9995,9 +10026,15 @@ function creerConnaissance(t = 0) {
  */
 function regionsVues(state) {
   const vues = new Set();
-  const portee = savoir(state, 'optique');
+  const optique = savoir(state, 'optique');
   const ajouter = (rid) => {
     vues.add(rid);
+    // Ce qu'on surveille depuis là dépend d'où l'on est (GEOGRAPHIE.md, G6) :
+    // d'un Relais on embrasse le pays, du fond d'un canyon on ne voit que ses
+    // pieds. La lunette et le terrain s'ajoutent — un bon œil ne perce pas une
+    // paroi, mais il sert davantage en terrain dégagé.
+    const ici = state.world.regions[rid];
+    const portee = Math.max(0, optique + (ici ? porteeDe(ici.biome) : 0));
     if (!portee) return;
     for (const r of state.world.regions) {
       if (distance(r.i, rid) <= portee) vues.add(r.i);
@@ -28958,7 +28995,11 @@ function avancerVoyage(state, g, log, ctx) {
     // On tasse la terre en passant. Un convoi lourd marque plus qu'un homme
     // seul, et c'est ce qui fait qu'un circuit qu'on répète devient une route.
     damer(state.world, prochaine, 1 + (g.membres.length + betesDe(g).length) * 0.12);
-    const rayon = 1 + savoir(state, 'optique');
+    // Ce qu'on voit d'ici dépend d'où l'on est (GEOGRAPHIE.md, G6) : d'un
+    // Relais on embrasse le pays, du fond d'un canyon on ne voit rien venir.
+    // Jamais moins d'une case : on voit toujours où l'on met les pieds.
+    const rayon = Math.max(1, 1 + savoir(state, 'optique')
+      + porteeDe(state.world.regions[prochaine].biome));
     decouvrir(state.world, prochaine, rayon);
     for (const c of debout) gagnerXp(c, 'endurance', XP_PRATIQUE);
 

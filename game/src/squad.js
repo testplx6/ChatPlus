@@ -8,7 +8,7 @@ import { BIOMES, POSTURES, COMMODITIES, POI, SKILLS } from './data.js';
 import {
   chemin, coutTraversee, decouvrir, nomRegion, colonieDe, distance, damer,
   MANIERES_SIEGE,
-  rendementRegion,
+  rendementRegion, porteeDe,
 } from './world.js';
 import {
   comp, gagnerXp, estDebout, estVivant, tickPerso, nourrir, pvTotal,
@@ -462,7 +462,11 @@ function avancerVoyage(state, g, log, ctx) {
     // On tasse la terre en passant. Un convoi lourd marque plus qu'un homme
     // seul, et c'est ce qui fait qu'un circuit qu'on répète devient une route.
     damer(state.world, prochaine, 1 + (g.membres.length + betesDe(g).length) * 0.12);
-    const rayon = 1 + savoir(state, 'optique');
+    // Ce qu'on voit d'ici dépend d'où l'on est (GEOGRAPHIE.md, G6) : d'un
+    // Relais on embrasse le pays, du fond d'un canyon on ne voit rien venir.
+    // Jamais moins d'une case : on voit toujours où l'on met les pieds.
+    const rayon = Math.max(1, 1 + savoir(state, 'optique')
+      + porteeDe(state.world.regions[prochaine].biome));
     decouvrir(state.world, prochaine, rayon);
     for (const c of debout) gagnerXp(c, 'endurance', XP_PRATIQUE);
 

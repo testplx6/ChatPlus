@@ -5,7 +5,7 @@
 import {
   BIOMES, BIOME_KEYS, FACTIONS, DIPLO_FACTIONS, VILLE_A, VILLE_B, COMMODITY_KEYS,
   POI, POI_KEYS, MENAGES, drapeauDe, PASSAGE_A, PASSAGE_B, FAILLE_NOM, TRACE_A,
-  VEINE_A,
+  VEINE_A, PORTEE_VUE,
 } from './data.js';
 import { coutSaison } from './climat.js';
 import { grainDe, Rng } from './rng.js';
@@ -1175,6 +1175,11 @@ export function chemin(world, from, to, mods = {}) {
 }
 
 /** Révèle une région et ses alentours. */
+/** Ce que ce terrain-ci ajoute ou retire à la portée du regard (G6). */
+export function porteeDe(biome) {
+  return PORTEE_VUE[biome] || 0;
+}
+
 export function decouvrir(world, i, rayon = 1) {
   const { x, y } = coord(i);
   for (let dy = -rayon; dy <= rayon; dy++) {

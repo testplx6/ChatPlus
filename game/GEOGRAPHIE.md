@@ -210,12 +210,28 @@ histoire, et chacune est un site qu'on peut aller fouiller. Le monde, lui, est
 rigoureusement identique au témoin : mêmes villes, même population, mêmes
 convois. G5 n'a rien changé au monde ; il l'a rendu lisible.
 
-### G6 — voir loin
+### G6 — voir loin — **LIVRÉ, septembre 2026**
 
 Le brouillard est déjà « le meilleur qu'on connaisse en jeu textuel » (revue de
-`REVUE.md`), mais il ne doit rien à la géographie. Avec du relief (G1), une
-hauteur **voit** les cases alentour : tenir un sommet devient une valeur
-d'information et non de force, et le renseignement s'accroche enfin au sol.
+`REVUE.md`), mais il ne devait rien à la géographie : on découvrait un rayon
+fixe, le même dans une steppe rase et au fond d'un canyon.
+
+**Ce qui a été livré.** `PORTEE_VUE` dit ce qu'on voit de chaque terrain, en
+cases ajoutées ou retirées. La steppe est l'étalon (zéro) ; d'un **Relais
+Orbital** — une structure haute — on embrasse le pays (+2) ; le désert et les
+terres brûlées portent le regard (+1) ; le canyon, le marais, la friche
+encombrée, les dalles urbaines et la mer de plastique le bouchent (−1). Jamais
+moins d'une case en marche : on voit toujours où l'on met les pieds.
+
+Ça vaut pour les deux choses que voir veut dire : la carte qu'on **découvre**
+en marchant (`squad.js`) et les régions qu'on **surveille** en permanence
+(`regionsVues`) — donc ce dont on a des nouvelles fraîches, les colonnes
+repérées, les prix qui ne sont pas périmés. La lunette et le terrain s'ajoutent :
+un bon œil ne perce pas une paroi, mais il sert davantage en terrain dégagé.
+
+Le monde est rigoureusement identique au témoin : G6 ne change rien à ce qui se
+passe, seulement à ce que le joueur en sait — ce qui est précisément l'objet du
+brouillard.
 
 ### G7 — la frontière suit la géographie — **ESSAYÉ, MESURÉ, RETIRÉ**
 

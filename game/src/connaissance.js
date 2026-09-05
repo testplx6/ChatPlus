@@ -12,7 +12,7 @@
 // sèche — le banc d'équilibrage l'a chiffré.
 
 import { COMMODITY_KEYS } from './data.js';
-import { distance } from './world.js';
+import { distance, porteeDe } from './world.js';
 import { groupes } from './groupes.js';
 import { estVivant } from './characters.js';
 import { rangDe } from './allegeance.js';
@@ -43,9 +43,15 @@ export function creerConnaissance(t = 0) {
  */
 export function regionsVues(state) {
   const vues = new Set();
-  const portee = savoir(state, 'optique');
+  const optique = savoir(state, 'optique');
   const ajouter = (rid) => {
     vues.add(rid);
+    // Ce qu'on surveille depuis là dépend d'où l'on est (GEOGRAPHIE.md, G6) :
+    // d'un Relais on embrasse le pays, du fond d'un canyon on ne voit que ses
+    // pieds. La lunette et le terrain s'ajoutent — un bon œil ne perce pas une
+    // paroi, mais il sert davantage en terrain dégagé.
+    const ici = state.world.regions[rid];
+    const portee = Math.max(0, optique + (ici ? porteeDe(ici.biome) : 0));
     if (!portee) return;
     for (const r of state.world.regions) {
       if (distance(r.i, rid) <= portee) vues.add(r.i);
