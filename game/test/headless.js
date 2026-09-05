@@ -198,6 +198,7 @@ import { PASSAGE_A, PASSAGE_B } from '../src/data.js';
 import { SAISON_BIOME, coutSaison, poserSaison } from '../src/climat.js';
 import { marquerLieu, TRACES, GISEMENTS, gisementsDe } from '../src/world.js';
 import { BRIGANDS } from '../src/secteur.js';
+import { COUT_BARRAGE, planterPoste, raserPosteIci } from '../src/base.js';
 import {
   poserPoste, plafondPostes, fermerLeMoinsUtile,
 } from '../src/factions.js';
@@ -16937,6 +16938,69 @@ section('TER 10. Les brigands suivent le trafic (TERRITOIRE.md, E4)');
 
   ok(BRIGANDS && typeof BRIGANDS.parPiste === 'number',
     'ce que le trafic attire est calibrable', JSON.stringify(BRIGANDS));
+}
+
+
+
+// ===========================================================================
+section('TER 11. Tenir une route, quatrième voie (TERRITOIRE.md, E5)');
+// La revue de `REVUE.md` listait trois voies lisibles : servir, bâtir,
+// commercer. Toute la journée a enrichi le monde AUTOUR du joueur — les postes,
+// les péages, les blocus, les corridors saisonniers — mais rien de tout cela
+// n'était à sa portée : le poste était un mécanisme de conseils, et il ne
+// pouvait ni en bâtir un ni en raser un. Il payait, c'est tout.
+//
+// Or ce qu'on tient sur une route est exactement ce qui fait une voie : ça
+// coûte à bâtir, ça rapporte tant que le trafic passe, ça se défend, et ça se
+// perd.
+{
+  const sQ = nouvellePartie(311700, { maintenant: 0 });
+  const g = groupeActif(sQ);
+  const ou = sQ.world.regions.find((r) => !r.faille && !r.colonie && !r.controle);
+  g.regionId = ou.i;
+
+  // Les mains vides, on ne bâtit rien.
+  for (const k of Object.keys(g.inventaire)) g.inventaire[k] = 0;
+  ok(!planterPoste(sQ, null).ok, 'les mains vides, on ne bâtit pas');
+
+  // Avec de quoi, on tient la route.
+  for (const k of Object.keys(COUT_BARRAGE)) g.inventaire[k] = COUT_BARRAGE[k] * 2;
+  const r1 = planterPoste(sQ, null);
+  ok(r1.ok && !!ou.poste, 'avec de quoi, on plante un poste sur la route',
+    `${r1.motif || 'planté'}`);
+  ok(ou.poste.faction === 'joueur', 'et il est à vous', `${ou.poste.faction}`);
+  ok(g.inventaire.ferraille < COUT_BARRAGE.ferraille * 2,
+    'ce qu’il a coûté est sorti du sac', `${g.inventaire.ferraille}`);
+
+  // Chez quelqu'un d'autre, non : la règle du premier arrivé vaut pour vous
+  // comme pour les pays.
+  {
+    const tenue = sQ.world.regions.find((r) => r.controle && r.controle !== 'joueur'
+      && !r.faille && !r.colonie);
+    if (tenue) {
+      g.regionId = tenue.i;
+      for (const k of Object.keys(COUT_BARRAGE)) g.inventaire[k] = COUT_BARRAGE[k] * 2;
+      ok(!planterPoste(sQ, null).ok, 'mais pas chez quelqu’un d’autre');
+    }
+  }
+
+  // Et l'on peut défaire ce qu'un autre a bâti, là où l'on se tient.
+  {
+    const sR = nouvellePartie(311701, { maintenant: 0 });
+    const g2 = groupeActif(sR);
+    const cible = sR.world.regions.find((r) => !r.faille && !r.colonie && !r.controle);
+    sR.world.factions.rouilleurs.tresor = 99999;
+    poserPoste(sR.world, 'rouilleurs', cible, null, 0);
+    ok(!!cible.poste, 'décor : un poste étranger sur la route');
+    g2.regionId = cible.i;
+    const r2 = raserPosteIci(sR, null);
+    ok(r2.ok && !cible.poste, 'on rase le poste de celui qui tenait la route',
+      `${r2.motif || 'rasé'}`);
+    ok(!raserPosteIci(sR, null).ok, 'et l’on ne rase pas deux fois le même');
+  }
+
+  ok(COUT_BARRAGE && typeof COUT_BARRAGE.ferraille === 'number',
+    'ce que coûte un poste est de la donnée', JSON.stringify(COUT_BARRAGE));
 }
 
 

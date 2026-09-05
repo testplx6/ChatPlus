@@ -661,7 +661,15 @@ function tickArmee(world, armee, t, log, ctx) {
   // non un acquis.
   {
     const p = posteDe(world, armee.regionId);
-    if (p && p.faction !== armee.faction && enGuerre(world, armee.faction, p.faction)) {
+    // Et le poste du JOUEUR tombe aussi, quand ceux qui passent ont une raison
+    // de lui en vouloir (`ctx.rancune`, la même qui décide qui vient prendre
+    // son camp). Sans ça, tenir une route serait un revenu que rien ne menace —
+    // une voie sans risque n'est pas une voie (TERRITOIRE.md, E5).
+    const sien = ctx && ctx.sienDuJoueur && ctx.sienDuJoueur();
+    const contreVous = !!sien && p && p.faction === sien
+      && ctx.rancune && ctx.rancune(armee.faction);
+    if (p && p.faction !== armee.faction
+      && (contreVous || enGuerre(world, armee.faction, p.faction))) {
       raserPoste(world, armee.regionId);
       // Ce qu'on a rasé ne disparaît pas de la carte : il en reste quatre murs
       // bas, et un nom (GEOGRAPHIE.md, G5).
@@ -669,8 +677,10 @@ function tickArmee(world, armee, t, log, ctx) {
       log({
         type: 'poste',
         texte: `${drapeauDe(world, armee.faction).nom} `
-          + `rase${drapeauDe(world, armee.faction).pluriel ? 'nt' : ''} le poste `
-          + `${drapeauDe(world, p.faction).genitif} sur la route.`,
+          + `rase${drapeauDe(world, armee.faction).pluriel ? 'nt' : ''} `
+          + `${contreVous ? 'votre poste' : `le poste ${drapeauDe(world, p.faction).genitif}`} `
+          + 'sur la route.',
+        important: contreVous,
         regionId: armee.regionId,
         factions: [armee.faction, p.faction],
       });

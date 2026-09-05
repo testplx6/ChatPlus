@@ -557,6 +557,9 @@ export function tick(state) {
   // retient, et c'est ce qui permet à un conseil d'aller acheter sa franchise
   // (TERRITOIRE.md, E2).
   ctx.noterPeage = (qui, a, montant) => noterPeagePaye(state.world, qui, a, montant);
+  // Sous quel drapeau le joueur tient une route (TERRITOIRE.md, E5) : le monde
+  // ne lit pas le joueur, on le lui prête.
+  ctx.sienDuJoueur = () => (state.player && state.player.drapeau) || 'joueur';
   ctx.rancune = (faction) => {
     if ((state.player.reputation[faction] || 0) <= -20) return true;
     for (const g of state.player.groupes) {

@@ -5089,8 +5089,10 @@ function posteDe(world, regionId) {
  */
 function batirPoste(world, regionId, faction) {
   const r = world.regions[regionId];
-  const f = world.factions[faction];
-  if (!r || !f || r.poste || r.colonie != null || r.faille) return null;
+  // On n'exige PAS que le drapeau soit au tableau des pays : le joueur tient
+  // une route comme n'importe qui, et `monterLaGarde` l'accepte déjà de la
+  // même façon (TERRITOIRE.md, E5).
+  if (!r || !faction || r.poste || r.colonie != null || r.faille) return null;
   if (r.controle && r.controle !== faction) return null;
   // `recu` et `passages` sont la seule information qu'un conseil aura jamais
   // sur ce que vaut une route (TERRITOIRE.md, T3) : ce que SON ouvrage a vu
@@ -16037,6 +16039,20 @@ const REPONSES_BARRAGE = {
     peut: (v) => v.venantDe === v.faction,
     faire: () => 0,
   },
+  votre: {
+    nom: 'votre poste perçoit',
+    dit: 'la route est tenue par vous, et ce qui passe passe devant vous',
+    // Une voie complète a besoin d'un revenu (TERRITOIRE.md, E5). Le joueur est
+    // hors des registres du monde : ce que le convoi verse SORT du circuit de
+    // son pays et entre dans sa bourse — la paire `debourser` + `sortirDehors`,
+    // celle-là même qu'une ville emploie quand elle vous paie une livraison.
+    peut: (v) => {
+      const p = posteDe(v.state.world, v.convoi.regionId);
+      return !!p && p.faction === sienDuJoueur(v.state)
+        && !!v.de && (v.de.caisse || 0) >= v.du;
+    },
+    faire: (v) => payerAuJoueur(v),
+  },
   bourse: {
     nom: 'le maître du convoi paie',
     dit: 'c’est son convoi, et il a de quoi dans la monnaie d’ici',
@@ -16095,6 +16111,27 @@ function monnaieDuPeage(v) {
  * Le maître du convoi paie de sa poche. Sa bourse est hors de tout registre :
  * ce qui entre en caisse entre donc aussi dans la masse — la règle des deux.
  */
+/** Le drapeau sous lequel le joueur tient une route : le sien, ou « joueur ». */
+function sienDuJoueur(state) {
+  return (state.player && state.player.drapeau) || 'joueur';
+}
+
+/**
+ * Un convoi passe devant VOTRE poste. La ville qui l'a expédié règle sur sa
+ * caisse, et l'argent quitte le circuit de son pays pour entrer dans votre
+ * bourse — vous n'êtes dans aucun registre.
+ */
+function payerAuJoueur(v) {
+  const world = v.state.world;
+  const paye = debourser(v.de, v.du);
+  if (!(paye > 0)) return 0;
+  sortirDehors(world, v.de.faction, paye);
+  gagner(v.state, paye, v.de.faction);
+  const p = posteDe(world, v.convoi.regionId);
+  if (p) { p.passages = (p.passages || 0) + 1; p.recu = (p.recu || 0) + paye; }
+  return paye;
+}
+
 function payerDeSaPoche(v) {
   const m = monnaieDuPeage(v);
   if (!m) return 0;
@@ -17273,7 +17310,15 @@ function tickArmee(world, armee, t, log, ctx) {
   // non un acquis.
   {
     const p = posteDe(world, armee.regionId);
-    if (p && p.faction !== armee.faction && enGuerre(world, armee.faction, p.faction)) {
+    // Et le poste du JOUEUR tombe aussi, quand ceux qui passent ont une raison
+    // de lui en vouloir (`ctx.rancune`, la même qui décide qui vient prendre
+    // son camp). Sans ça, tenir une route serait un revenu que rien ne menace —
+    // une voie sans risque n'est pas une voie (TERRITOIRE.md, E5).
+    const sien = ctx && ctx.sienDuJoueur && ctx.sienDuJoueur();
+    const contreVous = !!sien && p && p.faction === sien
+      && ctx.rancune && ctx.rancune(armee.faction);
+    if (p && p.faction !== armee.faction
+      && (contreVous || enGuerre(world, armee.faction, p.faction))) {
       raserPoste(world, armee.regionId);
       // Ce qu'on a rasé ne disparaît pas de la carte : il en reste quatre murs
       // bas, et un nom (GEOGRAPHIE.md, G5).
@@ -17281,8 +17326,10 @@ function tickArmee(world, armee, t, log, ctx) {
       log({
         type: 'poste',
         texte: `${drapeauDe(world, armee.faction).nom} `
-          + `rase${drapeauDe(world, armee.faction).pluriel ? 'nt' : ''} le poste `
-          + `${drapeauDe(world, p.faction).genitif} sur la route.`,
+          + `rase${drapeauDe(world, armee.faction).pluriel ? 'nt' : ''} `
+          + `${contreVous ? 'votre poste' : `le poste ${drapeauDe(world, p.faction).genitif}`} `
+          + 'sur la route.',
+        important: contreVous,
         regionId: armee.regionId,
         factions: [armee.faction, p.faction],
       });
@@ -22979,6 +23026,79 @@ function reajusterPostes(base) {
  * développement, pas la survie.
  */
 const COUT_FONDATION = { ferraille: 110 };
+
+/**
+ * Ce qu'il faut dans le sac pour planter un poste sur une route
+ * (TERRITOIRE.md, E5).
+ *
+ * La revue du jeu listait trois voies lisibles : servir, bâtir, commercer. Tout
+ * ce qui a été livré autour du territoire enrichissait le monde AUTOUR du
+ * joueur — postes, péages, blocus, corridors saisonniers — sans rien mettre à
+ * sa portée : le poste était un mécanisme de conseils, il ne pouvait ni en
+ * bâtir ni en raser. Il payait, c'est tout, ce qui est l'odeur n°3.
+ *
+ * Ce qu'on tient sur une route fait pourtant une voie complète : ça coûte à
+ * bâtir, ça rapporte tant que le trafic passe, ça se défend, et ça se perd.
+ */
+const COUT_BARRAGE = { ferraille: 70, polymere: 20, composant: 3 };
+
+/**
+ * Planter un poste là où l'on se tient. Mêmes bornes que pour un conseil : pas
+ * dans une ville, pas dans la Faille, et jamais chez quelqu'un d'autre — la
+ * règle du premier arrivé vaut pour le joueur comme pour les pays.
+ */
+function planterPoste(state, log) {
+  const g = groupeActif(state);
+  if (!g) return { ok: false, motif: 'Personne pour le bâtir.' };
+  const r = state.world.regions[g.regionId];
+  if (!r) return { ok: false, motif: 'Nulle part.' };
+  if (r.poste) return { ok: false, motif: 'Il y a déjà un poste ici.' };
+  if (r.colonie != null) return { ok: false, motif: 'On ne barre pas une ville.' };
+  if (r.faille) return { ok: false, motif: 'On ne bâtit pas dans un gouffre.' };
+  const sien = (state.player && state.player.drapeau) || 'joueur';
+  if (r.controle && r.controle !== sien) {
+    return { ok: false, motif: 'Cette terre est déjà à quelqu’un.' };
+  }
+  if (!peutPayer(g.inventaire, COUT_BARRAGE)) {
+    return { ok: false, motif: 'Il faut 70 ferraille, 20 polymère, 3 composants dans le sac.' };
+  }
+  payer(g.inventaire, COUT_BARRAGE);
+  batirPoste(state.world, g.regionId, sien);
+  if (log) {
+    log({
+      type: 'poste',
+      texte: `Un poste de plus sur la route, à ${nomRegion(state.world, g.regionId)}. `
+        + 'Ce qui passe par là passera devant vous.',
+      regionId: g.regionId,
+      important: true,
+    });
+  }
+  return { ok: true };
+}
+
+/** Défaire ce qu'un autre a bâti, là où l'on se tient. */
+function raserPosteIci(state, log) {
+  const g = groupeActif(state);
+  if (!g) return { ok: false, motif: 'Personne pour le faire.' };
+  const r = state.world.regions[g.regionId];
+  if (!r || !r.poste) return { ok: false, motif: 'Il n’y a rien à abattre ici.' };
+  const a = r.poste.faction;
+  raserPoste(state.world, g.regionId);
+  marquerLieu(state.world, g.regionId, 'ruine_poste', state.temps);
+  if (log) {
+    log({
+      type: 'poste',
+      texte: a === 'joueur'
+        ? 'Vous démontez votre poste. La route redevient à tout le monde.'
+        : `Le poste ${drapeauDe(state.world, a).genitif} est à terre. `
+          + 'On saura qui l’a mis par terre.',
+      regionId: g.regionId,
+      important: true,
+      factions: a === 'joueur' ? [] : [a],
+    });
+  }
+  return { ok: true, a };
+}
 
 function niveau(base, key) {
   return base.batiments[key] || 0;
@@ -31357,6 +31477,9 @@ function tick(state) {
   // retient, et c'est ce qui permet à un conseil d'aller acheter sa franchise
   // (TERRITOIRE.md, E2).
   ctx.noterPeage = (qui, a, montant) => noterPeagePaye(state.world, qui, a, montant);
+  // Sous quel drapeau le joueur tient une route (TERRITOIRE.md, E5) : le monde
+  // ne lit pas le joueur, on le lui prête.
+  ctx.sienDuJoueur = () => (state.player && state.player.drapeau) || 'joueur';
   ctx.rancune = (faction) => {
     if ((state.player.reputation[faction] || 0) <= -20) return true;
     for (const g of state.player.groupes) {
@@ -33881,6 +34004,7 @@ function blocRegionCourante() {
     ${blocRepartition()}
     ${ici ? `<div class="sep"></div>
       <button class="act" data-a="modale" data-m="transfert">Transférer des ressources vers l’avant-poste</button>` : ''}
+    ${blocTenirLaRoute(rid)}
   </section>
 
   ${blocSite()}
@@ -34534,6 +34658,37 @@ function bandeauDevaluation() {
       en achète moins. Au bureau de change, on vous dira ce que ça vaut ailleurs.</div>
     <button class="act mini" data-a="devaluation-vue" style="margin-top:6px">J’ai vu</button>
   </section>`;
+}
+
+/**
+ * Tenir une route (TERRITOIRE.md, E5) : le seul endroit du jeu où le joueur
+ * peut prendre part au territoire autrement qu'en le subissant. On ne montre
+ * le geste que là où il a un sens — pas dans une ville, pas dans la Faille.
+ */
+function blocTenirLaRoute(rid) {
+  const r = S.world.regions[rid];
+  if (!r || r.colonie != null || r.faille) return '';
+  const p = r.poste;
+  const sien = (S.player && S.player.drapeau) || 'joueur';
+  const piste = Math.round((r.piste || 0) * 100);
+  if (p && p.faction === sien) {
+    return `<div class="sep"></div>
+      <div class="ligne"><span class="k">Votre poste</span>
+        <span class="v">${n(p.passages || 0)} passage${(p.passages || 0) > 1 ? 's' : ''}
+          · ${n(Math.round(p.recu || 0))} encaissé${(p.recu || 0) > 1 ? 's' : ''}</span></div>
+      <button class="act mini" data-a="raser-poste">Démonter le poste</button>`;
+  }
+  if (p) {
+    return `<div class="sep"></div>
+      <div class="ligne"><span class="k">Poste</span>
+        <span class="v" style="color:${couleurFaction(p.faction)}">${e(drapeauDe(S.world, p.faction).nom)}</span></div>
+      <button class="act mini danger" data-a="raser-poste">Abattre ce poste</button>`;
+  }
+  if (r.controle && r.controle !== sien) return '';
+  return `<div class="sep"></div>
+    <div class="aide">Passage ici : ${piste} %${piste >= 45
+    ? ' — on y passe beaucoup.' : piste >= 15 ? '.' : ' — presque personne.'}</div>
+    <button class="act mini" data-a="planter-poste">Planter un poste sur la route</button>`;
 }
 
 /**
@@ -39292,6 +39447,20 @@ function surClic(ev) {
       break;
     }
 
+    case 'planter-poste': {
+      const r = ACTIONS.planterPoste();
+      toast(r.ok ? 'Le poste est planté. Ce qui passe passera devant vous.' : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
+    case 'raser-poste': {
+      const r = ACTIONS.raserPoste();
+      toast(r.ok ? 'Le poste est à terre.' : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
     case 'assaut': {
       const r = ACTIONS.attaquerVille(el.dataset.k);
       if (!r.ok) toast(r.motif, true);
@@ -40735,6 +40904,20 @@ const API = {
    * Un coup de main sur la ville où l'on se tient. Le moteur vérifie qu'on y
    * est, que ce n'est pas son propre camp, et que la place existe encore.
    */
+  /** Tenir une route : planter un poste là où l'on se tient (TERRITOIRE E5). */
+  planterPoste() {
+    const r = planterPoste(state, creerLogger(state));
+    if (r.ok) sauver();
+    return r;
+  },
+
+  /** Et défaire ce qu'un autre y a bâti. */
+  raserPoste() {
+    const r = raserPosteIci(state, creerLogger(state));
+    if (r.ok) sauver();
+    return r;
+  },
+
   attaquerVille(id) {
     const col = state.world.colonies.find((c) => c.id === id);
     if (!col) return { ok: false, motif: 'Cette ville n’est plus là.' };

@@ -2204,6 +2204,7 @@ function blocRegionCourante() {
     ${blocRepartition()}
     ${ici ? `<div class="sep"></div>
       <button class="act" data-a="modale" data-m="transfert">Transférer des ressources vers l’avant-poste</button>` : ''}
+    ${blocTenirLaRoute(rid)}
   </section>
 
   ${blocSite()}
@@ -2857,6 +2858,37 @@ function bandeauDevaluation() {
       en achète moins. Au bureau de change, on vous dira ce que ça vaut ailleurs.</div>
     <button class="act mini" data-a="devaluation-vue" style="margin-top:6px">J’ai vu</button>
   </section>`;
+}
+
+/**
+ * Tenir une route (TERRITOIRE.md, E5) : le seul endroit du jeu où le joueur
+ * peut prendre part au territoire autrement qu'en le subissant. On ne montre
+ * le geste que là où il a un sens — pas dans une ville, pas dans la Faille.
+ */
+function blocTenirLaRoute(rid) {
+  const r = S.world.regions[rid];
+  if (!r || r.colonie != null || r.faille) return '';
+  const p = r.poste;
+  const sien = (S.player && S.player.drapeau) || 'joueur';
+  const piste = Math.round((r.piste || 0) * 100);
+  if (p && p.faction === sien) {
+    return `<div class="sep"></div>
+      <div class="ligne"><span class="k">Votre poste</span>
+        <span class="v">${n(p.passages || 0)} passage${(p.passages || 0) > 1 ? 's' : ''}
+          · ${n(Math.round(p.recu || 0))} encaissé${(p.recu || 0) > 1 ? 's' : ''}</span></div>
+      <button class="act mini" data-a="raser-poste">Démonter le poste</button>`;
+  }
+  if (p) {
+    return `<div class="sep"></div>
+      <div class="ligne"><span class="k">Poste</span>
+        <span class="v" style="color:${couleurFaction(p.faction)}">${e(drapeauDe(S.world, p.faction).nom)}</span></div>
+      <button class="act mini danger" data-a="raser-poste">Abattre ce poste</button>`;
+  }
+  if (r.controle && r.controle !== sien) return '';
+  return `<div class="sep"></div>
+    <div class="aide">Passage ici : ${piste} %${piste >= 45
+    ? ' — on y passe beaucoup.' : piste >= 15 ? '.' : ' — presque personne.'}</div>
+    <button class="act mini" data-a="planter-poste">Planter un poste sur la route</button>`;
 }
 
 /**
@@ -7611,6 +7643,20 @@ function surClic(ev) {
     case 'raser': {
       const r = ACTIONS.raserPlace(el.dataset.k);
       toast(r.ok ? 'Il n’en reste que des murs noircis.' : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
+    case 'planter-poste': {
+      const r = ACTIONS.planterPoste();
+      toast(r.ok ? 'Le poste est planté. Ce qui passe passera devant vous.' : r.motif, !r.ok);
+      rafraichir(true);
+      break;
+    }
+
+    case 'raser-poste': {
+      const r = ACTIONS.raserPoste();
+      toast(r.ok ? 'Le poste est à terre.' : r.motif, !r.ok);
       rafraichir(true);
       break;
     }

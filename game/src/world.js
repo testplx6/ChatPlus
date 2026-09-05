@@ -747,8 +747,10 @@ export function posteDe(world, regionId) {
  */
 export function batirPoste(world, regionId, faction) {
   const r = world.regions[regionId];
-  const f = world.factions[faction];
-  if (!r || !f || r.poste || r.colonie != null || r.faille) return null;
+  // On n'exige PAS que le drapeau soit au tableau des pays : le joueur tient
+  // une route comme n'importe qui, et `monterLaGarde` l'accepte déjà de la
+  // même façon (TERRITOIRE.md, E5).
+  if (!r || !faction || r.poste || r.colonie != null || r.faille) return null;
   if (r.controle && r.controle !== faction) return null;
   // `recu` et `passages` sont la seule information qu'un conseil aura jamais
   // sur ce que vaut une route (TERRITOIRE.md, T3) : ce que SON ouvrage a vu

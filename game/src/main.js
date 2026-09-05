@@ -29,7 +29,7 @@ import {
   changerDeCamp as changerDeCampA,
   declarerIndependance, reglerRecette, reglerReserve,
   negocierSiege, sortieContreSiege, evacuerCamp,
-  enfermerAuCamp, reprendreDuCamp, detenusDuCamp, capaciteGeole,
+  enfermerAuCamp, reprendreDuCamp, detenusDuCamp, capaciteGeole, planterPoste, raserPosteIci,
 } from './base.js';
 import { verifierExercice } from './squad.js';
 import { honorer as honorerService } from './services.js';
@@ -678,6 +678,20 @@ const API = {
    * Un coup de main sur la ville où l'on se tient. Le moteur vérifie qu'on y
    * est, que ce n'est pas son propre camp, et que la place existe encore.
    */
+  /** Tenir une route : planter un poste là où l'on se tient (TERRITOIRE E5). */
+  planterPoste() {
+    const r = planterPoste(state, creerLogger(state));
+    if (r.ok) sauver();
+    return r;
+  },
+
+  /** Et défaire ce qu'un autre y a bâti. */
+  raserPoste() {
+    const r = raserPosteIci(state, creerLogger(state));
+    if (r.ok) sauver();
+    return r;
+  },
+
   attaquerVille(id) {
     const col = state.world.colonies.find((c) => c.id === id);
     if (!col) return { ok: false, motif: 'Cette ville n’est plus là.' };

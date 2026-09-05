@@ -7,7 +7,10 @@ import {
 } from './data.js';
 import { Rng, grainDe } from './rng.js';
 import { commettre, delaiVersFaction } from './faits.js';
-import { rendementRegion, libererOrphelines } from './world.js';
+import {
+  rendementRegion, libererOrphelines, batirPoste, raserPoste, nomRegion,
+  marquerLieu,
+} from './world.js';
 import { METEO } from './climat.js';
 import { loisDe } from './lois.js';
 import { comp, gagnerXp, estDebout, estVivant, makeCharacter, XP_PRATIQUE } from './characters.js';
@@ -493,6 +496,79 @@ export function reajusterPostes(base) {
  * développement, pas la survie.
  */
 export const COUT_FONDATION = { ferraille: 110 };
+
+/**
+ * Ce qu'il faut dans le sac pour planter un poste sur une route
+ * (TERRITOIRE.md, E5).
+ *
+ * La revue du jeu listait trois voies lisibles : servir, bâtir, commercer. Tout
+ * ce qui a été livré autour du territoire enrichissait le monde AUTOUR du
+ * joueur — postes, péages, blocus, corridors saisonniers — sans rien mettre à
+ * sa portée : le poste était un mécanisme de conseils, il ne pouvait ni en
+ * bâtir ni en raser. Il payait, c'est tout, ce qui est l'odeur n°3.
+ *
+ * Ce qu'on tient sur une route fait pourtant une voie complète : ça coûte à
+ * bâtir, ça rapporte tant que le trafic passe, ça se défend, et ça se perd.
+ */
+export const COUT_BARRAGE = { ferraille: 70, polymere: 20, composant: 3 };
+
+/**
+ * Planter un poste là où l'on se tient. Mêmes bornes que pour un conseil : pas
+ * dans une ville, pas dans la Faille, et jamais chez quelqu'un d'autre — la
+ * règle du premier arrivé vaut pour le joueur comme pour les pays.
+ */
+export function planterPoste(state, log) {
+  const g = groupeActif(state);
+  if (!g) return { ok: false, motif: 'Personne pour le bâtir.' };
+  const r = state.world.regions[g.regionId];
+  if (!r) return { ok: false, motif: 'Nulle part.' };
+  if (r.poste) return { ok: false, motif: 'Il y a déjà un poste ici.' };
+  if (r.colonie != null) return { ok: false, motif: 'On ne barre pas une ville.' };
+  if (r.faille) return { ok: false, motif: 'On ne bâtit pas dans un gouffre.' };
+  const sien = (state.player && state.player.drapeau) || 'joueur';
+  if (r.controle && r.controle !== sien) {
+    return { ok: false, motif: 'Cette terre est déjà à quelqu’un.' };
+  }
+  if (!peutPayer(g.inventaire, COUT_BARRAGE)) {
+    return { ok: false, motif: 'Il faut 70 ferraille, 20 polymère, 3 composants dans le sac.' };
+  }
+  payer(g.inventaire, COUT_BARRAGE);
+  batirPoste(state.world, g.regionId, sien);
+  if (log) {
+    log({
+      type: 'poste',
+      texte: `Un poste de plus sur la route, à ${nomRegion(state.world, g.regionId)}. `
+        + 'Ce qui passe par là passera devant vous.',
+      regionId: g.regionId,
+      important: true,
+    });
+  }
+  return { ok: true };
+}
+
+/** Défaire ce qu'un autre a bâti, là où l'on se tient. */
+export function raserPosteIci(state, log) {
+  const g = groupeActif(state);
+  if (!g) return { ok: false, motif: 'Personne pour le faire.' };
+  const r = state.world.regions[g.regionId];
+  if (!r || !r.poste) return { ok: false, motif: 'Il n’y a rien à abattre ici.' };
+  const a = r.poste.faction;
+  raserPoste(state.world, g.regionId);
+  marquerLieu(state.world, g.regionId, 'ruine_poste', state.temps);
+  if (log) {
+    log({
+      type: 'poste',
+      texte: a === 'joueur'
+        ? 'Vous démontez votre poste. La route redevient à tout le monde.'
+        : `Le poste ${drapeauDe(state.world, a).genitif} est à terre. `
+          + 'On saura qui l’a mis par terre.',
+      regionId: g.regionId,
+      important: true,
+      factions: a === 'joueur' ? [] : [a],
+    });
+  }
+  return { ok: true, a };
+}
 
 export function niveau(base, key) {
   return base.batiments[key] || 0;

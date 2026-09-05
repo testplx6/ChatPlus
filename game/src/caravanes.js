@@ -10,6 +10,7 @@ import {
   chemin, colonieParId, colonieDe, nomRegion, distance, damer,
   negoceCoupe, vivresCoupees, aucuneCoupure, villeDuBarrage,
   noterAuPoste,
+  posteDe,
 } from './world.js';
 import {
   reseauDe, reseaux, idReseau, villesDuReseau, peutTraiter, chiffrerOrdre,
@@ -847,6 +848,20 @@ export const REPONSES_BARRAGE = {
     peut: (v) => v.venantDe === v.faction,
     faire: () => 0,
   },
+  votre: {
+    nom: 'votre poste perçoit',
+    dit: 'la route est tenue par vous, et ce qui passe passe devant vous',
+    // Une voie complète a besoin d'un revenu (TERRITOIRE.md, E5). Le joueur est
+    // hors des registres du monde : ce que le convoi verse SORT du circuit de
+    // son pays et entre dans sa bourse — la paire `debourser` + `sortirDehors`,
+    // celle-là même qu'une ville emploie quand elle vous paie une livraison.
+    peut: (v) => {
+      const p = posteDe(v.state.world, v.convoi.regionId);
+      return !!p && p.faction === sienDuJoueur(v.state)
+        && !!v.de && (v.de.caisse || 0) >= v.du;
+    },
+    faire: (v) => payerAuJoueur(v),
+  },
   bourse: {
     nom: 'le maître du convoi paie',
     dit: 'c’est son convoi, et il a de quoi dans la monnaie d’ici',
@@ -905,6 +920,27 @@ function monnaieDuPeage(v) {
  * Le maître du convoi paie de sa poche. Sa bourse est hors de tout registre :
  * ce qui entre en caisse entre donc aussi dans la masse — la règle des deux.
  */
+/** Le drapeau sous lequel le joueur tient une route : le sien, ou « joueur ». */
+function sienDuJoueur(state) {
+  return (state.player && state.player.drapeau) || 'joueur';
+}
+
+/**
+ * Un convoi passe devant VOTRE poste. La ville qui l'a expédié règle sur sa
+ * caisse, et l'argent quitte le circuit de son pays pour entrer dans votre
+ * bourse — vous n'êtes dans aucun registre.
+ */
+function payerAuJoueur(v) {
+  const world = v.state.world;
+  const paye = debourser(v.de, v.du);
+  if (!(paye > 0)) return 0;
+  sortirDehors(world, v.de.faction, paye);
+  gagner(v.state, paye, v.de.faction);
+  const p = posteDe(world, v.convoi.regionId);
+  if (p) { p.passages = (p.passages || 0) + 1; p.recu = (p.recu || 0) + paye; }
+  return paye;
+}
+
 function payerDeSaPoche(v) {
   const m = monnaieDuPeage(v);
   if (!m) return 0;
